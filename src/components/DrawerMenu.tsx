@@ -1,4 +1,5 @@
 import React from 'react';
+
 import {
   Image,
   ScrollView,
@@ -48,7 +49,7 @@ const DrawerMenu = ({ isFixed, onClose }: DrawerMenuProps) => {
         </View>
       </View>
 
-      <ScrollView showsVerticalScrollIndicator={false}>
+      <ScrollView showsVerticalScrollIndicator={false} style={{ flex: 1 }}>
         <MenuItem 
           iconSource={require('../../assets/images/person.png')} 
           label="Profile" 
@@ -74,6 +75,15 @@ const DrawerMenu = ({ isFixed, onClose }: DrawerMenuProps) => {
           label="Settings" 
         />
       </ScrollView>
+
+      {/* Logout Button at Bottom */}
+      <TouchableOpacity style={styles.logoutMenuItem}>
+        <Image 
+          source={require('../../assets/images/log-out-outline.png')} 
+          style={styles.logoutIcon}
+        />
+        <Text style={styles.logoutLabel}>Logout</Text>
+      </TouchableOpacity>
     </View>
   );
 };
@@ -104,7 +114,8 @@ const styles = StyleSheet.create({
   profileSection: { 
     marginBottom: 40, 
     flexDirection: 'row', 
-    alignItems: 'center' 
+    alignItems: 'center', 
+    
   },
   avatar: { 
     width: 50, 
@@ -134,6 +145,25 @@ const styles = StyleSheet.create({
     color: '#444',
     fontWeight: '500'
   },
+  logoutMenuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 20,
+    paddingTop: 20,
+    borderTopWidth: 1,
+    borderTopColor: '#EEE',
+  },
+  logoutIcon: {
+    width: 28,
+    height: 28,
+    marginRight: 20,
+    resizeMode: 'contain',
+    tintColor: '#D32F2F',
+  },
+  logoutLabel: {
+    fontSize: 20,
+    color: '#D32F2F',
+    fontWeight: '600',
+  },
 });
-
 export default DrawerMenu;

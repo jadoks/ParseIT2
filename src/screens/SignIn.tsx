@@ -92,6 +92,8 @@ const SignIn = ({ onLogIn }: SignInProps) => {
             <Text style={styles.logInText}>Log In</Text>
           </TouchableOpacity>
 
+
+
           {/* Forgot Password Link */}
           <TouchableOpacity onPress={handleForgotPassword}>
             <Text style={styles.forgotPassword}>Forgot Password?</Text>
@@ -224,6 +226,7 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     textDecorationLine: 'none',
   },
+
 });
 
 export default SignIn;

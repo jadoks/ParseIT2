@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { StyleSheet, Text, TouchableOpacity, useWindowDimensions, View } from 'react-native';
+import { Image, StyleSheet, Text, TouchableOpacity, useWindowDimensions, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import DrawerMenu from './src/components/DrawerMenu';
 import Header from './src/components/Header';
@@ -56,6 +56,15 @@ export default function App() {
 
         {activeScreen === 'home' ? <Dashboard /> : activeScreen === 'game' ? <Game /> : activeScreen === 'videos' ? <Videos /> :<SignIn/>}
       </View>
+
+      {/* Floating ChatGPT Button at Bottom Right */}
+      <TouchableOpacity style={styles.floatingChatBtn} activeOpacity={0.8}>
+        <Image
+          source={require('./assets/images/ChatGPT.png')}
+          style={styles.chatBtnImage}
+        />
+        <Text style={styles.chatBtnLabel}>Ask anything</Text>
+      </TouchableOpacity>
     </SafeAreaView>
   );
 }
@@ -80,10 +89,11 @@ const styles = StyleSheet.create({
     shadowColor: '#000', // iOS shadow
     shadowOffset: { width: 2, height: 0 },
     shadowOpacity: 0.2,
+  
   },
   floatingMenuBtn: {
     position: 'absolute',
-    top: 72,
+    top: 135,
     left: 16,
     zIndex: 5,
     width: 44,
@@ -104,5 +114,35 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: 'bold',
     color: '#000',
-  }
+  },
+  floatingChatBtn: {
+    position: 'absolute',
+    bottom: 44,
+    right: 20,
+    zIndex: 20,
+    width: 140,
+    height: 56,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    backgroundColor: '#D32F2F',
+    borderRadius: 28,
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+  },
+  chatBtnImage: {
+    width: 24,
+    height: 24,
+    resizeMode: 'contain',
+    tintColor: '#FFFFFF',
+  },
+  chatBtnLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#FFF',
+  },
 });

@@ -136,7 +136,7 @@ const Videos = () => {
 const styles = StyleSheet.create({
   container: { flex: 1, padding: 20 },
   headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
-  pageTitle: { fontSize: 20, fontWeight: 'bold' },
+  pageTitle:  { fontSize: 25, fontWeight: 'bold'},
   favBtn: { paddingHorizontal: 12, paddingVertical: 8, backgroundColor: '#EDEDED', borderRadius: 8 },
   favBtnText: { fontWeight: '600' },
   list: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 12 },

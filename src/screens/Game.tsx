@@ -32,6 +32,7 @@ const Game = () => {
 
   return (
     <ScrollView style={styles.container}>
+      <Text style={styles.pageTitle}>Games</Text>
       <View style={styles.grid}>
         {games.map((game) => {
           // map game id/title to image filename and optional per-image style overrides
@@ -61,6 +62,7 @@ const Game = () => {
 
 const styles = StyleSheet.create({
   container: { flex: 1, padding: 20 },
+  pageTitle: { fontSize: 25, fontWeight: 'bold', paddingBottom: 10,  textAlign: 'center', borderColor: '#bdbdbd', borderBottomWidth: 2, marginBottom: 20 },
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -99,7 +101,7 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
    
-    objectFit: 'contain',
+    objectFit: 'cover',
   },
   cardTextWrap: {
     padding: 16,
