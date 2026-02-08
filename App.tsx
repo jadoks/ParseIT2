@@ -1,10 +1,13 @@
 import React, { useState } from 'react';
 import { Image, StyleSheet, Text, TouchableOpacity, useWindowDimensions, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import AnnouncementModal, { Announcement } from './src/components/AnnouncementModal';
 import DrawerMenu from './src/components/DrawerMenu';
 import Header from './src/components/Header';
 import ProfileModal from './src/components/ProfileModal';
 import Analytics from './src/screens/Analytics';
+import Assignments from './src/screens/Assignments';
+import CourseDetail from './src/screens/CourseDetail';
 import Dashboard from './src/screens/Dashboard';
 import Game from './src/screens/Game';
 import Messenger from './src/screens/Messenger';
@@ -12,18 +15,43 @@ import MyJourney from './src/screens/MyJourney';
 import SignIn from './src/screens/SignIn';
 import Videos from './src/screens/Videos';
 
+const ANNOUNCEMENTS: Announcement[] = [
+  {
+    id: '1',
+    title: 'Welcome Back!',
+    message: 'Check out the latest updates and announcements from your courses.',
+    bannerImage: require('./assets/images/ctu_argao_banner.jpg'),
+  },
+  {
+    id: '2',
+    title: 'New Course Available',
+    message: 'Advanced Data Structures is now open for enrollment. Register today!',
+    bannerImage: require('./assets/images/ctu_argao_banner.jpg'),
+  },
+  {
+    id: '3',
+    title: 'Mid-Term Exams',
+    message: 'Mid-term exams are scheduled for next week. Study hard and good luck!',
+    bannerImage: require('./assets/images/ctu_argao_banner.jpg'),
+  },
+];
+
 export default function App() {
   const { width } = useWindowDimensions();
   const isLargeScreen = width >= 768; // Tablet/Web breakpoint
   const [isMobileDrawerOpen, setMobileDrawerOpen] = useState(false);
-  const [activeScreen, setActiveScreen] = useState<'home' | 'game' | 'videos' | 'analytics' | 'myjourney' | 'profile' | 'messenger'>('home');
-  const [lastScreen, setLastScreen] = useState<'home' | 'game' | 'videos' | 'analytics' | 'myjourney' | 'messenger'>('home');
+  const [activeScreen, setActiveScreen] = useState<'home' | 'game' | 'videos' | 'analytics' | 'myjourney' | 'profile' | 'messenger' | 'assignments' | 'coursedetail'>('home');
+  const [lastScreen, setLastScreen] = useState<'home' | 'game' | 'videos' | 'analytics' | 'myjourney' | 'messenger' | 'assignments' | 'coursedetail'>('home');
+  const [showAnnouncement, setShowAnnouncement] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
 
   if (!isLoggedIn) {
     return (
       <SafeAreaView style={styles.container}>
-        <SignIn onLogIn={() => setIsLoggedIn(true)} />
+        <SignIn onLogIn={() => {
+          setIsLoggedIn(true);
+          setShowAnnouncement(true);
+        }} />
       </SafeAreaView>
     );
   }
@@ -38,8 +66,12 @@ export default function App() {
           if (screen === 'profile') {
             setLastScreen(activeScreen as any);
             setActiveScreen('profile');
+          } else if (screen === 'home') {
+            setActiveScreen(screen as any);
+            setShowAnnouncement(true);
           } else {
             setActiveScreen(screen as any);
+            setShowAnnouncement(false);
           }
         }}
       />
@@ -61,8 +93,9 @@ export default function App() {
           <DrawerMenu
             isFixed={true}
             onNavigate={(s) => {
-              if (s === 'profile') { setLastScreen(activeScreen as any); setActiveScreen('profile'); }
-              else { setActiveScreen(s as any); }
+              if (s === 'profile') { setLastScreen(activeScreen as any); setActiveScreen('profile'); setShowAnnouncement(false); }
+              else if (s === 'home') { setActiveScreen(s as any); setShowAnnouncement(true); }
+              else { setActiveScreen(s as any); setShowAnnouncement(false); }
             }}
             activeScreen={activeScreen}
             userName="Jade M. Lisondra"
@@ -78,8 +111,9 @@ export default function App() {
               isFixed={false}
               onClose={() => setMobileDrawerOpen(false)}
               onNavigate={(s) => {
-                if (s === 'profile') { setLastScreen(activeScreen as any); setActiveScreen('profile'); setMobileDrawerOpen(false); }
-                else { setActiveScreen(s as any); setMobileDrawerOpen(false); }
+                if (s === 'profile') { setLastScreen(activeScreen as any); setActiveScreen('profile'); setMobileDrawerOpen(false); setShowAnnouncement(false); }
+                else if (s === 'home') { setActiveScreen(s as any); setMobileDrawerOpen(false); setShowAnnouncement(true); }
+                else { setActiveScreen(s as any); setMobileDrawerOpen(false); setShowAnnouncement(false); }
               }}
               activeScreen={activeScreen}
               userName="Jade M. Lisondra"
@@ -91,7 +125,7 @@ export default function App() {
         {activeScreen === 'profile' ? (
           <>
             {/* Render last active screen under the profile modal */}
-            {lastScreen === 'home' ? <Dashboard /> : lastScreen === 'game' ? <Game /> : lastScreen === 'videos' ? <Videos /> : lastScreen === 'analytics' ? <Analytics /> : <MyJourney />}
+            {lastScreen === 'home' ? <Dashboard announcements={ANNOUNCEMENTS} /> : lastScreen === 'game' ? <Game /> : lastScreen === 'videos' ? <Videos /> : lastScreen === 'analytics' ? <Analytics /> : <MyJourney />}
             <ProfileModal
               visible={true}
               onClose={() => setActiveScreen(lastScreen)}
@@ -101,9 +135,24 @@ export default function App() {
             />
           </>
         ) : (
-          activeScreen === 'home' ? <Dashboard /> : activeScreen === 'game' ? <Game /> : activeScreen === 'videos' ? <Videos /> : activeScreen === 'analytics' ? <Analytics /> : activeScreen === 'myjourney' ? <MyJourney /> : activeScreen === 'messenger' ? <Messenger /> : <SignIn/>
+          activeScreen === 'home' ? <Dashboard announcements={ANNOUNCEMENTS} onCoursePress={() => setActiveScreen('coursedetail')} /> : 
+          activeScreen === 'game' ? <Game /> : 
+          activeScreen === 'videos' ? <Videos /> : 
+          activeScreen === 'analytics' ? <Analytics /> : 
+          activeScreen === 'myjourney' ? <MyJourney /> : 
+          activeScreen === 'messenger' ? <Messenger /> :
+          activeScreen === 'assignments' ? <Assignments /> :
+          activeScreen === 'coursedetail' ? <CourseDetail /> :
+          <SignIn/>
         )}
       </View>
+
+      {/* Announcement Modal - Shows when navigating to Home Screen */}
+      <AnnouncementModal
+        visible={activeScreen === 'home' && showAnnouncement}
+        onClose={() => setShowAnnouncement(false)}
+        announcements={ANNOUNCEMENTS}
+      />
 
       {/* Floating ChatGPT Button at Bottom Right */}
       <TouchableOpacity style={styles.floatingChatBtn} activeOpacity={0.8}>

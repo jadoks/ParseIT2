@@ -1,27 +1,43 @@
 import React from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import AnnouncementBanner from '../components/AnnouncementBanner';
+import { Announcement } from '../components/AnnouncementModal';
 import CourseCard from '../components/CourseCard';
 import FilterBar from '../components/FilterBar';
 
-const Dashboard = () => {
+interface DashboardProps {
+  announcements?: Announcement[];
+  onCoursePress?: () => void;
+}
+
+const Dashboard = ({ announcements = [], onCoursePress }: DashboardProps) => {
   return (
     <ScrollView style={styles.container}>
-      {/* Banner */}
-      <View style={styles.banner}>
-        <View style={styles.bannerContent}>
-          <Text style={styles.bannerDay}>Monday - 01:00 PM</Text>
-          <Text style={styles.bannerLocation}>Mag Dampa - at Kalampusan Gym</Text>
-          <View style={styles.dots}>
-            <View style={styles.dotActive} /><View style={styles.dot} /><View style={styles.dot} />
+      {/* Announcement Banner with Navigation Arrows */}
+      {announcements && announcements.length > 0 ? (
+        <AnnouncementBanner announcements={announcements} />
+      ) : (
+        <View style={styles.banner}>
+          <View style={styles.bannerContent}>
+            <Text style={styles.bannerDay}>Monday - 01:00 PM</Text>
+            <Text style={styles.bannerLocation}>Mag Dampa - at Kalampusan Gym</Text>
+            <View style={styles.dots}>
+              <View style={styles.dotActive} /><View style={styles.dot} /><View style={styles.dot} />
+            </View>
           </View>
         </View>
-      </View>
+      )}
 
       <FilterBar />
 
       <View style={styles.grid}>
         {[1, 2, 3, 4, 5, 6].map((item) => (
-          <CourseCard key={item} />
+          <CourseCard 
+            key={item} 
+            onPress={onCoursePress}
+            title={`Course ${item}`}
+            instructor="Instructor Name"
+          />
         ))}
       </View>
     </ScrollView>
