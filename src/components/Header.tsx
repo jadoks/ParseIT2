@@ -23,8 +23,8 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
 
 interface HeaderProps {
   isLargeScreen: boolean;
-  activeScreen?: 'home' | 'game' | 'videos';
-  onNavigate?: (screen: 'home' | 'game' | 'videos') => void;
+  activeScreen?: 'home' | 'game' | 'videos' | 'analytics' | 'myjourney' | 'profile' | 'messenger';
+  onNavigate?: (screen: 'home' | 'game' | 'videos' | 'analytics' | 'myjourney' | 'profile' | 'messenger') => void;
 }
 
 const Header: React.FC<HeaderProps> = ({ isLargeScreen: propIsLargeScreen, activeScreen = 'home', onNavigate }) => {
@@ -66,9 +66,9 @@ const Header: React.FC<HeaderProps> = ({ isLargeScreen: propIsLargeScreen, activ
     setIsSearchExpanded(expand);
   };
 
-  const getIconColor = (screen: 'home' | 'game' | 'videos') => (activeScreen === screen ? '#D32F2F' : '#000000');
+  const getIconColor = (screen: 'home' | 'game' | 'videos' | 'analytics' | 'myjourney' | 'profile' | 'messenger') => (activeScreen === screen ? '#D32F2F' : '#000000');
 
-  const isActive = (screen: 'home' | 'game' | 'videos') => activeScreen === screen;
+  const isActive = (screen: 'home' | 'game' | 'videos' | 'analytics' | 'myjourney' | 'profile' | 'messenger') => activeScreen === screen;
 
 
   // Mobile Layout (Phone)
@@ -110,7 +110,7 @@ const Header: React.FC<HeaderProps> = ({ isLargeScreen: propIsLargeScreen, activ
                 style={{ width: searchIconSize, height: searchIconSize, tintColor: '#888' }}
               />
               <Text style={{ color: '#888', fontSize: isVerySmall ? 12 : 14, flex: 1, fontWeight: '400' }}>
-                {activeScreen === 'videos' ? 'Search Videos' : activeScreen === 'game' ? 'Search Game' : 'Search ParseClass'}
+                {activeScreen === 'videos' ? 'Search Videos' : activeScreen === 'game' ? 'Search Game' : activeScreen === 'messenger' ? 'Search Messages' : 'Search ParseClass'}
               </Text>
             </TouchableOpacity>
           ) : (
@@ -131,7 +131,7 @@ const Header: React.FC<HeaderProps> = ({ isLargeScreen: propIsLargeScreen, activ
               />
               <TextInput
                 autoFocus={true}
-                placeholder={activeScreen === 'videos' ? 'Search Videos' : activeScreen === 'game' ? 'Search Game' : 'Search ParseClass'}
+                placeholder={activeScreen === 'videos' ? 'Search Videos' : activeScreen === 'game' ? 'Search Game' : activeScreen === 'messenger' ? 'Search Messages' : 'Search ParseClass'}
                 placeholderTextColor="#888"
                 style={[
                   styles.searchInput,
@@ -150,11 +150,11 @@ const Header: React.FC<HeaderProps> = ({ isLargeScreen: propIsLargeScreen, activ
             </View>
           )}
 
-          <TouchableOpacity style={styles.navBtn}>
+          <TouchableOpacity style={styles.navBtn} onPress={() => onNavigate?.('messenger')}>
             {Platform.OS === 'web' ? (
-              <Image source={require('../../assets/images/messenger.png')} style={{ width: navIconSize, height: navIconSize, resizeMode: 'contain' }} />
+              <Image source={require('../../assets/images/messenger.png')} style={{ width: navIconSize, height: navIconSize, resizeMode: 'contain', tintColor: isActive('messenger') ? '#D32F2F' : undefined }} />
             ) : (
-              <MessengerIcon width={navIconSize} height={navIconSize} stroke="#000" />
+              <MessengerIcon width={navIconSize} height={navIconSize} stroke={getIconColor('messenger')} />
             )}
           </TouchableOpacity>
         </View>
@@ -292,11 +292,11 @@ const Header: React.FC<HeaderProps> = ({ isLargeScreen: propIsLargeScreen, activ
           )}
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.navBtn}>
+        <TouchableOpacity style={[styles.navBtn, isActive('messenger') && styles.navBtnActive]} onPress={() => onNavigate?.('messenger')}>
           {Platform.OS === 'web' ? (
-            <Image source={require('../../assets/images/messenger.png')} style={{ width: navIconSize, height: navIconSize, resizeMode: 'contain' }} />
+            <Image source={require('../../assets/images/messenger.png')} style={{ width: navIconSize, height: navIconSize, resizeMode: 'contain', tintColor: isActive('messenger') ? '#D32F2F' : undefined }} />
           ) : (
-            <MessengerIcon width={navIconSize} height={navIconSize} stroke="#000" />
+            <MessengerIcon width={navIconSize} height={navIconSize} stroke={getIconColor('messenger')} />
           )}
         </TouchableOpacity>
       </View>

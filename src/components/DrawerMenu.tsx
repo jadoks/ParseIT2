@@ -13,16 +13,21 @@ import {
 interface DrawerMenuProps {
   isFixed: boolean;
   onClose?: () => void;
+  onNavigate?: (screen: 'home' | 'game' | 'videos' | 'analytics' | 'myjourney' | 'profile' | 'messenger') => void;
+  activeScreen?: 'home' | 'game' | 'videos' | 'analytics' | 'myjourney' | 'profile' | 'messenger';
+  userName?: string;
+  userEmail?: string;
+  onAvatarPress?: () => void;
 }
 
-const MenuItem = ({ iconSource, label }: { iconSource: any, label: string }) => (
-  <TouchableOpacity style={styles.menuItem}>
-    <Image source={iconSource} style={styles.menuIcon} />
-    <Text style={styles.menuLabel}>{label}</Text>
+const MenuItem = ({ iconSource, label, onPress, active }: { iconSource: any, label: string, onPress?: () => void, active?: boolean }) => (
+  <TouchableOpacity style={styles.menuItem} onPress={onPress}>
+    <Image source={iconSource} style={[styles.menuIcon, active && { tintColor: '#D32F2F' }]} />
+    <Text style={[styles.menuLabel, active && { color: '#D32F2F', fontWeight: '700' }]}>{label}</Text>
   </TouchableOpacity>
 );
 
-const DrawerMenu = ({ isFixed, onClose }: DrawerMenuProps) => {
+const DrawerMenu = ({ isFixed, onClose, onNavigate, activeScreen, userName, userEmail, onAvatarPress }: DrawerMenuProps) => {
   const { width } = useWindowDimensions();
 
   return (
@@ -40,12 +45,16 @@ const DrawerMenu = ({ isFixed, onClose }: DrawerMenuProps) => {
 
       {/* User Profile Section */}
       <View style={styles.profileSection}>
-        <Image 
-          source={require('../../assets/images/default_profile.png')} 
-          style={styles.avatar} 
-        />
-        <View>
-          <Text style={styles.userName}>Jade M. Lisondra</Text>
+        <TouchableOpacity onPress={onAvatarPress} style={{ position: 'relative' }}>
+          <Image 
+            source={require('../../assets/images/default_profile.png')} 
+            style={styles.avatar} 
+          />
+         
+        </TouchableOpacity>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.userName}>{userName ?? 'Jade M. Lisondra'}</Text>
+        
         </View>
       </View>
 
@@ -53,6 +62,8 @@ const DrawerMenu = ({ isFixed, onClose }: DrawerMenuProps) => {
         <MenuItem 
           iconSource={require('../../assets/images/person.png')} 
           label="Profile" 
+          onPress={() => { onNavigate?.('profile'); if (!isFixed) onClose?.(); }}
+          active={activeScreen === 'profile'}
         />
         <MenuItem 
           iconSource={require('../../assets/images/clipboard.png')} 
@@ -61,6 +72,8 @@ const DrawerMenu = ({ isFixed, onClose }: DrawerMenuProps) => {
         <MenuItem 
           iconSource={require('../../assets/images/calendar.png')} 
           label="My Journey" 
+          onPress={() => { onNavigate?.('myjourney'); if (!isFixed) onClose?.(); }}
+          active={activeScreen === 'myjourney'}
         />
         <MenuItem 
           iconSource={require('../../assets/images/users-solid.png')} 
@@ -69,6 +82,8 @@ const DrawerMenu = ({ isFixed, onClose }: DrawerMenuProps) => {
         <MenuItem 
           iconSource={require('../../assets/images/Analytics.png')} 
           label="Analytics" 
+          onPress={() => { onNavigate?.('analytics'); if (!isFixed) onClose?.(); }}
+          active={activeScreen === 'analytics'}
         />
         <MenuItem 
           iconSource={require('../../assets/images/gear-solid.png')} 
@@ -145,6 +160,11 @@ const styles = StyleSheet.create({
     color: '#444',
     fontWeight: '500'
   },
+  emailRow: { flexDirection: 'row', alignItems: 'center', marginTop: 4 },
+  emailIcon: { marginRight: 8 },
+  userEmail: { color: '#666' },
+  editBadge: { position: 'absolute', right: -4, bottom: -4, backgroundColor: '#fff', borderRadius: 12, padding: 4, borderWidth: 1, borderColor: '#eee' },
+  editBadgeText: { fontSize: 12, color: '#D32F2F' },
   logoutMenuItem: {
     flexDirection: 'row',
     alignItems: 'center',

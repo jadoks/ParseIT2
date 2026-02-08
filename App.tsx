@@ -3,8 +3,12 @@ import { Image, StyleSheet, Text, TouchableOpacity, useWindowDimensions, View } 
 import { SafeAreaView } from 'react-native-safe-area-context';
 import DrawerMenu from './src/components/DrawerMenu';
 import Header from './src/components/Header';
+import ProfileModal from './src/components/ProfileModal';
+import Analytics from './src/screens/Analytics';
 import Dashboard from './src/screens/Dashboard';
 import Game from './src/screens/Game';
+import Messenger from './src/screens/Messenger';
+import MyJourney from './src/screens/MyJourney';
 import SignIn from './src/screens/SignIn';
 import Videos from './src/screens/Videos';
 
@@ -12,7 +16,8 @@ export default function App() {
   const { width } = useWindowDimensions();
   const isLargeScreen = width >= 768; // Tablet/Web breakpoint
   const [isMobileDrawerOpen, setMobileDrawerOpen] = useState(false);
-  const [activeScreen, setActiveScreen] = useState<'home' | 'game' | 'videos'>('home');
+  const [activeScreen, setActiveScreen] = useState<'home' | 'game' | 'videos' | 'analytics' | 'myjourney' | 'profile' | 'messenger'>('home');
+  const [lastScreen, setLastScreen] = useState<'home' | 'game' | 'videos' | 'analytics' | 'myjourney' | 'messenger'>('home');
   const [isLoggedIn, setIsLoggedIn] = useState(false);
 
   if (!isLoggedIn) {
@@ -29,7 +34,14 @@ export default function App() {
       <Header 
         isLargeScreen={isLargeScreen}
         activeScreen={activeScreen}
-        onNavigate={(screen) => setActiveScreen(screen)}
+        onNavigate={(screen) => {
+          if (screen === 'profile') {
+            setLastScreen(activeScreen as any);
+            setActiveScreen('profile');
+          } else {
+            setActiveScreen(screen as any);
+          }
+        }}
       />
 
       {/* Floating Hamburger Menu for Mobile - appears below header */}
@@ -45,16 +57,52 @@ export default function App() {
       
       <View style={styles.content}>
         {/* Fixed Sidebar for Web/Large Screens */}
-        {isLargeScreen && <DrawerMenu isFixed={true} />}
+        {isLargeScreen && (
+          <DrawerMenu
+            isFixed={true}
+            onNavigate={(s) => {
+              if (s === 'profile') { setLastScreen(activeScreen as any); setActiveScreen('profile'); }
+              else { setActiveScreen(s as any); }
+            }}
+            activeScreen={activeScreen}
+            userName="Jade M. Lisondra"
+            userEmail="jade.lisondra@gmail.com"
+            onAvatarPress={() => console.log('Edit avatar pressed')}
+          />
+        )}
 
         {/* Slide-out Overlay for Mobile */}
         {!isLargeScreen && isMobileDrawerOpen && (
           <View style={styles.mobileOverlay}>
-            <DrawerMenu isFixed={false} onClose={() => setMobileDrawerOpen(false)} />
+            <DrawerMenu
+              isFixed={false}
+              onClose={() => setMobileDrawerOpen(false)}
+              onNavigate={(s) => {
+                if (s === 'profile') { setLastScreen(activeScreen as any); setActiveScreen('profile'); setMobileDrawerOpen(false); }
+                else { setActiveScreen(s as any); setMobileDrawerOpen(false); }
+              }}
+              activeScreen={activeScreen}
+              userName="Jade M. Lisondra"
+              userEmail="jade.lisondra@gmail.com"
+              onAvatarPress={() => { setMobileDrawerOpen(false); console.log('Edit avatar (mobile)'); }}
+            />
           </View>
         )}
-
-        {activeScreen === 'home' ? <Dashboard /> : activeScreen === 'game' ? <Game /> : activeScreen === 'videos' ? <Videos /> :<SignIn/>}
+        {activeScreen === 'profile' ? (
+          <>
+            {/* Render last active screen under the profile modal */}
+            {lastScreen === 'home' ? <Dashboard /> : lastScreen === 'game' ? <Game /> : lastScreen === 'videos' ? <Videos /> : lastScreen === 'analytics' ? <Analytics /> : <MyJourney />}
+            <ProfileModal
+              visible={true}
+              onClose={() => setActiveScreen(lastScreen)}
+              userName="Jade M. Lisondra"
+              userEmail="jade.lisondra@gmail.com"
+              onAvatarPress={() => { console.log('Edit avatar from modal'); }}
+            />
+          </>
+        ) : (
+          activeScreen === 'home' ? <Dashboard /> : activeScreen === 'game' ? <Game /> : activeScreen === 'videos' ? <Videos /> : activeScreen === 'analytics' ? <Analytics /> : activeScreen === 'myjourney' ? <MyJourney /> : activeScreen === 'messenger' ? <Messenger /> : <SignIn/>
+        )}
       </View>
 
       {/* Floating ChatGPT Button at Bottom Right */}
