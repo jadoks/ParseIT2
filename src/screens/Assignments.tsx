@@ -50,19 +50,6 @@ const Assignments = () => {
     ? MOCK_ASSIGNMENTS
     : MOCK_ASSIGNMENTS.filter(a => a.status === filter);
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'pending':
-        return '#FF9800';
-      case 'submitted':
-        return '#2196F3';
-      case 'graded':
-        return '#4CAF50';
-      default:
-        return '#999';
-    }
-  };
-
   const getDaysUntilDue = (dueDate: string) => {
     const today = new Date();
     const due = new Date(dueDate);
@@ -170,6 +157,19 @@ const Assignments = () => {
     );
   };
 
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'pending':
+        return '#FF9800';
+      case 'submitted':
+        return '#2196F3';
+      case 'graded':
+        return '#4CAF50';
+      default:
+        return '#999';
+    }
+  };
+
   return (
     <ScrollView style={styles.container}>
       <View style={styles.filterContainer}>
@@ -233,13 +233,16 @@ const Assignments = () => {
                     {(uploadedFiles[selectedAssignment.id] || []).length > 0 ? (
                       <View>
                         {(uploadedFiles[selectedAssignment.id] || []).map(file => (
-                          <TouchableOpacity key={file.id} style={styles.fileItem}>
+                          <View key={file.id} style={styles.fileItem}>
                             <Text style={{ fontSize: 20 }}>📄</Text>
                             <View style={styles.fileInfo}>
                               <Text style={styles.fileName}>{file.fileName}</Text>
                               <Text style={styles.fileDetails}>{file.fileSize} • {file.uploadedDate}</Text>
                             </View>
-                          </TouchableOpacity>
+                            <TouchableOpacity onPress={() => handleRemoveAttachment(selectedAssignment.id, file.id)}>
+                              <Text style={styles.removeButton}>✕</Text>
+                            </TouchableOpacity>
+                          </View>
                         ))}
                       </View>
                     ) : (
@@ -252,9 +255,9 @@ const Assignments = () => {
                       </TouchableOpacity>
                     ) : (
                       <View style={{ marginTop: 8 }}>
-                        <TextInput placeholder="Filename (e.g. report.docx)" value={uploadFileName} onChangeText={setUploadFileName} style={{ borderWidth: 1, borderColor: '#EEE', padding: 8, borderRadius: 8, marginBottom: 8 }} />
+                        <TextInput placeholder="Filename (e.g. report.docx)" value={uploadFileName} onChangeText={setUploadFileName} style={styles.fileInput} placeholderTextColor="#999" />
                         <View style={{ flexDirection: 'row', justifyContent: 'flex-start', gap: 8 }}>
-                          <TouchableOpacity onPress={handleAttachFile} style={[styles.uploadButton, { marginRight: 8 }] }>
+                          <TouchableOpacity onPress={handleAttachFile} style={[styles.uploadButton, { marginRight: 8 }]}>
                             <Text style={styles.uploadButtonText}>Attach</Text>
                           </TouchableOpacity>
                           <TouchableOpacity onPress={() => { setShowUploadInput(false); setUploadFileName(''); }} style={{ paddingVertical: 10, paddingHorizontal: 12 }}>
@@ -353,6 +356,8 @@ const styles = StyleSheet.create({
   fileInfo: { flex: 1, marginLeft: 8 },
   fileName: { fontWeight: '600', color: '#000', marginBottom: 4, fontSize: 13 },
   fileDetails: { color: '#888', fontSize: 12 },
+  fileInput: { borderWidth: 1, borderColor: '#EEE', padding: 8, borderRadius: 8, marginBottom: 8, color: '#000' },
+  removeButton: { color: '#D32F2F', fontWeight: 'bold', paddingLeft: 8 },
   uploadButton: { backgroundColor: '#D32F2F', borderRadius: 8, paddingVertical: 10, alignItems: 'center', marginTop: 8 },
   uploadButtonText: { color: '#fff', fontWeight: '700', fontSize: 14 },
 

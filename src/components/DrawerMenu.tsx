@@ -1,7 +1,9 @@
-import React from 'react';
+import React, { useState } from 'react';
 
 import {
   Image,
+  LayoutChangeEvent,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -13,26 +15,62 @@ import {
 interface DrawerMenuProps {
   isFixed: boolean;
   onClose?: () => void;
-  onNavigate?: (screen: 'home' | 'game' | 'videos' | 'analytics' | 'myjourney' | 'profile' | 'messenger' | 'assignments' | 'coursedetail') => void;
-  activeScreen?: 'home' | 'game' | 'videos' | 'analytics' | 'myjourney' | 'profile' | 'messenger' | 'assignments' | 'coursedetail';
+  onNavigate?: (screen: 'home' | 'game' | 'videos'  | 'myjourney' | 'profile' | 'messenger' | 'assignments' | 'coursedetail') => void;
+  activeScreen?: 'home' | 'game' | 'videos'  | 'myjourney' | 'profile' | 'messenger' | 'assignments' | 'coursedetail';
   userName?: string;
   userEmail?: string;
   onAvatarPress?: () => void;
 }
 
-const MenuItem = ({ iconSource, label, onPress, active }: { iconSource: any, label: string, onPress?: () => void, active?: boolean }) => (
-  <TouchableOpacity style={styles.menuItem} onPress={onPress}>
-    <Image source={iconSource} style={[styles.menuIcon, active && { tintColor: '#D32F2F' }]} />
-    <Text style={[styles.menuLabel, active && { color: '#D32F2F', fontWeight: '700' }]}>{label}</Text>
-  </TouchableOpacity>
-);
+const MenuItem = ({ iconSource, label, onPress, active }: { iconSource: any, label: string, onPress?: () => void, active?: boolean }) => {
+  const { width } = useWindowDimensions();
+  const isMobile = width < 768;
+  const menuItemVerticalMargin = isMobile ? 12 : 18;
+  const menuLabelFontSize = isMobile ? 15 : 17;
+  
+  return (
+    <TouchableOpacity style={[styles.menuItem, { marginVertical: menuItemVerticalMargin }]} onPress={onPress}>
+      <Image source={iconSource} style={[styles.menuIcon, active && { tintColor: '#D32F2F' }]} />
+      <Text style={[styles.menuLabel, { fontSize: menuLabelFontSize }, active && { color: '#D32F2F', fontWeight: '700' }]}>{label}</Text>
+    </TouchableOpacity>
+  );
+};
 
 const DrawerMenu = ({ isFixed, onClose, onNavigate, activeScreen, userName, userEmail, onAvatarPress }: DrawerMenuProps) => {
-  const { width } = useWindowDimensions();
+  const { width, height } = useWindowDimensions();
+  const [contentHeight, setContentHeight] = useState(0);
+  const [scrollViewHeight, setScrollViewHeight] = useState(0);
+  
+  // Detect device type
+  const isMobile = width < 768;
+  const isTablet = width >= 768 && width < 1024;
+  const isSmallMobile = width < 380;
+  const isOnMobileOrTablet = isMobile || isTablet;
+  
+  // Calculate if content overflows
+  const hasOverflow = contentHeight > scrollViewHeight && scrollViewHeight > 0;
+  const shouldShowScrollBar = isOnMobileOrTablet && hasOverflow;
+  
+  // Responsive sizing
+  const drawerWidth = isMobile ? (isSmallMobile ? '85%' : 280) : isTablet ? 300 : 260;
+  const profileSectionMargin = isMobile ? 20 : 40;
+  const menuItemVerticalMargin = isMobile ? 12 : 18;
+  const profileFontSize = isMobile ? 16 : 18;
+  const menuLabelFontSize = isMobile ? 15 : 17;
+  const avatarSize = isMobile ? 45 : 50;
+
+  const handleContentSizeChange = (contentW: number, contentH: number) => {
+    setContentHeight(contentH);
+  };
+
+  const handleScrollViewLayout = (e: LayoutChangeEvent) => {
+    setScrollViewHeight(e.nativeEvent.layout.height);
+  };
 
   return (
     <View style={[
       styles.drawerContainer, 
+      { width: drawerWidth },
       !isFixed && styles.mobileDrawer
     ]}>
       
@@ -44,21 +82,27 @@ const DrawerMenu = ({ isFixed, onClose, onNavigate, activeScreen, userName, user
       )}
 
       {/* User Profile Section */}
-      <View style={styles.profileSection}>
+      <View style={[styles.profileSection, { marginBottom: profileSectionMargin }]}>
         <TouchableOpacity onPress={onAvatarPress} style={{ position: 'relative' }}>
           <Image 
             source={require('../../assets/images/default_profile.png')} 
-            style={styles.avatar} 
+            style={[styles.avatar, { width: avatarSize, height: avatarSize, borderRadius: avatarSize / 2 }]} 
           />
          
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
-          <Text style={styles.userName}>{userName ?? 'Jade M. Lisondra'}</Text>
+          <Text style={[styles.userName, { fontSize: profileFontSize }]}>{userName ?? 'Jade M. Lisondra'}</Text>
         
         </View>
       </View>
 
-      <ScrollView showsVerticalScrollIndicator={false} style={{ flex: 1 }}>
+      <ScrollView 
+        showsVerticalScrollIndicator={shouldShowScrollBar}
+        style={{ flex: 1 }}
+        onContentSizeChange={handleContentSizeChange}
+        onLayout={handleScrollViewLayout}
+        scrollIndicatorInsets={isMobile ? { right: 4 } : { right: 0 }}
+      >
         <MenuItem 
           iconSource={require('../../assets/images/person.png')} 
           label="Profile" 
@@ -81,12 +125,7 @@ const DrawerMenu = ({ isFixed, onClose, onNavigate, activeScreen, userName, user
           iconSource={require('../../assets/images/users-solid.png')} 
           label="Community" 
         />
-        <MenuItem 
-          iconSource={require('../../assets/images/Analytics.png')} 
-          label="Analytics" 
-          onPress={() => { onNavigate?.('analytics'); if (!isFixed) onClose?.(); }}
-          active={activeScreen === 'analytics'}
-        />
+      
         <MenuItem 
           iconSource={require('../../assets/images/gear-solid.png')} 
           label="Settings" 
@@ -107,15 +146,21 @@ const DrawerMenu = ({ isFixed, onClose, onNavigate, activeScreen, userName, user
 
 const styles = StyleSheet.create({
   drawerContainer: { 
-    width: 260, 
     height: '100%',
     borderRightWidth: 1, 
     borderRightColor: '#EEE', 
     padding: 25, 
-    backgroundColor: '#FFF' 
+    backgroundColor: '#FFF',
+    ...Platform.select({
+      web: {
+        paddingHorizontal: 20,
+      },
+      ios: {
+        paddingTop: 50,
+      },
+    }),
   },
   mobileDrawer: { 
-    width: 300, 
     elevation: 10, 
     shadowColor: '#000',
     shadowOffset: { width: 5, height: 0 },
@@ -127,29 +172,27 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-end',
     padding: 5 
   },
-  closeText: { color: '#D32F2F', fontWeight: 'bold' },
+  closeText: { 
+    color: '#D32F2F', 
+    fontWeight: 'bold',
+    fontSize: 14
+  },
   profileSection: { 
-    marginBottom: 40, 
     flexDirection: 'row', 
-    alignItems: 'center', 
-    
+    alignItems: 'center',
   },
   avatar: { 
-    width: 50, 
-    height: 50, 
     borderRadius: 25, 
     marginRight: 15,
     backgroundColor: '#f0f0f0' 
   },
   userName: { 
-    fontWeight: '700', 
-    fontSize: 18, 
+    fontWeight: '700',
     color: '#333' 
   },
   menuItem: { 
     flexDirection: 'row', 
-    alignItems: 'center', 
-    marginVertical: 18 
+    alignItems: 'center',
   },
   menuIcon: { 
     width: 22, 
@@ -158,15 +201,35 @@ const styles = StyleSheet.create({
     resizeMode: 'contain' 
   },
   menuLabel: { 
-    fontSize: 17, 
     color: '#444',
     fontWeight: '500'
   },
-  emailRow: { flexDirection: 'row', alignItems: 'center', marginTop: 4 },
-  emailIcon: { marginRight: 8 },
-  userEmail: { color: '#666' },
-  editBadge: { position: 'absolute', right: -4, bottom: -4, backgroundColor: '#fff', borderRadius: 12, padding: 4, borderWidth: 1, borderColor: '#eee' },
-  editBadgeText: { fontSize: 12, color: '#D32F2F' },
+  emailRow: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    marginTop: 4 
+  },
+  emailIcon: { 
+    marginRight: 8 
+  },
+  userEmail: { 
+    color: '#666',
+    fontSize: 12
+  },
+  editBadge: { 
+    position: 'absolute', 
+    right: -4, 
+    bottom: -4, 
+    backgroundColor: '#fff', 
+    borderRadius: 12, 
+    padding: 4, 
+    borderWidth: 1, 
+    borderColor: '#eee' 
+  },
+  editBadgeText: { 
+    fontSize: 12, 
+    color: '#D32F2F' 
+  },
   logoutMenuItem: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -183,7 +246,7 @@ const styles = StyleSheet.create({
     tintColor: '#D32F2F',
   },
   logoutLabel: {
-    fontSize: 20,
+    fontSize: 16,
     color: '#D32F2F',
     fontWeight: '600',
   },

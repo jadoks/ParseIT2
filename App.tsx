@@ -1,11 +1,10 @@
 import React, { useState } from 'react';
-import { Image, StyleSheet, Text, TouchableOpacity, useWindowDimensions, View } from 'react-native';
+import { Image, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, useWindowDimensions, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AnnouncementModal, { Announcement } from './src/components/AnnouncementModal';
 import DrawerMenu from './src/components/DrawerMenu';
 import Header from './src/components/Header';
 import ProfileModal from './src/components/ProfileModal';
-import Analytics from './src/screens/Analytics';
 import Assignments from './src/screens/Assignments';
 import CourseDetail from './src/screens/CourseDetail';
 import Dashboard from './src/screens/Dashboard';
@@ -40,10 +39,11 @@ export default function App() {
   const { width } = useWindowDimensions();
   const isLargeScreen = width >= 768; // Tablet/Web breakpoint
   const [isMobileDrawerOpen, setMobileDrawerOpen] = useState(false);
-  const [activeScreen, setActiveScreen] = useState<'home' | 'game' | 'videos' | 'analytics' | 'myjourney' | 'profile' | 'messenger' | 'assignments' | 'coursedetail'>('home');
-  const [lastScreen, setLastScreen] = useState<'home' | 'game' | 'videos' | 'analytics' | 'myjourney' | 'messenger' | 'assignments' | 'coursedetail'>('home');
+  const [activeScreen, setActiveScreen] = useState<'home' | 'game' | 'videos'  | 'myjourney' | 'profile' | 'messenger' | 'assignments' | 'coursedetail'>('home');
+  const [lastScreen, setLastScreen] = useState<'home' | 'game' | 'videos' | 'myjourney' | 'messenger' | 'assignments' | 'coursedetail'>('home');
   const [showAnnouncement, setShowAnnouncement] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [isChatOpen, setIsChatOpen] = useState(false);
 
   if (!isLoggedIn) {
     return (
@@ -106,26 +106,35 @@ export default function App() {
 
         {/* Slide-out Overlay for Mobile */}
         {!isLargeScreen && isMobileDrawerOpen && (
-          <View style={styles.mobileOverlay}>
-            <DrawerMenu
-              isFixed={false}
-              onClose={() => setMobileDrawerOpen(false)}
-              onNavigate={(s) => {
-                if (s === 'profile') { setLastScreen(activeScreen as any); setActiveScreen('profile'); setMobileDrawerOpen(false); setShowAnnouncement(false); }
-                else if (s === 'home') { setActiveScreen(s as any); setMobileDrawerOpen(false); setShowAnnouncement(true); }
-                else { setActiveScreen(s as any); setMobileDrawerOpen(false); setShowAnnouncement(false); }
-              }}
-              activeScreen={activeScreen}
-              userName="Jade M. Lisondra"
-              userEmail="jade.lisondra@gmail.com"
-              onAvatarPress={() => { setMobileDrawerOpen(false); console.log('Edit avatar (mobile)'); }}
+          <>
+            {/* Semi-transparent backdrop */}
+            <TouchableOpacity 
+              style={styles.mobileBackdrop}
+              activeOpacity={1}
+              onPress={() => setMobileDrawerOpen(false)}
             />
-          </View>
+            {/* Drawer container */}
+            <View style={styles.mobileOverlay}>
+              <DrawerMenu
+                isFixed={false}
+                onClose={() => setMobileDrawerOpen(false)}
+                onNavigate={(s) => {
+                  if (s === 'profile') { setLastScreen(activeScreen as any); setActiveScreen('profile'); setMobileDrawerOpen(false); setShowAnnouncement(false); }
+                  else if (s === 'home') { setActiveScreen(s as any); setMobileDrawerOpen(false); setShowAnnouncement(true); }
+                  else { setActiveScreen(s as any); setMobileDrawerOpen(false); setShowAnnouncement(false); }
+                }}
+                activeScreen={activeScreen}
+                userName="Jade M. Lisondra"
+                userEmail="jade.lisondra@gmail.com"
+                onAvatarPress={() => { setMobileDrawerOpen(false); console.log('Edit avatar (mobile)'); }}
+              />
+            </View>
+          </>
         )}
         {activeScreen === 'profile' ? (
           <>
             {/* Render last active screen under the profile modal */}
-            {lastScreen === 'home' ? <Dashboard announcements={ANNOUNCEMENTS} /> : lastScreen === 'game' ? <Game /> : lastScreen === 'videos' ? <Videos /> : lastScreen === 'analytics' ? <Analytics /> : <MyJourney />}
+            {lastScreen === 'home' ? <Dashboard announcements={ANNOUNCEMENTS} /> : lastScreen === 'game' ? <Game /> : lastScreen === 'videos' ? <Videos /> : <MyJourney />}
             <ProfileModal
               visible={true}
               onClose={() => setActiveScreen(lastScreen)}
@@ -138,7 +147,7 @@ export default function App() {
           activeScreen === 'home' ? <Dashboard announcements={ANNOUNCEMENTS} onCoursePress={() => setActiveScreen('coursedetail')} /> : 
           activeScreen === 'game' ? <Game /> : 
           activeScreen === 'videos' ? <Videos /> : 
-          activeScreen === 'analytics' ? <Analytics /> : 
+        
           activeScreen === 'myjourney' ? <MyJourney /> : 
           activeScreen === 'messenger' ? <Messenger /> :
           activeScreen === 'assignments' ? <Assignments /> :
@@ -155,13 +164,48 @@ export default function App() {
       />
 
       {/* Floating ChatGPT Button at Bottom Right */}
-      <TouchableOpacity style={styles.floatingChatBtn} activeOpacity={0.8}>
-        <Image
-          source={require('./assets/images/ChatGPT.png')}
-          style={styles.chatBtnImage}
-        />
-        <Text style={styles.chatBtnLabel}>Ask anything</Text>
+      <TouchableOpacity
+        style={styles.floatingChatBtn}
+        activeOpacity={0.85}
+        onPress={() => setIsChatOpen(prev => !prev)}
+      >
+        {isChatOpen ? (
+          <Text style={[styles.chatClose, { color: '#fff' }]}>✕</Text>
+        ) : (
+          <>
+            <Image
+              source={require('./assets/images/ChatGPT.png')}
+              style={styles.chatBtnImage}
+            />
+            <Text style={styles.chatBtnLabel}>Ask anything</Text>
+          </>
+        )}
       </TouchableOpacity>
+
+      {/* Chat Panel */}
+      {isChatOpen && (
+        <View style={styles.chatPanel}>
+          <View style={styles.chatHeader}>
+            <Text style={styles.chatTitle}>Ask anything</Text>
+            <TouchableOpacity onPress={() => setIsChatOpen(false)}>
+             
+            </TouchableOpacity>
+          </View>
+          <ScrollView style={styles.chatMessages}>
+            <View>
+              <Text style={styles.chatBubbleOther}>Hello! How can I help you today?</Text>
+              <Text style={styles.chatBubbleUser}>Show me my assignments.</Text>
+              <Text style={styles.chatBubbleOther}>You have 3 pending assignments due next week.</Text>
+            </View>
+          </ScrollView>
+          <View style={styles.chatInputRow}>
+            <TextInput placeholder="Type your question..." placeholderTextColor="rgba(255,255,255,0.5)" style={styles.chatInput} />
+            <TouchableOpacity style={styles.chatSendBtn}>
+              <Text style={{ color: '#fff' }}>Send</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
     </SafeAreaView>
   );
 }
@@ -174,6 +218,15 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     flexDirection: 'row',
+  },
+  mobileBackdrop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    zIndex: 9,
   },
   mobileOverlay: {
     position: 'absolute',
@@ -242,4 +295,37 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#FFF',
   },
+  chatPanel: {
+    position: 'absolute',
+    right: 20,
+    bottom: 110,
+    zIndex: 30,
+    width: 360,
+    height: 520,
+    backgroundColor: '#171717',
+    borderRadius: 12,
+    padding: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.25,
+    shadowRadius: 12,
+    elevation: 10,
+  },
+  chatHeader: {
+    height: 48,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.06)'
+  },
+  chatTitle: { color: '#fff', fontWeight: '700', fontSize: 16 },
+  chatClose: { color: '#fff', fontSize: 20 },
+  chatMessages: { flex: 1, marginVertical: 10 },
+  chatBubbleUser: { alignSelf: 'flex-end', backgroundColor: '#4B5563', color: '#fff', padding: 10, borderRadius: 16, marginVertical: 6, maxWidth: '85%' },
+  chatBubbleOther: { alignSelf: 'flex-start', backgroundColor: '#2a2a2a', color: '#fff', padding: 10, borderRadius: 16, marginVertical: 6, maxWidth: '85%' },
+  chatInputRow: { flexDirection: 'row', alignItems: 'center', marginTop: 8 },
+  chatInput: { flex: 1, backgroundColor: '#0f0f0f', color: '#fff', paddingHorizontal: 12, paddingVertical: 10, borderRadius: 999 },
+  chatSendBtn: { marginLeft: 8, backgroundColor: '#D32F2F', paddingHorizontal: 12, paddingVertical: 10, borderRadius: 10 }
 });
