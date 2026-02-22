@@ -10,7 +10,7 @@ interface VideoItem {
   image: any;
 }
 
-const Videos = () => {
+const Videos = ({ onVideoActiveChange }: { onVideoActiveChange?: (isActive: boolean) => void }) => {
   const initial: VideoItem[] = [
     { id: 1, title: 'Intro to Flip IT!', description: 'Gameplay walkthrough', url: 'https://www.youtube.com/embed/dQw4w9WgXcQ', image: require('../../assets/images/flipit.png') },
     { id: 2, title: 'FruitMania Tips', description: 'Solve puzzles faster', url: 'https://www.youtube.com/embed/3JZ_D3ELwOQ', image: require('../../assets/images/fruitmania.png') },
@@ -52,7 +52,7 @@ const Videos = () => {
 
       <View style={styles.list}>
         {list.map((v) => (
-          <TouchableOpacity key={v.id} style={styles.card} onPress={() => setSelected(v.id)} activeOpacity={0.9}>
+          <TouchableOpacity key={v.id} style={styles.card} onPress={() => { setSelected(v.id); onVideoActiveChange?.(true); }} activeOpacity={0.9}>
             <View style={styles.thumb}>
               <Image source={v.image} style={styles.thumbImage} />
             </View>
@@ -80,7 +80,7 @@ const Videos = () => {
                 <WebView source={{ uri: selectedVid.url }} style={{ width: '100%', height: '100%' }} />
               )}
             </View>
-            <TouchableOpacity onPress={() => setSelected(null)} style={styles.closeBtn}>
+            <TouchableOpacity onPress={() => { setSelected(null); onVideoActiveChange?.(false); }} style={styles.closeBtn}>
               <Text style={{ fontSize: 18 }}>✕</Text>
             </TouchableOpacity>
 

@@ -44,6 +44,9 @@ export default function App() {
   const [showAnnouncement, setShowAnnouncement] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [isConversationActive, setIsConversationActive] = useState(false);
+  const [isVideoActive, setIsVideoActive] = useState(false);
 
   if (!isLoggedIn) {
     return (
@@ -74,6 +77,7 @@ export default function App() {
             setShowAnnouncement(false);
           }
         }}
+        onSearchChange={(query) => setSearchQuery(query)}
       />
 
       {/* Floating Hamburger Menu for Mobile - appears below header */}
@@ -146,10 +150,10 @@ export default function App() {
         ) : (
           activeScreen === 'home' ? <Dashboard announcements={ANNOUNCEMENTS} onCoursePress={() => setActiveScreen('coursedetail')} /> : 
           activeScreen === 'game' ? <Game /> : 
-          activeScreen === 'videos' ? <Videos /> : 
+          activeScreen === 'videos' ? <Videos onVideoActiveChange={setIsVideoActive} /> : 
         
           activeScreen === 'myjourney' ? <MyJourney /> : 
-          activeScreen === 'messenger' ? <Messenger /> :
+          activeScreen === 'messenger' ? <Messenger searchQuery={searchQuery} onConversationActiveChange={setIsConversationActive} /> :
           activeScreen === 'assignments' ? <Assignments /> :
           activeScreen === 'coursedetail' ? <CourseDetail /> :
           <SignIn/>
@@ -164,26 +168,28 @@ export default function App() {
       />
 
       {/* Floating ChatGPT Button at Bottom Right */}
-      <TouchableOpacity
-        style={styles.floatingChatBtn}
-        activeOpacity={0.85}
-        onPress={() => setIsChatOpen(prev => !prev)}
-      >
-        {isChatOpen ? (
-          <Text style={[styles.chatClose, { color: '#fff' }]}>✕</Text>
-        ) : (
-          <>
-            <Image
-              source={require('./assets/images/ChatGPT.png')}
-              style={styles.chatBtnImage}
-            />
-            <Text style={styles.chatBtnLabel}>Ask anything</Text>
-          </>
-        )}
-      </TouchableOpacity>
+      {!(activeScreen === 'messenger' && isConversationActive) && !(activeScreen === 'videos' && isVideoActive) && (
+        <TouchableOpacity
+          style={styles.floatingChatBtn}
+          activeOpacity={0.85}
+          onPress={() => setIsChatOpen(prev => !prev)}
+        >
+          {isChatOpen ? (
+            <Text style={[styles.chatClose, { color: '#fff' }]}>✕</Text>
+          ) : (
+            <>
+              <Image
+                source={require('./assets/images/ChatGPT.png')}
+                style={styles.chatBtnImage}
+              />
+              <Text style={styles.chatBtnLabel}>Ask anything</Text>
+            </>
+          )}
+        </TouchableOpacity>
+      )}
 
       {/* Chat Panel */}
-      {isChatOpen && (
+      {isChatOpen && !(activeScreen === 'messenger' && isConversationActive) && !(activeScreen === 'videos' && isVideoActive) && (
         <View style={styles.chatPanel}>
           <View style={styles.chatHeader}>
             <Text style={styles.chatTitle}>Ask anything</Text>

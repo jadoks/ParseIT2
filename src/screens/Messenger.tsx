@@ -13,17 +13,29 @@ const SAMPLE_MESSAGES = [
   { id: 'm3', fromMe: false, text: 'Great — bring your notes.' },
 ];
 
-const Messenger = () => {
+const Messenger = ({ searchQuery = '', onConversationActiveChange }: { searchQuery?: string; onConversationActiveChange?: (isActive: boolean) => void }) => {
   const [selected, setSelected] = useState<any | null>(null);
-  const [query, setQuery] = useState('');
 
-  const filtered = CONVERSATIONS.filter(c => c.name.toLowerCase().includes(query.toLowerCase()) || c.last.toLowerCase().includes(query.toLowerCase()));
+  const filtered = CONVERSATIONS.filter(c => 
+    c.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+    c.last.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  const handleSelectConversation = (item: any) => {
+    setSelected(item);
+    onConversationActiveChange?.(true);
+  };
+
+  const handleBackFromConversation = () => {
+    setSelected(null);
+    onConversationActiveChange?.(false);
+  };
 
   if (selected) {
     return (
       <View style={{ flex: 1, backgroundColor: '#fff' }}>
         <View style={styles.chatHeader}>
-          <TouchableOpacity onPress={() => setSelected(null)}><Text style={{ color: '#1976d2' }}>Back</Text></TouchableOpacity>
+          <TouchableOpacity onPress={() => handleBackFromConversation()}><Text style={{ color: '#1976d2' }}>Back</Text></TouchableOpacity>
           <Text style={styles.chatTitle}>{selected.name}</Text>
           <View style={{ width: 48 }} />
         </View>
@@ -47,14 +59,11 @@ const Messenger = () => {
 
   return (
     <View style={{ flex: 1, backgroundColor: '#fff' }}>
-      <View style={styles.searchWrap}>
-        <TextInput placeholder="Search Messages" value={query} onChangeText={setQuery} style={styles.searchInput} />
-      </View>
       <FlatList
         data={filtered}
         keyExtractor={c => c.id}
         renderItem={({ item }) => (
-          <TouchableOpacity style={styles.convRow} onPress={() => setSelected(item)}>
+          <TouchableOpacity style={styles.convRow} onPress={() => handleSelectConversation(item)}>
             <Image source={item.avatar} style={styles.convAvatar} />
             <View style={{ flex: 1 }}>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
@@ -71,8 +80,6 @@ const Messenger = () => {
 };
 
 const styles = StyleSheet.create({
-  searchWrap: { padding: 12, backgroundColor: '#fafafa' },
-  searchInput: { backgroundColor: '#fff', padding: 10, borderRadius: 8, borderWidth: 1, borderColor: '#eee' },
   convRow: { flexDirection: 'row', padding: 12, alignItems: 'center', borderBottomWidth: 1, borderBottomColor: '#f0f0f0' },
   convAvatar: { width: 48, height: 48, borderRadius: 24, marginRight: 12 },
   convName: { fontWeight: '700' },

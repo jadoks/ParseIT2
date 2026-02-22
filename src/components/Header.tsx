@@ -2,16 +2,19 @@ import React, { useState } from 'react';
 
 import {
   Image,
+  Keyboard,
   LayoutAnimation,
   Platform,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
+  TouchableWithoutFeedback,
   UIManager,
   useWindowDimensions,
   View,
 } from 'react-native';
+import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import Gamepad from '../../assets/images/gamepad-solid.svg';
 import House from '../../assets/images/house-solid.svg';
 import MessengerIcon from '../../assets/images/messenger.svg';
@@ -25,9 +28,10 @@ interface HeaderProps {
   isLargeScreen: boolean;
   activeScreen?: 'home' | 'game' | 'videos' | 'analytics' | 'myjourney' | 'profile' | 'messenger' | 'assignments' | 'coursedetail';
   onNavigate?: (screen: 'home' | 'game' | 'videos' | 'analytics' | 'myjourney' | 'profile' | 'messenger' | 'assignments' | 'coursedetail') => void;
+  onSearchChange?: (query: string) => void;
 }
 
-const Header: React.FC<HeaderProps> = ({ isLargeScreen: propIsLargeScreen, activeScreen = 'home', onNavigate }) => {
+const Header: React.FC<HeaderProps> = ({ isLargeScreen: propIsLargeScreen, activeScreen = 'home', onNavigate, onSearchChange }) => {
   const { width } = useWindowDimensions();
   
   // Breakpoints
@@ -38,6 +42,8 @@ const Header: React.FC<HeaderProps> = ({ isLargeScreen: propIsLargeScreen, activ
   const isLargeScreenLocal   = width >= 1024;
 
   const [isSearchExpanded, setIsSearchExpanded] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [isSearchFocused, setIsSearchFocused] = useState(false);
 
   // Helper: scale value between min and max with soft cap on big screens
   const responsiveSize = (mobile: number, tablet: number, desktopMax: number) => {
@@ -72,8 +78,16 @@ const Header: React.FC<HeaderProps> = ({ isLargeScreen: propIsLargeScreen, activ
 
 
   // Mobile Layout (Phone)
-  if (isPhone) {
-    return (
+ if (isPhone) {
+  return (
+    <TouchableWithoutFeedback
+      onPress={() => {
+        if (isSearchExpanded) {
+          toggleSearch(false);
+          Keyboard.dismiss();
+        }
+      }}
+    >
       <View style={{ backgroundColor: '#FFF', borderBottomWidth: 1, borderBottomColor: '#EEE' }}>
         {/* ROW 1: Logo + Search + Messenger */}
         <View
@@ -99,67 +113,116 @@ const Header: React.FC<HeaderProps> = ({ isLargeScreen: propIsLargeScreen, activ
             <TouchableOpacity
               style={[
                 styles.searchIconOnly,
-                { padding: isVerySmall ? 8 : 10, flex: 1, marginHorizontal: 8, flexDirection: 'row', paddingHorizontal: 12, gap: 8, alignItems: 'center' },
+                {
+                  padding: isVerySmall ? 8 : 10,
+                  flex: 1,
+                  marginHorizontal: 8,
+                  flexDirection: 'row',
+                  paddingHorizontal: 12,
+                  gap: 8,
+                  alignItems: 'center',
+                },
               ]}
               onPress={() => toggleSearch(true)}
-              onPressIn={() => toggleSearch(true)}
               activeOpacity={0.7}
             >
-              <Image
-                source={require('../../assets/images/magnifying-glass-solid.png')}
-                style={{ width: searchIconSize, height: searchIconSize, tintColor: '#888' }}
-              />
-              <Text style={{ color: '#888', fontSize: isVerySmall ? 12 : 14, flex: 1, fontWeight: '400' }}>
-                {activeScreen === 'videos' ? 'Search Videos' : activeScreen === 'game' ? 'Search Game' : activeScreen === 'messenger' ? 'Search Messages' : 'Search ParseClass'}
+              <MaterialCommunityIcons name="magnify" size={searchIconSize} color="#888" />
+              <Text
+                style={{
+                  color: '#888',
+                  fontSize: isVerySmall ? 12 : 14,
+                  flex: 1,
+                  fontWeight: '400',
+                }}
+              >
+                {activeScreen === 'videos'
+                  ? 'Search Videos'
+                  : activeScreen === 'game'
+                  ? 'Search Game'
+                  : activeScreen === 'messenger'
+                  ? 'Search Message'
+                  : 'Search ParseClass'}
               </Text>
             </TouchableOpacity>
           ) : (
-            <View
-              style={[
-                styles.searchBar,
-                {
-                  flex: 1,
-                  marginHorizontal: 8,
-                  height: isVerySmall ? 42 : 46,
-                  paddingHorizontal: 16,
-                },
-              ]}
-            >
-              <Image
-                source={require('../../assets/images/magnifying-glass-solid.png')}
-                style={{ width: searchIconSize, height: searchIconSize, marginRight: 12, tintColor: '#888' }}
-              />
-              <TextInput
-                autoFocus={true}
-                placeholder={activeScreen === 'videos' ? 'Search Videos' : activeScreen === 'game' ? 'Search Game' : activeScreen === 'messenger' ? 'Search Messages' : 'Search ParseClass'}
-                placeholderTextColor="#888"
+            <TouchableWithoutFeedback onPress={() => {}}>
+              <View
                 style={[
-                  styles.searchInput,
-                  { fontSize: fontSizeSearch },
+                  styles.searchBar,
+                  {
+                    flex: 1,
+                    marginHorizontal: 8,
+                    height: isVerySmall ? 42 : 46,
+                    paddingHorizontal: 16,
+                    borderWidth: 1,
+                    borderBottomWidth: isSearchFocused ? 2 : 1,
+                  },
                 ]}
-                onFocus={() => toggleSearch(true)}
-                onBlur={() => toggleSearch(false)}
-                returnKeyType="search"
-              />
-              <TouchableOpacity
-                onPress={() => toggleSearch(false)}
-                hitSlop={{ top: 12, bottom: 12, left: 20, right: 20 }}
               >
-                <Text style={[styles.closeText, { fontSize: fontSizeSearch + 2 }]}>✕</Text>
-              </TouchableOpacity>
-            </View>
+                <MaterialCommunityIcons
+                  name="magnify"
+                  size={searchIconSize}
+                  color="#888"
+                  style={{ marginRight: 12 }}
+                />
+
+                <TextInput
+                  autoFocus
+                  placeholder={
+                    activeScreen === 'videos'
+                      ? 'Search Videos'
+                      : activeScreen === 'game'
+                      ? 'Search Game'
+                      : activeScreen === 'messenger'
+                      ? 'Search Message'
+                      : 'Search ParseClass'
+                  }
+                  placeholderTextColor="#888"
+                  value={searchQuery}
+                  onChangeText={(text) => {
+                    setSearchQuery(text);
+                    onSearchChange?.(text);
+                  }}
+                  onFocus={() => setIsSearchFocused(true)}
+                  onBlur={() => setIsSearchFocused(false)}
+                  style={[
+                    styles.searchInput,
+                    { fontSize: fontSizeSearch },
+                  ]}
+                  returnKeyType="search"
+                />
+              </View>
+            </TouchableWithoutFeedback>
           )}
 
-          <TouchableOpacity style={styles.navBtn} onPress={() => onNavigate?.('messenger')}>
+          <TouchableOpacity
+            style={styles.navBtn}
+            onPress={() => {
+              toggleSearch(false);
+              onNavigate?.('messenger');
+            }}
+          >
             {Platform.OS === 'web' ? (
-              <Image source={require('../../assets/images/messenger.png')} style={{ width: navIconSize, height: navIconSize, resizeMode: 'contain', tintColor: isActive('messenger') ? '#D32F2F' : undefined }} />
+              <Image
+                source={require('../../assets/images/messenger.png')}
+                style={{
+                  width: navIconSize,
+                  height: navIconSize,
+                  resizeMode: 'contain',
+                  tintColor: isActive('messenger') ? '#D32F2F' : undefined,
+                }}
+              />
             ) : (
-              <MessengerIcon width={navIconSize} height={navIconSize} stroke={getIconColor('messenger')} />
+              <MessengerIcon
+                width={navIconSize}
+                height={navIconSize}
+                stroke={getIconColor('messenger')}
+              />
             )}
           </TouchableOpacity>
         </View>
 
-        {/* ROW 2: Navigation buttons (hidden while searching) */}
+        {/* ROW 2: Navigation buttons */}
         <View
           style={[
             styles.mobileNavRow,
@@ -167,40 +230,91 @@ const Header: React.FC<HeaderProps> = ({ isLargeScreen: propIsLargeScreen, activ
               paddingHorizontal,
               gap: isVerySmall ? 12 : 20,
               justifyContent: 'center',
-              display: isSearchExpanded ? 'flex' : 'flex',
             },
           ]}
         >
-          <TouchableOpacity 
+          <TouchableOpacity
             style={[styles.navBtn, { padding: 12 }, isActive('home') && styles.navBtnActive]}
-            onPress={() => onNavigate?.('home')}
+            onPress={() => {
+              toggleSearch(false);
+              onNavigate?.('home');
+            }}
           >
             {Platform.OS === 'web' ? (
-              <Image source={require('../../assets/images/house-solid.png')} style={{ width: mobileNavIconSize, height: mobileNavIconSize, resizeMode: 'contain', tintColor: activeScreen === 'home' ? '#D32F2F' : '#000000' }} />
+              <Image
+                source={require('../../assets/images/house-solid.png')}
+                style={{
+                  width: mobileNavIconSize,
+                  height: mobileNavIconSize,
+                  resizeMode: 'contain',
+                  tintColor: activeScreen === 'home' ? '#D32F2F' : '#000000',
+                }}
+              />
             ) : (
-              <House width={mobileNavIconSize} height={mobileNavIconSize} fill={getIconColor('home')} />
+              <House
+                width={mobileNavIconSize}
+                height={mobileNavIconSize}
+                fill={getIconColor('home')}
+              />
             )}
           </TouchableOpacity>
 
-  <TouchableOpacity style={[styles.navBtn, { padding: 12 }, isActive('game') && styles.navBtnActive]} onPress={() => onNavigate?.('game')}>
-    {Platform.OS === 'web' ? (
-      <Image source={require('../../assets/images/gamepad-solid.png')} style={{ width: mobileNavIconSize, height: mobileNavIconSize, resizeMode: 'contain', tintColor: activeScreen === 'game' ? '#D32F2F' : '#000000' }} />
-    ) : (
-      <Gamepad width={mobileNavIconSize} height={mobileNavIconSize} fill={getIconColor('game')} />
-    )}
-</TouchableOpacity>
-
-          <TouchableOpacity style={[styles.navBtn, { padding: 12 }, isActive('videos') && styles.navBtnActive]} onPress={() => onNavigate?.('videos')}>
+          <TouchableOpacity
+            style={[styles.navBtn, { padding: 12 }, isActive('game') && styles.navBtnActive]}
+            onPress={() => {
+              toggleSearch(false);
+              onNavigate?.('game');
+            }}
+          >
             {Platform.OS === 'web' ? (
-              <Image source={require('../../assets/images/youtube-brands-solid.png')} style={{ width: mobileNavIconSize, height: mobileNavIconSize, resizeMode: 'contain', tintColor: activeScreen === 'videos' ? '#D32F2F' : '#000000' }} />
+              <Image
+                source={require('../../assets/images/gamepad-solid.png')}
+                style={{
+                  width: mobileNavIconSize,
+                  height: mobileNavIconSize,
+                  resizeMode: 'contain',
+                  tintColor: activeScreen === 'game' ? '#D32F2F' : '#000000',
+                }}
+              />
             ) : (
-              <VideosIcon width={mobileNavIconSize} height={mobileNavIconSize} fill={getIconColor('videos')}/>
+              <Gamepad
+                width={mobileNavIconSize}
+                height={mobileNavIconSize}
+                fill={getIconColor('game')}
+              />
+            )}
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.navBtn, { padding: 12 }, isActive('videos') && styles.navBtnActive]}
+            onPress={() => {
+              toggleSearch(false);
+              onNavigate?.('videos');
+            }}
+          >
+            {Platform.OS === 'web' ? (
+              <Image
+                source={require('../../assets/images/youtube-brands-solid.png')}
+                style={{
+                  width: mobileNavIconSize,
+                  height: mobileNavIconSize,
+                  resizeMode: 'contain',
+                  tintColor: activeScreen === 'videos' ? '#D32F2F' : '#000000',
+                }}
+              />
+            ) : (
+              <VideosIcon
+                width={mobileNavIconSize}
+                height={mobileNavIconSize}
+                fill={getIconColor('videos')}
+              />
             )}
           </TouchableOpacity>
         </View>
       </View>
-    );
-  }
+    </TouchableWithoutFeedback>
+  );
+}
 
   // Desktop/Tablet Layout
   return (
@@ -238,16 +352,22 @@ const Header: React.FC<HeaderProps> = ({ isLargeScreen: propIsLargeScreen, activ
               maxWidth: isLargeScreenLocal ? 420 : isTablet ? 340 : '100%',
               height: isTablet ? 46 : 50,
               paddingHorizontal: isLargeScreenLocal ? 20 : 16,
+              borderWidth: 1,
+              borderBottomWidth: isSearchFocused ? 2 : 1,
             },
           ]}
         >
-          <Image
-            source={require('../../assets/images/magnifying-glass-solid.png')}
-            style={{ width: searchIconSize, height: searchIconSize, marginRight: 12, tintColor: '#888' }}
-          />
+          <MaterialCommunityIcons name="magnify" size={searchIconSize} color="#888" style={{ marginRight: 12 }} />
           <TextInput
-            placeholder={activeScreen === 'videos' ? 'Search Videos' : activeScreen === 'game' ? 'Search Game' : 'Search ParseClass'}
+            placeholder={activeScreen === 'videos' ? 'Search Videos' : activeScreen === 'game' ? 'Search Game' : activeScreen === 'messenger' ? 'Search Message' : 'Search ParseClass'}
             placeholderTextColor="#888"
+            value={searchQuery}
+            onChangeText={(text) => {
+              setSearchQuery(text);
+              onSearchChange?.(text);
+            }}
+            onFocus={() => setIsSearchFocused(true)}
+            onBlur={() => setIsSearchFocused(false)}
             style={[
               styles.searchInput,
               { fontSize: fontSizeSearch },
@@ -341,6 +461,8 @@ const styles = StyleSheet.create({
     flex: 1,
     color: '#000',
     paddingVertical: Platform.select({ ios: 12, default: 8 }),
+    borderWidth: 0,
+    backgroundColor: 'transparent',
   },
 
   closeText: {

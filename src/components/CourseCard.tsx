@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Alert, Dimensions, FlatList, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, useWindowDimensions } from 'react-native';
+import { Alert, Dimensions, FlatList, Image, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, useWindowDimensions } from 'react-native';
+import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { Assignment, Comment, FileUpload, MOCK_ASSIGNMENTS } from '../data/mockAssignments';
 
 interface CourseCardProps {
@@ -87,42 +88,45 @@ const CourseCard = ({ title = 'Programming 1', instructor = 'Jade M. Lisondra', 
           {
             padding: cardPadding,
             minHeight: headerMinHeight,
+            position: 'relative'
           }
         ]}>
-          <Text style={[
-            styles.cardTitle, 
-            { 
-              fontSize: titleSize,
-              marginBottom: isSmallScreen ? 1 : 2
-            }
-          ]}>
-            {title}
-          </Text>
-          <Text style={[
-            styles.cardSub, 
-            { fontSize: subSize }
-          ]}>
-            {instructor}
-          </Text>
+          {/* Text Container */}
+          <View style={{ flex: 1 }}>
+            <Text style={[
+              styles.cardTitle, 
+              { 
+                fontSize: titleSize,
+                marginBottom: isSmallScreen ? 1 : 2
+              }
+            ]}>
+              {title}
+            </Text>
+            <Text style={[
+              styles.cardSub, 
+              { fontSize: subSize }
+            ]}>
+              {instructor}
+            </Text>
+          </View>
 
-          {/* Overlapping Profile Icon */}
+          {/* Right Profile Icon */}
           <View style={[
             styles.avatarBadge, 
             { 
               width: badgeSize, 
               height: badgeSize, 
               borderRadius: badgeSize / 2, 
-              right: cardPadding, 
-              bottom: -badgeSize / 2.5,
-              borderWidth: isSmallScreen ? 1.5 : 2
+              borderWidth: isSmallScreen ? 1.5 : 2,
+              justifyContent: 'center',
+              alignItems: 'center',
+              position: 'absolute',
+              right: cardPadding,
+              top: cardPadding,
+              overflow: 'hidden'
             }
           ]}>
-            <Text style={[
-              styles.avatarEmoji, 
-              { fontSize: Math.round(badgeSize * 0.45) }
-            ]}>
-              👤
-            </Text>
+            <Image source={require('../../assets/images/avatar.jpg')} style={{ width: '100%', height: '100%' }} />
           </View>
         </View>
 
@@ -152,7 +156,7 @@ const CourseCard = ({ title = 'Programming 1', instructor = 'Jade M. Lisondra', 
             onPress={() => setShowAssignments(true)}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           >
-            <Text style={[styles.iconText, { fontSize: iconSize }]}>📋</Text>
+            <MaterialCommunityIcons name="clipboard-list" size={iconSize} color="#333" />
           </TouchableOpacity>
         </View>
       </TouchableOpacity>
