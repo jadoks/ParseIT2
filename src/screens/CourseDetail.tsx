@@ -1,16 +1,17 @@
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
 import React, { useState } from 'react';
 import { Alert, FlatList, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, useWindowDimensions, View } from 'react-native';
 import { heightPercentageToDP as hp, widthPercentageToDP as wp } from 'react-native-responsive-screen';
 
-interface Material {
+export interface Material {
   id: string;
   title: string;
   type: 'pdf' | 'video' | 'document' | 'link';
   uploadedDate: string;
 }
 
-interface CourseAssignment {
+export interface CourseAssignment {
   id: string;
   title: string;
   dueDate: string;
@@ -19,7 +20,7 @@ interface CourseAssignment {
   maxPoints?: number;
 }
 
-interface CourseDetail {
+export interface CourseDetail {
   id: string;
   name: string;
   code: string;
@@ -32,6 +33,7 @@ interface CourseDetail {
 interface CourseDetailProps {
   course?: CourseDetail;
   onBack?: () => void;
+  initialTab?: 'materials' | 'assignments';
 }
 
 const MOCK_COURSE: CourseDetail = {
@@ -86,7 +88,7 @@ const MOCK_COURSE: CourseDetail = {
   ],
 };
 
-const CourseDetail = ({ course = MOCK_COURSE }: CourseDetailProps) => {
+const CourseDetail = ({ course = MOCK_COURSE, initialTab = 'materials', onBack }: CourseDetailProps) => {
   const { width } = useWindowDimensions();
   
   // Responsive breakpoints
@@ -95,7 +97,7 @@ const CourseDetail = ({ course = MOCK_COURSE }: CourseDetailProps) => {
   const isTablet = width >= 768 && width < 1024;
   const isLargeScreen = width >= 1024;
   
-  const [activeTab, setActiveTab] = useState<'materials' | 'assignments'>('materials');
+  const [activeTab, setActiveTab] = useState<'materials' | 'assignments'>(initialTab);
   const [selectedAssignment, setSelectedAssignment] = useState<CourseAssignment | null>(null);
   const [newComment, setNewComment] = useState('');
   const [assignmentComments, setAssignmentComments] = useState<{ [key: string]: any[] }>(
@@ -251,6 +253,15 @@ const CourseDetail = ({ course = MOCK_COURSE }: CourseDetailProps) => {
     <ScrollView style={styles.container}>
       {/* Course Header - Responsive */}
       <View style={[styles.courseHeader, { paddingHorizontal: wp(isSmallPhone ? '3' : '5') }]}>
+        {onBack && (
+          <TouchableOpacity onPress={onBack} style={styles.backButton}>
+            <MaterialCommunityIcons name="arrow-left" size={24} color="#FFF">
+  <Text style={{ color: '#FFF', fontSize: 20, marginLeft: 5 , fontFamily: 'System'}}>
+    Back
+  </Text>
+  </MaterialCommunityIcons>
+          </TouchableOpacity>
+        )}
         <Text style={[styles.courseCode, { fontSize: isSmallPhone ? 11 : 12 }]}>{course.code}</Text>
         <Text style={[styles.courseName, { fontSize: isSmallPhone ? 20 : 24 }]}>{course.name}</Text>
         <Text style={[styles.instructor, { fontSize: isSmallPhone ? 12 : 14 }]}>Instructor: {course.instructor}</Text>
@@ -337,7 +348,7 @@ const CourseDetail = ({ course = MOCK_COURSE }: CourseDetailProps) => {
                 <View style={styles.infoBox}>
                   <View style={styles.infoLeft}>
                     <Text style={{ fontWeight: '700', color: '#333' }}>{course.name}</Text>
-                    <Text style={{ color: '#666', marginTop: 6 }}>{course.description}</Text>
+                    <Text style={{ color: '#666', marginTop: 6 , flexShrink: 1,}}ellipsizeMode="tail">{course.description}</Text>
                   </View>
                   <View style={styles.infoRight}>
                     <Text style={{ fontWeight: '700', color: '#000', textAlign: 'right' }}>{selectedAssignment.dueDate}</Text>
@@ -431,6 +442,11 @@ const styles = StyleSheet.create({
   courseHeader: {
     backgroundColor: '#D32F2F',
     paddingVertical: hp('2'),
+    position: 'relative',
+  },
+  backButton: {
+    marginBottom: hp('1'),
+    paddingVertical: hp('0.5'),
   },
   courseCode: {
     fontWeight: '600',
@@ -577,16 +593,20 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    flexWrap: 'wrap',             // ← the most important line
+    gap: 16,
     borderWidth: 1,
     borderColor: '#FFECE9',
     borderLeftWidth: 4, borderLeftColor: '#D32F2F'
+    
   },
   infoLeft: {
     flex: 1,
+    minWidth: 160,
     paddingRight: wp('2'),
   },
   infoRight: {
-    width: 120,
+    minWidth: 100,
     alignItems: 'flex-end',
   },
   uploadFullButton: {

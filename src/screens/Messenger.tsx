@@ -59,6 +59,7 @@ const Messenger = ({ searchQuery = '', onConversationActiveChange }: { searchQue
 
   return (
     <View style={{ flex: 1, backgroundColor: '#fff' }}>
+      <Text style={styles.pageTitle}>Messages</Text>
       <FlatList
         data={filtered}
         keyExtractor={c => c.id}
@@ -80,6 +81,7 @@ const Messenger = ({ searchQuery = '', onConversationActiveChange }: { searchQue
 };
 
 const styles = StyleSheet.create({
+   pageTitle: { fontSize: 25, fontWeight: 'bold', paddingBottom: 10,  textAlign: 'left', marginTop: 20, paddingHorizontal: 12,marginLeft: 10 },
   convRow: { flexDirection: 'row', padding: 12, alignItems: 'center', borderBottomWidth: 1, borderBottomColor: '#f0f0f0' },
   convAvatar: { width: 48, height: 48, borderRadius: 24, marginRight: 12 },
   convName: { fontWeight: '700' },

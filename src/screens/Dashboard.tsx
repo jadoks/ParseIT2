@@ -3,14 +3,14 @@ import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import AnnouncementBanner from '../components/AnnouncementBanner';
 import { Announcement } from '../components/AnnouncementModal';
 import CourseCard from '../components/CourseCard';
-import FilterBar from '../components/FilterBar';
 
 interface DashboardProps {
   announcements?: Announcement[];
   onCoursePress?: () => void;
+  onAssignmentPress?: () => void;
 }
 
-const Dashboard = ({ announcements = [], onCoursePress }: DashboardProps) => {
+const Dashboard = ({ announcements = [], onCoursePress, onAssignmentPress }: DashboardProps) => {
   return (
     <ScrollView style={styles.container}>
       {/* Announcement Banner with Navigation Arrows */}
@@ -28,13 +28,14 @@ const Dashboard = ({ announcements = [], onCoursePress }: DashboardProps) => {
         </View>
       )}
 
-      <FilterBar />
+    
 
       <View style={styles.grid}>
         {[1, 2, 3, 4, 5, 6].map((item) => (
           <CourseCard 
             key={item} 
             onPress={onCoursePress}
+            onAssignmentPress={onAssignmentPress}
             title={`Course ${item}`}
             instructor="Instructor Name"
           />
@@ -45,7 +46,7 @@ const Dashboard = ({ announcements = [], onCoursePress }: DashboardProps) => {
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 20 },
+  container: { flex: 1, padding: 20 , marginBottom: 20},
   banner: {
     backgroundColor: '#E53935',
     borderRadius: 40,
@@ -62,6 +63,7 @@ const styles = StyleSheet.create({
   dotActive: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#FFF', marginHorizontal: 3 },
   // Inside Dashboard.tsx styles
 grid: { 
+  marginTop: 20,
   flexDirection: 'row', 
   flexWrap: 'wrap', 
   justifyContent: 'center', // Center the cards horizontally

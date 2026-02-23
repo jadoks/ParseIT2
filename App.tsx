@@ -19,19 +19,19 @@ const ANNOUNCEMENTS: Announcement[] = [
     id: '1',
     title: 'Welcome Back!',
     message: 'Check out the latest updates and announcements from your courses.',
-    bannerImage: require('./assets/images/ctu_argao_banner.jpg'),
+    bannerImage: require('./assets/announcement/1.png'),
   },
   {
     id: '2',
     title: 'New Course Available',
     message: 'Advanced Data Structures is now open for enrollment. Register today!',
-    bannerImage: require('./assets/images/ctu_argao_banner.jpg'),
+    bannerImage: require('./assets/announcement/2.png'),
   },
   {
     id: '3',
     title: 'Mid-Term Exams',
     message: 'Mid-term exams are scheduled for next week. Study hard and good luck!',
-    bannerImage: require('./assets/images/ctu_argao_banner.jpg'),
+    bannerImage: require('./assets/announcement/3.png'),
   },
 ];
 
@@ -47,6 +47,7 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState('');
   const [isConversationActive, setIsConversationActive] = useState(false);
   const [isVideoActive, setIsVideoActive] = useState(false);
+  const [activeCourseTab, setActiveCourseTab] = useState<'materials' | 'assignments'>('materials');
 
   if (!isLoggedIn) {
     return (
@@ -148,14 +149,14 @@ export default function App() {
             />
           </>
         ) : (
-          activeScreen === 'home' ? <Dashboard announcements={ANNOUNCEMENTS} onCoursePress={() => setActiveScreen('coursedetail')} /> : 
+          activeScreen === 'home' ? <Dashboard announcements={ANNOUNCEMENTS} onCoursePress={() => { setLastScreen(activeScreen); setActiveScreen('coursedetail'); setActiveCourseTab('materials'); }} onAssignmentPress={() => { setLastScreen(activeScreen); setActiveScreen('coursedetail'); setActiveCourseTab('assignments'); }} /> : 
           activeScreen === 'game' ? <Game /> : 
           activeScreen === 'videos' ? <Videos onVideoActiveChange={setIsVideoActive} /> : 
         
           activeScreen === 'myjourney' ? <MyJourney /> : 
           activeScreen === 'messenger' ? <Messenger searchQuery={searchQuery} onConversationActiveChange={setIsConversationActive} /> :
           activeScreen === 'assignments' ? <Assignments /> :
-          activeScreen === 'coursedetail' ? <CourseDetail /> :
+          activeScreen === 'coursedetail' ? <CourseDetail initialTab={activeCourseTab} onBack={() => setActiveScreen(lastScreen)} /> :
           <SignIn/>
         )}
       </View>

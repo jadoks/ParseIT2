@@ -1,5 +1,13 @@
 import React, { useState } from 'react';
-import { Image, Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import {
+  ImageBackground,
+  Modal,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+  useWindowDimensions
+} from 'react-native';
 
 export interface Announcement {
   id: string;
@@ -20,6 +28,8 @@ const AnnouncementModal: React.FC<AnnouncementModalProps> = ({
   announcements = []
 }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
+  const { width } = useWindowDimensions();
+  const isSmallScreen = width < 768; // mobile/tablet check
 
   if (!announcements || announcements.length === 0) return null;
 
@@ -45,28 +55,40 @@ const AnnouncementModal: React.FC<AnnouncementModalProps> = ({
   return (
     <Modal visible={visible} animationType="fade" transparent>
       <View style={styles.backdrop}>
-        <View style={styles.container}>
-          {current.bannerImage && (
-            <Image source={current.bannerImage} style={styles.bannerImage} />
-          )}
-          
-          <View style={styles.content}>
-            <Text style={styles.title}>{current.title}</Text>
-            <Text style={styles.message}>{current.message}</Text>
+        <ImageBackground
+          source={current.bannerImage}
+          style={[
+            styles.container,
+             { width: isSmallScreen && styles.fullScreenContainer ? undefined : '100%', 
+              maxWidth: isSmallScreen && styles.fullScreenContainer ? '80%' : 1200,
+              height: isSmallScreen && styles.fullScreenContainer ? '100%' : undefined,
+              maxHeight: isSmallScreen && styles.fullScreenContainer ? 230 : undefined 
+             }
+          ]}
+          resizeMode="cover"
+        >
+          {/* Dark overlay for readability */}
+          <View style={styles.overlay} />
+
+          {/* Content */}
+          <View style={styles.contentOverlay}>
+            <View style={styles.content}>
+              <Text style={styles.title}>{current.title}</Text>
+              <Text style={styles.message}>{current.message}</Text>
+            </View>
           </View>
 
+          {/* Dots */}
           <View style={styles.indicators}>
             {announcements.map((_, idx) => (
               <View
                 key={idx}
-                style={[
-                  styles.dot,
-                  idx === currentIndex && styles.dotActive,
-                ]}
+                style={[styles.dot, idx === currentIndex && styles.dotActive]}
               />
             ))}
           </View>
 
+          {/* Buttons */}
           <View style={styles.buttonRow}>
             <TouchableOpacity
               style={[styles.navBtn, currentIndex === 0 && styles.navBtnDisabled]}
@@ -86,7 +108,7 @@ const AnnouncementModal: React.FC<AnnouncementModalProps> = ({
               <Text style={styles.navBtnText}>Next →</Text>
             </TouchableOpacity>
           </View>
-        </View>
+        </ImageBackground>
       </View>
     </Modal>
   );
@@ -100,43 +122,68 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   container: {
-    width: '85%',
-    backgroundColor: '#fff',
-    borderRadius: 12,
+     // full container
+    justifyContent: 'space-between',
     overflow: 'hidden',
-  },
-  bannerImage: {
+    borderRadius: 20,
+    maxHeight: 280,
     width: '100%',
-    height: 150,
-    resizeMode: 'cover',
+    maxWidth: 1200,
+     
+  },
+  fullScreenContainer: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 20,
+  },
+  overlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(192, 1, 1, 0.4)',
+  },
+  contentOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 20, // small padding for text
+    paddingVertical: 28,
+    zIndex: 1,
   },
   content: {
-    padding: 20,
+    alignItems: 'center',
   },
   title: {
-    fontSize: 18,
+    fontSize: 24,
     fontWeight: '700',
-    color: '#222',
-    marginBottom: 8,
+    color: '#FFF',
+    marginBottom: 12,
+    textAlign: 'center',
+    textShadowColor: 'rgba(0, 0, 0, 0.5)',
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 3,
   },
   message: {
     fontSize: 14,
-    color: '#666',
-    lineHeight: 20,
+    color: '#FFF',
+    lineHeight: 22,
     marginBottom: 12,
+    textAlign: 'center',
+    textShadowColor: 'rgba(0, 0, 0, 0.5)',
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 3,
   },
   indicators: {
     flexDirection: 'row',
     justifyContent: 'center',
     gap: 6,
     paddingHorizontal: 20,
-    marginBottom: 12,
+    marginBottom: 8,
+    zIndex: 1,
   },
   dot: {
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: '#ddd',
+    backgroundColor: 'rgba(255, 255, 255, 0.5)',
   },
   dotActive: {
     backgroundColor: '#D32F2F',
@@ -147,13 +194,16 @@ const styles = StyleSheet.create({
     gap: 8,
     paddingHorizontal: 12,
     paddingBottom: 12,
+    zIndex: 1,
   },
   navBtn: {
     flex: 1,
     paddingVertical: 10,
     alignItems: 'center',
-    backgroundColor: '#f0f0f0',
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
     borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.3)',
   },
   navBtnDisabled: {
     opacity: 0.4,
@@ -161,7 +211,7 @@ const styles = StyleSheet.create({
   navBtnText: {
     fontWeight: '600',
     fontSize: 12,
-    color: '#666',
+    color: '#FFF',
   },
   closeBtn: {
     flex: 1.2,

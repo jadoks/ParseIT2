@@ -72,7 +72,10 @@ const AnnouncementBanner = ({ announcements }: AnnouncementBannerProps) => {
       >
         <ImageBackground
           source={currentAnnouncement.bannerImage}
-          style={styles.bannerBackground}
+          style={[
+    styles.bannerBackground,
+    { width: shouldShowSwipe ? undefined : '100%' }
+  ]}
           resizeMode="cover"
         >
           {/* Dark overlay for better text visibility */}
@@ -167,7 +170,7 @@ const styles = StyleSheet.create({
   },
   overlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0, 0, 0, 0.4)',
+    backgroundColor: 'rgba(192, 1, 1, 0.4)',
   },
   contentContainer: {
     flex: 1,
