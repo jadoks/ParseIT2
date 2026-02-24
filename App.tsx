@@ -6,6 +6,7 @@ import DrawerMenu from './src/components/DrawerMenu';
 import Header from './src/components/Header';
 import ProfileModal from './src/components/ProfileModal';
 import Assignments from './src/screens/Assignments';
+import Community from './src/screens/Community';
 import CourseDetail from './src/screens/CourseDetail';
 import Dashboard from './src/screens/Dashboard';
 import Game from './src/screens/Game';
@@ -39,8 +40,8 @@ export default function App() {
   const { width } = useWindowDimensions();
   const isLargeScreen = width >= 768; // Tablet/Web breakpoint
   const [isMobileDrawerOpen, setMobileDrawerOpen] = useState(false);
-  const [activeScreen, setActiveScreen] = useState<'home' | 'game' | 'videos'  | 'myjourney' | 'profile' | 'messenger' | 'assignments' | 'coursedetail'>('home');
-  const [lastScreen, setLastScreen] = useState<'home' | 'game' | 'videos' | 'myjourney' | 'messenger' | 'assignments' | 'coursedetail'>('home');
+  const [activeScreen, setActiveScreen] = useState<'home' | 'game' | 'videos'  | 'myjourney' | 'profile' | 'messenger' | 'assignments' | 'coursedetail' | 'community'>('home');
+  const [lastScreen, setLastScreen] = useState<'home' | 'game' | 'videos' | 'myjourney' | 'messenger' | 'assignments' | 'coursedetail' | 'community'>('home');
   const [showAnnouncement, setShowAnnouncement] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
@@ -157,6 +158,7 @@ export default function App() {
           activeScreen === 'messenger' ? <Messenger searchQuery={searchQuery} onConversationActiveChange={setIsConversationActive} /> :
           activeScreen === 'assignments' ? <Assignments /> :
           activeScreen === 'coursedetail' ? <CourseDetail initialTab={activeCourseTab} onBack={() => setActiveScreen(lastScreen)} /> :
+          activeScreen === 'community' ? <Community /> :
           <SignIn/>
         )}
       </View>

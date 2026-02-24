@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   ImageBackground,
   Modal,
@@ -28,8 +28,28 @@ const AnnouncementModal: React.FC<AnnouncementModalProps> = ({
   announcements = []
 }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Auto-slide effect (cleaned to avoid visual reset blink)
+  useEffect(() => {
+    if (!visible) return;
+    if (announcements.length <= 1) return;
+
+    if (timerRef.current) clearTimeout(timerRef.current);
+
+    timerRef.current = setTimeout(() => {
+      setCurrentIndex(prev =>
+        prev < announcements.length - 1 ? prev + 1 : 0
+      );
+    }, 3000);
+
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+  }, [currentIndex, visible, announcements.length]);
+
   const { width } = useWindowDimensions();
-  const isSmallScreen = width < 768; // mobile/tablet check
+  const isSmallScreen = width < 768;
 
   if (!announcements || announcements.length === 0) return null;
 
@@ -37,18 +57,19 @@ const AnnouncementModal: React.FC<AnnouncementModalProps> = ({
 
   const handleNext = () => {
     if (currentIndex < announcements.length - 1) {
-      setCurrentIndex(currentIndex + 1);
+      setCurrentIndex(prev => prev + 1);
     }
   };
 
   const handlePrev = () => {
     if (currentIndex > 0) {
-      setCurrentIndex(currentIndex - 1);
+      setCurrentIndex(prev => prev - 1);
     }
   };
 
   const handleClose = () => {
     setCurrentIndex(0);
+    if (timerRef.current) clearTimeout(timerRef.current);
     onClose();
   };
 
@@ -59,18 +80,17 @@ const AnnouncementModal: React.FC<AnnouncementModalProps> = ({
           source={current.bannerImage}
           style={[
             styles.container,
-             { width: isSmallScreen && styles.fullScreenContainer ? undefined : '100%', 
-              maxWidth: isSmallScreen && styles.fullScreenContainer ? '80%' : 1200,
-              height: isSmallScreen && styles.fullScreenContainer ? '100%' : undefined,
-              maxHeight: isSmallScreen && styles.fullScreenContainer ? 230 : undefined 
-             }
+            { 
+              width: isSmallScreen ? '100%' : '100%',
+              maxWidth: isSmallScreen ? '80%' : 1200,
+              height: isSmallScreen ? undefined : undefined,
+              maxHeight: isSmallScreen ? 230 : undefined 
+            }
           ]}
           resizeMode="cover"
         >
-          {/* Dark overlay for readability */}
           <View style={styles.overlay} />
 
-          {/* Content */}
           <View style={styles.contentOverlay}>
             <View style={styles.content}>
               <Text style={styles.title}>{current.title}</Text>
@@ -78,7 +98,6 @@ const AnnouncementModal: React.FC<AnnouncementModalProps> = ({
             </View>
           </View>
 
-          {/* Dots */}
           <View style={styles.indicators}>
             {announcements.map((_, idx) => (
               <View
@@ -88,7 +107,6 @@ const AnnouncementModal: React.FC<AnnouncementModalProps> = ({
             ))}
           </View>
 
-          {/* Buttons */}
           <View style={styles.buttonRow}>
             <TouchableOpacity
               style={[styles.navBtn, currentIndex === 0 && styles.navBtnDisabled]}
@@ -97,11 +115,16 @@ const AnnouncementModal: React.FC<AnnouncementModalProps> = ({
             >
               <Text style={styles.navBtnText}>← Prev</Text>
             </TouchableOpacity>
+
             <TouchableOpacity style={styles.closeBtn} onPress={handleClose}>
               <Text style={styles.closeBtnText}>Got It</Text>
             </TouchableOpacity>
+
             <TouchableOpacity
-              style={[styles.navBtn, currentIndex === announcements.length - 1 && styles.navBtnDisabled]}
+              style={[
+                styles.navBtn,
+                currentIndex === announcements.length - 1 && styles.navBtnDisabled
+              ]}
               onPress={handleNext}
               disabled={currentIndex === announcements.length - 1}
             >
@@ -122,19 +145,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   container: {
-     // full container
     justifyContent: 'space-between',
     overflow: 'hidden',
     borderRadius: 20,
     maxHeight: 280,
     width: '100%',
     maxWidth: 1200,
-     
-  },
-  fullScreenContainer: {
-    width: '100%',
-    height: '100%',
-    borderRadius: 20,
   },
   overlay: {
     ...StyleSheet.absoluteFillObject,
@@ -144,7 +160,7 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 20, // small padding for text
+    paddingHorizontal: 20,
     paddingVertical: 28,
     zIndex: 1,
   },

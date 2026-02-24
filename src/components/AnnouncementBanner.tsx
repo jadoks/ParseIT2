@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   GestureResponderEvent,
   ImageBackground,
@@ -18,6 +18,7 @@ interface AnnouncementBannerProps {
 
 const AnnouncementBanner = ({ announcements }: AnnouncementBannerProps) => {
   const [currentIndex, setCurrentIndex] = useState(0);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { width } = useWindowDimensions();
   
   // Determine if on mobile/tablet
@@ -27,19 +28,37 @@ const AnnouncementBanner = ({ announcements }: AnnouncementBannerProps) => {
   
   // Track swipe state
   const [swipeStart, setSwipeStart] = useState(0);
-  const minSwipeDistance = width * 0.15; // 15% of screen width
+  const minSwipeDistance = width * 0.1;
 
   const handlePrev = () => {
     if (currentIndex > 0) {
-      setCurrentIndex(currentIndex - 1);
+      setCurrentIndex(idx => idx - 1);
     }
   };
 
   const handleNext = () => {
     if (currentIndex < announcements.length - 1) {
-      setCurrentIndex(currentIndex + 1);
+      setCurrentIndex(idx => idx + 1);
     }
   };
+
+  // Auto-slide effect (without animation)
+  useEffect(() => {
+    if (announcements.length <= 1) return;
+    if (timerRef.current) clearTimeout(timerRef.current);
+
+    timerRef.current = setTimeout(() => {
+      if (currentIndex < announcements.length - 1) {
+        setCurrentIndex(idx => idx + 1);
+      } else {
+        setCurrentIndex(0);
+      }
+    }, 5000);
+
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+  }, [currentIndex, announcements.length]);
 
   const handleSwipeStart = (e: GestureResponderEvent) => {
     setSwipeStart(e.nativeEvent.pageX);
@@ -49,12 +68,9 @@ const AnnouncementBanner = ({ announcements }: AnnouncementBannerProps) => {
     const swipeEnd = e.nativeEvent.pageX;
     const swipeDistance = swipeStart - swipeEnd;
 
-    // Swipe left (next)
     if (swipeDistance > minSwipeDistance) {
       handleNext();
-    }
-    // Swipe right (prev)
-    else if (swipeDistance < -minSwipeDistance) {
+    } else if (swipeDistance < -minSwipeDistance) {
       handlePrev();
     }
   };
@@ -63,91 +79,86 @@ const AnnouncementBanner = ({ announcements }: AnnouncementBannerProps) => {
 
   return (
     <GestureHandlerRootView style={styles.bannerContainer}>
-      <View 
+      <View
         onStartShouldSetResponder={() => shouldShowSwipe}
         onMoveShouldSetResponder={() => shouldShowSwipe}
         onResponderGrant={handleSwipeStart}
         onResponderRelease={handleSwipeEnd}
         style={{ flex: 1, width: '100%' }}
       >
-        <ImageBackground
-          source={currentAnnouncement.bannerImage}
-          style={[
-    styles.bannerBackground,
-    { width: shouldShowSwipe ? undefined : '100%' }
-  ]}
-          resizeMode="cover"
-        >
-          {/* Dark overlay for better text visibility */}
-          <View style={styles.overlay} />
+        <View style={{ flex: 1, width: '100%' }}>
+          <ImageBackground
+            source={currentAnnouncement.bannerImage}
+            style={[
+              styles.bannerBackground,
+              { width: shouldShowSwipe ? undefined : '100%' }
+            ]}
+            resizeMode="cover"
+          >
+            <View style={styles.overlay} />
 
-          {/* Banner Content */}
-          <View style={[
-            styles.contentContainer,
-            { paddingHorizontal: shouldShowSwipe ? wp('3') : 0 }
-          ]}>
-            {/* Left Arrow - Hidden on mobile/tablet */}
-            {!shouldShowSwipe && (
-              <TouchableOpacity
-                onPress={handlePrev}
-                disabled={currentIndex === 0}
-                style={[styles.arrowButton, currentIndex === 0 && styles.disabledArrow]}
-                hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
-              >
-                <Text style={styles.arrowText}>‹</Text>
-              </TouchableOpacity>
-            )}
+            <View style={[
+              styles.contentContainer,
+              { paddingHorizontal: shouldShowSwipe ? wp('3') : 0 }
+            ]}>
+              {!shouldShowSwipe && (
+                <TouchableOpacity
+                  onPress={handlePrev}
+                  disabled={currentIndex === 0}
+                  style={[styles.arrowButton, currentIndex === 0 && styles.disabledArrow]}
+                  hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
+                >
+                  <Text style={styles.arrowText}>‹</Text>
+                </TouchableOpacity>
+              )}
 
-            {/* Center Content */}
-            <View style={styles.contentText}>
-              <Text style={[
-                styles.announceTitle,
-                { fontSize: isMobile ? 16 : isTablet ? 18 : 20 }
-              ]}>
-                {currentAnnouncement.title}
-              </Text>
-              <Text style={[
-                styles.announceMessage,
-                { fontSize: isMobile ? 12 : isTablet ? 13 : 14 }
-              ]}>
-                {currentAnnouncement.message}
-              </Text>
+              <View style={styles.contentText}>
+                <Text style={[
+                  styles.announceTitle,
+                  { fontSize: isMobile ? 16 : isTablet ? 18 : 20 }
+                ]}>
+                  {currentAnnouncement.title}
+                </Text>
+                <Text style={[
+                  styles.announceMessage,
+                  { fontSize: isMobile ? 12 : isTablet ? 13 : 14 }
+                ]}>
+                  {currentAnnouncement.message}
+                </Text>
+              </View>
+
+              {!shouldShowSwipe && (
+                <TouchableOpacity
+                  onPress={handleNext}
+                  disabled={currentIndex === announcements.length - 1}
+                  style={[styles.arrowButton, currentIndex === announcements.length - 1 && styles.disabledArrow]}
+                  hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
+                >
+                  <Text style={styles.arrowText}>›</Text>
+                </TouchableOpacity>
+              )}
             </View>
 
-            {/* Right Arrow - Hidden on mobile/tablet */}
-            {!shouldShowSwipe && (
-              <TouchableOpacity
-                onPress={handleNext}
-                disabled={currentIndex === announcements.length - 1}
-                style={[styles.arrowButton, currentIndex === announcements.length - 1 && styles.disabledArrow]}
-                hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
-              >
-                <Text style={styles.arrowText}>›</Text>
-              </TouchableOpacity>
-            )}
-          </View>
-
-          {/* Dot Indicators */}
-          <View style={styles.dotsContainer}>
-            {announcements.map((_, index) => (
-              <TouchableOpacity
-                key={index}
-                onPress={() => setCurrentIndex(index)}
-                style={[
-                  styles.dot,
-                  index === currentIndex ? styles.activeDot : styles.inactiveDot,
-                ]}
-              />
-            ))}
-          </View>
-
-          {/* Swipe Hint for Mobile */}
-          {shouldShowSwipe && announcements.length > 1 && (
-            <View style={styles.swipeHint}>
-              <Text style={styles.swipeHintText}>← Swipe →</Text>
+            <View style={styles.dotsContainer}>
+              {announcements.map((_, index) => (
+                <TouchableOpacity
+                  key={index}
+                  onPress={() => setCurrentIndex(index)}
+                  style={[
+                    styles.dot,
+                    index === currentIndex ? styles.activeDot : styles.inactiveDot,
+                  ]}
+                />
+              ))}
             </View>
-          )}
-        </ImageBackground>
+
+            {shouldShowSwipe && announcements.length > 1 && (
+              <View style={styles.swipeHint}>
+                <Text style={styles.swipeHintText}>← Swipe →</Text>
+              </View>
+            )}
+          </ImageBackground>
+        </View>
       </View>
     </GestureHandlerRootView>
   );

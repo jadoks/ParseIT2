@@ -1,3 +1,4 @@
+import { Picker } from '@react-native-picker/picker';
 import React, { useState } from 'react';
 import { Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
@@ -16,48 +17,77 @@ const MyJourney = () => {
   const [show, setShow] = useState(false);
 
   return (
-    <ScrollView contentContainerStyle={{ padding: 20 }} style={{ flex: 1, backgroundColor: '#f5f5f7' }}>
+    <ScrollView
+      contentContainerStyle={{ padding: 20 }}
+      style={{ flex: 1, backgroundColor: '#f5f5f7' }}
+    >
       <Text style={styles.pageTitle}>My Journey</Text>
 
       <View style={styles.controlsRow}>
+        {/* Academic Year Dropdown */}
         <View style={styles.selectWrap}>
           <Text style={styles.selectLabel}>Academic Year</Text>
-          <TouchableOpacity style={styles.select} onPress={() => {
-            const idx = (YEARS.indexOf(year) + 1) % YEARS.length;
-            setYear(YEARS[idx]);
-          }}>
-            <Text>{year}</Text>
-          </TouchableOpacity>
+          <View style={styles.pickerWrapper}>
+            <Picker
+              selectedValue={year}
+              onValueChange={(itemValue) => setYear(itemValue)}
+              style={styles.picker}
+            >
+              {YEARS.map((y) => (
+                <Picker.Item key={y} label={y} value={y} />
+              ))}
+            </Picker>
+          </View>
         </View>
 
+        {/* Semester Dropdown */}
         <View style={styles.selectWrap}>
           <Text style={styles.selectLabel}>Semester</Text>
-          <TouchableOpacity style={styles.select} onPress={() => {
-            const idx = (SEMS.indexOf(sem) + 1) % SEMS.length;
-            setSem(SEMS[idx]);
-          }}>
-            <Text>{sem}</Text>
-          </TouchableOpacity>
+          <View style={styles.pickerWrapper}>
+            <Picker
+              selectedValue={sem}
+              onValueChange={(itemValue) => setSem(itemValue)}
+              style={styles.picker}
+            >
+              {SEMS.map((s) => (
+                <Picker.Item key={s} label={s} value={s} />
+              ))}
+            </Picker>
+          </View>
         </View>
-
-        <TouchableOpacity style={styles.showBtn} onPress={() => setShow(true)}>
-          <Text style={{ color: '#fff', fontWeight: '700' }}>Show My Journey</Text>
-        </TouchableOpacity>
       </View>
+
+      <TouchableOpacity
+        style={styles.showBtn}
+        onPress={() => setShow(true)}
+      >
+        <Text style={{ color: '#fff', fontWeight: '700' }}>
+          Show My Journey
+        </Text>
+      </TouchableOpacity>
 
       {show && (
         <View style={styles.paper}>
-          <Image source={require('../../assets/images/myjourney-header-template-1.png')} style={styles.headerImage} />
+          <Image
+            source={require('../../assets/images/myjourney-header-template-1.png')}
+            style={styles.headerImage}
+          />
 
           <View style={styles.infoCol}>
             <Text style={styles.infoLabel}>Student ID:</Text>
             <Text style={styles.infoValue}>2025-00123</Text>
 
-            <Text style={[styles.infoLabel, { marginTop: 12 }]}>Student Name:</Text>
+            <Text style={[styles.infoLabel, { marginTop: 12 }]}>
+              Student Name:
+            </Text>
             <Text style={styles.infoValue}>Jade M. Lisondra</Text>
 
-            <Text style={[styles.infoLabel, { marginTop: 12 }]}>School Year:</Text>
-            <Text style={styles.infoValue}>S.Y. {year} ({sem})</Text>
+            <Text style={[styles.infoLabel, { marginTop: 12 }]}>
+              School Year:
+            </Text>
+            <Text style={styles.infoValue}>
+              S.Y. {year} ({sem})
+            </Text>
           </View>
 
           <View style={styles.tableWrap}>
@@ -78,8 +108,10 @@ const MyJourney = () => {
             ))}
           </View>
 
-          <TouchableOpacity style={styles.linkBtn} onPress={() => { /* generate link */ }}>
-            <Text style={{ color: '#fff', fontWeight: '700' }}>Get Link</Text>
+          <TouchableOpacity style={styles.linkBtn}>
+            <Text style={{ color: '#fff', fontWeight: '700' }}>
+              Get Link
+            </Text>
           </TouchableOpacity>
         </View>
       )}
@@ -88,26 +120,120 @@ const MyJourney = () => {
 };
 
 const styles = StyleSheet.create({
-  pageTitle: { fontSize: 26, fontWeight: '700', marginBottom: 12 },
-  controlsRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 18 },
-  selectWrap: { flex: 1 },
-  selectLabel: { color: '#666', marginBottom: 6 },
-  select: { backgroundColor: '#fff', padding: 12, borderRadius: 8, borderWidth: 1, borderColor: '#eee' },
-  showBtn: { backgroundColor: '#D32F2F', paddingVertical: 12, paddingHorizontal: 16, borderRadius: 8 },
+  pageTitle: {
+    fontSize: 26,
+    fontWeight: '700',
+    marginBottom: 12,
+  },
 
-  paper: { backgroundColor: '#fff', padding: 18, borderRadius: 6, elevation: 2, shadowColor: '#000', shadowOpacity: 0.05 },
-  headerImage: { width: '100%', height: 90, resizeMode: 'contain', marginBottom: 12 },
-  infoCol: { marginBottom: 12 },
-  infoLabel: { color: '#666', fontWeight: '600' },
-  infoValue: { fontSize: 16, fontWeight: '700', color: '#222' },
+  controlsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 18,
+  },
 
-  tableWrap: { marginTop: 12, borderWidth: 1, borderColor: '#eee', borderRadius: 6, overflow: 'hidden' },
-  tableRow: { flexDirection: 'row', paddingVertical: 10, paddingHorizontal: 8, backgroundColor: '#fff' },
-  tableHeader: { backgroundColor: '#fafafa' },
-  td: { flex: 1, fontSize: 14, color: '#222' },
-  th: { fontWeight: '700', color: '#444' },
+  selectWrap: {
+    flex: 1,
+    maxWidth: 180,
+  },
 
-  linkBtn: { marginTop: 16, alignSelf: 'flex-end', backgroundColor: '#1976d2', paddingVertical: 10, paddingHorizontal: 16, borderRadius: 6 }
+  selectLabel: {
+    color: '#666',
+    marginBottom: 6,
+    paddingHorizontal: 4,
+  },
+
+  pickerWrapper: {
+  overflow: 'hidden',
+  paddingRight: 18,
+},
+
+  picker: {
+    height: 50,
+    borderRadius: 15,
+    paddingLeft: 8, 
+    width: '100%',    
+  },
+
+  showBtn: {
+    backgroundColor: '#D32F2F',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    alignSelf: 'flex-start',
+    marginBottom: 18,
+  },
+
+  paper: {
+    backgroundColor: '#fff',
+    padding: 18,
+    borderRadius: 6,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+  },
+
+  headerImage: {
+    width: '100%',
+    height: 90,
+    resizeMode: 'contain',
+    marginBottom: 12,
+  },
+
+  infoCol: {
+    marginBottom: 12,
+  },
+
+  infoLabel: {
+    color: '#666',
+    fontWeight: '600',
+  },
+
+  infoValue: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#222',
+  },
+
+  tableWrap: {
+    marginTop: 12,
+    borderWidth: 1,
+    borderColor: '#eee',
+    borderRadius: 6,
+    overflow: 'hidden',
+  },
+
+  tableRow: {
+    flexDirection: 'row',
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    backgroundColor: '#fff',
+  },
+
+  tableHeader: {
+    backgroundColor: '#fafafa',
+  },
+
+  td: {
+    flex: 1,
+    fontSize: 14,
+    color: '#222',
+  },
+
+  th: {
+    fontWeight: '700',
+    color: '#444',
+  },
+
+  linkBtn: {
+    marginTop: 16,
+    alignSelf: 'flex-end',
+    backgroundColor: '#1976d2',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 6,
+  },
 });
 
 export default MyJourney;

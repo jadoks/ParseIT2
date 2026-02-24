@@ -15,8 +15,8 @@ import {
 interface DrawerMenuProps {
   isFixed: boolean;
   onClose?: () => void;
-  onNavigate?: (screen: 'home' | 'game' | 'videos'  | 'myjourney' | 'profile' | 'messenger' | 'assignments' | 'coursedetail') => void;
-  activeScreen?: 'home' | 'game' | 'videos'  | 'myjourney' | 'profile' | 'messenger' | 'assignments' | 'coursedetail';
+  onNavigate?: (screen: 'home' | 'game' | 'videos'  | 'myjourney' | 'profile' | 'messenger' | 'assignments' | 'coursedetail' | 'community') => void;
+  activeScreen?: 'home' | 'game' | 'videos'  | 'myjourney' | 'profile' | 'messenger' | 'assignments' | 'coursedetail' | 'community';
   userName?: string;
   userEmail?: string;
   onAvatarPress?: () => void;
@@ -124,6 +124,8 @@ const DrawerMenu = ({ isFixed, onClose, onNavigate, activeScreen, userName, user
         <MenuItem 
           iconSource={require('../../assets/images/users-solid.png')} 
           label="Community" 
+          onPress={() => { onNavigate?.('community'); if (!isFixed) onClose?.(); }}
+          active={activeScreen === 'community'}
         />
       
         <MenuItem 
