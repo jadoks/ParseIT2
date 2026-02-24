@@ -26,8 +26,8 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
 
 interface HeaderProps {
   isLargeScreen: boolean;
-  activeScreen?: 'home' | 'game' | 'videos' | 'analytics' | 'myjourney' | 'profile' | 'messenger' | 'assignments' | 'coursedetail';
-  onNavigate?: (screen: 'home' | 'game' | 'videos' | 'analytics' | 'myjourney' | 'profile' | 'messenger' | 'assignments' | 'coursedetail') => void;
+  activeScreen?: 'home' | 'game' | 'videos' | 'analytics' | 'myjourney' | 'profile' | 'messenger' | 'assignments' | 'coursedetail' | 'community';
+  onNavigate?: (screen: 'home' | 'game' | 'videos' | 'analytics' | 'myjourney' | 'profile' | 'messenger' | 'assignments' | 'coursedetail' | 'community') => void;
   onSearchChange?: (query: string) => void;
 }
 
@@ -72,9 +72,9 @@ const Header: React.FC<HeaderProps> = ({ isLargeScreen: propIsLargeScreen, activ
     setIsSearchExpanded(expand);
   };
 
-  const getIconColor = (screen: 'home' | 'game' | 'videos' | 'analytics' | 'myjourney' | 'profile' | 'messenger') => (activeScreen === screen ? '#D32F2F' : '#000000');
+  const getIconColor = (screen: 'home' | 'game' | 'videos' | 'analytics' | 'myjourney' | 'profile' | 'messenger' | 'community' ) => (activeScreen === screen ? '#D32F2F' : '#000000');
 
-  const isActive = (screen: 'home' | 'game' | 'videos' | 'analytics' | 'myjourney' | 'profile' | 'messenger') => activeScreen === screen;
+  const isActive = (screen: 'home' | 'game' | 'videos' | 'analytics' | 'myjourney' | 'profile' | 'messenger' | 'community') => activeScreen === screen;
 
 
   // Mobile Layout (Phone)
