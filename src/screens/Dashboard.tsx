@@ -13,6 +13,7 @@ interface DashboardProps {
 const Dashboard = ({ announcements = [], onCoursePress, onAssignmentPress }: DashboardProps) => {
   return (
     <ScrollView style={styles.container}>
+       <Text style={styles.pageTitle}>Announcements</Text>
       {/* Announcement Banner with Navigation Arrows */}
       {announcements && announcements.length > 0 ? (
         <AnnouncementBanner announcements={announcements} />
@@ -29,7 +30,7 @@ const Dashboard = ({ announcements = [], onCoursePress, onAssignmentPress }: Das
       )}
 
     
-
+       <Text style={styles.pageTitle}>Classes</Text>
       <View style={styles.grid}>
         {[1, 2, 3, 4, 5, 6].map((item) => (
           <CourseCard 
@@ -46,7 +47,7 @@ const Dashboard = ({ announcements = [], onCoursePress, onAssignmentPress }: Das
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 20 , marginBottom: 20},
+  container: { flex: 1, padding: 20 , marginBottom: 10},
   banner: {
     backgroundColor: '#E53935',
     borderRadius: 40,
@@ -55,6 +56,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 20,
   },
+     pageTitle: { fontSize: 25, fontWeight: 'bold', paddingBottom: 10,  textAlign: 'left', marginTop: 10, paddingHorizontal: 12,marginLeft: 10 },
   bannerContent: { alignItems: 'center' },
   bannerDay: { color: '#FFF', fontSize: 14 },
   bannerLocation: { color: '#FFF', fontSize: 18, fontWeight: 'bold' },

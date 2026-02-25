@@ -62,7 +62,7 @@ const Game = () => {
 
 const styles = StyleSheet.create({
   container: { flex: 1, padding: 20 },
-  pageTitle: { fontSize: 25, fontWeight: 'bold', paddingBottom: 10,  textAlign: 'center', borderColor: '#bdbdbd', borderBottomWidth: 2, marginBottom: 20 },
+  pageTitle: { fontSize: 25, fontWeight: 'bold', paddingBottom: 10,  textAlign: 'left',  marginBottom: 20 },
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',

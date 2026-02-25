@@ -81,7 +81,7 @@ const AnnouncementModal: React.FC<AnnouncementModalProps> = ({
           style={[
             styles.container,
             { 
-              width: isSmallScreen ? '100%' : '100%',
+              width: isSmallScreen ? undefined : '100%',
               maxWidth: isSmallScreen ? '80%' : 1200,
               height: isSmallScreen ? undefined : undefined,
               maxHeight: isSmallScreen ? 230 : undefined 

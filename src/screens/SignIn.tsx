@@ -9,9 +9,11 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  View
+  View,
+  useWindowDimensions
 } from 'react-native';
-import { heightPercentageToDP as hp, widthPercentageToDP as wp } from 'react-native-responsive-screen';
+import { widthPercentageToDP as wp } from 'react-native-responsive-screen';
+
 interface SignInProps {
   onLogIn?: () => void;
 }
@@ -20,6 +22,9 @@ const SignIn = ({ onLogIn }: SignInProps) => {
   const [id, setId] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+
+  const { width } = useWindowDimensions();
+  const isLargeScreen = width >= 1024;
 
   const handleLogIn = () => {
     console.log('Log In pressed', { id, password });
@@ -32,16 +37,25 @@ const SignIn = ({ onLogIn }: SignInProps) => {
 
   return (
     <ImageBackground
-      source={require('../../assets/images/ctu_argao_banner.jpg')}
+      source={
+        isLargeScreen
+          ? require('../../assets/images/ctu_argao_banner_LargeScreen.jpg')
+          : require('../../assets/images/ctu_argao_banner.jpg')
+      }
       style={styles.backgroundImage}
       resizeMode="cover"
     >
-      
       <KeyboardAvoidingView 
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={styles.container}
+        style={[
+          styles.container,
+          { width: isLargeScreen ? '30%' : '100%' }
+        ]}
       >
-        <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+        >
           {/* Logo */}
           <View style={styles.logoContainer}>
             <Image 
@@ -77,9 +91,7 @@ const SignIn = ({ onLogIn }: SignInProps) => {
               onChangeText={setPassword}
               secureTextEntry={!showPassword}
               autoCapitalize="none"
-              
             />
-           
           </View>
 
           {/* Log In Button */}
@@ -91,12 +103,11 @@ const SignIn = ({ onLogIn }: SignInProps) => {
             <Text style={styles.logInText}>Log In</Text>
           </TouchableOpacity>
 
-
-
           {/* Forgot Password Link */}
           <TouchableOpacity onPress={handleForgotPassword}>
             <Text style={styles.forgotPassword}>Forgot Password?</Text>
           </TouchableOpacity>
+
         </ScrollView>
       </KeyboardAvoidingView>
     </ImageBackground>
@@ -108,48 +119,36 @@ const styles = StyleSheet.create({
     flex: 1,
     width: '100%',
     height: '100%',
-     overflow: 'hidden',
+    overflow: 'hidden',
   },
-    gradientOverlay: {
-        position: 'absolute',
-        top: 0,
-        left: 0,
-        width: wp('20'),           // 35% of width
-        height: hp('40'),          // 65% of height
-        backgroundColor: 'rgba(230, 180, 180, 0.6)',
-        borderBottomRightRadius: wp('100'), // full width = very soft curve
-        opacity: 0.95,
-        
-    },
+
   container: {
     flex: 1,
-    width: '100%',
-    alignItems: 'stretch',
     alignSelf: 'center',
-     
   },
-  scrollContent: {
 
+  scrollContent: {
     flexGrow: 1,
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 30,
     paddingVertical: 40,
   },
+
   logoContainer: {
-    marginBottom: 32,           
-    width: wp('20'),           
+    marginBottom: 32,
+    width: wp('20'),
     height: 100,
     justifyContent: 'center',
     alignItems: 'center',
-    // backgroundColor: '#FFF', // ← remove or keep depending on your logo
-    // borderRadius: 50,        // ← remove or keep for circle effect
-    overflow: 'hidden',        // helpful when using borderRadius
+    overflow: 'hidden',
   },
+
   logoImage: {
     width: '100%',
     height: '100%',
   },
+
   heading: {
     fontSize: 36,
     fontWeight: '700',
@@ -157,6 +156,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     textAlign: 'center',
   },
+
   subheading: {
     fontSize: 16,
     color: '#333',
@@ -164,6 +164,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontWeight: '500',
   },
+
   input: {
     width: '100%',
     backgroundColor: '#F5F5F5',
@@ -176,6 +177,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#EEE',
   },
+
   passwordContainer: {
     width: '100%',
     flexDirection: 'row',
@@ -186,6 +188,7 @@ const styles = StyleSheet.create({
     borderColor: '#EEE',
     marginBottom: 24,
   },
+
   passwordInput: {
     flex: 1,
     paddingHorizontal: 16,
@@ -193,13 +196,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#000',
   },
-  togglePasswordBtn: {
-    padding: 8,
-  },
-  passwordIcon: {
-    fontSize: 20,
-    color: '#D32F2F',
-  },
+
   logInButton: {
     width: '100%',
     backgroundColor: '#D32F2F',
@@ -214,18 +211,19 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 5,
   },
+
   logInText: {
     color: '#FFF',
     fontSize: 18,
     fontWeight: '700',
   },
+
   forgotPassword: {
     fontSize: 14,
     color: '#000',
     fontWeight: '500',
     textDecorationLine: 'none',
   },
-
 });
 
 export default SignIn;

@@ -208,7 +208,7 @@ export default function App() {
             </View>
           </ScrollView>
           <View style={styles.chatInputRow}>
-            <TextInput placeholder="Type your question..." placeholderTextColor="rgba(255,255,255,0.5)" style={styles.chatInput} />
+            <TextInput placeholder="Type your question..." placeholderTextColor="rgba(0, 0, 0, 0.5)" style={styles.chatInput} />
             <TouchableOpacity style={styles.chatSendBtn}>
               <Text style={{ color: '#fff' }}>Send</Text>
             </TouchableOpacity>
@@ -311,10 +311,10 @@ const styles = StyleSheet.create({
     zIndex: 30,
     width: 360,
     height: 520,
-    backgroundColor: '#171717',
+    backgroundColor: '#fffefe',
     borderRadius: 12,
     padding: 12,
-    shadowColor: '#000',
+    shadowColor: '#db0c0c',
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.25,
     shadowRadius: 12,
@@ -327,14 +327,14 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 8,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.06)'
+    borderBottomColor: 'rgba(135, 1, 1, 0.43)'
   },
-  chatTitle: { color: '#fff', fontWeight: '700', fontSize: 16 },
+  chatTitle: { color: '#D32F2F', fontWeight: '700', fontSize: 16 },
   chatClose: { color: '#fff', fontSize: 20 },
   chatMessages: { flex: 1, marginVertical: 10 },
-  chatBubbleUser: { alignSelf: 'flex-end', backgroundColor: '#4B5563', color: '#fff', padding: 10, borderRadius: 16, marginVertical: 6, maxWidth: '85%' },
-  chatBubbleOther: { alignSelf: 'flex-start', backgroundColor: '#2a2a2a', color: '#fff', padding: 10, borderRadius: 16, marginVertical: 6, maxWidth: '85%' },
+  chatBubbleUser: { alignSelf: 'flex-end', backgroundColor: '#D32F2F', color: '#fff', padding: 10, borderRadius: 16, marginVertical: 6, maxWidth: '85%' },
+  chatBubbleOther: { alignSelf: 'flex-start', backgroundColor: '#D32F2F', color: '#fff', padding: 10, borderRadius: 16, marginVertical: 6, maxWidth: '85%' },
   chatInputRow: { flexDirection: 'row', alignItems: 'center', marginTop: 8 },
-  chatInput: { flex: 1, backgroundColor: '#0f0f0f', color: '#fff', paddingHorizontal: 12, paddingVertical: 10, borderRadius: 999 },
+  chatInput: { flex: 1, backgroundColor: '#ffffff', color: '#000000', paddingHorizontal: 12, paddingVertical: 10, borderRadius: 999, borderColor: '#a90000dc', borderWidth: 2 },
   chatSendBtn: { marginLeft: 8, backgroundColor: '#D32F2F', paddingHorizontal: 12, paddingVertical: 10, borderRadius: 10 }
 });

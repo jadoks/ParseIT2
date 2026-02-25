@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
   Alert,
   FlatList,
@@ -7,13 +7,13 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
+  TouchableWithoutFeedback,
   View,
   useWindowDimensions
 } from 'react-native';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
-import { Assignment, Comment, FileUpload, MOCK_ASSIGNMENTS } from '../data/mockAssignments';
+import { Assignment, MOCK_ASSIGNMENTS } from '../data/mockAssignments';
 
 interface CourseCardProps {
   title?: string;
@@ -23,60 +23,30 @@ interface CourseCardProps {
   onAssignmentPress?: () => void;
 }
 
-const CourseCard = ({
+const CourseCard: React.FC<CourseCardProps> = ({
   title = 'CC112 – Data Structures and Algorithms',
   instructor = 'Prof. Maria L. Santos, MIT',
   section = 'Section A',
   onPress,
   onAssignmentPress,
-}: CourseCardProps) => {
-  const { width, height } = useWindowDimensions();
+}) => {
+  const { width } = useWindowDimensions();
   const isSmallScreen = width < 380;
   const isTablet = width >= 768;
   const isLargeTablet = width >= 1024;
 
   const [showAssignments, setShowAssignments] = useState(false);
   const [selectedAssignment, setSelectedAssignment] = useState<Assignment | null>(null);
-  const [commentText, setCommentText] = useState('');
+
+  // Dropdown state for triple-dot
+  const [dropdownVisible, setDropdownVisible] = useState(false);
+
+  // Ref for the triple-dot to position dropdown if needed
+  const tripleDotRef = useRef<View>(null);
 
   const courseAssignments = MOCK_ASSIGNMENTS.filter(a => a.courseName === title);
 
-  const initialComments: { [key: string]: Comment[] } =
-    Object.fromEntries(courseAssignments.map(a => [a.id, a.comments || []]));
-
-  const initialFiles: { [key: string]: FileUpload[] } =
-    Object.fromEntries(courseAssignments.map(a => [a.id, a.files || []]));
-
-  const [commentsState, setCommentsState] =
-    useState<{ [key: string]: Comment[] }>(initialComments);
-
-  const [filesState, setFilesState] =
-    useState<{ [key: string]: FileUpload[] }>(initialFiles);
-
-  const handleAddComment = () => {
-    if (!selectedAssignment || !commentText.trim()) return;
-
-    const updated = [
-      ...(commentsState[selectedAssignment.id] || []),
-      {
-        id: `c${Date.now()}`,
-        author: 'You',
-        content: commentText,
-        timestamp: new Date().toLocaleString(),
-        isInstructor: false,
-      },
-    ];
-
-    setCommentsState({ ...commentsState, [selectedAssignment.id]: updated });
-    setCommentText('');
-  };
-
-  const handleFileUpload = () => {
-    if (!selectedAssignment) return;
-    Alert.alert('Upload', 'File picker not implemented in demo.');
-  };
-
-  // Responsive Columns
+  // Responsive columns
   let cols: number;
   if (isLargeTablet) cols = 4;
   else if (isTablet) cols = 3;
@@ -85,7 +55,6 @@ const CourseCard = ({
 
   const horizontalPadding = 16;
   const gap = 16;
-
   const cardWidth =
     cols === 1
       ? width - horizontalPadding * 2
@@ -105,136 +74,119 @@ const CourseCard = ({
       'NSTP1 – Civic Welfare Training Service': require('../../assets/parseclass/NSTP1.jpg'),
       'PATHFIT2 – Exercise-Based Fitness Activities': require('../../assets/parseclass/PATHFIT2.jpg'),
     };
-
     return imageMap[title] || require('../../assets/parseclass/AP1.jpg');
   };
 
   return (
-    <View>
-      <TouchableOpacity
-        style={[styles.card, { width: cardWidth }]}
-        activeOpacity={0.9}
-        onPress={onPress}
-      >
-        {/* Banner */}
-        <View style={{ height: bannerHeight }}>
-          <Image
-            source={getCourseImage()}
-            style={styles.bannerImage}
-            resizeMode="cover"
-          />
-
-          <View style={styles.overlay} />
-
-          <View style={styles.bannerTextContainer}>
-            <Text style={styles.bannerTitle}>{title}</Text>
-            {section && <Text style={styles.sectionLabel}>{section}</Text>}
-            <Text style={styles.bannerInstructor}>{instructor}</Text>
-          </View>
-        </View>
-
-        {/* Card Footer */}
-        <View style={styles.cardFooter}>
-          <TouchableOpacity
-            style={styles.iconButton}
-            onPress={() => {
-              if (onAssignmentPress) {
-                onAssignmentPress();
-              } else {
-                setShowAssignments(true);
-              }
-            }}
-          >
-            <MaterialCommunityIcons
-              name="clipboard-list-outline"
-              size={22}
-              color="#5f6368"
+    <TouchableWithoutFeedback onPress={() => setDropdownVisible(false)}>
+      <View>
+        <TouchableOpacity
+          style={[styles.card, { width: cardWidth }]}
+          activeOpacity={0.9}
+          onPress={onPress}
+        >
+          {/* Banner */}
+          <View style={{ height: bannerHeight }}>
+            <Image
+              source={getCourseImage()}
+              style={styles.bannerImage}
+              resizeMode="cover"
             />
-          </TouchableOpacity>
-        </View>
-      </TouchableOpacity>
-
-      {/* ASSIGNMENT MODAL */}
-      <Modal
-        visible={showAssignments}
-        animationType="slide"
-        transparent
-        onRequestClose={() => setShowAssignments(false)}
-      >
-        <ScrollView contentContainerStyle={modalStyles.container}>
-          <View style={modalStyles.header}>
-            <Text style={modalStyles.title}>
-              Assignments — {title}
-            </Text>
-            <TouchableOpacity onPress={() => setShowAssignments(false)}>
-              <Text style={modalStyles.close}>✕</Text>
-            </TouchableOpacity>
+            <View style={styles.overlay} />
+            <View style={styles.bannerTextContainer}>
+              <Text style={styles.bannerTitle}>{title}</Text>
+              {section && <Text style={styles.sectionLabel}>{section}</Text>}
+              <Text style={styles.bannerInstructor}>{instructor}</Text>
+            </View>
           </View>
 
-          <FlatList
-            data={courseAssignments}
-            keyExtractor={i => i.id}
-            scrollEnabled={false}
-            renderItem={({ item }) => (
+          {/* Card Footer */}
+          <View style={styles.cardFooter}>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
               <TouchableOpacity
-                style={modalStyles.assignmentCard}
-                onPress={() => setSelectedAssignment(item)}
+                style={styles.iconButton}
+                onPress={() => setShowAssignments(!showAssignments)}
               >
-                <Text style={modalStyles.assignmentTitle}>
-                  {item.title}
-                </Text>
-                <Text style={modalStyles.assignmentSubtitle}>
-                  {item.dueDate} • {item.status}
-                </Text>
+                <MaterialCommunityIcons
+                  name="clipboard-list-outline"
+                  size={22}
+                  color="#5f6368"
+                />
               </TouchableOpacity>
-            )}
-          />
 
-          {selectedAssignment && (
-            <View style={modalStyles.detailBox}>
-              <View style={modalStyles.detailHeader}>
-                <Text style={modalStyles.detailTitle}>
-                  {selectedAssignment.title}
+              {/* Triple-dot for dropdown */}
+              <View style={{ position: 'relative', marginLeft: 8 }}>
+                <TouchableOpacity
+                  onPress={(e) => {
+                    setDropdownVisible(!dropdownVisible);
+                  }}
+                  ref={tripleDotRef}
+                >
+                  <MaterialCommunityIcons
+                    name="dots-vertical"
+                    size={22}
+                    color="#5f6368"
+                  />
+                </TouchableOpacity>
+
+                {dropdownVisible && (
+                  <View style={styles.dropdownMenu}>
+                    <TouchableOpacity
+                      style={styles.menuItem}
+                      onPress={() => {
+                        Alert.alert('Leave', 'Leave clicked!');
+                        setDropdownVisible(false);
+                      }}
+                    >
+                      <MaterialCommunityIcons name="exit-to-app" size={16} color="#E53935" />
+                      <Text style={styles.menuText}>Leave</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+              </View>
+            </View>
+          </View>
+        </TouchableOpacity>
+
+        {/* Assignment Modal */}
+        {showAssignments && (
+          <Modal
+            visible={showAssignments}
+            animationType="slide"
+            transparent
+            onRequestClose={() => setShowAssignments(false)}
+          >
+            <ScrollView contentContainerStyle={modalStyles.container}>
+              <View style={modalStyles.header}>
+                <Text style={modalStyles.title}>
+                  Assignments — {title}
                 </Text>
-                <TouchableOpacity onPress={() => setSelectedAssignment(null)}>
+                <TouchableOpacity onPress={() => setShowAssignments(false)}>
                   <Text style={modalStyles.close}>✕</Text>
                 </TouchableOpacity>
               </View>
 
-              <Text style={modalStyles.detailText}>
-                {selectedAssignment.description}
-              </Text>
-
-              <TouchableOpacity
-                style={modalStyles.uploadBtn}
-                onPress={handleFileUpload}
-              >
-                <Text style={{ color: '#fff', fontWeight: '600' }}>
-                  Upload
-                </Text>
-              </TouchableOpacity>
-
-              <TextInput
-                value={commentText}
-                onChangeText={setCommentText}
-                placeholder="Add comment"
-                style={modalStyles.commentInput}
-                multiline
+              <FlatList
+                data={courseAssignments}
+                keyExtractor={i => i.id}
+                scrollEnabled={false}
+                renderItem={({ item }) => (
+                  <TouchableOpacity
+                    style={modalStyles.assignmentCard}
+                    onPress={() => setSelectedAssignment(item)}
+                  >
+                    <Text style={modalStyles.assignmentTitle}>{item.title}</Text>
+                    <Text style={modalStyles.assignmentSubtitle}>
+                      {item.dueDate} • {item.status}
+                    </Text>
+                  </TouchableOpacity>
+                )}
               />
-
-              <TouchableOpacity
-                style={modalStyles.sendBtn}
-                onPress={handleAddComment}
-              >
-                <Text style={{ color: '#fff', fontWeight: '600' }}>
-                  Send
-                </Text>
-              </TouchableOpacity>
-            </View>
-          )}
-        </ScrollView>
-      </Modal>
-    </View>
+            </ScrollView>
+          </Modal>
+        )}
+      </View>
+    </TouchableWithoutFeedback>
   );
 };
 
@@ -249,6 +201,8 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.08,
     shadowRadius: 6,
     shadowOffset: { width: 0, height: 3 },
+    borderBottomColor: 'rgba(250, 0, 0, 0.67)',
+    borderBottomWidth: 4,
   },
   bannerImage: {
     width: '100%',
@@ -290,12 +244,38 @@ const styles = StyleSheet.create({
   iconButton: {
     padding: 6,
   },
+  dropdownMenu: {
+    position: 'absolute',
+    marginTop: -40,
+    right: 0,
+    backgroundColor: '#ffffff',
+    borderRadius: 8,
+    paddingVertical: 6,
+    width: 80,
+    elevation: 6,
+    borderColor: '#E53935',
+    borderWidth: 2,
+
+    zIndex: 999,
+  },
+  menuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 2,
+  },
+  menuText: {
+    color: '#E53935',
+    fontWeight: '600',
+    marginLeft: 6,
+  },
 });
 
 const modalStyles = StyleSheet.create({
   container: {
     padding: 20,
     backgroundColor: '#fff',
+    flexGrow: 1,
   },
   header: {
     flexDirection: 'row',
@@ -323,44 +303,6 @@ const modalStyles = StyleSheet.create({
     color: '#666',
     fontSize: 12,
     marginTop: 4,
-  },
-  detailBox: {
-    marginTop: 20,
-    borderTopWidth: 1,
-    borderTopColor: '#eee',
-    paddingTop: 15,
-  },
-  detailHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 10,
-  },
-  detailTitle: {
-    fontWeight: '700',
-    fontSize: 16,
-  },
-  detailText: {
-    marginBottom: 12,
-    color: '#555',
-  },
-  uploadBtn: {
-    backgroundColor: '#1a73e8',
-    padding: 10,
-    borderRadius: 6,
-    alignItems: 'center',
-    marginBottom: 10,
-  },
-  commentInput: {
-    backgroundColor: '#f1f3f4',
-    borderRadius: 6,
-    padding: 10,
-    marginBottom: 10,
-  },
-  sendBtn: {
-    backgroundColor: '#1a73e8',
-    padding: 10,
-    borderRadius: 6,
-    alignItems: 'center',
   },
 });
 

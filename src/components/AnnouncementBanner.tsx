@@ -78,7 +78,9 @@ const AnnouncementBanner = ({ announcements }: AnnouncementBannerProps) => {
   const currentAnnouncement = announcements[currentIndex];
 
   return (
+    
     <GestureHandlerRootView style={styles.bannerContainer}>
+      
       <View
         onStartShouldSetResponder={() => shouldShowSwipe}
         onMoveShouldSetResponder={() => shouldShowSwipe}
