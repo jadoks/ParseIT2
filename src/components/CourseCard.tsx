@@ -138,7 +138,7 @@ const CourseCard: React.FC<CourseCardProps> = ({
                         setDropdownVisible(false);
                       }}
                     >
-                      <MaterialCommunityIcons name="exit-to-app" size={16} color="#E53935" />
+                      <MaterialCommunityIcons name="exit-to-app" size={16} color="#fff" />
                       <Text style={styles.menuText}>Leave</Text>
                     </TouchableOpacity>
                   </View>

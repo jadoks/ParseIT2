@@ -35,6 +35,8 @@ interface DrawerMenuProps {
   userName?: string;
   userEmail?: string;
   onAvatarPress?: () => void;
+
+  setIsLoggedIn: React.Dispatch<React.SetStateAction<boolean>>;
 }
 
 const MenuItem = ({
@@ -90,6 +92,7 @@ const DrawerMenu = ({
   userName,
   userEmail,
   onAvatarPress,
+  setIsLoggedIn,           
 }: DrawerMenuProps) => {
 
   const navigation = useNavigation<any>();
@@ -103,6 +106,7 @@ const DrawerMenu = ({
   const isMobile = width < 768;
   const isTablet = width >= 768 && width < 1024;
   const isSmallMobile = width < 380;
+  const isLargeScreen = width >= 1024;
   const isOnMobileOrTablet = isMobile || isTablet;
 
   const hasOverflow = contentHeight > scrollViewHeight && scrollViewHeight > 0;
@@ -220,7 +224,7 @@ const DrawerMenu = ({
             <Text style={styles.modalTitle}>Settings</Text>
 
             <Pressable
-              style={(state) => [styles.modalButton, pressableWebHover(state)]}
+              style={(state) => [styles.modalButton, pressableWebHover(state), { width:  isLargeScreen ? '60%' : '90%' }]}
               onPress={() => alert('Change Email clicked')}
             >
               <MaterialCommunityIcons name="email" size={24} color="#D32F2F" style={{ marginRight: 12 }} />
@@ -228,7 +232,7 @@ const DrawerMenu = ({
             </Pressable>
 
             <Pressable
-              style={(state) => [styles.modalButton, pressableWebHover(state)]}
+              style={(state) => [styles.modalButton, pressableWebHover(state),  { width:  isLargeScreen ? '60%' : '90%' }]}
               onPress={() => alert('Change Password clicked')}
             >
               <MaterialCommunityIcons name="lock" size={24} color="#D32F2F" style={{ marginRight: 12 }} />
@@ -272,22 +276,23 @@ const DrawerMenu = ({
                 <Text style={styles.modalCloseText}>Cancel</Text>
               </Pressable>
 
-              <Pressable
-                style={styles.modalButton}
-                onPress={() => {
-                  setLogoutModalVisible(false);
+             <Pressable
+  style={styles.modalButton}
+  onPress={() => {
+    setLogoutModalVisible(false);
+    if (!isFixed) onClose?.();
 
-                  if (!isFixed) onClose?.();
+    // Optional: clear any saved login data
+    // AsyncStorage.removeItem('@user_token');   // example
+    // AsyncStorage.removeItem('@user_data');
 
-                  navigation.reset({
-                    index: 0,
-                    routes: [{ name: 'SignIn' }],
-                  });
-                }}
-              >
-                
-                <Text style={styles.modalButtonText}>Logout</Text>
-              </Pressable>
+    // This is what actually shows SignIn screen
+    // (because App.tsx checks if (!isLoggedIn) return <SignIn ... />
+    setIsLoggedIn(false);
+  }}
+>
+  <Text style={styles.modalButtonText}>Logout</Text>
+</Pressable>
             </View>
 
           </View>
@@ -326,9 +331,9 @@ const styles = StyleSheet.create({
   logoutLabel: { fontSize: 16, color: '#D32F2F', fontWeight: '600' },
 
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center' },
-  modalContainer: { backgroundColor: '#FFF', borderRadius: 12, padding: 20, alignItems: 'center' },
+  modalContainer: {backgroundColor: '#FFF', borderRadius: 12, padding: 20, alignItems: 'center' },
   modalTitle: { fontSize: 20, fontWeight: '700', marginBottom: 20 },
-  modalButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 12, backgroundColor: 'rgba(211,47,47,0.08)', borderRadius: 8 },
+  modalButton: { flexDirection: 'row', width: '90%', marginBottom: 15, alignItems: 'center', justifyContent: 'center', padding: 12, backgroundColor: 'rgba(211,47,47,0.08)', borderRadius: 8 },
   modalButtonText: { fontSize: 16, fontWeight: '600', color: '#D32F2F' },
   modalCloseBtn: { padding: 10 },
   modalCloseText: { fontSize: 16, color: '#888' },

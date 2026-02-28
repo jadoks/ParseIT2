@@ -256,9 +256,6 @@ const CourseDetail = ({ course = MOCK_COURSE, initialTab = 'materials', onBack }
         {onBack && (
           <TouchableOpacity onPress={onBack} style={styles.backButton}>
             <MaterialCommunityIcons name="arrow-left" size={24} color="#FFF">
-  <Text style={{ color: '#FFF', fontSize: 20, marginLeft: 5 , fontFamily: 'System'}}>
-    Back
-  </Text>
   </MaterialCommunityIcons>
           </TouchableOpacity>
         )}

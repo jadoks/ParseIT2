@@ -1,6 +1,6 @@
 import * as DocumentPicker from 'expo-document-picker';
 import React, { useState } from 'react';
-import { Alert, FlatList, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Alert, FlatList, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, useWindowDimensions } from 'react-native';
 import { MOCK_ASSIGNMENTS } from '../data/mockAssignments';
 
 interface Comment {
@@ -32,6 +32,10 @@ interface Assignment {
 }
 
 const Assignments = () => {
+
+  const { width } = useWindowDimensions();
+  const isLargeScreen = width >= 768;
+
   const [filter, setFilter] = useState<'all' | 'pending' | 'submitted' | 'graded'>('all');
   const [selectedAssignment, setSelectedAssignment] = useState<Assignment | null>(null);
   const [newComment, setNewComment] = useState('');
@@ -159,14 +163,10 @@ const Assignments = () => {
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'pending':
-        return '#FF9800';
-      case 'submitted':
-        return '#2196F3';
-      case 'graded':
-        return '#4CAF50';
-      default:
-        return '#999';
+      case 'pending': return '#FF9800';
+      case 'submitted': return '#2196F3';
+      case 'graded': return '#4CAF50';
+      default: return '#999';
     }
   };
 
@@ -186,7 +186,10 @@ const Assignments = () => {
         ))}
       </View>
 
-      <Text style={styles.countText}>{filteredAssignments.length} {filter === 'all' ? 'assignment' : filter}{filteredAssignments.length !== 1 ? 's' : ''}</Text>
+      <Text style={styles.countText}>
+        {filteredAssignments.length} {filter === 'all' ? 'assignment' : filter}
+        {filteredAssignments.length !== 1 ? 's' : ''}
+      </Text>
 
       <FlatList
         data={filteredAssignments}
@@ -196,121 +199,128 @@ const Assignments = () => {
         ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
       />
 
-      <Modal visible={selectedAssignment !== null} animationType="slide" transparent onRequestClose={() => { setSelectedAssignment(null); setShowUploadInput(false); setUploadFileName(''); }}>
+      <Modal
+        visible={selectedAssignment !== null}
+        animationType="slide"
+        transparent
+        onRequestClose={() => { setSelectedAssignment(null); setShowUploadInput(false); setUploadFileName(''); }}
+      >
         <View style={styles.modalOverlay}>
-          <ScrollView contentContainerStyle={styles.detailContainer}>
-            {selectedAssignment && (
-              <>
-                <View style={styles.detailHeader}>
-                  <TouchableOpacity onPress={() => { setSelectedAssignment(null); setShowUploadInput(false); setUploadFileName(''); }}>
-                    <Text style={styles.closeButton}>✕</Text>
-                  </TouchableOpacity>
-                  <Text style={styles.detailTitle}>{selectedAssignment.title}</Text>
-                  <View style={{ width: 30 }} />
-                </View>
-
-                <View style={styles.detailContent}>
-                  <View style={styles.infoCard}>
-                    <Text style={styles.courseName}>{selectedAssignment.courseName}</Text>
-                    <Text style={styles.description}>{selectedAssignment.description}</Text>
-
-                    <View style={styles.infoRow}>
-                      <Text style={styles.infoLabel}>Due Date:</Text>
-                      <Text style={styles.infoValue}>{selectedAssignment.dueDate}</Text>
-                    </View>
-
-                    {selectedAssignment.maxPoints && (
-                      <View style={styles.infoRow}>
-                        <Text style={styles.infoLabel}>Points:</Text>
-                        <Text style={styles.infoValue}>{selectedAssignment.points}/{selectedAssignment.maxPoints}</Text>
-                      </View>
-                    )}
+          <View style={[styles.modalWrapper, { width: isLargeScreen ? '70%' : '100%' }]}>
+            <ScrollView contentContainerStyle={styles.detailContainer}>
+              {selectedAssignment && (
+                <>
+                  <View style={styles.detailHeader}>
+                    <TouchableOpacity onPress={() => { setSelectedAssignment(null); setShowUploadInput(false); setUploadFileName(''); }}>
+                      <Text style={styles.closeButton}>✕</Text>
+                    </TouchableOpacity>
+                    <Text style={styles.detailTitle}>{selectedAssignment.title}</Text>
+                    <View style={{ width: 30 }} />
                   </View>
 
-                  <View style={styles.section}>
-                    <Text style={styles.sectionTitle}>📎 Files</Text>
+                  <View style={styles.detailContent}>
+                    <View style={styles.infoCard}>
+                      <Text style={styles.courseName}>{selectedAssignment.courseName}</Text>
+                      <Text style={styles.description}>{selectedAssignment.description}</Text>
 
-                    {(uploadedFiles[selectedAssignment.id] || []).length > 0 ? (
-                      <View>
-                        {(uploadedFiles[selectedAssignment.id] || []).map(file => (
-                          <View key={file.id} style={styles.fileItem}>
-                            <Text style={{ fontSize: 20 }}>📄</Text>
-                            <View style={styles.fileInfo}>
-                              <Text style={styles.fileName}>{file.fileName}</Text>
-                              <Text style={styles.fileDetails}>{file.fileSize} • {file.uploadedDate}</Text>
+                      <View style={styles.infoRow}>
+                        <Text style={styles.infoLabel}>Due Date:</Text>
+                        <Text style={styles.infoValue}>{selectedAssignment.dueDate}</Text>
+                      </View>
+
+                      {selectedAssignment.maxPoints && (
+                        <View style={styles.infoRow}>
+                          <Text style={styles.infoLabel}>Points:</Text>
+                          <Text style={styles.infoValue}>{selectedAssignment.points}/{selectedAssignment.maxPoints}</Text>
+                        </View>
+                      )}
+                    </View>
+
+                    <View style={styles.section}>
+                      <Text style={styles.sectionTitle}>📎 Files</Text>
+
+                      {(uploadedFiles[selectedAssignment.id] || []).length > 0 ? (
+                        <View>
+                          {(uploadedFiles[selectedAssignment.id] || []).map(file => (
+                            <View key={file.id} style={styles.fileItem}>
+                              <Text style={{ fontSize: 20 }}>📄</Text>
+                              <View style={styles.fileInfo}>
+                                <Text style={styles.fileName}>{file.fileName}</Text>
+                                <Text style={styles.fileDetails}>{file.fileSize} • {file.uploadedDate}</Text>
+                              </View>
+                              <TouchableOpacity onPress={() => handleRemoveAttachment(selectedAssignment.id, file.id)}>
+                                <Text style={styles.removeButton}>✕</Text>
+                              </TouchableOpacity>
                             </View>
-                            <TouchableOpacity onPress={() => handleRemoveAttachment(selectedAssignment.id, file.id)}>
-                              <Text style={styles.removeButton}>✕</Text>
+                          ))}
+                        </View>
+                      ) : (
+                        <Text style={styles.emptyText}>No files uploaded yet</Text>
+                      )}
+
+                      {!showUploadInput ? (
+                        <TouchableOpacity style={styles.uploadButton} onPress={handleFileUpload}>
+                          <Text style={styles.uploadButtonText}>+ Upload File</Text>
+                        </TouchableOpacity>
+                      ) : (
+                        <View style={{ marginTop: 8 }}>
+                          <TextInput placeholder="Filename (e.g. report.docx)" value={uploadFileName} onChangeText={setUploadFileName} style={styles.fileInput} placeholderTextColor="#999" />
+                          <View style={{ flexDirection: 'row', justifyContent: 'flex-start', gap: 8 }}>
+                            <TouchableOpacity onPress={handleAttachFile} style={[styles.uploadButton, { marginRight: 8 }]}>
+                              <Text style={styles.uploadButtonText}>Attach</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity onPress={() => { setShowUploadInput(false); setUploadFileName(''); }} style={{ paddingVertical: 10, paddingHorizontal: 12 }}>
+                              <Text style={{ color: '#333', fontWeight: '600' }}>Cancel</Text>
                             </TouchableOpacity>
                           </View>
-                        ))}
-                      </View>
-                    ) : (
-                      <Text style={styles.emptyText}>No files uploaded yet</Text>
-                    )}
-
-                    {!showUploadInput ? (
-                      <TouchableOpacity style={styles.uploadButton} onPress={handleFileUpload}>
-                        <Text style={styles.uploadButtonText}>+ Upload File</Text>
-                      </TouchableOpacity>
-                    ) : (
-                      <View style={{ marginTop: 8 }}>
-                        <TextInput placeholder="Filename (e.g. report.docx)" value={uploadFileName} onChangeText={setUploadFileName} style={styles.fileInput} placeholderTextColor="#999" />
-                        <View style={{ flexDirection: 'row', justifyContent: 'flex-start', gap: 8 }}>
-                          <TouchableOpacity onPress={handleAttachFile} style={[styles.uploadButton, { marginRight: 8 }]}>
-                            <Text style={styles.uploadButtonText}>Attach</Text>
-                          </TouchableOpacity>
-                          <TouchableOpacity onPress={() => { setShowUploadInput(false); setUploadFileName(''); }} style={{ paddingVertical: 10, paddingHorizontal: 12 }}>
-                            <Text style={{ color: '#333', fontWeight: '600' }}>Cancel</Text>
-                          </TouchableOpacity>
                         </View>
-                      </View>
-                    )}
+                      )}
 
-                    {(uploadedFiles[selectedAssignment.id] || []).length > 0 && (
-                      <TouchableOpacity onPress={handleSubmitAssignment} style={[styles.uploadButton, { marginTop: 12, backgroundColor: '#308C5D' }]}>
-                        <Text style={styles.uploadButtonText}>SUBMIT</Text>
-                      </TouchableOpacity>
-                    )}
-                  </View>
+                      {(uploadedFiles[selectedAssignment.id] || []).length > 0 && (
+                        <TouchableOpacity onPress={handleSubmitAssignment} style={[styles.uploadButton, { marginTop: 12, backgroundColor: '#308C5D' }]}>
+                          <Text style={styles.uploadButtonText}>SUBMIT</Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
 
-                  <View style={styles.section}>
-                    <Text style={styles.sectionTitle}>💬 Comments</Text>
-                    {(comments[selectedAssignment.id] || []).length > 0 ? (
-                      <View>
-                        {(comments[selectedAssignment.id] || []).map(comment => (
-                          <View key={comment.id} style={[styles.commentItem, comment.isInstructor && styles.instructorComment]}>
-                            <View style={styles.commentHeader}>
-                              <Text style={styles.commentAuthor}>{comment.author}</Text>
-                              {comment.isInstructor && <Text style={styles.instructorBadge}>Instructor</Text>}
+                    <View style={styles.section}>
+                      <Text style={styles.sectionTitle}>💬 Comments</Text>
+                      {(comments[selectedAssignment.id] || []).length > 0 ? (
+                        <View>
+                          {(comments[selectedAssignment.id] || []).map(comment => (
+                            <View key={comment.id} style={[styles.commentItem, comment.isInstructor && styles.instructorComment]}>
+                              <View style={styles.commentHeader}>
+                                <Text style={styles.commentAuthor}>{comment.author}</Text>
+                                {comment.isInstructor && <Text style={styles.instructorBadge}>Teacher</Text>}
+                              </View>
+                              <Text style={styles.commentContent}>{comment.content}</Text>
+                              <Text style={styles.commentTime}>{comment.timestamp}</Text>
                             </View>
-                            <Text style={styles.commentContent}>{comment.content}</Text>
-                            <Text style={styles.commentTime}>{comment.timestamp}</Text>
-                          </View>
-                        ))}
-                      </View>
-                    ) : (
-                      <Text style={styles.emptyText}>No comments yet</Text>
-                    )}
+                          ))}
+                        </View>
+                      ) : (
+                        <Text style={styles.emptyText}>No comments yet</Text>
+                      )}
 
-                    <View style={styles.commentInputContainer}>
-                      <TextInput
-                        style={styles.commentInput}
-                        placeholder="Add a comment..."
-                        placeholderTextColor="#999"
-                        value={newComment}
-                        onChangeText={setNewComment}
-                        multiline
-                      />
-                      <TouchableOpacity style={[styles.sendButton, !newComment.trim() && styles.sendButtonDisabled]} disabled={!newComment.trim()} onPress={handleAddComment}>
-                        <Text style={styles.sendButtonText}>Send</Text>
-                      </TouchableOpacity>
+                      <View style={styles.commentInputContainer}>
+                        <TextInput
+                          style={styles.commentInput}
+                          placeholder="Add a comment..."
+                          placeholderTextColor="#999"
+                          value={newComment}
+                          onChangeText={setNewComment}
+                          multiline
+                        />
+                        <TouchableOpacity style={[styles.sendButton, !newComment.trim() && styles.sendButtonDisabled]} disabled={!newComment.trim()} onPress={handleAddComment}>
+                          <Text style={styles.sendButtonText}>Send</Text>
+                        </TouchableOpacity>
+                      </View>
                     </View>
                   </View>
-                </View>
-              </>
-            )}
-          </ScrollView>
+                </>
+              )}
+            </ScrollView>
+          </View>
         </View>
       </Modal>
     </ScrollView>
@@ -337,7 +347,8 @@ const styles = StyleSheet.create({
   overdueText: { color: '#D32F2F', fontWeight: '700' },
   pointsText: { fontSize: 12, color: '#888', fontWeight: '500' },
 
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)' },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'center', alignItems: 'center' },
+  modalWrapper: { maxHeight: '90%', backgroundColor: '#fff', borderRadius: 12, overflow: 'hidden' },
   detailContainer: { padding: 16, paddingBottom: 40, backgroundColor: '#fff' },
   detailHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
   closeButton: { fontSize: 20, color: '#666' },
@@ -345,9 +356,9 @@ const styles = StyleSheet.create({
   detailContent: { },
   infoCard: { backgroundColor: '#F9F9F9', borderRadius: 10, padding: 12, marginBottom: 12, borderLeftWidth: 4, borderLeftColor: '#D32F2F' },
   description: { color: '#666', marginVertical: 8, lineHeight: 20, fontSize: 13 },
-  infoRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginVertical: 6 },
-  infoLabel: { fontWeight: '600', color: '#666', fontSize: 13 },
-  infoValue: { fontWeight: '700', color: '#000', fontSize: 13 },
+  infoRow: { flexDirection: 'row',  alignItems: 'center', marginVertical: 6 },
+  infoLabel: { fontWeight: '600', color: '#666', fontSize: 13},
+  infoValue: { fontWeight: '700', color: '#000', fontSize: 13, marginLeft: 10},
 
   section: { marginBottom: 16 },
   sectionTitle: { fontSize: 16, fontWeight: '700', color: '#000', marginBottom: 8 },
@@ -365,8 +376,9 @@ const styles = StyleSheet.create({
   commentItem: { backgroundColor: '#F9F9F9', borderRadius: 8, padding: 10, marginBottom: 8, borderLeftWidth: 3, borderLeftColor: '#2196F3' },
   instructorComment: { backgroundColor: '#FFF9C4', borderLeftColor: '#FBC02D' },
   commentHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
+
   commentAuthor: { fontWeight: '700', color: '#000', fontSize: 13 },
-  instructorBadge: { fontWeight: '700', color: '#FFF', backgroundColor: '#FBC02D', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
+  instructorBadge: { fontWeight: '500', color: '#1f1f1fe3', backgroundColor: '#fbc12d99', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
   commentContent: { fontSize: 13, color: '#333', lineHeight: 18, marginBottom: 6 },
   commentTime: { fontSize: 11, color: '#888', fontWeight: '500' },
   commentInputContainer: { marginTop: 12, borderTopWidth: 1, borderTopColor: '#E0E0E0', paddingTop: 12 },

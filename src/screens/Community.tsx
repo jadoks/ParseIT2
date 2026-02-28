@@ -1,15 +1,15 @@
 import React, { useState } from 'react';
 import {
-    FlatList,
-    Image,
-    Keyboard,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    TouchableWithoutFeedback,
-    View,
+  FlatList,
+  Image,
+  Keyboard,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  TouchableWithoutFeedback,
+  View,
 } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 
@@ -29,7 +29,7 @@ interface CommunityProps {
 const samplePosts: Post[] = [
   {
     id: '1',
-    userName: 'John Doe',
+    userName: 'Ramcee Bading',
     avatar: require('../../assets/images/default_profile.png'),
     dateTime: 'Feb 24, 2026 10:30 AM',
     content: 'How do I solve this programming problem?',
@@ -37,7 +37,7 @@ const samplePosts: Post[] = [
   },
   {
     id: '2',
-    userName: 'Jane Smith',
+    userName: 'Abai Clipord',
     avatar: require('../../assets/images/default_profile.png'),
     dateTime: 'Feb 23, 2026 2:15 PM',
     content: 'Is anyone attending the workshop tomorrow?',

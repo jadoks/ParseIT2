@@ -2,9 +2,9 @@ import React, { useState } from 'react';
 import { FlatList, Image, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
 const CONVERSATIONS = [
-  { id: 'c1', name: 'Ramcee Bading', last: 'See you in class!', avatar: require('../../assets/images/default_profile.png'), time: '2:15 PM' },
-  { id: 'c2', name: 'Abai Clipord', last: 'Thanks!', avatar: require('../../assets/images/default_profile.png'), time: '1:02 PM' },
-  { id: 'c3', name: 'Professor Tantan', last: 'Assignment due tomorrow.', avatar: require('../../assets/images/default_profile.png'), time: 'Yesterday' },
+  { id: 'c1', name: 'Networking 1', last: 'See you in class!', avatar: require('../../assets/images/default_profile.png'), time: '2:15 PM' },
+  { id: 'c2', name: 'Programming 1', last: 'Thanks!', avatar: require('../../assets/images/default_profile.png'), time: '1:02 PM' },
+  { id: 'c3', name: 'Web Dev', last: 'Assignment due tomorrow.', avatar: require('../../assets/images/default_profile.png'), time: 'Yesterday' },
 ];
 
 const SAMPLE_MESSAGES = [

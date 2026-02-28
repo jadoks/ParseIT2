@@ -38,33 +38,117 @@ const ANNOUNCEMENTS: Announcement[] = [
 
 export default function App() {
   const { width } = useWindowDimensions();
-  const isLargeScreen = width >= 768; // Tablet/Web breakpoint
+  const isLargeScreen = width >= 768;
+
   const [isMobileDrawerOpen, setMobileDrawerOpen] = useState(false);
-  const [activeScreen, setActiveScreen] = useState<'home' | 'game' | 'videos'  | 'myjourney' | 'profile' | 'messenger' | 'assignments' | 'coursedetail' | 'community'>('home');
-  const [lastScreen, setLastScreen] = useState<'home' | 'game' | 'videos' | 'myjourney' | 'messenger' | 'assignments' | 'coursedetail' | 'community'>('home');
+  const [activeScreen, setActiveScreen] = useState<
+    'home' | 'game' | 'videos' | 'myjourney' | 'profile' | 'messenger' | 'assignments' | 'coursedetail' | 'community'
+  >('home');
+  const [lastScreen, setLastScreen] = useState<
+    'home' | 'game' | 'videos' | 'myjourney' | 'messenger' | 'assignments' | 'coursedetail' | 'community'
+  >('home');
   const [showAnnouncement, setShowAnnouncement] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [userRole, setUserRole] = useState<'student' | 'teacher' | 'admin' | null>(null);
+
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [isConversationActive, setIsConversationActive] = useState(false);
   const [isVideoActive, setIsVideoActive] = useState(false);
   const [activeCourseTab, setActiveCourseTab] = useState<'materials' | 'assignments'>('materials');
 
+  // ── Login handler with role ──
+  const handleLogin = (role: 'student' | 'teacher' | 'admin') => {
+    setIsLoggedIn(true);
+    setUserRole(role);
+    setShowAnnouncement(true);
+    setActiveScreen('home');
+  };
+
   if (!isLoggedIn) {
     return (
       <SafeAreaView style={styles.container}>
-        <SignIn onLogIn={() => {
-          setIsLoggedIn(true);
-          setShowAnnouncement(true);
-        }} />
+        <SignIn onLogIn={handleLogin} />
       </SafeAreaView>
     );
   }
 
+  // ── Simple placeholder screens for Teacher & Admin ──
+  const renderRoleContent = () => {
+    if (userRole === 'teacher') {
+      return (
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+          <Text style={{ fontSize: 24, fontWeight: 'bold', color: '#333' }}>
+            Teacher Dashboard
+          </Text>
+          <Text style={{ marginTop: 16, color: '#666' }}>
+            (Under development – grade assignments, post materials, etc.)
+          </Text>
+        </View>
+      );
+    }
+
+    if (userRole === 'admin') {
+      return (
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+          <Text style={{ fontSize: 24, fontWeight: 'bold', color: '#333' }}>
+            Admin Panel
+          </Text>
+          <Text style={{ marginTop: 16, color: '#666' }}>
+            (Under development – manage users, courses, announcements, etc.)
+          </Text>
+        </View>
+      );
+    }
+
+    // Student → full access (your original flow)
+    return (
+      <>
+        {activeScreen === 'profile' ? (
+          <>
+            {lastScreen === 'home' ? <Dashboard announcements={ANNOUNCEMENTS} /> : 
+             lastScreen === 'game' ? <Game /> : 
+             lastScreen === 'videos' ? <Videos /> : 
+             <MyJourney />}
+            <ProfileModal
+              visible={true}
+              onClose={() => setActiveScreen(lastScreen)}
+              userName="Jade M. Lisondra"
+              userEmail="jade.lisondra@gmail.com"
+              onAvatarPress={() => console.log('Edit avatar from modal')}
+            />
+          </>
+        ) : (
+          activeScreen === 'home' ? (
+            <Dashboard
+              announcements={ANNOUNCEMENTS}
+              onCoursePress={() => {
+                setLastScreen(activeScreen);
+                setActiveScreen('coursedetail');
+                setActiveCourseTab('materials');
+              }}
+              onAssignmentPress={() => {
+                setLastScreen(activeScreen);
+                setActiveScreen('coursedetail');
+                setActiveCourseTab('assignments');
+              }}
+            />
+          ) : activeScreen === 'game' ? <Game /> :
+            activeScreen === 'videos' ? <Videos onVideoActiveChange={setIsVideoActive} /> :
+            activeScreen === 'myjourney' ? <MyJourney /> :
+            activeScreen === 'messenger' ? <Messenger searchQuery={searchQuery} onConversationActiveChange={setIsConversationActive} /> :
+            activeScreen === 'assignments' ? <Assignments /> :
+            activeScreen === 'coursedetail' ? <CourseDetail initialTab={activeCourseTab} onBack={() => setActiveScreen(lastScreen)} /> :
+            activeScreen === 'community' ? <Community /> :
+            <Text style={{ textAlign: 'center', marginTop: 50 }}>Screen not found</Text>
+        )}
+      </>
+    );
+  };
+
   return (
     <SafeAreaView style={styles.container}>
-      {/* Header receives navigation props */}
-      <Header 
+      <Header
         isLargeScreen={isLargeScreen}
         activeScreen={activeScreen}
         onNavigate={(screen) => {
@@ -82,7 +166,6 @@ export default function App() {
         onSearchChange={(query) => setSearchQuery(query)}
       />
 
-      {/* Floating Hamburger Menu for Mobile - appears below header */}
       {!isLargeScreen && (
         <TouchableOpacity
           style={styles.floatingMenuBtn}
@@ -92,133 +175,134 @@ export default function App() {
           <Text style={styles.menuIcon}>☰</Text>
         </TouchableOpacity>
       )}
-      
+
       <View style={styles.content}>
-        {/* Fixed Sidebar for Web/Large Screens */}
         {isLargeScreen && (
           <DrawerMenu
             isFixed={true}
             onNavigate={(s) => {
-              if (s === 'profile') { setLastScreen(activeScreen as any); setActiveScreen('profile'); setShowAnnouncement(false); }
-              else if (s === 'home') { setActiveScreen(s as any); setShowAnnouncement(true); }
-              else { setActiveScreen(s as any); setShowAnnouncement(false); }
+              if (s === 'profile') {
+                setLastScreen(activeScreen as any);
+                setActiveScreen('profile');
+                setShowAnnouncement(false);
+              } else if (s === 'home') {
+                setActiveScreen(s as any);
+                setShowAnnouncement(true);
+              } else {
+                setActiveScreen(s as any);
+                setShowAnnouncement(false);
+              }
             }}
             activeScreen={activeScreen}
             userName="Jade M. Lisondra"
             userEmail="jade.lisondra@gmail.com"
             onAvatarPress={() => console.log('Edit avatar pressed')}
+            setIsLoggedIn={setIsLoggedIn}
           />
         )}
 
-        {/* Slide-out Overlay for Mobile */}
         {!isLargeScreen && isMobileDrawerOpen && (
           <>
-            {/* Semi-transparent backdrop */}
-            <TouchableOpacity 
+            <TouchableOpacity
               style={styles.mobileBackdrop}
               activeOpacity={1}
               onPress={() => setMobileDrawerOpen(false)}
             />
-            {/* Drawer container */}
             <View style={styles.mobileOverlay}>
               <DrawerMenu
                 isFixed={false}
                 onClose={() => setMobileDrawerOpen(false)}
                 onNavigate={(s) => {
-                  if (s === 'profile') { setLastScreen(activeScreen as any); setActiveScreen('profile'); setMobileDrawerOpen(false); setShowAnnouncement(false); }
-                  else if (s === 'home') { setActiveScreen(s as any); setMobileDrawerOpen(false); setShowAnnouncement(true); }
-                  else { setActiveScreen(s as any); setMobileDrawerOpen(false); setShowAnnouncement(false); }
+                  if (s === 'profile') {
+                    setLastScreen(activeScreen as any);
+                    setActiveScreen('profile');
+                    setMobileDrawerOpen(false);
+                    setShowAnnouncement(false);
+                  } else if (s === 'home') {
+                    setActiveScreen(s as any);
+                    setMobileDrawerOpen(false);
+                    setShowAnnouncement(true);
+                  } else {
+                    setActiveScreen(s as any);
+                    setMobileDrawerOpen(false);
+                    setShowAnnouncement(false);
+                  }
                 }}
                 activeScreen={activeScreen}
                 userName="Jade M. Lisondra"
                 userEmail="jade.lisondra@gmail.com"
-                onAvatarPress={() => { setMobileDrawerOpen(false); console.log('Edit avatar (mobile)'); }}
+                onAvatarPress={() => {
+                  setMobileDrawerOpen(false);
+                  console.log('Edit avatar (mobile)');
+                }}
+                setIsLoggedIn={setIsLoggedIn}
               />
             </View>
           </>
         )}
-        {activeScreen === 'profile' ? (
-          <>
-            {/* Render last active screen under the profile modal */}
-            {lastScreen === 'home' ? <Dashboard announcements={ANNOUNCEMENTS} /> : lastScreen === 'game' ? <Game /> : lastScreen === 'videos' ? <Videos /> : <MyJourney />}
-            <ProfileModal
-              visible={true}
-              onClose={() => setActiveScreen(lastScreen)}
-              userName="Jade M. Lisondra"
-              userEmail="jade.lisondra@gmail.com"
-              onAvatarPress={() => { console.log('Edit avatar from modal'); }}
-            />
-          </>
-        ) : (
-          activeScreen === 'home' ? <Dashboard announcements={ANNOUNCEMENTS} onCoursePress={() => { setLastScreen(activeScreen); setActiveScreen('coursedetail'); setActiveCourseTab('materials'); }} onAssignmentPress={() => { setLastScreen(activeScreen); setActiveScreen('coursedetail'); setActiveCourseTab('assignments'); }} /> : 
-          activeScreen === 'game' ? <Game /> : 
-          activeScreen === 'videos' ? <Videos onVideoActiveChange={setIsVideoActive} /> : 
-        
-          activeScreen === 'myjourney' ? <MyJourney /> : 
-          activeScreen === 'messenger' ? <Messenger searchQuery={searchQuery} onConversationActiveChange={setIsConversationActive} /> :
-          activeScreen === 'assignments' ? <Assignments /> :
-          activeScreen === 'coursedetail' ? <CourseDetail initialTab={activeCourseTab} onBack={() => setActiveScreen(lastScreen)} /> :
-          activeScreen === 'community' ? <Community /> :
-          <SignIn/>
-        )}
+
+        {renderRoleContent()}
       </View>
 
-      {/* Announcement Modal - Shows when navigating to Home Screen */}
       <AnnouncementModal
-        visible={activeScreen === 'home' && showAnnouncement}
+        visible={activeScreen === 'home' && showAnnouncement && userRole === 'student'}
         onClose={() => setShowAnnouncement(false)}
         announcements={ANNOUNCEMENTS}
       />
 
-      {/* Floating ChatGPT Button at Bottom Right */}
-      {!(activeScreen === 'messenger' && isConversationActive) && !(activeScreen === 'videos' && isVideoActive) && (
-        <TouchableOpacity
-          style={styles.floatingChatBtn}
-          activeOpacity={0.85}
-          onPress={() => setIsChatOpen(prev => !prev)}
-        >
-          {isChatOpen ? (
-            <Text style={[styles.chatClose, { color: '#fff' }]}>✕</Text>
-          ) : (
-            <>
-              <Image
-                source={require('./assets/images/ChatGPT.png')}
-                style={styles.chatBtnImage}
-              />
-              <Text style={styles.chatBtnLabel}>Ask anything</Text>
-            </>
-          )}
-        </TouchableOpacity>
-      )}
+      {!(activeScreen === 'messenger' && isConversationActive) &&
+        !(activeScreen === 'videos' && isVideoActive) && (
+          <TouchableOpacity
+            style={styles.floatingChatBtn}
+            activeOpacity={0.85}
+            onPress={() => setIsChatOpen((prev) => !prev)}
+          >
+            {isChatOpen ? (
+              <Text style={[styles.chatClose, { color: '#fff' }]}>✕</Text>
+            ) : (
+              <>
+                <Image
+                  source={require('./assets/images/ChatGPT.png')}
+                  style={styles.chatBtnImage}
+                />
+                <Text style={styles.chatBtnLabel}>Ask anything</Text>
+              </>
+            )}
+          </TouchableOpacity>
+        )}
 
-      {/* Chat Panel */}
-      {isChatOpen && !(activeScreen === 'messenger' && isConversationActive) && !(activeScreen === 'videos' && isVideoActive) && (
-        <View style={styles.chatPanel}>
-          <View style={styles.chatHeader}>
-            <Text style={styles.chatTitle}>Ask anything</Text>
-            <TouchableOpacity onPress={() => setIsChatOpen(false)}>
-             
-            </TouchableOpacity>
-          </View>
-          <ScrollView style={styles.chatMessages}>
-            <View>
-              <Text style={styles.chatBubbleOther}>Hello! How can I help you today?</Text>
-              <Text style={styles.chatBubbleUser}>Show me my assignments.</Text>
-              <Text style={styles.chatBubbleOther}>You have 3 pending assignments due next week.</Text>
+      {isChatOpen &&
+        !(activeScreen === 'messenger' && isConversationActive) &&
+        !(activeScreen === 'videos' && isVideoActive) && (
+          <View style={styles.chatPanel}>
+            <View style={styles.chatHeader}>
+              <Text style={styles.chatTitle}>Ask anything</Text>
+              <TouchableOpacity onPress={() => setIsChatOpen(false)}>
+                {/* You can add close icon here if you want */}
+              </TouchableOpacity>
             </View>
-          </ScrollView>
-          <View style={styles.chatInputRow}>
-            <TextInput placeholder="Type your question..." placeholderTextColor="rgba(0, 0, 0, 0.5)" style={styles.chatInput} />
-            <TouchableOpacity style={styles.chatSendBtn}>
-              <Text style={{ color: '#fff' }}>Send</Text>
-            </TouchableOpacity>
+            <ScrollView style={styles.chatMessages}>
+              <View>
+                <Text style={styles.chatBubbleOther}>Hello! How can I help you today?</Text>
+                <Text style={styles.chatBubbleUser}>Show me my assignments.</Text>
+                <Text style={styles.chatBubbleOther}>You have 3 pending assignments due next week.</Text>
+              </View>
+            </ScrollView>
+            <View style={styles.chatInputRow}>
+              <TextInput
+                placeholder="Type your question..."
+                placeholderTextColor="rgba(0, 0, 0, 0.5)"
+                style={styles.chatInput}
+              />
+              <TouchableOpacity style={styles.chatSendBtn}>
+                <Text style={{ color: '#fff' }}>Send</Text>
+              </TouchableOpacity>
+            </View>
           </View>
-        </View>
-      )}
+        )}
     </SafeAreaView>
   );
 }
-
 const styles = StyleSheet.create({
   container: {
     flex: 1,
