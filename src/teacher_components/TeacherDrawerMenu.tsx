@@ -1,18 +1,18 @@
 import { useNavigation } from '@react-navigation/native';
 import React, { useState } from 'react';
 import {
-    Image,
-    LayoutChangeEvent,
-    Modal,
-    Platform,
-    Pressable,
-    ScrollView,
-    StyleProp,
-    StyleSheet,
-    Text,
-    useWindowDimensions,
-    View,
-    ViewStyle,
+  Image,
+  LayoutChangeEvent,
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleProp,
+  StyleSheet,
+  Text,
+  useWindowDimensions,
+  View,
+  ViewStyle,
 } from 'react-native';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 
@@ -144,13 +144,13 @@ const DrawerMenu = ({
       <View style={[styles.profileSection, { marginBottom: profileSectionMargin }]}>
         <Pressable onPress={onAvatarPress} style={{ position: 'relative' }}>
           <Image
-            source={require('../../assets/images/default_profile.png')}
+            source={require('../../assets/images/avatar.jpg')}
             style={[styles.avatar, { width: avatarSize, height: avatarSize, borderRadius: avatarSize / 2 }]}
           />
         </Pressable>
         <View style={{ flex: 1 }}>
           <Text style={[styles.userName, { fontSize: profileFontSize }]}>
-            {userName ?? 'Jade M. Lisondra'}
+            {userName ?? 'Ramcee Jade L. Munoz'}
           </Text>
         </View>
       </View>

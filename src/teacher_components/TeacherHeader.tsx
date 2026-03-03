@@ -1,18 +1,18 @@
 import React, { useState } from 'react';
 import {
-    Image,
-    Keyboard,
-    LayoutAnimation,
-    Platform,
-    Pressable,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    TouchableWithoutFeedback,
-    UIManager,
-    useWindowDimensions,
-    View,
+  Image,
+  Keyboard,
+  LayoutAnimation,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  TouchableWithoutFeedback,
+  UIManager,
+  useWindowDimensions,
+  View,
 } from 'react-native';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import VideosIcon from '../../assets/images/bullhorn-solid.svg';
@@ -146,11 +146,11 @@ const TeacherHeader: React.FC<HeaderProps> = ({
                   }}
                 >
                   {activeScreen === 'videos'
-                    ? 'Search Videos'
+                    ? 'Search '
                     : activeScreen === 'game'
-                    ? 'Search Game'
+                    ? 'Search '
                     : activeScreen === 'grades'
-                    ? 'Search Grades'
+                    ? 'Search '
                     : activeScreen === 'messenger'
                     ? 'Search Message'
                     : 'Search ParseClass'}
@@ -181,11 +181,11 @@ const TeacherHeader: React.FC<HeaderProps> = ({
                     autoFocus
                     placeholder={
                       activeScreen === 'videos'
-                        ? 'Search Videos'
+                        ? 'Search '
                         : activeScreen === 'game'
-                        ? 'Search Game'
+                        ? 'Search '
                         : activeScreen === 'grades'
-                        ? 'Search Grades'
+                        ? 'Search '
                         : activeScreen === 'messenger'
                         ? 'Search Message'
                         : 'Search ParseClass'
@@ -323,13 +323,13 @@ const TeacherHeader: React.FC<HeaderProps> = ({
           <TextInput
             placeholder={
               activeScreen === 'videos'
-                ? 'Search Videos'
+                ? 'Search '
                 : activeScreen === 'game'
-                ? 'Search Game'
+                ? 'Search'
                 : activeScreen === 'messenger'
                 ? 'Search Message'
                 : activeScreen === 'grades'
-                ? 'Search Grades'
+                ? 'Search '
                 : 'Search ParseClass'
             }
             placeholderTextColor="#888"

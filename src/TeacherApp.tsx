@@ -9,6 +9,9 @@ import CourseDetail from './screens/CourseDetail';
 import Dashboard from './screens/Dashboard';
 import Messenger from './screens/Messenger';
 import MyJourney from './screens/MyJourney';
+import Grades from './teacher_components/Grades'; // 1. Import the new Grades component
+import Honors from './teacher_components/Honors';
+import ShareAnnouncement from './teacher_components/ShareAnnouncement';
 import DrawerMenu from './teacher_components/TeacherDrawerMenu';
 import Header from './teacher_components/TeacherHeader';
 
@@ -29,7 +32,11 @@ export default function TeacherApp({ onLogout }: Props) {
   const { width } = useWindowDimensions();
   const isLargeScreen = width >= 768;
 
-  const [activeScreen, setActiveScreen] = useState<'home' | 'game' | 'videos' | 'myjourney' | 'profile' | 'messenger' | 'assignments' | 'coursedetail' | 'community'>('home');
+  // Keeping your exact activeScreen type as requested
+  const [activeScreen, setActiveScreen] = useState<
+    'home' | 'game' | 'videos' | 'myjourney' | 'profile' | 'messenger' | 'assignments' | 'coursedetail' | 'community'
+  >('home');
+  
   const [showAnnouncement, setShowAnnouncement] = useState(true);
 
   return (
@@ -46,9 +53,9 @@ export default function TeacherApp({ onLogout }: Props) {
         {isLargeScreen && (
           <DrawerMenu
             isFixed={true}
-            activeScreen={activeScreen}
+            activeScreen={activeScreen as any}
             onNavigate={(s) => setActiveScreen(s as any)}
-            userName="Teachers Name"
+            userName="Ramcee Jade L. Munoz"
             userEmail="teacher@email.com"
             onAvatarPress={() => {}}
             setIsLoggedIn={onLogout}
@@ -56,14 +63,28 @@ export default function TeacherApp({ onLogout }: Props) {
         )}
 
         <View style={{ flex: 1 }}>
+          {/* Dashboard view */}
           {activeScreen === 'home' && <Dashboard announcements={ANNOUNCEMENTS} />}
-          {activeScreen === 'game' }
-          {activeScreen === 'videos'}
+          
+          {/* Honors view - mapped to 'game' type */}
+          {activeScreen === 'game' && <Honors />}
+
+          {/* Grades view - mapped to 'profile' type */}
+          {activeScreen === 'profile' && <Grades />}
+          
+          {/* Announcement list view */}
+          {activeScreen === 'videos' && <ShareAnnouncement />}
+          
+          {/* Other screens */}
           {activeScreen === 'myjourney' && <MyJourney />}
           {activeScreen === 'assignments' && <Assignments />}
           {activeScreen === 'community' && <Community />}
-          {activeScreen === 'messenger' && <Messenger searchQuery="" onConversationActiveChange={() => {}} />}
-          {activeScreen === 'coursedetail' && <CourseDetail initialTab="materials" onBack={() => setActiveScreen('home')} />}
+          {activeScreen === 'messenger' && (
+            <Messenger searchQuery="" onConversationActiveChange={() => {}} />
+          )}
+          {activeScreen === 'coursedetail' && (
+            <CourseDetail initialTab="materials" onBack={() => setActiveScreen('home')} />
+          )}
         </View>
       </View>
 
