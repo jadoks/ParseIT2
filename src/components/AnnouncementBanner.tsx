@@ -12,6 +12,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { heightPercentageToDP as hp, widthPercentageToDP as wp } from 'react-native-responsive-screen';
 import { Announcement } from './AnnouncementModal';
 
+
 interface AnnouncementBannerProps {
   announcements: Announcement[];
 }
