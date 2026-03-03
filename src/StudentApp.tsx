@@ -26,6 +26,24 @@ const ANNOUNCEMENTS: Announcement[] = [
     message: 'Check out the latest updates and announcements from your courses.',
     bannerImage: require('../assets/announcement/1.png'),
   },
+  {
+    id: '2',
+    title: 'New Course Available!',
+    message: 'Check out the new course on advanced programming techniques.',
+    bannerImage: require('../assets/announcement/2.png'),
+  },
+  {
+    id: '3',
+    title: 'New Assignment Available!',
+    message: 'Check out the new assignment for your current course.',
+    bannerImage: require('../assets/announcement/3.png'),
+  },
+  {
+    id: '4',
+    title: 'Ramcee Badingg!',
+    message: 'Check out Ramcee is Gay!',
+    bannerImage: require('../assets/announcement/3.png'),
+  },
 ];
 
 export default function StudentApp({ onLogout }: Props) {

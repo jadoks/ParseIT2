@@ -281,25 +281,57 @@ const DrawerMenu = ({
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContainer, { width: width >= 1024 ? width * 0.3 : '80%' }]}>
             <Text style={styles.modalTitle}>Are you sure you want to logout?</Text>
-            <View style={{ flexDirection: 'row', gap: 40 }}>
-              <Pressable
-                style={styles.LogoutmodalCloseBtn}
-                onPress={() => setLogoutModalVisible(false)}
-              >
-                <Text style={styles.LogoutmodalCloseText}>Cancel</Text>
-              </Pressable>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', width: '100%', marginTop: 10 }}>
+  
+  {/* Cancel Button */}
+  <Pressable
+    style={({ pressed, hovered }: any) => [
+      {
+        flex: 1,
+        marginRight: 10,
+        paddingVertical: 12,
+        borderRadius: 8,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: hovered && Platform.OS === 'web'
+          ? 'rgba(0,0,0,0.05)'
+          : '#F5F5F5',
+      },
+    ]}
+    onPress={() => setLogoutModalVisible(false)}
+  >
+    <Text style={{ fontSize: 16, color: '#555', fontWeight: '600' }}>
+      Cancel
+    </Text>
+  </Pressable>
 
-              <Pressable
-                style={styles.LogoutmodalButton}
-                onPress={() => {
-                  setLogoutModalVisible(false);
-                  if (!isFixed) onClose?.();
-                  setIsLoggedIn(false);
-                }}
-              >
-                <Text style={styles.LogoutmodalButtonText}>Logout</Text>
-              </Pressable>
-            </View>
+  {/* Logout Button */}
+  <Pressable
+    style={({ pressed, hovered }: any) => [
+      {
+        flex: 1,
+        marginLeft: 10,
+        paddingVertical: 12,
+        borderRadius: 8,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: hovered && Platform.OS === 'web'
+          ? '#b71c1c'
+          : '#D32F2F',
+      },
+    ]}
+    onPress={() => {
+      setLogoutModalVisible(false);
+      if (!isFixed) onClose?.();
+      setIsLoggedIn(false);
+    }}
+  >
+    <Text style={{ fontSize: 16, color: '#FFF', fontWeight: '700' }}>
+      Logout
+    </Text>
+  </Pressable>
+
+</View>
           </View>
         </View>
       </Modal>
