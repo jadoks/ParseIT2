@@ -31,11 +31,10 @@ interface DrawerMenuProps {
       | 'coursedetail'
       | 'community'
   ) => void;
- activeScreen?: 'home' | 'game' | 'videos' | 'grades' | 'myjourney' | 'profile' | 'messenger' | 'assignments' | 'coursedetail' | 'community';
+  activeScreen?: 'home' | 'game' | 'videos' | 'grades' | 'myjourney' | 'profile' | 'messenger' | 'assignments' | 'coursedetail' | 'community';
   userName?: string;
   userEmail?: string;
   onAvatarPress?: () => void;
-
   setIsLoggedIn: React.Dispatch<React.SetStateAction<boolean>>;
 }
 
@@ -96,7 +95,6 @@ const DrawerMenu = ({
 }: DrawerMenuProps) => {
 
   const navigation = useNavigation<any>();
-
   const { width } = useWindowDimensions();
   const [contentHeight, setContentHeight] = useState(0);
   const [scrollViewHeight, setScrollViewHeight] = useState(0);
@@ -141,6 +139,7 @@ const DrawerMenu = ({
         </Pressable>
       )}
 
+      {/* Profile Section */}
       <View style={[styles.profileSection, { marginBottom: profileSectionMargin }]}>
         <Pressable onPress={onAvatarPress} style={{ position: 'relative' }}>
           <Image
@@ -168,6 +167,8 @@ const DrawerMenu = ({
           onPress={() => { onNavigate?.('profile'); if (!isFixed) onClose?.(); }}
           active={activeScreen === 'profile'}
         />
+
+        {/* Courses MenuItem has been removed from here */}
    
         <MenuItem
           iconSource={require('../../assets/images/users-solid.png')}
@@ -175,6 +176,7 @@ const DrawerMenu = ({
           onPress={() => { onNavigate?.('community'); if (!isFixed) onClose?.(); }}
           active={activeScreen === 'community'}
         />
+
         <MenuItem
           iconSource={require('../../assets/images/gear-solid.png')}
           label="Settings"
@@ -265,23 +267,16 @@ const DrawerMenu = ({
                 <Text style={styles.modalCloseText}>Cancel</Text>
               </Pressable>
 
-             <Pressable
-  style={styles.modalButton}
-  onPress={() => {
-    setLogoutModalVisible(false);
-    if (!isFixed) onClose?.();
-
-    // Optional: clear any saved login data
-    // AsyncStorage.removeItem('@user_token');   // example
-    // AsyncStorage.removeItem('@user_data');
-
-    // This is what actually shows SignIn screen
-    // (because App.tsx checks if (!isLoggedIn) return <SignIn ... />
-    setIsLoggedIn(false);
-  }}
->
-  <Text style={styles.modalButtonText}>Logout</Text>
-</Pressable>
+              <Pressable
+                style={styles.modalButton}
+                onPress={() => {
+                    setLogoutModalVisible(false);
+                    if (!isFixed) onClose?.();
+                    setIsLoggedIn(false);
+                }}
+                >
+                <Text style={styles.modalButtonText}>Logout</Text>
+              </Pressable>
             </View>
 
           </View>
