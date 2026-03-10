@@ -9,7 +9,7 @@ import CourseDetail from './screens/CourseDetail';
 import Dashboard from './screens/Dashboard';
 import Messenger from './screens/Messenger';
 import MyJourney from './screens/MyJourney';
-import Grades from './teacher_components/Grades'; // 1. Import the new Grades component
+import Grades from './teacher_components/Grades'; // Imported Grades
 import Honors from './teacher_components/Honors';
 import ShareAnnouncement from './teacher_components/ShareAnnouncement';
 import DrawerMenu from './teacher_components/TeacherDrawerMenu';
@@ -32,9 +32,9 @@ export default function TeacherApp({ onLogout }: Props) {
   const { width } = useWindowDimensions();
   const isLargeScreen = width >= 768;
 
-  // Keeping your exact activeScreen type as requested
+  // Updated the type to include 'grades'
   const [activeScreen, setActiveScreen] = useState<
-    'home' | 'game' | 'videos' | 'myjourney' | 'profile' | 'messenger' | 'assignments' | 'coursedetail' | 'community'
+    'home' | 'game' | 'grades' | 'videos' | 'myjourney' | 'profile' | 'messenger' | 'assignments' | 'coursedetail' | 'community'
   >('home');
   
   const [showAnnouncement, setShowAnnouncement] = useState(true);
@@ -66,11 +66,14 @@ export default function TeacherApp({ onLogout }: Props) {
           {/* Dashboard view */}
           {activeScreen === 'home' && <Dashboard announcements={ANNOUNCEMENTS} />}
           
-          {/* Honors view - mapped to 'game' type */}
+          {/* Honors view */}
           {activeScreen === 'game' && <Honors />}
 
-          {/* Grades view - mapped to 'profile' type */}
-          {activeScreen === 'profile' && <Grades />}
+          {/* Grades view - Now correctly mapped to its own state */}
+          {activeScreen === 'grades' && <Grades />}
+          
+          {/* Profile view */}
+          {activeScreen === 'profile' && <MyJourney />}
           
           {/* Announcement list view */}
           {activeScreen === 'videos' && <ShareAnnouncement />}

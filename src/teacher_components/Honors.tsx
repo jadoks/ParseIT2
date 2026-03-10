@@ -1,434 +1,206 @@
 import { Ionicons } from '@expo/vector-icons';
 import React, { useState } from 'react';
 import {
-    Modal,
-    Platform,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 
-const Honors = () => {
-  const [activeTab, setActiveTab] = useState('My Clusters');
-  const [clusterName, setClusterName] = useState('');
-  const [showGenerateView, setShowGenerateView] = useState(false);
-  const [showThemeModal, setShowThemeModal] = useState(false);
-  const [showResultModal, setShowResultModal] = useState(false);
+export default function HonorsScreen() {
+  const [activeTab, setActiveTab] = useState('My Cluster');
+  const [studentId, setStudentId] = useState('');
 
-  const students = [
-    { id: '7210699', name: 'Abello, Hanne', unit: 25, gpa: '1.752' },
-    { id: '7210698', name: 'Albacite, Ezra Cyril', unit: 25, gpa: '1.732' },
-    { id: '7210706', name: 'Basilisco, Raquel', unit: 25, gpa: '1.680' },
-    { id: '7210714', name: 'Lagoy, Stephanie Jane', unit: 25, gpa: '1.756' },
+  const clusters = ['3A - PYTHON', '3A - PYTHON', '3A - PYTHON', '3A - PYTHON'];
+
+  // Mock data based on your screenshot
+  const studentData = [
+    { name: 'Munoz, Ramcee Jade L.', id: '7230479', unit: '25', gpa: '1.752' },
+    { name: 'Munoz, Ramcee Jade L.', id: '7230479', unit: '25', gpa: '1.752' },
+    { name: 'Munoz, Ramcee Jade L.', id: '7230479', unit: '25', gpa: '1.752' },
+    { name: 'Munoz, Ramcee Jade L.', id: '7230479', unit: '25', gpa: '1.752' },
+    { name: 'Munoz, Ramcee Jade L.', id: '7230479', unit: '25', gpa: '1.752' },
   ];
 
   return (
-    <View style={styles.screen}>
-      {/* Header Area */}
-      <View style={styles.headerRow}>
-        <Ionicons name="menu-outline" size={30} color="#333" />
-        <Text style={styles.headerTitle}>Honors</Text>
-      </View>
+    <SafeAreaView style={styles.container}>
+      <ScrollView contentContainerStyle={styles.content}>
+        
+        {/* Header */}
+        <View style={styles.headerRow}>
+          <Text style={styles.title}>Honors</Text>
+          <Text style={styles.infoIcon}>i</Text>
+        </View>
 
-      <View style={styles.introSection}>
-        <Text style={styles.mainTitle}>Generate Honor Roll.</Text>
-        <Text style={styles.subText}>Create Dean's listers for your class.</Text>
-      </View>
+        <View style={styles.subHeader}>
+          <Text style={styles.mainHeading}>Generate Honor Roll</Text>
+          <Text style={styles.subHeadingText}>Create Dean's listers for your class</Text>
+        </View>
 
-      {/* Tabs - Styled with Theme Colors */}
-      <View style={styles.tabContainer}>
-        {['My Clusters', 'Draft'].map((tab) => (
+        {/* --- TABS SECTION --- */}
+        <View style={styles.tabContainer}>
           <TouchableOpacity 
-            key={tab}
-            onPress={() => setActiveTab(tab)}
-            style={[styles.tabButton, activeTab === tab && styles.activeTabBorder]}
+            style={[styles.tabItem, activeTab === 'My Cluster' && styles.tabActive]} 
+            onPress={() => setActiveTab('My Cluster')}
           >
-            <Text style={[styles.tabText, activeTab === tab && styles.activeTabText]}>{tab}</Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-
-      <ScrollView contentContainerStyle={styles.scrollContent}>
-        {!showGenerateView ? (
-          /* Initial View: Cluster Management */
-          <View style={styles.card}>
-            <View style={styles.cardHeader}>
-              <Text style={styles.cardHeaderText}>New Cluster</Text>
+            <View style={styles.tabLabelRow}>
+                <Ionicons name="checkmark" size={18} color={activeTab === 'My Cluster' ? "#B71C1C" : "#333"} />
+                <Text style={[styles.tabText, activeTab === 'My Cluster' && styles.tabTextActive]}>My Cluster</Text>
             </View>
-            <View style={styles.cardContent}>
-              <View style={styles.inputRow}>
-                <TextInput
-                  placeholder="Enter Cluster Name"
-                  value={clusterName}
-                  onChangeText={setClusterName}
-                  style={styles.input}
-                />
-                <TouchableOpacity style={styles.primaryButton}>
-                  <Text style={styles.buttonText}>Add</Text>
-                </TouchableOpacity>
-              </View>
+          </TouchableOpacity>
+          
+          <TouchableOpacity 
+            style={[styles.tabItem, activeTab === 'Draft' && styles.tabActive]} 
+            onPress={() => setActiveTab('Draft')}
+          >
+            <View style={styles.tabLabelRow}>
+                <Ionicons name="document-text-outline" size={16} color={activeTab === 'Draft' ? "#B71C1C" : "#333"} />
+                <Text style={[styles.tabText, activeTab === 'Draft' && styles.tabTextActive]}>Draft</Text>
+            </View>
+          </TouchableOpacity>
+        </View>
 
-              <View style={styles.actionRow}>
-                {['Rename', 'Delete', 'Lock'].map((action) => (
-                  <TouchableOpacity key={action} style={styles.outlineButton}>
-                    <Text style={styles.outlineButtonText}>{action}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
+        {/* --- DYNAMIC CONTENT --- */}
+        {activeTab === 'My Cluster' ? (
+          <View>
+            <View style={styles.actionRow}>
+              <TextInput style={styles.input} placeholder="Enter Cluster Name" placeholderTextColor="#A9A9A9" />
+              <TouchableOpacity style={styles.addBtn}><Text style={styles.addBtnText}>Add</Text></TouchableOpacity>
+              <TouchableOpacity style={styles.outlineBtn}><Text style={styles.outlineBtnText}>Rename</Text></TouchableOpacity>
+              <TouchableOpacity style={styles.outlineBtn}><Text style={styles.outlineBtnText}>Delete</Text></TouchableOpacity>
+              <TouchableOpacity style={styles.outlineBtn}><Text style={styles.outlineBtnText}>Lock</Text></TouchableOpacity>
+            </View>
 
-              <TouchableOpacity 
-                onPress={() => setShowGenerateView(true)}
-                style={styles.listItem}
-              >
-                <View style={styles.radioOuter}>
-                  <View style={styles.radioInner} />
+            <View style={styles.clusterGrid}>
+              {clusters.map((item, index) => (
+                <View key={index} style={styles.clusterItem}>
+                  <View style={styles.radioOuter}><View style={styles.radioInner} /></View>
+                  <Text style={styles.clusterText}>{item}</Text>
                 </View>
-                <Text style={styles.listItemText}>4B-Laravel</Text>
-              </TouchableOpacity>
+              ))}
             </View>
           </View>
         ) : (
-          /* Generate View: Student List */
-          <View style={styles.card}>
-             <View style={styles.cardHeader}>
-                <Text style={styles.cardHeaderText}>S.Y. 2022 - 2023 | First Semester</Text>
-             </View>
-             
-             <View style={styles.cardContent}>
-               <View style={styles.inputRow}>
-                  <TouchableOpacity 
-                      onPress={() => setShowThemeModal(true)}
-                      style={[styles.input, { justifyContent: 'center' }]}
-                  >
-                      <Text style={styles.contentText}>Theme: Ember Glow</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity 
-                      onPress={() => setShowResultModal(true)}
-                      style={styles.primaryButton}
-                  >
-                      <Text style={styles.buttonText}>Generate</Text>
-                  </TouchableOpacity>
-               </View>
+          /* --- DRAFT UI (Based on your new screenshot) --- */
+          <View>
+            {/* Top Row: Selectors and Generate */}
+            <View style={styles.draftControlsRow}>
+              <View style={styles.pickerFake}>
+                <Text style={styles.pickerText}>S.Y 2025 - 2026</Text>
+                <Ionicons name="chevron-down" size={14} color="black" />
+              </View>
 
-               {/* Table Header */}
-               <View style={styles.tableHeader}>
-                  <Text style={[styles.subText, { flex: 1 }]}>Student Name</Text>
-                  <Text style={[styles.subText, { width: 40, textAlign: 'center' }]}>Unit</Text>
-                  <Text style={[styles.subText, { width: 50, textAlign: 'right' }]}>GPA</Text>
-               </View>
+              <View style={[styles.pickerFake, { width: 150 }]}>
+                <Text style={styles.pickerText}>First Semester</Text>
+                <Ionicons name="chevron-down" size={14} color="black" />
+              </View>
 
-               {students.map((student) => (
-                 <View key={student.id} style={styles.tableRow}>
-                   <View style={{ flex: 1 }}>
-                      <Text style={styles.titleText}>{student.name}</Text>
-                      <Text style={styles.subText}>{student.id}</Text>
-                   </View>
-                   <Text style={[styles.contentText, { width: 40, textAlign: 'center' }]}>{student.unit}</Text>
-                   <Text style={[styles.contentText, { width: 50, textAlign: 'right', fontWeight: '700' }]}>{student.gpa}</Text>
-                 </View>
-               ))}
-             </View>
+              <TouchableOpacity style={styles.generateBtn}>
+                <Text style={styles.generateBtnText}>Generate</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Middle Row: ID Input + - */}
+            <View style={styles.idInputRow}>
+              <TextInput 
+                style={styles.idInput} 
+                placeholder="Enter Student ID" 
+                value={studentId}
+                onChangeText={setStudentId}
+              />
+              <Text style={styles.mathSymbol}>+</Text>
+              <Text style={styles.mathSymbol}>-</Text>
+            </View>
+
+            {/* Table Header */}
+            <View style={styles.tableHeader}>
+              <Text style={[styles.headerCell, { flex: 2 }]}>Student Name</Text>
+              <Text style={[styles.headerCell, { flex: 1 }]}>Student ID</Text>
+              <Text style={[styles.headerCell, { flex: 0.5 }]}>Unit</Text>
+              <Text style={[styles.headerCell, { flex: 0.5 }]}>GPA</Text>
+            </View>
+
+            {/* Table Rows */}
+            {studentData.map((item, index) => (
+              <View key={index} style={styles.tableRow}>
+                <Text style={[styles.cellText, { flex: 2 }]}>{item.name}</Text>
+                <Text style={[styles.cellText, { flex: 1 }]}>{item.id}</Text>
+                <Text style={[styles.cellText, { flex: 0.5 }]}>{item.unit}</Text>
+                <Text style={[styles.cellText, { flex: 0.5 }]}>{item.gpa}</Text>
+              </View>
+            ))}
           </View>
         )}
+
       </ScrollView>
-
-      {/* Result Modal - Using the Soft Red/Pink Theme */}
-      <Modal visible={showResultModal} transparent animationType="slide">
-        <View style={styles.modalOverlay}>
-            <View style={[styles.card, { width: '90%', padding: 0 }]}>
-                <View style={styles.cardHeader}>
-                    <Text style={styles.cardHeaderText}>Preview Certificate</Text>
-                </View>
-                
-                <View style={styles.certificateContainer}>
-                    <Text style={styles.certSchool}>CEBU TECHNOLOGICAL UNIVERSITY</Text>
-                    <Text style={styles.certTitle}>Congratulations</Text>
-                    <View style={styles.certDivider} />
-                    
-                    <View style={styles.certBody}>
-                      <Text style={styles.certInfo}>Course Year / Section: 4B-Laravel</Text>
-                      <Text style={styles.certInfo}>Total Students: 4</Text>
-                      
-                      <View style={styles.certTable}>
-                          <View style={styles.certTableHeader}>
-                              <Text style={styles.certHeaderText}>STUDENT NAME</Text>
-                              <Text style={styles.certHeaderText}>GPA</Text>
-                          </View>
-                          {students.slice(0, 3).map(s => (
-                              <View key={s.id} style={styles.certTableRow}>
-                                  <Text style={styles.certCell}>{s.name}</Text>
-                                  <Text style={[styles.certCell, { textAlign: 'right' }]}>{s.gpa}</Text>
-                              </View>
-                          ))}
-                      </View>
-                    </View>
-                </View>
-
-                <View style={styles.cardContent}>
-                  <TouchableOpacity style={styles.primaryButton}>
-                      <Text style={styles.buttonText}>Get Link</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity onPress={() => setShowResultModal(false)} style={styles.closeBtn}>
-                      <Text style={styles.outlineButtonText}>Close Preview</Text>
-                  </TouchableOpacity>
-                </View>
-            </View>
-        </View>
-      </Modal>
-    </View>
+    </SafeAreaView>
   );
-};
+}
 
 const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    backgroundColor: '#fff',
-  },
-  headerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingTop: 50,
-    paddingHorizontal: 20,
-    marginBottom: 10,
-  },
-  headerTitle: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: '#333',
-    marginLeft: 10,
-  },
-  introSection: {
-    paddingHorizontal: 20,
-    marginBottom: 15,
-  },
-  mainTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#222',
-  },
-  tabContainer: {
-    flexDirection: 'row',
-    borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
-    marginBottom: 10,
-  },
-  tabButton: {
-    flex: 1,
-    paddingVertical: 12,
-    alignItems: 'center',
-  },
-  activeTabBorder: {
-    borderBottomWidth: 2,
-    borderBottomColor: '#D32F2F',
-  },
-  tabText: {
-    fontSize: 15,
-    color: '#666',
-  },
-  activeTabText: {
-    color: '#D32F2F',
-    fontWeight: '700',
-  },
-  scrollContent: {
-    padding: 15,
-  },
-  card: {
-    backgroundColor: '#fff',
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#e0e0e0',
-    overflow: 'hidden',
-    marginBottom: 20,
-    ...Platform.select({
-      web: { boxShadow: '0 2px 5px rgba(0,0,0,0.05)' },
-      default: { elevation: 2 },
-    }),
-  },
-  cardHeader: {
-    backgroundColor: '#fff2f2', // Theme color from ShareAnnouncement
-    paddingVertical: 10,
-    paddingHorizontal: 15,
-    borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
-  },
-  cardHeaderText: {
-    fontWeight: '700',
-    fontSize: 14,
-    color: '#D32F2F',
-  },
-  cardContent: {
-    padding: 15,
-  },
-  inputRow: {
-    flexDirection: 'row',
-    gap: 10,
-    marginBottom: 15,
-  },
-  input: {
-    flex: 1,
-    borderWidth: 1,
-    borderColor: '#e0e0e0',
-    borderRadius: 6,
-    paddingHorizontal: 12,
-    height: 45,
-    backgroundColor: '#fafafa',
-  },
-  primaryButton: {
-    backgroundColor: '#D32F2F',
-    paddingHorizontal: 20,
-    height: 45,
-    borderRadius: 6,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  buttonText: {
-    color: '#fff',
-    fontWeight: '700',
-  },
-  actionRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 20,
-  },
-  outlineButton: {
-    borderWidth: 1,
-    borderColor: '#D32F2F',
-    borderRadius: 6,
-    paddingVertical: 6,
-    width: '30%',
-    alignItems: 'center',
-  },
-  outlineButtonText: {
-    color: '#D32F2F',
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  listItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 10,
-  },
-  listItemText: {
-    fontSize: 16,
-    color: '#333',
-    fontWeight: '500',
-  },
-  radioOuter: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    borderWidth: 1,
-    borderColor: '#D32F2F',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 10,
-  },
-  radioInner: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: '#D32F2F',
-  },
-  tableHeader: {
-    flexDirection: 'row',
-    borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
-    paddingBottom: 8,
-    marginBottom: 5,
-  },
-  tableRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
-  },
-  titleText: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#222',
-  },
-  contentText: {
-    fontSize: 14,
-    color: '#444',
-  },
-  subText: {
-    color: '#777',
-    fontSize: 12,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  certificateContainer: {
-    backgroundColor: '#fffaf0',
-    margin: 15,
-    padding: 20,
-    borderWidth: 2,
-    borderColor: '#D32F2F',
-    alignItems: 'center',
-  },
-  certSchool: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: '#D32F2F',
-    letterSpacing: 1,
-  },
-  certTitle: {
-    fontSize: 24,
-    fontStyle: 'italic',
-    marginVertical: 10,
-    color: '#333',
-  },
-  certDivider: {
-    width: '100%',
-    height: 2,
-    backgroundColor: '#D32F2F',
-    marginBottom: 15,
-  },
-  certBody: {
-    width: '100%',
-  },
-  certInfo: {
-    fontSize: 11,
-    color: '#444',
-    marginBottom: 2,
-  },
-  certTable: {
-    marginTop: 10,
-    borderWidth: 1,
-    borderColor: '#D32F2F',
-  },
-  certTableHeader: {
-    backgroundColor: '#D32F2F',
-    flexDirection: 'row',
-    padding: 4,
-  },
-  certHeaderText: {
-    color: '#fff',
-    fontSize: 9,
-    fontWeight: '700',
-    flex: 1,
-  },
-  certTableRow: {
-    flexDirection: 'row',
-    padding: 4,
-    borderBottomWidth: 0.5,
-    borderBottomColor: '#D32F2F',
-  },
-  certCell: {
-    fontSize: 10,
-    flex: 1,
-  },
-  closeBtn: {
-    marginTop: 15,
-    alignItems: 'center',
-  },
-});
+  container: { flex: 1, backgroundColor: '#FFFFFF' },
+  content: { paddingHorizontal: 40, paddingTop: 30 },
+  headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  title: { fontSize: 36, fontWeight: '800', color: '#000' },
+  infoIcon: { color: '#B71C1C', fontSize: 18, fontWeight: 'bold', fontStyle: 'italic' },
+  subHeader: { marginTop: 15, marginBottom: 35 },
+  mainHeading: { fontSize: 22, fontWeight: '700', color: '#000' },
+  subHeadingText: { fontSize: 14, color: '#444', marginTop: 2 },
+  
+  // Tab Styling
+  tabContainer: { flexDirection: 'row', marginBottom: 30, borderBottomWidth: 1, borderBottomColor: '#E0E0E0' },
+  tabItem: { paddingBottom: 12, alignItems: 'center', justifyContent: 'center', width: 350 },
+  tabLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  tabActive: { borderBottomWidth: 3, borderBottomColor: '#B71C1C' },
+  tabText: { fontSize: 14, color: '#333', fontWeight: '500' },
+  tabTextActive: { color: '#B71C1C', fontWeight: 'bold' },
 
-export default Honors;
+  // Cluster Styles
+  actionRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 25 },
+  input: { width: 280, height: 40, borderWidth: 1, borderColor: '#444', borderRadius: 8, paddingHorizontal: 15 },
+  addBtn: { backgroundColor: '#B71C1C', height: 40, paddingHorizontal: 25, borderRadius: 8, justifyContent: 'center' },
+  addBtnText: { color: '#FFF', fontWeight: 'bold' },
+  outlineBtn: { height: 40, paddingHorizontal: 15, borderWidth: 1, borderColor: '#B71C1C', borderRadius: 8, justifyContent: 'center' },
+  outlineBtnText: { color: '#B71C1C', fontSize: 12 },
+  clusterGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 30 },
+  clusterItem: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  radioOuter: { width: 18, height: 18, borderRadius: 9, borderWidth: 2, borderColor: '#B71C1C', alignItems: 'center', justifyContent: 'center' },
+  radioInner: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#B71C1C' },
+  clusterText: { fontSize: 14, fontWeight: '800', color: '#000' },
+
+  /* --- DRAFT UI STYLES --- */
+  draftControlsRow: { flexDirection: 'row', alignItems: 'center', gap: 15, marginBottom: 20 },
+  pickerFake: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    justifyContent: 'space-between',
+    width: 130, 
+    height: 35, 
+    borderWidth: 1, 
+    borderColor: '#333', 
+    borderRadius: 5, 
+    paddingHorizontal: 8 
+  },
+  pickerText: { fontSize: 11, color: '#000' },
+  generateBtn: { 
+    backgroundColor: '#B71C1C', 
+    width: 130, 
+    height: 35, 
+    borderRadius: 20, 
+    justifyContent: 'center', 
+    alignItems: 'center' 
+  },
+  generateBtnText: { color: '#FFF', fontSize: 12, fontWeight: '500' },
+  
+  idInputRow: { flexDirection: 'row', alignItems: 'center', gap: 15, marginBottom: 30 },
+  idInput: { width: 210, height: 45, borderWidth: 1, borderColor: '#888', borderRadius: 8, paddingHorizontal: 15 },
+  mathSymbol: { fontSize: 20, color: '#333', fontWeight: '400' },
+
+  tableHeader: { flexDirection: 'row', paddingBottom: 10, borderBottomWidth: 0, marginTop: 10 },
+  headerCell: { fontSize: 13, color: '#555', fontWeight: '400' },
+  tableRow: { flexDirection: 'row', paddingVertical: 15, borderBottomWidth: 1, borderBottomColor: '#EEE' },
+  cellText: { fontSize: 14, color: '#000', fontWeight: '400' },
+});
