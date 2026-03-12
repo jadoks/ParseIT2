@@ -39,7 +39,8 @@ const Header: React.FC<HeaderProps> = ({
 }) => {
   const { width } = useWindowDimensions();
 
-  // Breakpoints
+  const notificationCount = 3;
+
   const isVerySmall = width < 360;
   const isSmallPhone = width < 420;
   const isPhone = width < 768;
@@ -80,7 +81,6 @@ const Header: React.FC<HeaderProps> = ({
     screen: 'home' | 'game' | 'videos' | 'analytics' | 'myjourney' | 'profile' | 'messenger' | 'community'
   ) => activeScreen === screen;
 
-  // Navigation icons array for desktop/tablet
   const navScreens: Array<'home' | 'game' | 'videos' | 'messenger'> = [
     'home',
     'game',
@@ -100,7 +100,7 @@ const Header: React.FC<HeaderProps> = ({
         }}
       >
         <View style={{ backgroundColor: '#FFF', borderBottomWidth: 1, borderBottomColor: '#EEE' }}>
-          {/* ROW 1: Logo + Search + Messenger */}
+          {/* ROW 1 */}
           <View
             style={[
               styles.headerContainer,
@@ -220,9 +220,19 @@ const Header: React.FC<HeaderProps> = ({
                 <MessengerIcon width={navIconSize} height={navIconSize} stroke={getIconColor('messenger')} />
               )}
             </TouchableOpacity>
+
+            <TouchableOpacity style={styles.navBtn}>
+              <View>
+                <MaterialCommunityIcons name="bell" size={navIconSize} color="#000" />
+                {notificationCount > 0 && (
+                  <View style={styles.badge}>
+                    <Text style={styles.badgeText}>{notificationCount}</Text>
+                  </View>
+                )}
+              </View>
+            </TouchableOpacity>
           </View>
 
-          {/* ROW 2: Navigation buttons */}
           <View
             style={[
               styles.mobileNavRow,
@@ -274,12 +284,11 @@ const Header: React.FC<HeaderProps> = ({
     );
   }
 
-  // Desktop/Tablet Layout
+  // Desktop / Tablet Layout
   return (
     <View
       style={[styles.headerContainer, { paddingHorizontal, height: isTablet ? 72 : 80 }]}
     >
-      {/* LEFT – Logo + Search */}
       <View style={[styles.leftSection, { flex: isLargeScreenLocal ? 0.3 : 0.4 }]}>
         <Image
           source={require('../../assets/images/logo.png')}
@@ -334,7 +343,6 @@ const Header: React.FC<HeaderProps> = ({
         </View>
       </View>
 
-      {/* CENTER */}
       <View
         style={[
           styles.centerSection,
@@ -384,6 +392,20 @@ const Header: React.FC<HeaderProps> = ({
             )}
           </Pressable>
         ))}
+      </View>
+
+      {/* RIGHT SECTION - pushes notification to the far right */}
+      <View style={{ marginLeft: 'auto' }}>
+        <TouchableOpacity style={styles.navBtn}>
+          <View>
+            <MaterialCommunityIcons name="bell" size={navIconSize} color="#000" />
+            {notificationCount > 0 && (
+              <View style={styles.badge}>
+                <Text style={styles.badgeText}>{notificationCount}</Text>
+              </View>
+            )}
+          </View>
+        </TouchableOpacity>
       </View>
     </View>
   );
@@ -454,6 +476,25 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     borderTopWidth: 1,
     borderTopColor: '#EEE',
+  },
+
+  badge: {
+    position: 'absolute',
+    top: -4,
+    right: -6,
+    backgroundColor: '#D32F2F',
+    borderRadius: 10,
+    minWidth: 16,
+    height: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 3,
+  },
+
+  badgeText: {
+    color: '#FFF',
+    fontSize: 10,
+    fontWeight: 'bold',
   },
 });
 

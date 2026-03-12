@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
-import { Image, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, useWindowDimensions, View } from 'react-native';
+import { Image, StyleSheet, Text, TouchableOpacity, useWindowDimensions, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import AnnouncementModal, { Announcement } from './components/AnnouncementModal';
 import DrawerMenu from './components/DrawerMenu';
 import Header from './components/Header';
-import ProfileModal from './components/ProfileModal';
+
+import Profile from './screens/Profile'; // ✅ NEW PROFILE SCREEN
+
 import Assignments from './screens/Assignments';
 import Community from './screens/Community';
 import CourseDetail from './screens/CourseDetail';
@@ -59,33 +61,28 @@ export default function StudentApp({ onLogout }: Props) {
   const [showAnnouncement, setShowAnnouncement] = useState(true);
   const [isMobileDrawerOpen, setMobileDrawerOpen] = useState(false);
 
-  // Chat panel state
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [isConversationActive, setIsConversationActive] = useState(false);
   const [isVideoActive, setIsVideoActive] = useState(false);
 
-  // Course tab state
   const [activeCourseTab, setActiveCourseTab] = useState<'materials' | 'assignments'>('materials');
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#fff' }}>
+
       {/* Header */}
       <Header
         isLargeScreen={isLargeScreen}
         activeScreen={activeScreen}
         onNavigate={(screen) => {
-          if (screen === 'profile') {
-            setLastScreen(activeScreen);
-            setActiveScreen('profile');
-          } else {
-            setActiveScreen(screen as any);
-          }
+          setLastScreen(activeScreen);
+          setActiveScreen(screen as any);
         }}
         onSearchChange={() => {}}
       />
 
       {/* Mobile Hamburger */}
-      {!isLargeScreen && (
+      {!isLargeScreen && activeScreen !== 'profile' && (
         <TouchableOpacity
           style={styles.floatingMenuBtn}
           onPress={() => setMobileDrawerOpen(!isMobileDrawerOpen)}
@@ -96,18 +93,15 @@ export default function StudentApp({ onLogout }: Props) {
       )}
 
       <View style={{ flex: 1, flexDirection: 'row' }}>
-        {/* Drawer Menu */}
-        {isLargeScreen && (
+
+        {/* Drawer Menu (HIDDEN IN PROFILE SCREEN) */}
+        {isLargeScreen && activeScreen !== 'profile' && (
           <DrawerMenu
             isFixed={true}
             activeScreen={activeScreen}
             onNavigate={(s) => {
-              if (s === 'profile') {
-                setLastScreen(activeScreen);
-                setActiveScreen('profile');
-              } else {
-                setActiveScreen(s as any);
-              }
+              setLastScreen(activeScreen);
+              setActiveScreen(s as any);
             }}
             userName="Student Name"
             userEmail="student@email.com"
@@ -119,7 +113,7 @@ export default function StudentApp({ onLogout }: Props) {
           />
         )}
 
-        {!isLargeScreen && isMobileDrawerOpen && (
+        {!isLargeScreen && isMobileDrawerOpen && activeScreen !== 'profile' && (
           <>
             <TouchableOpacity
               style={styles.mobileBackdrop}
@@ -131,12 +125,8 @@ export default function StudentApp({ onLogout }: Props) {
                 isFixed={false}
                 activeScreen={activeScreen}
                 onNavigate={(s) => {
-                  if (s === 'profile') {
-                    setLastScreen(activeScreen);
-                    setActiveScreen('profile');
-                  } else {
-                    setActiveScreen(s as any);
-                  }
+                  setLastScreen(activeScreen);
+                  setActiveScreen(s as any);
                   setMobileDrawerOpen(false);
                 }}
                 userName="Student Name"
@@ -153,16 +143,14 @@ export default function StudentApp({ onLogout }: Props) {
         )}
 
         <View style={{ flex: 1 }}>
-          {/* Profile Modal */}
+
           {activeScreen === 'profile' ? (
-            <ProfileModal
-              visible={true}
-              onClose={() => setActiveScreen(lastScreen)}
-              userName="Student Name"
-              userEmail="student@email.com"
-              onAvatarPress={() => console.log('Edit avatar from modal')}
-            />
+
+            /* ✅ PROFILE SCREEN (NO MODAL) */
+            <Profile />
+
           ) : activeScreen === 'home' ? (
+
             <Dashboard
               announcements={ANNOUNCEMENTS}
               onCoursePress={() => {
@@ -176,23 +164,32 @@ export default function StudentApp({ onLogout }: Props) {
                 setActiveCourseTab('assignments');
               }}
             />
+
           ) : activeScreen === 'game' ? (
             <Game />
+
           ) : activeScreen === 'videos' ? (
             <Videos onVideoActiveChange={setIsVideoActive} />
+
           ) : activeScreen === 'myjourney' ? (
             <MyJourney />
+
           ) : activeScreen === 'assignments' ? (
             <Assignments />
+
           ) : activeScreen === 'community' ? (
             <Community />
+
           ) : activeScreen === 'messenger' ? (
             <Messenger searchQuery="" onConversationActiveChange={setIsConversationActive} />
+
           ) : activeScreen === 'coursedetail' ? (
             <CourseDetail initialTab={activeCourseTab} onBack={() => setActiveScreen(lastScreen)} />
+
           ) : (
             <Text style={{ textAlign: 'center', marginTop: 50 }}>Screen not found</Text>
           )}
+
         </View>
       </View>
 
@@ -205,7 +202,8 @@ export default function StudentApp({ onLogout }: Props) {
 
       {/* Floating Chat Button */}
       {!(activeScreen === 'messenger' && isConversationActive) &&
-        !(activeScreen === 'videos' && isVideoActive) && (
+        !(activeScreen === 'videos' && isVideoActive) &&
+        activeScreen !== 'profile' && (
           <TouchableOpacity
             style={styles.floatingChatBtn}
             activeOpacity={0.85}
@@ -225,36 +223,6 @@ export default function StudentApp({ onLogout }: Props) {
           </TouchableOpacity>
         )}
 
-      {/* Chat Panel */}
-      {isChatOpen &&
-        !(activeScreen === 'messenger' && isConversationActive) &&
-        !(activeScreen === 'videos' && isVideoActive) && (
-          <View style={styles.chatPanel}>
-            <View style={styles.chatHeader}>
-              <Text style={styles.chatTitle}>Ask anything</Text>
-              <TouchableOpacity onPress={() => setIsChatOpen(false)} />
-            </View>
-            <ScrollView style={styles.chatMessages}>
-              <View>
-                <Text style={styles.chatBubbleOther}>Hello! How can I help you today?</Text>
-                <Text style={styles.chatBubbleUser}>Show me my assignments.</Text>
-                <Text style={styles.chatBubbleOther}>
-                  You have 3 pending assignments due next week.
-                </Text>
-              </View>
-            </ScrollView>
-            <View style={styles.chatInputRow}>
-              <TextInput
-                placeholder="Type your question..."
-                placeholderTextColor="rgba(0, 0, 0, 0.5)"
-                style={styles.chatInput}
-              />
-              <TouchableOpacity style={styles.chatSendBtn}>
-                <Text style={{ color: '#fff' }}>Send</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        )}
     </SafeAreaView>
   );
 }

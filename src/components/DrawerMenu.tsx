@@ -16,7 +16,6 @@ import {
 } from 'react-native';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 
-
 interface DrawerMenuProps {
   isFixed: boolean;
   onClose?: () => void;
@@ -52,6 +51,7 @@ const MenuItem = ({
 }) => {
   const { width } = useWindowDimensions();
   const isMobile = width < 768;
+
   const menuItemVerticalMargin = isMobile ? 12 : 18;
   const menuLabelFontSize = isMobile ? 15 : 17;
 
@@ -64,13 +64,18 @@ const MenuItem = ({
           { marginVertical: menuItemVerticalMargin },
           active && { backgroundColor: 'rgba(211,47,47,0.08)', borderRadius: 14 },
         ];
+
         if (Platform.OS === 'web' && (state as any).hovered && !active) {
-          base.push({ backgroundColor: 'rgba(130, 129, 129, 0.08)', borderRadius: 14 });
+          base.push({ backgroundColor: 'rgba(130,129,129,0.08)', borderRadius: 14 });
         }
+
         return base;
       }}
     >
-      <Image source={iconSource} style={[styles.menuIcon, active && { tintColor: '#D32F2F' }]} />
+      <Image
+        source={iconSource}
+        style={[styles.menuIcon, active && { tintColor: '#D32F2F' }]}
+      />
       <Text
         style={[
           styles.menuLabel,
@@ -91,30 +96,26 @@ const DrawerMenu = ({
   activeScreen,
   userName,
   userEmail,
-  onAvatarPress,
-  setIsLoggedIn,           
+  setIsLoggedIn,
 }: DrawerMenuProps) => {
+
   const navigation = useNavigation<any>();
   const { width } = useWindowDimensions();
+
   const [contentHeight, setContentHeight] = useState(0);
   const [scrollViewHeight, setScrollViewHeight] = useState(0);
   const [isSettingsModalVisible, setSettingsModalVisible] = useState(false);
   const [isLogoutModalVisible, setLogoutModalVisible] = useState(false);
-  const [isProfileModalVisible, setProfileModalVisible] = useState(false);
 
   const isMobile = width < 768;
   const isTablet = width >= 768 && width < 1024;
   const isSmallMobile = width < 380;
   const isLargeScreen = width >= 1024;
-  const isOnMobileOrTablet = isMobile || isTablet;
 
   const hasOverflow = contentHeight > scrollViewHeight && scrollViewHeight > 0;
-  const shouldShowScrollBar = isOnMobileOrTablet && hasOverflow;
+  const shouldShowScrollBar = (isMobile || isTablet) && hasOverflow;
 
   const drawerWidth = isMobile ? (isSmallMobile ? '85%' : 280) : isTablet ? 300 : 260;
-  const profileSectionMargin = isMobile ? 20 : 40;
-  const profileFontSize = isMobile ? 16 : 18;
-  const avatarSize = isMobile ? 45 : 50;
 
   const handleContentSizeChange = (_contentW: number, contentH: number) => {
     setContentHeight(contentH);
@@ -124,71 +125,95 @@ const DrawerMenu = ({
     setScrollViewHeight(e.nativeEvent.layout.height);
   };
 
-  const modalButtonHover = { backgroundColor: 'rgba(130, 129, 129, 0.08)', borderRadius: 8 };
-  const pressableWebHover = (state: any) => (Platform.OS === 'web' && state.hovered ? modalButtonHover : {});
+  const modalButtonHover = { backgroundColor: 'rgba(130,129,129,0.08)', borderRadius: 8 };
+  const pressableWebHover = (state: any) =>
+    Platform.OS === 'web' && state.hovered ? modalButtonHover : {};
 
   return (
     <View style={[styles.drawerContainer, { width: drawerWidth }, !isFixed && styles.mobileDrawer]}>
-      
+
       {/* Profile Section */}
-      <View style={[styles.profileSection, { marginBottom: profileSectionMargin }]}>
-        <Pressable
-          onPress={() => setProfileModalVisible(true)}
-          style={{ position: 'relative' }}
-        >
-          <Image
-            source={require('../../assets/images/default_profile.png')}
-            style={[styles.avatar, { width: avatarSize, height: avatarSize, borderRadius: avatarSize / 2 }]}
-          />
-        </Pressable>
+      <View style={styles.profileSection}>
+        <Image
+          source={require('../../assets/images/default_profile.png')}
+          style={styles.avatar}
+        />
+
         <View style={{ flex: 1 }}>
-          <Text style={[styles.userName, { fontSize: profileFontSize }]}>{userName ?? 'Jade M. Lisondra'}</Text>
-          <Text style={styles.userEmail}>{userEmail ?? 'student@email.com'}</Text>
+          <Text style={styles.userName}>
+            {userName ?? 'Jade M. Lisondra'}
+          </Text>
+          <Text style={styles.userEmail}>
+            {userEmail ?? 'student@email.com'}
+          </Text>
         </View>
       </View>
 
       {/* Menu Items */}
       <ScrollView
-        showsVerticalScrollIndicator={shouldShowScrollBar}
         style={{ flex: 1 }}
+        showsVerticalScrollIndicator={shouldShowScrollBar}
         onContentSizeChange={handleContentSizeChange}
         onLayout={handleScrollViewLayout}
-        scrollIndicatorInsets={isMobile ? { right: 4 } : { right: 0 }}
       >
+
+        {/* PROFILE */}
         <MenuItem
           iconSource={require('../../assets/images/person.png')}
           label="Profile"
-          onPress={() => setProfileModalVisible(true)}
+          onPress={() => {
+            navigation.navigate('Profile');
+
+            onNavigate?.('profile');
+
+            if (!isFixed) {
+              onClose?.(); // hides drawer
+            }
+          }}
           active={activeScreen === 'profile'}
         />
+
         <MenuItem
           iconSource={require('../../assets/images/clipboard.png')}
           label="Assignments"
-          onPress={() => { onNavigate?.('assignments'); if (!isFixed) onClose?.(); }}
+          onPress={() => {
+            onNavigate?.('assignments');
+            if (!isFixed) onClose?.();
+          }}
           active={activeScreen === 'assignments'}
         />
+
         <MenuItem
           iconSource={require('../../assets/images/calendar.png')}
           label="My Journey"
-          onPress={() => { onNavigate?.('myjourney'); if (!isFixed) onClose?.(); }}
+          onPress={() => {
+            onNavigate?.('myjourney');
+            if (!isFixed) onClose?.();
+          }}
           active={activeScreen === 'myjourney'}
         />
+
         <MenuItem
           iconSource={require('../../assets/images/users-solid.png')}
           label="Community"
-          onPress={() => { onNavigate?.('community'); if (!isFixed) onClose?.(); }}
+          onPress={() => {
+            onNavigate?.('community');
+            if (!isFixed) onClose?.();
+          }}
           active={activeScreen === 'community'}
         />
+
         <MenuItem
           iconSource={require('../../assets/images/gear-solid.png')}
           label="Settings"
           onPress={() => setSettingsModalVisible(true)}
         />
+
       </ScrollView>
 
       {/* Logout */}
       <Pressable
-        style={[styles.logoutMenuItem]}
+        style={styles.logoutMenuItem}
         onPress={() => setLogoutModalVisible(true)}
       >
         <MaterialCommunityIcons
@@ -200,39 +225,6 @@ const DrawerMenu = ({
         <Text style={styles.logoutLabel}>Logout</Text>
       </Pressable>
 
-      {/* Profile Modal */}
-      <Modal
-        animationType="slide"
-        transparent
-        visible={isProfileModalVisible}
-        onRequestClose={() => setProfileModalVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalContainer, { width: width >= 1024 ? width * 0.3 : '80%' }]}>
-            <Text style={styles.modalTitle}>Profile</Text>
-            <Image
-              source={require('../../assets/images/default_profile.png')}
-              style={{ width: 80, height: 80, borderRadius: 40, marginBottom: 20 }}
-            />
-            <Text style={{ fontWeight: '700', fontSize: 18, marginBottom: 10 }}>{userName}</Text>
-            <Text style={{ fontSize: 16, color: '#555', marginBottom: 20 }}>{userEmail}</Text>
-            <Pressable
-              style={(state) => [styles.modalButton, pressableWebHover(state)]}
-              onPress={() => alert('Edit avatar clicked')}
-            >
-              <MaterialCommunityIcons name="pencil" size={24} color="#D32F2F" style={{ marginRight: 12 }} />
-              <Text style={styles.modalButtonText}>Edit Avatar</Text>
-            </Pressable>
-            <Pressable
-              style={(state) => [styles.modalCloseBtn, pressableWebHover(state)]}
-              onPress={() => setProfileModalVisible(false)}
-            >
-              <Text style={styles.modalCloseText}>Close</Text>
-            </Pressable>
-          </View>
-        </View>
-      </Modal>
-
       {/* Settings Modal */}
       <Modal
         animationType="slide"
@@ -241,38 +233,37 @@ const DrawerMenu = ({
         onRequestClose={() => setSettingsModalVisible(false)}
       >
         <View style={styles.modalOverlay}>
-          <View
-            style={[styles.modalContainer, { width: width >= 1024 ? width * 0.3 : '80%' }]}
-          >
+          <View style={[styles.modalContainer, { width: width >= 1024 ? width * 0.3 : '80%' }]}>
             <Text style={styles.modalTitle}>Settings</Text>
 
             <Pressable
-              style={(state) => [styles.modalButton, pressableWebHover(state), { width: isLargeScreen ? '60%' : '90%' }]}
+              style={(state) => [styles.modalButton, pressableWebHover(state)]}
               onPress={() => alert('Change Email clicked')}
             >
-              <MaterialCommunityIcons name="email" size={24} color="#D32F2F" style={{ marginRight: 12 }} />
+              <MaterialCommunityIcons name="email" size={24} color="#D32F2F" />
               <Text style={styles.modalButtonText}>Change Email</Text>
             </Pressable>
 
             <Pressable
-              style={(state) => [styles.modalButton, pressableWebHover(state), { width: isLargeScreen ? '60%' : '90%' }]}
+              style={(state) => [styles.modalButton, pressableWebHover(state)]}
               onPress={() => alert('Change Password clicked')}
             >
-              <MaterialCommunityIcons name="lock" size={24} color="#D32F2F" style={{ marginRight: 12 }} />
+              <MaterialCommunityIcons name="lock" size={24} color="#D32F2F" />
               <Text style={styles.modalButtonText}>Change Password</Text>
             </Pressable>
 
             <Pressable
-              style={(state) => [styles.modalCloseBtn, pressableWebHover(state)]}
+              style={styles.modalCloseBtn}
               onPress={() => setSettingsModalVisible(false)}
             >
               <Text style={styles.modalCloseText}>Close</Text>
             </Pressable>
+
           </View>
         </View>
       </Modal>
 
-      {/* Logout Confirmation Modal */}
+      {/* Logout Modal */}
       <Modal
         animationType="fade"
         transparent
@@ -280,62 +271,34 @@ const DrawerMenu = ({
         onRequestClose={() => setLogoutModalVisible(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalContainer, { width: width >= 1024 ? width * 0.3 : '80%' }]}>
-            <Text style={styles.modalTitle}>Are you sure you want to logout?</Text>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', width: '100%', marginTop: 10 }}>
-  
-  {/* Cancel Button */}
-  <Pressable
-    style={({ pressed, hovered }: any) => [
-      {
-        flex: 1,
-        marginRight: 10,
-        paddingVertical: 12,
-        borderRadius: 8,
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: hovered && Platform.OS === 'web'
-          ? 'rgba(0,0,0,0.05)'
-          : '#F5F5F5',
-      },
-    ]}
-    onPress={() => setLogoutModalVisible(false)}
-  >
-    <Text style={{ fontSize: 16, color: '#555', fontWeight: '600' }}>
-      Cancel
-    </Text>
-  </Pressable>
+          <View style={styles.modalContainer}>
 
-  {/* Logout Button */}
-  <Pressable
-    style={({ pressed, hovered }: any) => [
-      {
-        flex: 1,
-        marginLeft: 10,
-        paddingVertical: 12,
-        borderRadius: 8,
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: hovered && Platform.OS === 'web'
-          ? '#b71c1c'
-          : '#D32F2F',
-      },
-    ]}
-    onPress={() => {
-      setLogoutModalVisible(false);
-      if (!isFixed) onClose?.();
-      setIsLoggedIn(false);
-    }}
-  >
-    <Text style={{ fontSize: 16, color: '#FFF', fontWeight: '700' }}>
-      Logout
-    </Text>
-  </Pressable>
+            <Text style={styles.modalTitle}>
+              Are you sure you want to logout?
+            </Text>
 
-</View>
+            <Pressable
+              style={styles.modalCloseBtn}
+              onPress={() => setLogoutModalVisible(false)}
+            >
+              <Text>Cancel</Text>
+            </Pressable>
+
+            <Pressable
+              style={styles.modalButton}
+              onPress={() => {
+                setLogoutModalVisible(false);
+                if (!isFixed) onClose?.();
+                setIsLoggedIn(false);
+              }}
+            >
+              <Text style={styles.modalButtonText}>Logout</Text>
+            </Pressable>
+
           </View>
         </View>
       </Modal>
+
     </View>
   );
 };
@@ -347,37 +310,109 @@ const styles = StyleSheet.create({
     borderRightColor: '#EEE',
     padding: 25,
     backgroundColor: '#FFF',
-    ...Platform.select({ web: { paddingHorizontal: 20 }, ios: { paddingTop: 50 } }),
   },
+
   mobileDrawer: {
     elevation: 10,
-    shadowColor: '#000',
-    shadowOffset: { width: 5, height: 0 },
-    shadowOpacity: 0.1,
-    shadowRadius: 10,
   },
-  profileSection: { flexDirection: 'row', alignItems: 'center' },
-  avatar: { borderRadius: 25, marginRight: 15, backgroundColor: '#f0f0f0' },
-  userName: { fontWeight: '700', color: '#333' },
-  userEmail: { color: '#555', fontSize: 14 },
-  menuItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, paddingHorizontal: 10 },
-  menuIcon: { width: 22, height: 22, marginRight: 20, resizeMode: 'contain' },
-  menuLabel: { color: '#444', fontWeight: '500' },
-  logoutMenuItem: { flexDirection: 'row', alignItems: 'center', marginTop: 20, paddingVertical: 15, borderTopWidth: 1, borderTopColor: '#EEE', padding: 8, borderRadius: 12 },
-  logoutLabel: { fontSize: 16, color: '#D32F2F', fontWeight: '600' },
 
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center' },
-  modalContainer: { backgroundColor: '#FFF', borderRadius: 12, padding: 20, alignItems: 'center' },
-  modalTitle: { fontSize: 20, fontWeight: '700', marginBottom: 20 },
-  modalButton: { flexDirection: 'row', width: '90%', marginBottom: 15, alignItems: 'center', justifyContent: 'center', padding: 12, backgroundColor: 'rgba(211,47,47,0.08)', borderRadius: 8 },
-  modalButtonText: { fontSize: 16, fontWeight: '600', color: '#D32F2F' },
-  LogoutmodalButton: {width: '90%', marginBottom: 15, alignItems: 'center', justifyContent: 'center', padding: 12, backgroundColor: 'rgba(211,47,47,0.08)', borderRadius: 8 },
-  LogoutmodalButtonText: { fontSize: 16, fontWeight: '600', color: '#D32F2F' },
-  modalCloseBtn: { padding: 10 , width: '90%', alignItems: 'center', justifyContent: 'center'},
-  modalCloseText: { fontSize: 16, color: '#888' },
-  LogoutmodalCloseBtn: { marginLeft: -70,marginBottom: 15, padding: 12 , width: '90%', alignItems: 'center', justifyContent: 'center'},
-  LogoutmodalCloseText: { fontSize: 16, color: '#888' },
-  
+  profileSection: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 30,
+  },
+
+  avatar: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    marginRight: 15,
+  },
+
+  userName: {
+    fontWeight: '700',
+    fontSize: 18,
+  },
+
+  userEmail: {
+    fontSize: 14,
+    color: '#555',
+  },
+
+  menuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 10,
+  },
+
+  menuIcon: {
+    width: 22,
+    height: 22,
+    marginRight: 20,
+    resizeMode: 'contain',
+  },
+
+  menuLabel: {
+    color: '#444',
+    fontWeight: '500',
+  },
+
+  logoutMenuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 20,
+    borderTopWidth: 1,
+    borderTopColor: '#EEE',
+    paddingTop: 15,
+  },
+
+  logoutLabel: {
+    fontSize: 16,
+    color: '#D32F2F',
+    fontWeight: '600',
+  },
+
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+
+  modalContainer: {
+    backgroundColor: '#FFF',
+    borderRadius: 12,
+    padding: 20,
+    alignItems: 'center',
+  },
+
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    marginBottom: 20,
+  },
+
+  modalButton: {
+    padding: 12,
+    backgroundColor: 'rgba(211,47,47,0.08)',
+    borderRadius: 8,
+    marginTop: 10,
+  },
+
+  modalButtonText: {
+    color: '#D32F2F',
+    fontWeight: '600',
+  },
+
+  modalCloseBtn: {
+    padding: 10,
+    marginTop: 10,
+  },
+
+  modalCloseText: {
+    color: '#888',
+  },
 });
 
 export default DrawerMenu;

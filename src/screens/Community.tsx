@@ -6,12 +6,12 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   TouchableWithoutFeedback,
   View,
 } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
+import PostQueryModal from '../components/PostQueryModal';
 
 interface Post {
   id: string;
@@ -48,10 +48,10 @@ const samplePosts: Post[] = [
 const Community: React.FC<CommunityProps> = ({
   userName = 'Jade',
 }) => {
-  const [question, setQuestion] = useState('');
   const [showAnswersFor, setShowAnswersFor] = useState<string | null>(null);
   const [menuVisibleFor, setMenuVisibleFor] = useState<string | null>(null);
   const [hiddenPosts, setHiddenPosts] = useState<string[]>([]);
+  const [modalVisible, setModalVisible] = useState(false);
 
   const renderPost = ({ item }: { item: Post }) => {
     const showAnswers = showAnswersFor === item.id;
@@ -142,22 +142,22 @@ const Community: React.FC<CommunityProps> = ({
         >
           <View style={styles.header}>
             <Text style={styles.title}>ParseIt Community</Text>
-            <TouchableOpacity onPress={() => alert('Bell pressed')}>
-              <Ionicons name="notifications" size={26} color="#333" />
-            </TouchableOpacity>
           </View>
 
+          {/* Button to open modal */}
           <View style={styles.inputRow}>
             <Image
               source={require('../../assets/images/default_profile.png')}
               style={styles.inputAvatar}
             />
-            <TextInput
+            <TouchableOpacity
               style={styles.inputField}
-              placeholder={`Have a question, ${userName}?`}
-              value={question}
-              onChangeText={setQuestion}
-            />
+              onPress={() => setModalVisible(true)}
+            >
+              <Text style={{ color: '#999' }}>
+                Have a question, {userName}?
+              </Text>
+            </TouchableOpacity>
           </View>
 
           <FlatList
@@ -168,43 +168,23 @@ const Community: React.FC<CommunityProps> = ({
             contentContainerStyle={{ paddingBottom: 50 }}
           />
         </ScrollView>
+
+        {/* PostQueryModal */}
+        <PostQueryModal
+          visible={modalVisible}
+          onClose={() => setModalVisible(false)}
+        />
       </View>
     </TouchableWithoutFeedback>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#f5f5f7',
-  },
-
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 20,
-  },
-
-  title: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#222',
-  },
-
-  inputRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-
-  inputAvatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    marginRight: 8,
-  },
-
+  container: { flex: 1, backgroundColor: '#f5f5f7' },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 },
+  title: { fontSize: 20, fontWeight: '700', color: '#222' },
+  inputRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 20 },
+  inputAvatar: { width: 40, height: 40, borderRadius: 20, marginRight: 8 },
   inputField: {
     flex: 1,
     height: 45,
@@ -213,43 +193,14 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     borderWidth: 1,
     borderColor: '#eee',
+    justifyContent: 'center',
   },
-
-  postContainer: {
-    backgroundColor: '#fff',
-    padding: 12,
-    borderRadius: 8,
-    marginBottom: 12,
-    elevation: 2,
-  },
-
-  postHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-
-  userRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-
-  postAvatar: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-  },
-
-  postUserName: {
-    fontWeight: '700',
-    color: '#222',
-  },
-
-  postDateTime: {
-    fontSize: 12,
-    color: '#666',
-  },
-
+  postContainer: { backgroundColor: '#fff', padding: 12, borderRadius: 8, marginBottom: 12, elevation: 2 },
+  postHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  userRow: { flexDirection: 'row', alignItems: 'center' },
+  postAvatar: { width: 36, height: 36, borderRadius: 18 },
+  postUserName: { fontWeight: '700', color: '#222' },
+  postDateTime: { fontSize: 12, color: '#666' },
   dropdownMenu: {
     position: 'absolute',
     marginTop: -10,
@@ -264,49 +215,13 @@ const styles = StyleSheet.create({
     shadowRadius: 5,
     zIndex: 999,
   },
-
-  menuItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-  },
-
-  hideIconCircle: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: '#E53935',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-
-  menuText: {
-    marginLeft: 6,
-    fontSize: 14,
-    color: '#333',
-  },
-
-  postContent: {
-    color: '#333',
-    marginVertical: 8,
-  },
-
-  showAnswersBtn: {
-    color: '#1976d2',
-    fontWeight: '700',
-  },
-
-  answersContainer: {
-    marginTop: 6,
-    paddingLeft: 8,
-  },
-
-  answerText: {
-    fontSize: 14,
-    color: '#555',
-    marginBottom: 2,
-  },
+  menuItem: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, paddingVertical: 6 },
+  hideIconCircle: { width: 20, height: 20, borderRadius: 10, backgroundColor: '#E53935', justifyContent: 'center', alignItems: 'center' },
+  menuText: { marginLeft: 6, fontSize: 14, color: '#333' },
+  postContent: { color: '#333', marginVertical: 8 },
+  showAnswersBtn: { color: '#1976d2', fontWeight: '700' },
+  answersContainer: { marginTop: 6, paddingLeft: 8 },
+  answerText: { fontSize: 14, color: '#555', marginBottom: 2 },
 });
 
 export default Community;
