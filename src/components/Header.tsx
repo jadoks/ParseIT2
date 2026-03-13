@@ -24,10 +24,22 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
+type ScreenType =
+  | 'home'
+  | 'classes'
+  | 'game'
+  | 'videos'
+  | 'myjourney'
+  | 'profile'
+  | 'messenger'
+  | 'assignments'
+  | 'coursedetail'
+  | 'community';
+
 interface HeaderProps {
   isLargeScreen: boolean;
-  activeScreen?: 'home' | 'game' | 'videos' | 'analytics' | 'myjourney' | 'profile' | 'messenger' | 'assignments' | 'coursedetail' | 'community';
-  onNavigate?: (screen: 'home' | 'game' | 'videos' | 'analytics' | 'myjourney' | 'profile' | 'messenger' | 'assignments' | 'coursedetail' | 'community') => void;
+  activeScreen?: ScreenType;
+  onNavigate?: (screen: ScreenType) => void;
   onSearchChange?: (query: string) => void;
 }
 
@@ -74,21 +86,29 @@ const Header: React.FC<HeaderProps> = ({
   };
 
   const getIconColor = (
-    screen: 'home' | 'game' | 'videos' | 'analytics' | 'myjourney' | 'profile' | 'messenger' | 'community'
+    screen: 'home' | 'classes' | 'game' | 'videos'  | 'myjourney' | 'profile' | 'messenger' | 'community'
   ) => (activeScreen === screen ? '#D32F2F' : '#000000');
 
   const isActive = (
-    screen: 'home' | 'game' | 'videos' | 'analytics' | 'myjourney' | 'profile' | 'messenger' | 'community'
+    screen: 'home' | 'classes' | 'game' | 'videos'  | 'myjourney' | 'profile' | 'messenger' | 'community'
   ) => activeScreen === screen;
 
-  const navScreens: Array<'home' | 'game' | 'videos' | 'messenger'> = [
+  const navScreens: Array<'home' | 'classes' | 'game' | 'videos' | 'messenger'> = [
     'home',
+    'classes',
     'game',
     'videos',
     'messenger',
   ];
 
-  // Mobile Layout
+  const getSearchPlaceholder = () => {
+    if (activeScreen === 'videos') return 'Search Videos';
+    if (activeScreen === 'game') return 'Search Game';
+    if (activeScreen === 'messenger') return 'Search Message';
+    if (activeScreen === 'classes') return 'Search Classes';
+    return 'Search ParseClass';
+  };
+
   if (isPhone) {
     return (
       <TouchableWithoutFeedback
@@ -100,7 +120,6 @@ const Header: React.FC<HeaderProps> = ({
         }}
       >
         <View style={{ backgroundColor: '#FFF', borderBottomWidth: 1, borderBottomColor: '#EEE' }}>
-          {/* ROW 1 */}
           <View
             style={[
               styles.headerContainer,
@@ -143,13 +162,7 @@ const Header: React.FC<HeaderProps> = ({
                     fontWeight: '400',
                   }}
                 >
-                  {activeScreen === 'videos'
-                    ? 'Search Videos'
-                    : activeScreen === 'game'
-                    ? 'Search Game'
-                    : activeScreen === 'messenger'
-                    ? 'Search Message'
-                    : 'Search ParseClass'}
+                  {getSearchPlaceholder()}
                 </Text>
               </TouchableOpacity>
             ) : (
@@ -175,15 +188,7 @@ const Header: React.FC<HeaderProps> = ({
                   />
                   <TextInput
                     autoFocus
-                    placeholder={
-                      activeScreen === 'videos'
-                        ? 'Search Videos'
-                        : activeScreen === 'game'
-                        ? 'Search Game'
-                        : activeScreen === 'messenger'
-                        ? 'Search Message'
-                        : 'Search ParseClass'
-                    }
+                    placeholder={getSearchPlaceholder()}
                     placeholderTextColor="#888"
                     value={searchQuery}
                     onChangeText={(text) => {
@@ -236,10 +241,10 @@ const Header: React.FC<HeaderProps> = ({
           <View
             style={[
               styles.mobileNavRow,
-              { paddingHorizontal, gap: isVerySmall ? 12 : 20, justifyContent: 'center' },
+              { paddingHorizontal, gap: isVerySmall ? 10 : 16, justifyContent: 'center' },
             ]}
           >
-            {navScreens.slice(0, 3).map((screen) => (
+            {navScreens.slice(0, 4).map((screen) => (
               <Pressable
                 key={screen}
                 style={(state: any) => [
@@ -253,7 +258,13 @@ const Header: React.FC<HeaderProps> = ({
                   onNavigate?.(screen);
                 }}
               >
-                {Platform.OS === 'web' ? (
+                {screen === 'classes' ? (
+                  <MaterialCommunityIcons
+                    name="google-classroom"
+                    size={mobileNavIconSize}
+                    color={isActive(screen) ? '#D32F2F' : '#000000'}
+                  />
+                ) : Platform.OS === 'web' ? (
                   <Image
                     source={
                       screen === 'home'
@@ -284,7 +295,6 @@ const Header: React.FC<HeaderProps> = ({
     );
   }
 
-  // Desktop / Tablet Layout
   return (
     <View
       style={[styles.headerContainer, { paddingHorizontal, height: isTablet ? 72 : 80 }]}
@@ -320,15 +330,7 @@ const Header: React.FC<HeaderProps> = ({
             style={{ marginRight: 12 }}
           />
           <TextInput
-            placeholder={
-              activeScreen === 'videos'
-                ? 'Search Videos'
-                : activeScreen === 'game'
-                ? 'Search Game'
-                : activeScreen === 'messenger'
-                ? 'Search Message'
-                : 'Search ParseClass'
-            }
+            placeholder={getSearchPlaceholder()}
             placeholderTextColor="#888"
             value={searchQuery}
             onChangeText={(text) => {
@@ -348,8 +350,8 @@ const Header: React.FC<HeaderProps> = ({
           styles.centerSection,
           {
             flex: isLargeScreenLocal ? 1.2 : isTablet ? 1 : 0.8,
-            gap: isTablet ? 32 : 40,
-            maxWidth: isLargeScreenLocal ? 600 : undefined,
+            gap: isTablet ? 24 : 32,
+            maxWidth: isLargeScreenLocal ? 720 : undefined,
           },
         ]}
       >
@@ -363,7 +365,13 @@ const Header: React.FC<HeaderProps> = ({
             ]}
             onPress={() => onNavigate?.(screen)}
           >
-            {Platform.OS === 'web' ? (
+            {screen === 'classes' ? (
+              <MaterialCommunityIcons
+                name="google-classroom"
+                size={navIconSize}
+                color={isActive(screen) ? '#D32F2F' : '#000000'}
+              />
+            ) : Platform.OS === 'web' ? (
               <Image
                 source={
                   screen === 'home'
@@ -394,7 +402,6 @@ const Header: React.FC<HeaderProps> = ({
         ))}
       </View>
 
-      {/* RIGHT SECTION - pushes notification to the far right */}
       <View style={{ marginLeft: 'auto' }}>
         <TouchableOpacity style={styles.navBtn}>
           <View>

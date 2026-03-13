@@ -1,6 +1,11 @@
-import React, { useState } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
+import * as DocumentPicker from 'expo-document-picker';
+import { router } from 'expo-router';
+import React, { useCallback, useRef, useState } from 'react';
 import {
   Image,
+  Modal,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -8,16 +13,103 @@ import {
   View,
   useWindowDimensions,
 } from 'react-native';
-
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import PostQueryModal from '../components/PostQueryModal';
 
-const Profile = () => {
+type CropType = 'profile' | 'banner';
 
+declare global {
+  var __PROFILE_CROP_RESULT__:
+    | {
+        uri: string;
+        type: CropType;
+        ts: number;
+      }
+    | undefined;
+}
+
+const Profile = () => {
   const { width } = useWindowDimensions();
   const isLargeScreen = width > 1000;
 
   const [queryModalVisible, setQueryModalVisible] = useState(false);
+  const [editMenuVisible, setEditMenuVisible] = useState(false);
+
+  const [profileImage, setProfileImage] = useState<any>(
+    require('../../assets/images/pogi.jpg')
+  );
+  const [bannerImage, setBannerImage] = useState<any>(
+    require('../../assets/images/venti_bg.png')
+  );
+
+  const [menuPosition, setMenuPosition] = useState({
+    top: 0,
+    left: 0,
+  });
+
+  const editBtnRef = useRef<View | null>(null);
+  const lastAppliedCropTs = useRef<number | null>(null);
+
+  useFocusEffect(
+    useCallback(() => {
+      const result = globalThis.__PROFILE_CROP_RESULT__;
+
+      if (!result?.uri) return;
+      if (lastAppliedCropTs.current === result.ts) return;
+
+      if (result.type === 'profile') {
+        setProfileImage({ uri: result.uri });
+      } else {
+        setBannerImage({ uri: result.uri });
+      }
+
+      lastAppliedCropTs.current = result.ts;
+      globalThis.__PROFILE_CROP_RESULT__ = undefined;
+    }, [])
+  );
+
+  const openEditMenu = () => {
+    if (editBtnRef.current && 'measureInWindow' in editBtnRef.current) {
+      (editBtnRef.current as any).measureInWindow(
+        (x: number, y: number, _btnWidth: number, btnHeight: number) => {
+          setMenuPosition({
+            top: y + btnHeight + 8,
+            left: x,
+          });
+          setEditMenuVisible(true);
+        }
+      );
+    }
+  };
+
+  const pickFile = async (type: CropType) => {
+    try {
+      setEditMenuVisible(false);
+
+      globalThis.__PROFILE_CROP_RESULT__ = undefined;
+
+      const result = await DocumentPicker.getDocumentAsync({
+        type: 'image/*',
+        copyToCacheDirectory: true,
+        multiple: false,
+      });
+
+      if (result.canceled) return;
+
+      const selected = result.assets?.[0];
+      if (!selected?.uri) return;
+
+      router.push({
+        pathname: '/CropScreen',
+        params: {
+          imageUri: selected.uri,
+          cropType: type,
+        },
+      });
+    } catch (error) {
+      console.log('Picker error:', error);
+    }
+  };
 
   return (
     <>
@@ -25,90 +117,78 @@ const Profile = () => {
         style={styles.container}
         contentContainerStyle={{ paddingBottom: 40 }}
       >
-
-        {/* Banner */}
         <View style={styles.bannerContainer}>
-          <Image
-            source={require('../../assets/images/venti_bg.png')}
-            style={styles.banner}
-          />
+          <Image source={bannerImage} style={styles.banner} />
         </View>
 
-        {/* Profile Info */}
         <View
           style={[
             styles.profileInfo,
             !isLargeScreen && { paddingHorizontal: 10 },
-            isLargeScreen && { alignSelf: 'center', maxWidth: 600 }
+            isLargeScreen && { alignSelf: 'center', maxWidth: 600 },
           ]}
         >
-
-          <Image
-            source={require('../../assets/images/pogi.jpg')}
-            style={styles.avatar}
-          />
+          <Image source={profileImage} style={styles.avatar} />
 
           <View style={styles.nameContainer}>
-            <Text style={styles.name}>Jade M. Lisondra</Text>
+            <Text style={styles.name}>Jade Lisondra</Text>
             <Text style={styles.email}>jadelisondra101@gmail.com</Text>
 
-            <TouchableOpacity style={styles.editBtn}>
-              <MaterialCommunityIcons name="pencil" size={14} color="#D32F2F" />
-              <Text style={styles.editText}> Edit Avatar</Text>
-            </TouchableOpacity>
+            <View ref={editBtnRef} collapsable={false}>
+              <TouchableOpacity
+                style={styles.editBtn}
+                onPress={openEditMenu}
+                activeOpacity={0.85}
+              >
+                <MaterialCommunityIcons
+                  name="pencil"
+                  size={14}
+                  color="#D32F2F"
+                />
+                <Text style={styles.editText}> Edit </Text>
+              </TouchableOpacity>
+            </View>
           </View>
-
         </View>
 
-        {/* Divider */}
         <View style={styles.divider} />
 
-        {/* Question Input */}
         <View
           style={[
             styles.askContainer,
             !isLargeScreen && { paddingHorizontal: 10 },
-            isLargeScreen && { alignSelf: 'center', maxWidth: 600 }
+            isLargeScreen && { alignSelf: 'center', maxWidth: 600 },
           ]}
         >
+          <Image source={profileImage} style={styles.smallAvatar} />
 
-          <Image
-            source={require('../../assets/images/pogi.jpg')}
-            style={styles.smallAvatar}
-          />
-
-          {/* Trigger Modal */}
           <TouchableOpacity
             style={styles.askInput}
             onPress={() => setQueryModalVisible(true)}
           >
-            <Text style={{ color: '#999' }}>
-              Have a question, Jade?
-            </Text>
+            <Text style={styles.askText}>Have a question, Jade?</Text>
           </TouchableOpacity>
-
         </View>
 
-        {/* Post Card */}
         <View
           style={[
             styles.postCard,
-            isLargeScreen && { alignSelf: 'center', maxWidth: 600 }
+            isLargeScreen && { alignSelf: 'center', maxWidth: 600 },
           ]}
         >
-
           <View style={styles.postHeader}>
-            <Image
-              source={require('../../assets/images/pogi.jpg')}
-              style={styles.postAvatar}
-            />
+            <Image source={profileImage} style={styles.postAvatar} />
 
             <View style={{ flex: 1 }}>
               <Text style={styles.postName}>Jade Lisondra</Text>
               <Text style={styles.postTime}>Feb 23, 2026 11:30 AM</Text>
             </View>
 
-            <MaterialCommunityIcons name="dots-vertical" size={20} color="#333" />
+            <MaterialCommunityIcons
+              name="dots-vertical"
+              size={20}
+              color="#333"
+            />
           </View>
 
           <Text style={styles.postText}>
@@ -118,12 +198,59 @@ const Profile = () => {
           <TouchableOpacity>
             <Text style={styles.answerLink}>View 2 Answer(s)</Text>
           </TouchableOpacity>
-
         </View>
-
       </ScrollView>
 
-      {/* Query Modal */}
+      <Modal
+        visible={editMenuVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setEditMenuVisible(false)}
+      >
+        <Pressable
+          style={styles.dropdownOverlay}
+          onPress={() => setEditMenuVisible(false)}
+        >
+          <View
+            style={[
+              styles.dropdownMenu,
+              {
+                top: menuPosition.top,
+                left: menuPosition.left,
+              },
+            ]}
+          >
+            <Text style={styles.dropdownTitle}>Choose Option</Text>
+
+            <TouchableOpacity
+              style={styles.dropdownItem}
+              onPress={() => pickFile('profile')}
+            >
+              <MaterialCommunityIcons
+                name="account-edit"
+                size={18}
+                color="#000"
+                style={styles.dropdownIcon}
+              />
+              <Text style={styles.dropdownText}>Profile</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.dropdownItem}
+              onPress={() => pickFile('banner')}
+            >
+              <MaterialCommunityIcons
+                name="image-edit"
+                size={18}
+                color="#000"
+                style={styles.dropdownIcon}
+              />
+              <Text style={styles.dropdownText}>Banner</Text>
+            </TouchableOpacity>
+          </View>
+        </Pressable>
+      </Modal>
+
       <PostQueryModal
         visible={queryModalVisible}
         onClose={() => setQueryModalVisible(false)}
@@ -133,7 +260,6 @@ const Profile = () => {
 };
 
 const styles = StyleSheet.create({
-
   container: {
     flex: 1,
     backgroundColor: '#ffffff',
@@ -179,6 +305,7 @@ const styles = StyleSheet.create({
   name: {
     fontSize: 22,
     fontWeight: '700',
+    color: '#111',
   },
 
   email: {
@@ -238,6 +365,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
 
+  askText: {
+    color: '#999',
+  },
+
   postCard: {
     borderRadius: 16,
     borderLeftWidth: 5,
@@ -246,6 +377,7 @@ const styles = StyleSheet.create({
     borderColor: '#D32F2F',
     padding: 18,
     width: '100%',
+    backgroundColor: '#fff',
   },
 
   postHeader: {
@@ -263,6 +395,7 @@ const styles = StyleSheet.create({
 
   postName: {
     fontWeight: '700',
+    color: '#111',
   },
 
   postTime: {
@@ -282,6 +415,52 @@ const styles = StyleSheet.create({
     fontSize: 13,
   },
 
+  dropdownOverlay: {
+    flex: 1,
+    backgroundColor: 'transparent',
+  },
+
+  dropdownMenu: {
+    position: 'absolute',
+    width: 230,
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 14,
+    shadowColor: '#000',
+    shadowOpacity: 0.18,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 8,
+  },
+
+  dropdownTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    textAlign: 'center',
+    marginBottom: 12,
+    color: '#333',
+  },
+
+  dropdownItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#EAEAEA',
+    borderRadius: 8,
+    paddingVertical: 12,
+    marginBottom: 12,
+  },
+
+  dropdownIcon: {
+    marginRight: 8,
+  },
+
+  dropdownText: {
+    fontSize: 16,
+    color: '#222',
+    fontWeight: '500',
+  },
 });
 
 export default Profile;

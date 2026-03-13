@@ -10,6 +10,7 @@ import {
   StyleProp,
   StyleSheet,
   Text,
+  TextInput,
   useWindowDimensions,
   View,
   ViewStyle
@@ -30,8 +31,9 @@ interface DrawerMenuProps {
       | 'assignments'
       | 'coursedetail'
       | 'community'
+      | 'classes'
   ) => void;
-  activeScreen?: 'home' | 'game' | 'videos' | 'myjourney' | 'profile' | 'messenger' | 'assignments' | 'coursedetail' | 'community';
+  activeScreen?: 'home' | 'game' | 'classes'| 'videos' | 'myjourney' | 'profile' | 'messenger' | 'assignments' | 'coursedetail' | 'community';
   userName?: string;
   userEmail?: string;
   onAvatarPress?: () => void;
@@ -98,7 +100,6 @@ const DrawerMenu = ({
   userEmail,
   setIsLoggedIn,
 }: DrawerMenuProps) => {
-
   const navigation = useNavigation<any>();
   const { width } = useWindowDimensions();
 
@@ -107,10 +108,17 @@ const DrawerMenu = ({
   const [isSettingsModalVisible, setSettingsModalVisible] = useState(false);
   const [isLogoutModalVisible, setLogoutModalVisible] = useState(false);
 
+  const [isChangeEmailModalVisible, setChangeEmailModalVisible] = useState(false);
+  const [isChangePasswordModalVisible, setChangePasswordModalVisible] = useState(false);
+
+  const [email, setEmail] = useState(userEmail ?? 'student@email.com');
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+
   const isMobile = width < 768;
   const isTablet = width >= 768 && width < 1024;
   const isSmallMobile = width < 380;
-  const isLargeScreen = width >= 1024;
 
   const hasOverflow = contentHeight > scrollViewHeight && scrollViewHeight > 0;
   const shouldShowScrollBar = (isMobile || isTablet) && hasOverflow;
@@ -131,20 +139,16 @@ const DrawerMenu = ({
 
   return (
     <View style={[styles.drawerContainer, { width: drawerWidth }, !isFixed && styles.mobileDrawer]}>
-
       {/* Profile Section */}
       <View style={styles.profileSection}>
         <Image
-          source={require('../../assets/images/default_profile.png')}
+          source={require('../../assets/images/pogi.jpg')}
           style={styles.avatar}
         />
 
         <View style={{ flex: 1 }}>
           <Text style={styles.userName}>
-            {userName ?? 'Jade M. Lisondra'}
-          </Text>
-          <Text style={styles.userEmail}>
-            {userEmail ?? 'student@email.com'}
+            {/*{userName ?? 'Jade M. Lisondra'}*/} Jade Lisondra
           </Text>
         </View>
       </View>
@@ -156,19 +160,13 @@ const DrawerMenu = ({
         onContentSizeChange={handleContentSizeChange}
         onLayout={handleScrollViewLayout}
       >
-
-        {/* PROFILE */}
         <MenuItem
           iconSource={require('../../assets/images/person.png')}
           label="Profile"
           onPress={() => {
             navigation.navigate('Profile');
-
             onNavigate?.('profile');
-
-            if (!isFixed) {
-              onClose?.(); // hides drawer
-            }
+            if (!isFixed) onClose?.();
           }}
           active={activeScreen === 'profile'}
         />
@@ -208,7 +206,6 @@ const DrawerMenu = ({
           label="Settings"
           onPress={() => setSettingsModalVisible(true)}
         />
-
       </ScrollView>
 
       {/* Logout */}
@@ -227,38 +224,205 @@ const DrawerMenu = ({
 
       {/* Settings Modal */}
       <Modal
-        animationType="slide"
+        animationType="fade"
         transparent
         visible={isSettingsModalVisible}
         onRequestClose={() => setSettingsModalVisible(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalContainer, { width: width >= 1024 ? width * 0.3 : '80%' }]}>
-            <Text style={styles.modalTitle}>Settings</Text>
+          <View style={styles.settingsModalContainer}>
+            <View style={styles.settingsHeader}>
+              <Text style={styles.settingsTitle}>Settings</Text>
+              <Text style={styles.settingsSubtitle}>
+                Manage your account preferences
+              </Text>
+            </View>
 
             <Pressable
-              style={(state) => [styles.modalButton, pressableWebHover(state)]}
-              onPress={() => alert('Change Email clicked')}
+              style={(state) => [
+                styles.settingsOptionButton,
+                pressableWebHover(state),
+              ]}
+              onPress={() => {
+                setSettingsModalVisible(false);
+                setChangeEmailModalVisible(true);
+              }}
             >
-              <MaterialCommunityIcons name="email" size={24} color="#D32F2F" />
-              <Text style={styles.modalButtonText}>Change Email</Text>
+              <View style={styles.settingsOptionContent}>
+                <View style={styles.settingsOptionIconWrap}>
+                  <MaterialCommunityIcons name="email-outline" size={22} color="#D32F2F" />
+                </View>
+
+                <View style={styles.settingsOptionTextWrap}>
+                  <Text style={styles.settingsOptionTitle}>Change Email</Text>
+                  <Text style={styles.settingsOptionSubtitle}>
+                    Update your registered email address
+                  </Text>
+                </View>
+
+                <MaterialCommunityIcons name="chevron-right" size={24} color="#999" />
+              </View>
             </Pressable>
 
             <Pressable
-              style={(state) => [styles.modalButton, pressableWebHover(state)]}
-              onPress={() => alert('Change Password clicked')}
+              style={(state) => [
+                styles.settingsOptionButton,
+                pressableWebHover(state),
+              ]}
+              onPress={() => {
+                setSettingsModalVisible(false);
+                setChangePasswordModalVisible(true);
+              }}
             >
-              <MaterialCommunityIcons name="lock" size={24} color="#D32F2F" />
-              <Text style={styles.modalButtonText}>Change Password</Text>
+              <View style={styles.settingsOptionContent}>
+                <View style={styles.settingsOptionIconWrap}>
+                  <MaterialCommunityIcons name="lock-outline" size={22} color="#D32F2F" />
+                </View>
+
+                <View style={styles.settingsOptionTextWrap}>
+                  <Text style={styles.settingsOptionTitle}>Change Password</Text>
+                  <Text style={styles.settingsOptionSubtitle}>
+                    Create a new secure password
+                  </Text>
+                </View>
+
+                <MaterialCommunityIcons name="chevron-right" size={24} color="#999" />
+              </View>
             </Pressable>
 
             <Pressable
-              style={styles.modalCloseBtn}
+              style={styles.settingsCloseBtn}
               onPress={() => setSettingsModalVisible(false)}
             >
-              <Text style={styles.modalCloseText}>Close</Text>
+              <Text style={styles.settingsCloseText}>Close</Text>
             </Pressable>
+          </View>
+        </View>
+      </Modal>
 
+      {/* Change Email Modal */}
+      <Modal
+        animationType="fade"
+        transparent
+        visible={isChangeEmailModalVisible}
+        onRequestClose={() => setChangeEmailModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.formModalContainer}>
+            <Text style={styles.formModalTitle}>Change Email</Text>
+            <Text style={styles.formModalSubtitle}>
+              Enter your new email address below.
+            </Text>
+
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>Email Address</Text>
+              <TextInput
+                value={email}
+                onChangeText={setEmail}
+                placeholder="Enter new email"
+                placeholderTextColor="#999"
+                style={styles.textInput}
+                keyboardType="email-address"
+                autoCapitalize="none"
+              />
+            </View>
+
+            <View style={styles.formButtonsRow}>
+              <Pressable
+                style={styles.formCancelBtn}
+                onPress={() => {
+                  setChangeEmailModalVisible(false);
+                  setSettingsModalVisible(true);
+                }}
+              >
+                <Text style={styles.formCancelText}>Back</Text>
+              </Pressable>
+
+              <Pressable
+                style={styles.formSaveBtn}
+                onPress={() => {
+                  alert('Email updated');
+                  setChangeEmailModalVisible(false);
+                }}
+              >
+                <Text style={styles.formSaveText}>Save</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Change Password Modal */}
+      <Modal
+        animationType="fade"
+        transparent
+        visible={isChangePasswordModalVisible}
+        onRequestClose={() => setChangePasswordModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.formModalContainer}>
+            <Text style={styles.formModalTitle}>Change Password</Text>
+            <Text style={styles.formModalSubtitle}>
+              Update your password to keep your account secure.
+            </Text>
+
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>Current Password</Text>
+              <TextInput
+                value={currentPassword}
+                onChangeText={setCurrentPassword}
+                placeholder="Enter current password"
+                placeholderTextColor="#999"
+                style={styles.textInput}
+                secureTextEntry
+              />
+            </View>
+
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>New Password</Text>
+              <TextInput
+                value={newPassword}
+                onChangeText={setNewPassword}
+                placeholder="Enter new password"
+                placeholderTextColor="#999"
+                style={styles.textInput}
+                secureTextEntry
+              />
+            </View>
+
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>Confirm Password</Text>
+              <TextInput
+                value={confirmPassword}
+                onChangeText={setConfirmPassword}
+                placeholder="Confirm new password"
+                placeholderTextColor="#999"
+                style={styles.textInput}
+                secureTextEntry
+              />
+            </View>
+
+            <View style={styles.formButtonsRow}>
+              <Pressable
+                style={styles.formCancelBtn}
+                onPress={() => {
+                  setChangePasswordModalVisible(false);
+                  setSettingsModalVisible(true);
+                }}
+              >
+                <Text style={styles.formCancelText}>Back</Text>
+              </Pressable>
+
+              <Pressable
+                style={styles.formSaveBtn}
+                onPress={() => {
+                  alert('Password updated');
+                  setChangePasswordModalVisible(false);
+                }}
+              >
+                <Text style={styles.formSaveText}>Save</Text>
+              </Pressable>
+            </View>
           </View>
         </View>
       </Modal>
@@ -271,34 +435,37 @@ const DrawerMenu = ({
         onRequestClose={() => setLogoutModalVisible(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContainer}>
-
-            <Text style={styles.modalTitle}>
+          <View style={styles.logoutModalContainer}>
+            <Text style={styles.logoutModalTitle}>
               Are you sure you want to logout?
             </Text>
 
-            <Pressable
-              style={styles.modalCloseBtn}
-              onPress={() => setLogoutModalVisible(false)}
-            >
-              <Text>Cancel</Text>
-            </Pressable>
+            <Text style={styles.logoutModalSubtitle}>
+              You will need to sign in again to continue using your account.
+            </Text>
 
-            <Pressable
-              style={styles.modalButton}
-              onPress={() => {
-                setLogoutModalVisible(false);
-                if (!isFixed) onClose?.();
-                setIsLoggedIn(false);
-              }}
-            >
-              <Text style={styles.modalButtonText}>Logout</Text>
-            </Pressable>
+            <View style={styles.logoutButtonsRow}>
+              <Pressable
+                style={styles.modalCancelBtn}
+                onPress={() => setLogoutModalVisible(false)}
+              >
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </Pressable>
 
+              <Pressable
+                style={styles.logoutConfirmBtn}
+                onPress={() => {
+                  setLogoutModalVisible(false);
+                  if (!isFixed) onClose?.();
+                  setIsLoggedIn(false);
+                }}
+              >
+                <Text style={styles.logoutConfirmText}>Logout</Text>
+              </Pressable>
+            </View>
           </View>
         </View>
       </Modal>
-
     </View>
   );
 };
@@ -380,38 +547,224 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
 
-  modalContainer: {
+  settingsModalContainer: {
     backgroundColor: '#FFF',
-    borderRadius: 12,
+    borderRadius: 18,
     padding: 20,
+    width: '88%',
+    maxWidth: 380,
+  },
+
+  settingsHeader: {
+    marginBottom: 18,
+  },
+
+  settingsTitle: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: '#222',
+    textAlign: 'center',
+  },
+
+  settingsSubtitle: {
+    fontSize: 14,
+    color: '#777',
+    textAlign: 'center',
+    marginTop: 6,
+  },
+
+  settingsOptionButton: {
+    backgroundColor: '#FAFAFA',
+    borderRadius: 14,
+    paddingVertical: 14,
+    paddingHorizontal: 14,
+    marginTop: 12,
+    borderWidth: 1,
+    borderColor: '#EEE',
+  },
+
+  settingsOptionContent: {
+    flexDirection: 'row',
     alignItems: 'center',
   },
 
-  modalTitle: {
-    fontSize: 20,
+  settingsOptionIconWrap: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: 'rgba(211,47,47,0.10)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+
+  settingsOptionTextWrap: {
+    flex: 1,
+  },
+
+  settingsOptionTitle: {
+    fontSize: 15,
     fontWeight: '700',
+    color: '#222',
+  },
+
+  settingsOptionSubtitle: {
+    fontSize: 13,
+    color: '#777',
+    marginTop: 2,
+  },
+
+  settingsCloseBtn: {
+    alignSelf: 'center',
+    marginTop: 18,
+    paddingVertical: 10,
+    paddingHorizontal: 18,
+  },
+
+  settingsCloseText: {
+    color: '#888',
+    fontWeight: '600',
+    fontSize: 15,
+  },
+
+  formModalContainer: {
+    backgroundColor: '#FFF',
+    borderRadius: 18,
+    padding: 20,
+    width: '88%',
+    maxWidth: 380,
+  },
+
+  formModalTitle: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: '#222',
+    textAlign: 'center',
+  },
+
+  formModalSubtitle: {
+    fontSize: 14,
+    color: '#777',
+    textAlign: 'center',
+    marginTop: 6,
     marginBottom: 20,
   },
 
-  modalButton: {
-    padding: 12,
-    backgroundColor: 'rgba(211,47,47,0.08)',
-    borderRadius: 8,
-    marginTop: 10,
+  inputGroup: {
+    marginBottom: 14,
   },
 
-  modalButtonText: {
-    color: '#D32F2F',
+  inputLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 8,
+  },
+
+  textInput: {
+    height: 48,
+    borderWidth: 1,
+    borderColor: '#DDD',
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    color: '#222',
+    backgroundColor: '#FFF',
+  },
+
+  formButtonsRow: {
+    flexDirection: 'row',
+    marginTop: 10,
+    gap: 12,
+    width: '100%',
+  },
+
+  formCancelBtn: {
+    flex: 1,
+    height: 46,
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#F3F3F3',
+  },
+
+  formCancelText: {
+    color: '#888',
+    fontWeight: '600',
+    fontSize: 15,
+  },
+
+  formSaveBtn: {
+    flex: 1,
+    height: 46,
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#D32F2F',
+  },
+
+  formSaveText: {
+    color: '#FFF',
+    fontWeight: '700',
+    fontSize: 15,
+  },
+
+  logoutModalContainer: {
+    backgroundColor: '#FFF',
+    borderRadius: 16,
+    paddingVertical: 24,
+    paddingHorizontal: 20,
+    width: '85%',
+    maxWidth: 360,
+    alignItems: 'center',
+  },
+
+  logoutModalTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#222',
+    textAlign: 'center',
+  },
+
+  logoutModalSubtitle: {
+    fontSize: 14,
+    color: '#777',
+    textAlign: 'center',
+    marginTop: 8,
+  },
+
+  logoutButtonsRow: {
+    flexDirection: 'row',
+    marginTop: 24,
+    gap: 12,
+    width: '100%',
+  },
+
+  modalCancelBtn: {
+    flex: 1,
+    height: 46,
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#F3F3F3',
+  },
+
+  modalCancelText: {
+    color: '#888',
     fontWeight: '600',
   },
 
-  modalCloseBtn: {
-    padding: 10,
-    marginTop: 10,
+  logoutConfirmBtn: {
+    flex: 1,
+    height: 46,
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#D32F2F',
   },
 
-  modalCloseText: {
-    color: '#888',
+  logoutConfirmText: {
+    color: '#FFF',
+    fontWeight: '700',
   },
 });
 
