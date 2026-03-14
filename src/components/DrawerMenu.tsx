@@ -20,21 +20,32 @@ import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityI
 interface DrawerMenuProps {
   isFixed: boolean;
   onClose?: () => void;
-  onNavigate?: (
-    screen:
-      | 'home'
-      | 'game'
-      | 'videos'
-      | 'myjourney'
-      | 'profile'
-      | 'messenger'
-      | 'assignments'
-      | 'coursedetail'
-      | 'community'
-      | 'classes'
-  ) => void;
-  activeScreen?: 'home' | 'game' | 'classes'| 'videos' | 'myjourney' | 'profile' | 'messenger' | 'assignments' | 'coursedetail' | 'community';
-  userName?: string;
+onNavigate?: (
+  screen:
+    | 'home'
+    | 'game'
+    | 'videos'
+    | 'myjourney'
+    | 'profile'
+    | 'messenger'
+    | 'assignments'
+    | 'coursedetail'
+    | 'community'
+    | 'classes'
+    | 'generateactivity'
+) => void;
+activeScreen?:
+  | 'home'
+  | 'game'
+  | 'classes'
+  | 'videos'
+  | 'myjourney'
+  | 'profile'
+  | 'messenger'
+  | 'assignments'
+  | 'coursedetail'
+  | 'community'
+  | 'generateactivity';  userName?: string;
   userEmail?: string;
   onAvatarPress?: () => void;
   setIsLoggedIn: React.Dispatch<React.SetStateAction<boolean>>;

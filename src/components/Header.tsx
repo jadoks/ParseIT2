@@ -34,7 +34,8 @@ type ScreenType =
   | 'messenger'
   | 'assignments'
   | 'coursedetail'
-  | 'community';
+  | 'community'
+  | 'generateactivity';
 
 interface HeaderProps {
   isLargeScreen: boolean;
@@ -86,11 +87,11 @@ const Header: React.FC<HeaderProps> = ({
   };
 
   const getIconColor = (
-    screen: 'home' | 'classes' | 'game' | 'videos'  | 'myjourney' | 'profile' | 'messenger' | 'community'
-  ) => (activeScreen === screen ? '#D32F2F' : '#000000');
+  screen: 'home' | 'classes' | 'game' | 'videos' | 'myjourney' | 'profile' | 'messenger' | 'community' | 'generateactivity'
+) => (activeScreen === screen ? '#D32F2F' : '#000000');
 
   const isActive = (
-    screen: 'home' | 'classes' | 'game' | 'videos'  | 'myjourney' | 'profile' | 'messenger' | 'community'
+    screen: 'home' | 'classes' | 'game' | 'videos'  | 'myjourney' | 'profile' | 'messenger' | 'community' | 'generateactivity'
   ) => activeScreen === screen;
 
   const navScreens: Array<'home' | 'classes' | 'game' | 'videos' | 'messenger'> = [

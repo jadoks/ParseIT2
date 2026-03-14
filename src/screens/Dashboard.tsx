@@ -85,7 +85,7 @@ const Dashboard = ({
     const percent = getScorePercent(assignment);
     if (percent === null) return null;
     if (percent < 60) return 'review';
-    if (percent < 80) return 'practice';
+    if (percent < 75) return 'practice';
     return 'advanced';
   };
 
@@ -101,19 +101,29 @@ const Dashboard = ({
     return 'Advanced Challenge';
   };
 
+  const getNextDueAssignment = (assignments: DashboardAssignment[]) => {
+    const today = new Date();
+
+    const upcoming = assignments
+      .filter((assignment) => {
+        const due = new Date(assignment.dueDate);
+        return !Number.isNaN(due.getTime()) && due >= today;
+      })
+      .sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime());
+
+    return upcoming[0] || null;
+  };
+
   const derivedCourses = useMemo(() => {
     return courses.map((course) => {
       const gradedAssignments = course.assignments.filter((a) => a.status === 'graded');
-      const weakestGraded =
-        gradedAssignments.length > 0
-          ? [...gradedAssignments].sort((a, b) => {
-              const aScore = getScorePercent(a) ?? 999;
-              const bScore = getScorePercent(b) ?? 999;
-              return aScore - bScore;
-            })[0]
-          : null;
 
-      const pendingGenerated = gradedAssignments.filter((a) => {
+      const weakAssignments = gradedAssignments.filter((a) => {
+        const score = getScorePercent(a);
+        return score !== null && score < 75;
+      });
+
+      const pendingGenerated = weakAssignments.filter((a) => {
         const type = getRecommendationType(a);
         return type === 'review' || type === 'practice';
       });
@@ -126,45 +136,52 @@ const Dashboard = ({
             )
           : null;
 
+      const weakTopics = weakAssignments.map((assignment) => assignment.topic || assignment.title);
+      const nextDueAssignment = getNextDueAssignment(course.assignments);
+
       return {
         course,
-        weakestAssignment: weakestGraded,
+        weakAssignments,
+        weakTopics,
+        weakTopicsCount: weakTopics.length,
         pendingGeneratedCount: pendingGenerated.length,
         averageScore,
+        totalAssignments: course.assignments.length,
+        gradedAssignmentsCount: gradedAssignments.length,
+        nextDueAssignment,
       };
     });
   }, [courses]);
 
   const recommendedAssignments = useMemo(() => {
-    return derivedCourses
-      .map((item) => {
-        if (!item.weakestAssignment) return null;
-        const recommendation = getRecommendationType(item.weakestAssignment);
-        if (!recommendation) return null;
+    return derivedCourses.flatMap((item) =>
+      item.weakAssignments
+        .map((assignment) => {
+          const recommendation = getRecommendationType(assignment);
+          if (!recommendation || recommendation === 'advanced') return null;
 
-        return {
-          course: item.course,
-          assignment: item.weakestAssignment,
-          recommendation,
-          score: getScorePercent(item.weakestAssignment),
-        };
-      })
-      .filter(Boolean) as Array<{
-      course: DashboardCourse;
-      assignment: DashboardAssignment;
-      recommendation: RecommendationType;
-      score: number | null;
-    }>;
+          return {
+            course: item.course,
+            assignment,
+            recommendation,
+            score: getScorePercent(assignment),
+          };
+        })
+        .filter(Boolean) as Array<{
+        course: DashboardCourse;
+        assignment: DashboardAssignment;
+        recommendation: RecommendationType;
+        score: number | null;
+      }>
+    );
   }, [derivedCourses]);
 
   const reviewTopics = useMemo(() => {
-    return recommendedAssignments
-      .filter((item) => item.recommendation !== 'advanced')
-      .map((item) => ({
-        id: `${item.course.id}-${item.assignment.id}`,
-        topic: item.assignment.topic || item.assignment.title,
-        level: item.recommendation === 'review' ? 'danger' : 'warning',
-      }));
+    return recommendedAssignments.map((item) => ({
+      id: `${item.course.id}-${item.assignment.id}`,
+      topic: item.assignment.topic || item.assignment.title,
+      level: item.recommendation === 'review' ? 'danger' : 'warning',
+    }));
   }, [recommendedAssignments]);
 
   const nextBest = useMemo(() => {
@@ -216,7 +233,7 @@ const Dashboard = ({
             },
           ]}
         >
-          Recommended for You
+          Suggested Learning Actions
         </Text>
 
         <View
@@ -229,7 +246,7 @@ const Dashboard = ({
           ]}
         >
           <Text style={[styles.sectionTitle, { fontSize: isMobile ? 17 : 18 }]}>
-            Personalized Suggestions
+            Support Activities for Weak Topics
           </Text>
           <Text
             style={[
@@ -237,7 +254,8 @@ const Dashboard = ({
               { fontSize: isMobile ? 13 : 14 },
             ]}
           >
-            These are based on your graded assignments and weaker topics.
+            Open an assignment directly or generate a follow-up activity for any graded topic below
+            75%.
           </Text>
 
           <View style={styles.recommendationList}>
@@ -292,14 +310,14 @@ const Dashboard = ({
                         style={[styles.smallActionBtn, { backgroundColor: '#D32F2F' }]}
                         onPress={() => onOpenGeneratedActivity?.(item.course, item.assignment)}
                       >
-                        <Text style={styles.smallActionBtnText}>Generate</Text>
+                        <Text style={styles.smallActionBtnText}>Generate Activity</Text>
                       </TouchableOpacity>
 
                       <TouchableOpacity
                         style={[styles.smallActionBtn, { backgroundColor: '#444' }]}
                         onPress={() => onOpenAssignments?.(item.course)}
                       >
-                        <Text style={styles.smallActionBtnText}>Assignments</Text>
+                        <Text style={styles.smallActionBtnText}>Open Assignment</Text>
                       </TouchableOpacity>
                     </View>
                   </View>
@@ -318,7 +336,7 @@ const Dashboard = ({
             },
           ]}
         >
-          Your Courses
+          Course Progress Overview
         </Text>
 
         <View
@@ -329,9 +347,12 @@ const Dashboard = ({
           ]}
         >
           {derivedCourses.map((item) => {
-            const recommendation =
-              item.weakestAssignment ? getRecommendationType(item.weakestAssignment) : null;
-            const color = recommendation ? getRecommendationColor(recommendation) : '#2E7D32';
+            const weakCourseColor =
+              item.weakAssignments.length > 0
+                ? getRecommendationColor(
+                    getRecommendationType(item.weakAssignments[0]) || 'practice'
+                  )
+                : '#2E7D32';
 
             return (
               <View
@@ -340,7 +361,7 @@ const Dashboard = ({
                   styles.courseCard,
                   {
                     width: isMobile ? '100%' : isLargeScreen ? '32%' : '48.5%',
-                    borderTopColor: color,
+                    borderTopColor: weakCourseColor,
                   },
                 ]}
               >
@@ -353,24 +374,55 @@ const Dashboard = ({
                     <Text style={styles.courseMetaValue}>{item.course.code}</Text>
                   </View>
 
+                  <View style={styles.courseMetaGrid}>
+                    <View style={styles.courseMiniStat}>
+                      <Text style={styles.courseMetaLabel}>Assignments</Text>
+                      <Text style={styles.courseMetaValue}>{item.totalAssignments}</Text>
+                    </View>
+
+                    <View style={styles.courseMiniStat}>
+                      <Text style={styles.courseMetaLabel}>Graded</Text>
+                      <Text style={styles.courseMetaValue}>{item.gradedAssignmentsCount}</Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.courseMetaGrid}>
+                    <View style={styles.courseMiniStat}>
+                      <Text style={styles.courseMetaLabel}>Weak Topics</Text>
+                      <Text style={styles.courseMetaValue}>{item.weakTopicsCount}</Text>
+                    </View>
+
+                    <View style={styles.courseMiniStat}>
+                      <Text style={styles.courseMetaLabel}>Average Score</Text>
+                      <Text style={styles.courseMetaValue}>
+                        {item.averageScore !== null ? `${item.averageScore}%` : 'N/A'}
+                      </Text>
+                    </View>
+                  </View>
+
                   <View style={styles.courseMetaBlock}>
-                    <Text style={styles.courseMetaLabel}>Weakest topic</Text>
+                    <Text style={styles.courseMetaLabel}>Next Due</Text>
                     <Text style={styles.courseMetaValue}>
-                      {item.weakestAssignment?.topic || 'No graded topic yet'}
+                      {item.nextDueAssignment
+                        ? item.nextDueAssignment.title
+                        : 'No upcoming assignment'}
                     </Text>
                   </View>
 
                   <View style={styles.courseMetaBlock}>
-                    <Text style={styles.courseMetaLabel}>Average graded score</Text>
+                    <Text style={styles.courseMetaLabel}>Weak Topic List</Text>
                     <Text style={styles.courseMetaValue}>
-                      {item.averageScore !== null ? `${item.averageScore}%` : 'No graded data yet'}
+                      {item.weakTopicsCount > 0 ? item.weakTopics.join(', ') : 'None'}
                     </Text>
                   </View>
 
                   <View
                     style={[
                       styles.courseBadge,
-                      { backgroundColor: item.pendingGeneratedCount > 0 ? color : '#2E7D32' },
+                      {
+                        backgroundColor:
+                          item.pendingGeneratedCount > 0 ? weakCourseColor : '#2E7D32',
+                      },
                     ]}
                   >
                     <Text style={styles.courseBadgeText}>
@@ -378,7 +430,7 @@ const Dashboard = ({
                         ? `${item.pendingGeneratedCount} support activit${
                             item.pendingGeneratedCount > 1 ? 'ies' : 'y'
                           } available`
-                        : 'No pending support activity'}
+                        : 'Course is doing well'}
                     </Text>
                   </View>
                 </TouchableOpacity>
@@ -395,7 +447,7 @@ const Dashboard = ({
                     style={[styles.cardActionBtn, { backgroundColor: '#555' }]}
                     onPress={() => onOpenAssignments?.(item.course)}
                   >
-                    <Text style={styles.cardActionBtnText}>Assignments</Text>
+                    <Text style={styles.cardActionBtnText}>Assignment Tab</Text>
                   </TouchableOpacity>
 
                   <TouchableOpacity
@@ -419,7 +471,7 @@ const Dashboard = ({
             },
           ]}
         >
-          Topics to Review
+          Weak Topics
         </Text>
 
         <View style={styles.topicRow}>
@@ -459,7 +511,7 @@ const Dashboard = ({
             },
           ]}
         >
-          Next Best Lesson
+          Next Recommended Lesson
         </Text>
 
         {nextBest ? (
@@ -482,7 +534,8 @@ const Dashboard = ({
                 {nextBest.assignment.topic || nextBest.assignment.title}
               </Text>
               <Text style={[styles.lessonSubtitle, { fontSize: isMobile ? 13 : 14 }]}>
-                Recommended next step in {nextBest.course.name}. Open materials related to this topic.
+                Recommended next step in {nextBest.course.name}. Open materials related to this
+                topic.
               </Text>
             </View>
           </TouchableOpacity>
@@ -499,7 +552,7 @@ const Dashboard = ({
             },
           ]}
         >
-          Practice Based on Your Progress
+          Generated Practice Suggestions
         </Text>
 
         <View
@@ -660,6 +713,17 @@ const styles = StyleSheet.create({
   },
   courseMetaBlock: {
     marginBottom: 10,
+  },
+  courseMetaGrid: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 10,
+  },
+  courseMiniStat: {
+    flex: 1,
+    backgroundColor: '#F8F8F8',
+    borderRadius: 12,
+    padding: 10,
   },
   courseMetaLabel: {
     fontSize: 12,

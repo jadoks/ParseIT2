@@ -7,12 +7,22 @@ import DrawerMenu from './components/DrawerMenu';
 import GeminiFloatingModal from './components/GeminiFloatingModal';
 import Header from './components/Header';
 
-import Assignments, { AssignmentCourse } from './screens/Assignments';
+import Assignments, {
+  AssignmentComment,
+  AssignmentCourse,
+  AssignmentFileUpload,
+  AssignmentItem,
+} from './screens/Assignments';
 import ClassesScreen from './screens/ClassesScreen';
 import Community from './screens/Community';
-import CourseDetail, { CourseDetailData } from './screens/CourseDetail';
-import Dashboard from './screens/Dashboard';
+import CourseDetail, {
+  CourseAssignment,
+  CourseAssignmentComment,
+  CourseDetailData,
+} from './screens/CourseDetail';
+import Dashboard, { DashboardAssignment } from './screens/Dashboard';
 import Game from './screens/Game';
+import GenerateActivity, { GenerateActivityData } from './screens/GenerateActivity';
 import Messenger from './screens/Messenger';
 import MyJourney from './screens/MyJourney';
 import Profile from './screens/Profile';
@@ -32,7 +42,8 @@ type ScreenType =
   | 'messenger'
   | 'assignments'
   | 'coursedetail'
-  | 'community';
+  | 'community'
+  | 'generateactivity';
 
 const ANNOUNCEMENTS: Announcement[] = [
   {
@@ -87,6 +98,15 @@ const COURSES: CourseDetailData[] = [
             uploadedAt: '2026-02-15 08:30 AM',
           },
         ],
+        comments: [
+          {
+            id: 'c-a1-1',
+            author: 'Prof. John Smith',
+            content: 'Please review the related materials before attempting the next activity.',
+            timestamp: '2026-02-15 09:00 AM',
+            isInstructor: true,
+          },
+        ],
       },
       {
         id: 'a2',
@@ -109,6 +129,15 @@ const COURSES: CourseDetailData[] = [
             uploadedAt: '2026-02-20 09:12 AM',
           },
         ],
+        comments: [
+          {
+            id: 'c-a2-1',
+            author: 'Prof. John Smith',
+            content: 'Good work. Continue practicing to strengthen your understanding.',
+            timestamp: '2026-02-20 09:30 AM',
+            isInstructor: true,
+          },
+        ],
       },
       {
         id: 'a3',
@@ -126,6 +155,7 @@ const COURSES: CourseDetailData[] = [
             uploadedAt: '2026-02-24 07:50 AM',
           },
         ],
+        comments: [],
       },
       {
         id: 'a4',
@@ -137,6 +167,7 @@ const COURSES: CourseDetailData[] = [
         topic: 'Responsive Design',
         materialIds: ['m2', 'm5'],
         files: [],
+        comments: [],
       },
     ],
   },
@@ -168,6 +199,15 @@ const COURSES: CourseDetailData[] = [
             uploadedAt: '2026-02-16 08:05 AM',
           },
         ],
+        comments: [
+          {
+            id: 'c-a5-1',
+            author: 'Prof. Maria Santos',
+            content: 'Good work. Continue practicing to strengthen your understanding.',
+            timestamp: '2026-02-16 08:40 AM',
+            isInstructor: true,
+          },
+        ],
       },
       {
         id: 'a6',
@@ -183,6 +223,15 @@ const COURSES: CourseDetailData[] = [
             id: 'f-a6-1',
             name: 'Loops_Practice_Set.docx',
             uploadedAt: '2026-02-21 07:55 AM',
+          },
+        ],
+        comments: [
+          {
+            id: 'c-a6-1',
+            author: 'Prof. Maria Santos',
+            content: 'Please review the related materials before attempting the next activity.',
+            timestamp: '2026-02-21 08:15 AM',
+            isInstructor: true,
           },
         ],
       },
@@ -215,10 +264,74 @@ const COURSES: CourseDetailData[] = [
             uploadedAt: '2026-02-18 08:20 AM',
           },
         ],
+        comments: [
+          {
+            id: 'c-a7-1',
+            author: 'Prof. Allan Reyes',
+            content: 'Good work. Continue practicing to strengthen your understanding.',
+            timestamp: '2026-02-18 08:45 AM',
+            isInstructor: true,
+          },
+        ],
       },
     ],
   },
 ];
+
+const mapCourseCommentsToAssignmentComments = (
+  comments?: CourseAssignmentComment[]
+): AssignmentComment[] => {
+  return (comments || []).map((comment) => ({
+    id: comment.id,
+    author: comment.author,
+    content: comment.content,
+    timestamp: comment.timestamp,
+    isInstructor: comment.isInstructor,
+  }));
+};
+
+const mapCourseFilesToAssignmentFiles = (files?: CourseAssignment['files']): AssignmentFileUpload[] => {
+  return (files || []).map((file) => ({
+    id: file.id,
+    fileName: file.name,
+    fileSize: '1.2 MB',
+    uploadedDate: file.uploadedAt,
+  }));
+};
+
+const mapCourseAssignmentsToAssignmentItems = (
+  assignments: CourseAssignment[]
+): AssignmentItem[] => {
+  return assignments.map((assignment) => ({
+    id: assignment.id,
+    title: assignment.title,
+    dueDate: assignment.dueDate,
+    status: assignment.status,
+    points: assignment.points,
+    maxPoints: assignment.maxPoints,
+    topic: assignment.topic,
+    materialIds: assignment.materialIds,
+    comments: mapCourseCommentsToAssignmentComments(assignment.comments),
+    files: mapCourseFilesToAssignmentFiles(assignment.files),
+  }));
+};
+
+const mapCoursesToAssignmentCourses = (courses: CourseDetailData[]): AssignmentCourse[] => {
+  return courses.map((course) => ({
+    id: course.id,
+    name: course.name,
+    code: course.code,
+    instructor: course.instructor,
+    description: course.description,
+    materials: course.materials.map((material) => ({
+      id: material.id,
+      title: material.title,
+      type: material.type,
+      uploadedDate: material.uploadedDate,
+    })),
+    assignments: mapCourseAssignmentsToAssignmentItems(course.assignments),
+  }));
+};
 
 export default function StudentApp({ onLogout }: Props) {
   const { width } = useWindowDimensions();
@@ -228,6 +341,7 @@ export default function StudentApp({ onLogout }: Props) {
   const [lastScreen, setLastScreen] = useState<ScreenType>('home');
   const [selectedCourse, setSelectedCourse] = useState<CourseDetailData>(COURSES[0]);
   const [selectedCourseIdForAssignments, setSelectedCourseIdForAssignments] = useState<string | null>(null);
+  const [generatedActivity, setGeneratedActivity] = useState<GenerateActivityData | null>(null);
 
   const [showAnnouncement, setShowAnnouncement] = useState(true);
   const [isMobileDrawerOpen, setMobileDrawerOpen] = useState(false);
@@ -238,7 +352,135 @@ export default function StudentApp({ onLogout }: Props) {
 
   const [activeCourseTab, setActiveCourseTab] = useState<'materials' | 'assignments'>('materials');
 
-  const sharedCourses = useMemo(() => COURSES as AssignmentCourse[], []);
+  const sharedCourses = useMemo(() => mapCoursesToAssignmentCourses(COURSES), []);
+
+  const [sharedAssignmentComments, setSharedAssignmentComments] = useState<Record<string, AssignmentComment[]>>(
+    () =>
+      Object.fromEntries(
+        sharedCourses.flatMap((course) =>
+          course.assignments.map((assignment) => [
+            assignment.id,
+            assignment.comments || [],
+          ])
+        )
+      )
+  );
+
+  const [sharedAssignmentFiles, setSharedAssignmentFiles] = useState<Record<string, AssignmentFileUpload[]>>(
+    () =>
+      Object.fromEntries(
+        sharedCourses.flatMap((course) =>
+          course.assignments.map((assignment) => [
+            assignment.id,
+            assignment.files || [],
+          ])
+        )
+      )
+  );
+
+  const hydratedSharedCourses = useMemo<AssignmentCourse[]>(() => {
+    return sharedCourses.map((course) => ({
+      ...course,
+      assignments: course.assignments.map((assignment) => ({
+        ...assignment,
+        comments: sharedAssignmentComments[assignment.id] || [],
+        files: sharedAssignmentFiles[assignment.id] || [],
+      })),
+    }));
+  }, [sharedCourses, sharedAssignmentComments, sharedAssignmentFiles]);
+
+  const selectedAssignmentCourse = useMemo(() => {
+    return hydratedSharedCourses.find((course) => course.id === selectedCourse.id) || hydratedSharedCourses[0];
+  }, [hydratedSharedCourses, selectedCourse.id]);
+
+  const handleAddAssignmentComment = (assignmentId: string, content: string) => {
+    if (!content.trim()) return;
+
+    setSharedAssignmentComments((prev) => ({
+      ...prev,
+      [assignmentId]: [
+        ...(prev[assignmentId] || []),
+        {
+          id: `c${Date.now()}`,
+          author: 'You',
+          content,
+          timestamp: new Date().toLocaleString(),
+          isInstructor: false,
+        },
+      ],
+    }));
+  };
+
+  const handleAddAssignmentFile = (assignmentId: string, file: AssignmentFileUpload) => {
+    setSharedAssignmentFiles((prev) => ({
+      ...prev,
+      [assignmentId]: [...(prev[assignmentId] || []), file],
+    }));
+  };
+
+  const handleRemoveAssignmentFile = (assignmentId: string, fileId: string) => {
+    setSharedAssignmentFiles((prev) => ({
+      ...prev,
+      [assignmentId]: (prev[assignmentId] || []).filter((file) => file.id !== fileId),
+    }));
+  };
+
+  const getScorePercent = (assignment: {
+    status: 'pending' | 'submitted' | 'graded';
+    points?: number;
+    maxPoints?: number;
+  }) => {
+    if (
+      assignment.status !== 'graded' ||
+      assignment.points === undefined ||
+      assignment.maxPoints === undefined ||
+      assignment.maxPoints === 0
+    ) {
+      return null;
+    }
+    return Math.round((assignment.points / assignment.maxPoints) * 100);
+  };
+
+  const buildGeneratedActivity = (
+    course: CourseDetailData,
+    assignment: DashboardAssignment | CourseAssignment | AssignmentItem
+  ): GenerateActivityData | null => {
+    const score = getScorePercent(assignment);
+    if (score === null) return null;
+
+    const recommendationType: GenerateActivityData['recommendationType'] =
+      score < 60 ? 'review' : score < 75 ? 'practice' : 'advanced';
+
+    const difficulty: GenerateActivityData['difficulty'] =
+      recommendationType === 'review'
+        ? 'easy'
+        : recommendationType === 'practice'
+        ? 'medium'
+        : 'hard';
+
+    const instructions =
+      recommendationType === 'review'
+        ? 'Review the concept explanation, answer the quick check, and complete the short response to strengthen your foundation.'
+        : recommendationType === 'practice'
+        ? 'Complete this guided practice to improve your understanding and become more confident with the topic.'
+        : 'Take on this advanced follow-up activity to deepen your mastery of the topic.';
+
+    return {
+      courseId: course.id,
+      courseName: course.name,
+      courseCode: course.code,
+      assignmentId: assignment.id,
+      assignmentTitle: assignment.title,
+      topic: assignment.topic || assignment.title,
+      score,
+      recommendationType,
+      difficulty,
+      instructions,
+      basedOnMaterials: course.materials
+        .filter((material) => assignment.materialIds?.includes(material.id))
+        .map((material) => material.title),
+    };
+  };
 
   const handleNavigate = (screen: ScreenType) => {
     if (activeScreen !== screen) {
@@ -249,12 +491,17 @@ export default function StudentApp({ onLogout }: Props) {
       setSelectedCourseIdForAssignments(null);
     }
 
+    if (screen !== 'generateactivity') {
+      setGeneratedActivity(null);
+    }
+
     setActiveScreen(screen);
     setMobileDrawerOpen(false);
   };
 
   const openCourse = (course: CourseDetailData) => {
     setSelectedCourse(course);
+    setGeneratedActivity(null);
     setLastScreen(activeScreen);
     setActiveScreen('coursedetail');
     setActiveCourseTab('materials');
@@ -262,23 +509,41 @@ export default function StudentApp({ onLogout }: Props) {
 
   const openAssignments = (course: CourseDetailData) => {
     setSelectedCourse(course);
+    setGeneratedActivity(null);
     setSelectedCourseIdForAssignments(course.id);
     setLastScreen(activeScreen);
-    setActiveScreen('assignments');
+    setActiveScreen('coursedetail');
+    setActiveCourseTab('assignments');
   };
 
   const openMaterials = (course: CourseDetailData) => {
     setSelectedCourse(course);
+    setGeneratedActivity(null);
     setLastScreen(activeScreen);
     setActiveScreen('coursedetail');
     setActiveCourseTab('materials');
   };
 
-  const openGeneratedActivity = (course: CourseDetailData) => {
-    setSelectedCourse(course);
-    setSelectedCourseIdForAssignments(course.id);
+  const openGeneratedActivity = (
+    course: CourseDetailData,
+    assignment: DashboardAssignment | CourseAssignment | AssignmentItem
+  ) => {
+    const matchedCourse =
+      COURSES.find((item) =>
+        item.assignments.some((courseAssignment) => courseAssignment.id === assignment.id)
+      ) || course;
+
+    const activity = buildGeneratedActivity(matchedCourse, assignment);
+
+    if (!activity) {
+      return;
+    }
+
+    setSelectedCourse(matchedCourse);
+    setSelectedCourseIdForAssignments(matchedCourse.id);
+    setGeneratedActivity(activity);
     setLastScreen(activeScreen);
-    setActiveScreen('assignments');
+    setActiveScreen('generateactivity');
   };
 
   const renderScreen = () => {
@@ -290,29 +555,34 @@ export default function StudentApp({ onLogout }: Props) {
         return (
           <Dashboard
             announcements={ANNOUNCEMENTS}
-            courses={sharedCourses}
+            courses={hydratedSharedCourses}
             onOpenCourse={openCourse}
             onOpenAssignments={openAssignments}
             onOpenMaterials={openMaterials}
-            onOpenGeneratedActivity={(course) => openGeneratedActivity(course)}
+            onOpenGeneratedActivity={(course, assignment) =>
+              openGeneratedActivity(course as CourseDetailData, assignment)
+            }
           />
         );
 
       case 'classes':
         return (
           <ClassesScreen
-            courses={sharedCourses}
+            courses={hydratedSharedCourses}
             onCoursePress={(course) => {
-              setSelectedCourse(course);
+              setSelectedCourse(course as unknown as CourseDetailData);
+              setGeneratedActivity(null);
               setLastScreen('classes');
               setActiveScreen('coursedetail');
               setActiveCourseTab('materials');
             }}
             onAssignmentPress={(course) => {
-              setSelectedCourse(course);
+              setSelectedCourse(course as unknown as CourseDetailData);
               setSelectedCourseIdForAssignments(course.id);
+              setGeneratedActivity(null);
               setLastScreen('classes');
-              setActiveScreen('assignments');
+              setActiveScreen('coursedetail');
+              setActiveCourseTab('assignments');
             }}
           />
         );
@@ -329,8 +599,16 @@ export default function StudentApp({ onLogout }: Props) {
       case 'assignments':
         return (
           <Assignments
-            courses={sharedCourses}
+            courses={hydratedSharedCourses}
             selectedCourseId={selectedCourseIdForAssignments}
+            assignmentComments={sharedAssignmentComments}
+            assignmentFiles={sharedAssignmentFiles}
+            onAddComment={handleAddAssignmentComment}
+            onAddFile={handleAddAssignmentFile}
+            onRemoveFile={handleRemoveAssignmentFile}
+            onOpenGeneratedActivity={(course, assignment) =>
+              openGeneratedActivity(selectedCourse, assignment)
+            }
           />
         );
 
@@ -348,8 +626,24 @@ export default function StudentApp({ onLogout }: Props) {
       case 'coursedetail':
         return (
           <CourseDetail
-            course={selectedCourse}
+            course={selectedAssignmentCourse}
             initialTab={activeCourseTab}
+            onBack={() => setActiveScreen(lastScreen)}
+            assignmentComments={sharedAssignmentComments}
+            assignmentFiles={sharedAssignmentFiles}
+            onAddComment={handleAddAssignmentComment}
+            onAddFile={handleAddAssignmentFile}
+            onRemoveFile={handleRemoveAssignmentFile}
+            onGenerateActivity={(assignment) =>
+              openGeneratedActivity(selectedCourse, assignment)
+            }
+          />
+        );
+
+      case 'generateactivity':
+        return (
+          <GenerateActivity
+            activity={generatedActivity}
             onBack={() => setActiveScreen(lastScreen)}
           />
         );

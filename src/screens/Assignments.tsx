@@ -69,20 +69,33 @@ interface FlattenedAssignment extends AssignmentItem {
 interface AssignmentsProps {
   courses: AssignmentCourse[];
   selectedCourseId?: string | null;
+  assignmentComments: Record<string, AssignmentComment[]>;
+  assignmentFiles: Record<string, AssignmentFileUpload[]>;
+  onAddComment: (assignmentId: string, content: string) => void;
+  onAddFile: (assignmentId: string, file: AssignmentFileUpload) => void;
+  onRemoveFile: (assignmentId: string, fileId: string) => void;
+  onOpenGeneratedActivity?: (course: AssignmentCourse, assignment: AssignmentItem) => void;
 }
 
 type FilterType = 'all' | 'pending' | 'submitted' | 'graded';
 type RecommendationType = 'review' | 'practice' | 'advanced' | null;
 
-const Assignments = ({ courses, selectedCourseId = null }: AssignmentsProps) => {
+const Assignments = ({
+  courses,
+  selectedCourseId = null,
+  assignmentComments,
+  assignmentFiles,
+  onAddComment,
+  onAddFile,
+  onRemoveFile,
+  onOpenGeneratedActivity,
+}: AssignmentsProps) => {
   const { width } = useWindowDimensions();
   const isLargeScreen = width >= 768;
 
   const [filter, setFilter] = useState<FilterType>('all');
   const [selectedAssignment, setSelectedAssignment] = useState<FlattenedAssignment | null>(null);
   const [newComment, setNewComment] = useState('');
-  const [showUploadInput, setShowUploadInput] = useState(false);
-  const [uploadFileName, setUploadFileName] = useState('');
 
   const sourceCourses = useMemo(() => {
     if (!selectedCourseId) return courses;
@@ -101,14 +114,6 @@ const Assignments = ({ courses, selectedCourseId = null }: AssignmentsProps) => 
       }))
     );
   }, [sourceCourses]);
-
-  const [comments, setComments] = useState<{ [key: string]: AssignmentComment[] }>(() =>
-    Object.fromEntries(allAssignments.map((a) => [a.id, a.comments || []]))
-  );
-
-  const [uploadedFiles, setUploadedFiles] = useState<{ [key: string]: AssignmentFileUpload[] }>(() =>
-    Object.fromEntries(allAssignments.map((a) => [a.id, a.files || []]))
-  );
 
   const filteredAssignments =
     filter === 'all' ? allAssignments : allAssignments.filter((a) => a.status === filter);
@@ -143,7 +148,7 @@ const Assignments = ({ courses, selectedCourseId = null }: AssignmentsProps) => 
     const percent = getScorePercent(assignment);
     if (percent === null) return null;
     if (percent < 60) return 'review';
-    if (percent < 80) return 'practice';
+    if (percent < 75) return 'practice';
     return 'advanced';
   };
 
@@ -197,19 +202,7 @@ const Assignments = ({ courses, selectedCourseId = null }: AssignmentsProps) => 
 
   const handleAddComment = () => {
     if (!selectedAssignment || !newComment.trim()) return;
-
-    const updatedComments = [
-      ...(comments[selectedAssignment.id] || []),
-      {
-        id: `c${Date.now()}`,
-        author: 'You',
-        content: newComment,
-        timestamp: new Date().toLocaleString(),
-        isInstructor: false,
-      },
-    ];
-
-    setComments({ ...comments, [selectedAssignment.id]: updatedComments });
+    onAddComment(selectedAssignment.id, newComment);
     setNewComment('');
   };
 
@@ -220,17 +213,12 @@ const Assignments = ({ courses, selectedCourseId = null }: AssignmentsProps) => 
       const res = await DocumentPicker.getDocumentAsync({ copyToCacheDirectory: false });
       if (!res.canceled && res.assets && res.assets.length > 0) {
         const file = res.assets[0];
-        const updated = [
-          ...(uploadedFiles[selectedAssignment.id] || []),
-          {
-            id: `f${Date.now()}`,
-            fileName: file.name || 'file',
-            fileSize: '1.2 MB',
-            uploadedDate: new Date().toLocaleString(),
-          },
-        ];
-
-        setUploadedFiles({ ...uploadedFiles, [selectedAssignment.id]: updated });
+        onAddFile(selectedAssignment.id, {
+          id: `f${Date.now()}`,
+          fileName: file.name || 'file',
+          fileSize: '1.2 MB',
+          uploadedDate: new Date().toLocaleString(),
+        });
       }
     } catch (err) {
       console.warn('DocumentPicker error', err);
@@ -238,40 +226,19 @@ const Assignments = ({ courses, selectedCourseId = null }: AssignmentsProps) => 
     }
   };
 
-  const handleAttachFile = () => {
-    if (!selectedAssignment || !uploadFileName.trim()) return;
-
-    const updated = [
-      ...(uploadedFiles[selectedAssignment.id] || []),
-      {
-        id: `f${Date.now()}`,
-        fileName: uploadFileName.trim(),
-        fileSize: '1.2 MB',
-        uploadedDate: new Date().toLocaleString(),
-      },
-    ];
-
-    setUploadedFiles({ ...uploadedFiles, [selectedAssignment.id]: updated });
-    setUploadFileName('');
-    setShowUploadInput(false);
-  };
-
   const handleRemoveAttachment = (assignmentId: string, fileId: string) => {
-    const list = (uploadedFiles[assignmentId] || []).filter((f) => f.id !== fileId);
-    setUploadedFiles({ ...uploadedFiles, [assignmentId]: list });
+    onRemoveFile(assignmentId, fileId);
   };
 
   const closeModal = () => {
     setSelectedAssignment(null);
-    setShowUploadInput(false);
-    setUploadFileName('');
     setNewComment('');
   };
 
   const handleSubmitAssignment = () => {
     if (!selectedAssignment) return;
 
-    const files = uploadedFiles[selectedAssignment.id] || [];
+    const files = assignmentFiles[selectedAssignment.id] || [];
     if (files.length === 0) {
       Alert.alert('No files', 'Please upload at least one file before submitting.');
       return;
@@ -494,6 +461,34 @@ const Assignments = ({ courses, selectedCourseId = null }: AssignmentsProps) => 
                       )}
                     </View>
 
+                    {selectedAssignment.status === 'graded' && (
+                      <View style={styles.section}>
+                        <Text style={styles.sectionTitle}>🎯 Follow-Up Activity</Text>
+
+                        <TouchableOpacity
+                          onPress={() => {
+                            const sourceCourse = courses.find(
+                              (course) => course.id === selectedAssignment.courseId
+                            );
+                            if (!sourceCourse) return;
+
+                            closeModal();
+                            onOpenGeneratedActivity?.(sourceCourse, selectedAssignment);
+                          }}
+                          style={[
+                            styles.uploadButton,
+                            {
+                              backgroundColor: getRecommendationColor(selectedAssignment),
+                            },
+                          ]}
+                        >
+                          <Text style={styles.uploadButtonText}>
+                            Generate Follow-Up Activity
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                    )}
+
                     <View style={styles.section}>
                       <Text style={styles.sectionTitle}>📚 Related Materials</Text>
                       {getRelatedMaterials(selectedAssignment).length > 0 ? (
@@ -513,9 +508,9 @@ const Assignments = ({ courses, selectedCourseId = null }: AssignmentsProps) => 
                     <View style={styles.section}>
                       <Text style={styles.sectionTitle}>📎 Files</Text>
 
-                      {(uploadedFiles[selectedAssignment.id] || []).length > 0 ? (
+                      {(assignmentFiles[selectedAssignment.id] || []).length > 0 ? (
                         <View>
-                          {(uploadedFiles[selectedAssignment.id] || []).map((file) => (
+                          {(assignmentFiles[selectedAssignment.id] || []).map((file) => (
                             <View key={file.id} style={styles.fileItem}>
                               <Text style={{ fontSize: 20 }}>📄</Text>
                               <View style={styles.fileInfo}>
@@ -538,73 +533,52 @@ const Assignments = ({ courses, selectedCourseId = null }: AssignmentsProps) => 
                         <Text style={styles.emptyText}>No files uploaded yet</Text>
                       )}
 
-                      <View style={styles.uploadActionsRow}>
-                        <TouchableOpacity
-                          style={styles.uploadButton}
-                          onPress={handleFileUpload}
-                        >
-                          <Text style={styles.uploadButtonText}>+ Upload File</Text>
-                        </TouchableOpacity>
+                      {(() => {
+                        const currentFiles = assignmentFiles[selectedAssignment.id] || [];
+                        const hasFiles = currentFiles.length > 0;
 
-                        <TouchableOpacity
-                          style={styles.secondaryButton}
-                          onPress={() => setShowUploadInput((prev) => !prev)}
-                        >
-                          <Text style={styles.secondaryButtonText}>
-                            {showUploadInput ? 'Hide Manual Input' : 'Manual Input'}
-                          </Text>
-                        </TouchableOpacity>
-                      </View>
+                        return (
+                          <View style={styles.uploadActionsRow}>
+                            {!hasFiles ? (
+                              <TouchableOpacity
+                                style={styles.uploadButton}
+                                onPress={handleFileUpload}
+                              >
+                                <Text style={styles.uploadButtonText}>+ Upload File</Text>
+                              </TouchableOpacity>
+                            ) : (
+                              <>
+                                <TouchableOpacity
+                                  onPress={handleFileUpload}
+                                  style={styles.secondaryButton}
+                                >
+                                  <Text style={styles.secondaryButtonText}>
+                                    + Add Another File
+                                  </Text>
+                                </TouchableOpacity>
 
-                      {showUploadInput && (
-                        <View style={{ marginTop: 10 }}>
-                          <TextInput
-                            placeholder="Filename (e.g. report.docx)"
-                            value={uploadFileName}
-                            onChangeText={setUploadFileName}
-                            style={styles.fileInput}
-                            placeholderTextColor="#999"
-                          />
-                          <View style={styles.attachActionsRow}>
-                            <TouchableOpacity
-                              onPress={handleAttachFile}
-                              style={[styles.uploadButton, { flex: 0.5, marginTop: 0 }]}
-                            >
-                              <Text style={styles.uploadButtonText}>Attach</Text>
-                            </TouchableOpacity>
-
-                            <TouchableOpacity
-                              onPress={() => {
-                                setShowUploadInput(false);
-                                setUploadFileName('');
-                              }}
-                              style={styles.cancelInlineBtn}
-                            >
-                              <Text style={styles.cancelInlineText}>Cancel</Text>
-                            </TouchableOpacity>
+                                <TouchableOpacity
+                                  onPress={handleSubmitAssignment}
+                                  style={[
+                                    styles.uploadButton,
+                                    { backgroundColor: '#308C5D' },
+                                  ]}
+                                >
+                                  <Text style={styles.uploadButtonText}>SUBMIT</Text>
+                                </TouchableOpacity>
+                              </>
+                            )}
                           </View>
-                        </View>
-                      )}
-
-                      {(uploadedFiles[selectedAssignment.id] || []).length > 0 && (
-                        <TouchableOpacity
-                          onPress={handleSubmitAssignment}
-                          style={[
-                            styles.uploadButton,
-                            { marginTop: 12, backgroundColor: '#308C5D' },
-                          ]}
-                        >
-                          <Text style={styles.uploadButtonText}>SUBMIT</Text>
-                        </TouchableOpacity>
-                      )}
+                        );
+                      })()}
                     </View>
 
                     <View style={styles.section}>
                       <Text style={styles.sectionTitle}>💬 Comments</Text>
 
-                      {(comments[selectedAssignment.id] || []).length > 0 ? (
+                      {(assignmentComments[selectedAssignment.id] || []).length > 0 ? (
                         <View>
-                          {(comments[selectedAssignment.id] || []).map((comment) => (
+                          {(assignmentComments[selectedAssignment.id] || []).map((comment) => (
                             <View
                               key={comment.id}
                               style={[
@@ -900,29 +874,14 @@ const styles = StyleSheet.create({
     color: '#888',
     fontSize: 12,
   },
-  fileInput: {
-    borderWidth: 1,
-    borderColor: '#EEE',
-    padding: 10,
-    borderRadius: 8,
-    marginBottom: 8,
-    color: '#000',
-  },
   removeButton: {
     color: '#D32F2F',
     fontWeight: 'bold',
     paddingLeft: 8,
   },
   uploadActionsRow: {
-    flexDirection: 'row',
     gap: 10,
     marginTop: 8,
-    flexWrap: 'wrap',
-  },
-  attachActionsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
   },
   uploadButton: {
     backgroundColor: '#D32F2F',
@@ -949,14 +908,6 @@ const styles = StyleSheet.create({
     color: '#444',
     fontWeight: '700',
     fontSize: 13,
-  },
-  cancelInlineBtn: {
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-  },
-  cancelInlineText: {
-    color: '#333',
-    fontWeight: '600',
   },
 
   emptyText: {
