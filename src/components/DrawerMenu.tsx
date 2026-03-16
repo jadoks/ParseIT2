@@ -13,17 +13,31 @@ import {
   TextInput,
   useWindowDimensions,
   View,
-  ViewStyle
+  ViewStyle,
 } from 'react-native';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 
 interface DrawerMenuProps {
   isFixed: boolean;
   onClose?: () => void;
-onNavigate?: (
-  screen:
+  onNavigate?: (
+    screen:
+      | 'home'
+      | 'game'
+      | 'videos'
+      | 'myjourney'
+      | 'profile'
+      | 'messenger'
+      | 'assignments'
+      | 'coursedetail'
+      | 'community'
+      | 'classes'
+      | 'generateactivity'
+  ) => void;
+  activeScreen?:
     | 'home'
     | 'game'
+    | 'classes'
     | 'videos'
     | 'myjourney'
     | 'profile'
@@ -31,21 +45,8 @@ onNavigate?: (
     | 'assignments'
     | 'coursedetail'
     | 'community'
-    | 'classes'
-    | 'generateactivity'
-) => void;
-activeScreen?:
-  | 'home'
-  | 'game'
-  | 'classes'
-  | 'videos'
-  | 'myjourney'
-  | 'profile'
-  | 'messenger'
-  | 'assignments'
-  | 'coursedetail'
-  | 'community'
-  | 'generateactivity';  userName?: string;
+    | 'generateactivity';
+  userName?: string;
   userEmail?: string;
   onAvatarPress?: () => void;
   setIsLoggedIn: React.Dispatch<React.SetStateAction<boolean>>;
@@ -63,9 +64,11 @@ const MenuItem = ({
   active?: boolean;
 }) => {
   const { width } = useWindowDimensions();
-  const isMobile = width < 768;
 
-  const menuItemVerticalMargin = isMobile ? 12 : 18;
+  const isMobile = width < 768;
+  const isLargeScreen = width >= 1024;
+
+  const menuItemVerticalMargin = isMobile ? 12 : isLargeScreen ? 18 : 16;
   const menuLabelFontSize = isMobile ? 15 : 17;
 
   return (
@@ -75,11 +78,17 @@ const MenuItem = ({
         const base: StyleProp<ViewStyle> = [
           styles.menuItem,
           { marginVertical: menuItemVerticalMargin },
-          active && { backgroundColor: 'rgba(211,47,47,0.08)', borderRadius: 14 },
+          active && {
+            backgroundColor: 'rgba(211,47,47,0.08)',
+            borderRadius: 14,
+          },
         ];
 
         if (Platform.OS === 'web' && (state as any).hovered && !active) {
-          base.push({ backgroundColor: 'rgba(130,129,129,0.08)', borderRadius: 14 });
+          base.push({
+            backgroundColor: 'rgba(130,129,129,0.08)',
+            borderRadius: 14,
+          });
         }
 
         return base;
@@ -129,6 +138,7 @@ const DrawerMenu = ({
 
   const isMobile = width < 768;
   const isTablet = width >= 768 && width < 1024;
+  const isLargeScreen = width >= 1024;
   const isSmallMobile = width < 380;
 
   const hasOverflow = contentHeight > scrollViewHeight && scrollViewHeight > 0;
@@ -144,13 +154,25 @@ const DrawerMenu = ({
     setScrollViewHeight(e.nativeEvent.layout.height);
   };
 
-  const modalButtonHover = { backgroundColor: 'rgba(130,129,129,0.08)', borderRadius: 8 };
+  const modalButtonHover = {
+    backgroundColor: 'rgba(130,129,129,0.08)',
+    borderRadius: 8,
+  };
+
   const pressableWebHover = (state: any) =>
     Platform.OS === 'web' && state.hovered ? modalButtonHover : {};
 
   return (
-    <View style={[styles.drawerContainer, { width: drawerWidth }, !isFixed && styles.mobileDrawer]}>
-      {/* Profile Section */}
+    <View
+      style={[
+        styles.drawerContainer,
+        {
+          width: drawerWidth,
+          borderRightWidth: isLargeScreen ? 1 : 0,
+        },
+        !isFixed && styles.mobileDrawer,
+      ]}
+    >
       <View style={styles.profileSection}>
         <Image
           source={require('../../assets/images/pogi.jpg')}
@@ -159,12 +181,11 @@ const DrawerMenu = ({
 
         <View style={{ flex: 1 }}>
           <Text style={styles.userName}>
-            {/*{userName ?? 'Jade M. Lisondra'}*/} Jade Lisondra
+            {userName ?? 'Jade Lisondra'}
           </Text>
         </View>
       </View>
 
-      {/* Menu Items */}
       <ScrollView
         style={{ flex: 1 }}
         showsVerticalScrollIndicator={shouldShowScrollBar}
@@ -219,7 +240,6 @@ const DrawerMenu = ({
         />
       </ScrollView>
 
-      {/* Logout */}
       <Pressable
         style={styles.logoutMenuItem}
         onPress={() => setLogoutModalVisible(true)}
@@ -233,7 +253,6 @@ const DrawerMenu = ({
         <Text style={styles.logoutLabel}>Logout</Text>
       </Pressable>
 
-      {/* Settings Modal */}
       <Modal
         animationType="fade"
         transparent
@@ -261,7 +280,11 @@ const DrawerMenu = ({
             >
               <View style={styles.settingsOptionContent}>
                 <View style={styles.settingsOptionIconWrap}>
-                  <MaterialCommunityIcons name="email-outline" size={22} color="#D32F2F" />
+                  <MaterialCommunityIcons
+                    name="email-outline"
+                    size={22}
+                    color="#D32F2F"
+                  />
                 </View>
 
                 <View style={styles.settingsOptionTextWrap}>
@@ -271,7 +294,11 @@ const DrawerMenu = ({
                   </Text>
                 </View>
 
-                <MaterialCommunityIcons name="chevron-right" size={24} color="#999" />
+                <MaterialCommunityIcons
+                  name="chevron-right"
+                  size={24}
+                  color="#999"
+                />
               </View>
             </Pressable>
 
@@ -287,7 +314,11 @@ const DrawerMenu = ({
             >
               <View style={styles.settingsOptionContent}>
                 <View style={styles.settingsOptionIconWrap}>
-                  <MaterialCommunityIcons name="lock-outline" size={22} color="#D32F2F" />
+                  <MaterialCommunityIcons
+                    name="lock-outline"
+                    size={22}
+                    color="#D32F2F"
+                  />
                 </View>
 
                 <View style={styles.settingsOptionTextWrap}>
@@ -297,7 +328,11 @@ const DrawerMenu = ({
                   </Text>
                 </View>
 
-                <MaterialCommunityIcons name="chevron-right" size={24} color="#999" />
+                <MaterialCommunityIcons
+                  name="chevron-right"
+                  size={24}
+                  color="#999"
+                />
               </View>
             </Pressable>
 
@@ -311,7 +346,6 @@ const DrawerMenu = ({
         </View>
       </Modal>
 
-      {/* Change Email Modal */}
       <Modal
         animationType="fade"
         transparent
@@ -363,7 +397,6 @@ const DrawerMenu = ({
         </View>
       </Modal>
 
-      {/* Change Password Modal */}
       <Modal
         animationType="fade"
         transparent
@@ -438,7 +471,6 @@ const DrawerMenu = ({
         </View>
       </Modal>
 
-      {/* Logout Modal */}
       <Modal
         animationType="fade"
         transparent
@@ -484,7 +516,6 @@ const DrawerMenu = ({
 const styles = StyleSheet.create({
   drawerContainer: {
     height: '100%',
-    borderRightWidth: 1,
     borderRightColor: '#EEE',
     padding: 25,
     backgroundColor: '#FFF',

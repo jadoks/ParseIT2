@@ -1,12 +1,12 @@
 import React, { useMemo, useState } from 'react';
 import {
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
-    useWindowDimensions,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+  useWindowDimensions,
 } from 'react-native';
 
 export interface GenerateActivityData {
@@ -75,7 +75,7 @@ const GenerateActivity = ({ activity, onBack }: GenerateActivityProps) => {
       <View style={styles.wrapper}>
         {onBack && (
           <TouchableOpacity style={styles.backTopBtn} onPress={onBack}>
-            <Text style={styles.backTopText}>← Back</Text>
+            <Text style={styles.backTopText}>Back</Text>
           </TouchableOpacity>
         )}
 
@@ -217,6 +217,12 @@ const styles = StyleSheet.create({
   },
   backTopBtn: {
     marginBottom: 14,
+    backgroundColor: 'rgba(211, 47, 47, 0.07)',
+    width: 70,
+    height: 25,
+    borderRadius: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   backTopText: {
     color: '#D32F2F',

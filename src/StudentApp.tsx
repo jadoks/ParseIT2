@@ -358,10 +358,7 @@ export default function StudentApp({ onLogout }: Props) {
     () =>
       Object.fromEntries(
         sharedCourses.flatMap((course) =>
-          course.assignments.map((assignment) => [
-            assignment.id,
-            assignment.comments || [],
-          ])
+          course.assignments.map((assignment) => [assignment.id, assignment.comments || []])
         )
       )
   );
@@ -370,10 +367,7 @@ export default function StudentApp({ onLogout }: Props) {
     () =>
       Object.fromEntries(
         sharedCourses.flatMap((course) =>
-          course.assignments.map((assignment) => [
-            assignment.id,
-            assignment.files || [],
-          ])
+          course.assignments.map((assignment) => [assignment.id, assignment.files || []])
         )
       )
   );
@@ -658,13 +652,15 @@ export default function StudentApp({ onLogout }: Props) {
   };
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: '#fff' }}>
-      <Header
-        isLargeScreen={isLargeScreen}
-        activeScreen={activeScreen}
-        onNavigate={handleNavigate}
-        onSearchChange={() => {}}
-      />
+    <SafeAreaView style={styles.safeArea}>
+      <View style={styles.headerLayer}>
+        <Header
+          isLargeScreen={isLargeScreen}
+          activeScreen={activeScreen}
+          onNavigate={handleNavigate}
+          onSearchChange={() => {}}
+        />
+      </View>
 
       {!isLargeScreen && activeScreen !== 'profile' && (
         <TouchableOpacity
@@ -676,7 +672,7 @@ export default function StudentApp({ onLogout }: Props) {
         </TouchableOpacity>
       )}
 
-      <View style={{ flex: 1, flexDirection: 'row' }}>
+      <View style={styles.contentLayer}>
         {isLargeScreen && activeScreen !== 'profile' && (
           <DrawerMenu
             isFixed={true}
@@ -723,7 +719,7 @@ export default function StudentApp({ onLogout }: Props) {
         announcements={ANNOUNCEMENTS}
       />
 
-      {!(activeScreen === 'messenger' && isConversationActive) &&
+      {activeScreen !== 'messenger' &&
         !(activeScreen === 'videos' && isVideoActive) && (
           <TouchableOpacity
             style={styles.floatingChatBtn}
@@ -753,20 +749,39 @@ export default function StudentApp({ onLogout }: Props) {
 }
 
 const styles = StyleSheet.create({
-  floatingMenuBtn: {
-    position: 'absolute',
-    top: 135,
-    left: 16,
-    zIndex: 5,
-    width: 44,
-    height: 44,
-    borderWidth: 1,
-    borderColor: '#D32F2F',
-    borderRadius: 22,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#FFF',
+  safeArea: {
+    flex: 1,
+    backgroundColor: '#fff',
   },
+
+  headerLayer: {
+    position: 'relative',
+    zIndex: 1000,
+    elevation: 1000,
+  },
+
+  contentLayer: {
+    flex: 1,
+    flexDirection: 'row',
+    position: 'relative',
+    zIndex: 1,
+  },
+
+floatingMenuBtn: {
+  position: 'absolute',
+  top: 135,
+  left: 16,
+  zIndex: 2000,
+  elevation: 2000,
+  width: 44,
+  height: 44,
+  borderWidth: 1,
+  borderColor: '#D32F2F',
+  borderRadius: 22,
+  justifyContent: 'center',
+  alignItems: 'center',
+  backgroundColor: '#FFF',
+},
 
   menuIcon: {
     fontSize: 24,

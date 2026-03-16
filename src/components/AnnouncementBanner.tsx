@@ -311,11 +311,12 @@ const styles = StyleSheet.create({
   },
 
   arrowText: {
-    fontSize: 34,
+    fontSize: 50,
     color: '#FFF',
     fontWeight: '400',
     lineHeight: 36,
-    marginTop: -2,
+    marginTop: -10,
+    
   },
 
   contentText: {

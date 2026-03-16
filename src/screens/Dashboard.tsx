@@ -434,29 +434,6 @@ const Dashboard = ({
                     </Text>
                   </View>
                 </TouchableOpacity>
-
-                <View style={styles.cardButtonRow}>
-                  <TouchableOpacity
-                    style={[styles.cardActionBtn, { backgroundColor: '#D32F2F' }]}
-                    onPress={() => onOpenCourse?.(item.course)}
-                  >
-                    <Text style={styles.cardActionBtnText}>Open Course</Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={[styles.cardActionBtn, { backgroundColor: '#555' }]}
-                    onPress={() => onOpenAssignments?.(item.course)}
-                  >
-                    <Text style={styles.cardActionBtnText}>Assignment Tab</Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={[styles.cardActionBtn, { backgroundColor: '#888' }]}
-                    onPress={() => onOpenMaterials?.(item.course)}
-                  >
-                    <Text style={styles.cardActionBtnText}>Materials</Text>
-                  </TouchableOpacity>
-                </View>
               </View>
             );
           })}
@@ -743,22 +720,6 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
   },
   courseBadgeText: {
-    color: '#FFF',
-    fontWeight: '700',
-    fontSize: 12,
-  },
-  cardButtonRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginTop: 14,
-  },
-  cardActionBtn: {
-    paddingHorizontal: 12,
-    paddingVertical: 9,
-    borderRadius: 10,
-  },
-  cardActionBtnText: {
     color: '#FFF',
     fontWeight: '700',
     fontSize: 12,
