@@ -1,4 +1,3 @@
-import { useNavigation } from '@react-navigation/native';
 import React, { useState } from 'react';
 import {
   Image,
@@ -116,11 +115,9 @@ const DrawerMenu = ({
   onClose,
   onNavigate,
   activeScreen,
-  userName,
   userEmail,
   setIsLoggedIn,
 }: DrawerMenuProps) => {
-  const navigation = useNavigation<any>();
   const { width } = useWindowDimensions();
 
   const [contentHeight, setContentHeight] = useState(0);
@@ -169,8 +166,12 @@ const DrawerMenu = ({
         {
           width: drawerWidth,
           borderRightWidth: isLargeScreen ? 1 : 0,
+          elevation: 0,
+          shadowColor: 'transparent',
+          shadowOpacity: 0,
+          shadowRadius: 0,
+          shadowOffset: { width: 0, height: 0 },
         },
-        !isFixed && styles.mobileDrawer,
       ]}
     >
       <View style={styles.profileSection}>
@@ -180,9 +181,7 @@ const DrawerMenu = ({
         />
 
         <View style={{ flex: 1 }}>
-          <Text style={styles.userName}>
-            {userName ?? 'Jade Lisondra'}
-          </Text>
+          <Text style={styles.userName}>Jade Lisondra</Text>
         </View>
       </View>
 
@@ -196,7 +195,6 @@ const DrawerMenu = ({
           iconSource={require('../../assets/images/person.png')}
           label="Profile"
           onPress={() => {
-            navigation.navigate('Profile');
             onNavigate?.('profile');
             if (!isFixed) onClose?.();
           }}
@@ -519,10 +517,6 @@ const styles = StyleSheet.create({
     borderRightColor: '#EEE',
     padding: 25,
     backgroundColor: '#FFF',
-  },
-
-  mobileDrawer: {
-    elevation: 10,
   },
 
   profileSection: {
