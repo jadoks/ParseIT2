@@ -135,7 +135,6 @@ const DrawerMenu = ({
 
   const isMobile = width < 768;
   const isTablet = width >= 768 && width < 1024;
-  const isLargeScreen = width >= 1024;
   const isSmallMobile = width < 380;
 
   const hasOverflow = contentHeight > scrollViewHeight && scrollViewHeight > 0;
@@ -160,20 +159,7 @@ const DrawerMenu = ({
     Platform.OS === 'web' && state.hovered ? modalButtonHover : {};
 
   return (
-    <View
-      style={[
-        styles.drawerContainer,
-        {
-          width: drawerWidth,
-          borderRightWidth: isLargeScreen ? 1 : 0,
-          elevation: 0,
-          shadowColor: 'transparent',
-          shadowOpacity: 0,
-          shadowRadius: 0,
-          shadowOffset: { width: 0, height: 0 },
-        },
-      ]}
-    >
+    <View style={[styles.drawerContainer, { width: drawerWidth }]}>
       <View style={styles.profileSection}>
         <Image
           source={require('../../assets/images/pogi.jpg')}
@@ -514,9 +500,21 @@ const DrawerMenu = ({
 const styles = StyleSheet.create({
   drawerContainer: {
     height: '100%',
-    borderRightColor: '#EEE',
     padding: 25,
     backgroundColor: '#FFF',
+
+    borderWidth: 0,
+    borderRightWidth: 0,
+    borderLeftWidth: 0,
+    borderTopWidth: 0,
+    borderBottomWidth: 0,
+    borderColor: 'transparent',
+
+    elevation: 0,
+    shadowColor: 'transparent',
+    shadowOpacity: 0,
+    shadowRadius: 0,
+    shadowOffset: { width: 0, height: 0 },
   },
 
   profileSection: {

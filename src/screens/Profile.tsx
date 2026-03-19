@@ -145,7 +145,7 @@ const Profile = () => {
                   size={14}
                   color="#D32F2F"
                 />
-                <Text style={styles.editText}> Edit </Text>
+                <Text style={styles.editText}> Edit Profile </Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -232,7 +232,7 @@ const Profile = () => {
                 color="#000"
                 style={styles.dropdownIcon}
               />
-              <Text style={styles.dropdownText}>Profile</Text>
+              <Text style={styles.dropdownText}>Avatar</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
