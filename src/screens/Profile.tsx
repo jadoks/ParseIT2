@@ -10,11 +10,13 @@ import {
   StyleSheet,
   Text,
   TouchableOpacity,
+  TouchableWithoutFeedback,
   View,
   useWindowDimensions,
 } from 'react-native';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import PostQueryModal from '../components/PostQueryModal';
+import { CommunityPost } from './Community';
 
 type CropType = 'profile' | 'banner';
 
@@ -28,12 +30,19 @@ declare global {
     | undefined;
 }
 
-const Profile = () => {
+interface ProfileProps {
+  userPosts: CommunityPost[];
+  onCreatePost?: (query: string) => void;
+}
+
+const Profile: React.FC<ProfileProps> = ({ userPosts, onCreatePost }) => {
   const { width } = useWindowDimensions();
   const isLargeScreen = width > 1000;
 
   const [queryModalVisible, setQueryModalVisible] = useState(false);
   const [editMenuVisible, setEditMenuVisible] = useState(false);
+  const [answersModalVisible, setAnswersModalVisible] = useState(false);
+  const [selectedPost, setSelectedPost] = useState<CommunityPost | null>(null);
 
   const [profileImage, setProfileImage] = useState<any>(
     require('../../assets/images/pogi.jpg')
@@ -85,7 +94,6 @@ const Profile = () => {
   const pickFile = async (type: CropType) => {
     try {
       setEditMenuVisible(false);
-
       globalThis.__PROFILE_CROP_RESULT__ = undefined;
 
       const result = await DocumentPicker.getDocumentAsync({
@@ -109,6 +117,16 @@ const Profile = () => {
     } catch (error) {
       console.log('Picker error:', error);
     }
+  };
+
+  const openAnswersModal = (post: CommunityPost) => {
+    setSelectedPost(post);
+    setAnswersModalVisible(true);
+  };
+
+  const closeAnswersModal = () => {
+    setSelectedPost(null);
+    setAnswersModalVisible(false);
   };
 
   return (
@@ -170,35 +188,40 @@ const Profile = () => {
           </TouchableOpacity>
         </View>
 
-        <View
-          style={[
-            styles.postCard,
-            isLargeScreen && { alignSelf: 'center', maxWidth: 600 },
-          ]}
-        >
-          <View style={styles.postHeader}>
-            <Image source={profileImage} style={styles.postAvatar} />
+        {userPosts.map((post) => (
+          <View
+            key={post.id}
+            style={[
+              styles.postCard,
+              isLargeScreen && { alignSelf: 'center', maxWidth: 600 },
+            ]}
+          >
+            <View style={styles.postHeader}>
+              <Image source={profileImage} style={styles.postAvatar} />
 
-            <View style={{ flex: 1 }}>
-              <Text style={styles.postName}>Jade Lisondra</Text>
-              <Text style={styles.postTime}>Feb 23, 2026 11:30 AM</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.postName}>{post.userName}</Text>
+                <Text style={styles.postTime}>{post.dateTime}</Text>
+              </View>
+
+              <MaterialCommunityIcons
+                name="dots-vertical"
+                size={20}
+                color="#333"
+              />
             </View>
 
-            <MaterialCommunityIcons
-              name="dots-vertical"
-              size={20}
-              color="#333"
-            />
+            <Text style={styles.postText}>{post.content}</Text>
+
+            {post.answers.length > 0 && (
+              <TouchableOpacity onPress={() => openAnswersModal(post)}>
+                <Text style={styles.answerLink}>
+                  View {post.answers.length} Answer(s)
+                </Text>
+              </TouchableOpacity>
+            )}
           </View>
-
-          <Text style={styles.postText}>
-            Is anyone attending the workshop tomorrow?
-          </Text>
-
-          <TouchableOpacity>
-            <Text style={styles.answerLink}>View 2 Answer(s)</Text>
-          </TouchableOpacity>
-        </View>
+        ))}
       </ScrollView>
 
       <Modal
@@ -251,9 +274,58 @@ const Profile = () => {
         </Pressable>
       </Modal>
 
+      <Modal
+        visible={answersModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={closeAnswersModal}
+      >
+        <TouchableWithoutFeedback onPress={closeAnswersModal}>
+          <View style={styles.modalOverlay}>
+            <TouchableWithoutFeedback onPress={() => {}}>
+              <View style={styles.answersModalCard}>
+                <View style={styles.answersModalHeader}>
+                  <Text style={styles.answersModalTitle}>Answers</Text>
+                  <TouchableOpacity onPress={closeAnswersModal}>
+                    <MaterialCommunityIcons name="close" size={22} color="#333" />
+                  </TouchableOpacity>
+                </View>
+
+                {selectedPost && (
+                  <>
+                    <Text style={styles.selectedPostText}>{selectedPost.content}</Text>
+
+                    <View style={styles.answersList}>
+                      {selectedPost.answers.length > 0 ? (
+                        selectedPost.answers.map((answer) => (
+                          <View key={answer.id} style={styles.answerItem}>
+                            <View style={styles.answerHeader}>
+                              <Image source={answer.avatar} style={styles.answerAvatar} />
+                              <View style={{ marginLeft: 10, flex: 1 }}>
+                                <Text style={styles.answerName}>{answer.userName}</Text>
+                                <Text style={styles.answerDate}>{answer.answeredAt}</Text>
+                              </View>
+                            </View>
+
+                            <Text style={styles.answerMessage}>{answer.message}</Text>
+                          </View>
+                        ))
+                      ) : (
+                        <Text style={styles.noAnswerText}>No answers yet.</Text>
+                      )}
+                    </View>
+                  </>
+                )}
+              </View>
+            </TouchableWithoutFeedback>
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
+
       <PostQueryModal
         visible={queryModalVisible}
         onClose={() => setQueryModalVisible(false)}
+        onPost={onCreatePost}
       />
     </>
   );
@@ -378,6 +450,7 @@ const styles = StyleSheet.create({
     padding: 18,
     width: '100%',
     backgroundColor: '#fff',
+    marginBottom: 14,
   },
 
   postHeader: {
@@ -460,6 +533,90 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#222',
     fontWeight: '500',
+  },
+
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+  },
+
+  answersModalCard: {
+    width: '100%',
+    maxWidth: 520,
+    backgroundColor: '#FFF',
+    borderRadius: 18,
+    padding: 18,
+    maxHeight: '80%',
+  },
+
+  answersModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 14,
+  },
+
+  answersModalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#222',
+  },
+
+  selectedPostText: {
+    fontSize: 15,
+    color: '#333',
+    marginBottom: 14,
+    lineHeight: 22,
+  },
+
+  answersList: {
+    gap: 12,
+  },
+
+  answerItem: {
+    backgroundColor: '#FAFAFA',
+    borderRadius: 12,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#EAEAEA',
+  },
+
+  answerHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+
+  answerAvatar: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+  },
+
+  answerName: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#222',
+  },
+
+  answerDate: {
+    fontSize: 12,
+    color: '#777',
+    marginTop: 2,
+  },
+
+  answerMessage: {
+    fontSize: 14,
+    color: '#444',
+    lineHeight: 22,
+  },
+
+  noAnswerText: {
+    color: '#777',
+    fontSize: 14,
   },
 });
 

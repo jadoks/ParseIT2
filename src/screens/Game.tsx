@@ -1,58 +1,108 @@
 import React from 'react';
-import { ImageBackground, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  Alert,
+  ImageBackground,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
+
+type GameScreen = 'flipit' | 'fruitmania' | 'quizmasters';
 
 interface GameItem {
   id: number;
   title: string;
   description: string;
   category: string;
+  screen: GameScreen;
 }
 
-const Game = () => {
+interface Props {
+  onNavigate?: (screen: GameScreen) => void;
+}
+
+const Game = ({ onNavigate }: Props) => {
   const games: GameItem[] = [
     {
       id: 1,
       title: 'Flip IT!',
       description: 'Matching Card Puzzle',
-      category: 'Puzzle'
+      category: 'Puzzle',
+      screen: 'flipit',
     },
     {
       id: 2,
       title: 'FruitMania',
       description: 'Math Puzzle Game',
-      category: 'Math'
+      category: 'Math',
+      screen: 'fruitmania',
     },
     {
       id: 3,
       title: 'Quiz Masters',
       description: 'Trivia Games',
-      category: 'Trivia'
-    }
+      category: 'Trivia',
+      screen: 'quizmasters',
+    },
   ];
+
+  const imgMap: Record<string, { src: any; style?: any }> = {
+    'Flip IT!': {
+      src: require('../../assets/images/flipit.png'),
+      style: { marginLeft: -30, width: '115%', height: '115%' },
+    },
+    FruitMania: {
+      src: require('../../assets/images/fruitmania.png'),
+    },
+    'Quiz Masters': {
+      src: require('../../assets/images/quizmasters.png'),
+    },
+  };
+
+  const handlePress = (screen: GameScreen) => {
+    if (typeof onNavigate === 'function') {
+      onNavigate(screen);
+      return;
+    }
+
+    Alert.alert(
+      'Navigation not connected',
+      'Game screen navigation is not connected yet.'
+    );
+  };
 
   return (
     <ScrollView style={styles.container}>
       <Text style={styles.pageTitle}>Games</Text>
+
       <View style={styles.grid}>
         {games.map((game) => {
-          // map game id/title to image filename and optional per-image style overrides
-          const imgMap: { [key: string]: { src: any; style?: any } } = {
-            'Flip IT!': { src: require('../../assets/images/flipit.png'), style: { marginLeft: -30, width: '115%', height: '115%' } },
-            'FruitMania': { src: require('../../assets/images/fruitmania.png'), style: undefined },
-            'Quiz Masters': { src: require('../../assets/images/quizmasters.png'), style: undefined },
-          };
-
           const imgEntry = imgMap[game.title] || { src: undefined, style: undefined };
 
           return (
-            <View key={game.id} style={styles.gameCard}>
-              <ImageBackground source={imgEntry.src} style={styles.cardHeader} imageStyle={[styles.cardImage, imgEntry.style]}>
+            <Pressable
+              key={game.id}
+              style={({ pressed }) => [styles.gameCard, pressed && styles.gameCardPressed]}
+              onPress={() => handlePress(game.screen)}
+            >
+              <ImageBackground
+                source={imgEntry.src}
+                style={styles.cardHeader}
+                imageStyle={[styles.cardImage, imgEntry.style]}
+              >
+                <View style={styles.categoryBadge}>
+                  <Text style={styles.categoryText}>{game.category}</Text>
+                </View>
+
                 <View style={styles.cardTextWrap}>
                   <Text style={styles.cardTitle}>{game.title}</Text>
                   <Text style={styles.cardSub}>{game.description}</Text>
+                  <Text style={styles.tapToPlay}>Tap to play</Text>
                 </View>
               </ImageBackground>
-            </View>
+            </Pressable>
           );
         })}
       </View>
@@ -62,12 +112,18 @@ const Game = () => {
 
 const styles = StyleSheet.create({
   container: { flex: 1, padding: 20 },
-  pageTitle: { fontSize: 25, fontWeight: 'bold', paddingBottom: 10,  textAlign: 'left',  marginBottom: 20 },
+  pageTitle: {
+    fontSize: 25,
+    fontWeight: 'bold',
+    paddingBottom: 10,
+    textAlign: 'left',
+    marginBottom: 20,
+  },
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'center',
-    gap: 15
+    gap: 15,
   },
   gameCard: {
     width: '31%',
@@ -83,6 +139,10 @@ const styles = StyleSheet.create({
     elevation: 4,
     overflow: 'hidden',
   },
+  gameCardPressed: {
+    transform: [{ scale: 0.98 }],
+    opacity: 0.95,
+  },
   cardHeader: {
     backgroundColor: '#D32F2F',
     height: '100%',
@@ -91,17 +151,29 @@ const styles = StyleSheet.create({
     borderBottomLeftRadius: 20,
     borderBottomRightRadius: 20,
     position: 'relative',
-    justifyContent: 'flex-end',
+    justifyContent: 'space-between',
     alignItems: 'flex-start',
     overflow: 'hidden',
-    width: '100%'
+    width: '100%',
   },
   cardImage: {
     borderRadius: 20,
     width: '100%',
     height: '100%',
-   
-    objectFit: 'cover',
+    resizeMode: 'cover',
+  },
+  categoryBadge: {
+    marginTop: 14,
+    marginLeft: 14,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
+  },
+  categoryText: {
+    color: '#FFF',
+    fontSize: 12,
+    fontWeight: '700',
   },
   cardTextWrap: {
     padding: 16,
@@ -109,21 +181,28 @@ const styles = StyleSheet.create({
     borderBottomLeftRadius: 20,
     borderBottomRightRadius: 20,
     width: '100%',
-    alignItems: 'flex-start'
+    alignItems: 'flex-start',
   },
   cardTitle: {
     color: '#FFF',
     fontSize: 28,
     fontWeight: 'bold',
     marginBottom: 10,
-    textAlign: 'left'
+    textAlign: 'left',
   },
   cardSub: {
     color: '#FFF',
     fontSize: 16,
     opacity: 0.9,
-    textAlign: 'left'
-  }
+    textAlign: 'left',
+  },
+  tapToPlay: {
+    color: '#FFF',
+    fontSize: 13,
+    fontWeight: '600',
+    marginTop: 8,
+    opacity: 0.95,
+  },
 });
 
 export default Game;

@@ -14,7 +14,7 @@ import Assignments, {
   AssignmentItem,
 } from './screens/Assignments';
 import ClassesScreen from './screens/ClassesScreen';
-import Community from './screens/Community';
+import Community, { CommunityPost } from './screens/Community';
 import CourseDetail, {
   CourseAssignment,
   CourseAssignmentComment,
@@ -25,8 +25,13 @@ import Game from './screens/Game';
 import GenerateActivity, { GenerateActivityData } from './screens/GenerateActivity';
 import Messenger from './screens/Messenger';
 import MyJourney from './screens/MyJourney';
+import Notification, { NotificationItem } from './screens/Notification';
 import Profile from './screens/Profile';
 import Videos from './screens/Videos';
+
+import FlipIt from './screens/games/flip-it';
+import FruitMania from './screens/games/fruit-mania';
+import QuizMasters from './screens/games/quiz-masters';
 
 interface Props {
   onLogout: () => void;
@@ -36,6 +41,9 @@ type ScreenType =
   | 'home'
   | 'classes'
   | 'game'
+  | 'flipit'
+  | 'fruitmania'
+  | 'quizmasters'
   | 'videos'
   | 'myjourney'
   | 'profile'
@@ -43,7 +51,12 @@ type ScreenType =
   | 'assignments'
   | 'coursedetail'
   | 'community'
-  | 'generateactivity';
+  | 'generateactivity'
+  | 'notification';
+
+const CURRENT_USER_NAME = 'Jade Lisondra';
+const CURRENT_USER_EMAIL = 'jadelisondra101@gmail.com';
+const DEFAULT_PROFILE_IMAGE = require('../assets/images/default_profile.png');
 
 const ANNOUNCEMENTS: Announcement[] = [
   {
@@ -278,6 +291,57 @@ const COURSES: CourseDetailData[] = [
   },
 ];
 
+const INITIAL_COMMUNITY_POSTS: CommunityPost[] = [
+  {
+    id: '1',
+    userName: 'Ramcee Bading',
+    userEmail: 'ramcee@email.com',
+    avatar: DEFAULT_PROFILE_IMAGE,
+    dateTime: 'Feb 24, 2026 10:30 AM',
+    content: 'How do I solve this programming problem?',
+    answers: [
+      {
+        id: 'a1',
+        userName: 'Maria Santos',
+        avatar: DEFAULT_PROFILE_IMAGE,
+        answeredAt: 'Feb 24, 2026 11:00 AM',
+        message: 'You can use a loop to repeat the process and make sure your variables are updated correctly.',
+      },
+      {
+        id: 'a2',
+        userName: 'John Reyes',
+        avatar: DEFAULT_PROFILE_IMAGE,
+        answeredAt: 'Feb 24, 2026 11:18 AM',
+        message: 'Check your variables first, then trace the logic line by line to find where the issue starts.',
+      },
+    ],
+  },
+  {
+    id: '2',
+    userName: CURRENT_USER_NAME,
+    userEmail: CURRENT_USER_EMAIL,
+    avatar: DEFAULT_PROFILE_IMAGE,
+    dateTime: 'Feb 23, 2026 11:30 AM',
+    content: 'Is anyone attending the workshop tomorrow?',
+    answers: [
+      {
+        id: 'a3',
+        userName: 'Abai Clipord',
+        avatar: DEFAULT_PROFILE_IMAGE,
+        answeredAt: 'Feb 23, 2026 02:10 PM',
+        message: 'Yes, I will be there tomorrow.',
+      },
+      {
+        id: 'a4',
+        userName: 'Ramcee Bading',
+        avatar: DEFAULT_PROFILE_IMAGE,
+        answeredAt: 'Feb 23, 2026 02:40 PM',
+        message: 'Count me in. I already registered.',
+      },
+    ],
+  },
+];
+
 const mapCourseCommentsToAssignmentComments = (
   comments?: CourseAssignmentComment[]
 ): AssignmentComment[] => {
@@ -351,6 +415,7 @@ export default function StudentApp({ onLogout }: Props) {
   const [isVideoActive, setIsVideoActive] = useState(false);
 
   const [activeCourseTab, setActiveCourseTab] = useState<'materials' | 'assignments'>('materials');
+  const [communityPosts, setCommunityPosts] = useState<CommunityPost[]>(INITIAL_COMMUNITY_POSTS);
 
   const sharedCourses = useMemo(() => mapCoursesToAssignmentCourses(COURSES), []);
 
@@ -387,6 +452,12 @@ export default function StudentApp({ onLogout }: Props) {
     return hydratedSharedCourses.find((course) => course.id === selectedCourse.id) || hydratedSharedCourses[0];
   }, [hydratedSharedCourses, selectedCourse.id]);
 
+  const currentUserPosts = useMemo(() => {
+    return communityPosts.filter(
+      (post) => post.userName === CURRENT_USER_NAME || post.userEmail === CURRENT_USER_EMAIL
+    );
+  }, [communityPosts]);
+
   const handleAddAssignmentComment = (assignmentId: string, content: string) => {
     if (!content.trim()) return;
 
@@ -417,6 +488,23 @@ export default function StudentApp({ onLogout }: Props) {
       ...prev,
       [assignmentId]: (prev[assignmentId] || []).filter((file) => file.id !== fileId),
     }));
+  };
+
+  const handleCreateCommunityPost = (query: string) => {
+    const trimmedQuery = query.trim();
+    if (!trimmedQuery) return;
+
+    const newPost: CommunityPost = {
+      id: `community-post-${Date.now()}`,
+      userName: CURRENT_USER_NAME,
+      userEmail: CURRENT_USER_EMAIL,
+      avatar: DEFAULT_PROFILE_IMAGE,
+      dateTime: new Date().toLocaleString(),
+      content: trimmedQuery,
+      answers: [],
+    };
+
+    setCommunityPosts((prev) => [newPost, ...prev]);
   };
 
   const getScorePercent = (assignment: {
@@ -475,6 +563,78 @@ export default function StudentApp({ onLogout }: Props) {
         .map((material) => material.title),
     };
   };
+
+  const studentNotifications = useMemo<NotificationItem[]>(() => {
+    const notifications: NotificationItem[] = [];
+
+    hydratedSharedCourses.forEach((course) => {
+      course.materials.forEach((material) => {
+        notifications.push({
+          id: `material-${course.id}-${material.id}`,
+          type: 'material',
+          title: 'New Material',
+          message: `${course.name}: ${material.title} was added to your learning materials.`,
+          time: material.uploadedDate,
+          read: false,
+        });
+      });
+
+      course.assignments.forEach((assignment) => {
+        notifications.push({
+          id: `assignment-${course.id}-${assignment.id}`,
+          type: 'assignment',
+          title: 'New Assignment',
+          message: `${course.name}: ${assignment.title} is available. Due on ${assignment.dueDate}.`,
+          time: assignment.dueDate,
+          read: assignment.status === 'graded',
+        });
+
+        const score = getScorePercent(assignment);
+
+        if (score !== null && score < 75) {
+          notifications.push({
+            id: `support-${course.id}-${assignment.id}`,
+            type: 'support-activity',
+            title: 'Support Activity Recommended',
+            message: `You may need extra support for ${assignment.topic || assignment.title} in ${course.name}.`,
+            time: assignment.dueDate,
+            read: false,
+          });
+        }
+      });
+    });
+
+    communityPosts.forEach((post) => {
+      const isUsersPost =
+        post.userName === CURRENT_USER_NAME || post.userEmail === CURRENT_USER_EMAIL;
+
+      if (isUsersPost && post.answers.length > 0) {
+        post.answers.forEach((answer) => {
+          notifications.push({
+            id: `community-answer-${post.id}-${answer.id}`,
+            type: 'community-answer',
+            title: 'New Answer on Your Question',
+            message: `${answer.userName} answered your post: "${post.content}"`,
+            time: answer.answeredAt,
+            read: false,
+          });
+        });
+      }
+    });
+
+    if (generatedActivity) {
+      notifications.unshift({
+        id: `generated-activity-${generatedActivity.assignmentId}`,
+        type: 'support-activity',
+        title: 'Support Activity Ready',
+        message: `A ${generatedActivity.recommendationType} activity is ready for ${generatedActivity.assignmentTitle}.`,
+        time: 'Now',
+        read: false,
+      });
+    }
+
+    return notifications.sort((a, b) => (a.id < b.id ? 1 : -1));
+  }, [hydratedSharedCourses, generatedActivity, communityPosts]);
 
   const handleNavigate = (screen: ScreenType) => {
     if (activeScreen !== screen) {
@@ -543,7 +703,12 @@ export default function StudentApp({ onLogout }: Props) {
   const renderScreen = () => {
     switch (activeScreen) {
       case 'profile':
-        return <Profile />;
+        return (
+          <Profile
+            userPosts={currentUserPosts}
+            onCreatePost={handleCreateCommunityPost}
+          />
+        );
 
       case 'home':
         return (
@@ -582,7 +747,16 @@ export default function StudentApp({ onLogout }: Props) {
         );
 
       case 'game':
-        return <Game />;
+        return <Game onNavigate={handleNavigate} />;
+
+      case 'flipit':
+        return <FlipIt onBack={() => setActiveScreen('game')} />;
+
+      case 'fruitmania':
+        return <FruitMania onBack={() => setActiveScreen('game')} />;
+
+      case 'quizmasters':
+        return <QuizMasters onBack={() => setActiveScreen('game')} />;
 
       case 'videos':
         return <Videos onVideoActiveChange={setIsVideoActive} />;
@@ -607,13 +781,27 @@ export default function StudentApp({ onLogout }: Props) {
         );
 
       case 'community':
-        return <Community />;
+        return (
+          <Community
+            posts={communityPosts}
+            userName="Jade"
+            onCreatePost={handleCreateCommunityPost}
+          />
+        );
 
       case 'messenger':
         return (
           <Messenger
             searchQuery=""
             onConversationActiveChange={setIsConversationActive}
+          />
+        );
+
+      case 'notification':
+        return (
+          <Notification
+            onBack={() => setActiveScreen(lastScreen)}
+            notifications={studentNotifications}
           />
         );
 
@@ -659,10 +847,11 @@ export default function StudentApp({ onLogout }: Props) {
           activeScreen={activeScreen}
           onNavigate={handleNavigate}
           onSearchChange={() => {}}
+          notificationCount={studentNotifications.filter((item) => !item.read).length}
         />
       </View>
 
-      {!isLargeScreen && activeScreen !== 'profile' && (
+      {!isLargeScreen && activeScreen !== 'profile' && activeScreen !== 'notification' && (
         <TouchableOpacity
           style={styles.floatingMenuBtn}
           onPress={() => setMobileDrawerOpen(!isMobileDrawerOpen)}
@@ -673,7 +862,7 @@ export default function StudentApp({ onLogout }: Props) {
       )}
 
       <View style={styles.contentLayer}>
-        {isLargeScreen && activeScreen !== 'profile' && (
+        {isLargeScreen && activeScreen !== 'profile' && activeScreen !== 'notification' && (
           <DrawerMenu
             isFixed={true}
             activeScreen={activeScreen}
@@ -685,7 +874,7 @@ export default function StudentApp({ onLogout }: Props) {
           />
         )}
 
-        {!isLargeScreen && isMobileDrawerOpen && activeScreen !== 'profile' && (
+        {!isLargeScreen && isMobileDrawerOpen && activeScreen !== 'profile' && activeScreen !== 'notification' && (
           <>
             <TouchableOpacity
               style={styles.mobileBackdrop}
@@ -720,6 +909,7 @@ export default function StudentApp({ onLogout }: Props) {
       />
 
       {activeScreen !== 'messenger' &&
+        activeScreen !== 'notification' &&
         !(activeScreen === 'videos' && isVideoActive) && (
           <TouchableOpacity
             style={styles.floatingChatBtn}
@@ -776,7 +966,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 42,
     borderColor: '#cc16164d',
-    borderWidth: .1,
+    borderWidth: 0.1,
     borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',

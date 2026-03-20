@@ -28,6 +28,9 @@ type ScreenType =
   | 'home'
   | 'classes'
   | 'game'
+  | 'flipit'
+  | 'fruitmania'
+  | 'quizmasters'
   | 'videos'
   | 'myjourney'
   | 'profile'
@@ -35,13 +38,15 @@ type ScreenType =
   | 'assignments'
   | 'coursedetail'
   | 'community'
-  | 'generateactivity';
+  | 'generateactivity'
+  | 'notification';
 
 interface HeaderProps {
   isLargeScreen: boolean;
   activeScreen?: ScreenType;
   onNavigate?: (screen: ScreenType) => void;
   onSearchChange?: (query: string) => void;
+  notificationCount?: number;
 }
 
 const Header: React.FC<HeaderProps> = ({
@@ -49,10 +54,9 @@ const Header: React.FC<HeaderProps> = ({
   activeScreen = 'home',
   onNavigate,
   onSearchChange,
+  notificationCount = 0,
 }) => {
   const { width } = useWindowDimensions();
-
-  const notificationCount = 3;
 
   const isVerySmall = width < 360;
   const isSmallPhone = width < 420;
@@ -89,11 +93,31 @@ const Header: React.FC<HeaderProps> = ({
 
   const getIconColor = (
     screen: 'home' | 'classes' | 'game' | 'videos' | 'myjourney' | 'profile' | 'messenger' | 'community' | 'generateactivity'
-  ) => (activeScreen === screen ? '#D32F2F' : '#000000');
+  ) => {
+    const isGameGroupActive =
+      screen === 'game' &&
+      (activeScreen === 'game' ||
+        activeScreen === 'flipit' ||
+        activeScreen === 'fruitmania' ||
+        activeScreen === 'quizmasters');
+
+    return activeScreen === screen || isGameGroupActive ? '#D32F2F' : '#000000';
+  };
 
   const isActive = (
     screen: 'home' | 'classes' | 'game' | 'videos' | 'myjourney' | 'profile' | 'messenger' | 'community' | 'generateactivity'
-  ) => activeScreen === screen;
+  ) => {
+    if (screen === 'game') {
+      return (
+        activeScreen === 'game' ||
+        activeScreen === 'flipit' ||
+        activeScreen === 'fruitmania' ||
+        activeScreen === 'quizmasters'
+      );
+    }
+
+    return activeScreen === screen;
+  };
 
   const navScreens: Array<'home' | 'classes' | 'game' | 'videos' | 'messenger'> = [
     'home',
@@ -104,8 +128,15 @@ const Header: React.FC<HeaderProps> = ({
   ];
 
   const getSearchPlaceholder = () => {
+    if (
+      activeScreen === 'game' ||
+      activeScreen === 'flipit' ||
+      activeScreen === 'fruitmania' ||
+      activeScreen === 'quizmasters'
+    ) {
+      return 'Search Game';
+    }
     if (activeScreen === 'videos') return 'Search Videos';
-    if (activeScreen === 'game') return 'Search Game';
     if (activeScreen === 'messenger') return 'Search Message';
     if (activeScreen === 'classes') return 'Search Classes';
     return 'Search ParseClass';
@@ -217,6 +248,8 @@ const Header: React.FC<HeaderProps> = ({
       )}
     </View>
   );
+
+  const displayNotificationCount = notificationCount > 99 ? '99+' : `${notificationCount}`;
 
   if (isPhone) {
     return (
@@ -335,12 +368,18 @@ const Header: React.FC<HeaderProps> = ({
               )}
             </TouchableOpacity>
 
-            <TouchableOpacity style={styles.navBtn}>
+            <TouchableOpacity
+              style={styles.navBtn}
+              onPress={() => {
+                toggleSearch(false);
+                onNavigate?.('notification');
+              }}
+            >
               <View>
                 <MaterialCommunityIcons name="bell" size={navIconSize} color="#000" />
                 {notificationCount > 0 && (
                   <View style={styles.badge}>
-                    <Text style={styles.badgeText}>{notificationCount}</Text>
+                    <Text style={styles.badgeText}>{displayNotificationCount}</Text>
                   </View>
                 )}
               </View>
@@ -426,12 +465,18 @@ const Header: React.FC<HeaderProps> = ({
       </View>
 
       <View style={{ marginLeft: 'auto' }}>
-        <TouchableOpacity style={styles.navBtn}>
+        <TouchableOpacity
+          style={styles.navBtn}
+          onPress={() => {
+            toggleSearch(false);
+            onNavigate?.('notification');
+          }}
+        >
           <View>
             <MaterialCommunityIcons name="bell" size={navIconSize} color="#000" />
             {notificationCount > 0 && (
               <View style={styles.badge}>
-                <Text style={styles.badgeText}>{notificationCount}</Text>
+                <Text style={styles.badgeText}>{displayNotificationCount}</Text>
               </View>
             )}
           </View>
@@ -535,20 +580,20 @@ const styles = StyleSheet.create({
 
   badge: {
     position: 'absolute',
-    top: -4,
-    right: -6,
+    top: -6,
+    right: -8,
     backgroundColor: '#D32F2F',
     borderRadius: 10,
-    minWidth: 16,
-    height: 16,
+    minWidth: 18,
+    height: 18,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 3,
+    paddingHorizontal: 4,
   },
 
   badgeText: {
     color: '#FFF',
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: 'bold',
   },
 });

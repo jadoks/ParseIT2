@@ -1,14 +1,14 @@
 import React, { useState } from 'react';
 import {
-    Modal,
-    Pressable,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  Keyboard,
+  Modal,
+  Pressable,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableWithoutFeedback,
+  View,
 } from 'react-native';
-
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 
 interface Props {
@@ -21,70 +21,69 @@ const PostQueryModal: React.FC<Props> = ({ visible, onClose, onPost }) => {
   const [query, setQuery] = useState('');
 
   const handlePost = () => {
-    if (onPost) {
-      onPost(query);
-    }
+    const trimmed = query.trim();
+    if (!trimmed) return;
+
+    onPost?.(trimmed);
     setQuery('');
     onClose();
   };
 
   return (
-    <Modal visible={visible} transparent animationType="fade">
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+        <View style={styles.overlay}>
+          <TouchableWithoutFeedback onPress={() => {}}>
+            <View style={styles.modalContainer}>
+              <View style={styles.header}>
+                <Text style={styles.title}>Post Your Query</Text>
 
-      <View style={styles.overlay}>
+                <Pressable onPress={onClose}>
+                  <MaterialCommunityIcons
+                    name="close-circle"
+                    size={20}
+                    color="#555"
+                  />
+                </Pressable>
+              </View>
 
-        <View style={styles.modalContainer}>
-
-          {/* Header */}
-          <View style={styles.header}>
-            <Text style={styles.title}>Post Your Query</Text>
-
-            <Pressable onPress={onClose}>
-              <MaterialCommunityIcons
-                name="close-circle"
-                size={20}
-                color="#555"
+              <TextInput
+                style={styles.input}
+                placeholder="Describe your query in detail"
+                multiline
+                numberOfLines={6}
+                value={query}
+                onChangeText={setQuery}
+                autoFocus
+                textAlignVertical="top"
+                placeholderTextColor="#999"
               />
-            </Pressable>
-          </View>
 
-          {/* Textarea */}
-          <TextInput
-            style={styles.input}
-            placeholder="Describe your query in detail"
-            multiline
-            numberOfLines={6}
-            value={query}
-            onChangeText={setQuery}
-          />
-
-          {/* Button */}
-          <TouchableOpacity style={styles.postBtn} onPress={handlePost}>
-            <Text style={styles.postText}>Post Query</Text>
-          </TouchableOpacity>
-
+              <Pressable style={styles.postBtn} onPress={handlePost}>
+                <Text style={styles.postText}>Post Query</Text>
+              </Pressable>
+            </View>
+          </TouchableWithoutFeedback>
         </View>
-
-      </View>
-
+      </TouchableWithoutFeedback>
     </Modal>
   );
 };
 
 const styles = StyleSheet.create({
-
   overlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.4)',
     justifyContent: 'center',
     alignItems: 'center',
+    paddingHorizontal: 16,
   },
 
   modalContainer: {
     width: '90%',
     maxWidth: 700,
     backgroundColor: '#fff',
-    borderRadius: 8,
+    borderRadius: 12,
     padding: 20,
   },
 
@@ -104,15 +103,17 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#ccc',
     borderRadius: 6,
-    height: 120,
+    minHeight: 120,
     padding: 10,
     textAlignVertical: 'top',
+    backgroundColor: '#fff',
+    color: '#111',
   },
 
   postBtn: {
     marginTop: 15,
     backgroundColor: '#D32F2F',
-    paddingVertical: 8,
+    paddingVertical: 10,
     paddingHorizontal: 20,
     borderRadius: 6,
     alignSelf: 'flex-start',
@@ -122,7 +123,6 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: '600',
   },
-
 });
 
 export default PostQueryModal;

@@ -16,35 +16,28 @@ import {
 } from 'react-native';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 
+type ScreenType =
+  | 'home'
+  | 'classes'
+  | 'game'
+  | 'flipit'
+  | 'fruitmania'
+  | 'quizmasters'
+  | 'videos'
+  | 'myjourney'
+  | 'profile'
+  | 'messenger'
+  | 'assignments'
+  | 'coursedetail'
+  | 'community'
+  | 'generateactivity'
+  | 'notification';
+
 interface DrawerMenuProps {
   isFixed: boolean;
   onClose?: () => void;
-  onNavigate?: (
-    screen:
-      | 'home'
-      | 'game'
-      | 'videos'
-      | 'myjourney'
-      | 'profile'
-      | 'messenger'
-      | 'assignments'
-      | 'coursedetail'
-      | 'community'
-      | 'classes'
-      | 'generateactivity'
-  ) => void;
-  activeScreen?:
-    | 'home'
-    | 'game'
-    | 'classes'
-    | 'videos'
-    | 'myjourney'
-    | 'profile'
-    | 'messenger'
-    | 'assignments'
-    | 'coursedetail'
-    | 'community'
-    | 'generateactivity';
+  onNavigate?: (screen: ScreenType) => void;
+  activeScreen?: ScreenType;
   userName?: string;
   userEmail?: string;
   onAvatarPress?: () => void;
