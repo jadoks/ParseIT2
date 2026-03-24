@@ -10,12 +10,13 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 // --- Components & Modals ---
 import AnnouncementModal, { Announcement } from './components/AnnouncementModal';
-import ProfileModal from './components/ProfileModal2';
+import ProfileModal2 from './teacher_components/ProfileModal2';
+
 import DrawerMenu from './teacher_components/TeacherDrawerMenu';
 import Header from './teacher_components/TeacherHeader';
 
 // --- Teacher Specific components ---
-import Coursedetail2 from './screens/CourseDetail2';
+import Coursedetail2 from './teacher_components/CourseDetail2';
 import Grades from './teacher_components/Grades';
 import Honors from './teacher_components/Honors';
 import ShareAnnouncement from './teacher_components/ShareAnnouncement';
@@ -117,7 +118,7 @@ export default function TeacherApp({ onLogout }: Props) {
         {/* Dynamic Content Rendering */}
         <View style={{ flex: 1 }}>
           {activeScreen === 'profile' ? (
-            <ProfileModal
+            <ProfileModal2
               visible={true}
               onClose={() => setActiveScreen(lastScreen)}
               userName="Ramcee Jade L. Munoz"
