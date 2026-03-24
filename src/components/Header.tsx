@@ -24,11 +24,29 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
+type ScreenType =
+  | 'home'
+  | 'classes'
+  | 'game'
+  | 'flipit'
+  | 'fruitmania'
+  | 'quizmasters'
+  | 'videos'
+  | 'myjourney'
+  | 'profile'
+  | 'messenger'
+  | 'assignments'
+  | 'coursedetail'
+  | 'community'
+  | 'generateactivity'
+  | 'notification';
+
 interface HeaderProps {
   isLargeScreen: boolean;
-  activeScreen?: 'home' | 'game' | 'videos' | 'analytics' | 'myjourney' | 'profile' | 'messenger' | 'assignments' | 'coursedetail' | 'community';
-  onNavigate?: (screen: 'home' | 'game' | 'videos' | 'analytics' | 'myjourney' | 'profile' | 'messenger' | 'assignments' | 'coursedetail' | 'community') => void;
+  activeScreen?: ScreenType;
+  onNavigate?: (screen: ScreenType) => void;
   onSearchChange?: (query: string) => void;
+  notificationCount?: number;
 }
 
 const Header: React.FC<HeaderProps> = ({
@@ -36,10 +54,10 @@ const Header: React.FC<HeaderProps> = ({
   activeScreen = 'home',
   onNavigate,
   onSearchChange,
+  notificationCount = 0,
 }) => {
   const { width } = useWindowDimensions();
 
-  // Breakpoints
   const isVerySmall = width < 360;
   const isSmallPhone = width < 420;
   const isPhone = width < 768;
@@ -49,6 +67,7 @@ const Header: React.FC<HeaderProps> = ({
   const [isSearchExpanded, setIsSearchExpanded] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearchFocused, setIsSearchFocused] = useState(false);
+  const [hoveredNav, setHoveredNav] = useState<ScreenType | null>(null);
 
   const responsiveSize = (mobile: number, tablet: number, desktopMax: number) => {
     if (isVerySmall) return mobile * 0.9;
@@ -73,22 +92,165 @@ const Header: React.FC<HeaderProps> = ({
   };
 
   const getIconColor = (
-    screen: 'home' | 'game' | 'videos' | 'analytics' | 'myjourney' | 'profile' | 'messenger' | 'community'
-  ) => (activeScreen === screen ? '#D32F2F' : '#000000');
+    screen: 'home' | 'classes' | 'game' | 'videos' | 'myjourney' | 'profile' | 'messenger' | 'community' | 'generateactivity'
+  ) => {
+    const isGameGroupActive =
+      screen === 'game' &&
+      (activeScreen === 'game' ||
+        activeScreen === 'flipit' ||
+        activeScreen === 'fruitmania' ||
+        activeScreen === 'quizmasters');
+
+    return activeScreen === screen || isGameGroupActive ? '#D32F2F' : '#000000';
+  };
 
   const isActive = (
-    screen: 'home' | 'game' | 'videos' | 'analytics' | 'myjourney' | 'profile' | 'messenger' | 'community'
-  ) => activeScreen === screen;
+    screen: 'home' | 'classes' | 'game' | 'videos' | 'myjourney' | 'profile' | 'messenger' | 'community' | 'generateactivity'
+  ) => {
+    if (screen === 'game') {
+      return (
+        activeScreen === 'game' ||
+        activeScreen === 'flipit' ||
+        activeScreen === 'fruitmania' ||
+        activeScreen === 'quizmasters'
+      );
+    }
 
-  // Navigation icons array for desktop/tablet
-  const navScreens: Array<'home' | 'game' | 'videos' | 'messenger'> = [
+    return activeScreen === screen;
+  };
+
+  const navScreens: Array<'home' | 'classes' | 'game' | 'videos' | 'messenger'> = [
     'home',
+    'classes',
     'game',
     'videos',
     'messenger',
   ];
 
-  // Mobile Layout
+  const getSearchPlaceholder = () => {
+    if (
+      activeScreen === 'game' ||
+      activeScreen === 'flipit' ||
+      activeScreen === 'fruitmania' ||
+      activeScreen === 'quizmasters'
+    ) {
+      return 'Search Game';
+    }
+    if (activeScreen === 'videos') return 'Search Videos';
+    if (activeScreen === 'messenger') return 'Search Message';
+    if (activeScreen === 'classes') return 'Search Classes';
+    return 'Search ParseClass';
+  };
+
+  const getNavLabel = (screen: ScreenType) => {
+    switch (screen) {
+      case 'home':
+        return 'Home';
+      case 'classes':
+        return 'Classes';
+      case 'game':
+        return 'Game';
+      case 'videos':
+        return 'Videos';
+      case 'messenger':
+        return 'Messages';
+      default:
+        return screen;
+    }
+  };
+
+  const renderNavIcon = (
+    screen: 'home' | 'classes' | 'game' | 'videos' | 'messenger',
+    size: number
+  ) => {
+    if (screen === 'classes') {
+      return (
+        <MaterialCommunityIcons
+          name="google-classroom"
+          size={size}
+          color={isActive(screen) ? '#D32F2F' : '#000000'}
+        />
+      );
+    }
+
+    if (Platform.OS === 'web') {
+      return (
+        <Image
+          source={
+            screen === 'home'
+              ? require('../../assets/images/house-solid.png')
+              : screen === 'game'
+              ? require('../../assets/images/gamepad-solid.png')
+              : screen === 'videos'
+              ? require('../../assets/images/youtube-brands-solid.png')
+              : require('../../assets/images/messenger.png')
+          }
+          style={{
+            width: size,
+            height: size,
+            resizeMode: 'contain',
+            tintColor: isActive(screen) ? '#D32F2F' : '#000000',
+          }}
+        />
+      );
+    }
+
+    if (screen === 'home') {
+      return <House width={size} height={size} stroke={getIconColor(screen)} fill={getIconColor(screen)} />;
+    }
+
+    if (screen === 'game') {
+      return <Gamepad width={size} height={size} stroke={getIconColor(screen)} fill={getIconColor(screen)} />;
+    }
+
+    if (screen === 'videos') {
+      return <VideosIcon width={size} height={size} stroke={getIconColor(screen)} fill={getIconColor(screen)} />;
+    }
+
+    return <MessengerIcon width={size} height={size} stroke={getIconColor(screen)} />;
+  };
+
+  const renderNavButton = (
+    screen: 'home' | 'classes' | 'game' | 'videos' | 'messenger',
+    size: number,
+    extraStyle?: object
+  ) => (
+    <View key={screen} style={styles.navItemWrapper}>
+      <Pressable
+        style={(state: any) => [
+          styles.navBtn,
+          isActive(screen) && styles.navBtnActive,
+          state.hovered && !isActive(screen) && styles.navBtnHover,
+          extraStyle,
+        ]}
+        onPress={() => {
+          toggleSearch(false);
+          onNavigate?.(screen);
+        }}
+        onHoverIn={() => {
+          if (Platform.OS === 'web') {
+            setHoveredNav(screen);
+          }
+        }}
+        onHoverOut={() => {
+          if (Platform.OS === 'web') {
+            setHoveredNav(null);
+          }
+        }}
+      >
+        {renderNavIcon(screen, size)}
+      </Pressable>
+
+      {Platform.OS === 'web' && hoveredNav === screen && (
+        <View style={styles.tooltip}>
+          <Text style={styles.tooltipText}>{getNavLabel(screen)}</Text>
+        </View>
+      )}
+    </View>
+  );
+
+  const displayNotificationCount = notificationCount > 99 ? '99+' : `${notificationCount}`;
+
   if (isPhone) {
     return (
       <TouchableWithoutFeedback
@@ -100,7 +262,6 @@ const Header: React.FC<HeaderProps> = ({
         }}
       >
         <View style={{ backgroundColor: '#FFF', borderBottomWidth: 1, borderBottomColor: '#EEE' }}>
-          {/* ROW 1: Logo + Search + Messenger */}
           <View
             style={[
               styles.headerContainer,
@@ -143,13 +304,7 @@ const Header: React.FC<HeaderProps> = ({
                     fontWeight: '400',
                   }}
                 >
-                  {activeScreen === 'videos'
-                    ? 'Search Videos'
-                    : activeScreen === 'game'
-                    ? 'Search Game'
-                    : activeScreen === 'messenger'
-                    ? 'Search Message'
-                    : 'Search ParseClass'}
+                  {getSearchPlaceholder()}
                 </Text>
               </TouchableOpacity>
             ) : (
@@ -175,15 +330,7 @@ const Header: React.FC<HeaderProps> = ({
                   />
                   <TextInput
                     autoFocus
-                    placeholder={
-                      activeScreen === 'videos'
-                        ? 'Search Videos'
-                        : activeScreen === 'game'
-                        ? 'Search Game'
-                        : activeScreen === 'messenger'
-                        ? 'Search Message'
-                        : 'Search ParseClass'
-                    }
+                    placeholder={getSearchPlaceholder()}
                     placeholderTextColor="#888"
                     value={searchQuery}
                     onChangeText={(text) => {
@@ -220,66 +367,44 @@ const Header: React.FC<HeaderProps> = ({
                 <MessengerIcon width={navIconSize} height={navIconSize} stroke={getIconColor('messenger')} />
               )}
             </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.navBtn}
+              onPress={() => {
+                toggleSearch(false);
+                onNavigate?.('notification');
+              }}
+            >
+              <View>
+                <MaterialCommunityIcons name="bell" size={navIconSize} color="#000" />
+                {notificationCount > 0 && (
+                  <View style={styles.badge}>
+                    <Text style={styles.badgeText}>{displayNotificationCount}</Text>
+                  </View>
+                )}
+              </View>
+            </TouchableOpacity>
           </View>
 
-          {/* ROW 2: Navigation buttons */}
           <View
             style={[
               styles.mobileNavRow,
-              { paddingHorizontal, gap: isVerySmall ? 12 : 20, justifyContent: 'center' },
+              { paddingHorizontal, gap: isVerySmall ? 10 : 16, justifyContent: 'center' },
             ]}
           >
-            {navScreens.slice(0, 3).map((screen) => (
-              <Pressable
-                key={screen}
-                style={(state: any) => [
-                  styles.navBtn,
-                  isActive(screen) && styles.navBtnActive,
-                  state.hovered && !isActive(screen) && styles.navBtnHover,
-                  { padding: 12 },
-                ]}
-                onPress={() => {
-                  toggleSearch(false);
-                  onNavigate?.(screen);
-                }}
-              >
-                {Platform.OS === 'web' ? (
-                  <Image
-                    source={
-                      screen === 'home'
-                        ? require('../../assets/images/house-solid.png')
-                        : screen === 'game'
-                        ? require('../../assets/images/gamepad-solid.png')
-                        : require('../../assets/images/youtube-brands-solid.png')
-                    }
-                    style={{
-                      width: mobileNavIconSize,
-                      height: mobileNavIconSize,
-                      resizeMode: 'contain',
-                      tintColor: isActive(screen) ? '#D32F2F' : '#000000',
-                    }}
-                  />
-                ) : screen === 'home' ? (
-                  <House width={mobileNavIconSize} height={mobileNavIconSize} fill={getIconColor(screen)} />
-                ) : screen === 'game' ? (
-                  <Gamepad width={mobileNavIconSize} height={mobileNavIconSize} fill={getIconColor(screen)} />
-                ) : (
-                  <VideosIcon width={mobileNavIconSize} height={mobileNavIconSize} fill={getIconColor(screen)} />
-                )}
-              </Pressable>
-            ))}
+            {navScreens.slice(0, 4).map((screen) =>
+              renderNavButton(screen, mobileNavIconSize, { padding: 12 })
+            )}
           </View>
         </View>
       </TouchableWithoutFeedback>
     );
   }
 
-  // Desktop/Tablet Layout
   return (
     <View
       style={[styles.headerContainer, { paddingHorizontal, height: isTablet ? 72 : 80 }]}
     >
-      {/* LEFT – Logo + Search */}
       <View style={[styles.leftSection, { flex: isLargeScreenLocal ? 0.3 : 0.4 }]}>
         <Image
           source={require('../../assets/images/logo.png')}
@@ -311,15 +436,7 @@ const Header: React.FC<HeaderProps> = ({
             style={{ marginRight: 12 }}
           />
           <TextInput
-            placeholder={
-              activeScreen === 'videos'
-                ? 'Search Videos'
-                : activeScreen === 'game'
-                ? 'Search Game'
-                : activeScreen === 'messenger'
-                ? 'Search Message'
-                : 'Search ParseClass'
-            }
+            placeholder={getSearchPlaceholder()}
             placeholderTextColor="#888"
             value={searchQuery}
             onChangeText={(text) => {
@@ -334,56 +451,36 @@ const Header: React.FC<HeaderProps> = ({
         </View>
       </View>
 
-      {/* CENTER */}
       <View
         style={[
           styles.centerSection,
           {
             flex: isLargeScreenLocal ? 1.2 : isTablet ? 1 : 0.8,
-            gap: isTablet ? 32 : 40,
-            maxWidth: isLargeScreenLocal ? 600 : undefined,
+            gap: isTablet ? 24 : 32,
+            maxWidth: isLargeScreenLocal ? 720 : undefined,
           },
         ]}
       >
-        {navScreens.map((screen) => (
-          <Pressable
-            key={screen}
-            style={(state: any) => [
-              styles.navBtn,
-              isActive(screen) && styles.navBtnActive,
-              state.hovered && !isActive(screen) && styles.navBtnHover,
-            ]}
-            onPress={() => onNavigate?.(screen)}
-          >
-            {Platform.OS === 'web' ? (
-              <Image
-                source={
-                  screen === 'home'
-                    ? require('../../assets/images/house-solid.png')
-                    : screen === 'game'
-                    ? require('../../assets/images/gamepad-solid.png')
-                    : screen === 'videos'
-                    ? require('../../assets/images/youtube-brands-solid.png')
-                    : require('../../assets/images/messenger.png')
-                }
-                style={{
-                  width: navIconSize,
-                  height: navIconSize,
-                  resizeMode: 'contain',
-                  tintColor: isActive(screen) ? '#D32F2F' : '#000000',
-                }}
-              />
-            ) : screen === 'home' ? (
-              <House width={navIconSize} height={navIconSize} stroke={getIconColor(screen)} />
-            ) : screen === 'game' ? (
-              <Gamepad width={navIconSize} height={navIconSize} stroke={getIconColor(screen)} />
-            ) : screen === 'videos' ? (
-              <VideosIcon width={navIconSize} height={navIconSize} stroke={getIconColor(screen)} />
-            ) : (
-              <MessengerIcon width={navIconSize} height={navIconSize} stroke={getIconColor(screen)} />
+        {navScreens.map((screen) => renderNavButton(screen, navIconSize))}
+      </View>
+
+      <View style={{ marginLeft: 'auto' }}>
+        <TouchableOpacity
+          style={styles.navBtn}
+          onPress={() => {
+            toggleSearch(false);
+            onNavigate?.('notification');
+          }}
+        >
+          <View>
+            <MaterialCommunityIcons name="bell" size={navIconSize} color="#000" />
+            {notificationCount > 0 && (
+              <View style={styles.badge}>
+                <Text style={styles.badgeText}>{displayNotificationCount}</Text>
+              </View>
             )}
-          </Pressable>
-        ))}
+          </View>
+        </TouchableOpacity>
       </View>
     </View>
   );
@@ -434,6 +531,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
 
+  navItemWrapper: {
+    position: 'relative',
+    alignItems: 'center',
+  },
+
   navBtn: {
     padding: 8,
     borderRadius: 12,
@@ -447,6 +549,26 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.05)',
   },
 
+  tooltip: {
+    position: 'absolute',
+    top: '100%',
+    marginTop: 6,
+    backgroundColor: '#2222229d',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    zIndex: 999,
+    elevation: 10,
+    minWidth: 70,
+    alignItems: 'center',
+  },
+
+  tooltipText: {
+    color: '#FFF',
+    fontSize: 12,
+    fontWeight: '500',
+  },
+
   mobileNavRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -454,6 +576,25 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     borderTopWidth: 1,
     borderTopColor: '#EEE',
+  },
+
+  badge: {
+    position: 'absolute',
+    top: -6,
+    right: -8,
+    backgroundColor: '#D32F2F',
+    borderRadius: 10,
+    minWidth: 18,
+    height: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+  },
+
+  badgeText: {
+    color: '#FFF',
+    fontSize: 9,
+    fontWeight: 'bold',
   },
 });
 

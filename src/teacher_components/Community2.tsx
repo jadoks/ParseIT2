@@ -1,19 +1,19 @@
 import React, { useState } from 'react';
 import {
-  FlatList,
-  Image,
-  Keyboard,
-  Modal,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  TouchableWithoutFeedback,
-  View,
-  useWindowDimensions,
+    FlatList,
+    Image,
+    Keyboard,
+    Modal,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    TouchableWithoutFeedback,
+    View,
+    useWindowDimensions,
 } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
-import PostQueryModal from '../components/PostQueryModal';
+import PostQueryModal2 from './PostQueryModal2';
 
 export interface CommunityAnswer {
   id: string;
@@ -164,7 +164,7 @@ const Community: React.FC<CommunityProps> = ({
           </View>
         </ScrollView>
 
-        <PostQueryModal
+        <PostQueryModal2
           visible={modalVisible}
           onClose={() => setModalVisible(false)}
           onPost={onCreatePost}

@@ -87,8 +87,8 @@ const SignIn = ({ onLogIn }: SignInProps) => {
     <ImageBackground
       source={
         isLargeScreen
-          ? require('../../assets/images/ctu_argao_banner_LargeScreen.jpg')
-          : require('../../assets/images/ctu_argao_banner.jpg')
+          ? require('../../assets/images/cote.jpeg')
+          : require('../../assets/images/cote.jpeg')
       }
       style={styles.backgroundImage}
       resizeMode="cover"
@@ -111,10 +111,10 @@ const SignIn = ({ onLogIn }: SignInProps) => {
           </View>
 
           {/* Sign In Heading */}
-          <Text style={styles.heading}>Sign In</Text>
+          <Text style={styles.heading}>Welcome, Parsers!</Text>
 
           {/* Welcome Message */}
-          <Text style={styles.subheading}>Welcome, Parsers!</Text>
+          <Text style={styles.subheading}>Sign in to continue</Text>
 
           {/* Demo Account Buttons */}
           <View style={styles.demoContainer}>
@@ -336,7 +336,7 @@ const styles = StyleSheet.create({
   },
   forgotPassword: {
     fontSize: 14,
-    color: '#000',
+    color: '#ffffff',
     fontWeight: '500',
     textDecorationLine: 'none',
   },

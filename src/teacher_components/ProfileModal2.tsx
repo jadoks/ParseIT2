@@ -25,7 +25,7 @@ const ProfileModal: React.FC<Props> = ({ visible, onClose, userName, userEmail, 
           <View style={styles.content}>
             <TouchableOpacity onPress={onAvatarPress} style={{ alignItems: 'center' }}>
               <Image
-                source={avatarSource ?? require('../../assets/images/avatar.jpg')}
+                source={avatarSource ?? require('../../assets/images/default_profile.png')}
                 style={styles.avatar}
               />
               <View style={styles.editBadge}>
@@ -33,10 +33,10 @@ const ProfileModal: React.FC<Props> = ({ visible, onClose, userName, userEmail, 
               </View>
             </TouchableOpacity>
 
-            <Text style={styles.name}>{userName ?? 'Ramcee Jade Munoz'}</Text>
+            <Text style={styles.name}>{userName ?? 'Jade M. Lisondra'}</Text>
             <View style={styles.emailRow}>
               <Text style={styles.emailIcon}>✉️</Text>
-              <Text style={styles.email}>{userEmail ?? 'ludoviceramceejademunoz@gmail.com'}</Text>
+              <Text style={styles.email}>{userEmail ?? 'jade.lisondra@gmail.com'}</Text>
             </View>
 
             {/* OK Button */}

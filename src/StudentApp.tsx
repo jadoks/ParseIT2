@@ -1,23 +1,62 @@
-import React, { useState } from 'react';
-import { Image, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, useWindowDimensions, View } from 'react-native';
+import React, { useMemo, useState } from 'react';
+import { Image, StyleSheet, Text, TouchableOpacity, useWindowDimensions, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import AnnouncementModal, { Announcement } from './components/AnnouncementModal';
 import DrawerMenu from './components/DrawerMenu';
+import GeminiFloatingModal from './components/GeminiFloatingModal';
 import Header from './components/Header';
-import ProfileModal from './components/ProfileModal';
-import Assignments from './screens/Assignments';
-import Community from './screens/Community';
-import CourseDetail from './screens/CourseDetail';
-import Dashboard from './screens/Dashboard';
+
+import Assignments, {
+  AssignmentComment,
+  AssignmentCourse,
+  AssignmentFileUpload,
+  AssignmentItem,
+} from './screens/Assignments';
+import ClassesScreen from './screens/ClassesScreen';
+import Community, { CommunityPost } from './screens/Community';
+import CourseDetail, {
+  CourseAssignment,
+  CourseAssignmentComment,
+  CourseDetailData,
+} from './screens/CourseDetail';
+import Dashboard, { DashboardAssignment } from './screens/Dashboard';
 import Game from './screens/Game';
+import GenerateActivity, { GenerateActivityData } from './screens/GenerateActivity';
 import Messenger from './screens/Messenger';
 import MyJourney from './screens/MyJourney';
+import Notification, { NotificationItem } from './screens/Notification';
+import Profile from './screens/Profile';
 import Videos from './screens/Videos';
+
+import FlipIt from './screens/games/flip-it';
+import FruitMania from './screens/games/fruit-mania';
+import QuizMasters from './screens/games/quiz-masters';
 
 interface Props {
   onLogout: () => void;
 }
+
+type ScreenType =
+  | 'home'
+  | 'classes'
+  | 'game'
+  | 'flipit'
+  | 'fruitmania'
+  | 'quizmasters'
+  | 'videos'
+  | 'myjourney'
+  | 'profile'
+  | 'messenger'
+  | 'assignments'
+  | 'coursedetail'
+  | 'community'
+  | 'generateactivity'
+  | 'notification';
+
+const CURRENT_USER_NAME = 'Jade Lisondra';
+const CURRENT_USER_EMAIL = 'jadelisondra101@gmail.com';
+const DEFAULT_PROFILE_IMAGE = require('../assets/images/default_profile.png');
 
 const ANNOUNCEMENTS: Announcement[] = [
   {
@@ -38,54 +77,781 @@ const ANNOUNCEMENTS: Announcement[] = [
     message: 'Check out the new assignment for your current course.',
     bannerImage: require('../assets/announcement/3.png'),
   },
+];
+
+const COURSES: CourseDetailData[] = [
   {
-    id: '4',
-    title: 'Ramcee Badingg!',
-    message: 'Check out Ramcee is Gay!',
-    bannerImage: require('../assets/announcement/3.png'),
+    id: '1',
+    name: 'Web Development 101',
+    code: 'CS-101',
+    instructor: 'Prof. John Smith',
+    description:
+      'Learn the fundamentals of web development including HTML, CSS, JavaScript, and introductory React concepts.',
+    materials: [
+      { id: 'm1', title: 'HTML Basics Tutorial', type: 'video', uploadedDate: '2026-02-01' },
+      { id: 'm2', title: 'CSS Styling Guide', type: 'pdf', uploadedDate: '2026-02-03' },
+      { id: 'm3', title: 'JavaScript Fundamentals', type: 'video', uploadedDate: '2026-02-05' },
+      { id: 'm4', title: 'React Components Introduction', type: 'document', uploadedDate: '2026-02-07' },
+      { id: 'm5', title: 'Project Guidelines', type: 'document', uploadedDate: '2026-02-10' },
+    ],
+    assignments: [
+      {
+        id: 'a1',
+        title: 'React Fundamentals Quiz',
+        dueDate: '2026-02-15',
+        status: 'graded',
+        points: 8,
+        maxPoints: 20,
+        topic: 'React Fundamentals',
+        materialIds: ['m4'],
+        files: [
+          {
+            id: 'f-a1-1',
+            name: 'React_Fundamentals_Quiz_submission.pdf',
+            uploadedAt: '2026-02-15 08:30 AM',
+          },
+        ],
+        comments: [
+          {
+            id: 'c-a1-1',
+            author: 'Prof. John Smith',
+            content: 'Please review the related materials before attempting the next activity.',
+            timestamp: '2026-02-15 09:00 AM',
+            isInstructor: true,
+          },
+        ],
+      },
+      {
+        id: 'a2',
+        title: 'Build a Simple Website',
+        dueDate: '2026-02-20',
+        status: 'graded',
+        points: 42,
+        maxPoints: 50,
+        topic: 'HTML and CSS Layout',
+        materialIds: ['m1', 'm2', 'm5'],
+        files: [
+          {
+            id: 'f-a2-1',
+            name: 'Simple_Website_Project.zip',
+            uploadedAt: '2026-02-20 09:10 AM',
+          },
+          {
+            id: 'f-a2-2',
+            name: 'Project_Screenshots.pdf',
+            uploadedAt: '2026-02-20 09:12 AM',
+          },
+        ],
+        comments: [
+          {
+            id: 'c-a2-1',
+            author: 'Prof. John Smith',
+            content: 'Good work. Continue practicing to strengthen your understanding.',
+            timestamp: '2026-02-20 09:30 AM',
+            isInstructor: true,
+          },
+        ],
+      },
+      {
+        id: 'a3',
+        title: 'JavaScript Basics Checkpoint',
+        dueDate: '2026-02-24',
+        status: 'submitted',
+        points: 0,
+        maxPoints: 25,
+        topic: 'JavaScript Fundamentals',
+        materialIds: ['m3'],
+        files: [
+          {
+            id: 'f-a3-1',
+            name: 'JS_Basics_Checkpoint.docx',
+            uploadedAt: '2026-02-24 07:50 AM',
+          },
+        ],
+        comments: [],
+      },
+      {
+        id: 'a4',
+        title: 'Responsive Design Exercise',
+        dueDate: '2026-02-28',
+        status: 'pending',
+        points: 0,
+        maxPoints: 30,
+        topic: 'Responsive Design',
+        materialIds: ['m2', 'm5'],
+        files: [],
+        comments: [],
+      },
+    ],
+  },
+  {
+    id: '2',
+    name: 'Programming Logic',
+    code: 'CS-102',
+    instructor: 'Prof. Maria Santos',
+    description: 'Understand variables, conditions, loops, and basic program flow.',
+    materials: [
+      { id: 'm6', title: 'Variables and Data Types', type: 'pdf', uploadedDate: '2026-02-02' },
+      { id: 'm7', title: 'Conditional Statements', type: 'video', uploadedDate: '2026-02-04' },
+      { id: 'm8', title: 'Looping Concepts', type: 'document', uploadedDate: '2026-02-06' },
+    ],
+    assignments: [
+      {
+        id: 'a5',
+        title: 'Conditional Statements Quiz',
+        dueDate: '2026-02-16',
+        status: 'graded',
+        points: 14,
+        maxPoints: 20,
+        topic: 'Conditional Statements',
+        materialIds: ['m7'],
+        files: [
+          {
+            id: 'f-a5-1',
+            name: 'Conditional_Statements_Quiz.pdf',
+            uploadedAt: '2026-02-16 08:05 AM',
+          },
+        ],
+        comments: [
+          {
+            id: 'c-a5-1',
+            author: 'Prof. Maria Santos',
+            content: 'Good work. Continue practicing to strengthen your understanding.',
+            timestamp: '2026-02-16 08:40 AM',
+            isInstructor: true,
+          },
+        ],
+      },
+      {
+        id: 'a6',
+        title: 'Loops Practice Set',
+        dueDate: '2026-02-21',
+        status: 'graded',
+        points: 10,
+        maxPoints: 20,
+        topic: 'Loops',
+        materialIds: ['m8'],
+        files: [
+          {
+            id: 'f-a6-1',
+            name: 'Loops_Practice_Set.docx',
+            uploadedAt: '2026-02-21 07:55 AM',
+          },
+        ],
+        comments: [
+          {
+            id: 'c-a6-1',
+            author: 'Prof. Maria Santos',
+            content: 'Please review the related materials before attempting the next activity.',
+            timestamp: '2026-02-21 08:15 AM',
+            isInstructor: true,
+          },
+        ],
+      },
+    ],
+  },
+  {
+    id: '3',
+    name: 'Computer Fundamentals',
+    code: 'IT-100',
+    instructor: 'Prof. Allan Reyes',
+    description: 'Explore basic computing concepts, hardware, software, and digital systems.',
+    materials: [
+      { id: 'm9', title: 'Hardware Overview', type: 'pdf', uploadedDate: '2026-02-01' },
+      { id: 'm10', title: 'Software Systems', type: 'document', uploadedDate: '2026-02-05' },
+    ],
+    assignments: [
+      {
+        id: 'a7',
+        title: 'Computer Basics Assessment',
+        dueDate: '2026-02-18',
+        status: 'graded',
+        points: 18,
+        maxPoints: 20,
+        topic: 'Computer Architecture',
+        materialIds: ['m9'],
+        files: [
+          {
+            id: 'f-a7-1',
+            name: 'Computer_Basics_Assessment.pdf',
+            uploadedAt: '2026-02-18 08:20 AM',
+          },
+        ],
+        comments: [
+          {
+            id: 'c-a7-1',
+            author: 'Prof. Allan Reyes',
+            content: 'Good work. Continue practicing to strengthen your understanding.',
+            timestamp: '2026-02-18 08:45 AM',
+            isInstructor: true,
+          },
+        ],
+      },
+    ],
   },
 ];
+
+const INITIAL_COMMUNITY_POSTS: CommunityPost[] = [
+  {
+    id: '1',
+    userName: 'Ramcee Bading',
+    userEmail: 'ramcee@email.com',
+    avatar: DEFAULT_PROFILE_IMAGE,
+    dateTime: 'Feb 24, 2026 10:30 AM',
+    content: 'How do I solve this programming problem?',
+    answers: [
+      {
+        id: 'a1',
+        userName: 'Maria Santos',
+        avatar: DEFAULT_PROFILE_IMAGE,
+        answeredAt: 'Feb 24, 2026 11:00 AM',
+        message: 'You can use a loop to repeat the process and make sure your variables are updated correctly.',
+      },
+      {
+        id: 'a2',
+        userName: 'John Reyes',
+        avatar: DEFAULT_PROFILE_IMAGE,
+        answeredAt: 'Feb 24, 2026 11:18 AM',
+        message: 'Check your variables first, then trace the logic line by line to find where the issue starts.',
+      },
+    ],
+  },
+  {
+    id: '2',
+    userName: CURRENT_USER_NAME,
+    userEmail: CURRENT_USER_EMAIL,
+    avatar: DEFAULT_PROFILE_IMAGE,
+    dateTime: 'Feb 23, 2026 11:30 AM',
+    content: 'Is anyone attending the workshop tomorrow?',
+    answers: [
+      {
+        id: 'a3',
+        userName: 'Abai Clipord',
+        avatar: DEFAULT_PROFILE_IMAGE,
+        answeredAt: 'Feb 23, 2026 02:10 PM',
+        message: 'Yes, I will be there tomorrow.',
+      },
+      {
+        id: 'a4',
+        userName: 'Ramcee Bading',
+        avatar: DEFAULT_PROFILE_IMAGE,
+        answeredAt: 'Feb 23, 2026 02:40 PM',
+        message: 'Count me in. I already registered.',
+      },
+    ],
+  },
+];
+
+const mapCourseCommentsToAssignmentComments = (
+  comments?: CourseAssignmentComment[]
+): AssignmentComment[] => {
+  return (comments || []).map((comment) => ({
+    id: comment.id,
+    author: comment.author,
+    content: comment.content,
+    timestamp: comment.timestamp,
+    isInstructor: comment.isInstructor,
+  }));
+};
+
+const mapCourseFilesToAssignmentFiles = (files?: CourseAssignment['files']): AssignmentFileUpload[] => {
+  return (files || []).map((file) => ({
+    id: file.id,
+    fileName: file.name,
+    fileSize: '1.2 MB',
+    uploadedDate: file.uploadedAt,
+  }));
+};
+
+const mapCourseAssignmentsToAssignmentItems = (
+  assignments: CourseAssignment[]
+): AssignmentItem[] => {
+  return assignments.map((assignment) => ({
+    id: assignment.id,
+    title: assignment.title,
+    dueDate: assignment.dueDate,
+    status: assignment.status,
+    points: assignment.points,
+    maxPoints: assignment.maxPoints,
+    topic: assignment.topic,
+    materialIds: assignment.materialIds,
+    comments: mapCourseCommentsToAssignmentComments(assignment.comments),
+    files: mapCourseFilesToAssignmentFiles(assignment.files),
+  }));
+};
+
+const mapCoursesToAssignmentCourses = (courses: CourseDetailData[]): AssignmentCourse[] => {
+  return courses.map((course) => ({
+    id: course.id,
+    name: course.name,
+    code: course.code,
+    instructor: course.instructor,
+    description: course.description,
+    materials: course.materials.map((material) => ({
+      id: material.id,
+      title: material.title,
+      type: material.type,
+      uploadedDate: material.uploadedDate,
+    })),
+    assignments: mapCourseAssignmentsToAssignmentItems(course.assignments),
+  }));
+};
 
 export default function StudentApp({ onLogout }: Props) {
   const { width } = useWindowDimensions();
   const isLargeScreen = width >= 768;
 
-  const [activeScreen, setActiveScreen] = useState<
-    'home' | 'game' | 'videos' | 'myjourney' | 'profile' | 'messenger' | 'assignments' | 'coursedetail' | 'community'
-  >('home');
-
-  const [lastScreen, setLastScreen] = useState<'home' | 'game' | 'videos' | 'myjourney' | 'profile' | 'messenger' | 'assignments' | 'coursedetail' | 'community'>('home');
+  const [activeScreen, setActiveScreen] = useState<ScreenType>('home');
+  const [lastScreen, setLastScreen] = useState<ScreenType>('home');
+  const [selectedCourse, setSelectedCourse] = useState<CourseDetailData>(COURSES[0]);
+  const [selectedCourseIdForAssignments, setSelectedCourseIdForAssignments] = useState<string | null>(null);
+  const [generatedActivity, setGeneratedActivity] = useState<GenerateActivityData | null>(null);
 
   const [showAnnouncement, setShowAnnouncement] = useState(true);
   const [isMobileDrawerOpen, setMobileDrawerOpen] = useState(false);
 
-  // Chat panel state
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [isConversationActive, setIsConversationActive] = useState(false);
   const [isVideoActive, setIsVideoActive] = useState(false);
 
-  // Course tab state
   const [activeCourseTab, setActiveCourseTab] = useState<'materials' | 'assignments'>('materials');
+  const [communityPosts, setCommunityPosts] = useState<CommunityPost[]>(INITIAL_COMMUNITY_POSTS);
+
+  const sharedCourses = useMemo(() => mapCoursesToAssignmentCourses(COURSES), []);
+
+  const [sharedAssignmentComments, setSharedAssignmentComments] = useState<Record<string, AssignmentComment[]>>(
+    () =>
+      Object.fromEntries(
+        sharedCourses.flatMap((course) =>
+          course.assignments.map((assignment) => [assignment.id, assignment.comments || []])
+        )
+      )
+  );
+
+  const [sharedAssignmentFiles, setSharedAssignmentFiles] = useState<Record<string, AssignmentFileUpload[]>>(
+    () =>
+      Object.fromEntries(
+        sharedCourses.flatMap((course) =>
+          course.assignments.map((assignment) => [assignment.id, assignment.files || []])
+        )
+      )
+  );
+
+  const hydratedSharedCourses = useMemo<AssignmentCourse[]>(() => {
+    return sharedCourses.map((course) => ({
+      ...course,
+      assignments: course.assignments.map((assignment) => ({
+        ...assignment,
+        comments: sharedAssignmentComments[assignment.id] || [],
+        files: sharedAssignmentFiles[assignment.id] || [],
+      })),
+    }));
+  }, [sharedCourses, sharedAssignmentComments, sharedAssignmentFiles]);
+
+  const selectedAssignmentCourse = useMemo(() => {
+    return hydratedSharedCourses.find((course) => course.id === selectedCourse.id) || hydratedSharedCourses[0];
+  }, [hydratedSharedCourses, selectedCourse.id]);
+
+  const currentUserPosts = useMemo(() => {
+    return communityPosts.filter(
+      (post) => post.userName === CURRENT_USER_NAME || post.userEmail === CURRENT_USER_EMAIL
+    );
+  }, [communityPosts]);
+
+  const handleAddAssignmentComment = (assignmentId: string, content: string) => {
+    if (!content.trim()) return;
+
+    setSharedAssignmentComments((prev) => ({
+      ...prev,
+      [assignmentId]: [
+        ...(prev[assignmentId] || []),
+        {
+          id: `c${Date.now()}`,
+          author: 'You',
+          content,
+          timestamp: new Date().toLocaleString(),
+          isInstructor: false,
+        },
+      ],
+    }));
+  };
+
+  const handleAddAssignmentFile = (assignmentId: string, file: AssignmentFileUpload) => {
+    setSharedAssignmentFiles((prev) => ({
+      ...prev,
+      [assignmentId]: [...(prev[assignmentId] || []), file],
+    }));
+  };
+
+  const handleRemoveAssignmentFile = (assignmentId: string, fileId: string) => {
+    setSharedAssignmentFiles((prev) => ({
+      ...prev,
+      [assignmentId]: (prev[assignmentId] || []).filter((file) => file.id !== fileId),
+    }));
+  };
+
+  const handleCreateCommunityPost = (query: string) => {
+    const trimmedQuery = query.trim();
+    if (!trimmedQuery) return;
+
+    const newPost: CommunityPost = {
+      id: `community-post-${Date.now()}`,
+      userName: CURRENT_USER_NAME,
+      userEmail: CURRENT_USER_EMAIL,
+      avatar: DEFAULT_PROFILE_IMAGE,
+      dateTime: new Date().toLocaleString(),
+      content: trimmedQuery,
+      answers: [],
+    };
+
+    setCommunityPosts((prev) => [newPost, ...prev]);
+  };
+
+  const getScorePercent = (assignment: {
+    status: 'pending' | 'submitted' | 'graded';
+    points?: number;
+    maxPoints?: number;
+  }) => {
+    if (
+      assignment.status !== 'graded' ||
+      assignment.points === undefined ||
+      assignment.maxPoints === undefined ||
+      assignment.maxPoints === 0
+    ) {
+      return null;
+    }
+    return Math.round((assignment.points / assignment.maxPoints) * 100);
+  };
+
+  const buildGeneratedActivity = (
+    course: CourseDetailData,
+    assignment: DashboardAssignment | CourseAssignment | AssignmentItem
+  ): GenerateActivityData | null => {
+    const score = getScorePercent(assignment);
+    if (score === null) return null;
+
+    const recommendationType: GenerateActivityData['recommendationType'] =
+      score < 60 ? 'review' : score < 75 ? 'practice' : 'advanced';
+
+    const difficulty: GenerateActivityData['difficulty'] =
+      recommendationType === 'review'
+        ? 'easy'
+        : recommendationType === 'practice'
+        ? 'medium'
+        : 'hard';
+
+    const instructions =
+      recommendationType === 'review'
+        ? 'Review the concept explanation, answer the quick check, and complete the short response to strengthen your foundation.'
+        : recommendationType === 'practice'
+        ? 'Complete this guided practice to improve your understanding and become more confident with the topic.'
+        : 'Take on this advanced follow-up activity to deepen your mastery of the topic.';
+
+    return {
+      courseId: course.id,
+      courseName: course.name,
+      courseCode: course.code,
+      assignmentId: assignment.id,
+      assignmentTitle: assignment.title,
+      topic: assignment.topic || assignment.title,
+      score,
+      recommendationType,
+      difficulty,
+      instructions,
+      basedOnMaterials: course.materials
+        .filter((material) => assignment.materialIds?.includes(material.id))
+        .map((material) => material.title),
+    };
+  };
+
+  const studentNotifications = useMemo<NotificationItem[]>(() => {
+    const notifications: NotificationItem[] = [];
+
+    hydratedSharedCourses.forEach((course) => {
+      course.materials.forEach((material) => {
+        notifications.push({
+          id: `material-${course.id}-${material.id}`,
+          type: 'material',
+          title: 'New Material',
+          message: `${course.name}: ${material.title} was added to your learning materials.`,
+          time: material.uploadedDate,
+          read: false,
+        });
+      });
+
+      course.assignments.forEach((assignment) => {
+        notifications.push({
+          id: `assignment-${course.id}-${assignment.id}`,
+          type: 'assignment',
+          title: 'New Assignment',
+          message: `${course.name}: ${assignment.title} is available. Due on ${assignment.dueDate}.`,
+          time: assignment.dueDate,
+          read: assignment.status === 'graded',
+        });
+
+        const score = getScorePercent(assignment);
+
+        if (score !== null && score < 75) {
+          notifications.push({
+            id: `support-${course.id}-${assignment.id}`,
+            type: 'support-activity',
+            title: 'Support Activity Recommended',
+            message: `You may need extra support for ${assignment.topic || assignment.title} in ${course.name}.`,
+            time: assignment.dueDate,
+            read: false,
+          });
+        }
+      });
+    });
+
+    communityPosts.forEach((post) => {
+      const isUsersPost =
+        post.userName === CURRENT_USER_NAME || post.userEmail === CURRENT_USER_EMAIL;
+
+      if (isUsersPost && post.answers.length > 0) {
+        post.answers.forEach((answer) => {
+          notifications.push({
+            id: `community-answer-${post.id}-${answer.id}`,
+            type: 'community-answer',
+            title: 'New Answer on Your Question',
+            message: `${answer.userName} answered your post: "${post.content}"`,
+            time: answer.answeredAt,
+            read: false,
+          });
+        });
+      }
+    });
+
+    if (generatedActivity) {
+      notifications.unshift({
+        id: `generated-activity-${generatedActivity.assignmentId}`,
+        type: 'support-activity',
+        title: 'Support Activity Ready',
+        message: `A ${generatedActivity.recommendationType} activity is ready for ${generatedActivity.assignmentTitle}.`,
+        time: 'Now',
+        read: false,
+      });
+    }
+
+    return notifications.sort((a, b) => (a.id < b.id ? 1 : -1));
+  }, [hydratedSharedCourses, generatedActivity, communityPosts]);
+
+  const handleNavigate = (screen: ScreenType) => {
+    if (activeScreen !== screen) {
+      setLastScreen(activeScreen);
+    }
+
+    if (screen === 'assignments') {
+      setSelectedCourseIdForAssignments(null);
+    }
+
+    if (screen !== 'generateactivity') {
+      setGeneratedActivity(null);
+    }
+
+    setActiveScreen(screen);
+    setMobileDrawerOpen(false);
+  };
+
+  const openCourse = (course: CourseDetailData) => {
+    setSelectedCourse(course);
+    setGeneratedActivity(null);
+    setLastScreen(activeScreen);
+    setActiveScreen('coursedetail');
+    setActiveCourseTab('materials');
+  };
+
+  const openAssignments = (course: CourseDetailData) => {
+    setSelectedCourse(course);
+    setGeneratedActivity(null);
+    setSelectedCourseIdForAssignments(course.id);
+    setLastScreen(activeScreen);
+    setActiveScreen('coursedetail');
+    setActiveCourseTab('assignments');
+  };
+
+  const openMaterials = (course: CourseDetailData) => {
+    setSelectedCourse(course);
+    setGeneratedActivity(null);
+    setLastScreen(activeScreen);
+    setActiveScreen('coursedetail');
+    setActiveCourseTab('materials');
+  };
+
+  const openGeneratedActivity = (
+    course: CourseDetailData,
+    assignment: DashboardAssignment | CourseAssignment | AssignmentItem
+  ) => {
+    const matchedCourse =
+      COURSES.find((item) =>
+        item.assignments.some((courseAssignment) => courseAssignment.id === assignment.id)
+      ) || course;
+
+    const activity = buildGeneratedActivity(matchedCourse, assignment);
+
+    if (!activity) {
+      return;
+    }
+
+    setSelectedCourse(matchedCourse);
+    setSelectedCourseIdForAssignments(matchedCourse.id);
+    setGeneratedActivity(activity);
+    setLastScreen(activeScreen);
+    setActiveScreen('generateactivity');
+  };
+
+  const renderScreen = () => {
+    switch (activeScreen) {
+      case 'profile':
+        return (
+          <Profile
+            userPosts={currentUserPosts}
+            onCreatePost={handleCreateCommunityPost}
+          />
+        );
+
+      case 'home':
+        return (
+          <Dashboard
+            announcements={ANNOUNCEMENTS}
+            courses={hydratedSharedCourses}
+            onOpenCourse={openCourse}
+            onOpenAssignments={openAssignments}
+            onOpenMaterials={openMaterials}
+            onOpenGeneratedActivity={(course, assignment) =>
+              openGeneratedActivity(course as CourseDetailData, assignment)
+            }
+          />
+        );
+
+      case 'classes':
+        return (
+          <ClassesScreen
+            courses={hydratedSharedCourses}
+            onCoursePress={(course) => {
+              setSelectedCourse(course as unknown as CourseDetailData);
+              setGeneratedActivity(null);
+              setLastScreen('classes');
+              setActiveScreen('coursedetail');
+              setActiveCourseTab('materials');
+            }}
+            onAssignmentPress={(course) => {
+              setSelectedCourse(course as unknown as CourseDetailData);
+              setSelectedCourseIdForAssignments(course.id);
+              setGeneratedActivity(null);
+              setLastScreen('classes');
+              setActiveScreen('coursedetail');
+              setActiveCourseTab('assignments');
+            }}
+          />
+        );
+
+      case 'game':
+        return <Game onNavigate={handleNavigate} />;
+
+      case 'flipit':
+        return <FlipIt onBack={() => setActiveScreen('game')} />;
+
+      case 'fruitmania':
+        return <FruitMania onBack={() => setActiveScreen('game')} />;
+
+      case 'quizmasters':
+        return <QuizMasters onBack={() => setActiveScreen('game')} />;
+
+      case 'videos':
+        return <Videos onVideoActiveChange={setIsVideoActive} />;
+
+      case 'myjourney':
+        return <MyJourney />;
+
+      case 'assignments':
+        return (
+          <Assignments
+            courses={hydratedSharedCourses}
+            selectedCourseId={selectedCourseIdForAssignments}
+            assignmentComments={sharedAssignmentComments}
+            assignmentFiles={sharedAssignmentFiles}
+            onAddComment={handleAddAssignmentComment}
+            onAddFile={handleAddAssignmentFile}
+            onRemoveFile={handleRemoveAssignmentFile}
+            onOpenGeneratedActivity={(course, assignment) =>
+              openGeneratedActivity(selectedCourse, assignment)
+            }
+          />
+        );
+
+      case 'community':
+        return (
+          <Community
+            posts={communityPosts}
+            userName="Jade"
+            onCreatePost={handleCreateCommunityPost}
+          />
+        );
+
+      case 'messenger':
+        return (
+          <Messenger
+            searchQuery=""
+            onConversationActiveChange={setIsConversationActive}
+          />
+        );
+
+      case 'notification':
+        return (
+          <Notification
+            onBack={() => setActiveScreen(lastScreen)}
+            notifications={studentNotifications}
+          />
+        );
+
+      case 'coursedetail':
+        return (
+          <CourseDetail
+            course={selectedAssignmentCourse}
+            initialTab={activeCourseTab}
+            onBack={() => setActiveScreen(lastScreen)}
+            assignmentComments={sharedAssignmentComments}
+            assignmentFiles={sharedAssignmentFiles}
+            onAddComment={handleAddAssignmentComment}
+            onAddFile={handleAddAssignmentFile}
+            onRemoveFile={handleRemoveAssignmentFile}
+            onGenerateActivity={(assignment) =>
+              openGeneratedActivity(selectedCourse, assignment)
+            }
+          />
+        );
+
+      case 'generateactivity':
+        return (
+          <GenerateActivity
+            activity={generatedActivity}
+            onBack={() => setActiveScreen(lastScreen)}
+          />
+        );
+
+      default:
+        return (
+          <Text style={{ textAlign: 'center', marginTop: 50 }}>
+            Screen not found: {activeScreen}
+          </Text>
+        );
+    }
+  };
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: '#fff' }}>
-      {/* Header */}
-      <Header
-        isLargeScreen={isLargeScreen}
-        activeScreen={activeScreen}
-        onNavigate={(screen) => {
-          if (screen === 'profile') {
-            setLastScreen(activeScreen);
-            setActiveScreen('profile');
-          } else {
-            setActiveScreen(screen as any);
-          }
-        }}
-        onSearchChange={() => {}}
-      />
+    <SafeAreaView style={styles.safeArea}>
+      <View style={styles.headerLayer}>
+        <Header
+          isLargeScreen={isLargeScreen}
+          activeScreen={activeScreen}
+          onNavigate={handleNavigate}
+          onSearchChange={() => {}}
+          notificationCount={studentNotifications.filter((item) => !item.read).length}
+        />
+      </View>
 
-      {/* Mobile Hamburger */}
-      {!isLargeScreen && (
+      {!isLargeScreen && activeScreen !== 'profile' && activeScreen !== 'notification' && (
         <TouchableOpacity
           style={styles.floatingMenuBtn}
           onPress={() => setMobileDrawerOpen(!isMobileDrawerOpen)}
@@ -95,31 +861,20 @@ export default function StudentApp({ onLogout }: Props) {
         </TouchableOpacity>
       )}
 
-      <View style={{ flex: 1, flexDirection: 'row' }}>
-        {/* Drawer Menu */}
-        {isLargeScreen && (
+      <View style={styles.contentLayer}>
+        {isLargeScreen && activeScreen !== 'profile' && activeScreen !== 'notification' && (
           <DrawerMenu
             isFixed={true}
             activeScreen={activeScreen}
-            onNavigate={(s) => {
-              if (s === 'profile') {
-                setLastScreen(activeScreen);
-                setActiveScreen('profile');
-              } else {
-                setActiveScreen(s as any);
-              }
-            }}
+            onNavigate={handleNavigate}
             userName="Student Name"
             userEmail="student@email.com"
-            onAvatarPress={() => {
-              setLastScreen(activeScreen);
-              setActiveScreen('profile');
-            }}
-            setIsLoggedIn={onLogout}
+            onAvatarPress={() => handleNavigate('profile')}
+            setIsLoggedIn={() => onLogout()}
           />
         )}
 
-        {!isLargeScreen && isMobileDrawerOpen && (
+        {!isLargeScreen && isMobileDrawerOpen && activeScreen !== 'profile' && activeScreen !== 'notification' && (
           <>
             <TouchableOpacity
               style={styles.mobileBackdrop}
@@ -129,82 +884,32 @@ export default function StudentApp({ onLogout }: Props) {
             <View style={styles.mobileOverlay}>
               <DrawerMenu
                 isFixed={false}
+                onClose={() => setMobileDrawerOpen(false)}
                 activeScreen={activeScreen}
-                onNavigate={(s) => {
-                  if (s === 'profile') {
-                    setLastScreen(activeScreen);
-                    setActiveScreen('profile');
-                  } else {
-                    setActiveScreen(s as any);
-                  }
-                  setMobileDrawerOpen(false);
-                }}
+                onNavigate={handleNavigate}
                 userName="Student Name"
                 userEmail="student@email.com"
                 onAvatarPress={() => {
                   setMobileDrawerOpen(false);
-                  setLastScreen(activeScreen);
-                  setActiveScreen('profile');
+                  handleNavigate('profile');
                 }}
-                setIsLoggedIn={onLogout}
+                setIsLoggedIn={() => onLogout()}
               />
             </View>
           </>
         )}
 
-        <View style={{ flex: 1 }}>
-          {/* Profile Modal */}
-          {activeScreen === 'profile' ? (
-            <ProfileModal
-              visible={true}
-              onClose={() => setActiveScreen(lastScreen)}
-              userName="Student Name"
-              userEmail="student@email.com"
-              onAvatarPress={() => console.log('Edit avatar from modal')}
-            />
-          ) : activeScreen === 'home' ? (
-            <Dashboard
-              announcements={ANNOUNCEMENTS}
-              onCoursePress={() => {
-                setLastScreen(activeScreen);
-                setActiveScreen('coursedetail');
-                setActiveCourseTab('materials');
-              }}
-              onAssignmentPress={() => {
-                setLastScreen(activeScreen);
-                setActiveScreen('coursedetail');
-                setActiveCourseTab('assignments');
-              }}
-            />
-          ) : activeScreen === 'game' ? (
-            <Game />
-          ) : activeScreen === 'videos' ? (
-            <Videos onVideoActiveChange={setIsVideoActive} />
-          ) : activeScreen === 'myjourney' ? (
-            <MyJourney />
-          ) : activeScreen === 'assignments' ? (
-            <Assignments />
-          ) : activeScreen === 'community' ? (
-            <Community />
-          ) : activeScreen === 'messenger' ? (
-            <Messenger searchQuery="" onConversationActiveChange={setIsConversationActive} />
-          ) : activeScreen === 'coursedetail' ? (
-            <CourseDetail initialTab={activeCourseTab} onBack={() => setActiveScreen(lastScreen)} />
-          ) : (
-            <Text style={{ textAlign: 'center', marginTop: 50 }}>Screen not found</Text>
-          )}
-        </View>
+        <View style={{ flex: 1 }}>{renderScreen()}</View>
       </View>
 
-      {/* Announcement Modal */}
       <AnnouncementModal
         visible={activeScreen === 'home' && showAnnouncement}
         onClose={() => setShowAnnouncement(false)}
         announcements={ANNOUNCEMENTS}
       />
 
-      {/* Floating Chat Button */}
-      {!(activeScreen === 'messenger' && isConversationActive) &&
+      {activeScreen !== 'messenger' &&
+        activeScreen !== 'notification' &&
         !(activeScreen === 'videos' && isVideoActive) && (
           <TouchableOpacity
             style={styles.floatingChatBtn}
@@ -216,7 +921,7 @@ export default function StudentApp({ onLogout }: Props) {
             ) : (
               <>
                 <Image
-                  source={require('../assets/images/ChatGPT.png')}
+                  source={require('../assets/images/AI.png')}
                   style={styles.chatBtnImage}
                 />
                 <Text style={styles.chatBtnLabel}>Ask anything</Text>
@@ -225,70 +930,64 @@ export default function StudentApp({ onLogout }: Props) {
           </TouchableOpacity>
         )}
 
-      {/* Chat Panel */}
-      {isChatOpen &&
-        !(activeScreen === 'messenger' && isConversationActive) &&
-        !(activeScreen === 'videos' && isVideoActive) && (
-          <View style={styles.chatPanel}>
-            <View style={styles.chatHeader}>
-              <Text style={styles.chatTitle}>Ask anything</Text>
-              <TouchableOpacity onPress={() => setIsChatOpen(false)} />
-            </View>
-            <ScrollView style={styles.chatMessages}>
-              <View>
-                <Text style={styles.chatBubbleOther}>Hello! How can I help you today?</Text>
-                <Text style={styles.chatBubbleUser}>Show me my assignments.</Text>
-                <Text style={styles.chatBubbleOther}>
-                  You have 3 pending assignments due next week.
-                </Text>
-              </View>
-            </ScrollView>
-            <View style={styles.chatInputRow}>
-              <TextInput
-                placeholder="Type your question..."
-                placeholderTextColor="rgba(0, 0, 0, 0.5)"
-                style={styles.chatInput}
-              />
-              <TouchableOpacity style={styles.chatSendBtn}>
-                <Text style={{ color: '#fff' }}>Send</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        )}
+      <GeminiFloatingModal
+        visible={isChatOpen}
+        onClose={() => setIsChatOpen(false)}
+      />
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: '#fff',
+  },
+
+  headerLayer: {
+    position: 'relative',
+    zIndex: 1000,
+    elevation: 1000,
+  },
+
+  contentLayer: {
+    flex: 1,
+    flexDirection: 'row',
+    position: 'relative',
+    zIndex: 1,
+  },
+
   floatingMenuBtn: {
     position: 'absolute',
     top: 135,
-    left: 16,
-    zIndex: 5,
-    width: 44,
-    height: 44,
-    borderWidth: 1,
-    borderColor: '#D32F2F',
-    borderRadius: 22,
-    justifyContent: 'center',
+    left: 2,
+    zIndex: 2000,
+    elevation: 2000,
+    width: 40,
+    height: 42,
+    borderColor: '#cc16164d',
+    borderWidth: 0.1,
+    borderRadius: 8,
     alignItems: 'center',
-    backgroundColor: '#FFF',
-    elevation: 3,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 3,
+    justifyContent: 'center',
   },
-  menuIcon: { fontSize: 24, fontWeight: 'bold', color: '#000' },
+
+  menuIcon: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#000',
+  },
+
   mobileBackdrop: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: 'rgba(0,0,0,0.5)',
     zIndex: 9,
   },
+
   mobileOverlay: {
     position: 'absolute',
     zIndex: 10,
@@ -296,11 +995,8 @@ const styles = StyleSheet.create({
     left: 0,
     bottom: 0,
     backgroundColor: '#FFF',
-    elevation: 5,
-    shadowColor: '#000',
-    shadowOffset: { width: 2, height: 0 },
-    shadowOpacity: 0.2,
   },
+
   floatingChatBtn: {
     position: 'absolute',
     bottom: 44,
@@ -314,37 +1010,22 @@ const styles = StyleSheet.create({
     gap: 10,
     backgroundColor: '#D32F2F',
     borderRadius: 28,
-    elevation: 5,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
   },
-  chatBtnImage: { width: 24, height: 24, resizeMode: 'contain', tintColor: '#FFFFFF' },
-  chatBtnLabel: { fontSize: 14, fontWeight: '600', color: '#FFF' },
-  chatPanel: {
-    position: 'absolute',
-    right: 20,
-    bottom: 110,
-    zIndex: 30,
-    width: 360,
-    height: 520,
-    backgroundColor: '#fffefe',
-    borderRadius: 12,
-    padding: 12,
-    shadowColor: '#db0c0c',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.25,
-    shadowRadius: 12,
-    elevation: 10,
+
+  chatBtnImage: {
+    width: 24,
+    height: 24,
+    resizeMode: 'contain',
+    tintColor: '#FFFFFF',
   },
-  chatHeader: { height: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 8, borderBottomWidth: 1, borderBottomColor: 'rgba(135, 1, 1, 0.43)' },
-  chatTitle: { color: '#D32F2F', fontWeight: '700', fontSize: 16 },
-  chatClose: { color: '#fff', fontSize: 20 },
-  chatMessages: { flex: 1, marginVertical: 10 },
-  chatBubbleUser: { alignSelf: 'flex-end', backgroundColor: '#D32F2F', color: '#fff', padding: 10, borderRadius: 16, marginVertical: 6, maxWidth: '85%' },
-  chatBubbleOther: { alignSelf: 'flex-start', backgroundColor: '#D32F2F', color: '#fff', padding: 10, borderRadius: 16, marginVertical: 6, maxWidth: '85%' },
-  chatInputRow: { flexDirection: 'row', alignItems: 'center', marginTop: 8 },
-  chatInput: { flex: 1, backgroundColor: '#ffffff', color: '#000000', paddingHorizontal: 12, paddingVertical: 10, borderRadius: 999, borderColor: '#a90000dc', borderWidth: 2 },
-  chatSendBtn: { marginLeft: 8, backgroundColor: '#D32F2F', paddingHorizontal: 12, paddingVertical: 10, borderRadius: 10 },
+
+  chatBtnLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#FFF',
+  },
+
+  chatClose: {
+    fontSize: 20,
+  },
 });

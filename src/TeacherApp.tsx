@@ -9,9 +9,10 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 // --- Components & Modals ---
-import AnnouncementModal, { Announcement } from './components/AnnouncementModal';
-import ProfileModal2 from './teacher_components/ProfileModal2';
+// teacher_components/AnnouncementModal2.tsx
+import AnnouncementModal2, { Announcement } from './teacher_components/AnnouncementModal2';
 
+// Ensure the Banner also points to the same folder if it's there
 import DrawerMenu from './teacher_components/TeacherDrawerMenu';
 import Header from './teacher_components/TeacherHeader';
 
@@ -19,19 +20,20 @@ import Header from './teacher_components/TeacherHeader';
 import Coursedetail2 from './teacher_components/CourseDetail2';
 import Grades from './teacher_components/Grades';
 import Honors from './teacher_components/Honors';
+import PostQueryModal2 from './teacher_components/PostQueryModal2';
+import Profile2 from './teacher_components/Profile2';
 import ShareAnnouncement from './teacher_components/ShareAnnouncement';
 
 // --- Shared Screens ---
-import Assignments from './screens/Assignments';
-import Community from './screens/Community';
-import Dashboard from './screens/Dashboard';
 import Messenger from './screens/Messenger';
-import MyJourney from './screens/MyJourney';
+import Community2 from './teacher_components/Community2';
+import Dashboard2 from './teacher_components/Dashboard2';
 
 interface Props {
   onLogout: () => void;
 }
 
+// --- Updated with two announcements ---
 const ANNOUNCEMENTS: Announcement[] = [
   {
     id: '1',
@@ -39,13 +41,18 @@ const ANNOUNCEMENTS: Announcement[] = [
     message: 'Check out the latest updates and announcements from your courses.',
     bannerImage: require('../assets/announcement/1.png'),
   },
+  {
+    id: '2',
+    title: 'Midterm Grading',
+    message: 'Please ensure all midterm grades are encoded by the end of the week.',
+    bannerImage: require('../assets/announcement/1.png'), // Replace with specific asset if available
+  },
 ];
 
 export default function TeacherApp({ onLogout }: Props) {
   const { width } = useWindowDimensions();
   const isLargeScreen = width >= 768;
 
-  // State Management
   const [activeScreen, setActiveScreen] = useState<
     'home' | 'game' | 'grades' | 'videos' | 'myjourney' | 'profile' | 'messenger' | 'assignments' | 'community' | 'coursedetail'
   >('home');
@@ -53,8 +60,8 @@ export default function TeacherApp({ onLogout }: Props) {
   const [lastScreen, setLastScreen] = useState(activeScreen);
   const [showAnnouncement, setShowAnnouncement] = useState(true);
   const [isMobileDrawerOpen, setMobileDrawerOpen] = useState(false);
+  const [isPostModalVisible, setPostModalVisible] = useState(false);
 
-  // Navigation Helper
   const navigateTo = (screen: any) => {
     setLastScreen(activeScreen);
     setActiveScreen(screen);
@@ -64,7 +71,6 @@ export default function TeacherApp({ onLogout }: Props) {
   return (
     <SafeAreaView style={styles.mainContainer}>
       
-      {/* Header */}
       <Header
         isLargeScreen={isLargeScreen}
         activeScreen={activeScreen}
@@ -72,7 +78,6 @@ export default function TeacherApp({ onLogout }: Props) {
         onSearchChange={() => {}}
       />
 
-      {/* Mobile Hamburger Menu Button */}
       {!isLargeScreen && (
         <TouchableOpacity
           style={styles.floatingMenuBtn}
@@ -84,7 +89,6 @@ export default function TeacherApp({ onLogout }: Props) {
 
       <View style={styles.contentWrapper}>
         
-        {/* Desktop Sidebar */}
         {isLargeScreen && (
           <DrawerMenu
             isFixed={true}
@@ -96,7 +100,6 @@ export default function TeacherApp({ onLogout }: Props) {
           />
         )}
 
-        {/* Mobile Sidebar Overlay */}
         {!isLargeScreen && isMobileDrawerOpen && (
           <>
             <TouchableOpacity 
@@ -115,44 +118,54 @@ export default function TeacherApp({ onLogout }: Props) {
           </>
         )}
 
-        {/* Dynamic Content Rendering */}
         <View style={{ flex: 1 }}>
           {activeScreen === 'profile' ? (
-            <ProfileModal2
-              visible={true}
-              onClose={() => setActiveScreen(lastScreen)}
-              userName="Ramcee Jade L. Munoz"
-              userEmail="teacher@email.com"
-              onAvatarPress={() => {}}
+            <Profile2 
+              userPosts={[]} 
+              onBack={() => setActiveScreen(lastScreen)}
+              onLogout={onLogout}
+              onCreatePost={() => setPostModalVisible(true)}
             />
           ) : activeScreen === 'home' ? (
-            /* Dashboard handles the CourseCards and navigation triggers */
-            <Dashboard 
-              announcements={ANNOUNCEMENTS} 
-              onCoursePress={() => setActiveScreen('coursedetail')}
-            />
+            <Dashboard2
+  announcements={ANNOUNCEMENTS} 
+  onOpenCourse={() => setActiveScreen('coursedetail')}
+  onCreateClass={() => console.log("Create Class Pressed")}
+/>
           ) : activeScreen === 'game' ? (
             <Honors />
           ) : activeScreen === 'grades' ? (
             <Grades />
           ) : activeScreen === 'videos' ? (
             <ShareAnnouncement />
-          ) : activeScreen === 'myjourney' ? (
-            <MyJourney />
           ) : activeScreen === 'community' ? (
-            <Community />
+            <Community2 
+               posts={[]} 
+               userName="Ramcee Jade" 
+               onCreatePost={() => setPostModalVisible(true)} 
+            />
           ) : activeScreen === 'messenger' ? (
             <Messenger searchQuery="" onConversationActiveChange={() => {}} />
           ) : activeScreen === 'coursedetail' ? (
-            /* Coursedetail2 is the red header page. It only needs onBack. */
             <Coursedetail2 onBack={() => setActiveScreen('home')} />
           ) : (
-            <Assignments />
+            <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+                <Text>Select a screen from the menu.</Text>
+            </View>
           )}
         </View>
       </View>
 
-      <AnnouncementModal
+      <PostQueryModal2
+        visible={isPostModalVisible}
+        onClose={() => setPostModalVisible(false)}
+        onPost={(query: string) => {
+          console.log("New Post:", query);
+          setPostModalVisible(false);
+        }}
+      />
+
+      <AnnouncementModal2
         visible={activeScreen === 'home' && showAnnouncement}
         onClose={() => setShowAnnouncement(false)}
         announcements={ANNOUNCEMENTS}
