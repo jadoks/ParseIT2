@@ -1,19 +1,19 @@
 import React, { useState } from 'react';
 import {
-    FlatList,
-    Image,
-    Keyboard,
-    Modal,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    TouchableWithoutFeedback,
-    View,
-    useWindowDimensions,
+  FlatList,
+  Image,
+  Keyboard,
+  Modal,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  TouchableWithoutFeedback,
+  View,
+  useWindowDimensions,
 } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
-import PostQueryModal2 from './PostQueryModal2';
+import PostQueryModal2 from './TeacherPostQueryModal';
 
 export interface CommunityAnswer {
   id: string;

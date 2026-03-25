@@ -10,24 +10,24 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 // --- Components & Modals ---
 // teacher_components/AnnouncementModal2.tsx
-import AnnouncementModal2, { Announcement } from './teacher_components/AnnouncementModal2';
+import AnnouncementModal2, { Announcement } from './teacher_components/TeacherAnnouncementModal';
 
 // Ensure the Banner also points to the same folder if it's there
 import DrawerMenu from './teacher_components/TeacherDrawerMenu';
 import Header from './teacher_components/TeacherHeader';
 
 // --- Teacher Specific components ---
-import Coursedetail2 from './teacher_components/CourseDetail2';
 import Grades from './teacher_components/Grades';
 import Honors from './teacher_components/Honors';
-import PostQueryModal2 from './teacher_components/PostQueryModal2';
-import Profile2 from './teacher_components/Profile2';
-import ShareAnnouncement from './teacher_components/ShareAnnouncement';
+import Coursedetail2 from './teacher_components/TeacherCourseDetail2';
+import PostQueryModal2 from './teacher_components/TeacherPostQueryModal';
+import Profile2 from './teacher_components/TeacherProfile';
+import ShareAnnouncement from './teacher_components/TeacherShareAnnouncement';
 
 // --- Shared Screens ---
 import Messenger from './screens/Messenger';
-import Community2 from './teacher_components/Community2';
-import Dashboard2 from './teacher_components/Dashboard2';
+import Community2 from './teacher_components/TeacherCommunity';
+import Dashboard2 from './teacher_components/TeacherDashboard';
 
 interface Props {
   onLogout: () => void;
