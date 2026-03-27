@@ -17,7 +17,6 @@ import {
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import Gamepad from '../../assets/images/gamepad-solid.svg';
 import House from '../../assets/images/house-solid.svg';
-import MessengerIcon from '../../assets/images/messenger.svg';
 import VideosIcon from '../../assets/images/youtube-brands-solid.svg';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -47,6 +46,7 @@ interface HeaderProps {
   onNavigate?: (screen: ScreenType) => void;
   onSearchChange?: (query: string) => void;
   notificationCount?: number;
+  onMenuPress?: () => void;
 }
 
 const Header: React.FC<HeaderProps> = ({
@@ -55,6 +55,7 @@ const Header: React.FC<HeaderProps> = ({
   onNavigate,
   onSearchChange,
   notificationCount = 0,
+  onMenuPress,
 }) => {
   const { width } = useWindowDimensions();
 
@@ -92,7 +93,17 @@ const Header: React.FC<HeaderProps> = ({
   };
 
   const getIconColor = (
-    screen: 'home' | 'classes' | 'game' | 'videos' | 'myjourney' | 'profile' | 'messenger' | 'community' | 'generateactivity'
+    screen:
+      | 'home'
+      | 'classes'
+      | 'game'
+      | 'videos'
+      | 'myjourney'
+      | 'profile'
+      | 'messenger'
+      | 'community'
+      | 'generateactivity'
+      | 'notification'
   ) => {
     const isGameGroupActive =
       screen === 'game' &&
@@ -105,7 +116,17 @@ const Header: React.FC<HeaderProps> = ({
   };
 
   const isActive = (
-    screen: 'home' | 'classes' | 'game' | 'videos' | 'myjourney' | 'profile' | 'messenger' | 'community' | 'generateactivity'
+    screen:
+      | 'home'
+      | 'classes'
+      | 'game'
+      | 'videos'
+      | 'myjourney'
+      | 'profile'
+      | 'messenger'
+      | 'community'
+      | 'generateactivity'
+      | 'notification'
   ) => {
     if (screen === 'game') {
       return (
@@ -127,20 +148,24 @@ const Header: React.FC<HeaderProps> = ({
     'messenger',
   ];
 
-  const getSearchPlaceholder = () => {
-    if (
-      activeScreen === 'game' ||
-      activeScreen === 'flipit' ||
-      activeScreen === 'fruitmania' ||
-      activeScreen === 'quizmasters'
-    ) {
-      return 'Search Game';
-    }
-    if (activeScreen === 'videos') return 'Search Videos';
-    if (activeScreen === 'messenger') return 'Search Message';
-    if (activeScreen === 'classes') return 'Search Classes';
-    return 'Search ParseClass';
-  };
+const getSearchPlaceholder = () => {
+  if (isPhone) return 'Search';
+
+  if (
+    activeScreen === 'game' ||
+    activeScreen === 'flipit' ||
+    activeScreen === 'fruitmania' ||
+    activeScreen === 'quizmasters'
+  ) {
+    return 'Search Game';
+  }
+
+  if (activeScreen === 'videos') return 'Search Videos';
+  if (activeScreen === 'messenger') return 'Search Messages';
+  if (activeScreen === 'classes') return 'Search Classes';
+
+  return 'Search ParseClass';
+};
 
   const getNavLabel = (screen: ScreenType) => {
     switch (screen) {
@@ -173,6 +198,16 @@ const Header: React.FC<HeaderProps> = ({
       );
     }
 
+    if (screen === 'messenger') {
+      return (
+        <MaterialCommunityIcons
+          name="facebook-messenger"
+          size={size}
+          color={getIconColor(screen)}
+        />
+      );
+    }
+
     if (Platform.OS === 'web') {
       return (
         <Image
@@ -181,9 +216,7 @@ const Header: React.FC<HeaderProps> = ({
               ? require('../../assets/images/house-solid.png')
               : screen === 'game'
               ? require('../../assets/images/gamepad-solid.png')
-              : screen === 'videos'
-              ? require('../../assets/images/youtube-brands-solid.png')
-              : require('../../assets/images/messenger.png')
+              : require('../../assets/images/youtube-brands-solid.png')
           }
           style={{
             width: size,
@@ -196,18 +229,39 @@ const Header: React.FC<HeaderProps> = ({
     }
 
     if (screen === 'home') {
-      return <House width={size} height={size} stroke={getIconColor(screen)} fill={getIconColor(screen)} />;
+      return (
+        <House
+          width={size}
+          height={size}
+          stroke={getIconColor(screen)}
+          fill={getIconColor(screen)}
+        />
+      );
     }
 
     if (screen === 'game') {
-      return <Gamepad width={size} height={size} stroke={getIconColor(screen)} fill={getIconColor(screen)} />;
+      return (
+        <Gamepad
+          width={size}
+          height={size}
+          stroke={getIconColor(screen)}
+          fill={getIconColor(screen)}
+        />
+      );
     }
 
     if (screen === 'videos') {
-      return <VideosIcon width={size} height={size} stroke={getIconColor(screen)} fill={getIconColor(screen)} />;
+      return (
+        <VideosIcon
+          width={size}
+          height={size}
+          stroke={getIconColor(screen)}
+          fill={getIconColor(screen)}
+        />
+      );
     }
 
-    return <MessengerIcon width={size} height={size} stroke={getIconColor(screen)} />;
+    return null;
   };
 
   const renderNavButton = (
@@ -268,15 +322,25 @@ const Header: React.FC<HeaderProps> = ({
               { paddingHorizontal, height: isVerySmall ? 64 : 72 },
             ]}
           >
-            <Image
-              source={require('../../assets/images/logo.png')}
-              style={{
-                width: logoSize,
-                height: logoSize,
-                resizeMode: 'contain',
-                marginRight: isVerySmall ? 8 : 10,
-              }}
-            />
+            <View style={styles.mobileLeftSection}>
+              <TouchableOpacity
+                style={styles.menuBtn}
+                onPress={onMenuPress}
+                activeOpacity={0.7}
+              >
+                <MaterialCommunityIcons name="menu" size={24} color="#000" />
+              </TouchableOpacity>
+
+              <Image
+                source={require('../../assets/images/logo.png')}
+                style={{
+                  width: logoSize,
+                  height: logoSize,
+                  resizeMode: 'contain',
+                  marginRight: isVerySmall ? 8 : 10,
+                }}
+              />
+            </View>
 
             {!isSearchExpanded ? (
               <TouchableOpacity
@@ -353,19 +417,11 @@ const Header: React.FC<HeaderProps> = ({
                 onNavigate?.('messenger');
               }}
             >
-              {Platform.OS === 'web' ? (
-                <Image
-                  source={require('../../assets/images/messenger.png')}
-                  style={{
-                    width: navIconSize,
-                    height: navIconSize,
-                    resizeMode: 'contain',
-                    tintColor: isActive('messenger') ? '#D32F2F' : undefined,
-                  }}
-                />
-              ) : (
-                <MessengerIcon width={navIconSize} height={navIconSize} stroke={getIconColor('messenger')} />
-              )}
+              <MaterialCommunityIcons
+                name="facebook-messenger"
+                size={navIconSize}
+                color={getIconColor('messenger')}
+              />
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -376,7 +432,11 @@ const Header: React.FC<HeaderProps> = ({
               }}
             >
               <View>
-                <MaterialCommunityIcons name="bell" size={navIconSize} color="#000" />
+                <MaterialCommunityIcons
+                  name="bell"
+                  size={navIconSize}
+                  color={getIconColor('notification')}
+                />
                 {notificationCount > 0 && (
                   <View style={styles.badge}>
                     <Text style={styles.badgeText}>{displayNotificationCount}</Text>
@@ -473,7 +533,11 @@ const Header: React.FC<HeaderProps> = ({
           }}
         >
           <View>
-            <MaterialCommunityIcons name="bell" size={navIconSize} color="#000" />
+            <MaterialCommunityIcons
+              name="bell"
+              size={navIconSize}
+              color={getIconColor('notification')}
+            />
             {notificationCount > 0 && (
               <View style={styles.badge}>
                 <Text style={styles.badgeText}>{displayNotificationCount}</Text>
@@ -497,6 +561,19 @@ const styles = StyleSheet.create({
 
   leftSection: {
     flexDirection: 'row',
+    alignItems: 'center',
+  },
+
+  mobileLeftSection: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+
+  menuBtn: {
+    marginRight: 10,
+    padding: 4,
+    borderRadius: 8,
+    justifyContent: 'center',
     alignItems: 'center',
   },
 

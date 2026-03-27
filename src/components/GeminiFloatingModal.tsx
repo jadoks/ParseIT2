@@ -1,14 +1,14 @@
 import React, { useState } from 'react';
 import {
-    Modal,
-    SafeAreaView,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
-    useWindowDimensions
+  Modal,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+  useWindowDimensions
 } from 'react-native';
 
 interface GeminiFloatingModalProps {
@@ -49,13 +49,13 @@ export default function GeminiFloatingModal({
               ? {
                   width: width * 0.92,
                   height: height * 0.72,
-                  bottom: 110,
+                  bottom: 85,
                   right: 16,
                 }
               : {
                   width: 420,
                   height: 580,
-                  bottom: 110,
+                  bottom: 85,
                   right: 20,
                 },
           ]}
@@ -195,6 +195,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.2,
     shadowRadius: 16,
     elevation: 12,
+    
   },
 
   header: {
