@@ -4,6 +4,7 @@ import {
   Image,
   Platform,
   Pressable,
+  StatusBar,
   StyleSheet,
   Text,
   useWindowDimensions,
@@ -427,6 +428,8 @@ export default function StudentApp({ onLogout }: Props) {
 
   const [activeCourseTab, setActiveCourseTab] = useState<'materials' | 'assignments'>('materials');
   const [communityPosts, setCommunityPosts] = useState<CommunityPost[]>(INITIAL_COMMUNITY_POSTS);
+
+  const isFullscreenScreen =   activeScreen === 'flipit' || activeScreen === 'fruitmania';
 
   useEffect(() => {
     if (Platform.OS !== 'android') return;
@@ -919,95 +922,110 @@ export default function StudentApp({ onLogout }: Props) {
   };
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <View style={styles.headerLayer}>
-        <Header
-          isLargeScreen={isLargeScreen}
-          activeScreen={activeScreen}
-          onNavigate={handleNavigate}
-          onSearchChange={() => {}}
-          notificationCount={unreadNotificationCount}
-          onMenuPress={() => setMobileDrawerOpen((prev) => !prev)}
-        />
-      </View>
+    <>
+      <StatusBar hidden={isFullscreenScreen} translucent backgroundColor="transparent" />
 
-      <View style={styles.contentLayer}>
-        {isLargeScreen && activeScreen !== 'profile' && activeScreen !== 'notification' && (
-          <DrawerMenu
-            isFixed={true}
-            activeScreen={activeScreen}
-            onNavigate={handleNavigate}
-            userName="Student Name"
-            userEmail="student@email.com"
-            onAvatarPress={() => handleNavigate('profile')}
-            setIsLoggedIn={() => onLogout()}
-          />
-        )}
-
-        <View style={{ flex: 1 }}>{renderScreen()}</View>
-      </View>
-
-      {!isLargeScreen && isMobileDrawerOpen && (
-        <View style={styles.mobileDrawerPortal}>
-          <Pressable
-            style={styles.mobileBackdrop}
-            onPress={() => setMobileDrawerOpen(false)}
-          />
-          <View style={styles.mobileOverlay}>
-            <DrawerMenu
-              isFixed={false}
-              onClose={() => setMobileDrawerOpen(false)}
+      <SafeAreaView
+        style={[styles.safeArea, isFullscreenScreen && styles.safeAreaFullscreen]}
+        edges={isFullscreenScreen ? [] : ['top', 'right', 'bottom', 'left']}
+      >
+        {!isFullscreenScreen && (
+          <View style={styles.headerLayer}>
+            <Header
+              isLargeScreen={isLargeScreen}
               activeScreen={activeScreen}
               onNavigate={handleNavigate}
-              userName="Student Name"
-              userEmail="student@email.com"
-              onAvatarPress={() => {
-                setMobileDrawerOpen(false);
-                handleNavigate('profile');
-              }}
-              setIsLoggedIn={() => onLogout()}
+              onSearchChange={() => {}}
+              notificationCount={unreadNotificationCount}
+              onMenuPress={() => setMobileDrawerOpen((prev) => !prev)}
             />
           </View>
-        </View>
-      )}
-
-      <AnnouncementModal
-        visible={activeScreen === 'home' && showAnnouncement}
-        onClose={() => setShowAnnouncement(false)}
-        announcements={ANNOUNCEMENTS}
-      />
-
-      {activeScreen !== 'messenger' &&
-        activeScreen !== 'notification' &&
-        !(activeScreen === 'videos' && isVideoActive) && (
-          <Pressable
-            style={[
-              styles.floatingChatBtn,
-              !isLargeScreen && styles.floatingChatBtnSmall,
-            ]}
-            onPress={() => setIsChatOpen((prev) => !prev)}
-          >
-            {isChatOpen ? (
-              <Text style={[styles.chatClose, { color: '#fff' }]}>✕</Text>
-            ) : (
-              <>
-                <Image
-                  source={require('../assets/images/AI.png')}
-                  style={styles.chatBtnImage}
-                />
-                {isLargeScreen && (
-                  <Text style={styles.chatBtnLabel}>Ask anything</Text>
-                )}
-              </>
-            )}
-          </Pressable>
         )}
 
-      <GeminiFloatingModal
-        visible={isChatOpen}
-        onClose={() => setIsChatOpen(false)}
-      />
-    </SafeAreaView>
+        <View style={[styles.contentLayer, isFullscreenScreen && styles.contentLayerFullscreen]}>
+          {!isFullscreenScreen &&
+            isLargeScreen &&
+            activeScreen !== 'profile' &&
+            activeScreen !== 'notification' && (
+              <DrawerMenu
+                isFixed={true}
+                activeScreen={activeScreen}
+                onNavigate={handleNavigate}
+                userName="Student Name"
+                userEmail="student@email.com"
+                onAvatarPress={() => handleNavigate('profile')}
+                setIsLoggedIn={() => onLogout()}
+              />
+            )}
+
+          <View style={{ flex: 1 }}>{renderScreen()}</View>
+        </View>
+
+        {!isFullscreenScreen && !isLargeScreen && isMobileDrawerOpen && (
+          <View style={styles.mobileDrawerPortal}>
+            <Pressable
+              style={styles.mobileBackdrop}
+              onPress={() => setMobileDrawerOpen(false)}
+            />
+            <View style={styles.mobileOverlay}>
+              <DrawerMenu
+                isFixed={false}
+                onClose={() => setMobileDrawerOpen(false)}
+                activeScreen={activeScreen}
+                onNavigate={handleNavigate}
+                userName="Student Name"
+                userEmail="student@email.com"
+                onAvatarPress={() => {
+                  setMobileDrawerOpen(false);
+                  handleNavigate('profile');
+                }}
+                setIsLoggedIn={() => onLogout()}
+              />
+            </View>
+          </View>
+        )}
+
+        <AnnouncementModal
+          visible={!isFullscreenScreen && activeScreen === 'home' && showAnnouncement}
+          onClose={() => setShowAnnouncement(false)}
+          announcements={ANNOUNCEMENTS}
+        />
+
+        {!isFullscreenScreen &&
+          activeScreen !== 'messenger' &&
+          activeScreen !== 'notification' &&
+          !(activeScreen === 'videos' && isVideoActive) && (
+            <Pressable
+              style={[
+                styles.floatingChatBtn,
+                !isLargeScreen && styles.floatingChatBtnSmall,
+              ]}
+              onPress={() => setIsChatOpen((prev) => !prev)}
+            >
+              {isChatOpen ? (
+                <Text style={[styles.chatClose, { color: '#fff' }]}>✕</Text>
+              ) : (
+                <>
+                  <Image
+                    source={require('../assets/images/AI.png')}
+                    style={styles.chatBtnImage}
+                  />
+                  {isLargeScreen && (
+                    <Text style={styles.chatBtnLabel}>Ask anything</Text>
+                  )}
+                </>
+              )}
+            </Pressable>
+          )}
+
+        {!isFullscreenScreen && (
+          <GeminiFloatingModal
+            visible={isChatOpen}
+            onClose={() => setIsChatOpen(false)}
+          />
+        )}
+      </SafeAreaView>
+    </>
   );
 }
 
@@ -1015,6 +1033,10 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: '#fff',
+  },
+
+  safeAreaFullscreen: {
+    backgroundColor: '#000',
   },
 
   headerLayer: {
@@ -1028,6 +1050,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     position: 'relative',
     zIndex: 1,
+  },
+
+  contentLayerFullscreen: {
+    flexDirection: 'column',
   },
 
   mobileDrawerPortal: {
@@ -1070,18 +1096,18 @@ const styles = StyleSheet.create({
     width: 56,
     height: 56,
     borderRadius: 28,
-    paddingHorizontal: 0,
+   
   },
 
   chatBtnImage: {
-    width: 24,
-    height: 24,
+    width: 22,
+    height: 22,
     resizeMode: 'contain',
     tintColor: '#FFFFFF',
   },
 
   chatBtnLabel: {
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: '600',
     color: '#FFF',
   },

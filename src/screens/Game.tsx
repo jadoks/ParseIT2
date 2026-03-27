@@ -35,8 +35,8 @@ const Game = ({ onNavigate }: Props) => {
     {
       id: 2,
       title: 'FruitMania',
-      description: 'Math Puzzle Game',
-      category: 'Math',
+      description: 'Merge matching fruits',
+      category: 'Merge Puzzle',
       screen: 'fruitmania',
     },
     {

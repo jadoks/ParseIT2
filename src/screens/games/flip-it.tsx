@@ -1,5 +1,15 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  ImageBackground,
+  Modal,
+  Pressable,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  View,
+  useWindowDimensions,
+} from 'react-native';
 
 interface Props {
   onBack: () => void;
@@ -12,13 +22,65 @@ interface CardItem {
   isMatched: boolean;
 }
 
-const SYMBOLS = ['🍎', '🍌', '🍇', '🍓', '🍍', '🥝'];
+type DifficultyKey = 'easy' | 'medium' | 'hard';
+type ScreenMode = 'menu' | 'game';
+
+const DIFFICULTY_CONFIG: Record<
+  DifficultyKey,
+  {
+    label: string;
+    cols: number;
+    pairs: number;
+  }
+> = {
+  easy: { label: 'Easy', cols: 4, pairs: 8 },
+  medium: { label: 'Medium', cols: 4, pairs: 10 },
+  hard: { label: 'Hard', cols: 5, pairs: 12 },
+};
+
+const SYMBOL_POOL = [
+  '🍎',
+  '🍌',
+  '🍇',
+  '🍓',
+  '🍍',
+  '🥝',
+  '🍒',
+  '🍉',
+  '🥥',
+  '🍋',
+  '🥕',
+  '🌽',
+  '🐶',
+  '🐱',
+  '🐼',
+  '🦊',
+  '⭐',
+  '🌙',
+  '⚽',
+  '🏀',
+];
 
 export default function FlipIt({ onBack }: Props) {
+  const { width, height } = useWindowDimensions();
+
+  const isSmallScreen = width < 380;
+  const isLargeScreen = width >= 768;
+
+  const [screenMode, setScreenMode] = useState<ScreenMode>('menu');
+  const [difficulty, setDifficulty] = useState<DifficultyKey>('easy');
+  const [showDifficultyPicker, setShowDifficultyPicker] = useState(false);
+
   const [cards, setCards] = useState<CardItem[]>([]);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [moves, setMoves] = useState(0);
   const [locked, setLocked] = useState(false);
+  const [seconds, setSeconds] = useState(0);
+  const [score, setScore] = useState(0);
+
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const config = DIFFICULTY_CONFIG[difficulty];
 
   const matchedCount = useMemo(
     () => cards.filter((card) => card.isMatched).length,
@@ -27,8 +89,15 @@ export default function FlipIt({ onBack }: Props) {
 
   const isFinished = cards.length > 0 && matchedCount === cards.length;
 
-  const setupGame = () => {
-    const deck = [...SYMBOLS, ...SYMBOLS]
+  const formatTime = (totalSeconds: number) => {
+    const mins = Math.floor(totalSeconds / 60);
+    const secs = totalSeconds % 60;
+    return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+  };
+
+  const getDeck = (pairs: number) => {
+    const symbols = SYMBOL_POOL.slice(0, pairs);
+    return [...symbols, ...symbols]
       .sort(() => Math.random() - 0.5)
       .map((value, index) => ({
         id: index + 1,
@@ -36,19 +105,68 @@ export default function FlipIt({ onBack }: Props) {
         isFlipped: false,
         isMatched: false,
       }));
+  };
 
-    setCards(deck);
+  const stopTimer = () => {
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+  };
+
+  const startTimer = () => {
+    stopTimer();
+    timerRef.current = setInterval(() => {
+      setSeconds((prev) => prev + 1);
+    }, 1000);
+  };
+
+  const setupGame = () => {
+    setCards(getDeck(config.pairs));
     setSelectedIds([]);
     setMoves(0);
     setLocked(false);
+    setSeconds(0);
+    setScore(0);
+  };
+
+  const startGame = () => {
+    setupGame();
+    setScreenMode('game');
+  };
+
+  const stopGame = () => {
+    stopTimer();
+    setScreenMode('menu');
   };
 
   useEffect(() => {
-    setupGame();
-  }, []);
+    if (screenMode === 'game') {
+      startTimer();
+    } else {
+      stopTimer();
+    }
+
+    return () => stopTimer();
+  }, [screenMode]);
+
+  useEffect(() => {
+    if (isFinished) {
+      stopTimer();
+    }
+  }, [isFinished]);
+
+  useEffect(() => {
+    if (screenMode === 'game') {
+      setupGame();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [difficulty]);
 
   const handleCardPress = (card: CardItem) => {
-    if (locked || card.isFlipped || card.isMatched || selectedIds.length === 2) return;
+    if (locked || card.isFlipped || card.isMatched || selectedIds.length === 2) {
+      return;
+    }
 
     const updatedCards = cards.map((item) =>
       item.id === card.id ? { ...item, isFlipped: true } : item
@@ -75,9 +193,10 @@ export default function FlipIt({ onBack }: Props) {
                 : item
             )
           );
+          setScore((prev) => prev + 100);
           setSelectedIds([]);
           setLocked(false);
-        }, 500);
+        }, 350);
       } else {
         setTimeout(() => {
           setCards((prev) =>
@@ -89,170 +208,447 @@ export default function FlipIt({ onBack }: Props) {
           );
           setSelectedIds([]);
           setLocked(false);
-        }, 900);
+        }, 700);
       }
     }
   };
 
+  const boardHorizontalPadding = isLargeScreen ? 32 : 18;
+  const cols = config.cols;
+  const boardMaxWidth = isLargeScreen
+    ? Math.min(width * 0.72, 700)
+    : width - boardHorizontalPadding * 2;
+  const gap = isLargeScreen ? 14 : 10;
+  const cardSize = Math.min(
+    isLargeScreen ? 118 : isSmallScreen ? 66 : 78,
+    (boardMaxWidth - gap * (cols - 1)) / cols
+  );
+
+  if (screenMode === 'menu') {
+    return (
+      <View style={styles.fullScreen}>
+        <StatusBar hidden translucent backgroundColor="transparent" />
+
+        <ImageBackground
+          source={require('../../../assets/games/flipit-menu-bg.png')}
+          resizeMode="cover"
+          style={styles.fullScreen}
+          imageStyle={styles.bgImage}
+        >
+          <ScrollView
+            contentContainerStyle={styles.menuScrollContent}
+            showsVerticalScrollIndicator={false}
+            bounces={false}
+          >
+            <View style={styles.menuOverlay}>
+              <View
+                style={[
+                  styles.menuPanel,
+                  {
+                    width: isLargeScreen ? 520 : '84%',
+                    paddingVertical: isLargeScreen ? 26 : 18,
+                    paddingHorizontal: isLargeScreen ? 34 : 20,
+                  },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.menuTitle,
+                    {
+                      fontSize: isLargeScreen ? 64 : isSmallScreen ? 38 : 50,
+                      lineHeight: isLargeScreen ? 70 : isSmallScreen ? 46 : 56,
+                    },
+                  ]}
+                >
+                 
+                </Text>
+
+                <Pressable
+                  style={[styles.menuButton, styles.startButton]}
+                  onPress={startGame}
+                >
+                  <Text style={styles.menuButtonText}>Start Game</Text>
+                </Pressable>
+
+                <Pressable
+                  style={[styles.menuButton, styles.difficultyButton]}
+                  onPress={() => setShowDifficultyPicker(true)}
+                >
+                  <Text style={styles.menuButtonText}>{config.label}</Text>
+                  <Text style={styles.dropdownIcon}>▼</Text>
+                </Pressable>
+
+                <Pressable
+                  style={[styles.menuButton, styles.homeButton]}
+                  onPress={onBack}
+                >
+                  <Text style={styles.menuButtonText}>Back to Home</Text>
+                </Pressable>
+
+                <Pressable style={[styles.menuButton, styles.leaderboardButton]}>
+                  <Text style={styles.menuButtonText}>Leaderboard</Text>
+                </Pressable>
+              </View>
+            </View>
+          </ScrollView>
+        </ImageBackground>
+
+        <Modal
+          visible={showDifficultyPicker}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setShowDifficultyPicker(false)}
+        >
+          <Pressable
+            style={styles.modalOverlay}
+            onPress={() => setShowDifficultyPicker(false)}
+          >
+            <View style={styles.modalCard}>
+              {(Object.keys(DIFFICULTY_CONFIG) as DifficultyKey[]).map((key) => {
+                const active = key === difficulty;
+
+                return (
+                  <Pressable
+                    key={key}
+                    style={[styles.modalOption, active && styles.modalOptionActive]}
+                    onPress={() => {
+                      setDifficulty(key);
+                      setShowDifficultyPicker(false);
+                    }}
+                  >
+                    <Text
+                      style={[
+                        styles.modalOptionText,
+                        active && styles.modalOptionTextActive,
+                      ]}
+                    >
+                      {DIFFICULTY_CONFIG[key].label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </Pressable>
+        </Modal>
+      </View>
+    );
+  }
+
   return (
-    <View style={styles.container}>
-      <View style={styles.topRow}>
-        <Pressable style={styles.backButton} onPress={onBack}>
-          <Text style={styles.backText}>← Back</Text>
-        </Pressable>
+    <View style={styles.fullScreen}>
+      <StatusBar hidden translucent backgroundColor="transparent" />
 
-        <Pressable style={styles.resetButton} onPress={setupGame}>
-          <Text style={styles.resetText}>Restart</Text>
-        </Pressable>
-      </View>
+      <ImageBackground
+        source={require('../../../assets/games/flipit-game-bg.png')}
+        resizeMode="cover"
+        style={styles.fullScreen}
+        imageStyle={styles.bgImage}
+      >
+        <ScrollView
+          contentContainerStyle={[
+            styles.gameScrollContent,
+            { minHeight: height },
+          ]}
+          showsVerticalScrollIndicator={false}
+          bounces={false}
+        >
+          <View style={styles.gameOverlay}>
+            <View style={[styles.gameHeaderCard, { width: boardMaxWidth + 10 }]}>
+              <View>
+                <Text style={[styles.statsText, isLargeScreen && styles.statsTextLarge]}>
+                  Moves: {moves}
+                </Text>
+                <Text style={[styles.statsText, isLargeScreen && styles.statsTextLarge]}>
+                  Time: {formatTime(seconds)}
+                </Text>
+              </View>
 
-      <Text style={styles.title}>Flip IT!</Text>
-      <Text style={styles.subtitle}>Match all pairs to win.</Text>
+              <Text
+                style={[
+                  styles.statsText,
+                  styles.scoreText,
+                  isLargeScreen && styles.statsTextLarge,
+                ]}
+              >
+                Score: {score}
+              </Text>
+            </View>
 
-      <View style={styles.statsRow}>
-        <View style={styles.statCard}>
-          <Text style={styles.statLabel}>Moves</Text>
-          <Text style={styles.statValue}>{moves}</Text>
-        </View>
-        <View style={styles.statCard}>
-          <Text style={styles.statLabel}>Matches</Text>
-          <Text style={styles.statValue}>
-            {matchedCount / 2}/{SYMBOLS.length}
-          </Text>
-        </View>
-      </View>
-
-      {isFinished && (
-        <View style={styles.winBanner}>
-          <Text style={styles.winText}>You matched everything!</Text>
-        </View>
-      )}
-
-      <View style={styles.grid}>
-        {cards.map((card) => {
-          const visible = card.isFlipped || card.isMatched;
-
-          return (
-            <Pressable
-              key={card.id}
+            <View
               style={[
-                styles.card,
-                visible && styles.cardFlipped,
-                card.isMatched && styles.cardMatched,
+                styles.grid,
+                {
+                  width: boardMaxWidth,
+                  gap,
+                },
               ]}
-              onPress={() => handleCardPress(card)}
             >
-              <Text style={styles.cardText}>{visible ? card.value : '?'}</Text>
+              {cards.map((card) => {
+                const visible = card.isFlipped || card.isMatched;
+
+                return (
+                  <Pressable
+                    key={card.id}
+                    style={[
+                      styles.card,
+                      {
+                        width: cardSize,
+                        height: cardSize,
+                      },
+                      visible && styles.cardFlipped,
+                      card.isMatched && styles.cardMatched,
+                    ]}
+                    onPress={() => handleCardPress(card)}
+                  >
+                    <Text
+                      style={[
+                        styles.cardText,
+                        { fontSize: visible ? cardSize * 0.38 : cardSize * 0.24 },
+                      ]}
+                    >
+                      {visible ? card.value : '?'}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+
+            <Pressable style={styles.stopButton} onPress={stopGame}>
+              <Text style={styles.stopButtonText}>Stop Game</Text>
             </Pressable>
-          );
-        })}
-      </View>
+
+            {isFinished && (
+              <View style={styles.winBanner}>
+                <Text style={styles.winTitle}>You matched everything!</Text>
+                <Text style={styles.winText}>
+                  Time: {formatTime(seconds)} | Moves: {moves}
+                </Text>
+                <Text style={styles.winText}>Final Score: {score}</Text>
+              </View>
+            )}
+          </View>
+        </ScrollView>
+      </ImageBackground>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  fullScreen: {
     flex: 1,
-    padding: 20,
-    backgroundColor: '#FFF8F8',
+    backgroundColor: '#000',
   },
-  topRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 14,
+
+  bgImage: {
+    width: '100%',
+    height: '100%',
   },
-  backButton: {
-    backgroundColor: '#EEE',
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 10,
-  },
-  backText: {
-    fontWeight: '700',
-    fontSize: 14,
-  },
-  resetButton: {
-    backgroundColor: '#D32F2F',
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 10,
-  },
-  resetText: {
-    color: '#FFF',
-    fontWeight: '700',
-    fontSize: 14,
-  },
-  title: {
-    fontSize: 30,
-    fontWeight: '800',
-    color: '#222',
-  },
-  subtitle: {
-    fontSize: 16,
-    color: '#666',
-    marginTop: 6,
-    marginBottom: 16,
-  },
-  statsRow: {
-    flexDirection: 'row',
-    gap: 12,
-    marginBottom: 18,
-  },
-  statCard: {
-    flex: 1,
-    backgroundColor: '#FFF',
-    borderRadius: 14,
-    padding: 14,
-    elevation: 2,
-  },
-  statLabel: {
-    fontSize: 13,
-    color: '#777',
-  },
-  statValue: {
-    fontSize: 22,
-    fontWeight: '800',
-    color: '#D32F2F',
-    marginTop: 4,
-  },
-  winBanner: {
-    backgroundColor: '#E8F5E9',
-    padding: 12,
-    borderRadius: 12,
-    marginBottom: 16,
-  },
-  winText: {
-    color: '#2E7D32',
-    fontWeight: '700',
-    textAlign: 'center',
-  },
-  grid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
+
+  menuScrollContent: {
+    flexGrow: 1,
     justifyContent: 'center',
   },
-  card: {
-    width: 90,
-    height: 90,
-    borderRadius: 16,
-    backgroundColor: '#D32F2F',
+
+  menuOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 24,
+  },
+
+  menuPanel: {
+    borderRadius: 28,
+    
+    alignItems: 'center',
+  },
+
+  menuTitle: {
+    fontWeight: '900',
+    textAlign: 'center',
+   
+  },
+
+
+
+  menuButton: {
+    width: '100%',
+    minHeight: 56,
+    borderRadius: 32,
+    marginTop: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    paddingHorizontal: 20,
+  },
+
+  menuButtonText: {
+    color: '#FFF',
+    fontSize: 18,
+    fontWeight: '700',
+  },
+
+  startButton: {
+    backgroundColor: '#57BFE8',
+  },
+
+  difficultyButton: {
+    backgroundColor: '#58CF7D',
     justifyContent: 'center',
     alignItems: 'center',
   },
-  cardFlipped: {
-    backgroundColor: '#FFFFFF',
-    borderWidth: 2,
-    borderColor: '#D32F2F',
+
+  homeButton: {
+    backgroundColor: '#D9803D',
   },
-  cardMatched: {
-    backgroundColor: '#C8E6C9',
-    borderColor: '#2E7D32',
+
+  leaderboardButton: {
+    backgroundColor: '#DABD58',
   },
-  cardText: {
-    fontSize: 32,
+
+  dropdownIcon: {
+    position: 'absolute',
+    right: 20,
+    color: '#FFF',
+    fontSize: 16,
     fontWeight: '800',
+  },
+
+  gameScrollContent: {
+    flexGrow: 1,
+  },
+
+  gameOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingTop: 28,
+    paddingBottom: 32,
+    paddingHorizontal: 16,
+  },
+
+  gameHeaderCard: {
+    backgroundColor: 'rgba(235, 176, 39, 0.86)',
+    borderRadius: 18,
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    marginBottom: 18,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+  },
+
+  statsText: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#111',
+    marginBottom: 4,
+  },
+
+  statsTextLarge: {
+    fontSize: 22,
+  },
+
+  scoreText: {
+    marginTop: 2,
+  },
+
+  grid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    marginBottom: 24,
+  },
+
+  card: {
+    backgroundColor: '#E1BB3F',
+    borderRadius: 10,
+    borderWidth: 4,
+    borderColor: '#111',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+
+  cardFlipped: {
+    backgroundColor: '#FFF0A5',
+  },
+
+  cardMatched: {
+    backgroundColor: '#CDE7A4',
+  },
+
+  cardText: {
+    fontWeight: '900',
+    color: '#111',
+  },
+
+  stopButton: {
+    backgroundColor: '#111',
+    paddingHorizontal: 28,
+    paddingVertical: 14,
+    borderRadius: 4,
+  },
+
+  stopButtonText: {
+    color: '#FFF',
+    fontSize: 17,
+    fontWeight: '700',
+  },
+
+  winBanner: {
+    marginTop: 18,
+    backgroundColor: 'rgba(255,255,255,0.92)',
+    borderRadius: 14,
+    paddingHorizontal: 18,
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+
+  winTitle: {
+    fontSize: 20,
+    fontWeight: '900',
+    color: '#111',
+    marginBottom: 4,
+  },
+
+  winText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#333',
+    textAlign: 'center',
+  },
+
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.28)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+
+  modalCard: {
+    width: 260,
+    backgroundColor: '#FFF',
+    borderRadius: 10,
+    paddingVertical: 8,
+  },
+
+  modalOption: {
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+  },
+
+  modalOptionActive: {
+    backgroundColor: '#EEF7FF',
+  },
+
+  modalOptionText: {
+    fontSize: 18,
+    fontWeight: '600',
     color: '#222',
+  },
+
+  modalOptionTextActive: {
+    color: '#18A8E8',
   },
 });
