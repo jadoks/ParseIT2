@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import type { DimensionValue } from 'react-native';
 import {
   FlatList,
   Image,
@@ -18,13 +19,40 @@ import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityI
 const CURRENT_USER = 'Jade Lisondra';
 const DEFAULT_AVATAR = require('../../assets/images/default_profile.png');
 
-const INITIAL_CONVERSATIONS = [
+type Conversation = {
+  id: string;
+  name: string;
+  last: string;
+  avatar: any;
+  time: string;
+  isRoom?: boolean;
+  members?: string[];
+};
+
+type Message = {
+  id: string;
+  fromMe: boolean;
+  sender: string;
+  text: string;
+};
+
+const ROOM_MEMBERS = [
+  CURRENT_USER,
+  'Abai Clipord',
+  'Abai Clipord 2',
+  'Abai Clipord 3',
+  'Lude Lisendra',
+];
+
+const INITIAL_CONVERSATIONS: Conversation[] = [
   {
     id: 'c1',
     name: 'Networking 1',
     last: "Yes ma'am",
     avatar: DEFAULT_AVATAR,
     time: '2:15 PM',
+    isRoom: false,
+    members: ['Ramcee Bading', 'Ramcee Buyot'],
   },
   {
     id: 'c2',
@@ -32,6 +60,8 @@ const INITIAL_CONVERSATIONS = [
     last: 'Thanks!',
     avatar: DEFAULT_AVATAR,
     time: '1:02 PM',
+    isRoom: false,
+    members: ['Programming 1'],
   },
   {
     id: 'c3',
@@ -39,13 +69,12 @@ const INITIAL_CONVERSATIONS = [
     last: 'Assignment due tomorrow.',
     avatar: DEFAULT_AVATAR,
     time: 'Yesterday',
+    isRoom: false,
+    members: ['Web Dev'],
   },
 ];
 
-const INITIAL_MESSAGES: Record<
-  string,
-  { id: string; fromMe: boolean; sender: string; text: string }[]
-> = {
+const INITIAL_MESSAGES: Record<string, Message[]> = {
   c1: [
     {
       id: 'm1',
@@ -78,29 +107,6 @@ const INITIAL_MESSAGES: Record<
   ],
 };
 
-const ROOM_MEMBERS = [
-  CURRENT_USER,
-  'Abai Clipord',
-  'Abai Clipord 2',
-  'Abai Clipord 3',
-  'Lude Lisendra',
-];
-
-type Conversation = {
-  id: string;
-  name: string;
-  last: string;
-  avatar: any;
-  time: string;
-};
-
-type Message = {
-  id: string;
-  fromMe: boolean;
-  sender: string;
-  text: string;
-};
-
 const Messenger = ({
   searchQuery = '',
   onConversationActiveChange,
@@ -110,13 +116,20 @@ const Messenger = ({
 }) => {
   const { width, height } = useWindowDimensions();
 
-  const isSmallPhone = width < 480;
+  const isTinyPhone = width < 360;
   const isMobile = width < 768;
   const isTablet = width >= 768 && width < 1200;
   const isDesktop = width >= 1200;
 
-  const scale = isDesktop ? 1.25 : isTablet ? 1.1 : 1;
   const isSplitView = !isMobile;
+  const isCompactInput = width < 420;
+  const scale = isDesktop ? 1.15 : isTablet ? 1.05 : 1;
+
+  const messageMaxWidth: DimensionValue =
+    isDesktop ? '58%' : isTablet ? '66%' : isTinyPhone ? '88%' : '80%';
+
+  const sendWidth: DimensionValue =
+    isDesktop ? 96 : isTablet ? 84 : isTinyPhone ? '100%' : 72;
 
   const [conversations, setConversations] =
     useState<Conversation[]>(INITIAL_CONVERSATIONS);
@@ -126,12 +139,14 @@ const Messenger = ({
     useState<Record<string, Message[]>>(INITIAL_MESSAGES);
 
   const [showCreateRoomModal, setShowCreateRoomModal] = useState(false);
+  const [showMembersModal, setShowMembersModal] = useState(false);
+  const [showInfoMenu, setShowInfoMenu] = useState(false);
+
   const [roomName, setRoomName] = useState('');
   const [checkedMembers, setCheckedMembers] = useState<string[]>([CURRENT_USER]);
   const [anchor, setAnchor] = useState({ x: 0, y: 0 });
-  const [showPlusTooltip, setShowPlusTooltip] = useState(false);
 
-  const plusButtonRef = useRef<View>(null);
+  const infoButtonRef = useRef<View>(null);
 
   useEffect(() => {
     onConversationActiveChange?.(false);
@@ -147,26 +162,39 @@ const Messenger = ({
 
   const currentMessages = selected ? messagesByConversation[selected.id] || [] : [];
 
+  const selectedConversationMembers =
+    selected?.members && selected.members.length > 0
+      ? selected.members
+      : selected
+      ? [selected.name]
+      : [];
+
   const sizes = {
-    sidebarWidth: isDesktop ? 360 : 300,
-    pageTitle: 25 * scale,
-    headerHeight: 58 * scale,
-    headerTitle: 18 * scale,
-    backText: 12 * scale,
-    headerIcon: 20 * scale,
-    listAvatar: 48 * scale,
-    listName: 15 * scale,
-    listTime: 12 * scale,
-    listLast: 13 * scale,
-    bubbleText: 12 * scale,
-    senderName: 10 * scale,
-    inputText: isDesktop ? 12 * scale : isTablet ? 11 * scale : isSmallPhone ? 9 : 10,
-    sendText: isDesktop ? 13 * scale : isTablet ? 12 : isSmallPhone ? 10 : 11,
-    inputHeight: isDesktop ? 42 * scale : isTablet ? 40 : isSmallPhone ? 34 : 36,
-    sendHeight: isDesktop ? 42 * scale : isTablet ? 40 : isSmallPhone ? 34 : 36,
-    sendWidth: isDesktop ? 86 * scale : isTablet ? 72 : isSmallPhone ? 52 : 60,
-    messageGap: 22 * scale,
-    horizontalPadding: isDesktop ? 18 * scale : isTablet ? 14 : 10,
+    sidebarWidth: isDesktop ? Math.min(width * 0.28, 380) : isTablet ? 320 : width,
+    pageTitle: isDesktop ? 26 : isTablet ? 23 : isTinyPhone ? 20 : 22,
+    headerHeight: isDesktop ? 64 : isTablet ? 60 : isTinyPhone ? 52 : 56,
+    headerTitle: isDesktop ? 19 : isTablet ? 17 : isTinyPhone ? 14 : 16,
+    backText: isTinyPhone ? 11 : 12,
+    headerIcon: isDesktop ? 22 : isTablet ? 20 : 18,
+
+    listAvatar: isDesktop ? 52 : isTablet ? 48 : isTinyPhone ? 38 : 42,
+    listName: isDesktop ? 15 : isTablet ? 14 : isTinyPhone ? 12 : 13,
+    listTime: isDesktop ? 12 : isTablet ? 11 : 10,
+    listLast: isDesktop ? 13 : isTablet ? 12 : isTinyPhone ? 11 : 12,
+    listRowVertical: isDesktop ? 14 : isTablet ? 12 : isTinyPhone ? 8 : 10,
+
+    bubbleText: isDesktop ? 13 : isTablet ? 12 : isTinyPhone ? 11 : 12,
+    senderName: isDesktop ? 11 : isTablet ? 10 : 9,
+    messageGap: isDesktop ? 22 : isTablet ? 18 : isTinyPhone ? 12 : 14,
+    messageMaxWidth,
+
+    horizontalPadding: isDesktop ? 18 : isTablet ? 14 : isTinyPhone ? 8 : 10,
+    verticalPadding: isDesktop ? 14 : isTablet ? 12 : isTinyPhone ? 8 : 10,
+
+    inputText: isDesktop ? 14 : isTablet ? 13 : isTinyPhone ? 12 : 13,
+    inputHeight: isDesktop ? 46 : isTablet ? 44 : isTinyPhone ? 40 : 42,
+    sendHeight: isDesktop ? 46 : isTablet ? 44 : isTinyPhone ? 40 : 42,
+    sendWidth,
     inputGap: isDesktop ? 12 : isTablet ? 10 : 8,
   };
 
@@ -201,6 +229,8 @@ const Messenger = ({
       text: trimmed,
     };
 
+    const updatedTime = getCurrentTimeLabel();
+
     setMessagesByConversation((prev) => ({
       ...prev,
       [selected.id]: [...(prev[selected.id] || []), newMessage],
@@ -212,10 +242,20 @@ const Messenger = ({
           ? {
               ...conversation,
               last: trimmed,
-              time: getCurrentTimeLabel(),
+              time: updatedTime,
             }
           : conversation
       )
+    );
+
+    setSelected((prev) =>
+      prev
+        ? {
+            ...prev,
+            last: trimmed,
+            time: updatedTime,
+          }
+        : prev
     );
 
     setMessageText('');
@@ -229,32 +269,48 @@ const Messenger = ({
     );
   };
 
-  const handleOpenCreateRoomModal = () => {
-    setShowPlusTooltip(false);
-
-    if (plusButtonRef.current) {
-      plusButtonRef.current.measureInWindow((x, y, measuredWidth, measuredHeight) => {
-        const modalWidth = isMobile ? 210 : 230;
+  const openAnchoredMenu = () => {
+    if (infoButtonRef.current) {
+      infoButtonRef.current.measureInWindow((x, y, measuredWidth, measuredHeight) => {
+        const menuWidth = isMobile ? 180 : 200;
         setAnchor({
-          x: x + measuredWidth - modalWidth,
+          x: x + measuredWidth - menuWidth,
           y: y + measuredHeight + 6,
         });
-        setShowCreateRoomModal(true);
+        setShowInfoMenu(true);
       });
       return;
     }
 
-    setAnchor({ x: width - 240, y: 70 });
+    setAnchor({ x: width - 220, y: 70 });
+    setShowInfoMenu(true);
+  };
+
+  const handleOpenInfoMenu = () => {
+    openAnchoredMenu();
+  };
+
+  const handleOpenCreateRoomModal = () => {
+    if (selected?.isRoom) return;
+    setShowInfoMenu(false);
+    setCheckedMembers([CURRENT_USER]);
+    setRoomName('');
     setShowCreateRoomModal(true);
+  };
+
+  const handleOpenMembersModal = () => {
+    setShowInfoMenu(false);
+    setShowMembersModal(true);
   };
 
   const handleCreateRoom = () => {
     const trimmedRoomName = roomName.trim();
-    if (!trimmedRoomName || !selected) return;
+    if (!trimmedRoomName || !selected || selected.isRoom) return;
 
     const conversationName = `${trimmedRoomName} - ${selected.name}`;
     const newConversationId = `room-${Date.now()}`;
     const nowLabel = getCurrentTimeLabel();
+    const roomMembers = [...checkedMembers];
 
     const systemMessage: Message = {
       id: `msg-${Date.now()}`,
@@ -269,6 +325,8 @@ const Messenger = ({
       last: systemMessage.text,
       avatar: DEFAULT_AVATAR,
       time: nowLabel,
+      isRoom: true,
+      members: roomMembers,
     };
 
     setConversations((prev) => [newConversation, ...prev]);
@@ -312,7 +370,7 @@ const Messenger = ({
                 styles.convRow,
                 {
                   paddingHorizontal: sizes.horizontalPadding,
-                  paddingVertical: 12 * scale,
+                  paddingVertical: sizes.listRowVertical,
                 },
                 active && styles.convRowActive,
               ]}
@@ -325,16 +383,22 @@ const Messenger = ({
                   width: sizes.listAvatar,
                   height: sizes.listAvatar,
                   borderRadius: sizes.listAvatar / 2,
-                  marginRight: 12,
+                  marginRight: isTinyPhone ? 8 : 12,
                 }}
               />
 
               <View style={styles.convContent}>
                 <View style={styles.convTopRow}>
-                  <Text style={[styles.convName, { fontSize: sizes.listName }]} numberOfLines={1}>
+                  <Text
+                    style={[styles.convName, { fontSize: sizes.listName }]}
+                    numberOfLines={1}
+                  >
                     {item.name}
                   </Text>
-                  <Text style={[styles.convTime, { fontSize: sizes.listTime }]}>
+                  <Text
+                    style={[styles.convTime, { fontSize: sizes.listTime, marginLeft: 8 }]}
+                    numberOfLines={1}
+                  >
                     {item.time}
                   </Text>
                 </View>
@@ -380,37 +444,21 @@ const Messenger = ({
       </Text>
 
       <View style={styles.plusButtonArea}>
-        <View ref={plusButtonRef} collapsable={false}>
+        <View ref={infoButtonRef} collapsable={false}>
           <Pressable
             style={[
               styles.headerIconButton,
-              Platform.OS === 'web' && showPlusTooltip && styles.headerIconButtonHover,
+              Platform.OS === 'web' && showInfoMenu && styles.headerIconButtonHover,
             ]}
-            onPress={handleOpenCreateRoomModal}
-            onHoverIn={() => {
-              if (Platform.OS === 'web') {
-                setShowPlusTooltip(true);
-              }
-            }}
-            onHoverOut={() => {
-              if (Platform.OS === 'web') {
-                setShowPlusTooltip(false);
-              }
-            }}
+            onPress={handleOpenInfoMenu}
           >
             <MaterialCommunityIcons
-              name="plus-circle"
+              name="information-outline"
               size={sizes.headerIcon}
               color="#111"
             />
           </Pressable>
         </View>
-
-        {Platform.OS === 'web' && showPlusTooltip && (
-          <View style={styles.plusTooltip}>
-            <Text style={styles.plusTooltipText}>Create room</Text>
-          </View>
-        )}
       </View>
     </View>
   );
@@ -421,7 +469,7 @@ const Messenger = ({
         styles.messageRow,
         {
           marginBottom: sizes.messageGap,
-          maxWidth: isDesktop ? '60%' : isTablet ? '68%' : '78%',
+          maxWidth: sizes.messageMaxWidth,
         },
         item.fromMe ? styles.messageRowMe : styles.messageRowThem,
       ]}
@@ -441,9 +489,9 @@ const Messenger = ({
           styles.bubble,
           item.fromMe ? styles.bubbleMe : styles.bubbleThem,
           {
-            paddingHorizontal: 12 * scale,
-            paddingVertical: 9 * scale,
-            borderRadius: 8 * scale,
+            paddingHorizontal: isTinyPhone ? 10 : 12,
+            paddingVertical: isTinyPhone ? 8 : 10,
+            borderRadius: isTinyPhone ? 10 : 12,
           },
         ]}
       >
@@ -453,6 +501,57 @@ const Messenger = ({
       </View>
     </View>
   );
+
+  const renderInfoMenu = () => {
+    const menuWidth = isMobile ? 180 : 200;
+    const safeLeft = Math.max(8, Math.min(anchor.x, width - menuWidth - 8));
+    const safeTop = Math.max(8, Math.min(anchor.y, height - 160));
+
+    return (
+      <Modal
+        transparent
+        visible={showInfoMenu}
+        animationType="fade"
+        onRequestClose={() => setShowInfoMenu(false)}
+      >
+        <Pressable style={styles.modalOverlay} onPress={() => setShowInfoMenu(false)}>
+          <Pressable
+            onPress={(e) => e.stopPropagation()}
+            style={[
+              styles.infoMenu,
+              {
+                width: menuWidth,
+                left: safeLeft,
+                top: safeTop,
+              },
+            ]}
+          >
+            <Text style={styles.infoMenuTitle}>Choose Option</Text>
+
+            <TouchableOpacity
+              style={styles.infoMenuButton}
+              activeOpacity={0.85}
+              onPress={handleOpenMembersModal}
+            >
+              <MaterialCommunityIcons name="account-group-outline" size={16} color="#222" />
+              <Text style={styles.infoMenuButtonText}>See Members</Text>
+            </TouchableOpacity>
+
+            {!selected?.isRoom && (
+              <TouchableOpacity
+                style={styles.infoMenuButton}
+                activeOpacity={0.85}
+                onPress={handleOpenCreateRoomModal}
+              >
+                <MaterialCommunityIcons name="forum-outline" size={16} color="#222" />
+                <Text style={styles.infoMenuButtonText}>Create Room</Text>
+              </TouchableOpacity>
+            )}
+          </Pressable>
+        </Pressable>
+      </Modal>
+    );
+  };
 
   const renderCreateRoomModal = () => {
     const modalWidth = isMobile ? 210 : 230;
@@ -546,6 +645,59 @@ const Messenger = ({
     );
   };
 
+  const renderMembersModal = () => {
+    const modalWidth = isMobile ? 210 : 230;
+    const safeLeft = Math.max(8, Math.min(anchor.x, width - modalWidth - 8));
+    const safeTop = Math.max(8, Math.min(anchor.y, height - 260));
+
+    return (
+      <Modal
+        transparent
+        visible={showMembersModal}
+        animationType="fade"
+        onRequestClose={() => setShowMembersModal(false)}
+      >
+        <Pressable style={styles.modalOverlay} onPress={() => setShowMembersModal(false)}>
+          <Pressable
+            onPress={(e) => e.stopPropagation()}
+            style={[
+              styles.createRoomModal,
+              {
+                width: modalWidth,
+                left: safeLeft,
+                top: safeTop,
+              },
+            ]}
+          >
+            <View style={styles.modalHeaderRow}>
+              <TouchableOpacity
+                style={styles.modalHeaderButton}
+                onPress={() => setShowMembersModal(false)}
+                activeOpacity={0.8}
+              >
+                <MaterialCommunityIcons name="chevron-left" size={16} color="#222" />
+                <Text style={styles.modalTitle}>Chat Members</Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.memberList}>
+              {selectedConversationMembers.map((member, index) => (
+                <View key={`${member}-${index}`} style={styles.memberRow}>
+                  <MaterialCommunityIcons
+                    name="account-circle-outline"
+                    size={16}
+                    color="#8e8e8e"
+                  />
+                  <Text style={styles.memberText}>{member}</Text>
+                </View>
+              ))}
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+    );
+  };
+
   const renderChatPane = () => {
     if (!selected) {
       return (
@@ -583,10 +735,11 @@ const Messenger = ({
         <View
           style={[
             styles.inputArea,
+            isCompactInput && styles.inputAreaCompact,
             {
               paddingHorizontal: sizes.horizontalPadding,
-              paddingTop: isDesktop ? 10 * scale : 8,
-              paddingBottom: isDesktop ? 18 * scale : 12,
+              paddingTop: sizes.verticalPadding,
+              paddingBottom: isDesktop ? 18 : 12,
               gap: sizes.inputGap,
             },
           ]}
@@ -596,57 +749,56 @@ const Messenger = ({
             onChangeText={setMessageText}
             placeholder="Write a message..."
             placeholderTextColor="#9a9a9a"
+            multiline={!isCompactInput}
             style={[
               styles.input,
+              isCompactInput && styles.inputCompact,
               {
-                height: sizes.inputHeight,
+                height: isCompactInput ? undefined : sizes.inputHeight,
+                minHeight: sizes.inputHeight,
                 fontSize: sizes.inputText,
-                borderRadius: 6 * scale,
+                borderRadius: 10,
                 paddingHorizontal: isDesktop ? 14 : isTablet ? 12 : 10,
+                paddingVertical: isCompactInput ? 10 : 0,
               },
             ]}
-            onSubmitEditing={handleSend}
+            onSubmitEditing={!isCompactInput ? handleSend : undefined}
             returnKeyType="send"
           />
 
           <TouchableOpacity
             style={[
               styles.sendBtn,
+              isCompactInput && styles.sendBtnCompact,
               {
                 height: sizes.sendHeight,
-                minWidth: sizes.sendWidth,
+                width: sizes.sendWidth,
                 paddingHorizontal: isDesktop ? 18 : isTablet ? 14 : 10,
-                borderRadius: 6 * scale,
+                borderRadius: 10,
               },
             ]}
             activeOpacity={0.85}
             onPress={handleSend}
           >
-            <Text style={[styles.sendBtnText, { fontSize: sizes.sendText }]}>
+            <Text style={[styles.sendBtnText, { fontSize: sizes.inputText }]}>
               Send
             </Text>
           </TouchableOpacity>
         </View>
 
+        {renderInfoMenu()}
         {renderCreateRoomModal()}
+        {renderMembersModal()}
       </View>
     );
   };
 
   if (isMobile) {
     if (selected) {
-      return (
-        <SafeAreaView style={styles.mobileScreen}>
-          {renderChatPane()}
-        </SafeAreaView>
-      );
+      return <SafeAreaView style={styles.mobileScreen}>{renderChatPane()}</SafeAreaView>;
     }
 
-    return (
-      <SafeAreaView style={styles.mobileScreen}>
-        {renderConversationList()}
-      </SafeAreaView>
-    );
+    return <SafeAreaView style={styles.mobileScreen}>{renderConversationList()}</SafeAreaView>;
   }
 
   return (
@@ -676,6 +828,7 @@ const styles = StyleSheet.create({
 
   sidebar: {
     backgroundColor: '#fff',
+    flexShrink: 0,
   },
   pageTitle: {
     fontWeight: 'bold',
@@ -704,15 +857,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    gap: 8,
   },
   convName: {
     fontWeight: '700',
     color: '#111',
     flex: 1,
+    minWidth: 0,
+    marginRight: 8,
   },
   convTime: {
     color: '#888',
+    flexShrink: 0,
   },
   convLast: {
     color: '#666',
@@ -722,6 +877,7 @@ const styles = StyleSheet.create({
   chatPane: {
     flex: 1,
     backgroundColor: '#fff',
+    minWidth: 0,
   },
   chatHeader: {
     borderBottomWidth: 1,
@@ -735,7 +891,7 @@ const styles = StyleSheet.create({
     zIndex: 20,
   },
   backButton: {
-    width: 80,
+    minWidth: 60,
     flexDirection: 'row',
     alignItems: 'center',
   },
@@ -750,39 +906,54 @@ const styles = StyleSheet.create({
     marginHorizontal: 8,
   },
   plusButtonArea: {
-    width: 80,
+    minWidth: 60,
     alignItems: 'flex-end',
     justifyContent: 'center',
     position: 'relative',
     overflow: 'visible',
   },
   headerIconButton: {
-    width: 36,
-    height: 36,
+    width: 34,
+    height: 34,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 18,
+    borderRadius: 17,
   },
   headerIconButtonHover: {
     backgroundColor: 'rgba(0,0,0,0.05)',
   },
-  plusTooltip: {
+
+  infoMenu: {
     position: 'absolute',
-    top: '100%',
-    right: 0,
-    marginTop: 6,
-    backgroundColor: '#222',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    backgroundColor: '#fff',
     borderRadius: 8,
-    zIndex: 999,
-    elevation: 10,
-    minWidth: 92,
-    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 10,
+    borderWidth: 1,
+    borderColor: '#d9d9d9',
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 5,
   },
-  plusTooltipText: {
-    color: '#fff',
+  infoMenuTitle: {
     fontSize: 12,
+    fontWeight: '700',
+    color: '#222',
+    marginBottom: 8,
+  },
+  infoMenuButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 6,
+    borderRadius: 6,
+  },
+  infoMenuButtonText: {
+    fontSize: 12,
+    color: '#222',
     fontWeight: '500',
   },
 
@@ -824,6 +995,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: '#fff',
   },
+  inputAreaCompact: {
+    flexDirection: 'column',
+    alignItems: 'stretch',
+  },
   input: {
     flex: 1,
     borderWidth: 1,
@@ -831,11 +1006,19 @@ const styles = StyleSheet.create({
     color: '#111',
     backgroundColor: '#fff',
   },
+  inputCompact: {
+    width: '100%',
+    flex: 0,
+  },
   sendBtn: {
     backgroundColor: '#ea1111',
     alignItems: 'center',
     justifyContent: 'center',
     alignSelf: 'center',
+  },
+  sendBtnCompact: {
+    width: '100%',
+    alignSelf: 'stretch',
   },
   sendBtnText: {
     color: '#fff',
@@ -889,10 +1072,10 @@ const styles = StyleSheet.create({
     gap: 3,
   },
   modalHeaderButton: {
-  flexDirection: 'row',
-  alignItems: 'center',
-  gap: 4,
-},
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
   modalTitle: {
     fontSize: 12,
     fontWeight: '700',

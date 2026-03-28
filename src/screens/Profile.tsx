@@ -213,13 +213,11 @@ const Profile: React.FC<ProfileProps> = ({ userPosts, onCreatePost }) => {
 
             <Text style={styles.postText}>{post.content}</Text>
 
-            {post.answers.length > 0 && (
-              <TouchableOpacity onPress={() => openAnswersModal(post)}>
-                <Text style={styles.answerLink}>
-                  View {post.answers.length} Answer(s)
-                </Text>
-              </TouchableOpacity>
-            )}
+            <TouchableOpacity onPress={() => openAnswersModal(post)}>
+              <Text style={styles.answerLink}>
+                View {post.answers.length} Answer(s)
+              </Text>
+            </TouchableOpacity>
           </View>
         ))}
       </ScrollView>
@@ -295,10 +293,13 @@ const Profile: React.FC<ProfileProps> = ({ userPosts, onCreatePost }) => {
                   <>
                     <Text style={styles.selectedPostText}>{selectedPost.content}</Text>
 
-                    <View style={styles.answersList}>
+                    <ScrollView
+                      showsVerticalScrollIndicator={false}
+                      contentContainerStyle={styles.modalAnswersContainer}
+                    >
                       {selectedPost.answers.length > 0 ? (
                         selectedPost.answers.map((answer) => (
-                          <View key={answer.id} style={styles.answerItem}>
+                          <View key={answer.id} style={styles.answerCard}>
                             <View style={styles.answerHeader}>
                               <Image source={answer.avatar} style={styles.answerAvatar} />
                               <View style={{ marginLeft: 10, flex: 1 }}>
@@ -313,7 +314,7 @@ const Profile: React.FC<ProfileProps> = ({ userPosts, onCreatePost }) => {
                       ) : (
                         <Text style={styles.noAnswerText}>No answers yet.</Text>
                       )}
-                    </View>
+                    </ScrollView>
                   </>
                 )}
               </View>
@@ -546,10 +547,10 @@ const styles = StyleSheet.create({
   answersModalCard: {
     width: '100%',
     maxWidth: 520,
+    maxHeight: '80%',
     backgroundColor: '#FFF',
     borderRadius: 18,
     padding: 18,
-    maxHeight: '80%',
   },
 
   answersModalHeader: {
@@ -572,11 +573,11 @@ const styles = StyleSheet.create({
     lineHeight: 22,
   },
 
-  answersList: {
+  modalAnswersContainer: {
     gap: 12,
   },
 
-  answerItem: {
+  answerCard: {
     backgroundColor: '#FAFAFA',
     borderRadius: 12,
     padding: 14,

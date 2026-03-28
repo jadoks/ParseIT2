@@ -1,5 +1,15 @@
-import React, { useMemo, useState } from 'react';
-import { Image, StyleSheet, Text, TouchableOpacity, useWindowDimensions, View } from 'react-native';
+import * as NavigationBar from 'expo-navigation-bar';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  Image,
+  Platform,
+  Pressable,
+  StatusBar,
+  StyleSheet,
+  Text,
+  useWindowDimensions,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import AnnouncementModal, { Announcement } from './components/AnnouncementModal';
@@ -414,8 +424,54 @@ export default function StudentApp({ onLogout }: Props) {
   const [isConversationActive, setIsConversationActive] = useState(false);
   const [isVideoActive, setIsVideoActive] = useState(false);
 
+  const rehideNavTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const [activeCourseTab, setActiveCourseTab] = useState<'materials' | 'assignments'>('materials');
   const [communityPosts, setCommunityPosts] = useState<CommunityPost[]>(INITIAL_COMMUNITY_POSTS);
+
+  const isFullscreenScreen =
+    activeScreen === 'flipit' ||
+    activeScreen === 'fruitmania' ||
+    activeScreen === 'quizmasters';
+
+  useEffect(() => {
+    if (Platform.OS !== 'android') return;
+
+    const setupImmersiveNavigation = async () => {
+      try {
+        await NavigationBar.setBehaviorAsync('overlay-swipe');
+        await NavigationBar.setVisibilityAsync('hidden');
+      } catch (error) {
+        console.log('Failed to enable immersive navigation:', error);
+      }
+    };
+
+    setupImmersiveNavigation();
+
+    const subscription = NavigationBar.addVisibilityListener(({ visibility }) => {
+      if (rehideNavTimer.current) {
+        clearTimeout(rehideNavTimer.current);
+        rehideNavTimer.current = null;
+      }
+
+      if (visibility === 'visible') {
+        rehideNavTimer.current = setTimeout(async () => {
+          try {
+            await NavigationBar.setVisibilityAsync('hidden');
+          } catch (error) {
+            console.log('Failed to re-hide navigation bar:', error);
+          }
+        }, 3000);
+      }
+    });
+
+    return () => {
+      if (rehideNavTimer.current) {
+        clearTimeout(rehideNavTimer.current);
+      }
+      subscription.remove();
+    };
+  }, []);
 
   const sharedCourses = useMemo(() => mapCoursesToAssignmentCourses(COURSES), []);
 
@@ -505,6 +561,27 @@ export default function StudentApp({ onLogout }: Props) {
     };
 
     setCommunityPosts((prev) => [newPost, ...prev]);
+  };
+
+  const handleAddCommunityAnswer = (postId: string, message: string) => {
+    const trimmedMessage = message.trim();
+    if (!trimmedMessage) return;
+
+    const newAnswer = {
+      id: `community-answer-${Date.now()}`,
+      userName: CURRENT_USER_NAME,
+      avatar: DEFAULT_PROFILE_IMAGE,
+      answeredAt: new Date().toLocaleString(),
+      message: trimmedMessage,
+    };
+
+    setCommunityPosts((prev) =>
+      prev.map((post) =>
+        post.id === postId
+          ? { ...post, answers: [...post.answers, newAnswer] }
+          : post
+      )
+    );
   };
 
   const getScorePercent = (assignment: {
@@ -610,14 +687,16 @@ export default function StudentApp({ onLogout }: Props) {
 
       if (isUsersPost && post.answers.length > 0) {
         post.answers.forEach((answer) => {
-          notifications.push({
-            id: `community-answer-${post.id}-${answer.id}`,
-            type: 'community-answer',
-            title: 'New Answer on Your Question',
-            message: `${answer.userName} answered your post: "${post.content}"`,
-            time: answer.answeredAt,
-            read: false,
-          });
+          if (answer.userName !== CURRENT_USER_NAME) {
+            notifications.push({
+              id: `community-answer-${post.id}-${answer.id}`,
+              type: 'community-answer',
+              title: 'New Answer on Your Question',
+              message: `${answer.userName} answered your post: "${post.content}"`,
+              time: answer.answeredAt,
+              read: false,
+            });
+          }
         });
       }
     });
@@ -635,6 +714,11 @@ export default function StudentApp({ onLogout }: Props) {
 
     return notifications.sort((a, b) => (a.id < b.id ? 1 : -1));
   }, [hydratedSharedCourses, generatedActivity, communityPosts]);
+
+  const unreadNotificationCount = useMemo(
+    () => studentNotifications.filter((item) => !item.read).length,
+    [studentNotifications]
+  );
 
   const handleNavigate = (screen: ScreenType) => {
     if (activeScreen !== screen) {
@@ -786,6 +870,7 @@ export default function StudentApp({ onLogout }: Props) {
             posts={communityPosts}
             userName="Jade"
             onCreatePost={handleCreateCommunityPost}
+            onAddAnswer={handleAddCommunityAnswer}
           />
         );
 
@@ -840,45 +925,49 @@ export default function StudentApp({ onLogout }: Props) {
   };
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <View style={styles.headerLayer}>
-        <Header
-          isLargeScreen={isLargeScreen}
-          activeScreen={activeScreen}
-          onNavigate={handleNavigate}
-          onSearchChange={() => {}}
-          notificationCount={studentNotifications.filter((item) => !item.read).length}
-        />
-      </View>
+    <>
+      <StatusBar hidden={isFullscreenScreen} translucent backgroundColor="transparent" />
 
-      {!isLargeScreen && activeScreen !== 'profile' && activeScreen !== 'notification' && (
-        <TouchableOpacity
-          style={styles.floatingMenuBtn}
-          onPress={() => setMobileDrawerOpen(!isMobileDrawerOpen)}
-          activeOpacity={0.7}
-        >
-          <Text style={styles.menuIcon}>☰</Text>
-        </TouchableOpacity>
-      )}
-
-      <View style={styles.contentLayer}>
-        {isLargeScreen && activeScreen !== 'profile' && activeScreen !== 'notification' && (
-          <DrawerMenu
-            isFixed={true}
-            activeScreen={activeScreen}
-            onNavigate={handleNavigate}
-            userName="Student Name"
-            userEmail="student@email.com"
-            onAvatarPress={() => handleNavigate('profile')}
-            setIsLoggedIn={() => onLogout()}
-          />
+      <SafeAreaView
+        style={[styles.safeArea, isFullscreenScreen && styles.safeAreaFullscreen]}
+        edges={isFullscreenScreen ? [] : ['top', 'right', 'bottom', 'left']}
+      >
+        {!isFullscreenScreen && (
+          <View style={styles.headerLayer}>
+            <Header
+              isLargeScreen={isLargeScreen}
+              activeScreen={activeScreen}
+              onNavigate={handleNavigate}
+              onSearchChange={() => {}}
+              notificationCount={unreadNotificationCount}
+              onMenuPress={() => setMobileDrawerOpen((prev) => !prev)}
+            />
+          </View>
         )}
 
-        {!isLargeScreen && isMobileDrawerOpen && activeScreen !== 'profile' && activeScreen !== 'notification' && (
-          <>
-            <TouchableOpacity
+        <View style={[styles.contentLayer, isFullscreenScreen && styles.contentLayerFullscreen]}>
+          {!isFullscreenScreen &&
+            isLargeScreen &&
+            activeScreen !== 'profile' &&
+            activeScreen !== 'notification' && (
+              <DrawerMenu
+                isFixed={true}
+                activeScreen={activeScreen}
+                onNavigate={handleNavigate}
+                userName="Student Name"
+                userEmail="student@email.com"
+                onAvatarPress={() => handleNavigate('profile')}
+                setIsLoggedIn={() => onLogout()}
+              />
+            )}
+
+          <View style={{ flex: 1 }}>{renderScreen()}</View>
+        </View>
+
+        {!isFullscreenScreen && !isLargeScreen && isMobileDrawerOpen && (
+          <View style={styles.mobileDrawerPortal}>
+            <Pressable
               style={styles.mobileBackdrop}
-              activeOpacity={1}
               onPress={() => setMobileDrawerOpen(false)}
             />
             <View style={styles.mobileOverlay}>
@@ -896,45 +985,50 @@ export default function StudentApp({ onLogout }: Props) {
                 setIsLoggedIn={() => onLogout()}
               />
             </View>
-          </>
+          </View>
         )}
 
-        <View style={{ flex: 1 }}>{renderScreen()}</View>
-      </View>
+        <AnnouncementModal
+          visible={!isFullscreenScreen && activeScreen === 'home' && showAnnouncement}
+          onClose={() => setShowAnnouncement(false)}
+          announcements={ANNOUNCEMENTS}
+        />
 
-      <AnnouncementModal
-        visible={activeScreen === 'home' && showAnnouncement}
-        onClose={() => setShowAnnouncement(false)}
-        announcements={ANNOUNCEMENTS}
-      />
+        {!isFullscreenScreen &&
+          activeScreen !== 'messenger' &&
+          activeScreen !== 'notification' &&
+          !(activeScreen === 'videos' && isVideoActive) && (
+            <Pressable
+              style={[
+                styles.floatingChatBtn,
+                !isLargeScreen && styles.floatingChatBtnSmall,
+              ]}
+              onPress={() => setIsChatOpen((prev) => !prev)}
+            >
+              {isChatOpen ? (
+                <Text style={[styles.chatClose, { color: '#fff' }]}>✕</Text>
+              ) : (
+                <>
+                  <Image
+                    source={require('../assets/images/AI.png')}
+                    style={styles.chatBtnImage}
+                  />
+                  {isLargeScreen && (
+                    <Text style={styles.chatBtnLabel}>Ask anything</Text>
+                  )}
+                </>
+              )}
+            </Pressable>
+          )}
 
-      {activeScreen !== 'messenger' &&
-        activeScreen !== 'notification' &&
-        !(activeScreen === 'videos' && isVideoActive) && (
-          <TouchableOpacity
-            style={styles.floatingChatBtn}
-            activeOpacity={0.85}
-            onPress={() => setIsChatOpen((prev) => !prev)}
-          >
-            {isChatOpen ? (
-              <Text style={[styles.chatClose, { color: '#fff' }]}>✕</Text>
-            ) : (
-              <>
-                <Image
-                  source={require('../assets/images/AI.png')}
-                  style={styles.chatBtnImage}
-                />
-                <Text style={styles.chatBtnLabel}>Ask anything</Text>
-              </>
-            )}
-          </TouchableOpacity>
+        {!isFullscreenScreen && (
+          <GeminiFloatingModal
+            visible={isChatOpen}
+            onClose={() => setIsChatOpen(false)}
+          />
         )}
-
-      <GeminiFloatingModal
-        visible={isChatOpen}
-        onClose={() => setIsChatOpen(false)}
-      />
-    </SafeAreaView>
+      </SafeAreaView>
+    </>
   );
 }
 
@@ -942,6 +1036,10 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: '#fff',
+  },
+
+  safeAreaFullscreen: {
+    backgroundColor: '#000',
   },
 
   headerLayer: {
@@ -957,49 +1055,33 @@ const styles = StyleSheet.create({
     zIndex: 1,
   },
 
-  floatingMenuBtn: {
-    position: 'absolute',
-    top: 135,
-    left: 2,
-    zIndex: 2000,
-    elevation: 2000,
-    width: 40,
-    height: 42,
-    borderColor: '#cc16164d',
-    borderWidth: 0.1,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
+  contentLayerFullscreen: {
+    flexDirection: 'column',
   },
 
-  menuIcon: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#000',
+  mobileDrawerPortal: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 5000,
+    elevation: 5000,
+    flexDirection: 'row',
   },
 
   mobileBackdrop: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
+    ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(0,0,0,0.5)',
-    zIndex: 9,
   },
 
   mobileOverlay: {
-    position: 'absolute',
-    zIndex: 10,
-    top: 0,
-    left: 0,
-    bottom: 0,
+    width: 250,
+    height: '100%',
     backgroundColor: '#FFF',
+    zIndex: 5001,
+    elevation: 5001,
   },
 
   floatingChatBtn: {
     position: 'absolute',
-    bottom: 44,
+    bottom: 25,
     right: 20,
     zIndex: 20,
     width: 140,
@@ -1010,17 +1092,24 @@ const styles = StyleSheet.create({
     gap: 10,
     backgroundColor: '#D32F2F',
     borderRadius: 28,
+    paddingHorizontal: 16,
+  },
+
+  floatingChatBtnSmall: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
   },
 
   chatBtnImage: {
-    width: 24,
-    height: 24,
+    width: 22,
+    height: 22,
     resizeMode: 'contain',
     tintColor: '#FFFFFF',
   },
 
   chatBtnLabel: {
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: '600',
     color: '#FFF',
   },
