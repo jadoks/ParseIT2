@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Image,
   ImageBackground,
+  ImageSourcePropType,
   Modal,
   Pressable,
   ScrollView,
@@ -17,7 +19,7 @@ interface Props {
 
 interface CardItem {
   id: number;
-  value: string;
+  value: ImageSourcePropType;
   isFlipped: boolean;
   isMatched: boolean;
 }
@@ -38,27 +40,27 @@ const DIFFICULTY_CONFIG: Record<
   hard: { label: 'Hard', cols: 5, pairs: 12 },
 };
 
-const SYMBOL_POOL = [
-  '🍎',
-  '🍌',
-  '🍇',
-  '🍓',
-  '🍍',
-  '🥝',
-  '🍒',
-  '🍉',
-  '🥥',
-  '🍋',
-  '🥕',
-  '🌽',
-  '🐶',
-  '🐱',
-  '🐼',
-  '🦊',
-  '⭐',
-  '🌙',
-  '⚽',
-  '🏀',
+const SYMBOL_POOL: ImageSourcePropType[] = [
+  require('../../../assets/games/1.png'),
+  require('../../../assets/games/2.png'),
+  require('../../../assets/games/3.png'),
+  require('../../../assets/games/4.png'),
+  require('../../../assets/games/5.png'),
+  require('../../../assets/games/6.png'),
+  require('../../../assets/games/7.png'),
+  require('../../../assets/games/8.png'),
+  require('../../../assets/games/9.png'),
+  require('../../../assets/games/10.png'),
+  require('../../../assets/games/11.png'),
+  require('../../../assets/games/12.png'),
+  require('../../../assets/games/13.png'),
+  require('../../../assets/games/14.png'),
+  require('../../../assets/games/15.png'),
+  require('../../../assets/games/16.png'),
+  require('../../../assets/games/17.png'),
+  require('../../../assets/games/18.png'),
+  require('../../../assets/games/19.png'),
+  require('../../../assets/games/20.png'),
 ];
 
 export default function FlipIt({ onBack }: Props) {
@@ -95,8 +97,9 @@ export default function FlipIt({ onBack }: Props) {
     return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
   };
 
-  const getDeck = (pairs: number) => {
+  const getDeck = (pairs: number): CardItem[] => {
     const symbols = SYMBOL_POOL.slice(0, pairs);
+
     return [...symbols, ...symbols]
       .sort(() => Math.random() - 0.5)
       .map((value, index) => ({
@@ -260,7 +263,7 @@ export default function FlipIt({ onBack }: Props) {
                     },
                   ]}
                 >
-                 
+                  
                 </Text>
 
                 <Pressable
@@ -400,14 +403,27 @@ export default function FlipIt({ onBack }: Props) {
                     ]}
                     onPress={() => handleCardPress(card)}
                   >
-                    <Text
-                      style={[
-                        styles.cardText,
-                        { fontSize: visible ? cardSize * 0.38 : cardSize * 0.24 },
-                      ]}
-                    >
-                      {visible ? card.value : '?'}
-                    </Text>
+                    {visible ? (
+                      <Image
+                        source={card.value}
+                        style={[
+                          styles.cardImage,
+                          {
+                            width: cardSize * 0.7,
+                            height: cardSize * 0.7,
+                          },
+                        ]}
+                      />
+                    ) : (
+                      <Text
+                        style={[
+                          styles.cardText,
+                          { fontSize: cardSize * 0.24 },
+                        ]}
+                      >
+                        ?
+                      </Text>
+                    )}
                   </Pressable>
                 );
               })}
@@ -459,17 +475,13 @@ const styles = StyleSheet.create({
 
   menuPanel: {
     borderRadius: 28,
-    
     alignItems: 'center',
   },
 
   menuTitle: {
     fontWeight: '900',
     textAlign: 'center',
-   
   },
-
-
 
   menuButton: {
     width: '100%',
@@ -567,6 +579,7 @@ const styles = StyleSheet.create({
     borderColor: '#111',
     justifyContent: 'center',
     alignItems: 'center',
+    overflow: 'hidden',
   },
 
   cardFlipped: {
@@ -580,6 +593,10 @@ const styles = StyleSheet.create({
   cardText: {
     fontWeight: '900',
     color: '#111',
+  },
+
+  cardImage: {
+    resizeMode: 'contain',
   },
 
   stopButton: {

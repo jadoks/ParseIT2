@@ -429,7 +429,10 @@ export default function StudentApp({ onLogout }: Props) {
   const [activeCourseTab, setActiveCourseTab] = useState<'materials' | 'assignments'>('materials');
   const [communityPosts, setCommunityPosts] = useState<CommunityPost[]>(INITIAL_COMMUNITY_POSTS);
 
-  const isFullscreenScreen =   activeScreen === 'flipit' || activeScreen === 'fruitmania';
+  const isFullscreenScreen =
+    activeScreen === 'flipit' ||
+    activeScreen === 'fruitmania' ||
+    activeScreen === 'quizmasters';
 
   useEffect(() => {
     if (Platform.OS !== 'android') return;
@@ -1096,7 +1099,6 @@ const styles = StyleSheet.create({
     width: 56,
     height: 56,
     borderRadius: 28,
-   
   },
 
   chatBtnImage: {
