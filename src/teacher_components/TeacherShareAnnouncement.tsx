@@ -1,15 +1,15 @@
 import { Ionicons } from '@expo/vector-icons';
 import React, { useState } from 'react';
 import {
-    Image,
-    Platform,
-    SafeAreaView,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View
+  Image,
+  Platform,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View
 } from 'react-native';
 
 const BACKGROUNDS = [
@@ -36,7 +36,7 @@ export default function ShareAnnouncement() {
 
         <View style={[
           styles.inputOutlineBox, 
-          isHeaderFocused && { borderColor: 'transparent' }
+          isHeaderFocused && { borderColor: 'black' }
         ]}>
           <Text style={styles.innerLabel}>Header</Text>
           <TextInput 
@@ -49,7 +49,7 @@ export default function ShareAnnouncement() {
 
         <View style={[
           styles.inputOutlineBox, 
-          isDescFocused && { borderColor: 'transparent' }
+          isDescFocused && { borderColor: '#000' }
         ]}>
           <Text style={styles.innerLabel}>Description</Text>
           <TextInput 

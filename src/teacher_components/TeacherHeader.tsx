@@ -25,10 +25,13 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
+// Updated types to include 'notification'
+type ScreenType = 'home' | 'game' | 'grades' | 'videos' | 'analytics' | 'myjourney' | 'profile' | 'messenger' | 'assignments' | 'coursedetail' | 'community' | 'notification';
+
 interface HeaderProps {
   isLargeScreen: boolean;
-  activeScreen?: 'home' | 'game' | 'grades' | 'videos' | 'analytics' | 'myjourney' | 'profile' | 'messenger' | 'assignments' | 'coursedetail' | 'community' | 'notification';
-  onNavigate?: (screen: 'home' | 'game' | 'grades' | 'videos' | 'analytics' | 'myjourney' | 'profile' | 'messenger' | 'assignments' | 'coursedetail' | 'community' | 'notification') => void;
+  activeScreen?: ScreenType;
+  onNavigate?: (screen: ScreenType) => void;
   onSearchChange?: (query: string) => void;
 }
 
@@ -40,7 +43,6 @@ const TeacherHeader: React.FC<HeaderProps> = ({
 }) => {
   const { width } = useWindowDimensions();
 
-  // Breakpoints
   const isVerySmall = width < 360;
   const isSmallPhone = width < 420;
   const isPhone = width < 768;
@@ -73,13 +75,8 @@ const TeacherHeader: React.FC<HeaderProps> = ({
     setIsSearchExpanded(expand);
   };
 
-  const getIconColor = (
-    screen: 'home' | 'game' | 'grades' | 'videos' | 'analytics' | 'myjourney' | 'profile' | 'messenger' | 'community' | 'notification'
-  ) => (activeScreen === screen ? '#D32F2F' : '#000000');
-
-  const isActive = (
-    screen: 'home' | 'game' | 'grades' | 'videos' | 'analytics' | 'myjourney' | 'profile' | 'messenger' | 'community' | 'notification'
-  ) => activeScreen === screen;
+  const getIconColor = (screen: ScreenType) => (activeScreen === screen ? '#D32F2F' : '#000000');
+  const isActive = (screen: ScreenType) => activeScreen === screen;
 
   const navScreens: Array<'home' | 'game' | 'grades' | 'videos' | 'messenger'> = [
     'home',
@@ -89,7 +86,6 @@ const TeacherHeader: React.FC<HeaderProps> = ({
     'messenger',
   ];
 
-  // Mobile Layout
   if (isPhone) {
     return (
       <TouchableWithoutFeedback
@@ -187,10 +183,8 @@ const TeacherHeader: React.FC<HeaderProps> = ({
     );
   }
 
-  // Desktop/Tablet Layout
   return (
     <View style={[styles.headerContainer, { paddingLeft: paddingHorizontal, paddingRight: 0, height: isTablet ? 72 : 80 }]}>
-      {/* LEFT SECTION */}
       <View style={[styles.leftSection, { flex: isLargeScreenLocal ? 0.3 : 0.4 }]}>
         <Image
           source={require('../../assets/images/logo.png')}
@@ -211,7 +205,6 @@ const TeacherHeader: React.FC<HeaderProps> = ({
         </View>
       </View>
 
-      {/* CENTER SECTION */}
       <View style={[styles.centerSection, { flex: 1, gap: isTablet ? 32 : 40 }]}>
         {navScreens.map((screen) => (
           <Pressable
@@ -245,7 +238,6 @@ const TeacherHeader: React.FC<HeaderProps> = ({
         ))}
       </View>
 
-      {/* RIGHT CORNER SECTION - Notification forced to the end */}
       <View style={styles.rightCornerSection}>
         <TouchableOpacity 
           style={styles.notificationBtnCorner} 
@@ -264,39 +256,15 @@ const TeacherHeader: React.FC<HeaderProps> = ({
 };
 
 const styles = StyleSheet.create({
-  headerContainer: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    backgroundColor: '#FFF', 
-    borderBottomWidth: 1, 
-    borderBottomColor: '#EEE',
-    justifyContent: 'space-between' // This forces Left, Center, and Right to spread out
-  },
+  headerContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFF', borderBottomWidth: 1, borderBottomColor: '#EEE', justifyContent: 'space-between' },
   leftSection: { flexDirection: 'row', alignItems: 'center' },
-  centerSection: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    justifyContent: 'center',
-    position: 'absolute', // Ensures the center section stays truly centered
-    left: 0,
-    right: 0,
-    zIndex: -1, // Places it behind the logo and notification to prevent overlaps
-  },
-  rightCornerSection: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    justifyContent: 'flex-end',
-    minWidth: 80, // Ensures there is enough space reserved for the button
-  },
+  centerSection: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', position: 'absolute', left: 0, right: 0, zIndex: -1 },
+  rightCornerSection: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', minWidth: 80 },
   searchIconOnly: { borderWidth: 1, borderColor: '#D32F2F', borderRadius: 999, justifyContent: 'center', alignItems: 'center' },
   searchBar: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: '#D32F2F', borderRadius: 999, backgroundColor: '#FFF' },
   searchInput: { flex: 1, color: '#000', paddingVertical: Platform.select({ ios: 12, default: 8 }), borderWidth: 0, backgroundColor: 'transparent' },
   navBtn: { padding: 8, borderRadius: 12 },
-  notificationBtnCorner: { 
-    paddingVertical: 8, 
-    paddingLeft: 24, 
-    paddingRight: 24, // 24px right padding for consistent layout
-  },
+  notificationBtnCorner: { paddingVertical: 8, paddingLeft: 24, paddingRight: 24 },
   navBtnActive: { backgroundColor: 'rgba(211,47,47,0.08)' },
   navBtnHover: { backgroundColor: 'rgba(0,0,0,0.05)' },
   mobileNavRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 16, borderTopWidth: 1, borderTopColor: '#EEE' },
