@@ -49,7 +49,7 @@ export default function GeminiFloatingModal({
               ? {
                   width: width * 0.92,
                   height: height * 0.72,
-                  bottom: 85,
+                  bottom: 125,
                   right: 16,
                 }
               : {
@@ -195,7 +195,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.2,
     shadowRadius: 16,
     elevation: 12,
-    
+   
   },
 
   header: {

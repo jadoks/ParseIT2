@@ -61,8 +61,10 @@ const GenerateActivity = ({ activity, onBack }: GenerateActivityProps) => {
     return (
       <View style={styles.emptyContainer}>
         <Text style={styles.emptyTitle}>No generated activity found.</Text>
+
         {onBack && (
-          <TouchableOpacity style={styles.backBtn} onPress={onBack}>
+          <TouchableOpacity style={styles.backMaterial} onPress={onBack}>
+            
             <Text style={styles.backText}>Back</Text>
           </TouchableOpacity>
         )}
@@ -74,8 +76,9 @@ const GenerateActivity = ({ activity, onBack }: GenerateActivityProps) => {
     <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
       <View style={styles.wrapper}>
         {onBack && (
-          <TouchableOpacity style={styles.backTopBtn} onPress={onBack}>
-            <Text style={styles.backTopText}>Back</Text>
+          <TouchableOpacity style={styles.backMaterial} onPress={onBack}>
+            
+            <Text style={styles.backText}>Back</Text>
           </TouchableOpacity>
         )}
 
@@ -93,29 +96,11 @@ const GenerateActivity = ({ activity, onBack }: GenerateActivityProps) => {
           {activity.score !== null && activity.score !== undefined && (
             <Text style={styles.scoreText}>Previous Score: {activity.score}%</Text>
           )}
-
-          <View style={styles.badgeRow}>
-            <View style={styles.typeBadge}>
-              <Text style={styles.badgeText}>{activity.recommendationType.toUpperCase()}</Text>
-            </View>
-            <View style={styles.diffBadge}>
-              <Text style={styles.badgeText}>{activity.difficulty.toUpperCase()}</Text>
-            </View>
-          </View>
         </View>
 
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Instructions</Text>
           <Text style={styles.bodyText}>{activity.instructions}</Text>
-        </View>
-
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Concept Review</Text>
-          <Text style={styles.bodyText}>
-            {activity.topic} is one of the key areas connected to your recent performance. This
-            activity is meant to strengthen your understanding and help you improve in future
-            assignments.
-          </Text>
         </View>
 
         {quiz && (
@@ -144,45 +129,19 @@ const GenerateActivity = ({ activity, onBack }: GenerateActivityProps) => {
                 </TouchableOpacity>
               );
             })}
-
-            {showAnswer && (
-              <Text style={styles.feedbackText}>
-                {selectedOption === quiz.correctIndex
-                  ? '✅ Correct! Nice work.'
-                  : '❌ Not quite. Review the concept and try again.'}
-              </Text>
-            )}
           </View>
         )}
 
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Short Response</Text>
-          <Text style={styles.bodyText}>
-            Explain in your own words what "{activity.topic}" means and how it connects to this
-            course.
-          </Text>
 
           <TextInput
             value={shortAnswer}
             onChangeText={setShortAnswer}
-            placeholder="Write your answer here..."
-            placeholderTextColor="#999"
+            placeholder="Write your answer..."
             multiline
             style={styles.textInput}
           />
-        </View>
-
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Based on Materials</Text>
-          {activity.basedOnMaterials.length > 0 ? (
-            activity.basedOnMaterials.map((item, index) => (
-              <Text key={`${item}-${index}`} style={styles.materialItem}>
-                • {item}
-              </Text>
-            ))
-          ) : (
-            <Text style={styles.bodyText}>No linked materials found.</Text>
-          )}
         </View>
 
         {!completed ? (
@@ -206,189 +165,154 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#F6F7F9',
   },
+
   contentContainer: {
     padding: 20,
     paddingBottom: 40,
   },
+
   wrapper: {
     width: '100%',
     maxWidth: 1100,
     alignSelf: 'center',
   },
-  backTopBtn: {
-    marginBottom: 14,
-    backgroundColor: 'rgba(211, 47, 47, 0.07)',
-    width: 70,
-    height: 25,
-    borderRadius: 16,
-    justifyContent: 'center',
+
+  
+  backMaterial: {
+    flexDirection: 'row',
     alignItems: 'center',
+    alignSelf: 'flex-start',
+    backgroundColor: 'rgba(211, 47, 47, 0.1)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    marginBottom: 16,
   },
-  backTopText: {
+
+
+  backText: {
+    fontSize: 16,
+    fontWeight: '600',
     color: '#D32F2F',
-    fontWeight: '700',
-    fontSize: 15,
   },
+
   pageTitle: {
     fontWeight: '800',
     color: '#111',
     marginBottom: 16,
   },
+
   summaryCard: {
     backgroundColor: '#FFF',
     borderRadius: 16,
     padding: 18,
-    borderWidth: 1,
-    borderColor: '#EEE',
     marginBottom: 16,
   },
+
   courseText: {
     color: '#777',
     fontSize: 13,
-    marginBottom: 6,
   },
+
   topicText: {
-    color: '#111',
     fontSize: 20,
     fontWeight: '800',
-    marginBottom: 6,
+    marginVertical: 6,
   },
+
   assignmentText: {
     color: '#444',
     fontSize: 14,
-    marginBottom: 8,
   },
+
   scoreText: {
     color: '#D32F2F',
     fontWeight: '700',
-    marginBottom: 10,
+    marginTop: 8,
   },
-  badgeRow: {
-    flexDirection: 'row',
-    gap: 8,
-    flexWrap: 'wrap',
-  },
-  typeBadge: {
-    backgroundColor: '#D32F2F',
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-  },
-  diffBadge: {
-    backgroundColor: '#555',
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-  },
-  badgeText: {
-    color: '#FFF',
-    fontWeight: '700',
-    fontSize: 12,
-  },
+
   card: {
     backgroundColor: '#FFF',
     borderRadius: 16,
     padding: 18,
-    borderWidth: 1,
-    borderColor: '#EEE',
     marginBottom: 16,
   },
+
   cardTitle: {
     fontSize: 17,
     fontWeight: '800',
-    color: '#111',
     marginBottom: 10,
   },
+
   bodyText: {
     color: '#555',
     fontSize: 14,
-    lineHeight: 22,
   },
+
   questionText: {
-    color: '#222',
-    fontSize: 14,
-    lineHeight: 22,
     marginBottom: 12,
   },
+
   option: {
     borderWidth: 1,
     borderColor: '#DDD',
     borderRadius: 10,
     padding: 12,
     marginBottom: 8,
-    backgroundColor: '#FFF',
   },
+
   optionSelected: {
     borderColor: '#D32F2F',
   },
+
   optionCorrect: {
     borderColor: '#2E7D32',
     backgroundColor: '#E8F5E9',
   },
+
   optionWrong: {
     borderColor: '#D32F2F',
     backgroundColor: '#FFEBEE',
   },
+
   optionText: {
-    color: '#222',
     fontSize: 14,
   },
-  feedbackText: {
-    marginTop: 8,
-    fontWeight: '700',
-    color: '#333',
-  },
+
   textInput: {
     borderWidth: 1,
     borderColor: '#DDD',
     borderRadius: 12,
-    minHeight: 110,
+    minHeight: 100,
     padding: 12,
-    marginTop: 12,
-    textAlignVertical: 'top',
-    color: '#111',
   },
-  materialItem: {
-    color: '#555',
-    fontSize: 14,
-    lineHeight: 22,
-  },
+
   submitBtn: {
     backgroundColor: '#D32F2F',
+    padding: 14,
     borderRadius: 12,
-    paddingVertical: 14,
     alignItems: 'center',
   },
+
   completedBtn: {
     backgroundColor: '#2E7D32',
+    padding: 14,
     borderRadius: 12,
-    paddingVertical: 14,
     alignItems: 'center',
   },
+
   submitText: {
     color: '#FFF',
-    fontWeight: '800',
-    fontSize: 15,
+    fontWeight: '700',
   },
+
   emptyContainer: {
     flex: 1,
-    backgroundColor: '#FFF',
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 24,
   },
+
   emptyTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#222',
     marginBottom: 12,
-  },
-  backBtn: {
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-  },
-  backText: {
-    color: '#D32F2F',
-    fontWeight: '700',
   },
 });

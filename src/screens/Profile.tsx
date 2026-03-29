@@ -1,22 +1,25 @@
 import { useFocusEffect } from '@react-navigation/native';
 import * as DocumentPicker from 'expo-document-picker';
 import { router } from 'expo-router';
-import React, { useCallback, useRef, useState } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
   Image,
+  Keyboard,
   Modal,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   TouchableWithoutFeedback,
   View,
   useWindowDimensions,
 } from 'react-native';
+import Ionicons from 'react-native-vector-icons/Ionicons';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import PostQueryModal from '../components/PostQueryModal';
-import { CommunityPost } from './Community';
+import { CommunityAnswer, CommunityPost } from './Community';
 
 type CropType = 'profile' | 'banner';
 
@@ -33,23 +36,41 @@ declare global {
 interface ProfileProps {
   userPosts: CommunityPost[];
   onCreatePost?: (query: string) => void;
+  onAddAnswer?: (postId: string, message: string) => void;
+  userName?: string;
+  userEmail?: string;
+  profileImage: any;
+  bannerImage: any;
+  onChangeProfileImage: (image: any) => void;
+  onChangeBannerImage: (image: any) => void;
 }
 
-const Profile: React.FC<ProfileProps> = ({ userPosts, onCreatePost }) => {
+const DEFAULT_AVATAR = require('../../assets/images/pogi.jpg');
+
+const Profile: React.FC<ProfileProps> = ({
+  userPosts,
+  onCreatePost,
+  onAddAnswer,
+  userName = 'Jade Lisondra',
+  userEmail = 'jadelisondra101@gmail.com',
+  profileImage,
+  bannerImage,
+  onChangeProfileImage,
+  onChangeBannerImage,
+}) => {
   const { width } = useWindowDimensions();
   const isLargeScreen = width > 1000;
 
   const [queryModalVisible, setQueryModalVisible] = useState(false);
   const [editMenuVisible, setEditMenuVisible] = useState(false);
-  const [answersModalVisible, setAnswersModalVisible] = useState(false);
-  const [selectedPost, setSelectedPost] = useState<CommunityPost | null>(null);
 
-  const [profileImage, setProfileImage] = useState<any>(
-    require('../../assets/images/pogi.jpg')
-  );
-  const [bannerImage, setBannerImage] = useState<any>(
-    require('../../assets/images/venti_bg.png')
-  );
+  const [menuVisibleFor, setMenuVisibleFor] = useState<string | null>(null);
+  const [hiddenPosts, setHiddenPosts] = useState<string[]>([]);
+
+  const [answersModalVisible, setAnswersModalVisible] = useState(false);
+  const [selectedPostId, setSelectedPostId] = useState<string | null>(null);
+  const [localPosts, setLocalPosts] = useState<CommunityPost[]>(userPosts);
+  const [answerText, setAnswerText] = useState('');
 
   const [menuPosition, setMenuPosition] = useState({
     top: 0,
@@ -59,6 +80,15 @@ const Profile: React.FC<ProfileProps> = ({ userPosts, onCreatePost }) => {
   const editBtnRef = useRef<View | null>(null);
   const lastAppliedCropTs = useRef<number | null>(null);
 
+  React.useEffect(() => {
+    setLocalPosts(userPosts);
+  }, [userPosts]);
+
+  const selectedPost = useMemo(
+    () => localPosts.find((post) => post.id === selectedPostId) || null,
+    [localPosts, selectedPostId]
+  );
+
   useFocusEffect(
     useCallback(() => {
       const result = globalThis.__PROFILE_CROP_RESULT__;
@@ -67,14 +97,14 @@ const Profile: React.FC<ProfileProps> = ({ userPosts, onCreatePost }) => {
       if (lastAppliedCropTs.current === result.ts) return;
 
       if (result.type === 'profile') {
-        setProfileImage({ uri: result.uri });
+        onChangeProfileImage({ uri: result.uri });
       } else {
-        setBannerImage({ uri: result.uri });
+        onChangeBannerImage({ uri: result.uri });
       }
 
       lastAppliedCropTs.current = result.ts;
       globalThis.__PROFILE_CROP_RESULT__ = undefined;
-    }, [])
+    }, [onChangeBannerImage, onChangeProfileImage])
   );
 
   const openEditMenu = () => {
@@ -120,215 +150,323 @@ const Profile: React.FC<ProfileProps> = ({ userPosts, onCreatePost }) => {
   };
 
   const openAnswersModal = (post: CommunityPost) => {
-    setSelectedPost(post);
+    setSelectedPostId(post.id);
+    setAnswerText('');
     setAnswersModalVisible(true);
   };
 
   const closeAnswersModal = () => {
-    setSelectedPost(null);
+    setSelectedPostId(null);
+    setAnswerText('');
     setAnswersModalVisible(false);
   };
 
+  const handlePostAnswer = () => {
+    const trimmed = answerText.trim();
+    if (!trimmed || !selectedPostId) return;
+
+    const newAnswer: CommunityAnswer = {
+      id: `answer-${Date.now()}`,
+      userName,
+      avatar: profileImage?.uri ? { uri: profileImage.uri } : profileImage || DEFAULT_AVATAR,
+      answeredAt: new Date().toLocaleString(),
+      message: trimmed,
+    };
+
+    setLocalPosts((prev) =>
+      prev.map((post) =>
+        post.id === selectedPostId
+          ? { ...post, answers: [...post.answers, newAnswer] }
+          : post
+      )
+    );
+
+    onAddAnswer?.(selectedPostId, trimmed);
+    setAnswerText('');
+  };
+
   return (
-    <>
-      <ScrollView
-        style={styles.container}
-        contentContainerStyle={{ paddingBottom: 40 }}
-      >
-        <View style={styles.bannerContainer}>
-          <Image source={bannerImage} style={styles.banner} />
-        </View>
-
-        <View
-          style={[
-            styles.profileInfo,
-            !isLargeScreen && { paddingHorizontal: 10 },
-            isLargeScreen && { alignSelf: 'center', maxWidth: 600 },
-          ]}
+    <TouchableWithoutFeedback
+      onPress={() => {
+        if (!queryModalVisible && !answersModalVisible) {
+          setMenuVisibleFor(null);
+          Keyboard.dismiss();
+        }
+      }}
+    >
+      <View style={{ flex: 1 }}>
+        <ScrollView
+          style={styles.container}
+          contentContainerStyle={{ paddingBottom: 40 }}
+          keyboardShouldPersistTaps="handled"
         >
-          <Image source={profileImage} style={styles.avatar} />
-
-          <View style={styles.nameContainer}>
-            <Text style={styles.name}>Jade Lisondra</Text>
-            <Text style={styles.email}>jadelisondra101@gmail.com</Text>
-
-            <View ref={editBtnRef} collapsable={false}>
-              <TouchableOpacity
-                style={styles.editBtn}
-                onPress={openEditMenu}
-                activeOpacity={0.85}
-              >
-                <MaterialCommunityIcons
-                  name="pencil"
-                  size={14}
-                  color="#D32F2F"
-                />
-                <Text style={styles.editText}> Edit Profile </Text>
-              </TouchableOpacity>
-            </View>
+          <View style={styles.bannerContainer}>
+            <Image source={bannerImage} style={styles.banner} />
           </View>
-        </View>
 
-        <View style={styles.divider} />
-
-        <View
-          style={[
-            styles.askContainer,
-            !isLargeScreen && { paddingHorizontal: 10 },
-            isLargeScreen && { alignSelf: 'center', maxWidth: 600 },
-          ]}
-        >
-          <Image source={profileImage} style={styles.smallAvatar} />
-
-          <TouchableOpacity
-            style={styles.askInput}
-            onPress={() => setQueryModalVisible(true)}
-          >
-            <Text style={styles.askText}>Have a question, Jade?</Text>
-          </TouchableOpacity>
-        </View>
-
-        {userPosts.map((post) => (
           <View
-            key={post.id}
             style={[
-              styles.postCard,
+              styles.profileInfo,
+              !isLargeScreen && { paddingHorizontal: 10 },
               isLargeScreen && { alignSelf: 'center', maxWidth: 600 },
             ]}
           >
-            <View style={styles.postHeader}>
-              <Image source={profileImage} style={styles.postAvatar} />
+            <Image source={profileImage} style={styles.avatar} />
 
-              <View style={{ flex: 1 }}>
-                <Text style={styles.postName}>{post.userName}</Text>
-                <Text style={styles.postTime}>{post.dateTime}</Text>
+            <View style={styles.nameContainer}>
+              <Text style={styles.name}>{userName}</Text>
+              <Text style={styles.email}>{userEmail}</Text>
+
+              <View ref={editBtnRef} collapsable={false}>
+                <TouchableOpacity
+                  style={styles.editBtn}
+                  onPress={openEditMenu}
+                  activeOpacity={0.85}
+                >
+                  <MaterialCommunityIcons
+                    name="pencil"
+                    size={14}
+                    color="#D32F2F"
+                  />
+                  <Text style={styles.editText}> Edit Profile </Text>
+                </TouchableOpacity>
               </View>
-
-              <MaterialCommunityIcons
-                name="dots-vertical"
-                size={20}
-                color="#333"
-              />
             </View>
-
-            <Text style={styles.postText}>{post.content}</Text>
-
-            <TouchableOpacity onPress={() => openAnswersModal(post)}>
-              <Text style={styles.answerLink}>
-                View {post.answers.length} Answer(s)
-              </Text>
-            </TouchableOpacity>
           </View>
-        ))}
-      </ScrollView>
 
-      <Modal
-        visible={editMenuVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setEditMenuVisible(false)}
-      >
-        <Pressable
-          style={styles.dropdownOverlay}
-          onPress={() => setEditMenuVisible(false)}
-        >
+          <View style={styles.divider} />
+
           <View
             style={[
-              styles.dropdownMenu,
-              {
-                top: menuPosition.top,
-                left: menuPosition.left,
-              },
+              styles.askContainer,
+              !isLargeScreen && { paddingHorizontal: 10 },
+              isLargeScreen && { alignSelf: 'center', maxWidth: 600 },
             ]}
           >
-            <Text style={styles.dropdownTitle}>Choose Option</Text>
+            <Image source={profileImage} style={styles.smallAvatar} />
 
             <TouchableOpacity
-              style={styles.dropdownItem}
-              onPress={() => pickFile('profile')}
+              style={styles.askInput}
+              onPress={() => setQueryModalVisible(true)}
             >
-              <MaterialCommunityIcons
-                name="account-edit"
-                size={18}
-                color="#000"
-                style={styles.dropdownIcon}
-              />
-              <Text style={styles.dropdownText}>Avatar</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.dropdownItem}
-              onPress={() => pickFile('banner')}
-            >
-              <MaterialCommunityIcons
-                name="image-edit"
-                size={18}
-                color="#000"
-                style={styles.dropdownIcon}
-              />
-              <Text style={styles.dropdownText}>Banner</Text>
+              <Text style={styles.askText}>Have a question, {userName}?</Text>
             </TouchableOpacity>
           </View>
-        </Pressable>
-      </Modal>
 
-      <Modal
-        visible={answersModalVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={closeAnswersModal}
-      >
-        <TouchableWithoutFeedback onPress={closeAnswersModal}>
-          <View style={styles.modalOverlay}>
-            <TouchableWithoutFeedback onPress={() => {}}>
-              <View style={styles.answersModalCard}>
-                <View style={styles.answersModalHeader}>
-                  <Text style={styles.answersModalTitle}>Answers</Text>
-                  <TouchableOpacity onPress={closeAnswersModal}>
-                    <MaterialCommunityIcons name="close" size={22} color="#333" />
-                  </TouchableOpacity>
+          {localPosts
+            .filter((post) => !hiddenPosts.includes(post.id))
+            .map((post) => (
+              <View
+                key={post.id}
+                style={[
+                  styles.postCard,
+                  isLargeScreen && { alignSelf: 'center', maxWidth: 600 },
+                ]}
+              >
+                <View style={styles.postHeader}>
+                  <View style={styles.userRow}>
+                    <Image
+                      source={post.avatar || profileImage}
+                      style={styles.postAvatar}
+                    />
+                    <View style={{ flex: 1, marginLeft: 8 }}>
+                      <Text style={styles.postName}>{post.userName}</Text>
+                      <Text style={styles.postTime}>{post.dateTime}</Text>
+                    </View>
+                  </View>
+
+                  <View style={{ position: 'relative' }}>
+                    <TouchableOpacity
+                      onPress={() =>
+                        setMenuVisibleFor(
+                          menuVisibleFor === post.id ? null : post.id
+                        )
+                      }
+                    >
+                      <Ionicons
+                        name="ellipsis-vertical"
+                        size={20}
+                        color="#333"
+                      />
+                    </TouchableOpacity>
+
+                    {menuVisibleFor === post.id && (
+                      <View style={styles.dropdownPostMenu}>
+                        <TouchableOpacity
+                          style={styles.menuItem}
+                          onPress={() => {
+                            setHiddenPosts((prev) => [...prev, post.id]);
+                            setMenuVisibleFor(null);
+                          }}
+                        >
+                          <View style={styles.hideIconCircle}>
+                            <Ionicons name="eye-off" size={13} color="#fff" />
+                          </View>
+                          <Text style={styles.menuText}>Hide</Text>
+                        </TouchableOpacity>
+                      </View>
+                    )}
+                  </View>
                 </View>
 
-                {selectedPost && (
-                  <>
-                    <Text style={styles.selectedPostText}>{selectedPost.content}</Text>
+                <Text style={styles.postText}>{post.content}</Text>
 
-                    <ScrollView
-                      showsVerticalScrollIndicator={false}
-                      contentContainerStyle={styles.modalAnswersContainer}
-                    >
-                      {selectedPost.answers.length > 0 ? (
-                        selectedPost.answers.map((answer) => (
-                          <View key={answer.id} style={styles.answerCard}>
-                            <View style={styles.answerHeader}>
-                              <Image source={answer.avatar} style={styles.answerAvatar} />
-                              <View style={{ marginLeft: 10, flex: 1 }}>
-                                <Text style={styles.answerName}>{answer.userName}</Text>
-                                <Text style={styles.answerDate}>{answer.answeredAt}</Text>
-                              </View>
-                            </View>
-
-                            <Text style={styles.answerMessage}>{answer.message}</Text>
-                          </View>
-                        ))
-                      ) : (
-                        <Text style={styles.noAnswerText}>No answers yet.</Text>
-                      )}
-                    </ScrollView>
-                  </>
-                )}
+                <TouchableOpacity onPress={() => openAnswersModal(post)}>
+                  <Text style={styles.answerLink}>
+                    View {post.answers.length} Answer(s)
+                  </Text>
+                </TouchableOpacity>
               </View>
-            </TouchableWithoutFeedback>
-          </View>
-        </TouchableWithoutFeedback>
-      </Modal>
+            ))}
+        </ScrollView>
 
-      <PostQueryModal
-        visible={queryModalVisible}
-        onClose={() => setQueryModalVisible(false)}
-        onPost={onCreatePost}
-      />
-    </>
+        <Modal
+          visible={editMenuVisible}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setEditMenuVisible(false)}
+        >
+          <Pressable
+            style={styles.dropdownOverlay}
+            onPress={() => setEditMenuVisible(false)}
+          >
+            <View
+              style={[
+                styles.dropdownMenu,
+                {
+                  top: menuPosition.top,
+                  left: menuPosition.left,
+                },
+              ]}
+            >
+              <Text style={styles.dropdownTitle}>Choose Option</Text>
+
+              <TouchableOpacity
+                style={styles.dropdownItem}
+                onPress={() => pickFile('profile')}
+              >
+                <MaterialCommunityIcons
+                  name="account-edit"
+                  size={18}
+                  color="#000"
+                  style={styles.dropdownIcon}
+                />
+                <Text style={styles.dropdownText}>Avatar</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.dropdownItem}
+                onPress={() => pickFile('banner')}
+              >
+                <MaterialCommunityIcons
+                  name="image-edit"
+                  size={18}
+                  color="#000"
+                  style={styles.dropdownIcon}
+                />
+                <Text style={styles.dropdownText}>Banner</Text>
+              </TouchableOpacity>
+            </View>
+          </Pressable>
+        </Modal>
+
+        <Modal
+          visible={answersModalVisible}
+          transparent
+          animationType="fade"
+          onRequestClose={closeAnswersModal}
+        >
+          <TouchableWithoutFeedback onPress={closeAnswersModal}>
+            <View style={styles.modalOverlay}>
+              <TouchableWithoutFeedback onPress={() => {}}>
+                <View style={styles.answersModalCard}>
+                  <View style={styles.answersModalHeader}>
+                    <Text style={styles.answersModalTitle}>Answers</Text>
+                    <TouchableOpacity onPress={closeAnswersModal}>
+                      <Ionicons name="close" size={22} color="#333" />
+                    </TouchableOpacity>
+                  </View>
+
+                  {selectedPost && (
+                    <>
+                      <Text style={styles.selectedPostText}>
+                        {selectedPost.content}
+                      </Text>
+
+                      <ScrollView
+                        showsVerticalScrollIndicator={false}
+                        contentContainerStyle={styles.modalAnswersContainer}
+                        style={styles.answersScroll}
+                      >
+                        {selectedPost.answers.length > 0 ? (
+                          selectedPost.answers.map((answer) => (
+                            <View key={answer.id} style={styles.answerCard}>
+                              <View style={styles.answerPreviewHeader}>
+                                <View style={styles.userRow}>
+                                  <Image
+                                    source={answer.avatar}
+                                    style={styles.answerAvatar}
+                                  />
+                                  <View style={{ marginLeft: 8, flex: 1 }}>
+                                    <Text style={styles.answerUserName}>
+                                      {answer.userName}
+                                    </Text>
+                                    <Text style={styles.answerDate}>
+                                      {answer.answeredAt}
+                                    </Text>
+                                  </View>
+                                </View>
+                              </View>
+
+                              <Text style={styles.answerPreviewText}>
+                                {answer.message}
+                              </Text>
+                            </View>
+                          ))
+                        ) : (
+                          <Text style={styles.noAnswersText}>
+                            No answers yet.
+                          </Text>
+                        )}
+                      </ScrollView>
+
+                      <View style={styles.answerInputSection}>
+                        <Text style={styles.answerInputLabel}>
+                          Write an answer
+                        </Text>
+                        <TextInput
+                          style={styles.answerInput}
+                          placeholder="Type your answer here"
+                          placeholderTextColor="#999"
+                          multiline
+                          value={answerText}
+                          onChangeText={setAnswerText}
+                          textAlignVertical="top"
+                        />
+                        <TouchableOpacity
+                          style={styles.postAnswerButton}
+                          onPress={handlePostAnswer}
+                        >
+                          <Text style={styles.postAnswerButtonText}>
+                            Post Answer
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                    </>
+                  )}
+                </View>
+              </TouchableWithoutFeedback>
+            </View>
+          </TouchableWithoutFeedback>
+        </Modal>
+
+        <PostQueryModal
+          visible={queryModalVisible}
+          onClose={() => setQueryModalVisible(false)}
+          onPost={onCreatePost}
+        />
+      </View>
+    </TouchableWithoutFeedback>
   );
 };
 
@@ -456,15 +594,20 @@ const styles = StyleSheet.create({
 
   postHeader: {
     flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 10,
+  },
+
+  userRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
   },
 
   postAvatar: {
     width: 35,
     height: 35,
     borderRadius: 20,
-    marginRight: 10,
   },
 
   postName: {
@@ -484,9 +627,10 @@ const styles = StyleSheet.create({
   },
 
   answerLink: {
-    color: '#2962FF',
+    color: '#1976d2',
     marginTop: 8,
     fontSize: 13,
+    fontWeight: '400',
   },
 
   dropdownOverlay: {
@@ -536,6 +680,43 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
 
+  dropdownPostMenu: {
+    position: 'absolute',
+    marginTop: -10,
+    right: 15,
+    backgroundColor: '#fff',
+    borderRadius: 8,
+    paddingVertical: 6,
+    width: 80,
+    elevation: 6,
+    shadowColor: '#000',
+    shadowOpacity: 0.1,
+    shadowRadius: 5,
+    zIndex: 999,
+  },
+
+  menuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+
+  hideIconCircle: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: '#E53935',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+
+  menuText: {
+    marginLeft: 6,
+    fontSize: 14,
+    color: '#333',
+  },
+
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.35)',
@@ -547,7 +728,7 @@ const styles = StyleSheet.create({
   answersModalCard: {
     width: '100%',
     maxWidth: 520,
-    maxHeight: '80%',
+    maxHeight: '85%',
     backgroundColor: '#FFF',
     borderRadius: 18,
     padding: 18,
@@ -557,7 +738,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 14,
+    marginBottom: 16,
   },
 
   answersModalTitle: {
@@ -569,36 +750,39 @@ const styles = StyleSheet.create({
   selectedPostText: {
     fontSize: 15,
     color: '#333',
-    marginBottom: 14,
     lineHeight: 22,
+    marginBottom: 16,
+  },
+
+  answersScroll: {
+    maxHeight: 260,
   },
 
   modalAnswersContainer: {
-    gap: 12,
+    gap: 10,
+    paddingBottom: 4,
   },
 
   answerCard: {
-    backgroundColor: '#FAFAFA',
+    backgroundColor: '#F8F8F8',
     borderRadius: 12,
-    padding: 14,
+    padding: 12,
     borderWidth: 1,
-    borderColor: '#EAEAEA',
+    borderColor: '#E8E8E8',
   },
 
-  answerHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 10,
+  answerPreviewHeader: {
+    marginBottom: 6,
   },
 
   answerAvatar: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
   },
 
-  answerName: {
-    fontSize: 15,
+  answerUserName: {
+    fontSize: 14,
     fontWeight: '700',
     color: '#222',
   },
@@ -606,17 +790,59 @@ const styles = StyleSheet.create({
   answerDate: {
     fontSize: 12,
     color: '#777',
-    marginTop: 2,
   },
 
-  answerMessage: {
+  answerPreviewText: {
     fontSize: 14,
-    color: '#444',
-    lineHeight: 22,
+    color: '#555',
+    lineHeight: 20,
   },
 
-  noAnswerText: {
+  noAnswersText: {
+    fontSize: 14,
     color: '#777',
+    textAlign: 'center',
+    paddingVertical: 12,
+  },
+
+  answerInputSection: {
+    marginTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#EEE',
+    paddingTop: 14,
+  },
+
+  answerInputLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#222',
+    marginBottom: 8,
+  },
+
+  answerInput: {
+    minHeight: 90,
+    borderWidth: 1,
+    borderColor: '#D9D9D9',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 14,
+    color: '#222',
+    backgroundColor: '#FFF',
+  },
+
+  postAnswerButton: {
+    alignSelf: 'flex-start',
+    marginTop: 12,
+    backgroundColor: '#D32F2F',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 8,
+  },
+
+  postAnswerButtonText: {
+    color: '#FFF',
+    fontWeight: '600',
     fontSize: 14,
   },
 });

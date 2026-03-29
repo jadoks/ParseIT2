@@ -3,6 +3,7 @@ import {
   Image,
   ImageBackground,
   PanResponder,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -236,6 +237,7 @@ const hasMovesAvailable = (board: CellValue[]) => {
 export default function FruitMania({ onBack }: any) {
   const { width, height } = useWindowDimensions();
   const isLargeScreen = width >= 768;
+  const canUseKeyboard = Platform.OS === 'web' && isLargeScreen;
 
   const [screenMode, setScreenMode] = useState<ScreenMode>('menu');
   const [board, setBoard] = useState<CellValue[]>(createInitialBoard());
@@ -290,9 +292,9 @@ export default function FruitMania({ onBack }: any) {
   };
 
   useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (screenMode !== 'game' || gameOver) return;
+    if (!canUseKeyboard || screenMode !== 'game' || gameOver) return;
 
+    const handleKeyDown = (event: KeyboardEvent) => {
       switch (event.key) {
         case 'ArrowUp':
           event.preventDefault();
@@ -315,16 +317,12 @@ export default function FruitMania({ onBack }: any) {
       }
     };
 
-    if (typeof window !== 'undefined') {
-      window.addEventListener('keydown', handleKeyDown);
-    }
+    window.addEventListener('keydown', handleKeyDown);
 
     return () => {
-      if (typeof window !== 'undefined') {
-        window.removeEventListener('keydown', handleKeyDown);
-      }
+      window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [screenMode, gameOver]);
+  }, [canUseKeyboard, screenMode, gameOver]);
 
   const panResponder = useRef(
     PanResponder.create({
@@ -435,14 +433,14 @@ export default function FruitMania({ onBack }: any) {
           ) : null}
         </View>
 
-       {isLargeScreen ? (
-        <View style={styles.legendWrap}>
-          <Text style={styles.legendTitle}>Keyboard Controls</Text>
-          <Text style={styles.legendRow}>
-            ↑ = up   ↓ = down   ← = left   → = right
-          </Text>
-        </View>
-      ) : null}
+        {canUseKeyboard ? (
+          <View style={styles.legendWrap}>
+            <Text style={styles.legendTitle}>Keyboard Controls</Text>
+            <Text style={styles.legendRow}>
+              ↑ = up   ↓ = down   ← = left   → = right
+            </Text>
+          </View>
+        ) : null}
       </ScrollView>
     </ImageBackground>
   );
@@ -622,12 +620,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     borderRadius: 14,
   },
-legendRow: {
-  fontSize: 18,
-  color: '#5a4500',
-  fontWeight: '500',
-  textAlign: 'center',
-},
+
+  legendRow: {
+    fontSize: 18,
+    color: '#5a4500',
+    fontWeight: '500',
+    textAlign: 'center',
+  },
+
   legendTitle: {
     fontSize: 18,
     fontWeight: '700',

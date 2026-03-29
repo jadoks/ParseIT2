@@ -361,7 +361,6 @@ const styles = StyleSheet.create({
   homeHeader: {
     paddingHorizontal: 16,
     paddingTop: 14,
-    paddingBottom: 10,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
@@ -369,9 +368,13 @@ const styles = StyleSheet.create({
   },
 
   logoText: {
-    fontSize: 26,
-    fontWeight: '900',
-    color: '#000000',
+    marginTop: -10,
+    marginLeft: -12,
+    fontSize: 30,
+    fontWeight: 'bold',
+    paddingBottom: 10,
+    textAlign: 'left',
+    marginBottom: 20,
   },
 
   filterBtn: {

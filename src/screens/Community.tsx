@@ -36,15 +36,17 @@ export interface CommunityPost {
 
 interface CommunityProps {
   userName?: string;
+  userAvatar?: any;
   posts: CommunityPost[];
   onCreatePost?: (query: string) => void;
-  onAddAnswer?: (postId: string, message: string) => void; // ✅ ADD THIS
+  onAddAnswer?: (postId: string, message: string) => void;
 }
 
-const DEFAULT_AVATAR = require('../../assets/images/default_profile.png');
+const DEFAULT_AVATAR = require('../../assets/images/pogi.jpg');
 
 const Community: React.FC<CommunityProps> = ({
-  userName = 'Jade',
+  userName = 'Jade Lisondra',
+  userAvatar = DEFAULT_AVATAR,
   posts,
   onCreatePost,
   onAddAnswer,
@@ -89,7 +91,7 @@ const Community: React.FC<CommunityProps> = ({
     const newAnswer: CommunityAnswer = {
       id: `answer-${Date.now()}`,
       userName,
-      avatar: DEFAULT_AVATAR,
+      avatar: userAvatar,
       answeredAt: new Date().toLocaleString(),
       message: trimmed,
     };
@@ -101,7 +103,8 @@ const Community: React.FC<CommunityProps> = ({
           : post
       )
     );
-    
+
+    onAddAnswer?.(selectedPostId, trimmed);
     setAnswerText('');
   };
 
@@ -181,7 +184,7 @@ const Community: React.FC<CommunityProps> = ({
 
             <View style={styles.inputRow}>
               <Image
-                source={DEFAULT_AVATAR}
+                source={userAvatar}
                 style={styles.inputAvatar}
               />
               <TouchableOpacity

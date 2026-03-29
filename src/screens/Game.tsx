@@ -7,6 +7,7 @@ import {
   StyleSheet,
   Text,
   View,
+  useWindowDimensions,
 } from 'react-native';
 
 type GameScreen = 'flipit' | 'fruitmania' | 'quizmasters';
@@ -24,6 +25,9 @@ interface Props {
 }
 
 const Game = ({ onNavigate }: Props) => {
+  const { width } = useWindowDimensions();
+  const isSmallScreen = width < 768;
+
   const games: GameItem[] = [
     {
       id: 1,
@@ -79,12 +83,19 @@ const Game = ({ onNavigate }: Props) => {
 
       <View style={styles.grid}>
         {games.map((game) => {
-          const imgEntry = imgMap[game.title] || { src: undefined, style: undefined };
+          const imgEntry = imgMap[game.title] || {
+            src: undefined,
+            style: undefined,
+          };
 
           return (
             <Pressable
               key={game.id}
-              style={({ pressed }) => [styles.gameCard, pressed && styles.gameCardPressed]}
+              style={({ pressed }) => [
+                styles.gameCard,
+                isSmallScreen && styles.gameCardSmall,
+                pressed && styles.gameCardPressed,
+              ]}
               onPress={() => handlePress(game.screen)}
             >
               <ImageBackground
@@ -111,9 +122,12 @@ const Game = ({ onNavigate }: Props) => {
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 20 },
+  container: {
+    flex: 1,
+    padding: 20,
+  },
   pageTitle: {
-    fontSize: 25,
+    fontSize: 30,
     fontWeight: 'bold',
     paddingBottom: 10,
     textAlign: 'left',
@@ -122,12 +136,11 @@ const styles = StyleSheet.create({
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    justifyContent: 'center',
+    justifyContent: 'space-between',
     gap: 15,
   },
   gameCard: {
     width: '31%',
-    minWidth: 250,
     aspectRatio: 1.5,
     backgroundColor: '#FFF',
     borderRadius: 20,
@@ -138,6 +151,9 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     elevation: 4,
     overflow: 'hidden',
+  },
+  gameCardSmall: {
+    width: '100%',
   },
   gameCardPressed: {
     transform: [{ scale: 0.98 }],
