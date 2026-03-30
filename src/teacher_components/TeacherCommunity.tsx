@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   FlatList,
   Image,
@@ -7,13 +7,13 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   TouchableWithoutFeedback,
   View,
   useWindowDimensions,
 } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
-import PostQueryModal2 from './TeacherPostQueryModal';
 
 export interface CommunityAnswer {
   id: string;
@@ -36,31 +36,75 @@ export interface CommunityPost {
 interface CommunityProps {
   userName?: string;
   posts: CommunityPost[];
-  onCreatePost?: (query: string) => void;
+  onCreatePost?: () => void;
+  onAddAnswer?: (postId: string, message: string) => void;
 }
+
+const DEFAULT_AVATAR = require('../../assets/images/default_profile.png');
 
 const Community: React.FC<CommunityProps> = ({
   userName = 'Jade',
   posts,
   onCreatePost,
+  onAddAnswer,
 }) => {
   const [menuVisibleFor, setMenuVisibleFor] = useState<string | null>(null);
   const [hiddenPosts, setHiddenPosts] = useState<string[]>([]);
-  const [modalVisible, setModalVisible] = useState(false);
-  const [selectedPost, setSelectedPost] = useState<CommunityPost | null>(null);
+
   const [answersModalVisible, setAnswersModalVisible] = useState(false);
+  const [selectedPostId, setSelectedPostId] = useState<string | null>(null);
+  const [localPosts, setLocalPosts] = useState<CommunityPost[]>(posts);
+  const [answerText, setAnswerText] = useState('');
 
   const { width } = useWindowDimensions();
   const isLargeScreen = width >= 1024;
 
+  React.useEffect(() => {
+    setLocalPosts(posts);
+  }, [posts]);
+
+  const selectedPost = useMemo(
+    () => localPosts.find((post) => post.id === selectedPostId) || null,
+    [localPosts, selectedPostId]
+  );
+
   const openAnswersModal = (post: CommunityPost) => {
-    setSelectedPost(post);
+    setSelectedPostId(post.id);
+    setAnswerText('');
     setAnswersModalVisible(true);
   };
 
   const closeAnswersModal = () => {
-    setSelectedPost(null);
+    setSelectedPostId(null);
+    setAnswerText('');
     setAnswersModalVisible(false);
+  };
+
+  const handlePostAnswer = () => {
+    const trimmed = answerText.trim();
+    if (!trimmed || !selectedPostId) return;
+
+    const newAnswer: CommunityAnswer = {
+      id: `answer-${Date.now()}`,
+      userName,
+      avatar: DEFAULT_AVATAR,
+      answeredAt: new Date().toLocaleString(),
+      message: trimmed,
+    };
+
+    if (onAddAnswer) {
+      onAddAnswer(selectedPostId, trimmed);
+    }
+
+    setLocalPosts((prev) =>
+      prev.map((post) =>
+        post.id === selectedPostId
+          ? { ...post, answers: [...post.answers, newAnswer] }
+          : post
+      )
+    );
+
+    setAnswerText('');
   };
 
   const renderPost = ({ item }: { item: CommunityPost }) => {
@@ -89,7 +133,7 @@ const Community: React.FC<CommunityProps> = ({
                 <TouchableOpacity
                   style={styles.menuItem}
                   onPress={() => {
-                    setHiddenPosts([...hiddenPosts, item.id]);
+                    setHiddenPosts((prev) => [...prev, item.id]);
                     setMenuVisibleFor(null);
                   }}
                 >
@@ -105,13 +149,11 @@ const Community: React.FC<CommunityProps> = ({
 
         <Text style={styles.postContent}>{item.content}</Text>
 
-        {item.answers.length > 0 && (
-          <TouchableOpacity onPress={() => openAnswersModal(item)}>
-            <Text style={styles.showAnswersBtn}>
-              View {item.answers.length} Answer(s)
-            </Text>
-          </TouchableOpacity>
-        )}
+        <TouchableOpacity onPress={() => openAnswersModal(item)}>
+          <Text style={styles.showAnswersBtn}>
+            View {item.answers.length} Answer(s)
+          </Text>
+        </TouchableOpacity>
       </View>
     );
   };
@@ -119,7 +161,7 @@ const Community: React.FC<CommunityProps> = ({
   return (
     <TouchableWithoutFeedback
       onPress={() => {
-        if (!modalVisible && !answersModalVisible) {
+        if (!answersModalVisible) {
           setMenuVisibleFor(null);
           Keyboard.dismiss();
         }
@@ -140,13 +182,10 @@ const Community: React.FC<CommunityProps> = ({
             </View>
 
             <View style={styles.inputRow}>
-              <Image
-                source={require('../../assets/images/default_profile.png')}
-                style={styles.inputAvatar}
-              />
+              <Image source={DEFAULT_AVATAR} style={styles.inputAvatar} />
               <TouchableOpacity
                 style={styles.inputField}
-                onPress={() => setModalVisible(true)}
+                onPress={onCreatePost}
               >
                 <Text style={{ color: '#999' }}>
                   Have a question, {userName}?
@@ -155,7 +194,7 @@ const Community: React.FC<CommunityProps> = ({
             </View>
 
             <FlatList
-              data={posts.filter((post) => !hiddenPosts.includes(post.id))}
+              data={localPosts.filter((post) => !hiddenPosts.includes(post.id))}
               keyExtractor={(item) => item.id}
               renderItem={renderPost}
               scrollEnabled={false}
@@ -163,12 +202,6 @@ const Community: React.FC<CommunityProps> = ({
             />
           </View>
         </ScrollView>
-
-        <PostQueryModal2
-          visible={modalVisible}
-          onClose={() => setModalVisible(false)}
-          onPost={onCreatePost}
-        />
 
         <Modal
           visible={answersModalVisible}
@@ -189,21 +222,31 @@ const Community: React.FC<CommunityProps> = ({
 
                   {selectedPost && (
                     <>
-                      <Text style={styles.selectedPostText}>{selectedPost.content}</Text>
+                      <Text style={styles.selectedPostText}>
+                        {selectedPost.content}
+                      </Text>
 
                       <ScrollView
                         showsVerticalScrollIndicator={false}
                         contentContainerStyle={styles.modalAnswersContainer}
+                        style={styles.answersScroll}
                       >
                         {selectedPost.answers.length > 0 ? (
                           selectedPost.answers.map((answer) => (
                             <View key={answer.id} style={styles.answerCard}>
                               <View style={styles.answerPreviewHeader}>
                                 <View style={styles.userRow}>
-                                  <Image source={answer.avatar} style={styles.answerAvatar} />
+                                  <Image
+                                    source={answer.avatar}
+                                    style={styles.answerAvatar}
+                                  />
                                   <View style={{ marginLeft: 8, flex: 1 }}>
-                                    <Text style={styles.answerUserName}>{answer.userName}</Text>
-                                    <Text style={styles.answerDate}>{answer.answeredAt}</Text>
+                                    <Text style={styles.answerUserName}>
+                                      {answer.userName}
+                                    </Text>
+                                    <Text style={styles.answerDate}>
+                                      {answer.answeredAt}
+                                    </Text>
                                   </View>
                                 </View>
                               </View>
@@ -214,9 +257,34 @@ const Community: React.FC<CommunityProps> = ({
                             </View>
                           ))
                         ) : (
-                          <Text style={styles.noAnswersText}>No answers yet.</Text>
+                          <Text style={styles.noAnswersText}>
+                            No answers yet.
+                          </Text>
                         )}
                       </ScrollView>
+
+                      <View style={styles.answerInputSection}>
+                        <Text style={styles.answerInputLabel}>
+                          Write an answer
+                        </Text>
+                        <TextInput
+                          style={styles.answerInput}
+                          placeholder="Type your answer here"
+                          placeholderTextColor="#999"
+                          multiline
+                          value={answerText}
+                          onChangeText={setAnswerText}
+                          textAlignVertical="top"
+                        />
+                        <TouchableOpacity
+                          style={styles.postAnswerButton}
+                          onPress={handlePostAnswer}
+                        >
+                          <Text style={styles.postAnswerButtonText}>
+                            Post Answer
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
                     </>
                   )}
                 </View>
@@ -385,7 +453,7 @@ const styles = StyleSheet.create({
   answersModalCard: {
     width: '100%',
     maxWidth: 520,
-    maxHeight: '80%',
+    maxHeight: '85%',
     backgroundColor: '#FFF',
     borderRadius: 18,
     padding: 18,
@@ -409,6 +477,10 @@ const styles = StyleSheet.create({
     color: '#333',
     lineHeight: 22,
     marginBottom: 16,
+  },
+
+  answersScroll: {
+    maxHeight: 260,
   },
 
   modalAnswersContainer: {
@@ -456,6 +528,47 @@ const styles = StyleSheet.create({
     color: '#777',
     textAlign: 'center',
     paddingVertical: 12,
+  },
+
+  answerInputSection: {
+    marginTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#EEE',
+    paddingTop: 14,
+  },
+
+  answerInputLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#222',
+    marginBottom: 8,
+  },
+
+  answerInput: {
+    minHeight: 90,
+    borderWidth: 1,
+    borderColor: '#D9D9D9',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 14,
+    color: '#222',
+    backgroundColor: '#FFF',
+  },
+
+  postAnswerButton: {
+    alignSelf: 'flex-start',
+    marginTop: 12,
+    backgroundColor: '#D32F2F',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 8,
+  },
+
+  postAnswerButtonText: {
+    color: '#FFF',
+    fontWeight: '600',
+    fontSize: 14,
   },
 });
 

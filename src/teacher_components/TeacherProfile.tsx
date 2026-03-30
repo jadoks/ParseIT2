@@ -1,3 +1,4 @@
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import * as DocumentPicker from 'expo-document-picker';
 import { router } from 'expo-router';
@@ -14,8 +15,6 @@ import {
   View,
   useWindowDimensions,
 } from 'react-native';
-import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
-import PostQueryModal from '../components/PostQueryModal';
 import { CommunityPost } from './TeacherCommunity';
 
 type CropType = 'profile' | 'banner';
@@ -32,14 +31,20 @@ declare global {
 
 interface ProfileProps {
   userPosts: CommunityPost[];
-  onCreatePost?: (query: string) => void;
+  onCreatePost?: () => void;
+  onBack: () => void;
+  onLogout: () => void;
 }
 
-const Profile: React.FC<ProfileProps> = ({ userPosts, onCreatePost }) => {
+const Profile: React.FC<ProfileProps> = ({
+  userPosts,
+  onCreatePost,
+  onBack,
+  onLogout,
+}) => {
   const { width } = useWindowDimensions();
   const isLargeScreen = width > 1000;
 
-  const [queryModalVisible, setQueryModalVisible] = useState(false);
   const [editMenuVisible, setEditMenuVisible] = useState(false);
   const [answersModalVisible, setAnswersModalVisible] = useState(false);
   const [selectedPost, setSelectedPost] = useState<CommunityPost | null>(null);
@@ -108,7 +113,7 @@ const Profile: React.FC<ProfileProps> = ({ userPosts, onCreatePost }) => {
       if (!selected?.uri) return;
 
       router.push({
-        pathname: '/CropScreen',
+        pathname: '/CropScreen' as any,
         params: {
           imageUri: selected.uri,
           cropType: type,
@@ -149,7 +154,7 @@ const Profile: React.FC<ProfileProps> = ({ userPosts, onCreatePost }) => {
           <Image source={profileImage} style={styles.avatar} />
 
           <View style={styles.nameContainer}>
-            <Text style={styles.name}>Rmacee Jade Munoz</Text>
+            <Text style={styles.name}>Ramcee Jade L. Munoz</Text>
             <Text style={styles.email}>ludoviceramceejademunoz@gmail.com</Text>
 
             <View ref={editBtnRef} collapsable={false}>
@@ -182,7 +187,7 @@ const Profile: React.FC<ProfileProps> = ({ userPosts, onCreatePost }) => {
 
           <TouchableOpacity
             style={styles.askInput}
-            onPress={() => setQueryModalVisible(true)}
+            onPress={onCreatePost}
           >
             <Text style={styles.askText}>Have a question, Jade?</Text>
           </TouchableOpacity>
@@ -213,13 +218,11 @@ const Profile: React.FC<ProfileProps> = ({ userPosts, onCreatePost }) => {
 
             <Text style={styles.postText}>{post.content}</Text>
 
-            {post.answers.length > 0 && (
-              <TouchableOpacity onPress={() => openAnswersModal(post)}>
-                <Text style={styles.answerLink}>
-                  View {post.answers.length} Answer(s)
-                </Text>
-              </TouchableOpacity>
-            )}
+            <TouchableOpacity onPress={() => openAnswersModal(post)}>
+              <Text style={styles.answerLink}>
+                View {post.answers.length} Answer(s)
+              </Text>
+            </TouchableOpacity>
           </View>
         ))}
       </ScrollView>
@@ -295,10 +298,13 @@ const Profile: React.FC<ProfileProps> = ({ userPosts, onCreatePost }) => {
                   <>
                     <Text style={styles.selectedPostText}>{selectedPost.content}</Text>
 
-                    <View style={styles.answersList}>
+                    <ScrollView
+                      showsVerticalScrollIndicator={false}
+                      contentContainerStyle={styles.modalAnswersContainer}
+                    >
                       {selectedPost.answers.length > 0 ? (
                         selectedPost.answers.map((answer) => (
-                          <View key={answer.id} style={styles.answerItem}>
+                          <View key={answer.id} style={styles.answerCard}>
                             <View style={styles.answerHeader}>
                               <Image source={answer.avatar} style={styles.answerAvatar} />
                               <View style={{ marginLeft: 10, flex: 1 }}>
@@ -313,7 +319,7 @@ const Profile: React.FC<ProfileProps> = ({ userPosts, onCreatePost }) => {
                       ) : (
                         <Text style={styles.noAnswerText}>No answers yet.</Text>
                       )}
-                    </View>
+                    </ScrollView>
                   </>
                 )}
               </View>
@@ -321,12 +327,6 @@ const Profile: React.FC<ProfileProps> = ({ userPosts, onCreatePost }) => {
           </View>
         </TouchableWithoutFeedback>
       </Modal>
-
-      <PostQueryModal
-        visible={queryModalVisible}
-        onClose={() => setQueryModalVisible(false)}
-        onPost={onCreatePost}
-      />
     </>
   );
 };
@@ -337,19 +337,16 @@ const styles = StyleSheet.create({
     backgroundColor: '#ffffff',
     paddingHorizontal: 20,
   },
-
   bannerContainer: {
     alignItems: 'center',
     marginTop: 20,
   },
-
   banner: {
     width: '100%',
     maxWidth: 800,
     height: 150,
     borderRadius: 6,
   },
-
   profileInfo: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -358,7 +355,6 @@ const styles = StyleSheet.create({
     maxWidth: 800,
     width: '100%',
   },
-
   avatar: {
     width: 95,
     height: 95,
@@ -368,23 +364,19 @@ const styles = StyleSheet.create({
     marginRight: 15,
     marginTop: -20,
   },
-
   nameContainer: {
     justifyContent: 'center',
     marginTop: 20,
   },
-
   name: {
     fontSize: 22,
     fontWeight: '700',
     color: '#111',
   },
-
   email: {
     color: '#666',
     marginTop: 4,
   },
-
   editBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -395,12 +387,10 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     alignSelf: 'flex-start',
   },
-
   editText: {
     color: '#D32F2F',
     fontWeight: '600',
   },
-
   divider: {
     height: 1,
     backgroundColor: '#DDD',
@@ -409,7 +399,6 @@ const styles = StyleSheet.create({
     maxWidth: 700,
     alignSelf: 'center',
   },
-
   askContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -418,14 +407,12 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 800,
   },
-
   smallAvatar: {
     width: 35,
     height: 35,
     borderRadius: 20,
     marginRight: 12,
   },
-
   askInput: {
     flex: 1,
     borderWidth: 1.5,
@@ -436,11 +423,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFF',
     justifyContent: 'center',
   },
-
   askText: {
     color: '#999',
   },
-
   postCard: {
     borderRadius: 16,
     borderLeftWidth: 5,
@@ -452,47 +437,39 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     marginBottom: 14,
   },
-
   postHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 10,
   },
-
   postAvatar: {
     width: 35,
     height: 35,
     borderRadius: 20,
     marginRight: 10,
   },
-
   postName: {
     fontWeight: '700',
     color: '#111',
   },
-
   postTime: {
     fontSize: 12,
     color: '#777',
   },
-
   postText: {
     marginTop: 8,
     fontSize: 15,
     color: '#333',
   },
-
   answerLink: {
     color: '#2962FF',
     marginTop: 8,
     fontSize: 13,
   },
-
   dropdownOverlay: {
     flex: 1,
     backgroundColor: 'transparent',
   },
-
   dropdownMenu: {
     position: 'absolute',
     width: 230,
@@ -506,7 +483,6 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     elevation: 8,
   },
-
   dropdownTitle: {
     fontSize: 18,
     fontWeight: '700',
@@ -514,7 +490,6 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     color: '#333',
   },
-
   dropdownItem: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -524,17 +499,14 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     marginBottom: 12,
   },
-
   dropdownIcon: {
     marginRight: 8,
   },
-
   dropdownText: {
     fontSize: 16,
     color: '#222',
     fontWeight: '500',
   },
-
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.35)',
@@ -542,78 +514,66 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 20,
   },
-
   answersModalCard: {
     width: '100%',
     maxWidth: 520,
+    maxHeight: '80%',
     backgroundColor: '#FFF',
     borderRadius: 18,
     padding: 18,
-    maxHeight: '80%',
   },
-
   answersModalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 14,
   },
-
   answersModalTitle: {
     fontSize: 18,
     fontWeight: '700',
     color: '#222',
   },
-
   selectedPostText: {
     fontSize: 15,
     color: '#333',
     marginBottom: 14,
     lineHeight: 22,
   },
-
-  answersList: {
+  modalAnswersContainer: {
     gap: 12,
   },
-
-  answerItem: {
+  answerCard: {
     backgroundColor: '#FAFAFA',
     borderRadius: 12,
     padding: 14,
     borderWidth: 1,
     borderColor: '#EAEAEA',
   },
-
   answerHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 10,
   },
-
   answerAvatar: {
     width: 38,
     height: 38,
     borderRadius: 19,
   },
-
   answerName: {
     fontSize: 15,
     fontWeight: '700',
     color: '#222',
   },
-
   answerDate: {
     fontSize: 12,
     color: '#777',
     marginTop: 2,
   },
-
   answerMessage: {
     fontSize: 14,
     color: '#444',
     lineHeight: 22,
   },
-
   noAnswerText: {
     color: '#777',
     fontSize: 14,
