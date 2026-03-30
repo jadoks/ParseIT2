@@ -6,59 +6,85 @@ import {
   Text,
   TouchableOpacity,
   View,
-  useWindowDimensions
+  useWindowDimensions,
 } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { heightPercentageToDP as hp, widthPercentageToDP as wp } from 'react-native-responsive-screen';
+import {
+  heightPercentageToDP as hp,
+  widthPercentageToDP as wp,
+} from 'react-native-responsive-screen';
 import { Announcement } from './AnnouncementModal';
 
 interface AnnouncementBannerProps {
   announcements: Announcement[];
 }
 
+const AUTO_SLIDE_MS = 5000;
+
 const AnnouncementBanner = ({ announcements }: AnnouncementBannerProps) => {
+  const { width, height } = useWindowDimensions();
+
   const [currentIndex, setCurrentIndex] = useState(0);
+  const [swipeStart, setSwipeStart] = useState(0);
+
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const { width } = useWindowDimensions();
-  
-  // Determine if on mobile/tablet
+
   const isMobile = width < 768;
   const isTablet = width >= 768 && width < 1024;
   const shouldShowSwipe = isMobile || isTablet;
-  
-  // Track swipe state
-  const [swipeStart, setSwipeStart] = useState(0);
   const minSwipeDistance = width * 0.1;
 
-  const handlePrev = () => {
-    if (currentIndex > 0) {
-      setCurrentIndex(idx => idx - 1);
-    }
-  };
+  const hasAnnouncements = announcements.length > 0;
+  const currentAnnouncement = hasAnnouncements ? announcements[currentIndex] : null;
 
-  const handleNext = () => {
-    if (currentIndex < announcements.length - 1) {
-      setCurrentIndex(idx => idx + 1);
-    }
-  };
+  const bannerHeight = isMobile
+    ? Math.max(180, Math.min(height * 0.24, 240))
+    : isTablet
+    ? Math.max(220, Math.min(height * 0.28, 300))
+    : Math.max(240, Math.min(height * 0.3, 340));
 
-  // Auto-slide effect (without animation)
-  useEffect(() => {
-    if (announcements.length <= 1) return;
+  const horizontalPadding = isMobile ? 16 : isTablet ? 22 : 28;
+  const titleFontSize = isMobile ? 18 : isTablet ? 21 : 26;
+  const messageFontSize = isMobile ? 12 : isTablet ? 13 : 15;
+
+  const resetAutoSlide = () => {
     if (timerRef.current) clearTimeout(timerRef.current);
 
+    if (announcements.length <= 1) return;
+
     timerRef.current = setTimeout(() => {
-      if (currentIndex < announcements.length - 1) {
-        setCurrentIndex(idx => idx + 1);
-      } else {
-        setCurrentIndex(0);
-      }
-    }, 5000);
+      setCurrentIndex((prev) => (prev < announcements.length - 1 ? prev + 1 : 0));
+    }, AUTO_SLIDE_MS);
+  };
+
+  useEffect(() => {
+    resetAutoSlide();
 
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);
     };
   }, [currentIndex, announcements.length]);
+
+  useEffect(() => {
+    if (!hasAnnouncements) return;
+    if (currentIndex > announcements.length - 1) {
+      setCurrentIndex(0);
+    }
+  }, [announcements.length, currentIndex, hasAnnouncements]);
+
+  const handlePrev = () => {
+    if (!hasAnnouncements) return;
+    setCurrentIndex((prev) => (prev > 0 ? prev - 1 : announcements.length - 1));
+  };
+
+  const handleNext = () => {
+    if (!hasAnnouncements) return;
+    setCurrentIndex((prev) => (prev < announcements.length - 1 ? prev + 1 : 0));
+  };
+
+  const handleDotPress = (index: number) => {
+    setCurrentIndex(index);
+  };
 
   const handleSwipeStart = (e: GestureResponderEvent) => {
     setSwipeStart(e.nativeEvent.pageX);
@@ -75,92 +101,122 @@ const AnnouncementBanner = ({ announcements }: AnnouncementBannerProps) => {
     }
   };
 
-  const currentAnnouncement = announcements[currentIndex];
+  if (!hasAnnouncements) {
+    return (
+      <View style={[styles.bannerContainer, styles.emptyBanner, { height: bannerHeight }]}>
+        <Text style={styles.emptyTitle}>No announcements yet</Text>
+        <Text style={styles.emptyMessage}>
+          New announcements will appear here once available.
+        </Text>
+      </View>
+    );
+  }
 
   return (
-    
-    <GestureHandlerRootView style={styles.bannerContainer}>
-      
+    <GestureHandlerRootView style={[styles.bannerContainer, { height: bannerHeight }]}>
       <View
         onStartShouldSetResponder={() => shouldShowSwipe}
         onMoveShouldSetResponder={() => shouldShowSwipe}
         onResponderGrant={handleSwipeStart}
         onResponderRelease={handleSwipeEnd}
-        style={{ flex: 1, width: '100%' }}
+        style={styles.touchLayer}
       >
-        <View style={{ flex: 1, width: '100%' }}>
-          <ImageBackground
-            source={currentAnnouncement.bannerImage}
-            style={[
-              styles.bannerBackground,
-              { width: shouldShowSwipe ? undefined : '100%' }
-            ]}
-            resizeMode="cover"
-          >
-            <View style={styles.overlay} />
+        <ImageBackground
+          source={currentAnnouncement?.bannerImage}
+          style={styles.bannerBackground}
+          imageStyle={styles.bannerImage}
+          resizeMode="cover"
+        >
+          <View style={styles.overlayDark} />
+          <View style={styles.overlayRed} />
 
-            <View style={[
-              styles.contentContainer,
-              { paddingHorizontal: shouldShowSwipe ? wp('3') : 0 }
-            ]}>
-              {!shouldShowSwipe && (
-                <TouchableOpacity
-                  onPress={handlePrev}
-                  disabled={currentIndex === 0}
-                  style={[styles.arrowButton, currentIndex === 0 && styles.disabledArrow]}
-                  hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
-                >
-                  <Text style={styles.arrowText}>‹</Text>
-                </TouchableOpacity>
-              )}
-
-              <View style={styles.contentText}>
-                <Text style={[
-                  styles.announceTitle,
-                  { fontSize: isMobile ? 16 : isTablet ? 18 : 20 }
-                ]}>
-                  {currentAnnouncement.title}
-                </Text>
-                <Text style={[
-                  styles.announceMessage,
-                  { fontSize: isMobile ? 12 : isTablet ? 13 : 14 }
-                ]}>
-                  {currentAnnouncement.message}
-                </Text>
+          <View style={[styles.topRow, { paddingTop: isMobile ? 12 : 16 }]}>
+            {announcements.length > 1 && (
+              <View style={styles.centerCounterWrap}>
+                <View style={styles.counterPill}>
+                  <Text style={styles.counterText}>
+                    {currentIndex + 1} / {announcements.length}
+                  </Text>
+                </View>
               </View>
+            )}
+          </View>
 
-              {!shouldShowSwipe && (
-                <TouchableOpacity
-                  onPress={handleNext}
-                  disabled={currentIndex === announcements.length - 1}
-                  style={[styles.arrowButton, currentIndex === announcements.length - 1 && styles.disabledArrow]}
-                  hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
-                >
-                  <Text style={styles.arrowText}>›</Text>
-                </TouchableOpacity>
-              )}
+          <View
+            style={[
+              styles.contentContainer,
+              {
+                paddingHorizontal: horizontalPadding,
+              },
+            ]}
+          >
+            {!shouldShowSwipe && announcements.length > 1 ? (
+              <TouchableOpacity
+                onPress={handlePrev}
+                style={styles.arrowButton}
+                activeOpacity={0.8}
+                hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
+              >
+                <Text style={styles.arrowText}>‹</Text>
+              </TouchableOpacity>
+            ) : (
+              <View style={styles.arrowSpacer} />
+            )}
+
+            <View style={styles.contentText}>
+              <Text
+                style={[styles.announceTitle, { fontSize: titleFontSize }]}
+                numberOfLines={2}
+              >
+                {currentAnnouncement?.title}
+              </Text>
+
+              <Text
+                style={[styles.announceMessage, { fontSize: messageFontSize }]}
+                numberOfLines={3}
+              >
+                {currentAnnouncement?.message}
+              </Text>
             </View>
 
-            <View style={styles.dotsContainer}>
-              {announcements.map((_, index) => (
-                <TouchableOpacity
-                  key={index}
-                  onPress={() => setCurrentIndex(index)}
-                  style={[
-                    styles.dot,
-                    index === currentIndex ? styles.activeDot : styles.inactiveDot,
-                  ]}
-                />
-              ))}
-            </View>
+            {!shouldShowSwipe && announcements.length > 1 ? (
+              <TouchableOpacity
+                onPress={handleNext}
+                style={styles.arrowButton}
+                activeOpacity={0.8}
+                hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
+              >
+                <Text style={styles.arrowText}>›</Text>
+              </TouchableOpacity>
+            ) : (
+              <View style={styles.arrowSpacer} />
+            )}
+          </View>
+
+          <View style={[styles.bottomArea, { paddingBottom: isMobile ? 12 : 16 }]}>
+            {announcements.length > 1 && (
+              <View style={styles.dotsContainer}>
+                {announcements.map((_, index) => (
+                  <TouchableOpacity
+                    key={index}
+                    onPress={() => handleDotPress(index)}
+                    style={[
+                      styles.dot,
+                      index === currentIndex ? styles.activeDot : styles.inactiveDot,
+                    ]}
+                    activeOpacity={0.8}
+                  />
+                ))}
+              </View>
+            )}
 
             {shouldShowSwipe && announcements.length > 1 && (
               <View style={styles.swipeHint}>
-                <Text style={styles.swipeHintText}>← Swipe →</Text>
+                <Text style={styles.swipeHintText}>Swipe to explore announcements</Text>
               </View>
             )}
-          </ImageBackground>
-        </View>
+          </View>
+        </ImageBackground>
       </View>
     </GestureHandlerRootView>
   );
@@ -169,94 +225,182 @@ const AnnouncementBanner = ({ announcements }: AnnouncementBannerProps) => {
 const styles = StyleSheet.create({
   bannerContainer: {
     width: '100%',
-    height: hp('25'),
     marginBottom: hp('3'),
-    borderRadius: 12,
+    borderRadius: 18,
     overflow: 'hidden',
     backgroundColor: '#F5F5F5',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.12,
+    shadowRadius: 12,
+    elevation: 4,
   },
+
+  touchLayer: {
+    flex: 1,
+    width: '100%',
+  },
+
   bannerBackground: {
     flex: 1,
     width: '100%',
+    justifyContent: 'space-between',
+  },
+
+  bannerImage: {
+    borderRadius: 18,
+    height: '100%',
+  },
+
+  overlayDark: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.30)',
+  },
+
+  overlayRed: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(211,47,47,0.22)',
+  },
+
+  topRow: {
+    zIndex: 2,
     justifyContent: 'center',
     alignItems: 'center',
+    paddingHorizontal: wp('4'),
   },
-  overlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(192, 1, 1, 0.4)',
+
+  centerCounterWrap: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
+
+  counterPill: {
+    backgroundColor: 'rgba(0,0,0,0.25)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+  },
+
+  counterText: {
+    color: '#FFF',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+
   contentContainer: {
     flex: 1,
+    zIndex: 2,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    zIndex: 1,
   },
+
   arrowButton: {
-    paddingHorizontal: wp('5'),
-    paddingVertical: hp('15'),
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: 'rgba(255,255,255,0.18)',
     justifyContent: 'center',
     alignItems: 'center',
   },
-  disabledArrow: {
-    opacity: 0.3,
+
+  arrowSpacer: {
+    width: 52,
+    height: 52,
   },
+
   arrowText: {
-    fontSize: 70,
+    fontSize: 50,
     color: '#FFF',
-    fontWeight: '300',
+    fontWeight: '400',
+    lineHeight: 36,
+    marginTop: -10,
+    
   },
+
   contentText: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: wp('2'),
   },
+
   announceTitle: {
-    fontWeight: '700',
+    fontWeight: '800',
     color: '#FFF',
-    marginBottom: 8,
+    marginBottom: 10,
     textAlign: 'center',
+    textShadowColor: 'rgba(0,0,0,0.25)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4,
   },
+
   announceMessage: {
     fontWeight: '500',
     color: '#FFF',
     textAlign: 'center',
     lineHeight: 20,
+    maxWidth: '92%',
   },
+
+  bottomArea: {
+    zIndex: 2,
+    alignItems: 'center',
+    paddingHorizontal: wp('4'),
+  },
+
   dotsContainer: {
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    paddingBottom: hp('1.5'),
-    zIndex: 1,
   },
+
   dot: {
     height: 8,
-    borderRadius: 4,
+    borderRadius: 999,
     marginHorizontal: 4,
   },
+
   activeDot: {
     width: 24,
-    backgroundColor: '#D32F2F',
+    backgroundColor: '#FFFFFF',
   },
+
   inactiveDot: {
     width: 8,
-    backgroundColor: 'rgba(255, 255, 255, 0.5)',
+    backgroundColor: 'rgba(255,255,255,0.45)',
   },
+
   swipeHint: {
-    position: 'absolute',
-    bottom: hp('2'),
-    left: 0,
-    right: 0,
-    alignItems: 'center',
-    zIndex: 2,
+    marginTop: 8,
   },
+
   swipeHintText: {
-    color: 'rgba(255, 255, 255, 0.7)',
-    fontSize: 12,
+    color: 'rgba(255,255,255,0.82)',
+    fontSize: 11,
     fontWeight: '600',
-    letterSpacing: 1,
+    letterSpacing: 0.3,
+  },
+
+  emptyBanner: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+  },
+
+  emptyTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#333',
+    marginBottom: 8,
+  },
+
+  emptyMessage: {
+    fontSize: 13,
+    color: '#777',
+    textAlign: 'center',
+    lineHeight: 19,
   },
 });
 

@@ -27,6 +27,13 @@ export interface Assignment {
   comments?: Comment[];
 }
 
+// ../data/mockAssignments.ts
+export const MOCK_COURSES = [
+  { id: '1', title: 'CC112 – Data Structures and Algorithms', instructor: 'Prof. Maria L. Santos, MIT', section: 'Section A' },
+  { id: '2', title: 'CC111 – Introduction to Computing', instructor: 'Prof. John Dela Cruz', section: 'Section B' },
+  // add more courses as needed
+];
+
 export const MOCK_ASSIGNMENTS: Assignment[] = [
   {
     id: '1',

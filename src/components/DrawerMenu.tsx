@@ -1,4 +1,3 @@
-import { useNavigation } from '@react-navigation/native';
 import React, { useState } from 'react';
 import {
   Image,
@@ -10,28 +9,35 @@ import {
   StyleProp,
   StyleSheet,
   Text,
+  TextInput,
   useWindowDimensions,
   View,
-  ViewStyle
+  ViewStyle,
 } from 'react-native';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
+
+type ScreenType =
+  | 'home'
+  | 'classes'
+  | 'game'
+  | 'flipit'
+  | 'fruitmania'
+  | 'quizmasters'
+  | 'videos'
+  | 'myjourney'
+  | 'profile'
+  | 'messenger'
+  | 'assignments'
+  | 'coursedetail'
+  | 'community'
+  | 'generateactivity'
+  | 'notification';
 
 interface DrawerMenuProps {
   isFixed: boolean;
   onClose?: () => void;
-  onNavigate?: (
-    screen:
-      | 'home'
-      | 'game'
-      | 'videos'
-      | 'myjourney'
-      | 'profile'
-      | 'messenger'
-      | 'assignments'
-      | 'coursedetail'
-      | 'community'
-  ) => void;
-  activeScreen?: 'home' | 'game' | 'videos' | 'myjourney' | 'profile' | 'messenger' | 'assignments' | 'coursedetail' | 'community';
+  onNavigate?: (screen: ScreenType) => void;
+  activeScreen?: ScreenType;
   userName?: string;
   userEmail?: string;
   onAvatarPress?: () => void;
@@ -50,8 +56,11 @@ const MenuItem = ({
   active?: boolean;
 }) => {
   const { width } = useWindowDimensions();
+
   const isMobile = width < 768;
-  const menuItemVerticalMargin = isMobile ? 12 : 18;
+  const isLargeScreen = width >= 1024;
+
+  const menuItemVerticalMargin = isMobile ? 12 : isLargeScreen ? 18 : 16;
   const menuLabelFontSize = isMobile ? 15 : 17;
 
   return (
@@ -61,15 +70,26 @@ const MenuItem = ({
         const base: StyleProp<ViewStyle> = [
           styles.menuItem,
           { marginVertical: menuItemVerticalMargin },
-          active && { backgroundColor: 'rgba(211,47,47,0.08)', borderRadius: 14 },
+          active && {
+            backgroundColor: 'rgba(211,47,47,0.08)',
+            borderRadius: 14,
+          },
         ];
+
         if (Platform.OS === 'web' && (state as any).hovered && !active) {
-          base.push({ backgroundColor: 'rgba(130, 129, 129, 0.08)', borderRadius: 14 });
+          base.push({
+            backgroundColor: 'rgba(130,129,129,0.08)',
+            borderRadius: 14,
+          });
         }
+
         return base;
       }}
     >
-      <Image source={iconSource} style={[styles.menuIcon, active && { tintColor: '#D32F2F' }]} />
+      <Image
+        source={iconSource}
+        style={[styles.menuIcon, active && { tintColor: '#D32F2F' }]}
+      />
       <Text
         style={[
           styles.menuLabel,
@@ -88,32 +108,32 @@ const DrawerMenu = ({
   onClose,
   onNavigate,
   activeScreen,
-  userName,
   userEmail,
-  onAvatarPress,
-  setIsLoggedIn,           
+  setIsLoggedIn,
 }: DrawerMenuProps) => {
-  const navigation = useNavigation<any>();
   const { width } = useWindowDimensions();
+
   const [contentHeight, setContentHeight] = useState(0);
   const [scrollViewHeight, setScrollViewHeight] = useState(0);
   const [isSettingsModalVisible, setSettingsModalVisible] = useState(false);
   const [isLogoutModalVisible, setLogoutModalVisible] = useState(false);
-  const [isProfileModalVisible, setProfileModalVisible] = useState(false);
+
+  const [isChangeEmailModalVisible, setChangeEmailModalVisible] = useState(false);
+  const [isChangePasswordModalVisible, setChangePasswordModalVisible] = useState(false);
+
+  const [email, setEmail] = useState(userEmail ?? 'student@email.com');
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
 
   const isMobile = width < 768;
   const isTablet = width >= 768 && width < 1024;
   const isSmallMobile = width < 380;
-  const isLargeScreen = width >= 1024;
-  const isOnMobileOrTablet = isMobile || isTablet;
 
   const hasOverflow = contentHeight > scrollViewHeight && scrollViewHeight > 0;
-  const shouldShowScrollBar = isOnMobileOrTablet && hasOverflow;
+  const shouldShowScrollBar = (isMobile || isTablet) && hasOverflow;
 
   const drawerWidth = isMobile ? (isSmallMobile ? '85%' : 280) : isTablet ? 300 : 260;
-  const profileSectionMargin = isMobile ? 20 : 40;
-  const profileFontSize = isMobile ? 16 : 18;
-  const avatarSize = isMobile ? 45 : 50;
 
   const handleContentSizeChange = (_contentW: number, contentH: number) => {
     setContentHeight(contentH);
@@ -123,61 +143,73 @@ const DrawerMenu = ({
     setScrollViewHeight(e.nativeEvent.layout.height);
   };
 
-  const modalButtonHover = { backgroundColor: 'rgba(130, 129, 129, 0.08)', borderRadius: 8 };
-  const pressableWebHover = (state: any) => (Platform.OS === 'web' && state.hovered ? modalButtonHover : {});
+  const modalButtonHover = {
+    backgroundColor: 'rgba(130,129,129,0.08)',
+    borderRadius: 8,
+  };
+
+  const pressableWebHover = (state: any) =>
+    Platform.OS === 'web' && state.hovered ? modalButtonHover : {};
 
   return (
-    <View style={[styles.drawerContainer, { width: drawerWidth }, !isFixed && styles.mobileDrawer]}>
-      
-      {/* Profile Section */}
-      <View style={[styles.profileSection, { marginBottom: profileSectionMargin }]}>
-        <Pressable
-          onPress={() => setProfileModalVisible(true)}
-          style={{ position: 'relative' }}
-        >
-          <Image
-            source={require('../../assets/images/default_profile.png')}
-            style={[styles.avatar, { width: avatarSize, height: avatarSize, borderRadius: avatarSize / 2 }]}
-          />
-        </Pressable>
+    <View style={[styles.drawerContainer, { width: drawerWidth }]}>
+      <View style={styles.profileSection}>
+        <Image
+          source={require('../../assets/images/pogi.jpg')}
+          style={styles.avatar}
+        />
+
         <View style={{ flex: 1 }}>
-          <Text style={[styles.userName, { fontSize: profileFontSize }]}>{userName ?? 'Jade M. Lisondra'}</Text>
-          <Text style={styles.userEmail}>{userEmail ?? 'student@email.com'}</Text>
+          <Text style={styles.userName}>Jade Lisondra</Text>
         </View>
       </View>
 
-      {/* Menu Items */}
       <ScrollView
-        showsVerticalScrollIndicator={shouldShowScrollBar}
         style={{ flex: 1 }}
+        showsVerticalScrollIndicator={shouldShowScrollBar}
         onContentSizeChange={handleContentSizeChange}
         onLayout={handleScrollViewLayout}
-        scrollIndicatorInsets={isMobile ? { right: 4 } : { right: 0 }}
       >
         <MenuItem
           iconSource={require('../../assets/images/person.png')}
           label="Profile"
-          onPress={() => setProfileModalVisible(true)}
+          onPress={() => {
+            onNavigate?.('profile');
+            if (!isFixed) onClose?.();
+          }}
           active={activeScreen === 'profile'}
         />
+
         <MenuItem
           iconSource={require('../../assets/images/clipboard.png')}
           label="Assignments"
-          onPress={() => { onNavigate?.('assignments'); if (!isFixed) onClose?.(); }}
+          onPress={() => {
+            onNavigate?.('assignments');
+            if (!isFixed) onClose?.();
+          }}
           active={activeScreen === 'assignments'}
         />
+
         <MenuItem
           iconSource={require('../../assets/images/calendar.png')}
           label="My Journey"
-          onPress={() => { onNavigate?.('myjourney'); if (!isFixed) onClose?.(); }}
+          onPress={() => {
+            onNavigate?.('myjourney');
+            if (!isFixed) onClose?.();
+          }}
           active={activeScreen === 'myjourney'}
         />
+
         <MenuItem
           iconSource={require('../../assets/images/users-solid.png')}
           label="Community"
-          onPress={() => { onNavigate?.('community'); if (!isFixed) onClose?.(); }}
+          onPress={() => {
+            onNavigate?.('community');
+            if (!isFixed) onClose?.();
+          }}
           active={activeScreen === 'community'}
         />
+
         <MenuItem
           iconSource={require('../../assets/images/gear-solid.png')}
           label="Settings"
@@ -185,9 +217,8 @@ const DrawerMenu = ({
         />
       </ScrollView>
 
-      {/* Logout */}
       <Pressable
-        style={[styles.logoutMenuItem]}
+        style={styles.logoutMenuItem}
         onPress={() => setLogoutModalVisible(true)}
       >
         <MaterialCommunityIcons
@@ -199,79 +230,224 @@ const DrawerMenu = ({
         <Text style={styles.logoutLabel}>Logout</Text>
       </Pressable>
 
-      {/* Profile Modal */}
       <Modal
-        animationType="slide"
-        transparent
-        visible={isProfileModalVisible}
-        onRequestClose={() => setProfileModalVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalContainer, { width: width >= 1024 ? width * 0.3 : '80%' }]}>
-            <Text style={styles.modalTitle}>Profile</Text>
-            <Image
-              source={require('../../assets/images/default_profile.png')}
-              style={{ width: 80, height: 80, borderRadius: 40, marginBottom: 20 }}
-            />
-            <Text style={{ fontWeight: '700', fontSize: 18, marginBottom: 10 }}>{userName}</Text>
-            <Text style={{ fontSize: 16, color: '#555', marginBottom: 20 }}>{userEmail}</Text>
-            <Pressable
-              style={(state) => [styles.modalButton, pressableWebHover(state)]}
-              onPress={() => alert('Edit avatar clicked')}
-            >
-              <MaterialCommunityIcons name="pencil" size={24} color="#D32F2F" style={{ marginRight: 12 }} />
-              <Text style={styles.modalButtonText}>Edit Avatar</Text>
-            </Pressable>
-            <Pressable
-              style={(state) => [styles.modalCloseBtn, pressableWebHover(state)]}
-              onPress={() => setProfileModalVisible(false)}
-            >
-              <Text style={styles.modalCloseText}>Close</Text>
-            </Pressable>
-          </View>
-        </View>
-      </Modal>
-
-      {/* Settings Modal */}
-      <Modal
-        animationType="slide"
+        animationType="fade"
         transparent
         visible={isSettingsModalVisible}
         onRequestClose={() => setSettingsModalVisible(false)}
       >
         <View style={styles.modalOverlay}>
-          <View
-            style={[styles.modalContainer, { width: width >= 1024 ? width * 0.3 : '80%' }]}
-          >
-            <Text style={styles.modalTitle}>Settings</Text>
+          <View style={styles.settingsModalContainer}>
+            <View style={styles.settingsHeader}>
+              <Text style={styles.settingsTitle}>Settings</Text>
+              <Text style={styles.settingsSubtitle}>
+                Manage your account preferences
+              </Text>
+            </View>
 
             <Pressable
-              style={(state) => [styles.modalButton, pressableWebHover(state), { width: isLargeScreen ? '60%' : '90%' }]}
-              onPress={() => alert('Change Email clicked')}
+              style={(state) => [
+                styles.settingsOptionButton,
+                pressableWebHover(state),
+              ]}
+              onPress={() => {
+                setSettingsModalVisible(false);
+                setChangeEmailModalVisible(true);
+              }}
             >
-              <MaterialCommunityIcons name="email" size={24} color="#D32F2F" style={{ marginRight: 12 }} />
-              <Text style={styles.modalButtonText}>Change Email</Text>
+              <View style={styles.settingsOptionContent}>
+                <View style={styles.settingsOptionIconWrap}>
+                  <MaterialCommunityIcons
+                    name="email-outline"
+                    size={22}
+                    color="#D32F2F"
+                  />
+                </View>
+
+                <View style={styles.settingsOptionTextWrap}>
+                  <Text style={styles.settingsOptionTitle}>Change Email</Text>
+                  <Text style={styles.settingsOptionSubtitle}>
+                    Update your registered email address
+                  </Text>
+                </View>
+
+                <MaterialCommunityIcons
+                  name="chevron-right"
+                  size={24}
+                  color="#999"
+                />
+              </View>
             </Pressable>
 
             <Pressable
-              style={(state) => [styles.modalButton, pressableWebHover(state), { width: isLargeScreen ? '60%' : '90%' }]}
-              onPress={() => alert('Change Password clicked')}
+              style={(state) => [
+                styles.settingsOptionButton,
+                pressableWebHover(state),
+              ]}
+              onPress={() => {
+                setSettingsModalVisible(false);
+                setChangePasswordModalVisible(true);
+              }}
             >
-              <MaterialCommunityIcons name="lock" size={24} color="#D32F2F" style={{ marginRight: 12 }} />
-              <Text style={styles.modalButtonText}>Change Password</Text>
+              <View style={styles.settingsOptionContent}>
+                <View style={styles.settingsOptionIconWrap}>
+                  <MaterialCommunityIcons
+                    name="lock-outline"
+                    size={22}
+                    color="#D32F2F"
+                  />
+                </View>
+
+                <View style={styles.settingsOptionTextWrap}>
+                  <Text style={styles.settingsOptionTitle}>Change Password</Text>
+                  <Text style={styles.settingsOptionSubtitle}>
+                    Create a new secure password
+                  </Text>
+                </View>
+
+                <MaterialCommunityIcons
+                  name="chevron-right"
+                  size={24}
+                  color="#999"
+                />
+              </View>
             </Pressable>
 
             <Pressable
-              style={(state) => [styles.modalCloseBtn, pressableWebHover(state)]}
+              style={styles.settingsCloseBtn}
               onPress={() => setSettingsModalVisible(false)}
             >
-              <Text style={styles.modalCloseText}>Close</Text>
+              <Text style={styles.settingsCloseText}>Close</Text>
             </Pressable>
           </View>
         </View>
       </Modal>
 
-      {/* Logout Confirmation Modal */}
+      <Modal
+        animationType="fade"
+        transparent
+        visible={isChangeEmailModalVisible}
+        onRequestClose={() => setChangeEmailModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.formModalContainer}>
+            <Text style={styles.formModalTitle}>Change Email</Text>
+            <Text style={styles.formModalSubtitle}>
+              Enter your new email address below.
+            </Text>
+
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>Email Address</Text>
+              <TextInput
+                value={email}
+                onChangeText={setEmail}
+                placeholder="Enter new email"
+                placeholderTextColor="#999"
+                style={styles.textInput}
+                keyboardType="email-address"
+                autoCapitalize="none"
+              />
+            </View>
+
+            <View style={styles.formButtonsRow}>
+              <Pressable
+                style={styles.formCancelBtn}
+                onPress={() => {
+                  setChangeEmailModalVisible(false);
+                  setSettingsModalVisible(true);
+                }}
+              >
+                <Text style={styles.formCancelText}>Back</Text>
+              </Pressable>
+
+              <Pressable
+                style={styles.formSaveBtn}
+                onPress={() => {
+                  alert('Email updated');
+                  setChangeEmailModalVisible(false);
+                }}
+              >
+                <Text style={styles.formSaveText}>Save</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        animationType="fade"
+        transparent
+        visible={isChangePasswordModalVisible}
+        onRequestClose={() => setChangePasswordModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.formModalContainer}>
+            <Text style={styles.formModalTitle}>Change Password</Text>
+            <Text style={styles.formModalSubtitle}>
+              Update your password to keep your account secure.
+            </Text>
+
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>Current Password</Text>
+              <TextInput
+                value={currentPassword}
+                onChangeText={setCurrentPassword}
+                placeholder="Enter current password"
+                placeholderTextColor="#999"
+                style={styles.textInput}
+                secureTextEntry
+              />
+            </View>
+
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>New Password</Text>
+              <TextInput
+                value={newPassword}
+                onChangeText={setNewPassword}
+                placeholder="Enter new password"
+                placeholderTextColor="#999"
+                style={styles.textInput}
+                secureTextEntry
+              />
+            </View>
+
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>Confirm Password</Text>
+              <TextInput
+                value={confirmPassword}
+                onChangeText={setConfirmPassword}
+                placeholder="Confirm new password"
+                placeholderTextColor="#999"
+                style={styles.textInput}
+                secureTextEntry
+              />
+            </View>
+
+            <View style={styles.formButtonsRow}>
+              <Pressable
+                style={styles.formCancelBtn}
+                onPress={() => {
+                  setChangePasswordModalVisible(false);
+                  setSettingsModalVisible(true);
+                }}
+              >
+                <Text style={styles.formCancelText}>Back</Text>
+              </Pressable>
+
+              <Pressable
+                style={styles.formSaveBtn}
+                onPress={() => {
+                  alert('Password updated');
+                  setChangePasswordModalVisible(false);
+                }}
+              >
+                <Text style={styles.formSaveText}>Save</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
       <Modal
         animationType="fade"
         transparent
@@ -279,25 +455,32 @@ const DrawerMenu = ({
         onRequestClose={() => setLogoutModalVisible(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalContainer, { width: width >= 1024 ? width * 0.3 : '80%' }]}>
-            <Text style={styles.modalTitle}>Are you sure you want to logout?</Text>
-            <View style={{ flexDirection: 'row', gap: 40 }}>
+          <View style={styles.logoutModalContainer}>
+            <Text style={styles.logoutModalTitle}>
+              Are you sure you want to logout?
+            </Text>
+
+            <Text style={styles.logoutModalSubtitle}>
+              You will need to sign in again to continue using your account.
+            </Text>
+
+            <View style={styles.logoutButtonsRow}>
               <Pressable
-                style={styles.LogoutmodalCloseBtn}
+                style={styles.modalCancelBtn}
                 onPress={() => setLogoutModalVisible(false)}
               >
-                <Text style={styles.LogoutmodalCloseText}>Cancel</Text>
+                <Text style={styles.modalCancelText}>Cancel</Text>
               </Pressable>
 
               <Pressable
-                style={styles.LogoutmodalButton}
+                style={styles.logoutConfirmBtn}
                 onPress={() => {
                   setLogoutModalVisible(false);
                   if (!isFixed) onClose?.();
                   setIsLoggedIn(false);
                 }}
               >
-                <Text style={styles.LogoutmodalButtonText}>Logout</Text>
+                <Text style={styles.logoutConfirmText}>Logout</Text>
               </Pressable>
             </View>
           </View>
@@ -310,41 +493,306 @@ const DrawerMenu = ({
 const styles = StyleSheet.create({
   drawerContainer: {
     height: '100%',
-    borderRightWidth: 1,
-    borderRightColor: '#EEE',
     padding: 25,
     backgroundColor: '#FFF',
-    ...Platform.select({ web: { paddingHorizontal: 20 }, ios: { paddingTop: 50 } }),
-  },
-  mobileDrawer: {
-    elevation: 10,
-    shadowColor: '#000',
-    shadowOffset: { width: 5, height: 0 },
-    shadowOpacity: 0.1,
-    shadowRadius: 10,
-  },
-  profileSection: { flexDirection: 'row', alignItems: 'center' },
-  avatar: { borderRadius: 25, marginRight: 15, backgroundColor: '#f0f0f0' },
-  userName: { fontWeight: '700', color: '#333' },
-  userEmail: { color: '#555', fontSize: 14 },
-  menuItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, paddingHorizontal: 10 },
-  menuIcon: { width: 22, height: 22, marginRight: 20, resizeMode: 'contain' },
-  menuLabel: { color: '#444', fontWeight: '500' },
-  logoutMenuItem: { flexDirection: 'row', alignItems: 'center', marginTop: 20, paddingVertical: 15, borderTopWidth: 1, borderTopColor: '#EEE', padding: 8, borderRadius: 12 },
-  logoutLabel: { fontSize: 16, color: '#D32F2F', fontWeight: '600' },
 
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center' },
-  modalContainer: { backgroundColor: '#FFF', borderRadius: 12, padding: 20, alignItems: 'center' },
-  modalTitle: { fontSize: 20, fontWeight: '700', marginBottom: 20 },
-  modalButton: { flexDirection: 'row', width: '90%', marginBottom: 15, alignItems: 'center', justifyContent: 'center', padding: 12, backgroundColor: 'rgba(211,47,47,0.08)', borderRadius: 8 },
-  modalButtonText: { fontSize: 16, fontWeight: '600', color: '#D32F2F' },
-  LogoutmodalButton: {width: '90%', marginBottom: 15, alignItems: 'center', justifyContent: 'center', padding: 12, backgroundColor: 'rgba(211,47,47,0.08)', borderRadius: 8 },
-  LogoutmodalButtonText: { fontSize: 16, fontWeight: '600', color: '#D32F2F' },
-  modalCloseBtn: { padding: 10 , width: '90%', alignItems: 'center', justifyContent: 'center'},
-  modalCloseText: { fontSize: 16, color: '#888' },
-  LogoutmodalCloseBtn: { marginLeft: -70,marginBottom: 15, padding: 12 , width: '90%', alignItems: 'center', justifyContent: 'center'},
-  LogoutmodalCloseText: { fontSize: 16, color: '#888' },
-  
+    borderWidth: 0,
+    borderRightWidth: 0,
+    borderLeftWidth: 0,
+    borderTopWidth: 0,
+    borderBottomWidth: 0,
+    borderColor: 'transparent',
+
+    elevation: 0,
+    shadowColor: 'transparent',
+    shadowOpacity: 0,
+    shadowRadius: 0,
+    shadowOffset: { width: 0, height: 0 },
+  },
+
+  profileSection: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 30,
+  },
+
+  avatar: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    marginRight: 15,
+  },
+
+  userName: {
+    fontWeight: '700',
+    fontSize: 18,
+  },
+
+  userEmail: {
+    fontSize: 14,
+    color: '#555',
+  },
+
+  menuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 10,
+  },
+
+  menuIcon: {
+    width: 22,
+    height: 22,
+    marginRight: 20,
+    resizeMode: 'contain',
+  },
+
+  menuLabel: {
+    color: '#444',
+    fontWeight: '500',
+  },
+
+  logoutMenuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 20,
+    borderTopWidth: 1,
+    borderTopColor: '#EEE',
+    paddingTop: 15,
+  },
+
+  logoutLabel: {
+    fontSize: 16,
+    color: '#D32F2F',
+    fontWeight: '600',
+  },
+
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+
+  settingsModalContainer: {
+    backgroundColor: '#FFF',
+    borderRadius: 18,
+    padding: 20,
+    width: '88%',
+    maxWidth: 380,
+  },
+
+  settingsHeader: {
+    marginBottom: 18,
+  },
+
+  settingsTitle: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: '#222',
+    textAlign: 'center',
+  },
+
+  settingsSubtitle: {
+    fontSize: 14,
+    color: '#777',
+    textAlign: 'center',
+    marginTop: 6,
+  },
+
+  settingsOptionButton: {
+    backgroundColor: '#FAFAFA',
+    borderRadius: 14,
+    paddingVertical: 14,
+    paddingHorizontal: 14,
+    marginTop: 12,
+    borderWidth: 1,
+    borderColor: '#EEE',
+  },
+
+  settingsOptionContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+
+  settingsOptionIconWrap: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: 'rgba(211,47,47,0.10)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+
+  settingsOptionTextWrap: {
+    flex: 1,
+  },
+
+  settingsOptionTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#222',
+  },
+
+  settingsOptionSubtitle: {
+    fontSize: 13,
+    color: '#777',
+    marginTop: 2,
+  },
+
+  settingsCloseBtn: {
+    alignSelf: 'center',
+    marginTop: 18,
+    paddingVertical: 10,
+    paddingHorizontal: 18,
+  },
+
+  settingsCloseText: {
+    color: '#888',
+    fontWeight: '600',
+    fontSize: 15,
+  },
+
+  formModalContainer: {
+    backgroundColor: '#FFF',
+    borderRadius: 18,
+    padding: 20,
+    width: '88%',
+    maxWidth: 380,
+  },
+
+  formModalTitle: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: '#222',
+    textAlign: 'center',
+  },
+
+  formModalSubtitle: {
+    fontSize: 14,
+    color: '#777',
+    textAlign: 'center',
+    marginTop: 6,
+    marginBottom: 20,
+  },
+
+  inputGroup: {
+    marginBottom: 14,
+  },
+
+  inputLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 8,
+  },
+
+  textInput: {
+    height: 48,
+    borderWidth: 1,
+    borderColor: '#DDD',
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    color: '#222',
+    backgroundColor: '#FFF',
+  },
+
+  formButtonsRow: {
+    flexDirection: 'row',
+    marginTop: 10,
+    gap: 12,
+    width: '100%',
+  },
+
+  formCancelBtn: {
+    flex: 1,
+    height: 46,
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#F3F3F3',
+  },
+
+  formCancelText: {
+    color: '#888',
+    fontWeight: '600',
+    fontSize: 15,
+  },
+
+  formSaveBtn: {
+    flex: 1,
+    height: 46,
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#D32F2F',
+  },
+
+  formSaveText: {
+    color: '#FFF',
+    fontWeight: '700',
+    fontSize: 15,
+  },
+
+  logoutModalContainer: {
+    backgroundColor: '#FFF',
+    borderRadius: 16,
+    paddingVertical: 24,
+    paddingHorizontal: 20,
+    width: '85%',
+    maxWidth: 360,
+    alignItems: 'center',
+  },
+
+  logoutModalTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#222',
+    textAlign: 'center',
+  },
+
+  logoutModalSubtitle: {
+    fontSize: 14,
+    color: '#777',
+    textAlign: 'center',
+    marginTop: 8,
+  },
+
+  logoutButtonsRow: {
+    flexDirection: 'row',
+    marginTop: 24,
+    gap: 12,
+    width: '100%',
+  },
+
+  modalCancelBtn: {
+    flex: 1,
+    height: 46,
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#F3F3F3',
+  },
+
+  modalCancelText: {
+    color: '#888',
+    fontWeight: '600',
+  },
+
+  logoutConfirmBtn: {
+    flex: 1,
+    height: 46,
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#D32F2F',
+  },
+
+  logoutConfirmText: {
+    color: '#FFF',
+    fontWeight: '700',
+  },
 });
 
 export default DrawerMenu;
