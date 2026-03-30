@@ -59,10 +59,21 @@ const Profile: React.FC<ProfileProps> = ({
   onChangeBannerImage,
 }) => {
   const { width } = useWindowDimensions();
+
+  const isSmallPhone = width < 380;
+  const isPhone = width < 768;
   const isLargeScreen = width > 1000;
+
+  const horizontalPadding = isSmallPhone ? 12 : isPhone ? 16 : 20;
+  const contentMaxWidth = isLargeScreen ? 600 : 800;
+
+  const bannerHeight = isSmallPhone ? 128 : isPhone ? 140 : 150;
+  const avatarSize = isSmallPhone ? 84 : isPhone ? 92 : 95;
+  const avatarBorderWidth = isSmallPhone ? 3 : 4;
 
   const [queryModalVisible, setQueryModalVisible] = useState(false);
   const [editMenuVisible, setEditMenuVisible] = useState(false);
+  const [isPickingImage, setIsPickingImage] = useState(false);
 
   const [menuVisibleFor, setMenuVisibleFor] = useState<string | null>(null);
   const [hiddenPosts, setHiddenPosts] = useState<string[]>([]);
@@ -108,12 +119,20 @@ const Profile: React.FC<ProfileProps> = ({
   );
 
   const openEditMenu = () => {
+    if (isPickingImage) return;
+
     if (editBtnRef.current && 'measureInWindow' in editBtnRef.current) {
       (editBtnRef.current as any).measureInWindow(
         (x: number, y: number, _btnWidth: number, btnHeight: number) => {
+          const menuWidth = isSmallPhone ? 200 : 230;
+          const safeLeft = Math.max(
+            horizontalPadding,
+            Math.min(x, width - menuWidth - horizontalPadding)
+          );
+
           setMenuPosition({
             top: y + btnHeight + 8,
-            left: x,
+            left: safeLeft,
           });
           setEditMenuVisible(true);
         }
@@ -122,30 +141,43 @@ const Profile: React.FC<ProfileProps> = ({
   };
 
   const pickFile = async (type: CropType) => {
+    if (isPickingImage) return;
+
     try {
+      setIsPickingImage(true);
       setEditMenuVisible(false);
       globalThis.__PROFILE_CROP_RESULT__ = undefined;
 
       const result = await DocumentPicker.getDocumentAsync({
-        type: 'image/*',
+        type: ['image/*'],
         copyToCacheDirectory: true,
         multiple: false,
       });
 
-      if (result.canceled) return;
+      if (result.canceled) {
+        return;
+      }
 
       const selected = result.assets?.[0];
-      if (!selected?.uri) return;
+      if (!selected?.uri) {
+        return;
+      }
 
-      router.push({
-        pathname: '/CropScreen',
-        params: {
-          imageUri: selected.uri,
-          cropType: type,
-        },
-      });
+      setTimeout(() => {
+        router.push({
+          pathname: '/CropScreen',
+          params: {
+            imageUri: selected.uri,
+            cropType: type,
+          },
+        });
+      }, 60);
     } catch (error) {
       console.log('Picker error:', error);
+    } finally {
+      setTimeout(() => {
+        setIsPickingImage(false);
+      }, 250);
     }
   };
 
@@ -168,7 +200,9 @@ const Profile: React.FC<ProfileProps> = ({
     const newAnswer: CommunityAnswer = {
       id: `answer-${Date.now()}`,
       userName,
-      avatar: profileImage?.uri ? { uri: profileImage.uri } : profileImage || DEFAULT_AVATAR,
+      avatar: profileImage?.uri
+        ? { uri: profileImage.uri }
+        : profileImage || DEFAULT_AVATAR,
       answeredAt: new Date().toLocaleString(),
       message: trimmed,
     };
@@ -188,7 +222,7 @@ const Profile: React.FC<ProfileProps> = ({
   return (
     <TouchableWithoutFeedback
       onPress={() => {
-        if (!queryModalVisible && !answersModalVisible) {
+        if (!queryModalVisible && !answersModalVisible && !isPickingImage) {
           setMenuVisibleFor(null);
           Keyboard.dismiss();
         }
@@ -196,60 +230,163 @@ const Profile: React.FC<ProfileProps> = ({
     >
       <View style={{ flex: 1 }}>
         <ScrollView
-          style={styles.container}
-          contentContainerStyle={{ paddingBottom: 40 }}
+          style={[styles.container, { paddingHorizontal: horizontalPadding }]}
+          contentContainerStyle={{ paddingBottom: isSmallPhone ? 28 : 40 }}
           keyboardShouldPersistTaps="handled"
         >
-          <View style={styles.bannerContainer}>
-            <Image source={bannerImage} style={styles.banner} />
+          <View style={[styles.bannerContainer, { marginTop: isSmallPhone ? 14 : 20 }]}>
+            <Image
+              source={bannerImage}
+              style={[
+                styles.banner,
+                {
+                  height: bannerHeight,
+                  borderRadius: isSmallPhone ? 10 : 6,
+                },
+              ]}
+              resizeMode="cover"
+            />
           </View>
 
           <View
             style={[
               styles.profileInfo,
-              !isLargeScreen && { paddingHorizontal: 10 },
-              isLargeScreen && { alignSelf: 'center', maxWidth: 600 },
+              { marginTop: isSmallPhone ? -10 : -15 },
+              !isLargeScreen && { paddingHorizontal: isSmallPhone ? 4 : 10 },
+              isLargeScreen && { alignSelf: 'center', maxWidth: contentMaxWidth },
             ]}
           >
-            <Image source={profileImage} style={styles.avatar} />
+            <View
+              style={[
+                styles.avatarOuter,
+                {
+                  width: avatarSize,
+                  height: avatarSize,
+                  borderRadius: avatarSize / 2,
+                  borderWidth: avatarBorderWidth,
+                  marginRight: isSmallPhone ? 12 : 15,
+                  marginTop: isSmallPhone ? -14 : -20,
+                },
+              ]}
+            >
+              <Image
+                source={profileImage}
+                style={[
+                  styles.avatarImage,
+                  {
+                    width: avatarSize - avatarBorderWidth * 2,
+                    height: avatarSize - avatarBorderWidth * 2,
+                    borderRadius: (avatarSize - avatarBorderWidth * 2) / 2,
+                  },
+                ]}
+                resizeMode="cover"
+              />
+            </View>
 
-            <View style={styles.nameContainer}>
-              <Text style={styles.name}>{userName}</Text>
-              <Text style={styles.email}>{userEmail}</Text>
+            <View
+              style={[
+                styles.nameContainer,
+                { marginTop: isSmallPhone ? 14 : 20, flex: 1 },
+              ]}
+            >
+              <Text
+                style={[
+                  styles.name,
+                  { fontSize: isSmallPhone ? 18 : isPhone ? 20 : 22 },
+                ]}
+                numberOfLines={1}
+              >
+                {userName}
+              </Text>
+
+              <Text
+                style={[
+                  styles.email,
+                  { fontSize: isSmallPhone ? 13 : 14 },
+                ]}
+                numberOfLines={1}
+              >
+                {userEmail}
+              </Text>
 
               <View ref={editBtnRef} collapsable={false}>
                 <TouchableOpacity
-                  style={styles.editBtn}
+                  style={[
+                    styles.editBtn,
+                    {
+                      marginTop: isSmallPhone ? 8 : 10,
+                      paddingHorizontal: isSmallPhone ? 12 : 15,
+                      paddingVertical: isSmallPhone ? 7 : 6,
+                      borderRadius: isSmallPhone ? 8 : 6,
+                    },
+                    isPickingImage && styles.editBtnDisabled,
+                  ]}
                   onPress={openEditMenu}
                   activeOpacity={0.85}
+                  disabled={isPickingImage}
                 >
                   <MaterialCommunityIcons
                     name="pencil"
-                    size={14}
+                    size={isSmallPhone ? 13 : 14}
                     color="#D32F2F"
                   />
-                  <Text style={styles.editText}> Edit Profile </Text>
+                  <Text
+                    style={[
+                      styles.editText,
+                      { fontSize: isSmallPhone ? 13 : 14 },
+                    ]}
+                  >
+                    {isPickingImage ? ' Opening...' : ' Edit Profile '}
+                  </Text>
                 </TouchableOpacity>
               </View>
             </View>
           </View>
 
-          <View style={styles.divider} />
+          <View
+            style={[
+              styles.divider,
+              { marginVertical: isSmallPhone ? 20 : 25 },
+            ]}
+          />
 
           <View
             style={[
               styles.askContainer,
-              !isLargeScreen && { paddingHorizontal: 10 },
-              isLargeScreen && { alignSelf: 'center', maxWidth: 600 },
+              !isLargeScreen && { paddingHorizontal: isSmallPhone ? 4 : 10 },
+              isLargeScreen && { alignSelf: 'center', maxWidth: contentMaxWidth },
             ]}
           >
-            <Image source={profileImage} style={styles.smallAvatar} />
+            <Image
+              source={profileImage}
+              style={[
+                styles.smallAvatar,
+                {
+                  width: isSmallPhone ? 32 : 35,
+                  height: isSmallPhone ? 32 : 35,
+                  borderRadius: isSmallPhone ? 16 : 20,
+                  marginRight: isSmallPhone ? 10 : 12,
+                },
+              ]}
+              resizeMode="cover"
+            />
 
             <TouchableOpacity
-              style={styles.askInput}
+              style={[
+                styles.askInput,
+                {
+                  paddingHorizontal: isSmallPhone ? 14 : 18,
+                  paddingVertical: isSmallPhone ? 9 : 10,
+                },
+              ]}
               onPress={() => setQueryModalVisible(true)}
             >
-              <Text style={styles.askText}>Have a question, {userName}?</Text>
+              <Text
+                style={[styles.askText, { fontSize: isSmallPhone ? 13 : 14 }]}
+                numberOfLines={1}
+              >
+                Have a question, {userName}?
+              </Text>
             </TouchableOpacity>
           </View>
 
@@ -260,18 +397,47 @@ const Profile: React.FC<ProfileProps> = ({
                 key={post.id}
                 style={[
                   styles.postCard,
-                  isLargeScreen && { alignSelf: 'center', maxWidth: 600 },
+                  {
+                    padding: isSmallPhone ? 14 : 18,
+                    borderRadius: isSmallPhone ? 14 : 16,
+                    marginBottom: isSmallPhone ? 12 : 14,
+                  },
+                  isLargeScreen && { alignSelf: 'center', maxWidth: contentMaxWidth },
                 ]}
               >
                 <View style={styles.postHeader}>
                   <View style={styles.userRow}>
                     <Image
                       source={post.avatar || profileImage}
-                      style={styles.postAvatar}
+                      style={[
+                        styles.postAvatar,
+                        {
+                          width: isSmallPhone ? 32 : 35,
+                          height: isSmallPhone ? 32 : 35,
+                          borderRadius: isSmallPhone ? 16 : 20,
+                        },
+                      ]}
+                      resizeMode="cover"
                     />
                     <View style={{ flex: 1, marginLeft: 8 }}>
-                      <Text style={styles.postName}>{post.userName}</Text>
-                      <Text style={styles.postTime}>{post.dateTime}</Text>
+                      <Text
+                        style={[
+                          styles.postName,
+                          { fontSize: isSmallPhone ? 15 : 16 },
+                        ]}
+                        numberOfLines={1}
+                      >
+                        {post.userName}
+                      </Text>
+                      <Text
+                        style={[
+                          styles.postTime,
+                          { fontSize: isSmallPhone ? 11 : 12 },
+                        ]}
+                        numberOfLines={1}
+                      >
+                        {post.dateTime}
+                      </Text>
                     </View>
                   </View>
 
@@ -291,7 +457,12 @@ const Profile: React.FC<ProfileProps> = ({
                     </TouchableOpacity>
 
                     {menuVisibleFor === post.id && (
-                      <View style={styles.dropdownPostMenu}>
+                      <View
+                        style={[
+                          styles.dropdownPostMenu,
+                          { right: isSmallPhone ? 0 : 15 },
+                        ]}
+                      >
                         <TouchableOpacity
                           style={styles.menuItem}
                           onPress={() => {
@@ -309,10 +480,25 @@ const Profile: React.FC<ProfileProps> = ({
                   </View>
                 </View>
 
-                <Text style={styles.postText}>{post.content}</Text>
+                <Text
+                  style={[
+                    styles.postText,
+                    {
+                      fontSize: isSmallPhone ? 14 : 15,
+                      lineHeight: isSmallPhone ? 21 : 23,
+                    },
+                  ]}
+                >
+                  {post.content}
+                </Text>
 
                 <TouchableOpacity onPress={() => openAnswersModal(post)}>
-                  <Text style={styles.answerLink}>
+                  <Text
+                    style={[
+                      styles.answerLink,
+                      { fontSize: isSmallPhone ? 12 : 13 },
+                    ]}
+                  >
                     View {post.answers.length} Answer(s)
                   </Text>
                 </TouchableOpacity>
@@ -336,14 +522,28 @@ const Profile: React.FC<ProfileProps> = ({
                 {
                   top: menuPosition.top,
                   left: menuPosition.left,
+                  width: isSmallPhone ? 200 : 230,
+                  paddingVertical: isSmallPhone ? 12 : 14,
+                  paddingHorizontal: isSmallPhone ? 12 : 14,
                 },
               ]}
             >
-              <Text style={styles.dropdownTitle}>Choose Option</Text>
+              <Text
+                style={[
+                  styles.dropdownTitle,
+                  { fontSize: isSmallPhone ? 16 : 18, marginBottom: isSmallPhone ? 10 : 12 },
+                ]}
+              >
+                Choose Option
+              </Text>
 
               <TouchableOpacity
-                style={styles.dropdownItem}
+                style={[
+                  styles.dropdownItem,
+                  { paddingVertical: isSmallPhone ? 10 : 12 },
+                ]}
                 onPress={() => pickFile('profile')}
+                disabled={isPickingImage}
               >
                 <MaterialCommunityIcons
                   name="account-edit"
@@ -351,12 +551,23 @@ const Profile: React.FC<ProfileProps> = ({
                   color="#000"
                   style={styles.dropdownIcon}
                 />
-                <Text style={styles.dropdownText}>Avatar</Text>
+                <Text
+                  style={[
+                    styles.dropdownText,
+                    { fontSize: isSmallPhone ? 15 : 16 },
+                  ]}
+                >
+                  Avatar
+                </Text>
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={styles.dropdownItem}
+                style={[
+                  styles.dropdownItem,
+                  { paddingVertical: isSmallPhone ? 10 : 12, marginBottom: 0 },
+                ]}
                 onPress={() => pickFile('banner')}
+                disabled={isPickingImage}
               >
                 <MaterialCommunityIcons
                   name="image-edit"
@@ -364,7 +575,14 @@ const Profile: React.FC<ProfileProps> = ({
                   color="#000"
                   style={styles.dropdownIcon}
                 />
-                <Text style={styles.dropdownText}>Banner</Text>
+                <Text
+                  style={[
+                    styles.dropdownText,
+                    { fontSize: isSmallPhone ? 15 : 16 },
+                  ]}
+                >
+                  Banner
+                </Text>
               </TouchableOpacity>
             </View>
           </Pressable>
@@ -377,11 +595,28 @@ const Profile: React.FC<ProfileProps> = ({
           onRequestClose={closeAnswersModal}
         >
           <TouchableWithoutFeedback onPress={closeAnswersModal}>
-            <View style={styles.modalOverlay}>
+            <View
+              style={[
+                styles.modalOverlay,
+                { paddingHorizontal: isSmallPhone ? 14 : 20 },
+              ]}
+            >
               <TouchableWithoutFeedback onPress={() => {}}>
-                <View style={styles.answersModalCard}>
+                <View
+                  style={[
+                    styles.answersModalCard,
+                    { padding: isSmallPhone ? 14 : 18 },
+                  ]}
+                >
                   <View style={styles.answersModalHeader}>
-                    <Text style={styles.answersModalTitle}>Answers</Text>
+                    <Text
+                      style={[
+                        styles.answersModalTitle,
+                        { fontSize: isSmallPhone ? 17 : 18 },
+                      ]}
+                    >
+                      Answers
+                    </Text>
                     <TouchableOpacity onPress={closeAnswersModal}>
                       <Ionicons name="close" size={22} color="#333" />
                     </TouchableOpacity>
@@ -389,14 +624,25 @@ const Profile: React.FC<ProfileProps> = ({
 
                   {selectedPost && (
                     <>
-                      <Text style={styles.selectedPostText}>
+                      <Text
+                        style={[
+                          styles.selectedPostText,
+                          {
+                            fontSize: isSmallPhone ? 14 : 15,
+                            lineHeight: isSmallPhone ? 20 : 22,
+                          },
+                        ]}
+                      >
                         {selectedPost.content}
                       </Text>
 
                       <ScrollView
                         showsVerticalScrollIndicator={false}
                         contentContainerStyle={styles.modalAnswersContainer}
-                        style={styles.answersScroll}
+                        style={[
+                          styles.answersScroll,
+                          { maxHeight: isSmallPhone ? 220 : 260 },
+                        ]}
                       >
                         {selectedPost.answers.length > 0 ? (
                           selectedPost.answers.map((answer) => (
@@ -405,20 +651,46 @@ const Profile: React.FC<ProfileProps> = ({
                                 <View style={styles.userRow}>
                                   <Image
                                     source={answer.avatar}
-                                    style={styles.answerAvatar}
+                                    style={[
+                                      styles.answerAvatar,
+                                      {
+                                        width: isSmallPhone ? 28 : 30,
+                                        height: isSmallPhone ? 28 : 30,
+                                        borderRadius: isSmallPhone ? 14 : 15,
+                                      },
+                                    ]}
+                                    resizeMode="cover"
                                   />
                                   <View style={{ marginLeft: 8, flex: 1 }}>
-                                    <Text style={styles.answerUserName}>
+                                    <Text
+                                      style={[
+                                        styles.answerUserName,
+                                        { fontSize: isSmallPhone ? 13 : 14 },
+                                      ]}
+                                    >
                                       {answer.userName}
                                     </Text>
-                                    <Text style={styles.answerDate}>
+                                    <Text
+                                      style={[
+                                        styles.answerDate,
+                                        { fontSize: isSmallPhone ? 11 : 12 },
+                                      ]}
+                                    >
                                       {answer.answeredAt}
                                     </Text>
                                   </View>
                                 </View>
                               </View>
 
-                              <Text style={styles.answerPreviewText}>
+                              <Text
+                                style={[
+                                  styles.answerPreviewText,
+                                  {
+                                    fontSize: isSmallPhone ? 13 : 14,
+                                    lineHeight: isSmallPhone ? 18 : 20,
+                                  },
+                                ]}
+                              >
                                 {answer.message}
                               </Text>
                             </View>
@@ -431,11 +703,22 @@ const Profile: React.FC<ProfileProps> = ({
                       </ScrollView>
 
                       <View style={styles.answerInputSection}>
-                        <Text style={styles.answerInputLabel}>
+                        <Text
+                          style={[
+                            styles.answerInputLabel,
+                            { fontSize: isSmallPhone ? 13 : 14 },
+                          ]}
+                        >
                           Write an answer
                         </Text>
                         <TextInput
-                          style={styles.answerInput}
+                          style={[
+                            styles.answerInput,
+                            {
+                              minHeight: isSmallPhone ? 84 : 90,
+                              fontSize: isSmallPhone ? 13 : 14,
+                            },
+                          ]}
                           placeholder="Type your answer here"
                           placeholderTextColor="#999"
                           multiline
@@ -444,10 +727,21 @@ const Profile: React.FC<ProfileProps> = ({
                           textAlignVertical="top"
                         />
                         <TouchableOpacity
-                          style={styles.postAnswerButton}
+                          style={[
+                            styles.postAnswerButton,
+                            {
+                              paddingHorizontal: isSmallPhone ? 14 : 16,
+                              paddingVertical: isSmallPhone ? 9 : 10,
+                            },
+                          ]}
                           onPress={handlePostAnswer}
                         >
-                          <Text style={styles.postAnswerButtonText}>
+                          <Text
+                            style={[
+                              styles.postAnswerButtonText,
+                              { fontSize: isSmallPhone ? 13 : 14 },
+                            ]}
+                          >
                             Post Answer
                           </Text>
                         </TouchableOpacity>
@@ -474,47 +768,42 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#ffffff',
-    paddingHorizontal: 20,
   },
 
   bannerContainer: {
     alignItems: 'center',
-    marginTop: 20,
   },
 
   banner: {
     width: '100%',
     maxWidth: 800,
-    height: 150,
-    borderRadius: 6,
   },
 
   profileInfo: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: -15,
     alignSelf: 'center',
     maxWidth: 800,
     width: '100%',
   },
 
-  avatar: {
-    width: 95,
-    height: 95,
-    borderRadius: 50,
-    borderWidth: 4,
+  avatarOuter: {
+    backgroundColor: '#FFF',
+    justifyContent: 'center',
+    alignItems: 'center',
+    overflow: 'hidden',
     borderColor: '#FFF',
-    marginRight: 15,
-    marginTop: -20,
+  },
+
+  avatarImage: {
+    overflow: 'hidden',
   },
 
   nameContainer: {
     justifyContent: 'center',
-    marginTop: 20,
   },
 
   name: {
-    fontSize: 22,
     fontWeight: '700',
     color: '#111',
   },
@@ -527,12 +816,12 @@ const styles = StyleSheet.create({
   editBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 10,
     backgroundColor: '#F4DCDC',
-    paddingHorizontal: 15,
-    paddingVertical: 6,
-    borderRadius: 6,
     alignSelf: 'flex-start',
+  },
+
+  editBtnDisabled: {
+    opacity: 0.7,
   },
 
   editText: {
@@ -543,7 +832,6 @@ const styles = StyleSheet.create({
   divider: {
     height: 1,
     backgroundColor: '#DDD',
-    marginVertical: 25,
     width: '100%',
     maxWidth: 700,
     alignSelf: 'center',
@@ -559,10 +847,7 @@ const styles = StyleSheet.create({
   },
 
   smallAvatar: {
-    width: 35,
-    height: 35,
-    borderRadius: 20,
-    marginRight: 12,
+    overflow: 'hidden',
   },
 
   askInput: {
@@ -570,8 +855,6 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     borderColor: '#D32F2F',
     borderRadius: 25,
-    paddingHorizontal: 18,
-    paddingVertical: 10,
     backgroundColor: '#FFF',
     justifyContent: 'center',
   },
@@ -581,15 +864,12 @@ const styles = StyleSheet.create({
   },
 
   postCard: {
-    borderRadius: 16,
     borderLeftWidth: 5,
     borderBottomWidth: 1,
     borderRightWidth: 1,
     borderColor: '#D32F2F',
-    padding: 18,
     width: '100%',
     backgroundColor: '#fff',
-    marginBottom: 14,
   },
 
   postHeader: {
@@ -605,9 +885,7 @@ const styles = StyleSheet.create({
   },
 
   postAvatar: {
-    width: 35,
-    height: 35,
-    borderRadius: 20,
+    overflow: 'hidden',
   },
 
   postName: {
@@ -616,20 +894,17 @@ const styles = StyleSheet.create({
   },
 
   postTime: {
-    fontSize: 12,
     color: '#777',
   },
 
   postText: {
     marginTop: 8,
-    fontSize: 15,
     color: '#333',
   },
 
   answerLink: {
     color: '#1976d2',
     marginTop: 8,
-    fontSize: 13,
     fontWeight: '400',
   },
 
@@ -640,11 +915,8 @@ const styles = StyleSheet.create({
 
   dropdownMenu: {
     position: 'absolute',
-    width: 230,
     backgroundColor: '#fff',
     borderRadius: 12,
-    paddingVertical: 14,
-    paddingHorizontal: 14,
     shadowColor: '#000',
     shadowOpacity: 0.18,
     shadowRadius: 10,
@@ -653,10 +925,8 @@ const styles = StyleSheet.create({
   },
 
   dropdownTitle: {
-    fontSize: 18,
     fontWeight: '700',
     textAlign: 'center',
-    marginBottom: 12,
     color: '#333',
   },
 
@@ -666,7 +936,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: '#EAEAEA',
     borderRadius: 8,
-    paddingVertical: 12,
     marginBottom: 12,
   },
 
@@ -675,7 +944,6 @@ const styles = StyleSheet.create({
   },
 
   dropdownText: {
-    fontSize: 16,
     color: '#222',
     fontWeight: '500',
   },
@@ -683,7 +951,6 @@ const styles = StyleSheet.create({
   dropdownPostMenu: {
     position: 'absolute',
     marginTop: -10,
-    right: 15,
     backgroundColor: '#fff',
     borderRadius: 8,
     paddingVertical: 6,
@@ -722,7 +989,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.35)',
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 20,
   },
 
   answersModalCard: {
@@ -731,7 +997,6 @@ const styles = StyleSheet.create({
     maxHeight: '85%',
     backgroundColor: '#FFF',
     borderRadius: 18,
-    padding: 18,
   },
 
   answersModalHeader: {
@@ -742,21 +1007,16 @@ const styles = StyleSheet.create({
   },
 
   answersModalTitle: {
-    fontSize: 18,
     fontWeight: '700',
     color: '#222',
   },
 
   selectedPostText: {
-    fontSize: 15,
     color: '#333',
-    lineHeight: 22,
     marginBottom: 16,
   },
 
-  answersScroll: {
-    maxHeight: 260,
-  },
+  answersScroll: {},
 
   modalAnswersContainer: {
     gap: 10,
@@ -776,26 +1036,20 @@ const styles = StyleSheet.create({
   },
 
   answerAvatar: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
+    overflow: 'hidden',
   },
 
   answerUserName: {
-    fontSize: 14,
     fontWeight: '700',
     color: '#222',
   },
 
   answerDate: {
-    fontSize: 12,
     color: '#777',
   },
 
   answerPreviewText: {
-    fontSize: 14,
     color: '#555',
-    lineHeight: 20,
   },
 
   noAnswersText: {
@@ -813,20 +1067,17 @@ const styles = StyleSheet.create({
   },
 
   answerInputLabel: {
-    fontSize: 14,
     fontWeight: '600',
     color: '#222',
     marginBottom: 8,
   },
 
   answerInput: {
-    minHeight: 90,
     borderWidth: 1,
     borderColor: '#D9D9D9',
     borderRadius: 10,
     paddingHorizontal: 12,
     paddingVertical: 10,
-    fontSize: 14,
     color: '#222',
     backgroundColor: '#FFF',
   },
@@ -835,15 +1086,12 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
     marginTop: 12,
     backgroundColor: '#D32F2F',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
     borderRadius: 8,
   },
 
   postAnswerButtonText: {
     color: '#FFF',
     fontWeight: '600',
-    fontSize: 14,
   },
 });
 
