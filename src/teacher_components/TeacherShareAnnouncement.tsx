@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import React, { useState } from 'react';
 import {
+  Alert,
   Image,
   Platform,
   SafeAreaView,
@@ -19,46 +20,95 @@ const BACKGROUNDS = [
   { id: 4, image: require('../../assets/images/Banner4.png') },
 ];
 
+const fontFamily = Platform.select({
+  ios: 'System',
+  android: 'Roboto',
+  default: 'sans-serif',
+});
+
 export default function ShareAnnouncement() {
   const [selectedBg, setSelectedBg] = useState(4);
-  
+  const [header, setHeader] = useState('');
+  const [description, setDescription] = useState('');
   const [isHeaderFocused, setIsHeaderFocused] = useState(false);
   const [isDescFocused, setIsDescFocused] = useState(false);
 
+  const handleShare = () => {
+  const trimmedHeader = header.trim();
+  const trimmedDesc = description.trim();
+
+  if (!trimmedHeader && !trimmedDesc) {
+    Alert.alert('Error', 'Please fill in all fields.');
+    return;
+  }
+
+  if (!trimmedHeader) {
+    Alert.alert('Missing Header', 'Please enter the announcement header.');
+    return;
+  }
+
+  if (!trimmedDesc) {
+    Alert.alert('Missing Description', 'Please enter the announcement description.');
+    return;
+  }
+
+  Alert.alert(
+    'Success',
+    'Announcement shared successfully!',
+  );
+
+  // ✅ clear inputs after sharing
+  setHeader('');
+  setDescription('');
+  setSelectedBg(4);
+};
   return (
     <SafeAreaView style={styles.safeArea}>
       <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
-        
         <View style={styles.headerSpacer} />
 
         <Text style={styles.formTitle}>Share an Announcement.</Text>
-        <Text style={styles.formSubTitle}>Announcement will be available to all students.</Text>
+        <Text style={styles.formSubTitle}>
+          Announcement will be available to all students.
+        </Text>
 
-        <View style={[
-          styles.inputOutlineBox, 
-          isHeaderFocused && { borderColor: 'black' }
-        ]}>
+        <View
+          style={[
+            styles.inputOutlineBox,
+            isHeaderFocused && { borderColor: '#000' }
+          ]}
+        >
           <Text style={styles.innerLabel}>Header</Text>
-          <TextInput 
-            style={styles.nakedInput} 
+          <TextInput
+            style={styles.nakedInput}
+            value={header}
+            onChangeText={setHeader}
             onFocus={() => setIsHeaderFocused(true)}
             onBlur={() => setIsHeaderFocused(false)}
             underlineColorAndroid="transparent"
+            placeholder="Enter announcement header"
+            placeholderTextColor="#999"
           />
         </View>
 
-        <View style={[
-          styles.inputOutlineBox, 
-          isDescFocused && { borderColor: '#000' }
-        ]}>
+        <View
+          style={[
+            styles.inputOutlineBox,
+            isDescFocused && { borderColor: '#000' }
+          ]}
+        >
           <Text style={styles.innerLabel}>Description</Text>
-          <TextInput 
-            style={[styles.nakedInput, { height: 80 }]} 
+          <TextInput
+            style={[styles.nakedInput, styles.descriptionInput]}
+            value={description}
+            onChangeText={setDescription}
             multiline
             textAlignVertical="top"
             onFocus={() => setIsDescFocused(true)}
             onBlur={() => setIsDescFocused(false)}
             underlineColorAndroid="transparent"
+            placeholder="Enter announcement description"
+            placeholderTextColor="#999"
           />
         </View>
 
@@ -66,15 +116,14 @@ export default function ShareAnnouncement() {
           <Text style={styles.innerLabel}>Select Background Banner</Text>
           <View style={styles.bgGrid}>
             {BACKGROUNDS.map((bg) => (
-              <TouchableOpacity 
-                key={bg.id} 
+              <TouchableOpacity
+                key={bg.id}
                 onPress={() => setSelectedBg(bg.id)}
                 style={[
-                  styles.bgOption, 
+                  styles.bgOption,
                   selectedBg === bg.id && styles.bgOptionSelected
                 ]}
               >
-                {/* FIXED: source={bg.image} instead of {{ uri: bg.image }} */}
                 <Image source={bg.image} style={styles.bgImage} />
                 {selectedBg === bg.id && (
                   <View style={styles.checkOverlay}>
@@ -86,108 +135,142 @@ export default function ShareAnnouncement() {
           </View>
         </View>
 
-        <TouchableOpacity style={styles.submitBtn} activeOpacity={0.8}>
+        <TouchableOpacity
+          style={styles.submitBtn}
+          activeOpacity={0.8}
+          onPress={handleShare}
+        >
           <Text style={styles.submitBtnText}>Share</Text>
         </TouchableOpacity>
-
       </ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: { 
-    flex: 1, 
-    backgroundColor: '#FFF' 
+  safeArea: {
+    flex: 1,
+    backgroundColor: '#FFF'
   },
-  container: { 
-    flex: 1, 
-    paddingLeft: 25, 
-    paddingRight: 500, 
-    paddingTop: 10 
+
+  container: {
+    flex: 1,
+    paddingLeft: 25,
+    paddingRight: 500,
+    paddingTop: 10
   },
+
   headerSpacer: {
     height: 10,
     marginBottom: 20
   },
-  formTitle: { 
-    fontSize: 28, 
-    fontWeight: '900', 
-    color: '#000' 
+
+  formTitle: {
+  fontSize: 40,          // bigger like the image
+  fontWeight: '800',     // extra bold
+  color: '#000',
+  fontFamily: Platform.select({
+    ios: 'System',
+    android: 'Roboto',
+    default: 'sans-serif',
+  }),
+  letterSpacing: -0.5,   // tighter look like "Honors"
+},
+
+  formSubTitle: {
+    fontSize: 14,
+    color: '#444',
+    marginBottom: 30,
+    fontFamily
   },
-  formSubTitle: { 
-    fontSize: 14, 
-    color: '#666', 
-    marginBottom: 30 
+
+  inputOutlineBox: {
+    borderWidth: 1.5,
+    borderColor: '#718096',
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 20,
+    backgroundColor: '#FFF'
   },
-  inputOutlineBox: { 
-    borderWidth: 1.5, 
-    borderColor: '#718096', 
-    borderRadius: 8, 
-    padding: 12, 
-    marginBottom: 20 
+
+  selectorOutlineBox: {
+    borderWidth: 1.5,
+    borderColor: '#718096',
+    borderRadius: 8,
+    padding: 15,
+    marginBottom: 35,
+    backgroundColor: '#FFF'
   },
-  selectorOutlineBox: { 
-    borderWidth: 1.5, 
-    borderColor: '#718096', 
-    borderRadius: 8, 
-    padding: 15, 
-    marginBottom: 35 
+
+  innerLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#222',
+    marginBottom: 5,
+    fontFamily
   },
-  innerLabel: { 
-    fontSize: 13, 
-    fontWeight: '700', 
-    color: '#4A5568', 
-    marginBottom: 5 
-  },
-  nakedInput: { 
-    fontSize: 15, 
-    color: '#000',
+
+  nakedInput: {
+    fontSize: 14,
+    color: '#222',
     borderWidth: 0,
     backgroundColor: 'transparent',
-    padding: 0, 
+    padding: 0,
     margin: 0,
+    fontFamily,
     ...Platform.select({
       web: { outlineStyle: 'none' } as any
     })
   },
-  bgGrid: { 
-    marginTop: 10 
+
+  descriptionInput: {
+    height: 80
   },
-  bgOption: { 
-    width: '100%', 
-    height: 80, 
-    borderRadius: 8, 
-    marginBottom: 12, 
-    overflow: 'hidden', 
-    borderWidth: 1, 
-    borderColor: '#E2E8F0' 
+
+  bgGrid: {
+    marginTop: 10
   },
-  bgOptionSelected: { 
-    borderColor: '#B71C1C', 
-    borderWidth: 3 
+
+  bgOption: {
+    width: '100%',
+    height: 80,
+    borderRadius: 8,
+    marginBottom: 12,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#E2E8F0'
   },
-  bgImage: { 
-    width: '100%', 
-    height: '100%', 
-    resizeMode: 'cover' 
+
+  bgOptionSelected: {
+    borderColor: '#B71C1C',
+    borderWidth: 3
   },
-  checkOverlay: { 
-    ...StyleSheet.absoluteFillObject, 
-    backgroundColor: 'rgba(183, 28, 28, 0.3)', 
-    justifyContent: 'center', 
-    alignItems: 'center' 
+
+  bgImage: {
+    width: '100%',
+    height: '100%',
+    resizeMode: 'cover'
   },
-  submitBtn: { 
-    backgroundColor: '#B71C1C', 
-    paddingVertical: 16, 
-    borderRadius: 8, 
+
+  checkOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(183, 28, 28, 0.3)',
+    justifyContent: 'center',
+    alignItems: 'center'
+  },
+
+  submitBtn: {
+    backgroundColor: '#B71C1C',
+    paddingVertical: 16,
+    borderRadius: 8,
     alignItems: 'center',
     marginBottom: 40
   },
-  submitBtnText: { 
-    color: '#FFF', 
-    fontSize: 18, 
-    fontWeight: '900' 
+
+  submitBtnText: {
+    color: '#FFF',
+    fontSize: 18,
+    fontWeight: '900',
+    fontFamily
   }
 });

@@ -96,26 +96,25 @@ export default function TeacherApp({ onLogout }: Props) {
   };
 
   const handleCreatePost = (query: string) => {
-    const trimmed = query.trim();
+  const trimmed = query.trim();
 
-    if (!trimmed) {
-      closePostModal();
-      return;
-    }
-
-    const newPost: CommunityPost = {
-      id: Date.now().toString(),
-      userName: CURRENT_USER_NAME,
-      avatar: CURRENT_USER_AVATAR,
-      content: trimmed,
-      dateTime: new Date().toLocaleString(),
-      answers: [] as CommunityAnswer[],
-    };
-
-    setPosts((prevPosts) => [newPost, ...prevPosts]);
+  if (!trimmed) {
     closePostModal();
-    setActiveScreen('community');
+    return;
+  }
+
+  const newPost: CommunityPost = {
+    id: Date.now().toString(),
+    userName: CURRENT_USER_NAME,
+    avatar: CURRENT_USER_AVATAR,
+    content: trimmed,
+    dateTime: new Date().toLocaleString(),
+    answers: [] as CommunityAnswer[],
   };
+
+  setPosts((prevPosts) => [newPost, ...prevPosts]);
+  closePostModal();
+};
 
   const handleSetIsLoggedIn = (val: boolean) => {
     if (!val) {
@@ -126,11 +125,11 @@ export default function TeacherApp({ onLogout }: Props) {
   return (
     <SafeAreaView style={styles.mainContainer}>
       <Header
-  isLargeScreen={isLargeScreen}
-  activeScreen={activeScreen}
-  onNavigate={navigateTo}
-  onSearchChange={(_query) => {}}
-/>
+        isLargeScreen={isLargeScreen}
+        activeScreen={activeScreen}
+        onNavigate={navigateTo}
+        onSearchChange={(_query) => {}}
+      />
 
       {!isLargeScreen && (
         <TouchableOpacity
@@ -216,7 +215,6 @@ export default function TeacherApp({ onLogout }: Props) {
         </View>
       </View>
 
-      {/* ONLY ONE POST MODAL IN THE ENTIRE APP */}
       <PostQueryModal2
         visible={isPostModalVisible}
         onClose={closePostModal}
