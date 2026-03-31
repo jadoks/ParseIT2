@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
-// Import All Components
+// --- IMPORT ALL COMPONENTS FROM admin_components ---
 import { AdminManagement } from './admin_components/AdminManagement';
 import { DashboardCards } from './admin_components/DashboardCards';
 import { PerformanceChart } from './admin_components/PerformanceChart';
@@ -11,6 +11,11 @@ import { StudentTable } from './admin_components/StudentTable';
 import { TeacherManagement } from './admin_components/TeacherManagement';
 import { TopBar } from './admin_components/TopBar';
 
+// --- UPDATED SETTINGS PATHS (Now from admin_components) ---
+import { ChangeEmail } from './admin_components/ChangeEmail';
+import { ChangePassword } from './admin_components/ChangePassword';
+import { SettingsApp } from './admin_components/SettingsApp';
+
 interface AdminAppProps {
   onLogout: () => void;
 }
@@ -19,7 +24,10 @@ export default function AdminApp({ onLogout }: AdminAppProps) {
   const [activeTab, setActiveTab] = useState('Dashboard');
   const [logoutVisible, setLogoutVisible] = useState(false);
   
-  // --- NEW: ADD ADMIN MODAL STATE ---
+  // --- SETTINGS VIEW STATE ---
+  const [settingsView, setSettingsView] = useState('Main'); 
+
+  // --- ADD ADMIN MODAL STATE ---
   const [addAdminVisible, setAddAdminVisible] = useState(false);
   const [newAdmin, setNewAdmin] = useState({ id: '', name: '', email: '', role: '' });
 
@@ -31,7 +39,6 @@ export default function AdminApp({ onLogout }: AdminAppProps) {
   };
 
   const handleSaveAdmin = () => {
-    // Logic to update your AdminManagement list would go here
     console.log("Recording New Admin:", newAdmin);
     setAddAdminVisible(false);
     setNewAdmin({ id: '', name: '', email: '', role: '' }); 
@@ -42,7 +49,10 @@ export default function AdminApp({ onLogout }: AdminAppProps) {
       {/* 1. SIDEBAR */}
       <Sidebar 
         onLogout={handleLogout} 
-        onTabChange={setActiveTab} 
+        onTabChange={(tab) => {
+          setActiveTab(tab);
+          setSettingsView('Main'); // Reset settings sub-navigation when changing tabs
+        }} 
         activeTab={activeTab}
       />
 
@@ -62,25 +72,17 @@ export default function AdminApp({ onLogout }: AdminAppProps) {
           {/* TAB LOGIC */}
           {activeTab === 'Dashboard' ? (
             <View style={styles.maxWidthContainer}>
-              
               <View style={styles.banner}>
                 <View style={styles.bannerContent}>
                   <Text style={styles.bannerTitle}>Set Up Academic Year</Text>
                   <Text style={styles.bannerSub}>SESSION YEAR: 2025 - 2026</Text>
-                  
                   <View style={styles.bannerActions}>
-                    <TouchableOpacity style={styles.btnEnd}>
-                      <Text style={styles.btnTextEnd}>End Semester ›</Text>
-                    </TouchableOpacity>
-                    
-                    <TouchableOpacity style={styles.btnCreate}>
-                      <Text style={styles.btnTextCreate}>+ Create Semester</Text>
-                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.btnEnd}><Text style={styles.btnTextEnd}>End Semester ›</Text></TouchableOpacity>
+                    <TouchableOpacity style={styles.btnCreate}><Text style={styles.btnTextCreate}>+ Create Semester</Text></TouchableOpacity>
                   </View>
                 </View>
               </View>
 
-              {/* FIXED: Added onOpenAddAdmin prop to resolve error */}
               <DashboardCards onOpenAddAdmin={() => setAddAdminVisible(true)} />
               
               <View style={styles.analyticsHeader}>
@@ -93,16 +95,26 @@ export default function AdminApp({ onLogout }: AdminAppProps) {
               <View style={styles.cardShadow}><PerformanceChart /></View>
             </View>
           ) : activeTab === 'Students' ? ( 
-            <View style={styles.maxWidthContainer}>
-                <StudentManagement />
-            </View>
+            <View style={styles.maxWidthContainer}><StudentManagement /></View>
           ) : activeTab === 'Teacher' ? ( 
-            <View style={styles.maxWidthContainer}>
-                <TeacherManagement />
-            </View>
+            <View style={styles.maxWidthContainer}><TeacherManagement /></View>
           ) : activeTab === 'Admin' ? (
+            <View style={styles.maxWidthContainer}><AdminManagement /></View>
+          ) : activeTab === 'Settings' ? (
             <View style={styles.maxWidthContainer}>
-                <AdminManagement />
+              {/* INTERNAL SETTINGS NAVIGATION */}
+              {settingsView === 'Main' && (
+                <SettingsApp 
+                  onNavigateEmail={() => setSettingsView('Email')} 
+                  onNavigatePassword={() => setSettingsView('Password')} 
+                />
+              )}
+              {settingsView === 'Email' && (
+                <ChangeEmail onBack={() => setSettingsView('Main')} />
+              )}
+              {settingsView === 'Password' && (
+                <ChangePassword onBack={() => setSettingsView('Main')} />
+              )}
             </View>
           ) : (
             <View style={styles.placeholder}>
@@ -121,51 +133,24 @@ export default function AdminApp({ onLogout }: AdminAppProps) {
             
             <View style={styles.inputGroup}>
               <Text style={styles.inputLabel}>ADMIN ID</Text>
-              <TextInput 
-                style={styles.input} 
-                placeholder="e.g. ADM-770" 
-                value={newAdmin.id} 
-                onChangeText={(v) => setNewAdmin({...newAdmin, id: v})} 
-              />
+              <TextInput style={styles.input} placeholder="e.g. ADM-770" value={newAdmin.id} onChangeText={(v) => setNewAdmin({...newAdmin, id: v})} />
             </View>
-
             <View style={styles.inputGroup}>
               <Text style={styles.inputLabel}>FULL NAME</Text>
-              <TextInput 
-                style={styles.input} 
-                placeholder="Enter complete name" 
-                value={newAdmin.name} 
-                onChangeText={(v) => setNewAdmin({...newAdmin, name: v})} 
-              />
+              <TextInput style={styles.input} placeholder="Enter complete name" value={newAdmin.name} onChangeText={(v) => setNewAdmin({...newAdmin, name: v})} />
             </View>
-
             <View style={styles.inputGroup}>
               <Text style={styles.inputLabel}>GMAIL ADDRESS</Text>
-              <TextInput 
-                style={styles.input} 
-                placeholder="admin@gmail.com" 
-                value={newAdmin.email} 
-                onChangeText={(v) => setNewAdmin({...newAdmin, email: v})} 
-              />
+              <TextInput style={styles.input} placeholder="admin@gmail.com" value={newAdmin.email} onChangeText={(v) => setNewAdmin({...newAdmin, email: v})} />
             </View>
-
             <View style={styles.inputGroup}>
               <Text style={styles.inputLabel}>SYSTEM ROLE</Text>
-              <TextInput 
-                style={styles.input} 
-                placeholder="e.g. Regional Admin" 
-                value={newAdmin.role} 
-                onChangeText={(v) => setNewAdmin({...newAdmin, role: v})} 
-              />
+              <TextInput style={styles.input} placeholder="e.g. Regional Admin" value={newAdmin.role} onChangeText={(v) => setNewAdmin({...newAdmin, role: v})} />
             </View>
 
             <View style={styles.modalButtons}>
-              <TouchableOpacity onPress={() => setAddAdminVisible(false)}>
-                <Text style={styles.cancelBtnText}>Discard</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.confirmBtn} onPress={handleSaveAdmin}>
-                <Text style={styles.confirmBtnText}>Save Admin</Text>
-              </TouchableOpacity>
+              <TouchableOpacity onPress={() => setAddAdminVisible(false)}><Text style={styles.cancelBtnText}>Discard</Text></TouchableOpacity>
+              <TouchableOpacity style={styles.confirmBtn} onPress={handleSaveAdmin}><Text style={styles.confirmBtnText}>Save Admin</Text></TouchableOpacity>
             </View>
           </View>
         </View>
@@ -178,12 +163,8 @@ export default function AdminApp({ onLogout }: AdminAppProps) {
             <Text style={styles.modalTitle}>Sign Out</Text>
             <Text style={styles.modalSub}>Are you sure you want to log out of PasersHub 2.0?</Text>
             <View style={styles.modalButtons}>
-              <TouchableOpacity style={styles.cancelBtn} onPress={() => setLogoutVisible(false)}>
-                <Text style={styles.cancelBtnText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.confirmBtn} onPress={confirmLogout}>
-                <Text style={styles.confirmBtnText}>Logout</Text>
-              </TouchableOpacity>
+              <TouchableOpacity style={styles.cancelBtn} onPress={() => setLogoutVisible(false)}><Text style={styles.cancelBtnText}>Cancel</Text></TouchableOpacity>
+              <TouchableOpacity style={styles.confirmBtn} onPress={confirmLogout}><Text style={styles.confirmBtnText}>Logout</Text></TouchableOpacity>
             </View>
           </View>
         </View>
@@ -198,11 +179,7 @@ const styles = StyleSheet.create({
   scroll: { flex: 1 },
   scrollPadding: { padding: 40, paddingBottom: 100 },
   maxWidthContainer: { maxWidth: 1300, alignSelf: 'center', width: '100%' },
-
-  banner: { 
-    backgroundColor: '#FFFFFF', borderRadius: 20, padding: 40, marginBottom: 40,
-    borderWidth: 1, borderColor: '#E2E8F0', elevation: 2,
-  },
+  banner: { backgroundColor: '#FFFFFF', borderRadius: 20, padding: 40, marginBottom: 40, borderWidth: 1, borderColor: '#E2E8F0', elevation: 2 },
   bannerContent: { zIndex: 2 },
   bannerTitle: { fontSize: 30, fontWeight: 'bold', color: '#1E293B' },
   bannerSub: { fontSize: 14, color: '#64748B', marginTop: 8, marginBottom: 25, fontWeight: '600' },
@@ -211,19 +188,11 @@ const styles = StyleSheet.create({
   btnTextEnd: { color: '#FF4D4D', fontWeight: 'bold' },
   btnCreate: { paddingVertical: 12 },
   btnTextCreate: { color: '#FF4D4D', fontWeight: 'bold', fontSize: 15 },
-
   analyticsHeader: { flexDirection: 'row', alignItems: 'center', marginTop: 50, marginBottom: 25 },
   diamond: { width: 10, height: 10, backgroundColor: '#FF4D4D', transform: [{ rotate: '45deg' }], marginRight: 15 },
   analyticsTitle: { color: '#1E293B', fontSize: 24, fontWeight: 'bold' },
-  
-  cardShadow: {
-    backgroundColor: '#FFF', borderRadius: 16, padding: 10, elevation: 3,
-    borderWidth: 1, borderColor: '#F1F5F9',
-  },
-
+  cardShadow: { backgroundColor: '#FFF', borderRadius: 16, padding: 10, elevation: 3, borderWidth: 1, borderColor: '#F1F5F9' },
   placeholder: { flex: 1, justifyContent: 'center', alignItems: 'center', marginTop: 100 },
-
-  // --- MODAL STYLES ---
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center' },
   modalBox: { width: 350, backgroundColor: '#FFF', borderRadius: 20, padding: 30, alignItems: 'center' },
   modalBoxLarge: { width: 420, backgroundColor: '#FFF', borderRadius: 28, padding: 35 },
@@ -235,12 +204,7 @@ const styles = StyleSheet.create({
   cancelBtnText: { color: '#94A3B8', fontWeight: '700' },
   confirmBtn: { backgroundColor: '#FF4D4D', borderRadius: 12, alignItems: 'center', paddingVertical: 12, paddingHorizontal: 25 },
   confirmBtnText: { color: '#FFF', fontWeight: 'bold' },
-
-  // --- INPUT STYLES ---
   inputGroup: { width: '100%', marginBottom: 15 },
   inputLabel: { fontSize: 11, fontWeight: '900', color: '#94A3B8', marginBottom: 8 },
-  input: { 
-    width: '100%', height: 48, backgroundColor: '#F8FAFC', borderRadius: 12, 
-    borderWidth: 1, borderColor: '#E2E8F0', paddingHorizontal: 15, color: '#1E293B' 
-  }
+  input: { width: '100%', height: 48, backgroundColor: '#F8FAFC', borderRadius: 12, borderWidth: 1, borderColor: '#E2E8F0', paddingHorizontal: 15, color: '#1E293B' }
 });
