@@ -1,3 +1,4 @@
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import React, { useState } from 'react';
 import {
   Image,
@@ -14,19 +15,23 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
-import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
-import VideosIcon from '../../assets/images/bullhorn-solid.svg';
-import House from '../../assets/images/house-solid.svg';
-import Gamepad from '../../assets/images/medal-solid.svg';
-import MessengerIcon from '../../assets/images/messenger.svg';
-import Grades from '../../assets/images/user-graduate-solid.svg';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
-// Updated types to include 'notification'
-type ScreenType = 'home' | 'game' | 'grades' | 'videos' | 'analytics' | 'myjourney' | 'profile' | 'messenger' | 'assignments' | 'coursedetail' | 'community' | 'notification';
+export type ScreenType =
+  | 'home'
+  | 'game'
+  | 'grades'
+  | 'videos'
+  | 'myjourney'
+  | 'profile'
+  | 'messenger'
+  | 'assignments'
+  | 'coursedetail'
+  | 'community'
+  | 'notification';
 
 interface HeaderProps {
   isLargeScreen: boolean;
@@ -36,7 +41,7 @@ interface HeaderProps {
 }
 
 const TeacherHeader: React.FC<HeaderProps> = ({
-  isLargeScreen: propIsLargeScreen,
+  isLargeScreen,
   activeScreen = 'home',
   onNavigate,
   onSearchChange,
@@ -75,7 +80,9 @@ const TeacherHeader: React.FC<HeaderProps> = ({
     setIsSearchExpanded(expand);
   };
 
-  const getIconColor = (screen: ScreenType) => (activeScreen === screen ? '#D32F2F' : '#000000');
+  const getIconColor = (screen: ScreenType) =>
+    activeScreen === screen ? '#D32F2F' : '#000000';
+
   const isActive = (screen: ScreenType) => activeScreen === screen;
 
   const navScreens: Array<'home' | 'game' | 'grades' | 'videos' | 'messenger'> = [
@@ -85,6 +92,31 @@ const TeacherHeader: React.FC<HeaderProps> = ({
     'videos',
     'messenger',
   ];
+
+  const renderNavIcon = (screen: ScreenType, size: number, mobile = false) => {
+    const color = getIconColor(screen);
+
+    switch (screen) {
+      case 'home':
+        return <MaterialCommunityIcons name="home" size={size} color={color} />;
+      case 'game':
+        return <MaterialCommunityIcons name="medal" size={size} color={color} />;
+      case 'grades':
+        return <MaterialCommunityIcons name="school" size={size} color={color} />;
+      case 'videos':
+        return <MaterialCommunityIcons name="bullhorn" size={size} color={color} />;
+      case 'messenger':
+        return (
+          <MaterialCommunityIcons
+            name="facebook-messenger"
+            size={size}
+            color={color}
+          />
+        );
+      default:
+        return <MaterialCommunityIcons name="circle" size={size} color={color} />;
+    }
+  };
 
   if (isPhone) {
     return (
@@ -96,34 +128,89 @@ const TeacherHeader: React.FC<HeaderProps> = ({
           }
         }}
       >
-        <View style={{ backgroundColor: '#FFF', borderBottomWidth: 1, borderBottomColor: '#EEE' }}>
-          <View style={[styles.headerContainer, { paddingLeft: paddingHorizontal, paddingRight: 0, height: isVerySmall ? 64 : 72 }]}>
+        <View style={styles.mobileWrapper}>
+          <View
+            style={[
+              styles.headerContainer,
+              {
+                paddingLeft: paddingHorizontal,
+                paddingRight: 0,
+                height: isVerySmall ? 64 : 72,
+              },
+            ]}
+          >
             <Image
               source={require('../../assets/images/logo.png')}
-              style={{ width: logoSize, height: logoSize, resizeMode: 'contain', marginRight: isVerySmall ? 8 : 10 }}
+              style={{
+                width: logoSize,
+                height: logoSize,
+                resizeMode: 'contain',
+                marginRight: isVerySmall ? 8 : 10,
+              }}
             />
 
             {!isSearchExpanded ? (
               <TouchableOpacity
-                style={[styles.searchIconOnly, { padding: isVerySmall ? 8 : 10, flex: 1, marginHorizontal: 8, flexDirection: 'row', paddingHorizontal: 12, gap: 8, alignItems: 'center' }]}
+                style={[
+                  styles.searchIconOnly,
+                  {
+                    padding: isVerySmall ? 8 : 10,
+                    flex: 1,
+                    marginHorizontal: 8,
+                    flexDirection: 'row',
+                    paddingHorizontal: 12,
+                    alignItems: 'center',
+                    gap: 8,
+                  },
+                ]}
                 onPress={() => toggleSearch(true)}
                 activeOpacity={0.7}
               >
-                <MaterialCommunityIcons name="magnify" size={searchIconSize} color="#888" />
-                <Text style={{ color: '#888', fontSize: isVerySmall ? 12 : 14, flex: 1, fontWeight: '400' }}>
+                <MaterialCommunityIcons
+                  name="magnify"
+                  size={searchIconSize}
+                  color="#888"
+                />
+                <Text
+                  style={{
+                    color: '#888',
+                    fontSize: isVerySmall ? 12 : 14,
+                    flex: 1,
+                    fontWeight: '400',
+                  }}
+                >
                   {activeScreen === 'messenger' ? 'Search Message' : 'Search ParseClass'}
                 </Text>
               </TouchableOpacity>
             ) : (
               <TouchableWithoutFeedback onPress={() => {}}>
-                <View style={[styles.searchBar, { flex: 1, marginHorizontal: 8, height: isVerySmall ? 42 : 46, paddingHorizontal: 16, borderBottomWidth: isSearchFocused ? 2 : 1 }]}>
-                  <MaterialCommunityIcons name="magnify" size={searchIconSize} color="#888" style={{ marginRight: 12 }} />
+                <View
+                  style={[
+                    styles.searchBar,
+                    {
+                      flex: 1,
+                      marginHorizontal: 8,
+                      height: isVerySmall ? 42 : 46,
+                      paddingHorizontal: 16,
+                      borderBottomWidth: isSearchFocused ? 2 : 1,
+                    },
+                  ]}
+                >
+                  <MaterialCommunityIcons
+                    name="magnify"
+                    size={searchIconSize}
+                    color="#888"
+                    style={{ marginRight: 12 }}
+                  />
                   <TextInput
                     autoFocus
                     placeholder="Search ParseClass"
                     placeholderTextColor="#888"
                     value={searchQuery}
-                    onChangeText={(text) => { setSearchQuery(text); onSearchChange?.(text); }}
+                    onChangeText={(text) => {
+                      setSearchQuery(text);
+                      onSearchChange?.(text);
+                    }}
                     onFocus={() => setIsSearchFocused(true)}
                     onBlur={() => setIsSearchFocused(false)}
                     style={[styles.searchInput, { fontSize: fontSizeSearch }]}
@@ -133,12 +220,16 @@ const TeacherHeader: React.FC<HeaderProps> = ({
               </TouchableWithoutFeedback>
             )}
 
-            <TouchableOpacity 
-              style={styles.notificationBtnCorner} 
+            <TouchableOpacity
+              style={styles.notificationBtnCorner}
               onPress={() => onNavigate?.('notification')}
             >
               <View style={{ position: 'relative' }}>
-                <MaterialCommunityIcons name="bell" size={navIconSize} color={getIconColor('notification')} />
+                <MaterialCommunityIcons
+                  name="bell"
+                  size={navIconSize}
+                  color={getIconColor('notification')}
+                />
                 <View style={styles.notificationBadge}>
                   <Text style={styles.badgeText}>17</Text>
                 </View>
@@ -146,35 +237,31 @@ const TeacherHeader: React.FC<HeaderProps> = ({
             </TouchableOpacity>
           </View>
 
-          <View style={[styles.mobileNavRow, { paddingHorizontal, gap: isVerySmall ? 12 : 20, justifyContent: 'center' }]}>
+          <View
+            style={[
+              styles.mobileNavRow,
+              {
+                paddingHorizontal,
+                gap: isVerySmall ? 12 : 20,
+                justifyContent: 'center',
+              },
+            ]}
+          >
             {navScreens.map((screen) => (
               <Pressable
                 key={screen}
-                style={(state: any) => [styles.navBtn, isActive(screen) && styles.navBtnActive, state.hovered && !isActive(screen) && styles.navBtnHover, { padding: 12 }]}
-                onPress={() => { toggleSearch(false); onNavigate?.(screen); }}
+                style={(state: any) => [
+                  styles.navBtn,
+                  isActive(screen) && styles.navBtnActive,
+                  state.hovered && !isActive(screen) && styles.navBtnHover,
+                  { padding: 12 },
+                ]}
+                onPress={() => {
+                  toggleSearch(false);
+                  onNavigate?.(screen);
+                }}
               >
-                {Platform.OS === 'web' ? (
-                  <Image
-                    source={
-                      screen === 'home' ? require('../../assets/images/house-solid.png') :
-                      screen === 'game' ? require('../../assets/images/medal-solid.svg') :
-                      screen === 'grades' ? require('../../assets/images/user-graduate-solid.svg') :
-                      screen === 'videos' ? require('../../assets/images/bullhorn-solid.svg') :
-                      require('../../assets/images/messenger.png')
-                    }
-                    style={{ width: mobileNavIconSize, height: mobileNavIconSize, resizeMode: 'contain', tintColor: isActive(screen) ? '#D32F2F' : '#000000' }}
-                  />
-                ) : screen === 'home' ? (
-                  <House width={mobileNavIconSize} height={mobileNavIconSize} fill={getIconColor(screen)} />
-                ) : screen === 'game' ? (
-                  <Gamepad width={mobileNavIconSize} height={mobileNavIconSize} fill={getIconColor(screen)} />
-                ) : screen === 'grades' ? (
-                  <Grades width={mobileNavIconSize} height={mobileNavIconSize} fill={getIconColor(screen)} />
-                ) : screen === 'videos' ? (
-                  <VideosIcon width={mobileNavIconSize} height={mobileNavIconSize} fill={getIconColor(screen)} />
-                ) : (
-                  <MessengerIcon width={mobileNavIconSize} height={mobileNavIconSize} stroke={getIconColor(screen)} />
-                )}
+                {renderNavIcon(screen, mobileNavIconSize, true)}
               </Pressable>
             ))}
           </View>
@@ -184,19 +271,53 @@ const TeacherHeader: React.FC<HeaderProps> = ({
   }
 
   return (
-    <View style={[styles.headerContainer, { paddingLeft: paddingHorizontal, paddingRight: 0, height: isTablet ? 72 : 80 }]}>
+    <View
+      style={[
+        styles.headerContainer,
+        {
+          paddingLeft: paddingHorizontal,
+          paddingRight: 0,
+          height: isTablet ? 72 : 80,
+        },
+      ]}
+    >
       <View style={[styles.leftSection, { flex: isLargeScreenLocal ? 0.3 : 0.4 }]}>
         <Image
           source={require('../../assets/images/logo.png')}
-          style={{ width: logoSize, height: logoSize, resizeMode: 'contain', marginRight: isTablet ? 14 : 18 }}
+          style={{
+            width: logoSize,
+            height: logoSize,
+            resizeMode: 'contain',
+            marginRight: isTablet ? 14 : 18,
+          }}
         />
-        <View style={[styles.searchBar, { flex: 1, maxWidth: isLargeScreenLocal ? 420 : isTablet ? 340 : '100%', height: isTablet ? 46 : 50, paddingHorizontal: isLargeScreenLocal ? 20 : 16, borderBottomWidth: isSearchFocused ? 2 : 1 }]}>
-          <MaterialCommunityIcons name="magnify" size={searchIconSize} color="#888" style={{ marginRight: 12 }} />
+
+        <View
+          style={[
+            styles.searchBar,
+            {
+              flex: 1,
+              maxWidth: isLargeScreenLocal ? 420 : isTablet ? 340 : '100%',
+              height: isTablet ? 46 : 50,
+              paddingHorizontal: isLargeScreenLocal ? 20 : 16,
+              borderBottomWidth: isSearchFocused ? 2 : 1,
+            },
+          ]}
+        >
+          <MaterialCommunityIcons
+            name="magnify"
+            size={searchIconSize}
+            color="#888"
+            style={{ marginRight: 12 }}
+          />
           <TextInput
             placeholder="Search ParseClass"
             placeholderTextColor="#888"
             value={searchQuery}
-            onChangeText={(text) => { setSearchQuery(text); onSearchChange?.(text); }}
+            onChangeText={(text) => {
+              setSearchQuery(text);
+              onSearchChange?.(text);
+            }}
             onFocus={() => setIsSearchFocused(true)}
             onBlur={() => setIsSearchFocused(false)}
             style={[styles.searchInput, { fontSize: fontSizeSearch }]}
@@ -209,42 +330,29 @@ const TeacherHeader: React.FC<HeaderProps> = ({
         {navScreens.map((screen) => (
           <Pressable
             key={screen}
-            style={(state: any) => [styles.navBtn, isActive(screen) && styles.navBtnActive, state.hovered && !isActive(screen) && styles.navBtnHover]}
+            style={(state: any) => [
+              styles.navBtn,
+              isActive(screen) && styles.navBtnActive,
+              state.hovered && !isActive(screen) && styles.navBtnHover,
+            ]}
             onPress={() => onNavigate?.(screen)}
           >
-            {Platform.OS === 'web' ? (
-              <Image
-                source={
-                  screen === 'home' ? require('../../assets/images/house-solid.png') :
-                  screen === 'game' ? require('../../assets/images/medal-solid.svg') :
-                  screen === 'grades' ? require('../../assets/images/user-graduate-solid.svg') :
-                  screen === 'videos' ? require('../../assets/images/bullhorn-solid.svg') :
-                  require('../../assets/images/messenger.png')
-                }
-                style={{ width: navIconSize, height: navIconSize, resizeMode: 'contain', tintColor: isActive(screen) ? '#D32F2F' : '#000000' }}
-              />
-            ) : screen === 'home' ? (
-              <House width={navIconSize} height={navIconSize} stroke={getIconColor(screen)} />
-            ) : screen === 'game' ? (
-              <Gamepad width={navIconSize} height={navIconSize} stroke={getIconColor(screen)} />
-            ) : screen === 'grades' ? (
-              <Grades width={navIconSize} height={navIconSize} stroke={getIconColor(screen)} />
-            ) : screen === 'videos' ? (
-              <VideosIcon width={navIconSize} height={navIconSize} stroke={getIconColor(screen)} />
-            ) : (
-              <MessengerIcon width={navIconSize} height={navIconSize} stroke={getIconColor(screen)} />
-            )}
+            {renderNavIcon(screen, navIconSize)}
           </Pressable>
         ))}
       </View>
 
       <View style={styles.rightCornerSection}>
-        <TouchableOpacity 
-          style={styles.notificationBtnCorner} 
+        <TouchableOpacity
+          style={styles.notificationBtnCorner}
           onPress={() => onNavigate?.('notification')}
         >
           <View style={{ position: 'relative' }}>
-            <MaterialCommunityIcons name="bell" size={navIconSize} color={getIconColor('notification')} />
+            <MaterialCommunityIcons
+              name="bell"
+              size={navIconSize}
+              color={getIconColor('notification')}
+            />
             <View style={styles.notificationBadge}>
               <Text style={styles.badgeText}>17</Text>
             </View>
@@ -256,20 +364,102 @@ const TeacherHeader: React.FC<HeaderProps> = ({
 };
 
 const styles = StyleSheet.create({
-  headerContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFF', borderBottomWidth: 1, borderBottomColor: '#EEE', justifyContent: 'space-between' },
-  leftSection: { flexDirection: 'row', alignItems: 'center' },
-  centerSection: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', position: 'absolute', left: 0, right: 0, zIndex: -1 },
-  rightCornerSection: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', minWidth: 80 },
-  searchIconOnly: { borderWidth: 1, borderColor: '#D32F2F', borderRadius: 999, justifyContent: 'center', alignItems: 'center' },
-  searchBar: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: '#D32F2F', borderRadius: 999, backgroundColor: '#FFF' },
-  searchInput: { flex: 1, color: '#000', paddingVertical: Platform.select({ ios: 12, default: 8 }), borderWidth: 0, backgroundColor: 'transparent' },
-  navBtn: { padding: 8, borderRadius: 12 },
-  notificationBtnCorner: { paddingVertical: 8, paddingLeft: 24, paddingRight: 24 },
-  navBtnActive: { backgroundColor: 'rgba(211,47,47,0.08)' },
-  navBtnHover: { backgroundColor: 'rgba(0,0,0,0.05)' },
-  mobileNavRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 16, borderTopWidth: 1, borderTopColor: '#EEE' },
-  notificationBadge: { position: 'absolute', right: -4, top: -4, backgroundColor: '#D32F2F', borderRadius: 9, minWidth: 18, height: 18, justifyContent: 'center', alignItems: 'center', borderWidth: 1.5, borderColor: '#FFF', paddingHorizontal: 2 },
-  badgeText: { color: '#FFF', fontSize: 9, fontWeight: 'bold' },
+  mobileWrapper: {
+    backgroundColor: '#FFF',
+    borderBottomWidth: 1,
+    borderBottomColor: '#EEE',
+  },
+  headerContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFF',
+    borderBottomWidth: 1,
+    borderBottomColor: '#EEE',
+    justifyContent: 'space-between',
+  },
+  leftSection: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  centerSection: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    zIndex: -1,
+  },
+  rightCornerSection: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    minWidth: 80,
+  },
+  searchIconOnly: {
+    borderWidth: 1,
+    borderColor: '#D32F2F',
+    borderRadius: 999,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  searchBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#D32F2F',
+    borderRadius: 999,
+    backgroundColor: '#FFF',
+  },
+  searchInput: {
+    flex: 1,
+    color: '#000',
+    paddingVertical: Platform.select({ ios: 12, default: 8 }),
+    borderWidth: 0,
+    backgroundColor: 'transparent',
+  },
+  navBtn: {
+    padding: 8,
+    borderRadius: 12,
+  },
+  navBtnActive: {
+    backgroundColor: 'rgba(211,47,47,0.08)',
+  },
+  navBtnHover: {
+    backgroundColor: 'rgba(0,0,0,0.05)',
+  },
+  notificationBtnCorner: {
+    paddingVertical: 8,
+    paddingLeft: 24,
+    paddingRight: 24,
+  },
+  mobileNavRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#EEE',
+  },
+  notificationBadge: {
+    position: 'absolute',
+    right: -4,
+    top: -4,
+    backgroundColor: '#D32F2F',
+    borderRadius: 9,
+    minWidth: 18,
+    height: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1.5,
+    borderColor: '#FFF',
+    paddingHorizontal: 2,
+  },
+  badgeText: {
+    color: '#FFF',
+    fontSize: 9,
+    fontWeight: 'bold',
+  },
 });
 
 export default TeacherHeader;
