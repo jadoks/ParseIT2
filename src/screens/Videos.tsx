@@ -22,6 +22,29 @@ interface VideoItem {
   uploadedAt: string;
 }
 
+interface VideoComment {
+  userName: string;
+  avatar: any;
+  message: string;
+  commentedAt: string;
+}
+
+const DEFAULT_USER_AVATAR = require('../../assets/images/pogi.jpg');
+
+const normalizeImageSource = (img: any) => {
+  if (!img) return DEFAULT_USER_AVATAR;
+
+  if (typeof img === 'number') {
+    return img;
+  }
+
+  if (img?.uri) {
+    return { uri: img.uri };
+  }
+
+  return DEFAULT_USER_AVATAR;
+};
+
 const getYoutubeThumbnail = (url: string) => {
   const id = url.split('/embed/')[1];
   return `https://img.youtube.com/vi/${id}/hqdefault.jpg`;
@@ -29,8 +52,12 @@ const getYoutubeThumbnail = (url: string) => {
 
 const Videos = ({
   onVideoActiveChange,
+  currentUserName = 'Jade Lisondra',
+  currentUserAvatar = DEFAULT_USER_AVATAR,
 }: {
   onVideoActiveChange?: (isActive: boolean) => void;
+  currentUserName?: string;
+  currentUserAvatar?: any;
 }) => {
   const { width } = useWindowDimensions();
 
@@ -79,10 +106,15 @@ const Videos = ({
   const [videos] = useState<VideoItem[]>(initial);
   const [saved, setSaved] = useState<number[]>([]);
   const [liked, setLiked] = useState<number[]>([]);
-  const [comments, setComments] = useState<Record<number, string[]>>({});
+  const [comments, setComments] = useState<Record<number, VideoComment[]>>({});
   const [inputText, setInputText] = useState<Record<number, string>>({});
   const [selected, setSelected] = useState<number | null>(null);
   const [filterFav, setFilterFav] = useState(false);
+
+  const normalizedCurrentUserAvatar = useMemo(
+    () => normalizeImageSource(currentUserAvatar),
+    [currentUserAvatar]
+  );
 
   const list = useMemo(() => {
     return filterFav ? videos.filter((v) => saved.includes(v.id)) : videos;
@@ -112,9 +144,16 @@ const Videos = ({
     const text = inputText[id]?.trim();
     if (!text) return;
 
+    const newComment: VideoComment = {
+      userName: currentUserName,
+      avatar: normalizedCurrentUserAvatar,
+      message: text,
+      commentedAt: new Date().toLocaleString(),
+    };
+
     setComments((prev) => ({
       ...prev,
-      [id]: [...(prev[id] || []), text],
+      [id]: [...(prev[id] || []), newComment],
     }));
 
     setInputText((prev) => ({
@@ -229,12 +268,14 @@ const Videos = ({
           ) : (
             currentComments.map((comment, idx) => (
               <View key={idx} style={styles.commentCard}>
-                <View style={styles.commentAvatar}>
-                  <Text style={styles.commentAvatarText}>U</Text>
-                </View>
+                <Image
+                  source={normalizeImageSource(comment.avatar)}
+                  style={styles.commentAvatarImage}
+                />
                 <View style={styles.commentBody}>
-                  <Text style={styles.commentUser}>User</Text>
-                  <Text style={styles.commentText}>{comment}</Text>
+                  <Text style={styles.commentUser}>{comment.userName}</Text>
+                  <Text style={styles.commentDate}>{comment.commentedAt}</Text>
+                  <Text style={styles.commentText}>{comment.message}</Text>
                 </View>
               </View>
             ))
@@ -654,21 +695,12 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
 
-  commentAvatar: {
+  commentAvatarImage: {
     width: 34,
     height: 34,
     borderRadius: 17,
-    backgroundColor: '#111',
-    justifyContent: 'center',
-    alignItems: 'center',
     marginRight: 10,
     marginTop: 2,
-  },
-
-  commentAvatarText: {
-    color: '#fff',
-    fontWeight: '700',
-    fontSize: 12,
   },
 
   commentBody: {
@@ -678,7 +710,13 @@ const styles = StyleSheet.create({
   commentUser: {
     fontWeight: '700',
     color: '#111',
-    marginBottom: 3,
+    marginBottom: 2,
+  },
+
+  commentDate: {
+    fontSize: 12,
+    color: '#777',
+    marginBottom: 4,
   },
 
   commentText: {

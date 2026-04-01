@@ -1,6 +1,6 @@
 import * as ImageManipulator from 'expo-image-manipulator';
 import { router, useLocalSearchParams } from 'expo-router';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Image,
   LayoutChangeEvent,
@@ -241,6 +241,8 @@ const CropScreen = () => {
 
   const sliderRatio = useSharedValue(0);
 
+  const isLeavingRef = useRef(false);
+
   const actualViewportWidth = viewportLayout?.width ?? contentWidth;
   const actualViewportHeight = viewportLayout?.height ?? editorHeight;
 
@@ -386,6 +388,27 @@ const CropScreen = () => {
     sliderRatio.value = 0;
   };
 
+  const leaveScreen = (result?: { uri: string; type: CropType }) => {
+    if (isLeavingRef.current) return;
+    isLeavingRef.current = true;
+
+    resetEditor();
+
+    if (result) {
+      globalThis.__PROFILE_CROP_RESULT__ = {
+        uri: result.uri,
+        type: result.type,
+        ts: Date.now(),
+      };
+    }
+
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        router.back();
+      });
+    });
+  };
+
   const pinchGesture = Gesture.Pinch()
     .onUpdate((event) => {
       const nextScale = savedScale.value * event.scale;
@@ -478,15 +501,6 @@ const CropScreen = () => {
     transform: [{ translateX: sliderRatio.value * sliderTrackWidth }],
   }));
 
-  const saveCropAndGoBack = (uri: string, type: CropType) => {
-    globalThis.__PROFILE_CROP_RESULT__ = {
-      uri,
-      type,
-      ts: Date.now(),
-    };
-    router.back();
-  };
-
   const onViewportLayout = (event: LayoutChangeEvent) => {
     const { x, y, width, height } = event.nativeEvent.layout;
     setViewportLayout({ x, y, width, height });
@@ -498,25 +512,22 @@ const CropScreen = () => {
   };
 
   const handleCrop = async () => {
-    if (isCropping) return;
+    if (isCropping || isLeavingRef.current) return;
 
     try {
       setIsCropping(true);
 
       if (!imageUri) {
-        router.back();
+        leaveScreen();
         return;
       }
 
       if (!viewportLayout || !frameLayout) {
         console.log('Missing viewport/frame layout');
-        router.back();
+        leaveScreen();
         return;
       }
 
-      // Normalize everything to PNG first.
-      // This is especially important for JPEG/JPG because EXIF orientation
-      // can cause the cropped result to not match the preview.
       const normalized = await ImageManipulator.manipulateAsync(
         imageUri,
         [],
@@ -538,24 +549,32 @@ const CropScreen = () => {
         forceSquare: isProfile,
       });
 
-      const targetResize = isProfile
-        ? { width: 900, height: 900 }
-        : { width: 1600, height: 672 };
+      const finalActions = isProfile
+        ? [
+            {
+              crop: {
+                originX: crop.originX,
+                originY: crop.originY,
+                width: crop.width,
+                height: crop.width,
+              },
+            },
+          ]
+        : [{ crop }];
 
-      // Final result is also PNG.
       const cropped = await ImageManipulator.manipulateAsync(
         normalized.uri,
-        [{ crop }, { resize: targetResize }],
+        finalActions,
         {
           compress: 1,
           format: ImageManipulator.SaveFormat.PNG,
         }
       );
 
-      saveCropAndGoBack(cropped.uri, cropType);
+      leaveScreen({ uri: cropped.uri, type: cropType });
     } catch (error) {
       console.log('Crop error:', error);
-      router.back();
+      leaveScreen();
     } finally {
       setIsCropping(false);
     }
@@ -629,7 +648,11 @@ const CropScreen = () => {
               },
             ]}
           >
-            <Pressable onPress={() => router.back()} style={styles.topBtn}>
+            <Pressable
+              onPress={() => leaveScreen()}
+              style={styles.topBtn}
+              disabled={isCropping || isLeavingRef.current}
+            >
               <Text
                 style={[
                   styles.topBtnText,
@@ -653,7 +676,7 @@ const CropScreen = () => {
             <Pressable
               onPress={handleCrop}
               style={styles.topBtn}
-              disabled={!ready || isCropping || !viewportLayout || !frameLayout}
+              disabled={!ready || isCropping || !viewportLayout || !frameLayout || isLeavingRef.current}
             >
               <Text
                 style={[
@@ -661,7 +684,7 @@ const CropScreen = () => {
                   {
                     fontSize: isSmallPhone ? 13 : isTablet ? 16 : 15,
                     opacity:
-                      !ready || isCropping || !viewportLayout || !frameLayout
+                      !ready || isCropping || !viewportLayout || !frameLayout || isLeavingRef.current
                         ? 0.6
                         : 1,
                   },
@@ -698,7 +721,7 @@ const CropScreen = () => {
                   { width: isSmallPhone ? 28 : isTablet ? 40 : 34 },
                 ]}
                 onPress={() => zoomBy(-0.2)}
-                disabled={!ready || isCropping}
+                disabled={!ready || isCropping || isLeavingRef.current}
               >
                 <Text
                   style={[
@@ -706,7 +729,7 @@ const CropScreen = () => {
                     {
                       fontSize: isSmallPhone ? 22 : isTablet ? 34 : 30,
                       lineHeight: isSmallPhone ? 22 : isTablet ? 34 : 30,
-                      opacity: !ready || isCropping ? 0.5 : 1,
+                      opacity: !ready || isCropping || isLeavingRef.current ? 0.5 : 1,
                     },
                   ]}
                 >
@@ -734,7 +757,7 @@ const CropScreen = () => {
                   { width: isSmallPhone ? 28 : isTablet ? 40 : 34 },
                 ]}
                 onPress={() => zoomBy(0.2)}
-                disabled={!ready || isCropping}
+                disabled={!ready || isCropping || isLeavingRef.current}
               >
                 <Text
                   style={[
@@ -742,7 +765,7 @@ const CropScreen = () => {
                     {
                       fontSize: isSmallPhone ? 22 : isTablet ? 34 : 30,
                       lineHeight: isSmallPhone ? 22 : isTablet ? 34 : 30,
-                      opacity: !ready || isCropping ? 0.5 : 1,
+                      opacity: !ready || isCropping || isLeavingRef.current ? 0.5 : 1,
                     },
                   ]}
                 >
@@ -763,14 +786,14 @@ const CropScreen = () => {
                 styles.resetLinkWrap,
                 { marginTop: isSmallPhone ? 8 : 14 },
               ]}
-              disabled={!ready || isCropping}
+              disabled={!ready || isCropping || isLeavingRef.current}
             >
               <Text
                 style={[
                   styles.resetLink,
                   {
                     fontSize: isSmallPhone ? 12 : isTablet ? 15 : 14,
-                    opacity: !ready || isCropping ? 0.5 : 1,
+                    opacity: !ready || isCropping || isLeavingRef.current ? 0.5 : 1,
                   },
                 ]}
               >

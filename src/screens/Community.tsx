@@ -44,6 +44,20 @@ interface CommunityProps {
 
 const DEFAULT_AVATAR = require('../../assets/images/pogi.jpg');
 
+const normalizeImageSource = (img: any) => {
+  if (!img) return DEFAULT_AVATAR;
+
+  if (typeof img === 'number') {
+    return img;
+  }
+
+  if (img?.uri) {
+    return { uri: img.uri };
+  }
+
+  return DEFAULT_AVATAR;
+};
+
 const Community: React.FC<CommunityProps> = ({
   userName = 'Jade Lisondra',
   userAvatar = DEFAULT_AVATAR,
@@ -72,6 +86,11 @@ const Community: React.FC<CommunityProps> = ({
     [localPosts, selectedPostId]
   );
 
+  const userAvatarSource = useMemo(
+    () => normalizeImageSource(userAvatar),
+    [userAvatar]
+  );
+
   const openAnswersModal = (post: CommunityPost) => {
     setSelectedPostId(post.id);
     setAnswerText('');
@@ -91,7 +110,7 @@ const Community: React.FC<CommunityProps> = ({
     const newAnswer: CommunityAnswer = {
       id: `answer-${Date.now()}`,
       userName,
-      avatar: userAvatar,
+      avatar: userAvatarSource,
       answeredAt: new Date().toLocaleString(),
       message: trimmed,
     };
@@ -113,7 +132,11 @@ const Community: React.FC<CommunityProps> = ({
       <View style={styles.postContainer}>
         <View style={styles.postHeader}>
           <View style={styles.userRow}>
-            <Image source={item.avatar} style={styles.postAvatar} />
+            <Image
+              source={normalizeImageSource(item.avatar)}
+              style={styles.postAvatar}
+              resizeMode="cover"
+            />
             <View style={{ marginLeft: 8 }}>
               <Text style={styles.postUserName}>{item.userName}</Text>
               <Text style={styles.postDateTime}>{item.dateTime}</Text>
@@ -184,8 +207,9 @@ const Community: React.FC<CommunityProps> = ({
 
             <View style={styles.inputRow}>
               <Image
-                source={userAvatar}
+                source={userAvatarSource}
                 style={styles.inputAvatar}
+                resizeMode="cover"
               />
               <TouchableOpacity
                 style={styles.inputField}
@@ -244,7 +268,11 @@ const Community: React.FC<CommunityProps> = ({
                             <View key={answer.id} style={styles.answerCard}>
                               <View style={styles.answerPreviewHeader}>
                                 <View style={styles.userRow}>
-                                  <Image source={answer.avatar} style={styles.answerAvatar} />
+                                  <Image
+                                    source={normalizeImageSource(answer.avatar)}
+                                    style={styles.answerAvatar}
+                                    resizeMode="cover"
+                                  />
                                   <View style={{ marginLeft: 8, flex: 1 }}>
                                     <Text style={styles.answerUserName}>{answer.userName}</Text>
                                     <Text style={styles.answerDate}>{answer.answeredAt}</Text>
@@ -337,6 +365,8 @@ const styles = StyleSheet.create({
     height: 40,
     borderRadius: 20,
     marginRight: 8,
+    overflow: 'hidden',
+    aspectRatio: 1,
   },
 
   inputField: {
@@ -378,6 +408,8 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
+    overflow: 'hidden',
+    aspectRatio: 1,
   },
 
   postUserName: {
@@ -499,6 +531,8 @@ const styles = StyleSheet.create({
     width: 30,
     height: 30,
     borderRadius: 15,
+    overflow: 'hidden',
+    aspectRatio: 1,
   },
 
   answerUserName: {

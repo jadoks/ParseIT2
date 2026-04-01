@@ -49,7 +49,7 @@ export default function GeminiFloatingModal({
               ? {
                   width: width * 0.92,
                   height: height * 0.72,
-                  bottom: 125,
+                  bottom: 80,
                   right: 16,
                 }
               : {
