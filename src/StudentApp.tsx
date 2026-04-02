@@ -318,14 +318,16 @@ const INITIAL_COMMUNITY_POSTS: CommunityPost[] = [
         userName: 'Maria Santos',
         avatar: OTHER_USERS_PROFILE_IMAGE,
         answeredAt: 'Feb 24, 2026 11:00 AM',
-        message: 'You can use a loop to repeat the process and make sure your variables are updated correctly.',
+        message:
+          'You can use a loop to repeat the process and make sure your variables are updated correctly.',
       },
       {
         id: 'a2',
         userName: 'John Reyes',
         avatar: OTHER_USERS_PROFILE_IMAGE,
         answeredAt: 'Feb 24, 2026 11:18 AM',
-        message: 'Check your variables first, then trace the logic line by line to find where the issue starts.',
+        message:
+          'Check your variables first, then trace the logic line by line to find where the issue starts.',
       },
     ],
   },
@@ -642,6 +644,58 @@ export default function StudentApp({ onLogout }: Props) {
     );
   };
 
+  const handleEditCommunityPost = (postId: string, content: string) => {
+    const trimmedContent = content.trim();
+    if (!trimmedContent) return;
+
+    setCommunityPosts((prev) =>
+      prev.map((post) =>
+        post.id === postId ? { ...post, content: trimmedContent } : post
+      )
+    );
+  };
+
+  const handleDeleteCommunityPost = (postId: string) => {
+    setCommunityPosts((prev) => prev.filter((post) => post.id !== postId));
+  };
+
+  const handleEditCommunityAnswer = (
+    postId: string,
+    answerId: string,
+    message: string
+  ) => {
+    const trimmedMessage = message.trim();
+    if (!trimmedMessage) return;
+
+    setCommunityPosts((prev) =>
+      prev.map((post) =>
+        post.id === postId
+          ? {
+              ...post,
+              answers: post.answers.map((answer) =>
+                answer.id === answerId
+                  ? { ...answer, message: trimmedMessage }
+                  : answer
+              ),
+            }
+          : post
+      )
+    );
+  };
+
+  const handleDeleteCommunityAnswer = (postId: string, answerId: string) => {
+    setCommunityPosts((prev) =>
+      prev.map((post) =>
+        post.id === postId
+          ? {
+              ...post,
+              answers: post.answers.filter((answer) => answer.id !== answerId),
+            }
+          : post
+      )
+    );
+  };
+
   const getScorePercent = (assignment: {
     status: 'pending' | 'submitted' | 'graded';
     points?: number;
@@ -864,6 +918,10 @@ export default function StudentApp({ onLogout }: Props) {
             userPosts={currentUserPosts}
             onCreatePost={handleCreateCommunityPost}
             onAddAnswer={handleAddCommunityAnswer}
+            onEditPost={handleEditCommunityPost}
+            onDeletePost={handleDeleteCommunityPost}
+            onEditAnswer={handleEditCommunityAnswer}
+            onDeleteAnswer={handleDeleteCommunityAnswer}
             userName={CURRENT_USER_NAME}
             userEmail={CURRENT_USER_EMAIL}
             profileImage={currentUserAvatar}
@@ -956,9 +1014,14 @@ export default function StudentApp({ onLogout }: Props) {
           <Community
             posts={hydratedCommunityPosts}
             userName={CURRENT_USER_NAME}
+            userEmail={CURRENT_USER_EMAIL}
             userAvatar={currentUserAvatar}
             onCreatePost={handleCreateCommunityPost}
             onAddAnswer={handleAddCommunityAnswer}
+            onEditPost={handleEditCommunityPost}
+            onDeletePost={handleDeleteCommunityPost}
+            onEditAnswer={handleEditCommunityAnswer}
+            onDeleteAnswer={handleDeleteCommunityAnswer}
           />
         );
 

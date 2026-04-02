@@ -2,8 +2,8 @@ import * as DocumentPicker from 'expo-document-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 import React, { useMemo, useRef, useState } from 'react';
 import {
-  Alert,
   Animated,
+  GestureResponderEvent,
   Image,
   Keyboard,
   Modal,
@@ -29,6 +29,10 @@ interface ProfileProps {
   userPosts: CommunityPost[];
   onCreatePost?: (query: string) => void;
   onAddAnswer?: (postId: string, message: string) => void;
+  onEditPost?: (postId: string, content: string) => void;
+  onDeletePost?: (postId: string) => void;
+  onEditAnswer?: (postId: string, answerId: string, message: string) => void;
+  onDeleteAnswer?: (postId: string, answerId: string) => void;
   userName?: string;
   userEmail?: string;
   profileImage: any;
@@ -42,9 +46,27 @@ interface CropModalState {
   type: CropType;
 }
 
+type PostDropdownState =
+  | {
+      post: CommunityPost;
+      x: number;
+      y: number;
+    }
+  | null;
+
+type AnswerDropdownState =
+  | {
+      answer: CommunityAnswer;
+      x: number;
+      y: number;
+    }
+  | null;
+
 const DEFAULT_AVATAR = require('../../assets/images/pogi.jpg');
 const MAX_IMAGE_SIZE_MB = 15;
 const MAX_IMAGE_SIZE_BYTES = MAX_IMAGE_SIZE_MB * 1024 * 1024;
+const POST_DROPDOWN_WIDTH = 165;
+const ANSWER_DROPDOWN_WIDTH = 170;
 
 const normalizeImageSource = (img: any) => {
   if (!img) return DEFAULT_AVATAR;
@@ -60,6 +82,10 @@ const Profile: React.FC<ProfileProps> = ({
   userPosts,
   onCreatePost,
   onAddAnswer,
+  onEditPost,
+  onDeletePost,
+  onEditAnswer,
+  onDeleteAnswer,
   userName = 'Jade Lisondra',
   userEmail = 'jadelisondra101@gmail.com',
   profileImage,
@@ -85,13 +111,29 @@ const Profile: React.FC<ProfileProps> = ({
   const [isPickingImage, setIsPickingImage] = useState(false);
   const [isCroppingImage, setIsCroppingImage] = useState(false);
 
-  const [menuVisibleFor, setMenuVisibleFor] = useState<string | null>(null);
   const [hiddenPosts, setHiddenPosts] = useState<string[]>([]);
+  const [postDropdownState, setPostDropdownState] = useState<PostDropdownState>(null);
 
   const [answersModalVisible, setAnswersModalVisible] = useState(false);
   const [selectedPostId, setSelectedPostId] = useState<string | null>(null);
   const [localPosts, setLocalPosts] = useState<CommunityPost[]>(userPosts);
   const [answerText, setAnswerText] = useState('');
+
+  const [editingPostId, setEditingPostId] = useState<string | null>(null);
+  const [editPostText, setEditPostText] = useState('');
+  const [editPostModalVisible, setEditPostModalVisible] = useState(false);
+
+  const [hiddenAnswersByPost, setHiddenAnswersByPost] = useState<Record<string, string[]>>({});
+  const [editingAnswerId, setEditingAnswerId] = useState<string | null>(null);
+  const [editAnswerText, setEditAnswerText] = useState('');
+  const [editAnswerModalVisible, setEditAnswerModalVisible] = useState(false);
+  const [answerDropdownState, setAnswerDropdownState] = useState<AnswerDropdownState>(null);
+
+  const [deletePostConfirmVisible, setDeletePostConfirmVisible] = useState(false);
+  const [postToDelete, setPostToDelete] = useState<string | null>(null);
+
+  const [deleteAnswerConfirmVisible, setDeleteAnswerConfirmVisible] = useState(false);
+  const [answerToDelete, setAnswerToDelete] = useState<string | null>(null);
 
   const [menuPosition, setMenuPosition] = useState({
     top: 0,
@@ -125,6 +167,14 @@ const Profile: React.FC<ProfileProps> = ({
     () => normalizeImageSource(bannerImage),
     [bannerImage]
   );
+
+  const visibleAnswers = useMemo(() => {
+    if (!selectedPost) return [];
+    const hiddenForSelectedPost = hiddenAnswersByPost[selectedPost.id] || [];
+    return selectedPost.answers.filter(
+      (answer) => !hiddenForSelectedPost.includes(answer.id)
+    );
+  }, [selectedPost, hiddenAnswersByPost]);
 
   const cropViewport = useMemo(() => {
     const modalMaxWidth = Math.min(width - 32, isLargeScreen ? 760 : 520);
@@ -256,6 +306,52 @@ const Profile: React.FC<ProfileProps> = ({
     }
   };
 
+  const getPostDropdownPosition = (event: GestureResponderEvent) => {
+    const { pageX, pageY } = event.nativeEvent;
+
+    const left = Math.min(
+      Math.max(12, pageX - POST_DROPDOWN_WIDTH + 24),
+      width - POST_DROPDOWN_WIDTH - 12
+    );
+
+    const top = Math.min(pageY + 8, height - 180);
+
+    return { x: left, y: top };
+  };
+
+  const getAnswerDropdownPosition = (event: GestureResponderEvent) => {
+    const { pageX, pageY } = event.nativeEvent;
+
+    const left = Math.min(
+      Math.max(12, pageX - ANSWER_DROPDOWN_WIDTH + 24),
+      width - ANSWER_DROPDOWN_WIDTH - 12
+    );
+
+    const top = Math.min(pageY + 8, height - 160);
+
+    return { x: left, y: top };
+  };
+
+  const openPostDropdown = (event: GestureResponderEvent, post: CommunityPost) => {
+    Keyboard.dismiss();
+    const { x, y } = getPostDropdownPosition(event);
+    setPostDropdownState({ post, x, y });
+  };
+
+  const closePostDropdown = () => {
+    setPostDropdownState(null);
+  };
+
+  const openAnswerDropdown = (event: GestureResponderEvent, answer: CommunityAnswer) => {
+    Keyboard.dismiss();
+    const { x, y } = getAnswerDropdownPosition(event);
+    setAnswerDropdownState({ answer, x, y });
+  };
+
+  const closeAnswerDropdown = () => {
+    setAnswerDropdownState(null);
+  };
+
   const resetCropState = () => {
     setCropScale(1);
     setCropOffset({ x: 0, y: 0 });
@@ -332,7 +428,6 @@ const Profile: React.FC<ProfileProps> = ({
       if (!selected?.uri) return;
 
       if (selected.size && selected.size > MAX_IMAGE_SIZE_BYTES) {
-        Alert.alert('Image too large', `Image must be ${MAX_IMAGE_SIZE_MB}MB or less.`);
         return;
       }
 
@@ -432,7 +527,6 @@ const Profile: React.FC<ProfileProps> = ({
       resetCropState();
     } catch (error) {
       console.log('Crop error:', error);
-      Alert.alert('Crop failed', 'Please try another image or crop again.');
     } finally {
       setIsCroppingImage(false);
     }
@@ -441,13 +535,23 @@ const Profile: React.FC<ProfileProps> = ({
   const openAnswersModal = (post: CommunityPost) => {
     setSelectedPostId(post.id);
     setAnswerText('');
+    closePostDropdown();
+    closeAnswerDropdown();
     setAnswersModalVisible(true);
   };
 
   const closeAnswersModal = () => {
     setSelectedPostId(null);
     setAnswerText('');
+    closePostDropdown();
+    closeAnswerDropdown();
     setAnswersModalVisible(false);
+  };
+
+  const reopenAnswersModal = () => {
+    closePostDropdown();
+    closeAnswerDropdown();
+    setAnswersModalVisible(true);
   };
 
   const handlePostAnswer = () => {
@@ -474,11 +578,181 @@ const Profile: React.FC<ProfileProps> = ({
     setAnswerText('');
   };
 
+  const handleEditPost = (post: CommunityPost) => {
+    closePostDropdown();
+    setEditingPostId(post.id);
+    setEditPostText(post.content);
+    setEditPostModalVisible(true);
+  };
+
+  const handleSaveEditedPost = () => {
+    const trimmed = editPostText.trim();
+    if (!trimmed || !editingPostId) return;
+
+    setLocalPosts((prev) =>
+      prev.map((post) =>
+        post.id === editingPostId ? { ...post, content: trimmed } : post
+      )
+    );
+
+    onEditPost?.(editingPostId, trimmed);
+    setEditingPostId(null);
+    setEditPostText('');
+    setEditPostModalVisible(false);
+  };
+
+  const handleCloseEditPostModal = () => {
+    setEditingPostId(null);
+    setEditPostText('');
+    setEditPostModalVisible(false);
+  };
+
+  const requestDeletePost = (postId: string) => {
+    closePostDropdown();
+    setPostToDelete(postId);
+    setDeletePostConfirmVisible(true);
+  };
+
+  const confirmDeletePost = () => {
+    if (!postToDelete) return;
+
+    setLocalPosts((prev) => prev.filter((post) => post.id !== postToDelete));
+    onDeletePost?.(postToDelete);
+
+    if (selectedPostId === postToDelete) {
+      closeAnswersModal();
+    }
+
+    setPostToDelete(null);
+    setDeletePostConfirmVisible(false);
+  };
+
+  const cancelDeletePost = () => {
+    setPostToDelete(null);
+    setDeletePostConfirmVisible(false);
+  };
+
+  const handleHidePost = (postId: string) => {
+    closePostDropdown();
+    setHiddenPosts((prev) => [...prev, postId]);
+  };
+
+  const handleEditAnswer = (answer: CommunityAnswer) => {
+    closeAnswerDropdown();
+    closePostDropdown();
+    setEditingAnswerId(answer.id);
+    setEditAnswerText(answer.message);
+    setAnswerToDelete(null);
+    setDeleteAnswerConfirmVisible(false);
+    setAnswersModalVisible(false);
+    setEditAnswerModalVisible(true);
+  };
+
+  const handleSaveEditedAnswer = () => {
+    const trimmed = editAnswerText.trim();
+    if (!trimmed || !editingAnswerId || !selectedPostId) return;
+
+    setLocalPosts((prev) =>
+      prev.map((post) =>
+        post.id === selectedPostId
+          ? {
+              ...post,
+              answers: post.answers.map((answer) =>
+                answer.id === editingAnswerId
+                  ? { ...answer, message: trimmed }
+                  : answer
+              ),
+            }
+          : post
+      )
+    );
+
+    onEditAnswer?.(selectedPostId, editingAnswerId, trimmed);
+
+    setEditAnswerModalVisible(false);
+    setEditingAnswerId(null);
+    setEditAnswerText('');
+    closeAnswerDropdown();
+
+    reopenAnswersModal();
+  };
+
+  const handleCloseEditAnswerModal = () => {
+    setEditAnswerModalVisible(false);
+    setEditingAnswerId(null);
+    setEditAnswerText('');
+    closeAnswerDropdown();
+
+    reopenAnswersModal();
+  };
+
+  const requestDeleteAnswer = (answerId: string) => {
+    closeAnswerDropdown();
+    closePostDropdown();
+    setAnswerToDelete(answerId);
+    setEditingAnswerId(null);
+    setEditAnswerModalVisible(false);
+    setAnswersModalVisible(false);
+    setDeleteAnswerConfirmVisible(true);
+  };
+
+  const confirmDeleteAnswer = () => {
+    if (!selectedPostId || !answerToDelete) return;
+
+    setLocalPosts((prev) =>
+      prev.map((post) =>
+        post.id === selectedPostId
+          ? {
+              ...post,
+              answers: post.answers.filter((answer) => answer.id !== answerToDelete),
+            }
+          : post
+      )
+    );
+
+    onDeleteAnswer?.(selectedPostId, answerToDelete);
+
+    setAnswerToDelete(null);
+    setDeleteAnswerConfirmVisible(false);
+    closeAnswerDropdown();
+
+    reopenAnswersModal();
+  };
+
+  const cancelDeleteAnswer = () => {
+    setAnswerToDelete(null);
+    setDeleteAnswerConfirmVisible(false);
+    closeAnswerDropdown();
+
+    reopenAnswersModal();
+  };
+
+  const handleHideAnswer = (answerId: string) => {
+    if (!selectedPostId) return;
+
+    closeAnswerDropdown();
+    closePostDropdown();
+    setHiddenAnswersByPost((prev) => ({
+      ...prev,
+      [selectedPostId]: [...(prev[selectedPostId] || []), answerId],
+    }));
+  };
+
   return (
     <TouchableWithoutFeedback
       onPress={() => {
-        if (!queryModalVisible && !answersModalVisible && !isPickingImage && !cropModal) {
-          setMenuVisibleFor(null);
+        if (
+          !queryModalVisible &&
+          !answersModalVisible &&
+          !isPickingImage &&
+          !cropModal &&
+          !editPostModalVisible &&
+          !editAnswerModalVisible &&
+          !deletePostConfirmVisible &&
+          !deleteAnswerConfirmVisible &&
+          !postDropdownState &&
+          !answerDropdownState
+        ) {
           Keyboard.dismiss();
         }
       }}
@@ -700,41 +974,12 @@ const Profile: React.FC<ProfileProps> = ({
                     </View>
                   </View>
 
-                  <View style={{ position: 'relative' }}>
-                    <TouchableOpacity
-                      onPress={() =>
-                        setMenuVisibleFor(menuVisibleFor === post.id ? null : post.id)
-                      }
-                    >
-                      <Ionicons
-                        name="ellipsis-vertical"
-                        size={20}
-                        color="#333"
-                      />
-                    </TouchableOpacity>
-
-                    {menuVisibleFor === post.id && (
-                      <View
-                        style={[
-                          styles.dropdownPostMenu,
-                          { right: isSmallPhone ? 0 : 15 },
-                        ]}
-                      >
-                        <TouchableOpacity
-                          style={styles.menuItem}
-                          onPress={() => {
-                            setHiddenPosts((prev) => [...prev, post.id]);
-                            setMenuVisibleFor(null);
-                          }}
-                        >
-                          <View style={styles.hideIconCircle}>
-                            <Ionicons name="eye-off" size={13} color="#fff" />
-                          </View>
-                          <Text style={styles.menuText}>Hide</Text>
-                        </TouchableOpacity>
-                      </View>
-                    )}
-                  </View>
+                  <TouchableOpacity
+                    onPress={(event) => openPostDropdown(event, post)}
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  >
+                    <Ionicons name="ellipsis-vertical" size={20} color="#333" />
+                  </TouchableOpacity>
                 </View>
 
                 <Text
@@ -849,6 +1094,69 @@ const Profile: React.FC<ProfileProps> = ({
               </TouchableOpacity>
             </View>
           </Pressable>
+        </Modal>
+
+        <Modal
+          visible={!!postDropdownState}
+          transparent
+          animationType="fade"
+          onRequestClose={closePostDropdown}
+        >
+          <TouchableWithoutFeedback onPress={closePostDropdown}>
+            <View style={styles.dropdownOverlay}>
+              <TouchableWithoutFeedback onPress={() => {}}>
+                <View>
+                  {postDropdownState && (
+                    <View
+                      style={[
+                        styles.dropdownPostMenuFloating,
+                        {
+                          top: postDropdownState.y,
+                          left: postDropdownState.x,
+                          width: POST_DROPDOWN_WIDTH,
+                        },
+                      ]}
+                    >
+                      {postDropdownState.post.userName === userName ||
+                      postDropdownState.post.userEmail === userEmail ? (
+                        <>
+                          <TouchableOpacity
+                            style={styles.menuItem}
+                            onPress={() => handleEditPost(postDropdownState.post)}
+                          >
+                            <View style={styles.actionIconCircle}>
+                              <Ionicons name="create-outline" size={13} color="#fff" />
+                            </View>
+                            <Text style={styles.menuText}>Edit Post</Text>
+                          </TouchableOpacity>
+
+                          <TouchableOpacity
+                            style={styles.menuItem}
+                            onPress={() => requestDeletePost(postDropdownState.post.id)}
+                          >
+                            <View style={styles.deleteIconCircle}>
+                              <Ionicons name="trash-outline" size={13} color="#fff" />
+                            </View>
+                            <Text style={styles.menuText}>Delete Post</Text>
+                          </TouchableOpacity>
+                        </>
+                      ) : (
+                        <TouchableOpacity
+                          style={styles.menuItem}
+                          onPress={() => handleHidePost(postDropdownState.post.id)}
+                        >
+                          <View style={styles.hideIconCircle}>
+                            <Ionicons name="eye-off" size={13} color="#fff" />
+                          </View>
+                          <Text style={styles.menuText}>Hide</Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  )}
+                </View>
+              </TouchableWithoutFeedback>
+            </View>
+          </TouchableWithoutFeedback>
         </Modal>
 
         <Modal
@@ -971,12 +1279,259 @@ const Profile: React.FC<ProfileProps> = ({
         </Modal>
 
         <Modal
+          visible={editPostModalVisible}
+          transparent
+          animationType="fade"
+          onRequestClose={handleCloseEditPostModal}
+        >
+          <TouchableWithoutFeedback onPress={handleCloseEditPostModal}>
+            <View
+              style={[
+                styles.modalOverlay,
+                { paddingHorizontal: isSmallPhone ? 14 : 20 },
+              ]}
+            >
+              <TouchableWithoutFeedback onPress={() => {}}>
+                <View
+                  style={[
+                    styles.editPostModalCard,
+                    { padding: isSmallPhone ? 14 : 18 },
+                  ]}
+                >
+                  <View style={styles.answersModalHeader}>
+                    <Text
+                      style={[
+                        styles.answersModalTitle,
+                        { fontSize: isSmallPhone ? 17 : 18 },
+                      ]}
+                    >
+                      Edit Post
+                    </Text>
+                    <TouchableOpacity onPress={handleCloseEditPostModal}>
+                      <Ionicons name="close" size={22} color="#333" />
+                    </TouchableOpacity>
+                  </View>
+
+                  <TextInput
+                    style={[
+                      styles.answerInput,
+                      {
+                        minHeight: isSmallPhone ? 100 : 110,
+                        fontSize: isSmallPhone ? 13 : 14,
+                      },
+                    ]}
+                    placeholder="Edit your post"
+                    placeholderTextColor="#999"
+                    multiline
+                    value={editPostText}
+                    onChangeText={setEditPostText}
+                    textAlignVertical="top"
+                  />
+
+                  <TouchableOpacity
+                    style={[
+                      styles.postAnswerButton,
+                      {
+                        paddingHorizontal: isSmallPhone ? 14 : 16,
+                        paddingVertical: isSmallPhone ? 9 : 10,
+                      },
+                    ]}
+                    onPress={handleSaveEditedPost}
+                  >
+                    <Text
+                      style={[
+                        styles.postAnswerButtonText,
+                        { fontSize: isSmallPhone ? 13 : 14 },
+                      ]}
+                    >
+                      Save Changes
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </TouchableWithoutFeedback>
+            </View>
+          </TouchableWithoutFeedback>
+        </Modal>
+
+        <Modal
+          visible={editAnswerModalVisible}
+          transparent
+          animationType="fade"
+          onRequestClose={handleCloseEditAnswerModal}
+        >
+          <TouchableWithoutFeedback onPress={handleCloseEditAnswerModal}>
+            <View
+              style={[
+                styles.modalOverlay,
+                { paddingHorizontal: isSmallPhone ? 14 : 20 },
+              ]}
+            >
+              <TouchableWithoutFeedback onPress={() => {}}>
+                <View
+                  style={[
+                    styles.editPostModalCard,
+                    { padding: isSmallPhone ? 14 : 18 },
+                  ]}
+                >
+                  <View style={styles.answersModalHeader}>
+                    <Text
+                      style={[
+                        styles.answersModalTitle,
+                        { fontSize: isSmallPhone ? 17 : 18 },
+                      ]}
+                    >
+                      Edit Answer
+                    </Text>
+                    <TouchableOpacity onPress={handleCloseEditAnswerModal}>
+                      <Ionicons name="close" size={22} color="#333" />
+                    </TouchableOpacity>
+                  </View>
+
+                  <TextInput
+                    style={[
+                      styles.answerInput,
+                      {
+                        minHeight: isSmallPhone ? 100 : 110,
+                        fontSize: isSmallPhone ? 13 : 14,
+                      },
+                    ]}
+                    placeholder="Edit your answer"
+                    placeholderTextColor="#999"
+                    multiline
+                    value={editAnswerText}
+                    onChangeText={setEditAnswerText}
+                    textAlignVertical="top"
+                  />
+
+                  <TouchableOpacity
+                    style={[
+                      styles.postAnswerButton,
+                      {
+                        paddingHorizontal: isSmallPhone ? 14 : 16,
+                        paddingVertical: isSmallPhone ? 9 : 10,
+                      },
+                    ]}
+                    onPress={handleSaveEditedAnswer}
+                  >
+                    <Text
+                      style={[
+                        styles.postAnswerButtonText,
+                        { fontSize: isSmallPhone ? 13 : 14 },
+                      ]}
+                    >
+                      Save Changes
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </TouchableWithoutFeedback>
+            </View>
+          </TouchableWithoutFeedback>
+        </Modal>
+
+        <Modal
+          visible={deletePostConfirmVisible}
+          transparent
+          animationType="fade"
+          onRequestClose={cancelDeletePost}
+        >
+          <TouchableWithoutFeedback onPress={cancelDeletePost}>
+            <View
+              style={[
+                styles.modalOverlay,
+                { paddingHorizontal: isSmallPhone ? 14 : 20 },
+              ]}
+            >
+              <TouchableWithoutFeedback onPress={() => {}}>
+                <View
+                  style={[
+                    styles.confirmModalCard,
+                    { padding: isSmallPhone ? 16 : 20 },
+                  ]}
+                >
+                  <Text style={styles.confirmTitle}>Delete Post</Text>
+                  <Text style={styles.confirmMessage}>
+                    Are you sure you want to delete this post?
+                  </Text>
+
+                  <View style={styles.confirmActions}>
+                    <TouchableOpacity
+                      style={styles.cancelButton}
+                      onPress={cancelDeletePost}
+                    >
+                      <Text style={styles.cancelButtonText}>Cancel</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={styles.deleteButton}
+                      onPress={confirmDeletePost}
+                    >
+                      <Text style={styles.deleteButtonText}>Delete</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </TouchableWithoutFeedback>
+            </View>
+          </TouchableWithoutFeedback>
+        </Modal>
+
+        <Modal
+          visible={deleteAnswerConfirmVisible}
+          transparent
+          animationType="fade"
+          onRequestClose={cancelDeleteAnswer}
+        >
+          <TouchableWithoutFeedback onPress={cancelDeleteAnswer}>
+            <View
+              style={[
+                styles.modalOverlay,
+                { paddingHorizontal: isSmallPhone ? 14 : 20 },
+              ]}
+            >
+              <TouchableWithoutFeedback onPress={() => {}}>
+                <View
+                  style={[
+                    styles.confirmModalCard,
+                    { padding: isSmallPhone ? 16 : 20 },
+                  ]}
+                >
+                  <Text style={styles.confirmTitle}>Delete Answer</Text>
+                  <Text style={styles.confirmMessage}>
+                    Are you sure you want to delete this answer?
+                  </Text>
+
+                  <View style={styles.confirmActions}>
+                    <TouchableOpacity
+                      style={styles.cancelButton}
+                      onPress={cancelDeleteAnswer}
+                    >
+                      <Text style={styles.cancelButtonText}>Cancel</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={styles.deleteButton}
+                      onPress={confirmDeleteAnswer}
+                    >
+                      <Text style={styles.deleteButtonText}>Delete</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </TouchableWithoutFeedback>
+            </View>
+          </TouchableWithoutFeedback>
+        </Modal>
+
+        <Modal
           visible={answersModalVisible}
           transparent
           animationType="fade"
           onRequestClose={closeAnswersModal}
         >
-          <TouchableWithoutFeedback onPress={closeAnswersModal}>
+          <TouchableWithoutFeedback
+            onPress={() => {
+              closeAnswerDropdown();
+              closeAnswersModal();
+            }}
+          >
             <View
               style={[
                 styles.modalOverlay,
@@ -1025,9 +1580,10 @@ const Profile: React.FC<ProfileProps> = ({
                           styles.answersScroll,
                           { maxHeight: isSmallPhone ? 220 : 260 },
                         ]}
+                        keyboardShouldPersistTaps="handled"
                       >
-                        {selectedPost.answers.length > 0 ? (
-                          selectedPost.answers.map((answer) => (
+                        {visibleAnswers.length > 0 ? (
+                          visibleAnswers.map((answer) => (
                             <View key={answer.id} style={styles.answerCard}>
                               <View style={styles.answerPreviewHeader}>
                                 <View style={styles.userRow}>
@@ -1061,6 +1617,17 @@ const Profile: React.FC<ProfileProps> = ({
                                       {answer.answeredAt}
                                     </Text>
                                   </View>
+
+                                  <TouchableOpacity
+                                    onPress={(event) => openAnswerDropdown(event, answer)}
+                                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                                  >
+                                    <Ionicons
+                                      name="ellipsis-vertical"
+                                      size={18}
+                                      color="#555"
+                                    />
+                                  </TouchableOpacity>
                                 </View>
                               </View>
 
@@ -1132,6 +1699,65 @@ const Profile: React.FC<ProfileProps> = ({
                   )}
                 </View>
               </TouchableWithoutFeedback>
+
+              {answerDropdownState && (
+                <TouchableWithoutFeedback onPress={closeAnswerDropdown}>
+                  <View style={styles.answerDropdownOverlay}>
+                    <TouchableWithoutFeedback onPress={() => {}}>
+                      <View
+                        style={[
+                          styles.answerDropdownFloating,
+                          {
+                            top: answerDropdownState.y,
+                            left: answerDropdownState.x,
+                          },
+                        ]}
+                      >
+                        {answerDropdownState.answer.userName === userName ? (
+                          <>
+                            <TouchableOpacity
+                              style={styles.menuItem}
+                              onPress={() => {
+                                const latestAnswer = selectedPost?.answers.find(
+                                  (item) => item.id === answerDropdownState.answer.id
+                                );
+                                if (latestAnswer) {
+                                  handleEditAnswer(latestAnswer);
+                                }
+                              }}
+                            >
+                              <View style={styles.actionIconCircle}>
+                                <Ionicons name="create-outline" size={13} color="#fff" />
+                              </View>
+                              <Text style={styles.menuText}>Edit Answer</Text>
+                            </TouchableOpacity>
+
+                            <TouchableOpacity
+                              style={styles.menuItem}
+                              onPress={() => requestDeleteAnswer(answerDropdownState.answer.id)}
+                            >
+                              <View style={styles.deleteIconCircle}>
+                                <Ionicons name="trash-outline" size={13} color="#fff" />
+                              </View>
+                              <Text style={styles.menuText}>Delete Answer</Text>
+                            </TouchableOpacity>
+                          </>
+                        ) : (
+                          <TouchableOpacity
+                            style={styles.menuItem}
+                            onPress={() => handleHideAnswer(answerDropdownState.answer.id)}
+                          >
+                            <View style={styles.hideIconCircle}>
+                              <Ionicons name="eye-off" size={13} color="#fff" />
+                            </View>
+                            <Text style={styles.menuText}>Hide</Text>
+                          </TouchableOpacity>
+                        )}
+                      </View>
+                    </TouchableWithoutFeedback>
+                  </View>
+                </TouchableWithoutFeedback>
+              )}
             </View>
           </TouchableWithoutFeedback>
         </Modal>
@@ -1333,25 +1959,41 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
 
-  dropdownPostMenu: {
+  dropdownPostMenuFloating: {
     position: 'absolute',
-    marginTop: -10,
     backgroundColor: '#fff',
-    borderRadius: 8,
+    borderRadius: 10,
     paddingVertical: 6,
-    width: 80,
-    elevation: 6,
+    elevation: 12,
     shadowColor: '#000',
-    shadowOpacity: 0.1,
-    shadowRadius: 5,
-    zIndex: 999,
+    shadowOpacity: 0.16,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
   },
 
   menuItem: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 10,
-    paddingVertical: 6,
+    paddingVertical: 8,
+  },
+
+  actionIconCircle: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: '#1976D2',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+
+  deleteIconCircle: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: '#E53935',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 
   hideIconCircle: {
@@ -1494,6 +2136,20 @@ const styles = StyleSheet.create({
     borderRadius: 18,
   },
 
+  editPostModalCard: {
+    width: '100%',
+    maxWidth: 520,
+    backgroundColor: '#FFF',
+    borderRadius: 18,
+  },
+
+  confirmModalCard: {
+    width: '100%',
+    maxWidth: 380,
+    backgroundColor: '#FFF',
+    borderRadius: 18,
+  },
+
   answersModalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -1588,6 +2244,74 @@ const styles = StyleSheet.create({
   postAnswerButtonText: {
     color: '#FFF',
     fontWeight: '600',
+  },
+
+  confirmTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#222',
+    marginBottom: 10,
+  },
+
+  confirmMessage: {
+    fontSize: 14,
+    color: '#555',
+    lineHeight: 20,
+    marginBottom: 18,
+  },
+
+  confirmActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 10,
+  },
+
+  cancelButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 8,
+    backgroundColor: '#E0E0E0',
+  },
+
+  cancelButtonText: {
+    color: '#333',
+    fontWeight: '600',
+  },
+
+  deleteButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 8,
+    backgroundColor: '#D32F2F',
+  },
+
+  deleteButtonText: {
+    color: '#FFF',
+    fontWeight: '600',
+  },
+
+  answerDropdownOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 99998,
+    elevation: 99998,
+  },
+
+  answerDropdownFloating: {
+    position: 'absolute',
+    width: ANSWER_DROPDOWN_WIDTH,
+    backgroundColor: '#fff',
+    borderRadius: 8,
+    paddingVertical: 6,
+    zIndex: 99999,
+    elevation: 99999,
+    shadowColor: '#000',
+    shadowOpacity: 0.18,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
   },
 });
 
