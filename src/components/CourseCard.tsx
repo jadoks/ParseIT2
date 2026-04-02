@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import {
   Alert,
   Image,
+  Modal,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -50,6 +51,15 @@ interface CourseCardProps {
 
 type RecommendationType = 'review' | 'practice' | 'advanced';
 
+type DropdownState =
+  | {
+      x: number;
+      y: number;
+    }
+  | null;
+
+const DROPDOWN_WIDTH = 170;
+
 const CourseCard: React.FC<CourseCardProps> = ({
   course,
   onPress,
@@ -57,12 +67,12 @@ const CourseCard: React.FC<CourseCardProps> = ({
   onMaterialsPress,
   onGeneratePress,
 }) => {
-  const { width } = useWindowDimensions();
+  const { width, height } = useWindowDimensions();
   const isSmallScreen = width < 380;
   const isTablet = width >= 768;
   const isLargeTablet = width >= 1024;
 
-  const [dropdownVisible, setDropdownVisible] = useState(false);
+  const [dropdownState, setDropdownState] = useState<DropdownState>(null);
 
   const getScorePercent = (assignment: CourseCardAssignment) => {
     if (
@@ -175,125 +185,163 @@ const CourseCard: React.FC<CourseCardProps> = ({
     return imageMap[course.name] || require('../../assets/parseclass/AP1.jpg');
   };
 
-  const handleGenerate = () => {
-    if (!analytics.weakestAssignment) {
-      Alert.alert('Not available', 'No graded assignment found for this course yet.');
-      return;
-    }
-
-    onGeneratePress?.(course, analytics.weakestAssignment);
-  };
-
   const handleLeave = () => {
-    setDropdownVisible(false);
+    closeDropdown();
     Alert.alert('Leave course', `You clicked leave for ${course.name}.`);
   };
 
+  const openDropdown = (event: any) => {
+    const { pageX, pageY } = event.nativeEvent;
+
+    const left = Math.min(
+      Math.max(12, pageX - DROPDOWN_WIDTH + 24),
+      width - DROPDOWN_WIDTH - 12
+    );
+
+    const top = Math.min(pageY + 8, height - 170);
+
+    setDropdownState({
+      x: left,
+      y: top,
+    });
+  };
+
+  const closeDropdown = () => {
+    setDropdownState(null);
+  };
+
   return (
-    <TouchableWithoutFeedback onPress={() => setDropdownVisible(false)}>
-      <View>
-        <TouchableOpacity
-          style={[styles.card, { width: cardWidth, borderBottomColor: topColor }]}
-          activeOpacity={0.92}
-          onPress={() => onPress?.(course)}
-        >
-          <View style={{ height: bannerHeight }}>
-            <Image
-              source={getCourseImage()}
-              style={styles.bannerImage}
-              resizeMode="cover"
-            />
-            <View style={styles.overlay} />
-            <View style={styles.bannerTextContainer}>
-              <Text style={styles.bannerTitle}>{course.name}</Text>
-              <Text style={styles.sectionLabel}>
-                {course.code}
-                {course.section ? ` • ${course.section}` : ''}
+    <>
+      <TouchableOpacity
+        style={[styles.card, { width: cardWidth, borderBottomColor: topColor }]}
+        activeOpacity={0.92}
+        onPress={() => {
+          closeDropdown();
+          onPress?.(course);
+        }}
+      >
+        <View style={{ height: bannerHeight }}>
+          <Image
+            source={getCourseImage()}
+            style={styles.bannerImage}
+            resizeMode="cover"
+          />
+          <View style={styles.overlay} />
+          <View style={styles.bannerTextContainer}>
+            <Text style={styles.bannerTitle}>{course.name}</Text>
+            <Text style={styles.sectionLabel}>
+              {course.code}
+              {course.section ? ` • ${course.section}` : ''}
+            </Text>
+            <Text style={styles.bannerInstructor}>{course.instructor}</Text>
+          </View>
+        </View>
+
+        <View style={styles.cardBody}>
+          <View style={styles.metaBlock}>
+            <Text style={styles.metaLabel}>Weakest topic</Text>
+            <Text style={styles.metaValue}>
+              {analytics.weakestAssignment?.topic || 'No graded topic yet'}
+            </Text>
+          </View>
+
+          <View style={styles.metaBlockRow}>
+            <View style={styles.metaBlockHalf}>
+              <Text style={styles.metaLabel}>Average</Text>
+              <Text style={styles.metaValue}>
+                {analytics.averageScore !== null ? `${analytics.averageScore}%` : 'N/A'}
               </Text>
-              <Text style={styles.bannerInstructor}>{course.instructor}</Text>
+            </View>
+
+            <View style={styles.metaBlockHalf}>
+              <Text style={styles.metaLabel}>Materials</Text>
+              <Text style={styles.metaValue}>{course.materials.length}</Text>
             </View>
           </View>
 
-          <View style={styles.cardBody}>
-            <View style={styles.metaBlock}>
-              <Text style={styles.metaLabel}>Weakest topic</Text>
-              <Text style={styles.metaValue}>
-                {analytics.weakestAssignment?.topic || 'No graded topic yet'}
-              </Text>
-            </View>
-
-            <View style={styles.metaBlockRow}>
-              <View style={styles.metaBlockHalf}>
-                <Text style={styles.metaLabel}>Average</Text>
-                <Text style={styles.metaValue}>
-                  {analytics.averageScore !== null ? `${analytics.averageScore}%` : 'N/A'}
-                </Text>
-              </View>
-
-              <View style={styles.metaBlockHalf}>
-                <Text style={styles.metaLabel}>Materials</Text>
-                <Text style={styles.metaValue}>{course.materials.length}</Text>
-              </View>
-            </View>
-
-            {analytics.weakestAssignment && weakestRecommendation && (
-              <View
+          {analytics.weakestAssignment && weakestRecommendation && (
+            <View
+              style={[
+                styles.supportBadge,
+                { backgroundColor: `${getRecommendationColor(weakestRecommendation)}18` },
+              ]}
+            >
+              <Text
                 style={[
-                  styles.supportBadge,
-                  { backgroundColor: `${getRecommendationColor(weakestRecommendation)}18` },
+                  styles.supportBadgeText,
+                  { color: getRecommendationColor(weakestRecommendation) },
                 ]}
               >
-                <Text
-                  style={[
-                    styles.supportBadgeText,
-                    { color: getRecommendationColor(weakestRecommendation) },
-                  ]}
-                >
-                  {analytics.supportCount > 0
-                    ? `${analytics.supportCount} support activit${
-                        analytics.supportCount > 1 ? 'ies' : 'y'
-                      } available`
-                    : getRecommendationLabel(weakestRecommendation)}
-                </Text>
-              </View>
-            )}
+                {analytics.supportCount > 0
+                  ? `${analytics.supportCount} support activit${
+                      analytics.supportCount > 1 ? 'ies' : 'y'
+                    } available`
+                  : getRecommendationLabel(weakestRecommendation)}
+              </Text>
+            </View>
+          )}
+        </View>
 
-            
-          </View>
+        <View style={styles.cardFooter}>
+          <TouchableOpacity
+            style={styles.iconButton}
+            onPress={openDropdown}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            <MaterialCommunityIcons
+              name="dots-vertical"
+              size={22}
+              color="#5f6368"
+            />
+          </TouchableOpacity>
+        </View>
+      </TouchableOpacity>
 
-          <View style={styles.cardFooter}>
-            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-      
-
-              
-
-              <View style={{ position: 'relative', marginLeft: 8 }}>
-                <TouchableOpacity onPress={() => setDropdownVisible(!dropdownVisible)}>
-                  <MaterialCommunityIcons
-                    name="dots-vertical"
-                    size={22}
-                    color="#5f6368"
-                  />
-                </TouchableOpacity>
-
-                {dropdownVisible && (
-                  <View style={styles.dropdownMenu}>
-                    <TouchableOpacity style={styles.menuItem} onPress={handleLeave}>
-                      <MaterialCommunityIcons
-                        name="exit-to-app"
-                        size={16}
-                        color="#E53935"
-                      />
-                      <Text style={styles.menuText}>Leave</Text>
+      <Modal
+        visible={!!dropdownState}
+        transparent
+        animationType="fade"
+        onRequestClose={closeDropdown}
+      >
+        <TouchableWithoutFeedback onPress={closeDropdown}>
+          <View style={styles.dropdownBackdrop}>
+            <TouchableWithoutFeedback onPress={() => {}}>
+              <View>
+                {dropdownState && (
+                  <View
+                    style={[
+                      styles.dropdownMenuFloating,
+                      {
+                        top: dropdownState.y,
+                        left: dropdownState.x,
+                        width: DROPDOWN_WIDTH,
+                      },
+                    ]}
+                  >
+                    <TouchableOpacity
+                      style={styles.dropdownMenuItem}
+                      activeOpacity={0.8}
+                      onPress={handleLeave}
+                    >
+                      <View style={styles.dropdownIconRed}>
+                        <MaterialCommunityIcons
+                          name="exit-to-app"
+                          size={13}
+                          color="#fff"
+                        />
+                      </View>
+                      <Text style={[styles.dropdownMenuText, styles.dropdownDangerText]}>
+                        Leave Course
+                      </Text>
                     </TouchableOpacity>
                   </View>
                 )}
               </View>
-            </View>
+            </TouchableWithoutFeedback>
           </View>
-        </TouchableOpacity>
-      </View>
-    </TouchableWithoutFeedback>
+        </TouchableWithoutFeedback>
+      </Modal>
+    </>
   );
 };
 
@@ -381,22 +429,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     fontSize: 12,
   },
-  cardButtonRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginBottom: 8,
-  },
-  cardActionBtn: {
-    paddingHorizontal: 10,
-    paddingVertical: 9,
-    borderRadius: 10,
-  },
-  cardActionBtnText: {
-    color: '#FFF',
-    fontWeight: '700',
-    fontSize: 12,
-  },
   cardFooter: {
     paddingHorizontal: 12,
     paddingBottom: 12,
@@ -404,31 +436,50 @@ const styles = StyleSheet.create({
   },
   iconButton: {
     padding: 6,
+    borderRadius: 999,
   },
-  dropdownMenu: {
+
+  dropdownBackdrop: {
+    flex: 1,
+    backgroundColor: 'transparent',
+  },
+  dropdownMenuFloating: {
     position: 'absolute',
-    top: -50,
-    right: 0,
-    backgroundColor: '#ffffff',
-    borderRadius: 8,
-    paddingVertical: 2,
-    minWidth: 50,
-    elevation: 6,
-    borderColor: '#E53935',
-    borderWidth: 1.5,
-    zIndex: 999,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    paddingVertical: 6,
+    paddingHorizontal: 6,
+    borderWidth: 1,
+    borderColor: '#F0F0F0',
+    shadowColor: '#000',
+    shadowOpacity: 0.14,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 14,
   },
-  menuItem: {
+  dropdownMenuItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'flex-start',
-    paddingVertical: 8,
     paddingHorizontal: 10,
-    gap: 6,
+    paddingVertical: 10,
+    borderRadius: 10,
   },
-  menuText: {
-    color: '#E53935',
-    fontWeight: '600',
+  dropdownMenuText: {
+    marginLeft: 8,
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#222',
+  },
+  dropdownDangerText: {
+    color: '#D32F2F',
+  },
+  dropdownIconRed: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: '#E53935',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });
 
