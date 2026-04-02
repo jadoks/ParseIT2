@@ -1,12 +1,12 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
-    FlatList,
-    Pressable,
-    SafeAreaView,
-    StatusBar,
-    StyleSheet,
-    Text,
-    View,
+  FlatList,
+  Pressable,
+  SafeAreaView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  View,
 } from 'react-native';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 
@@ -28,18 +28,40 @@ export type NotificationItem = {
 interface NotificationScreenProps {
   onBack?: () => void;
   notifications?: NotificationItem[];
+  mode?: 'screen' | 'popover';
+  onClosePopover?: () => void;
 }
 
 const Notification: React.FC<NotificationScreenProps> = ({
   onBack,
   notifications: incomingNotifications = [],
+  mode = 'screen',
+  onClosePopover,
 }) => {
-  const [notifications, setNotifications] = useState<NotificationItem[]>(incomingNotifications);
+  const [notifications, setNotifications] =
+    useState<NotificationItem[]>(incomingNotifications);
+  const [menuVisible, setMenuVisible] = useState(false);
+  const [showAllNotifications, setShowAllNotifications] = useState(false);
+
+  const isPopover = mode === 'popover';
+
+  useEffect(() => {
+    setNotifications(incomingNotifications);
+    setShowAllNotifications(false);
+    setMenuVisible(false);
+  }, [incomingNotifications]);
 
   const unreadCount = useMemo(
     () => notifications.filter((item) => !item.read).length,
     [notifications]
   );
+
+  const displayedNotifications = useMemo(() => {
+    if (isPopover && !showAllNotifications) {
+      return notifications.slice(0, 6);
+    }
+    return notifications;
+  }, [notifications, isPopover, showAllNotifications]);
 
   const markAsRead = (id: string) => {
     setNotifications((prev) =>
@@ -49,6 +71,7 @@ const Notification: React.FC<NotificationScreenProps> = ({
 
   const markAllAsRead = () => {
     setNotifications((prev) => prev.map((item) => ({ ...item, read: true })));
+    setMenuVisible(false);
   };
 
   const getNotificationIcon = (type: NotificationType, read: boolean) => {
@@ -56,15 +79,45 @@ const Notification: React.FC<NotificationScreenProps> = ({
 
     switch (type) {
       case 'assignment':
-        return <MaterialCommunityIcons name="clipboard-text-outline" size={22} color={color} />;
+        return (
+          <MaterialCommunityIcons
+            name="clipboard-text-outline"
+            size={22}
+            color={color}
+          />
+        );
       case 'material':
-        return <MaterialCommunityIcons name="book-open-page-variant-outline" size={22} color={color} />;
+        return (
+          <MaterialCommunityIcons
+            name="book-open-page-variant-outline"
+            size={22}
+            color={color}
+          />
+        );
       case 'community-answer':
-        return <MaterialCommunityIcons name="forum-outline" size={22} color={color} />;
+        return (
+          <MaterialCommunityIcons
+            name="forum-outline"
+            size={22}
+            color={color}
+          />
+        );
       case 'support-activity':
-        return <MaterialCommunityIcons name="lightbulb-on-outline" size={22} color={color} />;
+        return (
+          <MaterialCommunityIcons
+            name="lightbulb-on-outline"
+            size={22}
+            color={color}
+          />
+        );
       default:
-        return <MaterialCommunityIcons name="bell-outline" size={22} color={color} />;
+        return (
+          <MaterialCommunityIcons
+            name="bell-outline"
+            size={22}
+            color={color}
+          />
+        );
     }
   };
 
@@ -73,52 +126,138 @@ const Notification: React.FC<NotificationScreenProps> = ({
       onPress={() => markAsRead(item.id)}
       style={[styles.card, !item.read && styles.unreadCard]}
     >
-      <View style={styles.iconWrapper}>{getNotificationIcon(item.type, item.read)}</View>
+      <View style={styles.iconWrapper}>
+        {getNotificationIcon(item.type, item.read)}
+      </View>
 
       <View style={styles.content}>
         <View style={styles.row}>
-          <Text style={styles.title}>{item.title}</Text>
+          <Text style={styles.title} numberOfLines={1}>
+            {item.title}
+          </Text>
           <Text style={styles.time}>{item.time}</Text>
         </View>
-        <Text style={styles.message}>{item.message}</Text>
+
+        <Text
+          style={styles.message}
+          numberOfLines={isPopover ? 2 : undefined}
+        >
+          {item.message}
+        </Text>
       </View>
     </Pressable>
   );
 
-  return (
-    <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#FFF" />
+  const content = (
+    <View style={styles.contentWrapper}>
+      <View style={[styles.header, isPopover && styles.popoverHeader]}>
+        {isPopover ? (
+          <>
+            <View style={styles.headerTextWrapper}>
+              <Text style={styles.headerTitle}>Notifications</Text>
+              <Text style={styles.headerSubtitle}>
+                {unreadCount} unread notification{unreadCount === 1 ? '' : 's'}
+              </Text>
+            </View>
 
-      <View style={styles.header}>
-        <Pressable onPress={onBack} style={styles.backButton}>
-          <MaterialCommunityIcons name="arrow-left" size={24} color="#000" />
-        </Pressable>
+            <View style={styles.popoverActions}>
+              <Pressable
+                onPress={() => setMenuVisible((prev) => !prev)}
+                style={styles.iconButton}
+              >
+                <MaterialCommunityIcons
+                  name="dots-vertical"
+                  size={22}
+                  color="#000"
+                />
+              </Pressable>
 
-        <View style={styles.headerTextWrapper}>
-          <Text style={styles.headerTitle}>Notifications</Text>
-          <Text style={styles.headerSubtitle}>
-            {unreadCount} unread notification{unreadCount === 1 ? '' : 's'}
-          </Text>
-        </View>
+              <Pressable onPress={onClosePopover} style={styles.iconButton}>
+                <MaterialCommunityIcons name="close" size={22} color="#000" />
+              </Pressable>
+            </View>
 
-        <Pressable onPress={markAllAsRead} style={styles.markAllButton}>
-          <Text style={styles.markAllText}>Mark all</Text>
-        </Pressable>
+            {menuVisible && (
+              <>
+                <Pressable
+                  style={styles.menuOverlay}
+                  onPress={() => setMenuVisible(false)}
+                />
+                <View style={styles.popupMenu}>
+                  <Pressable
+                    onPress={markAllAsRead}
+                    style={styles.popupMenuItem}
+                  >
+                    <Text style={styles.popupMenuText}>Mark all as read</Text>
+                  </Pressable>
+                </View>
+              </>
+            )}
+          </>
+        ) : (
+          <>
+            <Pressable onPress={onBack} style={styles.backButton}>
+              <MaterialCommunityIcons name="arrow-left" size={24} color="#000" />
+            </Pressable>
+
+            <View style={styles.headerTextWrapper}>
+              <Text style={styles.headerTitle}>Notifications</Text>
+              <Text style={styles.headerSubtitle}>
+                {unreadCount} unread notification{unreadCount === 1 ? '' : 's'}
+              </Text>
+            </View>
+
+            <Pressable onPress={markAllAsRead} style={styles.markAllButton}>
+              <Text style={styles.markAllText}>Mark all</Text>
+            </Pressable>
+          </>
+        )}
       </View>
 
       <FlatList
-        data={notifications}
+        data={displayedNotifications}
         keyExtractor={(item) => item.id}
         renderItem={renderItem}
-        contentContainerStyle={styles.listContent}
+        style={styles.list}
+        showsVerticalScrollIndicator={true}
+        contentContainerStyle={[
+          styles.listContent,
+          isPopover && styles.popoverListContent,
+          notifications.length === 0 && styles.emptyListContent,
+        ]}
+        ListFooterComponent={
+          isPopover && !showAllNotifications && notifications.length > 6 ? (
+            <Pressable
+              onPress={() => setShowAllNotifications(true)}
+              style={styles.seeAllButton}
+            >
+              <Text style={styles.seeAllButtonText}>See all notifications</Text>
+            </Pressable>
+          ) : null
+        }
         ListEmptyComponent={
           <View style={styles.emptyState}>
-            <MaterialCommunityIcons name="bell-check-outline" size={48} color="#999" />
+            <MaterialCommunityIcons
+              name="bell-check-outline"
+              size={48}
+              color="#999"
+            />
             <Text style={styles.emptyTitle}>No notifications</Text>
             <Text style={styles.emptyText}>You’re all caught up.</Text>
           </View>
         }
       />
+    </View>
+  );
+
+  if (isPopover) {
+    return <View style={styles.popoverContainer}>{content}</View>;
+  }
+
+  return (
+    <SafeAreaView style={styles.container}>
+      <StatusBar barStyle="dark-content" backgroundColor="#FFF" />
+      {content}
     </SafeAreaView>
   );
 };
@@ -131,6 +270,25 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFF',
   },
 
+  popoverContainer: {
+    width: 380,
+    height: 500,
+    backgroundColor: '#FFF',
+    borderRadius: 18,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOpacity: 0.12,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 12,
+    borderWidth: 1,
+    borderColor: '#EEE',
+  },
+
+  contentWrapper: {
+    flex: 1,
+  },
+
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -138,11 +296,27 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     borderBottomWidth: 1,
     borderBottomColor: '#EEE',
+    backgroundColor: '#FFF',
+    position: 'relative',
+    zIndex: 2,
+  },
+
+  popoverHeader: {
+    paddingVertical: 12,
   },
 
   backButton: {
     padding: 8,
     marginRight: 6,
+  },
+
+  iconButton: {
+    padding: 8,
+  },
+
+  popoverActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
 
   headerTextWrapper: {
@@ -174,9 +348,75 @@ const styles = StyleSheet.create({
     fontSize: 13,
   },
 
+  popupMenu: {
+    position: 'absolute',
+    top: 56,
+    right: 52,
+    backgroundColor: '#FFF',
+    borderRadius: 12,
+    minWidth: 170,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: '#EEE',
+    shadowColor: '#000',
+    shadowOpacity: 0.12,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 10,
+    zIndex: 20,
+  },
+
+  popupMenuItem: {
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+
+  popupMenuText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#111',
+  },
+
+  menuOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 10,
+  },
+
+  list: {
+    flex: 1,
+  },
+
   listContent: {
     padding: 16,
     paddingBottom: 24,
+  },
+
+  popoverListContent: {
+    paddingTop: 8,
+    paddingBottom: 12,
+  },
+
+  emptyListContent: {
+    flexGrow: 1,
+    justifyContent: 'center',
+  },
+
+  seeAllButton: {
+    marginTop: 4,
+    marginBottom: 8,
+    paddingVertical: 12,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(211,47,47,0.08)',
+    borderWidth: 1,
+    borderColor: '#FFD7D7',
+  },
+
+  seeAllButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#D32F2F',
   },
 
   card: {
@@ -234,7 +474,8 @@ const styles = StyleSheet.create({
   emptyState: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingTop: 80,
+    paddingHorizontal: 24,
+    paddingVertical: 40,
   },
 
   emptyTitle: {

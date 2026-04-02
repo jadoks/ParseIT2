@@ -432,6 +432,8 @@ export default function StudentApp({ onLogout }: Props) {
   const [isConversationActive, setIsConversationActive] = useState(false);
   const [isVideoActive, setIsVideoActive] = useState(false);
 
+  const [isNotificationOpen, setIsNotificationOpen] = useState(false);
+
   const [activeCourseTab, setActiveCourseTab] = useState<'materials' | 'assignments'>('materials');
   const [communityPosts, setCommunityPosts] = useState<CommunityPost[]>(INITIAL_COMMUNITY_POSTS);
 
@@ -465,8 +467,8 @@ export default function StudentApp({ onLogout }: Props) {
     isFullscreenScreen
       ? []
       : hasImageChanged
-      ? ['top', 'right', 'bottom', 'left'] as const
-      : ['right', 'left'] as const;
+      ? (['top', 'right', 'bottom', 'left'] as const)
+      : (['right', 'left'] as const);
 
   useEffect(() => {
     if (Platform.OS !== 'android') return;
@@ -492,6 +494,18 @@ export default function StudentApp({ onLogout }: Props) {
       setMobileDrawerOpen(false);
     }
   }, [isMobileFullscreenScreen, isMobileDrawerOpen]);
+
+  useEffect(() => {
+    if (!isLargeScreen) {
+      setIsNotificationOpen(false);
+    }
+  }, [isLargeScreen]);
+
+  useEffect(() => {
+    if (activeScreen === 'notification' || isMobileFullscreenScreen) {
+      setIsNotificationOpen(false);
+    }
+  }, [activeScreen, isMobileFullscreenScreen]);
 
   const handleChangeProfileImage = (image: any) => {
     setCurrentUserAvatar(image);
@@ -777,14 +791,25 @@ export default function StudentApp({ onLogout }: Props) {
       setGeneratedActivity(null);
     }
 
+    setIsNotificationOpen(false);
     setActiveScreen(screen);
     setMobileDrawerOpen(false);
+  };
+
+  const handleNotificationPress = () => {
+    if (isLargeScreen) {
+      setIsNotificationOpen((prev) => !prev);
+    } else {
+      setLastScreen(activeScreen);
+      setActiveScreen('notification');
+    }
   };
 
   const openCourse = (course: CourseDetailData) => {
     setSelectedCourse(course);
     setGeneratedActivity(null);
     setLastScreen(activeScreen);
+    setIsNotificationOpen(false);
     setActiveScreen('coursedetail');
     setActiveCourseTab('materials');
   };
@@ -794,6 +819,7 @@ export default function StudentApp({ onLogout }: Props) {
     setGeneratedActivity(null);
     setSelectedCourseIdForAssignments(course.id);
     setLastScreen(activeScreen);
+    setIsNotificationOpen(false);
     setActiveScreen('coursedetail');
     setActiveCourseTab('assignments');
   };
@@ -802,6 +828,7 @@ export default function StudentApp({ onLogout }: Props) {
     setSelectedCourse(course);
     setGeneratedActivity(null);
     setLastScreen(activeScreen);
+    setIsNotificationOpen(false);
     setActiveScreen('coursedetail');
     setActiveCourseTab('materials');
   };
@@ -825,6 +852,7 @@ export default function StudentApp({ onLogout }: Props) {
     setSelectedCourseIdForAssignments(matchedCourse.id);
     setGeneratedActivity(activity);
     setLastScreen(activeScreen);
+    setIsNotificationOpen(false);
     setActiveScreen('generateactivity');
   };
 
@@ -867,6 +895,7 @@ export default function StudentApp({ onLogout }: Props) {
               setSelectedCourse(course as unknown as CourseDetailData);
               setGeneratedActivity(null);
               setLastScreen('classes');
+              setIsNotificationOpen(false);
               setActiveScreen('coursedetail');
               setActiveCourseTab('materials');
             }}
@@ -875,6 +904,7 @@ export default function StudentApp({ onLogout }: Props) {
               setSelectedCourseIdForAssignments(course.id);
               setGeneratedActivity(null);
               setLastScreen('classes');
+              setIsNotificationOpen(false);
               setActiveScreen('coursedetail');
               setActiveCourseTab('assignments');
             }}
@@ -944,6 +974,7 @@ export default function StudentApp({ onLogout }: Props) {
       case 'notification':
         return (
           <Notification
+            mode="screen"
             onBack={() => setActiveScreen(lastScreen)}
             notifications={studentNotifications}
           />
@@ -1008,9 +1039,31 @@ export default function StudentApp({ onLogout }: Props) {
               onNavigate={handleNavigate}
               onSearchChange={() => {}}
               notificationCount={unreadNotificationCount}
+              onNotificationPress={handleNotificationPress}
               onMenuPress={() => setMobileDrawerOpen((prev) => !prev)}
             />
           </View>
+        )}
+
+        {isLargeScreen && isNotificationOpen && (
+          <>
+            <Pressable
+              style={styles.notificationBackdrop}
+              onPress={() => setIsNotificationOpen(false)}
+            />
+            <View style={styles.notificationPopover}>
+              <Notification
+                mode="popover"
+                notifications={studentNotifications}
+                onClosePopover={() => setIsNotificationOpen(false)}
+                onBack={() => {
+                  setIsNotificationOpen(false);
+                  setLastScreen(activeScreen);
+                  setActiveScreen('notification');
+                }}
+              />
+            </View>
+          </>
         )}
 
         <View
@@ -1155,6 +1208,20 @@ const styles = StyleSheet.create({
 
   contentLayerMobileFullscreen: {
     flexDirection: 'column',
+  },
+
+  notificationBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 3999,
+    elevation: 3999,
+  },
+
+  notificationPopover: {
+    position: 'absolute',
+    top: 72,
+    right: 20,
+    zIndex: 4000,
+    elevation: 4000,
   },
 
   mobileDrawerPortal: {
