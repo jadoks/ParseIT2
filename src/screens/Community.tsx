@@ -5,6 +5,7 @@ import {
   Image,
   Keyboard,
   Modal,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -731,153 +732,158 @@ const Community: React.FC<CommunityProps> = ({
           animationType="fade"
           onRequestClose={closeAnswersModal}
         >
-          <TouchableWithoutFeedback
-            onPress={() => {
-              closeAnswerDropdown();
-              closeAnswersModal();
-            }}
-          >
-            <View style={styles.modalOverlay}>
-              <TouchableWithoutFeedback onPress={() => {}}>
-                <View style={styles.answersModalCard}>
-                  <View style={styles.answerModalHeader}>
-                    <Text style={styles.answerModalTitle}>Answers</Text>
-                    <TouchableOpacity onPress={closeAnswersModal}>
-                      <Ionicons name="close" size={22} color="#333" />
+          <View style={styles.modalOverlay}>
+            <TouchableOpacity
+              activeOpacity={1}
+              style={StyleSheet.absoluteFill}
+              onPress={() => {
+                closeAnswerDropdown();
+                closeAnswersModal();
+              }}
+            />
+
+            <View style={styles.answersModalCard}>
+              <View style={styles.answerModalHeader}>
+                <Text style={styles.answerModalTitle}>Answers</Text>
+                <TouchableOpacity onPress={closeAnswersModal}>
+                  <Ionicons name="close" size={22} color="#333" />
+                </TouchableOpacity>
+              </View>
+
+              {selectedPost && (
+                <>
+                  <Text style={styles.selectedPostText}>{selectedPost.content}</Text>
+
+                  <View style={styles.answersListWrapper}>
+                    <ScrollView
+                      style={styles.answersScroll}
+                      contentContainerStyle={styles.modalAnswersContainer}
+                      showsVerticalScrollIndicator={true}
+                      persistentScrollbar={Platform.OS === 'android'}
+                      nestedScrollEnabled={true}
+                      keyboardShouldPersistTaps="handled"
+                      scrollEventThrottle={16}
+                    >
+                      {visibleAnswers.length > 0 ? (
+                        visibleAnswers.map((answer) => (
+                          <View key={answer.id} style={styles.answerCard}>
+                            <View style={styles.answerPreviewHeader}>
+                              <View style={styles.userRow}>
+                                <Image
+                                  source={normalizeImageSource(answer.avatar)}
+                                  style={styles.answerAvatar}
+                                  resizeMode="cover"
+                                />
+                                <View style={{ marginLeft: 8, flex: 1 }}>
+                                  <Text style={styles.answerUserName}>{answer.userName}</Text>
+                                  <Text style={styles.answerDate}>{answer.answeredAt}</Text>
+                                </View>
+
+                                <TouchableOpacity
+                                  onPress={(event) => openAnswerDropdown(event, answer)}
+                                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                                >
+                                  <Ionicons
+                                    name="ellipsis-vertical"
+                                    size={18}
+                                    color="#555"
+                                  />
+                                </TouchableOpacity>
+                              </View>
+                            </View>
+
+                            <Text style={styles.answerPreviewText}>
+                              {answer.message}
+                            </Text>
+                          </View>
+                        ))
+                      ) : (
+                        <Text style={styles.noAnswersText}>No answers yet.</Text>
+                      )}
+                    </ScrollView>
+                  </View>
+
+                  <View style={styles.answerInputSection}>
+                    <Text style={styles.answerInputLabel}>Write an answer</Text>
+                    <TextInput
+                      style={styles.answerInput}
+                      placeholder="Type your answer here"
+                      placeholderTextColor="#999"
+                      multiline
+                      value={answerText}
+                      onChangeText={setAnswerText}
+                      textAlignVertical="top"
+                    />
+                    <TouchableOpacity
+                      style={styles.postAnswerButton}
+                      onPress={handlePostAnswer}
+                    >
+                      <Text style={styles.postAnswerButtonText}>Post Answer</Text>
                     </TouchableOpacity>
                   </View>
-
-                  {selectedPost && (
-                    <>
-                      <Text style={styles.selectedPostText}>{selectedPost.content}</Text>
-
-                      <ScrollView
-                        showsVerticalScrollIndicator={false}
-                        contentContainerStyle={styles.modalAnswersContainer}
-                        style={styles.answersScroll}
-                        keyboardShouldPersistTaps="handled"
-                      >
-                        {visibleAnswers.length > 0 ? (
-                          visibleAnswers.map((answer) => (
-                            <View key={answer.id} style={styles.answerCard}>
-                              <View style={styles.answerPreviewHeader}>
-                                <View style={styles.userRow}>
-                                  <Image
-                                    source={normalizeImageSource(answer.avatar)}
-                                    style={styles.answerAvatar}
-                                    resizeMode="cover"
-                                  />
-                                  <View style={{ marginLeft: 8, flex: 1 }}>
-                                    <Text style={styles.answerUserName}>{answer.userName}</Text>
-                                    <Text style={styles.answerDate}>{answer.answeredAt}</Text>
-                                  </View>
-
-                                  <TouchableOpacity
-                                    onPress={(event) => openAnswerDropdown(event, answer)}
-                                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                                  >
-                                    <Ionicons
-                                      name="ellipsis-vertical"
-                                      size={18}
-                                      color="#555"
-                                    />
-                                  </TouchableOpacity>
-                                </View>
-                              </View>
-
-                              <Text style={styles.answerPreviewText}>
-                                {answer.message}
-                              </Text>
-                            </View>
-                          ))
-                        ) : (
-                          <Text style={styles.noAnswersText}>No answers yet.</Text>
-                        )}
-                      </ScrollView>
-
-                      <View style={styles.answerInputSection}>
-                        <Text style={styles.answerInputLabel}>Write an answer</Text>
-                        <TextInput
-                          style={styles.answerInput}
-                          placeholder="Type your answer here"
-                          placeholderTextColor="#999"
-                          multiline
-                          value={answerText}
-                          onChangeText={setAnswerText}
-                          textAlignVertical="top"
-                        />
-                        <TouchableOpacity
-                          style={styles.postAnswerButton}
-                          onPress={handlePostAnswer}
-                        >
-                          <Text style={styles.postAnswerButtonText}>Post Answer</Text>
-                        </TouchableOpacity>
-                      </View>
-                    </>
-                  )}
-                </View>
-              </TouchableWithoutFeedback>
-
-              {answerDropdownState && (
-                <TouchableWithoutFeedback onPress={closeAnswerDropdown}>
-                  <View style={styles.answerDropdownOverlay}>
-                    <TouchableWithoutFeedback onPress={() => {}}>
-                      <View
-                        style={[
-                          styles.answerDropdownFloating,
-                          {
-                            top: answerDropdownState.y,
-                            left: answerDropdownState.x,
-                          },
-                        ]}
-                      >
-                        {answerDropdownState.answer.userName === userName ? (
-                          <>
-                            <TouchableOpacity
-                              style={styles.menuItem}
-                              onPress={() => {
-                                const latestAnswer = selectedPost?.answers.find(
-                                  (item) => item.id === answerDropdownState.answer.id
-                                );
-                                if (latestAnswer) {
-                                  handleEditAnswer(latestAnswer);
-                                }
-                              }}
-                            >
-                              <View style={styles.actionIconCircle}>
-                                <Ionicons name="create-outline" size={13} color="#fff" />
-                              </View>
-                              <Text style={styles.menuText}>Edit Answer</Text>
-                            </TouchableOpacity>
-
-                            <TouchableOpacity
-                              style={styles.menuItem}
-                              onPress={() => requestDeleteAnswer(answerDropdownState.answer.id)}
-                            >
-                              <View style={styles.deleteIconCircle}>
-                                <Ionicons name="trash-outline" size={13} color="#fff" />
-                              </View>
-                              <Text style={styles.menuText}>Delete Answer</Text>
-                            </TouchableOpacity>
-                          </>
-                        ) : (
-                          <TouchableOpacity
-                            style={styles.menuItem}
-                            onPress={() => handleHideAnswer(answerDropdownState.answer.id)}
-                          >
-                            <View style={styles.hideIconCircle}>
-                              <Ionicons name="eye-off" size={13} color="#fff" />
-                            </View>
-                            <Text style={styles.menuText}>Hide</Text>
-                          </TouchableOpacity>
-                        )}
-                      </View>
-                    </TouchableWithoutFeedback>
-                  </View>
-                </TouchableWithoutFeedback>
+                </>
               )}
             </View>
-          </TouchableWithoutFeedback>
+
+            {answerDropdownState && (
+              <TouchableWithoutFeedback onPress={closeAnswerDropdown}>
+                <View style={styles.answerDropdownOverlay}>
+                  <TouchableWithoutFeedback onPress={() => {}}>
+                    <View
+                      style={[
+                        styles.answerDropdownFloating,
+                        {
+                          top: answerDropdownState.y,
+                          left: answerDropdownState.x,
+                        },
+                      ]}
+                    >
+                      {answerDropdownState.answer.userName === userName ? (
+                        <>
+                          <TouchableOpacity
+                            style={styles.menuItem}
+                            onPress={() => {
+                              const latestAnswer = selectedPost?.answers.find(
+                                (item) => item.id === answerDropdownState.answer.id
+                              );
+                              if (latestAnswer) {
+                                handleEditAnswer(latestAnswer);
+                              }
+                            }}
+                          >
+                            <View style={styles.actionIconCircle}>
+                              <Ionicons name="create-outline" size={13} color="#fff" />
+                            </View>
+                            <Text style={styles.menuText}>Edit Answer</Text>
+                          </TouchableOpacity>
+
+                          <TouchableOpacity
+                            style={styles.menuItem}
+                            onPress={() => requestDeleteAnswer(answerDropdownState.answer.id)}
+                          >
+                            <View style={styles.deleteIconCircle}>
+                              <Ionicons name="trash-outline" size={13} color="#fff" />
+                            </View>
+                            <Text style={styles.menuText}>Delete Answer</Text>
+                          </TouchableOpacity>
+                        </>
+                      ) : (
+                        <TouchableOpacity
+                          style={styles.menuItem}
+                          onPress={() => handleHideAnswer(answerDropdownState.answer.id)}
+                        >
+                          <View style={styles.hideIconCircle}>
+                            <Ionicons name="eye-off" size={13} color="#fff" />
+                          </View>
+                          <Text style={styles.menuText}>Hide</Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  </TouchableWithoutFeedback>
+                </View>
+              </TouchableWithoutFeedback>
+            )}
+          </View>
         </Modal>
       </View>
     </TouchableWithoutFeedback>
@@ -1065,7 +1071,7 @@ const styles = StyleSheet.create({
   answersModalCard: {
     width: '100%',
     maxWidth: 520,
-    maxHeight: '85%',
+    height: '85%',
     backgroundColor: '#FFF',
     borderRadius: 18,
     padding: 18,
@@ -1107,13 +1113,19 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
 
+  answersListWrapper: {
+    flex: 1,
+    minHeight: 160,
+    marginBottom: 8,
+  },
+
   answersScroll: {
-    maxHeight: 260,
+    flex: 1,
   },
 
   modalAnswersContainer: {
-    gap: 10,
-    paddingBottom: 4,
+    paddingRight: 8,
+    paddingBottom: 8,
   },
 
   answerCard: {
@@ -1122,6 +1134,7 @@ const styles = StyleSheet.create({
     padding: 12,
     borderWidth: 1,
     borderColor: '#E8E8E8',
+    marginBottom: 10,
   },
 
   answerPreviewHeader: {
@@ -1161,10 +1174,10 @@ const styles = StyleSheet.create({
   },
 
   answerInputSection: {
-    marginTop: 16,
     borderTopWidth: 1,
     borderTopColor: '#EEE',
     paddingTop: 14,
+    marginTop: 4,
   },
 
   answerInputLabel: {
