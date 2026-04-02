@@ -7,6 +7,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 
 import AnnouncementModal2, {
   Announcement,
@@ -16,7 +17,9 @@ import Header, { ScreenType } from './teacher_components/TeacherHeader';
 
 import Grades from './teacher_components/Grades';
 import Honors from './teacher_components/Honors';
-import Coursedetail2 from './teacher_components/TeacherCourseDetail2';
+import Coursedetail2, {
+  CourseDetailData,
+} from './teacher_components/TeacherCourseDetail2';
 import PostQueryModal2 from './teacher_components/TeacherPostQueryModal';
 import Profile2 from './teacher_components/TeacherProfile';
 import ShareAnnouncement from './teacher_components/TeacherShareAnnouncement';
@@ -33,6 +36,10 @@ interface Props {
   onLogout: () => void;
 }
 
+type CourseWithIcon = CourseDetailData & {
+  icon?: string;
+};
+
 const CURRENT_USER_NAME = 'Ramcee Jade';
 const CURRENT_USER_FULL_NAME = 'Ramcee Jade L. Munoz';
 const CURRENT_USER_EMAIL = 'teacher@email.com';
@@ -42,14 +49,53 @@ const ANNOUNCEMENTS: Announcement[] = [
   {
     id: '1',
     title: 'Welcome Back!',
-    message: 'Check out the latest updates and announcements from your courses.',
+    message: 'Check out the latest updates and announcements.',
     bannerImage: require('../assets/announcement/1.png'),
   },
   {
     id: '2',
     title: 'Midterm Grading',
     message: 'Please ensure all midterm grades are encoded by the end of the week.',
-    bannerImage: require('../assets/announcement/1.png'),
+    bannerImage: require('../assets/announcement/2.png'),
+  },
+  {
+    id: '3',
+    title: 'Question Answers',
+    message: 'Check your Question Answered from community.',
+    bannerImage: require('../assets/announcement/3.png'),
+  },
+];
+
+const INITIAL_COURSES: CourseWithIcon[] = [
+  {
+    id: '1',
+    name: 'Web Development 101',
+    courseCode: 'CS-101',
+    classCode: 'WD101A1',
+    instructor: 'Ramcee Jade Muoz',
+    section: 'A',
+    bannerUri: undefined,
+    icon: 'web',
+  },
+  {
+    id: '2',
+    name: 'Programming Logic',
+    courseCode: 'CS-102',
+    classCode: 'PL102B2',
+    instructor: 'Ramcee Jade Muoz',
+    section: 'B',
+    bannerUri: undefined,
+    icon: 'code-tags',
+  },
+  {
+    id: '3',
+    name: 'Computer Fundamentals',
+    courseCode: 'IT-100',
+    classCode: 'CF100C3',
+    instructor: 'Ramcee Jade Muoz',
+    section: 'C',
+    bannerUri: undefined,
+    icon: 'desktop-classic',
   },
 ];
 
@@ -62,6 +108,11 @@ export default function TeacherApp({ onLogout }: Props) {
   const [showAnnouncement, setShowAnnouncement] = useState(true);
   const [isMobileDrawerOpen, setMobileDrawerOpen] = useState(false);
   const [isPostModalVisible, setPostModalVisible] = useState(false);
+
+  const [courses, setCourses] = useState<CourseWithIcon[]>(INITIAL_COURSES);
+  const [selectedCourse, setSelectedCourse] = useState<CourseWithIcon | null>(
+    INITIAL_COURSES[0]
+  );
 
   const [posts, setPosts] = useState<CommunityPost[]>([
     {
@@ -96,30 +147,61 @@ export default function TeacherApp({ onLogout }: Props) {
   };
 
   const handleCreatePost = (query: string) => {
-  const trimmed = query.trim();
+    const trimmed = query.trim();
 
-  if (!trimmed) {
+    if (!trimmed) {
+      closePostModal();
+      return;
+    }
+
+    const newPost: CommunityPost = {
+      id: Date.now().toString(),
+      userName: CURRENT_USER_NAME,
+      avatar: CURRENT_USER_AVATAR,
+      content: trimmed,
+      dateTime: new Date().toLocaleString(),
+      answers: [] as CommunityAnswer[],
+    };
+
+    setPosts((prevPosts) => [newPost, ...prevPosts]);
     closePostModal();
-    return;
-  }
-
-  const newPost: CommunityPost = {
-    id: Date.now().toString(),
-    userName: CURRENT_USER_NAME,
-    avatar: CURRENT_USER_AVATAR,
-    content: trimmed,
-    dateTime: new Date().toLocaleString(),
-    answers: [] as CommunityAnswer[],
   };
-
-  setPosts((prevPosts) => [newPost, ...prevPosts]);
-  closePostModal();
-};
 
   const handleSetIsLoggedIn = (val: boolean) => {
     if (!val) {
       onLogout();
     }
+  };
+
+  const handleOpenCourse = (course?: CourseDetailData) => {
+    if (course) {
+      setSelectedCourse(course as CourseWithIcon);
+    }
+    setActiveScreen('coursedetail');
+  };
+
+  const handleCreateClass = (newCourse: CourseDetailData) => {
+    const getCourseIcon = (courseName: string) => {
+      const normalized = courseName.toLowerCase();
+
+      if (normalized.includes('web')) return 'web';
+      if (normalized.includes('program')) return 'code-tags';
+      if (normalized.includes('computer')) return 'desktop-classic';
+      if (normalized.includes('network')) return 'lan';
+      if (normalized.includes('database')) return 'database';
+      if (normalized.includes('design')) return 'palette';
+      if (normalized.includes('math')) return 'calculator';
+      if (normalized.includes('science')) return 'flask-outline';
+
+      return 'book-education';
+    };
+
+    const courseWithIcon: CourseWithIcon = {
+      ...newCourse,
+      icon: getCourseIcon(newCourse.name),
+    };
+
+    setCourses((prev) => [courseWithIcon, ...prev]);
   };
 
   return (
@@ -136,7 +218,7 @@ export default function TeacherApp({ onLogout }: Props) {
           style={styles.floatingMenuBtn}
           onPress={() => setMobileDrawerOpen((prev) => !prev)}
         >
-          <Text style={styles.menuIconText}>☰</Text>
+          <MaterialCommunityIcons name="menu" size={24} color="#D32F2F" />
         </TouchableOpacity>
       )}
 
@@ -183,8 +265,9 @@ export default function TeacherApp({ onLogout }: Props) {
           ) : activeScreen === 'home' ? (
             <Dashboard2
               announcements={ANNOUNCEMENTS}
-              onOpenCourse={() => setActiveScreen('coursedetail')}
-              onCreateClass={() => console.log('Create Class Pressed')}
+              courses={courses}
+              onOpenCourse={(course: CourseDetailData) => handleOpenCourse(course)}
+              onCreateClass={(course: CourseDetailData) => handleCreateClass(course)}
             />
           ) : activeScreen === 'game' ? (
             <Honors />
@@ -204,7 +287,10 @@ export default function TeacherApp({ onLogout }: Props) {
               onConversationActiveChange={() => {}}
             />
           ) : activeScreen === 'coursedetail' ? (
-            <Coursedetail2 onBack={() => setActiveScreen('home')} />
+            <Coursedetail2
+              onBack={() => setActiveScreen('home')}
+              course={selectedCourse || undefined}
+            />
           ) : activeScreen === 'notification' ? (
             <TeacherNotification />
           ) : (
@@ -255,10 +341,6 @@ const styles = StyleSheet.create({
     borderColor: '#D32F2F',
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  menuIconText: {
-    fontSize: 24,
-    color: '#D32F2F',
   },
   mobileBackdrop: {
     ...StyleSheet.absoluteFillObject,

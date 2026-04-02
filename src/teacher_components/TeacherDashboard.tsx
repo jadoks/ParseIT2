@@ -1,3 +1,4 @@
+import Clipboard from '@react-native-clipboard/clipboard';
 import React, { useMemo, useState } from 'react';
 import {
   Alert,
@@ -16,73 +17,74 @@ import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityI
 
 // Components
 import AnnouncementBanner from './TeacherAnnouncementBanner';
-import AnnouncementModal from './TeacherAnnouncementModal';
+import AnnouncementModal, { Announcement } from './TeacherAnnouncementModal';
 
 // Local Asset path
 const DEFAULT_COURSE_IMAGE = require('../../assets/parseclass/AP1.jpg');
 
-interface Course {
+export type TeacherCourseData = {
   id: string;
   name: string;
-  code: string;
+  courseCode: string;
+  classCode: string;
   instructor: string;
   section?: string;
-  themeColor?: string;
   bannerUri?: string;
+};
+
+export interface DashboardAssignment {
+  id: string;
+  title: string;
+  dueDate?: string;
+  status?: 'pending' | 'submitted' | 'graded';
+  points?: number;
+  maxPoints?: number;
+  topic?: string;
+  materialIds?: string[];
 }
 
 interface DashboardProps {
-  announcements?: any[];
-  courses?: Course[];
-  onOpenCourse?: (course: Course) => void;
-  onCreateClass?: (course: Course) => void;
+  announcements?: Announcement[];
+  courses?: TeacherCourseData[];
+  onOpenCourse?: (course: TeacherCourseData) => void;
+  onCreateClass?: (course: TeacherCourseData) => void;
 }
 
-const Dashboard = ({
+const DEFAULT_INSTRUCTOR = 'Ramcee Jade L. Munoz';
+
+const generateClassCode = () => {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  let result = '';
+  for (let i = 0; i < 8; i++) {
+    result += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return result;
+};
+
+const Dashboard2 = ({
   announcements = [],
-  courses: initialCourses = [
-    {
-      id: '1',
-      name: 'Programming 1',
-      code: 'CC123',
-      instructor: 'Ramcee Jade L. Munoz',
-      section: 'A',
-    },
-    {
-      id: '2',
-      name: 'Programming 2',
-      code: 'CC124',
-      instructor: 'Ramcee Jade L. Munoz',
-      section: 'B',
-    },
-    {
-      id: '3',
-      name: 'Data Structures',
-      code: 'CC201',
-      instructor: 'Ramcee Jade L. Munoz',
-      section: 'A',
-    },
-  ],
+  courses = [],
   onOpenCourse,
   onCreateClass,
 }: DashboardProps) => {
   const { width } = useWindowDimensions();
 
-  const [isModalVisible, setModalVisible] = useState(false);
+  const [isAnnouncementModalVisible, setAnnouncementModalVisible] = useState(false);
   const [isCreateModalVisible, setCreateModalVisible] = useState(false);
-  const [courses, setCourses] = useState<Course[]>(initialCourses);
+  const [isMenuVisible, setMenuVisible] = useState(false);
+  const [menuCourse, setMenuCourse] = useState<TeacherCourseData | null>(null);
+  const [menuPosition, setMenuPosition] = useState({ x: 0, y: 0 });
 
   const [className, setClassName] = useState('');
-  const [classCode, setClassCode] = useState('');
+  const [courseCode, setCourseCode] = useState('');
   const [classSection, setClassSection] = useState('');
-  const [classInstructor, setClassInstructor] = useState('');
   const [classBanner, setClassBanner] = useState('');
 
   const isMobile = width < 768;
   const isLargeScreen = width >= 1200;
 
   const processedCourses = useMemo(() => {
-    return courses.map((course: Course) => ({
+    return courses.map((course) => ({
       ...course,
       themeColor: '#2E7D32',
     }));
@@ -92,9 +94,8 @@ const Dashboard = ({
 
   const resetCreateForm = () => {
     setClassName('');
-    setClassCode('');
+    setCourseCode('');
     setClassSection('');
-    setClassInstructor('');
     setClassBanner('');
   };
 
@@ -118,32 +119,46 @@ const Dashboard = ({
   };
 
   const handleCreateClass = () => {
-    if (!className.trim() || !classCode.trim() || !classInstructor.trim()) {
-      Alert.alert('Missing fields', 'Please fill in class name, class code, and instructor.');
+    if (!className.trim() || !courseCode.trim()) {
+      Alert.alert('Missing fields', 'Please fill in class name and course code.');
       return;
     }
 
-    const newCourse: Course = {
+    const newCourse: TeacherCourseData = {
       id: Date.now().toString(),
       name: className.trim(),
-      code: classCode.trim(),
+      courseCode: courseCode.trim().toUpperCase(),
+      classCode: generateClassCode(),
       section: classSection.trim(),
-      instructor: classInstructor.trim(),
-      bannerUri: classBanner,
+      instructor: DEFAULT_INSTRUCTOR,
+      bannerUri: classBanner || undefined,
     };
 
-    setCourses((prev) => [newCourse, ...prev]);
     onCreateClass?.(newCourse);
 
     resetCreateForm();
     setCreateModalVisible(false);
   };
 
+  const closeMenu = () => {
+    setMenuVisible(false);
+    setMenuCourse(null);
+  };
+
+  const handleCopyLink = () => {
+    if (!menuCourse) return;
+
+    const link = `https://yourapp.com/join/${menuCourse.classCode}`;
+    Clipboard.setString(link);
+    Alert.alert('Copied', 'Class link copied to clipboard.');
+    closeMenu();
+  };
+
   return (
     <View style={styles.safeArea}>
       <AnnouncementModal
-        visible={isModalVisible}
-        onClose={() => setModalVisible(false)}
+        visible={isAnnouncementModalVisible}
+        onClose={() => setAnnouncementModalVisible(false)}
         announcements={announcements}
       />
 
@@ -157,7 +172,12 @@ const Dashboard = ({
           <View style={styles.createModalContainer}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Create Class</Text>
-              <TouchableOpacity onPress={() => setCreateModalVisible(false)}>
+              <TouchableOpacity
+                onPress={() => {
+                  resetCreateForm();
+                  setCreateModalVisible(false);
+                }}
+              >
                 <MaterialCommunityIcons name="close" size={24} color="#202124" />
               </TouchableOpacity>
             </View>
@@ -170,12 +190,13 @@ const Dashboard = ({
               onChangeText={setClassName}
             />
 
-            <Text style={styles.inputLabel}>Class Code</Text>
+            <Text style={styles.inputLabel}>Course Code</Text>
             <TextInput
               style={styles.input}
-              placeholder="Enter class code"
-              value={classCode}
-              onChangeText={setClassCode}
+              placeholder="Enter course code (example: CS-101)"
+              value={courseCode}
+              onChangeText={setCourseCode}
+              autoCapitalize="characters"
             />
 
             <Text style={styles.inputLabel}>Section</Text>
@@ -184,14 +205,6 @@ const Dashboard = ({
               placeholder="Enter section"
               value={classSection}
               onChangeText={setClassSection}
-            />
-
-            <Text style={styles.inputLabel}>Instructor</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Enter instructor name"
-              value={classInstructor}
-              onChangeText={setClassInstructor}
             />
 
             <Text style={styles.inputLabel}>Class Banner / Background Photo</Text>
@@ -214,6 +227,13 @@ const Dashboard = ({
               </ImageBackground>
             ) : null}
 
+            <View style={styles.codeNoticeBox}>
+              <MaterialCommunityIcons name="shuffle-variant" size={18} color="#2E7D32" />
+              <Text style={styles.codeNoticeText}>
+                A class code will be automatically generated when you create the class.
+              </Text>
+            </View>
+
             <View style={styles.modalButtonRow}>
               <TouchableOpacity
                 style={styles.cancelBtn}
@@ -233,6 +253,31 @@ const Dashboard = ({
         </View>
       </Modal>
 
+      <Modal
+        visible={isMenuVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={closeMenu}
+      >
+        <TouchableOpacity activeOpacity={1} style={styles.menuOverlay} onPress={closeMenu}>
+          <View
+            style={[
+              styles.menuBox,
+              {
+                position: 'absolute',
+                top: menuPosition.y - 2,
+                left: menuPosition.x - 170,
+              },
+            ]}
+          >
+            <TouchableOpacity style={styles.menuItem} onPress={handleCopyLink}>
+              <MaterialCommunityIcons name="content-copy" size={20} color="#202124" />
+              <Text style={styles.menuText}>Copy Link</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
       <ScrollView
         style={styles.container}
         contentContainerStyle={styles.scrollPadding}
@@ -241,6 +286,9 @@ const Dashboard = ({
         <View style={styles.mainWrapper}>
           <View style={styles.headerRow}>
             <Text style={styles.sectionHeader}>Announcements</Text>
+            <TouchableOpacity onPress={() => setAnnouncementModalVisible(true)}>
+              <MaterialCommunityIcons name="bullhorn-outline" size={22} color="#C62828" />
+            </TouchableOpacity>
           </View>
 
           <AnnouncementBanner announcements={announcements} />
@@ -256,7 +304,7 @@ const Dashboard = ({
           </View>
 
           <View style={styles.courseGrid}>
-            {processedCourses.map((item: Course) => (
+            {processedCourses.map((item) => (
               <TouchableOpacity
                 key={item.id}
                 style={[styles.card, { width: cardWidth }]}
@@ -274,7 +322,7 @@ const Dashboard = ({
                         {item.name}
                       </Text>
                       <Text style={styles.bannerCode}>
-                        {item.code}
+                        {item.courseCode}
                         {item.section ? ` • ${item.section}` : ''}
                       </Text>
                     </View>
@@ -287,15 +335,33 @@ const Dashboard = ({
                 </View>
 
                 <View style={styles.cardFooter}>
-                  <MaterialCommunityIcons
-                    name="dots-vertical"
-                    size={22}
-                    color="#5f6368"
-                  />
+                  <TouchableOpacity
+                    onPress={(event) => {
+                      event.stopPropagation?.();
+
+                      const { pageX, pageY } = event.nativeEvent;
+
+                      setMenuPosition({
+                        x: pageX,
+                        y: pageY,
+                      });
+
+                      setMenuCourse(item);
+                      setMenuVisible(true);
+                    }}
+                    style={styles.dotButton}
+                  >
+                    <MaterialCommunityIcons
+                      name="dots-vertical"
+                      size={22}
+                      color="#5f6368"
+                    />
+                  </TouchableOpacity>
+
                   <View
                     style={[
                       styles.bottomBorder,
-                      { backgroundColor: item.themeColor },
+                      { backgroundColor: item.themeColor || '#2E7D32' },
                     ]}
                   />
                 </View>
@@ -307,6 +373,8 @@ const Dashboard = ({
     </View>
   );
 };
+
+export default Dashboard2;
 
 const styles = StyleSheet.create({
   safeArea: {
@@ -328,7 +396,7 @@ const styles = StyleSheet.create({
   },
   headerRow: {
     flexDirection: 'row',
-    justifyContent: 'flex-start',
+    justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 12,
   },
@@ -425,6 +493,10 @@ const styles = StyleSheet.create({
     padding: 8,
     alignItems: 'flex-end',
   },
+  dotButton: {
+    padding: 6,
+    zIndex: 2,
+  },
   bottomBorder: {
     position: 'absolute',
     bottom: 0,
@@ -514,6 +586,23 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     fontSize: 14,
   },
+  codeNoticeBox: {
+    marginTop: 14,
+    backgroundColor: '#F1F8F2',
+    borderWidth: 1,
+    borderColor: '#C8E6C9',
+    borderRadius: 10,
+    padding: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  codeNoticeText: {
+    marginLeft: 8,
+    flex: 1,
+    color: '#2E7D32',
+    fontSize: 13,
+    fontWeight: '600',
+  },
   modalButtonRow: {
     flexDirection: 'row',
     justifyContent: 'flex-end',
@@ -540,6 +629,30 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: '700',
   },
+  menuOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.08)',
+  },
+  menuBox: {
+    backgroundColor: '#FFF',
+    borderRadius: 10,
+    width: 170,
+    paddingVertical: 8,
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOpacity: 0.15,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 3 },
+  },
+  menuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    gap: 10,
+  },
+  menuText: {
+    fontSize: 14,
+    color: '#000',
+    fontWeight: '600',
+  },
 });
-
-export default Dashboard;

@@ -1,5 +1,5 @@
 import * as DocumentPicker from 'expo-document-picker';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Alert,
   Linking,
@@ -47,7 +47,177 @@ export type Member = {
   handle: string;
 };
 
-const TeacherCourseDetail2 = ({ onBack }: { onBack?: () => void }) => {
+export type CourseDetailData = {
+  id: string;
+  name: string;
+  courseCode: string;
+  classCode: string;
+  instructor: string;
+  section?: string;
+  bannerUri?: string;
+};
+
+const COURSE_CONTENT: Record<
+  string,
+  {
+    assignments: Assignment[];
+    materials: Material[];
+    members: Member[];
+  }
+> = {
+  '1': {
+    assignments: [
+      {
+        id: '1',
+        title: 'React Fundamental Quiz',
+        description: 'Read and Answer Carefully',
+        posted: 'Mar 5, 2026 (6:40 PM)',
+        due: '2026-03-10 (11:59 PM)',
+        points: '10',
+        fileName: 'quiz-guide.pdf',
+      },
+      {
+        id: '2',
+        title: 'Build Simple Website',
+        description: 'Use HTML/CSS',
+        posted: 'Mar 5, 2026 (8:00 AM)',
+        due: '2026-03-15 (11:59 PM)',
+        points: '50',
+      },
+      {
+        id: '3',
+        title: 'JavaScript Basics Checkpoint',
+        description: 'Use Java Script',
+        posted: 'Mar 5, 2026 (8:00 AM)',
+        due: '2026-03-15 (11:59 PM)',
+        points: '50',
+      },
+
+      {
+        id: '4',
+        title: 'Responsive Design Exercise',
+        description: 'Css Exercise ',
+        posted: 'Mar 5, 2026 (8:00 AM)',
+        due: '2026-03-15 (11:59 PM)',
+        points: '50',
+      },
+      
+    ],
+    materials: [
+      {
+        id: '1',
+        title: 'Introduction to React',
+        week: 'Week 1',
+        posted: 'Mar 5, 2026 (8:00 AM)',
+        content: 'React introduction and fundamentals.',
+        fileName: 'react-introduction.pdf',
+        fileType: 'application/pdf',
+      },
+      {
+        id: '2',
+        title: 'Components and Props',
+        week: 'Week 2',
+        posted: 'Mar 7, 2026 (9:30 AM)',
+        content: 'Understanding reusable components and props.',
+      },
+    ],
+    members: [
+      { id: '7230494', name: 'Lisondra, Jade', handle: '@jadok' },
+      { id: '7230495', name: 'Bautista, Anne', handle: '@anneb' },
+    ],
+  },
+
+  '2': {
+    assignments: [
+      {
+        id: '3',
+        title: 'Conditional Statements Quiz',
+        description: 'Answer all logic questions carefully.',
+        posted: 'Mar 6, 2026 (9:00 AM)',
+        due: '2026-03-12 (11:59 PM)',
+        points: '20',
+        fileName: 'conditionals-quiz.pdf',
+      },
+      {
+        id: '4',
+        title: 'Loops Practice Set',
+        description: 'Solve the loop exercises.',
+        posted: 'Mar 7, 2026 (10:00 AM)',
+        due: '2026-03-18 (11:59 PM)',
+        points: '25',
+      },
+    ],
+    materials: [
+      {
+        id: '3',
+        title: 'Variables and Data Types',
+        week: 'Week 1',
+        posted: 'Mar 4, 2026 (7:30 AM)',
+        content: 'Variables, constants, and data types overview.',
+      },
+      {
+        id: '4',
+        title: 'Conditional Statements',
+        week: 'Week 2',
+        posted: 'Mar 6, 2026 (8:15 AM)',
+        content: 'If-else and switch statement logic.',
+      },
+      {
+        id: '5',
+        title: 'Looping Concepts',
+        week: 'Week 3',
+        posted: 'Mar 8, 2026 (8:45 AM)',
+        content: 'For loop, while loop, and nested loops.',
+      },
+    ],
+    members: [
+      { id: '8230494', name: 'Dela Cruz, John', handle: '@johnc' },
+      { id: '8230495', name: 'Torres, Mia', handle: '@miat' },
+    ],
+  },
+
+  '3': {
+    assignments: [
+      {
+        id: '5',
+        title: 'Computer Basics Assessment',
+        description: 'Identify hardware and software concepts.',
+        posted: 'Mar 3, 2026 (8:20 AM)',
+        due: '2026-03-14 (11:59 PM)',
+        points: '30',
+        fileName: 'computer-basics.pdf',
+      },
+    ],
+    materials: [
+      {
+        id: '6',
+        title: 'Hardware Overview',
+        week: 'Week 1',
+        posted: 'Mar 2, 2026 (7:45 AM)',
+        content: 'Introduction to computer hardware.',
+      },
+      {
+        id: '7',
+        title: 'Software Systems',
+        week: 'Week 2',
+        posted: 'Mar 5, 2026 (9:00 AM)',
+        content: 'Operating systems and application software.',
+      },
+    ],
+    members: [
+      { id: '9230494', name: 'Garcia, Paul', handle: '@paulg' },
+      { id: '9230495', name: 'Reyes, Kate', handle: '@kater' },
+    ],
+  },
+};
+
+const TeacherCourseDetail2 = ({
+  onBack,
+  course,
+}: {
+  onBack?: () => void;
+  course?: CourseDetailData;
+}) => {
   const [activeTab, setActiveTab] = useState<'Materials' | 'Assignments'>('Materials');
   const [showMembers, setShowMembers] = useState(false);
   const [showSubmissions, setShowSubmissions] = useState(false);
@@ -58,43 +228,9 @@ const TeacherCourseDetail2 = ({ onBack }: { onBack?: () => void }) => {
   const [selectedMaterial, setSelectedMaterial] = useState<Material | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
-  const [assignments, setAssignments] = useState<Assignment[]>([
-    {
-      id: '1',
-      title: 'React Fundamental Quiz',
-      description: 'Read and Answer Carefully',
-      posted: 'Mar 5, 2026 (6:40 PM)',
-      due: '2026-03-10 (11:59 PM)',
-      points: '10',
-      fileName: 'quiz-guide.pdf',
-    },
-    {
-      id: '2',
-      title: 'Build Simple Website',
-      description: 'Use HTML/CSS',
-      posted: 'Mar 5, 2026 (8:00 AM)',
-      due: '2026-03-15 (11:59 PM)',
-      points: '50',
-    },
-  ]);
-
-  const [materials, setMaterials] = useState<Material[]>([
-    {
-      id: '1',
-      title: 'Introduction to Python',
-      week: 'Week 1',
-      posted: 'Mar 5, 2026 (8:00 AM)',
-      content:
-        'Introduction to Python\n\nTopics:\n• Variables\n• Data Types\n• Input and Output\n• Basic Operators',
-      fileName: 'python-introduction.pdf',
-      fileUri: undefined,
-      fileType: 'application/pdf',
-    },
-  ]);
-
-  const [members, setMembers] = useState<Member[]>([
-    { id: '7230494', name: 'Lisondra, Jade', handle: '@jadok' },
-  ]);
+  const [assignments, setAssignments] = useState<Assignment[]>([]);
+  const [materials, setMaterials] = useState<Material[]>([]);
+  const [members, setMembers] = useState<Member[]>([]);
 
   const [memberIdInput, setMemberIdInput] = useState('');
   const [formTitle, setFormTitle] = useState('');
@@ -114,6 +250,27 @@ const TeacherCourseDetail2 = ({ onBack }: { onBack?: () => void }) => {
     uri?: string | undefined;
     type?: string | undefined;
   } | null>(null);
+
+  useEffect(() => {
+    if (!course?.id) {
+      setAssignments([]);
+      setMaterials([]);
+      setMembers([]);
+      return;
+    }
+
+    const data = COURSE_CONTENT[course.id];
+
+    if (data) {
+      setAssignments(data.assignments);
+      setMaterials(data.materials);
+      setMembers(data.members);
+    } else {
+      setAssignments([]);
+      setMaterials([]);
+      setMembers([]);
+    }
+  }, [course]);
 
   const resetCreateForm = () => {
     setFormTitle('');
@@ -306,6 +463,12 @@ const TeacherCourseDetail2 = ({ onBack }: { onBack?: () => void }) => {
 
   const currentAssignment = assignments.find((a) => a.id === selectedId);
 
+  const visibleCourseCode = course?.courseCode || 'No Course Code';
+  const courseName = course?.name || 'Untitled Course';
+  const courseSection = course?.section || '';
+  const courseInstructor = course?.instructor || 'No Instructor';
+  const classCode = course?.classCode || 'No Class Code';
+
   if (showSubmissions) {
     return (
       <>
@@ -398,9 +561,13 @@ const TeacherCourseDetail2 = ({ onBack }: { onBack?: () => void }) => {
             <MaterialCommunityIcons name="chevron-left" size={35} color="#FFF" />
           </TouchableOpacity>
           <View style={styles.headerInfo}>
-            <Text style={styles.courseTitle}>CC123 (3A - Python)</Text>
-            <Text style={styles.courseSubText}>Programming 2 (Lecture)</Text>
-            <Text style={styles.instructorText}>Instructor: Ramcee Bading</Text>
+            <Text style={styles.courseTitle}>
+              {visibleCourseCode}
+              {courseSection ? ` (${courseSection})` : ''}
+            </Text>
+            <Text style={styles.courseSubText}>{courseName}</Text>
+            <Text style={styles.instructorText}>Instructor: {courseInstructor}</Text>
+            <Text style={styles.classCodeText}>Class Code: {classCode}</Text>
           </View>
         </View>
       </View>
@@ -613,8 +780,14 @@ const styles = StyleSheet.create({
   backBtn: { marginRight: 10 },
   headerInfo: { flex: 1 },
   courseTitle: { color: '#FFF', fontSize: 28, fontWeight: 'bold' },
-  courseSubText: { color: 'rgba(255,255,255,0.9)', fontSize: 13, marginTop: 5 },
+  courseSubText: { color: 'rgba(255,255,255,0.9)', fontSize: 16, marginTop: 5 },
   instructorText: { color: 'rgba(255,255,255,0.9)', fontSize: 13 },
+  classCodeText: {
+    color: 'rgba(255,255,255,0.9)',
+    fontSize: 13,
+    marginTop: 4,
+    fontWeight: '600',
+  },
   tabContainer: {
     flexDirection: 'row',
     borderBottomWidth: 1,

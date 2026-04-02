@@ -30,11 +30,50 @@ interface NotificationScreenProps {
   notifications?: NotificationItem[];
 }
 
+/* 🔥 SAMPLE DATA */
+const SAMPLE_NOTIFICATIONS: NotificationItem[] = [
+  {
+    id: '1',
+    type: 'assignment',
+    title: 'New Assignment Posted',
+    message: 'You created a new assignment in Web Development.',
+    time: '2 min ago',
+    read: false,
+  },
+  {
+    id: '2',
+    type: 'material',
+    title: 'Material Uploaded',
+    message: 'Lecture slides have been uploaded.',
+    time: '10 min ago',
+    read: false,
+  },
+  {
+    id: '3',
+    type: 'community-answer',
+    title: 'Student Answered',
+    message: 'Juan answered your question in Community.',
+    time: '30 min ago',
+    read: true,
+  },
+  {
+    id: '4',
+    type: 'support-activity',
+    title: 'Helpful Contribution',
+    message: 'You helped a student solve a problem.',
+    time: '1 hour ago',
+    read: true,
+  },
+];
+
 const Notification: React.FC<NotificationScreenProps> = ({
   onBack,
-  notifications: incomingNotifications = [],
+  notifications: incomingNotifications,
 }) => {
-  const [notifications, setNotifications] = useState<NotificationItem[]>(incomingNotifications);
+  /* 🔥 USE SAMPLE IF EMPTY */
+  const [notifications, setNotifications] = useState<NotificationItem[]>(
+    incomingNotifications?.length ? incomingNotifications : SAMPLE_NOTIFICATIONS
+  );
 
   const unreadCount = useMemo(
     () => notifications.filter((item) => !item.read).length,
@@ -43,28 +82,32 @@ const Notification: React.FC<NotificationScreenProps> = ({
 
   const markAsRead = (id: string) => {
     setNotifications((prev) =>
-      prev.map((item) => (item.id === id ? { ...item, read: true } : item))
+      prev.map((item) =>
+        item.id === id ? { ...item, read: true } : item
+      )
     );
   };
 
   const markAllAsRead = () => {
-    setNotifications((prev) => prev.map((item) => ({ ...item, read: true })));
+    setNotifications((prev) =>
+      prev.map((item) => ({ ...item, read: true }))
+    );
   };
 
   const getNotificationIcon = (type: NotificationType, read: boolean) => {
-    const color = read ? '#666' : '#D32F2F';
+    const color = read ? '#999' : '#D32F2F';
 
     switch (type) {
       case 'assignment':
-        return <MaterialCommunityIcons name="clipboard-text-outline" size={22} color={color} />;
+        return <MaterialCommunityIcons name="clipboard-text" size={24} color={color} />;
       case 'material':
-        return <MaterialCommunityIcons name="book-open-page-variant-outline" size={22} color={color} />;
+        return <MaterialCommunityIcons name="book-open" size={24} color={color} />;
       case 'community-answer':
-        return <MaterialCommunityIcons name="forum-outline" size={22} color={color} />;
+        return <MaterialCommunityIcons name="forum" size={24} color={color} />;
       case 'support-activity':
-        return <MaterialCommunityIcons name="lightbulb-on-outline" size={22} color={color} />;
+        return <MaterialCommunityIcons name="lightbulb-on" size={24} color={color} />;
       default:
-        return <MaterialCommunityIcons name="bell-outline" size={22} color={color} />;
+        return <MaterialCommunityIcons name="bell" size={24} color={color} />;
     }
   };
 
@@ -73,13 +116,16 @@ const Notification: React.FC<NotificationScreenProps> = ({
       onPress={() => markAsRead(item.id)}
       style={[styles.card, !item.read && styles.unreadCard]}
     >
-      <View style={styles.iconWrapper}>{getNotificationIcon(item.type, item.read)}</View>
+      <View style={styles.iconWrapper}>
+        {getNotificationIcon(item.type, item.read)}
+      </View>
 
       <View style={styles.content}>
         <View style={styles.row}>
           <Text style={styles.title}>{item.title}</Text>
           <Text style={styles.time}>{item.time}</Text>
         </View>
+
         <Text style={styles.message}>{item.message}</Text>
       </View>
     </Pressable>
@@ -89,35 +135,30 @@ const Notification: React.FC<NotificationScreenProps> = ({
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFF" />
 
+      {/* HEADER */}
       <View style={styles.header}>
         <Pressable onPress={onBack} style={styles.backButton}>
-          <MaterialCommunityIcons name="arrow-left" size={24} color="#000" />
+          <MaterialCommunityIcons name="" size={24} color="#000" />
         </Pressable>
 
-        <View style={styles.headerTextWrapper}>
+        <View style={{ flex: 1 }}>
           <Text style={styles.headerTitle}>Notifications</Text>
           <Text style={styles.headerSubtitle}>
-            {unreadCount} unread notification{unreadCount === 1 ? '' : 's'}
+            {unreadCount} unread
           </Text>
         </View>
 
-        <Pressable onPress={markAllAsRead} style={styles.markAllButton}>
+        <Pressable onPress={markAllAsRead} style={styles.markAllBtn}>
           <Text style={styles.markAllText}>Mark all</Text>
         </Pressable>
       </View>
 
+      {/* LIST */}
       <FlatList
         data={notifications}
         keyExtractor={(item) => item.id}
         renderItem={renderItem}
-        contentContainerStyle={styles.listContent}
-        ListEmptyComponent={
-          <View style={styles.emptyState}>
-            <MaterialCommunityIcons name="bell-check-outline" size={48} color="#999" />
-            <Text style={styles.emptyTitle}>No notifications</Text>
-            <Text style={styles.emptyText}>You’re all caught up.</Text>
-          </View>
-        }
+        contentContainerStyle={{ padding: 16 }}
       />
     </SafeAreaView>
   );
@@ -125,6 +166,7 @@ const Notification: React.FC<NotificationScreenProps> = ({
 
 export default Notification;
 
+/* 🔥 STYLES */
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -134,71 +176,52 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 14,
+    padding: 16,
     borderBottomWidth: 1,
     borderBottomColor: '#EEE',
   },
 
   backButton: {
-    padding: 8,
-    marginRight: 6,
-  },
-
-  headerTextWrapper: {
-    flex: 1,
+    marginRight: 10,
   },
 
   headerTitle: {
     fontSize: 20,
-    fontWeight: '700',
-    color: '#111',
+    fontWeight: 'bold',
   },
 
   headerSubtitle: {
-    marginTop: 2,
     fontSize: 13,
     color: '#666',
   },
 
-  markAllButton: {
+  markAllBtn: {
+    backgroundColor: '#FFEAEA',
     paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 999,
-    backgroundColor: 'rgba(211,47,47,0.08)',
+    paddingVertical: 6,
+    borderRadius: 20,
   },
 
   markAllText: {
     color: '#D32F2F',
     fontWeight: '600',
-    fontSize: 13,
-  },
-
-  listContent: {
-    padding: 16,
-    paddingBottom: 24,
   },
 
   card: {
     flexDirection: 'row',
     padding: 14,
-    borderRadius: 16,
+    borderRadius: 14,
     backgroundColor: '#FAFAFA',
     marginBottom: 12,
-    borderWidth: 1,
-    borderColor: '#F0F0F0',
   },
 
   unreadCard: {
-    backgroundColor: '#FFF5F5',
-    borderColor: '#FFD7D7',
+    backgroundColor: '#FFF0F0',
   },
 
   iconWrapper: {
     marginRight: 12,
-    paddingTop: 2,
-    width: 24,
-    alignItems: 'center',
+    justifyContent: 'center',
   },
 
   content: {
@@ -208,15 +231,11 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    gap: 8,
   },
 
   title: {
-    flex: 1,
+    fontWeight: 'bold',
     fontSize: 15,
-    fontWeight: '700',
-    color: '#111',
   },
 
   time: {
@@ -225,28 +244,7 @@ const styles = StyleSheet.create({
   },
 
   message: {
-    marginTop: 6,
-    fontSize: 14,
-    lineHeight: 20,
+    marginTop: 5,
     color: '#444',
-  },
-
-  emptyState: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingTop: 80,
-  },
-
-  emptyTitle: {
-    marginTop: 12,
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#222',
-  },
-
-  emptyText: {
-    marginTop: 6,
-    fontSize: 14,
-    color: '#777',
   },
 });
