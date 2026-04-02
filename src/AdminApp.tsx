@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Alert, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
-// --- IMPORT ALL COMPONENTS FROM admin_components ---
+// --- IMPORTS ---
 import { AdminManagement } from './admin_components/AdminManagement';
 import { DashboardCards } from './admin_components/DashboardCards';
 import { PerformanceChart } from './admin_components/PerformanceChart';
@@ -11,10 +11,17 @@ import { StudentTable } from './admin_components/StudentTable';
 import { TeacherManagement } from './admin_components/TeacherManagement';
 import { TopBar } from './admin_components/TopBar';
 
-// --- UPDATED SETTINGS PATHS (Now from admin_components) ---
 import { ChangeEmail } from './admin_components/ChangeEmail';
 import { ChangePassword } from './admin_components/ChangePassword';
 import { SettingsApp } from './admin_components/SettingsApp';
+
+interface Cluster {
+  id: string;
+  title: string;
+  studentId: string;
+  icon: string;
+  year: number;
+}
 
 interface AdminAppProps {
   onLogout: () => void;
@@ -23,13 +30,56 @@ interface AdminAppProps {
 export default function AdminApp({ onLogout }: AdminAppProps) {
   const [activeTab, setActiveTab] = useState('Dashboard');
   const [logoutVisible, setLogoutVisible] = useState(false);
-  
-  // --- SETTINGS VIEW STATE ---
   const [settingsView, setSettingsView] = useState('Main'); 
 
-  // --- ADD ADMIN MODAL STATE ---
   const [addAdminVisible, setAddAdminVisible] = useState(false);
   const [newAdmin, setNewAdmin] = useState({ id: '', name: '', email: '', role: '' });
+
+  // Default Clusters (6 existing ones)
+  const [clusters, setClusters] = useState<Cluster[]>([
+    { id: '1', title: '1A-WebDev',     studentId: '2021-00123', icon: 'folder-outline', year: 1 },
+    { id: '2', title: '1B-Python',     studentId: '2021-00456', icon: 'folder-outline', year: 1 },
+    { id: '3', title: '2A-React',      studentId: '2022-00789', icon: 'folder-outline', year: 2 },
+    { id: '4', title: '2B-NodeJS',     studentId: '2022-01234', icon: 'folder-outline', year: 2 },
+    { id: '5', title: '3A-Laravel',    studentId: '2023-01567', icon: 'folder-outline', year: 3 },
+    { id: '6', title: '4B-Mobile',     studentId: '2024-01890', icon: 'folder-outline', year: 4 },
+  ]);
+
+  // ====================== ADD NEW CLUSTER ======================
+  const handleAddCluster = (newClusterName: string, studentId: string) => {
+    const trimmedTitle = newClusterName.trim();
+    const trimmedStudentId = studentId.trim();
+
+    if (!trimmedTitle || !trimmedStudentId) {
+      Alert.alert("Error", "Both Cluster Identifier and Student ID are required.");
+      return;
+    }
+
+    // Auto-detect year from first character (e.g. "1C-Flutter" → year 1)
+    const detectedYear = parseInt(trimmedTitle.charAt(0));
+    const finalYear = isNaN(detectedYear) ? 1 : detectedYear;
+
+    const newEntry: Cluster = {
+      id: String(Date.now()),
+      title: trimmedTitle,
+      studentId: trimmedStudentId,
+      icon: 'folder-outline',
+      year: finalYear,
+    };
+
+    setClusters((prevClusters) => {
+      const updatedList = [...prevClusters, newEntry];
+      // Sort by year so new 1st year cluster appears correctly under 1ST YEAR
+      return updatedList.sort((a, b) => a.year - b.year);
+    });
+
+    // Switch to the newly added cluster
+    setActiveTab(trimmedTitle);
+
+    // Optional: Show success message
+    Alert.alert("Success", `"${trimmedTitle}" has been added successfully!`);
+  };
+  // ============================================================
 
   const handleLogout = () => setLogoutVisible(true);
 
@@ -39,25 +89,24 @@ export default function AdminApp({ onLogout }: AdminAppProps) {
   };
 
   const handleSaveAdmin = () => {
-    console.log("Recording New Admin:", newAdmin);
     setAddAdminVisible(false);
     setNewAdmin({ id: '', name: '', email: '', role: '' }); 
   };
 
   return (
     <View style={styles.container}>
-      {/* 1. SIDEBAR */}
       <Sidebar 
         onLogout={handleLogout} 
         onTabChange={(tab) => {
           setActiveTab(tab);
-          setSettingsView('Main'); // Reset settings sub-navigation when changing tabs
+          setSettingsView('Main'); 
         }} 
         activeTab={activeTab}
+        clusters={clusters} 
+        onAddCluster={handleAddCluster} 
       />
 
       <View style={styles.content}>
-        {/* 2. TOPBAR */}
         <TopBar 
           activeTab={activeTab} 
           onTabChange={setActiveTab} 
@@ -69,7 +118,6 @@ export default function AdminApp({ onLogout }: AdminAppProps) {
           contentContainerStyle={styles.scrollPadding}
           showsVerticalScrollIndicator={false}
         >
-          {/* TAB LOGIC */}
           {activeTab === 'Dashboard' ? (
             <View style={styles.maxWidthContainer}>
               <View style={styles.banner}>
@@ -102,29 +150,27 @@ export default function AdminApp({ onLogout }: AdminAppProps) {
             <View style={styles.maxWidthContainer}><AdminManagement /></View>
           ) : activeTab === 'Settings' ? (
             <View style={styles.maxWidthContainer}>
-              {/* INTERNAL SETTINGS NAVIGATION */}
               {settingsView === 'Main' && (
                 <SettingsApp 
                   onNavigateEmail={() => setSettingsView('Email')} 
                   onNavigatePassword={() => setSettingsView('Password')} 
                 />
               )}
-              {settingsView === 'Email' && (
-                <ChangeEmail onBack={() => setSettingsView('Main')} />
-              )}
-              {settingsView === 'Password' && (
-                <ChangePassword onBack={() => setSettingsView('Main')} />
-              )}
+              {settingsView === 'Email' && <ChangeEmail onBack={() => setSettingsView('Main')} />}
+              {settingsView === 'Password' && <ChangePassword onBack={() => setSettingsView('Main')} />}
             </View>
           ) : (
             <View style={styles.placeholder}>
-              <Text style={{color: '#94A3B8', fontSize: 18}}>Section: {activeTab}</Text>
+              <Text style={{color: '#1E293B', fontSize: 24, fontWeight: 'bold'}}>{activeTab}</Text>
+              <Text style={{color: '#94A3B8', fontSize: 16, marginTop: 10}}>
+                Management view for student cluster data.
+              </Text>
             </View>
           )}
         </ScrollView>
       </View>
 
-      {/* --- MODAL: REGISTER NEW ADMIN --- */}
+      {/* Add Admin Modal */}
       <Modal visible={addAdminVisible} transparent animationType="slide">
         <View style={styles.modalOverlay}>
           <View style={styles.modalBoxLarge}>
@@ -149,22 +195,30 @@ export default function AdminApp({ onLogout }: AdminAppProps) {
             </View>
 
             <View style={styles.modalButtons}>
-              <TouchableOpacity onPress={() => setAddAdminVisible(false)}><Text style={styles.cancelBtnText}>Discard</Text></TouchableOpacity>
-              <TouchableOpacity style={styles.confirmBtn} onPress={handleSaveAdmin}><Text style={styles.confirmBtnText}>Save Admin</Text></TouchableOpacity>
+              <TouchableOpacity onPress={() => setAddAdminVisible(false)}>
+                <Text style={styles.cancelBtnText}>Discard</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.confirmBtn} onPress={handleSaveAdmin}>
+                <Text style={styles.confirmBtnText}>Save Admin</Text>
+              </TouchableOpacity>
             </View>
           </View>
         </View>
       </Modal>
 
-      {/* MODAL: LOGOUT */}
+      {/* Logout Modal */}
       <Modal visible={logoutVisible} transparent animationType="fade">
         <View style={styles.modalOverlay}>
           <View style={styles.modalBox}>
             <Text style={styles.modalTitle}>Sign Out</Text>
             <Text style={styles.modalSub}>Are you sure you want to log out of PasersHub 2.0?</Text>
             <View style={styles.modalButtons}>
-              <TouchableOpacity style={styles.cancelBtn} onPress={() => setLogoutVisible(false)}><Text style={styles.cancelBtnText}>Cancel</Text></TouchableOpacity>
-              <TouchableOpacity style={styles.confirmBtn} onPress={confirmLogout}><Text style={styles.confirmBtnText}>Logout</Text></TouchableOpacity>
+              <TouchableOpacity style={styles.cancelBtn} onPress={() => setLogoutVisible(false)}>
+                <Text style={styles.cancelBtnText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.confirmBtn} onPress={confirmLogout}>
+                <Text style={styles.confirmBtnText}>Logout</Text>
+              </TouchableOpacity>
             </View>
           </View>
         </View>

@@ -14,23 +14,22 @@ import {
 export const StudentManagement = () => {
     // STATE FOR STUDENT LIST
     const [students, setStudents] = useState([
-        { id: '#102931', name: 'Alexander Wright', email: 'a.wright@univ.edu', program: 'BSCS - 4B', status: 'Active', img: 'https://i.pravatar.cc/150?u=1' },
-        { id: '#102945', name: 'Elena Rodriguez', email: 'e.rodriguez@univ.edu', program: 'BSIT - 3B', status: 'Active', img: 'https://i.pravatar.cc/150?u=2' },
-        { id: '#102958', name: 'Marcus Thorne', email: 'm.thorne@univ.edu', program: 'BSDS - 2A', status: 'Away', img: 'https://i.pravatar.cc/150?u=3' },
-        { id: '#102960', name: 'Sarah Jenkins', email: 's.jenkins@univ.edu', program: 'BSCS - 1A', status: 'Active', img: 'https://i.pravatar.cc/150?u=4' },
-        { id: '#102965', name: 'David Miller', email: 'd.miller@univ.edu', program: 'BSIT - 2C', status: 'Active', img: 'https://i.pravatar.cc/150?u=5' },
-        { id: '#102970', name: 'Sophia Chen', email: 's.chen@univ.edu', program: 'BSDS - 4B', status: 'Away', img: 'https://i.pravatar.cc/150?u=6' },
-        { id: '#102975', name: 'Liam Wilson', email: 'l.wilson@univ.edu', program: 'BSCS - 3A', status: 'Active', img: 'https://i.pravatar.cc/150?u=7' },
-        { id: '#102980', name: 'Olivia Brown', email: 'o.brown@univ.edu', program: 'BSIT - 1B', status: 'Active', img: 'https://i.pravatar.cc/150?u=8' },
-        { id: '#102985', name: 'Noah Davis', email: 'n.davis@univ.edu', program: 'BSDS - 3C', status: 'Away', img: 'https://i.pravatar.cc/150?u=9' },
-        { id: '#102990', name: 'Emma Garcia', email: 'e.garcia@univ.edu', program: 'BSCS - 2B', status: 'Active', img: 'https://i.pravatar.cc/150?u=10' },
+        { id: '#102931', name: 'Alexander Wright', email: 'a.wright@univ.edu', program: 'BSCS - 4B', img: 'https://i.pravatar.cc/150?u=1' },
+        { id: '#102945', name: 'Elena Rodriguez', email: 'e.rodriguez@univ.edu', program: 'BSIT - 3B', img: 'https://i.pravatar.cc/150?u=2' },
+        { id: '#102958', name: 'Marcus Thorne', email: 'm.thorne@univ.edu', program: 'BSDS - 2A', img: 'https://i.pravatar.cc/150?u=3' },
+        { id: '#102960', name: 'Sarah Jenkins', email: 's.jenkins@univ.edu', program: 'BSCS - 1A', img: 'https://i.pravatar.cc/150?u=4' },
+        { id: '#102965', name: 'David Miller', email: 'd.miller@univ.edu', program: 'BSIT - 2C', img: 'https://i.pravatar.cc/150?u=5' },
+        { id: '#102970', name: 'Sophia Chen', email: 's.chen@univ.edu', program: 'BSDS - 4B', img: 'https://i.pravatar.cc/150?u=6' },
+        { id: '#102975', name: 'Liam Wilson', email: 'l.wilson@univ.edu', program: 'BSCS - 3A', img: 'https://i.pravatar.cc/150?u=7' },
+        { id: '#102980', name: 'Olivia Brown', email: 'o.brown@univ.edu', program: 'BSIT - 1B', img: 'https://i.pravatar.cc/150?u=8' },
+        { id: '#102985', name: 'Noah Davis', email: 'n.davis@univ.edu', program: 'BSDS - 3C', img: 'https://i.pravatar.cc/150?u=9' },
+        { id: '#102990', name: 'Emma Garcia', email: 'e.garcia@univ.edu', program: 'BSCS - 2B', img: 'https://i.pravatar.cc/150?u=10' },
     ]);
 
     const [search, setSearch] = useState('');
     const [isEditModalVisible, setEditModalVisible] = useState(false);
     const [selectedStudent, setSelectedStudent] = useState<any>(null);
 
-    // Filtering logic
     const filteredStudents = students.filter(s => 
         s.name.toLowerCase().includes(search.toLowerCase()) || s.id.includes(search)
     );
@@ -55,11 +54,11 @@ export const StudentManagement = () => {
             <View style={styles.headerRow}>
                 <View>
                     <Text style={styles.title}>Student Management</Text>
-                    <Text style={styles.subtitle}>View and manage registered students and enrollment status.</Text>
+                    <Text style={styles.subtitle}>View and manage registered students and enrollment data.</Text>
                 </View>
             </View>
 
-            {/* SEARCH SECTION - Filter buttons removed */}
+            {/* SEARCH SECTION */}
             <View style={styles.filterBar}>
                 <View style={styles.searchContainer}>
                     <Feather name="search" size={18} color="#94A3B8" />
@@ -70,11 +69,6 @@ export const StudentManagement = () => {
                         value={search}
                         onChangeText={setSearch}
                     />
-                    {search.length > 0 && (
-                        <TouchableOpacity onPress={() => setSearch('')}>
-                            <Feather name="x-circle" size={16} color="#CBD5E1" />
-                        </TouchableOpacity>
-                    )}
                 </View>
             </View>
 
@@ -83,9 +77,9 @@ export const StudentManagement = () => {
                 <View style={styles.tableHeader}>
                     <Text style={[styles.hText, { flex: 1 }]}>STUDENT ID</Text>
                     <Text style={[styles.hText, { flex: 2.5 }]}>FULL NAME</Text>
-                    <Text style={[styles.hText, { flex: 1.5 }]}>PROGRAM/YEAR</Text>
-                    <Text style={[styles.hText, { flex: 1, textAlign: 'center' }]}>STATUS</Text>
-                    <Text style={[styles.hText, { flex: 1.2, textAlign: 'right', paddingRight: 20 }]}>ACTIONS</Text>
+                    <Text style={[styles.hText, { flex: 2 }]}>PROGRAM / YEAR</Text>
+                    {/* Width defined to pull icons leftward */}
+                    <Text style={[styles.hText, { width: 90, textAlign: 'center' }]}>ACTIONS</Text>
                 </View>
 
                 <ScrollView 
@@ -105,27 +99,22 @@ export const StudentManagement = () => {
                                     </View>
                                 </View>
                                 
-                                <Text style={[styles.cellText, { flex: 1.5 }]}>{item.program}</Text>
-                                
-                                <View style={[styles.statusCell, { flex: 1 }]}>
-                                    <Text style={[styles.statusTag, item.status === 'Active' ? styles.active : styles.away]}>
-                                        {item.status}
-                                    </Text>
-                                </View>
+                                <Text style={[styles.cellText, { flex: 2 }]}>{item.program}</Text>
 
-                                <View style={[styles.actionCell, { flex: 1.2 }]}>
+                                {/* Action container shifted slightly left to balance spacing */}
+                                <View style={styles.actionCell}>
                                     <TouchableOpacity onPress={() => handleEditPress(item)} style={styles.actionIcon}>
-                                        <Feather name="edit-2" size={16} color="#64748B" />
+                                        <Feather name="edit-2" size={17} color="#64748B" />
                                     </TouchableOpacity>
                                     <TouchableOpacity onPress={() => handleDelete(item.id)} style={styles.actionIcon}>
-                                        <Feather name="trash-2" size={16} color="#F87171" />
+                                        <Feather name="trash-2" size={17} color="#F87171" />
                                     </TouchableOpacity>
                                 </View>
                             </View>
                         ))
                     ) : (
                         <View style={styles.noResult}>
-                            <Text style={styles.noResultText}>No students found matching your search.</Text>
+                            <Text style={styles.noResultText}>No students found.</Text>
                         </View>
                     )}
                 </ScrollView>
@@ -175,7 +164,7 @@ const styles = StyleSheet.create({
 
     filterBar: { marginBottom: 25 },
     searchContainer: { 
-        maxWidth: 500, // Limits width for a cleaner look
+        maxWidth: 400, 
         backgroundColor: '#F8FAFC', 
         flexDirection: 'row', 
         alignItems: 'center', 
@@ -197,24 +186,33 @@ const styles = StyleSheet.create({
     },
     tableHeader: { 
         flexDirection: 'row', 
-        padding: 20, 
-        backgroundColor: '#1E293B' 
+        paddingHorizontal: 20,
+        paddingVertical: 18, 
+        backgroundColor: '#1E293B',
+        alignItems: 'center'
     },
     hText: { color: '#94A3B8', fontSize: 11, fontWeight: '800', letterSpacing: 1 },
-    scrollArea: { maxHeight: 450 },
-    row: { flexDirection: 'row', padding: 20, alignItems: 'center', borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
+    
+    // TRACES SCROLLBAR AFTER 5 ROWS (approx 405px)
+    scrollArea: { maxHeight: 405 },
+
+    row: { flexDirection: 'row', paddingHorizontal: 20, paddingVertical: 15, alignItems: 'center', borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
     idText: { color: '#F87171', fontSize: 13, fontWeight: '700' },
     userInfo: { flexDirection: 'row', alignItems: 'center' },
     avatar: { width: 40, height: 40, borderRadius: 20, marginRight: 15, backgroundColor: '#F1F5F9' },
     uName: { color: '#1E293B', fontWeight: 'bold', fontSize: 15 },
     uEmail: { color: '#64748B', fontSize: 12 },
     cellText: { color: '#475569', fontSize: 14, fontWeight: '500' },
-    statusCell: { alignItems: 'center' },
-    statusTag: { fontSize: 11, fontWeight: 'bold' },
-    active: { color: '#10B981' },
-    away: { color: '#F59E0B' },
-    actionCell: { flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center' },
-    actionIcon: { marginLeft: 15, padding: 5 },
+    
+    // ALIGNED ACTION CELL (defined width shifts it left from far right)
+    actionCell: { 
+        flexDirection: 'row', 
+        width: 90, 
+        justifyContent: 'space-between', 
+        alignItems: 'center'
+    },
+    actionIcon: { padding: 5 },
+
     noResult: { padding: 40, alignItems: 'center' },
     noResultText: { color: '#94A3B8', fontSize: 14 },
 
