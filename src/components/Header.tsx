@@ -47,6 +47,7 @@ interface HeaderProps {
   onSearchChange?: (query: string) => void;
   notificationCount?: number;
   onMenuPress?: () => void;
+  onNotificationPress?: () => void;
 }
 
 const Header: React.FC<HeaderProps> = ({
@@ -56,6 +57,7 @@ const Header: React.FC<HeaderProps> = ({
   onSearchChange,
   notificationCount = 0,
   onMenuPress,
+  onNotificationPress,
 }) => {
   const { width } = useWindowDimensions();
 
@@ -69,6 +71,7 @@ const Header: React.FC<HeaderProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearchFocused, setIsSearchFocused] = useState(false);
   const [hoveredNav, setHoveredNav] = useState<ScreenType | null>(null);
+  const [isBellHovered, setIsBellHovered] = useState(false);
 
   const responsiveSize = (mobile: number, tablet: number, desktopMax: number) => {
     if (isVerySmall) return mobile * 0.9;
@@ -148,24 +151,24 @@ const Header: React.FC<HeaderProps> = ({
     'messenger',
   ];
 
-const getSearchPlaceholder = () => {
-  if (isPhone) return 'Search';
+  const getSearchPlaceholder = () => {
+    if (isPhone) return 'Search';
 
-  if (
-    activeScreen === 'game' ||
-    activeScreen === 'flipit' ||
-    activeScreen === 'fruitmania' ||
-    activeScreen === 'quizmasters'
-  ) {
-    return 'Search Game';
-  }
+    if (
+      activeScreen === 'game' ||
+      activeScreen === 'flipit' ||
+      activeScreen === 'fruitmania' ||
+      activeScreen === 'quizmasters'
+    ) {
+      return 'Search Game';
+    }
 
-  if (activeScreen === 'videos') return 'Search Videos';
-  if (activeScreen === 'messenger') return 'Search Messages';
-  if (activeScreen === 'classes') return 'Search Classes';
+    if (activeScreen === 'videos') return 'Search Videos';
+    if (activeScreen === 'messenger') return 'Search Messages';
+    if (activeScreen === 'classes') return 'Search Classes';
 
-  return 'Search ParseClass';
-};
+    return 'Search ParseClass';
+  };
 
   const getNavLabel = (screen: ScreenType) => {
     switch (screen) {
@@ -179,6 +182,8 @@ const getSearchPlaceholder = () => {
         return 'Videos';
       case 'messenger':
         return 'Messages';
+      case 'notification':
+        return 'Notifications';
       default:
         return screen;
     }
@@ -428,7 +433,7 @@ const getSearchPlaceholder = () => {
               style={styles.navBtn}
               onPress={() => {
                 toggleSearch(false);
-                onNavigate?.('notification');
+                onNotificationPress?.();
               }}
             >
               <View>
@@ -524,12 +529,26 @@ const getSearchPlaceholder = () => {
         {navScreens.map((screen) => renderNavButton(screen, navIconSize))}
       </View>
 
-      <View style={{ marginLeft: 'auto' }}>
-        <TouchableOpacity
-          style={styles.navBtn}
+      <View style={[styles.navItemWrapper, { marginLeft: 'auto' }]}>
+        <Pressable
+          style={(state: any) => [
+            styles.navBtn,
+            isActive('notification') && styles.navBtnActive,
+            state.hovered && !isActive('notification') && styles.navBtnHover,
+          ]}
           onPress={() => {
             toggleSearch(false);
-            onNavigate?.('notification');
+            onNotificationPress?.();
+          }}
+          onHoverIn={() => {
+            if (Platform.OS === 'web') {
+              setIsBellHovered(true);
+            }
+          }}
+          onHoverOut={() => {
+            if (Platform.OS === 'web') {
+              setIsBellHovered(false);
+            }
           }}
         >
           <View>
@@ -544,7 +563,13 @@ const getSearchPlaceholder = () => {
               </View>
             )}
           </View>
-        </TouchableOpacity>
+        </Pressable>
+
+        {Platform.OS === 'web' && isBellHovered && (
+          <View style={styles.tooltip}>
+            <Text style={styles.tooltipText}>{getNavLabel('notification')}</Text>
+          </View>
+        )}
       </View>
     </View>
   );

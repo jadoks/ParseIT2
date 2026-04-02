@@ -1,11 +1,13 @@
-import { useFocusEffect } from '@react-navigation/native';
 import * as DocumentPicker from 'expo-document-picker';
-import { router } from 'expo-router';
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import * as ImageManipulator from 'expo-image-manipulator';
+import React, { useMemo, useRef, useState } from 'react';
 import {
+  Alert,
+  Animated,
   Image,
   Keyboard,
   Modal,
+  PanResponder,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -23,16 +25,6 @@ import { CommunityAnswer, CommunityPost } from './Community';
 
 type CropType = 'profile' | 'banner';
 
-declare global {
-  var __PROFILE_CROP_RESULT__:
-    | {
-        uri: string;
-        type: CropType;
-        ts: number;
-      }
-    | undefined;
-}
-
 interface ProfileProps {
   userPosts: CommunityPost[];
   onCreatePost?: (query: string) => void;
@@ -45,7 +37,24 @@ interface ProfileProps {
   onChangeBannerImage: (image: any) => void;
 }
 
+interface CropModalState {
+  uri: string;
+  type: CropType;
+}
+
 const DEFAULT_AVATAR = require('../../assets/images/pogi.jpg');
+const MAX_IMAGE_SIZE_MB = 15;
+const MAX_IMAGE_SIZE_BYTES = MAX_IMAGE_SIZE_MB * 1024 * 1024;
+
+const normalizeImageSource = (img: any) => {
+  if (!img) return DEFAULT_AVATAR;
+  if (typeof img === 'number') return img;
+  if (img?.uri) return { uri: img.uri };
+  return DEFAULT_AVATAR;
+};
+
+const clamp = (value: number, min: number, max: number) =>
+  Math.min(Math.max(value, min), max);
 
 const Profile: React.FC<ProfileProps> = ({
   userPosts,
@@ -58,7 +67,7 @@ const Profile: React.FC<ProfileProps> = ({
   onChangeProfileImage,
   onChangeBannerImage,
 }) => {
-  const { width } = useWindowDimensions();
+  const { width, height } = useWindowDimensions();
 
   const isSmallPhone = width < 380;
   const isPhone = width < 768;
@@ -74,6 +83,7 @@ const Profile: React.FC<ProfileProps> = ({
   const [queryModalVisible, setQueryModalVisible] = useState(false);
   const [editMenuVisible, setEditMenuVisible] = useState(false);
   const [isPickingImage, setIsPickingImage] = useState(false);
+  const [isCroppingImage, setIsCroppingImage] = useState(false);
 
   const [menuVisibleFor, setMenuVisibleFor] = useState<string | null>(null);
   const [hiddenPosts, setHiddenPosts] = useState<string[]>([]);
@@ -88,8 +98,14 @@ const Profile: React.FC<ProfileProps> = ({
     left: 0,
   });
 
+  const [cropModal, setCropModal] = useState<CropModalState | null>(null);
+  const [cropImageSize, setCropImageSize] = useState({ width: 1, height: 1 });
+  const [cropScale, setCropScale] = useState(1);
+  const [cropOffset, setCropOffset] = useState({ x: 0, y: 0 });
+
   const editBtnRef = useRef<View | null>(null);
-  const lastAppliedCropTs = useRef<number | null>(null);
+  const animatedPan = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
+  const dragStartRef = useRef({ x: 0, y: 0 });
 
   React.useEffect(() => {
     setLocalPosts(userPosts);
@@ -100,26 +116,126 @@ const Profile: React.FC<ProfileProps> = ({
     [localPosts, selectedPostId]
   );
 
-  useFocusEffect(
-    useCallback(() => {
-      const result = globalThis.__PROFILE_CROP_RESULT__;
+  const profileImageSource = useMemo(
+    () => normalizeImageSource(profileImage),
+    [profileImage]
+  );
 
-      if (!result?.uri) return;
-      if (lastAppliedCropTs.current === result.ts) return;
+  const bannerImageSource = useMemo(
+    () => normalizeImageSource(bannerImage),
+    [bannerImage]
+  );
 
-      if (result.type === 'profile') {
-        onChangeProfileImage({ uri: result.uri });
-      } else {
-        onChangeBannerImage({ uri: result.uri });
-      }
+  const cropViewport = useMemo(() => {
+    const modalMaxWidth = Math.min(width - 32, isLargeScreen ? 760 : 520);
 
-      lastAppliedCropTs.current = result.ts;
-      globalThis.__PROFILE_CROP_RESULT__ = undefined;
-    }, [onChangeBannerImage, onChangeProfileImage])
+    if (cropModal?.type === 'banner') {
+      const bannerViewportWidth = Math.min(
+        modalMaxWidth - 32,
+        isLargeScreen ? 680 : width - 56
+      );
+      return {
+        width: bannerViewportWidth,
+        height: Math.round(bannerViewportWidth * 0.42),
+      };
+    }
+
+    const circleSize = Math.min(
+      modalMaxWidth - 40,
+      isLargeScreen ? 360 : width - 72,
+      height * 0.4
+    );
+
+    return {
+      width: circleSize,
+      height: circleSize,
+    };
+  }, [cropModal?.type, height, isLargeScreen, width]);
+
+  const displayedImage = useMemo(() => {
+    const imageRatio = cropImageSize.width / cropImageSize.height;
+    const viewportRatio = cropViewport.width / cropViewport.height;
+
+    let baseWidth = cropViewport.width;
+    let baseHeight = cropViewport.height;
+
+    if (imageRatio > viewportRatio) {
+      baseHeight = cropViewport.height;
+      baseWidth = baseHeight * imageRatio;
+    } else {
+      baseWidth = cropViewport.width;
+      baseHeight = baseWidth / imageRatio;
+    }
+
+    return {
+      width: baseWidth * cropScale,
+      height: baseHeight * cropScale,
+      baseWidth,
+      baseHeight,
+    };
+  }, [
+    cropImageSize.height,
+    cropImageSize.width,
+    cropScale,
+    cropViewport.height,
+    cropViewport.width,
+  ]);
+
+  const getClampedOffset = React.useCallback(
+    (x: number, y: number) => {
+      const maxX = Math.max(0, (displayedImage.width - cropViewport.width) / 2);
+      const maxY = Math.max(0, (displayedImage.height - cropViewport.height) / 2);
+
+      return {
+        x: clamp(x, -maxX, maxX),
+        y: clamp(y, -maxY, maxY),
+      };
+    },
+    [displayedImage.height, displayedImage.width, cropViewport.height, cropViewport.width]
+  );
+
+  React.useEffect(() => {
+    const clamped = getClampedOffset(cropOffset.x, cropOffset.y);
+    if (clamped.x !== cropOffset.x || clamped.y !== cropOffset.y) {
+      setCropOffset(clamped);
+      animatedPan.setValue(clamped);
+    } else {
+      animatedPan.setValue(cropOffset);
+    }
+  }, [animatedPan, cropOffset, getClampedOffset]);
+
+  const cropPanResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => !!cropModal,
+        onMoveShouldSetPanResponder: () => !!cropModal,
+        onPanResponderGrant: () => {
+          dragStartRef.current = { ...cropOffset };
+        },
+        onPanResponderMove: (_evt, gestureState) => {
+          const next = getClampedOffset(
+            dragStartRef.current.x + gestureState.dx,
+            dragStartRef.current.y + gestureState.dy
+          );
+          animatedPan.setValue(next);
+        },
+        onPanResponderRelease: (_evt, gestureState) => {
+          const next = getClampedOffset(
+            dragStartRef.current.x + gestureState.dx,
+            dragStartRef.current.y + gestureState.dy
+          );
+          setCropOffset(next);
+          animatedPan.setValue(next);
+        },
+        onPanResponderTerminate: () => {
+          animatedPan.setValue(cropOffset);
+        },
+      }),
+    [animatedPan, cropModal, cropOffset, getClampedOffset]
   );
 
   const openEditMenu = () => {
-    if (isPickingImage) return;
+    if (isPickingImage || isCroppingImage) return;
 
     if (editBtnRef.current && 'measureInWindow' in editBtnRef.current) {
       (editBtnRef.current as any).measureInWindow(
@@ -140,13 +256,69 @@ const Profile: React.FC<ProfileProps> = ({
     }
   };
 
+  const resetCropState = () => {
+    setCropScale(1);
+    setCropOffset({ x: 0, y: 0 });
+    animatedPan.setValue({ x: 0, y: 0 });
+  };
+
+  const normalizeImage = async (uri: string) => {
+    try {
+      const result = await ImageManipulator.manipulateAsync(
+        uri,
+        [{ rotate: 0 }],
+        {
+          compress: 1,
+          format: ImageManipulator.SaveFormat.JPEG,
+          base64: false,
+        }
+      );
+
+      return result;
+    } catch (e) {
+      console.log('Normalize error:', e);
+      const fallbackSize = await new Promise<{ width: number; height: number }>((resolve) => {
+        Image.getSize(
+          uri,
+          (w, h) => resolve({ width: w, height: h }),
+          () => resolve({ width: 1, height: 1 })
+        );
+      });
+
+      return {
+        uri,
+        width: fallbackSize.width,
+        height: fallbackSize.height,
+      };
+    }
+  };
+
+  const openCropModal = async (uri: string, type: CropType) => {
+    try {
+      const normalized = await normalizeImage(uri);
+
+      setCropImageSize({
+        width: normalized.width ?? 1,
+        height: normalized.height ?? 1,
+      });
+      resetCropState();
+      setCropModal({ uri: normalized.uri, type });
+    } catch (error) {
+      console.log('Image prep error:', error);
+      if (type === 'profile') {
+        onChangeProfileImage({ uri });
+      } else {
+        onChangeBannerImage({ uri });
+      }
+    }
+  };
+
   const pickFile = async (type: CropType) => {
-    if (isPickingImage) return;
+    if (isPickingImage || isCroppingImage) return;
 
     try {
       setIsPickingImage(true);
       setEditMenuVisible(false);
-      globalThis.__PROFILE_CROP_RESULT__ = undefined;
 
       const result = await DocumentPicker.getDocumentAsync({
         type: ['image/*'],
@@ -154,30 +326,115 @@ const Profile: React.FC<ProfileProps> = ({
         multiple: false,
       });
 
-      if (result.canceled) {
-        return;
-      }
+      if (result.canceled) return;
 
       const selected = result.assets?.[0];
-      if (!selected?.uri) {
+      if (!selected?.uri) return;
+
+      if (selected.size && selected.size > MAX_IMAGE_SIZE_BYTES) {
+        Alert.alert('Image too large', `Image must be ${MAX_IMAGE_SIZE_MB}MB or less.`);
         return;
       }
 
-      setTimeout(() => {
-        router.push({
-          pathname: '/CropScreen',
-          params: {
-            imageUri: selected.uri,
-            cropType: type,
-          },
-        });
-      }, 60);
+      await openCropModal(selected.uri, type);
     } catch (error) {
       console.log('Picker error:', error);
     } finally {
       setTimeout(() => {
         setIsPickingImage(false);
       }, 250);
+    }
+  };
+
+  const handleCropScaleChange = (delta: number) => {
+    const nextScale = clamp(cropScale + delta, 1, 3);
+    setCropScale(nextScale);
+
+    const nextDisplayedWidth = displayedImage.baseWidth * nextScale;
+    const nextDisplayedHeight = displayedImage.baseHeight * nextScale;
+
+    const maxX = Math.max(0, (nextDisplayedWidth - cropViewport.width) / 2);
+    const maxY = Math.max(0, (nextDisplayedHeight - cropViewport.height) / 2);
+
+    const nextOffset = {
+      x: clamp(cropOffset.x, -maxX, maxX),
+      y: clamp(cropOffset.y, -maxY, maxY),
+    };
+
+    setCropOffset(nextOffset);
+    animatedPan.setValue(nextOffset);
+  };
+
+  const handleConfirmCrop = async () => {
+    if (!cropModal) return;
+
+    try {
+      setIsCroppingImage(true);
+
+      const imageLeft =
+        (cropViewport.width - displayedImage.width) / 2 + cropOffset.x;
+      const imageTop =
+        (cropViewport.height - displayedImage.height) / 2 + cropOffset.y;
+
+      const originX = clamp(
+        Math.round((-imageLeft / displayedImage.width) * cropImageSize.width),
+        0,
+        cropImageSize.width - 1
+      );
+
+      const originY = clamp(
+        Math.round((-imageTop / displayedImage.height) * cropImageSize.height),
+        0,
+        cropImageSize.height - 1
+      );
+
+      const cropWidth = clamp(
+        Math.round((cropViewport.width / displayedImage.width) * cropImageSize.width),
+        1,
+        cropImageSize.width - originX
+      );
+
+      const cropHeight = clamp(
+        Math.round((cropViewport.height / displayedImage.height) * cropImageSize.height),
+        1,
+        cropImageSize.height - originY
+      );
+
+      const result = await ImageManipulator.manipulateAsync(
+        cropModal.uri,
+        [
+          {
+            crop: {
+              originX,
+              originY,
+              width: cropWidth,
+              height: cropHeight,
+            },
+          },
+          ...(cropModal.type === 'profile'
+            ? [{ resize: { width: 600, height: 600 } }]
+            : [{ resize: { width: 1400, height: 600 } }]),
+        ],
+        {
+          compress: 0.95,
+          format: ImageManipulator.SaveFormat.JPEG,
+          base64: false,
+        }
+      );
+
+      if (cropModal.type === 'profile') {
+        onChangeProfileImage({ uri: result.uri });
+      } else {
+        onChangeBannerImage({ uri: result.uri });
+      }
+
+      setCropModal(null);
+      resetCropState();
+    } catch (error) {
+      console.log('Crop error:', error);
+      Alert.alert('Crop failed', 'Please try another image or crop again.');
+    } finally {
+      setIsCroppingImage(false);
     }
   };
 
@@ -200,9 +457,7 @@ const Profile: React.FC<ProfileProps> = ({
     const newAnswer: CommunityAnswer = {
       id: `answer-${Date.now()}`,
       userName,
-      avatar: profileImage?.uri
-        ? { uri: profileImage.uri }
-        : profileImage || DEFAULT_AVATAR,
+      avatar: profileImageSource,
       answeredAt: new Date().toLocaleString(),
       message: trimmed,
     };
@@ -222,7 +477,7 @@ const Profile: React.FC<ProfileProps> = ({
   return (
     <TouchableWithoutFeedback
       onPress={() => {
-        if (!queryModalVisible && !answersModalVisible && !isPickingImage) {
+        if (!queryModalVisible && !answersModalVisible && !isPickingImage && !cropModal) {
           setMenuVisibleFor(null);
           Keyboard.dismiss();
         }
@@ -236,7 +491,7 @@ const Profile: React.FC<ProfileProps> = ({
         >
           <View style={[styles.bannerContainer, { marginTop: isSmallPhone ? 14 : 20 }]}>
             <Image
-              source={bannerImage}
+              source={bannerImageSource}
               style={[
                 styles.banner,
                 {
@@ -270,7 +525,7 @@ const Profile: React.FC<ProfileProps> = ({
               ]}
             >
               <Image
-                source={profileImage}
+                source={profileImageSource}
                 style={[
                   styles.avatarImage,
                   {
@@ -319,11 +574,11 @@ const Profile: React.FC<ProfileProps> = ({
                       paddingVertical: isSmallPhone ? 7 : 6,
                       borderRadius: isSmallPhone ? 8 : 6,
                     },
-                    isPickingImage && styles.editBtnDisabled,
+                    (isPickingImage || isCroppingImage) && styles.editBtnDisabled,
                   ]}
                   onPress={openEditMenu}
                   activeOpacity={0.85}
-                  disabled={isPickingImage}
+                  disabled={isPickingImage || isCroppingImage}
                 >
                   <MaterialCommunityIcons
                     name="pencil"
@@ -336,7 +591,11 @@ const Profile: React.FC<ProfileProps> = ({
                       { fontSize: isSmallPhone ? 13 : 14 },
                     ]}
                   >
-                    {isPickingImage ? ' Opening...' : ' Edit Profile '}
+                    {isPickingImage
+                      ? ' Opening...'
+                      : isCroppingImage
+                      ? ' Saving...'
+                      : ' Edit Profile '}
                   </Text>
                 </TouchableOpacity>
               </View>
@@ -358,7 +617,7 @@ const Profile: React.FC<ProfileProps> = ({
             ]}
           >
             <Image
-              source={profileImage}
+              source={profileImageSource}
               style={[
                 styles.smallAvatar,
                 {
@@ -408,7 +667,7 @@ const Profile: React.FC<ProfileProps> = ({
                 <View style={styles.postHeader}>
                   <View style={styles.userRow}>
                     <Image
-                      source={post.avatar || profileImage}
+                      source={normalizeImageSource(post.avatar || profileImage)}
                       style={[
                         styles.postAvatar,
                         {
@@ -444,9 +703,7 @@ const Profile: React.FC<ProfileProps> = ({
                   <View style={{ position: 'relative' }}>
                     <TouchableOpacity
                       onPress={() =>
-                        setMenuVisibleFor(
-                          menuVisibleFor === post.id ? null : post.id
-                        )
+                        setMenuVisibleFor(menuVisibleFor === post.id ? null : post.id)
                       }
                     >
                       <Ionicons
@@ -531,7 +788,10 @@ const Profile: React.FC<ProfileProps> = ({
               <Text
                 style={[
                   styles.dropdownTitle,
-                  { fontSize: isSmallPhone ? 16 : 18, marginBottom: isSmallPhone ? 10 : 12 },
+                  {
+                    fontSize: isSmallPhone ? 16 : 18,
+                    marginBottom: isSmallPhone ? 10 : 12,
+                  },
                 ]}
               >
                 Choose Option
@@ -564,7 +824,10 @@ const Profile: React.FC<ProfileProps> = ({
               <TouchableOpacity
                 style={[
                   styles.dropdownItem,
-                  { paddingVertical: isSmallPhone ? 10 : 12, marginBottom: 0 },
+                  {
+                    paddingVertical: isSmallPhone ? 10 : 12,
+                    marginBottom: 0,
+                  },
                 ]}
                 onPress={() => pickFile('banner')}
                 disabled={isPickingImage}
@@ -586,6 +849,125 @@ const Profile: React.FC<ProfileProps> = ({
               </TouchableOpacity>
             </View>
           </Pressable>
+        </Modal>
+
+        <Modal
+          visible={!!cropModal}
+          transparent
+          animationType="fade"
+          onRequestClose={() => {
+            if (!isCroppingImage) {
+              setCropModal(null);
+              resetCropState();
+            }
+          }}
+        >
+          <View style={styles.cropOverlay}>
+            <View
+              style={[
+                styles.cropCard,
+                {
+                  width: Math.min(width - 20, isLargeScreen ? 860 : 620),
+                  padding: isSmallPhone ? 14 : 18,
+                },
+              ]}
+            >
+              <View style={styles.cropHeader}>
+                <TouchableOpacity
+                  onPress={() => {
+                    if (isCroppingImage) return;
+                    setCropModal(null);
+                    resetCropState();
+                  }}
+                  disabled={isCroppingImage}
+                >
+                  <Text style={styles.cropCancelText}>Cancel</Text>
+                </TouchableOpacity>
+
+                <Text style={styles.cropHeaderTitle}>
+                  {cropModal?.type === 'profile'
+                    ? 'Crop profile photo'
+                    : 'Crop banner photo'}
+                </Text>
+
+                <TouchableOpacity onPress={handleConfirmCrop} disabled={isCroppingImage}>
+                  <Text style={styles.cropSaveText}>
+                    {isCroppingImage ? 'Saving...' : 'Save'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              <Text style={styles.cropHintText}>
+                Drag to reposition. Use the zoom controls below for a cleaner crop.
+              </Text>
+
+              <View
+                style={[
+                  styles.cropViewportWrapper,
+                  { height: cropViewport.height + 24 },
+                ]}
+              >
+                <View
+                  style={[
+                    styles.cropViewport,
+                    {
+                      width: cropViewport.width,
+                      height: cropViewport.height,
+                      borderRadius:
+                        cropModal?.type === 'profile' ? cropViewport.width / 2 : 18,
+                    },
+                  ]}
+                >
+                  <Animated.Image
+                    source={cropModal ? { uri: cropModal.uri } : undefined}
+                    style={{
+                      width: displayedImage.width,
+                      height: displayedImage.height,
+                      transform: animatedPan.getTranslateTransform(),
+                    }}
+                    resizeMode="cover"
+                    {...cropPanResponder.panHandlers}
+                  />
+                </View>
+
+                <View
+                  pointerEvents="none"
+                  style={[
+                    styles.cropFrame,
+                    {
+                      width: cropViewport.width,
+                      height: cropViewport.height,
+                      borderRadius:
+                        cropModal?.type === 'profile' ? cropViewport.width / 2 : 18,
+                    },
+                  ]}
+                />
+              </View>
+
+              <View style={styles.cropControls}>
+                <TouchableOpacity
+                  style={styles.cropZoomButton}
+                  onPress={() => handleCropScaleChange(-0.2)}
+                  disabled={isCroppingImage}
+                >
+                  <Text style={styles.cropZoomButtonText}>−</Text>
+                </TouchableOpacity>
+
+                <View style={styles.cropZoomInfo}>
+                  <Text style={styles.cropZoomLabel}>Zoom</Text>
+                  <Text style={styles.cropZoomValue}>{cropScale.toFixed(1)}x</Text>
+                </View>
+
+                <TouchableOpacity
+                  style={styles.cropZoomButton}
+                  onPress={() => handleCropScaleChange(0.2)}
+                  disabled={isCroppingImage}
+                >
+                  <Text style={styles.cropZoomButtonText}>+</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
         </Modal>
 
         <Modal
@@ -650,7 +1032,7 @@ const Profile: React.FC<ProfileProps> = ({
                               <View style={styles.answerPreviewHeader}>
                                 <View style={styles.userRow}>
                                   <Image
-                                    source={answer.avatar}
+                                    source={normalizeImageSource(answer.avatar)}
                                     style={[
                                       styles.answerAvatar,
                                       {
@@ -797,6 +1179,7 @@ const styles = StyleSheet.create({
 
   avatarImage: {
     overflow: 'hidden',
+    aspectRatio: 1,
   },
 
   nameContainer: {
@@ -848,6 +1231,7 @@ const styles = StyleSheet.create({
 
   smallAvatar: {
     overflow: 'hidden',
+    aspectRatio: 1,
   },
 
   askInput: {
@@ -886,6 +1270,7 @@ const styles = StyleSheet.create({
 
   postAvatar: {
     overflow: 'hidden',
+    aspectRatio: 1,
   },
 
   postName: {
@@ -984,6 +1369,116 @@ const styles = StyleSheet.create({
     color: '#333',
   },
 
+  cropOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.72)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 18,
+  },
+
+  cropCard: {
+    backgroundColor: '#121212',
+    borderRadius: 22,
+    maxWidth: 860,
+  },
+
+  cropHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+
+  cropHeaderTitle: {
+    color: '#FFF',
+    fontWeight: '700',
+    fontSize: 16,
+  },
+
+  cropCancelText: {
+    color: '#CFCFCF',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+
+  cropSaveText: {
+    color: '#4EA1FF',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+
+  cropHintText: {
+    color: '#BDBDBD',
+    fontSize: 13,
+    marginBottom: 14,
+    textAlign: 'center',
+  },
+
+  cropViewportWrapper: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 18,
+  },
+
+  cropViewport: {
+    overflow: 'hidden',
+    backgroundColor: '#000',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+
+  cropFrame: {
+    position: 'absolute',
+    borderWidth: 2,
+    borderColor: '#FFF',
+    shadowColor: '#000',
+    shadowOpacity: 0.2,
+    shadowRadius: 10,
+    elevation: 4,
+  },
+
+  cropControls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 16,
+  },
+
+  cropZoomButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#232323',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+
+  cropZoomButtonText: {
+    color: '#FFF',
+    fontSize: 24,
+    fontWeight: '600',
+    lineHeight: 26,
+  },
+
+  cropZoomInfo: {
+    minWidth: 90,
+    alignItems: 'center',
+  },
+
+  cropZoomLabel: {
+    color: '#BDBDBD',
+    fontSize: 12,
+    marginBottom: 2,
+  },
+
+  cropZoomValue: {
+    color: '#FFF',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.35)',
@@ -1037,6 +1532,7 @@ const styles = StyleSheet.create({
 
   answerAvatar: {
     overflow: 'hidden',
+    aspectRatio: 1,
   },
 
   answerUserName: {

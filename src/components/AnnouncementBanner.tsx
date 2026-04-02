@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import {
   GestureResponderEvent,
   ImageBackground,
+  Platform,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -20,6 +21,7 @@ interface AnnouncementBannerProps {
 }
 
 const AUTO_SLIDE_MS = 5000;
+const BANNER_RADIUS = 18;
 
 const AnnouncementBanner = ({ announcements }: AnnouncementBannerProps) => {
   const { width, height } = useWindowDimensions();
@@ -31,6 +33,8 @@ const AnnouncementBanner = ({ announcements }: AnnouncementBannerProps) => {
 
   const isMobile = width < 768;
   const isTablet = width >= 768 && width < 1024;
+  const isDesktop = width >= 1024;
+
   const shouldShowSwipe = isMobile || isTablet;
   const minSwipeDistance = width * 0.1;
 
@@ -38,14 +42,15 @@ const AnnouncementBanner = ({ announcements }: AnnouncementBannerProps) => {
   const currentAnnouncement = hasAnnouncements ? announcements[currentIndex] : null;
 
   const bannerHeight = isMobile
-    ? Math.max(180, Math.min(height * 0.24, 240))
+    ? Math.max(190, Math.min(height * 0.26, 250))
     : isTablet
-    ? Math.max(220, Math.min(height * 0.28, 300))
-    : Math.max(240, Math.min(height * 0.3, 340));
+      ? Math.max(240, Math.min(height * 0.3, 320))
+      : Math.max(260, Math.min(height * 0.34, 360));
 
-  const horizontalPadding = isMobile ? 16 : isTablet ? 22 : 28;
-  const titleFontSize = isMobile ? 18 : isTablet ? 21 : 26;
-  const messageFontSize = isMobile ? 12 : isTablet ? 13 : 15;
+  const horizontalPadding = isMobile ? 16 : isTablet ? 24 : 32;
+  const titleFontSize = isMobile ? 18 : isTablet ? 22 : 28;
+  const messageFontSize = isMobile ? 12 : isTablet ? 14 : 16;
+  const titleMaxWidth = isMobile ? '100%' : isTablet ? '92%' : '88%';
 
   const resetAutoSlide = () => {
     if (timerRef.current) clearTimeout(timerRef.current);
@@ -103,137 +108,182 @@ const AnnouncementBanner = ({ announcements }: AnnouncementBannerProps) => {
 
   if (!hasAnnouncements) {
     return (
-      <View style={[styles.bannerContainer, styles.emptyBanner, { height: bannerHeight }]}>
-        <Text style={styles.emptyTitle}>No announcements yet</Text>
-        <Text style={styles.emptyMessage}>
-          New announcements will appear here once available.
-        </Text>
+      <View style={[styles.shadowContainer, { height: bannerHeight }]}>
+        <View style={[styles.clippedContainer, styles.emptyBanner]}>
+          <Text style={styles.emptyTitle}>No announcements yet</Text>
+          <Text style={styles.emptyMessage}>
+            New announcements will appear here once available.
+          </Text>
+        </View>
       </View>
     );
   }
 
   return (
-    <GestureHandlerRootView style={[styles.bannerContainer, { height: bannerHeight }]}>
-      <View
-        onStartShouldSetResponder={() => shouldShowSwipe}
-        onMoveShouldSetResponder={() => shouldShowSwipe}
-        onResponderGrant={handleSwipeStart}
-        onResponderRelease={handleSwipeEnd}
-        style={styles.touchLayer}
-      >
-        <ImageBackground
-          source={currentAnnouncement?.bannerImage}
-          style={styles.bannerBackground}
-          imageStyle={styles.bannerImage}
-          resizeMode="cover"
-        >
-          <View style={styles.overlayDark} />
-          <View style={styles.overlayRed} />
+    <View style={[styles.shadowContainer, { height: bannerHeight }]}>
+      <View style={styles.clippedContainer}>
+        <GestureHandlerRootView style={styles.gestureRoot}>
+          <View
+            onStartShouldSetResponder={() => shouldShowSwipe}
+            onMoveShouldSetResponder={() => shouldShowSwipe}
+            onResponderGrant={handleSwipeStart}
+            onResponderRelease={handleSwipeEnd}
+            style={styles.touchLayer}
+          >
+            <ImageBackground
+              source={currentAnnouncement?.bannerImage}
+              style={styles.bannerBackground}
+              imageStyle={styles.bannerImage}
+              resizeMode="cover"
+            >
+              <View style={styles.overlayDark} />
+              <View style={styles.overlayRed} />
 
-          <View style={[styles.topRow, { paddingTop: isMobile ? 12 : 16 }]}>
-            {announcements.length > 1 && (
-              <View style={styles.centerCounterWrap}>
-                <View style={styles.counterPill}>
-                  <Text style={styles.counterText}>
-                    {currentIndex + 1} / {announcements.length}
+              {announcements.length > 1 && (
+                <View
+                  style={[
+                    styles.topBar,
+                    {
+                      top: isMobile ? 12 : 16,
+                      paddingHorizontal: horizontalPadding,
+                      justifyContent: isMobile ? 'flex-end' : 'center',
+                    },
+                  ]}
+                >
+                  <View style={[styles.counterPill, isMobile && styles.counterPillMobile]}>
+                    <Text style={[styles.counterText, isMobile && styles.counterTextMobile]}>
+                      {currentIndex + 1} / {announcements.length}
+                    </Text>
+                  </View>
+                </View>
+              )}
+
+              <View
+                style={[
+                  styles.contentContainer,
+                  {
+                    paddingHorizontal: horizontalPadding,
+                  },
+                ]}
+              >
+                {!shouldShowSwipe && announcements.length > 1 ? (
+                  <TouchableOpacity
+                    onPress={handlePrev}
+                    style={[styles.arrowButton, isDesktop && styles.arrowButtonDesktop]}
+                    activeOpacity={0.8}
+                    hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
+                  >
+                    <Text style={[styles.arrowText, isDesktop && styles.arrowTextDesktop]}>‹</Text>
+                  </TouchableOpacity>
+                ) : (
+                  <View style={styles.arrowSpacer} />
+                )}
+
+                <View style={styles.contentText}>
+                  <Text
+                    style={[
+                      styles.announceTitle,
+                      {
+                        fontSize: titleFontSize,
+                        maxWidth: titleMaxWidth,
+                        marginBottom: isMobile ? 8 : 10,
+                      },
+                    ]}
+                    numberOfLines={2}
+                  >
+                    {currentAnnouncement?.title}
+                  </Text>
+
+                  <Text
+                    style={[
+                      styles.announceMessage,
+                      {
+                        fontSize: messageFontSize,
+                        lineHeight: isMobile ? 18 : isTablet ? 21 : 24,
+                        maxWidth: isMobile ? '100%' : '92%',
+                      },
+                    ]}
+                    numberOfLines={3}
+                  >
+                    {currentAnnouncement?.message}
                   </Text>
                 </View>
-              </View>
-            )}
-          </View>
 
-          <View
-            style={[
-              styles.contentContainer,
-              {
-                paddingHorizontal: horizontalPadding,
-              },
-            ]}
-          >
-            {!shouldShowSwipe && announcements.length > 1 ? (
-              <TouchableOpacity
-                onPress={handlePrev}
-                style={styles.arrowButton}
-                activeOpacity={0.8}
-                hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
-              >
-                <Text style={styles.arrowText}>‹</Text>
-              </TouchableOpacity>
-            ) : (
-              <View style={styles.arrowSpacer} />
-            )}
-
-            <View style={styles.contentText}>
-              <Text
-                style={[styles.announceTitle, { fontSize: titleFontSize }]}
-                numberOfLines={2}
-              >
-                {currentAnnouncement?.title}
-              </Text>
-
-              <Text
-                style={[styles.announceMessage, { fontSize: messageFontSize }]}
-                numberOfLines={3}
-              >
-                {currentAnnouncement?.message}
-              </Text>
-            </View>
-
-            {!shouldShowSwipe && announcements.length > 1 ? (
-              <TouchableOpacity
-                onPress={handleNext}
-                style={styles.arrowButton}
-                activeOpacity={0.8}
-                hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
-              >
-                <Text style={styles.arrowText}>›</Text>
-              </TouchableOpacity>
-            ) : (
-              <View style={styles.arrowSpacer} />
-            )}
-          </View>
-
-          <View style={[styles.bottomArea, { paddingBottom: isMobile ? 12 : 16 }]}>
-            {announcements.length > 1 && (
-              <View style={styles.dotsContainer}>
-                {announcements.map((_, index) => (
+                {!shouldShowSwipe && announcements.length > 1 ? (
                   <TouchableOpacity
-                    key={index}
-                    onPress={() => handleDotPress(index)}
-                    style={[
-                      styles.dot,
-                      index === currentIndex ? styles.activeDot : styles.inactiveDot,
-                    ]}
+                    onPress={handleNext}
+                    style={[styles.arrowButton, isDesktop && styles.arrowButtonDesktop]}
                     activeOpacity={0.8}
-                  />
-                ))}
+                    hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
+                  >
+                    <Text style={[styles.arrowText, isDesktop && styles.arrowTextDesktop]}>›</Text>
+                  </TouchableOpacity>
+                ) : (
+                  <View style={styles.arrowSpacer} />
+                )}
               </View>
-            )}
 
-            {shouldShowSwipe && announcements.length > 1 && (
-              <View style={styles.swipeHint}>
-                <Text style={styles.swipeHintText}>Swipe to explore announcements</Text>
+              <View
+                style={[
+                  styles.bottomArea,
+                  {
+                    paddingBottom: isMobile ? 12 : 16,
+                    paddingHorizontal: horizontalPadding,
+                  },
+                ]}
+              >
+                {announcements.length > 1 && (
+                  <View style={styles.dotsContainer}>
+                    {announcements.map((_, index) => (
+                      <TouchableOpacity
+                        key={index}
+                        onPress={() => handleDotPress(index)}
+                        style={[
+                          styles.dot,
+                          index === currentIndex ? styles.activeDot : styles.inactiveDot,
+                        ]}
+                        activeOpacity={0.8}
+                      />
+                    ))}
+                  </View>
+                )}
+
+                {shouldShowSwipe && announcements.length > 1 && (
+                  <View style={styles.swipeHint}>
+                    <Text style={styles.swipeHintText}>Swipe to explore announcements</Text>
+                  </View>
+                )}
               </View>
-            )}
+            </ImageBackground>
           </View>
-        </ImageBackground>
+        </GestureHandlerRootView>
       </View>
-    </GestureHandlerRootView>
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
-  bannerContainer: {
+  shadowContainer: {
     width: '100%',
     marginBottom: hp('3'),
-    borderRadius: 18,
-    overflow: 'hidden',
+    borderRadius: BANNER_RADIUS,
     backgroundColor: '#F5F5F5',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.12,
     shadowRadius: 12,
     elevation: 4,
+  },
+
+  clippedContainer: {
+    flex: 1,
+    borderRadius: BANNER_RADIUS,
+    overflow: 'hidden',
+    backgroundColor: '#F5F5F5',
+  },
+
+  gestureRoot: {
+    flex: 1,
   },
 
   touchLayer: {
@@ -248,8 +298,9 @@ const styles = StyleSheet.create({
   },
 
   bannerImage: {
-    borderRadius: 18,
+    width: '100%',
     height: '100%',
+    borderRadius: Platform.OS === 'android' ? 0 : BANNER_RADIUS,
   },
 
   overlayDark: {
@@ -262,30 +313,38 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(211,47,47,0.22)',
   },
 
-  topRow: {
-    zIndex: 2,
-    justifyContent: 'center',
+  topBar: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    zIndex: 5,
+    flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: wp('4'),
-  },
-
-  centerCounterWrap: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
 
   counterPill: {
-    backgroundColor: 'rgba(0,0,0,0.25)',
+    backgroundColor: 'rgba(0,0,0,0.42)',
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 999,
+    minWidth: 58,
+    alignItems: 'center',
+  },
+
+  counterPillMobile: {
+    backgroundColor: 'rgba(0,0,0,0.50)',
     paddingHorizontal: 12,
     paddingVertical: 6,
-    borderRadius: 999,
   },
 
   counterText: {
     color: '#FFF',
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '700',
+  },
+
+  counterTextMobile: {
+    fontSize: 11,
   },
 
   contentContainer: {
@@ -305,6 +364,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
 
+  arrowButtonDesktop: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+  },
+
   arrowSpacer: {
     width: 52,
     height: 52,
@@ -316,7 +381,10 @@ const styles = StyleSheet.create({
     fontWeight: '400',
     lineHeight: 36,
     marginTop: -10,
-    
+  },
+
+  arrowTextDesktop: {
+    fontSize: 54,
   },
 
   contentText: {
@@ -329,7 +397,6 @@ const styles = StyleSheet.create({
   announceTitle: {
     fontWeight: '800',
     color: '#FFF',
-    marginBottom: 10,
     textAlign: 'center',
     textShadowColor: 'rgba(0,0,0,0.25)',
     textShadowOffset: { width: 0, height: 1 },
@@ -340,14 +407,11 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     color: '#FFF',
     textAlign: 'center',
-    lineHeight: 20,
-    maxWidth: '92%',
   },
 
   bottomArea: {
     zIndex: 2,
     alignItems: 'center',
-    paddingHorizontal: wp('4'),
   },
 
   dotsContainer: {
@@ -381,6 +445,7 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '600',
     letterSpacing: 0.3,
+    textAlign: 'center',
   },
 
   emptyBanner: {
