@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Modal, ScrollView, StyleSheet, Text, TouchableHighlight, TouchableOpacity, View } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { Image, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableHighlight, TouchableOpacity, View } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 
 interface DashboardCardsProps {
@@ -16,7 +16,6 @@ const adminsList = [
   { id: "ADM-3321", name: "Liam Anderson", email: "l.anderson@pasershub.com" },
 ];
 
-// ==================== STUDENT LIST DATA ====================
 const studentsList = [
   { id: "#102931", name: "Alexander Wright", email: "a.wright@univ.edu", program: "BSCS - 4B" },
   { id: "#102945", name: "Elena Rodriguez", email: "e.rodriguez@univ.edu", program: "BSIT - 3B" },
@@ -30,7 +29,6 @@ const studentsList = [
   { id: "#102990", name: "Emma Garcia", email: "e.garcia@univ.edu", program: "BSCS - 2B" },
 ];
 
-// ==================== TEACHER LIST DATA ====================
 const teachersList = [
   { id: "T-88210", name: "Dr. Elena Rodriguez", email: "e.rodriguez@univ.edu", subject: "Advanced Mathematics" },
   { id: "T-88245", name: "Prof. Marcus Thorne", email: "m.thorne@univ.edu", subject: "Data Structures & Alg" },
@@ -44,10 +42,63 @@ const teachersList = [
   { id: "T-88355", name: "David Lynch", email: "d.lynch@univ.edu", subject: "Network Engineering" },
 ];
 
+const classBanners = [
+  "https://picsum.photos/id/1/400/200", "https://picsum.photos/id/10/400/200",
+  "https://picsum.photos/id/20/400/200", "https://picsum.photos/id/48/400/200",
+  "https://picsum.photos/id/60/400/200", "https://picsum.photos/id/119/400/200",
+  "https://picsum.photos/id/160/400/200", "https://picsum.photos/id/180/400/200",
+  "https://picsum.photos/id/201/400/200", "https://picsum.photos/id/250/400/200"
+];
+
+// Default Course Codes
+const defaultCourseCodes = [
+  "CS101", "CS102", "IT201", "DS301", "MATH10", "ENG20", "HIST01", "SCI50",
+  "NET101", "CYB202", "AI303", "DB404", "WEB505", "SOFT101", "DATA202",
+  "ALG303", "ARCH404", "OS505", "DISC101", "ETHICS202"
+];
+
+const semesterOptions = [
+  "First Semester (Midterm)",
+  "First Semester (Final)",
+  "Second Semester (Midterm)",
+  "Second Semester (Final)"
+];
+
+const sections = ['1A', '1B', '1C', '2A', '2B', '3A', '3B', '4A', '4B'];
+
 export const DashboardCards = ({ onOpenAddAdmin }: DashboardCardsProps) => {
   const [adminModalVisible, setAdminModalVisible] = useState(false);
   const [studentModalVisible, setStudentModalVisible] = useState(false);
-  const [teacherModalVisible, setTeacherModalVisible] = useState(false);   // ← Added
+  const [teacherModalVisible, setTeacherModalVisible] = useState(false);
+  const [addStudentModalVisible, setAddStudentModalVisible] = useState(false);
+  const [addTeacherModalVisible, setAddTeacherModalVisible] = useState(false);
+  
+  // NEW STATE FOR CREATE CLASS
+  const [createClassModalVisible, setCreateClassModalVisible] = useState(false);
+  const [selectedBanner, setSelectedBanner] = useState(classBanners[0]);
+  
+  // LOGIC STATES
+  const [selectedSections, setSelectedSections] = useState<string[]>([]);
+  const [generatedCourseCode, setGeneratedCourseCode] = useState('');
+  const [courseName, setCourseName] = useState('');
+  const [semester, setSemester] = useState(semesterOptions[0]);
+  const [showSemesterDropdown, setShowSemesterDropdown] = useState(false);
+
+  // Auto-generate course code on modal open
+  useEffect(() => {
+    if (createClassModalVisible) {
+      const randomCode = defaultCourseCodes[Math.floor(Math.random() * defaultCourseCodes.length)];
+      setGeneratedCourseCode(randomCode);
+    }
+  }, [createClassModalVisible]);
+
+  const toggleSection = (section: string) => {
+    if (selectedSections.includes(section)) {
+      setSelectedSections(selectedSections.filter(s => s !== section));
+    } else {
+      setSelectedSections([...selectedSections, section]);
+    }
+  };
 
   return (
     <View style={styles.grid}>
@@ -63,6 +114,7 @@ export const DashboardCards = ({ onOpenAddAdmin }: DashboardCardsProps) => {
         title="Create Class" 
         sub="Create and manage student classes" 
         icon="school-outline" 
+        onAddPress={() => setCreateClassModalVisible(true)} 
       />
       
       <ManageCard 
@@ -76,6 +128,7 @@ export const DashboardCards = ({ onOpenAddAdmin }: DashboardCardsProps) => {
         title="Manage Student" 
         sub="1,248 Undergraduate students" 
         icon="account-multiple" 
+        onAddPress={() => setAddStudentModalVisible(true)}
         onViewPress={() => setStudentModalVisible(true)}
       />
       
@@ -83,13 +136,129 @@ export const DashboardCards = ({ onOpenAddAdmin }: DashboardCardsProps) => {
         title="Manage Teacher" 
         sub="86 Registered Faculty members" 
         icon="account-tie-outline" 
-        onViewPress={() => setTeacherModalVisible(true)}   // ← Added
+        onAddPress={() => setAddTeacherModalVisible(true)}
+        onViewPress={() => setTeacherModalVisible(true)}
       />
       
       <TouchableOpacity style={styles.addCard} activeOpacity={0.6}>
         <Icon name="plus" size={30} color="#CBD5E1" />
         <Text style={styles.addCardText}>Add New Resource</Text>
       </TouchableOpacity>
+
+      {/* CREATE CLASS MODAL */}
+      <Modal
+        visible={createClassModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setCreateClassModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Create New Class</Text>
+              <TouchableOpacity onPress={() => setCreateClassModalVisible(false)}>
+                <Icon name="close" size={28} color="#1E293B" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false}>
+              <View style={styles.inputSection}>
+                <View style={styles.inputGroup}>
+                  <Text style={styles.inputLabel}>YEAR & SECTION (CHECKBOX)</Text>
+                  <View style={styles.checkboxRow}>
+                    {sections.map((item) => (
+                      <TouchableOpacity 
+                        key={item} 
+                        style={[styles.checkboxItem, selectedSections.includes(item) && { borderColor: '#FF4D4D', borderWidth: 1 }]} 
+                        onPress={() => toggleSection(item)}
+                      >
+                        <Icon 
+                          name={selectedSections.includes(item) ? "checkbox-marked" : "checkbox-blank-outline"} 
+                          size={20} 
+                          color={selectedSections.includes(item) ? "#FF4D4D" : "#94A3B8"} 
+                        />
+                        <Text style={styles.checkboxText}>{item}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+
+                <View style={styles.inputGroup}>
+                  <Text style={styles.inputLabel}>COURSE CODE & NAME</Text>
+                  <View style={styles.courseInputRow}>
+                    <View style={styles.readOnlyCode}>
+                        <Text style={styles.codeText}>{generatedCourseCode}</Text>
+                    </View>
+                    <TextInput 
+                        style={styles.courseNameInput} 
+                        placeholder="Input Subject Name" 
+                        placeholderTextColor="#94A3B8"
+                        value={courseName}
+                        onChangeText={setCourseName}
+                    />
+                  </View>
+                </View>
+
+                <View style={styles.inputGroup}>
+                  <Text style={styles.inputLabel}>SEMESTER SELECTION (DROPDOWN)</Text>
+                  <TouchableOpacity 
+                    style={styles.dropdownFake} 
+                    onPress={() => setShowSemesterDropdown(!showSemesterDropdown)}
+                  >
+                    <Text style={{ color: '#1E293B' }}>{semester}</Text>
+                    <Icon name={showSemesterDropdown ? "chevron-up" : "chevron-down"} size={20} color="#64748B" />
+                  </TouchableOpacity>
+                  
+                  {showSemesterDropdown && (
+                    <View style={styles.dropdownPicker}>
+                      {semesterOptions.map((opt) => (
+                        <TouchableOpacity 
+                            key={opt} 
+                            style={styles.dropdownItem} 
+                            onPress={() => {
+                                setSemester(opt);
+                                setShowSemesterDropdown(false);
+                            }}
+                        >
+                          <Text style={styles.dropdownItemText}>{opt}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  )}
+                </View>
+
+                <View style={styles.inputGroup}>
+                  <Text style={styles.inputLabel}>INSTRUCTOR NAME OR ID</Text>
+                  <TextInput style={styles.input} placeholder="Enter Name or ID" placeholderTextColor="#94A3B8" />
+                </View>
+
+                <View style={styles.inputGroup}>
+                  <Text style={styles.inputLabel}>SELECT BANNER IMAGE</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.bannerScroll}>
+                    {classBanners.map((url, index) => (
+                      <TouchableOpacity key={index} onPress={() => setSelectedBanner(url)}>
+                        <Image 
+                          source={{ uri: url }} 
+                          style={[styles.bannerThumb, selectedBanner === url && styles.activeBanner]} 
+                        />
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                </View>
+              </View>
+            </ScrollView>
+
+            <View style={styles.modalButtonsRow}>
+                <TouchableOpacity style={[styles.actionBtn, styles.discardBtn]} onPress={() => setCreateClassModalVisible(false)}>
+                    <Text style={styles.discardBtnText}>Discard</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.actionBtn, styles.saveBtn]} onPress={() => setCreateClassModalVisible(false)}>
+                    <Text style={styles.saveBtnText}>Create Class</Text>
+                </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       {/* ADMIN LIST MODAL */}
       <Modal
@@ -129,7 +298,7 @@ export const DashboardCards = ({ onOpenAddAdmin }: DashboardCardsProps) => {
         </View>
       </Modal>
 
-      {/* STUDENT MODAL - Only Info */}
+      {/* STUDENT MODAL - View Only */}
       <Modal
         visible={studentModalVisible}
         transparent
@@ -168,7 +337,123 @@ export const DashboardCards = ({ onOpenAddAdmin }: DashboardCardsProps) => {
         </View>
       </Modal>
 
-      {/* TEACHER MODAL - Only Info (ID, Full Name, Subject) */}
+      {/* ADD STUDENT MODAL */}
+      <Modal
+        visible={addStudentModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setAddStudentModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Register Student</Text>
+              <TouchableOpacity onPress={() => setAddStudentModalVisible(false)}>
+                <Icon name="close" size={28} color="#1E293B" />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.inputSection}>
+                <View style={styles.inputGroup}>
+                    <Text style={styles.inputLabel}>STUDENT ID</Text>
+                    <TextInput style={styles.input} placeholder="e.g. #102931" placeholderTextColor="#94A3B8" />
+                </View>
+
+                <View style={styles.inputGroup}>
+                    <Text style={styles.inputLabel}>FULL NAME</Text>
+                    <TextInput style={styles.input} placeholder="e.g. Alexander Wright" placeholderTextColor="#94A3B8" />
+                </View>
+
+                <View style={styles.inputGroup}>
+                    <Text style={styles.inputLabel}>PROGRAM / YEAR</Text>
+                    <TextInput style={styles.input} placeholder="e.g. BSCS - 4B" placeholderTextColor="#94A3B8" />
+                </View>
+            </View>
+
+            <View style={styles.modalButtonsRow}>
+                <TouchableOpacity 
+                    style={[styles.actionBtn, styles.discardBtn]} 
+                    onPress={() => setAddStudentModalVisible(false)}
+                >
+                    <Text style={styles.discardBtnText}>Discard</Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity 
+                    style={[styles.actionBtn, styles.saveBtn]} 
+                    onPress={() => setAddStudentModalVisible(false)}
+                >
+                    <Text style={styles.saveBtnText}>Save Student</Text>
+                </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ADD TEACHER MODAL */}
+      <Modal
+        visible={addTeacherModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setAddTeacherModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Register Teacher</Text>
+              <TouchableOpacity onPress={() => setAddTeacherModalVisible(false)}>
+                <Icon name="close" size={28} color="#1E293B" />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.inputSection}>
+                <View style={styles.inputGroup}>
+                    <Text style={styles.inputLabel}>TEACHER ID</Text>
+                    <TextInput 
+                      style={styles.input} 
+                      placeholder="e.g. T-88210" 
+                      placeholderTextColor="#94A3B8" 
+                    />
+                </View>
+
+                <View style={styles.inputGroup}>
+                    <Text style={styles.inputLabel}>FULL NAME</Text>
+                    <TextInput 
+                      style={styles.input} 
+                      placeholder="e.g. Dr. Elena Rodriguez" 
+                      placeholderTextColor="#94A3B8" 
+                    />
+                </View>
+
+                <View style={styles.inputGroup}>
+                    <Text style={styles.inputLabel}>SUBJECT</Text>
+                    <TextInput 
+                      style={styles.input} 
+                      placeholder="e.g. Advanced Mathematics" 
+                      placeholderTextColor="#94A3B8" 
+                    />
+                </View>
+            </View>
+
+            <View style={styles.modalButtonsRow}>
+                <TouchableOpacity 
+                    style={[styles.actionBtn, styles.discardBtn]} 
+                    onPress={() => setAddTeacherModalVisible(false)}
+                >
+                    <Text style={styles.discardBtnText}>Discard</Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity 
+                    style={[styles.actionBtn, styles.saveBtn]} 
+                    onPress={() => setAddTeacherModalVisible(false)}
+                >
+                    <Text style={styles.saveBtnText}>Save Teacher</Text>
+                </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* TEACHER LIST MODAL */}
       <Modal
         visible={teacherModalVisible}
         transparent
@@ -210,7 +495,6 @@ export const DashboardCards = ({ onOpenAddAdmin }: DashboardCardsProps) => {
   );
 };
 
-// ManageCard Component - Fully Unchanged
 const ManageCard = ({ 
   title, 
   sub, 
@@ -277,7 +561,7 @@ const ManageCard = ({
           </>
         ) : isCreateClass || isManageStudent || isManageTeacher ? (
           <>
-            <ActionButton>
+            <ActionButton onPress={onAddPress}>
               + Add
             </ActionButton>
             
@@ -388,7 +672,6 @@ const styles = StyleSheet.create({
   },
   textWhite: { color: '#FFF' },
 
-  // Modal Styles
   modalOverlay: { 
     flex: 1, 
     backgroundColor: 'rgba(0,0,0,0.5)', 
@@ -397,17 +680,17 @@ const styles = StyleSheet.create({
   },
   modalContent: { 
     width: '90%', 
-    maxWidth: 460, 
+    maxWidth: 500, 
     backgroundColor: '#FFFFFF', 
     borderRadius: 20, 
     padding: 25,
-    maxHeight: '85%'
+    maxHeight: '90%'
   },
   modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 20,
+    marginBottom: 25,
   },
   modalTitle: { 
     fontSize: 22, 
@@ -471,7 +754,17 @@ const styles = StyleSheet.create({
     fontSize: 14 
   },
 
-  // Student Styles
+  inputSection: { marginBottom: 20 },
+  inputGroup: { marginBottom: 18 },
+  inputLabel: { fontSize: 11, fontWeight: '900', color: '#94A3B8', marginBottom: 8, letterSpacing: 0.5 },
+  input: { backgroundColor: '#F8FAFC', borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 12, paddingHorizontal: 15, height: 50, color: '#1E293B', fontSize: 15 },
+  modalButtonsRow: { flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', gap: 12 },
+  actionBtn: { paddingVertical: 12, paddingHorizontal: 22, borderRadius: 10 },
+  discardBtn: { backgroundColor: 'transparent' },
+  discardBtnText: { color: '#94A3B8', fontWeight: 'bold', fontSize: 15 },
+  saveBtn: { backgroundColor: '#FF4D4D' },
+  saveBtnText: { color: '#FFF', fontWeight: 'bold', fontSize: 15 },
+
   studentItem: {
     backgroundColor: '#F8FAFC',
     padding: 16,
@@ -486,7 +779,6 @@ const styles = StyleSheet.create({
   studentEmail: { fontSize: 14, color: '#64748B', marginTop: 2 },
   studentProgram: { fontSize: 14, color: '#2563EB', fontWeight: '600', marginTop: 6 },
 
-  // Teacher Styles
   teacherItem: {
     backgroundColor: '#F8FAFC',
     padding: 16,
@@ -500,4 +792,83 @@ const styles = StyleSheet.create({
   teacherName: { fontSize: 16, fontWeight: '600', color: '#1E293B', marginTop: 4 },
   teacherEmail: { fontSize: 14, color: '#64748B', marginTop: 2 },
   teacherSubject: { fontSize: 14, color: '#8B5CF6', fontWeight: '600', marginTop: 6 },
+
+  // NEW STYLES
+  checkboxRow: { flexDirection: 'row', gap: 10, flexWrap: 'wrap' },
+  checkboxItem: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    gap: 6, 
+    backgroundColor: '#F8FAFC', 
+    paddingVertical: 8, 
+    paddingHorizontal: 12, 
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#E2E8F0'
+  },
+  checkboxText: { fontSize: 14, color: '#1E293B', fontWeight: '600' },
+  
+  courseInputRow: { 
+    flexDirection: 'row', 
+    gap: 10, 
+    alignItems: 'center' 
+  },
+  readOnlyCode: { 
+    backgroundColor: '#F1F5F9', 
+    paddingHorizontal: 15, 
+    height: 50, 
+    borderRadius: 12, 
+    justifyContent: 'center', 
+    borderWidth: 1, 
+    borderColor: '#E2E8F0' 
+  },
+  codeText: { 
+    color: '#64748B', 
+    fontWeight: 'bold', 
+    fontSize: 14 
+  },
+  courseNameInput: { 
+    flex: 1, 
+    backgroundColor: '#F8FAFC', 
+    borderWidth: 1, 
+    borderColor: '#E2E8F0', 
+    borderRadius: 12, 
+    paddingHorizontal: 15, 
+    height: 50, 
+    color: '#1E293B' 
+  },
+
+  dropdownFake: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 12,
+    paddingHorizontal: 15,
+    height: 50,
+  },
+  dropdownPicker: {
+    backgroundColor: '#FFF',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 12,
+    marginTop: 5,
+    overflow: 'hidden',
+    elevation: 4,
+  },
+  dropdownItem: {
+    padding: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+  },
+  dropdownItemText: {
+    color: '#1E293B',
+    fontSize: 14,
+  },
+
+  bannerScroll: { marginTop: 5 },
+  bannerThumb: { width: 100, height: 60, borderRadius: 8, marginRight: 10, borderWidth: 2, borderColor: 'transparent' },
+  activeBanner: { borderColor: '#FF4D4D' },
 });
