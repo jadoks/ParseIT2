@@ -38,6 +38,9 @@ export interface DashboardCourse {
   code: string;
   instructor: string;
   description: string;
+  semester: string;
+  schoolYear: string;
+  section: string;
   materials: DashboardMaterial[];
   assignments: DashboardAssignment[];
 }
@@ -422,6 +425,10 @@ const Dashboard = ({
                   >
                     <Text style={styles.courseCardTitle}>{item.course.name}</Text>
                     <Text style={styles.courseInstructor}>{item.course.instructor}</Text>
+                    <Text style={styles.courseSubMeta}>
+                      {item.course.semester} ({item.course.schoolYear})
+                    </Text>
+                    <Text style={styles.courseSubMeta}>{item.course.section}</Text>
 
                     <View style={styles.courseMetaBlock}>
                       <Text style={styles.courseMetaLabel}>Course code</Text>
@@ -851,10 +858,17 @@ const styles = StyleSheet.create({
   courseInstructor: {
     fontSize: 13,
     color: '#666',
-    marginBottom: 12,
+    marginBottom: 4,
+  },
+  courseSubMeta: {
+    fontSize: 12,
+    color: '#777',
+    marginBottom: 2,
+    fontWeight: '500',
   },
   courseMetaBlock: {
     marginBottom: 10,
+    marginTop: 8,
   },
   courseMetaGrid: {
     flexDirection: 'row',

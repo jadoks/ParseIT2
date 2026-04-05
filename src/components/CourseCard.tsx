@@ -36,6 +36,8 @@ export interface CourseCardCourse {
   code: string;
   instructor: string;
   description: string;
+  semester: string;
+  schoolYear: string;
   materials: CourseCardMaterial[];
   assignments: CourseCardAssignment[];
   section?: string;
@@ -63,9 +65,6 @@ const DROPDOWN_WIDTH = 170;
 const CourseCard: React.FC<CourseCardProps> = ({
   course,
   onPress,
-  onAssignmentPress,
-  onMaterialsPress,
-  onGeneratePress,
 }) => {
   const { width, height } = useWindowDimensions();
   const isSmallScreen = width < 380;
@@ -177,7 +176,7 @@ const CourseCard: React.FC<CourseCardProps> = ({
       'GEC-US – Understanding the Self': require('../../assets/parseclass/GEC-US.jpg'),
       'NSTP1 – Civic Welfare Training Service': require('../../assets/parseclass/NSTP1.jpg'),
       'PATHFIT2 – Exercise-Based Fitness Activities': require('../../assets/parseclass/PATHFIT2.jpg'),
-      'Web Development 101': require('../../assets/parseclass/AP1.jpg'),
+      'Web Development': require('../../assets/parseclass/AP1.jpg'),
       'Programming Logic': require('../../assets/parseclass/AP1.jpg'),
       'Computer Fundamentals': require('../../assets/parseclass/AP1.jpg'),
     };
@@ -233,6 +232,9 @@ const CourseCard: React.FC<CourseCardProps> = ({
               {course.code}
               {course.section ? ` • ${course.section}` : ''}
             </Text>
+            <Text style={styles.bannerMeta}>
+              {course.semester} ({course.schoolYear})
+            </Text>
             <Text style={styles.bannerInstructor}>{course.instructor}</Text>
           </View>
         </View>
@@ -273,9 +275,7 @@ const CourseCard: React.FC<CourseCardProps> = ({
                 ]}
               >
                 {analytics.supportCount > 0
-                  ? `${analytics.supportCount} support activit${
-                      analytics.supportCount > 1 ? 'ies' : 'y'
-                    } available`
+                  ? `${analytics.supportCount} support activit${analytics.supportCount > 1 ? 'ies' : 'y'} available`
                   : getRecommendationLabel(weakestRecommendation)}
               </Text>
             </View>
@@ -386,6 +386,12 @@ const styles = StyleSheet.create({
     marginBottom: 4,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
+  },
+  bannerMeta: {
+    color: 'rgba(255,255,255,0.9)',
+    fontSize: 12,
+    fontWeight: '600',
+    marginBottom: 4,
   },
   bannerInstructor: {
     color: '#eee',

@@ -25,10 +25,12 @@ interface ClassesScreenProps {
 const DEFAULT_COURSES: CourseCardCourse[] = [
   {
     id: '1',
-    name: 'Web Development 101',
+    name: 'Web Development',
     code: 'CS-101',
     instructor: 'Prof. John Smith',
-    section: 'Section A',
+    semester: '2nd Semester',
+    schoolYear: '2025-2026',
+    section: '3A - Python',
     description:
       'Learn the fundamentals of web development including HTML, CSS, JavaScript, and introductory React concepts.',
     materials: [
@@ -65,7 +67,9 @@ const DEFAULT_COURSES: CourseCardCourse[] = [
     name: 'Programming Logic',
     code: 'CS-102',
     instructor: 'Prof. Maria Santos',
-    section: 'Section B',
+    semester: '2nd Semester',
+    schoolYear: '2025-2026',
+    section: '2A - Algorithm',
     description: 'Understand variables, conditions, loops, and basic program flow.',
     materials: [
       { id: 'm5', title: 'Variables and Data Types', type: 'pdf', uploadedDate: '2026-02-02' },
@@ -100,7 +104,9 @@ const DEFAULT_COURSES: CourseCardCourse[] = [
     name: 'Computer Fundamentals',
     code: 'IT-100',
     instructor: 'Prof. Allan Reyes',
-    section: 'Section C',
+    semester: '2nd Semester',
+    schoolYear: '2025-2026',
+    section: '1A - Microsoft',
     description: 'Explore basic computing concepts, hardware, software, and digital systems.',
     materials: [
       { id: 'm8', title: 'Hardware Overview', type: 'pdf', uploadedDate: '2026-02-01' },
@@ -124,7 +130,9 @@ const DEFAULT_COURSES: CourseCardCourse[] = [
     name: 'Discrete Mathematics',
     code: 'PC-121',
     instructor: 'Prof. Carla Mendoza',
-    section: 'Section A',
+    semester: '2nd Semester',
+    schoolYear: '2025-2026',
+    section: '4A - Mathematics',
     description: 'Study logic, sets, relations, functions, and proof techniques.',
     materials: [
       { id: 'm10', title: 'Set Theory Basics', type: 'pdf', uploadedDate: '2026-02-03' },
@@ -148,7 +156,9 @@ const DEFAULT_COURSES: CourseCardCourse[] = [
     name: 'Understanding the Self',
     code: 'GEC-US',
     instructor: 'Prof. Elena Cruz',
-    section: 'Section D',
+    semester: '2nd Semester',
+    schoolYear: '2025-2026',
+    section: '5A - Humanities',
     description: 'Reflect on identity, personal development, and self-awareness.',
     materials: [
       { id: 'm12', title: 'Identity and Culture', type: 'document', uploadedDate: '2026-02-07' },
@@ -172,7 +182,9 @@ const DEFAULT_COURSES: CourseCardCourse[] = [
     name: 'Exercise-Based Fitness Activities',
     code: 'PATHFIT2',
     instructor: 'Prof. Kevin Lim',
-    section: 'Section E',
+    semester: '2nd Semester',
+    schoolYear: '2025-2026',
+    section: '6A - Fitness',
     description: 'Develop fitness habits through guided exercise-based activities.',
     materials: [
       { id: 'm14', title: 'Warm-Up Routine', type: 'video', uploadedDate: '2026-02-01' },

@@ -20,6 +20,15 @@ import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityI
 const CURRENT_USER = 'Jade Lisondra';
 const DEFAULT_AVATAR = require('../../assets/images/default_profile.png');
 
+type MessengerCourse = {
+  id: string;
+  name: string;
+  instructor: string;
+  semester: string;
+  schoolYear: string;
+  section?: string;
+};
+
 type Conversation = {
   id: string;
   name: string;
@@ -27,7 +36,11 @@ type Conversation = {
   avatar: any;
   time: string;
   isRoom?: boolean;
+  isCreatedRoom?: boolean;
   members?: string[];
+  admin?: string;
+  classId?: string;
+  section?: string;
 };
 
 type Message = {
@@ -45,77 +58,20 @@ const ROOM_MEMBERS = [
   'Lude Lisendra',
 ];
 
-const INITIAL_CONVERSATIONS: Conversation[] = [
-  {
-    id: 'c1',
-    name: 'Networking 1',
-    last: "Yes ma'am",
-    avatar: DEFAULT_AVATAR,
-    time: '2:15 PM',
-    isRoom: false,
-    members: ['Ramcee Bading', 'Ramcee Buyot'],
-  },
-  {
-    id: 'c2',
-    name: 'Programming 1',
-    last: 'Thanks!',
-    avatar: DEFAULT_AVATAR,
-    time: '1:02 PM',
-    isRoom: false,
-    members: ['Programming 1'],
-  },
-  {
-    id: 'c3',
-    name: 'Web Dev',
-    last: 'Assignment due tomorrow.',
-    avatar: DEFAULT_AVATAR,
-    time: 'Yesterday',
-    isRoom: false,
-    members: ['Web Dev'],
-  },
-];
-
-const INITIAL_MESSAGES: Record<string, Message[]> = {
-  c1: [
-    {
-      id: 'm1',
-      fromMe: false,
-      sender: 'Ramcee Bading',
-      text: 'Hello, does everyone attending the review?',
-    },
-    {
-      id: 'm2',
-      fromMe: true,
-      sender: 'Ramcee Buyot',
-      text: "Yes ma'am",
-    },
-  ],
-  c2: [
-    {
-      id: 'm3',
-      fromMe: false,
-      sender: 'Programming 1',
-      text: 'Thanks!',
-    },
-  ],
-  c3: [
-    {
-      id: 'm4',
-      fromMe: false,
-      sender: 'Web Dev',
-      text: 'Assignment due tomorrow.',
-    },
-  ],
-};
+const INITIAL_MESSAGES: Record<string, Message[]> = {};
 
 const Messenger = ({
   searchQuery = '',
   onConversationActiveChange,
   onBack,
+  courses = [],
+  currentUser = CURRENT_USER,
 }: {
   searchQuery?: string;
   onConversationActiveChange?: (isActive: boolean) => void;
   onBack?: () => void;
+  courses?: MessengerCourse[];
+  currentUser?: string;
 }) => {
   const { width, height } = useWindowDimensions();
 
@@ -133,8 +89,23 @@ const Messenger = ({
   const sendWidth: DimensionValue =
     isDesktop ? 96 : isTablet ? 84 : isTinyPhone ? 54 : 72;
 
-  const [conversations, setConversations] =
-    useState<Conversation[]>(INITIAL_CONVERSATIONS);
+  const courseConversations = useMemo<Conversation[]>(() => {
+    return courses.map((course) => ({
+      id: `class-${course.id}`,
+      classId: course.id,
+      name: `${course.name} - ${course.semester} (${course.schoolYear})`,
+      last: 'Class conversation created.',
+      avatar: DEFAULT_AVATAR,
+      time: 'Now',
+      isRoom: true,
+      isCreatedRoom: false,
+      admin: course.instructor,
+      members: [course.instructor, currentUser],
+      section: course.section,
+    }));
+  }, [courses, currentUser]);
+
+  const [conversations, setConversations] = useState<Conversation[]>(courseConversations);
   const [selected, setSelected] = useState<Conversation | null>(null);
   const [messageText, setMessageText] = useState('');
   const [messagesByConversation, setMessagesByConversation] =
@@ -145,7 +116,7 @@ const Messenger = ({
   const [showInfoMenu, setShowInfoMenu] = useState(false);
 
   const [roomName, setRoomName] = useState('');
-  const [checkedMembers, setCheckedMembers] = useState<string[]>([CURRENT_USER]);
+  const [checkedMembers, setCheckedMembers] = useState<string[]>([currentUser]);
   const [anchor, setAnchor] = useState({ x: 0, y: 0 });
 
   const infoButtonRef = useRef<View>(null);
@@ -153,6 +124,43 @@ const Messenger = ({
   useEffect(() => {
     onConversationActiveChange?.(false);
   }, [onConversationActiveChange]);
+
+  useEffect(() => {
+    setConversations((prev) => {
+      const createdRooms = prev.filter((conversation) => conversation.isCreatedRoom);
+      return [...createdRooms, ...courseConversations];
+    });
+
+    setMessagesByConversation((prev) => {
+      const next = { ...prev };
+
+      courseConversations.forEach((conversation) => {
+        if (!next[conversation.id]) {
+          next[conversation.id] = [
+            {
+              id: `msg-${conversation.id}`,
+              fromMe: false,
+              sender: conversation.admin || conversation.name,
+              text: `${conversation.name} conversation has been created.`,
+            },
+          ];
+        }
+      });
+
+      return next;
+    });
+
+    setSelected((prev) => {
+      if (!prev) return prev;
+
+      const matchedCourseConversation = courseConversations.find(
+        (item) => item.id === prev.id
+      );
+
+      if (matchedCourseConversation) return matchedCourseConversation;
+      return prev;
+    });
+  }, [courseConversations]);
 
   const filtered = useMemo(() => {
     return conversations.filter(
@@ -170,6 +178,11 @@ const Messenger = ({
       : selected
       ? [selected.name]
       : [];
+
+  const availableRoomMembers = useMemo(() => {
+    const baseMembers = selected?.members || [];
+    return Array.from(new Set([currentUser, ...baseMembers, ...ROOM_MEMBERS]));
+  }, [selected, currentUser]);
 
   const sizes = {
     sidebarWidth: isDesktop ? Math.min(width * 0.28, 380) : isTablet ? 320 : width,
@@ -264,7 +277,7 @@ const Messenger = ({
   };
 
   const toggleMember = (member: string) => {
-    if (member === CURRENT_USER) return;
+    if (member === currentUser) return;
 
     setCheckedMembers((prev) =>
       prev.includes(member) ? prev.filter((m) => m !== member) : [...prev, member]
@@ -293,9 +306,10 @@ const Messenger = ({
   };
 
   const handleOpenCreateRoomModal = () => {
-    if (selected?.isRoom) return;
+    if (selected?.isCreatedRoom) return;
+
     setShowInfoMenu(false);
-    setCheckedMembers([CURRENT_USER]);
+    setCheckedMembers([currentUser]);
     setRoomName('');
     setShowCreateRoomModal(true);
   };
@@ -307,12 +321,14 @@ const Messenger = ({
 
   const handleCreateRoom = () => {
     const trimmedRoomName = roomName.trim();
-    if (!trimmedRoomName || !selected || selected.isRoom) return;
+    if (!trimmedRoomName || !selected) return;
 
     const conversationName = `${trimmedRoomName} - ${selected.name}`;
     const newConversationId = `room-${Date.now()}`;
     const nowLabel = getCurrentTimeLabel();
-    const roomMembers = [...checkedMembers];
+
+    // Only include explicitly selected members + current user
+    const roomMembers = Array.from(new Set([...checkedMembers, currentUser]));
 
     const systemMessage: Message = {
       id: `msg-${Date.now()}`,
@@ -328,7 +344,11 @@ const Messenger = ({
       avatar: DEFAULT_AVATAR,
       time: nowLabel,
       isRoom: true,
+      isCreatedRoom: true,
       members: roomMembers,
+      admin: currentUser,
+      classId: selected.classId,
+      section: selected.section,
     };
 
     setConversations((prev) => [newConversation, ...prev]);
@@ -343,7 +363,7 @@ const Messenger = ({
 
     setShowCreateRoomModal(false);
     setRoomName('');
-    setCheckedMembers([CURRENT_USER]);
+    setCheckedMembers([currentUser]);
   };
 
   const renderConversationList = () => (
@@ -550,7 +570,7 @@ const Messenger = ({
               <Text style={styles.infoMenuButtonText}>See Members</Text>
             </TouchableOpacity>
 
-            {!selected?.isRoom && (
+            {!selected?.isCreatedRoom && (
               <TouchableOpacity
                 style={styles.infoMenuButton}
                 activeOpacity={0.85}
@@ -667,9 +687,9 @@ const Messenger = ({
                 </Text>
 
                 <View style={styles.professionalMemberList}>
-                  {ROOM_MEMBERS.map((member, index) => {
+                  {availableRoomMembers.map((member, index) => {
                     const checked = checkedMembers.includes(member);
-                    const isCurrentUser = member === CURRENT_USER;
+                    const isCurrentUser = member === currentUser;
 
                     return (
                       <TouchableOpacity
@@ -784,27 +804,42 @@ const Messenger = ({
               showsVerticalScrollIndicator={false}
               contentContainerStyle={styles.professionalModalScrollContent}
             >
-              <View style={styles.professionalMemberList}>
-                {selectedConversationMembers.map((member, index) => (
-                  <View key={`${member}-${index}`} style={styles.professionalMemberRowStatic}>
-                    <View style={styles.professionalMemberInfo}>
-                      <View style={styles.professionalMemberAvatar}>
-                        <MaterialCommunityIcons
-                          name="account"
-                          size={16}
-                          color="#666"
-                        />
-                      </View>
+              {selected?.admin && (
+                <View style={styles.conversationMetaCard}>
+                  <Text style={styles.conversationMetaTitle}>Conversation Info</Text>
+                  <Text style={styles.conversationMetaText}>Admin: {selected.admin}</Text>
+                  {selected.section ? (
+                    <Text style={styles.conversationMetaText}>Section: {selected.section}</Text>
+                  ) : null}
+                </View>
+              )}
 
-                      <View style={styles.professionalMemberTextWrap}>
-                        <Text style={styles.professionalMemberName}>{member}</Text>
-                        <Text style={styles.professionalMemberMeta}>
-                          Conversation member
-                        </Text>
+              <View style={styles.professionalMemberList}>
+                {selectedConversationMembers.map((member, index) => {
+                  const isAdmin = member === selected?.admin;
+                  const isCurrentUser = member === currentUser;
+
+                  return (
+                    <View key={`${member}-${index}`} style={styles.professionalMemberRowStatic}>
+                      <View style={styles.professionalMemberInfo}>
+                        <View style={styles.professionalMemberAvatar}>
+                          <MaterialCommunityIcons
+                            name="account"
+                            size={16}
+                            color="#666"
+                          />
+                        </View>
+
+                        <View style={styles.professionalMemberTextWrap}>
+                          <Text style={styles.professionalMemberName}>{member}</Text>
+                          <Text style={styles.professionalMemberMeta}>
+                            {isAdmin ? 'Admin' : isCurrentUser ? 'Member (You)' : 'Member'}
+                          </Text>
+                        </View>
                       </View>
                     </View>
-                  </View>
-                ))}
+                  );
+                })}
               </View>
             </ScrollView>
           </Pressable>
@@ -1354,6 +1389,25 @@ const styles = StyleSheet.create({
     marginTop: 2,
     fontSize: 11,
     color: '#7a7a7a',
+  },
+  conversationMetaCard: {
+    marginBottom: 12,
+    padding: 12,
+    borderRadius: 12,
+    backgroundColor: '#fff7f7',
+    borderWidth: 1,
+    borderColor: '#f5d0d0',
+  },
+  conversationMetaTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#222',
+    marginBottom: 6,
+  },
+  conversationMetaText: {
+    fontSize: 12,
+    color: '#555',
+    marginTop: 2,
   },
 });
 
