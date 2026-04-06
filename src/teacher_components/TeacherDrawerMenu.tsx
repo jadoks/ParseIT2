@@ -1,5 +1,5 @@
 import { useNavigation } from '@react-navigation/native';
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Image,
   LayoutChangeEvent,
@@ -132,6 +132,14 @@ const DrawerMenu = ({
   const [isChangeEmailModalVisible, setChangeEmailModalVisible] = useState(false);
   const [isChangePasswordModalVisible, setChangePasswordModalVisible] = useState(false);
 
+  const [activeMenu, setActiveMenu] = useState<string | null>(
+    activeScreen === 'profile'
+      ? 'profile'
+      : activeScreen === 'community'
+      ? 'community'
+      : null
+  );
+
   const [email, setEmail] = useState(userEmail ?? 'student@email.com');
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -144,6 +152,14 @@ const DrawerMenu = ({
   const hasOverflow = contentHeight > scrollViewHeight && scrollViewHeight > 0;
   const shouldShowScrollBar = isOnMobileOrTablet && hasOverflow;
   const drawerWidth = isMobile ? (width < 380 ? '85%' : 280) : isTablet ? 300 : 260;
+
+  useEffect(() => {
+    if (activeScreen === 'profile') {
+      setActiveMenu('profile');
+    } else if (activeScreen === 'community') {
+      setActiveMenu('community');
+    }
+  }, [activeScreen]);
 
   const handleContentSizeChange = (_contentW: number, contentH: number) =>
     setContentHeight(contentH);
@@ -210,26 +226,32 @@ const DrawerMenu = ({
           iconSource={require('../../assets/images/person.png')}
           label="Profile"
           onPress={() => {
+            setActiveMenu('profile');
             onNavigate?.('profile');
             if (!isFixed) onClose?.();
           }}
-          active={activeScreen === 'profile'}
+          active={activeMenu === 'profile'}
         />
 
         <MenuItem
           iconSource={require('../../assets/images/users-solid.png')}
           label="Community"
           onPress={() => {
+            setActiveMenu('community');
             onNavigate?.('community');
             if (!isFixed) onClose?.();
           }}
-          active={activeScreen === 'community'}
+          active={activeMenu === 'community'}
         />
 
         <MenuItem
           iconSource={require('../../assets/images/gear-solid.png')}
           label="Settings"
-          onPress={() => setSettingsModalVisible(true)}
+          onPress={() => {
+            setActiveMenu('settings');
+            setSettingsModalVisible(true);
+          }}
+          active={activeMenu === 'settings'}
         />
       </ScrollView>
 
@@ -250,7 +272,16 @@ const DrawerMenu = ({
         animationType="fade"
         transparent
         visible={isSettingsModalVisible}
-        onRequestClose={() => setSettingsModalVisible(false)}
+        onRequestClose={() => {
+          setSettingsModalVisible(false);
+          if (activeScreen === 'profile') {
+            setActiveMenu('profile');
+          } else if (activeScreen === 'community') {
+            setActiveMenu('community');
+          } else {
+            setActiveMenu(null);
+          }
+        }}
       >
         <View style={styles.modalOverlay}>
           <View style={styles.settingsModalContainer}>
@@ -331,7 +362,16 @@ const DrawerMenu = ({
 
             <Pressable
               style={styles.settingsCloseBtn}
-              onPress={() => setSettingsModalVisible(false)}
+              onPress={() => {
+                setSettingsModalVisible(false);
+                if (activeScreen === 'profile') {
+                  setActiveMenu('profile');
+                } else if (activeScreen === 'community') {
+                  setActiveMenu('community');
+                } else {
+                  setActiveMenu(null);
+                }
+              }}
             >
               <Text style={styles.settingsCloseText}>Close</Text>
             </Pressable>
@@ -371,6 +411,7 @@ const DrawerMenu = ({
                 onPress={() => {
                   setChangeEmailModalVisible(false);
                   setSettingsModalVisible(true);
+                  setActiveMenu('settings');
                 }}
               >
                 <Text style={styles.formCancelText}>Back</Text>
@@ -381,6 +422,13 @@ const DrawerMenu = ({
                 onPress={() => {
                   alert('Email updated');
                   setChangeEmailModalVisible(false);
+                  if (activeScreen === 'profile') {
+                    setActiveMenu('profile');
+                  } else if (activeScreen === 'community') {
+                    setActiveMenu('community');
+                  } else {
+                    setActiveMenu(null);
+                  }
                 }}
               >
                 <Text style={styles.formSaveText}>Save</Text>
@@ -445,6 +493,7 @@ const DrawerMenu = ({
                 onPress={() => {
                   setChangePasswordModalVisible(false);
                   setSettingsModalVisible(true);
+                  setActiveMenu('settings');
                 }}
               >
                 <Text style={styles.formCancelText}>Back</Text>
@@ -455,6 +504,13 @@ const DrawerMenu = ({
                 onPress={() => {
                   alert('Password updated');
                   setChangePasswordModalVisible(false);
+                  if (activeScreen === 'profile') {
+                    setActiveMenu('profile');
+                  } else if (activeScreen === 'community') {
+                    setActiveMenu('community');
+                  } else {
+                    setActiveMenu(null);
+                  }
                 }}
               >
                 <Text style={styles.formSaveText}>Save</Text>

@@ -1,5 +1,5 @@
 import Clipboard from '@react-native-clipboard/clipboard';
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   ImageBackground,
@@ -48,6 +48,8 @@ interface DashboardProps {
   courses?: TeacherCourseData[];
   onOpenCourse?: (course: TeacherCourseData) => void;
   onCreateClass?: (course: TeacherCourseData) => void;
+  onDeleteCourse?: (id: string) => void;
+  onEditCourse?: (course: TeacherCourseData) => void;
 }
 
 const DEFAULT_INSTRUCTOR = 'Ramcee Jade L. Munoz';
@@ -66,13 +68,20 @@ const Dashboard2 = ({
   courses = [],
   onOpenCourse,
   onCreateClass,
+  onDeleteCourse,
+  onEditCourse,
 }: DashboardProps) => {
   const { width } = useWindowDimensions();
 
+  const [localCourses, setLocalCourses] = useState<TeacherCourseData[]>(courses);
+
   const [isAnnouncementModalVisible, setAnnouncementModalVisible] = useState(false);
   const [isCreateModalVisible, setCreateModalVisible] = useState(false);
+  const [isEditModalVisible, setEditModalVisible] = useState(false);
   const [isMenuVisible, setMenuVisible] = useState(false);
+
   const [menuCourse, setMenuCourse] = useState<TeacherCourseData | null>(null);
+  const [editingCourse, setEditingCourse] = useState<TeacherCourseData | null>(null);
   const [menuPosition, setMenuPosition] = useState({ x: 0, y: 0 });
 
   const [className, setClassName] = useState('');
@@ -80,15 +89,24 @@ const Dashboard2 = ({
   const [classSection, setClassSection] = useState('');
   const [classBanner, setClassBanner] = useState('');
 
+  const [editClassName, setEditClassName] = useState('');
+  const [editCourseCode, setEditCourseCode] = useState('');
+  const [editClassSection, setEditClassSection] = useState('');
+  const [editClassBanner, setEditClassBanner] = useState('');
+
   const isMobile = width < 768;
   const isLargeScreen = width >= 1200;
 
+  useEffect(() => {
+    setLocalCourses(courses);
+  }, [courses]);
+
   const processedCourses = useMemo(() => {
-    return courses.map((course) => ({
+    return localCourses.map((course) => ({
       ...course,
       themeColor: '#2E7D32',
     }));
-  }, [courses]);
+  }, [localCourses]);
 
   const cardWidth = isMobile ? '100%' : isLargeScreen ? '31.5%' : '48%';
 
@@ -97,6 +115,14 @@ const Dashboard2 = ({
     setCourseCode('');
     setClassSection('');
     setClassBanner('');
+  };
+
+  const resetEditForm = () => {
+    setEditClassName('');
+    setEditCourseCode('');
+    setEditClassSection('');
+    setEditClassBanner('');
+    setEditingCourse(null);
   };
 
   const handlePickBanner = async () => {
@@ -118,6 +144,25 @@ const Dashboard2 = ({
     }
   };
 
+  const handlePickEditBanner = async () => {
+    const result = await launchImageLibrary({
+      mediaType: 'photo',
+      selectionLimit: 1,
+    });
+
+    if (result.didCancel) return;
+
+    if (result.errorCode) {
+      Alert.alert('Upload failed', result.errorMessage || 'Unable to pick image.');
+      return;
+    }
+
+    const uri = result.assets?.[0]?.uri;
+    if (uri) {
+      setEditClassBanner(uri);
+    }
+  };
+
   const handleCreateClass = () => {
     if (!className.trim() || !courseCode.trim()) {
       Alert.alert('Missing fields', 'Please fill in class name and course code.');
@@ -134,10 +179,50 @@ const Dashboard2 = ({
       bannerUri: classBanner || undefined,
     };
 
+    setLocalCourses((prev) => [newCourse, ...prev]);
     onCreateClass?.(newCourse);
 
     resetCreateForm();
     setCreateModalVisible(false);
+  };
+
+  const openEditModal = () => {
+    if (!menuCourse) return;
+
+    setEditingCourse(menuCourse);
+    setEditClassName(menuCourse.name);
+    setEditCourseCode(menuCourse.courseCode);
+    setEditClassSection(menuCourse.section || '');
+    setEditClassBanner(menuCourse.bannerUri || '');
+
+    closeMenu();
+    setEditModalVisible(true);
+  };
+
+  const handleSaveEdit = () => {
+    if (!editingCourse) return;
+
+    if (!editClassName.trim() || !editCourseCode.trim()) {
+      Alert.alert('Missing fields', 'Please fill in class name and course code.');
+      return;
+    }
+
+    const updatedCourse: TeacherCourseData = {
+      ...editingCourse,
+      name: editClassName.trim(),
+      courseCode: editCourseCode.trim().toUpperCase(),
+      section: editClassSection.trim(),
+      bannerUri: editClassBanner || undefined,
+    };
+
+    setLocalCourses((prev) =>
+      prev.map((course) => (course.id === updatedCourse.id ? updatedCourse : course))
+    );
+
+    onEditCourse?.(updatedCourse);
+
+    resetEditForm();
+    setEditModalVisible(false);
   };
 
   const closeMenu = () => {
@@ -152,6 +237,27 @@ const Dashboard2 = ({
     Clipboard.setString(link);
     Alert.alert('Copied', 'Class link copied to clipboard.');
     closeMenu();
+  };
+
+  const handleDeleteCourse = () => {
+    if (!menuCourse) return;
+
+    Alert.alert(
+      'Delete Class',
+      `Are you sure you want to delete "${menuCourse.name}"?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => {
+            setLocalCourses((prev) => prev.filter((course) => course.id !== menuCourse.id));
+            onDeleteCourse?.(menuCourse.id);
+            closeMenu();
+          },
+        },
+      ]
+    );
   };
 
   return (
@@ -182,7 +288,6 @@ const Dashboard2 = ({
               </TouchableOpacity>
             </View>
 
-            <Text style={styles.inputLabel}></Text>
             <TextInput
               style={styles.input}
               placeholder="Enter class name"
@@ -190,7 +295,6 @@ const Dashboard2 = ({
               onChangeText={setClassName}
             />
 
-            <Text style={styles.inputLabel}></Text>
             <TextInput
               style={styles.input}
               placeholder="Enter course code (example: CS-101)"
@@ -199,7 +303,6 @@ const Dashboard2 = ({
               autoCapitalize="characters"
             />
 
-            <Text style={styles.inputLabel}></Text>
             <TextInput
               style={styles.input}
               placeholder="Enter section"
@@ -254,6 +357,87 @@ const Dashboard2 = ({
       </Modal>
 
       <Modal
+        visible={isEditModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setEditModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.createModalContainer}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Edit Class</Text>
+              <TouchableOpacity
+                onPress={() => {
+                  resetEditForm();
+                  setEditModalVisible(false);
+                }}
+              >
+                <MaterialCommunityIcons name="close" size={24} color="#202124" />
+              </TouchableOpacity>
+            </View>
+
+            <TextInput
+              style={styles.input}
+              placeholder="Enter class name"
+              value={editClassName}
+              onChangeText={setEditClassName}
+            />
+
+            <TextInput
+              style={styles.input}
+              placeholder="Enter course code (example: CS-101)"
+              value={editCourseCode}
+              onChangeText={setEditCourseCode}
+              autoCapitalize="characters"
+            />
+
+            <TextInput
+              style={styles.input}
+              placeholder="Enter section"
+              value={editClassSection}
+              onChangeText={setEditClassSection}
+            />
+
+            <Text style={styles.inputLabel}>Class Banner / Background Photo</Text>
+            <TouchableOpacity style={styles.uploadBtn} onPress={handlePickEditBanner}>
+              <MaterialCommunityIcons name="image-edit-outline" size={20} color="#D32F2F" />
+              <Text style={styles.uploadBtnText}>
+                {editClassBanner ? 'Change Banner Photo' : 'Upload Banner Photo'}
+              </Text>
+            </TouchableOpacity>
+
+            {editClassBanner ? (
+              <ImageBackground
+                source={{ uri: editClassBanner }}
+                style={styles.bannerPreview}
+                imageStyle={styles.previewImage}
+              >
+                <View style={styles.previewOverlay}>
+                  <Text style={styles.previewText}>Banner Preview</Text>
+                </View>
+              </ImageBackground>
+            ) : null}
+
+            <View style={styles.modalButtonRow}>
+              <TouchableOpacity
+                style={styles.cancelBtn}
+                onPress={() => {
+                  resetEditForm();
+                  setEditModalVisible(false);
+                }}
+              >
+                <Text style={styles.cancelBtnText}>Cancel</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity style={styles.saveBtn} onPress={handleSaveEdit}>
+                <Text style={styles.saveBtnText}>Save Changes</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
         visible={isMenuVisible}
         transparent
         animationType="fade"
@@ -266,13 +450,23 @@ const Dashboard2 = ({
               {
                 position: 'absolute',
                 top: menuPosition.y - 2,
-                left: menuPosition.x - 170,
+                left: menuPosition.x - 190,
               },
             ]}
           >
             <TouchableOpacity style={styles.menuItem} onPress={handleCopyLink}>
               <MaterialCommunityIcons name="content-copy" size={20} color="#202124" />
               <Text style={styles.menuText}>Copy Link</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.menuItem} onPress={openEditModal}>
+              <MaterialCommunityIcons name="pencil-outline" size={20} color="#1565C0" />
+              <Text style={[styles.menuText, { color: '#1565C0' }]}>Edit Class</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.menuItem} onPress={handleDeleteCourse}>
+              <MaterialCommunityIcons name="delete-outline" size={20} color="#D32F2F" />
+              <Text style={[styles.menuText, { color: '#D32F2F' }]}>Delete Class</Text>
             </TouchableOpacity>
           </View>
         </TouchableOpacity>
@@ -286,9 +480,6 @@ const Dashboard2 = ({
         <View style={styles.mainWrapper}>
           <View style={styles.headerRow}>
             <Text style={styles.sectionHeader}>Announcements</Text>
-            <TouchableOpacity onPress={() => setAnnouncementModalVisible(true)}>
-             
-            </TouchableOpacity>
           </View>
 
           <AnnouncementBanner announcements={announcements} />
@@ -522,7 +713,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    
+    marginBottom: 18,
   },
   modalTitle: {
     fontSize: 22,
@@ -545,6 +736,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#202124',
     backgroundColor: '#fff',
+    marginTop: 10,
   },
   uploadBtn: {
     marginTop: 8,
@@ -636,7 +828,7 @@ const styles = StyleSheet.create({
   menuBox: {
     backgroundColor: '#FFF',
     borderRadius: 10,
-    width: 170,
+    width: 190,
     paddingVertical: 8,
     elevation: 5,
     shadowColor: '#000',

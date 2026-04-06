@@ -15,8 +15,8 @@ import {
 
 const JourneyHeader = require('../../assets/images/myjourney-header-template-1.png');
 
-const schoolYears = ['S.Y. 2021 - 2022', 'S.Y. 2025 - 2026'];
-const semesters = ['First Semester', 'Second Semester'];
+const schoolYears = ['S.Y. 2023 - 2024', 'S.Y. 2024 - 2025', 'S.Y. 2025 - 2026','S.Y. 2026 - 2027'];
+const semesters = ['First Semester', 'Second Semester','Summer'];
 
 const studentDatabase = {
   '1': {
