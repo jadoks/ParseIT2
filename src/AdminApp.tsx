@@ -3,17 +3,16 @@ import { Alert, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity
 
 // --- IMPORTS ---
 import { AdminManagement } from './admin_components/AdminManagement';
+import { ChangeEmail } from './admin_components/ChangeEmail';
+import { ChangePassword } from './admin_components/ChangePassword';
 import { DashboardCards } from './admin_components/DashboardCards';
 import { PerformanceChart } from './admin_components/PerformanceChart';
+import { SettingsApp } from './admin_components/SettingsApp';
 import { Sidebar } from './admin_components/Sidebar';
 import StudentManagement from './admin_components/StudentManagement';
 import { StudentTable } from './admin_components/StudentTable';
 import { TeacherManagement } from './admin_components/TeacherManagement';
 import { TopBar } from './admin_components/TopBar';
-
-import { ChangeEmail } from './admin_components/ChangeEmail';
-import { ChangePassword } from './admin_components/ChangePassword';
-import { SettingsApp } from './admin_components/SettingsApp';
 
 interface Cluster {
   id: string;

@@ -27,10 +27,7 @@ export const AdminDashboard = () => {
   };
 
   const handleSaveAdmin = () => {
-    // Logic to update your AdminManagement list would go here
     console.log("Recording New Admin:", newAdmin);
-    
-    // Close and Reset
     setAddAdminVisible(false);
     setNewAdmin({ id: '', name: '', email: '', role: '' }); 
   };
@@ -56,24 +53,24 @@ export const AdminDashboard = () => {
           {activeTab === 'Dashboard' ? (
             <View style={styles.contentContainer}>
               
-              {/* BANNER SECTION */}
+              {/* HERO BANNER SECTION */}
               <View style={styles.banner}>
                 <View style={styles.bannerContent}>
                   <Text style={styles.bannerTitle}>Set Up Academic Year</Text>
                   <Text style={styles.bannerSub}>SESSION YEAR: 2025 - 2026</Text>
+                  
                   <View style={styles.bannerActions}>
                     <TouchableOpacity style={styles.btnEnd}>
                       <Text style={styles.btnTextWhite}>End Semester ›</Text>
                     </TouchableOpacity>
-                    <TouchableOpacity>
+                    <TouchableOpacity style={styles.btnCreateContainer}>
                       <Text style={styles.btnCreateText}>+ Create Semester</Text>
                     </TouchableOpacity>
                   </View>
                 </View>
-                <View style={styles.paginationLine} />
               </View>
 
-              {/* 3. DASHBOARD CARDS (Triggers the Add Admin Modal) */}
+              {/* 3. DASHBOARD CARDS (Manage Admin, Create Class, etc.) */}
               <DashboardCards onOpenAddAdmin={() => setAddAdminVisible(true)} />
 
               <View style={styles.sectionHeaderWrapper}>
@@ -182,37 +179,64 @@ const styles = StyleSheet.create({
   wrapper: { flex: 1, flexDirection: 'row', backgroundColor: '#F8FAFC' }, 
   main: { flex: 1 },
   scroll: { flex: 1 },
-  scrollContent: { padding: 30, paddingBottom: 100 },
-  contentContainer: { maxWidth: 1300, alignSelf: 'center', width: '100%' },
+  scrollContent: { padding: 25, paddingBottom: 100 },
+  contentContainer: { maxWidth: 1400, alignSelf: 'center', width: '100%' },
   
-  banner: { backgroundColor: '#1E293B', borderRadius: 24, padding: 40, marginBottom: 40, position: 'relative' },
-  bannerContent: { zIndex: 2 },
-  bannerTitle: { fontSize: 32, fontWeight: 'bold', color: '#FFF' },
-  bannerSub: { fontSize: 14, color: '#94A3B8', marginTop: 8, marginBottom: 25, fontWeight: '600' },
+  // HERO BANNER (Top Section of Image)
+  banner: { 
+    backgroundColor: '#1B2431', // Specific dark blue from your screenshot
+    borderRadius: 20, 
+    paddingHorizontal: 40,
+    paddingVertical: 45, 
+    marginBottom: 30, 
+    justifyContent: 'center',
+  },
+  bannerContent: { width: '100%' },
+  bannerTitle: { 
+    fontSize: 34, 
+    fontWeight: '700', 
+    color: '#FFF',
+    letterSpacing: 0.5 
+  },
+  bannerSub: { 
+    fontSize: 14, 
+    color: '#94A3B8', 
+    marginTop: 8, 
+    marginBottom: 30, 
+    fontWeight: '500',
+    textTransform: 'uppercase'
+  },
   bannerActions: { flexDirection: 'row', alignItems: 'center' },
-  btnEnd: { backgroundColor: '#FF4D4D', paddingHorizontal: 25, paddingVertical: 12, borderRadius: 12, marginRight: 20 },
-  btnTextWhite: { color: '#FFF', fontWeight: 'bold' },
-  btnCreateText: { color: '#FF4D4D', fontWeight: 'bold' },
-  paginationLine: { position: 'absolute', bottom: 20, width: 40, height: 4, backgroundColor: '#FF4D4D', borderRadius: 2, alignSelf: 'center' },
+  btnEnd: { 
+    backgroundColor: '#FF4D4D', 
+    paddingHorizontal: 30, 
+    paddingVertical: 14, 
+    borderRadius: 10, 
+    marginRight: 25 
+  },
+  btnTextWhite: { color: '#FFF', fontWeight: 'bold', fontSize: 16 },
+  btnCreateContainer: { paddingVertical: 10 },
+  btnCreateText: { color: '#FF4D4D', fontWeight: '700', fontSize: 16 },
 
-  sectionHeaderWrapper: { flexDirection: 'row', alignItems: 'center', marginTop: 50, marginBottom: 25 },
+  // SECTION HEADERS
+  sectionHeaderWrapper: { flexDirection: 'row', alignItems: 'center', marginTop: 40, marginBottom: 20 },
   diamond: { width: 10, height: 10, backgroundColor: '#FF4D4D', transform: [{ rotate: '45deg' }], marginRight: 15 },
-  sectionHeader: { fontSize: 24, fontWeight: 'bold', color: '#1E293B' },
+  sectionHeader: { fontSize: 22, fontWeight: 'bold', color: '#1E293B' },
+  
+  // GENERAL UTILITY
   cardShadow: { backgroundColor: '#FFF', borderRadius: 20, padding: 10, elevation: 3, borderWidth: 1, borderColor: '#F1F5F9' },
   placeholder: { flex: 1, justifyContent: 'center', alignItems: 'center', height: 400 },
 
-  // --- MODAL STYLES ---
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(15, 23, 42, 0.6)', justifyContent: 'center', alignItems: 'center' },
-  modalBox: { width: 420, backgroundColor: '#FFF', borderRadius: 28, padding: 35, shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 20, elevation: 10 },
+  // MODAL STYLING
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(15, 23, 42, 0.7)', justifyContent: 'center', alignItems: 'center' },
+  modalBox: { width: 450, backgroundColor: '#FFF', borderRadius: 24, padding: 35 },
   modalHeaderTitle: { fontSize: 24, fontWeight: 'bold', color: '#1E293B', marginBottom: 6 },
   modalSubText: { fontSize: 14, color: '#64748B', marginBottom: 30 },
-  modalButtons: { flexDirection: 'row', width: '100%', justifyContent: 'space-between', alignItems: 'center', marginTop: 15 },
+  modalButtons: { flexDirection: 'row', width: '100%', justifyContent: 'space-between', alignItems: 'center', marginTop: 20 },
   cancelText: { color: '#94A3B8', fontWeight: '700', fontSize: 15 },
-  saveAdminBtn: { backgroundColor: '#FF4D4D', paddingHorizontal: 28, paddingVertical: 14, borderRadius: 14 },
+  saveAdminBtn: { backgroundColor: '#FF4D4D', paddingHorizontal: 30, paddingVertical: 15, borderRadius: 12 },
   saveAdminText: { color: '#FFF', fontWeight: 'bold', fontSize: 15 },
-
-  // --- INPUT STYLES ---
   inputGroup: { width: '100%', marginBottom: 20 },
-  inputLabel: { fontSize: 11, fontWeight: '900', color: '#94A3B8', marginBottom: 8, letterSpacing: 1 },
-  input: { width: '100%', height: 50, backgroundColor: '#F8FAFC', borderRadius: 14, borderWidth: 1, borderColor: '#E2E8F0', paddingHorizontal: 16, color: '#1E293B', fontSize: 15 }
+  inputLabel: { fontSize: 12, fontWeight: '800', color: '#94A3B8', marginBottom: 10, letterSpacing: 0.5 },
+  input: { width: '100%', height: 55, backgroundColor: '#F8FAFC', borderRadius: 12, borderWidth: 1, borderColor: '#E2E8F0', paddingHorizontal: 16, color: '#1E293B', fontSize: 15 }
 });
