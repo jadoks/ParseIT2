@@ -182,7 +182,7 @@ const Dashboard2 = ({
               </TouchableOpacity>
             </View>
 
-            <Text style={styles.inputLabel}>Class Name</Text>
+            <Text style={styles.inputLabel}></Text>
             <TextInput
               style={styles.input}
               placeholder="Enter class name"
@@ -190,7 +190,7 @@ const Dashboard2 = ({
               onChangeText={setClassName}
             />
 
-            <Text style={styles.inputLabel}>Course Code</Text>
+            <Text style={styles.inputLabel}></Text>
             <TextInput
               style={styles.input}
               placeholder="Enter course code (example: CS-101)"
@@ -199,7 +199,7 @@ const Dashboard2 = ({
               autoCapitalize="characters"
             />
 
-            <Text style={styles.inputLabel}>Section</Text>
+            <Text style={styles.inputLabel}></Text>
             <TextInput
               style={styles.input}
               placeholder="Enter section"
@@ -287,7 +287,7 @@ const Dashboard2 = ({
           <View style={styles.headerRow}>
             <Text style={styles.sectionHeader}>Announcements</Text>
             <TouchableOpacity onPress={() => setAnnouncementModalVisible(true)}>
-              <MaterialCommunityIcons name="bullhorn-outline" size={22} color="#C62828" />
+             
             </TouchableOpacity>
           </View>
 
@@ -522,7 +522,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 18,
+    
   },
   modalTitle: {
     fontSize: 22,
