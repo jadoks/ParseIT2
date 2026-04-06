@@ -72,6 +72,10 @@ const Videos = ({
       ? '100%'
       : (width - horizontalPadding * 2 - gap * (columns - 1)) / columns - 120;
 
+  const heartSize = isLargeScreen ? 24 : isTablet ? 24 : 20;
+  const heartPaddingHorizontal = isLargeScreen ? 14 : isTablet ? 14 : 18;
+  const heartPaddingVertical = isLargeScreen ? 8 : isTablet ? 8 : 8;
+
   const initial: VideoItem[] = [
     {
       id: 1,
@@ -374,9 +378,22 @@ const Videos = ({
 
               <TouchableOpacity
                 onPress={() => toggleSave(v.id)}
-                style={styles.smallSaveBtn}
+                style={[
+                  styles.smallSaveBtn,
+                  {
+                    paddingHorizontal: heartPaddingHorizontal,
+                    paddingVertical: heartPaddingVertical,
+                  },
+                ]}
               >
-                <Text style={styles.smallSaveBtnText}>
+                <Text
+                  style={[
+                    styles.smallSaveBtnText,
+                    {
+                      fontSize: heartSize,
+                    },
+                  ]}
+                >
                   {saved.includes(v.id) ? '♥' : '♡'}
                 </Text>
               </TouchableOpacity>
@@ -491,15 +508,14 @@ const styles = StyleSheet.create({
   },
 
   smallSaveBtn: {
-    paddingHorizontal: 12,
-    paddingVertical: 4,
     marginLeft: 8,
     backgroundColor: '#e60a0a0b',
     borderRadius: 50,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 
   smallSaveBtnText: {
-    fontSize: 18,
     color: '#e60a0a',
   },
 

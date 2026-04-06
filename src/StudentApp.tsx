@@ -95,11 +95,14 @@ const ANNOUNCEMENTS: Announcement[] = [
 const COURSES: CourseDetailData[] = [
   {
     id: '1',
-    name: 'Web Development 101',
+    name: 'Web Development',
     code: 'CS-101',
     instructor: 'Prof. John Smith',
     description:
       'Learn the fundamentals of web development including HTML, CSS, JavaScript, and introductory React concepts.',
+    semester: '2nd Semester',
+    schoolYear: '2025-2026',
+    section: '3A - Python',
     materials: [
       { id: 'm1', title: 'HTML Basics Tutorial', type: 'video', uploadedDate: '2026-02-01' },
       { id: 'm2', title: 'CSS Styling Guide', type: 'pdf', uploadedDate: '2026-02-03' },
@@ -203,6 +206,9 @@ const COURSES: CourseDetailData[] = [
     code: 'CS-102',
     instructor: 'Prof. Maria Santos',
     description: 'Understand variables, conditions, loops, and basic program flow.',
+    semester: '2nd Semester',
+    schoolYear: '2025-2026',
+    section: '2A - Algorithm',
     materials: [
       { id: 'm6', title: 'Variables and Data Types', type: 'pdf', uploadedDate: '2026-02-02' },
       { id: 'm7', title: 'Conditional Statements', type: 'video', uploadedDate: '2026-02-04' },
@@ -269,6 +275,9 @@ const COURSES: CourseDetailData[] = [
     code: 'IT-100',
     instructor: 'Prof. Allan Reyes',
     description: 'Explore basic computing concepts, hardware, software, and digital systems.',
+    semester: '2nd Semester',
+    schoolYear: '2025-2026',
+    section: '1A - Microsoft',
     materials: [
       { id: 'm9', title: 'Hardware Overview', type: 'pdf', uploadedDate: '2026-02-01' },
       { id: 'm10', title: 'Software Systems', type: 'document', uploadedDate: '2026-02-05' },
@@ -404,6 +413,9 @@ const mapCoursesToAssignmentCourses = (courses: CourseDetailData[]): AssignmentC
     code: course.code,
     instructor: course.instructor,
     description: course.description,
+    semester: course.semester,
+    schoolYear: course.schoolYear,
+    section: course.section,
     materials: course.materials.map((material) => ({
       id: material.id,
       title: material.title,
@@ -832,6 +844,19 @@ export default function StudentApp({ onLogout }: Props) {
     [studentNotifications]
   );
 
+  const messengerCourses = useMemo(
+    () =>
+      COURSES.map((course) => ({
+        id: course.id,
+        name: course.name,
+        instructor: course.instructor,
+        semester: course.semester,
+        schoolYear: course.schoolYear,
+        section: course.section,
+      })),
+    []
+  );
+
   const handleNavigate = (screen: ScreenType) => {
     if (activeScreen !== screen) {
       setLastScreen(activeScreen);
@@ -1031,6 +1056,8 @@ export default function StudentApp({ onLogout }: Props) {
             searchQuery=""
             onConversationActiveChange={setIsConversationActive}
             onBack={() => setActiveScreen(lastScreen)}
+            currentUser={CURRENT_USER_NAME}
+            courses={messengerCourses}
           />
         );
 

@@ -9,9 +9,13 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  View,
   useWindowDimensions,
+  View,
 } from 'react-native';
+
+/* =========================
+   TYPES
+========================= */
 
 export interface AssignmentComment {
   id: string;
@@ -55,6 +59,9 @@ export interface AssignmentCourse {
   code: string;
   instructor: string;
   description: string;
+  semester: string;
+  schoolYear: string;
+  section: string;
   materials: AssignmentMaterial[];
   assignments: AssignmentItem[];
 }
@@ -64,6 +71,11 @@ interface FlattenedAssignment extends AssignmentItem {
   courseName: string;
   courseCode: string;
   instructor: string;
+  semester: string;
+  schoolYear: string;
+  section: string;
+  courseDescription: string;
+  materials: AssignmentMaterial[];
 }
 
 interface AssignmentsProps {
@@ -78,7 +90,6 @@ interface AssignmentsProps {
 }
 
 type FilterType = 'all' | 'pending' | 'submitted' | 'graded';
-type RecommendationType = 'review' | 'practice' | 'advanced' | null;
 
 const Assignments = ({
   courses,
@@ -99,7 +110,7 @@ const Assignments = ({
 
   const sourceCourses = useMemo(() => {
     if (!selectedCourseId) return courses;
-    return courses.filter((course) => course.id === selectedCourseId);
+    return courses.filter((c) => c.id === selectedCourseId);
   }, [courses, selectedCourseId]);
 
   const allAssignments = useMemo<FlattenedAssignment[]>(() => {
@@ -110,7 +121,11 @@ const Assignments = ({
         courseName: course.name,
         courseCode: course.code,
         instructor: course.instructor,
-        description: assignment.description ?? course.description,
+        semester: course.semester,
+        schoolYear: course.schoolYear,
+        section: course.section,
+        courseDescription: course.description,
+        materials: course.materials,
       }))
     );
   }, [sourceCourses]);
@@ -118,20 +133,7 @@ const Assignments = ({
   const filteredAssignments =
     filter === 'all' ? allAssignments : allAssignments.filter((a) => a.status === filter);
 
-  const selectedCourse = useMemo(() => {
-    if (!selectedCourseId) return null;
-    return courses.find((course) => course.id === selectedCourseId) || null;
-  }, [courses, selectedCourseId]);
-
-  const titleText = selectedCourse ? `${selectedCourse.name} Assignments` : 'All Assignments';
-
-  const getDaysUntilDue = (dueDate: string) => {
-    const today = new Date();
-    const due = new Date(dueDate);
-    return Math.ceil((due.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-  };
-
-  const getScorePercent = (assignment: FlattenedAssignment) => {
+  const getScorePercent = (assignment: AssignmentItem) => {
     if (
       assignment.status !== 'graded' ||
       assignment.points === undefined ||
@@ -144,7 +146,9 @@ const Assignments = ({
     return Math.round((assignment.points / assignment.maxPoints) * 100);
   };
 
-  const getRecommendationType = (assignment: FlattenedAssignment): RecommendationType => {
+  const getRecommendationType = (
+    assignment: AssignmentItem
+  ): 'review' | 'practice' | 'advanced' | null => {
     const percent = getScorePercent(assignment);
     if (percent === null) return null;
     if (percent < 60) return 'review';
@@ -152,7 +156,7 @@ const Assignments = ({
     return 'advanced';
   };
 
-  const getRecommendationLabel = (assignment: FlattenedAssignment) => {
+  const getRecommendationLabel = (assignment: AssignmentItem) => {
     const recommendation = getRecommendationType(assignment);
     if (recommendation === 'review') return 'Review Activity';
     if (recommendation === 'practice') return 'Practice Quiz';
@@ -160,7 +164,7 @@ const Assignments = ({
     return null;
   };
 
-  const getRecommendationColor = (assignment: FlattenedAssignment) => {
+  const getRecommendationColor = (assignment: AssignmentItem) => {
     const recommendation = getRecommendationType(assignment);
     if (recommendation === 'review') return '#D32F2F';
     if (recommendation === 'practice') return '#F57C00';
@@ -168,7 +172,7 @@ const Assignments = ({
     return '#999';
   };
 
-  const getStatusColor = (status: string) => {
+  const getStatusColor = (status: AssignmentItem['status']) => {
     switch (status) {
       case 'pending':
         return '#FFE082';
@@ -181,7 +185,7 @@ const Assignments = ({
     }
   };
 
-  const getStatusTextColor = (status: string) => {
+  const getStatusTextColor = (status: AssignmentItem['status']) => {
     switch (status) {
       case 'pending':
         return '#7A5600';
@@ -195,9 +199,8 @@ const Assignments = ({
   };
 
   const getRelatedMaterials = (assignment: FlattenedAssignment) => {
-    const course = courses.find((c) => c.id === assignment.courseId);
-    if (!course || !assignment.materialIds?.length) return [];
-    return course.materials.filter((m) => assignment.materialIds?.includes(m.id));
+    if (!assignment.materialIds?.length) return [];
+    return assignment.materials.filter((m) => assignment.materialIds?.includes(m.id));
   };
 
   const handleAddComment = () => {
@@ -211,8 +214,10 @@ const Assignments = ({
 
     try {
       const res = await DocumentPicker.getDocumentAsync({ copyToCacheDirectory: false });
-      if (!res.canceled && res.assets && res.assets.length > 0) {
+
+      if (!res.canceled && res.assets?.length) {
         const file = res.assets[0];
+
         onAddFile(selectedAssignment.id, {
           id: `f${Date.now()}`,
           fileName: file.name || 'file',
@@ -224,15 +229,6 @@ const Assignments = ({
       console.warn('DocumentPicker error', err);
       Alert.alert('Upload failed', 'Could not open file picker.');
     }
-  };
-
-  const handleRemoveAttachment = (assignmentId: string, fileId: string) => {
-    onRemoveFile(assignmentId, fileId);
-  };
-
-  const closeModal = () => {
-    setSelectedAssignment(null);
-    setNewComment('');
   };
 
   const handleSubmitAssignment = () => {
@@ -248,17 +244,15 @@ const Assignments = ({
     closeModal();
   };
 
-  const countLabel = useMemo(() => {
-    return `${filteredAssignments.length} ${
-      filter === 'all' ? 'assignment' : filter
-    }${filteredAssignments.length !== 1 ? 's' : ''}`;
-  }, [filteredAssignments.length, filter]);
+  const closeModal = () => {
+    setSelectedAssignment(null);
+    setNewComment('');
+  };
 
   const renderAssignmentItem = ({ item }: { item: FlattenedAssignment }) => {
-    const daysUntil = getDaysUntilDue(item.dueDate);
-    const isOverdue = daysUntil < 0;
     const percent = getScorePercent(item);
     const recommendationLabel = getRecommendationLabel(item);
+    const relatedMaterials = getRelatedMaterials(item);
 
     return (
       <TouchableOpacity
@@ -269,10 +263,10 @@ const Assignments = ({
         <View style={styles.assignmentHeader}>
           <View style={styles.assignmentInfo}>
             <Text style={styles.assignmentTitle}>{item.title}</Text>
+            {!!item.topic && <Text style={styles.assignmentTopicText}>Topic: {item.topic}</Text>}
             <Text style={styles.courseName}>
               {item.courseName} • {item.courseCode}
             </Text>
-            {!!item.topic && <Text style={styles.topicText}>Topic: {item.topic}</Text>}
           </View>
 
           <View
@@ -293,9 +287,7 @@ const Assignments = ({
         </View>
 
         <View style={styles.assignmentFooter}>
-          <Text style={[styles.dueDateText, isOverdue && styles.overdueText]}>
-            Due: {item.dueDate}
-          </Text>
+          <Text style={styles.dueDateText}>Due: {item.dueDate}</Text>
 
           {percent !== null ? (
             <Text style={styles.pointsText}>
@@ -307,6 +299,12 @@ const Assignments = ({
             </Text>
           ) : null}
         </View>
+
+        {relatedMaterials.length > 0 && (
+          <Text style={styles.relatedPreviewText}>
+            Based on: {relatedMaterials.map((m) => m.title).join(', ')}
+          </Text>
+        )}
 
         {recommendationLabel && (
           <View
@@ -333,32 +331,29 @@ const Assignments = ({
     <ScrollView
       style={styles.container}
       contentContainerStyle={{
-        paddingHorizontal: isLargeScreen ? 28 : 16,
-        paddingVertical: isLargeScreen ? 24 : 16,
+        padding: isLargeScreen ? 24 : 16,
       }}
     >
-      <Text style={styles.screenTitle}>{titleText}</Text>
+      <Text style={styles.title}>Assignments</Text>
 
-      <View style={styles.filterContainer}>
-        {(['all', 'pending', 'submitted', 'graded'] as FilterType[]).map((tab) => (
+      <View style={styles.filterRow}>
+        {(['all', 'pending', 'submitted', 'graded'] as FilterType[]).map((item) => (
           <TouchableOpacity
-            key={tab}
-            onPress={() => setFilter(tab)}
-            style={[styles.filterTab, filter === tab && styles.filterTabActive]}
+            key={item}
+            onPress={() => setFilter(item)}
+            style={[styles.filterChip, filter === item && styles.filterChipActive]}
           >
             <Text
               style={[
-                styles.filterTabText,
-                filter === tab && styles.filterTabTextActive,
+                styles.filterChipText,
+                filter === item && styles.filterChipTextActive,
               ]}
             >
-              {tab.charAt(0).toUpperCase() + tab.slice(1)}
+              {item.charAt(0).toUpperCase() + item.slice(1)}
             </Text>
           </TouchableOpacity>
         ))}
       </View>
-
-      <Text style={styles.countText}>{countLabel}</Text>
 
       <FlatList
         data={filteredAssignments}
@@ -366,22 +361,12 @@ const Assignments = ({
         keyExtractor={(item) => item.id}
         scrollEnabled={false}
         ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
-        ListEmptyComponent={<Text style={styles.emptyText}>No assignments available.</Text>}
+        ListEmptyComponent={<Text style={styles.emptyText}>No assignments found.</Text>}
       />
 
-      <Modal
-        visible={selectedAssignment !== null}
-        animationType="slide"
-        transparent
-        onRequestClose={closeModal}
-      >
+      <Modal visible={!!selectedAssignment} animationType="slide" transparent onRequestClose={closeModal}>
         <View style={styles.modalOverlay}>
-          <View
-            style={[
-              styles.modalWrapper,
-              { width: isLargeScreen ? '72%' : '100%' },
-            ]}
-          >
+          <View style={[styles.modalWrapper, { width: isLargeScreen ? '72%' : '100%' }]}>
             <ScrollView contentContainerStyle={styles.detailContainer}>
               {selectedAssignment && (
                 <>
@@ -395,14 +380,25 @@ const Assignments = ({
 
                   <View style={styles.detailContent}>
                     <View style={styles.infoCard}>
-                      <Text style={styles.courseName}>
+                      <Text style={styles.detailCourseName}>
                         {selectedAssignment.courseName} • {selectedAssignment.courseCode}
                       </Text>
+
+                      <Text style={styles.detailMetaText}>
+                        {selectedAssignment.semester} - {selectedAssignment.schoolYear}
+                      </Text>
+                      <Text style={styles.detailMetaText}>{selectedAssignment.section}</Text>
+
                       {!!selectedAssignment.topic && (
-                        <Text style={styles.topicText}>Topic: {selectedAssignment.topic}</Text>
+                        <Text style={styles.detailTopicText}>
+                          Topic: {selectedAssignment.topic}
+                        </Text>
                       )}
-                      <Text style={styles.description}>
-                        {selectedAssignment.description || 'No description provided.'}
+
+                      <Text style={styles.detailDescription}>
+                        {selectedAssignment.description ||
+                          selectedAssignment.courseDescription ||
+                          'No description provided.'}
                       </Text>
 
                       <View style={styles.infoRow}>
@@ -467,13 +463,10 @@ const Assignments = ({
 
                         <TouchableOpacity
                           onPress={() => {
-                            const sourceCourse = courses.find(
-                              (course) => course.id === selectedAssignment.courseId
-                            );
-                            if (!sourceCourse) return;
-
-                            closeModal();
-                            onOpenGeneratedActivity?.(sourceCourse, selectedAssignment);
+                            const course = courses.find((c) => c.id === selectedAssignment.courseId);
+                            if (course && onOpenGeneratedActivity) {
+                              onOpenGeneratedActivity(course, selectedAssignment);
+                            }
                           }}
                           style={[
                             styles.uploadButton,
@@ -482,9 +475,7 @@ const Assignments = ({
                             },
                           ]}
                         >
-                          <Text style={styles.uploadButtonText}>
-                            Generate Follow-Up Activity
-                          </Text>
+                          <Text style={styles.uploadButtonText}>Generate Follow-Up Activity</Text>
                         </TouchableOpacity>
                       </View>
                     )}
@@ -520,9 +511,7 @@ const Assignments = ({
                                 </Text>
                               </View>
                               <TouchableOpacity
-                                onPress={() =>
-                                  handleRemoveAttachment(selectedAssignment.id, file.id)
-                                }
+                                onPress={() => onRemoveFile(selectedAssignment.id, file.id)}
                               >
                                 <Text style={styles.removeButton}>✕</Text>
                               </TouchableOpacity>
@@ -534,16 +523,13 @@ const Assignments = ({
                       )}
 
                       {(() => {
-                        const currentFiles = assignmentFiles[selectedAssignment.id] || [];
-                        const hasFiles = currentFiles.length > 0;
+                        const uploadedFiles = assignmentFiles[selectedAssignment.id] || [];
+                        const hasFiles = uploadedFiles.length > 0;
 
                         return (
                           <View style={styles.uploadActionsRow}>
                             {!hasFiles ? (
-                              <TouchableOpacity
-                                style={styles.uploadButton}
-                                onPress={handleFileUpload}
-                              >
+                              <TouchableOpacity style={styles.uploadButton} onPress={handleFileUpload}>
                                 <Text style={styles.uploadButtonText}>+ Upload File</Text>
                               </TouchableOpacity>
                             ) : (
@@ -552,17 +538,12 @@ const Assignments = ({
                                   onPress={handleFileUpload}
                                   style={styles.secondaryButton}
                                 >
-                                  <Text style={styles.secondaryButtonText}>
-                                    + Add Another File
-                                  </Text>
+                                  <Text style={styles.secondaryButtonText}>+ Add Another File</Text>
                                 </TouchableOpacity>
 
                                 <TouchableOpacity
                                   onPress={handleSubmitAssignment}
-                                  style={[
-                                    styles.uploadButton,
-                                    { backgroundColor: '#308C5D' },
-                                  ]}
+                                  style={[styles.uploadButton, { backgroundColor: '#308C5D' }]}
                                 >
                                   <Text style={styles.uploadButtonText}>SUBMIT</Text>
                                 </TouchableOpacity>
@@ -589,7 +570,7 @@ const Assignments = ({
                               <View style={styles.commentHeader}>
                                 <Text style={styles.commentAuthor}>{comment.author}</Text>
                                 {comment.isInstructor && (
-                                  <Text style={styles.instructorBadge}>Teacher</Text>
+                                  <Text style={styles.teacherBadge}>Teacher</Text>
                                 )}
                               </View>
                               <Text style={styles.commentContent}>{comment.content}</Text>
@@ -636,45 +617,38 @@ const Assignments = ({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#ffffff',
+    backgroundColor: '#F5F5F5',
   },
 
-  screenTitle: {
+  title: {
     fontSize: 24,
     fontWeight: '700',
-    color: '#111',
-    marginBottom: 14,
+    color: '#000',
+    marginBottom: 16,
   },
 
-  filterContainer: {
+  filterRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
     marginBottom: 16,
   },
-  filterTab: {
-    paddingVertical: 9,
+  filterChip: {
     paddingHorizontal: 14,
-    borderRadius: 999,
+    paddingVertical: 8,
     backgroundColor: '#EFEFEF',
+    borderRadius: 999,
   },
-  filterTabActive: {
+  filterChipActive: {
     backgroundColor: '#D32F2F',
   },
-  filterTabText: {
-    color: '#666',
-    fontWeight: '600',
-    fontSize: 13,
-  },
-  filterTabTextActive: {
-    color: '#fff',
-  },
-
-  countText: {
-    fontSize: 18,
+  filterChipText: {
+    fontSize: 12,
+    fontWeight: '700',
     color: '#555',
-    marginBottom: 14,
-    fontWeight: '600',
+  },
+  filterChipTextActive: {
+    color: '#FFF',
   },
 
   assignmentCard: {
@@ -705,16 +679,17 @@ const styles = StyleSheet.create({
     color: '#000',
     marginBottom: 4,
   },
-  courseName: {
-    color: '#666',
-    fontWeight: '600',
-    fontSize: 13,
-  },
-  topicText: {
+  assignmentTopicText: {
     color: '#444',
     fontSize: 12,
     fontWeight: '600',
     marginTop: 4,
+  },
+  courseName: {
+    color: '#666',
+    fontSize: 12,
+    fontWeight: '600',
+    marginTop: 6,
   },
   statusBadge: {
     paddingHorizontal: 10,
@@ -737,13 +712,16 @@ const styles = StyleSheet.create({
     fontSize: 13,
     marginBottom: 4,
   },
-  overdueText: {
-    color: '#B71C1C',
-  },
   pointsText: {
     fontSize: 12,
     color: '#666',
     fontWeight: '600',
+  },
+  relatedPreviewText: {
+    fontSize: 12,
+    color: '#666',
+    marginTop: 8,
+    lineHeight: 18,
   },
   recommendationBadge: {
     marginTop: 10,
@@ -801,7 +779,24 @@ const styles = StyleSheet.create({
     borderLeftWidth: 4,
     borderLeftColor: '#D32F2F',
   },
-  description: {
+  detailCourseName: {
+    color: '#666',
+    fontWeight: '600',
+    fontSize: 13,
+  },
+  detailMetaText: {
+    color: '#555',
+    fontSize: 12,
+    fontWeight: '600',
+    marginTop: 4,
+  },
+  detailTopicText: {
+    color: '#444',
+    fontSize: 12,
+    fontWeight: '600',
+    marginTop: 8,
+  },
+  detailDescription: {
     color: '#666',
     marginVertical: 8,
     lineHeight: 20,
@@ -911,10 +906,10 @@ const styles = StyleSheet.create({
   },
 
   emptyText: {
+    fontSize: 14,
     color: '#999',
-    fontStyle: 'italic',
-    marginVertical: 8,
-    fontSize: 13,
+    textAlign: 'center',
+    marginVertical: 20,
   },
 
   commentItem: {
@@ -940,7 +935,7 @@ const styles = StyleSheet.create({
     color: '#000',
     fontSize: 13,
   },
-  instructorBadge: {
+  teacherBadge: {
     fontWeight: '600',
     color: '#1f1f1f',
     backgroundColor: '#fbc12d99',
