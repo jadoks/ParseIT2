@@ -1,18 +1,19 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
-    SafeAreaView,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
-import type { Assignment, Member } from './TeacherCourseDetail2';
+import type { Assignment, Member, Submission } from './TeacherCourseDetail2';
 
 type Props = {
   members: Member[];
   currentAssignment?: Assignment;
+  submissions: Submission[];
   onBack: () => void;
   onOpenUpdate: () => void;
 };
@@ -20,9 +21,60 @@ type Props = {
 const TeacherSubmissionsSection = ({
   members,
   currentAssignment,
+  submissions,
   onBack,
   onOpenUpdate,
 }: Props) => {
+  const assignmentSubmissions = useMemo(() => {
+    if (!currentAssignment) return [];
+    return submissions.filter(
+      (item) => item.assignmentId === currentAssignment.id
+    );
+  }, [submissions, currentAssignment]);
+
+  const completedCount = assignmentSubmissions.filter(
+    (item) =>
+      item.status === 'submitted' ||
+      item.status === 'graded' ||
+      item.status === 'late'
+  ).length;
+
+  const completionPercent =
+    members.length > 0 ? Math.round((completedCount / members.length) * 100) : 0;
+
+  const getStudentSubmission = (studentId: string) => {
+    return assignmentSubmissions.find((item) => item.studentId === studentId);
+  };
+
+  const getDotColor = (status?: Submission['status']) => {
+    switch (status) {
+      case 'graded':
+        return '#4CAF50';
+      case 'submitted':
+        return '#2196F3';
+      case 'late':
+        return '#F44336';
+      case 'pending':
+      default:
+        return '#BDBDBD';
+    }
+  };
+
+  const getStatusText = (status?: Submission['status']) => {
+    switch (status) {
+      case 'graded':
+        return 'Graded';
+      case 'submitted':
+        return 'Submitted';
+      case 'late':
+        return 'Late';
+      case 'pending':
+        return 'Pending';
+      default:
+        return 'No submission';
+    }
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.membersHeader}>
@@ -40,27 +92,50 @@ const TeacherSubmissionsSection = ({
 
       <View style={styles.analyticsRow}>
         <Text style={styles.completedText}>
-          0 out of {members.length} completed
+          {completedCount} out of {members.length} completed
         </Text>
         <View style={styles.progressCircle}>
-          <Text style={styles.percentText}>0 %</Text>
+          <Text style={styles.percentText}>{completionPercent} %</Text>
         </View>
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent}>
-        {members.map((student) => (
-          <View key={student.id} style={styles.studentCardWide}>
-            <View style={styles.studentRedAccent} />
-            <View style={styles.studentInfo}>
-              <View style={styles.studentTopRow}>
-                <Text style={styles.studentId}>{student.id}</Text>
-                <View style={styles.lateDot} />
+        {members.map((student) => {
+          const submission = getStudentSubmission(student.id);
+
+          return (
+            <View key={student.id} style={styles.studentCardWide}>
+              <View style={styles.studentRedAccent} />
+              <View style={styles.studentInfo}>
+                <View style={styles.studentTopRow}>
+                  <Text style={styles.studentId}>{student.id}</Text>
+                  <View
+                    style={[
+                      styles.lateDot,
+                      { backgroundColor: getDotColor(submission?.status) },
+                    ]}
+                  />
+                </View>
+
+                <Text style={styles.studentName}>{student.name}</Text>
+
+                <Text style={styles.gradeRatio}>
+                  {submission?.score ?? 0}/{currentAssignment?.totalScore || 0}
+                </Text>
+
+                <Text style={styles.statusText}>
+                  {getStatusText(submission?.status)}
+                </Text>
+
+                {!!submission?.submittedAt && (
+                  <Text style={styles.dateText}>
+                    Submitted: {submission.submittedAt}
+                  </Text>
+                )}
               </View>
-              <Text style={styles.studentName}>{student.name}</Text>
-              <Text style={styles.gradeRatio}>0/{currentAssignment?.points || 0}</Text>
             </View>
-          </View>
-        ))}
+          );
+        })}
       </ScrollView>
     </SafeAreaView>
   );
@@ -105,12 +180,14 @@ const styles = StyleSheet.create({
   percentText: { fontSize: 16, fontWeight: 'bold', color: '#4CAF50' },
   scrollContent: {
     padding: 25,
-    alignItems: 'flex-start',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
   },
   studentCardWide: {
     backgroundColor: '#FFF',
     borderRadius: 12,
-    minHeight: 95,
+    minHeight: 105,
     flexDirection: 'row',
     elevation: 4,
     shadowColor: '#000',
@@ -130,10 +207,17 @@ const styles = StyleSheet.create({
     borderRadius: 5,
     marginLeft: 3,
   },
-  studentInfo: { flex: 1, paddingHorizontal: 20, justifyContent: 'center' },
+  studentInfo: {
+    flex: 1,
+    paddingHorizontal: 20,
+    justifyContent: 'center',
+    paddingVertical: 14,
+  },
   studentTopRow: { flexDirection: 'row', justifyContent: 'space-between' },
   studentId: { fontSize: 14, color: '#999' },
   studentName: { fontSize: 18, fontWeight: 'bold', color: '#444', marginTop: 5 },
-  lateDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: 'red' },
-  gradeRatio: { color: '#888', marginTop: 6 },
+  lateDot: { width: 10, height: 10, borderRadius: 5 },
+  gradeRatio: { color: '#888', marginTop: 6, fontWeight: '600' },
+  statusText: { color: '#666', marginTop: 4, fontSize: 12, fontWeight: '600' },
+  dateText: { color: '#999', marginTop: 4, fontSize: 11 },
 });

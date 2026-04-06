@@ -354,7 +354,7 @@ const TeacherHeader: React.FC<HeaderProps> = ({
               color={getIconColor('notification')}
             />
             <View style={styles.notificationBadge}>
-              <Text style={styles.badgeText}>17</Text>
+              <Text style={styles.badgeText}>2</Text>
             </View>
           </View>
         </TouchableOpacity>

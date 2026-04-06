@@ -30,14 +30,19 @@ const TeacherAssignmentSection = ({ assignments, onCreate, onOpenMembers }: Prop
           <View style={styles.redLeftAccentAssignment} />
           <View style={styles.assignmentInner}>
             <View style={styles.assignmentTopRow}>
-              <Text style={styles.assignmentTitle}>{item.title}</Text>
+              <Text style={styles.assignmentTitle}>{item.header}</Text>
               <Text style={styles.assignmentPostedDate}>{item.posted}</Text>
             </View>
 
             <View style={styles.separator} />
 
-            <Text style={styles.dueText}>Due: {item.due}</Text>
-            <Text style={styles.pointsText}>Points: {item.points}</Text>
+            <Text style={styles.instructionText}>{item.instruction}</Text>
+            <Text style={styles.dueText}>Due: {item.dueDate}</Text>
+            <Text style={styles.pointsText}>Total Score: {item.totalScore}</Text>
+            <Text style={styles.pointsOnTimeText}>Points On Time: {item.pointsOnTime}</Text>
+            <Text style={styles.repositoryText}>
+              Repository: {item.repositoryDisabledAfterDue ? 'Disabled after due' : 'Enabled'}
+            </Text>
 
             {!!item.fileName && (
               <Text style={styles.fileText}>File: {item.fileName}</Text>
@@ -73,7 +78,7 @@ const styles = StyleSheet.create({
     elevation: 3,
     borderWidth: 1,
     borderColor: '#F0F0F0',
-    minHeight: 120,
+    minHeight: 160,
     width: '48%',
     alignSelf: 'flex-start',
   },
@@ -110,6 +115,12 @@ const styles = StyleSheet.create({
     width: '100%',
     marginVertical: 12,
   },
+  instructionText: {
+    fontSize: 13,
+    color: '#555',
+    marginBottom: 8,
+    lineHeight: 18,
+  },
   dueText: {
     fontSize: 14,
     color: '#666',
@@ -118,6 +129,18 @@ const styles = StyleSheet.create({
   pointsText: {
     fontSize: 14,
     color: '#444',
+    fontWeight: '600',
+    marginTop: 8,
+  },
+  pointsOnTimeText: {
+    fontSize: 14,
+    color: '#444',
+    fontWeight: '600',
+    marginTop: 8,
+  },
+  repositoryText: {
+    fontSize: 13,
+    color: '#C62828',
     fontWeight: '600',
     marginTop: 8,
   },

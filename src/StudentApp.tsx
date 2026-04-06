@@ -1,5 +1,5 @@
 import * as NavigationBar from 'expo-navigation-bar';
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Image,
   Platform,
@@ -10,7 +10,7 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import AnnouncementModal, { Announcement } from './components/AnnouncementModal';
 import DrawerMenu from './components/DrawerMenu';
@@ -66,7 +66,10 @@ type ScreenType =
 
 const CURRENT_USER_NAME = 'Jade Lisondra';
 const CURRENT_USER_EMAIL = 'jadelisondra101@gmail.com';
-const DEFAULT_PROFILE_IMAGE = require('../assets/images/default_profile.png');
+
+const CURRENT_USER_PROFILE_IMAGE = require('../assets/images/pogi.jpg');
+const OTHER_USERS_PROFILE_IMAGE = require('../assets/images/default_profile.png');
+const DEFAULT_BANNER_IMAGE = require('../assets/images/venti_bg.png');
 
 const ANNOUNCEMENTS: Announcement[] = [
   {
@@ -92,11 +95,14 @@ const ANNOUNCEMENTS: Announcement[] = [
 const COURSES: CourseDetailData[] = [
   {
     id: '1',
-    name: 'Web Development 101',
+    name: 'Web Development',
     code: 'CS-101',
     instructor: 'Prof. John Smith',
     description:
       'Learn the fundamentals of web development including HTML, CSS, JavaScript, and introductory React concepts.',
+    semester: '2nd Semester',
+    schoolYear: '2025-2026',
+    section: '3A - Python',
     materials: [
       { id: 'm1', title: 'HTML Basics Tutorial', type: 'video', uploadedDate: '2026-02-01' },
       { id: 'm2', title: 'CSS Styling Guide', type: 'pdf', uploadedDate: '2026-02-03' },
@@ -200,6 +206,9 @@ const COURSES: CourseDetailData[] = [
     code: 'CS-102',
     instructor: 'Prof. Maria Santos',
     description: 'Understand variables, conditions, loops, and basic program flow.',
+    semester: '2nd Semester',
+    schoolYear: '2025-2026',
+    section: '2A - Algorithm',
     materials: [
       { id: 'm6', title: 'Variables and Data Types', type: 'pdf', uploadedDate: '2026-02-02' },
       { id: 'm7', title: 'Conditional Statements', type: 'video', uploadedDate: '2026-02-04' },
@@ -266,6 +275,9 @@ const COURSES: CourseDetailData[] = [
     code: 'IT-100',
     instructor: 'Prof. Allan Reyes',
     description: 'Explore basic computing concepts, hardware, software, and digital systems.',
+    semester: '2nd Semester',
+    schoolYear: '2025-2026',
+    section: '1A - Microsoft',
     materials: [
       { id: 'm9', title: 'Hardware Overview', type: 'pdf', uploadedDate: '2026-02-01' },
       { id: 'm10', title: 'Software Systems', type: 'document', uploadedDate: '2026-02-05' },
@@ -306,23 +318,25 @@ const INITIAL_COMMUNITY_POSTS: CommunityPost[] = [
     id: '1',
     userName: 'Ramcee Bading',
     userEmail: 'ramcee@email.com',
-    avatar: DEFAULT_PROFILE_IMAGE,
+    avatar: OTHER_USERS_PROFILE_IMAGE,
     dateTime: 'Feb 24, 2026 10:30 AM',
     content: 'How do I solve this programming problem?',
     answers: [
       {
         id: 'a1',
         userName: 'Maria Santos',
-        avatar: DEFAULT_PROFILE_IMAGE,
+        avatar: OTHER_USERS_PROFILE_IMAGE,
         answeredAt: 'Feb 24, 2026 11:00 AM',
-        message: 'You can use a loop to repeat the process and make sure your variables are updated correctly.',
+        message:
+          'You can use a loop to repeat the process and make sure your variables are updated correctly.',
       },
       {
         id: 'a2',
         userName: 'John Reyes',
-        avatar: DEFAULT_PROFILE_IMAGE,
+        avatar: OTHER_USERS_PROFILE_IMAGE,
         answeredAt: 'Feb 24, 2026 11:18 AM',
-        message: 'Check your variables first, then trace the logic line by line to find where the issue starts.',
+        message:
+          'Check your variables first, then trace the logic line by line to find where the issue starts.',
       },
     ],
   },
@@ -330,21 +344,21 @@ const INITIAL_COMMUNITY_POSTS: CommunityPost[] = [
     id: '2',
     userName: CURRENT_USER_NAME,
     userEmail: CURRENT_USER_EMAIL,
-    avatar: DEFAULT_PROFILE_IMAGE,
+    avatar: CURRENT_USER_PROFILE_IMAGE,
     dateTime: 'Feb 23, 2026 11:30 AM',
     content: 'Is anyone attending the workshop tomorrow?',
     answers: [
       {
         id: 'a3',
         userName: 'Abai Clipord',
-        avatar: DEFAULT_PROFILE_IMAGE,
+        avatar: OTHER_USERS_PROFILE_IMAGE,
         answeredAt: 'Feb 23, 2026 02:10 PM',
         message: 'Yes, I will be there tomorrow.',
       },
       {
         id: 'a4',
         userName: 'Ramcee Bading',
-        avatar: DEFAULT_PROFILE_IMAGE,
+        avatar: OTHER_USERS_PROFILE_IMAGE,
         answeredAt: 'Feb 23, 2026 02:40 PM',
         message: 'Count me in. I already registered.',
       },
@@ -364,7 +378,9 @@ const mapCourseCommentsToAssignmentComments = (
   }));
 };
 
-const mapCourseFilesToAssignmentFiles = (files?: CourseAssignment['files']): AssignmentFileUpload[] => {
+const mapCourseFilesToAssignmentFiles = (
+  files?: CourseAssignment['files']
+): AssignmentFileUpload[] => {
   return (files || []).map((file) => ({
     id: file.id,
     fileName: file.name,
@@ -397,6 +413,9 @@ const mapCoursesToAssignmentCourses = (courses: CourseDetailData[]): AssignmentC
     code: course.code,
     instructor: course.instructor,
     description: course.description,
+    semester: course.semester,
+    schoolYear: course.schoolYear,
+    section: course.section,
     materials: course.materials.map((material) => ({
       id: material.id,
       title: material.title,
@@ -409,7 +428,10 @@ const mapCoursesToAssignmentCourses = (courses: CourseDetailData[]): AssignmentC
 
 export default function StudentApp({ onLogout }: Props) {
   const { width } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+
   const isLargeScreen = width >= 768;
+  const isSmallScreen = width < 768;
 
   const [activeScreen, setActiveScreen] = useState<ScreenType>('home');
   const [lastScreen, setLastScreen] = useState<ScreenType>('home');
@@ -424,54 +446,104 @@ export default function StudentApp({ onLogout }: Props) {
   const [isConversationActive, setIsConversationActive] = useState(false);
   const [isVideoActive, setIsVideoActive] = useState(false);
 
-  const rehideNavTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [isNotificationOpen, setIsNotificationOpen] = useState(false);
 
   const [activeCourseTab, setActiveCourseTab] = useState<'materials' | 'assignments'>('materials');
   const [communityPosts, setCommunityPosts] = useState<CommunityPost[]>(INITIAL_COMMUNITY_POSTS);
+
+  const [currentUserAvatar, setCurrentUserAvatar] = useState<any>(CURRENT_USER_PROFILE_IMAGE);
+  const [currentUserBanner, setCurrentUserBanner] = useState<any>(DEFAULT_BANNER_IMAGE);
+  const [hasImageChanged, setHasImageChanged] = useState(false);
 
   const isFullscreenScreen =
     activeScreen === 'flipit' ||
     activeScreen === 'fruitmania' ||
     activeScreen === 'quizmasters';
 
+  const isMobileFullscreenScreen =
+    isSmallScreen &&
+    (
+      activeScreen === 'messenger' ||
+      activeScreen === 'notification' ||
+      activeScreen === 'coursedetail' ||
+      activeScreen === 'generateactivity'
+    );
+
+  const shouldShowHeader = !isFullscreenScreen && !isMobileFullscreenScreen;
+  const shouldShowDesktopDrawer =
+    !isFullscreenScreen &&
+    !isMobileFullscreenScreen &&
+    isLargeScreen &&
+    activeScreen !== 'profile' &&
+    activeScreen !== 'notification';
+
+  const safeAreaEdges =
+    isFullscreenScreen
+      ? []
+      : hasImageChanged
+      ? (['top', 'right', 'bottom', 'left'] as const)
+      : (['right', 'left'] as const);
+
   useEffect(() => {
     if (Platform.OS !== 'android') return;
 
-    const setupImmersiveNavigation = async () => {
+    const setupNavigation = async () => {
       try {
-        await NavigationBar.setBehaviorAsync('overlay-swipe');
-        await NavigationBar.setVisibilityAsync('hidden');
+        if (isFullscreenScreen) {
+          await NavigationBar.setBehaviorAsync('overlay-swipe');
+          await NavigationBar.setVisibilityAsync('hidden');
+        } else {
+          await NavigationBar.setVisibilityAsync('visible');
+        }
       } catch (error) {
-        console.log('Failed to enable immersive navigation:', error);
+        console.log('Navigation bar error:', error);
       }
     };
 
-    setupImmersiveNavigation();
+    setupNavigation();
+  }, [isFullscreenScreen]);
 
-    const subscription = NavigationBar.addVisibilityListener(({ visibility }) => {
-      if (rehideNavTimer.current) {
-        clearTimeout(rehideNavTimer.current);
-        rehideNavTimer.current = null;
-      }
+  useEffect(() => {
+    if (isMobileFullscreenScreen && isMobileDrawerOpen) {
+      setMobileDrawerOpen(false);
+    }
+  }, [isMobileFullscreenScreen, isMobileDrawerOpen]);
 
-      if (visibility === 'visible') {
-        rehideNavTimer.current = setTimeout(async () => {
-          try {
-            await NavigationBar.setVisibilityAsync('hidden');
-          } catch (error) {
-            console.log('Failed to re-hide navigation bar:', error);
-          }
-        }, 3000);
-      }
-    });
+  useEffect(() => {
+    if (!isLargeScreen) {
+      setIsNotificationOpen(false);
+    }
+  }, [isLargeScreen]);
 
-    return () => {
-      if (rehideNavTimer.current) {
-        clearTimeout(rehideNavTimer.current);
-      }
-      subscription.remove();
-    };
-  }, []);
+  useEffect(() => {
+    if (activeScreen === 'notification' || isMobileFullscreenScreen) {
+      setIsNotificationOpen(false);
+    }
+  }, [activeScreen, isMobileFullscreenScreen]);
+
+  const handleChangeProfileImage = (image: any) => {
+    setCurrentUserAvatar(image);
+    setHasImageChanged(true);
+  };
+
+  const handleChangeBannerImage = (image: any) => {
+    setCurrentUserBanner(image);
+    setHasImageChanged(true);
+  };
+
+  const hydratedCommunityPosts = useMemo<CommunityPost[]>(() => {
+    return communityPosts.map((post) => ({
+      ...post,
+      avatar:
+        post.userEmail === CURRENT_USER_EMAIL || post.userName === CURRENT_USER_NAME
+          ? currentUserAvatar
+          : post.avatar,
+      answers: post.answers.map((answer) => ({
+        ...answer,
+        avatar: answer.userName === CURRENT_USER_NAME ? currentUserAvatar : answer.avatar,
+      })),
+    }));
+  }, [communityPosts, currentUserAvatar]);
 
   const sharedCourses = useMemo(() => mapCoursesToAssignmentCourses(COURSES), []);
 
@@ -509,10 +581,10 @@ export default function StudentApp({ onLogout }: Props) {
   }, [hydratedSharedCourses, selectedCourse.id]);
 
   const currentUserPosts = useMemo(() => {
-    return communityPosts.filter(
+    return hydratedCommunityPosts.filter(
       (post) => post.userName === CURRENT_USER_NAME || post.userEmail === CURRENT_USER_EMAIL
     );
-  }, [communityPosts]);
+  }, [hydratedCommunityPosts]);
 
   const handleAddAssignmentComment = (assignmentId: string, content: string) => {
     if (!content.trim()) return;
@@ -523,7 +595,7 @@ export default function StudentApp({ onLogout }: Props) {
         ...(prev[assignmentId] || []),
         {
           id: `c${Date.now()}`,
-          author: 'You',
+          author: CURRENT_USER_NAME,
           content,
           timestamp: new Date().toLocaleString(),
           isInstructor: false,
@@ -554,7 +626,7 @@ export default function StudentApp({ onLogout }: Props) {
       id: `community-post-${Date.now()}`,
       userName: CURRENT_USER_NAME,
       userEmail: CURRENT_USER_EMAIL,
-      avatar: DEFAULT_PROFILE_IMAGE,
+      avatar: currentUserAvatar,
       dateTime: new Date().toLocaleString(),
       content: trimmedQuery,
       answers: [],
@@ -570,7 +642,7 @@ export default function StudentApp({ onLogout }: Props) {
     const newAnswer = {
       id: `community-answer-${Date.now()}`,
       userName: CURRENT_USER_NAME,
-      avatar: DEFAULT_PROFILE_IMAGE,
+      avatar: currentUserAvatar,
       answeredAt: new Date().toLocaleString(),
       message: trimmedMessage,
     };
@@ -579,6 +651,58 @@ export default function StudentApp({ onLogout }: Props) {
       prev.map((post) =>
         post.id === postId
           ? { ...post, answers: [...post.answers, newAnswer] }
+          : post
+      )
+    );
+  };
+
+  const handleEditCommunityPost = (postId: string, content: string) => {
+    const trimmedContent = content.trim();
+    if (!trimmedContent) return;
+
+    setCommunityPosts((prev) =>
+      prev.map((post) =>
+        post.id === postId ? { ...post, content: trimmedContent } : post
+      )
+    );
+  };
+
+  const handleDeleteCommunityPost = (postId: string) => {
+    setCommunityPosts((prev) => prev.filter((post) => post.id !== postId));
+  };
+
+  const handleEditCommunityAnswer = (
+    postId: string,
+    answerId: string,
+    message: string
+  ) => {
+    const trimmedMessage = message.trim();
+    if (!trimmedMessage) return;
+
+    setCommunityPosts((prev) =>
+      prev.map((post) =>
+        post.id === postId
+          ? {
+              ...post,
+              answers: post.answers.map((answer) =>
+                answer.id === answerId
+                  ? { ...answer, message: trimmedMessage }
+                  : answer
+              ),
+            }
+          : post
+      )
+    );
+  };
+
+  const handleDeleteCommunityAnswer = (postId: string, answerId: string) => {
+    setCommunityPosts((prev) =>
+      prev.map((post) =>
+        post.id === postId
+          ? {
+              ...post,
+              answers: post.answers.filter((answer) => answer.id !== answerId),
+            }
           : post
       )
     );
@@ -681,7 +805,7 @@ export default function StudentApp({ onLogout }: Props) {
       });
     });
 
-    communityPosts.forEach((post) => {
+    hydratedCommunityPosts.forEach((post) => {
       const isUsersPost =
         post.userName === CURRENT_USER_NAME || post.userEmail === CURRENT_USER_EMAIL;
 
@@ -713,11 +837,24 @@ export default function StudentApp({ onLogout }: Props) {
     }
 
     return notifications.sort((a, b) => (a.id < b.id ? 1 : -1));
-  }, [hydratedSharedCourses, generatedActivity, communityPosts]);
+  }, [hydratedSharedCourses, generatedActivity, hydratedCommunityPosts]);
 
   const unreadNotificationCount = useMemo(
     () => studentNotifications.filter((item) => !item.read).length,
     [studentNotifications]
+  );
+
+  const messengerCourses = useMemo(
+    () =>
+      COURSES.map((course) => ({
+        id: course.id,
+        name: course.name,
+        instructor: course.instructor,
+        semester: course.semester,
+        schoolYear: course.schoolYear,
+        section: course.section,
+      })),
+    []
   );
 
   const handleNavigate = (screen: ScreenType) => {
@@ -733,14 +870,25 @@ export default function StudentApp({ onLogout }: Props) {
       setGeneratedActivity(null);
     }
 
+    setIsNotificationOpen(false);
     setActiveScreen(screen);
     setMobileDrawerOpen(false);
+  };
+
+  const handleNotificationPress = () => {
+    if (isLargeScreen) {
+      setIsNotificationOpen((prev) => !prev);
+    } else {
+      setLastScreen(activeScreen);
+      setActiveScreen('notification');
+    }
   };
 
   const openCourse = (course: CourseDetailData) => {
     setSelectedCourse(course);
     setGeneratedActivity(null);
     setLastScreen(activeScreen);
+    setIsNotificationOpen(false);
     setActiveScreen('coursedetail');
     setActiveCourseTab('materials');
   };
@@ -750,6 +898,7 @@ export default function StudentApp({ onLogout }: Props) {
     setGeneratedActivity(null);
     setSelectedCourseIdForAssignments(course.id);
     setLastScreen(activeScreen);
+    setIsNotificationOpen(false);
     setActiveScreen('coursedetail');
     setActiveCourseTab('assignments');
   };
@@ -758,6 +907,7 @@ export default function StudentApp({ onLogout }: Props) {
     setSelectedCourse(course);
     setGeneratedActivity(null);
     setLastScreen(activeScreen);
+    setIsNotificationOpen(false);
     setActiveScreen('coursedetail');
     setActiveCourseTab('materials');
   };
@@ -781,6 +931,7 @@ export default function StudentApp({ onLogout }: Props) {
     setSelectedCourseIdForAssignments(matchedCourse.id);
     setGeneratedActivity(activity);
     setLastScreen(activeScreen);
+    setIsNotificationOpen(false);
     setActiveScreen('generateactivity');
   };
 
@@ -791,6 +942,17 @@ export default function StudentApp({ onLogout }: Props) {
           <Profile
             userPosts={currentUserPosts}
             onCreatePost={handleCreateCommunityPost}
+            onAddAnswer={handleAddCommunityAnswer}
+            onEditPost={handleEditCommunityPost}
+            onDeletePost={handleDeleteCommunityPost}
+            onEditAnswer={handleEditCommunityAnswer}
+            onDeleteAnswer={handleDeleteCommunityAnswer}
+            userName={CURRENT_USER_NAME}
+            userEmail={CURRENT_USER_EMAIL}
+            profileImage={currentUserAvatar}
+            bannerImage={currentUserBanner}
+            onChangeProfileImage={handleChangeProfileImage}
+            onChangeBannerImage={handleChangeBannerImage}
           />
         );
 
@@ -816,6 +978,7 @@ export default function StudentApp({ onLogout }: Props) {
               setSelectedCourse(course as unknown as CourseDetailData);
               setGeneratedActivity(null);
               setLastScreen('classes');
+              setIsNotificationOpen(false);
               setActiveScreen('coursedetail');
               setActiveCourseTab('materials');
             }}
@@ -824,6 +987,7 @@ export default function StudentApp({ onLogout }: Props) {
               setSelectedCourseIdForAssignments(course.id);
               setGeneratedActivity(null);
               setLastScreen('classes');
+              setIsNotificationOpen(false);
               setActiveScreen('coursedetail');
               setActiveCourseTab('assignments');
             }}
@@ -843,7 +1007,13 @@ export default function StudentApp({ onLogout }: Props) {
         return <QuizMasters onBack={() => setActiveScreen('game')} />;
 
       case 'videos':
-        return <Videos onVideoActiveChange={setIsVideoActive} />;
+        return (
+          <Videos
+            onVideoActiveChange={setIsVideoActive}
+            currentUserName={CURRENT_USER_NAME}
+            currentUserAvatar={currentUserAvatar}
+          />
+        );
 
       case 'myjourney':
         return <MyJourney />;
@@ -867,10 +1037,16 @@ export default function StudentApp({ onLogout }: Props) {
       case 'community':
         return (
           <Community
-            posts={communityPosts}
-            userName="Jade"
+            posts={hydratedCommunityPosts}
+            userName={CURRENT_USER_NAME}
+            userEmail={CURRENT_USER_EMAIL}
+            userAvatar={currentUserAvatar}
             onCreatePost={handleCreateCommunityPost}
             onAddAnswer={handleAddCommunityAnswer}
+            onEditPost={handleEditCommunityPost}
+            onDeletePost={handleDeleteCommunityPost}
+            onEditAnswer={handleEditCommunityAnswer}
+            onDeleteAnswer={handleDeleteCommunityAnswer}
           />
         );
 
@@ -879,12 +1055,16 @@ export default function StudentApp({ onLogout }: Props) {
           <Messenger
             searchQuery=""
             onConversationActiveChange={setIsConversationActive}
+            onBack={() => setActiveScreen(lastScreen)}
+            currentUser={CURRENT_USER_NAME}
+            courses={messengerCourses}
           />
         );
 
       case 'notification':
         return (
           <Notification
+            mode="screen"
             onBack={() => setActiveScreen(lastScreen)}
             notifications={studentNotifications}
           />
@@ -926,13 +1106,22 @@ export default function StudentApp({ onLogout }: Props) {
 
   return (
     <>
-      <StatusBar hidden={isFullscreenScreen} translucent backgroundColor="transparent" />
+      <StatusBar
+        hidden={isFullscreenScreen}
+        translucent={isFullscreenScreen}
+        backgroundColor={isFullscreenScreen ? 'transparent' : '#fff'}
+        barStyle="dark-content"
+      />
 
       <SafeAreaView
-        style={[styles.safeArea, isFullscreenScreen && styles.safeAreaFullscreen]}
-        edges={isFullscreenScreen ? [] : ['top', 'right', 'bottom', 'left']}
+        style={[
+          styles.safeArea,
+          isFullscreenScreen && styles.safeAreaFullscreen,
+          isMobileFullscreenScreen && styles.safeAreaMobileFullscreen,
+        ]}
+        edges={safeAreaEdges}
       >
-        {!isFullscreenScreen && (
+        {shouldShowHeader && (
           <View style={styles.headerLayer}>
             <Header
               isLargeScreen={isLargeScreen}
@@ -940,53 +1129,91 @@ export default function StudentApp({ onLogout }: Props) {
               onNavigate={handleNavigate}
               onSearchChange={() => {}}
               notificationCount={unreadNotificationCount}
+              onNotificationPress={handleNotificationPress}
               onMenuPress={() => setMobileDrawerOpen((prev) => !prev)}
             />
           </View>
         )}
 
-        <View style={[styles.contentLayer, isFullscreenScreen && styles.contentLayerFullscreen]}>
-          {!isFullscreenScreen &&
-            isLargeScreen &&
-            activeScreen !== 'profile' &&
-            activeScreen !== 'notification' && (
-              <DrawerMenu
-                isFixed={true}
-                activeScreen={activeScreen}
-                onNavigate={handleNavigate}
-                userName="Student Name"
-                userEmail="student@email.com"
-                onAvatarPress={() => handleNavigate('profile')}
-                setIsLoggedIn={() => onLogout()}
+        {isLargeScreen && isNotificationOpen && (
+          <>
+            <Pressable
+              style={styles.notificationBackdrop}
+              onPress={() => setIsNotificationOpen(false)}
+            />
+            <View style={styles.notificationPopover}>
+              <Notification
+                mode="popover"
+                notifications={studentNotifications}
+                onClosePopover={() => setIsNotificationOpen(false)}
+                onBack={() => {
+                  setIsNotificationOpen(false);
+                  setLastScreen(activeScreen);
+                  setActiveScreen('notification');
+                }}
               />
-            )}
+            </View>
+          </>
+        )}
+
+        <View
+          style={[
+            styles.contentLayer,
+            isFullscreenScreen && styles.contentLayerFullscreen,
+            isMobileFullscreenScreen && styles.contentLayerMobileFullscreen,
+          ]}
+        >
+          {shouldShowDesktopDrawer && (
+            <DrawerMenu
+              isFixed={true}
+              activeScreen={activeScreen}
+              onNavigate={handleNavigate}
+              userName={CURRENT_USER_NAME}
+              userAvatar={currentUserAvatar}
+              onAvatarPress={() => handleNavigate('profile')}
+              setIsLoggedIn={() => onLogout()}
+            />
+          )}
 
           <View style={{ flex: 1 }}>{renderScreen()}</View>
         </View>
 
-        {!isFullscreenScreen && !isLargeScreen && isMobileDrawerOpen && (
-          <View style={styles.mobileDrawerPortal}>
-            <Pressable
-              style={styles.mobileBackdrop}
-              onPress={() => setMobileDrawerOpen(false)}
-            />
-            <View style={styles.mobileOverlay}>
-              <DrawerMenu
-                isFixed={false}
-                onClose={() => setMobileDrawerOpen(false)}
-                activeScreen={activeScreen}
-                onNavigate={handleNavigate}
-                userName="Student Name"
-                userEmail="student@email.com"
-                onAvatarPress={() => {
-                  setMobileDrawerOpen(false);
-                  handleNavigate('profile');
-                }}
-                setIsLoggedIn={() => onLogout()}
+        {!isFullscreenScreen &&
+          !isMobileFullscreenScreen &&
+          !isLargeScreen &&
+          isMobileDrawerOpen && (
+            <View style={styles.mobileDrawerPortal}>
+              <Pressable
+                style={styles.mobileBackdrop}
+                onPress={() => setMobileDrawerOpen(false)}
               />
+              <View
+                style={[
+                  styles.mobileOverlay,
+                  hasImageChanged && {
+                    paddingTop: insets.top,
+                    paddingBottom: insets.bottom,
+                    paddingLeft: insets.left,
+                    paddingRight: insets.right,
+                  },
+                ]}
+              >
+                <DrawerMenu
+                  isFixed={false}
+                  onClose={() => setMobileDrawerOpen(false)}
+                  activeScreen={activeScreen}
+                  onNavigate={handleNavigate}
+                  userName={CURRENT_USER_NAME}
+                  userAvatar={currentUserAvatar}
+                  onAvatarPress={() => {
+                    setMobileDrawerOpen(false);
+                    handleNavigate('profile');
+                  }}
+                  setIsLoggedIn={() => onLogout()}
+                />
+              </View>
             </View>
-          </View>
-        )}
+          )}
 
         <AnnouncementModal
           visible={!isFullscreenScreen && activeScreen === 'home' && showAnnouncement}
@@ -997,11 +1224,17 @@ export default function StudentApp({ onLogout }: Props) {
         {!isFullscreenScreen &&
           activeScreen !== 'messenger' &&
           activeScreen !== 'notification' &&
+          activeScreen !== 'coursedetail' &&
+          activeScreen !== 'generateactivity' &&
           !(activeScreen === 'videos' && isVideoActive) && (
             <Pressable
               style={[
                 styles.floatingChatBtn,
                 !isLargeScreen && styles.floatingChatBtnSmall,
+                {
+                  bottom: hasImageChanged ? insets.bottom + 12 : 12,
+                  right: hasImageChanged ? insets.right + 20 : 20,
+                },
               ]}
               onPress={() => setIsChatOpen((prev) => !prev)}
             >
@@ -1042,6 +1275,10 @@ const styles = StyleSheet.create({
     backgroundColor: '#000',
   },
 
+  safeAreaMobileFullscreen: {
+    backgroundColor: '#fff',
+  },
+
   headerLayer: {
     position: 'relative',
     zIndex: 1000,
@@ -1057,6 +1294,24 @@ const styles = StyleSheet.create({
 
   contentLayerFullscreen: {
     flexDirection: 'column',
+  },
+
+  contentLayerMobileFullscreen: {
+    flexDirection: 'column',
+  },
+
+  notificationBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 3999,
+    elevation: 3999,
+  },
+
+  notificationPopover: {
+    position: 'absolute',
+    top: 72,
+    right: 20,
+    zIndex: 4000,
+    elevation: 4000,
   },
 
   mobileDrawerPortal: {
@@ -1081,7 +1336,7 @@ const styles = StyleSheet.create({
 
   floatingChatBtn: {
     position: 'absolute',
-    bottom: 25,
+    bottom: 12,
     right: 20,
     zIndex: 20,
     width: 140,

@@ -1,5 +1,5 @@
 import { useNavigation } from '@react-navigation/native';
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   Image,
   LayoutChangeEvent,
@@ -35,9 +35,19 @@ interface DrawerMenuProps {
     | 'notification';
   userName?: string;
   userEmail?: string;
+  userAvatar?: any;
   onAvatarPress?: () => void;
   setIsLoggedIn: (val: boolean) => void;
 }
+
+const DEFAULT_AVATAR = require('../../assets/images/avatar.jpg');
+
+const normalizeImageSource = (img: any) => {
+  if (!img) return DEFAULT_AVATAR;
+  if (typeof img === 'number') return img;
+  if (img?.uri) return { uri: img.uri };
+  return DEFAULT_AVATAR;
+};
 
 const MenuItem = ({
   iconSource,
@@ -102,18 +112,23 @@ const DrawerMenu = ({
   activeScreen,
   userName,
   userEmail,
+  userAvatar,
   onAvatarPress,
   setIsLoggedIn,
 }: DrawerMenuProps) => {
   const navigation = useNavigation<any>();
   const { width } = useWindowDimensions();
 
+  const avatarSource = useMemo(
+    () => normalizeImageSource(userAvatar),
+    [userAvatar]
+  );
+
   const [contentHeight, setContentHeight] = useState(0);
   const [scrollViewHeight, setScrollViewHeight] = useState(0);
 
   const [isSettingsModalVisible, setSettingsModalVisible] = useState(false);
   const [isLogoutModalVisible, setLogoutModalVisible] = useState(false);
-
   const [isChangeEmailModalVisible, setChangeEmailModalVisible] = useState(false);
   const [isChangePasswordModalVisible, setChangePasswordModalVisible] = useState(false);
 
@@ -161,7 +176,7 @@ const DrawerMenu = ({
       <View style={[styles.profileSection, { marginBottom: isMobile ? 20 : 40 }]}>
         <Pressable onPress={onAvatarPress}>
           <Image
-            source={require('../../assets/images/avatar.jpg')}
+            source={avatarSource}
             style={[
               styles.avatar,
               {
@@ -218,7 +233,10 @@ const DrawerMenu = ({
         />
       </ScrollView>
 
-      <Pressable style={styles.logoutMenuItem} onPress={() => setLogoutModalVisible(true)}>
+      <Pressable
+        style={styles.logoutMenuItem}
+        onPress={() => setLogoutModalVisible(true)}
+      >
         <MaterialCommunityIcons
           name="logout"
           size={28}
@@ -474,6 +492,7 @@ const DrawerMenu = ({
                 style={styles.logoutConfirmBtn}
                 onPress={() => {
                   setLogoutModalVisible(false);
+                  if (!isFixed) onClose?.();
                   setIsLoggedIn(false);
                 }}
               >

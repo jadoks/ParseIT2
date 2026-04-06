@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import type { DimensionValue } from 'react-native';
 import {
   FlatList,
   Image,
@@ -6,6 +7,7 @@ import {
   Platform,
   Pressable,
   SafeAreaView,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -18,64 +20,34 @@ import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityI
 const CURRENT_USER = 'Jade Lisondra';
 const DEFAULT_AVATAR = require('../../assets/images/default_profile.png');
 
-const INITIAL_CONVERSATIONS = [
-  {
-    id: 'c1',
-    name: 'Networking 1',
-    last: "Yes ma'am",
-    avatar: DEFAULT_AVATAR,
-    time: '2:15 PM',
-  },
-  {
-    id: 'c2',
-    name: 'Programming 1',
-    last: 'Thanks!',
-    avatar: DEFAULT_AVATAR,
-    time: '1:02 PM',
-  },
-  {
-    id: 'c3',
-    name: 'Web Dev',
-    last: 'Assignment due tomorrow.',
-    avatar: DEFAULT_AVATAR,
-    time: 'Yesterday',
-  },
-];
+type MessengerCourse = {
+  id: string;
+  name: string;
+  instructor: string;
+  semester: string;
+  schoolYear: string;
+  section?: string;
+};
 
-const INITIAL_MESSAGES: Record<
-  string,
-  { id: string; fromMe: boolean; sender: string; text: string }[]
-> = {
-  c1: [
-    {
-      id: 'm1',
-      fromMe: false,
-      sender: 'Ramcee Bading',
-      text: 'Hello, does everyone attending the review?',
-    },
-    {
-      id: 'm2',
-      fromMe: true,
-      sender: 'Ramcee Buyot',
-      text: "Yes ma'am",
-    },
-  ],
-  c2: [
-    {
-      id: 'm3',
-      fromMe: false,
-      sender: 'Programming 1',
-      text: 'Thanks!',
-    },
-  ],
-  c3: [
-    {
-      id: 'm4',
-      fromMe: false,
-      sender: 'Web Dev',
-      text: 'Assignment due tomorrow.',
-    },
-  ],
+type Conversation = {
+  id: string;
+  name: string;
+  last: string;
+  avatar: any;
+  time: string;
+  isRoom?: boolean;
+  isCreatedRoom?: boolean;
+  members?: string[];
+  admin?: string;
+  classId?: string;
+  section?: string;
+};
+
+type Message = {
+  id: string;
+  fromMe: boolean;
+  sender: string;
+  text: string;
 };
 
 const ROOM_MEMBERS = [
@@ -86,56 +58,109 @@ const ROOM_MEMBERS = [
   'Lude Lisendra',
 ];
 
-type Conversation = {
-  id: string;
-  name: string;
-  last: string;
-  avatar: any;
-  time: string;
-};
-
-type Message = {
-  id: string;
-  fromMe: boolean;
-  sender: string;
-  text: string;
-};
+const INITIAL_MESSAGES: Record<string, Message[]> = {};
 
 const Messenger = ({
   searchQuery = '',
   onConversationActiveChange,
+  onBack,
+  courses = [],
+  currentUser = CURRENT_USER,
 }: {
   searchQuery?: string;
   onConversationActiveChange?: (isActive: boolean) => void;
+  onBack?: () => void;
+  courses?: MessengerCourse[];
+  currentUser?: string;
 }) => {
   const { width, height } = useWindowDimensions();
 
-  const isSmallPhone = width < 480;
+  const isTinyPhone = width < 360;
   const isMobile = width < 768;
   const isTablet = width >= 768 && width < 1200;
   const isDesktop = width >= 1200;
 
-  const scale = isDesktop ? 1.25 : isTablet ? 1.1 : 1;
   const isSplitView = !isMobile;
+  const scale = isDesktop ? 1.15 : isTablet ? 1.05 : 1;
 
-  const [conversations, setConversations] =
-    useState<Conversation[]>(INITIAL_CONVERSATIONS);
+  const messageMaxWidth: DimensionValue =
+    isDesktop ? '58%' : isTablet ? '66%' : isTinyPhone ? '88%' : '80%';
+
+  const sendWidth: DimensionValue =
+    isDesktop ? 96 : isTablet ? 84 : isTinyPhone ? 54 : 72;
+
+  const courseConversations = useMemo<Conversation[]>(() => {
+    return courses.map((course) => ({
+      id: `class-${course.id}`,
+      classId: course.id,
+      name: `${course.name} - ${course.semester} (${course.schoolYear})`,
+      last: 'Class conversation created.',
+      avatar: DEFAULT_AVATAR,
+      time: 'Now',
+      isRoom: true,
+      isCreatedRoom: false,
+      admin: course.instructor,
+      members: [course.instructor, currentUser],
+      section: course.section,
+    }));
+  }, [courses, currentUser]);
+
+  const [conversations, setConversations] = useState<Conversation[]>(courseConversations);
   const [selected, setSelected] = useState<Conversation | null>(null);
   const [messageText, setMessageText] = useState('');
   const [messagesByConversation, setMessagesByConversation] =
     useState<Record<string, Message[]>>(INITIAL_MESSAGES);
 
   const [showCreateRoomModal, setShowCreateRoomModal] = useState(false);
-  const [roomName, setRoomName] = useState('');
-  const [checkedMembers, setCheckedMembers] = useState<string[]>([CURRENT_USER]);
-  const [anchor, setAnchor] = useState({ x: 0, y: 0 });
-  const [showPlusTooltip, setShowPlusTooltip] = useState(false);
+  const [showMembersModal, setShowMembersModal] = useState(false);
+  const [showInfoMenu, setShowInfoMenu] = useState(false);
 
-  const plusButtonRef = useRef<View>(null);
+  const [roomName, setRoomName] = useState('');
+  const [checkedMembers, setCheckedMembers] = useState<string[]>([currentUser]);
+  const [anchor, setAnchor] = useState({ x: 0, y: 0 });
+
+  const infoButtonRef = useRef<View>(null);
 
   useEffect(() => {
     onConversationActiveChange?.(false);
   }, [onConversationActiveChange]);
+
+  useEffect(() => {
+    setConversations((prev) => {
+      const createdRooms = prev.filter((conversation) => conversation.isCreatedRoom);
+      return [...createdRooms, ...courseConversations];
+    });
+
+    setMessagesByConversation((prev) => {
+      const next = { ...prev };
+
+      courseConversations.forEach((conversation) => {
+        if (!next[conversation.id]) {
+          next[conversation.id] = [
+            {
+              id: `msg-${conversation.id}`,
+              fromMe: false,
+              sender: conversation.admin || conversation.name,
+              text: `${conversation.name} conversation has been created.`,
+            },
+          ];
+        }
+      });
+
+      return next;
+    });
+
+    setSelected((prev) => {
+      if (!prev) return prev;
+
+      const matchedCourseConversation = courseConversations.find(
+        (item) => item.id === prev.id
+      );
+
+      if (matchedCourseConversation) return matchedCourseConversation;
+      return prev;
+    });
+  }, [courseConversations]);
 
   const filtered = useMemo(() => {
     return conversations.filter(
@@ -147,26 +172,44 @@ const Messenger = ({
 
   const currentMessages = selected ? messagesByConversation[selected.id] || [] : [];
 
+  const selectedConversationMembers =
+    selected?.members && selected.members.length > 0
+      ? selected.members
+      : selected
+      ? [selected.name]
+      : [];
+
+  const availableRoomMembers = useMemo(() => {
+    const baseMembers = selected?.members || [];
+    return Array.from(new Set([currentUser, ...baseMembers, ...ROOM_MEMBERS]));
+  }, [selected, currentUser]);
+
   const sizes = {
-    sidebarWidth: isDesktop ? 360 : 300,
-    pageTitle: 25 * scale,
-    headerHeight: 58 * scale,
-    headerTitle: 18 * scale,
-    backText: 12 * scale,
-    headerIcon: 20 * scale,
-    listAvatar: 48 * scale,
-    listName: 15 * scale,
-    listTime: 12 * scale,
-    listLast: 13 * scale,
-    bubbleText: 12 * scale,
-    senderName: 10 * scale,
-    inputText: isDesktop ? 12 * scale : isTablet ? 11 * scale : isSmallPhone ? 9 : 10,
-    sendText: isDesktop ? 13 * scale : isTablet ? 12 : isSmallPhone ? 10 : 11,
-    inputHeight: isDesktop ? 42 * scale : isTablet ? 40 : isSmallPhone ? 34 : 36,
-    sendHeight: isDesktop ? 42 * scale : isTablet ? 40 : isSmallPhone ? 34 : 36,
-    sendWidth: isDesktop ? 86 * scale : isTablet ? 72 : isSmallPhone ? 52 : 60,
-    messageGap: 22 * scale,
-    horizontalPadding: isDesktop ? 18 * scale : isTablet ? 14 : 10,
+    sidebarWidth: isDesktop ? Math.min(width * 0.28, 380) : isTablet ? 320 : width,
+    pageTitle: isDesktop ? 26 : isTablet ? 23 : isTinyPhone ? 20 : 22,
+    headerHeight: isDesktop ? 64 : isTablet ? 60 : isTinyPhone ? 52 : 56,
+    headerTitle: isDesktop ? 19 : isTablet ? 17 : isTinyPhone ? 14 : 16,
+    backText: isTinyPhone ? 11 : 12,
+    headerIcon: isDesktop ? 22 : isTablet ? 20 : 18,
+
+    listAvatar: isDesktop ? 52 : isTablet ? 48 : isTinyPhone ? 38 : 42,
+    listName: isDesktop ? 15 : isTablet ? 14 : isTinyPhone ? 12 : 13,
+    listTime: isDesktop ? 12 : isTablet ? 11 : 10,
+    listLast: isDesktop ? 13 : isTablet ? 12 : isTinyPhone ? 11 : 12,
+    listRowVertical: isDesktop ? 14 : isTablet ? 12 : isTinyPhone ? 8 : 10,
+
+    bubbleText: isDesktop ? 13 : isTablet ? 12 : isTinyPhone ? 11 : 12,
+    senderName: isDesktop ? 11 : isTablet ? 10 : 9,
+    messageGap: isDesktop ? 22 : isTablet ? 18 : isTinyPhone ? 12 : 14,
+    messageMaxWidth,
+
+    horizontalPadding: isDesktop ? 18 : isTablet ? 14 : isTinyPhone ? 8 : 10,
+    verticalPadding: isDesktop ? 14 : isTablet ? 12 : isTinyPhone ? 8 : 10,
+
+    inputText: isDesktop ? 14 : isTablet ? 13 : isTinyPhone ? 12 : 13,
+    inputHeight: isDesktop ? 46 : isTablet ? 44 : isTinyPhone ? 40 : 42,
+    sendHeight: isDesktop ? 46 : isTablet ? 44 : isTinyPhone ? 40 : 42,
+    sendWidth,
     inputGap: isDesktop ? 12 : isTablet ? 10 : 8,
   };
 
@@ -201,6 +244,8 @@ const Messenger = ({
       text: trimmed,
     };
 
+    const updatedTime = getCurrentTimeLabel();
+
     setMessagesByConversation((prev) => ({
       ...prev,
       [selected.id]: [...(prev[selected.id] || []), newMessage],
@@ -212,40 +257,66 @@ const Messenger = ({
           ? {
               ...conversation,
               last: trimmed,
-              time: getCurrentTimeLabel(),
+              time: updatedTime,
             }
           : conversation
       )
+    );
+
+    setSelected((prev) =>
+      prev
+        ? {
+            ...prev,
+            last: trimmed,
+            time: updatedTime,
+          }
+        : prev
     );
 
     setMessageText('');
   };
 
   const toggleMember = (member: string) => {
-    if (member === CURRENT_USER) return;
+    if (member === currentUser) return;
 
     setCheckedMembers((prev) =>
       prev.includes(member) ? prev.filter((m) => m !== member) : [...prev, member]
     );
   };
 
-  const handleOpenCreateRoomModal = () => {
-    setShowPlusTooltip(false);
-
-    if (plusButtonRef.current) {
-      plusButtonRef.current.measureInWindow((x, y, measuredWidth, measuredHeight) => {
-        const modalWidth = isMobile ? 210 : 230;
+  const openAnchoredMenu = () => {
+    if (infoButtonRef.current) {
+      infoButtonRef.current.measureInWindow((x, y, measuredWidth, measuredHeight) => {
+        const menuWidth = isMobile ? 180 : 200;
         setAnchor({
-          x: x + measuredWidth - modalWidth,
+          x: x + measuredWidth - menuWidth,
           y: y + measuredHeight + 6,
         });
-        setShowCreateRoomModal(true);
+        setShowInfoMenu(true);
       });
       return;
     }
 
-    setAnchor({ x: width - 240, y: 70 });
+    setAnchor({ x: width - 220, y: 70 });
+    setShowInfoMenu(true);
+  };
+
+  const handleOpenInfoMenu = () => {
+    openAnchoredMenu();
+  };
+
+  const handleOpenCreateRoomModal = () => {
+    if (selected?.isCreatedRoom) return;
+
+    setShowInfoMenu(false);
+    setCheckedMembers([currentUser]);
+    setRoomName('');
     setShowCreateRoomModal(true);
+  };
+
+  const handleOpenMembersModal = () => {
+    setShowInfoMenu(false);
+    setShowMembersModal(true);
   };
 
   const handleCreateRoom = () => {
@@ -255,6 +326,9 @@ const Messenger = ({
     const conversationName = `${trimmedRoomName} - ${selected.name}`;
     const newConversationId = `room-${Date.now()}`;
     const nowLabel = getCurrentTimeLabel();
+
+    // Only include explicitly selected members + current user
+    const roomMembers = Array.from(new Set([...checkedMembers, currentUser]));
 
     const systemMessage: Message = {
       id: `msg-${Date.now()}`,
@@ -269,6 +343,12 @@ const Messenger = ({
       last: systemMessage.text,
       avatar: DEFAULT_AVATAR,
       time: nowLabel,
+      isRoom: true,
+      isCreatedRoom: true,
+      members: roomMembers,
+      admin: currentUser,
+      classId: selected.classId,
+      section: selected.section,
     };
 
     setConversations((prev) => [newConversation, ...prev]);
@@ -283,7 +363,7 @@ const Messenger = ({
 
     setShowCreateRoomModal(false);
     setRoomName('');
-    setCheckedMembers([CURRENT_USER]);
+    setCheckedMembers([currentUser]);
   };
 
   const renderConversationList = () => (
@@ -297,6 +377,17 @@ const Messenger = ({
         },
       ]}
     >
+      {isMobile && (
+        <TouchableOpacity
+          onPress={onBack}
+          style={styles.screenBackButton}
+          activeOpacity={0.8}
+        >
+          <MaterialCommunityIcons name="chevron-left" size={22} color="#111" />
+          <Text style={styles.screenBackText}>Back</Text>
+        </TouchableOpacity>
+      )}
+
       <Text style={[styles.pageTitle, { fontSize: sizes.pageTitle }]}>Messages</Text>
 
       <FlatList
@@ -312,7 +403,7 @@ const Messenger = ({
                 styles.convRow,
                 {
                   paddingHorizontal: sizes.horizontalPadding,
-                  paddingVertical: 12 * scale,
+                  paddingVertical: sizes.listRowVertical,
                 },
                 active && styles.convRowActive,
               ]}
@@ -325,16 +416,22 @@ const Messenger = ({
                   width: sizes.listAvatar,
                   height: sizes.listAvatar,
                   borderRadius: sizes.listAvatar / 2,
-                  marginRight: 12,
+                  marginRight: isTinyPhone ? 8 : 12,
                 }}
               />
 
               <View style={styles.convContent}>
                 <View style={styles.convTopRow}>
-                  <Text style={[styles.convName, { fontSize: sizes.listName }]} numberOfLines={1}>
+                  <Text
+                    style={[styles.convName, { fontSize: sizes.listName }]}
+                    numberOfLines={1}
+                  >
                     {item.name}
                   </Text>
-                  <Text style={[styles.convTime, { fontSize: sizes.listTime }]}>
+                  <Text
+                    style={[styles.convTime, { fontSize: sizes.listTime, marginLeft: 8 }]}
+                    numberOfLines={1}
+                  >
                     {item.time}
                   </Text>
                 </View>
@@ -380,37 +477,21 @@ const Messenger = ({
       </Text>
 
       <View style={styles.plusButtonArea}>
-        <View ref={plusButtonRef} collapsable={false}>
+        <View ref={infoButtonRef} collapsable={false}>
           <Pressable
             style={[
               styles.headerIconButton,
-              Platform.OS === 'web' && showPlusTooltip && styles.headerIconButtonHover,
+              Platform.OS === 'web' && showInfoMenu && styles.headerIconButtonHover,
             ]}
-            onPress={handleOpenCreateRoomModal}
-            onHoverIn={() => {
-              if (Platform.OS === 'web') {
-                setShowPlusTooltip(true);
-              }
-            }}
-            onHoverOut={() => {
-              if (Platform.OS === 'web') {
-                setShowPlusTooltip(false);
-              }
-            }}
+            onPress={handleOpenInfoMenu}
           >
             <MaterialCommunityIcons
-              name="plus-circle"
+              name="information-outline"
               size={sizes.headerIcon}
               color="#111"
             />
           </Pressable>
         </View>
-
-        {Platform.OS === 'web' && showPlusTooltip && (
-          <View style={styles.plusTooltip}>
-            <Text style={styles.plusTooltipText}>Create room</Text>
-          </View>
-        )}
       </View>
     </View>
   );
@@ -421,7 +502,7 @@ const Messenger = ({
         styles.messageRow,
         {
           marginBottom: sizes.messageGap,
-          maxWidth: isDesktop ? '60%' : isTablet ? '68%' : '78%',
+          maxWidth: sizes.messageMaxWidth,
         },
         item.fromMe ? styles.messageRowMe : styles.messageRowThem,
       ]}
@@ -441,9 +522,9 @@ const Messenger = ({
           styles.bubble,
           item.fromMe ? styles.bubbleMe : styles.bubbleThem,
           {
-            paddingHorizontal: 12 * scale,
-            paddingVertical: 9 * scale,
-            borderRadius: 8 * scale,
+            paddingHorizontal: isTinyPhone ? 10 : 12,
+            paddingVertical: isTinyPhone ? 8 : 10,
+            borderRadius: isTinyPhone ? 10 : 12,
           },
         ]}
       >
@@ -454,10 +535,63 @@ const Messenger = ({
     </View>
   );
 
+  const renderInfoMenu = () => {
+    const menuWidth = isMobile ? 180 : 200;
+    const safeLeft = Math.max(8, Math.min(anchor.x, width - menuWidth - 8));
+    const safeTop = Math.max(8, Math.min(anchor.y, height - 160));
+
+    return (
+      <Modal
+        transparent
+        visible={showInfoMenu}
+        animationType="fade"
+        onRequestClose={() => setShowInfoMenu(false)}
+      >
+        <Pressable style={styles.modalOverlay} onPress={() => setShowInfoMenu(false)}>
+          <Pressable
+            onPress={(e) => e.stopPropagation()}
+            style={[
+              styles.infoMenu,
+              {
+                width: menuWidth,
+                left: safeLeft,
+                top: safeTop,
+              },
+            ]}
+          >
+            <Text style={styles.infoMenuTitle}>Choose Option</Text>
+
+            <TouchableOpacity
+              style={styles.infoMenuButton}
+              activeOpacity={0.85}
+              onPress={handleOpenMembersModal}
+            >
+              <MaterialCommunityIcons name="account-group-outline" size={16} color="#222" />
+              <Text style={styles.infoMenuButtonText}>See Members</Text>
+            </TouchableOpacity>
+
+            {!selected?.isCreatedRoom && (
+              <TouchableOpacity
+                style={styles.infoMenuButton}
+                activeOpacity={0.85}
+                onPress={handleOpenCreateRoomModal}
+              >
+                <MaterialCommunityIcons name="forum-outline" size={16} color="#222" />
+                <Text style={styles.infoMenuButtonText}>Create Room</Text>
+              </TouchableOpacity>
+            )}
+          </Pressable>
+        </Pressable>
+      </Modal>
+    );
+  };
+
   const renderCreateRoomModal = () => {
-    const modalWidth = isMobile ? 210 : 230;
+    const modalWidth = Math.min(width - (isMobile ? 24 : 40), isDesktop ? 430 : 360);
+    const modalMaxHeight = Math.min(height * (isMobile ? 0.78 : 0.72), 520);
+
     const safeLeft = Math.max(8, Math.min(anchor.x, width - modalWidth - 8));
-    const safeTop = Math.max(8, Math.min(anchor.y, height - 260));
+    const safeTop = Math.max(8, Math.min(anchor.y, height - modalMaxHeight - 16));
 
     return (
       <Modal
@@ -467,79 +601,247 @@ const Messenger = ({
         onRequestClose={() => setShowCreateRoomModal(false)}
       >
         <Pressable
-          style={styles.modalOverlay}
+          style={[styles.modalOverlay, styles.professionalOverlay]}
           onPress={() => setShowCreateRoomModal(false)}
         >
           <Pressable
             onPress={(e) => e.stopPropagation()}
             style={[
-              styles.createRoomModal,
-              {
-                width: modalWidth,
-                left: safeLeft,
-                top: safeTop,
-              },
+              styles.professionalModalCard,
+              isMobile
+                ? [
+                    styles.centeredProfessionalModal,
+                    {
+                      width: modalWidth,
+                      maxHeight: modalMaxHeight,
+                    },
+                  ]
+                : {
+                    position: 'absolute',
+                    width: modalWidth,
+                    maxHeight: modalMaxHeight,
+                    left: safeLeft,
+                    top: safeTop,
+                  },
             ]}
           >
-            <View style={styles.modalHeaderRow}>
+            <View style={styles.professionalModalHeader}>
+              <View style={styles.professionalModalHeaderTextWrap}>
+                <Text style={styles.professionalModalTitle}>Create Room</Text>
+                <Text style={styles.professionalModalSubtitle}>
+                  Start a focused discussion with selected members.
+                </Text>
+              </View>
+
               <TouchableOpacity
-                style={styles.modalHeaderButton}
+                style={styles.professionalCloseButton}
                 onPress={() => setShowCreateRoomModal(false)}
                 activeOpacity={0.8}
               >
-                <MaterialCommunityIcons name="chevron-left" size={16} color="#222" />
-                <Text style={styles.modalTitle}>Create Discussion Room</Text>
+                <MaterialCommunityIcons name="close" size={18} color="#333" />
               </TouchableOpacity>
             </View>
 
-            <View style={styles.modalInputRow}>
-              <TextInput
-                value={roomName}
-                onChangeText={setRoomName}
-                placeholder="Room Name"
-                placeholderTextColor="#9a9a9a"
-                style={styles.modalInput}
-              />
-              <TouchableOpacity
-                style={styles.modalCreateBtn}
-                activeOpacity={0.85}
-                onPress={handleCreateRoom}
-              >
-                <Text style={styles.modalCreateBtnText}>Create</Text>
-              </TouchableOpacity>
-            </View>
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={styles.professionalModalScrollContent}
+            >
+              <View style={styles.professionalSection}>
+                <Text style={styles.professionalLabel}>Room name</Text>
 
-            <View style={styles.memberList}>
-              {ROOM_MEMBERS.map((member, index) => {
-                const checked = checkedMembers.includes(member);
-                const isCurrentUser = member === CURRENT_USER;
+                <View
+                  style={[
+                    styles.professionalInputRow,
+                    isTinyPhone && styles.professionalInputRowStack,
+                  ]}
+                >
+                  <TextInput
+                    value={roomName}
+                    onChangeText={setRoomName}
+                    placeholder="Enter room name"
+                    placeholderTextColor="#9a9a9a"
+                    style={[
+                      styles.professionalInput,
+                      isTinyPhone && styles.professionalInputStack,
+                    ]}
+                  />
 
-                return (
                   <TouchableOpacity
-                    key={`${member}-${index}`}
-                    style={[styles.memberRow, isCurrentUser && styles.memberRowDisabled]}
-                    activeOpacity={0.8}
-                    onPress={() => toggleMember(member)}
+                    style={[
+                      styles.professionalPrimaryButton,
+                      isTinyPhone && styles.professionalPrimaryButtonStack,
+                    ]}
+                    activeOpacity={0.9}
+                    onPress={handleCreateRoom}
                   >
-                    <MaterialCommunityIcons
-                      name={
-                        checked ? 'checkbox-marked-outline' : 'checkbox-blank-outline'
-                      }
-                      size={15}
-                      color={checked ? '#8e8e8e' : '#b5b5b5'}
-                    />
-                    <Text
-                      style={[
-                        styles.memberText,
-                        isCurrentUser && styles.memberTextDisabled,
-                      ]}
-                    >
-                      {member}
-                    </Text>
+                    <MaterialCommunityIcons name="plus" size={16} color="#fff" />
+                    <Text style={styles.professionalPrimaryButtonText}>Create</Text>
                   </TouchableOpacity>
-                );
-              })}
+                </View>
+              </View>
+
+              <View style={styles.professionalSection}>
+                <Text style={styles.professionalLabel}>Members</Text>
+                <Text style={styles.professionalHelperText}>
+                  Select who will be included in this discussion room.
+                </Text>
+
+                <View style={styles.professionalMemberList}>
+                  {availableRoomMembers.map((member, index) => {
+                    const checked = checkedMembers.includes(member);
+                    const isCurrentUser = member === currentUser;
+
+                    return (
+                      <TouchableOpacity
+                        key={`${member}-${index}`}
+                        style={[
+                          styles.professionalMemberRow,
+                          checked && styles.professionalMemberRowActive,
+                          isCurrentUser && styles.professionalMemberRowDisabled,
+                        ]}
+                        activeOpacity={0.85}
+                        onPress={() => toggleMember(member)}
+                      >
+                        <View style={styles.professionalMemberInfo}>
+                          <View style={styles.professionalMemberAvatar}>
+                            <MaterialCommunityIcons
+                              name="account"
+                              size={16}
+                              color="#666"
+                            />
+                          </View>
+
+                          <View style={styles.professionalMemberTextWrap}>
+                            <Text style={styles.professionalMemberName}>{member}</Text>
+                            <Text style={styles.professionalMemberMeta}>
+                              {isCurrentUser
+                                ? 'Required member'
+                                : checked
+                                ? 'Selected'
+                                : 'Tap to select'}
+                            </Text>
+                          </View>
+                        </View>
+
+                        <MaterialCommunityIcons
+                          name={
+                            checked
+                              ? 'checkbox-marked-circle'
+                              : 'checkbox-blank-circle-outline'
+                          }
+                          size={22}
+                          color={checked ? '#d32f2f' : '#b8b8b8'}
+                        />
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
+            </ScrollView>
+          </Pressable>
+        </Pressable>
+      </Modal>
+    );
+  };
+
+  const renderMembersModal = () => {
+    const modalWidth = Math.min(width - (isMobile ? 24 : 40), isDesktop ? 420 : 350);
+    const modalMaxHeight = Math.min(height * (isMobile ? 0.72 : 0.68), 460);
+
+    const safeLeft = Math.max(8, Math.min(anchor.x, width - modalWidth - 8));
+    const safeTop = Math.max(8, Math.min(anchor.y, height - modalMaxHeight - 16));
+
+    return (
+      <Modal
+        transparent
+        visible={showMembersModal}
+        animationType="fade"
+        onRequestClose={() => setShowMembersModal(false)}
+      >
+        <Pressable
+          style={[styles.modalOverlay, styles.professionalOverlay]}
+          onPress={() => setShowMembersModal(false)}
+        >
+          <Pressable
+            onPress={(e) => e.stopPropagation()}
+            style={[
+              styles.professionalModalCard,
+              isMobile
+                ? [
+                    styles.centeredProfessionalModal,
+                    {
+                      width: modalWidth,
+                      maxHeight: modalMaxHeight,
+                    },
+                  ]
+                : {
+                    position: 'absolute',
+                    width: modalWidth,
+                    maxHeight: modalMaxHeight,
+                    left: safeLeft,
+                    top: safeTop,
+                  },
+            ]}
+          >
+            <View style={styles.professionalModalHeader}>
+              <View style={styles.professionalModalHeaderTextWrap}>
+                <Text style={styles.professionalModalTitle}>Members</Text>
+                <Text style={styles.professionalModalSubtitle}>
+                  People included in this conversation.
+                </Text>
+              </View>
+
+              <TouchableOpacity
+                style={styles.professionalCloseButton}
+                onPress={() => setShowMembersModal(false)}
+                activeOpacity={0.8}
+              >
+                <MaterialCommunityIcons name="close" size={18} color="#333" />
+              </TouchableOpacity>
             </View>
+
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={styles.professionalModalScrollContent}
+            >
+              {selected?.admin && (
+                <View style={styles.conversationMetaCard}>
+                  <Text style={styles.conversationMetaTitle}>Conversation Info</Text>
+                  <Text style={styles.conversationMetaText}>Admin: {selected.admin}</Text>
+                  {selected.section ? (
+                    <Text style={styles.conversationMetaText}>Section: {selected.section}</Text>
+                  ) : null}
+                </View>
+              )}
+
+              <View style={styles.professionalMemberList}>
+                {selectedConversationMembers.map((member, index) => {
+                  const isAdmin = member === selected?.admin;
+                  const isCurrentUser = member === currentUser;
+
+                  return (
+                    <View key={`${member}-${index}`} style={styles.professionalMemberRowStatic}>
+                      <View style={styles.professionalMemberInfo}>
+                        <View style={styles.professionalMemberAvatar}>
+                          <MaterialCommunityIcons
+                            name="account"
+                            size={16}
+                            color="#666"
+                          />
+                        </View>
+
+                        <View style={styles.professionalMemberTextWrap}>
+                          <Text style={styles.professionalMemberName}>{member}</Text>
+                          <Text style={styles.professionalMemberMeta}>
+                            {isAdmin ? 'Admin' : isCurrentUser ? 'Member (You)' : 'Member'}
+                          </Text>
+                        </View>
+                      </View>
+                    </View>
+                  );
+                })}
+              </View>
+            </ScrollView>
           </Pressable>
         </Pressable>
       </Modal>
@@ -585,8 +887,8 @@ const Messenger = ({
             styles.inputArea,
             {
               paddingHorizontal: sizes.horizontalPadding,
-              paddingTop: isDesktop ? 10 * scale : 8,
-              paddingBottom: isDesktop ? 18 * scale : 12,
+              paddingTop: sizes.verticalPadding,
+              paddingBottom: isDesktop ? 18 : 12,
               gap: sizes.inputGap,
             },
           ]}
@@ -596,13 +898,16 @@ const Messenger = ({
             onChangeText={setMessageText}
             placeholder="Write a message..."
             placeholderTextColor="#9a9a9a"
+            multiline={false}
             style={[
               styles.input,
               {
                 height: sizes.inputHeight,
+                minHeight: sizes.inputHeight,
                 fontSize: sizes.inputText,
-                borderRadius: 6 * scale,
+                borderRadius: 10,
                 paddingHorizontal: isDesktop ? 14 : isTablet ? 12 : 10,
+                paddingVertical: 0,
               },
             ]}
             onSubmitEditing={handleSend}
@@ -614,39 +919,37 @@ const Messenger = ({
               styles.sendBtn,
               {
                 height: sizes.sendHeight,
-                minWidth: sizes.sendWidth,
+                width: sizes.sendWidth,
                 paddingHorizontal: isDesktop ? 18 : isTablet ? 14 : 10,
-                borderRadius: 6 * scale,
+                borderRadius: 10,
               },
             ]}
             activeOpacity={0.85}
             onPress={handleSend}
           >
-            <Text style={[styles.sendBtnText, { fontSize: sizes.sendText }]}>
-              Send
-            </Text>
+            {isTinyPhone ? (
+              <MaterialCommunityIcons name="send" size={16} color="#fff" />
+            ) : (
+              <Text style={[styles.sendBtnText, { fontSize: sizes.inputText }]}>
+                Send
+              </Text>
+            )}
           </TouchableOpacity>
         </View>
 
+        {renderInfoMenu()}
         {renderCreateRoomModal()}
+        {renderMembersModal()}
       </View>
     );
   };
 
   if (isMobile) {
     if (selected) {
-      return (
-        <SafeAreaView style={styles.mobileScreen}>
-          {renderChatPane()}
-        </SafeAreaView>
-      );
+      return <SafeAreaView style={styles.mobileScreen}>{renderChatPane()}</SafeAreaView>;
     }
 
-    return (
-      <SafeAreaView style={styles.mobileScreen}>
-        {renderConversationList()}
-      </SafeAreaView>
-    );
+    return <SafeAreaView style={styles.mobileScreen}>{renderConversationList()}</SafeAreaView>;
   }
 
   return (
@@ -676,6 +979,21 @@ const styles = StyleSheet.create({
 
   sidebar: {
     backgroundColor: '#fff',
+    flexShrink: 0,
+  },
+  screenBackButton: {
+    marginTop: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingTop: 14,
+    paddingBottom: 4,
+  },
+  screenBackText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#111',
+    marginLeft: 2,
   },
   pageTitle: {
     fontWeight: 'bold',
@@ -704,15 +1022,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    gap: 8,
   },
   convName: {
     fontWeight: '700',
     color: '#111',
     flex: 1,
+    minWidth: 0,
+    marginRight: 8,
   },
   convTime: {
     color: '#888',
+    flexShrink: 0,
   },
   convLast: {
     color: '#666',
@@ -722,8 +1042,10 @@ const styles = StyleSheet.create({
   chatPane: {
     flex: 1,
     backgroundColor: '#fff',
+    minWidth: 0,
   },
   chatHeader: {
+    marginTop: 25,
     borderBottomWidth: 1,
     borderBottomColor: '#d9d9d9',
     flexDirection: 'row',
@@ -735,7 +1057,7 @@ const styles = StyleSheet.create({
     zIndex: 20,
   },
   backButton: {
-    width: 80,
+    minWidth: 60,
     flexDirection: 'row',
     alignItems: 'center',
   },
@@ -750,39 +1072,54 @@ const styles = StyleSheet.create({
     marginHorizontal: 8,
   },
   plusButtonArea: {
-    width: 80,
+    minWidth: 60,
     alignItems: 'flex-end',
     justifyContent: 'center',
     position: 'relative',
     overflow: 'visible',
   },
   headerIconButton: {
-    width: 36,
-    height: 36,
+    width: 34,
+    height: 34,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 18,
+    borderRadius: 17,
   },
   headerIconButtonHover: {
     backgroundColor: 'rgba(0,0,0,0.05)',
   },
-  plusTooltip: {
+
+  infoMenu: {
     position: 'absolute',
-    top: '100%',
-    right: 0,
-    marginTop: 6,
-    backgroundColor: '#222',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    backgroundColor: '#fff',
     borderRadius: 8,
-    zIndex: 999,
-    elevation: 10,
-    minWidth: 92,
-    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 10,
+    borderWidth: 1,
+    borderColor: '#d9d9d9',
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 5,
   },
-  plusTooltipText: {
-    color: '#fff',
+  infoMenuTitle: {
     fontSize: 12,
+    fontWeight: '700',
+    color: '#222',
+    marginBottom: 8,
+  },
+  infoMenuButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 6,
+    borderRadius: 6,
+  },
+  infoMenuButtonText: {
+    fontSize: 12,
+    color: '#222',
     fontWeight: '500',
   },
 
@@ -823,8 +1160,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#fff',
+    borderBottomColor: '#e0e0e0',
+    borderBottomWidth: 1,
   },
   input: {
+    alignContent: 'center',
+    justifyContent: 'center',
     flex: 1,
     borderWidth: 1,
     borderColor: '#8a8a8a',
@@ -836,6 +1177,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     alignSelf: 'center',
+    flexShrink: 0,
   },
   sendBtnText: {
     color: '#fff',
@@ -867,88 +1209,205 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: 'transparent',
   },
-  createRoomModal: {
-    position: 'absolute',
-    backgroundColor: '#f3f3f3',
-    borderRadius: 6,
-    paddingTop: 10,
+  professionalOverlay: {
+    backgroundColor: 'rgba(15, 23, 42, 0.28)',
+    justifyContent: 'center',
+    alignItems: 'center',
     paddingHorizontal: 12,
-    paddingBottom: 12,
-    borderWidth: 1,
-    borderColor: '#cfcfcf',
-    shadowColor: '#000',
-    shadowOpacity: 0.08,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 5,
   },
-  modalHeaderRow: {
+  professionalModalCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: '#ececec',
+    shadowColor: '#000',
+    shadowOpacity: 0.12,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 8,
+    overflow: 'hidden',
+  },
+  centeredProfessionalModal: {
+    position: 'relative',
+  },
+  professionalModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    paddingHorizontal: 18,
+    paddingTop: 18,
+    paddingBottom: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+    backgroundColor: '#fff',
+  },
+  professionalModalHeaderTextWrap: {
+    flex: 1,
+    paddingRight: 12,
+  },
+  professionalModalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#111827',
+  },
+  professionalModalSubtitle: {
+    marginTop: 4,
+    fontSize: 12,
+    lineHeight: 18,
+    color: '#6b7280',
+  },
+  professionalCloseButton: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#f5f5f5',
+  },
+  professionalModalScrollContent: {
+    paddingHorizontal: 18,
+    paddingTop: 16,
+    paddingBottom: 18,
+  },
+  professionalSection: {
+    marginBottom: 18,
+  },
+  professionalLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#222',
+    marginBottom: 8,
+  },
+  professionalHelperText: {
+    fontSize: 12,
+    lineHeight: 18,
+    color: '#777',
+    marginBottom: 12,
+  },
+  professionalInputRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 10,
-    gap: 3,
+    gap: 10,
   },
-  modalHeaderButton: {
-  flexDirection: 'row',
-  alignItems: 'center',
-  gap: 4,
-},
-  modalTitle: {
+  professionalInputRowStack: {
+    flexDirection: 'column',
+    alignItems: 'stretch',
+  },
+  professionalInput: {
+    flex: 1,
+    minHeight: 44,
+    borderWidth: 1,
+    borderColor: '#d6d6d6',
+    backgroundColor: '#fafafa',
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    fontSize: 14,
+    color: '#111',
+  },
+  professionalInputStack: {
+    width: '100%',
+  },
+  professionalPrimaryButton: {
+    height: 44,
+    minWidth: 108,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    backgroundColor: '#d32f2f',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  professionalPrimaryButtonStack: {
+    width: '100%',
+  },
+  professionalPrimaryButtonText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  professionalMemberList: {
+    gap: 10,
+  },
+  professionalMemberRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    minHeight: 58,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#ececec',
+    backgroundColor: '#fff',
+  },
+  professionalMemberRowActive: {
+    borderColor: '#f2b2b2',
+    backgroundColor: '#fff7f7',
+  },
+  professionalMemberRowDisabled: {
+    opacity: 0.92,
+  },
+  professionalMemberRowStatic: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    minHeight: 56,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#ececec',
+    backgroundColor: '#fbfbfb',
+  },
+  professionalMemberInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    minWidth: 0,
+    paddingRight: 12,
+  },
+  professionalMemberAvatar: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: '#f2f2f2',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
+  },
+  professionalMemberTextWrap: {
+    flex: 1,
+    minWidth: 0,
+  },
+  professionalMemberName: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#222',
+  },
+  professionalMemberMeta: {
+    marginTop: 2,
+    fontSize: 11,
+    color: '#7a7a7a',
+  },
+  conversationMetaCard: {
+    marginBottom: 12,
+    padding: 12,
+    borderRadius: 12,
+    backgroundColor: '#fff7f7',
+    borderWidth: 1,
+    borderColor: '#f5d0d0',
+  },
+  conversationMetaTitle: {
     fontSize: 12,
     fontWeight: '700',
     color: '#222',
+    marginBottom: 6,
   },
-  modalInputRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 10,
-  },
-  modalInput: {
-    flex: 1,
-    height: 28,
-    borderWidth: 1,
-    borderColor: '#bdbdbd',
-    backgroundColor: '#fff',
-    borderRadius: 2,
-    paddingHorizontal: 8,
-    fontSize: 9,
-    color: '#111',
-  },
-  modalCreateBtn: {
-    backgroundColor: '#ef1d1d',
-    minWidth: 52,
-    height: 28,
-    borderRadius: 2,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 10,
-  },
-  modalCreateBtnText: {
-    color: '#fff',
-    fontSize: 9,
-    fontWeight: '700',
-  },
-  memberList: {
-    gap: 5,
-    paddingTop: 2,
-  },
-  memberRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    minHeight: 18,
-  },
-  memberRowDisabled: {
-    opacity: 0.75,
-  },
-  memberText: {
-    fontSize: 10,
+  conversationMetaText: {
+    fontSize: 12,
     color: '#555',
-  },
-  memberTextDisabled: {
-    color: '#666',
-    fontWeight: '600',
+    marginTop: 2,
   },
 });
 

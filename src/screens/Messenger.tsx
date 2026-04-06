@@ -7,6 +7,7 @@ import {
   Platform,
   Pressable,
   SafeAreaView,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -19,6 +20,15 @@ import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityI
 const CURRENT_USER = 'Jade Lisondra';
 const DEFAULT_AVATAR = require('../../assets/images/default_profile.png');
 
+type MessengerCourse = {
+  id: string;
+  name: string;
+  instructor: string;
+  semester: string;
+  schoolYear: string;
+  section?: string;
+};
+
 type Conversation = {
   id: string;
   name: string;
@@ -26,7 +36,11 @@ type Conversation = {
   avatar: any;
   time: string;
   isRoom?: boolean;
+  isCreatedRoom?: boolean;
   members?: string[];
+  admin?: string;
+  classId?: string;
+  section?: string;
 };
 
 type Message = {
@@ -44,75 +58,20 @@ const ROOM_MEMBERS = [
   'Lude Lisendra',
 ];
 
-const INITIAL_CONVERSATIONS: Conversation[] = [
-  {
-    id: 'c1',
-    name: 'Networking 1',
-    last: "Yes ma'am",
-    avatar: DEFAULT_AVATAR,
-    time: '2:15 PM',
-    isRoom: false,
-    members: ['Ramcee Bading', 'Ramcee Buyot'],
-  },
-  {
-    id: 'c2',
-    name: 'Programming 1',
-    last: 'Thanks!',
-    avatar: DEFAULT_AVATAR,
-    time: '1:02 PM',
-    isRoom: false,
-    members: ['Programming 1'],
-  },
-  {
-    id: 'c3',
-    name: 'Web Dev',
-    last: 'Assignment due tomorrow.',
-    avatar: DEFAULT_AVATAR,
-    time: 'Yesterday',
-    isRoom: false,
-    members: ['Web Dev'],
-  },
-];
-
-const INITIAL_MESSAGES: Record<string, Message[]> = {
-  c1: [
-    {
-      id: 'm1',
-      fromMe: false,
-      sender: 'Ramcee Bading',
-      text: 'Hello, does everyone attending the review?',
-    },
-    {
-      id: 'm2',
-      fromMe: true,
-      sender: 'Ramcee Buyot',
-      text: "Yes ma'am",
-    },
-  ],
-  c2: [
-    {
-      id: 'm3',
-      fromMe: false,
-      sender: 'Programming 1',
-      text: 'Thanks!',
-    },
-  ],
-  c3: [
-    {
-      id: 'm4',
-      fromMe: false,
-      sender: 'Web Dev',
-      text: 'Assignment due tomorrow.',
-    },
-  ],
-};
+const INITIAL_MESSAGES: Record<string, Message[]> = {};
 
 const Messenger = ({
   searchQuery = '',
   onConversationActiveChange,
+  onBack,
+  courses = [],
+  currentUser = CURRENT_USER,
 }: {
   searchQuery?: string;
   onConversationActiveChange?: (isActive: boolean) => void;
+  onBack?: () => void;
+  courses?: MessengerCourse[];
+  currentUser?: string;
 }) => {
   const { width, height } = useWindowDimensions();
 
@@ -122,17 +81,31 @@ const Messenger = ({
   const isDesktop = width >= 1200;
 
   const isSplitView = !isMobile;
-  const isCompactInput = width < 420;
   const scale = isDesktop ? 1.15 : isTablet ? 1.05 : 1;
 
   const messageMaxWidth: DimensionValue =
     isDesktop ? '58%' : isTablet ? '66%' : isTinyPhone ? '88%' : '80%';
 
   const sendWidth: DimensionValue =
-    isDesktop ? 96 : isTablet ? 84 : isTinyPhone ? '100%' : 72;
+    isDesktop ? 96 : isTablet ? 84 : isTinyPhone ? 54 : 72;
 
-  const [conversations, setConversations] =
-    useState<Conversation[]>(INITIAL_CONVERSATIONS);
+  const courseConversations = useMemo<Conversation[]>(() => {
+    return courses.map((course) => ({
+      id: `class-${course.id}`,
+      classId: course.id,
+      name: `${course.name} - ${course.semester} (${course.schoolYear})`,
+      last: 'Class conversation created.',
+      avatar: DEFAULT_AVATAR,
+      time: 'Now',
+      isRoom: true,
+      isCreatedRoom: false,
+      admin: course.instructor,
+      members: [course.instructor, currentUser],
+      section: course.section,
+    }));
+  }, [courses, currentUser]);
+
+  const [conversations, setConversations] = useState<Conversation[]>(courseConversations);
   const [selected, setSelected] = useState<Conversation | null>(null);
   const [messageText, setMessageText] = useState('');
   const [messagesByConversation, setMessagesByConversation] =
@@ -143,7 +116,7 @@ const Messenger = ({
   const [showInfoMenu, setShowInfoMenu] = useState(false);
 
   const [roomName, setRoomName] = useState('');
-  const [checkedMembers, setCheckedMembers] = useState<string[]>([CURRENT_USER]);
+  const [checkedMembers, setCheckedMembers] = useState<string[]>([currentUser]);
   const [anchor, setAnchor] = useState({ x: 0, y: 0 });
 
   const infoButtonRef = useRef<View>(null);
@@ -151,6 +124,43 @@ const Messenger = ({
   useEffect(() => {
     onConversationActiveChange?.(false);
   }, [onConversationActiveChange]);
+
+  useEffect(() => {
+    setConversations((prev) => {
+      const createdRooms = prev.filter((conversation) => conversation.isCreatedRoom);
+      return [...createdRooms, ...courseConversations];
+    });
+
+    setMessagesByConversation((prev) => {
+      const next = { ...prev };
+
+      courseConversations.forEach((conversation) => {
+        if (!next[conversation.id]) {
+          next[conversation.id] = [
+            {
+              id: `msg-${conversation.id}`,
+              fromMe: false,
+              sender: conversation.admin || conversation.name,
+              text: `${conversation.name} conversation has been created.`,
+            },
+          ];
+        }
+      });
+
+      return next;
+    });
+
+    setSelected((prev) => {
+      if (!prev) return prev;
+
+      const matchedCourseConversation = courseConversations.find(
+        (item) => item.id === prev.id
+      );
+
+      if (matchedCourseConversation) return matchedCourseConversation;
+      return prev;
+    });
+  }, [courseConversations]);
 
   const filtered = useMemo(() => {
     return conversations.filter(
@@ -168,6 +178,11 @@ const Messenger = ({
       : selected
       ? [selected.name]
       : [];
+
+  const availableRoomMembers = useMemo(() => {
+    const baseMembers = selected?.members || [];
+    return Array.from(new Set([currentUser, ...baseMembers, ...ROOM_MEMBERS]));
+  }, [selected, currentUser]);
 
   const sizes = {
     sidebarWidth: isDesktop ? Math.min(width * 0.28, 380) : isTablet ? 320 : width,
@@ -262,7 +277,7 @@ const Messenger = ({
   };
 
   const toggleMember = (member: string) => {
-    if (member === CURRENT_USER) return;
+    if (member === currentUser) return;
 
     setCheckedMembers((prev) =>
       prev.includes(member) ? prev.filter((m) => m !== member) : [...prev, member]
@@ -291,9 +306,10 @@ const Messenger = ({
   };
 
   const handleOpenCreateRoomModal = () => {
-    if (selected?.isRoom) return;
+    if (selected?.isCreatedRoom) return;
+
     setShowInfoMenu(false);
-    setCheckedMembers([CURRENT_USER]);
+    setCheckedMembers([currentUser]);
     setRoomName('');
     setShowCreateRoomModal(true);
   };
@@ -305,12 +321,14 @@ const Messenger = ({
 
   const handleCreateRoom = () => {
     const trimmedRoomName = roomName.trim();
-    if (!trimmedRoomName || !selected || selected.isRoom) return;
+    if (!trimmedRoomName || !selected) return;
 
     const conversationName = `${trimmedRoomName} - ${selected.name}`;
     const newConversationId = `room-${Date.now()}`;
     const nowLabel = getCurrentTimeLabel();
-    const roomMembers = [...checkedMembers];
+
+    // Only include explicitly selected members + current user
+    const roomMembers = Array.from(new Set([...checkedMembers, currentUser]));
 
     const systemMessage: Message = {
       id: `msg-${Date.now()}`,
@@ -326,7 +344,11 @@ const Messenger = ({
       avatar: DEFAULT_AVATAR,
       time: nowLabel,
       isRoom: true,
+      isCreatedRoom: true,
       members: roomMembers,
+      admin: currentUser,
+      classId: selected.classId,
+      section: selected.section,
     };
 
     setConversations((prev) => [newConversation, ...prev]);
@@ -341,7 +363,7 @@ const Messenger = ({
 
     setShowCreateRoomModal(false);
     setRoomName('');
-    setCheckedMembers([CURRENT_USER]);
+    setCheckedMembers([currentUser]);
   };
 
   const renderConversationList = () => (
@@ -355,6 +377,17 @@ const Messenger = ({
         },
       ]}
     >
+      {isMobile && (
+        <TouchableOpacity
+          onPress={onBack}
+          style={styles.screenBackButton}
+          activeOpacity={0.8}
+        >
+          <MaterialCommunityIcons name="chevron-left" size={22} color="#111" />
+          <Text style={styles.screenBackText}>Back</Text>
+        </TouchableOpacity>
+      )}
+
       <Text style={[styles.pageTitle, { fontSize: sizes.pageTitle }]}>Messages</Text>
 
       <FlatList
@@ -537,7 +570,7 @@ const Messenger = ({
               <Text style={styles.infoMenuButtonText}>See Members</Text>
             </TouchableOpacity>
 
-            {!selected?.isRoom && (
+            {!selected?.isCreatedRoom && (
               <TouchableOpacity
                 style={styles.infoMenuButton}
                 activeOpacity={0.85}
@@ -554,9 +587,11 @@ const Messenger = ({
   };
 
   const renderCreateRoomModal = () => {
-    const modalWidth = isMobile ? 210 : 230;
+    const modalWidth = Math.min(width - (isMobile ? 24 : 40), isDesktop ? 430 : 360);
+    const modalMaxHeight = Math.min(height * (isMobile ? 0.78 : 0.72), 520);
+
     const safeLeft = Math.max(8, Math.min(anchor.x, width - modalWidth - 8));
-    const safeTop = Math.max(8, Math.min(anchor.y, height - 260));
+    const safeTop = Math.max(8, Math.min(anchor.y, height - modalMaxHeight - 16));
 
     return (
       <Modal
@@ -566,79 +601,143 @@ const Messenger = ({
         onRequestClose={() => setShowCreateRoomModal(false)}
       >
         <Pressable
-          style={styles.modalOverlay}
+          style={[styles.modalOverlay, styles.professionalOverlay]}
           onPress={() => setShowCreateRoomModal(false)}
         >
           <Pressable
             onPress={(e) => e.stopPropagation()}
             style={[
-              styles.createRoomModal,
-              {
-                width: modalWidth,
-                left: safeLeft,
-                top: safeTop,
-              },
+              styles.professionalModalCard,
+              isMobile
+                ? [
+                    styles.centeredProfessionalModal,
+                    {
+                      width: modalWidth,
+                      maxHeight: modalMaxHeight,
+                    },
+                  ]
+                : {
+                    position: 'absolute',
+                    width: modalWidth,
+                    maxHeight: modalMaxHeight,
+                    left: safeLeft,
+                    top: safeTop,
+                  },
             ]}
           >
-            <View style={styles.modalHeaderRow}>
+            <View style={styles.professionalModalHeader}>
+              <View style={styles.professionalModalHeaderTextWrap}>
+                <Text style={styles.professionalModalTitle}>Create Room</Text>
+                <Text style={styles.professionalModalSubtitle}>
+                  Start a focused discussion with selected members.
+                </Text>
+              </View>
+
               <TouchableOpacity
-                style={styles.modalHeaderButton}
+                style={styles.professionalCloseButton}
                 onPress={() => setShowCreateRoomModal(false)}
                 activeOpacity={0.8}
               >
-                <MaterialCommunityIcons name="chevron-left" size={16} color="#222" />
-                <Text style={styles.modalTitle}>Create Discussion Room</Text>
+                <MaterialCommunityIcons name="close" size={18} color="#333" />
               </TouchableOpacity>
             </View>
 
-            <View style={styles.modalInputRow}>
-              <TextInput
-                value={roomName}
-                onChangeText={setRoomName}
-                placeholder="Room Name"
-                placeholderTextColor="#9a9a9a"
-                style={styles.modalInput}
-              />
-              <TouchableOpacity
-                style={styles.modalCreateBtn}
-                activeOpacity={0.85}
-                onPress={handleCreateRoom}
-              >
-                <Text style={styles.modalCreateBtnText}>Create</Text>
-              </TouchableOpacity>
-            </View>
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={styles.professionalModalScrollContent}
+            >
+              <View style={styles.professionalSection}>
+                <Text style={styles.professionalLabel}>Room name</Text>
 
-            <View style={styles.memberList}>
-              {ROOM_MEMBERS.map((member, index) => {
-                const checked = checkedMembers.includes(member);
-                const isCurrentUser = member === CURRENT_USER;
+                <View
+                  style={[
+                    styles.professionalInputRow,
+                    isTinyPhone && styles.professionalInputRowStack,
+                  ]}
+                >
+                  <TextInput
+                    value={roomName}
+                    onChangeText={setRoomName}
+                    placeholder="Enter room name"
+                    placeholderTextColor="#9a9a9a"
+                    style={[
+                      styles.professionalInput,
+                      isTinyPhone && styles.professionalInputStack,
+                    ]}
+                  />
 
-                return (
                   <TouchableOpacity
-                    key={`${member}-${index}`}
-                    style={[styles.memberRow, isCurrentUser && styles.memberRowDisabled]}
-                    activeOpacity={0.8}
-                    onPress={() => toggleMember(member)}
+                    style={[
+                      styles.professionalPrimaryButton,
+                      isTinyPhone && styles.professionalPrimaryButtonStack,
+                    ]}
+                    activeOpacity={0.9}
+                    onPress={handleCreateRoom}
                   >
-                    <MaterialCommunityIcons
-                      name={
-                        checked ? 'checkbox-marked-outline' : 'checkbox-blank-outline'
-                      }
-                      size={15}
-                      color={checked ? '#8e8e8e' : '#b5b5b5'}
-                    />
-                    <Text
-                      style={[
-                        styles.memberText,
-                        isCurrentUser && styles.memberTextDisabled,
-                      ]}
-                    >
-                      {member}
-                    </Text>
+                    <MaterialCommunityIcons name="plus" size={16} color="#fff" />
+                    <Text style={styles.professionalPrimaryButtonText}>Create</Text>
                   </TouchableOpacity>
-                );
-              })}
-            </View>
+                </View>
+              </View>
+
+              <View style={styles.professionalSection}>
+                <Text style={styles.professionalLabel}>Members</Text>
+                <Text style={styles.professionalHelperText}>
+                  Select who will be included in this discussion room.
+                </Text>
+
+                <View style={styles.professionalMemberList}>
+                  {availableRoomMembers.map((member, index) => {
+                    const checked = checkedMembers.includes(member);
+                    const isCurrentUser = member === currentUser;
+
+                    return (
+                      <TouchableOpacity
+                        key={`${member}-${index}`}
+                        style={[
+                          styles.professionalMemberRow,
+                          checked && styles.professionalMemberRowActive,
+                          isCurrentUser && styles.professionalMemberRowDisabled,
+                        ]}
+                        activeOpacity={0.85}
+                        onPress={() => toggleMember(member)}
+                      >
+                        <View style={styles.professionalMemberInfo}>
+                          <View style={styles.professionalMemberAvatar}>
+                            <MaterialCommunityIcons
+                              name="account"
+                              size={16}
+                              color="#666"
+                            />
+                          </View>
+
+                          <View style={styles.professionalMemberTextWrap}>
+                            <Text style={styles.professionalMemberName}>{member}</Text>
+                            <Text style={styles.professionalMemberMeta}>
+                              {isCurrentUser
+                                ? 'Required member'
+                                : checked
+                                ? 'Selected'
+                                : 'Tap to select'}
+                            </Text>
+                          </View>
+                        </View>
+
+                        <MaterialCommunityIcons
+                          name={
+                            checked
+                              ? 'checkbox-marked-circle'
+                              : 'checkbox-blank-circle-outline'
+                          }
+                          size={22}
+                          color={checked ? '#d32f2f' : '#b8b8b8'}
+                        />
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
+            </ScrollView>
           </Pressable>
         </Pressable>
       </Modal>
@@ -646,9 +745,11 @@ const Messenger = ({
   };
 
   const renderMembersModal = () => {
-    const modalWidth = isMobile ? 210 : 230;
+    const modalWidth = Math.min(width - (isMobile ? 24 : 40), isDesktop ? 420 : 350);
+    const modalMaxHeight = Math.min(height * (isMobile ? 0.72 : 0.68), 460);
+
     const safeLeft = Math.max(8, Math.min(anchor.x, width - modalWidth - 8));
-    const safeTop = Math.max(8, Math.min(anchor.y, height - 260));
+    const safeTop = Math.max(8, Math.min(anchor.y, height - modalMaxHeight - 16));
 
     return (
       <Modal
@@ -657,41 +758,90 @@ const Messenger = ({
         animationType="fade"
         onRequestClose={() => setShowMembersModal(false)}
       >
-        <Pressable style={styles.modalOverlay} onPress={() => setShowMembersModal(false)}>
+        <Pressable
+          style={[styles.modalOverlay, styles.professionalOverlay]}
+          onPress={() => setShowMembersModal(false)}
+        >
           <Pressable
             onPress={(e) => e.stopPropagation()}
             style={[
-              styles.createRoomModal,
-              {
-                width: modalWidth,
-                left: safeLeft,
-                top: safeTop,
-              },
+              styles.professionalModalCard,
+              isMobile
+                ? [
+                    styles.centeredProfessionalModal,
+                    {
+                      width: modalWidth,
+                      maxHeight: modalMaxHeight,
+                    },
+                  ]
+                : {
+                    position: 'absolute',
+                    width: modalWidth,
+                    maxHeight: modalMaxHeight,
+                    left: safeLeft,
+                    top: safeTop,
+                  },
             ]}
           >
-            <View style={styles.modalHeaderRow}>
+            <View style={styles.professionalModalHeader}>
+              <View style={styles.professionalModalHeaderTextWrap}>
+                <Text style={styles.professionalModalTitle}>Members</Text>
+                <Text style={styles.professionalModalSubtitle}>
+                  People included in this conversation.
+                </Text>
+              </View>
+
               <TouchableOpacity
-                style={styles.modalHeaderButton}
+                style={styles.professionalCloseButton}
                 onPress={() => setShowMembersModal(false)}
                 activeOpacity={0.8}
               >
-                <MaterialCommunityIcons name="chevron-left" size={16} color="#222" />
-                <Text style={styles.modalTitle}>Chat Members</Text>
+                <MaterialCommunityIcons name="close" size={18} color="#333" />
               </TouchableOpacity>
             </View>
 
-            <View style={styles.memberList}>
-              {selectedConversationMembers.map((member, index) => (
-                <View key={`${member}-${index}`} style={styles.memberRow}>
-                  <MaterialCommunityIcons
-                    name="account-circle-outline"
-                    size={16}
-                    color="#8e8e8e"
-                  />
-                  <Text style={styles.memberText}>{member}</Text>
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={styles.professionalModalScrollContent}
+            >
+              {selected?.admin && (
+                <View style={styles.conversationMetaCard}>
+                  <Text style={styles.conversationMetaTitle}>Conversation Info</Text>
+                  <Text style={styles.conversationMetaText}>Admin: {selected.admin}</Text>
+                  {selected.section ? (
+                    <Text style={styles.conversationMetaText}>Section: {selected.section}</Text>
+                  ) : null}
                 </View>
-              ))}
-            </View>
+              )}
+
+              <View style={styles.professionalMemberList}>
+                {selectedConversationMembers.map((member, index) => {
+                  const isAdmin = member === selected?.admin;
+                  const isCurrentUser = member === currentUser;
+
+                  return (
+                    <View key={`${member}-${index}`} style={styles.professionalMemberRowStatic}>
+                      <View style={styles.professionalMemberInfo}>
+                        <View style={styles.professionalMemberAvatar}>
+                          <MaterialCommunityIcons
+                            name="account"
+                            size={16}
+                            color="#666"
+                          />
+                        </View>
+
+                        <View style={styles.professionalMemberTextWrap}>
+                          <Text style={styles.professionalMemberName}>{member}</Text>
+                          <Text style={styles.professionalMemberMeta}>
+                            {isAdmin ? 'Admin' : isCurrentUser ? 'Member (You)' : 'Member'}
+                          </Text>
+                        </View>
+                      </View>
+                    </View>
+                  );
+                })}
+              </View>
+            </ScrollView>
           </Pressable>
         </Pressable>
       </Modal>
@@ -735,7 +885,6 @@ const Messenger = ({
         <View
           style={[
             styles.inputArea,
-            isCompactInput && styles.inputAreaCompact,
             {
               paddingHorizontal: sizes.horizontalPadding,
               paddingTop: sizes.verticalPadding,
@@ -749,27 +898,25 @@ const Messenger = ({
             onChangeText={setMessageText}
             placeholder="Write a message..."
             placeholderTextColor="#9a9a9a"
-            multiline={!isCompactInput}
+            multiline={false}
             style={[
               styles.input,
-              isCompactInput && styles.inputCompact,
               {
-                height: isCompactInput ? undefined : sizes.inputHeight,
+                height: sizes.inputHeight,
                 minHeight: sizes.inputHeight,
                 fontSize: sizes.inputText,
                 borderRadius: 10,
                 paddingHorizontal: isDesktop ? 14 : isTablet ? 12 : 10,
-                paddingVertical: isCompactInput ? 10 : 0,
+                paddingVertical: 0,
               },
             ]}
-            onSubmitEditing={!isCompactInput ? handleSend : undefined}
+            onSubmitEditing={handleSend}
             returnKeyType="send"
           />
 
           <TouchableOpacity
             style={[
               styles.sendBtn,
-              isCompactInput && styles.sendBtnCompact,
               {
                 height: sizes.sendHeight,
                 width: sizes.sendWidth,
@@ -780,9 +927,13 @@ const Messenger = ({
             activeOpacity={0.85}
             onPress={handleSend}
           >
-            <Text style={[styles.sendBtnText, { fontSize: sizes.inputText }]}>
-              Send
-            </Text>
+            {isTinyPhone ? (
+              <MaterialCommunityIcons name="send" size={16} color="#fff" />
+            ) : (
+              <Text style={[styles.sendBtnText, { fontSize: sizes.inputText }]}>
+                Send
+              </Text>
+            )}
           </TouchableOpacity>
         </View>
 
@@ -829,6 +980,20 @@ const styles = StyleSheet.create({
   sidebar: {
     backgroundColor: '#fff',
     flexShrink: 0,
+  },
+  screenBackButton: {
+    marginTop: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingTop: 14,
+    paddingBottom: 4,
+  },
+  screenBackText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#111',
+    marginLeft: 2,
   },
   pageTitle: {
     fontWeight: 'bold',
@@ -880,6 +1045,7 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   chatHeader: {
+    marginTop: 25,
     borderBottomWidth: 1,
     borderBottomColor: '#d9d9d9',
     flexDirection: 'row',
@@ -994,31 +1160,24 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#fff',
-  },
-  inputAreaCompact: {
-    flexDirection: 'column',
-    alignItems: 'stretch',
+    borderBottomColor: '#e0e0e0',
+    borderBottomWidth: 1,
   },
   input: {
+    alignContent: 'center',
+    justifyContent: 'center',
     flex: 1,
     borderWidth: 1,
     borderColor: '#8a8a8a',
     color: '#111',
     backgroundColor: '#fff',
   },
-  inputCompact: {
-    width: '100%',
-    flex: 0,
-  },
   sendBtn: {
     backgroundColor: '#ea1111',
     alignItems: 'center',
     justifyContent: 'center',
     alignSelf: 'center',
-  },
-  sendBtnCompact: {
-    width: '100%',
-    alignSelf: 'stretch',
+    flexShrink: 0,
   },
   sendBtnText: {
     color: '#fff',
@@ -1050,88 +1209,205 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: 'transparent',
   },
-  createRoomModal: {
-    position: 'absolute',
-    backgroundColor: '#f3f3f3',
-    borderRadius: 6,
-    paddingTop: 10,
+  professionalOverlay: {
+    backgroundColor: 'rgba(15, 23, 42, 0.28)',
+    justifyContent: 'center',
+    alignItems: 'center',
     paddingHorizontal: 12,
-    paddingBottom: 12,
+  },
+  professionalModalCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 18,
     borderWidth: 1,
-    borderColor: '#cfcfcf',
+    borderColor: '#ececec',
     shadowColor: '#000',
-    shadowOpacity: 0.08,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 5,
+    shadowOpacity: 0.12,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 8,
+    overflow: 'hidden',
   },
-  modalHeaderRow: {
+  centeredProfessionalModal: {
+    position: 'relative',
+  },
+  professionalModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    paddingHorizontal: 18,
+    paddingTop: 18,
+    paddingBottom: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+    backgroundColor: '#fff',
+  },
+  professionalModalHeaderTextWrap: {
+    flex: 1,
+    paddingRight: 12,
+  },
+  professionalModalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#111827',
+  },
+  professionalModalSubtitle: {
+    marginTop: 4,
+    fontSize: 12,
+    lineHeight: 18,
+    color: '#6b7280',
+  },
+  professionalCloseButton: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#f5f5f5',
+  },
+  professionalModalScrollContent: {
+    paddingHorizontal: 18,
+    paddingTop: 16,
+    paddingBottom: 18,
+  },
+  professionalSection: {
+    marginBottom: 18,
+  },
+  professionalLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#222',
+    marginBottom: 8,
+  },
+  professionalHelperText: {
+    fontSize: 12,
+    lineHeight: 18,
+    color: '#777',
+    marginBottom: 12,
+  },
+  professionalInputRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 10,
-    gap: 3,
+    gap: 10,
   },
-  modalHeaderButton: {
+  professionalInputRowStack: {
+    flexDirection: 'column',
+    alignItems: 'stretch',
+  },
+  professionalInput: {
+    flex: 1,
+    minHeight: 44,
+    borderWidth: 1,
+    borderColor: '#d6d6d6',
+    backgroundColor: '#fafafa',
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    fontSize: 14,
+    color: '#111',
+  },
+  professionalInputStack: {
+    width: '100%',
+  },
+  professionalPrimaryButton: {
+    height: 44,
+    minWidth: 108,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    backgroundColor: '#d32f2f',
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    justifyContent: 'center',
+    gap: 6,
   },
-  modalTitle: {
+  professionalPrimaryButtonStack: {
+    width: '100%',
+  },
+  professionalPrimaryButtonText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  professionalMemberList: {
+    gap: 10,
+  },
+  professionalMemberRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    minHeight: 58,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#ececec',
+    backgroundColor: '#fff',
+  },
+  professionalMemberRowActive: {
+    borderColor: '#f2b2b2',
+    backgroundColor: '#fff7f7',
+  },
+  professionalMemberRowDisabled: {
+    opacity: 0.92,
+  },
+  professionalMemberRowStatic: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    minHeight: 56,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#ececec',
+    backgroundColor: '#fbfbfb',
+  },
+  professionalMemberInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    minWidth: 0,
+    paddingRight: 12,
+  },
+  professionalMemberAvatar: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: '#f2f2f2',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
+  },
+  professionalMemberTextWrap: {
+    flex: 1,
+    minWidth: 0,
+  },
+  professionalMemberName: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#222',
+  },
+  professionalMemberMeta: {
+    marginTop: 2,
+    fontSize: 11,
+    color: '#7a7a7a',
+  },
+  conversationMetaCard: {
+    marginBottom: 12,
+    padding: 12,
+    borderRadius: 12,
+    backgroundColor: '#fff7f7',
+    borderWidth: 1,
+    borderColor: '#f5d0d0',
+  },
+  conversationMetaTitle: {
     fontSize: 12,
     fontWeight: '700',
     color: '#222',
+    marginBottom: 6,
   },
-  modalInputRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 10,
-  },
-  modalInput: {
-    flex: 1,
-    height: 28,
-    borderWidth: 1,
-    borderColor: '#bdbdbd',
-    backgroundColor: '#fff',
-    borderRadius: 2,
-    paddingHorizontal: 8,
-    fontSize: 9,
-    color: '#111',
-  },
-  modalCreateBtn: {
-    backgroundColor: '#ef1d1d',
-    minWidth: 52,
-    height: 28,
-    borderRadius: 2,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 10,
-  },
-  modalCreateBtnText: {
-    color: '#fff',
-    fontSize: 9,
-    fontWeight: '700',
-  },
-  memberList: {
-    gap: 5,
-    paddingTop: 2,
-  },
-  memberRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    minHeight: 18,
-  },
-  memberRowDisabled: {
-    opacity: 0.75,
-  },
-  memberText: {
-    fontSize: 10,
+  conversationMetaText: {
+    fontSize: 12,
     color: '#555',
-  },
-  memberTextDisabled: {
-    color: '#666',
-    fontWeight: '600',
+    marginTop: 2,
   },
 });
 

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import AdminApp from './src/AdminApp';
 import SignIn from './src/screens/SignIn';
 import StudentApp from './src/StudentApp';
 import TeacherApp from './src/TeacherApp';
@@ -35,6 +36,9 @@ export default function App() {
   if (userRole === 'student') {
     return <StudentApp onLogout={handleLogout} />;
   }
+  if (userRole === 'admin') {
+  return <AdminApp onLogout={handleLogout} />;
+}
 
   return null;
 }

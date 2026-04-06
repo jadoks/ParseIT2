@@ -1,9 +1,9 @@
 import * as ImageManipulator from 'expo-image-manipulator';
 import { router, useLocalSearchParams } from 'expo-router';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Image,
-  Platform,
+  LayoutChangeEvent,
   Pressable,
   StyleSheet,
   Text,
@@ -16,12 +16,31 @@ import {
   GestureHandlerRootView,
 } from 'react-native-gesture-handler';
 import Animated, {
-  runOnJS,
   useAnimatedStyle,
   useSharedValue,
 } from 'react-native-reanimated';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 type CropType = 'profile' | 'banner';
+
+type BoxLayout = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+
+type Size = {
+  width: number;
+  height: number;
+};
+
+type CropRect = {
+  originX: number;
+  originY: number;
+  width: number;
+  height: number;
+};
 
 declare global {
   var __PROFILE_CROP_RESULT__:
@@ -38,14 +57,125 @@ const clamp = (value: number, min: number, max: number) => {
   return Math.min(Math.max(value, min), max);
 };
 
-const getImageSize = (uri: string): Promise<{ width: number; height: number }> =>
+const getImageSize = (uri: string): Promise<Size> =>
   new Promise((resolve, reject) => {
     Image.getSize(
       uri,
       (width, height) => resolve({ width, height }),
-      reject
+      (error) => {
+        console.log('Image.getSize failed:', error);
+        reject(error);
+      }
     );
   });
+
+const getContainRenderedSize = (container: Size, source: Size): Size => {
+  const containScale = Math.min(
+    container.width / source.width,
+    container.height / source.height
+  );
+
+  return {
+    width: source.width * containScale,
+    height: source.height * containScale,
+  };
+};
+
+const clampCropRect = (
+  crop: CropRect,
+  source: Size,
+  forceSquare: boolean
+): CropRect => {
+  let originX = Math.max(0, crop.originX);
+  let originY = Math.max(0, crop.originY);
+  let width = Math.max(1, crop.width);
+  let height = Math.max(1, crop.height);
+
+  width = Math.min(width, source.width - originX);
+  height = Math.min(height, source.height - originY);
+
+  if (forceSquare) {
+    const side = Math.max(1, Math.min(width, height));
+    width = side;
+    height = side;
+  }
+
+  let rounded: CropRect = {
+    originX: Math.round(originX),
+    originY: Math.round(originY),
+    width: Math.round(width),
+    height: Math.round(height),
+  };
+
+  if (rounded.originX + rounded.width > source.width) {
+    rounded.width = Math.max(1, source.width - rounded.originX);
+  }
+
+  if (rounded.originY + rounded.height > source.height) {
+    rounded.height = Math.max(1, source.height - rounded.originY);
+  }
+
+  if (forceSquare) {
+    const side = Math.max(1, Math.min(rounded.width, rounded.height));
+    rounded.width = side;
+    rounded.height = side;
+
+    if (rounded.originX + rounded.width > source.width) {
+      rounded.originX = Math.max(0, source.width - rounded.width);
+    }
+
+    if (rounded.originY + rounded.height > source.height) {
+      rounded.originY = Math.max(0, source.height - rounded.height);
+    }
+  }
+
+  return rounded;
+};
+
+const getCropRectFromViewport = ({
+  source,
+  viewport,
+  frame,
+  currentScale,
+  translateX,
+  translateY,
+  forceSquare,
+}: {
+  source: Size;
+  viewport: BoxLayout;
+  frame: BoxLayout;
+  currentScale: number;
+  translateX: number;
+  translateY: number;
+  forceSquare: boolean;
+}): CropRect => {
+  const baseRendered = getContainRenderedSize(viewport, source);
+
+  const displayedWidth = baseRendered.width * currentScale;
+  const displayedHeight = baseRendered.height * currentScale;
+
+  const viewportCenterX = viewport.width / 2;
+  const viewportCenterY = viewport.height / 2;
+
+  const imageLeft = viewportCenterX - displayedWidth / 2 + translateX;
+  const imageTop = viewportCenterY - displayedHeight / 2 + translateY;
+
+  const originX = ((frame.x - imageLeft) / displayedWidth) * source.width;
+  const originY = ((frame.y - imageTop) / displayedHeight) * source.height;
+  const width = (frame.width / displayedWidth) * source.width;
+  const height = (frame.height / displayedHeight) * source.height;
+
+  return clampCropRect(
+    {
+      originX,
+      originY,
+      width,
+      height,
+    },
+    source,
+    forceSquare
+  );
+};
 
 const CropScreen = () => {
   const params = useLocalSearchParams<{
@@ -53,39 +183,52 @@ const CropScreen = () => {
     cropType?: CropType;
   }>();
 
+  const insets = useSafeAreaInsets();
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
+
   const imageUri = typeof params.imageUri === 'string' ? params.imageUri : '';
   const cropType: CropType = params.cropType === 'banner' ? 'banner' : 'profile';
   const isProfile = cropType === 'profile';
 
-  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
+  const shortestSide = Math.min(screenWidth, screenHeight);
+  const longestSide = Math.max(screenWidth, screenHeight);
 
-  const isSmallPhone = screenWidth < 380;
-  const isTablet = screenWidth >= 768;
-  const isLargeTablet = screenWidth >= 1024;
+  const isSmallPhone = shortestSide < 380;
+  const isShortPhone = longestSide < 740;
+  const isTablet = shortestSide >= 768;
+  const isLargeTablet = shortestSide >= 1024;
 
-  const horizontalPadding = isSmallPhone ? 14 : isTablet ? 28 : 18;
-  const topAreaHeight = isSmallPhone ? 64 : 72;
-  const bottomPanelMinHeight = isSmallPhone ? 120 : isTablet ? 170 : 140;
+  const useSmoothSmallScreenDrag = isSmallPhone || isShortPhone;
+
+  const horizontalPadding = isSmallPhone ? 12 : isTablet ? 28 : 18;
+  const baseTopHeight = isSmallPhone ? 52 : isTablet ? 72 : 64;
+  const topAreaHeight = baseTopHeight + insets.top + (isSmallPhone ? 6 : 8);
+  const bottomPanelMinHeight = isSmallPhone ? 108 : isTablet ? 170 : 140;
   const bottomPanelPaddingTop = isSmallPhone ? 6 : 8;
-  const bottomPanelPaddingBottom = isSmallPhone ? 14 : 18;
+  const bottomPanelPaddingBottom = isSmallPhone ? 12 : 18;
 
   const maxContentWidth = isLargeTablet ? 980 : isTablet ? 840 : screenWidth;
   const contentWidth = Math.min(screenWidth, maxContentWidth);
+  const usableWidth = contentWidth - horizontalPadding * 2;
+
+  const profileMaxFrameWidth = isSmallPhone ? 300 : isTablet ? 420 : 380;
+  const bannerMaxFrameWidth = isLargeTablet ? 900 : isTablet ? 760 : usableWidth;
 
   const frameWidth = isProfile
-    ? Math.min(contentWidth - horizontalPadding * 2, isTablet ? 420 : 380)
-    : Math.min(contentWidth - horizontalPadding * 2, isLargeTablet ? 900 : isTablet ? 760 : 820);
+    ? Math.min(usableWidth, profileMaxFrameWidth)
+    : Math.min(usableWidth, bannerMaxFrameWidth);
 
   const frameHeight = isProfile ? frameWidth : frameWidth * 0.42;
 
   const editorHeight =
     screenHeight - topAreaHeight - bottomPanelMinHeight - bottomPanelPaddingBottom;
 
-  const [sourceSize, setSourceSize] = useState({ width: 1, height: 1 });
+  const [sourceSize, setSourceSize] = useState<Size>({ width: 1, height: 1 });
   const [ready, setReady] = useState(false);
   const [sliderTrackWidth, setSliderTrackWidth] = useState(1);
-  const [isDragging, setIsDragging] = useState(false);
-  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+  const [isCropping, setIsCropping] = useState(false);
+  const [viewportLayout, setViewportLayout] = useState<BoxLayout | null>(null);
+  const [frameLayout, setFrameLayout] = useState<BoxLayout | null>(null);
 
   const minScale = useSharedValue(1);
   const scale = useSharedValue(1);
@@ -98,45 +241,23 @@ const CropScreen = () => {
 
   const sliderRatio = useSharedValue(0);
 
+  const isLeavingRef = useRef(false);
+
+  const actualViewportWidth = viewportLayout?.width ?? contentWidth;
+  const actualViewportHeight = viewportLayout?.height ?? editorHeight;
+
   useEffect(() => {
     let mounted = true;
 
     const load = async () => {
       try {
         if (!imageUri) return;
-
         const size = await getImageSize(imageUri);
         if (!mounted) return;
-
         setSourceSize(size);
-
-        const containScale = Math.min(
-          contentWidth / size.width,
-          editorHeight / size.height
-        );
-
-        const renderedBaseWidth = size.width * containScale;
-        const renderedBaseHeight = size.height * containScale;
-
-        const initialScale = Math.max(
-          frameWidth / renderedBaseWidth,
-          frameHeight / renderedBaseHeight,
-          1
-        );
-
-        minScale.value = initialScale;
-        scale.value = initialScale;
-        savedScale.value = initialScale;
-
-        translateX.value = 0;
-        translateY.value = 0;
-        savedTranslateX.value = 0;
-        savedTranslateY.value = 0;
-
-        sliderRatio.value = 0;
-        setReady(true);
       } catch (error) {
         console.log('Image load error:', error);
+        if (mounted) setReady(false);
       }
     };
 
@@ -145,35 +266,66 @@ const CropScreen = () => {
     return () => {
       mounted = false;
     };
+  }, [imageUri]);
+
+  useEffect(() => {
+    if (!imageUri || !sourceSize.width || !sourceSize.height) return;
+    if (!actualViewportWidth || !actualViewportHeight) return;
+
+    const renderedBase = getContainRenderedSize(
+      { width: actualViewportWidth, height: actualViewportHeight },
+      sourceSize
+    );
+
+    const initialScale = Math.max(
+      frameWidth / renderedBase.width,
+      frameHeight / renderedBase.height,
+      1
+    );
+
+    minScale.value = initialScale;
+    scale.value = initialScale;
+    savedScale.value = initialScale;
+
+    translateX.value = 0;
+    translateY.value = 0;
+    savedTranslateX.value = 0;
+    savedTranslateY.value = 0;
+
+    sliderRatio.value = 0;
+    setReady(true);
   }, [
     imageUri,
-    contentWidth,
-    editorHeight,
-    frameHeight,
+    sourceSize,
+    actualViewportWidth,
+    actualViewportHeight,
     frameWidth,
+    frameHeight,
     minScale,
-    savedScale,
-    savedTranslateX,
-    savedTranslateY,
     scale,
-    sliderRatio,
+    savedScale,
     translateX,
     translateY,
+    savedTranslateX,
+    savedTranslateY,
+    sliderRatio,
   ]);
 
   const baseImageStyle = useMemo(
     () => ({
-      width: contentWidth,
-      height: editorHeight,
+      width: actualViewportWidth,
+      height: actualViewportHeight,
       resizeMode: 'contain' as const,
     }),
-    [contentWidth, editorHeight]
+    [actualViewportWidth, actualViewportHeight]
   );
 
   const getRenderedBaseSize = () => {
+    'worklet';
+
     const containScale = Math.min(
-      contentWidth / sourceSize.width,
-      editorHeight / sourceSize.height
+      actualViewportWidth / sourceSize.width,
+      actualViewportHeight / sourceSize.height
     );
 
     return {
@@ -183,6 +335,8 @@ const CropScreen = () => {
   };
 
   const getBoundaries = (currentScale: number) => {
+    'worklet';
+
     const renderedBase = getRenderedBaseSize();
     const scaledWidth = renderedBase.width * currentScale;
     const scaledHeight = renderedBase.height * currentScale;
@@ -193,9 +347,14 @@ const CropScreen = () => {
     return { maxX, maxY };
   };
 
-  const getMaxScale = () => Math.max(minScale.value + 3, minScale.value + 1.5);
+  const getMaxScale = () => {
+    'worklet';
+    return Math.max(minScale.value + 3, minScale.value + 1.5);
+  };
 
   const applyScale = (nextScale: number) => {
+    'worklet';
+
     const boundedScale = clamp(nextScale, minScale.value, getMaxScale());
     scale.value = boundedScale;
     savedScale.value = boundedScale;
@@ -206,25 +365,48 @@ const CropScreen = () => {
     savedTranslateX.value = translateX.value;
     savedTranslateY.value = translateY.value;
 
+    const denominator = getMaxScale() - minScale.value;
     const ratio =
-      (boundedScale - minScale.value) / (getMaxScale() - minScale.value || 1);
+      denominator === 0 ? 0 : (boundedScale - minScale.value) / denominator;
+
     sliderRatio.value = clamp(ratio, 0, 1);
   };
 
   const zoomBy = (delta: number) => {
-    applyScale(scale.value + delta);
+    const step = isSmallPhone ? 0.16 : 0.2;
+    const nextScale = scale.value + delta * (step / 0.2);
+    applyScale(nextScale);
   };
 
   const resetEditor = () => {
     scale.value = minScale.value;
     savedScale.value = minScale.value;
-
     translateX.value = 0;
     translateY.value = 0;
     savedTranslateX.value = 0;
     savedTranslateY.value = 0;
-
     sliderRatio.value = 0;
+  };
+
+  const leaveScreen = (result?: { uri: string; type: CropType }) => {
+    if (isLeavingRef.current) return;
+    isLeavingRef.current = true;
+
+    resetEditor();
+
+    if (result) {
+      globalThis.__PROFILE_CROP_RESULT__ = {
+        uri: result.uri,
+        type: result.type,
+        ts: Date.now(),
+      };
+    }
+
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        router.back();
+      });
+    });
   };
 
   const pinchGesture = Gesture.Pinch()
@@ -240,16 +422,44 @@ const CropScreen = () => {
     .onUpdate((event) => {
       const bounds = getBoundaries(scale.value);
 
-      translateX.value = clamp(
+      const targetX = clamp(
         savedTranslateX.value + event.translationX,
         -bounds.maxX,
         bounds.maxX
       );
-      translateY.value = clamp(
+
+      const targetY = clamp(
         savedTranslateY.value + event.translationY,
         -bounds.maxY,
         bounds.maxY
       );
+
+      if (useSmoothSmallScreenDrag) {
+        const velocityFactor = 0.0009;
+        const followFactor = 0.22;
+
+        const velocityPushX = event.velocityX * velocityFactor;
+        const velocityPushY = event.velocityY * velocityFactor;
+
+        translateX.value = clamp(
+          translateX.value +
+            (targetX - translateX.value) * followFactor +
+            velocityPushX,
+          -bounds.maxX,
+          bounds.maxX
+        );
+
+        translateY.value = clamp(
+          translateY.value +
+            (targetY - translateY.value) * followFactor +
+            velocityPushY,
+          -bounds.maxY,
+          bounds.maxY
+        );
+      } else {
+        translateX.value = targetX;
+        translateY.value = targetY;
+      }
     })
     .onEnd(() => {
       savedTranslateX.value = translateX.value;
@@ -261,7 +471,7 @@ const CropScreen = () => {
     .onEnd(() => {
       const target =
         Math.abs(scale.value - minScale.value) < 0.05
-          ? minScale.value + 1
+          ? minScale.value + (isSmallPhone ? 0.85 : 1)
           : minScale.value;
       applyScale(target);
     });
@@ -291,152 +501,93 @@ const CropScreen = () => {
     transform: [{ translateX: sliderRatio.value * sliderTrackWidth }],
   }));
 
-  const saveCropAndGoBack = (uri: string, type: CropType) => {
-    globalThis.__PROFILE_CROP_RESULT__ = {
-      uri,
-      type,
-      ts: Date.now(),
-    };
-    router.back();
+  const onViewportLayout = (event: LayoutChangeEvent) => {
+    const { x, y, width, height } = event.nativeEvent.layout;
+    setViewportLayout({ x, y, width, height });
+  };
+
+  const onFrameLayout = (event: LayoutChangeEvent) => {
+    const { x, y, width, height } = event.nativeEvent.layout;
+    setFrameLayout({ x, y, width, height });
   };
 
   const handleCrop = async () => {
+    if (isCropping || isLeavingRef.current) return;
+
     try {
+      setIsCropping(true);
+
       if (!imageUri) {
-        router.back();
+        leaveScreen();
         return;
       }
 
-      const source = await getImageSize(imageUri);
-
-      const containScale = Math.min(
-        contentWidth / source.width,
-        editorHeight / source.height
-      );
-
-      const renderedBaseWidth = source.width * containScale;
-      const renderedBaseHeight = source.height * containScale;
-
-      const finalRenderedWidth = renderedBaseWidth * scale.value;
-      const finalRenderedHeight = renderedBaseHeight * scale.value;
-
-      const viewportCenterX = contentWidth / 2;
-      const viewportCenterY = editorHeight / 2;
-
-      const frameLeft = viewportCenterX - frameWidth / 2;
-      const frameTop = viewportCenterY - frameHeight / 2;
-
-      const imageLeft =
-        viewportCenterX - finalRenderedWidth / 2 + translateX.value;
-      const imageTop =
-        viewportCenterY - finalRenderedHeight / 2 + translateY.value;
-
-      let originX =
-        ((frameLeft - imageLeft) / finalRenderedWidth) * source.width;
-      let originY =
-        ((frameTop - imageTop) / finalRenderedHeight) * source.height;
-      let cropWidth = (frameWidth / finalRenderedWidth) * source.width;
-      let cropHeight = (frameHeight / finalRenderedHeight) * source.height;
-
-      originX = Math.max(0, originX);
-      originY = Math.max(0, originY);
-
-      if (originX + cropWidth > source.width) {
-        cropWidth = source.width - originX;
+      if (!viewportLayout || !frameLayout) {
+        console.log('Missing viewport/frame layout');
+        leaveScreen();
+        return;
       }
 
-      if (originY + cropHeight > source.height) {
-        cropHeight = source.height - originY;
-      }
-
-      cropWidth = Math.max(1, cropWidth);
-      cropHeight = Math.max(1, cropHeight);
-
-      const targetResize = isProfile
-        ? { width: 900, height: 900 }
-        : { width: 1600, height: 672 };
-
-      const cropped = await ImageManipulator.manipulateAsync(
+      const normalized = await ImageManipulator.manipulateAsync(
         imageUri,
-        [
-          {
-            crop: {
-              originX,
-              originY,
-              width: cropWidth,
-              height: cropHeight,
-            },
-          },
-          {
-            resize: targetResize,
-          },
-        ],
+        [],
         {
-          compress: 0.92,
-          format: ImageManipulator.SaveFormat.JPEG,
+          compress: 1,
+          format: ImageManipulator.SaveFormat.PNG,
         }
       );
 
-      runOnJS(saveCropAndGoBack)(cropped.uri, cropType);
+      const source = await getImageSize(normalized.uri);
+
+      const crop = getCropRectFromViewport({
+        source,
+        viewport: viewportLayout,
+        frame: frameLayout,
+        currentScale: scale.value,
+        translateX: translateX.value,
+        translateY: translateY.value,
+        forceSquare: isProfile,
+      });
+
+      const finalActions = isProfile
+        ? [
+            {
+              crop: {
+                originX: crop.originX,
+                originY: crop.originY,
+                width: crop.width,
+                height: crop.width,
+              },
+            },
+          ]
+        : [{ crop }];
+
+      const cropped = await ImageManipulator.manipulateAsync(
+        normalized.uri,
+        finalActions,
+        {
+          compress: 1,
+          format: ImageManipulator.SaveFormat.PNG,
+        }
+      );
+
+      leaveScreen({ uri: cropped.uri, type: cropType });
     } catch (error) {
       console.log('Crop error:', error);
-      router.back();
-    }
-  };
-
-  const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (Platform.OS !== 'web') return;
-
-    setIsDragging(true);
-    setDragStart({
-      x: e.clientX,
-      y: e.clientY,
-    });
-  };
-
-  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (Platform.OS !== 'web' || !isDragging) return;
-
-    const dx = e.clientX - dragStart.x;
-    const dy = e.clientY - dragStart.y;
-
-    const bounds = getBoundaries(scale.value);
-
-    translateX.value = clamp(
-      savedTranslateX.value + dx,
-      -bounds.maxX,
-      bounds.maxX
-    );
-
-    translateY.value = clamp(
-      savedTranslateY.value + dy,
-      -bounds.maxY,
-      bounds.maxY
-    );
-  };
-
-  const handleMouseUp = () => {
-    if (Platform.OS !== 'web') return;
-
-    savedTranslateX.value = translateX.value;
-    savedTranslateY.value = translateY.value;
-    setIsDragging(false);
-  };
-
-  const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
-    if (Platform.OS !== 'web') return;
-
-    if (e.deltaY > 0) {
-      zoomBy(-0.12);
-    } else {
-      zoomBy(0.12);
+      leaveScreen();
+    } finally {
+      setIsCropping(false);
     }
   };
 
   const editorContent = (
     <>
       <GestureDetector gesture={composedGesture}>
-        <Animated.View style={[styles.imageViewport, { width: contentWidth }]}>
+        <Animated.View
+          collapsable={false}
+          style={[styles.imageViewport, { width: contentWidth, height: editorHeight }]}
+          onLayout={onViewportLayout}
+        >
           <Animated.Image
             source={{ uri: imageUri }}
             style={[baseImageStyle, imageAnimatedStyle]}
@@ -451,6 +602,8 @@ const CropScreen = () => {
           <View style={styles.overlaySide} />
 
           <View
+            collapsable={false}
+            onLayout={onFrameLayout}
             style={[
               styles.cropFrame,
               {
@@ -486,12 +639,24 @@ const CropScreen = () => {
             },
           ]}
         >
-          <View style={[styles.topBar, { height: topAreaHeight }]}>
-            <Pressable onPress={() => router.back()} style={styles.topBtn}>
+          <View
+            style={[
+              styles.topBar,
+              {
+                height: topAreaHeight,
+                paddingTop: insets.top + (isSmallPhone ? 6 : 8),
+              },
+            ]}
+          >
+            <Pressable
+              onPress={() => leaveScreen()}
+              style={styles.topBtn}
+              disabled={isCropping || isLeavingRef.current}
+            >
               <Text
                 style={[
                   styles.topBtnText,
-                  { fontSize: isSmallPhone ? 14 : isTablet ? 16 : 15 },
+                  { fontSize: isSmallPhone ? 13 : isTablet ? 16 : 15 },
                 ]}
               >
                 Cancel
@@ -501,48 +666,38 @@ const CropScreen = () => {
             <Text
               style={[
                 styles.title,
-                { fontSize: isSmallPhone ? 16 : isTablet ? 20 : 18 },
+                { fontSize: isSmallPhone ? 15 : isTablet ? 20 : 18 },
               ]}
               numberOfLines={1}
             >
               {isProfile ? 'Crop profile photo' : 'Crop banner'}
             </Text>
 
-            <Pressable onPress={handleCrop} style={styles.topBtn}>
+            <Pressable
+              onPress={handleCrop}
+              style={styles.topBtn}
+              disabled={!ready || isCropping || !viewportLayout || !frameLayout || isLeavingRef.current}
+            >
               <Text
                 style={[
                   styles.topBtnText,
-                  { fontSize: isSmallPhone ? 14 : isTablet ? 16 : 15 },
+                  {
+                    fontSize: isSmallPhone ? 13 : isTablet ? 16 : 15,
+                    opacity:
+                      !ready || isCropping || !viewportLayout || !frameLayout || isLeavingRef.current
+                        ? 0.6
+                        : 1,
+                  },
                 ]}
               >
-                Done
+                {isCropping ? 'Saving...' : 'Done'}
               </Text>
             </Pressable>
           </View>
 
-          {Platform.OS === 'web' ? (
-            <div
-              style={{
-                height: editorHeight,
-                position: 'relative',
-                cursor: isDragging ? 'grabbing' : 'grab',
-                width: '100%',
-              }}
-              onMouseDown={handleMouseDown}
-              onMouseMove={handleMouseMove}
-              onMouseUp={handleMouseUp}
-              onMouseLeave={handleMouseUp}
-              onWheel={handleWheel}
-            >
-              <View style={[styles.editorArea, { height: editorHeight }]}>
-                {editorContent}
-              </View>
-            </div>
-          ) : (
-            <View style={[styles.editorArea, { height: editorHeight }]}>
-              {editorContent}
-            </View>
-          )}
+          <View style={[styles.editorArea, { height: editorHeight }]}>
+            {editorContent}
+          </View>
 
           <View
             style={[
@@ -557,22 +712,24 @@ const CropScreen = () => {
             <View
               style={[
                 styles.sliderRow,
-                { marginBottom: isSmallPhone ? 12 : isTablet ? 20 : 18 },
+                { marginBottom: isSmallPhone ? 10 : isTablet ? 20 : 18 },
               ]}
             >
               <Pressable
                 style={[
                   styles.zoomSideButton,
-                  { width: isSmallPhone ? 30 : isTablet ? 40 : 34 },
+                  { width: isSmallPhone ? 28 : isTablet ? 40 : 34 },
                 ]}
                 onPress={() => zoomBy(-0.2)}
+                disabled={!ready || isCropping || isLeavingRef.current}
               >
                 <Text
                   style={[
                     styles.zoomSideText,
                     {
-                      fontSize: isSmallPhone ? 24 : isTablet ? 34 : 30,
-                      lineHeight: isSmallPhone ? 24 : isTablet ? 34 : 30,
+                      fontSize: isSmallPhone ? 22 : isTablet ? 34 : 30,
+                      lineHeight: isSmallPhone ? 22 : isTablet ? 34 : 30,
+                      opacity: !ready || isCropping || isLeavingRef.current ? 0.5 : 1,
                     },
                   ]}
                 >
@@ -584,29 +741,31 @@ const CropScreen = () => {
                 <View
                   style={styles.sliderTrackWrap}
                   onLayout={(e) =>
-                    setSliderTrackWidth(e.nativeEvent.layout.width - 24)
+                    setSliderTrackWidth(
+                      Math.max(1, e.nativeEvent.layout.width - 24)
+                    )
                   }
                 >
                   <View style={styles.sliderTrack} />
-                  <Animated.View
-                    style={[styles.sliderThumb, sliderThumbStyle]}
-                  />
+                  <Animated.View style={[styles.sliderThumb, sliderThumbStyle]} />
                 </View>
               </GestureDetector>
 
               <Pressable
                 style={[
                   styles.zoomSideButton,
-                  { width: isSmallPhone ? 30 : isTablet ? 40 : 34 },
+                  { width: isSmallPhone ? 28 : isTablet ? 40 : 34 },
                 ]}
                 onPress={() => zoomBy(0.2)}
+                disabled={!ready || isCropping || isLeavingRef.current}
               >
                 <Text
                   style={[
                     styles.zoomSideText,
                     {
-                      fontSize: isSmallPhone ? 24 : isTablet ? 34 : 30,
-                      lineHeight: isSmallPhone ? 24 : isTablet ? 34 : 30,
+                      fontSize: isSmallPhone ? 22 : isTablet ? 34 : 30,
+                      lineHeight: isSmallPhone ? 22 : isTablet ? 34 : 30,
+                      opacity: !ready || isCropping || isLeavingRef.current ? 0.5 : 1,
                     },
                   ]}
                 >
@@ -617,7 +776,7 @@ const CropScreen = () => {
 
             <View
               style={{
-                height: isSmallPhone ? 34 : isTablet ? 52 : 44,
+                height: isSmallPhone ? 22 : isTablet ? 52 : 44,
               }}
             />
 
@@ -625,13 +784,17 @@ const CropScreen = () => {
               onPress={resetEditor}
               style={[
                 styles.resetLinkWrap,
-                { marginTop: isSmallPhone ? 10 : 14 },
+                { marginTop: isSmallPhone ? 8 : 14 },
               ]}
+              disabled={!ready || isCropping || isLeavingRef.current}
             >
               <Text
                 style={[
                   styles.resetLink,
-                  { fontSize: isSmallPhone ? 13 : isTablet ? 15 : 14 },
+                  {
+                    fontSize: isSmallPhone ? 12 : isTablet ? 15 : 14,
+                    opacity: !ready || isCropping || isLeavingRef.current ? 0.5 : 1,
+                  },
                 ]}
               >
                 Reset
@@ -674,14 +837,14 @@ const styles = StyleSheet.create({
 
   topBar: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     justifyContent: 'space-between',
   },
 
   topBtn: {
-    paddingHorizontal: 8,
+    paddingHorizontal: 6,
     paddingVertical: 6,
-    minWidth: 64,
+    minWidth: 52,
   },
 
   topBtnText: {
@@ -694,7 +857,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     flexShrink: 1,
     textAlign: 'center',
-    marginHorizontal: 10,
+    marginHorizontal: 6,
   },
 
   editorArea: {
@@ -702,7 +865,6 @@ const styles = StyleSheet.create({
   },
 
   imageViewport: {
-    height: '100%',
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',

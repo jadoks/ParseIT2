@@ -20,7 +20,6 @@ import Honors from './teacher_components/Honors';
 import Coursedetail2, {
   CourseDetailData,
 } from './teacher_components/TeacherCourseDetail2';
-import PostQueryModal2 from './teacher_components/TeacherPostQueryModal';
 import Profile2 from './teacher_components/TeacherProfile';
 import ShareAnnouncement from './teacher_components/TeacherShareAnnouncement';
 
@@ -40,10 +39,21 @@ type CourseWithIcon = CourseDetailData & {
   icon?: string;
 };
 
-const CURRENT_USER_NAME = 'Ramcee Jade';
-const CURRENT_USER_FULL_NAME = 'Ramcee Jade L. Munoz';
+type MessengerCourse = {
+  id: string;
+  name: string;
+  instructor: string;
+  semester: string;
+  schoolYear: string;
+  section?: string;
+};
+
+const CURRENT_USER_NAME = 'Ramcee Jade L. Munoz';
 const CURRENT_USER_EMAIL = 'teacher@email.com';
-const CURRENT_USER_AVATAR = require('../assets/images/avatar.jpg');
+
+const CURRENT_USER_PROFILE_IMAGE = require('../assets/images/avatar.jpg');
+const DEFAULT_BANNER_IMAGE = require('../assets/announcement/3.png');
+const OTHER_USERS_PROFILE_IMAGE = require('../assets/images/default_profile.png');
 
 const ANNOUNCEMENTS: Announcement[] = [
   {
@@ -72,7 +82,7 @@ const INITIAL_COURSES: CourseWithIcon[] = [
     name: 'Web Development 101',
     courseCode: 'CS-101',
     classCode: 'WD101A1',
-    instructor: 'Ramcee Jade Muoz',
+    instructor: CURRENT_USER_NAME,
     section: 'A',
     bannerUri: undefined,
     icon: 'web',
@@ -82,7 +92,7 @@ const INITIAL_COURSES: CourseWithIcon[] = [
     name: 'Programming Logic',
     courseCode: 'CS-102',
     classCode: 'PL102B2',
-    instructor: 'Ramcee Jade Muoz',
+    instructor: CURRENT_USER_NAME,
     section: 'B',
     bannerUri: undefined,
     icon: 'code-tags',
@@ -92,10 +102,47 @@ const INITIAL_COURSES: CourseWithIcon[] = [
     name: 'Computer Fundamentals',
     courseCode: 'IT-100',
     classCode: 'CF100C3',
-    instructor: 'Ramcee Jade Muoz',
+    instructor: CURRENT_USER_NAME,
     section: 'C',
     bannerUri: undefined,
     icon: 'desktop-classic',
+  },
+];
+
+const INITIAL_COMMUNITY_POSTS: CommunityPost[] = [
+  {
+    id: '1',
+    userName: 'Maria Santos',
+    userEmail: 'maria@email.com',
+    avatar: OTHER_USERS_PROFILE_IMAGE,
+    content: 'Please double-check your grade submissions before Friday.',
+    dateTime: 'Feb 24, 2026 10:30 AM',
+    answers: [
+      {
+        id: 'a1',
+        userName: 'John Reyes',
+        avatar: OTHER_USERS_PROFILE_IMAGE,
+        answeredAt: 'Feb 24, 2026 11:00 AM',
+        message: 'Noted, thank you!',
+      },
+    ],
+  },
+  {
+    id: '2',
+    userName: CURRENT_USER_NAME,
+    userEmail: CURRENT_USER_EMAIL,
+    avatar: CURRENT_USER_PROFILE_IMAGE,
+    content: 'Does anyone have a good rubric template for project presentations?',
+    dateTime: 'Feb 23, 2026 11:30 AM',
+    answers: [
+      {
+        id: 'a2',
+        userName: 'Allan Reyes',
+        avatar: OTHER_USERS_PROFILE_IMAGE,
+        answeredAt: 'Feb 23, 2026 01:20 PM',
+        message: 'I can share mine later.',
+      },
+    ],
   },
 ];
 
@@ -107,27 +154,60 @@ export default function TeacherApp({ onLogout }: Props) {
   const [lastScreen, setLastScreen] = useState<ScreenType>('home');
   const [showAnnouncement, setShowAnnouncement] = useState(true);
   const [isMobileDrawerOpen, setMobileDrawerOpen] = useState(false);
-  const [isPostModalVisible, setPostModalVisible] = useState(false);
 
   const [courses, setCourses] = useState<CourseWithIcon[]>(INITIAL_COURSES);
   const [selectedCourse, setSelectedCourse] = useState<CourseWithIcon | null>(
     INITIAL_COURSES[0]
   );
 
-  const [posts, setPosts] = useState<CommunityPost[]>([
-    {
-      id: '1',
-      userName: CURRENT_USER_NAME,
-      avatar: CURRENT_USER_AVATAR,
-      content: 'Welcome to the teacher community!',
-      dateTime: 'Just now',
-      answers: [] as CommunityAnswer[],
-    },
-  ]);
+  const [currentUserAvatar, setCurrentUserAvatar] = useState<any>(
+    CURRENT_USER_PROFILE_IMAGE
+  );
+  const [currentUserBanner, setCurrentUserBanner] = useState<any>(
+    DEFAULT_BANNER_IMAGE
+  );
 
-  const userPosts = useMemo(() => {
-    return posts.filter((post) => post.userName === CURRENT_USER_NAME);
-  }, [posts]);
+  const [communityPosts, setCommunityPosts] = useState<CommunityPost[]>(
+    INITIAL_COMMUNITY_POSTS
+  );
+
+  const hydratedCommunityPosts = useMemo<CommunityPost[]>(() => {
+    return communityPosts.map((post) => ({
+      ...post,
+      avatar:
+        post.userEmail === CURRENT_USER_EMAIL || post.userName === CURRENT_USER_NAME
+          ? currentUserAvatar
+          : post.avatar,
+      answers: post.answers.map((answer) => ({
+        ...answer,
+        avatar:
+          answer.userName === CURRENT_USER_NAME
+            ? currentUserAvatar
+            : answer.avatar,
+      })),
+    }));
+  }, [communityPosts, currentUserAvatar]);
+
+  const currentUserPosts = useMemo(() => {
+    return hydratedCommunityPosts.filter(
+      (post) =>
+        post.userName === CURRENT_USER_NAME ||
+        post.userEmail === CURRENT_USER_EMAIL
+    );
+  }, [hydratedCommunityPosts]);
+
+  const messengerCourses = useMemo<MessengerCourse[]>(
+    () =>
+      courses.map((course) => ({
+        id: course.id,
+        name: course.name,
+        instructor: course.instructor,
+        semester: '2nd Semester',
+        schoolYear: '2025-2026',
+        section: course.section,
+      })),
+    [courses]
+  );
 
   const navigateTo = (screen: ScreenType) => {
     setLastScreen(activeScreen);
@@ -138,33 +218,102 @@ export default function TeacherApp({ onLogout }: Props) {
     }
   };
 
-  const openPostModal = () => {
-    setPostModalVisible(true);
+  const handleChangeProfileImage = (image: any) => {
+    setCurrentUserAvatar(image);
   };
 
-  const closePostModal = () => {
-    setPostModalVisible(false);
+  const handleChangeBannerImage = (image: any) => {
+    setCurrentUserBanner(image);
   };
 
-  const handleCreatePost = (query: string) => {
-    const trimmed = query.trim();
-
-    if (!trimmed) {
-      closePostModal();
-      return;
-    }
+  const handleCreateCommunityPost = (query: string) => {
+    const trimmedQuery = query.trim();
+    if (!trimmedQuery) return;
 
     const newPost: CommunityPost = {
-      id: Date.now().toString(),
+      id: `community-post-${Date.now()}`,
       userName: CURRENT_USER_NAME,
-      avatar: CURRENT_USER_AVATAR,
-      content: trimmed,
+      userEmail: CURRENT_USER_EMAIL,
+      avatar: currentUserAvatar,
       dateTime: new Date().toLocaleString(),
-      answers: [] as CommunityAnswer[],
+      content: trimmedQuery,
+      answers: [],
     };
 
-    setPosts((prevPosts) => [newPost, ...prevPosts]);
-    closePostModal();
+    setCommunityPosts((prev) => [newPost, ...prev]);
+  };
+
+  const handleAddCommunityAnswer = (postId: string, message: string) => {
+    const trimmedMessage = message.trim();
+    if (!trimmedMessage) return;
+
+    const newAnswer: CommunityAnswer = {
+      id: `community-answer-${Date.now()}`,
+      userName: CURRENT_USER_NAME,
+      avatar: currentUserAvatar,
+      answeredAt: new Date().toLocaleString(),
+      message: trimmedMessage,
+    };
+
+    setCommunityPosts((prev) =>
+      prev.map((post) =>
+        post.id === postId
+          ? { ...post, answers: [...post.answers, newAnswer] }
+          : post
+      )
+    );
+  };
+
+  const handleEditCommunityPost = (postId: string, content: string) => {
+    const trimmedContent = content.trim();
+    if (!trimmedContent) return;
+
+    setCommunityPosts((prev) =>
+      prev.map((post) =>
+        post.id === postId ? { ...post, content: trimmedContent } : post
+      )
+    );
+  };
+
+  const handleDeleteCommunityPost = (postId: string) => {
+    setCommunityPosts((prev) => prev.filter((post) => post.id !== postId));
+  };
+
+  const handleEditCommunityAnswer = (
+    postId: string,
+    answerId: string,
+    message: string
+  ) => {
+    const trimmedMessage = message.trim();
+    if (!trimmedMessage) return;
+
+    setCommunityPosts((prev) =>
+      prev.map((post) =>
+        post.id === postId
+          ? {
+              ...post,
+              answers: post.answers.map((answer) =>
+                answer.id === answerId
+                  ? { ...answer, message: trimmedMessage }
+                  : answer
+              ),
+            }
+          : post
+      )
+    );
+  };
+
+  const handleDeleteCommunityAnswer = (postId: string, answerId: string) => {
+    setCommunityPosts((prev) =>
+      prev.map((post) =>
+        post.id === postId
+          ? {
+              ...post,
+              answers: post.answers.filter((answer) => answer.id !== answerId),
+            }
+          : post
+      )
+    );
   };
 
   const handleSetIsLoggedIn = (val: boolean) => {
@@ -198,6 +347,7 @@ export default function TeacherApp({ onLogout }: Props) {
 
     const courseWithIcon: CourseWithIcon = {
       ...newCourse,
+      instructor: CURRENT_USER_NAME,
       icon: getCourseIcon(newCourse.name),
     };
 
@@ -228,8 +378,10 @@ export default function TeacherApp({ onLogout }: Props) {
             isFixed={true}
             activeScreen={activeScreen}
             onNavigate={navigateTo}
-            userName={CURRENT_USER_FULL_NAME}
+            userName={CURRENT_USER_NAME}
             userEmail={CURRENT_USER_EMAIL}
+            userAvatar={currentUserAvatar}
+            onAvatarPress={() => navigateTo('profile')}
             setIsLoggedIn={handleSetIsLoggedIn}
           />
         )}
@@ -246,8 +398,13 @@ export default function TeacherApp({ onLogout }: Props) {
                 onClose={() => setMobileDrawerOpen(false)}
                 activeScreen={activeScreen}
                 onNavigate={navigateTo}
-                userName={CURRENT_USER_FULL_NAME}
+                userName={CURRENT_USER_NAME}
                 userEmail={CURRENT_USER_EMAIL}
+                userAvatar={currentUserAvatar}
+                onAvatarPress={() => {
+                  setMobileDrawerOpen(false);
+                  navigateTo('profile');
+                }}
                 setIsLoggedIn={handleSetIsLoggedIn}
               />
             </View>
@@ -257,10 +414,19 @@ export default function TeacherApp({ onLogout }: Props) {
         <View style={styles.screenContainer}>
           {activeScreen === 'profile' ? (
             <Profile2
-              userPosts={userPosts}
-              onBack={() => setActiveScreen(lastScreen)}
-              onLogout={onLogout}
-              onCreatePost={openPostModal}
+              userPosts={currentUserPosts}
+              onCreatePost={handleCreateCommunityPost}
+              onAddAnswer={handleAddCommunityAnswer}
+              onEditPost={handleEditCommunityPost}
+              onDeletePost={handleDeleteCommunityPost}
+              onEditAnswer={handleEditCommunityAnswer}
+              onDeleteAnswer={handleDeleteCommunityAnswer}
+              userName={CURRENT_USER_NAME}
+              userEmail={CURRENT_USER_EMAIL}
+              profileImage={currentUserAvatar}
+              bannerImage={currentUserBanner}
+              onChangeProfileImage={handleChangeProfileImage}
+              onChangeBannerImage={handleChangeBannerImage}
             />
           ) : activeScreen === 'home' ? (
             <Dashboard2
@@ -277,18 +443,28 @@ export default function TeacherApp({ onLogout }: Props) {
             <ShareAnnouncement />
           ) : activeScreen === 'community' ? (
             <Community2
-              posts={posts}
+              posts={hydratedCommunityPosts}
               userName={CURRENT_USER_NAME}
-              onCreatePost={openPostModal}
+              userEmail={CURRENT_USER_EMAIL}
+              userAvatar={currentUserAvatar}
+              onCreatePost={handleCreateCommunityPost}
+              onAddAnswer={handleAddCommunityAnswer}
+              onEditPost={handleEditCommunityPost}
+              onDeletePost={handleDeleteCommunityPost}
+              onEditAnswer={handleEditCommunityAnswer}
+              onDeleteAnswer={handleDeleteCommunityAnswer}
             />
           ) : activeScreen === 'messenger' ? (
             <TeacherMessenger
               searchQuery=""
               onConversationActiveChange={() => {}}
+              currentUser={CURRENT_USER_NAME}
+              courses={messengerCourses}
+              onBack={() => setActiveScreen(lastScreen)}
             />
           ) : activeScreen === 'coursedetail' ? (
             <Coursedetail2
-              onBack={() => setActiveScreen('home')}
+              onBack={() => setActiveScreen(lastScreen)}
               course={selectedCourse || undefined}
             />
           ) : activeScreen === 'notification' ? (
@@ -300,12 +476,6 @@ export default function TeacherApp({ onLogout }: Props) {
           )}
         </View>
       </View>
-
-      <PostQueryModal2
-        visible={isPostModalVisible}
-        onClose={closePostModal}
-        onPost={handleCreatePost}
-      />
 
       <AnnouncementModal2
         visible={activeScreen === 'home' && showAnnouncement}
@@ -353,7 +523,7 @@ const styles = StyleSheet.create({
     top: 0,
     bottom: 0,
     zIndex: 70,
-    backgroundColor: '#FFF',
+    backgroundColor: '#ffffff22',
   },
   emptyState: {
     flex: 1,

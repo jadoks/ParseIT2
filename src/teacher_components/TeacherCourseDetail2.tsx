@@ -1,3 +1,4 @@
+import * as Clipboard from 'expo-clipboard';
 import * as DocumentPicker from 'expo-document-picker';
 import React, { useEffect, useState } from 'react';
 import {
@@ -15,16 +16,17 @@ import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityI
 
 import TeacherAssignmentSection from './TeacherAssignmentSection';
 import TeacherMaterialSection from './TeacherMaterialSection';
-import TeacherMembersSection from './TeacherMembersSection';
 import TeacherSubmissionsSection from './TeacherSubmissionsSection';
 
 export type Assignment = {
   id: string;
-  title: string;
-  description: string;
+  header: string;
+  instruction: string;
   posted: string;
-  due: string;
-  points: string;
+  dueDate: string;
+  totalScore: string;
+  pointsOnTime: string;
+  repositoryDisabledAfterDue: boolean;
   fileName?: string;
   fileUri?: string;
   fileType?: string;
@@ -47,6 +49,15 @@ export type Member = {
   handle: string;
 };
 
+export type Submission = {
+  id: string;
+  assignmentId: string;
+  studentId: string;
+  status: 'pending' | 'submitted' | 'graded' | 'late';
+  score?: number;
+  submittedAt?: string;
+};
+
 export type CourseDetailData = {
   id: string;
   name: string;
@@ -63,45 +74,52 @@ const COURSE_CONTENT: Record<
     assignments: Assignment[];
     materials: Material[];
     members: Member[];
+    submissions: Submission[];
   }
 > = {
   '1': {
     assignments: [
       {
         id: '1',
-        title: 'React Fundamental Quiz',
-        description: 'Read and Answer Carefully',
+        header: 'React Fundamental Quiz',
+        instruction: 'Read and Answer Carefully',
         posted: 'Mar 5, 2026 (6:40 PM)',
-        due: '2026-03-10 (11:59 PM)',
-        points: '10',
+        dueDate: '2026-03-10 (11:59 PM)',
+        totalScore: '100',
+        pointsOnTime: '10',
+        repositoryDisabledAfterDue: false,
         fileName: 'quiz-guide.pdf',
       },
       {
         id: '2',
-        title: 'Build Simple Website',
-        description: 'Use HTML/CSS',
+        header: 'Build Simple Website',
+        instruction: 'Use HTML/CSS',
         posted: 'Mar 5, 2026 (8:00 AM)',
-        due: '2026-03-15 (11:59 PM)',
-        points: '50',
+        dueDate: '2026-03-15 (11:59 PM)',
+        totalScore: '50',
+        pointsOnTime: '10',
+        repositoryDisabledAfterDue: false,
       },
       {
         id: '3',
-        title: 'JavaScript Basics Checkpoint',
-        description: 'Use Java Script',
+        header: 'JavaScript Basics Checkpoint',
+        instruction: 'Use Java Script',
         posted: 'Mar 5, 2026 (8:00 AM)',
-        due: '2026-03-15 (11:59 PM)',
-        points: '50',
+        dueDate: '2026-03-15 (11:59 PM)',
+        totalScore: '50',
+        pointsOnTime: '10',
+        repositoryDisabledAfterDue: false,
       },
-
       {
         id: '4',
-        title: 'Responsive Design Exercise',
-        description: 'Css Exercise ',
+        header: 'Responsive Design Exercise',
+        instruction: 'Css Exercise',
         posted: 'Mar 5, 2026 (8:00 AM)',
-        due: '2026-03-15 (11:59 PM)',
-        points: '50',
+        dueDate: '2026-03-15 (11:59 PM)',
+        totalScore: '50',
+        pointsOnTime: '10',
+        repositoryDisabledAfterDue: true,
       },
-      
     ],
     materials: [
       {
@@ -125,26 +143,56 @@ const COURSE_CONTENT: Record<
       { id: '7230494', name: 'Lisondra, Jade', handle: '@jadok' },
       { id: '7230495', name: 'Bautista, Anne', handle: '@anneb' },
     ],
+    submissions: [
+      {
+        id: 'sub-1',
+        assignmentId: '1',
+        studentId: '7230494',
+        status: 'graded',
+        score: 95,
+        submittedAt: 'Mar 9, 2026 (9:15 AM)',
+      },
+      {
+        id: 'sub-2',
+        assignmentId: '1',
+        studentId: '7230495',
+        status: 'submitted',
+        score: 0,
+        submittedAt: 'Mar 10, 2026 (10:40 AM)',
+      },
+      {
+        id: 'sub-3',
+        assignmentId: '2',
+        studentId: '7230494',
+        status: 'late',
+        score: 40,
+        submittedAt: 'Mar 16, 2026 (8:00 AM)',
+      },
+    ],
   },
 
   '2': {
     assignments: [
       {
         id: '3',
-        title: 'Conditional Statements Quiz',
-        description: 'Answer all logic questions carefully.',
+        header: 'Conditional Statements Quiz',
+        instruction: 'Answer all logic questions carefully.',
         posted: 'Mar 6, 2026 (9:00 AM)',
-        due: '2026-03-12 (11:59 PM)',
-        points: '20',
+        dueDate: '2026-03-12 (11:59 PM)',
+        totalScore: '20',
+        pointsOnTime: '10',
+        repositoryDisabledAfterDue: false,
         fileName: 'conditionals-quiz.pdf',
       },
       {
         id: '4',
-        title: 'Loops Practice Set',
-        description: 'Solve the loop exercises.',
+        header: 'Loops Practice Set',
+        instruction: 'Solve the loop exercises.',
         posted: 'Mar 7, 2026 (10:00 AM)',
-        due: '2026-03-18 (11:59 PM)',
-        points: '25',
+        dueDate: '2026-03-18 (11:59 PM)',
+        totalScore: '25',
+        pointsOnTime: '10',
+        repositoryDisabledAfterDue: false,
       },
     ],
     materials: [
@@ -174,17 +222,45 @@ const COURSE_CONTENT: Record<
       { id: '8230494', name: 'Dela Cruz, John', handle: '@johnc' },
       { id: '8230495', name: 'Torres, Mia', handle: '@miat' },
     ],
+    submissions: [
+      {
+        id: 'sub-4',
+        assignmentId: '3',
+        studentId: '8230494',
+        status: 'graded',
+        score: 18,
+        submittedAt: 'Mar 12, 2026 (8:30 AM)',
+      },
+      {
+        id: 'sub-5',
+        assignmentId: '3',
+        studentId: '8230495',
+        status: 'late',
+        score: 15,
+        submittedAt: 'Mar 13, 2026 (9:00 AM)',
+      },
+      {
+        id: 'sub-6',
+        assignmentId: '4',
+        studentId: '8230494',
+        status: 'submitted',
+        score: 0,
+        submittedAt: 'Mar 18, 2026 (7:50 AM)',
+      },
+    ],
   },
 
   '3': {
     assignments: [
       {
         id: '5',
-        title: 'Computer Basics Assessment',
-        description: 'Identify hardware and software concepts.',
+        header: 'Computer Basics Assessment',
+        instruction: 'Identify hardware and software concepts.',
         posted: 'Mar 3, 2026 (8:20 AM)',
-        due: '2026-03-14 (11:59 PM)',
-        points: '30',
+        dueDate: '2026-03-14 (11:59 PM)',
+        totalScore: '30',
+        pointsOnTime: '10',
+        repositoryDisabledAfterDue: false,
         fileName: 'computer-basics.pdf',
       },
     ],
@@ -208,6 +284,22 @@ const COURSE_CONTENT: Record<
       { id: '9230494', name: 'Garcia, Paul', handle: '@paulg' },
       { id: '9230495', name: 'Reyes, Kate', handle: '@kater' },
     ],
+    submissions: [
+      {
+        id: 'sub-7',
+        assignmentId: '5',
+        studentId: '9230494',
+        status: 'graded',
+        score: 28,
+        submittedAt: 'Mar 14, 2026 (8:10 AM)',
+      },
+      {
+        id: 'sub-8',
+        assignmentId: '5',
+        studentId: '9230495',
+        status: 'pending',
+      },
+    ],
   },
 };
 
@@ -219,7 +311,6 @@ const TeacherCourseDetail2 = ({
   course?: CourseDetailData;
 }) => {
   const [activeTab, setActiveTab] = useState<'Materials' | 'Assignments'>('Materials');
-  const [showMembers, setShowMembers] = useState(false);
   const [showSubmissions, setShowSubmissions] = useState(false);
   const [showUpdateModal, setShowUpdateModal] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -231,6 +322,7 @@ const TeacherCourseDetail2 = ({
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [materials, setMaterials] = useState<Material[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
+  const [submissions, setSubmissions] = useState<Submission[]>([]);
 
   const [memberIdInput, setMemberIdInput] = useState('');
   const [formTitle, setFormTitle] = useState('');
@@ -238,6 +330,9 @@ const TeacherCourseDetail2 = ({
   const [formPoints, setFormPoints] = useState('');
   const [formDue, setFormDue] = useState('');
   const [formWeek, setFormWeek] = useState('');
+  const [assignmentDisableRepositoryAfterDue, setAssignmentDisableRepositoryAfterDue] =
+    useState(false);
+  const [classCodeCopied, setClassCodeCopied] = useState(false);
 
   const [pickedFile, setPickedFile] = useState<{
     name?: string | undefined;
@@ -256,6 +351,7 @@ const TeacherCourseDetail2 = ({
       setAssignments([]);
       setMaterials([]);
       setMembers([]);
+      setSubmissions([]);
       return;
     }
 
@@ -265,10 +361,12 @@ const TeacherCourseDetail2 = ({
       setAssignments(data.assignments);
       setMaterials(data.materials);
       setMembers(data.members);
+      setSubmissions(data.submissions);
     } else {
       setAssignments([]);
       setMaterials([]);
       setMembers([]);
+      setSubmissions([]);
     }
   }, [course]);
 
@@ -278,6 +376,7 @@ const TeacherCourseDetail2 = ({
     setFormPoints('');
     setFormDue('');
     setFormWeek('');
+    setAssignmentDisableRepositoryAfterDue(false);
     setPickedFile(null);
     setPickedAssignmentFile(null);
   };
@@ -347,13 +446,26 @@ const TeacherCourseDetail2 = ({
     }
   };
 
-  const handleCreate = () => {
-    if (!formTitle.trim()) {
-      Alert.alert('Required', 'Please enter a title.');
-      return;
-    }
+  const handleCopyClassCode = async () => {
+    const codeToCopy = course?.classCode || '';
 
+    if (!codeToCopy || codeToCopy === 'No Class Code') return;
+
+    await Clipboard.setStringAsync(codeToCopy);
+    setClassCodeCopied(true);
+
+    setTimeout(() => {
+      setClassCodeCopied(false);
+    }, 2000);
+  };
+
+  const handleCreate = () => {
     if (activeTab === 'Materials') {
+      if (!formTitle.trim()) {
+        Alert.alert('Required', 'Please enter a title.');
+        return;
+      }
+
       if (!formWeek.trim()) {
         Alert.alert('Required', 'Please enter the week.');
         return;
@@ -377,18 +489,26 @@ const TeacherCourseDetail2 = ({
       return;
     }
 
-    if (!formDesc.trim() || !formDue.trim() || !formPoints.trim()) {
+    if (
+      !formTitle.trim() ||
+      !formDesc.trim() ||
+      !formDue.trim() ||
+      !formPoints.trim() ||
+      !formWeek.trim()
+    ) {
       Alert.alert('Required', 'Please complete all assignment fields.');
       return;
     }
 
     const newAssignment: Assignment = {
       id: Date.now().toString(),
-      title: formTitle.trim(),
-      description: formDesc.trim(),
+      header: formTitle.trim(),
+      instruction: formDesc.trim(),
       posted: new Date().toLocaleString(),
-      due: formDue.trim(),
-      points: formPoints.trim(),
+      dueDate: formDue.trim(),
+      totalScore: formPoints.trim(),
+      pointsOnTime: formWeek.trim(),
+      repositoryDisabledAfterDue: assignmentDisableRepositoryAfterDue,
       fileName: pickedAssignmentFile?.name ?? undefined,
       fileUri: pickedAssignmentFile?.uri ?? undefined,
       fileType: pickedAssignmentFile?.type ?? undefined,
@@ -403,10 +523,12 @@ const TeacherCourseDetail2 = ({
   const openUpdateModal = (item: Assignment | undefined) => {
     if (!item) return;
     setSelectedId(item.id);
-    setFormTitle(item.title);
-    setFormDesc(item.description);
-    setFormPoints(item.points);
-    setFormDue(item.due);
+    setFormTitle(item.header);
+    setFormDesc(item.instruction);
+    setFormPoints(item.totalScore);
+    setFormDue(item.dueDate);
+    setFormWeek(item.pointsOnTime);
+    setAssignmentDisableRepositoryAfterDue(item.repositoryDisabledAfterDue);
     setShowUpdateModal(true);
   };
 
@@ -416,10 +538,12 @@ const TeacherCourseDetail2 = ({
         a.id === selectedId
           ? {
               ...a,
-              title: formTitle,
-              description: formDesc,
-              points: formPoints,
-              due: formDue,
+              header: formTitle,
+              instruction: formDesc,
+              totalScore: formPoints,
+              pointsOnTime: formWeek,
+              dueDate: formDue,
+              repositoryDisabledAfterDue: assignmentDisableRepositoryAfterDue,
             }
           : a
       )
@@ -436,6 +560,7 @@ const TeacherCourseDetail2 = ({
         style: 'destructive',
         onPress: () => {
           setAssignments((prev) => prev.filter((a) => a.id !== selectedId));
+          setSubmissions((prev) => prev.filter((s) => s.assignmentId !== selectedId));
           setShowUpdateModal(false);
           setShowSubmissions(false);
         },
@@ -475,6 +600,7 @@ const TeacherCourseDetail2 = ({
         <TeacherSubmissionsSection
           members={members}
           currentAssignment={currentAssignment}
+          submissions={submissions}
           onBack={() => setShowSubmissions(false)}
           onOpenUpdate={() => openUpdateModal(currentAssignment)}
         />
@@ -493,34 +619,53 @@ const TeacherCourseDetail2 = ({
                 style={styles.inputBox}
                 value={formTitle}
                 onChangeText={setFormTitle}
-                placeholder="Title"
+                placeholder="Enter Header"
               />
               <TextInput
                 style={styles.inputBox}
                 value={formDesc}
                 onChangeText={setFormDesc}
-                placeholder="Description"
+                placeholder="Enter Instruction"
               />
-              <View style={styles.dualInputRow}>
-                <TextInput
-                  style={[styles.inputBox, { flex: 1 }]}
-                  value={formPoints}
-                  onChangeText={setFormPoints}
-                  keyboardType="numeric"
-                  placeholder="Points"
-                />
-                <TextInput
-                  style={[styles.inputBox, { flex: 1 }]}
-                  value="10"
-                  editable={false}
-                />
-              </View>
+              <TextInput
+                style={styles.inputBox}
+                value={formPoints}
+                onChangeText={setFormPoints}
+                keyboardType="numeric"
+                placeholder="Total Score"
+              />
+              <TextInput
+                style={styles.inputBox}
+                value={formWeek}
+                onChangeText={setFormWeek}
+                keyboardType="numeric"
+                placeholder="Points On Time"
+              />
               <TextInput
                 style={styles.inputBox}
                 value={formDue}
                 onChangeText={setFormDue}
-                placeholder="Due Date"
+                placeholder="Set Due Date"
               />
+
+              <View style={styles.checkboxRow}>
+                <Text style={styles.checkboxLabel}>Disabled repository after due</Text>
+                <TouchableOpacity
+                  style={[
+                    styles.checkboxBox,
+                    assignmentDisableRepositoryAfterDue && styles.checkboxBoxChecked,
+                  ]}
+                  onPress={() =>
+                    setAssignmentDisableRepositoryAfterDue(
+                      !assignmentDisableRepositoryAfterDue
+                    )
+                  }
+                >
+                  {assignmentDisableRepositoryAfterDue ? (
+                    <MaterialCommunityIcons name="check" size={16} color="#FFF" />
+                  ) : null}
+                </TouchableOpacity>
+              </View>
 
               <TouchableOpacity style={styles.deleteButton} onPress={handleDelete}>
                 <Text style={styles.deleteButtonText}>Delete Assignment</Text>
@@ -533,23 +678,6 @@ const TeacherCourseDetail2 = ({
           </View>
         </Modal>
       </>
-    );
-  }
-
-  if (showMembers) {
-    return (
-      <TeacherMembersSection
-        members={members}
-        memberIdInput={memberIdInput}
-        setMemberIdInput={setMemberIdInput}
-        onBack={() => setShowMembers(false)}
-        onAddMember={handleAddMember}
-        onRemoveMember={handleRemoveMember}
-        onOpenSubmission={() => {
-          setShowSubmissions(true);
-          setShowMembers(false);
-        }}
-      />
     );
   }
 
@@ -567,7 +695,18 @@ const TeacherCourseDetail2 = ({
             </Text>
             <Text style={styles.courseSubText}>{courseName}</Text>
             <Text style={styles.instructorText}>Instructor: {courseInstructor}</Text>
-            <Text style={styles.classCodeText}>Class Code: {classCode}</Text>
+
+            <View style={styles.classCodeRow}>
+              <Text style={styles.classCodeText}>Class Code: {classCode}</Text>
+
+              <TouchableOpacity onPress={handleCopyClassCode} style={styles.copyBtn}>
+                <MaterialCommunityIcons
+                  name={classCodeCopied ? 'check' : 'content-copy'}
+                  size={18}
+                  color="#FFF"
+                />
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </View>
@@ -614,7 +753,7 @@ const TeacherCourseDetail2 = ({
           onCreate={openCreateModal}
           onOpenMembers={(id) => {
             setSelectedId(id);
-            setShowMembers(true);
+            setShowSubmissions(true);
           }}
         />
       )}
@@ -638,7 +777,7 @@ const TeacherCourseDetail2 = ({
 
             <TextInput
               style={styles.inputBox}
-              placeholder={activeTab === 'Materials' ? 'Material Title' : 'Assignment Title'}
+              placeholder={activeTab === 'Materials' ? 'Material Title' : 'Enter Header'}
               value={formTitle}
               onChangeText={setFormTitle}
             />
@@ -672,23 +811,49 @@ const TeacherCourseDetail2 = ({
               <>
                 <TextInput
                   style={styles.inputBox}
-                  placeholder="Description"
+                  placeholder="Enter Instruction"
                   value={formDesc}
                   onChangeText={setFormDesc}
                 />
                 <TextInput
                   style={styles.inputBox}
-                  placeholder="Due Date"
-                  value={formDue}
-                  onChangeText={setFormDue}
-                />
-                <TextInput
-                  style={styles.inputBox}
-                  placeholder="Points"
+                  placeholder="Total Score"
                   keyboardType="numeric"
                   value={formPoints}
                   onChangeText={setFormPoints}
                 />
+                <TextInput
+                  style={styles.inputBox}
+                  placeholder="Points On Time"
+                  keyboardType="numeric"
+                  value={formWeek}
+                  onChangeText={setFormWeek}
+                />
+                <TextInput
+                  style={styles.inputBox}
+                  placeholder="Set Due Date"
+                  value={formDue}
+                  onChangeText={setFormDue}
+                />
+
+                <View style={styles.checkboxRow}>
+                  <Text style={styles.checkboxLabel}>Disabled repository after due</Text>
+                  <TouchableOpacity
+                    style={[
+                      styles.checkboxBox,
+                      assignmentDisableRepositoryAfterDue && styles.checkboxBoxChecked,
+                    ]}
+                    onPress={() =>
+                      setAssignmentDisableRepositoryAfterDue(
+                        !assignmentDisableRepositoryAfterDue
+                      )
+                    }
+                  >
+                    {assignmentDisableRepositoryAfterDue ? (
+                      <MaterialCommunityIcons name="check" size={16} color="#FFF" />
+                    ) : null}
+                  </TouchableOpacity>
+                </View>
 
                 <TouchableOpacity style={styles.uploadBtn} onPress={handlePickAssignmentFile}>
                   <MaterialCommunityIcons name="upload" size={20} color="#FFF" />
@@ -785,8 +950,17 @@ const styles = StyleSheet.create({
   classCodeText: {
     color: 'rgba(255,255,255,0.9)',
     fontSize: 13,
-    marginTop: 4,
     fontWeight: '600',
+  },
+  classCodeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  copyBtn: {
+    marginLeft: 8,
+    padding: 4,
+    borderRadius: 6,
   },
   tabContainer: {
     flexDirection: 'row',
@@ -986,5 +1160,30 @@ const styles = StyleSheet.create({
     color: '#FFF',
     fontWeight: 'bold',
     fontSize: 15,
+  },
+  checkboxRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  checkboxLabel: {
+    fontSize: 14,
+    color: '#333',
+    flex: 1,
+    marginRight: 10,
+  },
+  checkboxBox: {
+    width: 24,
+    height: 24,
+    borderWidth: 1.5,
+    borderColor: '#C62828',
+    borderRadius: 6,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#FFF',
+  },
+  checkboxBoxChecked: {
+    backgroundColor: '#C62828',
   },
 });

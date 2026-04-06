@@ -32,122 +32,162 @@ export default function ShareAnnouncement() {
   const [description, setDescription] = useState('');
   const [isHeaderFocused, setIsHeaderFocused] = useState(false);
   const [isDescFocused, setIsDescFocused] = useState(false);
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
 
   const handleShare = () => {
-  const trimmedHeader = header.trim();
-  const trimmedDesc = description.trim();
+    const trimmedHeader = header.trim();
+    const trimmedDesc = description.trim();
 
-  if (!trimmedHeader && !trimmedDesc) {
-    Alert.alert('Error', 'Please fill in all fields.');
-    return;
-  }
+    if (!trimmedHeader && !trimmedDesc) {
+      Alert.alert('Error', 'Please fill in all fields.');
+      return;
+    }
 
-  if (!trimmedHeader) {
-    Alert.alert('Missing Header', 'Please enter the announcement header.');
-    return;
-  }
+    if (!trimmedHeader) {
+      Alert.alert('Missing Header', 'Please enter the announcement header.');
+      return;
+    }
 
-  if (!trimmedDesc) {
-    Alert.alert('Missing Description', 'Please enter the announcement description.');
-    return;
-  }
+    if (!trimmedDesc) {
+      Alert.alert('Missing Description', 'Please enter the announcement description.');
+      return;
+    }
 
-  Alert.alert(
-    'Success',
-    'Announcement shared successfully!',
-  );
+    setShowConfirmModal(true);
+  };
 
-  // ✅ clear inputs after sharing
-  setHeader('');
-  setDescription('');
-  setSelectedBg(4);
-};
+  const confirmShare = () => {
+    setShowConfirmModal(false);
+    Alert.alert('Success', 'Announcement shared successfully!');
+
+    setHeader('');
+    setDescription('');
+    setSelectedBg(4);
+  };
+
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
-        <View style={styles.headerSpacer} />
+    <View style={styles.screen}>
+      <SafeAreaView style={styles.safeArea}>
+        <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
+          <View style={styles.headerSpacer} />
 
-        <Text style={styles.formTitle}>Share an Announcement.</Text>
-        <Text style={styles.formSubTitle}>
-          Announcement will be available to all students.
-        </Text>
+          <Text style={styles.formTitle}>Share an Announcement.</Text>
+          <Text style={styles.formSubTitle}>
+            Announcement will be available to all students.
+          </Text>
 
-        <View
-          style={[
-            styles.inputOutlineBox,
-            isHeaderFocused && { borderColor: '#000' }
-          ]}
-        >
-          <Text style={styles.innerLabel}>Header</Text>
-          <TextInput
-            style={styles.nakedInput}
-            value={header}
-            onChangeText={setHeader}
-            onFocus={() => setIsHeaderFocused(true)}
-            onBlur={() => setIsHeaderFocused(false)}
-            underlineColorAndroid="transparent"
-            placeholder="Enter announcement header"
-            placeholderTextColor="#999"
-          />
-        </View>
+          <View
+            style={[
+              styles.inputOutlineBox,
+              isHeaderFocused && { borderColor: '#000' }
+            ]}
+          >
+            <Text style={styles.innerLabel}>Header</Text>
+            <TextInput
+              style={styles.nakedInput}
+              value={header}
+              onChangeText={setHeader}
+              onFocus={() => setIsHeaderFocused(true)}
+              onBlur={() => setIsHeaderFocused(false)}
+              underlineColorAndroid="transparent"
+              placeholder="Enter announcement header"
+              placeholderTextColor="#999"
+            />
+          </View>
 
-        <View
-          style={[
-            styles.inputOutlineBox,
-            isDescFocused && { borderColor: '#000' }
-          ]}
-        >
-          <Text style={styles.innerLabel}>Description</Text>
-          <TextInput
-            style={[styles.nakedInput, styles.descriptionInput]}
-            value={description}
-            onChangeText={setDescription}
-            multiline
-            textAlignVertical="top"
-            onFocus={() => setIsDescFocused(true)}
-            onBlur={() => setIsDescFocused(false)}
-            underlineColorAndroid="transparent"
-            placeholder="Enter announcement description"
-            placeholderTextColor="#999"
-          />
-        </View>
+          <View
+            style={[
+              styles.inputOutlineBox,
+              isDescFocused && { borderColor: '#000' }
+            ]}
+          >
+            <Text style={styles.innerLabel}>Description</Text>
+            <TextInput
+              style={[styles.nakedInput, styles.descriptionInput]}
+              value={description}
+              onChangeText={setDescription}
+              multiline
+              textAlignVertical="top"
+              onFocus={() => setIsDescFocused(true)}
+              onBlur={() => setIsDescFocused(false)}
+              underlineColorAndroid="transparent"
+              placeholder="Enter announcement description"
+              placeholderTextColor="#999"
+            />
+          </View>
 
-        <View style={styles.selectorOutlineBox}>
-          <Text style={styles.innerLabel}>Select Background Banner</Text>
-          <View style={styles.bgGrid}>
-            {BACKGROUNDS.map((bg) => (
+          <View style={styles.selectorOutlineBox}>
+            <Text style={styles.innerLabel}>Select Background Banner</Text>
+            <View style={styles.bgGrid}>
+              {BACKGROUNDS.map((bg) => (
+                <TouchableOpacity
+                  key={bg.id}
+                  onPress={() => setSelectedBg(bg.id)}
+                  style={[
+                    styles.bgOption,
+                    selectedBg === bg.id && styles.bgOptionSelected
+                  ]}
+                >
+                  <Image source={bg.image} style={styles.bgImage} />
+                  {selectedBg === bg.id && (
+                    <View style={styles.checkOverlay}>
+                      <Ionicons name="checkmark-circle" size={24} color="#FFF" />
+                    </View>
+                  )}
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+
+          <TouchableOpacity
+            style={styles.submitBtn}
+            activeOpacity={0.8}
+            onPress={handleShare}
+          >
+            <Text style={styles.submitBtnText}>Share</Text>
+          </TouchableOpacity>
+        </ScrollView>
+      </SafeAreaView>
+
+      {showConfirmModal && (
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Confirm Share</Text>
+            <Text style={styles.modalMessage}>
+              Do you want to share this announcement?
+            </Text>
+
+            <View style={styles.modalButtonRow}>
               <TouchableOpacity
-                key={bg.id}
-                onPress={() => setSelectedBg(bg.id)}
-                style={[
-                  styles.bgOption,
-                  selectedBg === bg.id && styles.bgOptionSelected
-                ]}
+                style={styles.cancelBtn}
+                activeOpacity={0.8}
+                onPress={() => setShowConfirmModal(false)}
               >
-                <Image source={bg.image} style={styles.bgImage} />
-                {selectedBg === bg.id && (
-                  <View style={styles.checkOverlay}>
-                    <Ionicons name="checkmark-circle" size={24} color="#FFF" />
-                  </View>
-                )}
+                <Text style={styles.cancelBtnText}>Cancel</Text>
               </TouchableOpacity>
-            ))}
+
+              <TouchableOpacity
+                style={styles.confirmBtn}
+                activeOpacity={0.8}
+                onPress={confirmShare}
+              >
+                <Text style={styles.confirmBtnText}>Share</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
-
-        <TouchableOpacity
-          style={styles.submitBtn}
-          activeOpacity={0.8}
-          onPress={handleShare}
-        >
-          <Text style={styles.submitBtnText}>Share</Text>
-        </TouchableOpacity>
-      </ScrollView>
-    </SafeAreaView>
+      )}
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  screen: {
+    flex: 1,
+    position: 'relative',
+    backgroundColor: '#FFF'
+  },
+
   safeArea: {
     flex: 1,
     backgroundColor: '#FFF'
@@ -166,16 +206,16 @@ const styles = StyleSheet.create({
   },
 
   formTitle: {
-  fontSize: 40,          // bigger like the image
-  fontWeight: '800',     // extra bold
-  color: '#000',
-  fontFamily: Platform.select({
-    ios: 'System',
-    android: 'Roboto',
-    default: 'sans-serif',
-  }),
-  letterSpacing: -0.5,   // tighter look like "Honors"
-},
+    fontSize: 40,
+    fontWeight: '800',
+    color: '#000',
+    fontFamily: Platform.select({
+      ios: 'System',
+      android: 'Roboto',
+      default: 'sans-serif',
+    }),
+    letterSpacing: -0.5,
+  },
 
   formSubTitle: {
     fontSize: 14,
@@ -271,6 +311,78 @@ const styles = StyleSheet.create({
     color: '#FFF',
     fontSize: 18,
     fontWeight: '900',
+    fontFamily
+  },
+
+  modalOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    zIndex: 9999,
+    elevation: 9999
+  },
+
+  modalCard: {
+    width: '100%',
+    maxWidth: 380,
+    backgroundColor: '#FFF',
+    borderRadius: 12,
+    padding: 22
+  },
+
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#000',
+    marginBottom: 10,
+    fontFamily
+  },
+
+  modalMessage: {
+    fontSize: 14,
+    color: '#444',
+    lineHeight: 22,
+    marginBottom: 20,
+    fontFamily
+  },
+
+  modalButtonRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end'
+  },
+
+  cancelBtn: {
+    paddingVertical: 12,
+    paddingHorizontal: 18,
+    borderRadius: 8,
+    marginRight: 10,
+    backgroundColor: '#E2E8F0'
+  },
+
+  cancelBtnText: {
+    color: '#222',
+    fontSize: 14,
+    fontWeight: '700',
+    fontFamily
+  },
+
+  confirmBtn: {
+    paddingVertical: 12,
+    paddingHorizontal: 18,
+    borderRadius: 8,
+    backgroundColor: '#B71C1C'
+  },
+
+  confirmBtnText: {
+    color: '#FFF',
+    fontSize: 14,
+    fontWeight: '700',
     fontFamily
   }
 });

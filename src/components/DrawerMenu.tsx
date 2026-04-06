@@ -40,9 +40,26 @@ interface DrawerMenuProps {
   activeScreen?: ScreenType;
   userName?: string;
   userEmail?: string;
+  userAvatar?: any;
   onAvatarPress?: () => void;
   setIsLoggedIn: React.Dispatch<React.SetStateAction<boolean>>;
 }
+
+const DEFAULT_AVATAR = require('../../assets/images/pogi.jpg');
+
+const normalizeImageSource = (img: any) => {
+  if (!img) return DEFAULT_AVATAR;
+
+  if (typeof img === 'number') {
+    return img;
+  }
+
+  if (img?.uri) {
+    return { uri: img.uri };
+  }
+
+  return DEFAULT_AVATAR;
+};
 
 const MenuItem = ({
   iconSource,
@@ -108,7 +125,9 @@ const DrawerMenu = ({
   onClose,
   onNavigate,
   activeScreen,
-  userEmail,
+  userName = 'Jade Lisondra',
+  userAvatar,
+  onAvatarPress,
   setIsLoggedIn,
 }: DrawerMenuProps) => {
   const { width } = useWindowDimensions();
@@ -121,7 +140,7 @@ const DrawerMenu = ({
   const [isChangeEmailModalVisible, setChangeEmailModalVisible] = useState(false);
   const [isChangePasswordModalVisible, setChangePasswordModalVisible] = useState(false);
 
-  const [email, setEmail] = useState(userEmail ?? 'student@email.com');
+  const [email, setEmail] = useState('student@email.com');
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -153,16 +172,17 @@ const DrawerMenu = ({
 
   return (
     <View style={[styles.drawerContainer, { width: drawerWidth }]}>
-      <View style={styles.profileSection}>
+      <Pressable style={styles.profileSection} onPress={onAvatarPress}>
         <Image
-          source={require('../../assets/images/pogi.jpg')}
+          source={normalizeImageSource(userAvatar)}
           style={styles.avatar}
+          resizeMode="cover"
         />
 
         <View style={{ flex: 1 }}>
-          <Text style={styles.userName}>Jade Lisondra</Text>
+          <Text style={styles.userName}>{userName}</Text>
         </View>
-      </View>
+      </Pressable>
 
       <ScrollView
         style={{ flex: 1 }}
@@ -495,14 +515,12 @@ const styles = StyleSheet.create({
     height: '100%',
     padding: 25,
     backgroundColor: '#FFF',
-
     borderWidth: 0,
     borderRightWidth: 0,
     borderLeftWidth: 0,
     borderTopWidth: 0,
     borderBottomWidth: 0,
     borderColor: 'transparent',
-
     elevation: 0,
     shadowColor: 'transparent',
     shadowOpacity: 0,
@@ -521,16 +539,13 @@ const styles = StyleSheet.create({
     height: 50,
     borderRadius: 25,
     marginRight: 15,
+    overflow: 'hidden',
+    aspectRatio: 1,
   },
 
   userName: {
     fontWeight: '700',
     fontSize: 18,
-  },
-
-  userEmail: {
-    fontSize: 14,
-    color: '#555',
   },
 
   menuItem: {

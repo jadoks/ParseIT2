@@ -63,6 +63,9 @@ export interface CourseDetailData {
   code: string;
   instructor: string;
   description: string;
+  semester: string;
+  schoolYear: string;
+  section: string;
   materials: Material[];
   assignments: CourseAssignment[];
 }
@@ -84,11 +87,14 @@ interface CourseDetailProps {
 
 const MOCK_COURSE: AssignmentCourse = {
   id: '1',
-  name: 'Web Development 101',
+  name: 'Web Development',
   code: 'CS-101',
   instructor: 'Prof. John Smith',
   description:
     'Learn the fundamentals of web development including HTML, CSS, JavaScript, and introductory React concepts.',
+  semester: '2nd Semester',
+  schoolYear: '2025-2026',
+  section: '3A - Python',
   materials: [
     { id: 'm1', title: 'HTML Basics Tutorial', type: 'video', uploadedDate: '2026-02-01' },
     { id: 'm2', title: 'CSS Styling Guide', type: 'pdf', uploadedDate: '2026-02-03' },
@@ -444,6 +450,12 @@ const CourseDetail = ({
         <Text style={[styles.instructor, { fontSize: isSmallPhone ? 12 : 14 }]}>
           Instructor: {course.instructor}
         </Text>
+        <Text style={[styles.metaText, { fontSize: isSmallPhone ? 12 : 13 }]}>
+          {course.semester} - {course.schoolYear}
+        </Text>
+        <Text style={[styles.metaText, { fontSize: isSmallPhone ? 12 : 13 }]}>
+          {course.section}
+        </Text>
         <Text style={[styles.description, { fontSize: isSmallPhone ? 12 : 13 }]}>
           {course.description}
         </Text>
@@ -549,6 +561,11 @@ const CourseDetail = ({
                         <Text style={styles.detailCourseName}>
                           {course.name} • {course.code}
                         </Text>
+
+                        <Text style={styles.detailMetaText}>
+                          {course.semester} - {course.schoolYear}
+                        </Text>
+                        <Text style={styles.detailMetaText}>{course.section}</Text>
 
                         {!!selectedAssignment.topic && (
                           <Text style={styles.detailTopicText}>
@@ -808,12 +825,18 @@ const styles = StyleSheet.create({
   },
   instructor: {
     color: 'rgba(255, 255, 255, 0.9)',
-    marginBottom: hp('1.2'),
+    marginBottom: hp('0.6'),
+    fontWeight: '500',
+  },
+  metaText: {
+    color: 'rgba(255, 255, 255, 0.88)',
+    marginBottom: hp('0.6'),
     fontWeight: '500',
   },
   description: {
     color: 'rgba(255, 255, 255, 0.8)',
     lineHeight: 20,
+    marginTop: hp('0.3'),
   },
   performanceCard: {
     marginTop: hp('1.5'),
@@ -1026,11 +1049,17 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     fontSize: 13,
   },
+  detailMetaText: {
+    color: '#555',
+    fontSize: 12,
+    fontWeight: '600',
+    marginTop: 4,
+  },
   detailTopicText: {
     color: '#444',
     fontSize: 12,
     fontWeight: '600',
-    marginTop: 4,
+    marginTop: 8,
   },
   detailDescription: {
     color: '#666',
