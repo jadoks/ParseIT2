@@ -19,11 +19,12 @@ import Icon from 'react-native-vector-icons/Ionicons';
 
 interface SignInProps {
   onLogIn?: (role: 'student' | 'teacher' | 'admin') => void;
+  onGoToLanding?: () => void;
 }
 
 type ForgotStep = 1 | 2 | 3;
 
-const SignIn = ({ onLogIn }: SignInProps) => {
+const SignIn = ({ onLogIn, onGoToLanding }: SignInProps) => {
   const [id, setId] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -109,6 +110,14 @@ const SignIn = ({ onLogIn }: SignInProps) => {
           'Teacher: TCH67890 / teacher456\n' +
           'Admin: ADM00001 / admin789'
       );
+    }
+  };
+
+  const handleGoToLanding = () => {
+    if (typeof onGoToLanding === 'function') {
+      onGoToLanding();
+    } else {
+      console.warn('onGoToLanding was not provided to SignIn');
     }
   };
 
@@ -278,13 +287,17 @@ const SignIn = ({ onLogIn }: SignInProps) => {
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
         >
-          <View style={styles.logoContainer}>
+          <TouchableOpacity
+            style={styles.logoContainer}
+            onPress={handleGoToLanding}
+            activeOpacity={0.85}
+          >
             <Image
               source={require('../../assets/images/logo.png')}
               style={styles.logoImage}
               resizeMode="contain"
             />
-          </View>
+          </TouchableOpacity>
 
           <Text style={styles.heading}>Welcome, Parsers!</Text>
           <Text style={styles.subheading}>Sign in to continue</Text>
@@ -344,16 +357,20 @@ const SignIn = ({ onLogIn }: SignInProps) => {
             </TouchableOpacity>
           </View>
 
-          <TextInput
-            style={styles.input}
-            placeholder="Enter ID"
-            placeholderTextColor="#9E9E9E"
-            value={id}
-            onChangeText={setId}
-            autoCapitalize="characters"
-          />
+          <View style={styles.inputWrapper}>
+            <Icon name="person-outline" size={18} color="#888" style={styles.inputIcon} />
+            <TextInput
+              style={styles.inputWithIcon}
+              placeholder="Enter ID"
+              placeholderTextColor="#9E9E9E"
+              value={id}
+              onChangeText={setId}
+              autoCapitalize="characters"
+            />
+          </View>
 
           <View style={styles.passwordContainer}>
+            <Icon name="lock-closed-outline" size={18} color="#888" style={styles.inputIcon} />
             <TextInput
               style={styles.passwordInput}
               placeholder="Enter Password"
@@ -450,7 +467,6 @@ const SignIn = ({ onLogIn }: SignInProps) => {
                     activeOpacity={0.85}
                   >
                     <Text style={styles.primaryButtonText}>Verify Email</Text>
-                    
                   </TouchableOpacity>
                 </View>
               )}
@@ -509,7 +525,6 @@ const SignIn = ({ onLogIn }: SignInProps) => {
                       style={styles.secondaryButton}
                       onPress={() => setForgotStep(1)}
                     >
-                     
                       <Text style={styles.secondaryButtonText}>Back</Text>
                     </TouchableOpacity>
 
@@ -518,7 +533,6 @@ const SignIn = ({ onLogIn }: SignInProps) => {
                       onPress={handlePinVerification}
                     >
                       <Text style={styles.primaryButtonText}>Verify PIN</Text>
-                      
                     </TouchableOpacity>
                   </View>
                 </View>
@@ -596,7 +610,6 @@ const SignIn = ({ onLogIn }: SignInProps) => {
                       style={styles.secondaryButton}
                       onPress={() => setForgotStep(2)}
                     >
-                    
                       <Text style={styles.secondaryButtonText}>Back</Text>
                     </TouchableOpacity>
 
@@ -605,7 +618,6 @@ const SignIn = ({ onLogIn }: SignInProps) => {
                       onPress={handlePasswordReset}
                     >
                       <Text style={styles.primaryButtonText}>Save Password</Text>
-                     
                     </TouchableOpacity>
                   </View>
                 </View>
@@ -699,17 +711,22 @@ const styles = StyleSheet.create({
   demoButtonTextActive: {
     color: '#FFF',
   },
-  input: {
+  inputWrapper: {
     width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
     backgroundColor: '#F5F5F5',
     borderRadius: 14,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    fontSize: 16,
-    marginBottom: 16,
-    color: '#000',
     borderWidth: 1,
     borderColor: '#EAEAEA',
+    marginBottom: 16,
+    paddingHorizontal: 14,
+  },
+  inputWithIcon: {
+    flex: 1,
+    fontSize: 16,
+    color: '#000',
+    paddingVertical: 14,
   },
   passwordContainer: {
     width: '100%',
@@ -720,10 +737,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#EAEAEA',
     marginBottom: 24,
+    paddingLeft: 14,
   },
   passwordInput: {
     flex: 1,
-    paddingHorizontal: 16,
     paddingVertical: 14,
     fontSize: 16,
     color: '#000',
