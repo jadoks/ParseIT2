@@ -58,68 +58,38 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
   };
 
   const featureCards = [
-    {
-      icon: (
-        <MaterialCommunityIcons
-          name="account-group-outline"
-          size={24}
-          color="#ffffff"
-        />
-      ),
-      title: "Role-Based Access",
-      description:
-        "Built for students, teachers, and admins with dedicated app experiences after sign in.",
-    },
-    {
-      icon: <Ionicons name="book-outline" size={24} color="#ffffff" />,
-      title: "Classes and Learning Materials",
-      description:
-        "Supports academic workflows around classes, materials, and learning content in one system.",
-    },
-    {
-      icon: (
-        <MaterialCommunityIcons
-          name="clipboard-text-outline"
-          size={24}
-          color="#ffffff"
-        />
-      ),
-      title: "Assignments and Academic Tasks",
-      description:
-        "Organizes assignment-related flows for classroom activity, tracking, and updates.",
-    },
-    {
-      icon: <Ionicons name="notifications-outline" size={24} color="#ffffff" />,
-      title: "Announcements and Notifications",
-      description:
-        "Keeps users updated with school-related notices, communication, and activity alerts.",
-    },
-    {
-      icon: <Feather name="message-square" size={24} color="#ffffff" />,
-      title: "Messaging and Communication",
-      description:
-        "Includes messaging-oriented features to support interaction across the academic environment.",
-    },
-    {
-      icon: <Feather name="bar-chart-2" size={24} color="#ffffff" />,
-      title: "Dashboards and Management",
-      description:
-        "Provides admin- and teacher-oriented tools for management, oversight, and academic operations.",
-    },
-  ];
+   
+  {
+    icon: <MaterialCommunityIcons name="devices" size={24} color="#ffffff" />,
+    title: "Cross-Platform Accessibility",
+    description:
+      "Accessible on web, Android, and iOS platforms for flexible and convenient learning anytime.",
+  },
+  {
+    icon: <Ionicons name="videocam-outline" size={24} color="#ffffff" />,
+    title: "Multimedia Learning Support",
+    description:
+      "Supports video-based learning materials and assignments to cater to diverse learning styles.",
+  },
+  {
+    icon: <Feather name="shield" size={24} color="#ffffff" />,
+    title: "Secure & Data-Driven System",
+    description:
+      "Ensures data security while providing dashboards for monitoring academic performance and progress.",
+  },
+];
+    const highlights = [
+    "AI-powered tutoring and personalized feedback",
+    "Adaptive learning paths based on student performance",
+    "Cross-platform access (Web, Android, iOS)",
+    "Real-time analytics for academic monitoring",
+    ];
 
-  const highlights = [
-    "Student, Teacher, and Admin access",
-    "Assignments, materials, and class workflows",
-    "Announcements, messaging, and notifications",
-    "Management-focused modules and dashboards",
-  ];
-
-  const stats = [
-    { label: "Access Model", value: "3 User Roles" },
-    { label: "Architecture", value: "Expo + React Native" },
-    { label: "Core Focus", value: "Academic Workflow System" },
-  ];
+    const stats = [
+    { label: "System Type", value: "Adaptive LMS" },
+    { label: "Technology", value: "AI + Analytics" },
+    { label: "Access", value: "Web & Mobile" },
+    ];
 
   const navItems = ["Features"];
 
@@ -190,7 +160,7 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
                       isSmallMobile && styles.brandSubSmall,
                     ]}
                   >
-                    Role-based academic management platform
+                    AI-Powered Adaptive Learning Ecosystem for BSIT Students
                   </Text>
                 </View>
               </View>
@@ -243,7 +213,7 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
               >
                 <BlurView intensity={24} tint="dark" style={styles.badge}>
                   <Text style={styles.badgeText}>
-                    Professional Academic Platform
+                    Intelligent Learning Management System
                   </Text>
                 </BlurView>
 
@@ -256,7 +226,7 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
                     isSmallMobile && styles.heroTitleSmallMobile,
                   ]}
                 >
-                  A complete school system for students, teachers, and admins.
+                 Transforming BSIT Learning through AI-Driven Adaptive Education
                 </Text>
 
                 <Text
@@ -266,11 +236,9 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
                     isMobile && styles.heroDescriptionMobile,
                   ]}
                 >
-                  ParseIT2 is structured as an Expo and React Native academic
-                  platform with dedicated application flows for different user
-                  roles. The system supports learning, assignments,
-                  announcements, communication, dashboards, and management
-                  workflows in one connected experience.
+                  Parsers Hub 2.0 is an intelligent, cross-platform learning management system designed to address academic challenges among BSIT students. 
+                It integrates AI-based tutoring, adaptive learning pathways, and real-time performance analytics to provide personalized academic support. 
+                Unlike traditional static LMS platforms, the system dynamically responds to student needs, helping reduce academic backlogs, improve engagement, and enhance learning outcomes.
                 </Text>
 
                 <View style={styles.highlightList}>
@@ -431,34 +399,29 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
                               isMobile && styles.mainHeroTitleMobile,
                             ]}
                           >
-                            Manage academic workflows from one place
+                            Monitor, Analyze, and Improve Student Learning in Real-Time
                           </Text>
                           <Text style={styles.mainHeroText}>
-                            Role-based access for students, teachers, and
-                            administrators with modules for classes,
-                            announcements, materials, messaging, and reports.
+                            An intelligent learning environment powered by AI tutoring and performance analytics, 
+                            enabling personalized instruction, real-time feedback, and data-driven academic intervention for BSIT students.
                           </Text>
 
                           <View style={styles.mainHeroStats}>
                             <View style={styles.mainHeroStat}>
-                              <Text style={styles.mainHeroStatValue}>3</Text>
-                              <Text style={styles.mainHeroStatLabel}>
-                                User Roles
-                              </Text>
+                              <Text style={styles.mainHeroStatValue}>AI</Text>
+                                <Text style={styles.mainHeroStatLabel}>Smart Tutoring</Text>
                             </View>
                             <View style={styles.mainHeroStat}>
-                              <Text style={styles.mainHeroStatValue}>24/7</Text>
-                              <Text style={styles.mainHeroStatLabel}>
-                                Access Flow
-                              </Text>
+                              <Text style={styles.mainHeroStatValue}>Real-Time</Text>
+                                <Text style={styles.mainHeroStatLabel}>Performance Analytics</Text>
                             </View>
                             <View style={styles.mainHeroStat}>
-                              <Text style={styles.mainHeroStatValue}>
-                                All-in-1
-                              </Text>
-                              <Text style={styles.mainHeroStatLabel}>
-                                Academic Hub
-                              </Text>
+                              <Text style={styles.mainHeroStatValue}>Adaptive</Text>
+                                <Text style={styles.mainHeroStatLabel}>Learning Paths</Text>
+                            </View>
+                            <View style={styles.mainHeroStat}>
+                              <Text style={styles.mainHeroStatValue}>Cross-Platform</Text>
+                                <Text style={styles.mainHeroStatLabel}>Web & Mobile Access</Text>
                             </View>
                           </View>
                         </View>
@@ -618,9 +581,8 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
                 System Features
               </Text>
               <Text style={styles.sectionDescription}>
-                The system is designed as a role-based academic platform with
-                user-specific experiences, structured modules, and management
-                features that make it feel like a real production build.
+                Parsers Hub 2.0 is designed as an intelligent adaptive learning ecosystem that integrates AI tutoring, 
+                performance analytics, and cross-platform accessibility to enhance student engagement and academic success.
               </Text>
 
               <View style={styles.featureGrid}>
@@ -655,7 +617,7 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
 
             <View style={styles.footer}>
               <Text style={styles.footerText}>
-                © 2026 ParseIT Hub 2.0. All rights reserved.
+                © 2026 Parsers Hub 2.0 – Intelligent Adaptive Learning Ecosystem. All rights reserved.
               </Text>
             </View>
           </View>
