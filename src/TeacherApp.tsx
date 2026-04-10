@@ -7,13 +7,12 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 
 import AnnouncementModal2, {
   Announcement,
 } from './teacher_components/TeacherAnnouncementModal';
-import DrawerMenu from './teacher_components/TeacherDrawerMenu';
-import Header, { ScreenType } from './teacher_components/TeacherHeader';
+import TeacherDrawerMenu from './teacher_components/TeacherDrawerMenu';
+import TeacherHeader from './teacher_components/TeacherHeader';
 
 import Grades from './teacher_components/Grades';
 import Honors from './teacher_components/Honors';
@@ -35,6 +34,17 @@ interface Props {
   onLogout: () => void;
 }
 
+type AppScreenType =
+  | 'home'
+  | 'honors'
+  | 'grades'
+  | 'announcement'
+  | 'profile'
+  | 'messenger'
+  | 'coursedetail'
+  | 'community'
+  | 'notification';
+
 type CourseWithIcon = CourseDetailData & {
   icon?: string;
 };
@@ -49,7 +59,7 @@ type MessengerCourse = {
 };
 
 const CURRENT_USER_NAME = 'Ramcee Jade L. Munoz';
-const CURRENT_USER_EMAIL = 'teacher@email.com';
+const CURRENT_USER_EMAIL = 'Ludoviceramceejademunoz@email.com';
 
 const CURRENT_USER_PROFILE_IMAGE = require('../assets/images/avatar.jpg');
 const DEFAULT_BANNER_IMAGE = require('../assets/announcement/3.png');
@@ -146,12 +156,26 @@ const INITIAL_COMMUNITY_POSTS: CommunityPost[] = [
   },
 ];
 
+const isAppScreen = (screen: string): screen is AppScreenType => {
+  return [
+    'home',
+    'honors',
+    'grades',
+    'announcement',
+    'profile',
+    'messenger',
+    'coursedetail',
+    'community',
+    'notification',
+  ].includes(screen);
+};
+
 export default function TeacherApp({ onLogout }: Props) {
   const { width } = useWindowDimensions();
   const isLargeScreen = width >= 768;
 
-  const [activeScreen, setActiveScreen] = useState<ScreenType>('home');
-  const [lastScreen, setLastScreen] = useState<ScreenType>('home');
+  const [activeScreen, setActiveScreen] = useState<AppScreenType>('home');
+  const [lastScreen, setLastScreen] = useState<AppScreenType>('home');
   const [showAnnouncement, setShowAnnouncement] = useState(true);
   const [isMobileDrawerOpen, setMobileDrawerOpen] = useState(false);
 
@@ -209,13 +233,29 @@ export default function TeacherApp({ onLogout }: Props) {
     [courses]
   );
 
-  const navigateTo = (screen: ScreenType) => {
+  const navigateTo = (screen: AppScreenType) => {
     setLastScreen(activeScreen);
     setActiveScreen(screen);
 
     if (!isLargeScreen) {
       setMobileDrawerOpen(false);
     }
+  };
+
+  const handleHeaderNavigate = (screen: string) => {
+    if (isAppScreen(screen)) {
+      navigateTo(screen);
+    }
+  };
+
+  const handleDrawerNavigate = (screen: string) => {
+    if (isAppScreen(screen)) {
+      navigateTo(screen);
+    }
+  };
+
+  const handleSearchChange = (_query: string) => {
+    // You can connect this later to real search behavior
   };
 
   const handleChangeProfileImage = (image: any) => {
@@ -326,6 +366,7 @@ export default function TeacherApp({ onLogout }: Props) {
     if (course) {
       setSelectedCourse(course as CourseWithIcon);
     }
+    setLastScreen(activeScreen);
     setActiveScreen('coursedetail');
   };
 
@@ -356,34 +397,30 @@ export default function TeacherApp({ onLogout }: Props) {
 
   return (
     <SafeAreaView style={styles.mainContainer}>
-      <Header
-        isLargeScreen={isLargeScreen}
-        activeScreen={activeScreen}
-        onNavigate={navigateTo}
-        onSearchChange={(_query) => {}}
-      />
-
-      {!isLargeScreen && (
-        <TouchableOpacity
-          style={styles.floatingMenuBtn}
-          onPress={() => setMobileDrawerOpen((prev) => !prev)}
-        >
-          <MaterialCommunityIcons name="menu" size={24} color="#D32F2F" />
-        </TouchableOpacity>
-      )}
+      <View style={styles.headerWrapper}>
+        <TeacherHeader
+          isLargeScreen={isLargeScreen}
+          activeScreen={activeScreen}
+          onNavigate={handleHeaderNavigate}
+          onSearchChange={handleSearchChange}
+          onMenuPress={() => setMobileDrawerOpen((prev) => !prev)}
+        />
+      </View>
 
       <View style={styles.contentWrapper}>
         {isLargeScreen && (
-          <DrawerMenu
-            isFixed={true}
-            activeScreen={activeScreen}
-            onNavigate={navigateTo}
-            userName={CURRENT_USER_NAME}
-            userEmail={CURRENT_USER_EMAIL}
-            userAvatar={currentUserAvatar}
-            onAvatarPress={() => navigateTo('profile')}
-            setIsLoggedIn={handleSetIsLoggedIn}
-          />
+          <View style={styles.desktopDrawer}>
+            <TeacherDrawerMenu
+              isFixed={true}
+              activeScreen={activeScreen}
+              onNavigate={handleDrawerNavigate}
+              userName={CURRENT_USER_NAME}
+              userEmail={CURRENT_USER_EMAIL}
+              userAvatar={currentUserAvatar}
+              onAvatarPress={() => navigateTo('profile')}
+              setIsLoggedIn={handleSetIsLoggedIn}
+            />
+          </View>
         )}
 
         {!isLargeScreen && isMobileDrawerOpen && (
@@ -391,13 +428,14 @@ export default function TeacherApp({ onLogout }: Props) {
             <TouchableOpacity
               style={styles.mobileBackdrop}
               onPress={() => setMobileDrawerOpen(false)}
+              activeOpacity={1}
             />
             <View style={styles.mobileOverlay}>
-              <DrawerMenu
+              <TeacherDrawerMenu
                 isFixed={false}
                 onClose={() => setMobileDrawerOpen(false)}
                 activeScreen={activeScreen}
-                onNavigate={navigateTo}
+                onNavigate={handleDrawerNavigate}
                 userName={CURRENT_USER_NAME}
                 userEmail={CURRENT_USER_EMAIL}
                 userAvatar={currentUserAvatar}
@@ -435,12 +473,12 @@ export default function TeacherApp({ onLogout }: Props) {
               onOpenCourse={(course: CourseDetailData) => handleOpenCourse(course)}
               onCreateClass={(course: CourseDetailData) => handleCreateClass(course)}
             />
-          ) : activeScreen === 'game' ? (
+          ) : activeScreen === 'honors' ? (
             <Honors />
           ) : activeScreen === 'grades' ? (
             <Grades />
-          ) : activeScreen === 'videos' ? (
-            <ShareAnnouncement />
+          ) : activeScreen === 'announcement' ? (
+            <ShareAnnouncement key="announcement-screen" />
           ) : activeScreen === 'community' ? (
             <Community2
               posts={hydratedCommunityPosts}
@@ -471,7 +509,7 @@ export default function TeacherApp({ onLogout }: Props) {
             <TeacherNotification />
           ) : (
             <View style={styles.emptyState}>
-              <Text>Select a screen from the menu.</Text>
+              <Text style={styles.emptyStateText}>Select a screen from the menu.</Text>
             </View>
           )}
         </View>
@@ -491,43 +529,57 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#fff',
   },
+
+  headerWrapper: {
+    zIndex: 20,
+    backgroundColor: '#fff',
+  },
+
   contentWrapper: {
     flex: 1,
     flexDirection: 'row',
+    position: 'relative',
   },
+
+  desktopDrawer: {
+    width: 280,
+    borderRightWidth: 1,
+    borderRightColor: '#EEE',
+    backgroundColor: '#FFF',
+  },
+
   screenContainer: {
     flex: 1,
-  },
-  floatingMenuBtn: {
-    position: 'absolute',
-    top: 135,
-    left: 16,
-    zIndex: 50,
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    minHeight: 0,
     backgroundColor: '#FFF',
-    borderWidth: 1,
-    borderColor: '#D32F2F',
-    justifyContent: 'center',
-    alignItems: 'center',
   },
+
   mobileBackdrop: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    backgroundColor: 'rgba(0,0,0,0.4)',
     zIndex: 60,
   },
+
   mobileOverlay: {
     position: 'absolute',
     left: 0,
     top: 0,
     bottom: 0,
     zIndex: 70,
-    backgroundColor: '#ffffff22',
+    backgroundColor: '#FFF',
   },
+
   emptyState: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    paddingHorizontal: 24,
+  },
+
+  emptyStateText: {
+    fontSize: 16,
+    color: '#666',
+    fontWeight: '500',
+    textAlign: 'center',
   },
 });

@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import {
   Alert,
   Image,
+  Modal,
   Platform,
   SafeAreaView,
   ScrollView,
@@ -10,7 +11,8 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  View
+  View,
+  useWindowDimensions,
 } from 'react-native';
 
 const BACKGROUNDS = [
@@ -27,6 +29,9 @@ const fontFamily = Platform.select({
 });
 
 export default function ShareAnnouncement() {
+  const { width } = useWindowDimensions();
+  const isMobile = Platform.OS !== 'web' || width < 768;
+
   const [selectedBg, setSelectedBg] = useState(4);
   const [header, setHeader] = useState('');
   const [description, setDescription] = useState('');
@@ -68,10 +73,24 @@ export default function ShareAnnouncement() {
   return (
     <View style={styles.screen}>
       <SafeAreaView style={styles.safeArea}>
-        <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
+        <ScrollView
+          style={styles.container}
+          contentContainerStyle={
+            isMobile ? styles.mobileContentContainer : styles.webContentContainer
+          }
+          showsVerticalScrollIndicator={false}
+        >
           <View style={styles.headerSpacer} />
 
-          <Text style={styles.formTitle}>Share an Announcement.</Text>
+          <Text
+            style={[
+              styles.formTitle,
+              { fontSize: isMobile ? 28 : 40 },
+            ]}
+          >
+            Share an Announcement.
+          </Text>
+
           <Text style={styles.formSubTitle}>
             Announcement will be available to all students.
           </Text>
@@ -79,7 +98,7 @@ export default function ShareAnnouncement() {
           <View
             style={[
               styles.inputOutlineBox,
-              isHeaderFocused && { borderColor: '#000' }
+              isHeaderFocused && styles.inputOutlineBoxFocused,
             ]}
           >
             <Text style={styles.innerLabel}>Header</Text>
@@ -98,7 +117,7 @@ export default function ShareAnnouncement() {
           <View
             style={[
               styles.inputOutlineBox,
-              isDescFocused && { borderColor: '#000' }
+              isDescFocused && styles.inputOutlineBoxFocused,
             ]}
           >
             <Text style={styles.innerLabel}>Description</Text>
@@ -118,6 +137,7 @@ export default function ShareAnnouncement() {
 
           <View style={styles.selectorOutlineBox}>
             <Text style={styles.innerLabel}>Select Background Banner</Text>
+
             <View style={styles.bgGrid}>
               {BACKGROUNDS.map((bg) => (
                 <TouchableOpacity
@@ -125,8 +145,9 @@ export default function ShareAnnouncement() {
                   onPress={() => setSelectedBg(bg.id)}
                   style={[
                     styles.bgOption,
-                    selectedBg === bg.id && styles.bgOptionSelected
+                    selectedBg === bg.id && styles.bgOptionSelected,
                   ]}
+                  activeOpacity={0.85}
                 >
                   <Image source={bg.image} style={styles.bgImage} />
                   {selectedBg === bg.id && (
@@ -149,7 +170,12 @@ export default function ShareAnnouncement() {
         </ScrollView>
       </SafeAreaView>
 
-      {showConfirmModal && (
+      <Modal
+        animationType="fade"
+        transparent
+        visible={showConfirmModal}
+        onRequestClose={() => setShowConfirmModal(false)}
+      >
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
             <Text style={styles.modalTitle}>Confirm Share</Text>
@@ -176,7 +202,7 @@ export default function ShareAnnouncement() {
             </View>
           </View>
         </View>
-      )}
+      </Modal>
     </View>
   );
 }
@@ -185,35 +211,42 @@ const styles = StyleSheet.create({
   screen: {
     flex: 1,
     position: 'relative',
-    backgroundColor: '#FFF'
+    backgroundColor: '#FFF',
   },
 
   safeArea: {
     flex: 1,
-    backgroundColor: '#FFF'
+    backgroundColor: '#FFF',
   },
 
   container: {
     flex: 1,
+  },
+
+  mobileContentContainer: {
+    flexGrow: 1,
+    paddingHorizontal: 20,
+    paddingTop: 10,
+    paddingBottom: 32,
+  },
+
+  webContentContainer: {
+    flexGrow: 1,
     paddingLeft: 25,
     paddingRight: 500,
-    paddingTop: 10
+    paddingTop: 10,
+    paddingBottom: 32,
   },
 
   headerSpacer: {
     height: 10,
-    marginBottom: 20
+    marginBottom: 20,
   },
 
   formTitle: {
-    fontSize: 40,
-    fontWeight: '800',
+    fontWeight: 'bold',
     color: '#000',
-    fontFamily: Platform.select({
-      ios: 'System',
-      android: 'Roboto',
-      default: 'sans-serif',
-    }),
+    fontFamily,
     letterSpacing: -0.5,
   },
 
@@ -221,7 +254,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#444',
     marginBottom: 30,
-    fontFamily
+    fontFamily,
   },
 
   inputOutlineBox: {
@@ -230,7 +263,11 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     padding: 12,
     marginBottom: 20,
-    backgroundColor: '#FFF'
+    backgroundColor: '#FFF',
+  },
+
+  inputOutlineBoxFocused: {
+    borderColor: '#000',
   },
 
   selectorOutlineBox: {
@@ -239,7 +276,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     padding: 15,
     marginBottom: 35,
-    backgroundColor: '#FFF'
+    backgroundColor: '#FFF',
   },
 
   innerLabel: {
@@ -247,7 +284,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#222',
     marginBottom: 5,
-    fontFamily
+    fontFamily,
   },
 
   nakedInput: {
@@ -259,16 +296,16 @@ const styles = StyleSheet.create({
     margin: 0,
     fontFamily,
     ...Platform.select({
-      web: { outlineStyle: 'none' } as any
-    })
+      web: { outlineStyle: 'none' } as any,
+    }),
   },
 
   descriptionInput: {
-    height: 80
+    height: 80,
   },
 
   bgGrid: {
-    marginTop: 10
+    marginTop: 10,
   },
 
   bgOption: {
@@ -278,25 +315,25 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: '#E2E8F0'
+    borderColor: '#E2E8F0',
   },
 
   bgOptionSelected: {
     borderColor: '#B71C1C',
-    borderWidth: 3
+    borderWidth: 3,
   },
 
   bgImage: {
     width: '100%',
     height: '100%',
-    resizeMode: 'cover'
+    resizeMode: 'cover',
   },
 
   checkOverlay: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(183, 28, 28, 0.3)',
     justifyContent: 'center',
-    alignItems: 'center'
+    alignItems: 'center',
   },
 
   submitBtn: {
@@ -304,85 +341,85 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     borderRadius: 8,
     alignItems: 'center',
-    marginBottom: 40
+    marginBottom: 40,
   },
 
   submitBtnText: {
     color: '#FFF',
     fontSize: 18,
     fontWeight: '900',
-    fontFamily
+    fontFamily,
   },
 
   modalOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(0,0,0,0.35)',
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 20,
-    zIndex: 9999,
-    elevation: 9999
   },
 
   modalCard: {
     width: '100%',
     maxWidth: 380,
     backgroundColor: '#FFF',
-    borderRadius: 12,
-    padding: 22
+    borderRadius: 18,
+    padding: 22,
   },
 
   modalTitle: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: '#000',
+    fontSize: 22,
+    fontWeight: '700',
+    color: '#222',
+    textAlign: 'center',
     marginBottom: 10,
-    fontFamily
+    fontFamily,
   },
 
   modalMessage: {
     fontSize: 14,
-    color: '#444',
+    color: '#777',
     lineHeight: 22,
-    marginBottom: 20,
-    fontFamily
+    marginBottom: 22,
+    textAlign: 'center',
+    fontFamily,
   },
 
   modalButtonRow: {
     flexDirection: 'row',
-    justifyContent: 'flex-end'
+    gap: 12,
+    width: '100%',
   },
 
   cancelBtn: {
-    paddingVertical: 12,
-    paddingHorizontal: 18,
-    borderRadius: 8,
-    marginRight: 10,
-    backgroundColor: '#E2E8F0'
+    flex: 1,
+    height: 46,
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#F3F3F3',
   },
 
   cancelBtnText: {
-    color: '#222',
+    color: '#888',
     fontSize: 14,
-    fontWeight: '700',
-    fontFamily
+    fontWeight: '600',
+    fontFamily,
   },
 
   confirmBtn: {
-    paddingVertical: 12,
-    paddingHorizontal: 18,
-    borderRadius: 8,
-    backgroundColor: '#B71C1C'
+    flex: 1,
+    height: 46,
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#D32F2F',
   },
 
   confirmBtnText: {
     color: '#FFF',
     fontSize: 14,
     fontWeight: '700',
-    fontFamily
-  }
+    fontFamily,
+  },
 });

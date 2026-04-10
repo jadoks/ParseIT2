@@ -6,11 +6,13 @@ import {
   Linking,
   Modal,
   SafeAreaView,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
   View,
+  useWindowDimensions,
 } from 'react-native';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 
@@ -310,6 +312,11 @@ const TeacherCourseDetail2 = ({
   onBack?: () => void;
   course?: CourseDetailData;
 }) => {
+  const { width } = useWindowDimensions();
+
+  const isMobile = width < 768;
+  const isTablet = width >= 768 && width < 1200;
+
   const [activeTab, setActiveTab] = useState<'Materials' | 'Assignments'>('Materials');
   const [showSubmissions, setShowSubmissions] = useState(false);
   const [showUpdateModal, setShowUpdateModal] = useState(false);
@@ -607,7 +614,12 @@ const TeacherCourseDetail2 = ({
 
         <Modal visible={showUpdateModal} transparent animationType="fade">
           <View style={styles.modalOverlay}>
-            <View style={styles.sidePanel}>
+            <View
+              style={[
+                styles.sidePanel,
+                { width: isMobile ? Math.min(width - 28, 360) : 380 },
+              ]}
+            >
               <View style={styles.panelHeader}>
                 <TouchableOpacity onPress={() => setShowUpdateModal(false)}>
                   <MaterialCommunityIcons name="chevron-left" size={28} color="#000" />
@@ -615,65 +627,72 @@ const TeacherCourseDetail2 = ({
                 <Text style={styles.panelTitle}>Update Assignment</Text>
               </View>
 
-              <TextInput
-                style={styles.inputBox}
-                value={formTitle}
-                onChangeText={setFormTitle}
-                placeholder="Enter Header"
-              />
-              <TextInput
-                style={styles.inputBox}
-                value={formDesc}
-                onChangeText={setFormDesc}
-                placeholder="Enter Instruction"
-              />
-              <TextInput
-                style={styles.inputBox}
-                value={formPoints}
-                onChangeText={setFormPoints}
-                keyboardType="numeric"
-                placeholder="Total Score"
-              />
-              <TextInput
-                style={styles.inputBox}
-                value={formWeek}
-                onChangeText={setFormWeek}
-                keyboardType="numeric"
-                placeholder="Points On Time"
-              />
-              <TextInput
-                style={styles.inputBox}
-                value={formDue}
-                onChangeText={setFormDue}
-                placeholder="Set Due Date"
-              />
+              <ScrollView showsVerticalScrollIndicator={false}>
+                <TextInput
+                  style={styles.inputBox}
+                  value={formTitle}
+                  onChangeText={setFormTitle}
+                  placeholder="Enter Header"
+                  placeholderTextColor="#999"
+                />
+                <TextInput
+                  style={styles.inputBox}
+                  value={formDesc}
+                  onChangeText={setFormDesc}
+                  placeholder="Enter Instruction"
+                  placeholderTextColor="#999"
+                />
+                <TextInput
+                  style={styles.inputBox}
+                  value={formPoints}
+                  onChangeText={setFormPoints}
+                  keyboardType="numeric"
+                  placeholder="Total Score"
+                  placeholderTextColor="#999"
+                />
+                <TextInput
+                  style={styles.inputBox}
+                  value={formWeek}
+                  onChangeText={setFormWeek}
+                  keyboardType="numeric"
+                  placeholder="Points On Time"
+                  placeholderTextColor="#999"
+                />
+                <TextInput
+                  style={styles.inputBox}
+                  value={formDue}
+                  onChangeText={setFormDue}
+                  placeholder="Set Due Date"
+                  placeholderTextColor="#999"
+                />
 
-              <View style={styles.checkboxRow}>
-                <Text style={styles.checkboxLabel}>Disabled repository after due</Text>
-                <TouchableOpacity
-                  style={[
-                    styles.checkboxBox,
-                    assignmentDisableRepositoryAfterDue && styles.checkboxBoxChecked,
-                  ]}
-                  onPress={() =>
-                    setAssignmentDisableRepositoryAfterDue(
-                      !assignmentDisableRepositoryAfterDue
-                    )
-                  }
-                >
-                  {assignmentDisableRepositoryAfterDue ? (
-                    <MaterialCommunityIcons name="check" size={16} color="#FFF" />
-                  ) : null}
+                <View style={styles.checkboxRow}>
+                  <Text style={styles.checkboxLabel}>Disabled repository after due</Text>
+                  <TouchableOpacity
+                    style={[
+                      styles.checkboxBox,
+                      assignmentDisableRepositoryAfterDue && styles.checkboxBoxChecked,
+                    ]}
+                    onPress={() =>
+                      setAssignmentDisableRepositoryAfterDue(
+                        !assignmentDisableRepositoryAfterDue
+                      )
+                    }
+                  >
+                    {assignmentDisableRepositoryAfterDue ? (
+                      <MaterialCommunityIcons name="check" size={16} color="#FFF" />
+                    ) : null}
+                  </TouchableOpacity>
+                </View>
+
+                <TouchableOpacity style={styles.deleteButton} onPress={handleDelete}>
+                  <Text style={styles.deleteButtonText}>Delete Assignment</Text>
                 </TouchableOpacity>
-              </View>
 
-              <TouchableOpacity style={styles.deleteButton} onPress={handleDelete}>
-                <Text style={styles.deleteButtonText}>Delete Assignment</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity style={styles.updateButton} onPress={handleUpdate}>
-                <Text style={styles.updateButtonText}>Update Assignment</Text>
-              </TouchableOpacity>
+                <TouchableOpacity style={styles.updateButton} onPress={handleUpdate}>
+                  <Text style={styles.updateButtonText}>Update Assignment</Text>
+                </TouchableOpacity>
+              </ScrollView>
             </View>
           </View>
         </Modal>
@@ -683,17 +702,40 @@ const TeacherCourseDetail2 = ({
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.redHeader}>
+      <View
+        style={[
+          styles.redHeader,
+          {
+            paddingHorizontal: isMobile ? 16 : 20,
+            paddingTop: isMobile ? 16 : 20,
+            paddingBottom: isMobile ? 22 : 30,
+          },
+        ]}
+      >
         <View style={styles.headerTopRow}>
           <TouchableOpacity onPress={onBack} style={styles.backBtn}>
-            <MaterialCommunityIcons name="chevron-left" size={35} color="#FFF" />
+            <MaterialCommunityIcons
+              name="chevron-left"
+              size={isMobile ? 30 : 35}
+              color="#FFF"
+            />
           </TouchableOpacity>
+
           <View style={styles.headerInfo}>
-            <Text style={styles.courseTitle}>
+            <Text
+              style={[
+                styles.courseTitle,
+                { fontSize: isMobile ? 22 : isTablet ? 25 : 28 },
+              ]}
+            >
               {visibleCourseCode}
               {courseSection ? ` (${courseSection})` : ''}
             </Text>
-            <Text style={styles.courseSubText}>{courseName}</Text>
+
+            <Text style={[styles.courseSubText, { fontSize: isMobile ? 14 : 16 }]}>
+              {courseName}
+            </Text>
+
             <Text style={styles.instructorText}>Instructor: {courseInstructor}</Text>
 
             <View style={styles.classCodeRow}>
@@ -718,8 +760,8 @@ const TeacherCourseDetail2 = ({
         >
           <MaterialCommunityIcons
             name="book-multiple"
-            size={22}
-            color={activeTab === 'Materials' ? '#C62828' : '#333'}
+            size={isMobile ? 20 : 22}
+            color={activeTab === 'Materials' ? '#D32F2F' : '#333'}
           />
           <Text style={[styles.tabLabel, activeTab === 'Materials' && styles.tabLabelActive]}>
             Materials ({materials.length})
@@ -732,8 +774,8 @@ const TeacherCourseDetail2 = ({
         >
           <MaterialCommunityIcons
             name="clipboard-list"
-            size={22}
-            color={activeTab === 'Assignments' ? '#C62828' : '#333'}
+            size={isMobile ? 20 : 22}
+            color={activeTab === 'Assignments' ? '#D32F2F' : '#333'}
           />
           <Text style={[styles.tabLabel, activeTab === 'Assignments' && styles.tabLabelActive]}>
             Assignments ({assignments.length})
@@ -760,7 +802,12 @@ const TeacherCourseDetail2 = ({
 
       <Modal visible={showCreateModal} transparent animationType="fade">
         <View style={styles.modalOverlayCenter}>
-          <View style={styles.createModalBox}>
+          <View
+            style={[
+              styles.createModalBox,
+              { width: isMobile ? Math.min(width - 28, 360) : 420 },
+            ]}
+          >
             <View style={styles.createHeaderRow}>
               <Text style={styles.createTitle}>
                 Create {activeTab === 'Materials' ? 'Material' : 'Assignment'}
@@ -775,114 +822,127 @@ const TeacherCourseDetail2 = ({
               </TouchableOpacity>
             </View>
 
-            <TextInput
-              style={styles.inputBox}
-              placeholder={activeTab === 'Materials' ? 'Material Title' : 'Enter Header'}
-              value={formTitle}
-              onChangeText={setFormTitle}
-            />
+            <ScrollView showsVerticalScrollIndicator={false}>
+              <TextInput
+                style={styles.inputBox}
+                placeholder={activeTab === 'Materials' ? 'Material Title' : 'Enter Header'}
+                placeholderTextColor="#999"
+                value={formTitle}
+                onChangeText={setFormTitle}
+              />
 
-            {activeTab === 'Materials' ? (
-              <>
-                <TextInput
-                  style={styles.inputBox}
-                  placeholder="Week (example: Week 1)"
-                  value={formWeek}
-                  onChangeText={setFormWeek}
-                />
+              {activeTab === 'Materials' ? (
+                <>
+                  <TextInput
+                    style={styles.inputBox}
+                    placeholder="Week (example: Week 1)"
+                    placeholderTextColor="#999"
+                    value={formWeek}
+                    onChangeText={setFormWeek}
+                  />
 
-                <TouchableOpacity style={styles.uploadBtn} onPress={handlePickFile}>
-                  <MaterialCommunityIcons name="upload" size={20} color="#FFF" />
-                  <Text style={styles.uploadBtnText}>Upload File</Text>
-                </TouchableOpacity>
-
-                {pickedFile?.name ? (
-                  <View style={styles.filePreviewBox}>
-                    <MaterialCommunityIcons
-                      name="file-document-outline"
-                      size={22}
-                      color="#C62828"
-                    />
-                    <Text style={styles.filePreviewText}>{pickedFile.name}</Text>
-                  </View>
-                ) : null}
-              </>
-            ) : (
-              <>
-                <TextInput
-                  style={styles.inputBox}
-                  placeholder="Enter Instruction"
-                  value={formDesc}
-                  onChangeText={setFormDesc}
-                />
-                <TextInput
-                  style={styles.inputBox}
-                  placeholder="Total Score"
-                  keyboardType="numeric"
-                  value={formPoints}
-                  onChangeText={setFormPoints}
-                />
-                <TextInput
-                  style={styles.inputBox}
-                  placeholder="Points On Time"
-                  keyboardType="numeric"
-                  value={formWeek}
-                  onChangeText={setFormWeek}
-                />
-                <TextInput
-                  style={styles.inputBox}
-                  placeholder="Set Due Date"
-                  value={formDue}
-                  onChangeText={setFormDue}
-                />
-
-                <View style={styles.checkboxRow}>
-                  <Text style={styles.checkboxLabel}>Disabled repository after due</Text>
-                  <TouchableOpacity
-                    style={[
-                      styles.checkboxBox,
-                      assignmentDisableRepositoryAfterDue && styles.checkboxBoxChecked,
-                    ]}
-                    onPress={() =>
-                      setAssignmentDisableRepositoryAfterDue(
-                        !assignmentDisableRepositoryAfterDue
-                      )
-                    }
-                  >
-                    {assignmentDisableRepositoryAfterDue ? (
-                      <MaterialCommunityIcons name="check" size={16} color="#FFF" />
-                    ) : null}
+                  <TouchableOpacity style={styles.uploadBtn} onPress={handlePickFile}>
+                    <MaterialCommunityIcons name="upload" size={20} color="#FFF" />
+                    <Text style={styles.uploadBtnText}>Upload File</Text>
                   </TouchableOpacity>
-                </View>
 
-                <TouchableOpacity style={styles.uploadBtn} onPress={handlePickAssignmentFile}>
-                  <MaterialCommunityIcons name="upload" size={20} color="#FFF" />
-                  <Text style={styles.uploadBtnText}>Upload File</Text>
-                </TouchableOpacity>
+                  {pickedFile?.name ? (
+                    <View style={styles.filePreviewBox}>
+                      <MaterialCommunityIcons
+                        name="file-document-outline"
+                        size={22}
+                        color="#D32F2F"
+                      />
+                      <Text style={styles.filePreviewText}>{pickedFile.name}</Text>
+                    </View>
+                  ) : null}
+                </>
+              ) : (
+                <>
+                  <TextInput
+                    style={styles.inputBox}
+                    placeholder="Enter Instruction"
+                    placeholderTextColor="#999"
+                    value={formDesc}
+                    onChangeText={setFormDesc}
+                  />
+                  <TextInput
+                    style={styles.inputBox}
+                    placeholder="Total Score"
+                    placeholderTextColor="#999"
+                    keyboardType="numeric"
+                    value={formPoints}
+                    onChangeText={setFormPoints}
+                  />
+                  <TextInput
+                    style={styles.inputBox}
+                    placeholder="Points On Time"
+                    placeholderTextColor="#999"
+                    keyboardType="numeric"
+                    value={formWeek}
+                    onChangeText={setFormWeek}
+                  />
+                  <TextInput
+                    style={styles.inputBox}
+                    placeholder="Set Due Date"
+                    placeholderTextColor="#999"
+                    value={formDue}
+                    onChangeText={setFormDue}
+                  />
 
-                {pickedAssignmentFile?.name ? (
-                  <View style={styles.filePreviewBox}>
-                    <MaterialCommunityIcons
-                      name="file-document-outline"
-                      size={22}
-                      color="#C62828"
-                    />
-                    <Text style={styles.filePreviewText}>{pickedAssignmentFile.name}</Text>
+                  <View style={styles.checkboxRow}>
+                    <Text style={styles.checkboxLabel}>Disabled repository after due</Text>
+                    <TouchableOpacity
+                      style={[
+                        styles.checkboxBox,
+                        assignmentDisableRepositoryAfterDue && styles.checkboxBoxChecked,
+                      ]}
+                      onPress={() =>
+                        setAssignmentDisableRepositoryAfterDue(
+                          !assignmentDisableRepositoryAfterDue
+                        )
+                      }
+                    >
+                      {assignmentDisableRepositoryAfterDue ? (
+                        <MaterialCommunityIcons name="check" size={16} color="#FFF" />
+                      ) : null}
+                    </TouchableOpacity>
                   </View>
-                ) : null}
-              </>
-            )}
 
-            <TouchableOpacity style={styles.updateButton} onPress={handleCreate}>
-              <Text style={styles.updateButtonText}>Create</Text>
-            </TouchableOpacity>
+                  <TouchableOpacity style={styles.uploadBtn} onPress={handlePickAssignmentFile}>
+                    <MaterialCommunityIcons name="upload" size={20} color="#FFF" />
+                    <Text style={styles.uploadBtnText}>Upload File</Text>
+                  </TouchableOpacity>
+
+                  {pickedAssignmentFile?.name ? (
+                    <View style={styles.filePreviewBox}>
+                      <MaterialCommunityIcons
+                        name="file-document-outline"
+                        size={22}
+                        color="#D32F2F"
+                      />
+                      <Text style={styles.filePreviewText}>{pickedAssignmentFile.name}</Text>
+                    </View>
+                  ) : null}
+                </>
+              )}
+
+              <TouchableOpacity style={styles.updateButton} onPress={handleCreate}>
+                <Text style={styles.updateButtonText}>Create</Text>
+              </TouchableOpacity>
+            </ScrollView>
           </View>
         </View>
       </Modal>
 
       <Modal visible={showMaterialModal} transparent animationType="fade">
         <View style={styles.modalOverlayCenter}>
-          <View style={styles.materialModalBox}>
+          <View
+            style={[
+              styles.materialModalBox,
+              { width: isMobile ? Math.min(width - 28, 360) : 520 },
+            ]}
+          >
             <View style={styles.createHeaderRow}>
               <Text style={styles.createTitle}>{selectedMaterial?.title || 'Material'}</Text>
               <TouchableOpacity onPress={() => setShowMaterialModal(false)}>
@@ -902,7 +962,7 @@ const TeacherCourseDetail2 = ({
                 <MaterialCommunityIcons
                   name="file-document-outline"
                   size={24}
-                  color="#C62828"
+                  color="#D32F2F"
                 />
                 <View style={styles.materialFileInfo}>
                   <Text style={styles.materialFileName}>{selectedMaterial.fileName}</Text>
@@ -934,130 +994,178 @@ const TeacherCourseDetail2 = ({
 export default TeacherCourseDetail2;
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#FFF' },
-  redHeader: {
-    backgroundColor: '#C62828',
-    paddingHorizontal: 20,
-    paddingTop: 20,
-    paddingBottom: 30,
+  container: {
+    flex: 1,
+    backgroundColor: '#FFF',
   },
-  headerTopRow: { flexDirection: 'row', alignItems: 'center' },
-  backBtn: { marginRight: 10 },
-  headerInfo: { flex: 1 },
-  courseTitle: { color: '#FFF', fontSize: 28, fontWeight: 'bold' },
-  courseSubText: { color: 'rgba(255,255,255,0.9)', fontSize: 16, marginTop: 5 },
-  instructorText: { color: 'rgba(255,255,255,0.9)', fontSize: 13 },
-  classCodeText: {
+
+  redHeader: {
+    backgroundColor: '#D32F2F',
+  },
+
+  headerTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+
+  backBtn: {
+    marginRight: 8,
+    padding: 2,
+  },
+
+  headerInfo: {
+    flex: 1,
+  },
+
+  courseTitle: {
+    color: '#FFF',
+    fontWeight: '700',
+  },
+
+  courseSubText: {
+    color: 'rgba(255,255,255,0.92)',
+    marginTop: 4,
+    fontWeight: '500',
+  },
+
+  instructorText: {
     color: 'rgba(255,255,255,0.9)',
+    fontSize: 13,
+    marginTop: 2,
+  },
+
+  classCodeText: {
+    color: 'rgba(255,255,255,0.92)',
     fontSize: 13,
     fontWeight: '600',
   },
+
   classCodeRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 4,
+    marginTop: 6,
   },
+
   copyBtn: {
     marginLeft: 8,
     padding: 4,
     borderRadius: 6,
   },
+
   tabContainer: {
     flexDirection: 'row',
     borderBottomWidth: 1,
-    borderBottomColor: '#DDD',
+    borderBottomColor: '#E5E5E5',
+    backgroundColor: '#FFF',
   },
+
   tabItem: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 15,
-    gap: 10,
+    paddingVertical: 14,
+    gap: 8,
   },
-  tabActive: { borderBottomWidth: 3, borderBottomColor: '#C62828' },
-  tabLabel: { fontSize: 15, fontWeight: '600', color: '#333' },
-  tabLabelActive: { color: '#C62828' },
+
+  tabActive: {
+    borderBottomWidth: 3,
+    borderBottomColor: '#D32F2F',
+  },
+
+  tabLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#333',
+  },
+
+  tabLabelActive: {
+    color: '#D32F2F',
+  },
+
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
+    backgroundColor: 'rgba(15,23,42,0.18)',
     justifyContent: 'center',
-    alignItems: 'flex-end',
-    paddingRight: 10,
+    alignItems: 'center',
+    paddingHorizontal: 16,
   },
+
   sidePanel: {
     backgroundColor: '#FFF',
-    width: 320,
-    maxHeight: '92%',
-    borderRadius: 15,
+    maxHeight: '88%',
+    borderRadius: 18,
     padding: 20,
-    elevation: 10,
+    elevation: 8,
     borderWidth: 1,
     borderColor: '#EEE',
   },
+
   panelHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    marginBottom: 20,
+    marginBottom: 18,
   },
+
   panelTitle: {
     fontSize: 20,
-    fontWeight: 'bold',
-    color: '#000',
+    fontWeight: '700',
+    color: '#111',
   },
+
   modalOverlayCenter: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
+    backgroundColor: 'rgba(15,23,42,0.18)',
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 20,
+    paddingHorizontal: 16,
   },
+
   createModalBox: {
-    width: '100%',
-    maxWidth: 420,
     backgroundColor: '#FFF',
-    borderRadius: 16,
+    borderRadius: 18,
     padding: 20,
+    maxHeight: '85%',
   },
+
   materialModalBox: {
-    width: '100%',
-    maxWidth: 520,
     backgroundColor: '#FFF',
-    borderRadius: 16,
+    borderRadius: 18,
     padding: 20,
     maxHeight: '80%',
   },
+
   createHeaderRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 15,
   },
+
   createTitle: {
     fontSize: 22,
-    fontWeight: 'bold',
-    color: '#000',
+    fontWeight: '700',
+    color: '#111',
     flex: 1,
     marginRight: 12,
   },
+
   inputBox: {
     borderWidth: 1,
     borderColor: '#DDD',
-    borderRadius: 8,
-    padding: 12,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    height: 48,
     marginBottom: 12,
     fontSize: 14,
     color: '#333',
+    backgroundColor: '#FFF',
   },
-  dualInputRow: {
-    flexDirection: 'row',
-    gap: 10,
-    marginBottom: 12,
-  },
+
   uploadBtn: {
-    backgroundColor: '#C62828',
-    borderRadius: 8,
+    backgroundColor: '#D32F2F',
+    borderRadius: 12,
     paddingVertical: 12,
     paddingHorizontal: 14,
     flexDirection: 'row',
@@ -1066,27 +1174,31 @@ const styles = StyleSheet.create({
     gap: 8,
     marginBottom: 12,
   },
+
   uploadBtnText: {
     color: '#FFF',
     fontWeight: '700',
     fontSize: 14,
   },
+
   filePreviewBox: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#F9F9F9',
     borderWidth: 1,
     borderColor: '#EEE',
-    borderRadius: 10,
+    borderRadius: 12,
     padding: 12,
     marginBottom: 12,
   },
+
   filePreviewText: {
     marginLeft: 10,
     color: '#333',
     flex: 1,
     fontSize: 14,
   },
+
   materialLabel: {
     fontSize: 13,
     color: '#777',
@@ -1094,96 +1206,112 @@ const styles = StyleSheet.create({
     marginBottom: 4,
     fontWeight: '600',
   },
+
   materialValue: {
     fontSize: 15,
     color: '#222',
     marginBottom: 8,
   },
+
   materialFileRow: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#FAFAFA',
     borderWidth: 1,
     borderColor: '#EEE',
-    borderRadius: 10,
+    borderRadius: 12,
     padding: 12,
     marginTop: 4,
     marginBottom: 18,
   },
+
   materialFileInfo: {
     flex: 1,
     marginLeft: 10,
   },
+
   materialFileName: {
     fontSize: 15,
     color: '#222',
     fontWeight: '600',
     marginBottom: 8,
   },
+
   openFileBtn: {
-    backgroundColor: '#C62828',
+    backgroundColor: '#D32F2F',
     alignSelf: 'flex-start',
     paddingHorizontal: 12,
     paddingVertical: 8,
-    borderRadius: 8,
+    borderRadius: 10,
   },
+
   openFileBtnText: {
     color: '#FFF',
     fontWeight: '700',
     fontSize: 13,
   },
+
   noFileText: {
     fontSize: 14,
     color: '#777',
     marginBottom: 18,
   },
+
   deleteButton: {
     borderWidth: 1,
     borderColor: '#D32F2F',
-    borderRadius: 8,
-    padding: 10,
+    borderRadius: 10,
+    padding: 11,
     alignItems: 'center',
     marginBottom: 10,
   },
+
   deleteButtonText: {
     color: '#D32F2F',
     fontSize: 13,
+    fontWeight: '600',
   },
+
   updateButton: {
     backgroundColor: '#D32F2F',
-    borderRadius: 8,
+    borderRadius: 10,
     padding: 12,
     alignItems: 'center',
     marginTop: 5,
   },
+
   updateButtonText: {
     color: '#FFF',
-    fontWeight: 'bold',
+    fontWeight: '700',
     fontSize: 15,
   },
+
   checkboxRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 12,
+    gap: 10,
   },
+
   checkboxLabel: {
     fontSize: 14,
     color: '#333',
     flex: 1,
-    marginRight: 10,
   },
+
   checkboxBox: {
     width: 24,
     height: 24,
     borderWidth: 1.5,
-    borderColor: '#C62828',
+    borderColor: '#D32F2F',
     borderRadius: 6,
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: '#FFF',
   },
+
   checkboxBoxChecked: {
-    backgroundColor: '#C62828',
+    backgroundColor: '#D32F2F',
   },
 });
