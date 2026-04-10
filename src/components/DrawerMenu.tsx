@@ -25,6 +25,7 @@ type ScreenType =
   | 'quizmasters'
   | 'videos'
   | 'myjourney'
+  | 'analytics'
   | 'profile'
   | 'messenger'
   | 'assignments'
@@ -63,11 +64,13 @@ const normalizeImageSource = (img: any) => {
 
 const MenuItem = ({
   iconSource,
+  iconName,
   label,
   onPress,
   active,
 }: {
-  iconSource: any;
+  iconSource?: any;
+  iconName?: string;
   label: string;
   onPress?: () => void;
   active?: boolean;
@@ -103,10 +106,20 @@ const MenuItem = ({
         return base;
       }}
     >
-      <Image
-        source={iconSource}
-        style={[styles.menuIcon, active && { tintColor: '#D32F2F' }]}
-      />
+      {iconName ? (
+        <MaterialCommunityIcons
+          name={iconName as any}
+          size={22}
+          color={active ? '#D32F2F' : '#444'}
+          style={styles.vectorMenuIcon}
+        />
+      ) : (
+        <Image
+          source={iconSource}
+          style={[styles.menuIcon, active && { tintColor: '#D32F2F' }]}
+        />
+      )}
+
       <Text
         style={[
           styles.menuLabel,
@@ -218,6 +231,16 @@ const DrawerMenu = ({
             if (!isFixed) onClose?.();
           }}
           active={activeScreen === 'myjourney'}
+        />
+
+        <MenuItem
+          iconName="chart-line"
+          label="Analytics"
+          onPress={() => {
+            onNavigate?.('analytics');
+            if (!isFixed) onClose?.();
+          }}
+          active={activeScreen === 'analytics'}
         />
 
         <MenuItem
@@ -560,6 +583,12 @@ const styles = StyleSheet.create({
     height: 22,
     marginRight: 20,
     resizeMode: 'contain',
+  },
+
+  vectorMenuIcon: {
+    width: 22,
+    marginRight: 20,
+    textAlign: 'center',
   },
 
   menuLabel: {

@@ -1,4 +1,4 @@
-import Clipboard from '@react-native-clipboard/clipboard';
+import * as Clipboard from 'expo-clipboard';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
@@ -10,7 +10,7 @@ import {
   TextInput,
   TouchableOpacity,
   useWindowDimensions,
-  View,
+  View
 } from 'react-native';
 import { launchImageLibrary } from 'react-native-image-picker';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -291,6 +291,7 @@ const Dashboard2 = ({
             <TextInput
               style={styles.input}
               placeholder="Enter class name"
+              placeholderTextColor="#999"
               value={className}
               onChangeText={setClassName}
             />
@@ -298,6 +299,7 @@ const Dashboard2 = ({
             <TextInput
               style={styles.input}
               placeholder="Enter course code (example: CS-101)"
+              placeholderTextColor="#999"
               value={courseCode}
               onChangeText={setCourseCode}
               autoCapitalize="characters"
@@ -306,6 +308,7 @@ const Dashboard2 = ({
             <TextInput
               style={styles.input}
               placeholder="Enter section"
+              placeholderTextColor="#999"
               value={classSection}
               onChangeText={setClassSection}
             />
@@ -379,6 +382,7 @@ const Dashboard2 = ({
             <TextInput
               style={styles.input}
               placeholder="Enter class name"
+              placeholderTextColor="#999"
               value={editClassName}
               onChangeText={setEditClassName}
             />
@@ -386,6 +390,7 @@ const Dashboard2 = ({
             <TextInput
               style={styles.input}
               placeholder="Enter course code (example: CS-101)"
+              placeholderTextColor="#999"
               value={editCourseCode}
               onChangeText={setEditCourseCode}
               autoCapitalize="characters"
@@ -394,6 +399,7 @@ const Dashboard2 = ({
             <TextInput
               style={styles.input}
               placeholder="Enter section"
+              placeholderTextColor="#999"
               value={editClassSection}
               onChangeText={setEditClassSection}
             />
@@ -474,7 +480,10 @@ const Dashboard2 = ({
 
       <ScrollView
         style={styles.container}
-        contentContainerStyle={styles.scrollPadding}
+        contentContainerStyle={[
+          styles.scrollPadding,
+          { paddingHorizontal: isMobile ? 14 : 20 },
+        ]}
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.mainWrapper}>
@@ -572,122 +581,160 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#fff',
   },
+
   container: {
     flex: 1,
+    backgroundColor: '#fff',
   },
+
   scrollPadding: {
-    paddingHorizontal: 16,
-    paddingTop: 20,
-    paddingBottom: 60,
+    paddingTop: 16,
+    paddingBottom: 40,
   },
+
   mainWrapper: {
     maxWidth: 1200,
     alignSelf: 'center',
     width: '100%',
   },
+
   headerRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 12,
   },
+
   sectionHeader: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#202124',
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#111',
   },
+
   classesHeaderRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginTop: 20,
-    marginBottom: 20,
+    marginBottom: 16,
+    gap: 12,
   },
+
   classesTitle: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: '#000',
+    fontSize: 26,
+    fontWeight: '700',
+    color: '#111',
   },
+
   createBtn: {
     backgroundColor: '#D32F2F',
     paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 8,
+    paddingVertical: 11,
+    borderRadius: 14,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
   },
+
   createBtnText: {
     color: '#FFF',
-    fontWeight: 'bold',
+    fontWeight: '700',
     fontSize: 14,
   },
+
   courseGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    justifyContent: 'flex-start',
-    gap: 16,
+    justifyContent: 'space-between',
+    gap: 14,
     width: '100%',
   },
+
   card: {
     backgroundColor: '#fff',
-    borderRadius: 12,
-    elevation: 3,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: '#ECECEC',
+    borderTopWidth: 5,
+    borderTopColor: '#2E7D32',
     shadowColor: '#000',
-    shadowOpacity: 0.1,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
     overflow: 'hidden',
-    marginBottom: 10,
+    marginBottom: 8,
   },
+
   bannerWrapper: {
-    height: 120,
+    height: 140,
     width: '100%',
   },
+
   banner: {
     flex: 1,
   },
+
   cardBannerImage: {
-    borderTopLeftRadius: 12,
-    borderTopRightRadius: 12,
+    borderTopLeftRadius: 18,
+    borderTopRightRadius: 18,
   },
+
   bannerOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.3)',
+    backgroundColor: 'rgba(0,0,0,0.28)',
     padding: 16,
     justifyContent: 'flex-end',
   },
+
   bannerName: {
     color: '#fff',
     fontSize: 18,
-    fontWeight: 'bold',
+    fontWeight: '700',
   },
+
   bannerCode: {
-    color: 'rgba(255,255,255,0.9)',
+    color: 'rgba(255,255,255,0.92)',
     fontSize: 13,
     fontWeight: '600',
     marginTop: 2,
   },
+
   cardContent: {
-    padding: 16,
+    paddingHorizontal: 16,
+    paddingTop: 14,
+    paddingBottom: 10,
   },
+
   instructorLabel: {
-    fontSize: 10,
+    fontSize: 11,
     color: '#888',
     textTransform: 'uppercase',
     fontWeight: '700',
   },
+
   instructorName: {
     fontSize: 15,
     fontWeight: '600',
     color: '#202124',
-    marginTop: 2,
+    marginTop: 4,
   },
+
   cardFooter: {
-    padding: 8,
+    paddingHorizontal: 10,
+    paddingTop: 4,
+    paddingBottom: 12,
     alignItems: 'flex-end',
   },
+
   dotButton: {
     padding: 6,
+    borderRadius: 10,
     zIndex: 2,
   },
+
   bottomBorder: {
     position: 'absolute',
     bottom: 0,
@@ -695,55 +742,62 @@ const styles = StyleSheet.create({
     right: 0,
     height: 4,
   },
+
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.45)',
+    backgroundColor: 'rgba(15,23,42,0.18)',
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 20,
+    paddingHorizontal: 16,
   },
+
   createModalContainer: {
     width: '100%',
-    maxWidth: 450,
+    maxWidth: 420,
     backgroundColor: '#fff',
-    borderRadius: 14,
+    borderRadius: 18,
     padding: 20,
   },
+
   modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 18,
   },
+
   modalTitle: {
     fontSize: 22,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: '#202124',
   },
+
   inputLabel: {
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '600',
-    color: '#444',
-    marginBottom: 6,
+    color: '#333',
+    marginBottom: 8,
     marginTop: 10,
   },
+
   input: {
     borderWidth: 1,
-    borderColor: '#DADCE0',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    borderColor: '#DDD',
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    height: 48,
     fontSize: 14,
     color: '#202124',
     backgroundColor: '#fff',
     marginTop: 10,
   },
+
   uploadBtn: {
     marginTop: 8,
     borderWidth: 1,
     borderColor: '#D32F2F',
     borderStyle: 'dashed',
-    borderRadius: 10,
+    borderRadius: 12,
     paddingVertical: 14,
     paddingHorizontal: 12,
     flexDirection: 'row',
@@ -752,42 +806,49 @@ const styles = StyleSheet.create({
     gap: 8,
     backgroundColor: '#FFF5F5',
   },
+
   uploadBtnText: {
     color: '#D32F2F',
     fontWeight: '700',
     fontSize: 14,
   },
+
   bannerPreview: {
     marginTop: 12,
     height: 120,
     width: '100%',
     overflow: 'hidden',
-    borderRadius: 10,
+    borderRadius: 12,
   },
+
   previewImage: {
-    borderRadius: 10,
+    borderRadius: 12,
   },
+
   previewOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.25)',
     justifyContent: 'flex-end',
     padding: 12,
   },
+
   previewText: {
     color: '#fff',
     fontWeight: '700',
     fontSize: 14,
   },
+
   codeNoticeBox: {
     marginTop: 14,
     backgroundColor: '#F1F8F2',
     borderWidth: 1,
     borderColor: '#C8E6C9',
-    borderRadius: 10,
+    borderRadius: 12,
     padding: 12,
     flexDirection: 'row',
     alignItems: 'center',
   },
+
   codeNoticeText: {
     marginLeft: 8,
     flex: 1,
@@ -795,39 +856,46 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
   },
+
   modalButtonRow: {
     flexDirection: 'row',
     justifyContent: 'flex-end',
     marginTop: 22,
     gap: 10,
   },
+
   cancelBtn: {
     paddingHorizontal: 16,
     paddingVertical: 11,
-    borderRadius: 8,
-    backgroundColor: '#E0E0E0',
+    borderRadius: 10,
+    backgroundColor: '#F3F3F3',
   },
+
   cancelBtnText: {
     color: '#202124',
     fontWeight: '600',
   },
+
   saveBtn: {
     paddingHorizontal: 16,
     paddingVertical: 11,
-    borderRadius: 8,
+    borderRadius: 10,
     backgroundColor: '#D32F2F',
   },
+
   saveBtnText: {
     color: '#fff',
     fontWeight: '700',
   },
+
   menuOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.08)',
   },
+
   menuBox: {
     backgroundColor: '#FFF',
-    borderRadius: 10,
+    borderRadius: 12,
     width: 190,
     paddingVertical: 8,
     elevation: 5,
@@ -836,12 +904,14 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     shadowOffset: { width: 0, height: 3 },
   },
+
   menuItem: {
     flexDirection: 'row',
     alignItems: 'center',
     padding: 12,
     gap: 10,
   },
+
   menuText: {
     fontSize: 14,
     color: '#000',

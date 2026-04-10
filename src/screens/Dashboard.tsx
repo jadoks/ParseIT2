@@ -11,6 +11,8 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
+import { buildStudentAnalytics } from '../analytics/analyticsService';
+import { RiskLevel, TrendDirection } from '../analytics/types';
 import AnnouncementBanner from '../components/AnnouncementBanner';
 import { Announcement } from '../components/AnnouncementModal';
 
@@ -85,7 +87,6 @@ const Dashboard = ({
 
   const handleJoinClass = () => {
     const trimmedCode = classCode.trim();
-
     if (!trimmedCode) return;
 
     onJoinClass?.(trimmedCode);
@@ -102,6 +103,7 @@ const Dashboard = ({
     ) {
       return null;
     }
+
     return Math.round((assignment.points / assignment.maxPoints) * 100);
   };
 
@@ -135,22 +137,52 @@ const Dashboard = ({
         const due = new Date(assignment.dueDate);
         return !Number.isNaN(due.getTime()) && due >= today;
       })
-      .sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime());
+      .sort(
+        (a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime()
+      );
 
     return upcoming[0] || null;
   };
 
+  const getRiskColor = (risk: RiskLevel) => {
+    switch (risk) {
+      case 'High':
+        return '#D32F2F';
+      case 'Moderate':
+        return '#F57C00';
+      default:
+        return '#2E7D32';
+    }
+  };
+
+  const getTrendColor = (direction: TrendDirection | string) => {
+    switch (direction) {
+      case 'up':
+        return '#2E7D32';
+      case 'down':
+        return '#D32F2F';
+      default:
+        return '#666';
+    }
+  };
+
+  const studentAnalytics = useMemo(() => {
+    return buildStudentAnalytics(courses);
+  }, [courses]);
+
   const derivedCourses = useMemo(() => {
     return courses.map((course) => {
-      const gradedAssignments = course.assignments.filter((a) => a.status === 'graded');
+      const gradedAssignments = course.assignments.filter(
+        (assignment) => assignment.status === 'graded'
+      );
 
-      const weakAssignments = gradedAssignments.filter((a) => {
-        const score = getScorePercent(a);
+      const weakAssignments = gradedAssignments.filter((assignment) => {
+        const score = getScorePercent(assignment);
         return score !== null && score < 75;
       });
 
-      const pendingGenerated = weakAssignments.filter((a) => {
-        const type = getRecommendationType(a);
+      const pendingGenerated = weakAssignments.filter((assignment) => {
+        const type = getRecommendationType(assignment);
         return type === 'review' || type === 'practice';
       });
 
@@ -164,16 +196,11 @@ const Dashboard = ({
             )
           : null;
 
-      const weakTopics = weakAssignments.map(
-        (assignment) => assignment.topic || assignment.title
-      );
       const nextDueAssignment = getNextDueAssignment(course.assignments);
 
       return {
         course,
         weakAssignments,
-        weakTopics,
-        weakTopicsCount: weakTopics.length,
         pendingGeneratedCount: pendingGenerated.length,
         averageScore,
         totalAssignments: course.assignments.length,
@@ -206,14 +233,6 @@ const Dashboard = ({
     );
   }, [derivedCourses]);
 
-  const reviewTopics = useMemo(() => {
-    return recommendedAssignments.map((item) => ({
-      id: `${item.course.id}-${item.assignment.id}`,
-      topic: item.assignment.topic || item.assignment.title,
-      level: item.recommendation === 'review' ? 'danger' : 'warning',
-    }));
-  }, [recommendedAssignments]);
-
   const nextBest = useMemo(() => {
     if (recommendedAssignments.length === 0) return null;
     return [...recommendedAssignments].sort(
@@ -236,7 +255,12 @@ const Dashboard = ({
       >
         <View style={[styles.contentWrap, { maxWidth: contentMaxWidth }]}>
           <View style={styles.topHeaderRow}>
-            <Text style={[styles.pageTitle, { fontSize: titleSize, paddingBottom: 0 }]}>
+            <Text
+              style={[
+                styles.pageTitle,
+                { fontSize: titleSize, paddingBottom: 0 },
+              ]}
+            >
               Announcements
             </Text>
 
@@ -261,7 +285,9 @@ const Dashboard = ({
           ) : (
             <View style={[styles.banner, { height: bannerHeight }]}>
               <View style={styles.bannerContent}>
-                <Text style={[styles.bannerDay, { fontSize: isMobile ? 13 : 14 }]}>
+                <Text
+                  style={[styles.bannerDay, { fontSize: isMobile ? 13 : 14 }]}
+                >
                   No announcements yet
                 </Text>
                 <Text
@@ -285,6 +311,146 @@ const Dashboard = ({
               },
             ]}
           >
+            Student Performance Snapshot
+          </Text>
+
+          <View
+            style={[
+              styles.snapshotGrid,
+              isTablet && styles.snapshotGridTablet,
+              isLargeScreen && styles.snapshotGridLarge,
+            ]}
+          >
+            <View
+              style={[
+                styles.snapshotCard,
+                {
+                  flexBasis: isMobile ? '48%' : isLargeScreen ? '15.8%' : '32%',
+                  borderTopColor: '#2E7D32',
+                },
+              ]}
+            >
+              <Text style={styles.snapshotLabel}>Overall Average</Text>
+              <Text style={styles.snapshotValue}>
+                {studentAnalytics.overallAverage > 0
+                  ? `${studentAnalytics.overallAverage}%`
+                  : 'N/A'}
+              </Text>
+            </View>
+
+            <View
+              style={[
+                styles.snapshotCard,
+                {
+                  flexBasis: isMobile ? '48%' : isLargeScreen ? '15.8%' : '32%',
+                  borderTopColor: getRiskColor(studentAnalytics.overallRisk),
+                },
+              ]}
+            >
+              <Text style={styles.snapshotLabel}>Overall Risk</Text>
+              <Text
+                style={[
+                  styles.snapshotValue,
+                  { color: getRiskColor(studentAnalytics.overallRisk) },
+                ]}
+              >
+                {studentAnalytics.overallRisk}
+              </Text>
+            </View>
+
+            <View
+              style={[
+                styles.snapshotCard,
+                {
+                  flexBasis: isMobile ? '48%' : isLargeScreen ? '15.8%' : '32%',
+                  borderTopColor: '#F57C00',
+                },
+              ]}
+            >
+              <Text style={styles.snapshotLabel}>Pending Assignments</Text>
+              <Text style={styles.snapshotValue}>
+                {studentAnalytics.totalPendingAssignments}
+              </Text>
+            </View>
+
+            <View
+              style={[
+                styles.snapshotCard,
+                {
+                  flexBasis: isMobile ? '48%' : isLargeScreen ? '15.8%' : '32%',
+                  borderTopColor: '#1565C0',
+                },
+              ]}
+            >
+              <Text style={styles.snapshotLabel}>Strongest Subject</Text>
+              <Text style={styles.snapshotValueSmall}>
+                {studentAnalytics.strongestSubject}
+              </Text>
+            </View>
+
+            <View
+              style={[
+                styles.snapshotCard,
+                {
+                  flexBasis: isMobile ? '48%' : isLargeScreen ? '15.8%' : '32%',
+                  borderTopColor: '#D32F2F',
+                },
+              ]}
+            >
+              <Text style={styles.snapshotLabel}>Weakest Subject</Text>
+              <Text style={styles.snapshotValueSmall}>
+                {studentAnalytics.weakestSubject}
+              </Text>
+            </View>
+
+            <View
+              style={[
+                styles.snapshotCard,
+                {
+                  flexBasis: isMobile ? '48%' : isLargeScreen ? '15.8%' : '32%',
+                  borderTopColor: getTrendColor(
+                    studentAnalytics.overallTrend > 2
+                      ? 'up'
+                      : studentAnalytics.overallTrend < -2
+                      ? 'down'
+                      : 'stable'
+                  ),
+                },
+              ]}
+            >
+              <Text style={styles.snapshotLabel}>Current Trend</Text>
+              <Text
+                style={[
+                  styles.snapshotValue,
+                  {
+                    color: getTrendColor(
+                      studentAnalytics.overallTrend > 2
+                        ? 'up'
+                        : studentAnalytics.overallTrend < -2
+                        ? 'down'
+                        : 'stable'
+                    ),
+                  },
+                ]}
+              >
+                {studentAnalytics.overallTrend > 2
+                  ? `↑ +${studentAnalytics.overallTrend}`
+                  : studentAnalytics.overallTrend < -2
+                  ? `↓ ${studentAnalytics.overallTrend}`
+                  : `→ ${studentAnalytics.overallTrend}`}
+              </Text>
+            </View>
+          </View>
+
+          <Text
+            style={[
+              styles.pageTitle,
+              {
+                fontSize: titleSize,
+                marginTop: sectionSpacing,
+              },
+            ]}
+          >
             Suggested Learning Actions
           </Text>
 
@@ -297,7 +463,9 @@ const Dashboard = ({
               },
             ]}
           >
-            <Text style={[styles.sectionTitle, { fontSize: isMobile ? 17 : 18 }]}>
+            <Text
+              style={[styles.sectionTitle, { fontSize: isMobile ? 17 : 18 }]}
+            >
               Support Activities for Weak Topics
             </Text>
             <Text
@@ -306,13 +474,15 @@ const Dashboard = ({
                 { fontSize: isMobile ? 13 : 14 },
               ]}
             >
-              Open an assignment directly or generate a follow-up activity for any graded topic
-              below 75%.
+              Open an assignment directly or generate a follow-up activity for
+              any graded topic below 75%.
             </Text>
 
             <View style={styles.recommendationList}>
               {recommendedAssignments.length === 0 ? (
-                <Text style={styles.emptyStateText}>No recommendations available yet.</Text>
+                <Text style={styles.emptyStateText}>
+                  No recommendations available yet.
+                </Text>
               ) : (
                 recommendedAssignments.map((item) => {
                   const color = getRecommendationColor(item.recommendation);
@@ -359,19 +529,29 @@ const Dashboard = ({
 
                       <View style={styles.actionRow}>
                         <TouchableOpacity
-                          style={[styles.smallActionBtn, { backgroundColor: '#D32F2F' }]}
+                          style={[
+                            styles.smallActionBtn,
+                            { backgroundColor: '#D32F2F' },
+                          ]}
                           onPress={() =>
                             onOpenGeneratedActivity?.(item.course, item.assignment)
                           }
                         >
-                          <Text style={styles.smallActionBtnText}>Generate Activity</Text>
+                          <Text style={styles.smallActionBtnText}>
+                            Generate Activity
+                          </Text>
                         </TouchableOpacity>
 
                         <TouchableOpacity
-                          style={[styles.smallActionBtn, { backgroundColor: '#444' }]}
+                          style={[
+                            styles.smallActionBtn,
+                            { backgroundColor: '#444' },
+                          ]}
                           onPress={() => onOpenAssignments?.(item.course)}
                         >
-                          <Text style={styles.smallActionBtnText}>Open Assignment</Text>
+                          <Text style={styles.smallActionBtnText}>
+                            Open Assignment
+                          </Text>
                         </TouchableOpacity>
                       </View>
                     </View>
@@ -380,6 +560,56 @@ const Dashboard = ({
               )}
             </View>
           </View>
+
+          <Text
+            style={[
+              styles.pageTitle,
+              {
+                fontSize: titleSize,
+                marginTop: sectionSpacing,
+              },
+            ]}
+          >
+            Next Recommended Lesson
+          </Text>
+
+          {nextBest ? (
+            <TouchableOpacity
+              style={[
+                styles.lessonCard,
+                {
+                  padding: isMobile ? 14 : 16,
+                  borderRadius: isMobile ? 16 : 18,
+                },
+              ]}
+              onPress={() => onOpenMaterials?.(nextBest.course)}
+            >
+              <View style={styles.lessonBadge}>
+                <Text style={styles.lessonBadgeText}>Next</Text>
+              </View>
+
+              <View style={styles.lessonContent}>
+                <Text
+                  style={[styles.lessonTitle, { fontSize: isMobile ? 15 : 16 }]}
+                >
+                  {nextBest.assignment.topic || nextBest.assignment.title}
+                </Text>
+                <Text
+                  style={[
+                    styles.lessonSubtitle,
+                    { fontSize: isMobile ? 13 : 14 },
+                  ]}
+                >
+                  Recommended next step in {nextBest.course.name}. Open materials
+                  related to this topic.
+                </Text>
+              </View>
+            </TouchableOpacity>
+          ) : (
+            <Text style={styles.emptyStateText}>
+              No next lesson recommendation yet.
+            </Text>
+          )}
 
           <Text
             style={[
@@ -424,41 +654,28 @@ const Dashboard = ({
                     onPress={() => onOpenCourse?.(item.course)}
                   >
                     <Text style={styles.courseCardTitle}>{item.course.name}</Text>
-                    <Text style={styles.courseInstructor}>{item.course.instructor}</Text>
+                    <Text style={styles.courseInstructor}>
+                      {item.course.instructor}
+                    </Text>
                     <Text style={styles.courseSubMeta}>
                       {item.course.semester} ({item.course.schoolYear})
                     </Text>
                     <Text style={styles.courseSubMeta}>{item.course.section}</Text>
 
-                    <View style={styles.courseMetaBlock}>
-                      <Text style={styles.courseMetaLabel}>Course code</Text>
-                      <Text style={styles.courseMetaValue}>{item.course.code}</Text>
-                    </View>
-
                     <View style={styles.courseMetaGrid}>
                       <View style={styles.courseMiniStat}>
                         <Text style={styles.courseMetaLabel}>Assignments</Text>
-                        <Text style={styles.courseMetaValue}>{item.totalAssignments}</Text>
-                      </View>
-
-                      <View style={styles.courseMiniStat}>
-                        <Text style={styles.courseMetaLabel}>Graded</Text>
                         <Text style={styles.courseMetaValue}>
-                          {item.gradedAssignmentsCount}
+                          {item.totalAssignments}
                         </Text>
                       </View>
-                    </View>
-
-                    <View style={styles.courseMetaGrid}>
-                      <View style={styles.courseMiniStat}>
-                        <Text style={styles.courseMetaLabel}>Weak Topics</Text>
-                        <Text style={styles.courseMetaValue}>{item.weakTopicsCount}</Text>
-                      </View>
 
                       <View style={styles.courseMiniStat}>
-                        <Text style={styles.courseMetaLabel}>Average Score</Text>
+                        <Text style={styles.courseMetaLabel}>Average</Text>
                         <Text style={styles.courseMetaValue}>
-                          {item.averageScore !== null ? `${item.averageScore}%` : 'N/A'}
+                          {item.averageScore !== null
+                            ? `${item.averageScore}%`
+                            : 'N/A'}
                         </Text>
                       </View>
                     </View>
@@ -469,15 +686,6 @@ const Dashboard = ({
                         {item.nextDueAssignment
                           ? item.nextDueAssignment.title
                           : 'No upcoming assignment'}
-                      </Text>
-                    </View>
-
-                    <View style={styles.courseMetaBlock}>
-                      <Text style={styles.courseMetaLabel}>Weak Topic List</Text>
-                      <Text style={styles.courseMetaValue}>
-                        {item.weakTopicsCount > 0
-                          ? item.weakTopics.join(', ')
-                          : 'None'}
                       </Text>
                     </View>
 
@@ -504,142 +712,6 @@ const Dashboard = ({
                 </View>
               );
             })}
-          </View>
-
-          <Text
-            style={[
-              styles.pageTitle,
-              {
-                fontSize: titleSize,
-                marginTop: sectionSpacing,
-              },
-            ]}
-          >
-            Weak Topics
-          </Text>
-
-          <View style={styles.topicRow}>
-            {reviewTopics.length === 0 ? (
-              <Text style={styles.emptyStateText}>No review topics yet.</Text>
-            ) : (
-              reviewTopics.map((topic) => (
-                <View
-                  key={topic.id}
-                  style={[
-                    topic.level === 'danger'
-                      ? styles.topicChipDanger
-                      : styles.topicChipWarning,
-                    {
-                      paddingHorizontal: isMobile ? 12 : 14,
-                      paddingVertical: isMobile ? 8 : 10,
-                    },
-                  ]}
-                >
-                  <Text
-                    style={[
-                      topic.level === 'danger'
-                        ? styles.topicChipTextLight
-                        : styles.topicChipTextDark,
-                      { fontSize: isMobile ? 13 : 14 },
-                    ]}
-                  >
-                    {topic.topic}
-                  </Text>
-                </View>
-              ))
-            )}
-          </View>
-
-          <Text
-            style={[
-              styles.pageTitle,
-              {
-                fontSize: titleSize,
-                marginTop: sectionSpacing,
-              },
-            ]}
-          >
-            Next Recommended Lesson
-          </Text>
-
-          {nextBest ? (
-            <TouchableOpacity
-              style={[
-                styles.lessonCard,
-                {
-                  padding: isMobile ? 14 : 16,
-                  borderRadius: isMobile ? 16 : 18,
-                },
-              ]}
-              onPress={() => onOpenMaterials?.(nextBest.course)}
-            >
-              <View style={styles.lessonBadge}>
-                <Text style={styles.lessonBadgeText}>Next</Text>
-              </View>
-
-              <View style={styles.lessonContent}>
-                <Text style={[styles.lessonTitle, { fontSize: isMobile ? 15 : 16 }]}>
-                  {nextBest.assignment.topic || nextBest.assignment.title}
-                </Text>
-                <Text
-                  style={[styles.lessonSubtitle, { fontSize: isMobile ? 13 : 14 }]}
-                >
-                  Recommended next step in {nextBest.course.name}. Open materials related
-                  to this topic.
-                </Text>
-              </View>
-            </TouchableOpacity>
-          ) : (
-            <Text style={styles.emptyStateText}>No next lesson recommendation yet.</Text>
-          )}
-
-          <Text
-            style={[
-              styles.pageTitle,
-              {
-                fontSize: titleSize,
-                marginTop: sectionSpacing,
-              },
-            ]}
-          >
-            Generated Practice Suggestions
-          </Text>
-
-          <View
-            style={[
-              styles.practiceGrid,
-              isTablet && styles.practiceGridTablet,
-              isLargeScreen && styles.practiceGridLarge,
-            ]}
-          >
-            {recommendedAssignments.length === 0 ? (
-              <Text style={styles.emptyStateText}>No practice cards yet.</Text>
-            ) : (
-              recommendedAssignments.map((item) => (
-                <TouchableOpacity
-                  key={`practice-${item.course.id}-${item.assignment.id}`}
-                  style={[
-                    styles.practiceCard,
-                    {
-                      padding: isMobile ? 14 : 16,
-                      width: isMobile ? '100%' : isLargeScreen ? '49%' : '48.5%',
-                    },
-                  ]}
-                  onPress={() =>
-                    onOpenGeneratedActivity?.(item.course, item.assignment)
-                  }
-                >
-                  <Text style={[styles.practiceTitle, { fontSize: isMobile ? 14 : 15 }]}>
-                    {item.assignment.topic || item.assignment.title}
-                  </Text>
-                  <Text
-                    style={[styles.practiceSubtitle, { fontSize: isMobile ? 12 : 13 }]}
-                  >
-                    {getRecommendationLabel(item.recommendation)} • {item.course.name}
-                  </Text>
-                </TouchableOpacity>
-              ))
-            )}
           </View>
         </View>
       </ScrollView>
@@ -743,6 +815,54 @@ const styles = StyleSheet.create({
     textAlign: 'left',
     color: '#111',
   },
+
+  snapshotGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    gap: 10,
+    marginBottom: 4,
+  },
+  snapshotGridTablet: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+  },
+  snapshotGridLarge: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+  },
+  snapshotCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#ECECEC',
+    borderTopWidth: 5,
+    padding: 14,
+    marginBottom: 10,
+    shadowColor: '#000',
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  snapshotLabel: {
+    fontSize: 12,
+    color: '#777',
+    marginBottom: 6,
+    fontWeight: '600',
+  },
+  snapshotValue: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#111',
+  },
+  snapshotValueSmall: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#111',
+  },
+
   joinClassButton: {
     backgroundColor: '#D32F2F',
     borderRadius: 14,
@@ -777,6 +897,7 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     textAlign: 'center',
   },
+
   sectionCard: {
     backgroundColor: '#FFF5F5',
     borderWidth: 1,
@@ -824,6 +945,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     fontSize: 12,
   },
+
   courseGrid: {
     gap: 12,
   },
@@ -873,6 +995,7 @@ const styles = StyleSheet.create({
   courseMetaGrid: {
     flexDirection: 'row',
     gap: 10,
+    marginTop: 10,
     marginBottom: 10,
   },
   courseMiniStat: {
@@ -903,28 +1026,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     fontSize: 12,
   },
-  topicRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-    marginBottom: 6,
-  },
-  topicChipDanger: {
-    backgroundColor: '#D32F2F',
-    borderRadius: 999,
-  },
-  topicChipWarning: {
-    backgroundColor: '#FFE0B2',
-    borderRadius: 999,
-  },
-  topicChipTextLight: {
-    color: '#FFF',
-    fontWeight: '700',
-  },
-  topicChipTextDark: {
-    color: '#333',
-    fontWeight: '700',
-  },
+
   lessonCard: {
     backgroundColor: '#FFFFFF',
     borderLeftWidth: 5,
@@ -960,41 +1062,12 @@ const styles = StyleSheet.create({
     color: '#666',
     lineHeight: 20,
   },
-  practiceGrid: {
-    gap: 12,
-  },
-  practiceGridTablet: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-  },
-  practiceGridLarge: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-  },
-  practiceCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: '#E6E6E6',
-    shadowColor: '#000',
-    shadowOpacity: 0.04,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  practiceTitle: {
-    fontWeight: '700',
-    color: '#222',
-    marginBottom: 4,
-  },
-  practiceSubtitle: {
-    color: '#666',
-  },
+
   emptyStateText: {
     color: '#777',
     fontSize: 14,
   },
+
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(15, 23, 42, 0.18)',

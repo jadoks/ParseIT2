@@ -17,6 +17,7 @@ import DrawerMenu from './components/DrawerMenu';
 import GeminiFloatingModal from './components/GeminiFloatingModal';
 import Header from './components/Header';
 
+import Analytics from './screens/Analytics';
 import Assignments, {
   AssignmentComment,
   AssignmentCourse,
@@ -56,6 +57,7 @@ type ScreenType =
   | 'quizmasters'
   | 'videos'
   | 'myjourney'
+  | 'analytics'
   | 'profile'
   | 'messenger'
   | 'assignments'
@@ -1017,6 +1019,14 @@ export default function StudentApp({ onLogout }: Props) {
 
       case 'myjourney':
         return <MyJourney />;
+
+      case 'analytics':
+        return (
+          <Analytics
+            courses={hydratedSharedCourses}
+            studentName={CURRENT_USER_NAME}
+          />
+        );
 
       case 'assignments':
         return (

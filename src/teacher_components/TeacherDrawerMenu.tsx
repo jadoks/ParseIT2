@@ -1,4 +1,3 @@
-import { useNavigation } from '@react-navigation/native';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   Image,
@@ -17,22 +16,22 @@ import {
 } from 'react-native';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 
+export type DrawerScreenType =
+  | 'home'
+  | 'honors'
+  | 'grades'
+  | 'announcement'
+  | 'profile'
+  | 'messenger'
+  | 'coursedetail'
+  | 'community'
+  | 'notification';
+
 interface DrawerMenuProps {
   isFixed: boolean;
   onClose?: () => void;
-  onNavigate?: (screen: any) => void;
-  activeScreen?:
-    | 'home'
-    | 'game'
-    | 'videos'
-    | 'grades'
-    | 'myjourney'
-    | 'profile'
-    | 'messenger'
-    | 'assignments'
-    | 'coursedetail'
-    | 'community'
-    | 'notification';
+  onNavigate?: (screen: DrawerScreenType | string) => void;
+  activeScreen?: DrawerScreenType | string;
   userName?: string;
   userEmail?: string;
   userAvatar?: any;
@@ -61,8 +60,11 @@ const MenuItem = ({
   active?: boolean;
 }) => {
   const { width } = useWindowDimensions();
+
   const isMobile = width < 768;
-  const menuItemVerticalMargin = isMobile ? 12 : 18;
+  const isLargeScreen = width >= 1024;
+
+  const menuItemVerticalMargin = isMobile ? 12 : isLargeScreen ? 18 : 16;
   const menuLabelFontSize = isMobile ? 15 : 17;
 
   return (
@@ -80,7 +82,7 @@ const MenuItem = ({
 
         if (Platform.OS === 'web' && (state as any).hovered && !active) {
           base.push({
-            backgroundColor: 'rgba(130, 129, 129, 0.08)',
+            backgroundColor: 'rgba(130,129,129,0.08)',
             borderRadius: 14,
           });
         }
@@ -110,19 +112,15 @@ const DrawerMenu = ({
   onClose,
   onNavigate,
   activeScreen,
-  userName,
-  userEmail,
+  userName = 'Ramcee Jade L. Munoz',
+  userEmail = 'student@email.com',
   userAvatar,
   onAvatarPress,
   setIsLoggedIn,
 }: DrawerMenuProps) => {
-  const navigation = useNavigation<any>();
   const { width } = useWindowDimensions();
 
-  const avatarSource = useMemo(
-    () => normalizeImageSource(userAvatar),
-    [userAvatar]
-  );
+  const avatarSource = useMemo(() => normalizeImageSource(userAvatar), [userAvatar]);
 
   const [contentHeight, setContentHeight] = useState(0);
   const [scrollViewHeight, setScrollViewHeight] = useState(0);
@@ -140,32 +138,50 @@ const DrawerMenu = ({
       : null
   );
 
-  const [email, setEmail] = useState(userEmail ?? 'student@email.com');
+  const [email, setEmail] = useState(userEmail);
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
 
   const isMobile = width < 768;
   const isTablet = width >= 768 && width < 1024;
-  const isOnMobileOrTablet = isMobile || isTablet;
+  const isSmallMobile = width < 380;
 
   const hasOverflow = contentHeight > scrollViewHeight && scrollViewHeight > 0;
-  const shouldShowScrollBar = isOnMobileOrTablet && hasOverflow;
-  const drawerWidth = isMobile ? (width < 380 ? '85%' : 280) : isTablet ? 300 : 260;
+  const shouldShowScrollBar = (isMobile || isTablet) && hasOverflow;
+  const drawerWidth = isMobile ? (isSmallMobile ? '85%' : 280) : isTablet ? 300 : 260;
+
+  useEffect(() => {
+    setEmail(userEmail);
+  }, [userEmail]);
 
   useEffect(() => {
     if (activeScreen === 'profile') {
       setActiveMenu('profile');
     } else if (activeScreen === 'community') {
       setActiveMenu('community');
+    } else {
+      setActiveMenu(null);
     }
   }, [activeScreen]);
 
-  const handleContentSizeChange = (_contentW: number, contentH: number) =>
+  const handleContentSizeChange = (_contentW: number, contentH: number) => {
     setContentHeight(contentH);
+  };
 
-  const handleScrollViewLayout = (e: LayoutChangeEvent) =>
+  const handleScrollViewLayout = (e: LayoutChangeEvent) => {
     setScrollViewHeight(e.nativeEvent.layout.height);
+  };
+
+  const resetActiveMenuFromScreen = () => {
+    if (activeScreen === 'profile') {
+      setActiveMenu('profile');
+    } else if (activeScreen === 'community') {
+      setActiveMenu('community');
+    } else {
+      setActiveMenu(null);
+    }
+  };
 
   const modalButtonHover = {
     backgroundColor: 'rgba(130,129,129,0.08)',
@@ -176,49 +192,43 @@ const DrawerMenu = ({
     Platform.OS === 'web' && state.hovered ? modalButtonHover : {};
 
   return (
-    <View
-      style={[
-        styles.drawerContainer,
-        { width: drawerWidth },
-        !isFixed && styles.mobileDrawer,
-      ]}
-    >
-      {!isFixed && (
-        <Pressable onPress={onClose} style={styles.closeBtn}>
-          <Text style={styles.closeText}>✕ Close</Text>
-        </Pressable>
-      )}
+    <View style={[styles.drawerContainer, { width: drawerWidth }]}>
+      <Pressable style={styles.profileSection} onPress={onAvatarPress}>
+        <Image
+          source={avatarSource}
+          style={[
+            styles.avatar,
+            {
+              width: isMobile ? 45 : 50,
+              height: isMobile ? 45 : 50,
+              borderRadius: isMobile ? 22.5 : 25,
+            },
+          ]}
+          resizeMode="cover"
+        />
 
-      <View style={[styles.profileSection, { marginBottom: isMobile ? 20 : 40 }]}>
-        <Pressable onPress={onAvatarPress}>
-          <Image
-            source={avatarSource}
-            style={[
-              styles.avatar,
-              {
-                width: isMobile ? 45 : 50,
-                height: isMobile ? 45 : 50,
-                borderRadius: 25,
-              },
-            ]}
-          />
-        </Pressable>
-
-        <View style={{ flex: 1 }}>
+        <View style={styles.profileTextContainer}>
           <Text
             style={[
               styles.userName,
-              { fontSize: isMobile ? 16 : 18, marginLeft: 10 },
+              { fontSize: isMobile ? 16 : 18 },
             ]}
           >
-            {userName ?? 'Ramcee Jade L. Munoz'}
+            {userName}
           </Text>
         </View>
-      </View>
+
+        {!isFixed && (
+          <Pressable onPress={onClose} style={styles.inlineCloseBtn}>
+            <Text style={styles.closeText}>✕</Text>
+          </Pressable>
+        )}
+      </Pressable>
 
       <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContentContainer}
         showsVerticalScrollIndicator={shouldShowScrollBar}
-        style={{ flex: 1 }}
         onContentSizeChange={handleContentSizeChange}
         onLayout={handleScrollViewLayout}
       >
@@ -263,7 +273,7 @@ const DrawerMenu = ({
           name="logout"
           size={28}
           color="#D32F2F"
-          style={{ marginRight: 20 }}
+          style={styles.logoutIcon}
         />
         <Text style={styles.logoutLabel}>Logout</Text>
       </Pressable>
@@ -274,13 +284,7 @@ const DrawerMenu = ({
         visible={isSettingsModalVisible}
         onRequestClose={() => {
           setSettingsModalVisible(false);
-          if (activeScreen === 'profile') {
-            setActiveMenu('profile');
-          } else if (activeScreen === 'community') {
-            setActiveMenu('community');
-          } else {
-            setActiveMenu(null);
-          }
+          resetActiveMenuFromScreen();
         }}
       >
         <View style={styles.modalOverlay}>
@@ -364,13 +368,7 @@ const DrawerMenu = ({
               style={styles.settingsCloseBtn}
               onPress={() => {
                 setSettingsModalVisible(false);
-                if (activeScreen === 'profile') {
-                  setActiveMenu('profile');
-                } else if (activeScreen === 'community') {
-                  setActiveMenu('community');
-                } else {
-                  setActiveMenu(null);
-                }
+                resetActiveMenuFromScreen();
               }}
             >
               <Text style={styles.settingsCloseText}>Close</Text>
@@ -422,13 +420,7 @@ const DrawerMenu = ({
                 onPress={() => {
                   alert('Email updated');
                   setChangeEmailModalVisible(false);
-                  if (activeScreen === 'profile') {
-                    setActiveMenu('profile');
-                  } else if (activeScreen === 'community') {
-                    setActiveMenu('community');
-                  } else {
-                    setActiveMenu(null);
-                  }
+                  resetActiveMenuFromScreen();
                 }}
               >
                 <Text style={styles.formSaveText}>Save</Text>
@@ -504,13 +496,7 @@ const DrawerMenu = ({
                 onPress={() => {
                   alert('Password updated');
                   setChangePasswordModalVisible(false);
-                  if (activeScreen === 'profile') {
-                    setActiveMenu('profile');
-                  } else if (activeScreen === 'community') {
-                    setActiveMenu('community');
-                  } else {
-                    setActiveMenu(null);
-                  }
+                  resetActiveMenuFromScreen();
                 }}
               >
                 <Text style={styles.formSaveText}>Save</Text>
@@ -564,44 +550,67 @@ const DrawerMenu = ({
 
 const styles = StyleSheet.create({
   drawerContainer: {
-    height: '100%',
-    borderRightWidth: 1,
-    borderRightColor: '#EEE',
+    flex: 1,
     padding: 25,
     backgroundColor: '#FFF',
-  },
-
-  mobileDrawer: {
-    elevation: 10,
-    shadowColor: '#000',
-    shadowOffset: { width: 5, height: 0 },
-    shadowOpacity: 0.1,
-    shadowRadius: 10,
-  },
-
-  closeBtn: {
-    marginBottom: 20,
-    alignSelf: 'flex-end',
-    padding: 5,
-  },
-
-  closeText: {
-    color: '#D32F2F',
-    fontWeight: 'bold',
+    borderWidth: 0,
+    borderRightWidth: 0,
+    borderLeftWidth: 0,
+    borderTopWidth: 0,
+    borderBottomWidth: 0,
+    borderColor: 'transparent',
+    elevation: 0,
+    shadowColor: 'transparent',
+    shadowOpacity: 0,
+    shadowRadius: 0,
+    shadowOffset: { width: 0, height: 0 },
   },
 
   profileSection: {
     flexDirection: 'row',
     alignItems: 'center',
+    marginBottom: 30,
+  },
+
+  profileTextContainer: {
+    flex: 1,
   },
 
   avatar: {
+    marginRight: 15,
+    overflow: 'hidden',
+    aspectRatio: 1,
     backgroundColor: '#f0f0f0',
   },
 
   userName: {
     fontWeight: '700',
-    color: '#333',
+    color: '#222',
+  },
+
+  userEmail: {
+    marginTop: 2,
+    fontSize: 12,
+    color: '#777',
+  },
+
+  inlineCloseBtn: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+
+  closeText: {
+    color: '#D32F2F',
+    fontWeight: '700',
+    fontSize: 18,
+  },
+
+  scrollView: {
+    flex: 1,
+  },
+
+  scrollContentContainer: {
+    paddingBottom: 12,
   },
 
   menuItem: {
@@ -630,6 +639,10 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: '#EEE',
     paddingTop: 15,
+  },
+
+  logoutIcon: {
+    marginRight: 20,
   },
 
   logoutLabel: {

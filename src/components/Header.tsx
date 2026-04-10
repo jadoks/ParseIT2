@@ -32,6 +32,7 @@ type ScreenType =
   | 'quizmasters'
   | 'videos'
   | 'myjourney'
+  | 'analytics'
   | 'profile'
   | 'messenger'
   | 'assignments'
@@ -102,6 +103,7 @@ const Header: React.FC<HeaderProps> = ({
       | 'game'
       | 'videos'
       | 'myjourney'
+      | 'analytics'
       | 'profile'
       | 'messenger'
       | 'community'
@@ -125,6 +127,7 @@ const Header: React.FC<HeaderProps> = ({
       | 'game'
       | 'videos'
       | 'myjourney'
+      | 'analytics'
       | 'profile'
       | 'messenger'
       | 'community'
@@ -166,6 +169,7 @@ const Header: React.FC<HeaderProps> = ({
     if (activeScreen === 'videos') return 'Search Videos';
     if (activeScreen === 'messenger') return 'Search Messages';
     if (activeScreen === 'classes') return 'Search Classes';
+    if (activeScreen === 'analytics') return 'Search Analytics';
 
     return 'Search ParseClass';
   };
@@ -184,6 +188,8 @@ const Header: React.FC<HeaderProps> = ({
         return 'Messages';
       case 'notification':
         return 'Notifications';
+      case 'analytics':
+        return 'Analytics';
       default:
         return screen;
     }

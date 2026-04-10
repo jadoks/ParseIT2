@@ -10,13 +10,19 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  View
+  useWindowDimensions,
+  View,
 } from 'react-native';
 
 const JourneyHeader = require('../../assets/images/myjourney-header-template-1.png');
 
-const schoolYears = ['S.Y. 2023 - 2024', 'S.Y. 2024 - 2025', 'S.Y. 2025 - 2026','S.Y. 2026 - 2027'];
-const semesters = ['First Semester', 'Second Semester','Summer'];
+const schoolYears = [
+  'S.Y. 2023 - 2024',
+  'S.Y. 2024 - 2025',
+  'S.Y. 2025 - 2026',
+  'S.Y. 2026 - 2027',
+];
+const semesters = ['First Semester', 'Second Semester', 'Summer'];
 
 const studentDatabase = {
   '1': {
@@ -61,6 +67,8 @@ type InlineDropdownProps = {
   isOpen: boolean;
   onToggle: () => void;
   onSelect: (value: string) => void;
+  fullWidth?: boolean;
+  width?: number;
 };
 
 const fontFamily = Platform.select({
@@ -75,15 +83,24 @@ const InlineDropdown = ({
   isOpen,
   onToggle,
   onSelect,
+  fullWidth = false,
+  width = 170,
 }: InlineDropdownProps) => {
   return (
-    <View style={styles.dropdownWrapper}>
+    <View
+      style={[
+        styles.dropdownWrapper,
+        fullWidth ? styles.dropdownWrapperFull : { width },
+      ]}
+    >
       <TouchableOpacity style={styles.dropdown} onPress={onToggle} activeOpacity={0.8}>
-        <Text style={styles.dropdownText}>{selectedValue}</Text>
+        <Text style={styles.dropdownText} numberOfLines={1}>
+          {selectedValue}
+        </Text>
         <Ionicons
           name={isOpen ? 'chevron-up' : 'chevron-down'}
-          size={18}
-          color="#333"
+          size={16}
+          color="#000"
         />
       </TouchableOpacity>
 
@@ -108,6 +125,17 @@ const InlineDropdown = ({
 };
 
 const Grades = () => {
+  const { width } = useWindowDimensions();
+
+  const isPhone = width < 768;
+  const isTablet = width >= 768 && width < 1024;
+  const isLargeScreen = width >= 1024;
+  const isStackedLayout = width < 640;
+
+  const contentHorizontalPadding = isPhone ? 20 : isTablet ? 28 : 40;
+  const titleSize = isPhone ? 32 : isTablet ? 36 : 36;
+  const reportMinWidth = isPhone ? 760 : 900;
+
   const [studentId, setStudentId] = useState('');
   const [selectedSchoolYear, setSelectedSchoolYear] = useState('S.Y. 2021 - 2022');
   const [selectedSemester, setSelectedSemester] = useState('First Semester');
@@ -153,7 +181,7 @@ const Grades = () => {
 
   return (
     <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       style={styles.screen}
     >
       <TouchableOpacity
@@ -166,59 +194,125 @@ const Grades = () => {
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
-          <View style={styles.leftAlignWrapper}>
-            <Text style={styles.mainTitle}>Grades</Text>
-            <Text style={styles.subTitle}>View your student grades</Text>
-
-            <View style={styles.row}>
-              <InlineDropdown
-                options={schoolYears}
-                selectedValue={selectedSchoolYear}
-                isOpen={openDropdown === 'schoolYear'}
-                onToggle={() =>
-                  setOpenDropdown(openDropdown === 'schoolYear' ? null : 'schoolYear')
-                }
-                onSelect={(value) => {
-                  setSelectedSchoolYear(value);
-                  setOpenDropdown(null);
-                }}
-              />
-
-              <InlineDropdown
-                options={semesters}
-                selectedValue={selectedSemester}
-                isOpen={openDropdown === 'semester'}
-                onToggle={() =>
-                  setOpenDropdown(openDropdown === 'semester' ? null : 'semester')
-                }
-                onSelect={(value) => {
-                  setSelectedSemester(value);
-                  setOpenDropdown(null);
-                }}
-              />
+          <View
+            style={[
+              styles.leftAlignWrapper,
+              { paddingHorizontal: contentHorizontalPadding },
+            ]}
+          >
+            <View style={styles.headerBlock}>
+              <Text style={[styles.mainTitle, { fontSize: titleSize }]}>Grades</Text>
+              <Text style={styles.subTitle}>View your student grades</Text>
             </View>
 
-            <TextInput
-              placeholder="Enter Student ID"
-              placeholderTextColor="#999"
-              value={studentId}
-              onChangeText={setStudentId}
-              style={styles.mainInput}
-              keyboardType="numeric"
-            />
+            <View style={styles.controlsCard}>
+              {isStackedLayout ? (
+                <View style={styles.stackedControls}>
+                  <InlineDropdown
+                    options={schoolYears}
+                    selectedValue={selectedSchoolYear}
+                    isOpen={openDropdown === 'schoolYear'}
+                    fullWidth
+                    onToggle={() =>
+                      setOpenDropdown(openDropdown === 'schoolYear' ? null : 'schoolYear')
+                    }
+                    onSelect={(value) => {
+                      setSelectedSchoolYear(value);
+                      setOpenDropdown(null);
+                    }}
+                  />
 
-            <TouchableOpacity style={styles.journeyButton} onPress={handleShowJourney}>
-              <Text style={styles.journeyButtonText}>Show My Journey</Text>
-            </TouchableOpacity>
+                  <InlineDropdown
+                    options={semesters}
+                    selectedValue={selectedSemester}
+                    isOpen={openDropdown === 'semester'}
+                    fullWidth
+                    onToggle={() =>
+                      setOpenDropdown(openDropdown === 'semester' ? null : 'semester')
+                    }
+                    onSelect={(value) => {
+                      setSelectedSemester(value);
+                      setOpenDropdown(null);
+                    }}
+                    width={160}
+                  />
+
+                  <TextInput
+                    placeholder="Enter Student ID"
+                    placeholderTextColor="#999"
+                    value={studentId}
+                    onChangeText={setStudentId}
+                    style={styles.mainInputFull}
+                    keyboardType="numeric"
+                  />
+
+                  <TouchableOpacity style={styles.journeyButtonFull} onPress={handleShowJourney}>
+                    <Text style={styles.journeyButtonText}>Show My Journey</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <View style={styles.controlsGrid}>
+                  <View style={[styles.controlsGridRow, styles.controlsGridRowTop]}>
+                    <InlineDropdown
+                      options={schoolYears}
+                      selectedValue={selectedSchoolYear}
+                      isOpen={openDropdown === 'schoolYear'}
+                      onToggle={() =>
+                        setOpenDropdown(openDropdown === 'schoolYear' ? null : 'schoolYear')
+                      }
+                      onSelect={(value) => {
+                        setSelectedSchoolYear(value);
+                        setOpenDropdown(null);
+                      }}
+                      width={170}
+                    />
+
+                    <InlineDropdown
+                      options={semesters}
+                      selectedValue={selectedSemester}
+                      isOpen={openDropdown === 'semester'}
+                      onToggle={() =>
+                        setOpenDropdown(openDropdown === 'semester' ? null : 'semester')
+                      }
+                      onSelect={(value) => {
+                        setSelectedSemester(value);
+                        setOpenDropdown(null);
+                      }}
+                      width={160}
+                    />
+                  </View>
+
+                  <View style={[styles.controlsGridRow, styles.controlsGridRowBottom]}>
+                    <TextInput
+                      placeholder="Enter Student ID"
+                      placeholderTextColor="#999"
+                      value={studentId}
+                      onChangeText={setStudentId}
+                      style={styles.mainInput}
+                      keyboardType="numeric"
+                    />
+
+                    <TouchableOpacity style={styles.journeyButton} onPress={handleShowJourney}>
+                      <Text style={styles.journeyButtonText}>Show My Journey</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              )}
+            </View>
           </View>
 
           {showGrades && studentRecord && (
-            <View style={styles.centeredResultWrapper}>
-              <View style={styles.reportCard}>
+            <View
+              style={[
+                styles.centeredResultWrapper,
+                { paddingHorizontal: isPhone ? 12 : 20 },
+              ]}
+            >
+              <View style={[styles.reportCard, isLargeScreen && styles.reportCardLarge]}>
                 <View style={styles.uniHeader}>
                   <Image
                     source={JourneyHeader}
-                    style={styles.headerImage}
+                    style={[styles.headerImage, { height: isPhone ? 90 : 120 }]}
                     resizeMode="contain"
                   />
                 </View>
@@ -234,27 +328,33 @@ const Grades = () => {
                   School Year: {studentRecord.schoolYear} ({studentRecord.semester})
                 </Text>
 
-                <View style={styles.table}>
-                  <View style={styles.tableHeader}>
-                    <Text style={[styles.headerText, styles.subjectCol]}>Subject</Text>
-                    <Text style={[styles.headerText, styles.descCol]}>Description</Text>
-                    <Text style={[styles.headerText, styles.unitCol]}>Unit</Text>
-                    <Text style={[styles.headerText, styles.gradeCol]}>Grade</Text>
-                  </View>
-
-                  {studentRecord.grades.map((item, index) => (
-                    <View key={index} style={styles.tableRow}>
-                      <Text style={[styles.cellText, styles.subjectCol]}>{item.code}</Text>
-                      <Text style={[styles.cellText, styles.descCol]}>{item.desc}</Text>
-                      <Text style={[styles.cellText, styles.unitCol]}>
-                        {item.unit.toFixed(1)}
-                      </Text>
-                      <Text style={[styles.cellText, styles.gradeCol, styles.gradeText]}>
-                        {item.grade.toFixed(1)}
-                      </Text>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={isPhone}
+                  contentContainerStyle={styles.tableScrollContent}
+                >
+                  <View style={[styles.table, { minWidth: reportMinWidth }]}>
+                    <View style={styles.tableHeader}>
+                      <Text style={[styles.headerText, styles.subjectCol]}>Subject</Text>
+                      <Text style={[styles.headerText, styles.descCol]}>Description</Text>
+                      <Text style={[styles.headerText, styles.unitCol]}>Unit</Text>
+                      <Text style={[styles.headerText, styles.gradeCol]}>Grade</Text>
                     </View>
-                  ))}
-                </View>
+
+                    {studentRecord.grades.map((item, index) => (
+                      <View key={index} style={styles.tableRow}>
+                        <Text style={[styles.cellText, styles.subjectCol]}>{item.code}</Text>
+                        <Text style={[styles.cellText, styles.descCol]}>{item.desc}</Text>
+                        <Text style={[styles.cellText, styles.unitCol]}>
+                          {item.unit.toFixed(1)}
+                        </Text>
+                        <Text style={[styles.cellText, styles.gradeCol, styles.gradeText]}>
+                          {item.grade.toFixed(1)}
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
+                </ScrollView>
 
                 <TouchableOpacity
                   style={styles.getLinkButton}
@@ -272,145 +372,217 @@ const Grades = () => {
 };
 
 const styles = StyleSheet.create({
-  flexOne: {
-    flex: 1,
-  },
+  flexOne: { flex: 1 },
+
   screen: {
     flex: 1,
     backgroundColor: '#FFFFFF',
   },
+
   scrollContent: {
     paddingBottom: 60,
   },
+
   leftAlignWrapper: {
-    paddingHorizontal: 30,
     alignItems: 'flex-start',
     overflow: 'visible',
   },
-  mainTitle: {
+
+  headerBlock: {
     marginTop: 30,
-    fontSize: 40,          // bigger like the image
-  fontWeight: '900',     // extra bold
-  color: '#000',
-  fontFamily: Platform.select({
-    ios: 'System',
-    android: 'Roboto',
-    default: 'sans-serif',
-  }),
-  letterSpacing: -0.5,   // tighter look like "Honors"
-},
+    marginBottom: 30,
+  },
+
+  mainTitle: {
+    fontWeight: 'bold',
+    color: '#000',
+    fontFamily,
+  },
+
   subTitle: {
     fontSize: 14,
     color: '#444',
-    marginBottom: 30,
+    marginTop: 2,
     fontFamily,
   },
-  row: {
+
+  controlsCard: {
+    marginBottom: 25,
+    width: '100%',
+    maxWidth: 420,
+  },
+
+  controlsGrid: {
+    width: '100%',
+    gap: 20,
+  },
+
+  controlsGridRow: {
     flexDirection: 'row',
-    marginBottom: 20,
-    gap: 15,
-    alignItems: 'flex-start',
+    alignItems: 'center',
+    gap: 20,
+  },
+
+  controlsGridRowTop: {
+    zIndex: 3000,
+  },
+
+  controlsGridRowBottom: {
+    zIndex: 1,
+  },
+
+  stackedControls: {
+    width: '100%',
+    gap: 12,
     zIndex: 999,
   },
+
   dropdownWrapper: {
-    width: 180,
     position: 'relative',
-    zIndex: 1000,
+    zIndex: 4000,
+    backgroundColor: '#FFF',
   },
+
+  dropdownWrapperFull: {
+    width: '100%',
+  },
+
   dropdown: {
+    height: 40,
+    borderWidth: 1,
+    borderColor: '#333',
+    borderRadius: 8,
+    paddingHorizontal: 10,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     backgroundColor: '#FFF',
-    borderWidth: 1,
-    borderColor: '#333',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    minHeight: 46,
   },
+
   dropdownText: {
-    fontSize: 14,
-    color: '#333',
+    flex: 1,
+    fontSize: 12,
+    color: '#000',
     fontFamily,
+    marginRight: 8,
   },
+
   dropdownMenu: {
     position: 'absolute',
-    top: 52,
+    top: 44,
     left: 0,
     right: 0,
     backgroundColor: '#FFF',
-    borderWidth: 1,
-    borderColor: '#333',
     borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#CFCFCF',
+    elevation: 20,
     shadowColor: '#000',
+    shadowOpacity: 0.22,
+    shadowRadius: 10,
     shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-    elevation: 6,
-    zIndex: 2000,
     overflow: 'hidden',
+    zIndex: 9999,
   },
+
   dropdownItem: {
+    backgroundColor: '#FFF',
+    paddingVertical: 10,
     paddingHorizontal: 12,
-    paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: '#EEE',
   },
+
   lastDropdownItem: {
     borderBottomWidth: 0,
   },
+
   dropdownItemText: {
-    fontSize: 14,
-    color: '#333',
+    fontSize: 13,
+    color: '#000',
     fontFamily,
   },
+
   mainInput: {
+    width: 170,
     borderWidth: 1,
-    borderColor: '#0d0d0d',
-    borderRadius: 10,
-    width: '100%',
-    maxWidth: 300,
-    height: 52,
-    paddingHorizontal: 15,
-    fontSize: 16,
-    marginBottom: 25,
+    borderColor: '#333',
+    borderRadius: 8,
+    height: 40,
+    paddingHorizontal: 10,
+    fontSize: 12,
+    color: '#000',
+    backgroundColor: '#FFF',
     fontFamily,
   },
-  journeyButton: {
-    backgroundColor: '#B22222',
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    borderRadius: 22,
-    marginBottom: 30,
+
+  mainInputFull: {
+    width: '100%',
+    borderWidth: 1,
+    borderColor: '#333',
+    borderRadius: 8,
+    height: 40,
+    paddingHorizontal: 10,
+    fontSize: 12,
+    color: '#000',
+    backgroundColor: '#FFF',
+    fontFamily,
   },
+
+  journeyButton: {
+    width: 170,
+    backgroundColor: '#B71C1C',
+    height: 40,
+    paddingHorizontal: 20,
+    borderRadius: 22,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+
+  journeyButtonFull: {
+    width: '100%',
+    backgroundColor: '#B71C1C',
+    height: 40,
+    paddingHorizontal: 20,
+    borderRadius: 22,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+
   journeyButtonText: {
     color: '#FFF',
-    fontSize: 14,
-    fontWeight: '600',
+    fontSize: 12,
+    fontWeight: '700',
     fontFamily,
   },
+
   centeredResultWrapper: {
     width: '100%',
     alignItems: 'center',
-    paddingHorizontal: 8,
   },
+
   reportCard: {
     width: '100%',
-    maxWidth: 800,
+    maxWidth: 980,
     backgroundColor: '#FFF',
     paddingHorizontal: 8,
     paddingTop: 8,
     paddingBottom: 18,
   },
+
+  reportCardLarge: {
+    paddingHorizontal: 16,
+  },
+
   uniHeader: {
     alignItems: 'center',
     marginBottom: 20,
   },
+
   headerImage: {
     width: '100%',
-    height: 120,
   },
+
   studentLine: {
     fontSize: 14,
     color: '#222',
@@ -418,6 +590,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     fontFamily,
   },
+
   schoolYearLine: {
     fontSize: 14,
     color: '#222',
@@ -426,17 +599,24 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     fontFamily,
   },
+
+  tableScrollContent: {
+    paddingBottom: 4,
+  },
+
   table: {
-    width: '100%',
     borderWidth: 1,
     borderColor: '#BDBDBD',
+    backgroundColor: '#FFF',
   },
+
   tableHeader: {
     flexDirection: 'row',
-    backgroundColor: '#B22222',
+    backgroundColor: '#B71C1C',
     borderBottomWidth: 1,
     borderBottomColor: '#BDBDBD',
   },
+
   tableRow: {
     flexDirection: 'row',
     borderBottomWidth: 1,
@@ -444,57 +624,52 @@ const styles = StyleSheet.create({
     minHeight: 50,
     alignItems: 'center',
   },
+
   headerText: {
     color: '#FFF',
     fontSize: 13,
     fontWeight: '700',
-    paddingVertical: 6,
-    paddingHorizontal: 4,
+    paddingVertical: 8,
+    paddingHorizontal: 6,
     textAlign: 'center',
     borderRightWidth: 1,
     borderRightColor: '#BDBDBD',
     fontFamily,
   },
+
   cellText: {
     fontSize: 14,
     color: '#222',
-    paddingVertical: 6,
-    paddingHorizontal: 4,
+    paddingVertical: 10,
+    paddingHorizontal: 6,
     borderRightWidth: 1,
     borderRightColor: '#BDBDBD',
-    textAlignVertical: 'center',
     fontFamily,
   },
+
   gradeText: {
-    fontWeight: 'bold',
-    marginTop: 30,
+    fontWeight: '700',
   },
-  subjectCol: {
-    width: '17%',
-  },
-  descCol: {
-    width: '66%',
-  },
-  unitCol: {
-    width: '7%',
-    textAlign: 'center',
-  },
-  gradeCol: {
-    width: '10%',
-    textAlign: 'center',
-    borderRightWidth: 0,
-  },
+
+  subjectCol: { width: 130 },
+  descCol: { width: 470 },
+  unitCol: { width: 80, textAlign: 'center' },
+  gradeCol: { width: 90, textAlign: 'center', borderRightWidth: 0 },
+
   getLinkButton: {
-    marginTop: 38,
-    backgroundColor: '#B22222',
-    borderRadius: 6,
-    height: 58,
-    alignItems: 'center',
+    marginTop: 30,
+    backgroundColor: '#B71C1C',
+    paddingHorizontal: 20,
+    height: 42,
+    borderRadius: 10,
     justifyContent: 'center',
+    alignItems: 'center',
+    alignSelf: 'center',
   },
+
   getLinkText: {
     color: '#FFF',
-    fontSize: 21,
+    fontSize: 14,
     fontWeight: '700',
     fontFamily,
   },
