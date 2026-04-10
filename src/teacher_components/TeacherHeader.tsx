@@ -29,7 +29,8 @@ export type ScreenType =
   | 'messenger'
   | 'coursedetail'
   | 'community'
-  | 'notification';
+  | 'notification'
+  | 'analytics';
 
 interface HeaderProps {
   isLargeScreen: boolean;

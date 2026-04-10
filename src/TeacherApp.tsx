@@ -22,6 +22,7 @@ import Coursedetail2, {
 import Profile2 from './teacher_components/TeacherProfile';
 import ShareAnnouncement from './teacher_components/TeacherShareAnnouncement';
 
+import TeacherAnalytics from './teacher_components/TeacherAnalytics';
 import Community2, {
   CommunityAnswer,
   CommunityPost,
@@ -43,7 +44,8 @@ type AppScreenType =
   | 'messenger'
   | 'coursedetail'
   | 'community'
-  | 'notification';
+  | 'notification'
+  | 'analytics';
 
 type CourseWithIcon = CourseDetailData & {
   icon?: string;
@@ -167,6 +169,7 @@ const isAppScreen = (screen: string): screen is AppScreenType => {
     'coursedetail',
     'community',
     'notification',
+    'analytics',
   ].includes(screen);
 };
 
@@ -183,6 +186,9 @@ export default function TeacherApp({ onLogout }: Props) {
   const [selectedCourse, setSelectedCourse] = useState<CourseWithIcon | null>(
     INITIAL_COURSES[0]
   );
+
+  // analytics dropdown selection
+  const [selectedAnalyticsClass, setSelectedAnalyticsClass] = useState<string>('All');
 
   const [currentUserAvatar, setCurrentUserAvatar] = useState<any>(
     CURRENT_USER_PROFILE_IMAGE
@@ -236,6 +242,10 @@ export default function TeacherApp({ onLogout }: Props) {
   const navigateTo = (screen: AppScreenType) => {
     setLastScreen(activeScreen);
     setActiveScreen(screen);
+
+    if (screen === 'analytics') {
+      setSelectedAnalyticsClass('All');
+    }
 
     if (!isLargeScreen) {
       setMobileDrawerOpen(false);
@@ -507,6 +517,14 @@ export default function TeacherApp({ onLogout }: Props) {
             />
           ) : activeScreen === 'notification' ? (
             <TeacherNotification />
+          ) : activeScreen === 'analytics' ? (
+            <TeacherAnalytics
+              teacherName={CURRENT_USER_NAME}
+              selectedCourseName={selectedCourse?.name || 'Academic Analytics'}
+              selectedClass={selectedAnalyticsClass}
+              onChangeSelectedClass={setSelectedAnalyticsClass}
+              availableCourses={courses}
+            />
           ) : (
             <View style={styles.emptyState}>
               <Text style={styles.emptyStateText}>Select a screen from the menu.</Text>

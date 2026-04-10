@@ -25,7 +25,8 @@ export type DrawerScreenType =
   | 'messenger'
   | 'coursedetail'
   | 'community'
-  | 'notification';
+  | 'notification'
+  | 'analytics';
 
 interface DrawerMenuProps {
   isFixed: boolean;
@@ -49,12 +50,12 @@ const normalizeImageSource = (img: any) => {
 };
 
 const MenuItem = ({
-  iconSource,
+  iconName,
   label,
   onPress,
   active,
 }: {
-  iconSource: any;
+  iconName: string;
   label: string;
   onPress?: () => void;
   active?: boolean;
@@ -90,9 +91,11 @@ const MenuItem = ({
         return base;
       }}
     >
-      <Image
-        source={iconSource}
-        style={[styles.menuIcon, active && { tintColor: '#D32F2F' }]}
+      <MaterialCommunityIcons
+        name={iconName}
+        size={22}
+        color={active ? '#D32F2F' : '#444'}
+        style={styles.menuIcon}
       />
       <Text
         style={[
@@ -135,6 +138,8 @@ const DrawerMenu = ({
       ? 'profile'
       : activeScreen === 'community'
       ? 'community'
+      : activeScreen === 'analytics'
+      ? 'analytics'
       : null
   );
 
@@ -160,6 +165,8 @@ const DrawerMenu = ({
       setActiveMenu('profile');
     } else if (activeScreen === 'community') {
       setActiveMenu('community');
+    } else if (activeScreen === 'analytics') {
+      setActiveMenu('analytics');
     } else {
       setActiveMenu(null);
     }
@@ -178,6 +185,8 @@ const DrawerMenu = ({
       setActiveMenu('profile');
     } else if (activeScreen === 'community') {
       setActiveMenu('community');
+    } else if (activeScreen === 'analytics') {
+      setActiveMenu('analytics');
     } else {
       setActiveMenu(null);
     }
@@ -216,6 +225,9 @@ const DrawerMenu = ({
           >
             {userName}
           </Text>
+          <Text style={styles.userEmail} numberOfLines={1}>
+            {userEmail}
+          </Text>
         </View>
 
         {!isFixed && (
@@ -233,7 +245,7 @@ const DrawerMenu = ({
         onLayout={handleScrollViewLayout}
       >
         <MenuItem
-          iconSource={require('../../assets/images/person.png')}
+          iconName="account-circle-outline"
           label="Profile"
           onPress={() => {
             setActiveMenu('profile');
@@ -244,7 +256,7 @@ const DrawerMenu = ({
         />
 
         <MenuItem
-          iconSource={require('../../assets/images/users-solid.png')}
+          iconName="account-group-outline"
           label="Community"
           onPress={() => {
             setActiveMenu('community');
@@ -255,7 +267,18 @@ const DrawerMenu = ({
         />
 
         <MenuItem
-          iconSource={require('../../assets/images/gear-solid.png')}
+          iconName="chart-box-outline"
+          label="Academic Analytics"
+          onPress={() => {
+            setActiveMenu('analytics');
+            onNavigate?.('analytics');
+            if (!isFixed) onClose?.();
+          }}
+          active={activeMenu === 'analytics'}
+        />
+
+        <MenuItem
+          iconName="cog-outline"
           label="Settings"
           onPress={() => {
             setActiveMenu('settings');
@@ -621,10 +644,7 @@ const styles = StyleSheet.create({
   },
 
   menuIcon: {
-    width: 22,
-    height: 22,
     marginRight: 20,
-    resizeMode: 'contain',
   },
 
   menuLabel: {

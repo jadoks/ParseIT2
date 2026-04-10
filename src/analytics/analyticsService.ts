@@ -1,25 +1,25 @@
 import {
-    AnalyticsCourse,
-    StudentAnalyticsSummary,
-    SubjectAnalyticsSummary,
-} from './types';
-
-import {
-    getAssignmentAverage,
-    getAssignmentScoreSeries,
-    getGradedCount,
-    getPendingCount,
-    getPredictedGrade,
-    getSubmittedCount,
-    getTrendDirection,
-    getTrendSymbol,
-    getTrendValue,
+  getAssignmentAverage,
+  getAssignmentScoreSeries,
+  getGradedCount,
+  getPendingCount,
+  getPredictedGrade,
+  getSubmittedCount,
+  getTrendDirection,
+  getTrendSymbol,
+  getTrendValue,
 } from './metrics';
-
 import {
-    getOverallRiskLevel,
-    getRiskLevel,
+  getOverallRiskLevel,
+  getRiskLevel,
 } from './riskEngine';
+import {
+  AnalyticsCourse,
+  StudentAnalyticsSummary,
+  SubjectAnalyticsSummary,
+  TeacherAnalyticsSummary,
+  TeacherStudentRow,
+} from './types';
 
 /**
  * Converts your AssignmentCourse[] (from StudentApp)
@@ -54,14 +54,12 @@ export const buildSubjectSummaries = (
     const gradedCount = getGradedCount(course.assignments);
     const submittedCount = getSubmittedCount(course.assignments);
     const pendingCount = getPendingCount(course.assignments);
-
     const predictedGrade = getPredictedGrade(
       average,
       pendingCount,
       submittedCount
     );
 
-    // 🔥 NEW: TREND CALCULATION
     const scoreSeries = getAssignmentScoreSeries(course.assignments);
     const trend = getTrendValue(scoreSeries);
     const trendDirection = getTrendDirection(trend);
@@ -71,7 +69,7 @@ export const buildSubjectSummaries = (
       average,
       pendingCount,
       submittedCount,
-      trend // 🔥 NEW
+      trend
     );
 
     return {
@@ -79,17 +77,13 @@ export const buildSubjectSummaries = (
       courseName: course.name,
       courseCode: course.code,
       instructor: course.instructor,
-
       totalAssignments: course.assignments.length,
       gradedCount,
       submittedCount,
       pendingCount,
-
       average,
       predictedGrade,
       riskLevel,
-
-      // 🔥 NEW FIELDS
       trend,
       trendDirection,
       trendSymbol,
@@ -104,7 +98,6 @@ export const buildStudentAnalytics = (
   rawCourses: any[]
 ): StudentAnalyticsSummary => {
   const courses = mapToAnalyticsCourses(rawCourses);
-
   const subjectSummaries = buildSubjectSummaries(courses);
 
   const validAverages = subjectSummaries
@@ -114,8 +107,7 @@ export const buildStudentAnalytics = (
   const overallAverage =
     validAverages.length > 0
       ? Math.round(
-          validAverages.reduce((sum, v) => sum + v, 0) /
-            validAverages.length
+          validAverages.reduce((sum, v) => sum + v, 0) / validAverages.length
         )
       : 0;
 
@@ -135,7 +127,6 @@ export const buildStudentAnalytics = (
     totalSubmittedAssignments
   );
 
-  // 🔥 NEW: OVERALL TREND
   const trendValues = subjectSummaries.map((s) => s.trend);
   const overallTrend =
     trendValues.length > 0
@@ -165,7 +156,7 @@ export const buildStudentAnalytics = (
     highRiskCount,
     moderateRiskCount,
     totalPendingAssignments,
-    overallTrend // 🔥 NEW
+    overallTrend
   );
 
   const recommendations: string[] = [];
@@ -182,7 +173,6 @@ export const buildStudentAnalytics = (
     );
   }
 
-  // 🔥 NEW TREND-BASED RECOMMENDATIONS
   if (overallTrend < -2) {
     recommendations.push(
       'Your performance is declining. Review recent lessons and assignments.'
@@ -208,9 +198,7 @@ export const buildStudentAnalytics = (
   }
 
   if (recommendations.length === 0) {
-    recommendations.push(
-      'No recommendations yet. Complete more graded assignments.'
-    );
+    recommendations.push('No recommendations yet. Complete more graded assignments.');
   }
 
   return {
@@ -223,8 +211,67 @@ export const buildStudentAnalytics = (
     overallRisk,
     recommendations,
     subjectSummaries,
-
-    // 🔥 NEW
     overallTrend,
+  };
+};
+
+type TeacherStudentAnalyticsInput = {
+  studentId: string;
+  studentName: string;
+  courses: any[];
+};
+
+/**
+ * Builds teacher analytics summary from multiple student records
+ */
+export const buildTeacherAnalytics = (
+  students: TeacherStudentAnalyticsInput[]
+): TeacherAnalyticsSummary => {
+  const studentRows: TeacherStudentRow[] = students.map((student) => {
+    const summary = buildStudentAnalytics(student.courses);
+
+    return {
+      studentId: student.studentId,
+      studentName: student.studentName,
+      overallAverage: summary.overallAverage,
+      totalPendingAssignments: summary.totalPendingAssignments,
+      totalSubmittedAssignments: summary.totalSubmittedAssignments,
+      riskLevel: summary.overallRisk,
+      overallTrend: summary.overallTrend,
+    };
+  });
+
+  const totalStudents = studentRows.length;
+
+  const validAverages = studentRows
+    .map((s) => s.overallAverage)
+    .filter((v) => v > 0);
+
+  const classAverage =
+    validAverages.length > 0
+      ? Math.round(
+          validAverages.reduce((sum, v) => sum + v, 0) / validAverages.length
+        )
+      : 0;
+
+  const highRiskCount = studentRows.filter(
+    (s) => s.riskLevel === 'High'
+  ).length;
+
+  const moderateRiskCount = studentRows.filter(
+    (s) => s.riskLevel === 'Moderate'
+  ).length;
+
+  const lowRiskCount = studentRows.filter(
+    (s) => s.riskLevel === 'Low'
+  ).length;
+
+  return {
+    classAverage,
+    totalStudents,
+    highRiskCount,
+    moderateRiskCount,
+    lowRiskCount,
+    studentRows,
   };
 };
