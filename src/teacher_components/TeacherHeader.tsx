@@ -93,7 +93,6 @@ const TeacherHeader: React.FC<HeaderProps> = ({
 
   const isActive = (screen: ScreenType) => activeScreen === screen;
 
-  // MOBILE bottom nav only
   const mobileNavScreens: Array<'home' | 'honors' | 'grades' | 'announcement'> = [
     'home',
     'honors',
@@ -101,7 +100,6 @@ const TeacherHeader: React.FC<HeaderProps> = ({
     'announcement',
   ];
 
-  // DESKTOP / WEB center nav keeps messenger
   const desktopNavScreens: Array<
     'home' | 'honors' | 'grades' | 'announcement' | 'messenger'
   > = ['home', 'honors', 'grades', 'announcement', 'messenger'];
@@ -136,18 +134,33 @@ const TeacherHeader: React.FC<HeaderProps> = ({
     return 'Search ParseClass';
   };
 
+  // ✅ ONLY MODIFIED PART
   const renderNavIcon = (screen: ScreenType, size: number) => {
     const color = getIconColor(screen);
 
     switch (screen) {
       case 'home':
-        return <MaterialCommunityIcons name="home" size={size} color={color} />;
+        return (
+          <Image
+            source={require('../../assets/images/house-solid.png')}
+            style={{
+              width: size,
+              height: size,
+              tintColor: color,
+              resizeMode: 'contain',
+            }}
+          />
+        );
+
       case 'honors':
         return <MaterialCommunityIcons name="medal" size={size} color={color} />;
+
       case 'grades':
         return <MaterialCommunityIcons name="school" size={size} color={color} />;
+
       case 'announcement':
         return <MaterialCommunityIcons name="bullhorn" size={size} color={color} />;
+
       case 'messenger':
         return (
           <MaterialCommunityIcons
@@ -156,6 +169,7 @@ const TeacherHeader: React.FC<HeaderProps> = ({
             color={color}
           />
         );
+
       default:
         return <MaterialCommunityIcons name="circle" size={size} color={color} />;
     }
