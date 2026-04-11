@@ -34,6 +34,7 @@ export default function AdminApp({ onLogout }: AdminAppProps) {
   };
 
   const handleSaveAdmin = () => {
+    console.log("New Admin Saved:", newAdmin);
     setAddAdminVisible(false);
     setNewAdmin({ id: '', name: '', email: '', role: '' }); 
   };
@@ -63,22 +64,8 @@ export default function AdminApp({ onLogout }: AdminAppProps) {
         >
           {activeTab === 'Dashboard' ? (
             <View style={styles.maxWidthContainer}>
-              {/* HERO BANNER */}
-              <View style={styles.banner}>
-                <View style={styles.bannerContent}>
-                  <Text style={styles.bannerTitle}>Set Up Academic Year</Text>
-                  <Text style={styles.bannerSub}>SESSION YEAR: 2025 - 2026</Text>
-                  <View style={styles.bannerActions}>
-                    <TouchableOpacity style={styles.btnEnd}>
-                      <Text style={styles.btnTextWhite}>End Semester ›</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity style={styles.btnCreate}>
-                      <Text style={styles.btnTextCreate}>+ Create Semester</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              </View>
-
+              
+              {/* Dashboard Cards - Clean grid without duplicate academic year card */}
               <DashboardCards onOpenAddAdmin={() => setAddAdminVisible(true)} />
               
               <View style={styles.analyticsHeader}>
@@ -86,12 +73,12 @@ export default function AdminApp({ onLogout }: AdminAppProps) {
                 <Text style={styles.analyticsTitle}>Academic Performance Analytics</Text>
               </View>
 
-              {/* NEW PERFORMANCE ANALYTICS COMPONENT */}
+              {/* Performance Analytics */}
               <PerformanceAnalytics />
 
               <View style={{ height: 40 }} />
               
-              {/* PERFORMANCE CHART */}
+              {/* Performance Chart */}
               <View style={styles.cardShadow}>
                 <PerformanceChart />
               </View>
@@ -133,19 +120,44 @@ export default function AdminApp({ onLogout }: AdminAppProps) {
             
             <View style={styles.inputGroup}>
               <Text style={styles.inputLabel}>ADMIN ID</Text>
-              <TextInput style={styles.input} placeholder="e.g. ADM-770" value={newAdmin.id} onChangeText={(v) => setNewAdmin({...newAdmin, id: v})} />
+              <TextInput 
+                style={styles.input} 
+                placeholder="e.g. ADM-770" 
+                placeholderTextColor="#CBD5E1"
+                value={newAdmin.id} 
+                onChangeText={(v) => setNewAdmin({...newAdmin, id: v})} 
+              />
             </View>
             <View style={styles.inputGroup}>
               <Text style={styles.inputLabel}>FULL NAME</Text>
-              <TextInput style={styles.input} placeholder="Enter complete name" value={newAdmin.name} onChangeText={(v) => setNewAdmin({...newAdmin, name: v})} />
+              <TextInput 
+                style={styles.input} 
+                placeholder="Enter complete name" 
+                placeholderTextColor="#CBD5E1"
+                value={newAdmin.name} 
+                onChangeText={(v) => setNewAdmin({...newAdmin, name: v})} 
+              />
             </View>
             <View style={styles.inputGroup}>
               <Text style={styles.inputLabel}>GMAIL ADDRESS</Text>
-              <TextInput style={styles.input} placeholder="admin@gmail.com" value={newAdmin.email} onChangeText={(v) => setNewAdmin({...newAdmin, email: v})} />
+              <TextInput 
+                style={styles.input} 
+                placeholder="admin@gmail.com" 
+                placeholderTextColor="#CBD5E1"
+                keyboardType="email-address"
+                value={newAdmin.email} 
+                onChangeText={(v) => setNewAdmin({...newAdmin, email: v})} 
+              />
             </View>
             <View style={styles.inputGroup}>
               <Text style={styles.inputLabel}>SYSTEM ROLE</Text>
-              <TextInput style={styles.input} placeholder="e.g. Regional Admin" value={newAdmin.role} onChangeText={(v) => setNewAdmin({...newAdmin, role: v})} />
+              <TextInput 
+                style={styles.input} 
+                placeholder="e.g. Regional Admin" 
+                placeholderTextColor="#CBD5E1"
+                value={newAdmin.role} 
+                onChangeText={(v) => setNewAdmin({...newAdmin, role: v})} 
+              />
             </View>
 
             <View style={styles.modalButtons}>
@@ -188,30 +200,13 @@ const styles = StyleSheet.create({
   scrollPadding: { padding: 40, paddingBottom: 100 },
   maxWidthContainer: { maxWidth: 1300, alignSelf: 'center', width: '100%' },
   
-  // HERO BANNER STYLE (Updated to Dark Mode)
-  banner: { 
-    backgroundColor: '#1B2431', 
-    borderRadius: 20, 
-    paddingHorizontal: 40,
-    paddingVertical: 45, 
-    marginBottom: 40,
-    justifyContent: 'center',
-    elevation: 4
-  },
-  bannerContent: { zIndex: 2 },
-  bannerTitle: { fontSize: 34, fontWeight: '700', color: '#FFFFFF' },
-  bannerSub: { fontSize: 14, color: '#94A3B8', marginTop: 8, marginBottom: 30, fontWeight: '600', textTransform: 'uppercase' },
-  bannerActions: { flexDirection: 'row', alignItems: 'center' },
-  btnEnd: { backgroundColor: '#FF4D4D', paddingHorizontal: 30, paddingVertical: 14, borderRadius: 10, marginRight: 25 },
-  btnTextWhite: { color: '#FFF', fontWeight: 'bold', fontSize: 16 },
-  btnCreate: { paddingVertical: 10 },
-  btnTextCreate: { color: '#FF4D4D', fontWeight: 'bold', fontSize: 16 },
-
   analyticsHeader: { flexDirection: 'row', alignItems: 'center', marginTop: 50, marginBottom: 25 },
   diamond: { width: 10, height: 10, backgroundColor: '#FF4D4D', transform: [{ rotate: '45deg' }], marginRight: 15 },
   analyticsTitle: { color: '#1E293B', fontSize: 24, fontWeight: 'bold' },
   cardShadow: { backgroundColor: '#FFF', borderRadius: 20, padding: 20, elevation: 3, borderWidth: 1, borderColor: '#F1F5F9' },
   placeholder: { flex: 1, justifyContent: 'center', alignItems: 'center', marginTop: 100 },
+
+  // MODAL STYLES
   modalOverlay: { flex: 1, backgroundColor: 'rgba(15, 23, 42, 0.7)', justifyContent: 'center', alignItems: 'center' },
   modalBox: { width: 350, backgroundColor: '#FFF', borderRadius: 20, padding: 30, alignItems: 'center' },
   modalBoxLarge: { width: 450, backgroundColor: '#FFF', borderRadius: 24, padding: 35 },

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Alert, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
 // Components
 import { DashboardCards } from './DashboardCards';
@@ -21,6 +21,17 @@ export const AdminDashboard = () => {
     role: '' 
   });
 
+  // ==================== ACADEMIC YEAR STATE (for the big card) ====================
+  const [activeSchoolYear, setActiveSchoolYear] = useState<string | null>("2025 - 2026");
+  const [currentSemester, setCurrentSemester] = useState("2nd Semester");
+
+  const sessionYearDisplay = activeSchoolYear 
+    ? `SESSION YEAR: ${activeSchoolYear}` 
+    : "SESSION YEAR: No S.Y. yet";
+
+  // Open Academic Year Modal from DashboardCards
+  const [academicYearModalVisible, setAcademicYearModalVisible] = useState(false);
+
   const confirmLogout = () => {
     setLogoutVisible(false);
     console.log("Logging out...");
@@ -30,6 +41,25 @@ export const AdminDashboard = () => {
     console.log("Recording New Admin:", newAdmin);
     setAddAdminVisible(false);
     setNewAdmin({ id: '', name: '', email: '', role: '' }); 
+  };
+
+  const handleEndSemester = () => {
+    Alert.alert(
+      "End Semester",
+      "Are you sure you want to end the current semester?",
+      [
+        { text: "Cancel", style: "cancel" },
+        { 
+          text: "End Semester", 
+          style: "destructive",
+          onPress: () => {
+            Alert.alert("Success", "Current semester has been ended.");
+            // Optional: reset active school year
+            // setActiveSchoolYear(null);
+          }
+        }
+      ]
+    );
   };
 
   return (
@@ -53,25 +83,29 @@ export const AdminDashboard = () => {
           {activeTab === 'Dashboard' ? (
             <View style={styles.contentContainer}>
               
-              {/* HERO BANNER SECTION */}
-              <View style={styles.banner}>
-                <View style={styles.bannerContent}>
-                  <Text style={styles.bannerTitle}>Set Up Academic Year</Text>
-                  <Text style={styles.bannerSub}>SESSION YEAR: 2025 - 2026</Text>
-                  
-                  <View style={styles.bannerActions}>
-                    <TouchableOpacity style={styles.btnEnd}>
-                      <Text style={styles.btnTextWhite}>End Semester ›</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity style={styles.btnCreateContainer}>
-                      <Text style={styles.btnCreateText}>+ Create Semester</Text>
-                    </TouchableOpacity>
-                  </View>
+              {/* ==================== SET UP ACADEMIC YEAR CARD (New Design) ==================== */}
+              <View style={styles.academicCard}>
+                <Text style={styles.academicTitle}>Set Up Academic Year</Text>
+                <Text style={styles.academicSubtitle}>{sessionYearDisplay}</Text>
+
+                <View style={styles.academicActionRow}>
+                  <TouchableOpacity style={styles.endSemesterBtn} onPress={handleEndSemester}>
+                    <Text style={styles.endSemesterText}>End Semester ▸</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity 
+                    style={styles.createSemesterBtn} 
+                    onPress={() => setAcademicYearModalVisible(true)}
+                  >
+                    <Text style={styles.createSemesterText}>+ Create Semester</Text>
+                  </TouchableOpacity>
                 </View>
               </View>
 
-              {/* 3. DASHBOARD CARDS (Manage Admin, Create Class, etc.) */}
-              <DashboardCards onOpenAddAdmin={() => setAddAdminVisible(true)} />
+              {/* 3. DASHBOARD CARDS */}
+              <DashboardCards 
+                onOpenAddAdmin={() => setAddAdminVisible(true)} 
+              />
 
               <View style={styles.sectionHeaderWrapper}>
                 <View style={styles.diamond} />
@@ -89,6 +123,10 @@ export const AdminDashboard = () => {
           )}
         </ScrollView>
       </View>
+
+      {/* ==================== ACADEMIC YEAR MODAL (from DashboardCards) ==================== */}
+      {/* You can move the full Academic Year modal here if you want, or keep it inside DashboardCards */}
+      {/* For now, I'm assuming it's still in DashboardCards. If you want it here, let me know. */}
 
       {/* MODAL: ADD ADMIN */}
       <Modal visible={addAdminVisible} transparent animationType="slide">
@@ -182,42 +220,6 @@ const styles = StyleSheet.create({
   scrollContent: { padding: 25, paddingBottom: 100 },
   contentContainer: { maxWidth: 1400, alignSelf: 'center', width: '100%' },
   
-  // HERO BANNER (Top Section of Image)
-  banner: { 
-    backgroundColor: '#1B2431', // Specific dark blue from your screenshot
-    borderRadius: 20, 
-    paddingHorizontal: 40,
-    paddingVertical: 45, 
-    marginBottom: 30, 
-    justifyContent: 'center',
-  },
-  bannerContent: { width: '100%' },
-  bannerTitle: { 
-    fontSize: 34, 
-    fontWeight: '700', 
-    color: '#FFF',
-    letterSpacing: 0.5 
-  },
-  bannerSub: { 
-    fontSize: 14, 
-    color: '#94A3B8', 
-    marginTop: 8, 
-    marginBottom: 30, 
-    fontWeight: '500',
-    textTransform: 'uppercase'
-  },
-  bannerActions: { flexDirection: 'row', alignItems: 'center' },
-  btnEnd: { 
-    backgroundColor: '#FF4D4D', 
-    paddingHorizontal: 30, 
-    paddingVertical: 14, 
-    borderRadius: 10, 
-    marginRight: 25 
-  },
-  btnTextWhite: { color: '#FFF', fontWeight: 'bold', fontSize: 16 },
-  btnCreateContainer: { paddingVertical: 10 },
-  btnCreateText: { color: '#FF4D4D', fontWeight: '700', fontSize: 16 },
-
   // SECTION HEADERS
   sectionHeaderWrapper: { flexDirection: 'row', alignItems: 'center', marginTop: 40, marginBottom: 20 },
   diamond: { width: 10, height: 10, backgroundColor: '#FF4D4D', transform: [{ rotate: '45deg' }], marginRight: 15 },
@@ -226,6 +228,54 @@ const styles = StyleSheet.create({
   // GENERAL UTILITY
   cardShadow: { backgroundColor: '#FFF', borderRadius: 20, padding: 10, elevation: 3, borderWidth: 1, borderColor: '#F1F5F9' },
   placeholder: { flex: 1, justifyContent: 'center', alignItems: 'center', height: 400 },
+
+  /* ==================== ACADEMIC YEAR CARD STYLES (from your image) ==================== */
+  academicCard: {
+    backgroundColor: '#1E2937',
+    borderRadius: 16,
+    padding: 24,
+    marginBottom: 30,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.3,
+    shadowRadius: 15,
+    elevation: 12,
+  },
+  academicTitle: { 
+    color: '#FFFFFF', 
+    fontSize: 26, 
+    fontWeight: '700' 
+  },
+  academicSubtitle: { 
+    color: '#94A3B8', 
+    fontSize: 14, 
+    marginTop: 8, 
+    marginBottom: 24 
+  },
+  academicActionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 20,
+  },
+  endSemesterBtn: {
+    backgroundColor: '#FF4D4D',
+    paddingVertical: 14,
+    paddingHorizontal: 28,
+    borderRadius: 12,
+  },
+  endSemesterText: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+    fontSize: 15,
+  },
+  createSemesterBtn: {
+    paddingVertical: 14,
+  },
+  createSemesterText: {
+    color: '#FF4D4D',
+    fontWeight: '600',
+    fontSize: 15,
+  },
 
   // MODAL STYLING
   modalOverlay: { flex: 1, backgroundColor: 'rgba(15, 23, 42, 0.7)', justifyContent: 'center', alignItems: 'center' },
@@ -240,3 +290,5 @@ const styles = StyleSheet.create({
   inputLabel: { fontSize: 12, fontWeight: '800', color: '#94A3B8', marginBottom: 10, letterSpacing: 0.5 },
   input: { width: '100%', height: 55, backgroundColor: '#F8FAFC', borderRadius: 12, borderWidth: 1, borderColor: '#E2E8F0', paddingHorizontal: 16, color: '#1E293B', fontSize: 15 }
 });
+
+export default AdminDashboard;
