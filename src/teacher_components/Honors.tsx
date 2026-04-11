@@ -11,7 +11,8 @@ import {
   StyleSheet,
   Text,
   TouchableOpacity,
-  View
+  View,
+  useWindowDimensions,
 } from 'react-native';
 
 const headerImage = require('../../assets/images/myjourney-header-template-1.png');
@@ -37,27 +38,37 @@ type DropdownProps = {
   value: string;
   options: string[];
   onSelect: (value: string) => void;
-  width?: number;
   visible: boolean;
   onToggle: () => void;
+  isMobile: boolean;
 };
 
 function CustomDropdown({
   value,
   options,
   onSelect,
-  width = 160,
   visible,
   onToggle,
+  isMobile,
 }: DropdownProps) {
   return (
-    <View style={[styles.dropdownContainer, { width }]}>
+    <View
+      style={[
+        styles.dropdownContainer,
+        isMobile && styles.dropdownContainerMobile,
+      ]}
+    >
       <TouchableOpacity
-        style={[styles.dropdownButton, { width }]}
+        style={[
+          styles.dropdownButton,
+          isMobile && styles.dropdownButtonMobile,
+        ]}
         onPress={onToggle}
         activeOpacity={0.8}
       >
-        <Text style={styles.dropdownButtonText}>{value}</Text>
+        <Text style={styles.dropdownButtonText} numberOfLines={1}>
+          {value}
+        </Text>
         <Ionicons
           name={visible ? 'chevron-up' : 'chevron-down'}
           size={16}
@@ -66,17 +77,28 @@ function CustomDropdown({
       </TouchableOpacity>
 
       {visible ? (
-        <View style={[styles.inlineDropdownMenu, { width }]}>
-          {options.map((option) => (
-            <TouchableOpacity
-              key={option}
-              style={styles.dropdownItem}
-              onPress={() => onSelect(option)}
-              activeOpacity={0.8}
-            >
-              <Text style={styles.dropdownItemText}>{option}</Text>
-            </TouchableOpacity>
-          ))}
+        <View
+          style={[
+            styles.inlineDropdownMenu,
+            isMobile && styles.inlineDropdownMenuMobile,
+          ]}
+        >
+          <ScrollView
+            nestedScrollEnabled
+            showsVerticalScrollIndicator={false}
+            style={isMobile ? styles.dropdownScrollMobile : undefined}
+          >
+            {options.map((option) => (
+              <TouchableOpacity
+                key={option}
+                style={styles.dropdownItem}
+                onPress={() => onSelect(option)}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.dropdownItemText}>{option}</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
         </View>
       ) : null}
     </View>
@@ -90,6 +112,7 @@ type PreviewProps = {
   generatedSections: GeneratedSection[];
   schoolYear: string;
   semester: string;
+  isMobile: boolean;
 };
 
 function HonorRollPreviewModal({
@@ -99,7 +122,13 @@ function HonorRollPreviewModal({
   generatedSections,
   schoolYear,
   semester,
+  isMobile,
 }: PreviewProps) {
+  const { height } = useWindowDimensions();
+
+  const mobileCardMaxHeight = Math.min(height * 0.68, 760);
+  const mobileContentMaxHeight = Math.min(height * 0.56, 620);
+
   const handleGetLink = async () => {
     const generatedLink = `https://honorroll.example.com/view?sy=${encodeURIComponent(
       schoolYear
@@ -116,23 +145,41 @@ function HonorRollPreviewModal({
 
   return (
     <Modal
-      animationType="fade"
-      transparent
+      animationType={isMobile ? 'slide' : 'fade'}
+      transparent={!isMobile}
       visible={visible}
       onRequestClose={onClose}
+      statusBarTranslucent
     >
-      <View style={styles.modalOverlay}>
-        <View style={styles.previewWrapper}>
-          <View style={styles.previewTopBar}>
-            <Text style={styles.previewTitle}>Honor List</Text>
-            <TouchableOpacity onPress={onClose} style={styles.previewCloseBtn}>
-              <Text style={styles.previewCloseText}>Close</Text>
+      <View style={[styles.modalOverlay, isMobile && styles.modalOverlayMobile]}>
+        <View style={[styles.previewWrapper, isMobile && styles.previewWrapperMobile]}>
+          <View style={[styles.previewTopBar, isMobile && styles.previewTopBarMobile]}>
+            <Text style={[styles.previewTitle, isMobile && styles.previewTitleMobile]}>
+              Honor List
+            </Text>
+
+            <TouchableOpacity
+              onPress={onClose}
+              style={[styles.previewCloseBtn, isMobile && styles.previewCloseBtnMobile]}
+              activeOpacity={0.8}
+            >
+              <Text
+                style={[
+                  styles.previewCloseText,
+                  isMobile && styles.previewCloseTextMobile,
+                ]}
+              >
+                Close
+              </Text>
             </TouchableOpacity>
           </View>
 
           <ScrollView
             style={styles.previewScrollView}
-            contentContainerStyle={styles.previewScrollContent}
+            contentContainerStyle={[
+              styles.previewScrollContent,
+              isMobile && styles.previewScrollContentMobile,
+            ]}
             showsVerticalScrollIndicator={false}
             bounces={false}
           >
@@ -146,59 +193,81 @@ function HonorRollPreviewModal({
               generatedSections.map((section, sectionIndex) => (
                 <View
                   key={`${section.sectionName}-${sectionIndex}`}
-                  style={styles.previewCard}
+                  style={[
+                    styles.previewCard,
+                    isMobile && styles.previewCardMobile,
+                    isMobile && { maxHeight: mobileCardMaxHeight },
+                  ]}
                 >
                   <Image source={headerImage} style={styles.previewHeaderImage} />
 
-                  <View style={styles.previewBody}>
-                    <Text style={styles.previewCongrats}>Congratulations</Text>
+                  <ScrollView
+                    showsVerticalScrollIndicator={false}
+                    bounces={false}
+                    nestedScrollEnabled
+                    contentContainerStyle={{ flexGrow: 1 }}
+                    style={isMobile ? { maxHeight: mobileContentMaxHeight } : undefined}
+                  >
+                    <View style={[styles.previewBody, isMobile && styles.previewBodyMobile]}>
+                      <Text
+                        style={[
+                          styles.previewCongrats,
+                          isMobile && styles.previewCongratsMobile,
+                        ]}
+                      >
+                        Congratulations
+                      </Text>
 
-                    <View style={styles.previewMetaBox}>
-                      <Text style={styles.previewMetaText}>
-                        Section: {section.sectionName}
-                      </Text>
-                      <Text style={styles.previewMetaText}>Adviser: {adviser}</Text>
-                      <Text style={styles.previewMetaText}>
-                        Academic Year: {schoolYear}
-                      </Text>
-                      <Text style={styles.previewMetaText}>
-                        Semester: {semester}
-                      </Text>
-                      <Text style={styles.previewMetaText}>
-                        Total No. of Honor Students: {section.students.length}
-                      </Text>
-                    </View>
-
-                    <View style={styles.previewTable}>
-                      <View style={styles.previewTableHeader}>
-                        <Text style={[styles.previewHeaderCell, { width: 45 }]}>
-                          NO.
+                      <View style={styles.previewMetaBox}>
+                        <Text style={styles.previewMetaText}>
+                          Section: {section.sectionName}
                         </Text>
-                        <Text style={[styles.previewHeaderCell, { flex: 1 }]}>
-                          NAME OF STUDENT
+                        <Text style={styles.previewMetaText}>Adviser: {adviser}</Text>
+                        <Text style={styles.previewMetaText}>
+                          Academic Year: {schoolYear}
                         </Text>
-                        <Text style={[styles.previewHeaderCell, { width: 70 }]}>
-                          GWA
+                        <Text style={styles.previewMetaText}>
+                          Semester: {semester}
+                        </Text>
+                        <Text style={styles.previewMetaText}>
+                          Total No. of Honor Students: {section.students.length}
                         </Text>
                       </View>
 
-                      {section.students.map((student, index) => (
-                        <View key={student.id} style={styles.previewTableRow}>
-                          <Text style={[styles.previewRowCell, { width: 45 }]}>
-                            {index + 1}
+                      <View style={styles.previewTable}>
+                        <View style={styles.previewTableHeader}>
+                          <Text style={[styles.previewHeaderCell, { width: 45 }]}>
+                            NO.
                           </Text>
-                          <Text style={[styles.previewRowCell, { flex: 1 }]}>
-                            {student.name}
+                          <Text style={[styles.previewHeaderCell, { flex: 1 }]}>
+                            NAME OF STUDENT
                           </Text>
-                          <Text style={[styles.previewRowCell, { width: 70 }]}>
-                            {student.gpa}
+                          <Text style={[styles.previewHeaderCell, { width: 70 }]}>
+                            GWA
                           </Text>
                         </View>
-                      ))}
-                    </View>
-                  </View>
 
-                  <View style={styles.previewBottomAccent} />
+                        {section.students.map((student, index) => (
+                          <View key={student.id} style={styles.previewTableRow}>
+                            <Text style={[styles.previewRowCell, { width: 45 }]}>
+                              {index + 1}
+                            </Text>
+                            <Text
+                              style={[styles.previewRowCell, { flex: 1 }]}
+                              numberOfLines={isMobile ? 2 : 1}
+                            >
+                              {student.name}
+                            </Text>
+                            <Text style={[styles.previewRowCell, { width: 70 }]}>
+                              {student.gpa}
+                            </Text>
+                          </View>
+                        ))}
+                      </View>
+                    </View>
+
+                    <View style={styles.previewBottomAccent} />
+                  </ScrollView>
                 </View>
               ))
             )}
@@ -214,6 +283,9 @@ function HonorRollPreviewModal({
 }
 
 export default function HonorsScreen() {
+  const { width } = useWindowDimensions();
+  const isMobile = width < 768;
+
   const academicYears = [
     'S.Y 2023 - 2024',
     'S.Y 2024 - 2025',
@@ -292,6 +364,7 @@ export default function HonorsScreen() {
     setGeneratedSections(orderedSections);
     setSelectedSection(null);
     setPreviewVisible(false);
+    setOpenDropdown(null);
 
     if (orderedSections.length === 0) {
       Alert.alert('No Results', 'No honor roll students found.');
@@ -320,42 +393,75 @@ export default function HonorsScreen() {
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[styles.content, isMobile && styles.contentMobile]}
         keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
       >
         <View style={styles.headerRow}>
           <Text style={styles.title}>Honors</Text>
         </View>
 
-        <View style={styles.subHeader}>
+        <View style={[styles.subHeader, isMobile && styles.subHeaderMobile]}>
           <Text style={styles.mainHeading}>Generate Honor Roll</Text>
           <Text style={styles.subHeadingText}>
             Automatically generate honor roll by section and year level
           </Text>
         </View>
 
-        <View style={styles.controlsCard}>
-          <View style={styles.controlsRow}>
-            <CustomDropdown
-              value={schoolYear}
-              options={academicYears}
-              onSelect={handleSchoolYearSelect}
-              visible={openDropdown === 'schoolYear'}
-              onToggle={() => handleDropdownToggle('schoolYear')}
-              width={170}
-            />
+        <View style={[styles.controlsCard, isMobile && styles.controlsCardMobile]}>
+          <View style={[styles.controlsRow, isMobile && styles.controlsRowMobile]}>
+            {isMobile ? (
+              <View style={styles.mobileDropdownRow}>
+                <View style={styles.mobileDropdownItem}>
+                  <CustomDropdown
+                    value={schoolYear}
+                    options={academicYears}
+                    onSelect={handleSchoolYearSelect}
+                    visible={openDropdown === 'schoolYear'}
+                    onToggle={() => handleDropdownToggle('schoolYear')}
+                    isMobile={isMobile}
+                  />
+                </View>
 
-            <CustomDropdown
-              value={semester}
-              options={semesters}
-              onSelect={handleSemesterSelect}
-              visible={openDropdown === 'semester'}
-              onToggle={() => handleDropdownToggle('semester')}
-              width={160}
-            />
+                <View style={styles.mobileDropdownItem}>
+                  <CustomDropdown
+                    value={semester}
+                    options={semesters}
+                    onSelect={handleSemesterSelect}
+                    visible={openDropdown === 'semester'}
+                    onToggle={() => handleDropdownToggle('semester')}
+                    isMobile={isMobile}
+                  />
+                </View>
+              </View>
+            ) : (
+              <>
+                <View style={{ width: 170 }}>
+                  <CustomDropdown
+                    value={schoolYear}
+                    options={academicYears}
+                    onSelect={handleSchoolYearSelect}
+                    visible={openDropdown === 'schoolYear'}
+                    onToggle={() => handleDropdownToggle('schoolYear')}
+                    isMobile={isMobile}
+                  />
+                </View>
+
+                <View style={{ width: 160 }}>
+                  <CustomDropdown
+                    value={semester}
+                    options={semesters}
+                    onSelect={handleSemesterSelect}
+                    visible={openDropdown === 'semester'}
+                    onToggle={() => handleDropdownToggle('semester')}
+                    isMobile={isMobile}
+                  />
+                </View>
+              </>
+            )}
 
             <TouchableOpacity
-              style={styles.generateBtn}
+              style={[styles.generateBtn, isMobile && styles.generateBtnMobile]}
               onPress={handleGenerateHonorRoll}
             >
               <Text style={styles.generateBtnText}>Generate Honor Roll</Text>
@@ -363,20 +469,47 @@ export default function HonorsScreen() {
           </View>
         </View>
 
-        <View style={styles.tableHeader}>
-          <Text style={[styles.headerCell, { flex: 1.2 }]}>Year Level</Text>
-          <Text style={[styles.headerCell, { flex: 1 }]}>Section</Text>
-          <Text style={[styles.headerCell, { flex: 1.2 }]}>Honor Students</Text>
-          <Text style={[styles.headerCell, { width: 100, textAlign: 'center' }]}>
-            Action
-          </Text>
-        </View>
+        {!isMobile && (
+          <View style={styles.tableHeader}>
+            <Text style={[styles.headerCell, { flex: 1.2 }]}>Year Level</Text>
+            <Text style={[styles.headerCell, { flex: 1 }]}>Section</Text>
+            <Text style={[styles.headerCell, { flex: 1.2 }]}>Honor Students</Text>
+            <Text style={[styles.headerCell, { width: 100, textAlign: 'center' }]}>
+              Action
+            </Text>
+          </View>
+        )}
 
         {generatedSections.length === 0 ? (
-          <View style={styles.emptyState}>
+          <View style={[styles.emptyState, isMobile && styles.emptyStateMobile]}>
             <Text style={styles.emptyStateText}>
               Click Generate Honor Roll to display each level and section.
             </Text>
+          </View>
+        ) : isMobile ? (
+          <View style={styles.mobileList}>
+            {generatedSections.map((item, index) => (
+              <View key={`${item.sectionName}-${index}`} style={styles.mobileCard}>
+                <View style={styles.mobileCardTop}>
+                  <View style={styles.mobileInfoWrap}>
+                    <Text style={styles.mobileYearText}>{item.yearLevel}</Text>
+                    <Text style={styles.mobileSectionText}>Section {item.sectionName}</Text>
+                  </View>
+
+                  <View style={styles.mobileCountWrap}>
+                    <Text style={styles.mobileCountNumber}>{item.students.length}</Text>
+                    <Text style={styles.mobileCountLabel}>Honors</Text>
+                  </View>
+                </View>
+
+                <TouchableOpacity
+                  style={styles.mobileOpenBtn}
+                  onPress={() => handleOpenHonorList(item)}
+                >
+                  <Text style={styles.mobileOpenBtnText}>Open Honor List</Text>
+                </TouchableOpacity>
+              </View>
+            ))}
           </View>
         ) : (
           generatedSections.map((item, index) => (
@@ -411,6 +544,7 @@ export default function HonorsScreen() {
         generatedSections={selectedSection ? [selectedSection] : []}
         schoolYear={schoolYear}
         semester={semester}
+        isMobile={isMobile}
       />
     </SafeAreaView>
   );
@@ -425,6 +559,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 40,
     paddingTop: 30,
     paddingBottom: 40,
+  },
+  contentMobile: {
+    paddingHorizontal: 16,
+    paddingTop: 18,
+    paddingBottom: 28,
   },
 
   headerRow: {
@@ -448,6 +587,10 @@ const styles = StyleSheet.create({
     marginTop: 15,
     marginBottom: 30,
   },
+  subHeaderMobile: {
+    marginTop: 12,
+    marginBottom: 18,
+  },
   mainHeading: {
     fontSize: 22,
     fontWeight: '700',
@@ -457,12 +600,16 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#444',
     marginTop: 2,
+    lineHeight: 20,
   },
 
   controlsCard: {
     marginBottom: 25,
     zIndex: 3000,
-    elevation: 30,
+    elevation: 0,
+  },
+  controlsCardMobile: {
+    marginBottom: 18,
   },
 
   controlsRow: {
@@ -471,17 +618,34 @@ const styles = StyleSheet.create({
     gap: 15,
     flexWrap: 'wrap',
     zIndex: 3000,
-    elevation: 30,
+    elevation: 0,
+  },
+  controlsRowMobile: {
+    flexDirection: 'column',
+    gap: 12,
+  },
+
+  mobileDropdownRow: {
+    width: '100%',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    gap: 12,
+  },
+  mobileDropdownItem: {
+    flex: 1,
   },
 
   dropdownContainer: {
     position: 'relative',
-    backgroundColor: '#FFFFFF',
+    width: '100%',
     zIndex: 4000,
-    elevation: 35,
+    elevation: 0,
   },
+  dropdownContainerMobile: {},
 
   dropdownButton: {
+    width: '100%',
     height: 40,
     borderWidth: 1,
     borderColor: '#333',
@@ -492,28 +656,46 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     backgroundColor: '#FFFFFF',
     zIndex: 4001,
-    elevation: 36,
+    elevation: 0,
+  },
+  dropdownButtonMobile: {
+    height: 48,
+    borderRadius: 12,
+    paddingHorizontal: 14,
   },
   dropdownButtonText: {
     fontSize: 12,
     color: '#000',
+    flexShrink: 1,
+    marginRight: 8,
   },
 
   inlineDropdownMenu: {
     position: 'absolute',
     top: 44,
     left: 0,
+    width: '100%',
     backgroundColor: '#FFFFFF',
     borderRadius: 8,
     borderWidth: 1,
     borderColor: '#CFCFCF',
-    elevation: 40,
-    shadowColor: '#000',
-    shadowOpacity: 0.22,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 6 },
     overflow: 'hidden',
     zIndex: 5000,
+    elevation: 0,
+    shadowColor: 'transparent',
+    shadowOpacity: 0,
+    shadowRadius: 0,
+    shadowOffset: { width: 0, height: 0 },
+  },
+  inlineDropdownMenuMobile: {
+    top: 52,
+    left: 0,
+    borderRadius: 12,
+    backgroundColor: '#FFFFFF',
+  },
+  dropdownScrollMobile: {
+    maxHeight: 220,
+    backgroundColor: '#FFFFFF',
   },
 
   dropdownItem: {
@@ -534,6 +716,13 @@ const styles = StyleSheet.create({
     borderRadius: 22,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  generateBtnMobile: {
+    width: '100%',
+    minWidth: 0,
+    height: 48,
+    paddingHorizontal: 16,
+    borderRadius: 12,
   },
   generateBtnText: {
     color: '#FFF',
@@ -585,6 +774,77 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
 
+  mobileList: {
+    gap: 12,
+    marginTop: 8,
+  },
+  mobileCard: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E7E7E7',
+    borderRadius: 16,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
+  },
+  mobileCardTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'stretch',
+    marginBottom: 14,
+    gap: 12,
+  },
+  mobileInfoWrap: {
+    flex: 1,
+    paddingRight: 8,
+  },
+  mobileYearText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#111',
+  },
+  mobileSectionText: {
+    fontSize: 13,
+    color: '#666',
+    marginTop: 4,
+  },
+  mobileCountWrap: {
+    minWidth: 72,
+    borderRadius: 14,
+    backgroundColor: '#FDECEC',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 10,
+  },
+  mobileCountNumber: {
+    color: '#B71C1C',
+    fontSize: 18,
+    fontWeight: '700',
+    lineHeight: 20,
+  },
+  mobileCountLabel: {
+    color: '#B71C1C',
+    fontSize: 11,
+    fontWeight: '600',
+    marginTop: 2,
+  },
+  mobileOpenBtn: {
+    backgroundColor: '#B71C1C',
+    height: 44,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  mobileOpenBtnText: {
+    color: '#FFF',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+
   emptyState: {
     paddingVertical: 24,
     alignItems: 'center',
@@ -595,6 +855,11 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     zIndex: 1,
     elevation: 0,
+  },
+  emptyStateMobile: {
+    borderRadius: 14,
+    paddingHorizontal: 16,
+    paddingVertical: 28,
   },
   emptyStateText: {
     color: '#666',
@@ -610,6 +875,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 20,
   },
+  modalOverlayMobile: {
+    backgroundColor: '#FFFFFF',
+    padding: 0,
+  },
 
   previewWrapper: {
     width: '100%',
@@ -619,6 +888,15 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     overflow: 'hidden',
   },
+  previewWrapperMobile: {
+    flex: 1,
+    maxWidth: '100%',
+    maxHeight: '100%',
+    height: '100%',
+    borderRadius: 0,
+    backgroundColor: '#FFFFFF',
+  },
+
   previewTopBar: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -629,20 +907,57 @@ const styles = StyleSheet.create({
     borderBottomColor: '#E5E5E5',
     backgroundColor: '#FFF',
   },
+  previewTopBarMobile: {
+    minHeight: 102,
+    paddingTop: 70,
+    paddingBottom: 12,
+    paddingHorizontal: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E9E9E9',
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+  },
+
   previewTitle: {
     fontSize: 20,
     fontWeight: 'bold',
     color: '#111',
   },
+  previewTitleMobile: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: '#000',
+  },
+
   previewCloseBtn: {
     backgroundColor: '#B71C1C',
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 8,
   },
+  previewCloseBtnMobile: {
+    minWidth: 88,
+    height: 40,
+    paddingHorizontal: 14,
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#C81414',
+    shadowColor: '#000',
+    shadowOpacity: 0.12,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 3,
+  },
+
   previewCloseText: {
     color: '#FFF',
     fontWeight: '700',
+  },
+  previewCloseTextMobile: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#FFFFFF',
   },
 
   previewScrollView: {
@@ -659,26 +974,48 @@ const styles = StyleSheet.create({
     padding: 20,
     alignItems: 'center',
   },
+  previewScrollContentMobile: {
+    paddingHorizontal: 12,
+    paddingTop: 20,
+    paddingBottom: 12,
+    alignItems: 'stretch',
+  },
 
   previewCard: {
     width: '100%',
     maxWidth: 800,
-    backgroundColor: '#e8dbc4',
+    backgroundColor: '#E8DBC4',
     borderWidth: 3,
-    borderColor: '#f0d98a',
+    borderColor: '#F0D98A',
     overflow: 'hidden',
     marginBottom: 20,
+    borderRadius: 14,
+    paddingTop: 10,
   },
-  previewHeaderImage: {
+  previewCardMobile: {
     width: '100%',
-    height: 150,
-    resizeMode: 'cover',
+    maxWidth: '100%',
+    borderRadius: 12,
   },
+
+  previewHeaderImage: {
+  width: '100%',
+  height: 90,
+  resizeMode: 'cover',
+  marginTop: 10,
+},
+
   previewBody: {
     paddingHorizontal: 18,
     paddingTop: 18,
     paddingBottom: 30,
   },
+  previewBodyMobile: {
+    paddingHorizontal: 12,
+    paddingTop: 14,
+    paddingBottom: 20,
+  },
+
   previewCongrats: {
     textAlign: 'center',
     color: '#6b2f2f',
@@ -688,6 +1025,11 @@ const styles = StyleSheet.create({
     marginTop: 8,
     marginBottom: 16,
   },
+  previewCongratsMobile: {
+    fontSize: 28,
+    marginBottom: 14,
+  },
+
   previewMetaBox: {
     marginBottom: 12,
   },
@@ -697,6 +1039,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     lineHeight: 20,
   },
+
   previewTable: {
     marginTop: 10,
   },
@@ -714,6 +1057,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
     borderRightWidth: 1,
     borderRightColor: '#fff',
+    fontSize: 12,
   },
   previewTableRow: {
     flexDirection: 'row',
@@ -730,7 +1074,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
     borderRightWidth: 1,
     borderRightColor: '#fff',
+    fontSize: 12,
   },
+
   previewEmptyRow: {
     backgroundColor: '#fff',
     borderWidth: 1,
@@ -745,19 +1091,22 @@ const styles = StyleSheet.create({
     color: '#555',
     fontSize: 12,
   },
+
   previewBottomAccent: {
     height: 70,
-    backgroundColor: '#e8dbc4',
+    backgroundColor: '#E8DBC4',
   },
 
   getLinkBtn: {
     marginTop: 16,
+    marginBottom: 8,
     backgroundColor: '#B71C1C',
     paddingHorizontal: 20,
     height: 42,
     borderRadius: 10,
     justifyContent: 'center',
     alignItems: 'center',
+    alignSelf: 'center',
   },
   getLinkBtnText: {
     color: '#FFF',

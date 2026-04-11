@@ -265,7 +265,7 @@ export default function TeacherApp({ onLogout }: Props) {
   };
 
   const handleSearchChange = (_query: string) => {
-    // You can connect this later to real search behavior
+    // Connect later if needed
   };
 
   const handleChangeProfileImage = (image: any) => {
