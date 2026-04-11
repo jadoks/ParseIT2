@@ -1,10 +1,347 @@
 import React, { useMemo, useState } from 'react';
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { AdminAcademicData } from '../AdminApp';
+import {
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 
-interface PerformanceAnalyticsProps {
-  academicData: AdminAcademicData;
-}
+type StudentScore = {
+  name: string;
+  score: number;
+};
+
+type SubjectRecord = {
+  id: number;
+  title: string;
+  progress: string;
+  students: StudentScore[];
+};
+
+type SectionRecord = {
+  [sectionName: string]: SubjectRecord[];
+};
+
+type AcademicData = {
+  [yearLevel: string]: SectionRecord;
+};
+
+// Based on the current repo structure/data shape
+const academicData: AcademicData = {
+  '1st Year': {
+    '1A - Microsoft': [
+      {
+        id: 101,
+        title: 'Introduction to Computing',
+        progress: '95%',
+        students: [
+          { name: 'Alice Tan', score: 95 },
+          { name: 'Bob Reyes', score: 92 },
+          { name: 'Charlie Day', score: 88 },
+          { name: 'Daisy Go', score: 91 },
+          { name: 'Ethan Sy', score: 94 },
+        ],
+      },
+      {
+        id: 102,
+        title: 'Computer Programming 1',
+        progress: '88%',
+        students: [
+          { name: 'Alice Tan', score: 82 },
+          { name: 'Bob Reyes', score: 78 },
+          { name: 'Charlie Day', score: 80 },
+          { name: 'Daisy Go', score: 75 },
+          { name: 'Ethan Sy', score: 70 },
+        ],
+      },
+      {
+        id: 103,
+        title: 'Discrete Mathematics',
+        progress: '90%',
+        students: [
+          { name: 'Alice Tan', score: 88 },
+          { name: 'Bob Reyes', score: 85 },
+          { name: 'Charlie Day', score: 82 },
+          { name: 'Daisy Go', score: 80 },
+          { name: 'Ethan Sy', score: 77 },
+        ],
+      },
+    ],
+    '1B - Apple': [
+      {
+        id: 104,
+        title: 'Introduction to Computing',
+        progress: '92%',
+        students: [
+          { name: 'Liam N.', score: 90 },
+          { name: 'Emma W.', score: 88 },
+          { name: 'Noah S.', score: 85 },
+          { name: 'Olivia H.', score: 82 },
+          { name: 'James B.', score: 85 },
+        ],
+      },
+      {
+        id: 105,
+        title: 'Computer Programming 1',
+        progress: '80%',
+        students: [
+          { name: 'Liam N.', score: 75 },
+          { name: 'Emma W.', score: 72 },
+          { name: 'Noah S.', score: 78 },
+          { name: 'Olivia H.', score: 70 },
+          { name: 'James B.', score: 74 },
+        ],
+      },
+      {
+        id: 106,
+        title: 'Discrete Mathematics',
+        progress: '85%',
+        students: [
+          { name: 'Liam N.', score: 80 },
+          { name: 'Emma W.', score: 82 },
+          { name: 'Noah S.', score: 84 },
+          { name: 'Olivia H.', score: 78 },
+          { name: 'James B.', score: 81 },
+        ],
+      },
+    ],
+  },
+  '2nd Year': {
+    '2A - Google': [
+      {
+        id: 201,
+        title: 'Data Structures',
+        progress: '75%',
+        students: [
+          { name: 'Ben J.', score: 98 },
+          { name: 'Clara M.', score: 96 },
+          { name: 'Dan K.', score: 95 },
+          { name: 'Eva L.', score: 94 },
+          { name: 'Fred P.', score: 97 },
+        ],
+      },
+      {
+        id: 202,
+        title: 'Networking 1',
+        progress: '70%',
+        students: [
+          { name: 'Ben J.', score: 85 },
+          { name: 'Clara M.', score: 82 },
+          { name: 'Dan K.', score: 88 },
+          { name: 'Eva L.', score: 84 },
+          { name: 'Fred P.', score: 86 },
+        ],
+      },
+      {
+        id: 203,
+        title: 'Object Oriented Prog',
+        progress: '82%',
+        students: [
+          { name: 'Ben J.', score: 90 },
+          { name: 'Clara M.', score: 91 },
+          { name: 'Dan K.', score: 89 },
+          { name: 'Eva L.', score: 92 },
+          { name: 'Fred P.', score: 88 },
+        ],
+      },
+    ],
+    '2B - Meta': [
+      {
+        id: 204,
+        title: 'Data Structures',
+        progress: '72%',
+        students: [
+          { name: 'Quinn S.', score: 75 },
+          { name: 'Rose T.', score: 78 },
+          { name: 'Seth U.', score: 72 },
+          { name: 'Tara V.', score: 74 },
+          { name: 'Ugo W.', score: 70 },
+        ],
+      },
+      {
+        id: 205,
+        title: 'Networking 1',
+        progress: '65%',
+        students: [
+          { name: 'Quinn S.', score: 80 },
+          { name: 'Rose T.', score: 82 },
+          { name: 'Seth U.', score: 79 },
+          { name: 'Tara V.', score: 81 },
+          { name: 'Ugo W.', score: 78 },
+        ],
+      },
+      {
+        id: 206,
+        title: 'Object Oriented Prog',
+        progress: '78%',
+        students: [
+          { name: 'Quinn S.', score: 85 },
+          { name: 'Rose T.', score: 84 },
+          { name: 'Seth U.', score: 86 },
+          { name: 'Tara V.', score: 83 },
+          { name: 'Ugo W.', score: 87 },
+        ],
+      },
+    ],
+  },
+  '3rd Year': {
+    '3A - Amazon': [
+      {
+        id: 301,
+        title: 'Information Assurance',
+        progress: '60%',
+        students: [
+          { name: 'Flo H.', score: 92 },
+          { name: 'Gus I.', score: 94 },
+          { name: 'Hope J.', score: 91 },
+          { name: 'Ian K.', score: 93 },
+          { name: 'Joy L.', score: 90 },
+        ],
+      },
+      {
+        id: 302,
+        title: 'System Integration',
+        progress: '55%',
+        students: [
+          { name: 'Flo H.', score: 88 },
+          { name: 'Gus I.', score: 86 },
+          { name: 'Hope J.', score: 87 },
+          { name: 'Ian K.', score: 89 },
+          { name: 'Joy L.', score: 85 },
+        ],
+      },
+      {
+        id: 303,
+        title: 'Database Management 2',
+        progress: '65%',
+        students: [
+          { name: 'Flo H.', score: 95 },
+          { name: 'Gus I.', score: 92 },
+          { name: 'Hope J.', score: 94 },
+          { name: 'Ian K.', score: 91 },
+          { name: 'Joy L.', score: 93 },
+        ],
+      },
+    ],
+    '3B - Oracle': [
+      {
+        id: 304,
+        title: 'Information Assurance',
+        progress: '58%',
+        students: [
+          { name: 'Uma W.', score: 80 },
+          { name: 'Val X.', score: 82 },
+          { name: 'Wes Y.', score: 78 },
+          { name: 'Xander Z.', score: 79 },
+          { name: 'Yolanda A.', score: 81 },
+        ],
+      },
+      {
+        id: 305,
+        title: 'System Integration',
+        progress: '50%',
+        students: [
+          { name: 'Uma W.', score: 75 },
+          { name: 'Val X.', score: 77 },
+          { name: 'Wes Y.', score: 74 },
+          { name: 'Xander Z.', score: 76 },
+          { name: 'Yolanda A.', score: 73 },
+        ],
+      },
+      {
+        id: 306,
+        title: 'Database Management 2',
+        progress: '62%',
+        students: [
+          { name: 'Uma W.', score: 85 },
+          { name: 'Val X.', score: 83 },
+          { name: 'Wes Y.', score: 86 },
+          { name: 'Xander Z.', score: 84 },
+          { name: 'Yolanda A.', score: 87 },
+        ],
+      },
+    ],
+  },
+  '4th Year': {
+    '4A - Tesla': [
+      {
+        id: 401,
+        title: 'Capstone Project 2',
+        progress: '100%',
+        students: [
+          { name: 'Jon L.', score: 99 },
+          { name: 'Kai M.', score: 98 },
+          { name: 'Leo N.', score: 100 },
+          { name: 'Mia O.', score: 97 },
+          { name: 'Noel P.', score: 99 },
+        ],
+      },
+      {
+        id: 402,
+        title: 'Social & Prof. Issues',
+        progress: '95%',
+        students: [
+          { name: 'Jon L.', score: 92 },
+          { name: 'Kai M.', score: 94 },
+          { name: 'Leo N.', score: 91 },
+          { name: 'Mia O.', score: 93 },
+          { name: 'Noel P.', score: 90 },
+        ],
+      },
+      {
+        id: 403,
+        title: 'Emerging Technologies',
+        progress: '90%',
+        students: [
+          { name: 'Jon L.', score: 96 },
+          { name: 'Kai M.', score: 95 },
+          { name: 'Leo N.', score: 97 },
+          { name: 'Mia O.', score: 94 },
+          { name: 'Noel P.', score: 95 },
+        ],
+      },
+    ],
+    '4B - NVIDIA': [
+      {
+        id: 404,
+        title: 'Capstone Project 2',
+        progress: '95%',
+        students: [
+          { name: 'Abe R.', score: 88 },
+          { name: 'Bea S.', score: 85 },
+          { name: 'Cal T.', score: 87 },
+          { name: 'Dan U.', score: 89 },
+          { name: 'Eve V.', score: 86 },
+        ],
+      },
+      {
+        id: 405,
+        title: 'Social & Prof. Issues',
+        progress: '90%',
+        students: [
+          { name: 'Abe R.', score: 82 },
+          { name: 'Bea S.', score: 80 },
+          { name: 'Cal T.', score: 84 },
+          { name: 'Dan U.', score: 81 },
+          { name: 'Eve V.', score: 83 },
+        ],
+      },
+      {
+        id: 406,
+        title: 'Emerging Technologies',
+        progress: '85%',
+        students: [
+          { name: 'Abe R.', score: 90 },
+          { name: 'Bea S.', score: 88 },
+          { name: 'Cal T.', score: 89 },
+          { name: 'Dan U.', score: 87 },
+          { name: 'Eve V.', score: 91 },
+        ],
+      },
+    ],
+  },
+};
 
 const toNumberProgress = (progress: string): number =>
   Number(progress.replace('%', ''));
@@ -33,12 +370,17 @@ const getRiskLevel = (avg: number, progress: number) => {
   return 'Low';
 };
 
-export const PerformanceAnalytics: React.FC<PerformanceAnalyticsProps> = ({
-  academicData,
-}) => {
-  const years = Object.keys(academicData);
-  const [selectedYear, setSelectedYear] = useState<string>(years[0]);
+const getDistributionBucket = (score: number) => {
+  if (score >= 90) return 'Excellent';
+  if (score >= 85) return 'Good';
+  if (score >= 75) return 'Average';
+  return 'Poor';
+};
 
+export const PerformanceAnalytics = () => {
+  const [selectedYear, setSelectedYear] = useState<string>('1st Year');
+
+  const years = Object.keys(academicData);
   const sections = Object.keys(academicData[selectedYear]);
   const [selectedSection, setSelectedSection] = useState<string>(sections[0]);
   const [expandedId, setExpandedId] = useState<number | null>(null);
@@ -87,7 +429,9 @@ export const PerformanceAnalytics: React.FC<PerformanceAnalyticsProps> = ({
       };
     });
 
-    const allScoresAcrossSelectedYear = Object.values(academicData[selectedYear])
+    const allScoresAcrossSelectedYear = Object.values(
+      academicData[selectedYear]
+    )
       .flat()
       .flatMap((subject) => subject.students.map((student) => student.score));
 
@@ -163,7 +507,7 @@ export const PerformanceAnalytics: React.FC<PerformanceAnalyticsProps> = ({
       subjectTrend,
       gradeDistribution,
     };
-  }, [academicData, currentSubjects, selectedYear, years]);
+  }, [currentSubjects, selectedYear, years]);
 
   const selectedSectionOverview = useMemo(() => {
     const sectionScores = currentSubjects.flatMap((subject) =>
