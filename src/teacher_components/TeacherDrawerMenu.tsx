@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   Image,
-  LayoutChangeEvent,
   Modal,
   Platform,
   Pressable,
@@ -41,6 +40,8 @@ interface DrawerMenuProps {
 }
 
 const DEFAULT_AVATAR = require('../../assets/images/avatar.jpg');
+const ACTIVE_RED = '#D32F2F';
+const ACTIVE_BG = '#FCEAEA';
 
 const normalizeImageSource = (img: any) => {
   if (!img) return DEFAULT_AVATAR;
@@ -61,47 +62,50 @@ const MenuItem = ({
   active?: boolean;
 }) => {
   const { width } = useWindowDimensions();
-
   const isMobile = width < 768;
-  const isLargeScreen = width >= 1024;
-
-  const menuItemVerticalMargin = isMobile ? 12 : isLargeScreen ? 18 : 16;
-  const menuLabelFontSize = isMobile ? 15 : 17;
+  const iconSize = isMobile ? 24 : 26;
 
   return (
     <Pressable
       onPress={onPress}
       style={(state) => {
-        const base: StyleProp<ViewStyle> = [
-          styles.menuItem,
-          { marginVertical: menuItemVerticalMargin },
-          active && {
-            backgroundColor: 'rgba(211,47,47,0.08)',
-            borderRadius: 14,
-          },
-        ];
+        const base: StyleProp<ViewStyle> = [styles.menuItem];
+
+        if (active) {
+          base.push(styles.menuItemActive);
+        }
 
         if (Platform.OS === 'web' && (state as any).hovered && !active) {
-          base.push({
-            backgroundColor: 'rgba(130,129,129,0.08)',
-            borderRadius: 14,
-          });
+          base.push(styles.menuItemHover);
         }
 
         return base;
       }}
     >
+<<<<<<< HEAD
       <MaterialCommunityIcons
         name={iconName}
         size={22}
         color={active ? '#D32F2F' : '#444'}
         style={styles.menuIcon}
+=======
+      <Image
+        source={iconSource}
+        style={[
+          styles.menuIcon,
+          {
+            width: iconSize,
+            height: iconSize,
+            tintColor: active ? ACTIVE_RED : '#000',
+          },
+        ]}
+>>>>>>> 98d439a675c9e7f45c4eb56c8896935b039c18b4
       />
+
       <Text
         style={[
           styles.menuLabel,
-          { fontSize: menuLabelFontSize },
-          active && { color: '#D32F2F', fontWeight: '700' },
+          active && styles.menuLabelActive,
         ]}
       >
         {label}
@@ -122,11 +126,7 @@ const DrawerMenu = ({
   setIsLoggedIn,
 }: DrawerMenuProps) => {
   const { width } = useWindowDimensions();
-
   const avatarSource = useMemo(() => normalizeImageSource(userAvatar), [userAvatar]);
-
-  const [contentHeight, setContentHeight] = useState(0);
-  const [scrollViewHeight, setScrollViewHeight] = useState(0);
 
   const [isSettingsModalVisible, setSettingsModalVisible] = useState(false);
   const [isLogoutModalVisible, setLogoutModalVisible] = useState(false);
@@ -149,12 +149,6 @@ const DrawerMenu = ({
   const [confirmPassword, setConfirmPassword] = useState('');
 
   const isMobile = width < 768;
-  const isTablet = width >= 768 && width < 1024;
-  const isSmallMobile = width < 380;
-
-  const hasOverflow = contentHeight > scrollViewHeight && scrollViewHeight > 0;
-  const shouldShowScrollBar = (isMobile || isTablet) && hasOverflow;
-  const drawerWidth = isMobile ? (isSmallMobile ? '85%' : 280) : isTablet ? 300 : 260;
 
   useEffect(() => {
     setEmail(userEmail);
@@ -171,14 +165,6 @@ const DrawerMenu = ({
       setActiveMenu(null);
     }
   }, [activeScreen]);
-
-  const handleContentSizeChange = (_contentW: number, contentH: number) => {
-    setContentHeight(contentH);
-  };
-
-  const handleScrollViewLayout = (e: LayoutChangeEvent) => {
-    setScrollViewHeight(e.nativeEvent.layout.height);
-  };
 
   const resetActiveMenuFromScreen = () => {
     if (activeScreen === 'profile') {
@@ -201,27 +187,20 @@ const DrawerMenu = ({
     Platform.OS === 'web' && state.hovered ? modalButtonHover : {};
 
   return (
-    <View style={[styles.drawerContainer, { width: drawerWidth }]}>
-      <Pressable style={styles.profileSection} onPress={onAvatarPress}>
-        <Image
-          source={avatarSource}
-          style={[
-            styles.avatar,
-            {
-              width: isMobile ? 45 : 50,
-              height: isMobile ? 45 : 50,
-              borderRadius: isMobile ? 22.5 : 25,
-            },
-          ]}
-          resizeMode="cover"
-        />
-
-        <View style={styles.profileTextContainer}>
-          <Text
+    <View style={styles.drawerContainer}>
+      <View style={styles.topSection}>
+        <Pressable style={styles.profileSection} onPress={onAvatarPress}>
+          <Image
+            source={avatarSource}
             style={[
-              styles.userName,
-              { fontSize: isMobile ? 16 : 18 },
+              styles.avatar,
+              {
+                width: isMobile ? 54 : 56,
+                height: isMobile ? 54 : 56,
+                borderRadius: isMobile ? 27 : 28,
+              },
             ]}
+<<<<<<< HEAD
           >
             {userName}
           </Text>
@@ -229,14 +208,19 @@ const DrawerMenu = ({
             {userEmail}
           </Text>
         </View>
+=======
+            resizeMode="cover"
+          />
+>>>>>>> 98d439a675c9e7f45c4eb56c8896935b039c18b4
 
-        {!isFixed && (
-          <Pressable onPress={onClose} style={styles.inlineCloseBtn}>
-            <Text style={styles.closeText}>✕</Text>
-          </Pressable>
-        )}
-      </Pressable>
+          <View style={styles.profileTextContainer}>
+            <Text style={styles.userName} numberOfLines={2}>
+              {userName}
+            </Text>
+          </View>
+        </Pressable>
 
+<<<<<<< HEAD
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContentContainer}
@@ -287,19 +271,61 @@ const DrawerMenu = ({
           active={activeMenu === 'settings'}
         />
       </ScrollView>
+=======
+        <ScrollView
+          style={styles.scrollView}
+          contentContainerStyle={styles.scrollContentContainer}
+          showsVerticalScrollIndicator={false}
+        >
+          <MenuItem
+            iconSource={require('../../assets/images/person.png')}
+            label="Profile"
+            onPress={() => {
+              setActiveMenu('profile');
+              onNavigate?.('profile');
+              if (!isFixed) onClose?.();
+            }}
+            active={activeMenu === 'profile'}
+          />
 
-      <Pressable
-        style={styles.logoutMenuItem}
-        onPress={() => setLogoutModalVisible(true)}
-      >
-        <MaterialCommunityIcons
-          name="logout"
-          size={28}
-          color="#D32F2F"
-          style={styles.logoutIcon}
-        />
-        <Text style={styles.logoutLabel}>Logout</Text>
-      </Pressable>
+          <MenuItem
+            iconSource={require('../../assets/images/users-solid.png')}
+            label="Community"
+            onPress={() => {
+              setActiveMenu('community');
+              onNavigate?.('community');
+              if (!isFixed) onClose?.();
+            }}
+            active={activeMenu === 'community'}
+          />
+
+          <MenuItem
+            iconSource={require('../../assets/images/gear-solid.png')}
+            label="Settings"
+            onPress={() => {
+              setActiveMenu('settings');
+              setSettingsModalVisible(true);
+            }}
+            active={activeMenu === 'settings'}
+          />
+        </ScrollView>
+      </View>
+>>>>>>> 98d439a675c9e7f45c4eb56c8896935b039c18b4
+
+      <View style={styles.logoutSection}>
+        <Pressable
+          style={styles.logoutMenuItem}
+          onPress={() => setLogoutModalVisible(true)}
+        >
+          <MaterialCommunityIcons
+            name="logout"
+            size={30}
+            color={ACTIVE_RED}
+            style={styles.logoutIcon}
+          />
+          <Text style={styles.logoutLabel}>Logout</Text>
+        </Pressable>
+      </View>
 
       <Modal
         animationType="fade"
@@ -334,7 +360,7 @@ const DrawerMenu = ({
                   <MaterialCommunityIcons
                     name="email-outline"
                     size={22}
-                    color="#D32F2F"
+                    color={ACTIVE_RED}
                   />
                 </View>
 
@@ -368,7 +394,7 @@ const DrawerMenu = ({
                   <MaterialCommunityIcons
                     name="lock-outline"
                     size={22}
-                    color="#D32F2F"
+                    color={ACTIVE_RED}
                   />
                 </View>
 
@@ -574,58 +600,42 @@ const DrawerMenu = ({
 const styles = StyleSheet.create({
   drawerContainer: {
     flex: 1,
-    padding: 25,
     backgroundColor: '#FFF',
-    borderWidth: 0,
-    borderRightWidth: 0,
-    borderLeftWidth: 0,
-    borderTopWidth: 0,
-    borderBottomWidth: 0,
-    borderColor: 'transparent',
-    elevation: 0,
-    shadowColor: 'transparent',
-    shadowOpacity: 0,
-    shadowRadius: 0,
-    shadowOffset: { width: 0, height: 0 },
+    paddingTop: 16,
+    paddingHorizontal: 16,
+    paddingBottom: 20,
+    justifyContent: 'space-between',
+  },
+
+  topSection: {
+    flex: 1,
+    minHeight: 0,
   },
 
   profileSection: {
     flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 30,
+    alignItems: 'flex-start',
+    marginBottom: 34,
+    paddingHorizontal: 14,
   },
 
   profileTextContainer: {
     flex: 1,
+    paddingTop: 2,
   },
 
   avatar: {
-    marginRight: 15,
+    marginRight: 16,
     overflow: 'hidden',
     aspectRatio: 1,
     backgroundColor: '#f0f0f0',
   },
 
   userName: {
+    fontSize: 17,
+    lineHeight: 25,
     fontWeight: '700',
-    color: '#222',
-  },
-
-  userEmail: {
-    marginTop: 2,
-    fontSize: 12,
-    color: '#777',
-  },
-
-  inlineCloseBtn: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-  },
-
-  closeText: {
-    color: '#D32F2F',
-    fontWeight: '700',
-    fontSize: 18,
+    color: '#111',
   },
 
   scrollView: {
@@ -633,47 +643,75 @@ const styles = StyleSheet.create({
   },
 
   scrollContentContainer: {
-    paddingBottom: 12,
+    paddingBottom: 8,
   },
 
   menuItem: {
     flexDirection: 'row',
     alignItems: 'center',
+    minHeight: 52,
     paddingVertical: 10,
-    paddingHorizontal: 10,
+    paddingHorizontal: 14,
+    borderRadius: 18,
+    marginBottom: 16,
+    marginTop: 16,
+  },
+
+  menuItemActive: {
+    backgroundColor: ACTIVE_BG,
+  },
+
+  menuItemHover: {
+    opacity: 0.8,
   },
 
   menuIcon: {
+<<<<<<< HEAD
     marginRight: 20,
+=======
+    marginRight: 16,
+    resizeMode: 'contain',
+>>>>>>> 98d439a675c9e7f45c4eb56c8896935b039c18b4
   },
 
   menuLabel: {
+    fontSize: 16,
     color: '#444',
-    fontWeight: '500',
+    fontWeight: '600',
+  },
+
+  menuLabelActive: {
+    color: ACTIVE_RED,
+    fontWeight: '700',
+  },
+
+  logoutSection: {
+    borderTopWidth: 1,
+    borderTopColor: '#EEE',
+    paddingTop: 16,
+    marginTop: 12,
+    paddingHorizontal: 14,
   },
 
   logoutMenuItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 20,
-    borderTopWidth: 1,
-    borderTopColor: '#EEE',
-    paddingTop: 15,
+    minHeight: 56,
   },
 
   logoutIcon: {
-    marginRight: 20,
+    marginRight: 16,
   },
 
   logoutLabel: {
     fontSize: 16,
-    color: '#D32F2F',
+    color: ACTIVE_RED,
     fontWeight: '600',
   },
 
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
+    backgroundColor: 'rgba(15, 23, 42, 0.18)',
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -830,7 +868,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#D32F2F',
+    backgroundColor: ACTIVE_RED,
   },
 
   formSaveText: {
@@ -890,7 +928,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#D32F2F',
+    backgroundColor: ACTIVE_RED,
   },
 
   logoutConfirmText: {

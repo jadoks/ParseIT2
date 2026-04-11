@@ -605,7 +605,7 @@ const styles = StyleSheet.create({
 
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
+    backgroundColor: 'rgba(15, 23, 42, 0.18)',
     justifyContent: 'center',
     alignItems: 'center',
     padding: 20,
@@ -615,7 +615,7 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 800,
     maxHeight: '92%',
-    backgroundColor: '#f5f5f5',
+    backgroundColor: '#FFF',
     borderRadius: 16,
     overflow: 'hidden',
   },
@@ -631,7 +631,7 @@ const styles = StyleSheet.create({
   },
   previewTitle: {
     fontSize: 20,
-    fontWeight: '800',
+    fontWeight: 'bold',
     color: '#111',
   },
   previewCloseBtn: {
