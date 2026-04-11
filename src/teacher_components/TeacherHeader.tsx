@@ -92,7 +92,6 @@ const TeacherHeader: React.FC<HeaderProps> = ({
 
   const isActive = (screen: ScreenType) => activeScreen === screen;
 
-  // MOBILE bottom nav only
   const mobileNavScreens: Array<'home' | 'honors' | 'grades' | 'announcement'> = [
     'home',
     'honors',
@@ -100,7 +99,6 @@ const TeacherHeader: React.FC<HeaderProps> = ({
     'announcement',
   ];
 
-  // DESKTOP / WEB center nav keeps messenger
   const desktopNavScreens: Array<
     'home' | 'honors' | 'grades' | 'announcement' | 'messenger'
   > = ['home', 'honors', 'grades', 'announcement', 'messenger'];
@@ -361,7 +359,6 @@ const TeacherHeader: React.FC<HeaderProps> = ({
                   }}
                 >
                   {renderNavIcon(screen, mobileNavIconSize)}
-                  {active && <View style={styles.mobileActiveIndicator} />}
                 </Pressable>
               );
             })}
@@ -607,16 +604,6 @@ const styles = StyleSheet.create({
 
   mobileNavItemActive: {
     backgroundColor: 'rgba(211,47,47,0.10)',
-  },
-
-  mobileActiveIndicator: {
-    position: 'absolute',
-    bottom: 2,
-    alignSelf: 'center',
-    width: 36,
-    height: 8,
-    borderRadius: 999,
-    backgroundColor: '#8A8A8A',
   },
 
   badge: {

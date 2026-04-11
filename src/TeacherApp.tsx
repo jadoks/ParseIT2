@@ -6,7 +6,7 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import AnnouncementModal2, {
   Announcement,
@@ -172,7 +172,9 @@ const isAppScreen = (screen: string): screen is AppScreenType => {
 
 export default function TeacherApp({ onLogout }: Props) {
   const { width } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   const isLargeScreen = width >= 768;
+  const isMobile = width < 768;
 
   const [activeScreen, setActiveScreen] = useState<AppScreenType>('home');
   const [lastScreen, setLastScreen] = useState<AppScreenType>('home');
@@ -232,6 +234,14 @@ export default function TeacherApp({ onLogout }: Props) {
       })),
     [courses]
   );
+
+  const shouldHideMobileHeader =
+    isMobile &&
+    (
+      activeScreen === 'coursedetail' ||
+      activeScreen === 'messenger' ||
+      activeScreen === 'notification'
+    );
 
   const navigateTo = (screen: AppScreenType) => {
     setLastScreen(activeScreen);
@@ -396,16 +406,21 @@ export default function TeacherApp({ onLogout }: Props) {
   };
 
   return (
-    <SafeAreaView style={styles.mainContainer}>
-      <View style={styles.headerWrapper}>
-        <TeacherHeader
-          isLargeScreen={isLargeScreen}
-          activeScreen={activeScreen}
-          onNavigate={handleHeaderNavigate}
-          onSearchChange={handleSearchChange}
-          onMenuPress={() => setMobileDrawerOpen((prev) => !prev)}
-        />
-      </View>
+    <SafeAreaView
+      style={styles.mainContainer}
+      edges={shouldHideMobileHeader ? ['left', 'right', 'bottom'] : ['top', 'left', 'right', 'bottom']}
+    >
+      {!shouldHideMobileHeader && (
+        <View style={styles.headerWrapper}>
+          <TeacherHeader
+            isLargeScreen={isLargeScreen}
+            activeScreen={activeScreen}
+            onNavigate={handleHeaderNavigate}
+            onSearchChange={handleSearchChange}
+            onMenuPress={() => setMobileDrawerOpen((prev) => !prev)}
+          />
+        </View>
+      )}
 
       <View style={styles.contentWrapper}>
         {isLargeScreen && (
@@ -421,32 +436,6 @@ export default function TeacherApp({ onLogout }: Props) {
               setIsLoggedIn={handleSetIsLoggedIn}
             />
           </View>
-        )}
-
-        {!isLargeScreen && isMobileDrawerOpen && (
-          <>
-            <TouchableOpacity
-              style={styles.mobileBackdrop}
-              onPress={() => setMobileDrawerOpen(false)}
-              activeOpacity={1}
-            />
-            <View style={styles.mobileOverlay}>
-              <TeacherDrawerMenu
-                isFixed={false}
-                onClose={() => setMobileDrawerOpen(false)}
-                activeScreen={activeScreen}
-                onNavigate={handleDrawerNavigate}
-                userName={CURRENT_USER_NAME}
-                userEmail={CURRENT_USER_EMAIL}
-                userAvatar={currentUserAvatar}
-                onAvatarPress={() => {
-                  setMobileDrawerOpen(false);
-                  navigateTo('profile');
-                }}
-                setIsLoggedIn={handleSetIsLoggedIn}
-              />
-            </View>
-          </>
         )}
 
         <View style={styles.screenContainer}>
@@ -515,6 +504,41 @@ export default function TeacherApp({ onLogout }: Props) {
         </View>
       </View>
 
+      {!isLargeScreen && isMobileDrawerOpen && (
+        <View style={styles.mobileDrawerLayer} pointerEvents="box-none">
+          <TouchableOpacity
+            style={styles.mobileBackdrop}
+            onPress={() => setMobileDrawerOpen(false)}
+            activeOpacity={1}
+          />
+
+          <View
+            style={[
+              styles.mobileOverlay,
+              {
+                paddingTop: insets.top,
+                paddingBottom: insets.bottom,
+              },
+            ]}
+          >
+            <TeacherDrawerMenu
+              isFixed={false}
+              onClose={() => setMobileDrawerOpen(false)}
+              activeScreen={activeScreen}
+              onNavigate={handleDrawerNavigate}
+              userName={CURRENT_USER_NAME}
+              userEmail={CURRENT_USER_EMAIL}
+              userAvatar={currentUserAvatar}
+              onAvatarPress={() => {
+                setMobileDrawerOpen(false);
+                navigateTo('profile');
+              }}
+              setIsLoggedIn={handleSetIsLoggedIn}
+            />
+          </View>
+        </View>
+      )}
+
       <AnnouncementModal2
         visible={activeScreen === 'home' && showAnnouncement}
         onClose={() => setShowAnnouncement(false)}
@@ -554,19 +578,32 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFF',
   },
 
+  mobileDrawerLayer: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 9999,
+    elevation: 9999,
+    flexDirection: 'row',
+  },
+
   mobileBackdrop: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.4)',
-    zIndex: 60,
+    backgroundColor: 'rgba(0,0,0,0.35)',
   },
 
   mobileOverlay: {
     position: 'absolute',
-    left: 0,
     top: 0,
     bottom: 0,
-    zIndex: 70,
+    left: 0,
+    width: '76%',
+    maxWidth: 340,
+    minWidth: 290,
     backgroundColor: '#FFF',
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    shadowOffset: { width: 2, height: 0 },
+    elevation: 10,
   },
 
   emptyState: {
