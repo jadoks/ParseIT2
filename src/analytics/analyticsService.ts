@@ -1,19 +1,27 @@
 import {
+  average,
   getAssignmentAverage,
   getAssignmentScoreSeries,
   getGradedCount,
+  getMissingAssignments,
+  getMissingCount,
   getPendingCount,
   getPredictedGrade,
   getSubmittedCount,
   getTrendDirection,
   getTrendSymbol,
   getTrendValue,
+  normalizeAssignments,
 } from './metrics';
 import {
-  getOverallRiskLevel,
+  evaluateAssignmentRisk,
+  getRecommendations,
   getRiskLevel,
 } from './riskEngine';
 import {
+  AdminAnalyticsSummary,
+  AdminCourseRow,
+  AnalyticsAssignment,
   AnalyticsCourse,
   StudentAnalyticsSummary,
   SubjectAnalyticsSummary,
@@ -21,190 +29,141 @@ import {
   TeacherStudentRow,
 } from './types';
 
-/**
- * Converts your AssignmentCourse[] (from StudentApp)
- * into AnalyticsCourse[]
- */
-export const mapToAnalyticsCourses = (courses: any[]): AnalyticsCourse[] => {
-  return courses.map((course) => ({
-    id: course.id,
-    name: course.name,
-    code: course.code,
+const getStrongestSubject = (
+  subjectSummaries: SubjectAnalyticsSummary[]
+): string => {
+  if (!subjectSummaries.length) return 'N/A';
+
+  return [...subjectSummaries].sort((a, b) => b.average - a.average)[0]
+    .courseName;
+};
+
+const getWeakestSubject = (
+  subjectSummaries: SubjectAnalyticsSummary[]
+): string => {
+  if (!subjectSummaries.length) return 'N/A';
+
+  return [...subjectSummaries].sort((a, b) => a.average - b.average)[0]
+    .courseName;
+};
+
+export const buildSubjectAnalyticsSummary = (
+  course: AnalyticsCourse,
+  currentDate: Date = new Date()
+): SubjectAnalyticsSummary => {
+  const normalizedAssignments = normalizeAssignments(
+    course.assignments,
+    currentDate
+  );
+
+  const averageScore = getAssignmentAverage(normalizedAssignments);
+  const gradedCount = getGradedCount(normalizedAssignments);
+  const submittedCount = getSubmittedCount(normalizedAssignments);
+  const pendingCount = getPendingCount(normalizedAssignments);
+  const missingCount = getMissingCount(normalizedAssignments);
+
+  const predictedGrade = getPredictedGrade(
+    averageScore,
+    pendingCount,
+    submittedCount,
+    missingCount
+  );
+
+  const scoreSeries = getAssignmentScoreSeries(normalizedAssignments);
+  const trend = getTrendValue(scoreSeries);
+  const trendDirection = getTrendDirection(trend);
+  const trendSymbol = getTrendSymbol(trend);
+
+  const riskLevel = getRiskLevel(averageScore, pendingCount, missingCount);
+
+  return {
+    courseId: course.id,
+    courseName: course.name,
+    courseCode: course.code,
     instructor: course.instructor,
-    assignments: (course.assignments || []).map((a: any) => ({
-      id: a.id,
-      title: a.title,
-      status: a.status,
-      points: a.points,
-      maxPoints: a.maxPoints,
-      dueDate: a.dueDate,
-      topic: a.topic,
-    })),
-  }));
+    totalAssignments: normalizedAssignments.length,
+    gradedCount,
+    submittedCount,
+    pendingCount,
+    missingCount,
+    average: averageScore,
+    predictedGrade,
+    riskLevel,
+    trend,
+    trendDirection,
+    trendSymbol,
+  };
 };
 
-/**
- * Builds per-subject analytics
- */
-export const buildSubjectSummaries = (
-  courses: AnalyticsCourse[]
-): SubjectAnalyticsSummary[] => {
-  return courses.map((course) => {
-    const average = getAssignmentAverage(course.assignments);
-    const gradedCount = getGradedCount(course.assignments);
-    const submittedCount = getSubmittedCount(course.assignments);
-    const pendingCount = getPendingCount(course.assignments);
-    const predictedGrade = getPredictedGrade(
-      average,
-      pendingCount,
-      submittedCount
-    );
-
-    const scoreSeries = getAssignmentScoreSeries(course.assignments);
-    const trend = getTrendValue(scoreSeries);
-    const trendDirection = getTrendDirection(trend);
-    const trendSymbol = getTrendSymbol(trend);
-
-    const riskLevel = getRiskLevel(
-      average,
-      pendingCount,
-      submittedCount,
-      trend
-    );
-
-    return {
-      courseId: course.id,
-      courseName: course.name,
-      courseCode: course.code,
-      instructor: course.instructor,
-      totalAssignments: course.assignments.length,
-      gradedCount,
-      submittedCount,
-      pendingCount,
-      average,
-      predictedGrade,
-      riskLevel,
-      trend,
-      trendDirection,
-      trendSymbol,
-    };
-  });
-};
-
-/**
- * Builds full student analytics summary
- */
 export const buildStudentAnalytics = (
-  rawCourses: any[]
+  courses: AnalyticsCourse[],
+  currentDate: Date = new Date()
 ): StudentAnalyticsSummary => {
-  const courses = mapToAnalyticsCourses(rawCourses);
-  const subjectSummaries = buildSubjectSummaries(courses);
+  const subjectSummaries = courses.map((course) =>
+    buildSubjectAnalyticsSummary(course, currentDate)
+  );
 
-  const validAverages = subjectSummaries
-    .map((s) => s.average)
-    .filter((v) => v > 0);
+  const allAssignments: AnalyticsAssignment[] = courses.flatMap((course) =>
+    normalizeAssignments(course.assignments, currentDate)
+  );
 
-  const overallAverage =
-    validAverages.length > 0
-      ? Math.round(
-          validAverages.reduce((sum, v) => sum + v, 0) / validAverages.length
-        )
-      : 0;
+  const overallAverage = average(
+    subjectSummaries
+      .map((summary) => summary.average)
+      .filter((value) => value > 0)
+  );
 
   const totalPendingAssignments = subjectSummaries.reduce(
-    (sum, s) => sum + s.pendingCount,
+    (sum, summary) => sum + summary.pendingCount,
+    0
+  );
+
+  const totalMissingAssignments = subjectSummaries.reduce(
+    (sum, summary) => sum + summary.missingCount,
     0
   );
 
   const totalSubmittedAssignments = subjectSummaries.reduce(
-    (sum, s) => sum + s.submittedCount,
+    (sum, summary) => sum + summary.submittedCount,
     0
   );
 
   const predictedFinalGrade = getPredictedGrade(
     overallAverage,
     totalPendingAssignments,
-    totalSubmittedAssignments
+    totalSubmittedAssignments,
+    totalMissingAssignments
   );
 
-  const trendValues = subjectSummaries.map((s) => s.trend);
-  const overallTrend =
-    trendValues.length > 0
-      ? Math.round(
-          trendValues.reduce((sum, v) => sum + v, 0) / trendValues.length
-        )
-      : 0;
+  const scoreSeries = subjectSummaries
+    .map((summary) => summary.average)
+    .filter((value) => value > 0);
 
-  const sorted = [...subjectSummaries].sort((a, b) => a.average - b.average);
+  const overallTrend = getTrendValue(scoreSeries);
 
-  const weakestSubject =
-    sorted.find((s) => s.average > 0)?.courseName ?? 'N/A';
+  const weakestSubject = getWeakestSubject(subjectSummaries);
+  const strongestSubject = getStrongestSubject(subjectSummaries);
 
-  const strongestSubject =
-    [...sorted].reverse().find((s) => s.average > 0)?.courseName ?? 'N/A';
-
-  const highRiskCount = subjectSummaries.filter(
-    (s) => s.riskLevel === 'High'
-  ).length;
-
-  const moderateRiskCount = subjectSummaries.filter(
-    (s) => s.riskLevel === 'Moderate'
-  ).length;
-
-  const overallRisk = getOverallRiskLevel(
+  const overallRisk = getRiskLevel(
     overallAverage,
-    highRiskCount,
-    moderateRiskCount,
     totalPendingAssignments,
-    overallTrend
+    totalMissingAssignments
   );
 
-  const recommendations: string[] = [];
+  const recommendations = getRecommendations(
+    overallAverage,
+    totalPendingAssignments,
+    totalMissingAssignments,
+    weakestSubject !== 'N/A' ? weakestSubject : undefined
+  );
 
-  if (weakestSubject !== 'N/A') {
-    recommendations.push(
-      `Focus more on ${weakestSubject} as it has your lowest performance.`
-    );
-  }
-
-  if (totalPendingAssignments > 0) {
-    recommendations.push(
-      `You have ${totalPendingAssignments} pending assignment(s). Completing them will improve your results.`
-    );
-  }
-
-  if (overallTrend < -2) {
-    recommendations.push(
-      'Your performance is declining. Review recent lessons and assignments.'
-    );
-  } else if (overallTrend > 2) {
-    recommendations.push(
-      'Your performance is improving. Keep up the good work!'
-    );
-  }
-
-  if (overallAverage > 0 && overallAverage < 75) {
-    recommendations.push(
-      'Your performance is below expectations. Review lessons and seek help if needed.'
-    );
-  } else if (overallAverage >= 75 && overallAverage < 85) {
-    recommendations.push(
-      'You are doing okay, but consistent practice can improve your results.'
-    );
-  } else if (overallAverage >= 85) {
-    recommendations.push(
-      'Great job! Maintain your performance and aim for mastery.'
-    );
-  }
-
-  if (recommendations.length === 0) {
-    recommendations.push('No recommendations yet. Complete more graded assignments.');
-  }
+  const missingAssignments = getMissingAssignments(allAssignments);
 
   return {
     overallAverage,
     predictedFinalGrade,
     totalPendingAssignments,
+    totalMissingAssignments,
     totalSubmittedAssignments,
     weakestSubject,
     strongestSubject,
@@ -212,58 +171,65 @@ export const buildStudentAnalytics = (
     recommendations,
     subjectSummaries,
     overallTrend,
+    missingAssignments,
   };
 };
 
-type TeacherStudentAnalyticsInput = {
-  studentId: string;
-  studentName: string;
-  courses: any[];
+export const buildTeacherStudentRow = (
+  studentId: string,
+  studentName: string,
+  courses: AnalyticsCourse[],
+  currentDate: Date = new Date()
+): TeacherStudentRow => {
+  const studentSummary = buildStudentAnalytics(courses, currentDate);
+
+  return {
+    studentId,
+    studentName,
+    overallAverage: studentSummary.overallAverage,
+    totalPendingAssignments: studentSummary.totalPendingAssignments,
+    totalMissingAssignments: studentSummary.totalMissingAssignments,
+    totalSubmittedAssignments: studentSummary.totalSubmittedAssignments,
+    riskLevel: studentSummary.overallRisk,
+    overallTrend: studentSummary.overallTrend,
+  };
 };
 
-/**
- * Builds teacher analytics summary from multiple student records
- */
-export const buildTeacherAnalytics = (
-  students: TeacherStudentAnalyticsInput[]
+export const buildTeacherAnalyticsSummary = (
+  students: {
+    studentId: string;
+    studentName: string;
+    courses: AnalyticsCourse[];
+  }[],
+  currentDate: Date = new Date()
 ): TeacherAnalyticsSummary => {
-  const studentRows: TeacherStudentRow[] = students.map((student) => {
-    const summary = buildStudentAnalytics(student.courses);
+  const studentRows: TeacherStudentRow[] = students.map((student) =>
+    buildTeacherStudentRow(
+      student.studentId,
+      student.studentName,
+      student.courses,
+      currentDate
+    )
+  );
 
-    return {
-      studentId: student.studentId,
-      studentName: student.studentName,
-      overallAverage: summary.overallAverage,
-      totalPendingAssignments: summary.totalPendingAssignments,
-      totalSubmittedAssignments: summary.totalSubmittedAssignments,
-      riskLevel: summary.overallRisk,
-      overallTrend: summary.overallTrend,
-    };
-  });
+  const classAverage = average(
+    studentRows
+      .map((student) => student.overallAverage)
+      .filter((value) => value > 0)
+  );
 
   const totalStudents = studentRows.length;
 
-  const validAverages = studentRows
-    .map((s) => s.overallAverage)
-    .filter((v) => v > 0);
-
-  const classAverage =
-    validAverages.length > 0
-      ? Math.round(
-          validAverages.reduce((sum, v) => sum + v, 0) / validAverages.length
-        )
-      : 0;
-
   const highRiskCount = studentRows.filter(
-    (s) => s.riskLevel === 'High'
+    (student) => student.riskLevel === 'High'
   ).length;
 
   const moderateRiskCount = studentRows.filter(
-    (s) => s.riskLevel === 'Moderate'
+    (student) => student.riskLevel === 'Moderate'
   ).length;
 
   const lowRiskCount = studentRows.filter(
-    (s) => s.riskLevel === 'Low'
+    (student) => student.riskLevel === 'Low'
   ).length;
 
   return {
@@ -273,5 +239,117 @@ export const buildTeacherAnalytics = (
     moderateRiskCount,
     lowRiskCount,
     studentRows,
+  };
+};
+
+// Backward-compatible export for TeacherAnalytics.tsx
+export const buildTeacherAnalytics = buildTeacherAnalyticsSummary;
+
+export const buildAdminCourseRow = (
+  course: AnalyticsCourse,
+  enrolledStudents: {
+    studentId: string;
+    studentName: string;
+    courses: AnalyticsCourse[];
+  }[],
+  currentDate: Date = new Date()
+): AdminCourseRow => {
+  const matchingCourseSummaries = enrolledStudents
+    .map((student) =>
+      student.courses.find((studentCourse) => studentCourse.id === course.id)
+    )
+    .filter(
+      (studentCourse): studentCourse is AnalyticsCourse =>
+        Boolean(studentCourse)
+    )
+    .map((studentCourse) =>
+      buildSubjectAnalyticsSummary(studentCourse, currentDate)
+    );
+
+  const averageScore = average(
+    matchingCourseSummaries
+      .map((summary) => summary.average)
+      .filter((value) => value > 0)
+  );
+
+  const highRiskCount = matchingCourseSummaries.filter(
+    (summary) => summary.riskLevel === 'High'
+  ).length;
+
+  const moderateRiskCount = matchingCourseSummaries.filter(
+    (summary) => summary.riskLevel === 'Moderate'
+  ).length;
+
+  const lowRiskCount = matchingCourseSummaries.filter(
+    (summary) => summary.riskLevel === 'Low'
+  ).length;
+
+  return {
+    courseId: course.id,
+    courseName: course.name,
+    courseCode: course.code,
+    instructor: course.instructor,
+    average: averageScore,
+    highRiskCount,
+    moderateRiskCount,
+    lowRiskCount,
+  };
+};
+
+export const buildAdminAnalyticsSummary = (
+  courses: AnalyticsCourse[],
+  students: {
+    studentId: string;
+    studentName: string;
+    courses: AnalyticsCourse[];
+  }[],
+  currentDate: Date = new Date()
+): AdminAnalyticsSummary => {
+  const courseRows = courses.map((course) =>
+    buildAdminCourseRow(course, students, currentDate)
+  );
+
+  const teacherSummary = buildTeacherAnalyticsSummary(students, currentDate);
+
+  const departmentAverage = average(
+    courseRows.map((course) => course.average).filter((value) => value > 0)
+  );
+
+  return {
+    departmentAverage,
+    totalCourses: courses.length,
+    totalStudents: teacherSummary.totalStudents,
+    totalHighRisk: teacherSummary.highRiskCount,
+    totalModerateRisk: teacherSummary.moderateRiskCount,
+    totalLowRisk: teacherSummary.lowRiskCount,
+    courseRows,
+  };
+};
+
+export const buildStudentAnalyticsWithRiskDetails = (
+  courses: AnalyticsCourse[],
+  currentDate: Date = new Date()
+) => {
+  const studentSummary = buildStudentAnalytics(courses, currentDate);
+
+  const weakestSubjectSummary = studentSummary.subjectSummaries.find(
+    (subject) => subject.courseName === studentSummary.weakestSubject
+  );
+
+  const weakestCourse = courses.find(
+    (course) => course.id === weakestSubjectSummary?.courseId
+  );
+
+  const riskDetails = weakestCourse
+    ? evaluateAssignmentRisk(
+        weakestCourse.assignments,
+        weakestCourse.name,
+        currentDate
+      )
+    : null;
+
+  return {
+    studentSummary,
+    riskDetails,
   };
 };

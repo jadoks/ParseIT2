@@ -1,12 +1,17 @@
 export type RiskLevel = 'Low' | 'Moderate' | 'High';
 
-// 🔥 NEW
 export type TrendDirection = 'up' | 'down' | 'stable';
+
+export type AssignmentStatusType =
+  | 'pending'
+  | 'submitted'
+  | 'graded'
+  | 'missing';
 
 export interface AnalyticsAssignment {
   id: string;
   title: string;
-  status: 'pending' | 'submitted' | 'graded';
+  status: AssignmentStatusType;
   points?: number;
   maxPoints?: number;
   dueDate?: string;
@@ -31,13 +36,13 @@ export interface SubjectAnalyticsSummary {
   gradedCount: number;
   submittedCount: number;
   pendingCount: number;
+  missingCount: number;
 
   average: number;
   predictedGrade: number;
 
   riskLevel: RiskLevel;
 
-  // 🔥 NEW (FOR UI + AI LOGIC)
   trend: number;
   trendDirection: TrendDirection;
   trendSymbol: string;
@@ -48,6 +53,7 @@ export interface StudentAnalyticsSummary {
   predictedFinalGrade: number;
 
   totalPendingAssignments: number;
+  totalMissingAssignments: number;
   totalSubmittedAssignments: number;
 
   weakestSubject: string;
@@ -59,8 +65,9 @@ export interface StudentAnalyticsSummary {
 
   subjectSummaries: SubjectAnalyticsSummary[];
 
-  // 🔥 NEW
   overallTrend: number;
+
+  missingAssignments: AnalyticsAssignment[];
 }
 
 export interface TeacherStudentRow {
@@ -68,10 +75,9 @@ export interface TeacherStudentRow {
   studentName: string;
   overallAverage: number;
   totalPendingAssignments: number;
+  totalMissingAssignments: number;
   totalSubmittedAssignments: number;
   riskLevel: RiskLevel;
-
-  // 🔥 FUTURE SUPPORT
   overallTrend?: number;
 }
 

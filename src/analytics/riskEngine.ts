@@ -1,101 +1,127 @@
-import { RiskLevel } from './types';
-
-export interface RiskAssessment {
-  level: RiskLevel;
-  reasons: string[];
-}
+import {
+  getAssignmentAverage,
+  getMissingCount,
+  getPendingCount,
+  normalizeAssignments,
+} from './metrics';
+import { AnalyticsAssignment, RiskLevel } from './types';
 
 export const getRiskLevel = (
-  average: number,
-  pendingAssignments: number,
-  submittedAssignments: number,
-  trend: number = 0
+  averageScore: number,
+  pendingCount: number,
+  missingCount: number
 ): RiskLevel => {
-  if (average < 75 || pendingAssignments >= 2 || trend < -10) {
+  if (averageScore < 75 || missingCount >= 3) {
     return 'High';
   }
 
-  if (
-    average < 85 ||
-    submittedAssignments > 0 ||
-    pendingAssignments > 0 ||
-    trend < 0
-  ) {
+  if (averageScore < 85 || missingCount >= 1 || pendingCount >= 3) {
     return 'Moderate';
   }
 
   return 'Low';
 };
 
-export const assessRisk = (
-  average: number,
-  pendingAssignments: number,
-  submittedAssignments: number,
-  trend: number = 0
-): RiskAssessment => {
-  const reasons: string[] = [];
-
-  if (average > 0 && average < 75) {
-    reasons.push('Low graded performance');
-  } else if (average >= 75 && average < 85) {
-    reasons.push('Average performance needs improvement');
+export const getRiskReason = (
+  averageScore: number,
+  pendingCount: number,
+  missingCount: number
+): string => {
+  if (averageScore < 75 && missingCount >= 3) {
+    return 'Low average and repeated missing assignments.';
   }
 
-  if (pendingAssignments >= 2) {
-    reasons.push('Multiple pending assignments');
-  } else if (pendingAssignments === 1) {
-    reasons.push('Has a pending assignment');
+  if (averageScore < 75) {
+    return 'Current average is below the expected threshold.';
   }
 
-  if (submittedAssignments > 0) {
-    reasons.push('Has submitted work awaiting grading');
+  if (missingCount >= 3) {
+    return 'Multiple missing assignments detected.';
   }
 
-  if (trend < -10) {
-    reasons.push('Performance declining significantly');
-  } else if (trend < 0) {
-    reasons.push('Performance slightly declining');
-  } else if (trend > 10) {
-    reasons.push('Strong improvement trend');
+  if (missingCount >= 1) {
+    return 'There are missing assignments that need immediate attention.';
   }
 
-  const level = getRiskLevel(
-    average,
-    pendingAssignments,
-    submittedAssignments,
-    trend
+  if (pendingCount >= 3) {
+    return 'Several pending assignments may become missing soon.';
+  }
+
+  if (averageScore < 85) {
+    return 'Performance is fair but still needs improvement.';
+  }
+
+  return 'Performance is stable and on track.';
+};
+
+export const getRecommendations = (
+  averageScore: number,
+  pendingCount: number,
+  missingCount: number,
+  weakestSubject?: string
+): string[] => {
+  const recommendations: string[] = [];
+
+  if (missingCount > 0) {
+    recommendations.push(
+      'Complete missing assignments immediately to avoid further academic risk.'
+    );
+  }
+
+  if (pendingCount > 0) {
+    recommendations.push(
+      'Submit pending assignments before their due dates to prevent them from becoming missing.'
+    );
+  }
+
+  if (averageScore < 85 && weakestSubject) {
+    recommendations.push(
+      `Review lessons and practice more activities in ${weakestSubject}.`
+    );
+  }
+
+  if (averageScore < 75) {
+    recommendations.push(
+      'Set a study schedule and ask your teacher for support in difficult topics.'
+    );
+  }
+
+  if (recommendations.length === 0) {
+    recommendations.push(
+      'Keep maintaining your performance and continue submitting your work on time.'
+    );
+  }
+
+  return recommendations;
+};
+
+export const evaluateAssignmentRisk = (
+  assignments: AnalyticsAssignment[],
+  weakestSubject?: string,
+  currentDate: Date = new Date()
+) => {
+  const normalizedAssignments = normalizeAssignments(assignments, currentDate);
+
+  const averageScore = getAssignmentAverage(normalizedAssignments);
+  const pendingCount = getPendingCount(normalizedAssignments);
+  const missingCount = getMissingCount(normalizedAssignments);
+
+  const riskLevel = getRiskLevel(averageScore, pendingCount, missingCount);
+  const riskReason = getRiskReason(averageScore, pendingCount, missingCount);
+  const recommendations = getRecommendations(
+    averageScore,
+    pendingCount,
+    missingCount,
+    weakestSubject
   );
 
   return {
-    level,
-    reasons,
+    normalizedAssignments,
+    averageScore,
+    pendingCount,
+    missingCount,
+    riskLevel,
+    riskReason,
+    recommendations,
   };
-};
-
-export const getOverallRiskLevel = (
-  overallAverage: number,
-  highRiskCount: number,
-  moderateRiskCount: number,
-  totalPendingAssignments: number,
-  overallTrend: number = 0
-): RiskLevel => {
-  if (
-    overallAverage < 75 ||
-    highRiskCount > 0 ||
-    totalPendingAssignments >= 3 ||
-    overallTrend < -10
-  ) {
-    return 'High';
-  }
-
-  if (
-    overallAverage < 85 ||
-    moderateRiskCount >= 2 ||
-    totalPendingAssignments > 0 ||
-    overallTrend < 0
-  ) {
-    return 'Moderate';
-  }
-
-  return 'Low';
 };

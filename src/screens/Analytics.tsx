@@ -8,7 +8,12 @@ import {
 } from 'react-native';
 import { BarChart, LineChart, PieChart } from 'react-native-chart-kit';
 import { buildStudentAnalytics } from '../analytics/analyticsService';
-import { RiskLevel, TrendDirection } from '../analytics/types';
+import {
+  AnalyticsAssignment,
+  RiskLevel,
+  SubjectAnalyticsSummary,
+  TrendDirection,
+} from '../analytics/types';
 import { AssignmentCourse } from './Assignments';
 
 interface AnalyticsProps {
@@ -79,6 +84,15 @@ const getTrendDirectionFromValue = (trend: number): TrendDirection => {
   if (trend > 2) return 'up';
   if (trend < -2) return 'down';
   return 'stable';
+};
+
+const formatDueDate = (dueDate?: string) => {
+  if (!dueDate) return 'No due date';
+
+  const parsed = new Date(dueDate);
+  if (Number.isNaN(parsed.getTime())) return dueDate;
+
+  return parsed.toLocaleDateString();
 };
 
 const MetricCard = ({
@@ -154,7 +168,7 @@ const FloatingBarLabels = ({
       pointerEvents="none"
       style={[styles.floatingOverlay, { width: chartWidth, height: chartHeight }]}
     >
-      {data.map((value, index) => {
+      {data.map((value: number, index: number) => {
         const clamped = Math.max(0, Math.min(100, Number(value) || 0));
 
         const x = horizontalInset + index * slotWidth + slotWidth / 2;
@@ -209,7 +223,7 @@ const FloatingLineLabels = ({
       pointerEvents="none"
       style={[styles.floatingOverlay, { width: chartWidth, height: chartHeight }]}
     >
-      {data.map((value, index) => {
+      {data.map((value: number, index: number) => {
         const clamped = Math.max(0, Math.min(100, Number(value) || 0));
         const courseCode = labels[index] || `Course ${index + 1}`;
 
@@ -245,18 +259,24 @@ const Analytics: React.FC<AnalyticsProps> = ({ courses, studentName }) => {
   const isDesktop = width >= 1200;
   const isChartGrid = width >= 900;
 
-  const analytics = useMemo(() => buildStudentAnalytics(courses), [courses]);
+  const analytics = useMemo(
+    () => buildStudentAnalytics(courses),
+    [courses]
+  );
 
   const overallRiskColor = getRiskColor(analytics.overallRisk);
 
   const subjectBarData = useMemo(() => {
-    const labels = analytics.subjectSummaries.map((subject) =>
-      subject.courseCode.length > 8
-        ? `${subject.courseCode.slice(0, 8)}…`
-        : subject.courseCode
+    const labels = analytics.subjectSummaries.map(
+      (subject: SubjectAnalyticsSummary) =>
+        subject.courseCode.length > 8
+          ? `${subject.courseCode.slice(0, 8)}…`
+          : subject.courseCode
     );
 
-    const data = analytics.subjectSummaries.map((subject) => subject.average);
+    const data = analytics.subjectSummaries.map(
+      (subject: SubjectAnalyticsSummary) => subject.average
+    );
 
     return {
       labels,
@@ -269,14 +289,15 @@ const Analytics: React.FC<AnalyticsProps> = ({ courses, studentName }) => {
   }, [analytics.subjectSummaries]);
 
   const predictedLineData = useMemo(() => {
-    const labels = analytics.subjectSummaries.map((subject) =>
-      subject.courseCode.length > 8
-        ? `${subject.courseCode.slice(0, 8)}…`
-        : subject.courseCode
+    const labels = analytics.subjectSummaries.map(
+      (subject: SubjectAnalyticsSummary) =>
+        subject.courseCode.length > 8
+          ? `${subject.courseCode.slice(0, 8)}…`
+          : subject.courseCode
     );
 
     const data = analytics.subjectSummaries.map(
-      (subject) => subject.predictedGrade
+      (subject: SubjectAnalyticsSummary) => subject.predictedGrade
     );
 
     return {
@@ -292,19 +313,23 @@ const Analytics: React.FC<AnalyticsProps> = ({ courses, studentName }) => {
   }, [analytics.subjectSummaries]);
 
   const predictedLineFullLabels = useMemo(() => {
-    return analytics.subjectSummaries.map((subject) => subject.courseCode);
+    return analytics.subjectSummaries.map(
+      (subject: SubjectAnalyticsSummary) => subject.courseCode
+    );
   }, [analytics.subjectSummaries]);
 
   const totalAssignments = useMemo(() => {
     return analytics.subjectSummaries.reduce(
-      (sum, subject) => sum + subject.totalAssignments,
+      (sum: number, subject: SubjectAnalyticsSummary) =>
+        sum + subject.totalAssignments,
       0
     );
   }, [analytics.subjectSummaries]);
 
   const totalGraded = useMemo(() => {
     return analytics.subjectSummaries.reduce(
-      (sum, subject) => sum + subject.gradedCount,
+      (sum: number, subject: SubjectAnalyticsSummary) =>
+        sum + subject.gradedCount,
       0
     );
   }, [analytics.subjectSummaries]);
@@ -332,6 +357,13 @@ const Analytics: React.FC<AnalyticsProps> = ({ courses, studentName }) => {
         legendFontColor: COLORS.text,
         legendFontSize: isMobile ? 0 : 12,
       },
+      {
+        name: 'Missing',
+        population: analytics.totalMissingAssignments,
+        color: COLORS.danger,
+        legendFontColor: COLORS.text,
+        legendFontSize: isMobile ? 0 : 12,
+      },
     ].filter((item) => item.population > 0);
 
     return pie.length
@@ -348,6 +380,7 @@ const Analytics: React.FC<AnalyticsProps> = ({ courses, studentName }) => {
   }, [
     analytics.totalPendingAssignments,
     analytics.totalSubmittedAssignments,
+    analytics.totalMissingAssignments,
     totalGraded,
     isMobile,
   ]);
@@ -445,8 +478,15 @@ const Analytics: React.FC<AnalyticsProps> = ({ courses, studentName }) => {
         <MetricCard
           title="Pending Assignments"
           value={`${analytics.totalPendingAssignments}`}
-          subtitle="Not yet submitted"
+          subtitle="Not yet overdue"
           accentColor={COLORS.warning}
+          cardStyle={metricCardResponsiveStyle}
+        />
+        <MetricCard
+          title="Missing Work"
+          value={`${analytics.totalMissingAssignments}`}
+          subtitle="Past due and not submitted"
+          accentColor={COLORS.danger}
           cardStyle={metricCardResponsiveStyle}
         />
         <MetricCard
@@ -466,7 +506,6 @@ const Analytics: React.FC<AnalyticsProps> = ({ courses, studentName }) => {
             isMobile && styles.fullWidthCard
           ]}
         />
-
         <MetricCard
           title="Strongest Subject"
           value={analytics.strongestSubject}
@@ -522,7 +561,7 @@ const Analytics: React.FC<AnalyticsProps> = ({ courses, studentName }) => {
         <View style={[styles.sectionCard, isChartGrid && styles.chartCardHalf]}>
           <Text style={styles.sectionTitle}>Assignment Status Distribution</Text>
           <Text style={styles.sectionCaption}>
-            Breakdown of graded, submitted, and pending work
+            Breakdown of graded, submitted, pending, and missing work
           </Text>
 
           <View style={styles.chartContainerCentered}>
@@ -541,19 +580,27 @@ const Analytics: React.FC<AnalyticsProps> = ({ courses, studentName }) => {
 
           {isMobile && (
             <View style={styles.mobileLegendWrap}>
-              {statusPieData.map((item) => (
-                <View key={item.name} style={styles.mobileLegendItem}>
-                  <View
-                    style={[
-                      styles.mobileLegendDot,
-                      { backgroundColor: item.color },
-                    ]}
-                  />
-                  <Text style={styles.mobileLegendText}>
-                    {item.population} {item.name}
-                  </Text>
-                </View>
-              ))}
+              {statusPieData.map(
+                (
+                  item: {
+                    name: string;
+                    population: number;
+                    color: string;
+                  }
+                ) => (
+                  <View key={item.name} style={styles.mobileLegendItem}>
+                    <View
+                      style={[
+                        styles.mobileLegendDot,
+                        { backgroundColor: item.color },
+                      ]}
+                    />
+                    <Text style={styles.mobileLegendText}>
+                      {item.population} {item.name}
+                    </Text>
+                  </View>
+                )
+              )}
             </View>
           )}
 
@@ -648,6 +695,45 @@ const Analytics: React.FC<AnalyticsProps> = ({ courses, studentName }) => {
       </View>
 
       <View style={styles.sectionCard}>
+        <Text style={styles.sectionTitle}>Missing Work</Text>
+        <Text style={styles.sectionCaption}>
+          Assignments that passed the due date and were not submitted
+        </Text>
+
+        {analytics.missingAssignments.length === 0 ? (
+          <View style={styles.emptyStateCard}>
+            <Text style={styles.emptyStateTitle}>No missing work</Text>
+            <Text style={styles.emptyStateText}>
+              Great job. You do not have any overdue unsubmitted assignments.
+            </Text>
+          </View>
+        ) : (
+          analytics.missingAssignments.map(
+            (item: AnalyticsAssignment, index: number) => (
+              <View
+                key={`${item.id}-${index}`}
+                style={styles.missingWorkCard}
+              >
+                <View style={styles.missingWorkTopRow}>
+                  <View style={{ flex: 1, paddingRight: 12 }}>
+                    <Text style={styles.missingWorkTitle}>{item.title}</Text>
+                    <Text style={styles.missingWorkMeta}>
+                      {item.topic ? `${item.topic} • ` : ''}
+                      Due: {formatDueDate(item.dueDate)}
+                    </Text>
+                  </View>
+
+                  <View style={styles.missingBadge}>
+                    <Text style={styles.missingBadgeText}>MISSING</Text>
+                  </View>
+                </View>
+              </View>
+            )
+          )
+        )}
+      </View>
+
+      <View style={styles.sectionCard}>
         <Text style={styles.sectionTitle}>Per-Subject Details</Text>
         <Text style={styles.sectionCaption}>
           Detailed course-level analytics summary
@@ -660,7 +746,7 @@ const Analytics: React.FC<AnalyticsProps> = ({ courses, studentName }) => {
             isDesktop && styles.subjectGridDesktop,
           ]}
         >
-          {analytics.subjectSummaries.map((subject) => {
+          {analytics.subjectSummaries.map((subject: SubjectAnalyticsSummary) => {
             const riskColor = getRiskColor(subject.riskLevel);
 
             return (
@@ -752,6 +838,13 @@ const Analytics: React.FC<AnalyticsProps> = ({ courses, studentName }) => {
                       {subject.pendingCount}
                     </Text>
                   </View>
+
+                  <View style={styles.subjectInfoItem}>
+                    <Text style={styles.subjectInfoLabel}>Missing</Text>
+                    <Text style={styles.subjectInfoValue}>
+                      {subject.missingCount}
+                    </Text>
+                  </View>
                 </View>
               </View>
             );
@@ -765,7 +858,7 @@ const Analytics: React.FC<AnalyticsProps> = ({ courses, studentName }) => {
           Suggested actions based on your analytics
         </Text>
 
-        {analytics.recommendations.map((item, index) => (
+        {analytics.recommendations.map((item: string, index: number) => (
           <View key={`${item}-${index}`} style={styles.recommendationRow}>
             <View style={styles.recommendationDot} />
             <Text style={styles.recommendationText}>{item}</Text>
@@ -896,8 +989,8 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   fullWidthCard: {
-  width: '100%',
-},
+    width: '100%',
+  },
 
   chartGrid: {
     flexDirection: 'column',
@@ -1023,6 +1116,60 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '800',
     color: COLORS.text,
+  },
+
+  emptyStateCard: {
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderStyle: 'dashed',
+    borderRadius: 16,
+    padding: 16,
+    backgroundColor: '#FCFCFD',
+  },
+  emptyStateTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: COLORS.success,
+    marginBottom: 6,
+  },
+  emptyStateText: {
+    fontSize: 13,
+    color: COLORS.subtext,
+    lineHeight: 20,
+  },
+
+  missingWorkCard: {
+    borderWidth: 1,
+    borderColor: '#FECACA',
+    backgroundColor: '#FEF2F2',
+    borderRadius: 16,
+    padding: 14,
+    marginBottom: 10,
+  },
+  missingWorkTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  missingWorkTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: COLORS.text,
+  },
+  missingWorkMeta: {
+    fontSize: 12,
+    color: COLORS.subtext,
+    marginTop: 4,
+  },
+  missingBadge: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: '#DC2626',
+  },
+  missingBadgeText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#FFFFFF',
   },
 
   subjectGrid: {
