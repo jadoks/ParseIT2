@@ -1,11 +1,11 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
 import React from "react";
 import {
-    Image,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  Image,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
 
 type HeaderProps = {
@@ -14,12 +14,15 @@ type HeaderProps = {
   isMobile: boolean;
   isTablet: boolean;
   onMenuPress: () => void;
-  isSidebarOpen: boolean; // ✅ NEW
+  isSidebarOpen: boolean;
 };
 
 const NAV_ITEMS = ["Dashboard", "Class", "Admin", "Student", "Teacher"] as const;
 
-const NAV_ICONS: Record<(typeof NAV_ITEMS)[number], keyof typeof Ionicons.glyphMap> = {
+const NAV_ICONS: Record<
+  (typeof NAV_ITEMS)[number],
+  keyof typeof Ionicons.glyphMap
+> = {
   Dashboard: "home-outline",
   Class: "book-outline",
   Admin: "settings-outline",
@@ -27,7 +30,10 @@ const NAV_ICONS: Record<(typeof NAV_ITEMS)[number], keyof typeof Ionicons.glyphM
   Teacher: "person-outline",
 };
 
-const NAV_ICONS_ACTIVE: Record<(typeof NAV_ITEMS)[number], keyof typeof Ionicons.glyphMap> = {
+const NAV_ICONS_ACTIVE: Record<
+  (typeof NAV_ITEMS)[number],
+  keyof typeof Ionicons.glyphMap
+> = {
   Dashboard: "home",
   Class: "book",
   Admin: "settings",
@@ -45,6 +51,7 @@ export default function Header({
   return (
     <View style={[styles.headerWrapper, !isMobile && styles.headerWrapperDesktop]}>
       {!isMobile ? (
+        // ✅ DESKTOP / TABLET
         <View style={styles.row}>
           <View style={styles.left}>
             <Image
@@ -57,7 +64,7 @@ export default function Header({
 
           <View style={styles.navRow}>
             {NAV_ITEMS.map((item) => {
-              const active = activeItem === item && !isSidebarOpen; // ✅ disable active
+              const active = activeItem === item && !isSidebarOpen;
 
               return (
                 <TouchableOpacity
@@ -66,6 +73,14 @@ export default function Header({
                   onPress={() => onChange(item)}
                   activeOpacity={0.85}
                 >
+                  {/* ✅ ICON ADDED */}
+                  <Ionicons
+                    name={active ? NAV_ICONS_ACTIVE[item] : NAV_ICONS[item]}
+                    size={18}
+                    color={active ? "#DC2626" : "#9CA3AF"}
+                    style={styles.navIcon}
+                  />
+
                   <Text style={[styles.navText, active && styles.navTextActive]}>
                     {item}
                   </Text>
@@ -77,6 +92,7 @@ export default function Header({
           <View style={styles.rightSpacer} />
         </View>
       ) : (
+        // ✅ MOBILE
         <View style={styles.mobileContainer}>
           <View style={styles.topRow}>
             <View style={styles.leftMobile}>
@@ -96,7 +112,7 @@ export default function Header({
 
           <View style={styles.navRowMobile}>
             {NAV_ITEMS.map((item) => {
-              const active = activeItem === item && !isSidebarOpen; // ✅ disable active
+              const active = activeItem === item && !isSidebarOpen;
 
               return (
                 <TouchableOpacity
@@ -106,11 +122,7 @@ export default function Header({
                   activeOpacity={0.85}
                 >
                   <Ionicons
-                    name={
-                      active
-                        ? NAV_ICONS_ACTIVE[item]
-                        : NAV_ICONS[item]
-                    }
+                    name={active ? NAV_ICONS_ACTIVE[item] : NAV_ICONS[item]}
                     size={20}
                     color={active ? "#DC2626" : "#9CA3AF"}
                   />
@@ -215,11 +227,18 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
 
+  // ✅ UPDATED for icon + text layout
   navItem: {
+    flexDirection: "row",
+    alignItems: "center",
     paddingVertical: 8,
     paddingHorizontal: 12,
     borderRadius: 10,
     marginHorizontal: 4,
+  },
+
+  navIcon: {
+    marginRight: 6,
   },
 
   navItemMobile: {
