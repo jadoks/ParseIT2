@@ -3,12 +3,13 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import React from "react";
 import {
-    Modal,
-    Pressable,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  Modal,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
 
 type SidebarProps = {
@@ -58,14 +59,14 @@ function MenuContent({
   const firstLetter = adminName?.trim()?.charAt(0)?.toUpperCase() || "A";
 
   return (
-    <View style={[styles.sidebar, isMobileMenu && styles.mobileDropdownCard]}>
+    <View style={[styles.sidebar, isMobileMenu && styles.mobileSidebar]}>
       <View>
         <View style={styles.logoArea}>
           <View style={styles.logoMini}>
             <Text style={styles.logoMiniText}>{firstLetter}</Text>
           </View>
 
-          <View>
+          <View style={styles.workspaceTextWrap}>
             <Text style={styles.workspaceTitle}>{adminName}</Text>
             <Text style={styles.workspaceSubtitle}>Admin Workspace</Text>
           </View>
@@ -133,19 +134,52 @@ export default function Sidebar({
   }
 
   return (
-    <Modal visible={visible} transparent animationType="fade">
-      <Pressable style={styles.modalOverlay} onPress={onClose}>
-        <View style={styles.dropdownWrapper}>
-          <Pressable onPress={() => {}}>
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      onRequestClose={onClose}
+    >
+      <View style={styles.modalOverlay}>
+        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
+
+        <View style={styles.modalCard}>
+          <View style={styles.modalHeader}>
+            <View style={styles.modalHeaderLeft}>
+              <View style={styles.modalIconBox}>
+                <Feather name="menu" size={22} color="#DC2626" />
+              </View>
+
+              <View style={styles.modalHeaderTextWrap}>
+                <Text style={styles.modalTitle}>Admin Tools</Text>
+                <Text style={styles.modalSubtitle}>
+                  Navigate analytics, settings, and account actions.
+                </Text>
+              </View>
+            </View>
+
+            <TouchableOpacity
+              style={styles.modalCloseButton}
+              onPress={onClose}
+              activeOpacity={0.85}
+            >
+              <Ionicons name="close" size={20} color="#7A4A4A" />
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.modalContent}
+          >
             <MenuContent
               activeItem={activeItem}
               onChange={onChange}
               adminName={adminName}
               isMobileMenu={true}
             />
-          </Pressable>
+          </ScrollView>
         </View>
-      </Pressable>
+      </View>
     </Modal>
   );
 }
@@ -160,6 +194,8 @@ const styles = StyleSheet.create({
     margin: 16,
     borderRadius: 24,
     justifyContent: "space-between",
+    borderWidth: 1,
+    borderColor: "#F3D4D4",
 
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 8 },
@@ -168,24 +204,29 @@ const styles = StyleSheet.create({
     elevation: 8,
   },
 
-  mobileDropdownCard: {
-    width: 240,
+  mobileSidebar: {
+    width: "100%",
     margin: 0,
-    paddingTop: 18,
-    paddingBottom: 14,
-    borderRadius: 20,
-
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.15,
-    shadowRadius: 10,
-    elevation: 10,
+    paddingHorizontal: 0,
+    paddingTop: 0,
+    paddingBottom: 0,
+    borderRadius: 0,
+    borderWidth: 0,
+    shadowOpacity: 0,
+    shadowRadius: 0,
+    shadowOffset: { width: 0, height: 0 },
+    elevation: 0,
+    backgroundColor: "transparent",
   },
 
   logoArea: {
     flexDirection: "row",
     alignItems: "center",
     marginBottom: 22,
+  },
+
+  workspaceTextWrap: {
+    flex: 1,
   },
 
   logoMini: {
@@ -232,6 +273,7 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     flexDirection: "row",
     alignItems: "center",
+    backgroundColor: "#FFFFFF",
   },
 
   menuButtonActive: {
@@ -275,6 +317,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#FECACA",
     marginTop: 12,
+    justifyContent: "center",
   },
 
   logoutText: {
@@ -285,13 +328,78 @@ const styles = StyleSheet.create({
 
   modalOverlay: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.18)",
+    backgroundColor: "rgba(43, 17, 17, 0.45)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 20,
   },
 
-  dropdownWrapper: {
-    position: "absolute",
-    top: 70,
-    left: 16,
-    zIndex: 999,
+  modalCard: {
+    width: "100%",
+    maxWidth: 420,
+    maxHeight: "88%",
+    backgroundColor: "#FFFFFF",
+    borderRadius: 28,
+    borderWidth: 1,
+    borderColor: "#F3D4D4",
+    overflow: "hidden",
+  },
+
+  modalHeader: {
+    paddingHorizontal: 24,
+    paddingTop: 22,
+    paddingBottom: 18,
+    borderBottomWidth: 1,
+    borderBottomColor: "#F8E3E3",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+  },
+
+  modalHeaderLeft: {
+    flex: 1,
+    flexDirection: "row",
+    paddingRight: 16,
+  },
+
+  modalHeaderTextWrap: {
+    flex: 1,
+  },
+
+  modalIconBox: {
+    width: 52,
+    height: 52,
+    borderRadius: 18,
+    backgroundColor: "#FEE2E2",
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 14,
+  },
+
+  modalTitle: {
+    fontSize: 22,
+    fontWeight: "800",
+    color: "#2B1111",
+    marginBottom: 4,
+  },
+
+  modalSubtitle: {
+    fontSize: 14,
+    lineHeight: 21,
+    color: "#8A6F6F",
+  },
+
+  modalCloseButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 14,
+    backgroundColor: "#FFF5F5",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  modalContent: {
+    padding: 24,
+    paddingBottom: 22,
   },
 });
