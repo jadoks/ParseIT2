@@ -14,6 +14,7 @@ import {
   View,
   useWindowDimensions,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 
 import TeacherAssignmentSection from './TeacherAssignmentSection';
@@ -313,9 +314,13 @@ const TeacherCourseDetail2 = ({
   course?: CourseDetailData;
 }) => {
   const { width } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
 
   const isMobile = width < 768;
   const isTablet = width >= 768 && width < 1200;
+
+  // Mobile-only reserved top space to match your screenshot better
+  const mobileTopSpace = isMobile ? insets.top + 0 : 0;
 
   const [activeTab, setActiveTab] = useState<'Materials' | 'Assignments'>('Materials');
   const [showSubmissions, setShowSubmissions] = useState(false);
@@ -575,24 +580,6 @@ const TeacherCourseDetail2 = ({
     ]);
   };
 
-  const handleAddMember = () => {
-    if (!memberIdInput.trim()) return;
-
-    const newMember: Member = {
-      id: memberIdInput.trim(),
-      name: 'New Student',
-      handle: '@newuser',
-    };
-
-    setMembers((prev) => [...prev, newMember]);
-    setMemberIdInput('');
-  };
-
-  const handleRemoveMember = () => {
-    setMembers((prev) => prev.filter((m) => m.id !== memberIdInput.trim()));
-    setMemberIdInput('');
-  };
-
   const currentAssignment = assignments.find((a) => a.id === selectedId);
 
   const visibleCourseCode = course?.courseCode || 'No Course Code';
@@ -702,6 +689,8 @@ const TeacherCourseDetail2 = ({
 
   return (
     <SafeAreaView style={styles.container}>
+      {isMobile ? <View style={{ height: mobileTopSpace }} /> : null}
+
       <View
         style={[
           styles.redHeader,
@@ -907,7 +896,7 @@ const TeacherCourseDetail2 = ({
                         <MaterialCommunityIcons name="check" size={16} color="#FFF" />
                       ) : null}
                     </TouchableOpacity>
-                  </View>
+                                      </View>
 
                   <TouchableOpacity style={styles.uploadBtn} onPress={handlePickAssignmentFile}>
                     <MaterialCommunityIcons name="upload" size={20} color="#FFF" />

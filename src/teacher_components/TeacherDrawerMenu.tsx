@@ -82,32 +82,14 @@ const MenuItem = ({
         return base;
       }}
     >
-<<<<<<< HEAD
       <MaterialCommunityIcons
         name={iconName}
-        size={22}
-        color={active ? '#D32F2F' : '#444'}
+        size={iconSize}
+        color={active ? ACTIVE_RED : '#444'}
         style={styles.menuIcon}
-=======
-      <Image
-        source={iconSource}
-        style={[
-          styles.menuIcon,
-          {
-            width: iconSize,
-            height: iconSize,
-            tintColor: active ? ACTIVE_RED : '#000',
-          },
-        ]}
->>>>>>> 98d439a675c9e7f45c4eb56c8896935b039c18b4
       />
 
-      <Text
-        style={[
-          styles.menuLabel,
-          active && styles.menuLabelActive,
-        ]}
-      >
+      <Text style={[styles.menuLabel, active && styles.menuLabelActive]}>
         {label}
       </Text>
     </Pressable>
@@ -126,12 +108,17 @@ const DrawerMenu = ({
   setIsLoggedIn,
 }: DrawerMenuProps) => {
   const { width } = useWindowDimensions();
-  const avatarSource = useMemo(() => normalizeImageSource(userAvatar), [userAvatar]);
+  const avatarSource = useMemo(
+    () => normalizeImageSource(userAvatar),
+    [userAvatar]
+  );
 
   const [isSettingsModalVisible, setSettingsModalVisible] = useState(false);
   const [isLogoutModalVisible, setLogoutModalVisible] = useState(false);
-  const [isChangeEmailModalVisible, setChangeEmailModalVisible] = useState(false);
-  const [isChangePasswordModalVisible, setChangePasswordModalVisible] = useState(false);
+  const [isChangeEmailModalVisible, setChangeEmailModalVisible] =
+    useState(false);
+  const [isChangePasswordModalVisible, setChangePasswordModalVisible] =
+    useState(false);
 
   const [activeMenu, setActiveMenu] = useState<string | null>(
     activeScreen === 'profile'
@@ -200,85 +187,26 @@ const DrawerMenu = ({
                 borderRadius: isMobile ? 27 : 28,
               },
             ]}
-<<<<<<< HEAD
-          >
-            {userName}
-          </Text>
-          <Text style={styles.userEmail} numberOfLines={1}>
-            {userEmail}
-          </Text>
-        </View>
-=======
             resizeMode="cover"
           />
->>>>>>> 98d439a675c9e7f45c4eb56c8896935b039c18b4
 
           <View style={styles.profileTextContainer}>
             <Text style={styles.userName} numberOfLines={2}>
               {userName}
             </Text>
+            <Text style={styles.userEmail} numberOfLines={1}>
+              {userEmail}
+            </Text>
           </View>
         </Pressable>
 
-<<<<<<< HEAD
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.scrollContentContainer}
-        showsVerticalScrollIndicator={shouldShowScrollBar}
-        onContentSizeChange={handleContentSizeChange}
-        onLayout={handleScrollViewLayout}
-      >
-        <MenuItem
-          iconName="account-circle-outline"
-          label="Profile"
-          onPress={() => {
-            setActiveMenu('profile');
-            onNavigate?.('profile');
-            if (!isFixed) onClose?.();
-          }}
-          active={activeMenu === 'profile'}
-        />
-
-        <MenuItem
-          iconName="account-group-outline"
-          label="Community"
-          onPress={() => {
-            setActiveMenu('community');
-            onNavigate?.('community');
-            if (!isFixed) onClose?.();
-          }}
-          active={activeMenu === 'community'}
-        />
-
-        <MenuItem
-          iconName="chart-box-outline"
-          label="Academic Analytics"
-          onPress={() => {
-            setActiveMenu('analytics');
-            onNavigate?.('analytics');
-            if (!isFixed) onClose?.();
-          }}
-          active={activeMenu === 'analytics'}
-        />
-
-        <MenuItem
-          iconName="cog-outline"
-          label="Settings"
-          onPress={() => {
-            setActiveMenu('settings');
-            setSettingsModalVisible(true);
-          }}
-          active={activeMenu === 'settings'}
-        />
-      </ScrollView>
-=======
         <ScrollView
           style={styles.scrollView}
           contentContainerStyle={styles.scrollContentContainer}
           showsVerticalScrollIndicator={false}
         >
           <MenuItem
-            iconSource={require('../../assets/images/person.png')}
+            iconName="account-circle-outline"
             label="Profile"
             onPress={() => {
               setActiveMenu('profile');
@@ -289,7 +217,7 @@ const DrawerMenu = ({
           />
 
           <MenuItem
-            iconSource={require('../../assets/images/users-solid.png')}
+            iconName="account-group-outline"
             label="Community"
             onPress={() => {
               setActiveMenu('community');
@@ -300,7 +228,18 @@ const DrawerMenu = ({
           />
 
           <MenuItem
-            iconSource={require('../../assets/images/gear-solid.png')}
+            iconName="chart-box-outline"
+            label="Academic Analytics"
+            onPress={() => {
+              setActiveMenu('analytics');
+              onNavigate?.('analytics');
+              if (!isFixed) onClose?.();
+            }}
+            active={activeMenu === 'analytics'}
+          />
+
+          <MenuItem
+            iconName="cog-outline"
             label="Settings"
             onPress={() => {
               setActiveMenu('settings');
@@ -310,7 +249,6 @@ const DrawerMenu = ({
           />
         </ScrollView>
       </View>
->>>>>>> 98d439a675c9e7f45c4eb56c8896935b039c18b4
 
       <View style={styles.logoutSection}>
         <Pressable
@@ -638,6 +576,13 @@ const styles = StyleSheet.create({
     color: '#111',
   },
 
+  userEmail: {
+    fontSize: 13,
+    lineHeight: 20,
+    color: '#777',
+    marginTop: 2,
+  },
+
   scrollView: {
     flex: 1,
   },
@@ -666,12 +611,7 @@ const styles = StyleSheet.create({
   },
 
   menuIcon: {
-<<<<<<< HEAD
     marginRight: 20,
-=======
-    marginRight: 16,
-    resizeMode: 'contain',
->>>>>>> 98d439a675c9e7f45c4eb56c8896935b039c18b4
   },
 
   menuLabel: {

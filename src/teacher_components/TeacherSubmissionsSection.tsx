@@ -8,6 +8,7 @@ import {
   View,
   useWindowDimensions,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import type { Assignment, Member, Submission } from './TeacherCourseDetail2';
 
@@ -27,10 +28,14 @@ const TeacherSubmissionsSection = ({
   onOpenUpdate,
 }: Props) => {
   const { width } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
 
   const isMobile = width < 768;
   const isTablet = width >= 768 && width < 1200;
   const isLargeScreen = width >= 1200;
+
+  // ✅ CONSISTENT TOP SPACE (same as CourseDetail)
+  const mobileTopSpace = isMobile ? insets.top + 0 : 0;
 
   const pagePadding = isMobile ? 14 : isTablet ? 20 : 24;
   const cardWidth = isMobile ? '100%' : isLargeScreen ? '48.8%' : '48.5%';
@@ -62,7 +67,6 @@ const TeacherSubmissionsSection = ({
         return '#2196F3';
       case 'late':
         return '#F44336';
-      case 'pending':
       default:
         return '#BDBDBD';
     }
@@ -85,6 +89,9 @@ const TeacherSubmissionsSection = ({
 
   return (
     <SafeAreaView style={styles.container}>
+      {/* ✅ ADDED TOP SPACE */}
+      {isMobile ? <View style={{ height: mobileTopSpace }} /> : null}
+
       <View
         style={[
           styles.membersHeader,
@@ -118,6 +125,8 @@ const TeacherSubmissionsSection = ({
           <Text style={styles.updateText}>Update</Text>
         </TouchableOpacity>
       </View>
+
+      {/* rest of your code unchanged */}
 
       <View
         style={[
