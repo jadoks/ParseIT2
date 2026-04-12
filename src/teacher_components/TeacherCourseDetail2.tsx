@@ -320,7 +320,7 @@ const TeacherCourseDetail2 = ({
   const isTablet = width >= 768 && width < 1200;
 
   // Mobile-only reserved top space to match your screenshot better
-  const mobileTopSpace = isMobile ? insets.top + 0 : 0;
+  const mobileTopSpace = isMobile ? insets.top + 10 : 1;
 
   const [activeTab, setActiveTab] = useState<'Materials' | 'Assignments'>('Materials');
   const [showSubmissions, setShowSubmissions] = useState(false);

@@ -199,7 +199,13 @@ function HonorRollPreviewModal({
                     isMobile && { maxHeight: mobileCardMaxHeight },
                   ]}
                 >
-                  <Image source={headerImage} style={styles.previewHeaderImage} />
+                  <Image
+  source={headerImage}
+  style={[
+    styles.previewHeaderImage,
+    { height: isMobile ? 90 : 140 }
+  ]}
+/>
 
                   <ScrollView
                     showsVerticalScrollIndicator={false}
@@ -1000,9 +1006,9 @@ const styles = StyleSheet.create({
 
   previewHeaderImage: {
   width: '100%',
-  height: 90,
+  height: 140,
   resizeMode: 'cover',
-  marginTop: 10,
+  marginTop: 20,
 },
 
   previewBody: {
