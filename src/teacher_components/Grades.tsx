@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   Alert,
   Image,
@@ -17,7 +17,7 @@ import {
 const JourneyHeader = require('../../assets/images/myjourney-header-template-1.png');
 
 const schoolYears = [
-  'S.Y. 2023 - 2024',
+  'S.Y. 2021 - 2022',
   'S.Y. 2024 - 2025',
   'S.Y. 2025 - 2026',
   'S.Y. 2026 - 2027',
@@ -69,6 +69,18 @@ type InlineDropdownProps = {
   onSelect: (value: string) => void;
   fullWidth?: boolean;
   width?: number;
+  isPhone?: boolean;
+};
+
+type TableCellProps = {
+  width: number;
+  text: string;
+  isHeader?: boolean;
+  isLast?: boolean;
+  centered?: boolean;
+  bold?: boolean;
+  numberOfLines?: number;
+  mobile?: boolean;
 };
 
 const fontFamily = Platform.select({
@@ -85,15 +97,21 @@ const InlineDropdown = ({
   onSelect,
   fullWidth = false,
   width = 170,
+  isPhone = false,
 }: InlineDropdownProps) => {
   return (
     <View
       style={[
         styles.dropdownWrapper,
         fullWidth ? styles.dropdownWrapperFull : { width },
+        isOpen && styles.dropdownWrapperActive,
       ]}
     >
-      <TouchableOpacity style={styles.dropdown} onPress={onToggle} activeOpacity={0.8}>
+      <TouchableOpacity
+        style={[styles.dropdown, isPhone && styles.dropdownMobile]}
+        onPress={onToggle}
+        activeOpacity={0.8}
+      >
         <Text style={styles.dropdownText} numberOfLines={1}>
           {selectedValue}
         </Text>
@@ -105,21 +123,59 @@ const InlineDropdown = ({
       </TouchableOpacity>
 
       {isOpen && (
-        <View style={styles.dropdownMenu}>
-          {options.map((option, index) => (
-            <TouchableOpacity
-              key={option}
-              style={[
-                styles.dropdownItem,
-                index === options.length - 1 && styles.lastDropdownItem,
-              ]}
-              onPress={() => onSelect(option)}
-            >
-              <Text style={styles.dropdownItemText}>{option}</Text>
-            </TouchableOpacity>
-          ))}
+        <View style={[styles.dropdownMenu, isPhone && styles.dropdownMenuMobile]}>
+          <View style={styles.dropdownMenuContent}>
+            {options.map((option, index) => (
+              <TouchableOpacity
+                key={option}
+                style={[
+                  styles.dropdownItem,
+                  index === options.length - 1 && styles.lastDropdownItem,
+                ]}
+                onPress={() => onSelect(option)}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.dropdownItemText}>{option}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
         </View>
       )}
+    </View>
+  );
+};
+
+const TableCell = ({
+  width,
+  text,
+  isHeader = false,
+  isLast = false,
+  centered = false,
+  bold = false,
+  numberOfLines,
+  mobile = false,
+}: TableCellProps) => {
+  return (
+    <View
+      style={[
+        styles.tableCell,
+        isHeader ? styles.tableHeaderCell : styles.tableBodyCell,
+        { width },
+        isLast ? styles.tableCellLast : styles.tableCellDivider,
+        centered && styles.tableCellCentered,
+      ]}
+    >
+      <Text
+        numberOfLines={numberOfLines}
+        style={[
+          isHeader ? styles.headerText : styles.cellText,
+          mobile && (isHeader ? styles.mobileHeaderText : styles.mobileCellText),
+          centered && styles.centerText,
+          bold && styles.gradeText,
+        ]}
+      >
+        {text}
+      </Text>
     </View>
   );
 };
@@ -134,7 +190,28 @@ const Grades = () => {
 
   const contentHorizontalPadding = isPhone ? 20 : isTablet ? 28 : 40;
   const titleSize = isPhone ? 32 : isTablet ? 36 : 36;
-  const reportMinWidth = isPhone ? 760 : 900;
+
+  const mobileCardWidth = Math.min(width - 40, 320);
+  const mobileCardInnerWidth = mobileCardWidth - 24;
+
+  const mobileTableWidths = useMemo(() => {
+    const subject = 50;
+    const unit = 60;
+    const grade = 50;
+    const description = Math.max(120, mobileCardInnerWidth - (subject + unit + grade));
+
+    return {
+      subject,
+      description,
+      unit,
+      grade,
+      total: subject + description + unit + grade,
+    };
+  }, [mobileCardInnerWidth]);
+
+  const webTableWidth = 900;
+  const webHeaderWidth = 900;
+  const reportMinWidth = isPhone ? mobileTableWidths.total : webTableWidth;
 
   const [studentId, setStudentId] = useState('');
   const [selectedSchoolYear, setSelectedSchoolYear] = useState('S.Y. 2021 - 2022');
@@ -142,6 +219,12 @@ const Grades = () => {
   const [openDropdown, setOpenDropdown] = useState<DropdownKey>(null);
   const [showGrades, setShowGrades] = useState(false);
   const [studentRecord, setStudentRecord] = useState<StudentRecord | null>(null);
+
+  const closeDropdowns = () => {
+    if (openDropdown !== null) {
+      setOpenDropdown(null);
+    }
+  };
 
   const handleShowJourney = () => {
     const trimmedId = studentId.trim();
@@ -184,15 +267,16 @@ const Grades = () => {
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       style={styles.screen}
     >
-      <TouchableOpacity
-        activeOpacity={1}
-        style={styles.flexOne}
-        onPress={() => setOpenDropdown(null)}
-      >
+      <View style={styles.flexOne}>
         <ScrollView
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+          bounces={Platform.OS === 'ios'}
+          overScrollMode="always"
+          onScrollBeginDrag={closeDropdowns}
+          scrollEventThrottle={16}
         >
           <View
             style={[
@@ -200,12 +284,12 @@ const Grades = () => {
               { paddingHorizontal: contentHorizontalPadding },
             ]}
           >
-            <View style={styles.headerBlock}>
+            <View style={[styles.headerBlock, isPhone && styles.headerBlockMobile]}>
               <Text style={[styles.mainTitle, { fontSize: titleSize }]}>Grades</Text>
               <Text style={styles.subTitle}>View your student grades</Text>
             </View>
 
-            <View style={styles.controlsCard}>
+            <View style={[styles.controlsCard, isPhone && styles.controlsCardMobile]}>
               {isStackedLayout ? (
                 <View style={styles.stackedControls}>
                   <InlineDropdown
@@ -213,6 +297,7 @@ const Grades = () => {
                     selectedValue={selectedSchoolYear}
                     isOpen={openDropdown === 'schoolYear'}
                     fullWidth
+                    isPhone={isPhone}
                     onToggle={() =>
                       setOpenDropdown(openDropdown === 'schoolYear' ? null : 'schoolYear')
                     }
@@ -227,6 +312,7 @@ const Grades = () => {
                     selectedValue={selectedSemester}
                     isOpen={openDropdown === 'semester'}
                     fullWidth
+                    isPhone={isPhone}
                     onToggle={() =>
                       setOpenDropdown(openDropdown === 'semester' ? null : 'semester')
                     }
@@ -242,12 +328,22 @@ const Grades = () => {
                     placeholderTextColor="#999"
                     value={studentId}
                     onChangeText={setStudentId}
-                    style={styles.mainInputFull}
+                    style={[styles.mainInputFull, isPhone && styles.mainInputMobile]}
                     keyboardType="numeric"
                   />
 
-                  <TouchableOpacity style={styles.journeyButtonFull} onPress={handleShowJourney}>
-                    <Text style={styles.journeyButtonText}>Show My Journey</Text>
+                  <TouchableOpacity
+                    style={[styles.journeyButtonFull, isPhone && styles.journeyButtonMobile]}
+                    onPress={handleShowJourney}
+                  >
+                    <Text
+                      style={[
+                        styles.journeyButtonText,
+                        isPhone && styles.journeyButtonTextMobile,
+                      ]}
+                    >
+                      Show My Journey
+                    </Text>
                   </TouchableOpacity>
                 </View>
               ) : (
@@ -305,68 +401,188 @@ const Grades = () => {
             <View
               style={[
                 styles.centeredResultWrapper,
-                { paddingHorizontal: isPhone ? 12 : 20 },
+                { paddingHorizontal: isPhone ? 20 : 20 },
               ]}
             >
-              <View style={[styles.reportCard, isLargeScreen && styles.reportCardLarge]}>
-                <View style={styles.uniHeader}>
-                  <Image
-                    source={JourneyHeader}
-                    style={[styles.headerImage, { height: isPhone ? 90 : 120 }]}
-                    resizeMode="contain"
-                  />
-                </View>
-
-                <Text style={styles.studentLine}>
-                  Student ID: {studentRecord.studentId}
-                </Text>
-                <Text style={styles.studentLine}>
-                  Student Name: {studentRecord.fullName}
-                </Text>
-
-                <Text style={styles.schoolYearLine}>
-                  School Year: {studentRecord.schoolYear} ({studentRecord.semester})
-                </Text>
-
-                <ScrollView
-                  horizontal
-                  showsHorizontalScrollIndicator={isPhone}
-                  contentContainerStyle={styles.tableScrollContent}
+              {isPhone ? (
+                <View
+                  style={[
+                    styles.mobileReportCard,
+                    { width: mobileCardWidth, maxWidth: mobileCardWidth },
+                  ]}
                 >
-                  <View style={[styles.table, { minWidth: reportMinWidth }]}>
-                    <View style={styles.tableHeader}>
-                      <Text style={[styles.headerText, styles.subjectCol]}>Subject</Text>
-                      <Text style={[styles.headerText, styles.descCol]}>Description</Text>
-                      <Text style={[styles.headerText, styles.unitCol]}>Unit</Text>
-                      <Text style={[styles.headerText, styles.gradeCol]}>Grade</Text>
-                    </View>
-
-                    {studentRecord.grades.map((item, index) => (
-                      <View key={index} style={styles.tableRow}>
-                        <Text style={[styles.cellText, styles.subjectCol]}>{item.code}</Text>
-                        <Text style={[styles.cellText, styles.descCol]}>{item.desc}</Text>
-                        <Text style={[styles.cellText, styles.unitCol]}>
-                          {item.unit.toFixed(1)}
-                        </Text>
-                        <Text style={[styles.cellText, styles.gradeCol, styles.gradeText]}>
-                          {item.grade.toFixed(1)}
-                        </Text>
-                      </View>
-                    ))}
+                  <View style={styles.uniHeader}>
+                    <Image
+                      source={JourneyHeader}
+                      style={[styles.headerImage, styles.headerImageMobile]}
+                      resizeMode="contain"
+                    />
                   </View>
-                </ScrollView>
 
-                <TouchableOpacity
-                  style={styles.getLinkButton}
-                  onPress={() => Alert.alert('Success', 'Journey displayed successfully')}
-                >
-                  <Text style={styles.getLinkText}>Get Link</Text>
-                </TouchableOpacity>
-              </View>
+                  <View style={styles.mobileStudentInfo}>
+                    <Text style={[styles.studentLine, styles.studentLineMobile]}>
+                      Student ID: {studentRecord.studentId}
+                    </Text>
+                    <Text style={[styles.studentLine, styles.studentLineMobile]}>
+                      Student Name: {studentRecord.fullName}
+                    </Text>
+
+                    <Text style={[styles.schoolYearLine, styles.schoolYearLineMobile]}>
+                      School Year: {studentRecord.schoolYear} ({studentRecord.semester})
+                    </Text>
+                  </View>
+
+                  <View style={styles.mobileTableWrap}>
+                    <View style={[styles.table, { width: reportMinWidth }]}>
+                      <View style={styles.tableHeader}>
+                        <TableCell
+                          width={mobileTableWidths.subject}
+                          text="Subject"
+                          isHeader
+                          mobile
+                        />
+                        <TableCell
+                          width={mobileTableWidths.description}
+                          text="Description"
+                          isHeader
+                          mobile
+                        />
+                        <TableCell
+                          width={mobileTableWidths.unit}
+                          text="Unit"
+                          isHeader
+                          mobile
+                          centered
+                        />
+                        <TableCell
+                          width={mobileTableWidths.grade}
+                          text="Grade"
+                          isHeader
+                          mobile
+                          centered
+                          isLast
+                        />
+                      </View>
+
+                      {studentRecord.grades.map((item, index) => (
+                        <View
+                          key={index}
+                          style={[
+                            styles.tableRow,
+                            index === studentRecord.grades.length - 1 && styles.lastTableRow,
+                          ]}
+                        >
+                          <TableCell
+                            width={mobileTableWidths.subject}
+                            text={item.code}
+                            mobile
+                            numberOfLines={1}
+                          />
+                          <TableCell
+                            width={mobileTableWidths.description}
+                            text={item.desc}
+                            mobile
+                            numberOfLines={2}
+                          />
+                          <TableCell
+                            width={mobileTableWidths.unit}
+                            text={item.unit.toFixed(1)}
+                            mobile
+                            centered
+                            numberOfLines={1}
+                          />
+                          <TableCell
+                            width={mobileTableWidths.grade}
+                            text={item.grade.toFixed(1)}
+                            mobile
+                            centered
+                            bold
+                            numberOfLines={1}
+                            isLast
+                          />
+                        </View>
+                      ))}
+                    </View>
+                  </View>
+
+                  <TouchableOpacity
+                    style={[styles.getLinkButton, styles.getLinkButtonMobile]}
+                    onPress={() => Alert.alert('Success', 'Journey displayed successfully')}
+                  >
+                    <Text style={styles.getLinkText}>Get Link</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <View style={[styles.reportCard, isLargeScreen && styles.reportCardLarge]}>
+                  <View style={[styles.uniHeader, styles.webHeaderWrap, { width: webHeaderWidth }]}>
+                    <Image
+                      source={JourneyHeader}
+                      style={[styles.headerImage, styles.headerImageWeb]}
+                      resizeMode="contain"
+                    />
+                  </View>
+
+                  <View style={[styles.webContentWrap, { width: webTableWidth }]}>
+                    <Text style={styles.studentLine}>
+                      Student ID: {studentRecord.studentId}
+                    </Text>
+                    <Text style={styles.studentLine}>
+                      Student Name: {studentRecord.fullName}
+                    </Text>
+
+                    <Text style={styles.schoolYearLine}>
+                      School Year: {studentRecord.schoolYear} ({studentRecord.semester})
+                    </Text>
+
+                    <View style={[styles.table, { width: webTableWidth }]}>
+                      <View style={styles.tableHeader}>
+                        <TableCell width={130} text="Subject" isHeader />
+                        <TableCell width={470} text="Description" isHeader />
+                        <TableCell width={80} text="Unit" isHeader centered />
+                        <TableCell width={220} text="Grade" isHeader centered isLast />
+                      </View>
+
+                      {studentRecord.grades.map((item, index) => (
+                        <View
+                          key={index}
+                          style={[
+                            styles.tableRowWeb,
+                            index === studentRecord.grades.length - 1 && styles.lastTableRow,
+                          ]}
+                        >
+                          <TableCell width={130} text={item.code} numberOfLines={1} />
+                          <TableCell width={470} text={item.desc} numberOfLines={2} />
+                          <TableCell
+                            width={80}
+                            text={item.unit.toFixed(1)}
+                            centered
+                            numberOfLines={1}
+                          />
+                          <TableCell
+                            width={220}
+                            text={item.grade.toFixed(1)}
+                            centered
+                            bold
+                            numberOfLines={1}
+                            isLast
+                          />
+                        </View>
+                      ))}
+                    </View>
+                  </View>
+
+                  <TouchableOpacity
+                    style={styles.getLinkButton}
+                    onPress={() => Alert.alert('Success', 'Journey displayed successfully')}
+                  >
+                    <Text style={styles.getLinkText}>Get Link</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
             </View>
           )}
         </ScrollView>
-      </TouchableOpacity>
+      </View>
     </KeyboardAvoidingView>
   );
 };
@@ -381,16 +597,22 @@ const styles = StyleSheet.create({
 
   scrollContent: {
     paddingBottom: 60,
+    flexGrow: 1,
   },
 
   leftAlignWrapper: {
-    alignItems: 'flex-start',
-    overflow: 'visible',
-  },
-
+  alignItems: 'flex-start',
+  overflow: 'visible',
+  zIndex: 5000,
+},
   headerBlock: {
     marginTop: 30,
     marginBottom: 30,
+  },
+
+  headerBlockMobile: {
+    marginTop: 20,
+    marginBottom: 18,
   },
 
   mainTitle: {
@@ -407,9 +629,16 @@ const styles = StyleSheet.create({
   },
 
   controlsCard: {
-    marginBottom: 25,
+  marginBottom: 25,
+  width: '100%',
+  maxWidth: 420,
+  zIndex: 5000, // keep dropdown area above report/photo
+  elevation: 50,
+},
+
+  controlsCardMobile: {
     width: '100%',
-    maxWidth: 420,
+    maxWidth: 210,
   },
 
   controlsGrid: {
@@ -425,6 +654,7 @@ const styles = StyleSheet.create({
 
   controlsGridRowTop: {
     zIndex: 3000,
+    elevation: 0,
   },
 
   controlsGridRowBottom: {
@@ -439,15 +669,22 @@ const styles = StyleSheet.create({
 
   dropdownWrapper: {
     position: 'relative',
-    zIndex: 4000,
-    backgroundColor: '#FFF',
+    width: '100%',
+    zIndex: 1,
+    elevation: 0,
   },
+
+  dropdownWrapperActive: {
+  zIndex: 9999, // opened dropdown always above everything
+  elevation: 100,
+},
 
   dropdownWrapperFull: {
     width: '100%',
   },
 
   dropdown: {
+    width: '100%',
     height: 40,
     borderWidth: 1,
     borderColor: '#333',
@@ -456,41 +693,58 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: '#FFF',
+    backgroundColor: '#FFFFFF',
+    zIndex: 4001,
+    elevation: 0,
+  },
+
+  dropdownMobile: {
+    height: 48,
+    borderRadius: 12,
+    paddingHorizontal: 14,
   },
 
   dropdownText: {
-    flex: 1,
     fontSize: 12,
     color: '#000',
-    fontFamily,
+    flexShrink: 1,
     marginRight: 8,
+    fontFamily,
   },
 
   dropdownMenu: {
     position: 'absolute',
     top: 44,
     left: 0,
-    right: 0,
-    backgroundColor: '#FFF',
+    width: '100%',
+    backgroundColor: '#FFFFFF',
     borderRadius: 8,
     borderWidth: 1,
     borderColor: '#CFCFCF',
-    elevation: 20,
-    shadowColor: '#000',
-    shadowOpacity: 0.22,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 6 },
     overflow: 'hidden',
-    zIndex: 9999,
+    zIndex: 5000,
+    elevation: 0,
+    shadowColor: 'transparent',
+    shadowOpacity: 0,
+    shadowRadius: 0,
+    shadowOffset: { width: 0, height: 0 },
+  },
+
+  dropdownMenuMobile: {
+    top: 52,
+    left: 0,
+    borderRadius: 12,
+    backgroundColor: '#FFFFFF',
+  },
+
+  dropdownMenuContent: {
+    backgroundColor: '#FFFFFF',
   },
 
   dropdownItem: {
-    backgroundColor: '#FFF',
+    backgroundColor: '#FFFFFF',
     paddingVertical: 10,
     paddingHorizontal: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#EEE',
   },
 
   lastDropdownItem: {
@@ -529,6 +783,13 @@ const styles = StyleSheet.create({
     fontFamily,
   },
 
+  mainInputMobile: {
+    height: 48,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    fontSize: 14,
+  },
+
   journeyButton: {
     width: 170,
     backgroundColor: '#B71C1C',
@@ -549,6 +810,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
 
+  journeyButtonMobile: {
+    height: 48,
+    borderRadius: 12,
+  },
+
   journeyButtonText: {
     color: '#FFF',
     fontSize: 12,
@@ -556,22 +822,50 @@ const styles = StyleSheet.create({
     fontFamily,
   },
 
-  centeredResultWrapper: {
-    width: '100%',
-    alignItems: 'center',
+  journeyButtonTextMobile: {
+    fontSize: 13,
   },
 
+  centeredResultWrapper: {
+  width: '100%',
+  alignItems: 'center',
+  zIndex: 1, // send report/photo behind
+  elevation: 0,
+},
+
   reportCard: {
-    width: '100%',
-    maxWidth: 980,
-    backgroundColor: '#FFF',
-    paddingHorizontal: 8,
-    paddingTop: 8,
-    paddingBottom: 18,
-  },
+  width: '100%',
+  maxWidth: 980,
+  backgroundColor: '#FFF',
+  paddingHorizontal: 8,
+  paddingTop: 8,
+  paddingBottom: 18,
+  alignItems: 'center',
+  zIndex: 1,
+  elevation: 0,
+},
 
   reportCardLarge: {
     paddingHorizontal: 16,
+  },
+
+  mobileReportCard: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E7E7E7',
+    borderRadius: 16,
+    paddingHorizontal: 12,
+    paddingTop: 12,
+    paddingBottom: 16,
+    overflow: 'hidden',
+  },
+
+  mobileStudentInfo: {
+    width: '100%',
+  },
+
+  mobileTableWrap: {
+    width: '100%',
   },
 
   uniHeader: {
@@ -579,8 +873,27 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
 
+  webHeaderWrap: {
+    alignSelf: 'center',
+    marginBottom: 8,
+  },
+
+  webContentWrap: {
+    alignSelf: 'center',
+  },
+
   headerImage: {
     width: '100%',
+  },
+
+  headerImageMobile: {
+    height: 78,
+    width: '100%',
+  },
+
+  headerImageWeb: {
+    width: '100%',
+    height: 150,
   },
 
   studentLine: {
@@ -589,6 +902,13 @@ const styles = StyleSheet.create({
     marginBottom: 2,
     fontWeight: '600',
     fontFamily,
+  },
+
+  studentLineMobile: {
+    fontSize: 13,
+    lineHeight: 20,
+    width: '100%',
+    flexWrap: 'wrap',
   },
 
   schoolYearLine: {
@@ -600,8 +920,13 @@ const styles = StyleSheet.create({
     fontFamily,
   },
 
-  tableScrollContent: {
-    paddingBottom: 4,
+  schoolYearLineMobile: {
+    marginTop: 18,
+    marginBottom: 10,
+    lineHeight: 20,
+    fontSize: 13,
+    width: '100%',
+    flexWrap: 'wrap',
   },
 
   table: {
@@ -619,9 +944,45 @@ const styles = StyleSheet.create({
 
   tableRow: {
     flexDirection: 'row',
+    minHeight: 48,
     borderBottomWidth: 1,
     borderBottomColor: '#BDBDBD',
+  },
+
+  tableRowWeb: {
+    flexDirection: 'row',
     minHeight: 50,
+    borderBottomWidth: 1,
+    borderBottomColor: '#BDBDBD',
+  },
+
+  lastTableRow: {
+    borderBottomWidth: 0,
+  },
+
+  tableCell: {
+    justifyContent: 'center',
+  },
+
+  tableHeaderCell: {
+    backgroundColor: '#B71C1C',
+  },
+
+  tableBodyCell: {
+    backgroundColor: '#FFF',
+  },
+
+  tableCellDivider: {
+    borderRightWidth: 1,
+    borderRightColor: '#BDBDBD',
+  },
+
+  tableCellLast: {
+    borderRightWidth: 1,
+    borderRightColor: '#BDBDBD',
+  },
+
+  tableCellCentered: {
     alignItems: 'center',
   },
 
@@ -632,29 +993,34 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     paddingHorizontal: 6,
     textAlign: 'center',
-    borderRightWidth: 1,
-    borderRightColor: '#BDBDBD',
     fontFamily,
+  },
+
+  mobileHeaderText: {
+    fontSize: 11,
+    paddingHorizontal: 4,
   },
 
   cellText: {
     fontSize: 14,
     color: '#222',
-    paddingVertical: 10,
+    paddingVertical: 8,
     paddingHorizontal: 6,
-    borderRightWidth: 1,
-    borderRightColor: '#BDBDBD',
     fontFamily,
+  },
+
+  mobileCellText: {
+    fontSize: 10,
+    paddingHorizontal: 4,
+  },
+
+  centerText: {
+    textAlign: 'center',
   },
 
   gradeText: {
     fontWeight: '700',
   },
-
-  subjectCol: { width: 130 },
-  descCol: { width: 470 },
-  unitCol: { width: 80, textAlign: 'center' },
-  gradeCol: { width: 90, textAlign: 'center', borderRightWidth: 0 },
 
   getLinkButton: {
     marginTop: 30,
@@ -665,6 +1031,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     alignSelf: 'center',
+  },
+
+  getLinkButtonMobile: {
+    width: '100%',
+    marginTop: 18,
+    height: 46,
+    borderRadius: 12,
   },
 
   getLinkText: {
