@@ -10,7 +10,10 @@ import {
 } from "react-native";
 import AdminDashboard from "./Final_Admin_Components/AdminDashboard";
 import Header from "./Final_Admin_Components/Header";
+import ManageAdmin from "./Final_Admin_Components/ManageAdmin";
 import ManageClass from "./Final_Admin_Components/ManageClass";
+import ManageStudent from "./Final_Admin_Components/ManageStudent";
+import ManageTeacher from "./Final_Admin_Components/ManageTeacher";
 import Sidebar from "./Final_Admin_Components/Sidebar";
 
 export default function AdminApp() {
@@ -50,6 +53,27 @@ export default function AdminApp() {
     setSidebarVisible(false);
   };
 
+  const handleNavigateToManageAdmin = () => {
+    setActiveTopNav("Admin");
+    setActiveSideNav(null);
+    setActiveContentScreen("Admin");
+    setSidebarVisible(false);
+  };
+
+  const handleNavigateToManageStudent = () => {
+    setActiveTopNav("Student");
+    setActiveSideNav(null);
+    setActiveContentScreen("Student");
+    setSidebarVisible(false);
+  };
+
+  const handleNavigateToManageTeacher = () => {
+    setActiveTopNav("Teacher");
+    setActiveSideNav(null);
+    setActiveContentScreen("Teacher");
+    setSidebarVisible(false);
+  };
+
   const handleNavigateToDashboard = () => {
     setActiveTopNav("Dashboard");
     setActiveSideNav(null);
@@ -60,6 +84,18 @@ export default function AdminApp() {
   const renderContent = () => {
     if (activeTopNav === "Class" || activeContentScreen === "Class") {
       return <ManageClass width={width} />;
+    }
+
+    if (activeTopNav === "Admin" || activeContentScreen === "Admin") {
+      return <ManageAdmin width={width} />;
+    }
+
+    if (activeTopNav === "Student" || activeContentScreen === "Student") {
+      return <ManageStudent width={width} />;
+    }
+
+    if (activeTopNav === "Teacher" || activeContentScreen === "Teacher") {
+      return <ManageTeacher width={width} />;
     }
 
     if (activeSideNav === "Analytics") {
@@ -89,6 +125,9 @@ export default function AdminApp() {
         <AdminDashboard
           width={width}
           onOpenManageClass={handleNavigateToManageClass}
+          onOpenManageAdmin={handleNavigateToManageAdmin}
+          onOpenManageStudent={handleNavigateToManageStudent}
+          onOpenManageTeacher={handleNavigateToManageTeacher}
           onBackToDashboard={handleNavigateToDashboard}
         />
       );

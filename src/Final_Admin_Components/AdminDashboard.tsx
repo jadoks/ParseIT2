@@ -2,29 +2,35 @@ import FontAwesome5 from "@expo/vector-icons/FontAwesome5";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import DateTimePicker, {
-    DateTimePickerEvent,
+  DateTimePickerEvent,
 } from "@react-native-community/datetimepicker";
 import React, { useMemo, useRef, useState } from "react";
 import {
-    DimensionValue,
-    Modal,
-    Platform,
-    Pressable,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  DimensionValue,
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import Chatbot from "./Chatbot";
+import { addAdminRecord, getAdminCount } from "./adminStore";
 import { addClassRecord, getClassCount } from "./classStore";
+import { addStudentRecord, getStudentCount } from "./studentStore";
+import { addTeacherRecord, getTeacherCount } from "./teacherStore";
+
+
 
 type QuickAction = {
   label: string;
   primary?: boolean;
   onPress?: () => void;
 };
+
 
 type DashboardCardProps = {
   title: string;
@@ -37,6 +43,9 @@ type DashboardCardProps = {
 type AdminDashboardProps = {
   width: number;
   onOpenManageClass: () => void;
+  onOpenManageAdmin: () => void;
+  onOpenManageStudent: () => void;
+  onOpenManageTeacher: () => void;
   onBackToDashboard?: () => void;
 };
 
@@ -719,14 +728,22 @@ function BirthdayField({
   );
 }
 
-function AddAdminModal({
+export function AddAdminModal({
   visible,
   onClose,
   isMobile,
+  onSubmitAdmin,
 }: {
   visible: boolean;
   onClose: () => void;
   isMobile: boolean;
+  onSubmitAdmin?: (payload: {
+    adminId: string;
+    firstName: string;
+    lastName: string;
+    birthday: string;
+    email: string;
+  }) => void;
 }) {
   const [adminId, setAdminId] = useState("");
   const [firstName, setFirstName] = useState("");
@@ -734,14 +751,38 @@ function AddAdminModal({
   const [birthday, setBirthday] = useState<Date | null>(null);
   const [email, setEmail] = useState("");
 
-  const handleClose = () => onClose();
+  const resetForm = () => {
+    setAdminId("");
+    setFirstName("");
+    setLastName("");
+    setBirthday(null);
+    setEmail("");
+  };
+
+  const handleClose = () => {
+    resetForm();
+    onClose();
+  };
 
   const handleSubmit = () => {
-    console.log("Admin ID:", adminId);
-    console.log("First Name:", firstName);
-    console.log("Last Name:", lastName);
-    console.log("Birthday:", birthday ? formatDate(birthday) : "");
-    console.log("Email Address:", email);
+    const payload = {
+      adminId,
+      firstName,
+      lastName,
+      birthday: birthday ? formatDate(birthday) : "",
+      email,
+    };
+
+    if (onSubmitAdmin) {
+      onSubmitAdmin(payload);
+    } else {
+      console.log("Admin ID:", payload.adminId);
+      console.log("First Name:", payload.firstName);
+      console.log("Last Name:", payload.lastName);
+      console.log("Birthday:", payload.birthday);
+      console.log("Email Address:", payload.email);
+    }
+
     handleClose();
   };
 
@@ -1090,33 +1131,68 @@ function SetAcademicYearModal({
   );
 }
 
-function AddStudentModal({
+export function AddStudentModal({
   visible,
   onClose,
   isMobile,
+  onSubmitStudent,
 }: {
   visible: boolean;
   onClose: () => void;
   isMobile: boolean;
+  onSubmitStudent?: (payload: {
+    studentId: string;
+    firstName: string;
+    lastName: string;
+    birthday: string;
+    email: string;
+    studentType: "regular" | "irregular" | "";
+  }) => void;
 }) {
   const [studentId, setStudentId] = useState("");
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [birthday, setBirthday] = useState<Date | null>(null);
   const [email, setEmail] = useState("");
-  const [studentType, setStudentType] = useState<"regular" | "irregular" | null>(
-    null
+  const [studentType, setStudentType] = useState<"regular" | "irregular" | "">(
+    ""
   );
 
-  const handleClose = () => onClose();
+  const resetForm = () => {
+    setStudentId("");
+    setFirstName("");
+    setLastName("");
+    setBirthday(null);
+    setEmail("");
+    setStudentType("");
+  };
+
+  const handleClose = () => {
+    resetForm();
+    onClose();
+  };
 
   const handleSubmit = () => {
-    console.log("Student ID:", studentId);
-    console.log("First Name:", firstName);
-    console.log("Last Name:", lastName);
-    console.log("Birthday:", birthday ? formatDate(birthday) : "");
-    console.log("Email Address:", email);
-    console.log("Student Type:", studentType);
+    const payload = {
+      studentId,
+      firstName,
+      lastName,
+      birthday: birthday ? formatDate(birthday) : "",
+      email,
+      studentType,
+    };
+
+    if (onSubmitStudent) {
+      onSubmitStudent(payload);
+    } else {
+      console.log("Student ID:", payload.studentId);
+      console.log("First Name:", payload.firstName);
+      console.log("Last Name:", payload.lastName);
+      console.log("Birthday:", payload.birthday);
+      console.log("Email Address:", payload.email);
+      console.log("Student Type:", payload.studentType);
+    }
+
     handleClose();
   };
 
@@ -1315,14 +1391,22 @@ function AddStudentModal({
   );
 }
 
-function AddTeacherModal({
+export function AddTeacherModal({
   visible,
   onClose,
   isMobile,
+  onSubmitTeacher,
 }: {
   visible: boolean;
   onClose: () => void;
   isMobile: boolean;
+  onSubmitTeacher?: (payload: {
+    teacherId: string;
+    firstName: string;
+    lastName: string;
+    birthday: string;
+    email: string;
+  }) => void;
 }) {
   const [teacherId, setTeacherId] = useState("");
   const [firstName, setFirstName] = useState("");
@@ -1330,14 +1414,38 @@ function AddTeacherModal({
   const [birthday, setBirthday] = useState<Date | null>(null);
   const [email, setEmail] = useState("");
 
-  const handleClose = () => onClose();
+  const resetForm = () => {
+    setTeacherId("");
+    setFirstName("");
+    setLastName("");
+    setBirthday(null);
+    setEmail("");
+  };
+
+  const handleClose = () => {
+    resetForm();
+    onClose();
+  };
 
   const handleSubmit = () => {
-    console.log("Teacher ID:", teacherId);
-    console.log("First Name:", firstName);
-    console.log("Last Name:", lastName);
-    console.log("Birthday:", birthday ? formatDate(birthday) : "");
-    console.log("Email Address:", email);
+    const payload = {
+      teacherId,
+      firstName,
+      lastName,
+      birthday: birthday ? formatDate(birthday) : "",
+      email,
+    };
+
+    if (onSubmitTeacher) {
+      onSubmitTeacher(payload);
+    } else {
+      console.log("Teacher ID:", payload.teacherId);
+      console.log("First Name:", payload.firstName);
+      console.log("Last Name:", payload.lastName);
+      console.log("Birthday:", payload.birthday);
+      console.log("Email Address:", payload.email);
+    }
+
     handleClose();
   };
 
@@ -2071,7 +2179,23 @@ function AddClassModal({
 export default function AdminDashboard({
   width,
   onOpenManageClass,
+  onOpenManageAdmin,
+  onOpenManageStudent,
+  onOpenManageTeacher,
 }: AdminDashboardProps) {
+const [teacherCount, setTeacherCount] = useState(getTeacherCount());
+
+const handleAddSharedTeacher = (payload: {
+  teacherId: string;
+  firstName: string;
+  lastName: string;
+  birthday: string;
+  email: string;
+}) => {
+  addTeacherRecord(payload);
+  setTeacherCount(getTeacherCount());
+};
+
   const [isAddAdminModalVisible, setIsAddAdminModalVisible] = useState(false);
   const [isAddStudentModalVisible, setIsAddStudentModalVisible] =
     useState(false);
@@ -2083,6 +2207,8 @@ export default function AdminDashboard({
   const [isAcademicYearStarted, setIsAcademicYearStarted] = useState(false);
   const [isChatbotModalVisible, setIsChatbotModalVisible] = useState(false);
   const [classCount, setClassCount] = useState(getClassCount());
+  const [adminCount, setAdminCount] = useState(getAdminCount());
+  const [studentCount, setStudentCount] = useState(getStudentCount());
 
   const [academicYearOptions, setAcademicYearOptions] = useState<
     AcademicYearOption[]
@@ -2155,6 +2281,29 @@ export default function AdminDashboard({
     setClassCount(getClassCount());
   };
 
+  const handleAddSharedAdmin = (payload: {
+    adminId: string;
+    firstName: string;
+    lastName: string;
+    birthday: string;
+    email: string;
+  }) => {
+    addAdminRecord(payload);
+    setAdminCount(getAdminCount());
+  };
+
+  const handleAddSharedStudent = (payload: {
+    studentId: string;
+    firstName: string;
+    lastName: string;
+    birthday: string;
+    email: string;
+    studentType: "regular" | "irregular" | "";
+  }) => {
+    addStudentRecord(payload);
+    setStudentCount(getStudentCount());
+  };
+
   return (
     <View>
       <View style={styles.heroRow}>
@@ -2179,19 +2328,19 @@ export default function AdminDashboard({
       <View style={styles.summaryRow}>
         <SummaryCard
           label="Students"
-          value="1,248"
+          value={`${studentCount}`}
           trend="+12.4% this month"
           widthValue={summaryWidth}
         />
         <SummaryCard
           label="Teachers"
-          value="86"
+          value={`${teacherCount}`}
           trend="+4 new faculty"
           widthValue={summaryWidth}
         />
         <SummaryCard
           label="Admins"
-          value="34"
+          value={`${adminCount}`}
           trend="2 pending approvals"
           widthValue={summaryWidth}
         />
@@ -2228,7 +2377,7 @@ export default function AdminDashboard({
 
         <DashboardCard
           title="Manage Admin"
-          subtitle="34 active administrators"
+          subtitle={`${adminCount} active administrators`}
           icon={
             <MaterialCommunityIcons
               name="account-cog-outline"
@@ -2242,7 +2391,10 @@ export default function AdminDashboard({
               primary: true,
               onPress: () => setIsAddAdminModalVisible(true),
             },
-            { label: "View" },
+            {
+              label: "View",
+              onPress: onOpenManageAdmin,
+            },
           ]}
           cardWidth={cardWidth}
         />
@@ -2288,7 +2440,7 @@ export default function AdminDashboard({
 
         <DashboardCard
           title="Manage Student"
-          subtitle="1,248 undergraduate students"
+          subtitle={`${studentCount} undergraduate students`}
           icon={<Ionicons name="people-outline" size={24} color="#DC2626" />}
           actions={[
             {
@@ -2296,14 +2448,17 @@ export default function AdminDashboard({
               primary: true,
               onPress: () => setIsAddStudentModalVisible(true),
             },
-            { label: "View" },
+            {
+              label: "View",
+              onPress: onOpenManageStudent,
+            },
           ]}
           cardWidth={cardWidth}
         />
 
         <DashboardCard
           title="Manage Teacher"
-          subtitle="86 registered faculty members"
+          subtitle={`${teacherCount} registered faculty members`}
           icon={
             <FontAwesome5
               name="chalkboard-teacher"
@@ -2317,7 +2472,10 @@ export default function AdminDashboard({
               primary: true,
               onPress: () => setIsAddTeacherModalVisible(true),
             },
-            { label: "View" },
+            {
+              label: "View",
+              onPress: onOpenManageTeacher,
+            },
           ]}
           cardWidth={cardWidth}
         />
@@ -2334,18 +2492,21 @@ export default function AdminDashboard({
         visible={isAddAdminModalVisible}
         onClose={() => setIsAddAdminModalVisible(false)}
         isMobile={isMobile}
+        onSubmitAdmin={handleAddSharedAdmin}
       />
 
       <AddStudentModal
         visible={isAddStudentModalVisible}
         onClose={() => setIsAddStudentModalVisible(false)}
         isMobile={isMobile}
+        onSubmitStudent={handleAddSharedStudent}
       />
 
       <AddTeacherModal
         visible={isAddTeacherModalVisible}
         onClose={() => setIsAddTeacherModalVisible(false)}
         isMobile={isMobile}
+        onSubmitTeacher={handleAddSharedTeacher}
       />
 
       <AddClassModal
