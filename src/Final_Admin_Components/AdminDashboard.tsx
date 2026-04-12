@@ -2329,7 +2329,7 @@ const handleAddSharedTeacher = (payload: {
         <SummaryCard
           label="Students"
           value={`${studentCount}`}
-          trend="+12.4% this month"
+          trend="+2.4% this month"
           widthValue={summaryWidth}
         />
         <SummaryCard
@@ -2341,7 +2341,7 @@ const handleAddSharedTeacher = (payload: {
         <SummaryCard
           label="Admins"
           value={`${adminCount}`}
-          trend="2 pending approvals"
+          trend="2 new admins"
           widthValue={summaryWidth}
         />
         <SummaryCard
