@@ -299,7 +299,7 @@ export default function HonorsScreen() {
     'S.Y 2026 - 2027',
   ];
 
-  const semesters = ['First Semester', 'Second Semester', 'Summer'];
+  const semesters = ['First Semester', 'Second Semester'];
 
   const [schoolYear, setSchoolYear] = useState('S.Y 2025 - 2026');
   const [semester, setSemester] = useState('First Semester');
@@ -310,27 +310,31 @@ export default function HonorsScreen() {
 
   const adviser = 'Tristan Mondisico';
 
-  const allStudents: Student[] = [
-    { name: 'Alvarez, Tangal', id: '1', unit: '25', gpa: '1.500', section: '1A', yearLevel: 'First Year' },
-    { name: 'Almonia, Emo Cyril', id: '2', unit: '24', gpa: '1.520', section: '1A', yearLevel: 'First Year' },
-    { name: 'Rivera, Hannah', id: '3', unit: '23', gpa: '1.410', section: '1B', yearLevel: 'First Year' },
-    { name: 'Dela Cruz, Joshua', id: '4', unit: '25', gpa: '1.780', section: '1B', yearLevel: 'First Year' },
+ const allStudents: Student[] = [
+  // 1st Year
+  { name: 'Alvarez, Tangal', id: '1', unit: '25', gpa: '1.500', section: '1A Microsoft', yearLevel: 'First Year' },
+  { name: 'Almonia, Emo Cyril', id: '2', unit: '24', gpa: '1.520', section: '1A Microsoft', yearLevel: 'First Year' },
+  { name: 'Rivera, Hannah', id: '3', unit: '23', gpa: '1.410', section: '1B Google', yearLevel: 'First Year' },
+  { name: 'Dela Cruz, Joshua', id: '4', unit: '25', gpa: '1.780', section: '1B Google', yearLevel: 'First Year' },
 
-    { name: 'Sarmiento, Jade Anne', id: '5', unit: '26', gpa: '1.430', section: '2A', yearLevel: 'Second Year' },
-    { name: 'Reyes, Mark Daniel', id: '6', unit: '25', gpa: '1.610', section: '2A', yearLevel: 'Second Year' },
-    { name: 'Torres, Angela Mae', id: '7', unit: '23', gpa: '1.720', section: '2B', yearLevel: 'Second Year' },
-    { name: 'Lopez, Maria', id: '8', unit: '24', gpa: '1.400', section: '2B', yearLevel: 'Second Year' },
+  // 2nd Year
+  { name: 'Sarmiento, Jade Anne', id: '5', unit: '26', gpa: '1.430', section: '2A Algorithm', yearLevel: 'Second Year' },
+  { name: 'Reyes, Mark Daniel', id: '6', unit: '25', gpa: '1.610', section: '2A Algorithm', yearLevel: 'Second Year' },
+  { name: 'Torres, Angela Mae', id: '7', unit: '23', gpa: '1.720', section: '2B Pseudocode', yearLevel: 'Second Year' },
+  { name: 'Lopez, Maria', id: '8', unit: '24', gpa: '1.400', section: '2B Pseudocode', yearLevel: 'Second Year' },
 
-    { name: 'Santos, Kevin', id: '9', unit: '22', gpa: '1.300', section: '3A', yearLevel: 'Third Year' },
-    { name: 'Garcia, Nina', id: '10', unit: '23', gpa: '1.650', section: '3A', yearLevel: 'Third Year' },
-    { name: 'Fernandez, Carlo', id: '11', unit: '24', gpa: '1.890', section: '3B', yearLevel: 'Third Year' },
-    { name: 'Mendoza, Claire', id: '12', unit: '25', gpa: '1.550', section: '3B', yearLevel: 'Third Year' },
+  // 3rd Year
+  { name: 'Santos, Kevin', id: '9', unit: '22', gpa: '1.300', section: '3A Python', yearLevel: 'Third Year' },
+  { name: 'Garcia, Nina', id: '10', unit: '23', gpa: '1.650', section: '3A Python', yearLevel: 'Third Year' },
+  { name: 'Fernandez, Carlo', id: '11', unit: '24', gpa: '1.890', section: '3B Java', yearLevel: 'Third Year' },
+  { name: 'Mendoza, Claire', id: '12', unit: '25', gpa: '1.550', section: '3B Java', yearLevel: 'Third Year' },
 
-    { name: 'Aquino, Paolo', id: '13', unit: '21', gpa: '1.600', section: '4A', yearLevel: 'Fourth Year' },
-    { name: 'Gonzales, Bea', id: '14', unit: '24', gpa: '1.450', section: '4A', yearLevel: 'Fourth Year' },
-    { name: 'Villanueva, Sean', id: '15', unit: '23', gpa: '1.700', section: '4B', yearLevel: 'Fourth Year' },
-    { name: 'Navarro, Kate', id: '16', unit: '24', gpa: '1.320', section: '4B', yearLevel: 'Fourth Year' },
-  ];
+  // 4th Year
+  { name: 'Aquino, Paolo', id: '13', unit: '21', gpa: '1.600', section: '4A Xamarin', yearLevel: 'Fourth Year' },
+  { name: 'Gonzales, Bea', id: '14', unit: '24', gpa: '1.450', section: '4A Xamarin', yearLevel: 'Fourth Year' },
+  { name: 'Villanueva, Sean', id: '15', unit: '23', gpa: '1.700', section: '4B Laravel', yearLevel: 'Fourth Year' },
+  { name: 'Navarro, Kate', id: '16', unit: '24', gpa: '1.320', section: '4B Laravel', yearLevel: 'Fourth Year' },
+];
 
   const handleGenerateHonorRoll = () => {
     const groupedMap: Record<string, GeneratedSection> = {};

@@ -22,7 +22,7 @@ const schoolYears = [
   'S.Y. 2025 - 2026',
   'S.Y. 2026 - 2027',
 ];
-const semesters = ['First Semester', 'Second Semester', 'Summer'];
+const semesters = ['First Semester', 'Second Semester', ];
 
 const studentDatabase = {
   '1': {

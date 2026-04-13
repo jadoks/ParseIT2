@@ -91,33 +91,39 @@ const ANNOUNCEMENTS: Announcement[] = [
 const INITIAL_COURSES: CourseWithIcon[] = [
   {
     id: '1',
-    name: 'Web Development 101',
-    courseCode: 'CS-101',
-    classCode: 'WD101A1',
+    name: 'Introduction to Computing',
+    courseCode: 'IT101',
+    classCode: 'IT101-1A',
     instructor: CURRENT_USER_NAME,
-    section: 'A',
+    section: '1A Microsoft',
     bannerUri: undefined,
-    icon: 'web',
+    year: '1st Year',
+    semester: '1st Semester',
+    icon: 'laptop',
   },
   {
     id: '2',
-    name: 'Programming Logic',
-    courseCode: 'CS-102',
-    classCode: 'PL102B2',
+    name: 'Computer Programming 1',
+    courseCode: 'IT102',
+    classCode: 'IT102-1B',
     instructor: CURRENT_USER_NAME,
-    section: 'B',
+    section: '1B Google',
     bannerUri: undefined,
+    year: '1st Year',
+    semester: '1st Semester',
     icon: 'code-tags',
   },
   {
     id: '3',
-    name: 'Computer Fundamentals',
-    courseCode: 'IT-100',
-    classCode: 'CF100C3',
+    name: 'Data Structures and Algorithms',
+    courseCode: 'IT201',
+    classCode: 'IT201-2A',
     instructor: CURRENT_USER_NAME,
-    section: 'C',
+    section: '2A Algorithm',
     bannerUri: undefined,
-    icon: 'desktop-classic',
+    year: '2nd Year',
+    semester: '1st Semester',
+    icon: 'sitemap',
   },
 ];
 
@@ -189,7 +195,6 @@ export default function TeacherApp({ onLogout }: Props) {
     INITIAL_COURSES[0]
   );
 
-  // analytics dropdown selection
   const [selectedAnalyticsClass, setSelectedAnalyticsClass] = useState<string>('All');
 
   const [currentUserAvatar, setCurrentUserAvatar] = useState<any>(
@@ -232,9 +237,9 @@ export default function TeacherApp({ onLogout }: Props) {
     () =>
       courses.map((course) => ({
         id: course.id,
-        name: course.name,
+        name: `${course.courseCode} - ${course.name}`,
         instructor: course.instructor,
-        semester: '2nd Semester',
+        semester: course.semester || '1st Semester',
         schoolYear: '2025-2026',
         section: course.section,
       })),
@@ -267,7 +272,7 @@ export default function TeacherApp({ onLogout }: Props) {
       navigateTo(screen);
     }
   };
-
+  
   const handleDrawerNavigate = (screen: string) => {
     if (isAppScreen(screen)) {
       navigateTo(screen);
@@ -410,9 +415,16 @@ export default function TeacherApp({ onLogout }: Props) {
       ...newCourse,
       instructor: CURRENT_USER_NAME,
       icon: getCourseIcon(newCourse.name),
+      year: newCourse.year || '1st Year',
+      semester: newCourse.semester || '1st Semester',
     };
 
     setCourses((prev) => [courseWithIcon, ...prev]);
+  };
+
+  const handleDeleteCourse = (id: string) => {
+    setCourses((prev) => prev.filter((course) => course.id !== id));
+    setSelectedCourse((prev) => (prev?.id === id ? null : prev));
   };
 
   return (
@@ -471,13 +483,14 @@ export default function TeacherApp({ onLogout }: Props) {
               courses={courses}
               onOpenCourse={(course: CourseDetailData) => handleOpenCourse(course)}
               onCreateClass={(course: CourseDetailData) => handleCreateClass(course)}
+              onDeleteCourse={handleDeleteCourse}
             />
           ) : activeScreen === 'honors' ? (
             <Honors />
           ) : activeScreen === 'grades' ? (
             <Grades />
           ) : activeScreen === 'announcement' ? (
-            <ShareAnnouncement key="announcement-screen" />
+            <ShareAnnouncement />
           ) : activeScreen === 'community' ? (
             <Community2
               posts={hydratedCommunityPosts}

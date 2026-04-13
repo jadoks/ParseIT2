@@ -1,25 +1,24 @@
+import Ionicons from '@expo/vector-icons/Ionicons';
 import * as Clipboard from 'expo-clipboard';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   ImageBackground,
   Modal,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   useWindowDimensions,
-  View
+  View,
 } from 'react-native';
 import { launchImageLibrary } from 'react-native-image-picker';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 
-// Components
 import AnnouncementBanner from './TeacherAnnouncementBanner';
 import AnnouncementModal, { Announcement } from './TeacherAnnouncementModal';
 
-// Local Asset path
 const DEFAULT_COURSE_IMAGE = require('../../assets/parseclass/AP1.jpg');
 
 export type TeacherCourseData = {
@@ -30,6 +29,9 @@ export type TeacherCourseData = {
   instructor: string;
   section?: string;
   bannerUri?: string;
+  year?: string;
+  yearSection?: string;
+  semester?: string;
 };
 
 export interface DashboardAssignment {
@@ -52,9 +54,83 @@ interface DashboardProps {
   onEditCourse?: (course: TeacherCourseData) => void;
 }
 
+type YearOption = {
+  id: string;
+  label: string;
+};
+
+type SectionOption = {
+  id: string;
+  label: string;
+};
+
+type SemesterOption = {
+  id: string;
+  label: string;
+};
+
+type CourseOption = {
+  id: string;
+  label: string;
+};
+
 const DEFAULT_INSTRUCTOR = 'Ramcee Jade L. Munoz';
 
-const generateClassCode = () => {
+const YEAR_OPTIONS: YearOption[] = [
+  { id: '1st', label: '1st Year' },
+  { id: '2nd', label: '2nd Year' },
+  { id: '3rd', label: '3rd Year' },
+  { id: '4th', label: '4th Year' },
+];
+
+const SECTION_OPTIONS: Record<string, SectionOption[]> = {
+  '1st': [
+    { id: '1A', label: '1A Microsoft' },
+    { id: '1B', label: '1B Google' },
+  ],
+  '2nd': [
+    { id: '2A', label: '2A Algorithm' },
+    { id: '2B', label: '2B Pseudocode' },
+  ],
+  '3rd': [
+    { id: '3A', label: '3A Python' },
+    { id: '3B', label: '3B Java' },
+  ],
+  '4th': [
+    { id: '4A', label: '4A Xamarin' },
+    { id: '4B', label: '4B Laravel' },
+  ],
+};
+
+const COURSE_OPTIONS: Record<string, CourseOption[]> = {
+  '1st': [
+    { id: 'IT101', label: 'IT101 - Introduction to Computing' },
+    { id: 'IT102', label: 'IT102 - Computer Programming 1' },
+  ],
+  '2nd': [
+    { id: 'IT201', label: 'IT201 - Data Structures and Algorithms' },
+    { id: 'IT202', label: 'IT202 - Object-Oriented Programming' },
+  ],
+  '3rd': [
+    { id: 'IT301', label: 'IT301 - Mobile Application Development' },
+    { id: 'IT302', label: 'IT302 - Web Systems and Technologies' },
+  ],
+  '4th': [
+    { id: 'IT401', label: 'IT401 - Capstone Project 1' },
+    { id: 'IT402', label: 'IT402 - Systems Integration and Architecture' },
+  ],
+};
+
+const SEMESTER_OPTIONS: SemesterOption[] = [
+  { id: 'sem-1', label: '1st Semester ' },
+  { id: 'sem-2', label: '2nd Semester ' },
+];
+
+const generateClassCode = (courseCode?: string, sectionId?: string) => {
+  if (courseCode && sectionId) {
+    return `${courseCode}-${sectionId}`;
+  }
+
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
   let result = '';
   for (let i = 0; i < 8; i++) {
@@ -80,18 +156,23 @@ const Dashboard2 = ({
   const [isEditModalVisible, setEditModalVisible] = useState(false);
   const [isMenuVisible, setMenuVisible] = useState(false);
 
+  const [isSemesterDropdownVisible, setSemesterDropdownVisible] = useState(false);
+  const [isEditSemesterDropdownVisible, setEditSemesterDropdownVisible] = useState(false);
+
   const [menuCourse, setMenuCourse] = useState<TeacherCourseData | null>(null);
   const [editingCourse, setEditingCourse] = useState<TeacherCourseData | null>(null);
   const [menuPosition, setMenuPosition] = useState({ x: 0, y: 0 });
 
-  const [className, setClassName] = useState('');
-  const [courseCode, setCourseCode] = useState('');
-  const [classSection, setClassSection] = useState('');
+  const [selectedYear, setSelectedYear] = useState<string | null>(null);
+  const [selectedSection, setSelectedSection] = useState<string | null>(null);
+  const [selectedSemester, setSelectedSemester] = useState<string>('sem-1');
+  const [selectedCourse, setSelectedCourse] = useState<string | null>(null);
   const [classBanner, setClassBanner] = useState('');
 
-  const [editClassName, setEditClassName] = useState('');
-  const [editCourseCode, setEditCourseCode] = useState('');
-  const [editClassSection, setEditClassSection] = useState('');
+  const [editSelectedYear, setEditSelectedYear] = useState<string | null>(null);
+  const [editSelectedSection, setEditSelectedSection] = useState<string | null>(null);
+  const [editSelectedSemester, setEditSelectedSemester] = useState<string>('sem-1');
+  const [editSelectedCourse, setEditSelectedCourse] = useState<string | null>(null);
   const [editClassBanner, setEditClassBanner] = useState('');
 
   const isMobile = width < 768;
@@ -110,18 +191,36 @@ const Dashboard2 = ({
 
   const cardWidth = isMobile ? '100%' : isLargeScreen ? '31.5%' : '48%';
 
+  const selectedSemesterLabel = useMemo(() => {
+    return (
+      SEMESTER_OPTIONS.find((item) => item.id === selectedSemester)?.label ||
+      'Select semester'
+    );
+  }, [selectedSemester]);
+
+  const editSelectedSemesterLabel = useMemo(() => {
+    return (
+      SEMESTER_OPTIONS.find((item) => item.id === editSelectedSemester)?.label ||
+      'Select semester'
+    );
+  }, [editSelectedSemester]);
+
   const resetCreateForm = () => {
-    setClassName('');
-    setCourseCode('');
-    setClassSection('');
+    setSelectedYear(null);
+    setSelectedSection(null);
+    setSelectedCourse(null);
+    setSelectedSemester('sem-1');
     setClassBanner('');
+    setSemesterDropdownVisible(false);
   };
 
   const resetEditForm = () => {
-    setEditClassName('');
-    setEditCourseCode('');
-    setEditClassSection('');
+    setEditSelectedYear(null);
+    setEditSelectedSection(null);
+    setEditSelectedCourse(null);
+    setEditSelectedSemester('sem-1');
     setEditClassBanner('');
+    setEditSemesterDropdownVisible(false);
     setEditingCourse(null);
   };
 
@@ -163,20 +262,107 @@ const Dashboard2 = ({
     }
   };
 
-  const handleCreateClass = () => {
-    if (!className.trim() || !courseCode.trim()) {
-      Alert.alert('Missing fields', 'Please fill in class name and course code.');
+  const toggleYear = (yearId: string) => {
+    if (selectedYear === yearId) {
+      setSelectedYear(null);
+      setSelectedSection(null);
+      setSelectedCourse(null);
       return;
     }
 
+    setSelectedYear(yearId);
+    setSelectedSection(null);
+    setSelectedCourse(null);
+  };
+
+  const toggleSection = (sectionId: string) => {
+    if (selectedSection === sectionId) {
+      setSelectedSection(null);
+      return;
+    }
+
+    setSelectedSection(sectionId);
+  };
+
+  const toggleCourse = (courseId: string) => {
+    if (selectedCourse === courseId) {
+      setSelectedCourse(null);
+      return;
+    }
+
+    setSelectedCourse(courseId);
+  };
+
+  const toggleEditYear = (yearId: string) => {
+    if (editSelectedYear === yearId) {
+      setEditSelectedYear(null);
+      setEditSelectedSection(null);
+      setEditSelectedCourse(null);
+      return;
+    }
+
+    setEditSelectedYear(yearId);
+    setEditSelectedSection(null);
+    setEditSelectedCourse(null);
+  };
+
+  const toggleEditSection = (sectionId: string) => {
+    if (editSelectedSection === sectionId) {
+      setEditSelectedSection(null);
+      return;
+    }
+
+    setEditSelectedSection(sectionId);
+  };
+
+  const toggleEditCourse = (courseId: string) => {
+    if (editSelectedCourse === courseId) {
+      setEditSelectedCourse(null);
+      return;
+    }
+
+    setEditSelectedCourse(courseId);
+  };
+
+  const handleCreateClass = () => {
+    if (!selectedYear) {
+      Alert.alert('Missing Field', 'Please select a year.');
+      return;
+    }
+
+    if (!selectedSection) {
+      Alert.alert('Missing Field', 'Please select a section.');
+      return;
+    }
+
+    if (!selectedCourse) {
+      Alert.alert('Missing Field', 'Please select a course code with course name.');
+      return;
+    }
+
+    const yearLabel =
+      YEAR_OPTIONS.find((year) => year.id === selectedYear)?.label || '';
+
+    const sectionLabel =
+      SECTION_OPTIONS[selectedYear]?.find((section) => section.id === selectedSection)?.label || '';
+
+    const selectedCourseItem =
+      COURSE_OPTIONS[selectedYear]?.find((course) => course.id === selectedCourse);
+
+    const courseLabel = selectedCourseItem?.label || '';
+    const courseCode = selectedCourseItem?.id || '';
+
     const newCourse: TeacherCourseData = {
       id: Date.now().toString(),
-      name: className.trim(),
-      courseCode: courseCode.trim().toUpperCase(),
-      classCode: generateClassCode(),
-      section: classSection.trim(),
+      name: courseLabel,
+      courseCode,
+      classCode: generateClassCode(courseCode, selectedSection),
+      section: sectionLabel,
       instructor: DEFAULT_INSTRUCTOR,
       bannerUri: classBanner || undefined,
+      year: yearLabel,
+      yearSection: sectionLabel,
+      semester: selectedSemesterLabel,
     };
 
     setLocalCourses((prev) => [newCourse, ...prev]);
@@ -189,10 +375,36 @@ const Dashboard2 = ({
   const openEditModal = () => {
     if (!menuCourse) return;
 
+    const matchedYear =
+      YEAR_OPTIONS.find((year) => year.label === menuCourse.year)?.id ||
+      Object.entries(SECTION_OPTIONS).find(([, sections]) =>
+        sections.some((section) => section.label === (menuCourse.yearSection || menuCourse.section))
+      )?.[0] ||
+      null;
+
+    const matchedSection =
+      matchedYear
+        ? SECTION_OPTIONS[matchedYear]?.find(
+            (section) => section.label === (menuCourse.yearSection || menuCourse.section)
+          )?.id || null
+        : null;
+
+    const matchedCourse =
+      matchedYear
+        ? COURSE_OPTIONS[matchedYear]?.find(
+            (course) =>
+              course.id === menuCourse.courseCode || course.label === menuCourse.name
+          )?.id || null
+        : null;
+
+    const matchedSemester =
+      SEMESTER_OPTIONS.find((semester) => semester.label === menuCourse.semester)?.id || 'sem-1';
+
     setEditingCourse(menuCourse);
-    setEditClassName(menuCourse.name);
-    setEditCourseCode(menuCourse.courseCode);
-    setEditClassSection(menuCourse.section || '');
+    setEditSelectedYear(matchedYear);
+    setEditSelectedSection(matchedSection);
+    setEditSelectedCourse(matchedCourse);
+    setEditSelectedSemester(matchedSemester);
     setEditClassBanner(menuCourse.bannerUri || '');
 
     closeMenu();
@@ -202,16 +414,46 @@ const Dashboard2 = ({
   const handleSaveEdit = () => {
     if (!editingCourse) return;
 
-    if (!editClassName.trim() || !editCourseCode.trim()) {
-      Alert.alert('Missing fields', 'Please fill in class name and course code.');
+    if (!editSelectedYear) {
+      Alert.alert('Missing Field', 'Please select a year.');
       return;
     }
 
+    if (!editSelectedSection) {
+      Alert.alert('Missing Field', 'Please select a section.');
+      return;
+    }
+
+    if (!editSelectedCourse) {
+      Alert.alert('Missing Field', 'Please select a course code with course name.');
+      return;
+    }
+
+    const yearLabel =
+      YEAR_OPTIONS.find((year) => year.id === editSelectedYear)?.label || '';
+
+    const sectionLabel =
+      SECTION_OPTIONS[editSelectedYear]?.find(
+        (section) => section.id === editSelectedSection
+      )?.label || '';
+
+    const selectedCourseItem =
+      COURSE_OPTIONS[editSelectedYear]?.find(
+        (course) => course.id === editSelectedCourse
+      );
+
+    const courseLabel = selectedCourseItem?.label || '';
+    const courseCode = selectedCourseItem?.id || '';
+
     const updatedCourse: TeacherCourseData = {
       ...editingCourse,
-      name: editClassName.trim(),
-      courseCode: editCourseCode.trim().toUpperCase(),
-      section: editClassSection.trim(),
+      name: courseLabel,
+      courseCode,
+      classCode: generateClassCode(courseCode, editSelectedSection),
+      year: yearLabel,
+      yearSection: sectionLabel,
+      section: sectionLabel,
+      semester: editSelectedSemesterLabel,
       bannerUri: editClassBanner || undefined,
     };
 
@@ -251,7 +493,9 @@ const Dashboard2 = ({
           text: 'Delete',
           style: 'destructive',
           onPress: () => {
-            setLocalCourses((prev) => prev.filter((course) => course.id !== menuCourse.id));
+            setLocalCourses((prev) =>
+              prev.filter((course) => course.id !== menuCourse.id)
+            );
             onDeleteCourse?.(menuCourse.id);
             closeMenu();
           },
@@ -259,6 +503,24 @@ const Dashboard2 = ({
       ]
     );
   };
+
+  const renderCheckboxRow = (
+    label: string,
+    isChecked: boolean,
+    onPress: () => void,
+    activeStyle: any
+  ) => (
+    <TouchableOpacity
+      style={[styles.checkRow, isChecked && activeStyle]}
+      activeOpacity={0.85}
+      onPress={onPress}
+    >
+      <View style={[styles.checkboxBase, isChecked && styles.checkboxChecked]}>
+        {isChecked && <Ionicons name="checkmark" size={12} color="#FFFFFF" />}
+      </View>
+      <Text style={styles.checkText}>{label}</Text>
+    </TouchableOpacity>
+  );
 
   return (
     <View style={styles.safeArea}>
@@ -275,7 +537,15 @@ const Dashboard2 = ({
         onRequestClose={() => setCreateModalVisible(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={styles.createModalContainer}>
+          <Pressable
+            style={StyleSheet.absoluteFill}
+            onPress={() => {
+              resetCreateForm();
+              setCreateModalVisible(false);
+            }}
+          />
+
+          <View style={styles.createModalContainerWide}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Create Class</Text>
               <TouchableOpacity
@@ -288,73 +558,177 @@ const Dashboard2 = ({
               </TouchableOpacity>
             </View>
 
-            <TextInput
-              style={styles.input}
-              placeholder="Enter class name"
-              placeholderTextColor="#999"
-              value={className}
-              onChangeText={setClassName}
-            />
-
-            <TextInput
-              style={styles.input}
-              placeholder="Enter course code (example: CS-101)"
-              placeholderTextColor="#999"
-              value={courseCode}
-              onChangeText={setCourseCode}
-              autoCapitalize="characters"
-            />
-
-            <TextInput
-              style={styles.input}
-              placeholder="Enter section"
-              placeholderTextColor="#999"
-              value={classSection}
-              onChangeText={setClassSection}
-            />
-
-            <Text style={styles.inputLabel}>Class Banner / Background Photo</Text>
-            <TouchableOpacity style={styles.uploadBtn} onPress={handlePickBanner}>
-              <MaterialCommunityIcons name="image-plus" size={20} color="#D32F2F" />
-              <Text style={styles.uploadBtnText}>
-                {classBanner ? 'Change Banner Photo' : 'Upload Banner Photo'}
-              </Text>
-            </TouchableOpacity>
-
-            {classBanner ? (
-              <ImageBackground
-                source={{ uri: classBanner }}
-                style={styles.bannerPreview}
-                imageStyle={styles.previewImage}
-              >
-                <View style={styles.previewOverlay}>
-                  <Text style={styles.previewText}>Banner Preview</Text>
+            <ScrollView
+              style={styles.transparentScroll}
+              contentContainerStyle={styles.modalInnerContent}
+              showsVerticalScrollIndicator={false}
+              showsHorizontalScrollIndicator={false}
+            >
+              <View style={styles.modalSection}>
+                <View style={styles.modalSectionHeaderRow}>
+                  <MaterialCommunityIcons name="google-classroom" size={18} color="#D32F2F" />
+                  <Text style={styles.modalSectionTitle}>Select Year</Text>
                 </View>
-              </ImageBackground>
-            ) : null}
 
-            <View style={styles.codeNoticeBox}>
-              <MaterialCommunityIcons name="shuffle-variant" size={18} color="#2E7D32" />
-              <Text style={styles.codeNoticeText}>
-                A class code will be automatically generated when you create the class.
-              </Text>
-            </View>
+                {YEAR_OPTIONS.map((year) =>
+                  renderCheckboxRow(
+                    year.label,
+                    selectedYear === year.id,
+                    () => toggleYear(year.id),
+                    styles.checkRowActive
+                  )
+                )}
+              </View>
 
-            <View style={styles.modalButtonRow}>
-              <TouchableOpacity
-                style={styles.cancelBtn}
-                onPress={() => {
-                  resetCreateForm();
-                  setCreateModalVisible(false);
-                }}
-              >
-                <Text style={styles.cancelBtnText}>Cancel</Text>
+              {selectedYear && (
+                <View style={styles.modalSection}>
+                  <View style={styles.modalSectionHeaderRow}>
+                    <Ionicons name="layers-outline" size={18} color="#D32F2F" />
+                    <Text style={styles.modalSectionTitle}>Select Section</Text>
+                  </View>
+
+                  {SECTION_OPTIONS[selectedYear].map((section) => (
+                    <TouchableOpacity
+                      key={section.id}
+                      style={[
+                        styles.sectionRow,
+                        selectedSection === section.id && styles.sectionRowActive,
+                      ]}
+                      activeOpacity={0.85}
+                      onPress={() => toggleSection(section.id)}
+                    >
+                      <View
+                        style={[
+                          styles.checkboxBase,
+                          selectedSection === section.id && styles.checkboxChecked,
+                        ]}
+                      >
+                        {selectedSection === section.id && (
+                          <Ionicons name="checkmark" size={12} color="#FFFFFF" />
+                        )}
+                      </View>
+                      <Text style={styles.checkText}>{section.label}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
+
+              {selectedYear && (
+                <View style={styles.modalSection}>
+                  <View style={styles.modalSectionHeaderRow}>
+                    <Ionicons name="book-outline" size={18} color="#D32F2F" />
+                    <Text style={styles.modalSectionTitle}>Select Course Code with Course Name</Text>
+                  </View>
+
+                  {COURSE_OPTIONS[selectedYear].map((course) =>
+                    renderCheckboxRow(
+                      course.label,
+                      selectedCourse === course.id,
+                      () => toggleCourse(course.id),
+                      styles.sectionRowActive
+                    )
+                  )}
+                </View>
+              )}
+
+              <View style={styles.semesterFieldWrap}>
+                <Text style={styles.inputLabel}>Semester Selection</Text>
+
+                <TouchableOpacity
+                  style={styles.dropdownTrigger}
+                  onPress={() => setSemesterDropdownVisible((prev) => !prev)}
+                >
+                  <Text style={styles.dropdownTriggerText}>{selectedSemesterLabel}</Text>
+                  <MaterialCommunityIcons name="chevron-down" size={20} color="#666" />
+                </TouchableOpacity>
+
+                {isSemesterDropdownVisible && (
+                  <>
+                    <Pressable
+                      style={styles.floatingDropdownDismiss}
+                      onPress={() => setSemesterDropdownVisible(false)}
+                    />
+                    <View style={styles.floatingDropdownMenu}>
+                      {SEMESTER_OPTIONS.map((semester, index) => {
+                        const isActive = selectedSemester === semester.id;
+                        const isLast = index === SEMESTER_OPTIONS.length - 1;
+
+                        return (
+                          <TouchableOpacity
+                            key={semester.id}
+                            style={[
+                              styles.floatingDropdownItem,
+                              isActive && styles.floatingDropdownItemActive,
+                              !isLast && styles.floatingDropdownItemBorder,
+                            ]}
+                            onPress={() => {
+                              setSelectedSemester(semester.id);
+                              setSemesterDropdownVisible(false);
+                            }}
+                          >
+                            <Text
+                              style={[
+                                styles.floatingDropdownItemText,
+                                isActive && styles.floatingDropdownItemTextActive,
+                              ]}
+                            >
+                              {semester.label}
+                            </Text>
+
+                            {isActive && (
+                              <Ionicons name="checkmark-circle" size={18} color="#D32F2F" />
+                            )}
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  </>
+                )}
+              </View>
+
+              <Text style={styles.inputLabel}>Class Banner / Background Photo</Text>
+              <TouchableOpacity style={styles.uploadBtn} onPress={handlePickBanner}>
+                <MaterialCommunityIcons name="image-plus" size={20} color="#D32F2F" />
+                <Text style={styles.uploadBtnText}>
+                  {classBanner ? 'Change Banner Photo' : 'Upload Banner Photo'}
+                </Text>
               </TouchableOpacity>
 
-              <TouchableOpacity style={styles.saveBtn} onPress={handleCreateClass}>
-                <Text style={styles.saveBtnText}>Create</Text>
-              </TouchableOpacity>
-            </View>
+              {classBanner ? (
+                <ImageBackground
+                  source={{ uri: classBanner }}
+                  style={styles.bannerPreview}
+                  imageStyle={styles.previewImage}
+                >
+                  <View style={styles.previewOverlay}>
+                    <Text style={styles.previewText}>Banner Preview</Text>
+                  </View>
+                </ImageBackground>
+              ) : null}
+
+              <View style={styles.codeNoticeBox}>
+                <MaterialCommunityIcons name="shuffle-variant" size={18} color="#2E7D32" />
+                <Text style={styles.codeNoticeText}>
+                  The class code will follow the selected course code and section.
+                </Text>
+              </View>
+
+              <View style={styles.modalButtonRow}>
+                <TouchableOpacity
+                  style={styles.cancelBtn}
+                  onPress={() => {
+                    resetCreateForm();
+                    setCreateModalVisible(false);
+                  }}
+                >
+                  <Text style={styles.cancelBtnText}>Cancel</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity style={styles.saveBtn} onPress={handleCreateClass}>
+                  <Text style={styles.saveBtnText}>Create</Text>
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
           </View>
         </View>
       </Modal>
@@ -366,7 +740,15 @@ const Dashboard2 = ({
         onRequestClose={() => setEditModalVisible(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={styles.createModalContainer}>
+          <Pressable
+            style={StyleSheet.absoluteFill}
+            onPress={() => {
+              resetEditForm();
+              setEditModalVisible(false);
+            }}
+          />
+
+          <View style={styles.createModalContainerWide}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Edit Class</Text>
               <TouchableOpacity
@@ -379,104 +761,212 @@ const Dashboard2 = ({
               </TouchableOpacity>
             </View>
 
-            <TextInput
-              style={styles.input}
-              placeholder="Enter class name"
-              placeholderTextColor="#999"
-              value={editClassName}
-              onChangeText={setEditClassName}
-            />
-
-            <TextInput
-              style={styles.input}
-              placeholder="Enter course code (example: CS-101)"
-              placeholderTextColor="#999"
-              value={editCourseCode}
-              onChangeText={setEditCourseCode}
-              autoCapitalize="characters"
-            />
-
-            <TextInput
-              style={styles.input}
-              placeholder="Enter section"
-              placeholderTextColor="#999"
-              value={editClassSection}
-              onChangeText={setEditClassSection}
-            />
-
-            <Text style={styles.inputLabel}>Class Banner / Background Photo</Text>
-            <TouchableOpacity style={styles.uploadBtn} onPress={handlePickEditBanner}>
-              <MaterialCommunityIcons name="image-edit-outline" size={20} color="#D32F2F" />
-              <Text style={styles.uploadBtnText}>
-                {editClassBanner ? 'Change Banner Photo' : 'Upload Banner Photo'}
-              </Text>
-            </TouchableOpacity>
-
-            {editClassBanner ? (
-              <ImageBackground
-                source={{ uri: editClassBanner }}
-                style={styles.bannerPreview}
-                imageStyle={styles.previewImage}
-              >
-                <View style={styles.previewOverlay}>
-                  <Text style={styles.previewText}>Banner Preview</Text>
+            <ScrollView
+              style={styles.transparentScroll}
+              contentContainerStyle={styles.modalInnerContent}
+              showsVerticalScrollIndicator={false}
+              showsHorizontalScrollIndicator={false}
+            >
+              <View style={styles.modalSection}>
+                <View style={styles.modalSectionHeaderRow}>
+                  <MaterialCommunityIcons name="google-classroom" size={18} color="#D32F2F" />
+                  <Text style={styles.modalSectionTitle}>Select Year</Text>
                 </View>
-              </ImageBackground>
-            ) : null}
 
-            <View style={styles.modalButtonRow}>
-              <TouchableOpacity
-                style={styles.cancelBtn}
-                onPress={() => {
-                  resetEditForm();
-                  setEditModalVisible(false);
-                }}
-              >
-                <Text style={styles.cancelBtnText}>Cancel</Text>
+                {YEAR_OPTIONS.map((year) =>
+                  renderCheckboxRow(
+                    year.label,
+                    editSelectedYear === year.id,
+                    () => toggleEditYear(year.id),
+                    styles.checkRowActive
+                  )
+                )}
+              </View>
+
+              {editSelectedYear && (
+                <View style={styles.modalSection}>
+                  <View style={styles.modalSectionHeaderRow}>
+                    <Ionicons name="layers-outline" size={18} color="#D32F2F" />
+                    <Text style={styles.modalSectionTitle}>Select Section</Text>
+                  </View>
+
+                  {SECTION_OPTIONS[editSelectedYear].map((section) => (
+                    <TouchableOpacity
+                      key={section.id}
+                      style={[
+                        styles.sectionRow,
+                        editSelectedSection === section.id && styles.sectionRowActive,
+                      ]}
+                      activeOpacity={0.85}
+                      onPress={() => toggleEditSection(section.id)}
+                    >
+                      <View
+                        style={[
+                          styles.checkboxBase,
+                          editSelectedSection === section.id && styles.checkboxChecked,
+                        ]}
+                      >
+                        {editSelectedSection === section.id && (
+                          <Ionicons name="checkmark" size={12} color="#FFFFFF" />
+                        )}
+                      </View>
+                      <Text style={styles.checkText}>{section.label}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
+
+              {editSelectedYear && (
+                <View style={styles.modalSection}>
+                  <View style={styles.modalSectionHeaderRow}>
+                    <Ionicons name="book-outline" size={18} color="#D32F2F" />
+                    <Text style={styles.modalSectionTitle}>Select Course Code with Course Name</Text>
+                  </View>
+
+                  {COURSE_OPTIONS[editSelectedYear].map((course) =>
+                    renderCheckboxRow(
+                      course.label,
+                      editSelectedCourse === course.id,
+                      () => toggleEditCourse(course.id),
+                      styles.sectionRowActive
+                    )
+                  )}
+                </View>
+              )}
+
+              <View style={styles.semesterFieldWrap}>
+                <Text style={styles.inputLabel}>Semester Selection</Text>
+
+                <TouchableOpacity
+                  style={styles.dropdownTrigger}
+                  onPress={() => setEditSemesterDropdownVisible((prev) => !prev)}
+                >
+                  <Text style={styles.dropdownTriggerText}>{editSelectedSemesterLabel}</Text>
+                  <MaterialCommunityIcons name="chevron-down" size={20} color="#666" />
+                </TouchableOpacity>
+
+                {isEditSemesterDropdownVisible && (
+                  <>
+                    <Pressable
+                      style={styles.floatingDropdownDismiss}
+                      onPress={() => setEditSemesterDropdownVisible(false)}
+                    />
+                    <View style={styles.floatingDropdownMenu}>
+                      {SEMESTER_OPTIONS.map((semester, index) => {
+                        const isActive = editSelectedSemester === semester.id;
+                        const isLast = index === SEMESTER_OPTIONS.length - 1;
+
+                        return (
+                          <TouchableOpacity
+                            key={semester.id}
+                            style={[
+                              styles.floatingDropdownItem,
+                              isActive && styles.floatingDropdownItemActive,
+                              !isLast && styles.floatingDropdownItemBorder,
+                            ]}
+                            onPress={() => {
+                              setEditSelectedSemester(semester.id);
+                              setEditSemesterDropdownVisible(false);
+                            }}
+                          >
+                            <Text
+                              style={[
+                                styles.floatingDropdownItemText,
+                                isActive && styles.floatingDropdownItemTextActive,
+                              ]}
+                            >
+                              {semester.label}
+                            </Text>
+
+                            {isActive && (
+                              <Ionicons name="checkmark-circle" size={18} color="#D32F2F" />
+                            )}
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  </>
+                )}
+              </View>
+
+              <Text style={styles.inputLabel}>Class Banner / Background Photo</Text>
+              <TouchableOpacity style={styles.uploadBtn} onPress={handlePickEditBanner}>
+                <MaterialCommunityIcons name="image-edit-outline" size={20} color="#D32F2F" />
+                <Text style={styles.uploadBtnText}>
+                  {editClassBanner ? 'Change Banner Photo' : 'Upload Banner Photo'}
+                </Text>
               </TouchableOpacity>
 
-              <TouchableOpacity style={styles.saveBtn} onPress={handleSaveEdit}>
-                <Text style={styles.saveBtnText}>Save Changes</Text>
-              </TouchableOpacity>
-            </View>
+              {editClassBanner ? (
+                <ImageBackground
+                                    source={{ uri: editClassBanner }}
+                  style={styles.bannerPreview}
+                  imageStyle={styles.previewImage}
+                >
+                  <View style={styles.previewOverlay}>
+                    <Text style={styles.previewText}>Banner Preview</Text>
+                  </View>
+                </ImageBackground>
+              ) : null}
+
+              <View style={styles.modalButtonRow}>
+                <TouchableOpacity
+                  style={styles.cancelBtn}
+                  onPress={() => {
+                    resetEditForm();
+                    setEditModalVisible(false);
+                  }}
+                >
+                  <Text style={styles.cancelBtnText}>Cancel</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity style={styles.saveBtn} onPress={handleSaveEdit}>
+                  <Text style={styles.saveBtnText}>Save Changes</Text>
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
           </View>
         </View>
       </Modal>
 
       <Modal
-        visible={isMenuVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={closeMenu}
-      >
-        <TouchableOpacity activeOpacity={1} style={styles.menuOverlay} onPress={closeMenu}>
-          <View
-            style={[
-              styles.menuBox,
-              {
-                position: 'absolute',
-                top: menuPosition.y - 2,
-                left: menuPosition.x - 190,
-              },
-            ]}
-          >
-            <TouchableOpacity style={styles.menuItem} onPress={handleCopyLink}>
-              <MaterialCommunityIcons name="content-copy" size={20} color="#202124" />
-              <Text style={styles.menuText}>Copy Link</Text>
-            </TouchableOpacity>
+  visible={isMenuVisible}
+  transparent
+  animationType="fade"
+  onRequestClose={closeMenu}
+>
+  <View style={styles.menuOverlay}>
+    {/* Background click */}
+    <Pressable style={StyleSheet.absoluteFill} onPress={closeMenu} />
 
-            <TouchableOpacity style={styles.menuItem} onPress={openEditModal}>
-              <MaterialCommunityIcons name="pencil-outline" size={20} color="#1565C0" />
-              <Text style={[styles.menuText, { color: '#1565C0' }]}>Edit Class</Text>
-            </TouchableOpacity>
+    {/* Menu box */}
+    <View
+      style={[
+        styles.menuBox,
+        {
+          position: 'absolute',
+          top: menuPosition.y - 100,
+          left: menuPosition.x - 200,
+        },
+      ]}
+    >
+      <TouchableOpacity style={styles.menuItem} onPress={handleCopyLink}>
+        <MaterialCommunityIcons name="content-copy" size={20} color="#202124" />
+        <Text style={styles.menuText}>Copy Link</Text>
+      </TouchableOpacity>
 
-            <TouchableOpacity style={styles.menuItem} onPress={handleDeleteCourse}>
-              <MaterialCommunityIcons name="delete-outline" size={20} color="#D32F2F" />
-              <Text style={[styles.menuText, { color: '#D32F2F' }]}>Delete Class</Text>
-            </TouchableOpacity>
-          </View>
-        </TouchableOpacity>
-      </Modal>
+      <TouchableOpacity style={styles.menuItem} onPress={openEditModal}>
+        <MaterialCommunityIcons name="pencil-outline" size={20} color="#1565C0" />
+        <Text style={[styles.menuText, { color: '#1565C0' }]}>Edit Class</Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity style={styles.menuItem} onPress={handleDeleteCourse}>
+        <MaterialCommunityIcons name="delete-outline" size={20} color="#D32F2F" />
+        <Text style={[styles.menuText, { color: '#D32F2F' }]}>Delete Class</Text>
+      </TouchableOpacity>
+    </View>
+  </View>
+</Modal>
 
       <ScrollView
         style={styles.container}
@@ -485,6 +975,7 @@ const Dashboard2 = ({
           { paddingHorizontal: isMobile ? 14 : 20 },
         ]}
         showsVerticalScrollIndicator={false}
+        showsHorizontalScrollIndicator={false}
       >
         <View style={styles.mainWrapper}>
           <View style={styles.headerRow}>
@@ -519,18 +1010,26 @@ const Dashboard2 = ({
                   >
                     <View style={styles.bannerOverlay}>
                       <Text style={styles.bannerName} numberOfLines={1}>
-                        {item.name}
+                        {item.courseCode} - {item.name}
                       </Text>
                       <Text style={styles.bannerCode}>
                         {item.courseCode}
-                        {item.section ? ` • ${item.section}` : ''}
+                        {item.yearSection
+                          ? ` • ${item.yearSection}`
+                          : item.section
+                            ? ` • ${item.section}`
+                            : ''}
                       </Text>
+                      {!!item.year && <Text style={styles.bannerMeta}>{item.year}</Text>}
+                      {!!item.semester && (
+                        <Text style={styles.bannerMeta}>{item.semester}</Text>
+                      )}
                     </View>
                   </ImageBackground>
                 </View>
 
                 <View style={styles.cardContent}>
-                  <Text style={styles.instructorLabel}>Instructor</Text>
+                  <Text style={styles.instructorLabel}>INSTRUCTOR</Text>
                   <Text style={styles.instructorName}>{item.instructor}</Text>
                 </View>
 
@@ -538,7 +1037,6 @@ const Dashboard2 = ({
                   <TouchableOpacity
                     onPress={(event) => {
                       event.stopPropagation?.();
-
                       const { pageX, pageY } = event.nativeEvent;
 
                       setMenuPosition({
@@ -590,6 +1088,7 @@ const styles = StyleSheet.create({
   scrollPadding: {
     paddingTop: 16,
     paddingBottom: 40,
+    backgroundColor: 'transparent',
   },
 
   mainWrapper: {
@@ -702,6 +1201,13 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
 
+  bannerMeta: {
+    color: 'rgba(255,255,255,0.88)',
+    fontSize: 12,
+    fontWeight: '500',
+    marginTop: 2,
+  },
+
   cardContent: {
     paddingHorizontal: 16,
     paddingTop: 14,
@@ -745,18 +1251,28 @@ const styles = StyleSheet.create({
 
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(15,23,42,0.18)',
+    backgroundColor: 'rgba(15, 23, 42, 0.18)',
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 16,
   },
 
-  createModalContainer: {
+  createModalContainerWide: {
     width: '100%',
-    maxWidth: 420,
+    maxWidth: 520,
+    maxHeight: '92%',
     backgroundColor: '#fff',
     borderRadius: 18,
     padding: 20,
+  },
+
+  transparentScroll: {
+    backgroundColor: 'transparent',
+  },
+
+  modalInnerContent: {
+    paddingBottom: 20,
+    backgroundColor: 'transparent',
   },
 
   modalHeader: {
@@ -780,16 +1296,84 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
 
-  input: {
+  dropdownTrigger: {
     borderWidth: 1,
     borderColor: '#DDD',
     borderRadius: 12,
     paddingHorizontal: 14,
     height: 48,
+    backgroundColor: '#fff',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 2,
+  },
+
+  dropdownTriggerText: {
     fontSize: 14,
     color: '#202124',
-    backgroundColor: '#fff',
-    marginTop: 10,
+    fontWeight: '500',
+    flex: 1,
+    marginRight: 8,
+  },
+
+  semesterFieldWrap: {
+    position: 'relative',
+    zIndex: 2000,
+  },
+
+  floatingDropdownDismiss: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 1,
+  },
+
+  floatingDropdownMenu: {
+    position: 'absolute',
+    top: 86,
+    left: 0,
+    right: 0,
+    backgroundColor: 'rgba(255,255,255,0.96)',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E4E4E4',
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOpacity: 0.12,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 8,
+    zIndex: 2,
+  },
+
+  floatingDropdownItem: {
+    minHeight: 44,
+    paddingHorizontal: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: 'transparent',
+  },
+
+  floatingDropdownItemActive: {
+    backgroundColor: '#FFF7F7',
+  },
+
+  floatingDropdownItemBorder: {
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F1F1',
+  },
+
+  floatingDropdownItemText: {
+    flex: 1,
+    fontSize: 13,
+    color: '#202124',
+    fontWeight: '500',
+    paddingRight: 10,
+  },
+
+  floatingDropdownItemTextActive: {
+    color: '#D32F2F',
+    fontWeight: '700',
   },
 
   uploadBtn: {
@@ -917,4 +1501,81 @@ const styles = StyleSheet.create({
     color: '#000',
     fontWeight: '600',
   },
-});
+
+  modalSection: {
+    marginBottom: 18,
+  },
+
+  modalSectionHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+
+  modalSectionTitle: {
+    marginLeft: 8,
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#202124',
+  },
+
+  checkRow: {
+    minHeight: 46,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#F3D4D4',
+    backgroundColor: '#FFFFFF',
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginBottom: 8,
+  },
+
+  checkRowActive: {
+    borderColor: '#D32F2F',
+    backgroundColor: '#FFF7F7',
+  },
+
+  sectionRow: {
+    minHeight: 44,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#F3D4D4',
+    backgroundColor: '#FFFFFF',
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginBottom: 8,
+  },
+
+  sectionRowActive: {
+    borderColor: '#D32F2F',
+    backgroundColor: '#FFF7F7',
+  },
+
+  checkboxBase: {
+    width: 18,
+    height: 18,
+    borderRadius: 5,
+    borderWidth: 1.5,
+    borderColor: '#D8B4B4',
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
+  },
+
+  checkboxChecked: {
+    backgroundColor: '#D32F2F',
+    borderColor: '#D32F2F',
+  },
+
+  checkText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#202124',
+    flex: 1,
+  },
+});                  

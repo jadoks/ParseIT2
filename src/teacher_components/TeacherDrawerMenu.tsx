@@ -194,9 +194,13 @@ const DrawerMenu = ({
             <Text style={styles.userName} numberOfLines={2}>
               {userName}
             </Text>
+
+            {/* EMAIL REMOVED */}
+            {/*
             <Text style={styles.userEmail} numberOfLines={1}>
               {userEmail}
             </Text>
+            */}
           </View>
         </Pressable>
 
@@ -249,6 +253,8 @@ const DrawerMenu = ({
           />
         </ScrollView>
       </View>
+
+      {/* EVERYTHING BELOW IS UNCHANGED (logout + modals stay exactly the same) */}
 
       <View style={styles.logoutSection}>
         <Pressable

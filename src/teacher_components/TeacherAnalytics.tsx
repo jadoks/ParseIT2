@@ -1,11 +1,11 @@
 import React, { useMemo, useState } from 'react';
 import {
-    Modal,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  Modal,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { buildTeacherAnalytics } from '../analytics/analyticsService';
@@ -1236,7 +1236,7 @@ const styles = StyleSheet.create({
     marginLeft: 6,
     color: palette.primary,
     fontSize: 12,
-    fontWeight: '800',
+    fontWeight: 'bold',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },

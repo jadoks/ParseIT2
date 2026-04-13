@@ -69,6 +69,8 @@ export type CourseDetailData = {
   instructor: string;
   section?: string;
   bannerUri?: string;
+  year?: string;
+  semester?: string;
 };
 
 const COURSE_CONTENT: Record<
@@ -319,7 +321,6 @@ const TeacherCourseDetail2 = ({
   const isMobile = width < 768;
   const isTablet = width >= 768 && width < 1200;
 
-  // Mobile-only reserved top space to match your screenshot better
   const mobileTopSpace = isMobile ? insets.top + 10 : 1;
 
   const [activeTab, setActiveTab] = useState<'Materials' | 'Assignments'>('Materials');
@@ -587,6 +588,8 @@ const TeacherCourseDetail2 = ({
   const courseSection = course?.section || '';
   const courseInstructor = course?.instructor || 'No Instructor';
   const classCode = course?.classCode || 'No Class Code';
+  const courseYear = course?.year || '';
+  const courseSemester = course?.semester || '';
 
   if (showSubmissions) {
     return (
@@ -714,16 +717,24 @@ const TeacherCourseDetail2 = ({
             <Text
               style={[
                 styles.courseTitle,
-                { fontSize: isMobile ? 22 : isTablet ? 25 : 28 },
+                { fontSize: isMobile ? 21 : isTablet ? 24 : 27 },
               ]}
             >
-              {visibleCourseCode}
-              {courseSection ? ` (${courseSection})` : ''}
+              {visibleCourseCode} - {courseName}
             </Text>
 
             <Text style={[styles.courseSubText, { fontSize: isMobile ? 14 : 16 }]}>
-              {courseName}
+              {visibleCourseCode}
+              {courseSection ? ` • ${courseSection}` : ''}
             </Text>
+
+            {!!courseYear && (
+              <Text style={styles.metaText}>{courseYear}</Text>
+            )}
+
+            {!!courseSemester && (
+              <Text style={styles.metaText}>{courseSemester}</Text>
+            )}
 
             <Text style={styles.instructorText}>Instructor: {courseInstructor}</Text>
 
@@ -896,7 +907,7 @@ const TeacherCourseDetail2 = ({
                         <MaterialCommunityIcons name="check" size={16} color="#FFF" />
                       ) : null}
                     </TouchableOpacity>
-                                      </View>
+                  </View>
 
                   <TouchableOpacity style={styles.uploadBtn} onPress={handlePickAssignmentFile}>
                     <MaterialCommunityIcons name="upload" size={20} color="#FFF" />
@@ -1012,15 +1023,22 @@ const styles = StyleSheet.create({
   },
 
   courseSubText: {
-    color: 'rgba(255,255,255,0.92)',
+    color: 'rgba(255,255,255,0.95)',
     marginTop: 4,
+    fontWeight: '600',
+  },
+
+  metaText: {
+    color: 'rgba(255,255,255,0.92)',
+    fontSize: 13,
+    marginTop: 2,
     fontWeight: '500',
   },
 
   instructorText: {
     color: 'rgba(255,255,255,0.9)',
     fontSize: 13,
-    marginTop: 2,
+    marginTop: 4,
   },
 
   classCodeText: {
