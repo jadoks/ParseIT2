@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import {
   FlatList,
+  Platform,
   Pressable,
   SafeAreaView,
   StatusBar,
@@ -80,6 +81,9 @@ const Notification: React.FC<NotificationScreenProps> = ({
     [notifications]
   );
 
+  const isWeb = Platform.OS === 'web';
+  const showBackButton = !isWeb && !!onBack;
+
   const markAsRead = (id: string) => {
     setNotifications((prev) =>
       prev.map((item) =>
@@ -137,9 +141,11 @@ const Notification: React.FC<NotificationScreenProps> = ({
 
       {/* HEADER */}
       <View style={styles.header}>
-        <Pressable onPress={onBack} style={styles.backButton}>
-          <MaterialCommunityIcons name="" size={24} color="#000" />
-        </Pressable>
+        {showBackButton && (
+          <Pressable onPress={onBack} style={styles.backButton} hitSlop={10}>
+            <MaterialCommunityIcons name="arrow-left" size={24} color="#000" />
+          </Pressable>
+        )}
 
         <View style={{ flex: 1 }}>
           <Text style={styles.headerTitle}>Notifications</Text>
@@ -183,6 +189,7 @@ const styles = StyleSheet.create({
 
   backButton: {
     marginRight: 10,
+    padding: 4,
   },
 
   headerTitle: {

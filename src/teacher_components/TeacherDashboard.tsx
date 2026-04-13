@@ -32,6 +32,7 @@ export type TeacherCourseData = {
   year?: string;
   yearSection?: string;
   semester?: string;
+  position?: number;
 };
 
 export interface DashboardAssignment {
@@ -139,6 +140,15 @@ const generateClassCode = (courseCode?: string, sectionId?: string) => {
   return result;
 };
 
+const normalizeCoursePositions = (courseList: TeacherCourseData[]) => {
+  return [...courseList]
+    .sort((a, b) => (a.position ?? Number.MAX_SAFE_INTEGER) - (b.position ?? Number.MAX_SAFE_INTEGER))
+    .map((course, index) => ({
+      ...course,
+      position: index + 1,
+    }));
+};
+
 const Dashboard2 = ({
   announcements = [],
   courses = [],
@@ -149,7 +159,12 @@ const Dashboard2 = ({
 }: DashboardProps) => {
   const { width } = useWindowDimensions();
 
-  const [localCourses, setLocalCourses] = useState<TeacherCourseData[]>(courses);
+  const [isDeleteConfirmVisible, setDeleteConfirmVisible] = useState(false);
+  const [courseToDelete, setCourseToDelete] = useState<TeacherCourseData | null>(null);
+
+  const [localCourses, setLocalCourses] = useState<TeacherCourseData[]>(
+    normalizeCoursePositions(courses)
+  );
 
   const [isAnnouncementModalVisible, setAnnouncementModalVisible] = useState(false);
   const [isCreateModalVisible, setCreateModalVisible] = useState(false);
@@ -179,17 +194,19 @@ const Dashboard2 = ({
   const isLargeScreen = width >= 1200;
 
   useEffect(() => {
-    setLocalCourses(courses);
+    setLocalCourses(normalizeCoursePositions(courses));
   }, [courses]);
 
   const processedCourses = useMemo(() => {
-    return localCourses.map((course) => ({
-      ...course,
-      themeColor: '#2E7D32',
-    }));
+    return [...localCourses]
+      .sort((a, b) => (a.position ?? 0) - (b.position ?? 0))
+      .map((course) => ({
+        ...course,
+        themeColor: '#2E7D32',
+      }));
   }, [localCourses]);
 
-  const cardWidth = isMobile ? '100%' : isLargeScreen ? '31.5%' : '48%';
+  const cardWidth = isMobile ? '100%' : isLargeScreen ? '31.5%' : '48%';  
 
   const selectedSemesterLabel = useMemo(() => {
     return (
@@ -352,6 +369,8 @@ const Dashboard2 = ({
     const courseLabel = selectedCourseItem?.label || '';
     const courseCode = selectedCourseItem?.id || '';
 
+    const nextPosition = localCourses.length + 1;
+
     const newCourse: TeacherCourseData = {
       id: Date.now().toString(),
       name: courseLabel,
@@ -363,9 +382,10 @@ const Dashboard2 = ({
       year: yearLabel,
       yearSection: sectionLabel,
       semester: selectedSemesterLabel,
+      position: nextPosition,
     };
 
-    setLocalCourses((prev) => [newCourse, ...prev]);
+    setLocalCourses((prev) => normalizeCoursePositions([...prev, newCourse]));
     onCreateClass?.(newCourse);
 
     resetCreateForm();
@@ -455,10 +475,13 @@ const Dashboard2 = ({
       section: sectionLabel,
       semester: editSelectedSemesterLabel,
       bannerUri: editClassBanner || undefined,
+      position: editingCourse.position,
     };
 
     setLocalCourses((prev) =>
-      prev.map((course) => (course.id === updatedCourse.id ? updatedCourse : course))
+      normalizeCoursePositions(
+        prev.map((course) => (course.id === updatedCourse.id ? updatedCourse : course))
+      )
     );
 
     onEditCourse?.(updatedCourse);
@@ -484,24 +507,29 @@ const Dashboard2 = ({
   const handleDeleteCourse = () => {
     if (!menuCourse) return;
 
-    Alert.alert(
-      'Delete Class',
-      `Are you sure you want to delete "${menuCourse.name}"?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: () => {
-            setLocalCourses((prev) =>
-              prev.filter((course) => course.id !== menuCourse.id)
-            );
-            onDeleteCourse?.(menuCourse.id);
-            closeMenu();
-          },
-        },
-      ]
+    setCourseToDelete(menuCourse);
+    setDeleteConfirmVisible(true);
+    closeMenu();
+  };
+
+  const confirmDeleteCourse = () => {
+    if (!courseToDelete) return;
+
+    setLocalCourses((prev) =>
+      normalizeCoursePositions(
+        prev.filter((course) => course.id !== courseToDelete.id)
+      )
     );
+
+    onDeleteCourse?.(courseToDelete.id);
+
+    setDeleteConfirmVisible(false);
+    setCourseToDelete(null);
+  };
+
+  const cancelDeleteCourse = () => {
+    setDeleteConfirmVisible(false);
+    setCourseToDelete(null);
   };
 
   const renderCheckboxRow = (
@@ -570,14 +598,16 @@ const Dashboard2 = ({
                   <Text style={styles.modalSectionTitle}>Select Year</Text>
                 </View>
 
-                {YEAR_OPTIONS.map((year) =>
-                  renderCheckboxRow(
-                    year.label,
-                    selectedYear === year.id,
-                    () => toggleYear(year.id),
-                    styles.checkRowActive
-                  )
-                )}
+                {YEAR_OPTIONS.map((year) => (
+                  <View key={year.id}>
+                    {renderCheckboxRow(
+                      year.label,
+                      selectedYear === year.id,
+                      () => toggleYear(year.id),
+                      styles.checkRowActive
+                    )}
+                  </View>
+                ))}
               </View>
 
               {selectedYear && (
@@ -620,14 +650,16 @@ const Dashboard2 = ({
                     <Text style={styles.modalSectionTitle}>Select Course Code with Course Name</Text>
                   </View>
 
-                  {COURSE_OPTIONS[selectedYear].map((course) =>
-                    renderCheckboxRow(
-                      course.label,
-                      selectedCourse === course.id,
-                      () => toggleCourse(course.id),
-                      styles.sectionRowActive
-                    )
-                  )}
+                  {COURSE_OPTIONS[selectedYear].map((course) => (
+                    <View key={course.id}>
+                      {renderCheckboxRow(
+                        course.label,
+                        selectedCourse === course.id,
+                        () => toggleCourse(course.id),
+                        styles.sectionRowActive
+                      )}
+                    </View>
+                  ))}
                 </View>
               )}
 
@@ -773,14 +805,16 @@ const Dashboard2 = ({
                   <Text style={styles.modalSectionTitle}>Select Year</Text>
                 </View>
 
-                {YEAR_OPTIONS.map((year) =>
-                  renderCheckboxRow(
-                    year.label,
-                    editSelectedYear === year.id,
-                    () => toggleEditYear(year.id),
-                    styles.checkRowActive
-                  )
-                )}
+                {YEAR_OPTIONS.map((year) => (
+                  <View key={year.id}>
+                    {renderCheckboxRow(
+                      year.label,
+                      editSelectedYear === year.id,
+                      () => toggleEditYear(year.id),
+                      styles.checkRowActive
+                    )}
+                  </View>
+                ))}
               </View>
 
               {editSelectedYear && (
@@ -823,14 +857,16 @@ const Dashboard2 = ({
                     <Text style={styles.modalSectionTitle}>Select Course Code with Course Name</Text>
                   </View>
 
-                  {COURSE_OPTIONS[editSelectedYear].map((course) =>
-                    renderCheckboxRow(
-                      course.label,
-                      editSelectedCourse === course.id,
-                      () => toggleEditCourse(course.id),
-                      styles.sectionRowActive
-                    )
-                  )}
+                  {COURSE_OPTIONS[editSelectedYear].map((course) => (
+                    <View key={course.id}>
+                      {renderCheckboxRow(
+                        course.label,
+                        editSelectedCourse === course.id,
+                        () => toggleEditCourse(course.id),
+                        styles.sectionRowActive
+                      )}
+                    </View>
+                  ))}
                 </View>
               )}
 
@@ -899,7 +935,7 @@ const Dashboard2 = ({
 
               {editClassBanner ? (
                 <ImageBackground
-                                    source={{ uri: editClassBanner }}
+                  source={{ uri: editClassBanner }}
                   style={styles.bannerPreview}
                   imageStyle={styles.previewImage}
                 >
@@ -930,43 +966,73 @@ const Dashboard2 = ({
       </Modal>
 
       <Modal
-  visible={isMenuVisible}
-  transparent
-  animationType="fade"
-  onRequestClose={closeMenu}
->
-  <View style={styles.menuOverlay}>
-    {/* Background click */}
-    <Pressable style={StyleSheet.absoluteFill} onPress={closeMenu} />
+        visible={isDeleteConfirmVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={cancelDeleteCourse}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.deleteConfirmBox}>
+            <Text style={styles.deleteConfirmTitle}>Delete Class</Text>
+            <Text style={styles.deleteConfirmText}>
+              Are you sure you want to delete "{courseToDelete?.name}"?
+            </Text>
 
-    {/* Menu box */}
-    <View
-      style={[
-        styles.menuBox,
-        {
-          position: 'absolute',
-          top: menuPosition.y - 100,
-          left: menuPosition.x - 200,
-        },
-      ]}
-    >
-      <TouchableOpacity style={styles.menuItem} onPress={handleCopyLink}>
-        <MaterialCommunityIcons name="content-copy" size={20} color="#202124" />
-        <Text style={styles.menuText}>Copy Link</Text>
-      </TouchableOpacity>
+            <View style={styles.deleteConfirmActions}>
+              <TouchableOpacity
+                style={styles.cancelBtn}
+                onPress={cancelDeleteCourse}
+              >
+                <Text style={styles.cancelBtnText}>Cancel</Text>
+              </TouchableOpacity>
 
-      <TouchableOpacity style={styles.menuItem} onPress={openEditModal}>
-        <MaterialCommunityIcons name="pencil-outline" size={20} color="#1565C0" />
-        <Text style={[styles.menuText, { color: '#1565C0' }]}>Edit Class</Text>
-      </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.deleteConfirmBtn}
+                onPress={confirmDeleteCourse}
+              >
+                <Text style={styles.deleteConfirmBtnText}>Delete</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
-      <TouchableOpacity style={styles.menuItem} onPress={handleDeleteCourse}>
-        <MaterialCommunityIcons name="delete-outline" size={20} color="#D32F2F" />
-        <Text style={[styles.menuText, { color: '#D32F2F' }]}>Delete Class</Text>
-      </TouchableOpacity>
-    </View>
-  </View>
-</Modal>
+      <Modal
+        visible={isMenuVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={closeMenu}
+      >
+        <View style={styles.menuOverlay}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={closeMenu} />
+
+          <View
+            style={[
+              styles.menuBox,
+              {
+                position: 'absolute',
+                top: menuPosition.y - 100,
+                left: menuPosition.x - 200,
+              },
+            ]}
+          >
+            <TouchableOpacity style={styles.menuItem} onPress={handleCopyLink}>
+              <MaterialCommunityIcons name="content-copy" size={20} color="#202124" />
+              <Text style={styles.menuText}>Copy Link</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.menuItem} onPress={openEditModal}>
+              <MaterialCommunityIcons name="pencil-outline" size={20} color="#1565C0" />
+              <Text style={[styles.menuText, { color: '#1565C0' }]}>Edit Class</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.menuItem} onPress={handleDeleteCourse}>
+              <MaterialCommunityIcons name="delete-outline" size={20} color="#D32F2F" />
+              <Text style={[styles.menuText, { color: '#D32F2F' }]}>Delete Class</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
 
       <ScrollView
         style={styles.container}
@@ -1020,6 +1086,11 @@ const Dashboard2 = ({
                             ? ` • ${item.section}`
                             : ''}
                       </Text>
+
+                      {!!item.position && (
+                        <Text style={styles.bannerMeta}>Class {item.position}</Text>
+                      )}
+
                       {!!item.year && <Text style={styles.bannerMeta}>{item.year}</Text>}
                       {!!item.semester && (
                         <Text style={styles.bannerMeta}>{item.semester}</Text>
@@ -1107,7 +1178,7 @@ const styles = StyleSheet.create({
   sectionHeader: {
     fontSize: 24,
     fontWeight: '700',
-    color: '#111',
+    color:    '#111',
   },
 
   classesHeaderRow: {
@@ -1144,12 +1215,12 @@ const styles = StyleSheet.create({
   },
 
   courseGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-    gap: 14,
-    width: '100%',
-  },
+  flexDirection: 'row',
+  flexWrap: 'wrap',
+  justifyContent: 'flex-start',
+  gap: 21,
+  width: '100%',
+},
 
   card: {
     backgroundColor: '#fff',
@@ -1578,4 +1649,44 @@ const styles = StyleSheet.create({
     color: '#202124',
     flex: 1,
   },
-});                  
+
+  deleteConfirmBox: {
+    width: '100%',
+    maxWidth: 360,
+    backgroundColor: '#FFF',
+    borderRadius: 16,
+    padding: 22,
+  },
+
+  deleteConfirmTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#202124',
+    marginBottom: 10,
+  },
+
+  deleteConfirmText: {
+    fontSize: 14,
+    color: '#555',
+    lineHeight: 21,
+    marginBottom: 20,
+  },
+
+  deleteConfirmActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 10,
+  },
+
+  deleteConfirmBtn: {
+    paddingHorizontal: 16,
+    paddingVertical: 11,
+    borderRadius: 10,
+    backgroundColor: '#D32F2F',
+  },
+
+  deleteConfirmBtnText: {
+    color: '#FFF',
+    fontWeight: '700',
+  },
+});
