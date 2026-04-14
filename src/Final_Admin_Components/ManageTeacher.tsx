@@ -2,21 +2,24 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import React, { useEffect, useMemo, useState } from "react";
 import {
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
-import { AddTeacherModal } from "./AdminDashboard";
+
+import AddTeacherModal from "./AddTeacherModal";
 import {
-    addTeacherRecord,
-    deleteTeacherRecord,
-    getTeacherRecords,
-    updateTeacherRecord,
-    type TeacherItem,
+  addTeacherRecord,
+  deleteTeacherRecord,
+  getTeacherRecords,
+  updateTeacherRecord,
+  type TeacherItem,
 } from "./teacherStore";
+
+import type { TeacherFormPayload } from "./teacherTypes";
 
 type ManageTeacherProps = {
   width: number;
@@ -55,16 +58,30 @@ export default function ManageTeacher({ width }: ManageTeacherProps) {
     });
   }, [teachers, searchText]);
 
-  const handleAddTeacher = (payload: {
-    teacherId: string;
-    firstName: string;
-    lastName: string;
-    birthday: string;
-    email: string;
-  }) => {
-    addTeacherRecord(payload);
-    setTeachers([...getTeacherRecords()]);
-    setIsAddModalVisible(false);
+  const handleAddTeacher = async (payload: TeacherFormPayload) => {
+    try {
+      const response = await fetch("http://localhost:5000/create-teacher", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to create teacher");
+      }
+
+      addTeacherRecord(payload);
+      setTeachers([...getTeacherRecords()]);
+      setIsAddModalVisible(false);
+
+      console.log("Teacher saved to Firebase:", data);
+    } catch (error) {
+      console.error("Error saving teacher:", error);
+    }
   };
 
   const handleEdit = (item: TeacherItem) => {

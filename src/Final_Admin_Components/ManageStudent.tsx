@@ -2,21 +2,24 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import React, { useEffect, useMemo, useState } from "react";
 import {
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
-import { AddStudentModal } from "./AdminDashboard";
+
+import AddStudentModal from "./AddStudentModal";
 import {
-    addStudentRecord,
-    deleteStudentRecord,
-    getStudentRecords,
-    updateStudentRecord,
-    type StudentItem,
+  addStudentRecord,
+  deleteStudentRecord,
+  getStudentRecords,
+  updateStudentRecord,
+  type StudentItem,
 } from "./studentStore";
+
+import type { StudentFormPayload } from "./studentTypes";
 
 type ManageStudentProps = {
   width: number;
@@ -56,18 +59,29 @@ export default function ManageStudent({ width }: ManageStudentProps) {
     });
   }, [students, searchText]);
 
-  const handleAddStudent = (payload: {
-    studentId: string;
-    firstName: string;
-    lastName: string;
-    birthday: string;
-    email: string;
-    studentType: "regular" | "irregular" | "";
-  }) => {
+  const handleAddStudent = async (payload: StudentFormPayload) => {
+  try {
+    const response = await fetch("http://localhost:5000/create-student", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.error || "Failed to create student");
+    }
+
     addStudentRecord(payload);
     setStudents([...getStudentRecords()]);
     setIsAddModalVisible(false);
-  };
+  } catch (error) {
+    console.error("Error saving student:", error);
+  }
+};
 
   const handleEdit = (item: StudentItem) => {
     const updatedItem: StudentItem = {

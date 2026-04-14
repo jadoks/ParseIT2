@@ -2,21 +2,24 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import React, { useEffect, useMemo, useState } from "react";
 import {
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
-import { AddAdminModal } from "./AdminDashboard";
+
+import AddAdminModal from "./AddAdminModal";
 import {
-    addAdminRecord,
-    deleteAdminRecord,
-    getAdminRecords,
-    updateAdminRecord,
-    type AdminItem,
+  addAdminRecord,
+  deleteAdminRecord,
+  getAdminRecords,
+  updateAdminRecord,
+  type AdminItem,
 } from "./adminStore";
+
+import type { AdminFormPayload } from "./adminTypes";
 
 type ManageAdminProps = {
   width: number;
@@ -55,16 +58,30 @@ export default function ManageAdmin({ width }: ManageAdminProps) {
     });
   }, [admins, searchText]);
 
-  const handleAddAdmin = (payload: {
-    adminId: string;
-    firstName: string;
-    lastName: string;
-    birthday: string;
-    email: string;
-  }) => {
-    addAdminRecord(payload);
-    setAdmins([...getAdminRecords()]);
-    setIsAddModalVisible(false);
+  const handleAddAdmin = async (payload: AdminFormPayload) => {
+    try {
+      const response = await fetch("http://localhost:5000/create-admin", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to create admin");
+      }
+
+      addAdminRecord(payload);
+      setAdmins([...getAdminRecords()]);
+      setIsAddModalVisible(false);
+
+      console.log("Admin saved to Firebase:", data);
+    } catch (error) {
+      console.error("Error saving admin:", error);
+    }
   };
 
   const handleEdit = (item: AdminItem) => {
