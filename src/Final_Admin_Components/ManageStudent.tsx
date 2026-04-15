@@ -12,10 +12,6 @@ import {
 
 import AddStudentModal from "./AddStudentModal";
 import {
-  addStudentRecord,
-  deleteStudentRecord,
-  getStudentRecords,
-  updateStudentRecord,
   type StudentItem,
 } from "./studentStore";
 
@@ -25,8 +21,44 @@ type ManageStudentProps = {
   width: number;
 };
 
+function formatBirthday(value: any): string {
+  if (!value) return "";
+
+  if (typeof value === "string") return value;
+
+  if (value?._seconds) {
+    const date = new Date(value._seconds * 1000);
+    const month = `${date.getMonth() + 1}`.padStart(2, "0");
+    const day = `${date.getDate()}`.padStart(2, "0");
+    const year = date.getFullYear();
+    return `${month}/${day}/${year}`;
+  }
+
+  if (value?.seconds) {
+    const date = new Date(value.seconds * 1000);
+    const month = `${date.getMonth() + 1}`.padStart(2, "0");
+    const day = `${date.getDate()}`.padStart(2, "0");
+    const year = date.getFullYear();
+    return `${month}/${day}/${year}`;
+  }
+
+  return "";
+}
+
+function mapStudent(item: any): StudentItem {
+  return {
+    id: item.id || item.studentId,
+    studentId: item.studentId || "",
+    firstName: item.firstName || "",
+    lastName: item.lastName || "",
+    birthday: formatBirthday(item.birthday),
+    email: item.email || "",
+    studentType: item.studentType || item.status || "",
+  };
+}
+
 export default function ManageStudent({ width }: ManageStudentProps) {
-  const [students, setStudents] = useState<StudentItem[]>(getStudentRecords());
+  const [students, setStudents] = useState<StudentItem[]>([]);
   const [isAddModalVisible, setIsAddModalVisible] = useState(false);
   const [searchText, setSearchText] = useState("");
 
@@ -34,8 +66,23 @@ export default function ManageStudent({ width }: ManageStudentProps) {
   const isTablet = width >= 768 && width < 1100;
   const tableMinWidth = isMobile ? 1120 : isTablet ? 1200 : 1300;
 
+  const loadStudents = async () => {
+    try {
+      const response = await fetch("http://localhost:5000/students");
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to fetch students");
+      }
+
+      setStudents(Array.isArray(data) ? data.map(mapStudent) : []);
+    } catch (error) {
+      console.error("Error loading students:", error);
+    }
+  };
+
   useEffect(() => {
-    setStudents([...getStudentRecords()]);
+    loadStudents();
   }, []);
 
   const filteredStudents = useMemo(() => {
@@ -60,42 +107,34 @@ export default function ManageStudent({ width }: ManageStudentProps) {
   }, [students, searchText]);
 
   const handleAddStudent = async (payload: StudentFormPayload) => {
-  try {
-    const response = await fetch("http://localhost:5000/create-student", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(payload),
-    });
+    try {
+      const response = await fetch("http://localhost:5000/create-student", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
 
-    const data = await response.json();
+      const data = await response.json();
 
-    if (!response.ok) {
-      throw new Error(data.error || "Failed to create student");
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to create student");
+      }
+
+      await loadStudents();
+      setIsAddModalVisible(false);
+    } catch (error) {
+      console.error("Error saving student:", error);
     }
-
-    addStudentRecord(payload);
-    setStudents([...getStudentRecords()]);
-    setIsAddModalVisible(false);
-  } catch (error) {
-    console.error("Error saving student:", error);
-  }
-};
+  };
 
   const handleEdit = (item: StudentItem) => {
-    const updatedItem: StudentItem = {
-      ...item,
-      firstName: `${item.firstName} (Edited)`,
-    };
-
-    updateStudentRecord(updatedItem);
-    setStudents([...getStudentRecords()]);
+    console.log("Edit student:", item);
   };
 
   const handleDelete = (id: string) => {
-    deleteStudentRecord(id);
-    setStudents([...getStudentRecords()]);
+    console.log("Delete student:", id);
   };
 
   return (
@@ -192,7 +231,7 @@ export default function ManageStudent({ width }: ManageStudentProps) {
 
                     <View style={styles.nameColumn}>
                       <Text style={styles.tablePrimaryText}>
-                        {item.firstName} {item.lastName}
+                        {`${item.firstName} ${item.lastName}`.toUpperCase()}
                       </Text>
                     </View>
 
@@ -208,7 +247,7 @@ export default function ManageStudent({ width }: ManageStudentProps) {
 
                     <View style={styles.statusColumn}>
                       <Text style={styles.tablePrimaryText}>
-                        {item.studentType || "Not set"}
+                         {(item.studentType || "Not set").toUpperCase()}
                       </Text>
                     </View>
 
@@ -359,6 +398,7 @@ const styles = StyleSheet.create({
   searchInput: {
     flex: 1,
     marginLeft: 10,
+    height: "80%",
     fontSize: 14,
     color: "#2B1111",
     fontWeight: "600",

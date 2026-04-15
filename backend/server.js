@@ -328,6 +328,25 @@ app.post("/create-admin", async (req, res) => {
   }
 });
 
+// ✅ GET ALL STUDENTS FROM FIREBASE
+app.get("/students", async (req, res) => {
+  try {
+    const snapshot = await db.collection("students").get();
+
+    const students = snapshot.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data(),
+    }));
+
+    res.json(students);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({
+      error: error.message || "Failed to fetch students",
+    });
+  }
+});
+
 // Start server
 app.listen(process.env.PORT || 5000, () => {
   console.log(`Server running on port ${process.env.PORT}`);

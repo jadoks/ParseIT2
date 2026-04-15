@@ -2,21 +2,21 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import React, { useEffect, useMemo, useState } from "react";
 import {
-    Modal,
-    Pressable,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  Modal,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import {
-    addClassRecord,
-    deleteClassRecord,
-    getClassRecords,
-    updateClassRecord,
-    type ClassItem,
+  addClassRecord,
+  deleteClassRecord,
+  getClassRecords,
+  updateClassRecord,
+  type ClassItem,
 } from "./classStore";
 
 type ManageClassProps = {
@@ -936,6 +936,7 @@ const styles = StyleSheet.create({
   searchInput: {
     flex: 1,
     marginLeft: 10,
+    height: "80%",
     fontSize: 14,
     color: "#2B1111",
     fontWeight: "600",

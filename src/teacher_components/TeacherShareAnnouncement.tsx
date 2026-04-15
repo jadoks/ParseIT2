@@ -15,6 +15,16 @@ import {
   useWindowDimensions,
 } from 'react-native';
 
+type LocalClassItem = {
+  id: string;
+  name: string;
+  courseCode: string;
+  classCode: string;
+  section?: string;
+  year?: string;
+  semester?: string;
+};
+
 const BACKGROUNDS = [
   { id: 1, image: require('../../assets/images/Banner1.png') },
   { id: 2, image: require('../../assets/images/Banner2.png') },
@@ -22,31 +32,35 @@ const BACKGROUNDS = [
   { id: 4, image: require('../../assets/images/Banner4.png') },
 ];
 
-const YEAR_OPTIONS = [
-  { id: '1st', label: '1st Year' },
-  { id: '2nd', label: '2nd Year' },
-  { id: '3rd', label: '3rd Year' },
-  { id: '4th', label: '4th Year' },
+const INITIAL_CLASSES: LocalClassItem[] = [
+  {
+    id: '1',
+    name: 'Introduction to Computing',
+    courseCode: 'IT101',
+    classCode: 'IT101-1A',
+    section: '1A Microsoft',
+    year: '1st Year',
+    semester: '1st Semester',
+  },
+  {
+    id: '2',
+    name: 'Computer Programming 1',
+    courseCode: 'IT102',
+    classCode: 'IT102-1B',
+    section: '1B Google',
+    year: '1st Year',
+    semester: '1st Semester',
+  },
+  {
+    id: '3',
+    name: 'Data Structures and Algorithms',
+    courseCode: 'IT201',
+    classCode: 'IT201-2A',
+    section: '2A Algorithm',
+    year: '2nd Year',
+    semester: '1st Semester',
+  },
 ];
-
-const COURSE_OPTIONS: Record<string, { id: string; label: string }[]> = {
-  '1st': [
-    { id: 'IT101', label: 'IT101 - Introduction to Computing' },
-    { id: 'IT102', label: 'IT102 - Computer Programming 1' },
-  ],
-  '2nd': [
-    { id: 'IT201', label: 'IT201 - Data Structures and Algorithms' },
-    { id: 'IT202', label: 'IT202 - Object-Oriented Programming' },
-  ],
-  '3rd': [
-    { id: 'IT301', label: 'IT301 - Mobile Application Development' },
-    { id: 'IT302', label: 'IT302 - Web Systems and Technologies' },
-  ],
-  '4th': [
-    { id: 'IT401', label: 'IT401 - Capstone Project 1' },
-    { id: 'IT402', label: 'IT402 - Systems Integration and Architecture' },
-  ],
-};
 
 const fontFamily = Platform.select({
   ios: 'System',
@@ -67,25 +81,26 @@ export default function ShareAnnouncement() {
   const [showTargetModal, setShowTargetModal] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
 
-  const [selectedYear, setSelectedYear] = useState<string | null>(null);
-  const [selectedCourse, setSelectedCourse] = useState<string | null>(null);
-  const [selectAllYears, setSelectAllYears] = useState(false);
+  const [selectedClassId, setSelectedClassId] = useState<string | null>(null);
+  const [selectAllClasses, setSelectAllClasses] = useState(false);
 
-  const selectedYearLabel = useMemo(() => {
-    return YEAR_OPTIONS.find((year) => year.id === selectedYear)?.label || '';
-  }, [selectedYear]);
+  const availableClasses = useMemo(() => {
+    return INITIAL_CLASSES.map((course) => ({
+      id: course.id,
+      label: `${course.classCode} - ${course.name}`,
+      subtitle: [course.section, course.year, course.semester]
+        .filter(Boolean)
+        .join(' • '),
+    }));
+  }, []);
 
-  const selectedCourseLabel = useMemo(() => {
-    if (!selectedYear || !selectedCourse) return '';
-    return (
-      COURSE_OPTIONS[selectedYear]?.find((course) => course.id === selectedCourse)?.label || ''
-    );
-  }, [selectedYear, selectedCourse]);
+  const selectedClass = useMemo(() => {
+    return availableClasses.find((course) => course.id === selectedClassId) || null;
+  }, [availableClasses, selectedClassId]);
 
   const resetTargeting = () => {
-    setSelectedYear(null);
-    setSelectedCourse(null);
-    setSelectAllYears(false);
+    setSelectedClassId(null);
+    setSelectAllClasses(false);
   };
 
   const resetAll = () => {
@@ -110,53 +125,49 @@ export default function ShareAnnouncement() {
     }
 
     if (!trimmedDesc) {
-      Alert.alert('Missing Description', 'Please enter the announcement description.');
+      Alert.alert(
+        'Missing Description',
+        'Please enter the announcement description.'
+      );
+      return;
+    }
+
+    if (!availableClasses.length) {
+      Alert.alert(
+        'No Classes Found',
+        'There are no created classes available yet.'
+      );
       return;
     }
 
     setShowTargetModal(true);
   };
 
-  const toggleAllYears = () => {
-    const next = !selectAllYears;
-    setSelectAllYears(next);
+  const toggleAllClasses = () => {
+    const next = !selectAllClasses;
+    setSelectAllClasses(next);
 
     if (next) {
-      setSelectedYear(null);
-      setSelectedCourse(null);
+      setSelectedClassId(null);
     }
   };
 
-  const toggleYear = (yearId: string) => {
-    if (selectedYear === yearId) {
-      setSelectedYear(null);
-      setSelectedCourse(null);
-      setSelectAllYears(false);
+  const toggleClass = (classId: string) => {
+    if (selectedClassId === classId) {
+      setSelectedClassId(null);
       return;
     }
 
-    setSelectedYear(yearId);
-    setSelectedCourse(null);
-    setSelectAllYears(false);
-  };
-
-  const toggleCourse = (courseId: string) => {
-    if (selectedCourse === courseId) {
-      setSelectedCourse(null);
-      return;
-    }
-
-    setSelectedCourse(courseId);
+    setSelectedClassId(classId);
+    setSelectAllClasses(false);
   };
 
   const handleProceedToConfirm = () => {
-    if (!selectAllYears && !selectedYear) {
-      Alert.alert('Missing Selection', 'Please select a year or choose All Years.');
-      return;
-    }
-
-    if (!selectAllYears && !selectedCourse) {
-      Alert.alert('Missing Selection', 'Please select a course.');
+    if (!selectAllClasses && !selectedClassId) {
+      Alert.alert(
+        'Missing Selection',
+        'Please select a class or choose All Classes.'
+      );
       return;
     }
 
@@ -165,9 +176,9 @@ export default function ShareAnnouncement() {
   };
 
   const confirmShare = () => {
-    const targetText = selectAllYears
-      ? 'All Years'
-      : `${selectedYearLabel} • ${selectedCourseLabel}`;
+    const targetText = selectAllClasses
+      ? 'All Classes'
+      : selectedClass?.label || 'Selected Class';
 
     setShowConfirmModal(false);
 
@@ -180,6 +191,7 @@ export default function ShareAnnouncement() {
     label: string,
     checked: boolean,
     onPress: () => void,
+    subtitle?: string,
     compact = false
   ) => (
     <TouchableOpacity
@@ -193,7 +205,13 @@ export default function ShareAnnouncement() {
       <View style={[styles.checkboxBase, checked && styles.checkboxChecked]}>
         {checked && <Ionicons name="checkmark" size={12} color="#FFFFFF" />}
       </View>
-      <Text style={compact ? styles.compactCheckText : styles.checkText}>{label}</Text>
+
+      <View style={styles.checkTextWrapper}>
+        <Text style={compact ? styles.compactCheckText : styles.checkText}>
+          {label}
+        </Text>
+        {!!subtitle && <Text style={styles.checkSubText}>{subtitle}</Text>}
+      </View>
     </TouchableOpacity>
   );
 
@@ -203,7 +221,9 @@ export default function ShareAnnouncement() {
         <ScrollView
           style={styles.container}
           contentContainerStyle={
-            isMobile ? styles.mobileContentContainer : styles.webContentContainer
+            isMobile
+              ? styles.mobileContentContainer
+              : styles.webContentContainer
           }
           showsVerticalScrollIndicator={false}
         >
@@ -219,7 +239,7 @@ export default function ShareAnnouncement() {
           </Text>
 
           <Text style={styles.formSubTitle}>
-            Announcement will be available to selected students.
+            Announcement will be available to selected classes.
           </Text>
 
           <View
@@ -304,7 +324,12 @@ export default function ShareAnnouncement() {
         onRequestClose={() => setShowTargetModal(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={[styles.targetModalCard, isMobile && styles.targetModalCardMobile]}>
+          <View
+            style={[
+              styles.targetModalCard,
+              isMobile && styles.targetModalCardMobile,
+            ]}
+          >
             <View style={styles.targetModalHeader}>
               <Text style={styles.targetModalTitle}>Select Target Audience</Text>
               <TouchableOpacity
@@ -320,37 +345,36 @@ export default function ShareAnnouncement() {
               contentContainerStyle={styles.targetModalScrollContent}
             >
               <View style={styles.targetSection}>
-                <Text style={styles.targetSectionTitle}>All Year / Course</Text>
+                <Text style={styles.targetSectionTitle}>Audience</Text>
 
-                {renderCheckboxRow('All Years', selectAllYears, toggleAllYears)}
-              </View>
-
-              <View style={styles.targetSection}>
-                <Text style={styles.targetSectionTitle}>Select Year</Text>
-
-                {YEAR_OPTIONS.map((year) =>
-                  renderCheckboxRow(
-                    year.label,
-                    selectedYear === year.id,
-                    () => toggleYear(year.id)
-                  )
+                {renderCheckboxRow(
+                  'All Classes',
+                  selectAllClasses,
+                  toggleAllClasses
                 )}
               </View>
 
-              {(selectedYear || selectAllYears) && !selectAllYears && (
-                <View style={styles.targetSection}>
-                  <Text style={styles.targetSectionTitle}>Select Course</Text>
+              <View style={styles.targetSection}>
+                <Text style={styles.targetSectionTitle}>Created Classes</Text>
 
-                  {COURSE_OPTIONS[selectedYear!].map((course) =>
+                {availableClasses.length ? (
+                  availableClasses.map((course) =>
                     renderCheckboxRow(
                       course.label,
-                      selectedCourse === course.id,
-                      () => toggleCourse(course.id),
+                      selectedClassId === course.id,
+                      () => toggleClass(course.id),
+                      course.subtitle,
                       true
                     )
-                  )}
-                </View>
-              )}
+                  )
+                ) : (
+                  <View style={styles.emptyClassesBox}>
+                    <Text style={styles.emptyClassesText}>
+                      No created classes available.
+                    </Text>
+                  </View>
+                )}
+              </View>
             </ScrollView>
 
             <View style={styles.modalButtonRow}>
@@ -384,9 +408,9 @@ export default function ShareAnnouncement() {
           <View style={styles.modalCard}>
             <Text style={styles.modalTitle}>Confirm Share</Text>
             <Text style={styles.modalMessage}>
-              {selectAllYears
-                ? 'Do you want to share this announcement to all years?'
-                : `Do you want to share this announcement to ${selectedYearLabel} • ${selectedCourseLabel}?`}
+              {selectAllClasses
+                ? 'Do you want to share this announcement to all classes?'
+                : `Do you want to share this announcement to ${selectedClass?.label || 'the selected class'}?`}
             </Text>
 
             <View style={styles.modalButtonRow}>
@@ -630,7 +654,7 @@ const styles = StyleSheet.create({
   },
 
   compactCheckRow: {
-    minHeight: 44,
+    minHeight: 52,
     borderRadius: 10,
     borderWidth: 1,
     borderColor: '#E5CACA',
@@ -664,6 +688,10 @@ const styles = StyleSheet.create({
     borderColor: '#D32F2F',
   },
 
+  checkTextWrapper: {
+    flex: 1,
+  },
+
   checkText: {
     fontSize: 13,
     fontWeight: '600',
@@ -677,6 +705,28 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#202124',
     flex: 1,
+    fontFamily,
+  },
+
+  checkSubText: {
+    marginTop: 3,
+    fontSize: 11.5,
+    color: '#666',
+    fontFamily,
+  },
+
+  emptyClassesBox: {
+    borderWidth: 1,
+    borderColor: '#E5CACA',
+    borderRadius: 12,
+    paddingVertical: 16,
+    paddingHorizontal: 12,
+    backgroundColor: '#FFF',
+  },
+
+  emptyClassesText: {
+    fontSize: 13,
+    color: '#777',
     fontFamily,
   },
 
