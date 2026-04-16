@@ -9,6 +9,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   useWindowDimensions,
   View,
@@ -32,6 +33,8 @@ export type TeacherCourseData = {
   year?: string;
   yearSection?: string;
   semester?: string;
+  schoolYear?: string | null;
+  description?: string | null;
   position?: number;
 };
 
@@ -123,8 +126,9 @@ const COURSE_OPTIONS: Record<string, CourseOption[]> = {
 };
 
 const SEMESTER_OPTIONS: SemesterOption[] = [
-  { id: 'sem-1', label: '1st Semester ' },
-  { id: 'sem-2', label: '2nd Semester ' },
+  { id: 'sem-1', label: '1st Semester' },
+  { id: 'sem-2', label: '2nd Semester' },
+  { id: 'sem-3', label: 'Summer' },
 ];
 
 const generateClassCode = (courseCode?: string, sectionId?: string) => {
@@ -183,12 +187,18 @@ const Dashboard2 = ({
   const [selectedSemester, setSelectedSemester] = useState<string>('sem-1');
   const [selectedCourse, setSelectedCourse] = useState<string | null>(null);
   const [classBanner, setClassBanner] = useState('');
+  const [description, setDescription] = useState('');
+  const [startYear, setStartYear] = useState('2025');
+  const [endYear, setEndYear] = useState('2026');
 
   const [editSelectedYear, setEditSelectedYear] = useState<string | null>(null);
   const [editSelectedSection, setEditSelectedSection] = useState<string | null>(null);
   const [editSelectedSemester, setEditSelectedSemester] = useState<string>('sem-1');
   const [editSelectedCourse, setEditSelectedCourse] = useState<string | null>(null);
   const [editClassBanner, setEditClassBanner] = useState('');
+  const [editDescription, setEditDescription] = useState('');
+  const [editStartYear, setEditStartYear] = useState('2025');
+  const [editEndYear, setEditEndYear] = useState('2026');
 
   const isMobile = width < 768;
   const isLargeScreen = width >= 1200;
@@ -206,7 +216,7 @@ const Dashboard2 = ({
       }));
   }, [localCourses]);
 
-  const cardWidth = isMobile ? '100%' : isLargeScreen ? '31.5%' : '48%';  
+  const cardWidth = isMobile ? '100%' : isLargeScreen ? '31.5%' : '48%';
 
   const selectedSemesterLabel = useMemo(() => {
     return (
@@ -228,6 +238,9 @@ const Dashboard2 = ({
     setSelectedCourse(null);
     setSelectedSemester('sem-1');
     setClassBanner('');
+    setDescription('');
+    setStartYear('2025');
+    setEndYear('2026');
     setSemesterDropdownVisible(false);
   };
 
@@ -237,6 +250,9 @@ const Dashboard2 = ({
     setEditSelectedCourse(null);
     setEditSelectedSemester('sem-1');
     setEditClassBanner('');
+    setEditDescription('');
+    setEditStartYear('2025');
+    setEditEndYear('2026');
     setEditSemesterDropdownVisible(false);
     setEditingCourse(null);
   };
@@ -357,6 +373,11 @@ const Dashboard2 = ({
       return;
     }
 
+    if (!startYear.trim() || !endYear.trim()) {
+      Alert.alert('Missing Field', 'Please enter start year and end year.');
+      return;
+    }
+
     const yearLabel =
       YEAR_OPTIONS.find((year) => year.id === selectedYear)?.label || '';
 
@@ -382,6 +403,8 @@ const Dashboard2 = ({
       year: yearLabel,
       yearSection: sectionLabel,
       semester: selectedSemesterLabel,
+      schoolYear: `${startYear.trim()}-${endYear.trim()}`,
+      description: description.trim() ? description.trim() : null,
       position: nextPosition,
     };
 
@@ -420,12 +443,17 @@ const Dashboard2 = ({
     const matchedSemester =
       SEMESTER_OPTIONS.find((semester) => semester.label === menuCourse.semester)?.id || 'sem-1';
 
+    const schoolYearParts = (menuCourse.schoolYear || '2025-2026').split('-');
+
     setEditingCourse(menuCourse);
     setEditSelectedYear(matchedYear);
     setEditSelectedSection(matchedSection);
     setEditSelectedCourse(matchedCourse);
     setEditSelectedSemester(matchedSemester);
     setEditClassBanner(menuCourse.bannerUri || '');
+    setEditDescription(menuCourse.description || '');
+    setEditStartYear(schoolYearParts[0] || '2025');
+    setEditEndYear(schoolYearParts[1] || '2026');
 
     closeMenu();
     setEditModalVisible(true);
@@ -446,6 +474,11 @@ const Dashboard2 = ({
 
     if (!editSelectedCourse) {
       Alert.alert('Missing Field', 'Please select a course code with course name.');
+      return;
+    }
+
+    if (!editStartYear.trim() || !editEndYear.trim()) {
+      Alert.alert('Missing Field', 'Please enter start year and end year.');
       return;
     }
 
@@ -474,6 +507,8 @@ const Dashboard2 = ({
       yearSection: sectionLabel,
       section: sectionLabel,
       semester: editSelectedSemesterLabel,
+      schoolYear: `${editStartYear.trim()}-${editEndYear.trim()}`,
+      description: editDescription.trim() ? editDescription.trim() : null,
       bannerUri: editClassBanner || undefined,
       position: editingCourse.position,
     };
@@ -718,6 +753,51 @@ const Dashboard2 = ({
                 )}
               </View>
 
+              <View style={styles.yearRow}>
+                <View style={styles.yearCol}>
+                  <Text style={styles.inputLabel}>Start Year</Text>
+                  <View style={styles.yearInputWrap}>
+                    <TextInput
+                      value={startYear}
+                      onChangeText={setStartYear}
+                      placeholder="2025"
+                      placeholderTextColor="#9AA0A6"
+                      keyboardType="number-pad"
+                      maxLength={4}
+                      style={styles.yearInput}
+                    />
+                  </View>
+                </View>
+
+                <View style={styles.yearCol}>
+                  <Text style={styles.inputLabel}>End Year</Text>
+                  <View style={styles.yearInputWrap}>
+                    <TextInput
+                      value={endYear}
+                      onChangeText={setEndYear}
+                      placeholder="2026"
+                      placeholderTextColor="#9AA0A6"
+                      keyboardType="number-pad"
+                      maxLength={4}
+                      style={styles.yearInput}
+                    />
+                  </View>
+                </View>
+              </View>
+
+              <Text style={styles.inputLabel}>Description (Optional)</Text>
+              <View style={styles.textAreaWrap}>
+                <TextInput
+                  value={description}
+                  onChangeText={setDescription}
+                  placeholder="Enter class description"
+                  placeholderTextColor="#9AA0A6"
+                  multiline
+                  textAlignVertical="top"
+                  style={styles.textAreaInput}
+                />
+              </View>
+
               <Text style={styles.inputLabel}>Class Banner / Background Photo</Text>
               <TouchableOpacity style={styles.uploadBtn} onPress={handlePickBanner}>
                 <MaterialCommunityIcons name="image-plus" size={20} color="#D32F2F" />
@@ -925,6 +1005,51 @@ const Dashboard2 = ({
                 )}
               </View>
 
+              <View style={styles.yearRow}>
+                <View style={styles.yearCol}>
+                  <Text style={styles.inputLabel}>Start Year</Text>
+                  <View style={styles.yearInputWrap}>
+                    <TextInput
+                      value={editStartYear}
+                      onChangeText={setEditStartYear}
+                      placeholder="2025"
+                      placeholderTextColor="#9AA0A6"
+                      keyboardType="number-pad"
+                      maxLength={4}
+                      style={styles.yearInput}
+                    />
+                  </View>
+                </View>
+
+                <View style={styles.yearCol}>
+                  <Text style={styles.inputLabel}>End Year</Text>
+                  <View style={styles.yearInputWrap}>
+                    <TextInput
+                      value={editEndYear}
+                      onChangeText={setEditEndYear}
+                      placeholder="2026"
+                      placeholderTextColor="#9AA0A6"
+                      keyboardType="number-pad"
+                      maxLength={4}
+                      style={styles.yearInput}
+                    />
+                  </View>
+                </View>
+              </View>
+
+              <Text style={styles.inputLabel}>Description (Optional)</Text>
+              <View style={styles.textAreaWrap}>
+                <TextInput
+                  value={editDescription}
+                  onChangeText={setEditDescription}
+                  placeholder="Enter class description"
+                  placeholderTextColor="#9AA0A6"
+                  multiline
+                  textAlignVertical="top"
+                  style={styles.textAreaInput}
+                />
+              </View>
+
               <Text style={styles.inputLabel}>Class Banner / Background Photo</Text>
               <TouchableOpacity style={styles.uploadBtn} onPress={handlePickEditBanner}>
                 <MaterialCommunityIcons name="image-edit-outline" size={20} color="#D32F2F" />
@@ -1095,6 +1220,9 @@ const Dashboard2 = ({
                       {!!item.semester && (
                         <Text style={styles.bannerMeta}>{item.semester}</Text>
                       )}
+                      {!!item.schoolYear && (
+                        <Text style={styles.bannerMeta}>{item.schoolYear}</Text>
+                      )}
                     </View>
                   </ImageBackground>
                 </View>
@@ -1178,7 +1306,7 @@ const styles = StyleSheet.create({
   sectionHeader: {
     fontSize: 24,
     fontWeight: '700',
-    color:    '#111',
+    color: '#111',
   },
 
   classesHeaderRow: {
@@ -1215,12 +1343,12 @@ const styles = StyleSheet.create({
   },
 
   courseGrid: {
-  flexDirection: 'row',
-  flexWrap: 'wrap',
-  justifyContent: 'flex-start',
-  gap: 21,
-  width: '100%',
-},
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'flex-start',
+    gap: 21,
+    width: '100%',
+  },
 
   card: {
     backgroundColor: '#fff',
@@ -1445,6 +1573,49 @@ const styles = StyleSheet.create({
   floatingDropdownItemTextActive: {
     color: '#D32F2F',
     fontWeight: '700',
+  },
+
+  yearRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 10,
+  },
+
+  yearCol: {
+    flex: 1,
+  },
+
+  yearInputWrap: {
+    borderWidth: 1,
+    borderColor: '#DDD',
+    borderRadius: 12,
+    backgroundColor: '#fff',
+    paddingHorizontal: 12,
+    height: 48,
+    justifyContent: 'center',
+  },
+
+  yearInput: {
+    fontSize: 14,
+    color: '#202124',
+    fontWeight: '500',
+  },
+
+  textAreaWrap: {
+    marginTop: 2,
+    borderWidth: 1,
+    borderColor: '#DDD',
+    borderRadius: 12,
+    backgroundColor: '#fff',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+
+  textAreaInput: {
+    minHeight: 96,
+    fontSize: 14,
+    color: '#202124',
+    fontWeight: '400',
   },
 
   uploadBtn: {

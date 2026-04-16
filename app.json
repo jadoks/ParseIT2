@@ -3,6 +3,10 @@
     "name": "ParseIT",
     "slug": "parseit",
     "version": "1.0.0",
+    "icon": "./assets/images/logo.png",
+    "web": {
+      "favicon": "./assets/images/logo.png"
+    },
     "plugins": [
       "@react-native-community/datetimepicker"
     ]

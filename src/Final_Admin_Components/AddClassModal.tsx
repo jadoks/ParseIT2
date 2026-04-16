@@ -1,15 +1,19 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
-import React, { useMemo, useState } from "react";
+import * as DocumentPicker from "expo-document-picker";
+import React, { useEffect, useMemo, useState } from "react";
 import {
-    Modal,
-    Pressable,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  Alert,
+  Image,
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
 
 type YearOption = {
@@ -32,23 +36,108 @@ type CourseOption = {
   label: string;
 };
 
+type BannerFile = {
+  uri: string;
+  name: string | null;
+  mimeType: string | null;
+};
+
+export type AddClassModalPayload = {
+  classCode: string;
+  className: string;
+  courseCode: string;
+  semester: string;
+  section: string;
+  instructor: string;
+  classMembers: number;
+  schoolYear: string | null;
+  description: string | null;
+  bannerLocalUri: string | null;
+  bannerFileName: string | null;
+  bannerMimeType: string | null;
+};
+
+export type AddClassModalInitialData = {
+  id?: string;
+  classCode?: string;
+  className?: string;
+  courseCode?: string;
+  semester?: string;
+  section?: string;
+  instructor?: string;
+  classMembers?: number;
+  schoolYear?: string | null;
+  description?: string | null;
+  bannerUrl?: string | null;
+  bannerFileName?: string | null;
+  bannerMimeType?: string | null;
+};
+
+const YEAR_OPTIONS: YearOption[] = [
+  { id: "1st", label: "1st Year" },
+  { id: "2nd", label: "2nd Year" },
+  { id: "3rd", label: "3rd Year" },
+  { id: "4th", label: "4th Year" },
+];
+
+const SECTION_OPTIONS: Record<string, SectionOption[]> = {
+  "1st": [
+    { id: "1A", label: "1A Microsoft" },
+    { id: "1B", label: "1B Google" },
+  ],
+  "2nd": [
+    { id: "2A", label: "2A Algorithm" },
+    { id: "2B", label: "2B Pseudocode" },
+  ],
+  "3rd": [
+    { id: "3A", label: "3A Python" },
+    { id: "3B", label: "3B Java" },
+  ],
+  "4th": [
+    { id: "4A", label: "4A Xamarin" },
+    { id: "4B", label: "4B Laravel" },
+  ],
+};
+
+const COURSE_OPTIONS: Record<string, CourseOption[]> = {
+  "1st": [
+    { id: "IT101", label: "IT101 - Introduction to Computing" },
+    { id: "IT102", label: "IT102 - Computer Programming 1" },
+  ],
+  "2nd": [
+    { id: "IT201", label: "IT201 - Data Structures and Algorithms" },
+    { id: "IT202", label: "IT202 - Object-Oriented Programming" },
+  ],
+  "3rd": [
+    { id: "IT301", label: "IT301 - Mobile Application Development" },
+    { id: "IT302", label: "IT302 - Web Systems and Technologies" },
+  ],
+  "4th": [
+    { id: "IT401", label: "IT401 - Capstone Project 1" },
+    { id: "IT402", label: "IT402 - Systems Integration and Architecture" },
+  ],
+};
+
+const SEMESTER_OPTIONS: SemesterOption[] = [
+  { id: "sem-1", label: "1st Semester" },
+  { id: "sem-2", label: "2nd Semester" },
+  { id: "sem-3", label: "Summer" },
+];
+
 export default function AddClassModal({
   visible,
   onClose,
   isMobile,
   onCreateClass,
+  initialData,
+  isEditMode = false,
 }: {
   visible: boolean;
   onClose: () => void;
   isMobile: boolean;
-  onCreateClass: (payload: {
-    classCode: string;
-    className: string;
-    semester: string;
-    section: string;
-    instructor: string;
-    classMembers: number;
-  }) => void;
+  onCreateClass: (payload: AddClassModalPayload) => void;
+  initialData?: AddClassModalInitialData | null;
+  isEditMode?: boolean;
 }) {
   const [selectedYear, setSelectedYear] = useState<string | null>(null);
   const [selectedSection, setSelectedSection] = useState<string | null>(null);
@@ -56,57 +145,11 @@ export default function AddClassModal({
   const [selectedCourse, setSelectedCourse] = useState<string | null>(null);
   const [isSemesterModalVisible, setIsSemesterModalVisible] = useState(false);
   const [instructor, setInstructor] = useState("");
-
-  const YEAR_OPTIONS: YearOption[] = [
-    { id: "1st", label: "1st Year" },
-    { id: "2nd", label: "2nd Year" },
-    { id: "3rd", label: "3rd Year" },
-    { id: "4th", label: "4th Year" },
-  ];
-
-  const SECTION_OPTIONS: Record<string, SectionOption[]> = {
-    "1st": [
-      { id: "1A", label: "1A Microsoft" },
-      { id: "1B", label: "1B Google" },
-    ],
-    "2nd": [
-      { id: "2A", label: "2A Algorithm" },
-      { id: "2B", label: "2B Pseudocode" },
-    ],
-    "3rd": [
-      { id: "3A", label: "3A Python" },
-      { id: "3B", label: "3B Java" },
-    ],
-    "4th": [
-      { id: "4A", label: "4A Xamarin" },
-      { id: "4B", label: "4B Laravel" },
-    ],
-  };
-
-  const COURSE_OPTIONS: Record<string, CourseOption[]> = {
-    "1st": [
-      { id: "IT101", label: "IT101 - Introduction to Computing" },
-      { id: "IT102", label: "IT102 - Computer Programming 1" },
-    ],
-    "2nd": [
-      { id: "IT201", label: "IT201 - Data Structures and Algorithms" },
-      { id: "IT202", label: "IT202 - Object-Oriented Programming" },
-    ],
-    "3rd": [
-      { id: "IT301", label: "IT301 - Mobile Application Development" },
-      { id: "IT302", label: "IT302 - Web Systems and Technologies" },
-    ],
-    "4th": [
-      { id: "IT401", label: "IT401 - Capstone Project 1" },
-      { id: "IT402", label: "IT402 - Systems Integration and Architecture" },
-    ],
-  };
-
-  const SEMESTER_OPTIONS: SemesterOption[] = [
-    { id: "sem-1", label: "1st Semester (2025-2026)" },
-    { id: "sem-2", label: "2nd Semester (2025-2026)" },
-    { id: "sem-3", label: "Summer (2025-2026)" },
-  ];
+  const [description, setDescription] = useState("");
+  const [startYear, setStartYear] = useState("2025");
+  const [endYear, setEndYear] = useState("2026");
+  const [bannerFile, setBannerFile] = useState<BannerFile | null>(null);
+  const [isBannerHovered, setIsBannerHovered] = useState(false);
 
   const selectedSemesterLabel = useMemo(() => {
     return (
@@ -114,6 +157,9 @@ export default function AddClassModal({
       "Select semester"
     );
   }, [selectedSemester]);
+
+  const shouldShowBannerOverlay =
+    !bannerFile?.uri || isMobile || Platform.OS !== "web" || isBannerHovered;
 
   const generateRandomClassCode = () => {
     const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
@@ -165,43 +211,184 @@ export default function AddClassModal({
     setSelectedCourse(courseId);
   };
 
-  const handleClose = () => {
-    closeSemesterDropdown();
-    onClose();
+  const handlePickBanner = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ["image/*"],
+        copyToCacheDirectory: true,
+        multiple: false,
+      });
+
+      if (result.canceled) return;
+
+      const asset = result.assets?.[0];
+      if (!asset?.uri) {
+        Alert.alert("Upload Failed", "No file was selected.");
+        return;
+      }
+
+      setBannerFile({
+        uri: asset.uri,
+        name: asset.name ?? null,
+        mimeType: asset.mimeType ?? null,
+      });
+    } catch (error) {
+      console.error("Banner pick error:", error);
+      Alert.alert("Upload Failed", "Unable to open file picker.");
+    }
   };
 
-  const handleCreateClass = () => {
-    const selectedSectionLabel =
-      selectedYear && selectedSection
-        ? SECTION_OPTIONS[selectedYear].find(
-            (section) => section.id === selectedSection
-          )?.label || "Not set"
-        : "Not set";
+  const clearBanner = () => {
+    setBannerFile(null);
+    setIsBannerHovered(false);
+  };
 
-    const selectedCourseLabel =
-      selectedYear && selectedCourse
-        ? COURSE_OPTIONS[selectedYear].find(
-            (course) => course.id === selectedCourse
-          )?.label || "Untitled Course"
-        : "Untitled Course";
-
-    const generatedClassCode = generateRandomClassCode();
-    const generatedClassName = `${selectedCourseLabel} - ${selectedSemesterLabel}`;
-
-    onCreateClass({
-      classCode: generatedClassCode,
-      className: generatedClassName,
-      semester: selectedSemesterLabel,
-      section: selectedSectionLabel,
-      instructor: instructor || "Not assigned",
-      classMembers: 0,
-    });
-
+  const resetForm = () => {
     setInstructor("");
+    setDescription("");
+    setStartYear("2025");
+    setEndYear("2026");
     setSelectedYear(null);
     setSelectedSection(null);
     setSelectedCourse(null);
     setSelectedSemester("sem-1");
+    setBannerFile(null);
+    setIsBannerHovered(false);
+    closeSemesterDropdown();
+  };
+
+  useEffect(() => {
+    if (!visible) return;
+
+    if (!isEditMode || !initialData) {
+      resetForm();
+      return;
+    }
+
+    setInstructor(initialData.instructor || "");
+    setDescription(initialData.description || "");
+
+    if (initialData.schoolYear) {
+      const [start, end] = initialData.schoolYear.split("-");
+      setStartYear(start || "2025");
+      setEndYear(end || "2026");
+    } else {
+      setStartYear("2025");
+      setEndYear("2026");
+    }
+
+    const matchedSemester =
+      SEMESTER_OPTIONS.find(
+        (semester) => semester.label === initialData.semester
+      )?.id || "sem-1";
+    setSelectedSemester(matchedSemester);
+
+    let matchedYear: string | null = null;
+
+    if (initialData.courseCode) {
+      const yearEntry = Object.entries(COURSE_OPTIONS).find(([, courses]) =>
+        courses.some((course) => course.id === initialData.courseCode)
+      );
+      matchedYear = yearEntry?.[0] || null;
+    }
+
+    if (!matchedYear && initialData.section) {
+      const yearEntry = Object.entries(SECTION_OPTIONS).find(([, sections]) =>
+        sections.some((section) => section.label === initialData.section)
+      );
+      matchedYear = yearEntry?.[0] || null;
+    }
+
+    setSelectedYear(matchedYear);
+
+    if (matchedYear) {
+      const matchedSection =
+        SECTION_OPTIONS[matchedYear]?.find(
+          (section) => section.label === initialData.section
+        )?.id || null;
+
+      const matchedCourse =
+        COURSE_OPTIONS[matchedYear]?.find(
+          (course) => course.id === initialData.courseCode
+        )?.id || null;
+
+      setSelectedSection(matchedSection);
+      setSelectedCourse(matchedCourse);
+    } else {
+      setSelectedSection(null);
+      setSelectedCourse(null);
+    }
+
+    if (initialData.bannerFileName || initialData.bannerUrl) {
+      setBannerFile({
+        uri: initialData.bannerUrl || "",
+        name: initialData.bannerFileName ?? null,
+        mimeType: initialData.bannerMimeType ?? null,
+      });
+    } else {
+      setBannerFile(null);
+    }
+
+    setIsBannerHovered(false);
+  }, [visible, isEditMode, initialData]);
+
+  const handleClose = () => {
+    resetForm();
+    onClose();
+  };
+
+  const handleSubmit = () => {
+    if (!selectedYear) {
+      Alert.alert("Missing Field", "Please select a year.");
+      return;
+    }
+
+    if (!selectedSection) {
+      Alert.alert("Missing Field", "Please select a section.");
+      return;
+    }
+
+    if (!selectedCourse) {
+      Alert.alert("Missing Field", "Please select a course.");
+      return;
+    }
+
+    if (!startYear.trim() || !endYear.trim()) {
+      Alert.alert("Missing Field", "Please enter start year and end year.");
+      return;
+    }
+
+    const selectedSectionLabel =
+      SECTION_OPTIONS[selectedYear].find(
+        (section) => section.id === selectedSection
+      )?.label || "Not set";
+
+    const selectedCourseItem =
+      COURSE_OPTIONS[selectedYear].find(
+        (course) => course.id === selectedCourse
+      ) || null;
+
+    const selectedCourseLabel = selectedCourseItem?.label || "Untitled Course";
+    const selectedCourseCode = selectedCourseItem?.id || "";
+
+    const schoolYear = `${startYear.trim()}-${endYear.trim()}`;
+
+    onCreateClass({
+      classCode: isEditMode
+        ? initialData?.classCode || generateRandomClassCode()
+        : generateRandomClassCode(),
+      className: selectedCourseLabel,
+      courseCode: selectedCourseCode,
+      semester: selectedSemesterLabel,
+      section: selectedSectionLabel,
+      instructor: instructor.trim() || "Not assigned",
+      classMembers: isEditMode ? initialData?.classMembers ?? 0 : 0,
+      schoolYear,
+      description: description.trim() ? description.trim() : null,
+      bannerLocalUri: bannerFile?.uri ?? null,
+      bannerFileName: bannerFile?.name ?? null,
+      bannerMimeType: bannerFile?.mimeType ?? null,
+    });
 
     handleClose();
   };
@@ -220,10 +407,13 @@ export default function AddClassModal({
                 </View>
 
                 <View style={styles.modalHeaderTextWrap}>
-                  <Text style={styles.modalTitle}>Add Class</Text>
+                  <Text style={styles.modalTitle}>
+                    {isEditMode ? "Edit Class" : "Add Class"}
+                  </Text>
                   <Text style={styles.modalSubtitle}>
-                    Create a class by selecting year, section, course,
-                    instructor, semester, and class banner image.
+                    {isEditMode
+                      ? "Update class details with existing values already selected."
+                      : "Create a class by selecting year, section, course, instructor, semester, school year, optional description, and an optional banner file."}
                   </Text>
                 </View>
               </View>
@@ -402,12 +592,7 @@ export default function AddClassModal({
                     </View>
                   </View>
 
-                  <View
-                    style={[
-                      styles.modalCol,
-                      !isMobile && styles.addClassSemesterFieldWrap,
-                    ]}
-                  >
+                  <View style={styles.modalCol}>
                     <Text style={styles.fieldLabel}>Semester</Text>
 
                     <TouchableOpacity
@@ -424,61 +609,75 @@ export default function AddClassModal({
                         color="#8A6F6F"
                       />
                     </TouchableOpacity>
+                  </View>
+                </View>
 
-                    {!isMobile && isSemesterModalVisible && (
-                      <>
-                        <Pressable
-                          style={styles.addClassSemesterDismissLayer}
-                          onPress={closeSemesterDropdown}
-                        />
-                        <View style={styles.addClassSemesterFloatingFront}>
-                          <ScrollView
-                            showsVerticalScrollIndicator={true}
-                            style={styles.dropdownFloatingScroll}
-                          >
-                            {SEMESTER_OPTIONS.map((semester, index) => {
-                              const isActive = selectedSemester === semester.id;
-                              const isLast =
-                                index === SEMESTER_OPTIONS.length - 1;
+                <View
+                  style={[styles.modalRow, isMobile && styles.modalRowStack]}
+                >
+                  <View style={styles.modalCol}>
+                    <Text style={styles.fieldLabel}>Start Year</Text>
+                    <View style={styles.inputField}>
+                      <Ionicons
+                        name="calendar-outline"
+                        size={18}
+                        color="#8A6F6F"
+                      />
+                      <TextInput
+                        value={startYear}
+                        onChangeText={setStartYear}
+                        placeholder="2025"
+                        placeholderTextColor="#B79A9A"
+                        keyboardType="number-pad"
+                        maxLength={4}
+                        style={styles.textInput}
+                      />
+                    </View>
+                  </View>
 
-                              return (
-                                <TouchableOpacity
-                                  key={semester.id}
-                                  style={[
-                                    styles.dropdownItem,
-                                    isActive && styles.dropdownItemActive,
-                                    !isLast && styles.dropdownItemBorder,
-                                  ]}
-                                  activeOpacity={0.85}
-                                  onPress={() => {
-                                    setSelectedSemester(semester.id);
-                                    closeSemesterDropdown();
-                                  }}
-                                >
-                                  <Text
-                                    style={[
-                                      styles.dropdownItemText,
-                                      isActive &&
-                                        styles.dropdownItemTextActive,
-                                    ]}
-                                  >
-                                    {semester.label}
-                                  </Text>
+                  <View style={styles.modalCol}>
+                    <Text style={styles.fieldLabel}>End Year</Text>
+                    <View style={styles.inputField}>
+                      <Ionicons
+                        name="calendar-outline"
+                        size={18}
+                        color="#8A6F6F"
+                      />
+                      <TextInput
+                        value={endYear}
+                        onChangeText={setEndYear}
+                        placeholder="2026"
+                        placeholderTextColor="#B79A9A"
+                        keyboardType="number-pad"
+                        maxLength={4}
+                        style={styles.textInput}
+                      />
+                    </View>
+                  </View>
+                </View>
 
-                                  {isActive && (
-                                    <Ionicons
-                                      name="checkmark-circle"
-                                      size={18}
-                                      color="#DC2626"
-                                    />
-                                  )}
-                                </TouchableOpacity>
-                              );
-                            })}
-                          </ScrollView>
-                        </View>
-                      </>
-                    )}
+                <View style={styles.modalSection}>
+                  <View style={styles.modalSectionHeaderRow}>
+                    <Ionicons
+                      name="document-text-outline"
+                      size={18}
+                      color="#DC2626"
+                    />
+                    <Text style={styles.modalSectionTitle}>
+                      Description (Optional)
+                    </Text>
+                  </View>
+
+                  <View style={styles.descriptionField}>
+                    <TextInput
+                      value={description}
+                      onChangeText={setDescription}
+                      placeholder="Enter class description"
+                      placeholderTextColor="#B79A9A"
+                      multiline
+                      textAlignVertical="top"
+                      style={styles.descriptionInput}
+                    />
                   </View>
                 </View>
 
@@ -490,24 +689,75 @@ export default function AddClassModal({
                     </Text>
                   </View>
 
-                  <TouchableOpacity
-                    style={styles.bannerUpload}
-                    activeOpacity={0.85}
+                  <Pressable
+                    style={({ pressed }) => [
+                      styles.bannerUpload,
+                      bannerFile && styles.bannerUploadSelected,
+                      pressed && styles.bannerUploadPressed,
+                    ]}
+                    onPress={handlePickBanner}
+                    onHoverIn={() => {
+                      if (Platform.OS === "web") setIsBannerHovered(true);
+                    }}
+                    onHoverOut={() => {
+                      if (Platform.OS === "web") setIsBannerHovered(false);
+                    }}
                   >
-                    <View style={styles.bannerUploadIcon}>
-                      <Ionicons
-                        name="cloud-upload-outline"
-                        size={24}
-                        color="#DC2626"
+                    {bannerFile?.uri ? (
+                      <Image
+                        source={{ uri: bannerFile.uri }}
+                        style={styles.bannerUploadBackgroundImage}
+                        resizeMode="cover"
                       />
-                    </View>
-                    <Text style={styles.bannerUploadTitle}>
-                      Upload Class Banner
-                    </Text>
-                    <Text style={styles.bannerUploadSubtitle}>
-                      Recommended wide cover image for class header
-                    </Text>
-                  </TouchableOpacity>
+                    ) : null}
+
+                    {shouldShowBannerOverlay ? (
+                      <View style={styles.bannerUploadOverlay} />
+                    ) : null}
+
+                    {shouldShowBannerOverlay ? (
+                      <View style={styles.bannerUploadContent}>
+                        <View style={styles.bannerUploadIcon}>
+                          <Ionicons
+                            name="cloud-upload-outline"
+                            size={24}
+                            color="#DC2626"
+                          />
+                        </View>
+
+                        <Text style={styles.bannerUploadTitle}>
+                          {bannerFile
+                            ? "Change Class Banner"
+                            : "Upload Class Banner"}
+                        </Text>
+
+                        <Text style={styles.bannerUploadSubtitle}>
+                          {bannerFile?.name
+                            ? bannerFile.name
+                            : "Tap to open your device file explorer"}
+                        </Text>
+
+                        {!!bannerFile?.mimeType && (
+                          <Text style={styles.bannerMetaText}>
+                            {bannerFile.mimeType}
+                          </Text>
+                        )}
+                      </View>
+                    ) : null}
+                  </Pressable>
+
+                  {bannerFile && (
+                    <TouchableOpacity
+                      style={styles.removeBannerButton}
+                      activeOpacity={0.85}
+                      onPress={clearBanner}
+                    >
+                      <Ionicons name="trash-outline" size={16} color="#DC2626" />
+                      <Text style={styles.removeBannerButtonText}>
+                        Remove selected banner
+                      </Text>
+                    </TouchableOpacity>
+                  )}
                 </View>
               </ScrollView>
             </View>
@@ -524,88 +774,88 @@ export default function AddClassModal({
               <TouchableOpacity
                 style={styles.modalPrimaryButton}
                 activeOpacity={0.85}
-                onPress={handleCreateClass}
+                onPress={handleSubmit}
               >
                 <Ionicons
                   name="add-circle-outline"
                   size={18}
                   color="#FFFFFF"
                 />
-                <Text style={styles.modalPrimaryButtonText}>Create Class</Text>
+                <Text style={styles.modalPrimaryButtonText}>
+                  {isEditMode ? "Update Class" : "Create Class"}
+                </Text>
               </TouchableOpacity>
             </View>
           </View>
         </View>
       </Modal>
 
-      {isMobile && (
-        <Modal
-          visible={isSemesterModalVisible}
-          animationType="fade"
-          transparent
-          onRequestClose={closeSemesterDropdown}
-        >
-          <View style={styles.optionModalOverlay}>
-            <Pressable
-              style={StyleSheet.absoluteFill}
-              onPress={closeSemesterDropdown}
-            />
+      <Modal
+        visible={isSemesterModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={closeSemesterDropdown}
+      >
+        <View style={styles.dropdownModalOverlay}>
+          <Pressable
+            style={StyleSheet.absoluteFill}
+            onPress={closeSemesterDropdown}
+          />
 
-            <View style={styles.optionModalCard}>
-              <View style={styles.optionModalHeader}>
-                <Text style={styles.optionModalTitle}>Select Semester</Text>
-                <TouchableOpacity
-                  onPress={closeSemesterDropdown}
-                  activeOpacity={0.85}
-                  style={styles.optionModalCloseButton}
-                >
-                  <Ionicons name="close" size={20} color="#7A4A4A" />
-                </TouchableOpacity>
-              </View>
-
-              <ScrollView showsVerticalScrollIndicator={true}>
-                {SEMESTER_OPTIONS.map((semester, index) => {
-                  const isActive = selectedSemester === semester.id;
-                  const isLast = index === SEMESTER_OPTIONS.length - 1;
-
-                  return (
-                    <TouchableOpacity
-                      key={semester.id}
-                      style={[
-                        styles.optionModalItem,
-                        isActive && styles.dropdownItemActive,
-                        !isLast && styles.dropdownItemBorder,
-                      ]}
-                      activeOpacity={0.85}
-                      onPress={() => {
-                        setSelectedSemester(semester.id);
-                        closeSemesterDropdown();
-                      }}
-                    >
-                      <Text
-                        style={[
-                          styles.dropdownItemText,
-                          isActive && styles.dropdownItemTextActive,
-                        ]}
-                      >
-                        {semester.label}
-                      </Text>
-
-                      {isActive && (
-                        <Ionicons
-                          name="checkmark-circle"
-                          size={18}
-                          color="#DC2626"
-                        />
-                      )}
-                    </TouchableOpacity>
-                  );
-                })}
-              </ScrollView>
+          <View style={styles.dropdownModalCard}>
+            <View style={styles.optionModalHeader}>
+              <Text style={styles.optionModalTitle}>Select Semester</Text>
+              <TouchableOpacity
+                onPress={closeSemesterDropdown}
+                activeOpacity={0.85}
+                style={styles.optionModalCloseButton}
+              >
+                <Ionicons name="close" size={20} color="#7A4A4A" />
+              </TouchableOpacity>
             </View>
+
+            <ScrollView showsVerticalScrollIndicator={true}>
+              {SEMESTER_OPTIONS.map((semester, index) => {
+                const isActive = selectedSemester === semester.id;
+                const isLast = index === SEMESTER_OPTIONS.length - 1;
+
+                return (
+                  <TouchableOpacity
+                    key={semester.id}
+                    style={[
+                      styles.optionModalItem,
+                      isActive && styles.dropdownItemActive,
+                      !isLast && styles.dropdownItemBorder,
+                    ]}
+                    activeOpacity={0.85}
+                    onPress={() => {
+                      setSelectedSemester(semester.id);
+                      closeSemesterDropdown();
+                    }}
+                  >
+                    <Text
+                      style={[
+                        styles.dropdownItemText,
+                        isActive && styles.dropdownItemTextActive,
+                      ]}
+                    >
+                      {semester.label}
+                    </Text>
+
+                    {isActive && (
+                      <Ionicons
+                        name="checkmark-circle"
+                        size={18}
+                        color="#DC2626"
+                      />
+                    )}
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
           </View>
-        </Modal>
-      )}
+        </View>
+      </Modal>
     </>
   );
 }
@@ -631,35 +881,6 @@ const styles = StyleSheet.create({
   addClassModalBodyWrap: {
     flex: 1,
     position: "relative",
-  },
-  addClassSemesterFieldWrap: {
-    position: "relative",
-    zIndex: 3000,
-  },
-  addClassSemesterFloatingFront: {
-    position: "absolute",
-    top: 74,
-    left: 0,
-    right: 0,
-    backgroundColor: "#FFFFFF",
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: "#F1CACA",
-    overflow: "hidden",
-    shadowColor: "#2B1111",
-    shadowOpacity: 0.12,
-    shadowRadius: 14,
-    shadowOffset: {
-      width: 0,
-      height: 8,
-    },
-    elevation: 9999,
-    zIndex: 9999,
-  },
-  addClassSemesterDismissLayer: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "transparent",
-    zIndex: 2000,
   },
   modalHeader: {
     paddingHorizontal: 24,
@@ -815,9 +1036,6 @@ const styles = StyleSheet.create({
     flex: 1,
     marginRight: 10,
   },
-  dropdownFloatingScroll: {
-    maxHeight: 260,
-  },
   dropdownItem: {
     minHeight: 52,
     paddingHorizontal: 16,
@@ -860,8 +1078,22 @@ const styles = StyleSheet.create({
     color: "#2B1111",
     fontWeight: "600",
   },
+  descriptionField: {
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: "#F1CACA",
+    backgroundColor: "#FFF9F9",
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  descriptionInput: {
+    minHeight: 100,
+    fontSize: 14,
+    color: "#2B1111",
+    fontWeight: "500",
+  },
   bannerUpload: {
-    minHeight: 180,
+    minHeight: 220,
     borderRadius: 22,
     borderWidth: 1.5,
     borderStyle: "dashed",
@@ -870,12 +1102,36 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: 20,
+    overflow: "hidden",
+    position: "relative",
+  },
+  bannerUploadPressed: {
+    backgroundColor: "#FFF7F7",
+  },
+  bannerUploadSelected: {
+    borderColor: "#DC2626",
+    backgroundColor: "#FFF7F7",
+  },
+  bannerUploadBackgroundImage: {
+    ...StyleSheet.absoluteFillObject,
+    width: "100%",
+    height: "100%",
+  },
+  bannerUploadOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(255, 249, 249, 0.58)",
+  },
+  bannerUploadContent: {
+    position: "relative",
+    zIndex: 2,
+    alignItems: "center",
+    justifyContent: "center",
   },
   bannerUploadIcon: {
     width: 56,
     height: 56,
     borderRadius: 18,
-    backgroundColor: "#FEE2E2",
+    backgroundColor: "rgba(254, 226, 226, 0.95)",
     alignItems: "center",
     justifyContent: "center",
     marginBottom: 14,
@@ -885,11 +1141,31 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     color: "#2B1111",
     marginBottom: 6,
+    textAlign: "center",
   },
   bannerUploadSubtitle: {
     fontSize: 13,
     color: "#8A6F6F",
     textAlign: "center",
+  },
+  bannerMetaText: {
+    marginTop: 8,
+    fontSize: 12,
+    color: "#A05A5A",
+    fontWeight: "600",
+    textAlign: "center",
+  },
+  removeBannerButton: {
+    marginTop: 12,
+    alignSelf: "flex-start",
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  removeBannerButtonText: {
+    marginLeft: 6,
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#DC2626",
   },
   modalFooter: {
     paddingHorizontal: 24,
@@ -931,27 +1207,41 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     marginLeft: 8,
   },
-  optionModalOverlay: {
+  dropdownModalOverlay: {
     flex: 1,
-    backgroundColor: "rgba(43, 17, 17, 0.45)",
-    justifyContent: "flex-end",
+    backgroundColor: "rgba(43, 17, 17, 0.18)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 20,
   },
-  optionModalCard: {
+  dropdownModalCard: {
+    width: "100%",
+    maxWidth: 360,
+    maxHeight: 320,
     backgroundColor: "#FFFFFF",
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    paddingTop: 18,
-    paddingBottom: 24,
-    paddingHorizontal: 20,
-    maxHeight: "65%",
-    borderTopWidth: 1,
+    borderRadius: 24,
+    borderWidth: 1,
     borderColor: "#F3D4D4",
+    overflow: "hidden",
+    shadowColor: "#2B1111",
+    shadowOpacity: 0.14,
+    shadowRadius: 16,
+    shadowOffset: {
+      width: 0,
+      height: 8,
+    },
+    elevation: 12,
   },
   optionModalHeader: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: 14,
+    marginBottom: 0,
+    paddingHorizontal: 20,
+    paddingTop: 18,
+    paddingBottom: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: "#F8E3E3",
   },
   optionModalTitle: {
     fontSize: 18,

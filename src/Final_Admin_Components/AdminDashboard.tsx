@@ -1,10 +1,13 @@
 import FontAwesome5 from "@expo/vector-icons/FontAwesome5";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
-import React, { useRef, useState } from "react";
+import Constants from "expo-constants";
+import React, { useEffect, useRef, useState } from "react";
 import {
+  Alert,
   DimensionValue,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -14,16 +17,11 @@ import {
   View,
 } from "react-native";
 
-import Chatbot from "./Chatbot";
-import { addAdminRecord, getAdminCount } from "./adminStore";
-import { addClassRecord, getClassCount } from "./classStore";
-import { addStudentRecord, getStudentCount } from "./studentStore";
-import { addTeacherRecord, getTeacherCount } from "./teacherStore";
-
 import AddAdminModal from "./AddAdminModal";
 import AddClassModal from "./AddClassModal";
 import AddStudentModal from "./AddStudentModal";
 import AddTeacherModal from "./AddTeacherModal";
+import Chatbot from "./Chatbot";
 
 import type { AdminFormPayload } from "./adminTypes";
 import type { StudentFormPayload } from "./studentTypes";
@@ -63,6 +61,27 @@ type DropdownAnchor = {
   width: number;
   height: number;
 };
+
+function getApiBaseUrl() {
+  if (Platform.OS === "web") {
+    return "http://localhost:5000";
+  }
+
+  const possibleHost =
+    Constants.expoConfig?.hostUri ||
+    Constants.manifest2?.extra?.expoGo?.debuggerHost ||
+    "";
+
+  const host = possibleHost.split(":")[0];
+
+  if (host) {
+    return `http://${host}:5000`;
+  }
+
+  return "http://192.168.1.5:5000";
+}
+
+const API_BASE_URL = getApiBaseUrl();
 
 function DashboardCard({
   title,
@@ -566,6 +585,27 @@ function SetAcademicYearModal({
   );
 }
 
+const fileUriToBase64 = async (uri: string): Promise<string> => {
+  const response = await fetch(uri);
+  const blob = await response.blob();
+
+  return await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+
+    reader.onloadend = () => {
+      const result = reader.result;
+      if (typeof result === "string") {
+        resolve(result);
+      } else {
+        reject(new Error("Failed to convert image to base64."));
+      }
+    };
+
+    reader.onerror = () => reject(new Error("Failed to read selected image."));
+    reader.readAsDataURL(blob);
+  });
+};
+
 export default function AdminDashboard({
   width,
   onOpenManageClass,
@@ -573,7 +613,7 @@ export default function AdminDashboard({
   onOpenManageStudent,
   onOpenManageTeacher,
 }: AdminDashboardProps) {
-  const [teacherCount, setTeacherCount] = useState(getTeacherCount());
+  const [teacherCount, setTeacherCount] = useState(0);
   const [isAddAdminModalVisible, setIsAddAdminModalVisible] = useState(false);
   const [isAddStudentModalVisible, setIsAddStudentModalVisible] =
     useState(false);
@@ -584,9 +624,9 @@ export default function AdminDashboard({
     useState(false);
   const [isAcademicYearStarted, setIsAcademicYearStarted] = useState(false);
   const [isChatbotModalVisible, setIsChatbotModalVisible] = useState(false);
-  const [classCount, setClassCount] = useState(getClassCount());
-  const [adminCount, setAdminCount] = useState(getAdminCount());
-  const [studentCount, setStudentCount] = useState(getStudentCount());
+  const [classCount, setClassCount] = useState(0);
+  const [adminCount, setAdminCount] = useState(0);
+  const [studentCount, setStudentCount] = useState(0);
 
   const [academicYearOptions, setAcademicYearOptions] = useState<
     AcademicYearOption[]
@@ -620,29 +660,72 @@ export default function AdminDashboard({
     ? "48.5%"
     : "31.8%";
 
-const handleAddSharedTeacher = async (payload: TeacherFormPayload) => {
-  try {
-    const response = await fetch("http://localhost:5000/create-teacher", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(payload),
-    });
+  const loadDashboardCounts = async () => {
+    try {
+      const [studentsRes, teachersRes, adminsRes, classesRes] =
+        await Promise.all([
+          fetch(`${API_BASE_URL}/students`),
+          fetch(`${API_BASE_URL}/teachers`),
+          fetch(`${API_BASE_URL}/admins`),
+          fetch(`${API_BASE_URL}/classes`),
+        ]);
 
-    const data = await response.json();
+      const [studentsData, teachersData, adminsData, classesData] =
+        await Promise.all([
+          studentsRes.json(),
+          teachersRes.json(),
+          adminsRes.json(),
+          classesRes.json(),
+        ]);
 
-    if (!response.ok) {
-      throw new Error(data.error || "Failed to create teacher");
+      if (studentsRes.ok) {
+        setStudentCount(Array.isArray(studentsData) ? studentsData.length : 0);
+      }
+
+      if (teachersRes.ok) {
+        setTeacherCount(Array.isArray(teachersData) ? teachersData.length : 0);
+      }
+
+      if (adminsRes.ok) {
+        setAdminCount(Array.isArray(adminsData) ? adminsData.length : 0);
+      }
+
+      if (classesRes.ok) {
+        setClassCount(Array.isArray(classesData) ? classesData.length : 0);
+      }
+    } catch (error) {
+      console.error("Error loading dashboard counts:", error);
     }
+  };
 
-    addTeacherRecord(payload);
-    setTeacherCount(getTeacherCount());
-    console.log("Teacher saved to Firebase:", data);
-  } catch (error) {
-    console.error("Error saving teacher:", error);
-  }
-};
+  useEffect(() => {
+    loadDashboardCounts();
+  }, []);
+
+  const handleAddSharedTeacher = async (payload: TeacherFormPayload) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/create-teacher`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to create teacher");
+      }
+
+      await loadDashboardCounts();
+      setIsAddTeacherModalVisible(false);
+      console.log("Teacher saved to Firebase:", data);
+    } catch (error) {
+      console.error("Error saving teacher:", error);
+    }
+  };
+
   const handleCreateAcademicYear = (payload: {
     semester: "1st" | "2nd" | null;
     startYear: string;
@@ -669,66 +752,118 @@ const handleAddSharedTeacher = async (payload: TeacherFormPayload) => {
     console.log("Academic Year Setup:", payload);
   };
 
-  const handleAddSharedClass = (payload: {
+  const handleAddSharedClass = async (payload: {
     classCode: string;
     className: string;
+    courseCode: string;
     semester: string;
     section: string;
     instructor: string;
     classMembers: number;
+    schoolYear: string | null;
+    description: string | null;
+    bannerLocalUri: string | null;
+    bannerFileName: string | null;
+    bannerMimeType: string | null;
   }) => {
-    addClassRecord(payload);
-    setClassCount(getClassCount());
+    try {
+      let bannerBase64 = null;
+
+      if (payload.bannerLocalUri) {
+        bannerBase64 = await fileUriToBase64(payload.bannerLocalUri);
+      }
+
+      const response = await fetch(`${API_BASE_URL}/create-class`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          name: payload.className,
+          courseCode: payload.courseCode,
+          section: payload.section,
+          semester: payload.semester,
+          schoolYear: payload.schoolYear,
+          description: payload.description,
+          bannerBase64,
+          bannerFileName: payload.bannerFileName,
+          bannerMimeType: payload.bannerMimeType,
+          instructorName: payload.instructor,
+          instructorEmail: "admin@email.com",
+          createdByUid: "admin_uid_001",
+          createdByRole: "admin",
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to create class");
+      }
+
+      await loadDashboardCounts();
+      setIsAddClassModalVisible(false);
+
+      Alert.alert(
+        "Success",
+        `Class created successfully.\nClass Code: ${
+          data?.data?.classCode || payload.classCode
+        }`
+      );
+
+      console.log("Class saved to Firebase:", data);
+    } catch (error) {
+      console.error("Error saving class:", error);
+    }
   };
 
-const handleAddSharedAdmin = async (payload: AdminFormPayload) => {
-  try {
-    const response = await fetch("http://localhost:5000/create-admin", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(payload),
-    });
+  const handleAddSharedAdmin = async (payload: AdminFormPayload) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/create-admin`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
 
-    const data = await response.json();
+      const data = await response.json();
 
-    if (!response.ok) {
-      throw new Error(data.error || "Failed to create admin");
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to create admin");
+      }
+
+      await loadDashboardCounts();
+      setIsAddAdminModalVisible(false);
+      console.log("Admin saved to Firebase:", data);
+    } catch (error) {
+      console.error("Error saving admin:", error);
     }
+  };
 
-    addAdminRecord(payload);
-    setAdminCount(getAdminCount());
-    console.log("Admin saved to Firebase:", data);
-  } catch (error) {
-    console.error("Error saving admin:", error);
-  }
-};
+  const handleAddSharedStudent = async (payload: StudentFormPayload) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/create-student`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
 
+      const data = await response.json();
 
-const handleAddSharedStudent = async (payload: StudentFormPayload) => {
-  try {
-    const response = await fetch("http://localhost:5000/create-student", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(payload),
-    });
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to create student");
+      }
 
-    const data = await response.json();
-
-    if (!response.ok) {
-      throw new Error(data.error || "Failed to create student");
+      await loadDashboardCounts();
+      setIsAddStudentModalVisible(false);
+      console.log("Student saved to Firebase:", data);
+    } catch (error) {
+      console.error("Error saving student:", error);
     }
-
-    addStudentRecord(payload);
-    setStudentCount(getStudentCount());
-    console.log("Student saved to Firebase:", data);
-  } catch (error) {
-    console.error("Error saving student:", error);
-  }
-};
+  };
 
   return (
     <View>
@@ -755,25 +890,25 @@ const handleAddSharedStudent = async (payload: StudentFormPayload) => {
         <SummaryCard
           label="Students"
           value={`${studentCount}`}
-          trend="+2.4% this month"
+          trend="Current enrolled total"
           widthValue={summaryWidth}
         />
         <SummaryCard
           label="Teachers"
           value={`${teacherCount}`}
-          trend="+4 new faculty"
+          trend="Active faculty records"
           widthValue={summaryWidth}
         />
         <SummaryCard
           label="Admins"
           value={`${adminCount}`}
-          trend="2 new admins"
+          trend="System administrator count"
           widthValue={summaryWidth}
         />
         <SummaryCard
           label="Classes"
           value={`${classCount}`}
-          trend="Shared class records"
+          trend="Published class records"
           widthValue={summaryWidth}
         />
       </View>
@@ -1302,51 +1437,6 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
 
-  modalFooter: {
-    paddingHorizontal: 24,
-    paddingTop: 16,
-    paddingBottom: 22,
-    borderTopWidth: 1,
-    borderTopColor: "#F8E3E3",
-    flexDirection: "row",
-    justifyContent: "flex-end",
-  },
-
-  modalSecondaryButton: {
-    height: 48,
-    paddingHorizontal: 18,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: "#E7C0C0",
-    backgroundColor: "#FFF7F7",
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: 12,
-  },
-
-  modalSecondaryButtonText: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: "#7A4A4A",
-  },
-
-  modalPrimaryButton: {
-    height: 48,
-    paddingHorizontal: 18,
-    borderRadius: 14,
-    backgroundColor: "#DC2626",
-    alignItems: "center",
-    justifyContent: "center",
-    flexDirection: "row",
-  },
-
-  modalPrimaryButtonText: {
-    fontSize: 14,
-    fontWeight: "800",
-    color: "#FFFFFF",
-    marginLeft: 8,
-  },
-
   dropdownModalOverlay: {
     flex: 1,
     backgroundColor: "rgba(43, 17, 17, 0.12)",
@@ -1374,7 +1464,50 @@ const styles = StyleSheet.create({
   dropdownFloatingScroll: {
     maxHeight: 260,
   },
+modalFooter: {
+  paddingHorizontal: 24,
+  paddingTop: 16,
+  paddingBottom: 22,
+  borderTopWidth: 1,
+  borderTopColor: "#F8E3E3",
+  flexDirection: "row",
+  justifyContent: "flex-end",
+},
 
+modalSecondaryButton: {
+  height: 48,
+  paddingHorizontal: 18,
+  borderRadius: 14,
+  borderWidth: 1,
+  borderColor: "#E7C0C0",
+  backgroundColor: "#FFF7F7",
+  alignItems: "center",
+  justifyContent: "center",
+  marginRight: 12,
+},
+
+modalSecondaryButtonText: {
+  fontSize: 14,
+  fontWeight: "700",
+  color: "#7A4A4A",
+},
+
+modalPrimaryButton: {
+  height: 48,
+  paddingHorizontal: 18,
+  borderRadius: 14,
+  backgroundColor: "#DC2626",
+  alignItems: "center",
+  justifyContent: "center",
+  flexDirection: "row",
+},
+
+modalPrimaryButtonText: {
+  fontSize: 14,
+  fontWeight: "800",
+  color: "#FFFFFF",
+  marginLeft: 8,
+},
   optionModalCard: {
     backgroundColor: "#FFFFFF",
     borderTopLeftRadius: 24,

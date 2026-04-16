@@ -1,7 +1,12 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
-import React, { useEffect, useMemo, useState } from "react";
+import Constants from "expo-constants";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  Alert,
+  Modal,
+  Platform,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -10,33 +15,144 @@ import {
   View,
 } from "react-native";
 
-import AddTeacherModal from "./AddTeacherModal";
-import {
-  addTeacherRecord,
-  deleteTeacherRecord,
-  getTeacherRecords,
-  updateTeacherRecord,
-  type TeacherItem,
-} from "./teacherStore";
-
-import type { TeacherFormPayload } from "./teacherTypes";
+import AddTeacherModal, {
+  AddTeacherModalInitialData,
+} from "./AddTeacherModal";
 
 type ManageTeacherProps = {
   width: number;
 };
 
+type BackendTeacherItem = {
+  id: string;
+  teacherId: string;
+  firstName: string;
+  lastName: string;
+  birthday?: string | { _seconds?: number; seconds?: number } | null;
+  email: string;
+};
+
+type TeacherFormPayload = {
+  teacherId: string;
+  firstName: string;
+  lastName: string;
+  birthday: string;
+  email: string;
+};
+
+type TableTeacherItem = {
+  id: string;
+  teacherId: string;
+  firstName: string;
+  lastName: string;
+  birthday: string;
+  email: string;
+};
+
+function getApiBaseUrl() {
+  if (Platform.OS === "web") {
+    return "http://localhost:5000";
+  }
+
+  const possibleHost =
+    Constants.expoConfig?.hostUri ||
+    Constants.manifest2?.extra?.expoGo?.debuggerHost ||
+    "";
+
+  const host = possibleHost.split(":")[0];
+
+  if (host) {
+    return `http://${host}:5000`;
+  }
+
+  return "http://192.168.1.5:5000";
+}
+
+const API_BASE_URL = getApiBaseUrl();
+
+function formatBirthday(value: BackendTeacherItem["birthday"]): string {
+  if (!value) return "";
+
+  if (typeof value === "string") return value;
+
+  if (value?._seconds) {
+    const date = new Date(value._seconds * 1000);
+    const month = `${date.getMonth() + 1}`.padStart(2, "0");
+    const day = `${date.getDate()}`.padStart(2, "0");
+    const year = date.getFullYear();
+    return `${month}/${day}/${year}`;
+  }
+
+  if (value?.seconds) {
+    const date = new Date(value.seconds * 1000);
+    const month = `${date.getMonth() + 1}`.padStart(2, "0");
+    const day = `${date.getDate()}`.padStart(2, "0");
+    const year = date.getFullYear();
+    return `${month}/${day}/${year}`;
+  }
+
+  return "";
+}
+
+function mapBackendTeacher(item: BackendTeacherItem): TableTeacherItem {
+  return {
+    id: item.id,
+    teacherId: item.teacherId || "",
+    firstName: item.firstName || "",
+    lastName: item.lastName || "",
+    birthday: formatBirthday(item.birthday),
+    email: item.email || "",
+  };
+}
+
 export default function ManageTeacher({ width }: ManageTeacherProps) {
-  const [teachers, setTeachers] = useState<TeacherItem[]>(getTeacherRecords());
+  const [teachers, setTeachers] = useState<TableTeacherItem[]>([]);
+  const [rawTeachers, setRawTeachers] = useState<BackendTeacherItem[]>([]);
   const [isAddModalVisible, setIsAddModalVisible] = useState(false);
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [selectedTeacher, setSelectedTeacher] =
+    useState<AddTeacherModalInitialData | null>(null);
   const [searchText, setSearchText] = useState("");
+  const [teacherToDelete, setTeacherToDelete] =
+    useState<TableTeacherItem | null>(null);
+  const [isDeleteModalVisible, setIsDeleteModalVisible] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
 
   const isMobile = width < 768;
   const isTablet = width >= 768 && width < 1100;
   const tableMinWidth = isMobile ? 980 : isTablet ? 1080 : 1180;
 
-  useEffect(() => {
-    setTeachers([...getTeacherRecords()]);
+  const loadTeachers = useCallback(async () => {
+    try {
+      setIsLoading(true);
+
+      const response = await fetch(`${API_BASE_URL}/teachers`, {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to fetch teachers");
+      }
+
+      const raw = Array.isArray(data) ? data : [];
+      setRawTeachers(raw);
+      setTeachers(raw.map(mapBackendTeacher));
+    } catch (error) {
+      console.error("Error loading teachers:", error);
+      Alert.alert("Error", "Failed to load teachers.");
+    } finally {
+      setIsLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    loadTeachers();
+  }, [loadTeachers]);
 
   const filteredTeachers = useMemo(() => {
     const keyword = searchText.trim().toLowerCase();
@@ -58,9 +174,39 @@ export default function ManageTeacher({ width }: ManageTeacherProps) {
     });
   }, [teachers, searchText]);
 
-  const handleAddTeacher = async (payload: TeacherFormPayload) => {
+  const resetModalState = () => {
+    setIsAddModalVisible(false);
+    setIsEditMode(false);
+    setSelectedTeacher(null);
+  };
+
+  const handleSubmitTeacher = async (payload: TeacherFormPayload) => {
     try {
-      const response = await fetch("http://localhost:5000/create-teacher", {
+      if (isEditMode && selectedTeacher?.id) {
+        const response = await fetch(
+          `${API_BASE_URL}/update-teacher/${selectedTeacher.id}`,
+          {
+            method: "PUT",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify(payload),
+          }
+        );
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.error || "Failed to update teacher");
+        }
+
+        resetModalState();
+        await loadTeachers();
+        Alert.alert("Success", "Teacher updated successfully.");
+        return;
+      }
+
+      const response = await fetch(`${API_BASE_URL}/create-teacher`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -74,29 +220,74 @@ export default function ManageTeacher({ width }: ManageTeacherProps) {
         throw new Error(data.error || "Failed to create teacher");
       }
 
-      addTeacherRecord(payload);
-      setTeachers([...getTeacherRecords()]);
-      setIsAddModalVisible(false);
-
-      console.log("Teacher saved to Firebase:", data);
+      resetModalState();
+      await loadTeachers();
+      Alert.alert("Success", "Teacher created successfully.");
     } catch (error) {
       console.error("Error saving teacher:", error);
+      Alert.alert("Error", "Failed to save teacher.");
     }
   };
 
-  const handleEdit = (item: TeacherItem) => {
-    const updatedItem: TeacherItem = {
-      ...item,
-      firstName: `${item.firstName} (Edited)`,
-    };
+  const handleEdit = (item: TableTeacherItem) => {
+    const fullTeacher = rawTeachers.find((row) => row.id === item.id);
 
-    updateTeacherRecord(updatedItem);
-    setTeachers([...getTeacherRecords()]);
+    if (!fullTeacher) {
+      Alert.alert("Error", "Teacher details not found.");
+      return;
+    }
+
+    setSelectedTeacher({
+      id: fullTeacher.id,
+      teacherId: fullTeacher.teacherId,
+      firstName: fullTeacher.firstName,
+      lastName: fullTeacher.lastName,
+      birthday: formatBirthday(fullTeacher.birthday),
+      email: fullTeacher.email,
+    });
+
+    setIsEditMode(true);
+    setIsAddModalVisible(true);
   };
 
-  const handleDelete = (id: string) => {
-    deleteTeacherRecord(id);
-    setTeachers([...getTeacherRecords()]);
+  const openDeleteModal = (item: TableTeacherItem) => {
+    setTeacherToDelete(item);
+    setIsDeleteModalVisible(true);
+  };
+
+  const closeDeleteModal = () => {
+    setTeacherToDelete(null);
+    setIsDeleteModalVisible(false);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!teacherToDelete) return;
+
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/delete-teacher/${teacherToDelete.id}`,
+        {
+          method: "DELETE",
+          headers: {
+            "Content-Type": "application/json",
+          },
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to delete teacher");
+      }
+
+      closeDeleteModal();
+      await loadTeachers();
+
+      Alert.alert("Success", "Teacher deleted successfully.");
+    } catch (error) {
+      console.error("Error deleting teacher:", error);
+      Alert.alert("Error", "Failed to delete teacher.");
+    }
   };
 
   return (
@@ -136,7 +327,11 @@ export default function ManageTeacher({ width }: ManageTeacherProps) {
             isMobile && styles.fullWidthButton,
           ]}
           activeOpacity={0.85}
-          onPress={() => setIsAddModalVisible(true)}
+          onPress={() => {
+            setIsEditMode(false);
+            setSelectedTeacher(null);
+            setIsAddModalVisible(true);
+          }}
         >
           <Ionicons name="add-circle-outline" size={18} color="#FFFFFF" />
           <Text style={styles.primaryActionButtonText}>Add</Text>
@@ -173,69 +368,15 @@ export default function ManageTeacher({ width }: ManageTeacherProps) {
                 </Text>
               </View>
 
-              {filteredTeachers.map((item, index) => {
-                const isLast = index === filteredTeachers.length - 1;
-
-                return (
-                  <View
-                    key={item.id}
-                    style={[
-                      styles.tableBodyRow,
-                      !isLast && styles.tableRowBorder,
-                    ]}
-                  >
-                    <View style={styles.idColumn}>
-                      <Text style={styles.codeBadge}>{item.teacherId}</Text>
-                    </View>
-
-                    <View style={styles.nameColumn}>
-                      <Text style={styles.tablePrimaryText}>
-                        {item.firstName} {item.lastName}
-                      </Text>
-                    </View>
-
-                    <View style={styles.birthdayColumn}>
-                      <Text style={styles.tablePrimaryText}>
-                        {item.birthday}
-                      </Text>
-                    </View>
-
-                    <View style={styles.emailColumn}>
-                      <Text style={styles.tablePrimaryText}>{item.email}</Text>
-                    </View>
-
-                    <View style={[styles.actionColumn, styles.actionCellRow]}>
-                      <TouchableOpacity
-                        style={[styles.rowActionButton, styles.editButton]}
-                        activeOpacity={0.85}
-                        onPress={() => handleEdit(item)}
-                      >
-                        <Ionicons
-                          name="create-outline"
-                          size={15}
-                          color="#7A4A4A"
-                        />
-                        <Text style={styles.rowActionButtonText}>Edit</Text>
-                      </TouchableOpacity>
-
-                      <TouchableOpacity
-                        style={[styles.rowActionButton, styles.deleteButton]}
-                        activeOpacity={0.85}
-                        onPress={() => handleDelete(item.id)}
-                      >
-                        <Ionicons
-                          name="trash-outline"
-                          size={15}
-                          color="#DC2626"
-                        />
-                        <Text style={styles.deleteButtonText}>Delete</Text>
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                );
-              })}
-
-              {filteredTeachers.length === 0 && (
+              {isLoading ? (
+                <View style={styles.emptyState}>
+                  <Ionicons name="sync-outline" size={28} color="#DC2626" />
+                  <Text style={styles.emptyStateTitle}>Loading teachers...</Text>
+                  <Text style={styles.emptyStateSubtitle}>
+                    Please wait while teacher records are fetched.
+                  </Text>
+                </View>
+              ) : filteredTeachers.length === 0 ? (
                 <View style={styles.emptyState}>
                   <MaterialCommunityIcons
                     name="account-tie-outline"
@@ -247,6 +388,68 @@ export default function ManageTeacher({ width }: ManageTeacherProps) {
                     Try another search or add a new teacher record.
                   </Text>
                 </View>
+              ) : (
+                filteredTeachers.map((item, index) => {
+                  const isLast = index === filteredTeachers.length - 1;
+
+                  return (
+                    <View
+                      key={item.id}
+                      style={[
+                        styles.tableBodyRow,
+                        !isLast && styles.tableRowBorder,
+                      ]}
+                    >
+                      <View style={styles.idColumn}>
+                        <Text style={styles.codeBadge}>{item.teacherId}</Text>
+                      </View>
+
+                      <View style={styles.nameColumn}>
+                        <Text style={styles.tablePrimaryText}>
+                          {item.firstName} {item.lastName}
+                        </Text>
+                      </View>
+
+                      <View style={styles.birthdayColumn}>
+                        <Text style={styles.tablePrimaryText}>
+                          {item.birthday}
+                        </Text>
+                      </View>
+
+                      <View style={styles.emailColumn}>
+                        <Text style={styles.tablePrimaryText}>{item.email}</Text>
+                      </View>
+
+                      <View style={[styles.actionColumn, styles.actionCellRow]}>
+                        <TouchableOpacity
+                          style={[styles.rowActionButton, styles.editButton]}
+                          activeOpacity={0.85}
+                          onPress={() => handleEdit(item)}
+                        >
+                          <Ionicons
+                            name="create-outline"
+                            size={15}
+                            color="#7A4A4A"
+                          />
+                          <Text style={styles.rowActionButtonText}>Edit</Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                          style={[styles.rowActionButton, styles.deleteButton]}
+                          activeOpacity={0.85}
+                          onPress={() => openDeleteModal(item)}
+                        >
+                          <Ionicons
+                            name="trash-outline"
+                            size={15}
+                            color="#DC2626"
+                          />
+                          <Text style={styles.deleteButtonText}>Delete</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  );
+                })
               )}
             </View>
           </ScrollView>
@@ -255,10 +458,59 @@ export default function ManageTeacher({ width }: ManageTeacherProps) {
 
       <AddTeacherModal
         visible={isAddModalVisible}
-        onClose={() => setIsAddModalVisible(false)}
+        onClose={resetModalState}
         isMobile={isMobile}
-        onSubmitTeacher={handleAddTeacher}
+        onSubmitTeacher={handleSubmitTeacher}
+        initialData={selectedTeacher}
+        isEditMode={isEditMode}
       />
+
+      <Modal
+        visible={isDeleteModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={closeDeleteModal}
+      >
+        <View style={styles.modalOverlay}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={closeDeleteModal} />
+
+          <View style={styles.confirmModalCard}>
+            <View style={styles.confirmIconWrap}>
+              <Ionicons name="warning-outline" size={28} color="#DC2626" />
+            </View>
+
+            <Text style={styles.confirmTitle}>Delete Teacher</Text>
+            <Text style={styles.confirmSubtitle}>
+              Are you sure you want to delete{" "}
+              <Text style={styles.confirmHighlight}>
+                {teacherToDelete
+                  ? `${teacherToDelete.firstName} ${teacherToDelete.lastName}`
+                  : "this teacher"}
+              </Text>
+              ?
+            </Text>
+
+            <View style={styles.confirmActions}>
+              <TouchableOpacity
+                style={styles.confirmCancelButton}
+                activeOpacity={0.85}
+                onPress={closeDeleteModal}
+              >
+                <Text style={styles.confirmCancelText}>Cancel</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.confirmDeleteButton}
+                activeOpacity={0.85}
+                onPress={handleConfirmDelete}
+              >
+                <Ionicons name="trash-outline" size={16} color="#FFFFFF" />
+                <Text style={styles.confirmDeleteText}>Delete</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -440,7 +692,7 @@ const styles = StyleSheet.create({
   },
 
   nameColumn: {
-    width: 280,
+    width: 260,
     paddingRight: 12,
   },
 
@@ -450,7 +702,7 @@ const styles = StyleSheet.create({
   },
 
   emailColumn: {
-    width: 320,
+    width: 300,
     paddingRight: 12,
   },
 
@@ -532,5 +784,95 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: "#8A6F6F",
     textAlign: "center",
+  },
+
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(43, 17, 17, 0.45)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 20,
+  },
+
+  confirmModalCard: {
+    width: "100%",
+    maxWidth: 420,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: "#F3D4D4",
+    padding: 24,
+    alignItems: "center",
+  },
+
+  confirmIconWrap: {
+    width: 64,
+    height: 64,
+    borderRadius: 20,
+    backgroundColor: "#FEE2E2",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 16,
+  },
+
+  confirmTitle: {
+    fontSize: 22,
+    fontWeight: "800",
+    color: "#2B1111",
+    marginBottom: 8,
+  },
+
+  confirmSubtitle: {
+    fontSize: 14,
+    color: "#8A6F6F",
+    textAlign: "center",
+    lineHeight: 22,
+    marginBottom: 22,
+  },
+
+  confirmHighlight: {
+    fontWeight: "800",
+    color: "#2B1111",
+  },
+
+  confirmActions: {
+    flexDirection: "row",
+    width: "100%",
+    justifyContent: "center",
+    gap: 12,
+  },
+
+  confirmCancelButton: {
+    flex: 1,
+    height: 48,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#E7C0C0",
+    backgroundColor: "#FFF7F7",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  confirmCancelText: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#7A4A4A",
+  },
+
+  confirmDeleteButton: {
+    flex: 1,
+    height: 48,
+    borderRadius: 14,
+    backgroundColor: "#DC2626",
+    alignItems: "center",
+    justifyContent: "center",
+    flexDirection: "row",
+  },
+
+  confirmDeleteText: {
+    fontSize: 14,
+    fontWeight: "800",
+    color: "#FFFFFF",
+    marginLeft: 8,
   },
 });

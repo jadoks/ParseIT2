@@ -1,7 +1,12 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
-import React, { useEffect, useMemo, useState } from "react";
+import Constants from "expo-constants";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  Alert,
+  Modal,
+  Platform,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -10,18 +15,66 @@ import {
   View,
 } from "react-native";
 
-import AddStudentModal from "./AddStudentModal";
-import {
-  type StudentItem,
-} from "./studentStore";
-
-import type { StudentFormPayload } from "./studentTypes";
+import AddStudentModal, {
+  AddStudentModalInitialData,
+} from "./AddStudentModal";
 
 type ManageStudentProps = {
   width: number;
 };
 
-function formatBirthday(value: any): string {
+type StudentFormPayload = {
+  studentId: string;
+  firstName: string;
+  lastName: string;
+  birthday: string;
+  email: string;
+  studentType: "regular" | "irregular" | "";
+};
+
+type BackendStudentItem = {
+  id: string;
+  studentId?: string;
+  firstName?: string;
+  lastName?: string;
+  birthday?: string | { _seconds?: number; seconds?: number } | null;
+  email?: string;
+  studentType?: "regular" | "irregular" | "";
+  status?: "regular" | "irregular" | "" | string;
+};
+
+type TableStudentItem = {
+  id: string;
+  studentId: string;
+  firstName: string;
+  lastName: string;
+  birthday: string;
+  email: string;
+  studentType: "regular" | "irregular" | "";
+};
+
+function getApiBaseUrl() {
+  if (Platform.OS === "web") {
+    return "http://localhost:5000";
+  }
+
+  const possibleHost =
+    Constants.expoConfig?.hostUri ||
+    Constants.manifest2?.extra?.expoGo?.debuggerHost ||
+    "";
+
+  const host = possibleHost.split(":")[0];
+
+  if (host) {
+    return `http://${host}:5000`;
+  }
+
+  return "http://192.168.1.5:5000";
+}
+
+const API_BASE_URL = getApiBaseUrl();
+
+function formatBirthday(value: BackendStudentItem["birthday"]): string {
   if (!value) return "";
 
   if (typeof value === "string") return value;
@@ -45,45 +98,71 @@ function formatBirthday(value: any): string {
   return "";
 }
 
-function mapStudent(item: any): StudentItem {
+function mapStudent(item: BackendStudentItem): TableStudentItem {
+  const resolvedType = item.studentType || item.status || "";
+
   return {
-    id: item.id || item.studentId,
+    id: item.id || item.studentId || "",
     studentId: item.studentId || "",
     firstName: item.firstName || "",
     lastName: item.lastName || "",
     birthday: formatBirthday(item.birthday),
     email: item.email || "",
-    studentType: item.studentType || item.status || "",
+    studentType:
+      resolvedType === "regular" || resolvedType === "irregular"
+        ? resolvedType
+        : "",
   };
 }
 
 export default function ManageStudent({ width }: ManageStudentProps) {
-  const [students, setStudents] = useState<StudentItem[]>([]);
+  const [students, setStudents] = useState<TableStudentItem[]>([]);
+  const [rawStudents, setRawStudents] = useState<BackendStudentItem[]>([]);
   const [isAddModalVisible, setIsAddModalVisible] = useState(false);
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [selectedStudent, setSelectedStudent] =
+    useState<AddStudentModalInitialData | null>(null);
   const [searchText, setSearchText] = useState("");
+  const [studentToDelete, setStudentToDelete] =
+    useState<TableStudentItem | null>(null);
+  const [isDeleteModalVisible, setIsDeleteModalVisible] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
 
   const isMobile = width < 768;
   const isTablet = width >= 768 && width < 1100;
   const tableMinWidth = isMobile ? 1120 : isTablet ? 1200 : 1300;
 
-  const loadStudents = async () => {
+  const loadStudents = useCallback(async () => {
     try {
-      const response = await fetch("http://localhost:5000/students");
+      setIsLoading(true);
+
+      const response = await fetch(`${API_BASE_URL}/students`, {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+
       const data = await response.json();
 
       if (!response.ok) {
         throw new Error(data.error || "Failed to fetch students");
       }
 
-      setStudents(Array.isArray(data) ? data.map(mapStudent) : []);
+      const raw = Array.isArray(data) ? data : [];
+      setRawStudents(raw);
+      setStudents(raw.map(mapStudent));
     } catch (error) {
       console.error("Error loading students:", error);
+      Alert.alert("Error", "Failed to load students.");
+    } finally {
+      setIsLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     loadStudents();
-  }, []);
+  }, [loadStudents]);
 
   const filteredStudents = useMemo(() => {
     const keyword = searchText.trim().toLowerCase();
@@ -106,9 +185,39 @@ export default function ManageStudent({ width }: ManageStudentProps) {
     });
   }, [students, searchText]);
 
-  const handleAddStudent = async (payload: StudentFormPayload) => {
+  const resetModalState = () => {
+    setIsAddModalVisible(false);
+    setIsEditMode(false);
+    setSelectedStudent(null);
+  };
+
+  const handleSubmitStudent = async (payload: StudentFormPayload) => {
     try {
-      const response = await fetch("http://localhost:5000/create-student", {
+      if (isEditMode && selectedStudent?.id) {
+        const response = await fetch(
+          `${API_BASE_URL}/update-student/${selectedStudent.id}`,
+          {
+            method: "PUT",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify(payload),
+          }
+        );
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.error || "Failed to update student");
+        }
+
+        resetModalState();
+        await loadStudents();
+        Alert.alert("Success", "Student updated successfully.");
+        return;
+      }
+
+      const response = await fetch(`${API_BASE_URL}/create-student`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -122,19 +231,80 @@ export default function ManageStudent({ width }: ManageStudentProps) {
         throw new Error(data.error || "Failed to create student");
       }
 
+      resetModalState();
       await loadStudents();
-      setIsAddModalVisible(false);
+      Alert.alert("Success", "Student created successfully.");
     } catch (error) {
       console.error("Error saving student:", error);
+      Alert.alert("Error", "Failed to save student.");
     }
   };
 
-  const handleEdit = (item: StudentItem) => {
-    console.log("Edit student:", item);
+  const handleEdit = (item: TableStudentItem) => {
+    const fullStudent = rawStudents.find((row) => row.id === item.id);
+
+    if (!fullStudent) {
+      Alert.alert("Error", "Student details not found.");
+      return;
+    }
+
+    setSelectedStudent({
+      id: fullStudent.id,
+      studentId: fullStudent.studentId || "",
+      firstName: fullStudent.firstName || "",
+      lastName: fullStudent.lastName || "",
+      birthday: formatBirthday(fullStudent.birthday),
+      email: fullStudent.email || "",
+      studentType:
+        fullStudent.studentType === "regular" ||
+        fullStudent.studentType === "irregular"
+          ? fullStudent.studentType
+          : fullStudent.status === "regular" || fullStudent.status === "irregular"
+          ? (fullStudent.status as "regular" | "irregular")
+          : "",
+    });
+
+    setIsEditMode(true);
+    setIsAddModalVisible(true);
   };
 
-  const handleDelete = (id: string) => {
-    console.log("Delete student:", id);
+  const openDeleteModal = (item: TableStudentItem) => {
+    setStudentToDelete(item);
+    setIsDeleteModalVisible(true);
+  };
+
+  const closeDeleteModal = () => {
+    setStudentToDelete(null);
+    setIsDeleteModalVisible(false);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!studentToDelete) return;
+
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/delete-student/${studentToDelete.id}`,
+        {
+          method: "DELETE",
+          headers: {
+            "Content-Type": "application/json",
+          },
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to delete student");
+      }
+
+      closeDeleteModal();
+      await loadStudents();
+      Alert.alert("Success", "Student deleted successfully.");
+    } catch (error) {
+      console.error("Error deleting student:", error);
+      Alert.alert("Error", "Failed to delete student.");
+    }
   };
 
   return (
@@ -174,7 +344,11 @@ export default function ManageStudent({ width }: ManageStudentProps) {
             isMobile && styles.fullWidthButton,
           ]}
           activeOpacity={0.85}
-          onPress={() => setIsAddModalVisible(true)}
+          onPress={() => {
+            setIsEditMode(false);
+            setSelectedStudent(null);
+            setIsAddModalVisible(true);
+          }}
         >
           <Ionicons name="add-circle-outline" size={18} color="#FFFFFF" />
           <Text style={styles.primaryActionButtonText}>Add</Text>
@@ -214,75 +388,15 @@ export default function ManageStudent({ width }: ManageStudentProps) {
                 </Text>
               </View>
 
-              {filteredStudents.map((item, index) => {
-                const isLast = index === filteredStudents.length - 1;
-
-                return (
-                  <View
-                    key={item.id}
-                    style={[
-                      styles.tableBodyRow,
-                      !isLast && styles.tableRowBorder,
-                    ]}
-                  >
-                    <View style={styles.idColumn}>
-                      <Text style={styles.codeBadge}>{item.studentId}</Text>
-                    </View>
-
-                    <View style={styles.nameColumn}>
-                      <Text style={styles.tablePrimaryText}>
-                        {`${item.firstName} ${item.lastName}`.toUpperCase()}
-                      </Text>
-                    </View>
-
-                    <View style={styles.birthdayColumn}>
-                      <Text style={styles.tablePrimaryText}>
-                        {item.birthday}
-                      </Text>
-                    </View>
-
-                    <View style={styles.emailColumn}>
-                      <Text style={styles.tablePrimaryText}>{item.email}</Text>
-                    </View>
-
-                    <View style={styles.statusColumn}>
-                      <Text style={styles.tablePrimaryText}>
-                         {(item.studentType || "Not set").toUpperCase()}
-                      </Text>
-                    </View>
-
-                    <View style={[styles.actionColumn, styles.actionCellRow]}>
-                      <TouchableOpacity
-                        style={[styles.rowActionButton, styles.editButton]}
-                        activeOpacity={0.85}
-                        onPress={() => handleEdit(item)}
-                      >
-                        <Ionicons
-                          name="create-outline"
-                          size={15}
-                          color="#7A4A4A"
-                        />
-                        <Text style={styles.rowActionButtonText}>Edit</Text>
-                      </TouchableOpacity>
-
-                      <TouchableOpacity
-                        style={[styles.rowActionButton, styles.deleteButton]}
-                        activeOpacity={0.85}
-                        onPress={() => handleDelete(item.id)}
-                      >
-                        <Ionicons
-                          name="trash-outline"
-                          size={15}
-                          color="#DC2626"
-                        />
-                        <Text style={styles.deleteButtonText}>Delete</Text>
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                );
-              })}
-
-              {filteredStudents.length === 0 && (
+              {isLoading ? (
+                <View style={styles.emptyState}>
+                  <Ionicons name="sync-outline" size={28} color="#DC2626" />
+                  <Text style={styles.emptyStateTitle}>Loading students...</Text>
+                  <Text style={styles.emptyStateSubtitle}>
+                    Please wait while student records are fetched.
+                  </Text>
+                </View>
+              ) : filteredStudents.length === 0 ? (
                 <View style={styles.emptyState}>
                   <MaterialCommunityIcons
                     name="account-school-outline"
@@ -294,6 +408,74 @@ export default function ManageStudent({ width }: ManageStudentProps) {
                     Try another search or add a new student record.
                   </Text>
                 </View>
+              ) : (
+                filteredStudents.map((item, index) => {
+                  const isLast = index === filteredStudents.length - 1;
+
+                  return (
+                    <View
+                      key={item.id}
+                      style={[
+                        styles.tableBodyRow,
+                        !isLast && styles.tableRowBorder,
+                      ]}
+                    >
+                      <View style={styles.idColumn}>
+                        <Text style={styles.codeBadge}>{item.studentId}</Text>
+                      </View>
+
+                      <View style={styles.nameColumn}>
+                        <Text style={styles.tablePrimaryText}>
+                          {`${item.firstName} ${item.lastName}`.toUpperCase()}
+                        </Text>
+                      </View>
+
+                      <View style={styles.birthdayColumn}>
+                        <Text style={styles.tablePrimaryText}>
+                          {item.birthday}
+                        </Text>
+                      </View>
+
+                      <View style={styles.emailColumn}>
+                        <Text style={styles.tablePrimaryText}>{item.email}</Text>
+                      </View>
+
+                      <View style={styles.statusColumn}>
+                        <Text style={styles.tablePrimaryText}>
+                          {(item.studentType || "Not set").toUpperCase()}
+                        </Text>
+                      </View>
+
+                      <View style={[styles.actionColumn, styles.actionCellRow]}>
+                        <TouchableOpacity
+                          style={[styles.rowActionButton, styles.editButton]}
+                          activeOpacity={0.85}
+                          onPress={() => handleEdit(item)}
+                        >
+                          <Ionicons
+                            name="create-outline"
+                            size={15}
+                            color="#7A4A4A"
+                          />
+                          <Text style={styles.rowActionButtonText}>Edit</Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                          style={[styles.rowActionButton, styles.deleteButton]}
+                          activeOpacity={0.85}
+                          onPress={() => openDeleteModal(item)}
+                        >
+                          <Ionicons
+                            name="trash-outline"
+                            size={15}
+                            color="#DC2626"
+                          />
+                          <Text style={styles.deleteButtonText}>Delete</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  );
+                })
               )}
             </View>
           </ScrollView>
@@ -302,10 +484,59 @@ export default function ManageStudent({ width }: ManageStudentProps) {
 
       <AddStudentModal
         visible={isAddModalVisible}
-        onClose={() => setIsAddModalVisible(false)}
+        onClose={resetModalState}
         isMobile={isMobile}
-        onSubmitStudent={handleAddStudent}
+        onSubmitStudent={handleSubmitStudent}
+        initialData={selectedStudent}
+        isEditMode={isEditMode}
       />
+
+      <Modal
+        visible={isDeleteModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={closeDeleteModal}
+      >
+        <View style={styles.modalOverlay}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={closeDeleteModal} />
+
+          <View style={styles.confirmModalCard}>
+            <View style={styles.confirmIconWrap}>
+              <Ionicons name="warning-outline" size={28} color="#DC2626" />
+            </View>
+
+            <Text style={styles.confirmTitle}>Delete Student</Text>
+            <Text style={styles.confirmSubtitle}>
+              Are you sure you want to delete{" "}
+              <Text style={styles.confirmHighlight}>
+                {studentToDelete
+                  ? `${studentToDelete.firstName} ${studentToDelete.lastName}`
+                  : "this student"}
+              </Text>
+              ?
+            </Text>
+
+            <View style={styles.confirmActions}>
+              <TouchableOpacity
+                style={styles.confirmCancelButton}
+                activeOpacity={0.85}
+                onPress={closeDeleteModal}
+              >
+                <Text style={styles.confirmCancelText}>Cancel</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.confirmDeleteButton}
+                activeOpacity={0.85}
+                onPress={handleConfirmDelete}
+              >
+                <Ionicons name="trash-outline" size={16} color="#FFFFFF" />
+                <Text style={styles.confirmDeleteText}>Delete</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -502,7 +733,7 @@ const styles = StyleSheet.create({
   },
 
   statusColumn: {
-    width: 160,
+    width: 180,
     paddingRight: 12,
   },
 
@@ -584,5 +815,95 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: "#8A6F6F",
     textAlign: "center",
+  },
+
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(43, 17, 17, 0.45)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 20,
+  },
+
+  confirmModalCard: {
+    width: "100%",
+    maxWidth: 420,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: "#F3D4D4",
+    padding: 24,
+    alignItems: "center",
+  },
+
+  confirmIconWrap: {
+    width: 64,
+    height: 64,
+    borderRadius: 20,
+    backgroundColor: "#FEE2E2",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 16,
+  },
+
+  confirmTitle: {
+    fontSize: 22,
+    fontWeight: "800",
+    color: "#2B1111",
+    marginBottom: 8,
+  },
+
+  confirmSubtitle: {
+    fontSize: 14,
+    color: "#8A6F6F",
+    textAlign: "center",
+    lineHeight: 22,
+    marginBottom: 22,
+  },
+
+  confirmHighlight: {
+    fontWeight: "800",
+    color: "#2B1111",
+  },
+
+  confirmActions: {
+    flexDirection: "row",
+    width: "100%",
+    justifyContent: "center",
+    gap: 12,
+  },
+
+  confirmCancelButton: {
+    flex: 1,
+    height: 48,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#E7C0C0",
+    backgroundColor: "#FFF7F7",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  confirmCancelText: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#7A4A4A",
+  },
+
+  confirmDeleteButton: {
+    flex: 1,
+    height: 48,
+    borderRadius: 14,
+    backgroundColor: "#DC2626",
+    alignItems: "center",
+    justifyContent: "center",
+    flexDirection: "row",
+  },
+
+  confirmDeleteText: {
+    fontSize: 14,
+    fontWeight: "800",
+    color: "#FFFFFF",
+    marginLeft: 8,
   },
 });
