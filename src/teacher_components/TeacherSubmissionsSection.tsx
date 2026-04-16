@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo } from "react";
 import {
   SafeAreaView,
   ScrollView,
@@ -7,10 +7,10 @@ import {
   TouchableOpacity,
   View,
   useWindowDimensions,
-} from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
-import type { Assignment, Member, Submission } from './TeacherCourseDetail2';
+} from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import MaterialCommunityIcons from "react-native-vector-icons/MaterialCommunityIcons";
+import type { Assignment, Member, Submission } from "./TeacherCourseDetail2";
 
 type Props = {
   members: Member[];
@@ -34,11 +34,10 @@ const TeacherSubmissionsSection = ({
   const isTablet = width >= 768 && width < 1200;
   const isLargeScreen = width >= 1200;
 
-  // ✅ CONSISTENT TOP SPACE (same as CourseDetail)
   const mobileTopSpace = isMobile ? insets.top + 0 : 0;
 
   const pagePadding = isMobile ? 14 : isTablet ? 20 : 24;
-  const cardWidth = isMobile ? '100%' : isLargeScreen ? '48.8%' : '48.5%';
+  const cardWidth = isMobile ? "100%" : isLargeScreen ? "48.8%" : "48.5%";
 
   const assignmentSubmissions = useMemo(() => {
     if (!currentAssignment) return [];
@@ -47,9 +46,9 @@ const TeacherSubmissionsSection = ({
 
   const completedCount = assignmentSubmissions.filter(
     (item) =>
-      item.status === 'submitted' ||
-      item.status === 'graded' ||
-      item.status === 'late'
+      item.status === "submitted" ||
+      item.status === "graded" ||
+      item.status === "late"
   ).length;
 
   const completionPercent =
@@ -59,37 +58,36 @@ const TeacherSubmissionsSection = ({
     return assignmentSubmissions.find((item) => item.studentId === studentId);
   };
 
-  const getDotColor = (status?: Submission['status']) => {
+  const getDotColor = (status?: Submission["status"]) => {
     switch (status) {
-      case 'graded':
-        return '#4CAF50';
-      case 'submitted':
-        return '#2196F3';
-      case 'late':
-        return '#F44336';
+      case "graded":
+        return "#4CAF50";
+      case "submitted":
+        return "#2196F3";
+      case "late":
+        return "#F44336";
       default:
-        return '#BDBDBD';
+        return "#BDBDBD";
     }
   };
 
-  const getStatusText = (status?: Submission['status']) => {
+  const getStatusText = (status?: Submission["status"]) => {
     switch (status) {
-      case 'graded':
-        return 'Graded';
-      case 'submitted':
-        return 'Submitted';
-      case 'late':
-        return 'Late';
-      case 'pending':
-        return 'Pending';
+      case "graded":
+        return "Graded";
+      case "submitted":
+        return "Submitted";
+      case "late":
+        return "Late";
+      case "pending":
+        return "Pending";
       default:
-        return 'No submission';
+        return "No submission";
     }
   };
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* ✅ ADDED TOP SPACE */}
       {isMobile ? <View style={{ height: mobileTopSpace }} /> : null}
 
       <View
@@ -125,8 +123,6 @@ const TeacherSubmissionsSection = ({
           <Text style={styles.updateText}>Update</Text>
         </TouchableOpacity>
       </View>
-
-      {/* rest of your code unchanged */}
 
       <View
         style={[
@@ -181,6 +177,7 @@ const TeacherSubmissionsSection = ({
       >
         {members.map((student) => {
           const submission = getStudentSubmission(student.id);
+          const totalScoreValue = Number(currentAssignment?.totalScore || 0);
 
           return (
             <View
@@ -232,8 +229,12 @@ const TeacherSubmissionsSection = ({
                   {student.name}
                 </Text>
 
+                <Text style={styles.studentHandle} numberOfLines={1}>
+                  {student.handle}
+                </Text>
+
                 <Text style={styles.gradeRatio}>
-                  {submission?.score ?? 0}/{currentAssignment?.totalScore || 0}
+                  {submission?.score ?? 0}/{totalScoreValue}
                 </Text>
 
                 <Text
@@ -241,13 +242,13 @@ const TeacherSubmissionsSection = ({
                     styles.statusText,
                     {
                       color:
-                        submission?.status === 'graded'
-                          ? '#4CAF50'
-                          : submission?.status === 'submitted'
-                          ? '#2196F3'
-                          : submission?.status === 'late'
-                          ? '#F44336'
-                          : '#666',
+                        submission?.status === "graded"
+                          ? "#4CAF50"
+                          : submission?.status === "submitted"
+                          ? "#2196F3"
+                          : submission?.status === "late"
+                          ? "#F44336"
+                          : "#666",
                     },
                   ]}
                 >
@@ -273,13 +274,13 @@ export default TeacherSubmissionsSection;
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FFF',
+    backgroundColor: "#FFF",
   },
 
   membersHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
   },
 
   backBtn: {
@@ -288,96 +289,103 @@ const styles = StyleSheet.create({
   },
 
   membersTitle: {
-    fontWeight: '700',
-    color: '#111',
+    fontWeight: "700",
+    color: "#111",
     flex: 1,
     marginLeft: 6,
   },
 
   updateInfoTrigger: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 5,
     paddingLeft: 10,
   },
 
   updateText: {
     fontSize: 14,
-    fontWeight: '600',
-    color: '#D32F2F',
+    fontWeight: "600",
+    color: "#D32F2F",
   },
 
   analyticsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
   },
 
   completedText: {
-    color: '#555',
-    fontWeight: '500',
+    color: "#555",
+    fontWeight: "500",
     flex: 1,
     marginRight: 12,
   },
 
   progressCircle: {
-    borderColor: '#DDD',
-    justifyContent: 'center',
-    alignItems: 'center',
+    borderColor: "#DDD",
+    justifyContent: "center",
+    alignItems: "center",
   },
 
   percentText: {
-    fontWeight: '700',
-    color: '#4CAF50',
+    fontWeight: "700",
+    color: "#4CAF50",
   },
 
   scrollContent: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "space-between",
     gap: 14,
   },
 
   studentCardWide: {
-    backgroundColor: '#FFF',
+    backgroundColor: "#FFF",
     borderRadius: 18,
-    flexDirection: 'row',
+    flexDirection: "row",
     borderWidth: 1,
-    borderColor: '#ECECEC',
+    borderColor: "#ECECEC",
     elevation: 2,
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOpacity: 0.04,
     shadowRadius: 4,
     shadowOffset: { width: 0, height: 2 },
-    overflow: 'hidden',
+    overflow: "hidden",
     marginBottom: 2,
   },
 
   studentRedAccent: {
     width: 4,
-    backgroundColor: '#D32F2F',
+    backgroundColor: "#D32F2F",
   },
 
   studentInfo: {
     flex: 1,
-    justifyContent: 'center',
+    justifyContent: "center",
   },
 
   studentTopRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
   },
 
   studentId: {
-    color: '#999',
-    fontWeight: '500',
+    color: "#999",
+    fontWeight: "500",
   },
 
   studentName: {
-    fontWeight: '700',
-    color: '#222',
+    fontWeight: "700",
+    color: "#222",
     marginTop: 5,
+  },
+
+  studentHandle: {
+    color: "#777",
+    marginTop: 3,
+    fontSize: 12,
+    fontWeight: "500",
   },
 
   lateDot: {
@@ -387,20 +395,20 @@ const styles = StyleSheet.create({
   },
 
   gradeRatio: {
-    color: '#666',
+    color: "#666",
     marginTop: 6,
-    fontWeight: '600',
+    fontWeight: "600",
     fontSize: 13,
   },
 
   statusText: {
     marginTop: 4,
     fontSize: 12,
-    fontWeight: '700',
+    fontWeight: "700",
   },
 
   dateText: {
-    color: '#999',
+    color: "#999",
     marginTop: 4,
     fontSize: 11,
   },

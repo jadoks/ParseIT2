@@ -49,12 +49,15 @@ export type AddClassModalPayload = {
   semester: string;
   section: string;
   instructor: string;
+  instructorEmail: string | null;
+  instructorIdentifier: string | null;
   classMembers: number;
   schoolYear: string | null;
   description: string | null;
   bannerLocalUri: string | null;
   bannerFileName: string | null;
   bannerMimeType: string | null;
+  units: number;
 };
 
 export type AddClassModalInitialData = {
@@ -65,12 +68,15 @@ export type AddClassModalInitialData = {
   semester?: string;
   section?: string;
   instructor?: string;
+  instructorEmail?: string | null;
+  instructorIdentifier?: string | null;
   classMembers?: number;
   schoolYear?: string | null;
   description?: string | null;
   bannerUrl?: string | null;
   bannerFileName?: string | null;
   bannerMimeType?: string | null;
+  units?: number | null;
 };
 
 const YEAR_OPTIONS: YearOption[] = [
@@ -118,6 +124,17 @@ const COURSE_OPTIONS: Record<string, CourseOption[]> = {
   ],
 };
 
+const COURSE_UNITS: Record<string, number> = {
+  IT101: 3,
+  IT102: 3,
+  IT201: 3,
+  IT202: 3,
+  IT301: 3,
+  IT302: 3,
+  IT401: 6,
+  IT402: 3,
+};
+
 const SEMESTER_OPTIONS: SemesterOption[] = [
   { id: "sem-1", label: "1st Semester" },
   { id: "sem-2", label: "2nd Semester" },
@@ -144,7 +161,11 @@ export default function AddClassModal({
   const [selectedSemester, setSelectedSemester] = useState("sem-1");
   const [selectedCourse, setSelectedCourse] = useState<string | null>(null);
   const [isSemesterModalVisible, setIsSemesterModalVisible] = useState(false);
+
   const [instructor, setInstructor] = useState("");
+  const [instructorEmail, setInstructorEmail] = useState("");
+  const [instructorIdentifier, setInstructorIdentifier] = useState("");
+
   const [description, setDescription] = useState("");
   const [startYear, setStartYear] = useState("2025");
   const [endYear, setEndYear] = useState("2026");
@@ -245,6 +266,8 @@ export default function AddClassModal({
 
   const resetForm = () => {
     setInstructor("");
+    setInstructorEmail("");
+    setInstructorIdentifier("");
     setDescription("");
     setStartYear("2025");
     setEndYear("2026");
@@ -266,6 +289,8 @@ export default function AddClassModal({
     }
 
     setInstructor(initialData.instructor || "");
+    setInstructorEmail(initialData.instructorEmail || "");
+    setInstructorIdentifier(initialData.instructorIdentifier || "");
     setDescription(initialData.description || "");
 
     if (initialData.schoolYear) {
@@ -358,6 +383,11 @@ export default function AddClassModal({
       return;
     }
 
+    if (!instructor.trim()) {
+      Alert.alert("Missing Field", "Please enter instructor name.");
+      return;
+    }
+
     const selectedSectionLabel =
       SECTION_OPTIONS[selectedYear].find(
         (section) => section.id === selectedSection
@@ -370,6 +400,7 @@ export default function AddClassModal({
 
     const selectedCourseLabel = selectedCourseItem?.label || "Untitled Course";
     const selectedCourseCode = selectedCourseItem?.id || "";
+    const units = COURSE_UNITS[selectedCourseCode] || 0;
 
     const schoolYear = `${startYear.trim()}-${endYear.trim()}`;
 
@@ -381,13 +412,16 @@ export default function AddClassModal({
       courseCode: selectedCourseCode,
       semester: selectedSemesterLabel,
       section: selectedSectionLabel,
-      instructor: instructor.trim() || "Not assigned",
+      instructor: instructor.trim(),
+      instructorEmail: instructorEmail.trim() || null,
+      instructorIdentifier: instructorIdentifier.trim() || null,
       classMembers: isEditMode ? initialData?.classMembers ?? 0 : 0,
       schoolYear,
       description: description.trim() ? description.trim() : null,
       bannerLocalUri: bannerFile?.uri ?? null,
       bannerFileName: bannerFile?.name ?? null,
       bannerMimeType: bannerFile?.mimeType ?? null,
+      units,
     });
 
     handleClose();
@@ -575,7 +609,7 @@ export default function AddClassModal({
                   style={[styles.modalRow, isMobile && styles.modalRowStack]}
                 >
                   <View style={styles.modalCol}>
-                    <Text style={styles.fieldLabel}>Instructor Name or ID</Text>
+                    <Text style={styles.fieldLabel}>Instructor Name</Text>
                     <View style={styles.inputField}>
                       <Ionicons
                         name="person-outline"
@@ -585,7 +619,7 @@ export default function AddClassModal({
                       <TextInput
                         value={instructor}
                         onChangeText={setInstructor}
-                        placeholder="Enter instructor name or ID"
+                        placeholder="Enter instructor full name"
                         placeholderTextColor="#B79A9A"
                         style={styles.textInput}
                       />
@@ -609,6 +643,48 @@ export default function AddClassModal({
                         color="#8A6F6F"
                       />
                     </TouchableOpacity>
+                  </View>
+                </View>
+
+                <View
+                  style={[styles.modalRow, isMobile && styles.modalRowStack]}
+                >
+                  <View style={styles.modalCol}>
+                    <Text style={styles.fieldLabel}>Instructor ID</Text>
+                    <View style={styles.inputField}>
+                      <Ionicons
+                        name="card-outline"
+                        size={18}
+                        color="#8A6F6F"
+                      />
+                      <TextInput
+                        value={instructorIdentifier}
+                        onChangeText={setInstructorIdentifier}
+                        placeholder="Enter teacher ID"
+                        placeholderTextColor="#B79A9A"
+                        style={styles.textInput}
+                      />
+                    </View>
+                  </View>
+
+                  <View style={styles.modalCol}>
+                    <Text style={styles.fieldLabel}>Instructor Email</Text>
+                    <View style={styles.inputField}>
+                      <Ionicons
+                        name="mail-outline"
+                        size={18}
+                        color="#8A6F6F"
+                      />
+                      <TextInput
+                        value={instructorEmail}
+                        onChangeText={setInstructorEmail}
+                        placeholder="Enter teacher email"
+                        placeholderTextColor="#B79A9A"
+                        style={styles.textInput}
+                        keyboardType="email-address"
+                        autoCapitalize="none"
+                      />
+                    </View>
                   </View>
                 </View>
 

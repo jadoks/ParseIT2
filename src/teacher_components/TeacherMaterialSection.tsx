@@ -1,4 +1,4 @@
-import React from 'react';
+import React from "react";
 import {
   ScrollView,
   StyleSheet,
@@ -6,9 +6,9 @@ import {
   TouchableOpacity,
   View,
   useWindowDimensions,
-} from 'react-native';
-import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
-import type { Material } from './TeacherCourseDetail2';
+} from "react-native";
+import MaterialCommunityIcons from "react-native-vector-icons/MaterialCommunityIcons";
+import type { Material } from "./TeacherCourseDetail2";
 
 type Props = {
   materials: Material[];
@@ -16,7 +16,11 @@ type Props = {
   onOpenMaterial: (material: Material) => void;
 };
 
-const TeacherMaterialSection = ({ materials, onCreate, onOpenMaterial }: Props) => {
+const TeacherMaterialSection = ({
+  materials,
+  onCreate,
+  onOpenMaterial,
+}: Props) => {
   const { width } = useWindowDimensions();
 
   const isMobile = width < 768;
@@ -24,7 +28,7 @@ const TeacherMaterialSection = ({ materials, onCreate, onOpenMaterial }: Props) 
   const isLargeScreen = width >= 1200;
 
   const pagePadding = isMobile ? 14 : isTablet ? 20 : 24;
-  const cardWidth = isMobile ? '100%' : isLargeScreen ? '48.8%' : '48.5%';
+  const cardWidth = isMobile ? "100%" : isLargeScreen ? "48.8%" : "48.5%";
 
   return (
     <ScrollView
@@ -94,12 +98,9 @@ const TeacherMaterialSection = ({ materials, onCreate, onOpenMaterial }: Props) 
 
               <View style={styles.materialInfo}>
                 <Text
-                  style={[
-                    styles.weekTitle,
-                    { fontSize: isMobile ? 16 : 18 },
-                  ]}
+                  style={[styles.weekTitle, { fontSize: isMobile ? 16 : 18 }]}
                 >
-                  {item.week}
+                  {item.week || "Week"}
                 </Text>
 
                 <Text
@@ -113,23 +114,26 @@ const TeacherMaterialSection = ({ materials, onCreate, onOpenMaterial }: Props) 
                 </Text>
 
                 <Text
-                  style={[
-                    styles.dateText,
-                    { fontSize: isMobile ? 11 : 12 },
-                  ]}
+                  style={[styles.dateText, { fontSize: isMobile ? 11 : 12 }]}
                 >
-                  Posted: {item.posted}
+                  Posted: {item.posted || "-"}
                 </Text>
 
                 {!!item.fileName && (
                   <Text
-                    style={[
-                      styles.openHint,
-                      { fontSize: isMobile ? 11 : 12 },
-                    ]}
+                    style={[styles.openHint, { fontSize: isMobile ? 11 : 12 }]}
                     numberOfLines={1}
                   >
                     File: {item.fileName}
+                  </Text>
+                )}
+
+                {!!item.content && (
+                  <Text
+                    style={[styles.contentPreview, { fontSize: isMobile ? 11 : 12 }]}
+                    numberOfLines={2}
+                  >
+                    {item.content}
                   </Text>
                 )}
               </View>
@@ -149,60 +153,60 @@ const styles = StyleSheet.create({
   },
 
   createBtn: {
-    backgroundColor: '#D32F2F',
-    alignSelf: 'flex-start',
+    backgroundColor: "#D32F2F",
+    alignSelf: "flex-start",
     elevation: 2,
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOpacity: 0.08,
     shadowRadius: 6,
     shadowOffset: { width: 0, height: 2 },
   },
 
   createBtnText: {
-    color: '#FFF',
-    fontWeight: '700',
+    color: "#FFF",
+    fontWeight: "700",
     fontSize: 14,
   },
 
   materialGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "space-between",
     gap: 14,
-    width: '100%',
+    width: "100%",
   },
 
   moduleCardWide: {
-    flexDirection: 'row',
-    backgroundColor: '#FFF',
+    flexDirection: "row",
+    backgroundColor: "#FFF",
     borderRadius: 18,
     borderWidth: 1,
-    borderColor: '#ECECEC',
+    borderColor: "#ECECEC",
     elevation: 2,
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOpacity: 0.04,
     shadowRadius: 4,
     shadowOffset: { width: 0, height: 2 },
-    overflow: 'hidden',
+    overflow: "hidden",
     marginBottom: 2,
   },
 
   redLeftAccent: {
     width: 4,
-    height: '100%',
-    backgroundColor: '#D32F2F',
+    height: "100%",
+    backgroundColor: "#D32F2F",
   },
 
   cardContent: {
     flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
   },
 
   iconBackground: {
-    backgroundColor: '#E0E0E0',
-    justifyContent: 'center',
-    alignItems: 'center',
+    backgroundColor: "#E0E0E0",
+    justifyContent: "center",
+    alignItems: "center",
   },
 
   materialInfo: {
@@ -210,25 +214,31 @@ const styles = StyleSheet.create({
   },
 
   weekTitle: {
-    fontWeight: '700',
-    color: '#222',
+    fontWeight: "700",
+    color: "#222",
   },
 
   materialTitle: {
-    color: '#111',
-    fontWeight: '600',
+    color: "#111",
+    fontWeight: "600",
     marginTop: 4,
     lineHeight: 20,
   },
 
   dateText: {
-    color: '#777',
+    color: "#777",
     marginTop: 6,
   },
 
   openHint: {
-    color: '#D32F2F',
+    color: "#D32F2F",
     marginTop: 8,
-    fontWeight: '600',
+    fontWeight: "600",
+  },
+
+  contentPreview: {
+    color: "#666",
+    marginTop: 6,
+    lineHeight: 16,
   },
 });

@@ -1,10 +1,12 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import * as Clipboard from 'expo-clipboard';
+import Constants from 'expo-constants';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   ImageBackground,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -36,6 +38,7 @@ export type TeacherCourseData = {
   schoolYear?: string | null;
   description?: string | null;
   position?: number;
+  units?: number;
 };
 
 export interface DashboardAssignment {
@@ -76,9 +79,34 @@ type SemesterOption = {
 type CourseOption = {
   id: string;
   label: string;
+  units: number;
 };
 
 const DEFAULT_INSTRUCTOR = 'Ramcee Jade L. Munoz';
+const TEACHER_UID = 'teacher_uid_001';
+const TEACHER_EMAIL = 'teacher@email.com';
+const TEACHER_ID = 'T-001';
+
+function getApiBaseUrl() {
+  if (Platform.OS === 'web') {
+    return 'http://localhost:5000';
+  }
+
+  const possibleHost =
+    Constants.expoConfig?.hostUri ||
+    Constants.manifest2?.extra?.expoGo?.debuggerHost ||
+    '';
+
+  const host = possibleHost.split(':')[0];
+
+  if (host) {
+    return `http://${host}:5000`;
+  }
+
+  return 'http://192.168.1.5:5000';
+}
+
+const API_BASE_URL = getApiBaseUrl();
 
 const YEAR_OPTIONS: YearOption[] = [
   { id: '1st', label: '1st Year' },
@@ -108,20 +136,20 @@ const SECTION_OPTIONS: Record<string, SectionOption[]> = {
 
 const COURSE_OPTIONS: Record<string, CourseOption[]> = {
   '1st': [
-    { id: 'IT101', label: 'IT101 - Introduction to Computing' },
-    { id: 'IT102', label: 'IT102 - Computer Programming 1' },
+    { id: 'IT101', label: 'IT101 - Introduction to Computing', units: 3 },
+    { id: 'IT102', label: 'IT102 - Computer Programming 1', units: 3 },
   ],
   '2nd': [
-    { id: 'IT201', label: 'IT201 - Data Structures and Algorithms' },
-    { id: 'IT202', label: 'IT202 - Object-Oriented Programming' },
+    { id: 'IT201', label: 'IT201 - Data Structures and Algorithms', units: 3 },
+    { id: 'IT202', label: 'IT202 - Object-Oriented Programming', units: 3 },
   ],
   '3rd': [
-    { id: 'IT301', label: 'IT301 - Mobile Application Development' },
-    { id: 'IT302', label: 'IT302 - Web Systems and Technologies' },
+    { id: 'IT301', label: 'IT301 - Mobile Application Development', units: 3 },
+    { id: 'IT302', label: 'IT302 - Web Systems and Technologies', units: 3 },
   ],
   '4th': [
-    { id: 'IT401', label: 'IT401 - Capstone Project 1' },
-    { id: 'IT402', label: 'IT402 - Systems Integration and Architecture' },
+    { id: 'IT401', label: 'IT401 - Capstone Project 1', units: 3 },
+    { id: 'IT402', label: 'IT402 - Systems Integration and Architecture', units: 3 },
   ],
 };
 
@@ -130,19 +158,6 @@ const SEMESTER_OPTIONS: SemesterOption[] = [
   { id: 'sem-2', label: '2nd Semester' },
   { id: 'sem-3', label: 'Summer' },
 ];
-
-const generateClassCode = (courseCode?: string, sectionId?: string) => {
-  if (courseCode && sectionId) {
-    return `${courseCode}-${sectionId}`;
-  }
-
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-  let result = '';
-  for (let i = 0; i < 8; i++) {
-    result += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return result;
-};
 
 const normalizeCoursePositions = (courseList: TeacherCourseData[]) => {
   return [...courseList]
@@ -153,6 +168,44 @@ const normalizeCoursePositions = (courseList: TeacherCourseData[]) => {
     }));
 };
 
+const fileUriToBase64 = async (uri: string): Promise<string> => {
+  const response = await fetch(uri);
+  const blob = await response.blob();
+
+  return await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+
+    reader.onloadend = () => {
+      const result = reader.result;
+      if (typeof result === 'string') {
+        resolve(result);
+      } else {
+        reject(new Error('Failed to convert image to base64.'));
+      }
+    };
+
+    reader.onerror = () => reject(new Error('Failed to read selected image.'));
+    reader.readAsDataURL(blob);
+  });
+};
+
+const mapBackendClass = (item: any): TeacherCourseData => ({
+  id: item.id,
+  name: item.name || '',
+  courseCode: item.courseCode || '',
+  classCode: item.classCode || '',
+  instructor: item.instructorName || DEFAULT_INSTRUCTOR,
+  section: item.section || '',
+  bannerUri: item.bannerUrl || undefined,
+  year: item.year || '',
+  yearSection: item.section || '',
+  semester: item.semester || '',
+  schoolYear: item.schoolYear || null,
+  description: item.description || null,
+  position: item.position,
+  units: typeof item.units === 'number' ? item.units : undefined,
+});
+
 const Dashboard2 = ({
   announcements = [],
   courses = [],
@@ -161,6 +214,9 @@ const Dashboard2 = ({
   onDeleteCourse,
   onEditCourse,
 }: DashboardProps) => {
+
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+
   const { width } = useWindowDimensions();
 
   const [isDeleteConfirmVisible, setDeleteConfirmVisible] = useState(false);
@@ -203,8 +259,42 @@ const Dashboard2 = ({
   const isMobile = width < 768;
   const isLargeScreen = width >= 1200;
 
+  const loadTeacherClasses = async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/classes`);
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to fetch classes');
+      }
+
+      const classList = Array.isArray(data) ? data : [];
+
+      const teacherClasses = classList
+        .filter(
+          (item) =>
+            item.assignedTeacherUid === TEACHER_UID ||
+            item.instructorEmail === TEACHER_EMAIL ||
+            item.assignedTeacherId === TEACHER_ID ||
+            item.createdByUid === TEACHER_UID
+        )
+        .map(mapBackendClass);
+
+      setLocalCourses(normalizeCoursePositions(teacherClasses));
+    } catch (error) {
+      console.error('Error loading teacher classes:', error);
+      Alert.alert('Error', 'Failed to load classes.');
+    }
+  };
+
   useEffect(() => {
-    setLocalCourses(normalizeCoursePositions(courses));
+    loadTeacherClasses();
+  }, []);
+
+  useEffect(() => {
+    if (courses.length > 0) {
+      setLocalCourses(normalizeCoursePositions(courses));
+    }
   }, [courses]);
 
   const processedCourses = useMemo(() => {
@@ -357,7 +447,7 @@ const Dashboard2 = ({
     setEditSelectedCourse(courseId);
   };
 
-  const handleCreateClass = () => {
+  const handleCreateClass = async () => {
     if (!selectedYear) {
       Alert.alert('Missing Field', 'Please select a year.');
       return;
@@ -389,30 +479,78 @@ const Dashboard2 = ({
 
     const courseLabel = selectedCourseItem?.label || '';
     const courseCode = selectedCourseItem?.id || '';
+    const units = selectedCourseItem?.units || 0;
 
-    const nextPosition = localCourses.length + 1;
+    try {
+      let bannerBase64: string | null = null;
 
-    const newCourse: TeacherCourseData = {
-      id: Date.now().toString(),
-      name: courseLabel,
-      courseCode,
-      classCode: generateClassCode(courseCode, selectedSection),
-      section: sectionLabel,
-      instructor: DEFAULT_INSTRUCTOR,
-      bannerUri: classBanner || undefined,
-      year: yearLabel,
-      yearSection: sectionLabel,
-      semester: selectedSemesterLabel,
-      schoolYear: `${startYear.trim()}-${endYear.trim()}`,
-      description: description.trim() ? description.trim() : null,
-      position: nextPosition,
-    };
+      if (classBanner) {
+        bannerBase64 = await fileUriToBase64(classBanner);
+      }
 
-    setLocalCourses((prev) => normalizeCoursePositions([...prev, newCourse]));
-    onCreateClass?.(newCourse);
+      const response = await fetch(`${API_BASE_URL}/create-class`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: courseLabel,
+          courseCode,
+          section: sectionLabel,
+          semester: selectedSemesterLabel,
+          schoolYear: `${startYear.trim()}-${endYear.trim()}`,
+          description: description.trim() ? description.trim() : null,
+          bannerBase64,
+          bannerFileName: classBanner ? 'teacher-banner.jpg' : null,
+          bannerMimeType: classBanner ? 'image/jpeg' : null,
+          instructorName: DEFAULT_INSTRUCTOR,
+          instructorEmail: TEACHER_EMAIL,
+          instructorIdentifier: TEACHER_ID,
+          createdByUid: TEACHER_UID,
+          createdByRole: 'teacher',
+          createdByName: DEFAULT_INSTRUCTOR,
+          year: yearLabel,
+          units,
+        }),
+      });
 
-    resetCreateForm();
-    setCreateModalVisible(false);
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to create class');
+      }
+
+      await loadTeacherClasses();
+
+      const createdCourse: TeacherCourseData = {
+        id: data?.data?.id || Date.now().toString(),
+        name: courseLabel,
+        courseCode,
+        classCode: data?.data?.classCode || '',
+        section: sectionLabel,
+        instructor: DEFAULT_INSTRUCTOR,
+        bannerUri: data?.data?.bannerUrl || classBanner || undefined,
+        year: yearLabel,
+        yearSection: sectionLabel,
+        semester: selectedSemesterLabel,
+        schoolYear: `${startYear.trim()}-${endYear.trim()}`,
+        description: description.trim() ? description.trim() : null,
+        units,
+      };
+
+      onCreateClass?.(createdCourse);
+
+      resetCreateForm();
+      setCreateModalVisible(false);
+
+      Alert.alert(
+        'Success',
+        `Class created successfully.\nClass Code: ${data?.data?.classCode || ''}`
+      );
+    } catch (error) {
+      console.error('Error creating class:', error);
+      Alert.alert('Error', 'Failed to create class.');
+    }
   };
 
   const openEditModal = () => {
@@ -459,7 +597,7 @@ const Dashboard2 = ({
     setEditModalVisible(true);
   };
 
-  const handleSaveEdit = () => {
+  const handleSaveEdit = async () => {
     if (!editingCourse) return;
 
     if (!editSelectedYear) {
@@ -497,32 +635,81 @@ const Dashboard2 = ({
 
     const courseLabel = selectedCourseItem?.label || '';
     const courseCode = selectedCourseItem?.id || '';
+    const units = selectedCourseItem?.units || 0;
 
-    const updatedCourse: TeacherCourseData = {
-      ...editingCourse,
-      name: courseLabel,
-      courseCode,
-      classCode: generateClassCode(courseCode, editSelectedSection),
-      year: yearLabel,
-      yearSection: sectionLabel,
-      section: sectionLabel,
-      semester: editSelectedSemesterLabel,
-      schoolYear: `${editStartYear.trim()}-${editEndYear.trim()}`,
-      description: editDescription.trim() ? editDescription.trim() : null,
-      bannerUri: editClassBanner || undefined,
-      position: editingCourse.position,
-    };
+    try {
+      let bannerBase64: string | null | undefined = undefined;
 
-    setLocalCourses((prev) =>
-      normalizeCoursePositions(
-        prev.map((course) => (course.id === updatedCourse.id ? updatedCourse : course))
-      )
-    );
+      if (editClassBanner) {
+        const isRemote =
+          editClassBanner.startsWith('http://') ||
+          editClassBanner.startsWith('https://');
 
-    onEditCourse?.(updatedCourse);
+        if (!isRemote) {
+          bannerBase64 = await fileUriToBase64(editClassBanner);
+        }
+      } else {
+        bannerBase64 = null;
+      }
 
-    resetEditForm();
-    setEditModalVisible(false);
+      const response = await fetch(
+        `${API_BASE_URL}/update-class/${editingCourse.id}`,
+        {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            name: courseLabel,
+            courseCode,
+            section: sectionLabel,
+            semester: editSelectedSemesterLabel,
+            schoolYear: `${editStartYear.trim()}-${editEndYear.trim()}`,
+            description: editDescription.trim() ? editDescription.trim() : null,
+            bannerBase64,
+            bannerFileName: editClassBanner ? 'teacher-banner.jpg' : null,
+            bannerMimeType: editClassBanner ? 'image/jpeg' : null,
+            instructorName: DEFAULT_INSTRUCTOR,
+            instructorEmail: TEACHER_EMAIL,
+            instructorIdentifier: TEACHER_ID,
+            updatedByUid: TEACHER_UID,
+            updatedByRole: 'teacher',
+            year: yearLabel,
+            units,
+          }),
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to update class');
+      }
+
+      const updatedCourse: TeacherCourseData = {
+        ...editingCourse,
+        name: courseLabel,
+        courseCode,
+        year: yearLabel,
+        yearSection: sectionLabel,
+        section: sectionLabel,
+        semester: editSelectedSemesterLabel,
+        schoolYear: `${editStartYear.trim()}-${editEndYear.trim()}`,
+        description: editDescription.trim() ? editDescription.trim() : null,
+        bannerUri: editClassBanner || undefined,
+        units,
+      };
+
+      await loadTeacherClasses();
+      onEditCourse?.(updatedCourse);
+
+      resetEditForm();
+      setEditModalVisible(false);
+      Alert.alert('Success', 'Class updated successfully.');
+    } catch (error) {
+      console.error('Error updating class:', error);
+      Alert.alert('Error', 'Failed to update class.');
+    }
   };
 
   const closeMenu = () => {
@@ -534,7 +721,7 @@ const Dashboard2 = ({
     if (!menuCourse) return;
 
     const link = `https://yourapp.com/join/${menuCourse.classCode}`;
-    Clipboard.setString(link);
+    Clipboard.setStringAsync(link);
     Alert.alert('Copied', 'Class link copied to clipboard.');
     closeMenu();
   };
@@ -547,19 +734,35 @@ const Dashboard2 = ({
     closeMenu();
   };
 
-  const confirmDeleteCourse = () => {
+  const confirmDeleteCourse = async () => {
     if (!courseToDelete) return;
 
-    setLocalCourses((prev) =>
-      normalizeCoursePositions(
-        prev.filter((course) => course.id !== courseToDelete.id)
-      )
-    );
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/delete-class/${courseToDelete.id}`,
+        {
+          method: 'DELETE',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        }
+      );
 
-    onDeleteCourse?.(courseToDelete.id);
+      const data = await response.json();
 
-    setDeleteConfirmVisible(false);
-    setCourseToDelete(null);
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to delete class');
+      }
+
+      await loadTeacherClasses();
+      onDeleteCourse?.(courseToDelete.id);
+
+      setDeleteConfirmVisible(false);
+      setCourseToDelete(null);
+    } catch (error) {
+      console.error('Error deleting class:', error);
+      Alert.alert('Error', 'Failed to delete class.');
+    }
   };
 
   const cancelDeleteCourse = () => {
@@ -688,7 +891,7 @@ const Dashboard2 = ({
                   {COURSE_OPTIONS[selectedYear].map((course) => (
                     <View key={course.id}>
                       {renderCheckboxRow(
-                        course.label,
+                        `${course.label} (${course.units} units)`,
                         selectedCourse === course.id,
                         () => toggleCourse(course.id),
                         styles.sectionRowActive
@@ -819,9 +1022,9 @@ const Dashboard2 = ({
               ) : null}
 
               <View style={styles.codeNoticeBox}>
-                <MaterialCommunityIcons name="shuffle-variant" size={18} color="#2E7D32" />
+                <MaterialCommunityIcons name="book-education-outline" size={18} color="#2E7D32" />
                 <Text style={styles.codeNoticeText}>
-                  The class code will follow the selected course code and section.
+                  The selected course units will also be saved to the class record.
                 </Text>
               </View>
 
@@ -940,7 +1143,7 @@ const Dashboard2 = ({
                   {COURSE_OPTIONS[editSelectedYear].map((course) => (
                     <View key={course.id}>
                       {renderCheckboxRow(
-                        course.label,
+                        `${course.label} (${course.units} units)`,
                         editSelectedCourse === course.id,
                         () => toggleEditCourse(course.id),
                         styles.sectionRowActive
@@ -1141,10 +1344,6 @@ const Dashboard2 = ({
               },
             ]}
           >
-            <TouchableOpacity style={styles.menuItem} onPress={handleCopyLink}>
-              <MaterialCommunityIcons name="content-copy" size={20} color="#202124" />
-              <Text style={styles.menuText}>Copy Link</Text>
-            </TouchableOpacity>
 
             <TouchableOpacity style={styles.menuItem} onPress={openEditModal}>
               <MaterialCommunityIcons name="pencil-outline" size={20} color="#1565C0" />
@@ -1176,7 +1375,7 @@ const Dashboard2 = ({
           <AnnouncementBanner announcements={announcements} />
 
           <View style={styles.classesHeaderRow}>
-            <Text style={styles.classesTitle}>Classes</Text>
+            <Text style={styles.classesTitle}>My Classes</Text>
             <TouchableOpacity
               style={styles.createBtn}
               onPress={() => setCreateModalVisible(true)}
@@ -1200,36 +1399,41 @@ const Dashboard2 = ({
                     imageStyle={styles.cardBannerImage}
                   >
                     <View style={styles.bannerOverlay}>
-                      <Text style={styles.bannerName} numberOfLines={1}>
-                        {item.courseCode} - {item.name}
-                      </Text>
-                      <Text style={styles.bannerCode}>
-                        {item.courseCode}
-                        {item.yearSection
-                          ? ` • ${item.yearSection}`
-                          : item.section
-                            ? ` • ${item.section}`
-                            : ''}
-                      </Text>
+                    <Text style={styles.bannerName} numberOfLines={2}>
+                      {item.name}
+                    </Text>
 
-                      {!!item.position && (
-                        <Text style={styles.bannerMeta}>Class {item.position}</Text>
-                      )}
-
-                      {!!item.year && <Text style={styles.bannerMeta}>{item.year}</Text>}
-                      {!!item.semester && (
-                        <Text style={styles.bannerMeta}>{item.semester}</Text>
-                      )}
-                      {!!item.schoolYear && (
-                        <Text style={styles.bannerMeta}>{item.schoolYear}</Text>
-                      )}
-                    </View>
+                  </View>
                   </ImageBackground>
                 </View>
 
                 <View style={styles.cardContent}>
                   <Text style={styles.instructorLabel}>INSTRUCTOR</Text>
                   <Text style={styles.instructorName}>{item.instructor}</Text>
+
+                  <View style={styles.classCodeRow}>
+                    <Text style={styles.bannerCode}>Class Code: {item.classCode}</Text>
+
+                    <TouchableOpacity
+                      onPress={async () => {
+                        await Clipboard.setStringAsync(item.classCode);
+
+                        setCopiedId(item.id); // mark this card as copied
+
+                        setTimeout(() => {
+                          setCopiedId(null); // revert after 3 seconds
+                        }, 3000);
+                      }}
+                      style={styles.copyButton}
+                      activeOpacity={0.7}
+                    >
+                      <Ionicons
+                        name={copiedId === item.id ? "checkmark-outline" : "copy-outline"}
+                        size={16}
+                        color={copiedId === item.id ? "#000000" : "#000000"}
+                      />
+                    </TouchableOpacity>
+                  </View>
                 </View>
 
                 <View style={styles.cardFooter}>
@@ -1394,12 +1598,21 @@ const styles = StyleSheet.create({
   },
 
   bannerCode: {
-    color: 'rgba(255,255,255,0.92)',
+    color: 'rgba(19, 17, 17, 0.92)',
     fontSize: 13,
     fontWeight: '600',
     marginTop: 2,
   },
+  classCodeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
+  },
 
+  copyButton: {
+    marginLeft: 6,
+    padding: 4,
+  },
   bannerMeta: {
     color: 'rgba(255,255,255,0.88)',
     fontSize: 12,

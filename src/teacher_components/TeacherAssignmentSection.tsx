@@ -1,4 +1,4 @@
-import React from 'react';
+import React from "react";
 import {
   ScrollView,
   StyleSheet,
@@ -6,9 +6,9 @@ import {
   TouchableOpacity,
   View,
   useWindowDimensions,
-} from 'react-native';
-import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
-import type { Assignment } from './TeacherCourseDetail2';
+} from "react-native";
+import MaterialCommunityIcons from "react-native-vector-icons/MaterialCommunityIcons";
+import type { Assignment } from "./TeacherCourseDetail2";
 
 type Props = {
   assignments: Assignment[];
@@ -28,7 +28,7 @@ const TeacherAssignmentSection = ({
   const isLargeScreen = width >= 1200;
 
   const pagePadding = isMobile ? 14 : isTablet ? 20 : 24;
-  const cardWidth = isMobile ? '100%' : isLargeScreen ? '48.8%' : '48.5%';
+  const cardWidth = isMobile ? "100%" : isLargeScreen ? "48.8%" : "48.5%";
 
   return (
     <ScrollView
@@ -119,22 +119,22 @@ const TeacherAssignmentSection = ({
 
                 <View style={styles.metaRow}>
                   <Text style={styles.metaLabel}>Posted:</Text>
-                  <Text style={styles.metaValue}>{item.posted}</Text>
+                  <Text style={styles.metaValue}>{item.posted || "-"}</Text>
                 </View>
 
                 <View style={styles.metaRow}>
                   <Text style={styles.metaLabel}>Due:</Text>
-                  <Text style={styles.metaValue}>{item.dueDate}</Text>
+                  <Text style={styles.metaValue}>{item.dueDate || "-"}</Text>
                 </View>
 
                 <View style={styles.metaRow}>
                   <Text style={styles.metaLabel}>Total Score:</Text>
-                  <Text style={styles.metaValue}>{item.totalScore}</Text>
+                  <Text style={styles.metaValue}>{item.totalScore || "-"}</Text>
                 </View>
 
                 <View style={styles.metaRow}>
                   <Text style={styles.metaLabel}>Points On Time:</Text>
-                  <Text style={styles.metaValue}>{item.pointsOnTime}</Text>
+                  <Text style={styles.metaValue}>{item.pointsOnTime || "-"}</Text>
                 </View>
 
                 <View style={styles.metaRow}>
@@ -148,8 +148,8 @@ const TeacherAssignmentSection = ({
                     ]}
                   >
                     {item.repositoryDisabledAfterDue
-                      ? 'Disabled after due'
-                      : 'Enabled'}
+                      ? "Disabled after due"
+                      : "Enabled"}
                   </Text>
                 </View>
 
@@ -184,58 +184,58 @@ const styles = StyleSheet.create({
   },
 
   createBtn: {
-    backgroundColor: '#D32F2F',
-    alignSelf: 'flex-start',
+    backgroundColor: "#D32F2F",
+    alignSelf: "flex-start",
     elevation: 2,
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOpacity: 0.08,
     shadowRadius: 6,
     shadowOffset: { width: 0, height: 2 },
   },
 
   createBtnText: {
-    color: '#FFF',
-    fontWeight: '700',
+    color: "#FFF",
+    fontWeight: "700",
     fontSize: 14,
   },
 
   assignmentGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "space-between",
     gap: 14,
-    width: '100%',
+    width: "100%",
   },
 
   assignmentCard: {
-    flexDirection: 'row',
-    backgroundColor: '#FFF',
+    flexDirection: "row",
+    backgroundColor: "#FFF",
     borderRadius: 18,
     borderWidth: 1,
-    borderColor: '#ECECEC',
+    borderColor: "#ECECEC",
     elevation: 2,
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOpacity: 0.04,
     shadowRadius: 4,
     shadowOffset: { width: 0, height: 2 },
-    overflow: 'hidden',
+    overflow: "hidden",
     marginBottom: 2,
   },
 
   redLeftAccent: {
     width: 4,
-    backgroundColor: '#D32F2F',
+    backgroundColor: "#D32F2F",
   },
 
   cardContent: {
     flex: 1,
-    flexDirection: 'row',
+    flexDirection: "row",
   },
 
   iconBackground: {
-    backgroundColor: '#E0E0E0',
-    justifyContent: 'center',
-    alignItems: 'center',
+    backgroundColor: "#E0E0E0",
+    justifyContent: "center",
+    alignItems: "center",
     marginTop: 2,
   },
 
@@ -244,64 +244,64 @@ const styles = StyleSheet.create({
   },
 
   assignmentHeader: {
-    fontWeight: '700',
-    color: '#222',
+    fontWeight: "700",
+    color: "#222",
     lineHeight: 22,
   },
 
   assignmentInstruction: {
-    color: '#555',
+    color: "#555",
     marginTop: 4,
     marginBottom: 8,
     lineHeight: 18,
   },
 
   metaRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
+    flexDirection: "row",
+    alignItems: "flex-start",
     marginTop: 3,
   },
 
   metaLabel: {
     fontSize: 12,
-    fontWeight: '700',
-    color: '#333',
+    fontWeight: "700",
+    color: "#333",
     marginRight: 4,
   },
 
   metaValue: {
     fontSize: 12,
-    color: '#666',
+    color: "#666",
     flex: 1,
   },
 
   enabledText: {
-    color: '#2E7D32',
-    fontWeight: '700',
+    color: "#2E7D32",
+    fontWeight: "700",
   },
 
   disabledText: {
-    color: '#D32F2F',
-    fontWeight: '700',
+    color: "#D32F2F",
+    fontWeight: "700",
   },
 
   fileText: {
     fontSize: 12,
-    color: '#D32F2F',
+    color: "#D32F2F",
     marginTop: 8,
-    fontWeight: '600',
+    fontWeight: "600",
   },
 
   openRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     marginTop: 10,
   },
 
   openHint: {
     fontSize: 12,
-    color: '#D32F2F',
+    color: "#D32F2F",
     marginLeft: 6,
-    fontWeight: '700',
+    fontWeight: "700",
   },
 });

@@ -759,6 +759,8 @@ export default function AdminDashboard({
     semester: string;
     section: string;
     instructor: string;
+    instructorEmail: string | null;
+    instructorIdentifier: string | null;
     classMembers: number;
     schoolYear: string | null;
     description: string | null;
@@ -788,10 +790,14 @@ export default function AdminDashboard({
           bannerBase64,
           bannerFileName: payload.bannerFileName,
           bannerMimeType: payload.bannerMimeType,
+
           instructorName: payload.instructor,
-          instructorEmail: "admin@email.com",
+          instructorEmail: payload.instructorEmail,
+          instructorIdentifier: payload.instructorIdentifier,
+
           createdByUid: "admin_uid_001",
           createdByRole: "admin",
+          createdByName: "Jadoks",
         }),
       });
 
@@ -814,6 +820,7 @@ export default function AdminDashboard({
       console.log("Class saved to Firebase:", data);
     } catch (error) {
       console.error("Error saving class:", error);
+      Alert.alert("Error", "Failed to create class.");
     }
   };
 
@@ -1437,6 +1444,51 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
 
+  modalFooter: {
+    paddingHorizontal: 24,
+    paddingTop: 16,
+    paddingBottom: 22,
+    borderTopWidth: 1,
+    borderTopColor: "#F8E3E3",
+    flexDirection: "row",
+    justifyContent: "flex-end",
+  },
+
+  modalSecondaryButton: {
+    height: 48,
+    paddingHorizontal: 18,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#E7C0C0",
+    backgroundColor: "#FFF7F7",
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 12,
+  },
+
+  modalSecondaryButtonText: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#7A4A4A",
+  },
+
+  modalPrimaryButton: {
+    height: 48,
+    paddingHorizontal: 18,
+    borderRadius: 14,
+    backgroundColor: "#DC2626",
+    alignItems: "center",
+    justifyContent: "center",
+    flexDirection: "row",
+  },
+
+  modalPrimaryButtonText: {
+    fontSize: 14,
+    fontWeight: "800",
+    color: "#FFFFFF",
+    marginLeft: 8,
+  },
+
   dropdownModalOverlay: {
     flex: 1,
     backgroundColor: "rgba(43, 17, 17, 0.12)",
@@ -1464,50 +1516,7 @@ const styles = StyleSheet.create({
   dropdownFloatingScroll: {
     maxHeight: 260,
   },
-modalFooter: {
-  paddingHorizontal: 24,
-  paddingTop: 16,
-  paddingBottom: 22,
-  borderTopWidth: 1,
-  borderTopColor: "#F8E3E3",
-  flexDirection: "row",
-  justifyContent: "flex-end",
-},
 
-modalSecondaryButton: {
-  height: 48,
-  paddingHorizontal: 18,
-  borderRadius: 14,
-  borderWidth: 1,
-  borderColor: "#E7C0C0",
-  backgroundColor: "#FFF7F7",
-  alignItems: "center",
-  justifyContent: "center",
-  marginRight: 12,
-},
-
-modalSecondaryButtonText: {
-  fontSize: 14,
-  fontWeight: "700",
-  color: "#7A4A4A",
-},
-
-modalPrimaryButton: {
-  height: 48,
-  paddingHorizontal: 18,
-  borderRadius: 14,
-  backgroundColor: "#DC2626",
-  alignItems: "center",
-  justifyContent: "center",
-  flexDirection: "row",
-},
-
-modalPrimaryButtonText: {
-  fontSize: 14,
-  fontWeight: "800",
-  color: "#FFFFFF",
-  marginLeft: 8,
-},
   optionModalCard: {
     backgroundColor: "#FFFFFF",
     borderTopLeftRadius: 24,
