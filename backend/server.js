@@ -9,7 +9,7 @@ dotenv.config();
 
 const app = express();
 app.use(cors());
-app.use(express.json({ limit: "15mb" }));
+app.use(express.json({ limit: "50mb" }));
 
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
@@ -46,6 +46,28 @@ function generateTempPassword(length = 8) {
     result += chars[Math.floor(Math.random() * chars.length)];
   }
   return result;
+}
+
+function generateFirstLoginPin(length = 4) {
+  let pin = "";
+  for (let i = 0; i < length; i++) {
+    pin += Math.floor(Math.random() * 10).toString();
+  }
+  return pin;
+}
+
+function generateForgotPasswordPin(length = 4) {
+  let pin = "";
+  for (let i = 0; i < length; i++) {
+    pin += Math.floor(Math.random() * 10).toString();
+  }
+  return pin;
+}
+
+function buildPinExpiryDate(minutes = 15) {
+  const expiry = new Date();
+  expiry.setMinutes(expiry.getMinutes() + minutes);
+  return expiry;
 }
 
 function generateClassCode(length = 8) {
@@ -94,9 +116,33 @@ function getFileExtensionFromMimeType(mimeType) {
       return "webp";
     case "image/gif":
       return "gif";
+    case "application/pdf":
+      return "pdf";
+    case "text/plain":
+      return "txt";
+    case "application/msword":
+      return "doc";
+    case "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
+      return "docx";
+    case "application/vnd.ms-powerpoint":
+      return "ppt";
+    case "application/vnd.openxmlformats-officedocument.presentationml.presentation":
+      return "pptx";
+    case "application/vnd.ms-excel":
+      return "xls";
+    case "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":
+      return "xlsx";
+    case "application/zip":
+      return "zip";
+    case "application/x-zip-compressed":
+      return "zip";
     default:
-      return "jpg";
+      return "bin";
   }
+}
+
+function sanitizeFileName(fileName = "file") {
+  return String(fileName).replace(/[^a-zA-Z0-9._-]/g, "_");
 }
 
 function parseDateValue(value) {
@@ -113,6 +159,17 @@ function parseDateValue(value) {
 
     const parsed = new Date(value);
     return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function resolveDate(value) {
+  if (!value) return null;
+
+  if (typeof value?.toDate === "function") {
+    return value.toDate();
   }
 
   const parsed = new Date(value);
@@ -161,6 +218,56 @@ async function uploadBannerToStorage({
     bannerStoragePath: storagePath,
     bannerFileName: safeFileName,
     bannerMimeType: safeMimeType,
+  };
+}
+
+async function uploadGenericFileToStorage({
+  fileBase64,
+  fileMimeType,
+  fileName,
+  folder = "class-files",
+  classId,
+}) {
+  if (!fileBase64) {
+    throw new Error("File data is required.");
+  }
+
+  if (!classId) {
+    throw new Error("Class ID is required.");
+  }
+
+  const cleanedBase64 = fileBase64.includes(",")
+    ? fileBase64.split(",")[1]
+    : fileBase64;
+
+  const safeMimeType =
+    normalizeOptionalText(fileMimeType) || "application/octet-stream";
+
+  const fallbackExtension = getFileExtensionFromMimeType(safeMimeType);
+  const safeFileName = sanitizeFileName(
+    normalizeOptionalText(fileName) || `file.${fallbackExtension}`
+  );
+  const uniqueFileName = `${Date.now()}-${safeFileName}`;
+  const storagePath = `${folder}/${classId}/${uniqueFileName}`;
+
+  const file = bucket.file(storagePath);
+
+  await file.save(Buffer.from(cleanedBase64, "base64"), {
+    metadata: {
+      contentType: safeMimeType,
+      cacheControl: "public,max-age=31536000",
+    },
+    resumable: false,
+  });
+
+  await file.makePublic();
+
+  return {
+    fileUrl: file.publicUrl(),
+    storagePath,
+    fileName: safeFileName,
+    fileType: safeMimeType,
+    bucketPath: `gs://parseit2-4b26d.firebasestorage.app/${storagePath}`,
   };
 }
 
@@ -220,6 +327,615 @@ async function findStudentById(studentId) {
   return { id: doc.id, ...doc.data() };
 }
 
+function getCollectionNameByRole(role) {
+  if (role === "student") return "students";
+  if (role === "teacher") return "teachers";
+  if (role === "admin") return "admins";
+  return null;
+}
+
+async function findUsersByIdAcrossAllRoles(id) {
+  const normalizedId = normalizeOptionalText(id);
+  if (!normalizedId) return [];
+
+  const roles = [
+    { role: "student", collection: "students" },
+    { role: "teacher", collection: "teachers" },
+    { role: "admin", collection: "admins" },
+  ];
+
+  const matches = [];
+
+  for (const item of roles) {
+    const doc = await db.collection(item.collection).doc(normalizedId).get();
+
+    if (doc.exists) {
+      matches.push({
+        role: item.role,
+        collection: item.collection,
+        ref: doc.ref,
+        data: doc.data(),
+        id: doc.id,
+      });
+    }
+  }
+
+  return matches;
+}
+
+async function findUserByEmailAcrossRoles(email) {
+  const normalizedEmail = normalizeOptionalText(email);
+  if (!normalizedEmail) return null;
+
+  const roles = [
+    { role: "student", collection: "students" },
+    { role: "teacher", collection: "teachers" },
+    { role: "admin", collection: "admins" },
+  ];
+
+  for (const item of roles) {
+    const snapshot = await db
+      .collection(item.collection)
+      .where("email", "==", normalizedEmail)
+      .limit(1)
+      .get();
+
+    if (!snapshot.empty) {
+      const doc = snapshot.docs[0];
+      return {
+        role: item.role,
+        collection: item.collection,
+        ref: doc.ref,
+        data: doc.data(),
+        id: doc.id,
+      };
+    }
+  }
+
+  return null;
+}
+
+async function sendFirstLoginCodeEmail({ firstName, email, pin }) {
+  await transporter.sendMail({
+    from: `ParseIT <${process.env.EMAIL_USER}>`,
+    to: email,
+    subject: "Your First Login Verification Code",
+    html: `
+      <h2>Hello ${firstName || "User"},</h2>
+      <p>You requested a first-login verification code.</p>
+      <p><b>Your 4-digit PIN:</b> ${pin}</p>
+      <p>This PIN will expire in 15 minutes.</p>
+    `,
+  });
+}
+
+async function sendForgotPasswordCodeEmail({ firstName, email, pin }) {
+  await transporter.sendMail({
+    from: `ParseIT <${process.env.EMAIL_USER}>`,
+    to: email,
+    subject: "Your Password Reset Verification Code",
+    html: `
+      <h2>Hello ${firstName || "User"},</h2>
+      <p>You requested to reset your password.</p>
+      <p><b>Your 4-digit PIN:</b> ${pin}</p>
+      <p>This PIN will expire in 15 minutes.</p>
+      <p>If you did not request this, you can ignore this email.</p>
+    `,
+  });
+}
+
+/**
+ * AUTH ROUTES
+ */
+
+app.post("/auth/lookup-user", async (req, res) => {
+  try {
+    const { id } = req.body;
+
+    if (!id || typeof id !== "string") {
+      return res.status(400).json({ error: "ID is required." });
+    }
+
+    const normalizedId = id.trim();
+
+    if (!normalizedId) {
+      return res.status(400).json({ error: "ID is required." });
+    }
+
+    const matches = await findUsersByIdAcrossAllRoles(normalizedId);
+
+    if (!matches.length) {
+      return res.status(404).json({ error: "User not found." });
+    }
+
+    if (matches.length > 1) {
+      return res.status(409).json({
+        error: "Duplicate ID found across multiple roles. Please contact admin.",
+      });
+    }
+
+    const matchedUser = matches[0];
+    const userData = matchedUser.data || {};
+
+    return res.json({
+      success: true,
+      role: matchedUser.role,
+      id:
+        userData.studentId ||
+        userData.teacherId ||
+        userData.adminId ||
+        matchedUser.id,
+      email: userData.email || null,
+      mustChangePassword: !!userData.mustChangePassword,
+      codeVerified: !!userData.codeVerified,
+      accountCreated: !!userData.accountCreated,
+    });
+  } catch (error) {
+    console.error("Lookup user error:", error);
+    return res.status(500).json({
+      error: error.message || "Failed to look up user.",
+    });
+  }
+});
+
+app.post("/auth/send-first-login-pin", async (req, res) => {
+  try {
+    const { id, role } = req.body;
+
+    if (!id || !role) {
+      return res.status(400).json({
+        error: "ID and role are required.",
+      });
+    }
+
+    const collectionName = getCollectionNameByRole(role);
+
+    if (!collectionName) {
+      return res.status(400).json({ error: "Invalid role." });
+    }
+
+    const userRef = db.collection(collectionName).doc(id);
+    const userSnap = await userRef.get();
+
+    if (!userSnap.exists) {
+      return res.status(404).json({ error: "User not found." });
+    }
+
+    const userData = userSnap.data();
+
+    if (!userData?.mustChangePassword) {
+      return res.status(400).json({
+        error: "This account does not require first login setup.",
+      });
+    }
+
+    if (!userData?.email) {
+      return res.status(400).json({
+        error: "User email is missing.",
+      });
+    }
+
+    const firstLoginPin = generateFirstLoginPin(4);
+    const firstLoginPinExpiresAt = buildPinExpiryDate(15);
+
+    await userRef.update({
+      firstLoginPin,
+      firstLoginPinExpiresAt,
+      firstLoginPinSentAt: FieldValue.serverTimestamp(),
+      codeVerified: false,
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+
+    await sendFirstLoginCodeEmail({
+      firstName: userData.firstName,
+      email: userData.email,
+      pin: firstLoginPin,
+    });
+
+    return res.json({
+      success: true,
+      message: "First login PIN sent successfully.",
+    });
+  } catch (error) {
+    console.error("Send first login PIN error:", error);
+    return res.status(500).json({
+      error: error.message || "Failed to send first login PIN.",
+    });
+  }
+});
+
+app.post("/auth/verify-first-login-pin", async (req, res) => {
+  try {
+    const { id, role, pin } = req.body;
+
+    if (!id || !role || !pin) {
+      return res.status(400).json({
+        error: "ID, role, and PIN are required.",
+      });
+    }
+
+    if (!/^\d{4}$/.test(String(pin))) {
+      return res.status(400).json({
+        error: "PIN must be exactly 4 digits.",
+      });
+    }
+
+    const collectionName = getCollectionNameByRole(role);
+
+    if (!collectionName) {
+      return res.status(400).json({ error: "Invalid role." });
+    }
+
+    const userRef = db.collection(collectionName).doc(id);
+    const userSnap = await userRef.get();
+
+    if (!userSnap.exists) {
+      return res.status(404).json({ error: "User not found." });
+    }
+
+    const userData = userSnap.data();
+
+    if (!userData?.mustChangePassword) {
+      return res.status(400).json({
+        error: "This account does not require first login setup.",
+      });
+    }
+
+    if (!userData?.firstLoginPin) {
+      return res.status(400).json({
+        error: "No first login PIN found for this account.",
+      });
+    }
+
+    const expiresAt = resolveDate(userData.firstLoginPinExpiresAt);
+
+    if (!expiresAt) {
+      return res.status(400).json({
+        error: "PIN expiry is invalid. Please request a new PIN.",
+      });
+    }
+
+    if (expiresAt.getTime() < Date.now()) {
+      return res.status(400).json({
+        error: "PIN has expired. Please sign in again to receive a new PIN.",
+      });
+    }
+
+    if (String(userData.firstLoginPin) !== String(pin)) {
+      return res.status(401).json({
+        error: "Invalid PIN.",
+      });
+    }
+
+    await userRef.update({
+      codeVerified: true,
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+
+    return res.json({
+      success: true,
+      message: "PIN verified successfully.",
+    });
+  } catch (error) {
+    console.error("Verify first login PIN error:", error);
+    return res.status(500).json({
+      error: error.message || "Failed to verify first login PIN.",
+    });
+  }
+});
+
+app.post("/auth/complete-first-login", async (req, res) => {
+  try {
+    const { id, role, newPassword } = req.body;
+
+    if (!id || !role || !newPassword) {
+      return res.status(400).json({
+        error: "ID, role, and newPassword are required.",
+      });
+    }
+
+    if (String(newPassword).trim().length < 8) {
+      return res.status(400).json({
+        error: "New password must be at least 8 characters long.",
+      });
+    }
+
+    const collectionName = getCollectionNameByRole(role);
+
+    if (!collectionName) {
+      return res.status(400).json({ error: "Invalid role." });
+    }
+
+    const userRef = db.collection(collectionName).doc(id);
+    const userSnap = await userRef.get();
+
+    if (!userSnap.exists) {
+      return res.status(404).json({ error: "User not found." });
+    }
+
+    const userData = userSnap.data();
+
+    if (!userData?.authUid) {
+      return res.status(400).json({
+        error: "User auth UID is missing.",
+      });
+    }
+
+    if (!userData?.mustChangePassword) {
+      return res.status(400).json({
+        error: "This account does not require first login setup.",
+      });
+    }
+
+    if (!userData?.codeVerified) {
+      return res.status(400).json({
+        error: "PIN must be verified before setting a new password.",
+      });
+    }
+
+    await admin.auth().updateUser(userData.authUid, {
+      password: String(newPassword).trim(),
+    });
+
+    await userRef.update({
+      mustChangePassword: false,
+      codeVerified: true,
+      firstLoginPin: null,
+      firstLoginPinExpiresAt: null,
+      firstLoginPinSentAt: null,
+      lastLoginAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+
+    return res.json({
+      success: true,
+      message: "First login completed successfully.",
+    });
+  } catch (error) {
+    console.error("Complete first login error:", error);
+    return res.status(500).json({
+      error: error.message || "Failed to complete first login.",
+    });
+  }
+});
+
+/**
+ * FORGOT PASSWORD ROUTES
+ */
+
+app.post("/auth/send-forgot-password-pin", async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email || typeof email !== "string") {
+      return res.status(400).json({ error: "Email is required." });
+    }
+
+    const foundUser = await findUserByEmailAcrossRoles(email);
+
+    if (!foundUser) {
+      return res.status(404).json({ error: "No account found for this email." });
+    }
+
+    const userData = foundUser.data || {};
+    const forgotPasswordPin = generateForgotPasswordPin(4);
+    const forgotPasswordPinExpiresAt = buildPinExpiryDate(15);
+
+    await foundUser.ref.update({
+      forgotPasswordPin,
+      forgotPasswordPinExpiresAt,
+      forgotPasswordPinSentAt: FieldValue.serverTimestamp(),
+      forgotPasswordCodeVerified: false,
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+
+    await sendForgotPasswordCodeEmail({
+      firstName: userData.firstName,
+      email: userData.email,
+      pin: forgotPasswordPin,
+    });
+
+    return res.json({
+      success: true,
+      role: foundUser.role,
+      id:
+        userData.studentId ||
+        userData.teacherId ||
+        userData.adminId ||
+        foundUser.id,
+      email: userData.email,
+      message: "Forgot password PIN sent successfully.",
+    });
+  } catch (error) {
+    console.error("Send forgot password PIN error:", error);
+    return res.status(500).json({
+      error: error.message || "Failed to send forgot password PIN.",
+    });
+  }
+});
+
+app.post("/auth/verify-forgot-password-pin", async (req, res) => {
+  try {
+    const { email, pin } = req.body;
+
+    if (!email || !pin) {
+      return res.status(400).json({
+        error: "Email and PIN are required.",
+      });
+    }
+
+    if (!/^\d{4}$/.test(String(pin))) {
+      return res.status(400).json({
+        error: "PIN must be exactly 4 digits.",
+      });
+    }
+
+    const foundUser = await findUserByEmailAcrossRoles(email);
+
+    if (!foundUser) {
+      return res.status(404).json({ error: "No account found for this email." });
+    }
+
+    const userData = foundUser.data || {};
+
+    if (!userData?.forgotPasswordPin) {
+      return res.status(400).json({
+        error: "No forgot password PIN found for this account.",
+      });
+    }
+
+    const expiresAt = resolveDate(userData.forgotPasswordPinExpiresAt);
+
+    if (!expiresAt) {
+      return res.status(400).json({
+        error: "PIN expiry is invalid. Please request a new PIN.",
+      });
+    }
+
+    if (expiresAt.getTime() < Date.now()) {
+      return res.status(400).json({
+        error: "PIN has expired. Please request a new PIN.",
+      });
+    }
+
+    if (String(userData.forgotPasswordPin) !== String(pin)) {
+      return res.status(401).json({
+        error: "Invalid PIN.",
+      });
+    }
+
+    await foundUser.ref.update({
+      forgotPasswordCodeVerified: true,
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+
+    return res.json({
+      success: true,
+      message: "Forgot password PIN verified successfully.",
+    });
+  } catch (error) {
+    console.error("Verify forgot password PIN error:", error);
+    return res.status(500).json({
+      error: error.message || "Failed to verify forgot password PIN.",
+    });
+  }
+});
+
+app.post("/auth/reset-forgot-password", async (req, res) => {
+  try {
+    const { email, newPassword } = req.body;
+
+    if (!email || !newPassword) {
+      return res.status(400).json({
+        error: "Email and newPassword are required.",
+      });
+    }
+
+    if (String(newPassword).trim().length < 8) {
+      return res.status(400).json({
+        error: "New password must be at least 8 characters long.",
+      });
+    }
+
+    const foundUser = await findUserByEmailAcrossRoles(email);
+
+    if (!foundUser) {
+      return res.status(404).json({ error: "No account found for this email." });
+    }
+
+    const userData = foundUser.data || {};
+
+    if (!userData?.authUid) {
+      return res.status(400).json({
+        error: "User auth UID is missing.",
+      });
+    }
+
+    if (!userData?.forgotPasswordCodeVerified) {
+      return res.status(400).json({
+        error: "PIN must be verified before resetting password.",
+      });
+    }
+
+    await admin.auth().updateUser(userData.authUid, {
+      password: String(newPassword).trim(),
+    });
+
+    await foundUser.ref.update({
+      forgotPasswordPin: null,
+      forgotPasswordPinExpiresAt: null,
+      forgotPasswordPinSentAt: null,
+      forgotPasswordCodeVerified: false,
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+
+    return res.json({
+      success: true,
+      message: "Password reset successfully.",
+    });
+  } catch (error) {
+    console.error("Reset forgot password error:", error);
+    return res.status(500).json({
+      error: error.message || "Failed to reset password.",
+    });
+  }
+});
+
+/**
+ * FILE UPLOAD ROUTE
+ */
+
+app.post("/upload-class-file", async (req, res) => {
+  try {
+    const {
+      classId,
+      fileBase64,
+      fileName,
+      fileType,
+      kind, // "material" | "assignment"
+    } = req.body;
+
+    if (!classId) {
+      return res.status(400).json({ error: "classId is required." });
+    }
+
+    if (!fileBase64) {
+      return res.status(400).json({ error: "fileBase64 is required." });
+    }
+
+    const classSnap = await db.collection("classes").doc(classId).get();
+    if (!classSnap.exists) {
+      return res.status(404).json({ error: "Class not found." });
+    }
+
+    const folder =
+      kind === "assignment" ? "class-assignments" : "class-materials";
+
+    const uploadedFile = await uploadGenericFileToStorage({
+      fileBase64,
+      fileMimeType: fileType,
+      fileName,
+      folder,
+      classId,
+    });
+
+    return res.json({
+      success: true,
+      message: "File uploaded successfully.",
+      data: uploadedFile,
+    });
+  } catch (error) {
+    console.error("Upload class file error:", error);
+    return res.status(500).json({
+      error: error.message || "Failed to upload file.",
+    });
+  }
+});
+
+/**
+ * ACCOUNT CREATION ROUTES
+ */
+
 app.post("/create-student", async (req, res) => {
   try {
     const {
@@ -242,14 +958,20 @@ app.post("/create-student", async (req, res) => {
       return res.status(400).json({ error: "Missing required fields." });
     }
 
-    const studentRef = db.collection("students").doc(studentId);
-    const existingStudent = await studentRef.get();
+    const normalizedStudentId = String(studentId).trim();
 
-    if (existingStudent.exists) {
-      return res.status(409).json({ error: "Student ID already exists." });
+    const existingIdMatches = await findUsersByIdAcrossAllRoles(normalizedStudentId);
+    if (existingIdMatches.length > 0) {
+      return res.status(409).json({
+        error: `ID already exists in ${existingIdMatches[0].role} account.`,
+      });
     }
 
+    const studentRef = db.collection("students").doc(normalizedStudentId);
+
     const tempPassword = generateTempPassword(8);
+    const firstLoginPin = generateFirstLoginPin(4);
+    const firstLoginPinExpiresAt = buildPinExpiryDate(15);
 
     const userRecord = await admin.auth().createUser({
       email,
@@ -258,7 +980,7 @@ app.post("/create-student", async (req, res) => {
     });
 
     await studentRef.set({
-      studentId,
+      studentId: normalizedStudentId,
       firstName,
       lastName,
       email,
@@ -269,6 +991,13 @@ app.post("/create-student", async (req, res) => {
       tempPasswordSent: false,
       mustChangePassword: true,
       codeVerified: false,
+      firstLoginPin,
+      firstLoginPinExpiresAt,
+      firstLoginPinSentAt: FieldValue.serverTimestamp(),
+      forgotPasswordPin: null,
+      forgotPasswordPinExpiresAt: null,
+      forgotPasswordPinSentAt: null,
+      forgotPasswordCodeVerified: false,
       lastLoginAt: null,
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
@@ -282,7 +1011,7 @@ app.post("/create-student", async (req, res) => {
         html: `
           <h2>Hello ${firstName},</h2>
           <p>Your student account has been created.</p>
-          <p><b>Student ID:</b> ${studentId}</p>
+          <p><b>Student ID:</b> ${normalizedStudentId}</p>
           <p><b>Temporary Password:</b> ${tempPassword}</p>
           <p>Please login and change your password immediately.</p>
         `,
@@ -294,7 +1023,6 @@ app.post("/create-student", async (req, res) => {
       });
     } catch (emailError) {
       console.error("Email failed:", emailError);
-
       return res.status(500).json({
         error: "Student created but email failed to send.",
       });
@@ -325,14 +1053,20 @@ app.post("/create-teacher", async (req, res) => {
       return res.status(400).json({ error: "Missing required fields." });
     }
 
-    const teacherRef = db.collection("teachers").doc(teacherId);
-    const existingTeacher = await teacherRef.get();
+    const normalizedTeacherId = String(teacherId).trim();
 
-    if (existingTeacher.exists) {
-      return res.status(409).json({ error: "Teacher ID already exists." });
+    const existingIdMatches = await findUsersByIdAcrossAllRoles(normalizedTeacherId);
+    if (existingIdMatches.length > 0) {
+      return res.status(409).json({
+        error: `ID already exists in ${existingIdMatches[0].role} account.`,
+      });
     }
 
+    const teacherRef = db.collection("teachers").doc(normalizedTeacherId);
+
     const tempPassword = generateTempPassword(8);
+    const firstLoginPin = generateFirstLoginPin(4);
+    const firstLoginPinExpiresAt = buildPinExpiryDate(15);
 
     const userRecord = await admin.auth().createUser({
       email,
@@ -341,7 +1075,7 @@ app.post("/create-teacher", async (req, res) => {
     });
 
     await teacherRef.set({
-      teacherId,
+      teacherId: normalizedTeacherId,
       firstName,
       lastName,
       email,
@@ -351,6 +1085,13 @@ app.post("/create-teacher", async (req, res) => {
       tempPasswordSent: false,
       mustChangePassword: true,
       codeVerified: false,
+      firstLoginPin,
+      firstLoginPinExpiresAt,
+      firstLoginPinSentAt: FieldValue.serverTimestamp(),
+      forgotPasswordPin: null,
+      forgotPasswordPinExpiresAt: null,
+      forgotPasswordPinSentAt: null,
+      forgotPasswordCodeVerified: false,
       lastLoginAt: null,
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
@@ -364,7 +1105,7 @@ app.post("/create-teacher", async (req, res) => {
         html: `
           <h2>Hello ${firstName},</h2>
           <p>Your teacher account has been created.</p>
-          <p><b>Teacher ID:</b> ${teacherId}</p>
+          <p><b>Teacher ID:</b> ${normalizedTeacherId}</p>
           <p><b>Temporary Password:</b> ${tempPassword}</p>
           <p>Please login and change your password immediately.</p>
         `,
@@ -376,7 +1117,6 @@ app.post("/create-teacher", async (req, res) => {
       });
     } catch (emailError) {
       console.error("Email failed:", emailError);
-
       return res.status(500).json({
         error: "Teacher created but email failed to send.",
       });
@@ -407,14 +1147,20 @@ app.post("/create-admin", async (req, res) => {
       return res.status(400).json({ error: "Missing required fields." });
     }
 
-    const adminRef = db.collection("admins").doc(adminId);
-    const existingAdmin = await adminRef.get();
+    const normalizedAdminId = String(adminId).trim();
 
-    if (existingAdmin.exists) {
-      return res.status(409).json({ error: "Admin ID already exists." });
+    const existingIdMatches = await findUsersByIdAcrossAllRoles(normalizedAdminId);
+    if (existingIdMatches.length > 0) {
+      return res.status(409).json({
+        error: `ID already exists in ${existingIdMatches[0].role} account.`,
+      });
     }
 
+    const adminRef = db.collection("admins").doc(normalizedAdminId);
+
     const tempPassword = generateTempPassword(8);
+    const firstLoginPin = generateFirstLoginPin(4);
+    const firstLoginPinExpiresAt = buildPinExpiryDate(15);
 
     const userRecord = await admin.auth().createUser({
       email,
@@ -423,7 +1169,7 @@ app.post("/create-admin", async (req, res) => {
     });
 
     await adminRef.set({
-      adminId,
+      adminId: normalizedAdminId,
       firstName,
       lastName,
       email,
@@ -433,6 +1179,13 @@ app.post("/create-admin", async (req, res) => {
       tempPasswordSent: false,
       mustChangePassword: true,
       codeVerified: false,
+      firstLoginPin,
+      firstLoginPinExpiresAt,
+      firstLoginPinSentAt: FieldValue.serverTimestamp(),
+      forgotPasswordPin: null,
+      forgotPasswordPinExpiresAt: null,
+      forgotPasswordPinSentAt: null,
+      forgotPasswordCodeVerified: false,
       lastLoginAt: null,
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
@@ -446,7 +1199,7 @@ app.post("/create-admin", async (req, res) => {
         html: `
           <h2>Hello ${firstName},</h2>
           <p>Your admin account has been created.</p>
-          <p><b>Admin ID:</b> ${adminId}</p>
+          <p><b>Admin ID:</b> ${normalizedAdminId}</p>
           <p><b>Temporary Password:</b> ${tempPassword}</p>
           <p>Please login and change your password immediately.</p>
         `,
@@ -458,7 +1211,6 @@ app.post("/create-admin", async (req, res) => {
       });
     } catch (emailError) {
       console.error("Email failed:", emailError);
-
       return res.status(500).json({
         error: "Admin created but email failed to send.",
       });
@@ -480,6 +1232,10 @@ app.post("/create-admin", async (req, res) => {
     });
   }
 });
+
+/**
+ * EXISTING ROUTES
+ */
 
 app.get("/students", async (req, res) => {
   try {
@@ -542,14 +1298,49 @@ app.put("/update-admin/:id", async (req, res) => {
     const { id } = req.params;
     const { adminId, firstName, lastName, birthday, email } = req.body;
 
-    await db.collection("admins").doc(id).update({
-      ...(adminId ? { adminId } : {}),
-      ...(firstName ? { firstName } : {}),
-      ...(lastName ? { lastName } : {}),
-      ...(birthday ? { birthday: parseDateValue(birthday) } : {}),
-      ...(email ? { email } : {}),
-      updatedAt: FieldValue.serverTimestamp(),
-    });
+    if (adminId && adminId !== id) {
+      const matches = await findUsersByIdAcrossAllRoles(adminId);
+      const conflict = matches.find((item) => item.id !== id);
+
+      if (conflict) {
+        return res.status(409).json({
+          error: `ID already exists in ${conflict.role} account.`,
+        });
+      }
+    }
+
+    const adminRef = db.collection("admins").doc(id);
+    const adminSnap = await adminRef.get();
+
+    if (!adminSnap.exists) {
+      return res.status(404).json({ error: "Admin not found." });
+    }
+
+    const existingData = adminSnap.data();
+
+    if (adminId && adminId !== id) {
+      const updatedData = {
+        ...existingData,
+        ...(firstName ? { firstName } : {}),
+        ...(lastName ? { lastName } : {}),
+        ...(birthday ? { birthday: parseDateValue(birthday) } : {}),
+        ...(email ? { email } : {}),
+        adminId,
+        updatedAt: FieldValue.serverTimestamp(),
+      };
+
+      await db.collection("admins").doc(adminId).set(updatedData);
+      await adminRef.delete();
+    } else {
+      await adminRef.update({
+        ...(adminId ? { adminId } : {}),
+        ...(firstName ? { firstName } : {}),
+        ...(lastName ? { lastName } : {}),
+        ...(birthday ? { birthday: parseDateValue(birthday) } : {}),
+        ...(email ? { email } : {}),
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+    }
 
     res.json({ success: true, message: "Admin updated successfully." });
   } catch (error) {
@@ -574,14 +1365,49 @@ app.put("/update-teacher/:id", async (req, res) => {
     const { id } = req.params;
     const { teacherId, firstName, lastName, birthday, email } = req.body;
 
-    await db.collection("teachers").doc(id).update({
-      ...(teacherId ? { teacherId } : {}),
-      ...(firstName ? { firstName } : {}),
-      ...(lastName ? { lastName } : {}),
-      ...(birthday ? { birthday: parseDateValue(birthday) } : {}),
-      ...(email ? { email } : {}),
-      updatedAt: FieldValue.serverTimestamp(),
-    });
+    if (teacherId && teacherId !== id) {
+      const matches = await findUsersByIdAcrossAllRoles(teacherId);
+      const conflict = matches.find((item) => item.id !== id);
+
+      if (conflict) {
+        return res.status(409).json({
+          error: `ID already exists in ${conflict.role} account.`,
+        });
+      }
+    }
+
+    const teacherRef = db.collection("teachers").doc(id);
+    const teacherSnap = await teacherRef.get();
+
+    if (!teacherSnap.exists) {
+      return res.status(404).json({ error: "Teacher not found." });
+    }
+
+    const existingData = teacherSnap.data();
+
+    if (teacherId && teacherId !== id) {
+      const updatedData = {
+        ...existingData,
+        ...(firstName ? { firstName } : {}),
+        ...(lastName ? { lastName } : {}),
+        ...(birthday ? { birthday: parseDateValue(birthday) } : {}),
+        ...(email ? { email } : {}),
+        teacherId,
+        updatedAt: FieldValue.serverTimestamp(),
+      };
+
+      await db.collection("teachers").doc(teacherId).set(updatedData);
+      await teacherRef.delete();
+    } else {
+      await teacherRef.update({
+        ...(teacherId ? { teacherId } : {}),
+        ...(firstName ? { firstName } : {}),
+        ...(lastName ? { lastName } : {}),
+        ...(birthday ? { birthday: parseDateValue(birthday) } : {}),
+        ...(email ? { email } : {}),
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+    }
 
     res.json({ success: true, message: "Teacher updated successfully." });
   } catch (error) {
@@ -607,15 +1433,51 @@ app.put("/update-student/:id", async (req, res) => {
     const { studentId, firstName, lastName, birthday, email, studentType } =
       req.body;
 
-    await db.collection("students").doc(id).update({
-      ...(studentId ? { studentId } : {}),
-      ...(firstName ? { firstName } : {}),
-      ...(lastName ? { lastName } : {}),
-      ...(birthday ? { birthday: parseDateValue(birthday) } : {}),
-      ...(email ? { email } : {}),
-      ...(studentType ? { status: studentType } : {}),
-      updatedAt: FieldValue.serverTimestamp(),
-    });
+    if (studentId && studentId !== id) {
+      const matches = await findUsersByIdAcrossAllRoles(studentId);
+      const conflict = matches.find((item) => item.id !== id);
+
+      if (conflict) {
+        return res.status(409).json({
+          error: `ID already exists in ${conflict.role} account.`,
+        });
+      }
+    }
+
+    const studentRef = db.collection("students").doc(id);
+    const studentSnap = await studentRef.get();
+
+    if (!studentSnap.exists) {
+      return res.status(404).json({ error: "Student not found." });
+    }
+
+    const existingData = studentSnap.data();
+
+    if (studentId && studentId !== id) {
+      const updatedData = {
+        ...existingData,
+        ...(firstName ? { firstName } : {}),
+        ...(lastName ? { lastName } : {}),
+        ...(birthday ? { birthday: parseDateValue(birthday) } : {}),
+        ...(email ? { email } : {}),
+        ...(studentType ? { status: studentType } : {}),
+        studentId,
+        updatedAt: FieldValue.serverTimestamp(),
+      };
+
+      await db.collection("students").doc(studentId).set(updatedData);
+      await studentRef.delete();
+    } else {
+      await studentRef.update({
+        ...(studentId ? { studentId } : {}),
+        ...(firstName ? { firstName } : {}),
+        ...(lastName ? { lastName } : {}),
+        ...(birthday ? { birthday: parseDateValue(birthday) } : {}),
+        ...(email ? { email } : {}),
+        ...(studentType ? { status: studentType } : {}),
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+    }
 
     res.json({ success: true, message: "Student updated successfully." });
   } catch (error) {
@@ -1136,6 +1998,8 @@ app.post("/create-class-material", async (req, res) => {
       fileName,
       fileUrl,
       fileType,
+      storagePath,
+      bucketPath,
       postedByUid,
       postedByName,
     } = req.body;
@@ -1157,6 +2021,8 @@ app.post("/create-class-material", async (req, res) => {
       fileName: normalizeOptionalText(fileName),
       fileUrl: normalizeOptionalText(fileUrl),
       fileType: normalizeOptionalText(fileType),
+      storagePath: normalizeOptionalText(storagePath),
+      bucketPath: normalizeOptionalText(bucketPath),
       postedByUid: normalizeOptionalText(postedByUid),
       postedByName: normalizeOptionalText(postedByName),
       createdAt: FieldValue.serverTimestamp(),
@@ -1206,7 +2072,17 @@ app.put("/update-class-material/:id", async (req, res) => {
 app.delete("/delete-class-material/:id", async (req, res) => {
   try {
     const { id } = req.params;
-    await db.collection("classMaterials").doc(id).delete();
+
+    const materialRef = db.collection("classMaterials").doc(id);
+    const materialSnap = await materialRef.get();
+
+    if (!materialSnap.exists) {
+      return res.status(404).json({ error: "Class material not found." });
+    }
+
+    const materialData = materialSnap.data();
+    await deleteStorageFileIfExists(materialData?.storagePath);
+    await materialRef.delete();
 
     res.json({
       success: true,
@@ -1257,6 +2133,8 @@ app.post("/create-class-assignment", async (req, res) => {
       fileName,
       fileUrl,
       fileType,
+      storagePath,
+      bucketPath,
       postedByUid,
       postedByName,
     } = req.body;
@@ -1288,6 +2166,8 @@ app.post("/create-class-assignment", async (req, res) => {
       fileName: normalizeOptionalText(fileName),
       fileUrl: normalizeOptionalText(fileUrl),
       fileType: normalizeOptionalText(fileType),
+      storagePath: normalizeOptionalText(storagePath),
+      bucketPath: normalizeOptionalText(bucketPath),
       postedByUid: normalizeOptionalText(postedByUid),
       postedByName: normalizeOptionalText(postedByName),
       createdAt: FieldValue.serverTimestamp(),
@@ -1355,7 +2235,16 @@ app.delete("/delete-class-assignment/:id", async (req, res) => {
   try {
     const { id } = req.params;
 
-    await db.collection("classAssignments").doc(id).delete();
+    const assignmentRef = db.collection("classAssignments").doc(id);
+    const assignmentSnap = await assignmentRef.get();
+
+    if (!assignmentSnap.exists) {
+      return res.status(404).json({ error: "Class assignment not found." });
+    }
+
+    const assignmentData = assignmentSnap.data();
+    await deleteStorageFileIfExists(assignmentData?.storagePath);
+    await assignmentRef.delete();
 
     const submissionsSnapshot = await db
       .collection("classSubmissions")
@@ -1550,8 +2439,36 @@ app.delete("/delete-class-announcement/:id", async (req, res) => {
   }
 });
 
+app.get("/", (req, res) => {
+  res.json({
+    ok: true,
+    message: "ParseIT backend is running",
+    time: new Date().toISOString(),
+  });
+});
+
+app.get("/health", (req, res) => {
+  res.json({
+    ok: true,
+    routes: [
+      "POST /auth/lookup-user",
+      "POST /auth/send-first-login-pin",
+      "POST /auth/verify-first-login-pin",
+      "POST /auth/complete-first-login",
+      "POST /auth/send-forgot-password-pin",
+      "POST /auth/verify-forgot-password-pin",
+      "POST /auth/reset-forgot-password",
+      "POST /upload-class-file",
+      "POST /create-student",
+      "POST /create-teacher",
+      "POST /create-admin",
+    ],
+  });
+});
+
 const PORT = process.env.PORT || 5000;
 
 app.listen(PORT, "0.0.0.0", () => {
-  console.log(`Server running on port ${PORT}`);
+  console.log(`Server running on http://localhost:${PORT}`);
+  console.log(`Health check: http://localhost:${PORT}/health`);
 });

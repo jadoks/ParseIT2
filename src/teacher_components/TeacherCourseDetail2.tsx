@@ -1,9 +1,9 @@
 import * as Clipboard from "expo-clipboard";
 import Constants from "expo-constants";
 import * as DocumentPicker from "expo-document-picker";
+import * as FileSystem from "expo-file-system/legacy";
 import React, { useEffect, useState } from "react";
 import {
-  Alert,
   Linking,
   Modal,
   Platform,
@@ -74,6 +74,14 @@ export type CourseDetailData = {
   year?: string;
   semester?: string;
 };
+
+type PickedUploadFile = {
+  name?: string;
+  uri?: string;
+  type?: string;
+  base64?: string;
+  file?: File;
+} | null;
 
 function getApiBaseUrl() {
   if (Platform.OS === "web") {
@@ -179,11 +187,18 @@ const TeacherCourseDetail2 = ({
   const [showUpdateModal, setShowUpdateModal] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showMaterialModal, setShowMaterialModal] = useState(false);
+  const [showUpdateMaterialModal, setShowUpdateMaterialModal] =
+    useState(false);
+  const [showDeleteMaterialConfirmModal, setShowDeleteMaterialConfirmModal] =
+    useState(false);
 
   const [selectedMaterial, setSelectedMaterial] = useState<Material | null>(
     null
   );
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedMaterialId, setSelectedMaterialId] = useState<string | null>(
+    null
+  );
 
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [materials, setMaterials] = useState<Material[]>([]);
@@ -196,21 +211,33 @@ const TeacherCourseDetail2 = ({
   const [formPoints, setFormPoints] = useState("");
   const [formDue, setFormDue] = useState("");
   const [formWeek, setFormWeek] = useState("");
-  const [assignmentDisableRepositoryAfterDue, setAssignmentDisableRepositoryAfterDue] =
-    useState(false);
+  const [
+    assignmentDisableRepositoryAfterDue,
+    setAssignmentDisableRepositoryAfterDue,
+  ] = useState(false);
   const [classCodeCopied, setClassCodeCopied] = useState(false);
 
-  const [pickedFile, setPickedFile] = useState<{
-    name?: string | undefined;
-    uri?: string | undefined;
-    type?: string | undefined;
-  } | null>(null);
+  const [pickedFile, setPickedFile] = useState<PickedUploadFile>(null);
+  const [pickedAssignmentFile, setPickedAssignmentFile] =
+    useState<PickedUploadFile>(null);
 
-  const [pickedAssignmentFile, setPickedAssignmentFile] = useState<{
-    name?: string | undefined;
-    uri?: string | undefined;
-    type?: string | undefined;
-  } | null>(null);
+  const [resultModalVisible, setResultModalVisible] = useState(false);
+  const [resultModalType, setResultModalType] = useState<"success" | "error">(
+    "success"
+  );
+  const [resultModalTitle, setResultModalTitle] = useState("");
+  const [resultModalMessage, setResultModalMessage] = useState("");
+
+  const showResultModal = (
+    type: "success" | "error",
+    title: string,
+    message: string
+  ) => {
+    setResultModalType(type);
+    setResultModalTitle(title);
+    setResultModalMessage(message);
+    setResultModalVisible(true);
+  };
 
   const loadCourseContent = async () => {
     if (!course?.id) {
@@ -295,11 +322,23 @@ const TeacherCourseDetail2 = ({
     setShowMaterialModal(true);
   };
 
+  const openUpdateMaterialModal = (material: Material | null) => {
+    if (!material) return;
+
+    setSelectedMaterialId(material.id);
+    setFormTitle(material.title || "");
+    setFormWeek(material.week || "");
+    setFormDesc(material.content || "");
+    setShowMaterialModal(false);
+    setShowUpdateMaterialModal(true);
+  };
+
   const handlePickFile = async () => {
     try {
       const result = await DocumentPicker.getDocumentAsync({
         type: "*/*",
         copyToCacheDirectory: true,
+        base64: Platform.OS === "web",
       });
 
       if (result.canceled) return;
@@ -310,9 +349,11 @@ const TeacherCourseDetail2 = ({
         name: asset.name,
         uri: asset.uri,
         type: asset.mimeType,
+        base64: (asset as any).base64,
+        file: (asset as any).file,
       });
     } catch {
-      Alert.alert("Error", "Failed to pick file.");
+      showResultModal("error", "Error", "Failed to pick file.");
     }
   };
 
@@ -321,6 +362,7 @@ const TeacherCourseDetail2 = ({
       const result = await DocumentPicker.getDocumentAsync({
         type: "*/*",
         copyToCacheDirectory: true,
+        base64: Platform.OS === "web",
       });
 
       if (result.canceled) return;
@@ -331,22 +373,91 @@ const TeacherCourseDetail2 = ({
         name: asset.name,
         uri: asset.uri,
         type: asset.mimeType,
+        base64: (asset as any).base64,
+        file: (asset as any).file,
       });
     } catch {
-      Alert.alert("Error", "Failed to pick assignment file.");
+      showResultModal("error", "Error", "Failed to pick assignment file.");
     }
+  };
+
+  const uploadPickedFile = async (
+    picked: PickedUploadFile,
+    kind: "material" | "assignment"
+  ) => {
+    if (!picked || !course?.id) return null;
+
+    let fileBase64: string | null = null;
+
+    if (Platform.OS === "web") {
+      if (picked.base64) {
+        fileBase64 = picked.base64;
+      } else if (picked.file) {
+        fileBase64 = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+
+          reader.onload = () => {
+            const result = reader.result;
+            if (typeof result === "string") {
+              const base64Part = result.includes(",")
+                ? result.split(",")[1]
+                : result;
+              resolve(base64Part);
+            } else {
+              reject(new Error("Failed to read file on web."));
+            }
+          };
+
+          reader.onerror = () =>
+            reject(new Error("Failed to read file on web."));
+          reader.readAsDataURL(picked.file as File);
+        });
+      } else {
+        throw new Error("No file data available for web upload.");
+      }
+    } else {
+      if (!picked.uri) {
+        throw new Error("No file URI available for mobile upload.");
+      }
+
+      fileBase64 = await FileSystem.readAsStringAsync(picked.uri, {
+        encoding: "base64" as any,
+      });
+    }
+
+    const response = await fetch(`${API_BASE_URL}/upload-class-file`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        classId: course.id,
+        fileBase64,
+        fileName: picked.name ?? "file",
+        fileType: picked.type ?? "application/octet-stream",
+        kind,
+      }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.error || "Failed to upload file.");
+    }
+
+    return data.data;
   };
 
   const handleOpenUploadedFile = async (fileUri?: string) => {
     if (!fileUri) {
-      Alert.alert("No File", "No uploaded file available.");
+      showResultModal("error", "No File", "No uploaded file available.");
       return;
     }
 
     try {
       await Linking.openURL(fileUri);
     } catch {
-      Alert.alert("Error", "Unable to open the file.");
+      showResultModal("error", "Error", "Unable to open the file.");
     }
   };
 
@@ -365,22 +476,28 @@ const TeacherCourseDetail2 = ({
 
   const handleCreate = async () => {
     if (!course?.id) {
-      Alert.alert("Error", "No class selected.");
+      showResultModal("error", "Error", "No class selected.");
       return;
     }
 
     if (activeTab === "Materials") {
       if (!formTitle.trim()) {
-        Alert.alert("Required", "Please enter a title.");
+        showResultModal("error", "Required", "Please enter a title.");
         return;
       }
 
       if (!formWeek.trim()) {
-        Alert.alert("Required", "Please enter the week.");
+        showResultModal("error", "Required", "Please enter the week.");
         return;
       }
 
       try {
+        let uploadedFile = null;
+
+        if (pickedFile?.uri || pickedFile?.base64 || pickedFile?.file) {
+          uploadedFile = await uploadPickedFile(pickedFile, "material");
+        }
+
         const response = await fetch(`${API_BASE_URL}/create-class-material`, {
           method: "POST",
           headers: {
@@ -390,10 +507,14 @@ const TeacherCourseDetail2 = ({
             classId: course.id,
             title: formTitle.trim(),
             week: formWeek.trim(),
-            content: `${formWeek.trim()} material: ${formTitle.trim()}`,
-            fileName: pickedFile?.name ?? null,
-            fileUrl: pickedFile?.uri ?? null,
-            fileType: pickedFile?.type ?? null,
+            content:
+              formDesc.trim() ||
+              `${formWeek.trim()} material: ${formTitle.trim()}`,
+            fileName: uploadedFile?.fileName ?? null,
+            fileUrl: uploadedFile?.fileUrl ?? null,
+            fileType: uploadedFile?.fileType ?? null,
+            storagePath: uploadedFile?.storagePath ?? null,
+            bucketPath: uploadedFile?.bucketPath ?? null,
             postedByUid: "teacher_uid_001",
             postedByName: course.instructor || "Teacher",
           }),
@@ -408,10 +529,18 @@ const TeacherCourseDetail2 = ({
         await loadCourseContent();
         setShowCreateModal(false);
         resetCreateForm();
-        Alert.alert("Success", "Material created successfully.");
-      } catch (error) {
+        showResultModal(
+          "success",
+          "Success",
+          "Material uploaded successfully."
+        );
+      } catch (error: any) {
         console.error("Create material error:", error);
-        Alert.alert("Error", "Failed to create material.");
+        showResultModal(
+          "error",
+          "Upload Failed",
+          error?.message || "Failed to create material."
+        );
       }
 
       return;
@@ -424,11 +553,28 @@ const TeacherCourseDetail2 = ({
       !formPoints.trim() ||
       !formWeek.trim()
     ) {
-      Alert.alert("Required", "Please complete all assignment fields.");
+      showResultModal(
+        "error",
+        "Required",
+        "Please complete all assignment fields."
+      );
       return;
     }
 
     try {
+      let uploadedFile = null;
+
+      if (
+        pickedAssignmentFile?.uri ||
+        pickedAssignmentFile?.base64 ||
+        pickedAssignmentFile?.file
+      ) {
+        uploadedFile = await uploadPickedFile(
+          pickedAssignmentFile,
+          "assignment"
+        );
+      }
+
       const response = await fetch(`${API_BASE_URL}/create-class-assignment`, {
         method: "POST",
         headers: {
@@ -442,9 +588,11 @@ const TeacherCourseDetail2 = ({
           totalScore: Number(formPoints),
           pointsOnTime: Number(formWeek),
           repositoryDisabledAfterDue: assignmentDisableRepositoryAfterDue,
-          fileName: pickedAssignmentFile?.name ?? null,
-          fileUrl: pickedAssignmentFile?.uri ?? null,
-          fileType: pickedAssignmentFile?.type ?? null,
+          fileName: uploadedFile?.fileName ?? null,
+          fileUrl: uploadedFile?.fileUrl ?? null,
+          fileType: uploadedFile?.fileType ?? null,
+          storagePath: uploadedFile?.storagePath ?? null,
+          bucketPath: uploadedFile?.bucketPath ?? null,
           postedByUid: "teacher_uid_001",
           postedByName: course.instructor || "Teacher",
         }),
@@ -459,10 +607,18 @@ const TeacherCourseDetail2 = ({
       await loadCourseContent();
       setShowCreateModal(false);
       resetCreateForm();
-      Alert.alert("Success", "Assignment created successfully.");
-    } catch (error) {
+      showResultModal(
+        "success",
+        "Success",
+        "Assignment uploaded successfully."
+      );
+    } catch (error: any) {
       console.error("Create assignment error:", error);
-      Alert.alert("Error", "Failed to create assignment.");
+      showResultModal(
+        "error",
+        "Upload Failed",
+        error?.message || "Failed to create assignment."
+      );
     }
   };
 
@@ -508,56 +664,137 @@ const TeacherCourseDetail2 = ({
 
       await loadCourseContent();
       setShowUpdateModal(false);
-      Alert.alert("Success", "Assignment Updated");
+      showResultModal("success", "Success", "Assignment updated.");
     } catch (error) {
       console.error("Update assignment error:", error);
-      Alert.alert("Error", "Failed to update assignment.");
+      showResultModal("error", "Error", "Failed to update assignment.");
     }
   };
 
-  const handleDelete = () => {
-    Alert.alert("Delete", "Are you sure?", [
-      { text: "Cancel" },
-      {
-        text: "Delete",
-        style: "destructive",
-        onPress: async () => {
-          if (!selectedId) return;
+  const handleDelete = async () => {
+    if (!selectedId) return;
 
-          try {
-            const response = await fetch(
-              `${API_BASE_URL}/delete-class-assignment/${selectedId}`,
-              {
-                method: "DELETE",
-              }
-            );
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/delete-class-assignment/${selectedId}`,
+        {
+          method: "DELETE",
+        }
+      );
 
-            const data = await response.json();
+      const data = await response.json();
 
-            if (!response.ok) {
-              throw new Error(data.error || "Failed to delete assignment");
-            }
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to delete assignment");
+      }
 
-            await loadCourseContent();
-            setShowUpdateModal(false);
-            setShowSubmissions(false);
-          } catch (error) {
-            console.error("Delete assignment error:", error);
-            Alert.alert("Error", "Failed to delete assignment.");
-          }
-        },
-      },
-    ]);
+      await loadCourseContent();
+      setShowUpdateModal(false);
+      setShowSubmissions(false);
+      showResultModal("success", "Success", "Assignment deleted.");
+    } catch (error) {
+      console.error("Delete assignment error:", error);
+      showResultModal("error", "Error", "Failed to delete assignment.");
+    }
+  };
+
+  const handleUpdateMaterial = async () => {
+    if (!selectedMaterialId) return;
+
+    if (!formTitle.trim()) {
+      showResultModal("error", "Required", "Please enter a title.");
+      return;
+    }
+
+    if (!formWeek.trim()) {
+      showResultModal("error", "Required", "Please enter the week.");
+      return;
+    }
+
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/update-class-material/${selectedMaterialId}`,
+        {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            title: formTitle.trim(),
+            week: formWeek.trim(),
+            content: formDesc.trim(),
+          }),
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to update material");
+      }
+
+      await loadCourseContent();
+      setShowUpdateMaterialModal(false);
+      setSelectedMaterialId(null);
+      resetCreateForm();
+      showResultModal("success", "Success", "Material updated successfully.");
+    } catch (error: any) {
+      console.error("Update material error:", error);
+      showResultModal(
+        "error",
+        "Error",
+        error?.message || "Failed to update material."
+      );
+    }
+  };
+
+  const confirmDeleteMaterial = () => {
+    if (!selectedMaterialId) return;
+    setShowDeleteMaterialConfirmModal(true);
+  };
+
+  const handleDeleteMaterial = async () => {
+    if (!selectedMaterialId) return;
+
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/delete-class-material/${selectedMaterialId}`,
+        {
+          method: "DELETE",
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to delete material");
+      }
+
+      await loadCourseContent();
+      setShowDeleteMaterialConfirmModal(false);
+      setShowUpdateMaterialModal(false);
+      setShowMaterialModal(false);
+      setSelectedMaterialId(null);
+      resetCreateForm();
+      showResultModal("success", "Success", "Material deleted successfully.");
+    } catch (error: any) {
+      console.error("Delete material error:", error);
+      showResultModal(
+        "error",
+        "Error",
+        error?.message || "Failed to delete material."
+      );
+    }
   };
 
   const handleAddMember = async () => {
     if (!course?.id) {
-      Alert.alert("Error", "No class selected.");
+      showResultModal("error", "Error", "No class selected.");
       return;
     }
 
     if (!memberIdInput.trim()) {
-      Alert.alert("Required", "Please enter a student ID.");
+      showResultModal("error", "Required", "Please enter a student ID.");
       return;
     }
 
@@ -581,10 +818,10 @@ const TeacherCourseDetail2 = ({
 
       setMemberIdInput("");
       await loadCourseContent();
-      Alert.alert("Success", "Member added successfully.");
+      showResultModal("success", "Success", "Member added successfully.");
     } catch (error) {
       console.error("Add member error:", error);
-      Alert.alert("Error", "Failed to add member.");
+      showResultModal("error", "Error", "Failed to add member.");
     }
   };
 
@@ -637,11 +874,12 @@ const TeacherCourseDetail2 = ({
                   placeholderTextColor="#999"
                 />
                 <TextInput
-                  style={styles.inputBox}
+                  style={styles.textAreaBox}
                   value={formDesc}
                   onChangeText={setFormDesc}
                   placeholder="Enter Instruction"
                   placeholderTextColor="#999"
+                  multiline
                 />
                 <TextInput
                   style={styles.inputBox}
@@ -693,13 +931,21 @@ const TeacherCourseDetail2 = ({
                   </TouchableOpacity>
                 </View>
 
-                <TouchableOpacity style={styles.deleteButton} onPress={handleDelete}>
-                  <Text style={styles.deleteButtonText}>Delete Assignment</Text>
-                </TouchableOpacity>
+                <View style={styles.buttonRow}>
+                  <TouchableOpacity
+                    style={styles.secondaryButton}
+                    onPress={handleDelete}
+                  >
+                    <Text style={styles.secondaryButtonText}>Delete</Text>
+                  </TouchableOpacity>
 
-                <TouchableOpacity style={styles.updateButton} onPress={handleUpdate}>
-                  <Text style={styles.updateButtonText}>Update Assignment</Text>
-                </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.primaryButton}
+                    onPress={handleUpdate}
+                  >
+                    <Text style={styles.primaryButtonText}>Update</Text>
+                  </TouchableOpacity>
+                </View>
               </ScrollView>
             </View>
           </View>
@@ -741,7 +987,12 @@ const TeacherCourseDetail2 = ({
               {visibleCourseCode} - {courseName}
             </Text>
 
-            <Text style={[styles.courseSubText, { fontSize: isMobile ? 14 : 16 }]}>
+            <Text
+              style={[
+                styles.courseSubText,
+                { fontSize: isMobile ? 14 : 16 },
+              ]}
+            >
               {visibleCourseCode}
               {courseSection ? ` • ${courseSection}` : ""}
             </Text>
@@ -752,12 +1003,17 @@ const TeacherCourseDetail2 = ({
               <Text style={styles.metaText}>{courseSemester}</Text>
             )}
 
-            <Text style={styles.instructorText}>Instructor: {courseInstructor}</Text>
+            <Text style={styles.instructorText}>
+              Instructor: {courseInstructor}
+            </Text>
 
             <View style={styles.classCodeRow}>
               <Text style={styles.classCodeText}>Class Code: {classCode}</Text>
 
-              <TouchableOpacity onPress={handleCopyClassCode} style={styles.copyBtn}>
+              <TouchableOpacity
+                onPress={handleCopyClassCode}
+                style={styles.copyBtn}
+              >
                 <MaterialCommunityIcons
                   name={classCodeCopied ? "check" : "content-copy"}
                   size={18}
@@ -779,13 +1035,21 @@ const TeacherCourseDetail2 = ({
             size={isMobile ? 20 : 22}
             color={activeTab === "Materials" ? "#D32F2F" : "#333"}
           />
-          <Text style={[styles.tabLabel, activeTab === "Materials" && styles.tabLabelActive]}>
+          <Text
+            style={[
+              styles.tabLabel,
+              activeTab === "Materials" && styles.tabLabelActive,
+            ]}
+          >
             Materials ({materials.length})
           </Text>
         </TouchableOpacity>
 
         <TouchableOpacity
-          style={[styles.tabItem, activeTab === "Assignments" && styles.tabActive]}
+          style={[
+            styles.tabItem,
+            activeTab === "Assignments" && styles.tabActive,
+          ]}
           onPress={() => setActiveTab("Assignments")}
         >
           <MaterialCommunityIcons
@@ -793,7 +1057,12 @@ const TeacherCourseDetail2 = ({
             size={isMobile ? 20 : 22}
             color={activeTab === "Assignments" ? "#D32F2F" : "#333"}
           />
-          <Text style={[styles.tabLabel, activeTab === "Assignments" && styles.tabLabelActive]}>
+          <Text
+            style={[
+              styles.tabLabel,
+              activeTab === "Assignments" && styles.tabLabelActive,
+            ]}
+          >
             Assignments ({assignments.length})
           </Text>
         </TouchableOpacity>
@@ -820,14 +1089,22 @@ const TeacherCourseDetail2 = ({
         <View style={styles.modalOverlayCenter}>
           <View
             style={[
-              styles.createModalBox,
-              { width: isMobile ? Math.min(width - 28, 360) : 420 },
+              styles.modalCardElevated,
+              { width: isMobile ? Math.min(width - 28, 370) : 440 },
             ]}
           >
             <View style={styles.createHeaderRow}>
-              <Text style={styles.createTitle}>
-                Create {activeTab === "Materials" ? "Material" : "Assignment"}
-              </Text>
+              <View style={styles.modalHeaderTextWrap}>
+                <Text style={styles.createTitle}>
+                  Create {activeTab === "Materials" ? "Material" : "Assignment"}
+                </Text>
+                <Text style={styles.modalSubtitle}>
+                  {activeTab === "Materials"
+                    ? "Add a new class material with optional file attachment."
+                    : "Create a new assignment and attach a file if needed."}
+                </Text>
+              </View>
+
               <TouchableOpacity
                 onPress={() => {
                   setShowCreateModal(false);
@@ -839,9 +1116,16 @@ const TeacherCourseDetail2 = ({
             </View>
 
             <ScrollView showsVerticalScrollIndicator={false}>
+              <Text style={styles.sectionLabel}>
+                {activeTab === "Materials" ? "Title" : "Header"}
+              </Text>
               <TextInput
                 style={styles.inputBox}
-                placeholder={activeTab === "Materials" ? "Material Title" : "Enter Header"}
+                placeholder={
+                  activeTab === "Materials"
+                    ? "Material Title"
+                    : "Enter Header"
+                }
                 placeholderTextColor="#999"
                 value={formTitle}
                 onChangeText={setFormTitle}
@@ -849,6 +1133,7 @@ const TeacherCourseDetail2 = ({
 
               {activeTab === "Materials" ? (
                 <>
+                  <Text style={styles.sectionLabel}>Week</Text>
                   <TextInput
                     style={styles.inputBox}
                     placeholder="Week (example: Week 1)"
@@ -857,8 +1142,26 @@ const TeacherCourseDetail2 = ({
                     onChangeText={setFormWeek}
                   />
 
-                  <TouchableOpacity style={styles.uploadBtn} onPress={handlePickFile}>
-                    <MaterialCommunityIcons name="upload" size={20} color="#FFF" />
+                  <Text style={styles.sectionLabel}>Description</Text>
+                  <TextInput
+                    style={styles.textAreaBox}
+                    placeholder="Optional description"
+                    placeholderTextColor="#999"
+                    value={formDesc}
+                    onChangeText={setFormDesc}
+                    multiline
+                  />
+
+                  <Text style={styles.sectionLabel}>Attachment</Text>
+                  <TouchableOpacity
+                    style={styles.uploadBtn}
+                    onPress={handlePickFile}
+                  >
+                    <MaterialCommunityIcons
+                      name="upload"
+                      size={20}
+                      color="#FFF"
+                    />
                     <Text style={styles.uploadBtnText}>Upload File</Text>
                   </TouchableOpacity>
 
@@ -869,19 +1172,25 @@ const TeacherCourseDetail2 = ({
                         size={22}
                         color="#D32F2F"
                       />
-                      <Text style={styles.filePreviewText}>{pickedFile.name}</Text>
+                      <Text style={styles.filePreviewText}>
+                        {pickedFile.name}
+                      </Text>
                     </View>
                   ) : null}
                 </>
               ) : (
                 <>
+                  <Text style={styles.sectionLabel}>Instruction</Text>
                   <TextInput
-                    style={styles.inputBox}
+                    style={styles.textAreaBox}
                     placeholder="Enter Instruction"
                     placeholderTextColor="#999"
                     value={formDesc}
                     onChangeText={setFormDesc}
+                    multiline
                   />
+
+                  <Text style={styles.sectionLabel}>Total Score</Text>
                   <TextInput
                     style={styles.inputBox}
                     placeholder="Total Score"
@@ -890,6 +1199,8 @@ const TeacherCourseDetail2 = ({
                     value={formPoints}
                     onChangeText={setFormPoints}
                   />
+
+                  <Text style={styles.sectionLabel}>Points On Time</Text>
                   <TextInput
                     style={styles.inputBox}
                     placeholder="Points On Time"
@@ -898,6 +1209,8 @@ const TeacherCourseDetail2 = ({
                     value={formWeek}
                     onChangeText={setFormWeek}
                   />
+
+                  <Text style={styles.sectionLabel}>Due Date</Text>
                   <TextInput
                     style={styles.inputBox}
                     placeholder="Set Due Date"
@@ -908,7 +1221,7 @@ const TeacherCourseDetail2 = ({
 
                   <View style={styles.checkboxRow}>
                     <Text style={styles.checkboxLabel}>
-                      Disabled repository after due
+                      Disable repository after due
                     </Text>
                     <TouchableOpacity
                       style={[
@@ -923,16 +1236,25 @@ const TeacherCourseDetail2 = ({
                       }
                     >
                       {assignmentDisableRepositoryAfterDue ? (
-                        <MaterialCommunityIcons name="check" size={16} color="#FFF" />
+                        <MaterialCommunityIcons
+                          name="check"
+                          size={16}
+                          color="#FFF"
+                        />
                       ) : null}
                     </TouchableOpacity>
                   </View>
 
+                  <Text style={styles.sectionLabel}>Attachment</Text>
                   <TouchableOpacity
                     style={styles.uploadBtn}
                     onPress={handlePickAssignmentFile}
                   >
-                    <MaterialCommunityIcons name="upload" size={20} color="#FFF" />
+                    <MaterialCommunityIcons
+                      name="upload"
+                      size={20}
+                      color="#FFF"
+                    />
                     <Text style={styles.uploadBtnText}>Upload File</Text>
                   </TouchableOpacity>
 
@@ -951,9 +1273,24 @@ const TeacherCourseDetail2 = ({
                 </>
               )}
 
-              <TouchableOpacity style={styles.updateButton} onPress={handleCreate}>
-                <Text style={styles.updateButtonText}>Create</Text>
-              </TouchableOpacity>
+              <View style={styles.buttonRow}>
+                <TouchableOpacity
+                  style={styles.secondaryButton}
+                  onPress={() => {
+                    setShowCreateModal(false);
+                    resetCreateForm();
+                  }}
+                >
+                  <Text style={styles.secondaryButtonText}>Cancel</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.primaryButton}
+                  onPress={handleCreate}
+                >
+                  <Text style={styles.primaryButtonText}>Create</Text>
+                </TouchableOpacity>
+              </View>
             </ScrollView>
           </View>
         </View>
@@ -963,21 +1300,28 @@ const TeacherCourseDetail2 = ({
         <View style={styles.modalOverlayCenter}>
           <View
             style={[
-              styles.materialModalBox,
+              styles.modalCardElevated,
               { width: isMobile ? Math.min(width - 28, 360) : 520 },
             ]}
           >
             <View style={styles.createHeaderRow}>
-              <Text style={styles.createTitle}>
-                {selectedMaterial?.title || "Material"}
-              </Text>
+              <View style={styles.modalHeaderTextWrap}>
+                <Text style={styles.createTitle}>
+                  {selectedMaterial?.title || "Material"}
+                </Text>
+                <Text style={styles.modalSubtitle}>
+                  View the material details and open the uploaded file.
+                </Text>
+              </View>
               <TouchableOpacity onPress={() => setShowMaterialModal(false)}>
                 <MaterialCommunityIcons name="close" size={24} color="#000" />
               </TouchableOpacity>
             </View>
 
             <Text style={styles.materialLabel}>Week</Text>
-            <Text style={styles.materialValue}>{selectedMaterial?.week || "-"}</Text>
+            <Text style={styles.materialValue}>
+              {selectedMaterial?.week || "-"}
+            </Text>
 
             <Text style={styles.materialLabel}>Posted</Text>
             <Text style={styles.materialValue}>
@@ -1008,11 +1352,179 @@ const TeacherCourseDetail2 = ({
               <Text style={styles.noFileText}>No uploaded file</Text>
             )}
 
+            <View style={styles.buttonRow}>
+              <TouchableOpacity
+                style={styles.secondaryButton}
+                onPress={() => openUpdateMaterialModal(selectedMaterial)}
+              >
+                <Text style={styles.secondaryButtonText}>Edit Material</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.primaryButton}
+                onPress={() => setShowMaterialModal(false)}
+              >
+                <Text style={styles.primaryButtonText}>Close</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={showUpdateMaterialModal} transparent animationType="fade">
+        <View style={styles.modalOverlayCenter}>
+          <View
+            style={[
+              styles.modalCardElevated,
+              { width: isMobile ? Math.min(width - 28, 370) : 440 },
+            ]}
+          >
+            <View style={styles.createHeaderRow}>
+              <View style={styles.modalHeaderTextWrap}>
+                <Text style={styles.createTitle}>Update Material</Text>
+                <Text style={styles.modalSubtitle}>
+                  Edit the material details or remove it from the class.
+                </Text>
+              </View>
+
+              <TouchableOpacity
+                onPress={() => {
+                  setShowUpdateMaterialModal(false);
+                  setSelectedMaterialId(null);
+                  resetCreateForm();
+                }}
+              >
+                <MaterialCommunityIcons name="close" size={24} color="#000" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false}>
+              <Text style={styles.sectionLabel}>Title</Text>
+              <TextInput
+                style={styles.inputBox}
+                placeholder="Material Title"
+                placeholderTextColor="#999"
+                value={formTitle}
+                onChangeText={setFormTitle}
+              />
+
+              <Text style={styles.sectionLabel}>Week</Text>
+              <TextInput
+                style={styles.inputBox}
+                placeholder="Week (example: Week 1)"
+                placeholderTextColor="#999"
+                value={formWeek}
+                onChangeText={setFormWeek}
+              />
+
+              <Text style={styles.sectionLabel}>Description</Text>
+              <TextInput
+                style={styles.textAreaBox}
+                placeholder="Optional description"
+                placeholderTextColor="#999"
+                value={formDesc}
+                onChangeText={setFormDesc}
+                multiline
+              />
+
+              <View style={styles.buttonRow}>
+                <TouchableOpacity
+                  style={styles.secondaryButton}
+                  onPress={confirmDeleteMaterial}
+                >
+                  <Text style={styles.secondaryButtonText}>Delete</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.primaryButton}
+                  onPress={handleUpdateMaterial}
+                >
+                  <Text style={styles.primaryButtonText}>Update</Text>
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={showDeleteMaterialConfirmModal}
+        transparent
+        animationType="fade"
+      >
+        <View style={styles.modalOverlayCenter}>
+          <View
+            style={[
+              styles.modalCardElevated,
+              {
+                width: isMobile ? Math.min(width - 28, 340) : 360,
+              },
+            ]}
+          >
+            <View style={styles.confirmIconWrap}>
+              <MaterialCommunityIcons
+                name="trash-can-outline"
+                size={34}
+                color="#D32F2F"
+              />
+            </View>
+
+            <Text style={styles.confirmTitle}>Delete Material?</Text>
+            <Text style={styles.confirmMessage}>
+              This will permanently remove the material and its uploaded file
+              from the class.
+            </Text>
+
+            <View style={styles.buttonRow}>
+              <TouchableOpacity
+                style={styles.secondaryButton}
+                onPress={() => setShowDeleteMaterialConfirmModal(false)}
+              >
+                <Text style={styles.secondaryButtonText}>Cancel</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.dangerButtonFilled}
+                onPress={handleDeleteMaterial}
+              >
+                <Text style={styles.dangerButtonFilledText}>Delete</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={resultModalVisible} transparent animationType="fade">
+        <View style={styles.modalOverlayCenter}>
+          <View
+            style={[
+              styles.modalCardElevated,
+              {
+                width: isMobile ? Math.min(width - 28, 340) : 360,
+                alignItems: "center",
+              },
+            ]}
+          >
+            <MaterialCommunityIcons
+              name={
+                resultModalType === "success"
+                  ? "check-circle"
+                  : "close-circle"
+              }
+              size={52}
+              color={resultModalType === "success" ? "#16A34A" : "#D32F2F"}
+              style={{ marginBottom: 12 }}
+            />
+
+            <Text style={styles.confirmTitle}>{resultModalTitle}</Text>
+
+            <Text style={styles.confirmMessage}>{resultModalMessage}</Text>
+
             <TouchableOpacity
-              style={styles.updateButton}
-              onPress={() => setShowMaterialModal(false)}
+              style={[styles.primaryButton, { width: "100%", marginTop: 6 }]}
+              onPress={() => setResultModalVisible(false)}
             >
-              <Text style={styles.updateButtonText}>Close</Text>
+              <Text style={styles.primaryButtonText}>OK</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -1173,11 +1685,30 @@ const styles = StyleSheet.create({
     maxHeight: "80%",
   },
 
+  modalCardElevated: {
+    backgroundColor: "#FFF",
+    borderRadius: 24,
+    padding: 22,
+    maxHeight: "88%",
+    borderWidth: 1,
+    borderColor: "#F1F1F1",
+    shadowColor: "#000",
+    shadowOpacity: 0.12,
+    shadowOffset: { width: 0, height: 10 },
+    shadowRadius: 22,
+    elevation: 10,
+  },
+
   createHeaderRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     marginBottom: 15,
+  },
+
+  modalHeaderTextWrap: {
+    flex: 1,
+    marginRight: 12,
   },
 
   createTitle: {
@@ -1186,6 +1717,21 @@ const styles = StyleSheet.create({
     color: "#111",
     flex: 1,
     marginRight: 12,
+  },
+
+  modalSubtitle: {
+    fontSize: 13,
+    color: "#777",
+    marginTop: 4,
+    lineHeight: 20,
+  },
+
+  sectionLabel: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#444",
+    marginBottom: 8,
+    marginTop: 4,
   },
 
   inputBox: {
@@ -1198,6 +1744,21 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: "#333",
     backgroundColor: "#FFF",
+  },
+
+  textAreaBox: {
+    borderWidth: 1,
+    borderColor: "#DDD",
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingTop: 14,
+    paddingBottom: 14,
+    marginBottom: 12,
+    fontSize: 14,
+    color: "#333",
+    backgroundColor: "#FFF",
+    minHeight: 96,
+    textAlignVertical: "top",
   },
 
   uploadBtn: {
@@ -1315,12 +1876,93 @@ const styles = StyleSheet.create({
     padding: 12,
     alignItems: "center",
     marginTop: 5,
+    minWidth: 120,
   },
 
   updateButtonText: {
     color: "#FFF",
     fontWeight: "700",
     fontSize: 15,
+  },
+
+  buttonRow: {
+    flexDirection: "row",
+    gap: 10,
+    marginTop: 8,
+  },
+
+  secondaryButton: {
+    flex: 1,
+    borderWidth: 1.5,
+    borderColor: "#D32F2F",
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#FFF",
+  },
+
+  secondaryButtonText: {
+    color: "#D32F2F",
+    fontWeight: "700",
+    fontSize: 14,
+  },
+
+  primaryButton: {
+    flex: 1,
+    backgroundColor: "#D32F2F",
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  primaryButtonText: {
+    color: "#FFF",
+    fontWeight: "700",
+    fontSize: 14,
+  },
+
+  dangerButtonFilled: {
+    flex: 1,
+    backgroundColor: "#D32F2F",
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  dangerButtonFilledText: {
+    color: "#FFF",
+    fontWeight: "700",
+    fontSize: 14,
+  },
+
+  confirmIconWrap: {
+    width: 68,
+    height: 68,
+    borderRadius: 34,
+    backgroundColor: "#FDECEC",
+    alignItems: "center",
+    justifyContent: "center",
+    alignSelf: "center",
+    marginBottom: 14,
+  },
+
+  confirmTitle: {
+    fontSize: 22,
+    fontWeight: "800",
+    color: "#111",
+    textAlign: "center",
+    marginBottom: 8,
+  },
+
+  confirmMessage: {
+    fontSize: 14,
+    color: "#666",
+    textAlign: "center",
+    lineHeight: 22,
+    marginBottom: 20,
   },
 
   checkboxRow: {
