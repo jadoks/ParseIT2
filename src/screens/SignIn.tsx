@@ -18,15 +18,29 @@ import {
 import Icon from 'react-native-vector-icons/Ionicons';
 import { auth } from '../../firebaseConfig';
 
-interface SignInProps {
-  onLogIn?: (role: 'student' | 'teacher' | 'admin') => void;
-  onGoToLanding?: () => void;
-}
-
+type UserRole = 'student' | 'teacher' | 'admin';
 type ForgotStep = 1 | 2 | 3;
 type FirstLoginStep = 1 | 2;
-type UserRole = 'student' | 'teacher' | 'admin';
 type FeedbackType = 'success' | 'error' | 'info';
+
+interface SignedInUser {
+  role: UserRole;
+  id: string;
+  email: string | null;
+  authUid?: string | null;
+  studentId?: string;
+  teacherId?: string;
+  adminId?: string;
+  firstName?: string;
+  lastName?: string;
+  profileImage?: any;
+  bannerImage?: any;
+}
+
+interface SignInProps {
+  onLogIn?: (user: SignedInUser) => void;
+  onGoToLanding?: () => void;
+}
 
 type LookupUserResponse = {
   success: boolean;
@@ -44,6 +58,11 @@ type SendForgotPasswordPinResponse = {
   id: string;
   email: string;
   message: string;
+};
+
+type UserProfileResponse = {
+  success: boolean;
+  data: SignedInUser;
 };
 
 function getApiBaseUrl() {
@@ -215,6 +234,38 @@ const SignIn = ({ onLogIn, onGoToLanding }: SignInProps) => {
     return data;
   };
 
+  const fetchSignedInUserProfile = async (
+    userId: string,
+    role: UserRole
+  ): Promise<SignedInUser> => {
+    const response = await fetch(`${API_BASE_URL}/auth/user-profile`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id: userId,
+        role,
+      }),
+    });
+
+    const data: UserProfileResponse = await response.json();
+
+    if (!response.ok) {
+      throw new Error((data as any)?.error || 'Unable to load user profile.');
+    }
+
+    if (!data?.data) {
+      throw new Error('User profile response is missing data.');
+    }
+
+    return data.data;
+  };
+
+  const completeLogin = async (userId: string, role: UserRole) => {
+    const signedInUser = await fetchSignedInUserProfile(userId, role);
+    console.log('SIGNED IN USER PROFILE =>', signedInUser);
+    onLogIn?.(signedInUser);
+  };
+
   const sendFirstLoginPin = async (userId: string, role: UserRole) => {
     const response = await fetch(`${API_BASE_URL}/auth/send-first-login-pin`, {
       method: 'POST',
@@ -344,8 +395,8 @@ const SignIn = ({ onLogIn, onGoToLanding }: SignInProps) => {
         return;
       }
 
-      showFeedback('success', 'Login Successful', 'Welcome back.', () => {
-        onLogIn?.(user.role);
+      showFeedback('success', 'Login Successful', 'Welcome back.', async () => {
+        await completeLogin(user.id, user.role);
       });
     } catch (error: any) {
       console.log('LOGIN ERROR =>', error);
@@ -565,11 +616,12 @@ const SignIn = ({ onLogIn, onGoToLanding }: SignInProps) => {
       await firebasePasswordSignIn(pendingEmail, newPassword.trim());
 
       const role = pendingRole;
+      const userId = pendingUserId;
 
-      showFeedback('success', 'Success', 'Your password has been set successfully.', () => {
+      showFeedback('success', 'Success', 'Your password has been set successfully.', async () => {
         resetFirstLoginState();
         if (role) {
-          onLogIn?.(role);
+          await completeLogin(userId, role);
         }
       });
     } catch (error: any) {

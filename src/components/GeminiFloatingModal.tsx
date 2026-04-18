@@ -1,6 +1,9 @@
-import React, { useState } from 'react';
+import Constants from "expo-constants";
+import React, { useMemo, useState } from "react";
 import {
+  ActivityIndicator,
   Modal,
+  Platform,
   SafeAreaView,
   ScrollView,
   StyleSheet,
@@ -8,15 +11,41 @@ import {
   TextInput,
   TouchableOpacity,
   View,
-  useWindowDimensions
-} from 'react-native';
+  useWindowDimensions,
+} from "react-native";
 
 interface GeminiFloatingModalProps {
   visible: boolean;
   onClose: () => void;
 }
 
-type ChatMode = 'assistant' | 'tutor';
+type ChatMode = "assistant" | "tutor";
+
+type Message = {
+  role: "user" | "model";
+  text: string;
+};
+
+function getApiBaseUrl() {
+  if (Platform.OS === "web") {
+    return "http://localhost:5000";
+  }
+
+  const possibleHost =
+    Constants.expoConfig?.hostUri ||
+    Constants.manifest2?.extra?.expoGo?.debuggerHost ||
+    "";
+
+  const host = possibleHost.split(":")[0];
+
+  if (host) {
+    return `http://${host}:5000`;
+  }
+
+  return "http://192.168.1.5:5000";
+}
+
+const API_BASE_URL = getApiBaseUrl();
 
 export default function GeminiFloatingModal({
   visible,
@@ -24,9 +53,90 @@ export default function GeminiFloatingModal({
 }: GeminiFloatingModalProps) {
   const { width, height } = useWindowDimensions();
   const isMobile = width < 768;
-  const [mode, setMode] = useState<ChatMode>('assistant');
 
-  const isAssistant = mode === 'assistant';
+  const [mode, setMode] = useState<ChatMode>("assistant");
+  const [input, setInput] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const [messages, setMessages] = useState<Message[]>([
+    {
+      role: "model",
+      text: "Hello! Ask me anything about ParseIT or your lesson.",
+    },
+  ]);
+
+  const isAssistant = mode === "assistant";
+
+  const subtitle = useMemo(
+    () =>
+      isAssistant
+        ? "General support and system help"
+        : "Learning guidance and lesson assistance",
+    [isAssistant]
+  );
+
+  const sendMessage = async () => {
+    const trimmed = input.trim();
+    if (!trimmed || loading) return;
+
+    const userMessage: Message = { role: "user", text: trimmed };
+    const historyForRequest = [...messages, userMessage];
+
+    setMessages(historyForRequest);
+    setInput("");
+    setLoading(true);
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/ai/gemini`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          message: trimmed,
+          mode,
+          history: messages.slice(-10),
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data?.error || "Failed to get AI response.");
+      }
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "model",
+          text: data.reply || "No response returned.",
+        },
+      ]);
+    } catch (error: any) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "model",
+          text: `Error: ${error?.message || "Something went wrong."}`,
+        },
+      ]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const resetForMode = (nextMode: ChatMode) => {
+    setMode(nextMode);
+    setMessages([
+      {
+        role: "model",
+        text:
+          nextMode === "assistant"
+            ? "Hello! I can help you use ParseIT features."
+            : "Hi! I can help explain lessons step by step.",
+      },
+    ]);
+  };
 
   return (
     <Modal
@@ -45,39 +155,23 @@ export default function GeminiFloatingModal({
         <SafeAreaView
           style={[
             styles.modalContainer,
-            isMobile
-              ? {
-                  width: width * 0.92,
-                  height: height * 0.72,
-                  bottom: 80,
-                  right: 16,
-                }
-              : {
-                  width: 420,
-                  height: 580,
-                  bottom: 85,
-                  right: 20,
-                },
+            {
+              width: isMobile ? width * 0.95 : 460,
+              height: isMobile ? height * 0.78 : 640,
+              right: isMobile ? width * 0.025 : 24,
+              bottom: isMobile ? 18 : 24,
+            },
           ]}
         >
           <View style={styles.header}>
-            <View>
-              <Text style={styles.title}>ParseIT Assistant</Text>
-              <Text style={styles.subtitle}>
-                {isAssistant
-                  ? 'General support and system help'
-                  : 'Learning guidance and lesson assistance'}
-              </Text>
-            </View>
+            <Text style={styles.title}>ParseIT Assistant</Text>
+            <Text style={styles.subtitle}>{subtitle}</Text>
           </View>
 
           <View style={styles.modeSwitchWrap}>
             <TouchableOpacity
-              style={[
-                styles.modeButton,
-                isAssistant && styles.modeButtonActive,
-              ]}
-              onPress={() => setMode('assistant')}
+              style={[styles.modeButton, isAssistant && styles.modeButtonActive]}
+              onPress={() => resetForMode("assistant")}
             >
               <Text
                 style={[
@@ -90,11 +184,8 @@ export default function GeminiFloatingModal({
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={[
-                styles.modeButton,
-                !isAssistant && styles.modeButtonActive,
-              ]}
-              onPress={() => setMode('tutor')}
+              style={[styles.modeButton, !isAssistant && styles.modeButtonActive]}
+              onPress={() => resetForMode("tutor")}
             >
               <Text
                 style={[
@@ -107,70 +198,49 @@ export default function GeminiFloatingModal({
             </TouchableOpacity>
           </View>
 
-          <ScrollView
-            contentContainerStyle={styles.messages}
-            showsVerticalScrollIndicator={false}
-          >
-            {isAssistant ? (
-              <>
-                <View style={[styles.messageBubble, styles.botBubble]}>
-                  <Text style={styles.botText}>
-                    Hello! I’m your ParseIT Assistant. I can help you navigate
-                    the system, answer common questions, and guide you through
-                    features.
-                  </Text>
-                </View>
+          <ScrollView contentContainerStyle={styles.messages}>
+            {messages.map((message, index) => {
+              const isUser = message.role === "user";
 
-                <View style={[styles.messageBubble, styles.userBubble]}>
-                  <Text style={styles.userText}>
-                    Where can I view my quiz results?
+              return (
+                <View
+                  key={`${message.role}-${index}`}
+                  style={[
+                    styles.messageBubble,
+                    isUser ? styles.userBubble : styles.botBubble,
+                  ]}
+                >
+                  <Text style={isUser ? styles.userText : styles.botText}>
+                    {message.text}
                   </Text>
                 </View>
+              );
+            })}
 
-                <View style={[styles.messageBubble, styles.botBubble]}>
-                  <Text style={styles.botText}>
-                    You can check your quiz results in the Results or Performance
-                    section, depending on how your system navigation is set up.
-                  </Text>
-                </View>
-              </>
-            ) : (
-              <>
-                <View style={[styles.messageBubble, styles.botBubble]}>
-                  <Text style={styles.botText}>
-                    Hi! I’m your AI Tutor. I can help explain lessons, guide you
-                    step by step, and support you with academic questions.
-                  </Text>
-                </View>
-
-                <View style={[styles.messageBubble, styles.userBubble]}>
-                  <Text style={styles.userText}>
-                    Can you help me understand loops in programming?
-                  </Text>
-                </View>
-
-                <View style={[styles.messageBubble, styles.botBubble]}>
-                  <Text style={styles.botText}>
-                    Of course. A loop is used to repeat a block of code multiple
-                    times. For example, a for loop is helpful when you already
-                    know how many times the repetition should happen.
-                  </Text>
-                </View>
-              </>
+            {loading && (
+              <View style={[styles.messageBubble, styles.botBubble]}>
+                <ActivityIndicator />
+              </View>
             )}
           </ScrollView>
 
           <View style={styles.inputWrapper}>
             <TextInput
-              placeholder={
-                isAssistant
-                  ? 'Ask about the system...'
-                  : 'Ask about your lessons...'
-              }
-              placeholderTextColor="#888"
               style={styles.input}
+              placeholder="Type your question..."
+              placeholderTextColor="#999"
+              value={input}
+              onChangeText={setInput}
+              editable={!loading}
+              onSubmitEditing={sendMessage}
+              returnKeyType="send"
             />
-            <TouchableOpacity style={styles.sendBtn}>
+
+            <TouchableOpacity
+              style={styles.sendBtn}
+              onPress={sendMessage}
+              disabled={loading}
+            >
               <Text style={styles.sendText}>Send</Text>
             </TouchableOpacity>
           </View>
@@ -184,140 +254,120 @@ const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
   },
-
   modalContainer: {
-    position: 'absolute',
-    backgroundColor: '#FFFFFF',
+    position: "absolute",
+    backgroundColor: "#FFFFFF",
     borderRadius: 18,
-    overflow: 'hidden',
-    shadowColor: '#000',
+    overflow: "hidden",
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.2,
     shadowRadius: 16,
     elevation: 12,
-   
   },
-
   header: {
     paddingHorizontal: 16,
     paddingTop: 14,
     paddingBottom: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#E9E9E9',
-    backgroundColor: '#fff',
+    borderBottomColor: "#E9E9E9",
+    backgroundColor: "#fff",
   },
-
   title: {
     fontSize: 18,
-    fontWeight: '700',
-    color: '#D32F2F',
+    fontWeight: "700",
+    color: "#D32F2F",
   },
-
   subtitle: {
     marginTop: 4,
     fontSize: 12,
-    color: '#666',
+    color: "#666",
   },
-
   modeSwitchWrap: {
-    flexDirection: 'row',
+    flexDirection: "row",
     marginHorizontal: 14,
     marginTop: 14,
     marginBottom: 4,
-    backgroundColor: '#F4F4F4',
+    backgroundColor: "#F4F4F4",
     borderRadius: 999,
     padding: 4,
   },
-
   modeButton: {
     flex: 1,
     height: 40,
     borderRadius: 999,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
   },
-
   modeButtonActive: {
-    backgroundColor: '#D32F2F',
+    backgroundColor: "#D32F2F",
   },
-
   modeButtonText: {
     fontSize: 14,
-    fontWeight: '600',
-    color: '#666',
+    fontWeight: "600",
+    color: "#666",
   },
-
   modeButtonTextActive: {
-    color: '#FFF',
+    color: "#FFF",
   },
-
   messages: {
     padding: 14,
     gap: 10,
   },
-
   messageBubble: {
-    maxWidth: '85%',
+    maxWidth: "85%",
     paddingHorizontal: 14,
     paddingVertical: 10,
     borderRadius: 16,
   },
-
   botBubble: {
-    alignSelf: 'flex-start',
-    backgroundColor: '#F2F2F2',
+    alignSelf: "flex-start",
+    backgroundColor: "#F2F2F2",
   },
-
   userBubble: {
-    alignSelf: 'flex-end',
-    backgroundColor: '#D32F2F',
+    alignSelf: "flex-end",
+    backgroundColor: "#D32F2F",
   },
-
   botText: {
-    color: '#222',
+    color: "#222",
     fontSize: 14,
     lineHeight: 20,
   },
-
   userText: {
-    color: '#FFF',
+    color: "#FFF",
     fontSize: 14,
     lineHeight: 20,
   },
-
   inputWrapper: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     padding: 12,
     borderTopWidth: 1,
-    borderTopColor: '#E9E9E9',
-    backgroundColor: '#fff',
+    borderTopColor: "#E9E9E9",
+    backgroundColor: "#fff",
   },
-
   input: {
     flex: 1,
     height: 46,
     borderWidth: 1.5,
-    borderColor: '#D32F2F',
+    borderColor: "#D32F2F",
     borderRadius: 999,
     paddingHorizontal: 14,
-    color: '#000',
-    backgroundColor: '#fff',
+    color: "#000",
+    backgroundColor: "#fff",
   },
-
   sendBtn: {
     marginLeft: 10,
     height: 46,
     paddingHorizontal: 16,
     borderRadius: 999,
-    backgroundColor: '#D32F2F',
-    alignItems: 'center',
-    justifyContent: 'center',
+    backgroundColor: "#D32F2F",
+    alignItems: "center",
+    justifyContent: "center",
   },
-
   sendText: {
-    color: '#fff',
-    fontWeight: '700',
+    color: "#fff",
+    fontWeight: "700",
     fontSize: 14,
   },
 });

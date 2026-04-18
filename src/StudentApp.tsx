@@ -1,6 +1,8 @@
+import Constants from 'expo-constants';
 import * as NavigationBar from 'expo-navigation-bar';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
+  Alert,
   Image,
   Platform,
   Pressable,
@@ -44,8 +46,19 @@ import FlipIt from './screens/games/flip-it';
 import FruitMania from './screens/games/fruit-mania';
 import QuizMasters from './screens/games/quiz-masters';
 
+interface CurrentStudent {
+  studentId: string;
+  authUid?: string | null;
+  firstName: string;
+  lastName: string;
+  email: string;
+  profileImage?: string | null;
+  bannerImage?: string | null;
+}
+
 interface Props {
   onLogout: () => void;
+  currentStudent: CurrentStudent;
 }
 
 type ScreenType =
@@ -66,11 +79,29 @@ type ScreenType =
   | 'generateactivity'
   | 'notification';
 
-const CURRENT_USER_NAME = 'Jade Lisondra';
-const CURRENT_USER_EMAIL = 'jadelisondra101@gmail.com';
+function getApiBaseUrl() {
+  if (Platform.OS === 'web') {
+    return 'http://localhost:5000';
+  }
 
-const CURRENT_USER_PROFILE_IMAGE = require('../assets/images/pogi.jpg');
+  const possibleHost =
+    Constants.expoConfig?.hostUri ||
+    Constants.manifest2?.extra?.expoGo?.debuggerHost ||
+    '';
+
+  const host = possibleHost.split(':')[0];
+
+  if (host) {
+    return `http://${host}:5000`;
+  }
+
+  return 'http://192.168.1.5:5000';
+}
+
+const API_BASE_URL = getApiBaseUrl();
+
 const OTHER_USERS_PROFILE_IMAGE = require('../assets/images/default_profile.png');
+const FALLBACK_PROFILE_IMAGE = require('../assets/images/default_profile.png');
 const DEFAULT_BANNER_IMAGE = require('../assets/images/venti_bg.png');
 
 const ANNOUNCEMENTS: Announcement[] = [
@@ -94,6 +125,7 @@ const ANNOUNCEMENTS: Announcement[] = [
   },
 ];
 
+// KEEP THESE FOR OTHER MODULES FOR NOW
 const COURSES: CourseDetailData[] = [
   {
     id: '1',
@@ -315,7 +347,11 @@ const COURSES: CourseDetailData[] = [
   },
 ];
 
-const INITIAL_COMMUNITY_POSTS: CommunityPost[] = [
+const buildInitialCommunityPosts = (
+  currentUserName: string,
+  currentUserEmail: string,
+  currentUserAvatar: any
+): CommunityPost[] => [
   {
     id: '1',
     userName: 'Ramcee Bading',
@@ -344,9 +380,9 @@ const INITIAL_COMMUNITY_POSTS: CommunityPost[] = [
   },
   {
     id: '2',
-    userName: CURRENT_USER_NAME,
-    userEmail: CURRENT_USER_EMAIL,
-    avatar: CURRENT_USER_PROFILE_IMAGE,
+    userName: currentUserName,
+    userEmail: currentUserEmail,
+    avatar: currentUserAvatar,
     dateTime: 'Feb 23, 2026 11:30 AM',
     content: 'Is anyone attending the workshop tomorrow?',
     answers: [
@@ -423,17 +459,82 @@ const mapCoursesToAssignmentCourses = (courses: CourseDetailData[]): AssignmentC
       title: material.title,
       type: material.type,
       uploadedDate: material.uploadedDate,
+      content: material.content,
+      fileName: material.fileName,
+      fileUrl: material.fileUrl || material.fileUri,
+      fileUri: material.fileUri || material.fileUrl,
+      fileType: material.fileType,
     })),
     assignments: mapCourseAssignmentsToAssignmentItems(course.assignments),
   }));
 };
 
-export default function StudentApp({ onLogout }: Props) {
+const mapJoinedClassToCourseDetail = (item: any): CourseDetailData => ({
+  id: String(item.id || ''),
+  name: item.name || 'Untitled Class',
+  code: item.courseCode || item.classCode || '',
+  instructor: item.instructorName || 'Unknown Instructor',
+  description: item.description || 'No description available.',
+  semester: item.semester || '',
+  schoolYear: item.schoolYear || '',
+  section: item.section || '',
+  materials: Array.isArray(item.materials) ? item.materials : [],
+  assignments: Array.isArray(item.assignments) ? item.assignments : [],
+});
+
+const mapCourseDetailToAssignmentCourse = (course: CourseDetailData): AssignmentCourse => ({
+  id: course.id,
+  name: course.name,
+  code: course.code,
+  instructor: course.instructor,
+  description: course.description,
+  semester: course.semester,
+  schoolYear: course.schoolYear,
+  section: course.section,
+  materials: (course.materials || []).map((material) => ({
+    id: material.id,
+    title: material.title,
+    type: material.type,
+    uploadedDate: material.uploadedDate,
+    content: material.content,
+    fileName: material.fileName,
+    fileUrl: material.fileUrl || material.fileUri,
+    fileUri: material.fileUri || material.fileUrl,
+    fileType: material.fileType,
+  })),
+  assignments: (course.assignments || []).map((assignment) => ({
+    id: assignment.id,
+    title: assignment.title,
+    dueDate: assignment.dueDate,
+    status: assignment.status,
+    points: assignment.points,
+    maxPoints: assignment.maxPoints,
+    topic: assignment.topic,
+    materialIds: assignment.materialIds,
+    comments: mapCourseCommentsToAssignmentComments(assignment.comments),
+    files: mapCourseFilesToAssignmentFiles(assignment.files),
+  })),
+});
+
+export default function StudentApp({ onLogout, currentStudent }: Props) {
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
 
   const isLargeScreen = width >= 768;
   const isSmallScreen = width < 768;
+
+  const currentUserName =
+    `${currentStudent.firstName || ''} ${currentStudent.lastName || ''}`.trim() || 'Student';
+
+  const currentUserEmail = currentStudent.email || '';
+
+  const initialAvatar = currentStudent.profileImage
+    ? { uri: currentStudent.profileImage }
+    : FALLBACK_PROFILE_IMAGE;
+
+  const initialBanner = currentStudent.bannerImage
+    ? { uri: currentStudent.bannerImage }
+    : DEFAULT_BANNER_IMAGE;
 
   const [activeScreen, setActiveScreen] = useState<ScreenType>('home');
   const [lastScreen, setLastScreen] = useState<ScreenType>('home');
@@ -451,11 +552,16 @@ export default function StudentApp({ onLogout }: Props) {
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
 
   const [activeCourseTab, setActiveCourseTab] = useState<'materials' | 'assignments'>('materials');
-  const [communityPosts, setCommunityPosts] = useState<CommunityPost[]>(INITIAL_COMMUNITY_POSTS);
-
-  const [currentUserAvatar, setCurrentUserAvatar] = useState<any>(CURRENT_USER_PROFILE_IMAGE);
-  const [currentUserBanner, setCurrentUserBanner] = useState<any>(DEFAULT_BANNER_IMAGE);
+  const [currentUserAvatar, setCurrentUserAvatar] = useState<any>(initialAvatar);
+  const [currentUserBanner, setCurrentUserBanner] = useState<any>(initialBanner);
   const [hasImageChanged, setHasImageChanged] = useState(false);
+
+  const [joinedCourses, setJoinedCourses] = useState<CourseDetailData[]>([]);
+  const [isLoadingJoinedCourses, setIsLoadingJoinedCourses] = useState(false);
+
+  const [communityPosts, setCommunityPosts] = useState<CommunityPost[]>(
+    buildInitialCommunityPosts(currentUserName, currentUserEmail, initialAvatar)
+  );
 
   const isFullscreenScreen =
     activeScreen === 'flipit' ||
@@ -533,19 +639,86 @@ export default function StudentApp({ onLogout }: Props) {
     setHasImageChanged(true);
   };
 
+  const loadJoinedClasses = async () => {
+    if (!currentStudent?.studentId) return;
+
+    try {
+      setIsLoadingJoinedCourses(true);
+
+      const response = await fetch(
+        `${API_BASE_URL}/student-joined-classes/${currentStudent.studentId}`
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data?.error || 'Failed to load joined classes.');
+      }
+
+      const classesArray = Array.isArray(data) ? data : data?.data || [];
+      setJoinedCourses(classesArray.map(mapJoinedClassToCourseDetail));
+    } catch (error) {
+      console.log('LOAD JOINED CLASSES ERROR =>', error);
+      setJoinedCourses([]);
+    } finally {
+      setIsLoadingJoinedCourses(false);
+    }
+  };
+
+  useEffect(() => {
+    loadJoinedClasses();
+  }, [currentStudent?.studentId]);
+
+  const handleJoinClass = async (classCode: string) => {
+    const trimmedCode = classCode.trim().toUpperCase();
+
+    if (!trimmedCode) return;
+
+    try {
+      const joinResponse = await fetch(`${API_BASE_URL}/join-class`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          classCode: trimmedCode,
+          studentId: currentStudent.studentId,
+        }),
+      });
+
+      const joinData = await joinResponse.json();
+
+      if (joinResponse.status === 409) {
+        await loadJoinedClasses();
+        Alert.alert(
+          'Already Joined',
+          joinData?.error || 'You are already a member of this class.'
+        );
+        return;
+      }
+
+      if (!joinResponse.ok) {
+        throw new Error(joinData?.error || 'Failed to join class.');
+      }
+
+      await loadJoinedClasses();
+      Alert.alert('Success', 'You joined the class successfully.');
+    } catch (error: any) {
+      Alert.alert('Join Class Failed', error?.message || 'Unable to join class.');
+    }
+  };
+
   const hydratedCommunityPosts = useMemo<CommunityPost[]>(() => {
     return communityPosts.map((post) => ({
       ...post,
       avatar:
-        post.userEmail === CURRENT_USER_EMAIL || post.userName === CURRENT_USER_NAME
+        post.userEmail === currentUserEmail || post.userName === currentUserName
           ? currentUserAvatar
           : post.avatar,
       answers: post.answers.map((answer) => ({
         ...answer,
-        avatar: answer.userName === CURRENT_USER_NAME ? currentUserAvatar : answer.avatar,
+        avatar: answer.userName === currentUserName ? currentUserAvatar : answer.avatar,
       })),
     }));
-  }, [communityPosts, currentUserAvatar]);
+  }, [communityPosts, currentUserAvatar, currentUserEmail, currentUserName]);
 
   const sharedCourses = useMemo(() => mapCoursesToAssignmentCourses(COURSES), []);
 
@@ -578,15 +751,29 @@ export default function StudentApp({ onLogout }: Props) {
     }));
   }, [sharedCourses, sharedAssignmentComments, sharedAssignmentFiles]);
 
+  const joinedAssignmentCourses = useMemo<AssignmentCourse[]>(
+    () => mapCoursesToAssignmentCourses(joinedCourses),
+    [joinedCourses]
+  );
+
   const selectedAssignmentCourse = useMemo(() => {
-    return hydratedSharedCourses.find((course) => course.id === selectedCourse.id) || hydratedSharedCourses[0];
-  }, [hydratedSharedCourses, selectedCourse.id]);
+    const joinedMatch = joinedCourses.find((course) => course.id === selectedCourse.id);
+
+    if (joinedMatch) {
+      return mapCourseDetailToAssignmentCourse(joinedMatch);
+    }
+
+    return (
+      hydratedSharedCourses.find((course) => course.id === selectedCourse.id) ||
+      hydratedSharedCourses[0]
+    );
+  }, [joinedCourses, hydratedSharedCourses, selectedCourse.id]);
 
   const currentUserPosts = useMemo(() => {
     return hydratedCommunityPosts.filter(
-      (post) => post.userName === CURRENT_USER_NAME || post.userEmail === CURRENT_USER_EMAIL
+      (post) => post.userName === currentUserName || post.userEmail === currentUserEmail
     );
-  }, [hydratedCommunityPosts]);
+  }, [hydratedCommunityPosts, currentUserEmail, currentUserName]);
 
   const handleAddAssignmentComment = (assignmentId: string, content: string) => {
     if (!content.trim()) return;
@@ -597,7 +784,7 @@ export default function StudentApp({ onLogout }: Props) {
         ...(prev[assignmentId] || []),
         {
           id: `c${Date.now()}`,
-          author: CURRENT_USER_NAME,
+          author: currentUserName,
           content,
           timestamp: new Date().toLocaleString(),
           isInstructor: false,
@@ -626,8 +813,8 @@ export default function StudentApp({ onLogout }: Props) {
 
     const newPost: CommunityPost = {
       id: `community-post-${Date.now()}`,
-      userName: CURRENT_USER_NAME,
-      userEmail: CURRENT_USER_EMAIL,
+      userName: currentUserName,
+      userEmail: currentUserEmail,
       avatar: currentUserAvatar,
       dateTime: new Date().toLocaleString(),
       content: trimmedQuery,
@@ -643,7 +830,7 @@ export default function StudentApp({ onLogout }: Props) {
 
     const newAnswer = {
       id: `community-answer-${Date.now()}`,
-      userName: CURRENT_USER_NAME,
+      userName: currentUserName,
       avatar: currentUserAvatar,
       answeredAt: new Date().toLocaleString(),
       message: trimmedMessage,
@@ -673,11 +860,7 @@ export default function StudentApp({ onLogout }: Props) {
     setCommunityPosts((prev) => prev.filter((post) => post.id !== postId));
   };
 
-  const handleEditCommunityAnswer = (
-    postId: string,
-    answerId: string,
-    message: string
-  ) => {
+  const handleEditCommunityAnswer = (postId: string, answerId: string, message: string) => {
     const trimmedMessage = message.trim();
     if (!trimmedMessage) return;
 
@@ -770,7 +953,7 @@ export default function StudentApp({ onLogout }: Props) {
   const studentNotifications = useMemo<NotificationItem[]>(() => {
     const notifications: NotificationItem[] = [];
 
-    hydratedSharedCourses.forEach((course) => {
+    joinedAssignmentCourses.forEach((course) => {
       course.materials.forEach((material) => {
         notifications.push({
           id: `material-${course.id}-${material.id}`,
@@ -809,11 +992,11 @@ export default function StudentApp({ onLogout }: Props) {
 
     hydratedCommunityPosts.forEach((post) => {
       const isUsersPost =
-        post.userName === CURRENT_USER_NAME || post.userEmail === CURRENT_USER_EMAIL;
+        post.userName === currentUserName || post.userEmail === currentUserEmail;
 
       if (isUsersPost && post.answers.length > 0) {
         post.answers.forEach((answer) => {
-          if (answer.userName !== CURRENT_USER_NAME) {
+          if (answer.userName !== currentUserName) {
             notifications.push({
               id: `community-answer-${post.id}-${answer.id}`,
               type: 'community-answer',
@@ -839,16 +1022,19 @@ export default function StudentApp({ onLogout }: Props) {
     }
 
     return notifications.sort((a, b) => (a.id < b.id ? 1 : -1));
-  }, [hydratedSharedCourses, generatedActivity, hydratedCommunityPosts]);
+  }, [joinedAssignmentCourses, generatedActivity, hydratedCommunityPosts, currentUserEmail, currentUserName]);
 
   const unreadNotificationCount = useMemo(
     () => studentNotifications.filter((item) => !item.read).length,
     [studentNotifications]
   );
 
+  const dashboardCourses = joinedAssignmentCourses;
+  const classesScreenCourses = joinedAssignmentCourses;
+
   const messengerCourses = useMemo(
     () =>
-      COURSES.map((course) => ({
+      joinedCourses.map((course) => ({
         id: course.id,
         name: course.name,
         instructor: course.instructor,
@@ -856,7 +1042,7 @@ export default function StudentApp({ onLogout }: Props) {
         schoolYear: course.schoolYear,
         section: course.section,
       })),
-    []
+    [joinedCourses]
   );
 
   const handleNavigate = (screen: ScreenType) => {
@@ -886,51 +1072,18 @@ export default function StudentApp({ onLogout }: Props) {
     }
   };
 
-  const openCourse = (course: CourseDetailData) => {
-    setSelectedCourse(course);
-    setGeneratedActivity(null);
-    setLastScreen(activeScreen);
-    setIsNotificationOpen(false);
-    setActiveScreen('coursedetail');
-    setActiveCourseTab('materials');
-  };
-
-  const openAssignments = (course: CourseDetailData) => {
-    setSelectedCourse(course);
-    setGeneratedActivity(null);
-    setSelectedCourseIdForAssignments(course.id);
-    setLastScreen(activeScreen);
-    setIsNotificationOpen(false);
-    setActiveScreen('coursedetail');
-    setActiveCourseTab('assignments');
-  };
-
-  const openMaterials = (course: CourseDetailData) => {
-    setSelectedCourse(course);
-    setGeneratedActivity(null);
-    setLastScreen(activeScreen);
-    setIsNotificationOpen(false);
-    setActiveScreen('coursedetail');
-    setActiveCourseTab('materials');
-  };
-
   const openGeneratedActivity = (
     course: CourseDetailData,
     assignment: DashboardAssignment | CourseAssignment | AssignmentItem
   ) => {
-    const matchedCourse =
-      COURSES.find((item) =>
-        item.assignments.some((courseAssignment) => courseAssignment.id === assignment.id)
-      ) || course;
-
-    const activity = buildGeneratedActivity(matchedCourse, assignment);
+    const activity = buildGeneratedActivity(course, assignment);
 
     if (!activity) {
       return;
     }
 
-    setSelectedCourse(matchedCourse);
-    setSelectedCourseIdForAssignments(matchedCourse.id);
+    setSelectedCourse(course);
+    setSelectedCourseIdForAssignments(course.id);
     setGeneratedActivity(activity);
     setLastScreen(activeScreen);
     setIsNotificationOpen(false);
@@ -949,8 +1102,8 @@ export default function StudentApp({ onLogout }: Props) {
             onDeletePost={handleDeleteCommunityPost}
             onEditAnswer={handleEditCommunityAnswer}
             onDeleteAnswer={handleDeleteCommunityAnswer}
-            userName={CURRENT_USER_NAME}
-            userEmail={CURRENT_USER_EMAIL}
+            userName={currentUserName}
+            userEmail={currentUserEmail}
             profileImage={currentUserAvatar}
             bannerImage={currentUserBanner}
             onChangeProfileImage={handleChangeProfileImage}
@@ -962,20 +1115,43 @@ export default function StudentApp({ onLogout }: Props) {
         return (
           <Dashboard
             announcements={ANNOUNCEMENTS}
-            courses={hydratedSharedCourses}
-            onOpenCourse={openCourse}
-            onOpenAssignments={openAssignments}
-            onOpenMaterials={openMaterials}
+            courses={dashboardCourses}
+            onOpenCourse={(course) => {
+              setSelectedCourse(course as unknown as CourseDetailData);
+              setGeneratedActivity(null);
+              setLastScreen(activeScreen);
+              setIsNotificationOpen(false);
+              setActiveScreen('coursedetail');
+              setActiveCourseTab('materials');
+            }}
+            onOpenAssignments={(course) => {
+              setSelectedCourse(course as unknown as CourseDetailData);
+              setSelectedCourseIdForAssignments(course.id);
+              setGeneratedActivity(null);
+              setLastScreen(activeScreen);
+              setIsNotificationOpen(false);
+              setActiveScreen('coursedetail');
+              setActiveCourseTab('assignments');
+            }}
+            onOpenMaterials={(course) => {
+              setSelectedCourse(course as unknown as CourseDetailData);
+              setGeneratedActivity(null);
+              setLastScreen(activeScreen);
+              setIsNotificationOpen(false);
+              setActiveScreen('coursedetail');
+              setActiveCourseTab('materials');
+            }}
             onOpenGeneratedActivity={(course, assignment) =>
-              openGeneratedActivity(course as CourseDetailData, assignment)
+              openGeneratedActivity(course as unknown as CourseDetailData, assignment)
             }
+            onJoinClass={handleJoinClass}
           />
         );
 
       case 'classes':
         return (
           <ClassesScreen
-            courses={hydratedSharedCourses}
+            courses={classesScreenCourses}
             onCoursePress={(course) => {
               setSelectedCourse(course as unknown as CourseDetailData);
               setGeneratedActivity(null);
@@ -993,6 +1169,15 @@ export default function StudentApp({ onLogout }: Props) {
               setActiveScreen('coursedetail');
               setActiveCourseTab('assignments');
             }}
+            onMaterialsPress={(course) => {
+              setSelectedCourse(course as unknown as CourseDetailData);
+              setGeneratedActivity(null);
+              setLastScreen('classes');
+              setIsNotificationOpen(false);
+              setActiveScreen('coursedetail');
+              setActiveCourseTab('materials');
+            }}
+            onJoinClass={handleJoinClass}
           />
         );
 
@@ -1012,7 +1197,7 @@ export default function StudentApp({ onLogout }: Props) {
         return (
           <Videos
             onVideoActiveChange={setIsVideoActive}
-            currentUserName={CURRENT_USER_NAME}
+            currentUserName={currentUserName}
             currentUserAvatar={currentUserAvatar}
           />
         );
@@ -1023,15 +1208,15 @@ export default function StudentApp({ onLogout }: Props) {
       case 'analytics':
         return (
           <Analytics
-            courses={hydratedSharedCourses}
-            studentName={CURRENT_USER_NAME}
+            courses={joinedAssignmentCourses}
+            studentName={currentUserName}
           />
         );
 
       case 'assignments':
         return (
           <Assignments
-            courses={hydratedSharedCourses}
+            courses={joinedAssignmentCourses}
             selectedCourseId={selectedCourseIdForAssignments}
             assignmentComments={sharedAssignmentComments}
             assignmentFiles={sharedAssignmentFiles}
@@ -1039,7 +1224,7 @@ export default function StudentApp({ onLogout }: Props) {
             onAddFile={handleAddAssignmentFile}
             onRemoveFile={handleRemoveAssignmentFile}
             onOpenGeneratedActivity={(course, assignment) =>
-              openGeneratedActivity(selectedCourse, assignment)
+              openGeneratedActivity(course as unknown as CourseDetailData, assignment)
             }
           />
         );
@@ -1048,8 +1233,8 @@ export default function StudentApp({ onLogout }: Props) {
         return (
           <Community
             posts={hydratedCommunityPosts}
-            userName={CURRENT_USER_NAME}
-            userEmail={CURRENT_USER_EMAIL}
+            userName={currentUserName}
+            userEmail={currentUserEmail}
             userAvatar={currentUserAvatar}
             onCreatePost={handleCreateCommunityPost}
             onAddAnswer={handleAddCommunityAnswer}
@@ -1066,7 +1251,8 @@ export default function StudentApp({ onLogout }: Props) {
             searchQuery=""
             onConversationActiveChange={setIsConversationActive}
             onBack={() => setActiveScreen(lastScreen)}
-            currentUser={CURRENT_USER_NAME}
+            currentUser={currentStudent.studentId}
+            currentUserName={currentUserName}
             courses={messengerCourses}
           />
         );
@@ -1178,7 +1364,7 @@ export default function StudentApp({ onLogout }: Props) {
               isFixed={true}
               activeScreen={activeScreen}
               onNavigate={handleNavigate}
-              userName={CURRENT_USER_NAME}
+              userName={currentUserName}
               userAvatar={currentUserAvatar}
               onAvatarPress={() => handleNavigate('profile')}
               setIsLoggedIn={() => onLogout()}
@@ -1213,7 +1399,7 @@ export default function StudentApp({ onLogout }: Props) {
                   onClose={() => setMobileDrawerOpen(false)}
                   activeScreen={activeScreen}
                   onNavigate={handleNavigate}
-                  userName={CURRENT_USER_NAME}
+                  userName={currentUserName}
                   userAvatar={currentUserAvatar}
                   onAvatarPress={() => {
                     setMobileDrawerOpen(false);

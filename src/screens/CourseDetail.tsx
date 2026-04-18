@@ -1,19 +1,21 @@
-import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   FlatList,
+  Linking,
   Modal,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
+  TouchableWithoutFeedback,
   useWindowDimensions,
   View,
 } from 'react-native';
 import { heightPercentageToDP as hp, widthPercentageToDP as wp } from 'react-native-responsive-screen';
+import Ionicons from 'react-native-vector-icons/Ionicons';
 
 import {
   AssignmentComment,
@@ -27,6 +29,11 @@ export interface Material {
   title: string;
   type: 'pdf' | 'video' | 'document' | 'link';
   uploadedDate: string;
+  content?: string;
+  fileName?: string;
+  fileUrl?: string;
+  fileUri?: string;
+  fileType?: string;
 }
 
 export interface AssignmentFile {
@@ -71,7 +78,7 @@ export interface CourseDetailData {
 }
 
 interface CourseDetailProps {
-  course?: AssignmentCourse;
+  course?: AssignmentCourse | null;
   onBack?: () => void;
   initialTab?: 'materials' | 'assignments';
   autoOpenAssignmentId?: string | null;
@@ -85,48 +92,21 @@ interface CourseDetailProps {
   onRemoveFile: (assignmentId: string, fileId: string) => void;
 }
 
-const MOCK_COURSE: AssignmentCourse = {
-  id: '1',
-  name: 'Web Development',
-  code: 'CS-101',
-  instructor: 'Prof. John Smith',
-  description:
-    'Learn the fundamentals of web development including HTML, CSS, JavaScript, and introductory React concepts.',
-  semester: '2nd Semester',
-  schoolYear: '2025-2026',
-  section: '3A - Python',
-  materials: [
-    { id: 'm1', title: 'HTML Basics Tutorial', type: 'video', uploadedDate: '2026-02-01' },
-    { id: 'm2', title: 'CSS Styling Guide', type: 'pdf', uploadedDate: '2026-02-03' },
-    { id: 'm3', title: 'JavaScript Fundamentals', type: 'video', uploadedDate: '2026-02-05' },
-    { id: 'm4', title: 'React Components Introduction', type: 'document', uploadedDate: '2026-02-07' },
-    { id: 'm5', title: 'Project Guidelines', type: 'document', uploadedDate: '2026-02-10' },
-  ],
-  assignments: [
-    {
-      id: 'a1',
-      title: 'React Fundamentals Quiz',
-      dueDate: '2026-02-15',
-      status: 'graded',
-      points: 8,
-      maxPoints: 20,
-      topic: 'React Fundamentals',
-      materialIds: ['m4'],
-      files: [
-        {
-          id: 'f-a1-1',
-          fileName: 'React_Fundamentals_Quiz_submission.pdf',
-          fileSize: '1.2 MB',
-          uploadedDate: '2026-02-15 08:30 AM',
-        },
-      ],
-      comments: [],
-    },
-  ],
+const EMPTY_COURSE: AssignmentCourse = {
+  id: '',
+  name: 'No Course Selected',
+  code: '',
+  instructor: '',
+  description: 'No course data available.',
+  semester: '',
+  schoolYear: '',
+  section: '',
+  materials: [],
+  assignments: [],
 };
 
 const CourseDetail = ({
-  course = MOCK_COURSE,
+  course,
   initialTab = 'materials',
   onBack,
   autoOpenAssignmentId = null,
@@ -142,8 +122,12 @@ const CourseDetail = ({
   const isSmallPhone = width < 360;
   const isLargeScreen = width >= 768;
 
+  const safeCourse = course ?? EMPTY_COURSE;
+
   const [activeTab, setActiveTab] = useState<'materials' | 'assignments'>(initialTab);
   const [selectedAssignment, setSelectedAssignment] = useState<AssignmentItem | null>(null);
+  const [selectedMaterial, setSelectedMaterial] =
+    useState<AssignmentCourse['materials'][number] | null>(null);
   const [newComment, setNewComment] = useState('');
 
   const autoHandledRef = useRef<string | null>(null);
@@ -153,7 +137,10 @@ const CourseDetail = ({
   }, [initialTab]);
 
   const classPerformance = useMemo(() => {
-    const graded = course.assignments.filter((a) => a.status === 'graded' && a.maxPoints);
+    const graded = safeCourse.assignments.filter(
+      (a) => a.status === 'graded' && a.maxPoints
+    );
+
     if (graded.length === 0) return null;
 
     const totalPercent = graded.reduce((sum, item) => {
@@ -162,20 +149,20 @@ const CourseDetail = ({
     }, 0);
 
     return Math.round(totalPercent / graded.length);
-  }, [course.assignments]);
+  }, [safeCourse.assignments]);
 
-  const getMaterialIcon = (type: string) => {
+  const getMaterialIconName = (type: string) => {
     switch (type) {
       case 'pdf':
-        return '📄';
+        return 'document-text-outline';
       case 'video':
-        return '🎥';
+        return 'videocam-outline';
       case 'document':
-        return '📝';
+        return 'document-outline';
       case 'link':
-        return '🔗';
+        return 'link-outline';
       default:
-        return '📎';
+        return 'attach-outline';
     }
   };
 
@@ -246,7 +233,51 @@ const CourseDetail = ({
 
   const getRelatedMaterials = (assignment: AssignmentItem) => {
     if (!assignment.materialIds?.length) return [];
-    return course.materials.filter((m) => assignment.materialIds?.includes(m.id));
+    return safeCourse.materials.filter((m) => assignment.materialIds?.includes(m.id));
+  };
+
+  const getMaterialUrl = (
+    material: AssignmentCourse['materials'][number] | null
+  ): string | null => {
+    if (!material) return null;
+
+    const raw =
+      material.fileUri ||
+      material.fileUrl ||
+      (material as any).uri ||
+      null;
+
+    if (!raw || typeof raw !== 'string') return null;
+
+    const trimmed = raw.trim();
+    if (!trimmed) return null;
+
+    return trimmed;
+  };
+
+  const handleOpenMaterialPreview = (
+    material: AssignmentCourse['materials'][number]
+  ) => {
+    setSelectedMaterial(material);
+  };
+
+  const closeMaterialModal = () => {
+    setSelectedMaterial(null);
+  };
+
+  const handleOpenUploadedFile = async (fileUri?: string | null) => {
+    const url = fileUri?.trim();
+
+    if (!url) {
+      Alert.alert('No File', 'This material has no file URL yet.');
+      return;
+    }
+
+    try {
+      await Linking.openURL(url);
+    } catch (error) {
+      Alert.alert('Open Failed', `Unable to open this file.`);
+    }
   };
 
   const handleGenerateActivity = (assignment: AssignmentItem, silent = false) => {
@@ -278,7 +309,7 @@ const CourseDetail = ({
     if (!autoOpenAssignmentId) return;
     if (autoHandledRef.current === autoOpenAssignmentId) return;
 
-    const targetAssignment = course.assignments.find(
+    const targetAssignment = safeCourse.assignments.find(
       (assignment) => assignment.id === autoOpenAssignmentId
     );
 
@@ -295,7 +326,7 @@ const CourseDetail = ({
       handleGenerateActivity(targetAssignment, true);
       onConsumedAutoOpenAssignment?.();
     }, 150);
-  }, [autoOpenAssignmentId, course.assignments]);
+  }, [autoOpenAssignmentId, safeCourse.assignments]);
 
   const handleAddComment = () => {
     if (!selectedAssignment || !newComment.trim()) return;
@@ -348,16 +379,28 @@ const CourseDetail = ({
   };
 
   const renderMaterialItem = ({ item }: { item: AssignmentCourse['materials'][number] }) => (
-    <TouchableOpacity style={styles.materialCard} activeOpacity={0.7}>
+    <TouchableOpacity
+      style={styles.materialCard}
+      activeOpacity={0.85}
+      onPress={() => handleOpenMaterialPreview(item)}
+    >
       <View style={styles.materialIcon}>
-        <Text style={styles.iconText}>{getMaterialIcon(item.type)}</Text>
+        <Ionicons name={getMaterialIconName(item.type)} size={24} color="#D32F2F" />
       </View>
+
       <View style={styles.materialInfo}>
         <Text style={styles.materialTitle}>{item.title}</Text>
         <Text style={styles.materialType}>
           {item.type.charAt(0).toUpperCase() + item.type.slice(1)} • {item.uploadedDate}
         </Text>
+        {!!item.fileName && (
+          <Text style={styles.materialFileName} numberOfLines={1}>
+            {item.fileName}
+          </Text>
+        )}
       </View>
+
+      <Ionicons name="chevron-forward" size={20} color="#BBB" />
     </TouchableOpacity>
   );
 
@@ -436,28 +479,51 @@ const CourseDetail = ({
     );
   };
 
+  const selectedMaterialUrl = getMaterialUrl(selectedMaterial);
+
+  if (!course) {
+    return (
+      <View style={styles.emptyScreen}>
+        <Text style={styles.emptyScreenTitle}>No course selected</Text>
+        <Text style={styles.emptyScreenText}>
+          Open a class from Dashboard or Classes to view its details.
+        </Text>
+
+        {onBack && (
+          <TouchableOpacity onPress={onBack} style={styles.emptyBackButton}>
+            <Text style={styles.emptyBackButtonText}>Go Back</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+    );
+  }
+
   return (
     <ScrollView style={styles.container}>
       <View style={[styles.courseHeader, { paddingHorizontal: wp(isSmallPhone ? '3' : '5') }]}>
         {onBack && (
           <TouchableOpacity onPress={onBack} style={styles.backButton}>
-            <MaterialCommunityIcons name="arrow-left" size={24} color="#FFF" />
+            <Ionicons name="arrow-back" size={24} color="#FFF" />
           </TouchableOpacity>
         )}
 
-        <Text style={[styles.courseCode, { fontSize: isSmallPhone ? 11 : 12 }]}>{course.code}</Text>
-        <Text style={[styles.courseName, { fontSize: isSmallPhone ? 20 : 24 }]}>{course.name}</Text>
+        <Text style={[styles.courseCode, { fontSize: isSmallPhone ? 11 : 12 }]}>
+          {safeCourse.code}
+        </Text>
+        <Text style={[styles.courseName, { fontSize: isSmallPhone ? 20 : 24 }]}>
+          {safeCourse.name}
+        </Text>
         <Text style={[styles.instructor, { fontSize: isSmallPhone ? 12 : 14 }]}>
-          Instructor: {course.instructor}
+          Instructor: {safeCourse.instructor}
         </Text>
         <Text style={[styles.metaText, { fontSize: isSmallPhone ? 12 : 13 }]}>
-          {course.semester} - {course.schoolYear}
+          {safeCourse.semester} - {safeCourse.schoolYear}
         </Text>
         <Text style={[styles.metaText, { fontSize: isSmallPhone ? 12 : 13 }]}>
-          {course.section}
+          {safeCourse.section}
         </Text>
         <Text style={[styles.description, { fontSize: isSmallPhone ? 12 : 13 }]}>
-          {course.description}
+          {safeCourse.description}
         </Text>
 
         {classPerformance !== null && (
@@ -477,15 +543,22 @@ const CourseDetail = ({
             { paddingVertical: isSmallPhone ? hp('1.2') : hp('2') },
           ]}
         >
-          <Text
-            style={[
-              styles.tabText,
-              activeTab === 'materials' && styles.tabTextActive,
-              { fontSize: isSmallPhone ? 12 : 13 },
-            ]}
-          >
-            📚 Materials ({course.materials.length})
-          </Text>
+          <View style={styles.tabContent}>
+            <Ionicons
+              name="document-text-outline"
+              size={16}
+              color={activeTab === 'materials' ? '#D32F2F' : '#999'}
+            />
+            <Text
+              style={[
+                styles.tabText,
+                activeTab === 'materials' && styles.tabTextActive,
+                { fontSize: isSmallPhone ? 12 : 13 },
+              ]}
+            >
+              Materials ({safeCourse.materials.length})
+            </Text>
+          </View>
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -496,23 +569,30 @@ const CourseDetail = ({
             { paddingVertical: isSmallPhone ? hp('1.2') : hp('2') },
           ]}
         >
-          <Text
-            style={[
-              styles.tabText,
-              activeTab === 'assignments' && styles.tabTextActive,
-              { fontSize: isSmallPhone ? 12 : 13 },
-            ]}
-          >
-            ✓ Assignments ({course.assignments.length})
-          </Text>
+          <View style={styles.tabContent}>
+            <Ionicons
+              name="checkmark-circle-outline"
+              size={16}
+              color={activeTab === 'assignments' ? '#D32F2F' : '#999'}
+            />
+            <Text
+              style={[
+                styles.tabText,
+                activeTab === 'assignments' && styles.tabTextActive,
+                { fontSize: isSmallPhone ? 12 : 13 },
+              ]}
+            >
+              Assignments ({safeCourse.assignments.length})
+            </Text>
+          </View>
         </TouchableOpacity>
       </View>
 
       <View style={[styles.contentContainer, { paddingHorizontal: wp(isSmallPhone ? '3' : '4') }]}>
         {activeTab === 'materials' ? (
-          course.materials.length > 0 ? (
+          safeCourse.materials.length > 0 ? (
             <FlatList
-              data={course.materials}
+              data={safeCourse.materials}
               renderItem={renderMaterialItem}
               keyExtractor={(item) => item.id}
               scrollEnabled={false}
@@ -520,9 +600,9 @@ const CourseDetail = ({
           ) : (
             <Text style={styles.emptyText}>No materials available yet</Text>
           )
-        ) : course.assignments.length > 0 ? (
+        ) : safeCourse.assignments.length > 0 ? (
           <FlatList
-            data={course.assignments}
+            data={safeCourse.assignments}
             renderItem={renderAssignmentItem}
             keyExtractor={(item) => item.id}
             scrollEnabled={false}
@@ -533,12 +613,104 @@ const CourseDetail = ({
         )}
 
         <Modal
+          visible={!!selectedMaterial}
+          transparent
+          animationType="fade"
+          onRequestClose={closeMaterialModal}
+        >
+          <TouchableWithoutFeedback onPress={closeMaterialModal}>
+            <View style={styles.modalOverlay}>
+              <TouchableWithoutFeedback>
+                <View
+                  style={[
+                    styles.materialDropdownModal,
+                    {
+                      top: isSmallPhone ? 70 : 80,
+                      right: isSmallPhone ? 14 : 20,
+                      width: isSmallPhone ? Math.min(width - 28, 320) : 340,
+                    },
+                  ]}
+                >
+                  {selectedMaterial && (
+                    <>
+                      <View style={styles.joinDropdownHeader}>
+                        <View style={styles.joinDropdownIconWrap}>
+                          <Ionicons
+                            name={getMaterialIconName(selectedMaterial.type)}
+                            size={18}
+                            color="#D32F2F"
+                          />
+                        </View>
+
+                        <View style={styles.joinDropdownHeaderText}>
+                          <Text style={styles.joinDropdownTitle}>
+                            {selectedMaterial.title}
+                          </Text>
+                          <Text style={styles.joinDropdownSubtitle}>
+                            Open this file in your browser or device app.
+                          </Text>
+                        </View>
+                      </View>
+
+                      <Text style={styles.inputLabel}>Uploaded</Text>
+                      <View style={styles.infoBox}>
+                        <Text style={styles.infoBoxText}>
+                          {selectedMaterial.uploadedDate || 'Unknown date'}
+                        </Text>
+                      </View>
+
+                      <Text style={styles.inputLabel}>File Name</Text>
+                      <View style={styles.infoBox}>
+                        <Text style={styles.infoBoxText}>
+                          {selectedMaterial.fileName || 'No uploaded file'}
+                        </Text>
+                      </View>
+
+                      {!!selectedMaterial.content && (
+                        <>
+                          <Text style={styles.inputLabel}>Description</Text>
+                          <View style={styles.infoBox}>
+                            <Text style={styles.infoBoxText}>
+                              {selectedMaterial.content}
+                            </Text>
+                          </View>
+                        </>
+                      )}
+
+                      <View style={styles.joinDropdownActions}>
+                        <TouchableOpacity
+                          style={styles.cancelButton}
+                          onPress={closeMaterialModal}
+                        >
+                          <Text style={styles.cancelButtonText}>Close</Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                          style={[
+                            styles.confirmButton,
+                            !selectedMaterialUrl && styles.confirmButtonDisabled,
+                          ]}
+                          disabled={!selectedMaterialUrl}
+                          onPress={() => handleOpenUploadedFile(selectedMaterialUrl)}
+                        >
+                          <Text style={styles.confirmButtonText}>Open File</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </>
+                  )}
+                </View>
+              </TouchableWithoutFeedback>
+            </View>
+          </TouchableWithoutFeedback>
+        </Modal>
+
+        <Modal
           visible={!!selectedAssignment}
           animationType="slide"
           transparent
           onRequestClose={closeAssignmentModal}
         >
-          <View style={styles.modalOverlay}>
+          <View style={styles.modalOverlayBottom}>
             <View
               style={[
                 styles.modalWrapper,
@@ -550,22 +722,22 @@ const CourseDetail = ({
                   <>
                     <View style={styles.detailHeader}>
                       <TouchableOpacity onPress={closeAssignmentModal}>
-                        <Text style={styles.closeButton}>✕</Text>
+                        <Ionicons name="close" size={24} color="#333" />
                       </TouchableOpacity>
                       <Text style={styles.detailTitle}>{selectedAssignment.title}</Text>
-                      <View style={{ width: 30 }} />
+                      <View style={{ width: 24 }} />
                     </View>
 
                     <View style={styles.detailContent}>
                       <View style={styles.infoCard}>
                         <Text style={styles.detailCourseName}>
-                          {course.name} • {course.code}
+                          {safeCourse.name} • {safeCourse.code}
                         </Text>
 
                         <Text style={styles.detailMetaText}>
-                          {course.semester} - {course.schoolYear}
+                          {safeCourse.semester} - {safeCourse.schoolYear}
                         </Text>
-                        <Text style={styles.detailMetaText}>{course.section}</Text>
+                        <Text style={styles.detailMetaText}>{safeCourse.section}</Text>
 
                         {!!selectedAssignment.topic && (
                           <Text style={styles.detailTopicText}>
@@ -574,12 +746,12 @@ const CourseDetail = ({
                         )}
 
                         <Text style={styles.detailDescription}>
-                          {course.description || 'No description provided.'}
+                          {safeCourse.description || 'No description provided.'}
                         </Text>
 
                         <View style={styles.infoRow}>
                           <Text style={styles.infoLabel}>Instructor:</Text>
-                          <Text style={styles.infoValue}>{course.instructor}</Text>
+                          <Text style={styles.infoValue}>{safeCourse.instructor}</Text>
                         </View>
 
                         <View style={styles.infoRow}>
@@ -640,7 +812,7 @@ const CourseDetail = ({
                           <TouchableOpacity
                             onPress={() => handleGenerateActivity(selectedAssignment)}
                             style={[
-                              styles.uploadButton,
+                              styles.uploadButtonWide,
                               {
                                 backgroundColor: getRecommendationColor(selectedAssignment),
                               },
@@ -657,12 +829,22 @@ const CourseDetail = ({
                         <Text style={styles.sectionTitle}>📚 Related Materials</Text>
                         {getRelatedMaterials(selectedAssignment).length > 0 ? (
                           getRelatedMaterials(selectedAssignment).map((material) => (
-                            <View key={material.id} style={styles.relatedMaterialItem}>
+                            <TouchableOpacity
+                              key={material.id}
+                              style={styles.relatedMaterialItem}
+                              activeOpacity={0.85}
+                              onPress={() => handleOpenMaterialPreview(material)}
+                            >
                               <Text style={styles.relatedMaterialTitle}>{material.title}</Text>
                               <Text style={styles.relatedMaterialMeta}>
                                 {material.type} • {material.uploadedDate}
                               </Text>
-                            </View>
+                              {!!material.fileName && (
+                                <Text style={styles.relatedMaterialFileName}>
+                                  {material.fileName}
+                                </Text>
+                              )}
+                            </TouchableOpacity>
                           ))
                         ) : (
                           <Text style={styles.emptyText}>No linked materials.</Text>
@@ -676,7 +858,7 @@ const CourseDetail = ({
                           <View>
                             {(assignmentFiles[selectedAssignment.id] || []).map((file) => (
                               <View key={file.id} style={styles.fileItem}>
-                                <Text style={{ fontSize: 20 }}>📄</Text>
+                                <Ionicons name="document-text-outline" size={20} color="#D32F2F" />
                                 <View style={styles.fileInfo}>
                                   <Text style={styles.fileName}>{file.fileName}</Text>
                                   <Text style={styles.fileDetails}>
@@ -688,7 +870,7 @@ const CourseDetail = ({
                                     handleRemoveAttachment(selectedAssignment.id, file.id)
                                   }
                                 >
-                                  <Text style={styles.removeButton}>✕</Text>
+                                  <Ionicons name="close" size={20} color="#D32F2F" />
                                 </TouchableOpacity>
                               </View>
                             ))}
@@ -705,7 +887,7 @@ const CourseDetail = ({
                             <View style={styles.uploadActionsRow}>
                               {!hasFiles ? (
                                 <TouchableOpacity
-                                  style={styles.uploadButton}
+                                  style={styles.uploadButtonWide}
                                   onPress={handleFileUpload}
                                 >
                                   <Text style={styles.uploadButtonText}>+ Upload File</Text>
@@ -724,7 +906,7 @@ const CourseDetail = ({
                                   <TouchableOpacity
                                     onPress={handleSubmitAssignment}
                                     style={[
-                                      styles.uploadButton,
+                                      styles.uploadButtonWide,
                                       { backgroundColor: '#308C5D' },
                                     ]}
                                   >
@@ -804,6 +986,38 @@ const styles = StyleSheet.create({
     backgroundColor: '#F5F5F5',
   },
 
+  emptyScreen: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#F5F5F5',
+    paddingHorizontal: 24,
+  },
+  emptyScreenTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#222',
+    marginBottom: 8,
+  },
+  emptyScreenText: {
+    fontSize: 14,
+    color: '#777',
+    textAlign: 'center',
+    lineHeight: 22,
+    marginBottom: 16,
+  },
+  emptyBackButton: {
+    backgroundColor: '#D32F2F',
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    borderRadius: 10,
+  },
+  emptyBackButtonText: {
+    color: '#FFF',
+    fontWeight: '700',
+    fontSize: 13,
+  },
+
   courseHeader: {
     backgroundColor: '#D32F2F',
     paddingVertical: hp('2'),
@@ -871,6 +1085,12 @@ const styles = StyleSheet.create({
   tabActive: {
     borderBottomColor: '#D32F2F',
   },
+  tabContent: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: 6,
+},
   tabText: {
     fontWeight: '600',
     color: '#999',
@@ -886,27 +1106,24 @@ const styles = StyleSheet.create({
   materialCard: {
     flexDirection: 'row',
     backgroundColor: '#FFF',
-    borderRadius: 12,
+    borderRadius: 14,
     padding: wp('3'),
     marginBottom: hp('1.5'),
     alignItems: 'center',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 3,
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
     elevation: 2,
   },
   materialIcon: {
     width: 50,
     height: 50,
-    borderRadius: 10,
-    backgroundColor: '#F0F0F0',
+    borderRadius: 12,
+    backgroundColor: '#FFF1F1',
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: wp('3'),
-  },
-  iconText: {
-    fontSize: 24,
   },
   materialInfo: {
     flex: 1,
@@ -920,6 +1137,12 @@ const styles = StyleSheet.create({
   materialType: {
     fontSize: 12,
     color: '#999',
+  },
+  materialFileName: {
+    fontSize: 12,
+    color: '#D32F2F',
+    marginTop: 4,
+    fontWeight: '600',
   },
 
   assignmentCard: {
@@ -996,255 +1219,376 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
   },
   recommendationText: {
-    fontWeight: '700',
     fontSize: 12,
+    fontWeight: '700',
+  },
+
+  emptyText: {
+    textAlign: 'center',
+    color: '#777',
+    marginTop: 20,
+    fontSize: 14,
   },
 
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.45)',
-    justifyContent: 'center',
-    alignItems: 'center',
+    backgroundColor: 'rgba(15, 23, 42, 0.18)',
   },
+  modalOverlayBottom: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    justifyContent: 'flex-end',
+  },
+
+  materialDropdownModal: {
+    position: 'absolute',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 18,
+    borderWidth: 1,
+    borderColor: '#ECECEC',
+    shadowColor: '#000',
+    shadowOpacity: 0.14,
+    shadowRadius: 18,
+    elevation: 10,
+  },
+  joinDropdownHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+    marginBottom: 18,
+  },
+  joinDropdownHeaderText: {
+    flex: 1,
+  },
+  joinDropdownIconWrap: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    backgroundColor: '#FFF1F1',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  joinDropdownTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#111827',
+    marginBottom: 3,
+  },
+  joinDropdownSubtitle: {
+    fontSize: 13,
+    lineHeight: 18,
+    color: '#6B7280',
+  },
+  inputLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#374151',
+    marginBottom: 8,
+  },
+  infoBox: {
+    minHeight: 48,
+    borderWidth: 1,
+    borderColor: '#DADDE2',
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    backgroundColor: '#FAFAFA',
+    marginBottom: 16,
+    justifyContent: 'center',
+  },
+  infoBoxText: {
+    fontSize: 14,
+    color: '#111827',
+    lineHeight: 20,
+  },
+  joinDropdownActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 10,
+  },
+  cancelButton: {
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    borderRadius: 12,
+    backgroundColor: '#F3F4F6',
+  },
+  cancelButtonText: {
+    color: '#374151',
+    fontWeight: '600',
+    fontSize: 13,
+  },
+  confirmButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 11,
+    borderRadius: 12,
+    backgroundColor: '#D32F2F',
+  },
+  confirmButtonDisabled: {
+    backgroundColor: '#F0A7A7',
+  },
+  confirmButtonText: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+    fontSize: 13,
+  },
+
   modalWrapper: {
+    backgroundColor: '#F8F8F8',
     maxHeight: '92%',
-    backgroundColor: '#fff',
-    borderRadius: 16,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    alignSelf: 'center',
     overflow: 'hidden',
   },
   detailContainer: {
-    padding: 16,
     paddingBottom: 40,
-    backgroundColor: '#fff',
   },
   detailHeader: {
+    paddingHorizontal: 18,
+    paddingVertical: 16,
+    backgroundColor: '#FFF',
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 14,
-  },
-  closeButton: {
-    fontSize: 20,
-    color: '#666',
   },
   detailTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#000',
     flex: 1,
     textAlign: 'center',
-    marginHorizontal: 8,
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#111',
+    marginHorizontal: 12,
   },
-  detailContent: {},
+
+  detailContent: {
+    padding: 16,
+  },
   infoCard: {
-    backgroundColor: '#F9F9F9',
-    borderRadius: 12,
-    padding: 14,
-    marginBottom: 16,
-    borderLeftWidth: 4,
-    borderLeftColor: '#D32F2F',
+    backgroundColor: '#FFF',
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 14,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
+    shadowRadius: 4,
+    elevation: 1,
   },
   detailCourseName: {
-    color: '#666',
-    fontWeight: '600',
-    fontSize: 13,
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#111',
+    marginBottom: 6,
   },
   detailMetaText: {
-    color: '#555',
     fontSize: 12,
-    fontWeight: '600',
-    marginTop: 4,
+    color: '#666',
+    marginBottom: 2,
   },
   detailTopicText: {
-    color: '#444',
-    fontSize: 12,
-    fontWeight: '600',
+    fontSize: 13,
+    color: '#D32F2F',
+    fontWeight: '700',
     marginTop: 8,
+    marginBottom: 8,
   },
   detailDescription: {
-    color: '#666',
-    marginVertical: 8,
-    lineHeight: 20,
     fontSize: 13,
+    color: '#444',
+    lineHeight: 20,
+    marginTop: 6,
+    marginBottom: 10,
   },
   infoRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    marginVertical: 6,
-    flexWrap: 'wrap',
+    marginTop: 6,
   },
   infoLabel: {
-    fontWeight: '600',
-    color: '#666',
+    width: 80,
+    fontWeight: '700',
+    color: '#333',
     fontSize: 13,
   },
   infoValue: {
-    fontWeight: '700',
-    color: '#000',
+    flex: 1,
+    color: '#555',
     fontSize: 13,
-    marginLeft: 10,
   },
 
   section: {
-    marginBottom: 18,
+    backgroundColor: '#FFF',
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 14,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
+    shadowRadius: 4,
+    elevation: 1,
   },
   sectionTitle: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '700',
-    color: '#000',
-    marginBottom: 10,
+    color: '#111',
+    marginBottom: 12,
   },
 
   relatedMaterialItem: {
-    backgroundColor: '#F5F5F5',
-    borderRadius: 10,
-    padding: 10,
-    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: '#EEE',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 10,
+    backgroundColor: '#FCFCFC',
   },
   relatedMaterialTitle: {
-    fontWeight: '600',
-    color: '#111',
-    marginBottom: 4,
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#222',
   },
   relatedMaterialMeta: {
-    color: '#777',
     fontSize: 12,
-    textTransform: 'capitalize',
+    color: '#777',
+    marginTop: 4,
+  },
+  relatedMaterialFileName: {
+    fontSize: 12,
+    color: '#D32F2F',
+    marginTop: 4,
+    fontWeight: '600',
   },
 
   fileItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#F5F5F5',
-    borderRadius: 10,
-    padding: 10,
-    marginBottom: 8,
+    backgroundColor: '#FAFAFA',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 10,
   },
   fileInfo: {
     flex: 1,
-    marginLeft: 8,
+    marginLeft: 10,
   },
   fileName: {
-    fontWeight: '600',
-    color: '#000',
-    marginBottom: 4,
     fontSize: 13,
+    fontWeight: '700',
+    color: '#222',
   },
   fileDetails: {
-    color: '#888',
     fontSize: 12,
+    color: '#777',
+    marginTop: 3,
   },
-  removeButton: {
-    color: '#D32F2F',
-    fontWeight: 'bold',
-    paddingLeft: 8,
-  },
+
   uploadActionsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 10,
     marginTop: 8,
   },
-  uploadButton: {
-    backgroundColor: '#D32F2F',
-    borderRadius: 8,
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    alignItems: 'center',
-    marginTop: 8,
-  },
-  uploadButtonText: {
-    color: '#fff',
-    fontWeight: '700',
-    fontSize: 14,
-  },
-  secondaryButton: {
-    backgroundColor: '#EFEFEF',
-    borderRadius: 8,
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    alignItems: 'center',
-    marginTop: 8,
-  },
-  secondaryButtonText: {
-    color: '#444',
-    fontWeight: '700',
-    fontSize: 13,
-  },
-
-  emptyText: {
-    fontSize: 14,
-    color: '#999',
-    textAlign: 'center',
-    marginVertical: hp('3'),
-  },
 
   commentItem: {
-    backgroundColor: '#F9F9F9',
-    borderRadius: 8,
-    padding: 10,
-    marginBottom: 8,
-    borderLeftWidth: 3,
-    borderLeftColor: '#2196F3',
+    backgroundColor: '#FAFAFA',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 10,
   },
   instructorComment: {
-    backgroundColor: '#FFF9C4',
-    borderLeftColor: '#FBC02D',
+    borderLeftWidth: 4,
+    borderLeftColor: '#D32F2F',
+    backgroundColor: '#FFF5F5',
   },
   commentHeader: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 6,
   },
   commentAuthor: {
-    fontWeight: '700',
-    color: '#000',
     fontSize: 13,
+    fontWeight: '700',
+    color: '#222',
   },
   teacherBadge: {
-    fontWeight: '600',
-    color: '#1f1f1f',
-    backgroundColor: '#fbc12d99',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
+    marginLeft: 8,
     fontSize: 11,
+    fontWeight: '700',
+    color: '#D32F2F',
+    backgroundColor: '#FFE5E5',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 999,
   },
   commentContent: {
     fontSize: 13,
-    color: '#333',
-    lineHeight: 18,
-    marginBottom: 6,
+    color: '#444',
+    lineHeight: 20,
   },
   commentTime: {
+    marginTop: 6,
     fontSize: 11,
     color: '#888',
-    fontWeight: '500',
   },
+
   commentInputContainer: {
-    marginTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: '#E0E0E0',
-    paddingTop: 12,
+    marginTop: 10,
   },
   commentInput: {
-    backgroundColor: '#F5F5F5',
-    borderRadius: 8,
-    padding: 10,
-    minHeight: 60,
+    minHeight: 90,
+    borderWidth: 1,
+    borderColor: '#DDD',
+    borderRadius: 12,
+    backgroundColor: '#FFF',
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    textAlignVertical: 'top',
     fontSize: 13,
-    color: '#000',
-    marginBottom: 8,
+    color: '#111',
   },
   sendButton: {
+    marginTop: 10,
+    alignSelf: 'flex-end',
     backgroundColor: '#D32F2F',
-    borderRadius: 8,
+    borderRadius: 10,
+    paddingHorizontal: 18,
     paddingVertical: 10,
-    alignItems: 'center',
   },
   sendButtonDisabled: {
-    backgroundColor: '#CCC',
+    opacity: 0.45,
   },
   sendButtonText: {
+    color: '#FFF',
+    fontWeight: '700',
+    fontSize: 13,
+  },
+
+  secondaryButton: {
+    flex: 1,
+    minHeight: 46,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#D32F2F',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FFF',
+    paddingHorizontal: 14,
+  },
+  secondaryButtonText: {
+    color: '#D32F2F',
+    fontWeight: '700',
+    fontSize: 13,
+  },
+  uploadButtonWide: {
+    flex: 1,
+    minHeight: 46,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#D32F2F',
+    paddingHorizontal: 14,
+  },
+  uploadButtonText: {
     color: '#FFF',
     fontWeight: '700',
     fontSize: 13,

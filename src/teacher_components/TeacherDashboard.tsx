@@ -52,6 +52,16 @@ export interface DashboardAssignment {
   materialIds?: string[];
 }
 
+type SignedInTeacher = {
+  teacherId?: string;
+  authUid?: string | null;
+  firstName?: string;
+  lastName?: string;
+  email?: string;
+  profileImage?: any;
+  bannerImage?: any;
+};
+
 interface DashboardProps {
   announcements?: Announcement[];
   courses?: TeacherCourseData[];
@@ -59,6 +69,7 @@ interface DashboardProps {
   onCreateClass?: (course: TeacherCourseData) => void;
   onDeleteCourse?: (id: string) => void;
   onEditCourse?: (course: TeacherCourseData) => void;
+  currentTeacher: SignedInTeacher;
 }
 
 type YearOption = {
@@ -81,11 +92,6 @@ type CourseOption = {
   label: string;
   units: number;
 };
-
-const DEFAULT_INSTRUCTOR = 'Ramcee Jade L. Munoz';
-const TEACHER_UID = 'teacher_uid_001';
-const TEACHER_EMAIL = 'teacher@email.com';
-const TEACHER_ID = 'T-001';
 
 function getApiBaseUrl() {
   if (Platform.OS === 'web') {
@@ -161,7 +167,11 @@ const SEMESTER_OPTIONS: SemesterOption[] = [
 
 const normalizeCoursePositions = (courseList: TeacherCourseData[]) => {
   return [...courseList]
-    .sort((a, b) => (a.position ?? Number.MAX_SAFE_INTEGER) - (b.position ?? Number.MAX_SAFE_INTEGER))
+    .sort(
+      (a, b) =>
+        (a.position ?? Number.MAX_SAFE_INTEGER) -
+        (b.position ?? Number.MAX_SAFE_INTEGER)
+    )
     .map((course, index) => ({
       ...course,
       position: index + 1,
@@ -189,12 +199,12 @@ const fileUriToBase64 = async (uri: string): Promise<string> => {
   });
 };
 
-const mapBackendClass = (item: any): TeacherCourseData => ({
+const mapBackendClass = (item: any, fallbackInstructor: string): TeacherCourseData => ({
   id: item.id,
   name: item.name || '',
   courseCode: item.courseCode || '',
   classCode: item.classCode || '',
-  instructor: item.instructorName || DEFAULT_INSTRUCTOR,
+  instructor: item.instructorName || fallbackInstructor,
   section: item.section || '',
   bannerUri: item.bannerUrl || undefined,
   year: item.year || '',
@@ -213,8 +223,8 @@ const Dashboard2 = ({
   onCreateClass,
   onDeleteCourse,
   onEditCourse,
+  currentTeacher,
 }: DashboardProps) => {
-
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
   const { width } = useWindowDimensions();
@@ -259,6 +269,25 @@ const Dashboard2 = ({
   const isMobile = width < 768;
   const isLargeScreen = width >= 1200;
 
+  const teacherFullName = useMemo(() => {
+    const first = currentTeacher?.firstName?.trim() || '';
+    const last = currentTeacher?.lastName?.trim() || '';
+    const full = `${first} ${last}`.trim();
+    return full || 'Teacher';
+  }, [currentTeacher]);
+
+  const teacherEmail = useMemo(() => {
+    return currentTeacher?.email?.trim() || '';
+  }, [currentTeacher]);
+
+  const teacherUid = useMemo(() => {
+    return currentTeacher?.authUid?.trim() || '';
+  }, [currentTeacher]);
+
+  const teacherId = useMemo(() => {
+    return currentTeacher?.teacherId?.trim() || '';
+  }, [currentTeacher]);
+
   const loadTeacherClasses = async () => {
     try {
       const response = await fetch(`${API_BASE_URL}/classes`);
@@ -273,12 +302,12 @@ const Dashboard2 = ({
       const teacherClasses = classList
         .filter(
           (item) =>
-            item.assignedTeacherUid === TEACHER_UID ||
-            item.instructorEmail === TEACHER_EMAIL ||
-            item.assignedTeacherId === TEACHER_ID ||
-            item.createdByUid === TEACHER_UID
+            (teacherUid && item.assignedTeacherUid === teacherUid) ||
+            (teacherEmail && item.instructorEmail === teacherEmail) ||
+            (teacherId && item.assignedTeacherId === teacherId) ||
+            (teacherUid && item.createdByUid === teacherUid)
         )
-        .map(mapBackendClass);
+        .map((item) => mapBackendClass(item, teacherFullName));
 
       setLocalCourses(normalizeCoursePositions(teacherClasses));
     } catch (error) {
@@ -289,7 +318,7 @@ const Dashboard2 = ({
 
   useEffect(() => {
     loadTeacherClasses();
-  }, []);
+  }, [teacherUid, teacherEmail, teacherId, teacherFullName]);
 
   useEffect(() => {
     if (courses.length > 0) {
@@ -472,7 +501,8 @@ const Dashboard2 = ({
       YEAR_OPTIONS.find((year) => year.id === selectedYear)?.label || '';
 
     const sectionLabel =
-      SECTION_OPTIONS[selectedYear]?.find((section) => section.id === selectedSection)?.label || '';
+      SECTION_OPTIONS[selectedYear]?.find((section) => section.id === selectedSection)?.label ||
+      '';
 
     const selectedCourseItem =
       COURSE_OPTIONS[selectedYear]?.find((course) => course.id === selectedCourse);
@@ -503,12 +533,12 @@ const Dashboard2 = ({
           bannerBase64,
           bannerFileName: classBanner ? 'teacher-banner.jpg' : null,
           bannerMimeType: classBanner ? 'image/jpeg' : null,
-          instructorName: DEFAULT_INSTRUCTOR,
-          instructorEmail: TEACHER_EMAIL,
-          instructorIdentifier: TEACHER_ID,
-          createdByUid: TEACHER_UID,
+          instructorName: teacherFullName,
+          instructorEmail: teacherEmail || null,
+          instructorIdentifier: teacherId || null,
+          createdByUid: teacherUid,
           createdByRole: 'teacher',
-          createdByName: DEFAULT_INSTRUCTOR,
+          createdByName: teacherFullName,
           year: yearLabel,
           units,
         }),
@@ -528,7 +558,7 @@ const Dashboard2 = ({
         courseCode,
         classCode: data?.data?.classCode || '',
         section: sectionLabel,
-        instructor: DEFAULT_INSTRUCTOR,
+        instructor: teacherFullName,
         bannerUri: data?.data?.bannerUrl || classBanner || undefined,
         year: yearLabel,
         yearSection: sectionLabel,
@@ -669,10 +699,10 @@ const Dashboard2 = ({
             bannerBase64,
             bannerFileName: editClassBanner ? 'teacher-banner.jpg' : null,
             bannerMimeType: editClassBanner ? 'image/jpeg' : null,
-            instructorName: DEFAULT_INSTRUCTOR,
-            instructorEmail: TEACHER_EMAIL,
-            instructorIdentifier: TEACHER_ID,
-            updatedByUid: TEACHER_UID,
+            instructorName: teacherFullName,
+            instructorEmail: teacherEmail || null,
+            instructorIdentifier: teacherId || null,
+            updatedByUid: teacherUid,
             updatedByRole: 'teacher',
             year: yearLabel,
             units,
@@ -697,6 +727,7 @@ const Dashboard2 = ({
         schoolYear: `${editStartYear.trim()}-${editEndYear.trim()}`,
         description: editDescription.trim() ? editDescription.trim() : null,
         bannerUri: editClassBanner || undefined,
+        instructor: teacherFullName,
         units,
       };
 
@@ -715,15 +746,6 @@ const Dashboard2 = ({
   const closeMenu = () => {
     setMenuVisible(false);
     setMenuCourse(null);
-  };
-
-  const handleCopyLink = () => {
-    if (!menuCourse) return;
-
-    const link = `https://yourapp.com/join/${menuCourse.classCode}`;
-    Clipboard.setStringAsync(link);
-    Alert.alert('Copied', 'Class link copied to clipboard.');
-    closeMenu();
   };
 
   const handleDeleteCourse = () => {
@@ -1344,7 +1366,6 @@ const Dashboard2 = ({
               },
             ]}
           >
-
             <TouchableOpacity style={styles.menuItem} onPress={openEditModal}>
               <MaterialCommunityIcons name="pencil-outline" size={20} color="#1565C0" />
               <Text style={[styles.menuText, { color: '#1565C0' }]}>Edit Class</Text>
@@ -1399,11 +1420,10 @@ const Dashboard2 = ({
                     imageStyle={styles.cardBannerImage}
                   >
                     <View style={styles.bannerOverlay}>
-                    <Text style={styles.bannerName} numberOfLines={2}>
-                      {item.name}
-                    </Text>
-
-                  </View>
+                      <Text style={styles.bannerName} numberOfLines={2}>
+                        {item.name}
+                      </Text>
+                    </View>
                   </ImageBackground>
                 </View>
 
@@ -1418,19 +1438,19 @@ const Dashboard2 = ({
                       onPress={async () => {
                         await Clipboard.setStringAsync(item.classCode);
 
-                        setCopiedId(item.id); // mark this card as copied
+                        setCopiedId(item.id);
 
                         setTimeout(() => {
-                          setCopiedId(null); // revert after 3 seconds
+                          setCopiedId(null);
                         }, 3000);
                       }}
                       style={styles.copyButton}
                       activeOpacity={0.7}
                     >
                       <Ionicons
-                        name={copiedId === item.id ? "checkmark-outline" : "copy-outline"}
+                        name={copiedId === item.id ? 'checkmark-outline' : 'copy-outline'}
                         size={16}
-                        color={copiedId === item.id ? "#000000" : "#000000"}
+                        color="#000000"
                       />
                     </TouchableOpacity>
                   </View>
@@ -1601,184 +1621,280 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginTop: 2,
   },
+
   classCodeRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 4,
+    marginTop: 6,
   },
 
   copyButton: {
-    marginLeft: 6,
+    marginLeft: 8,
     padding: 4,
-  },
-  bannerMeta: {
-    color: 'rgba(255,255,255,0.88)',
-    fontSize: 12,
-    fontWeight: '500',
-    marginTop: 2,
   },
 
   cardContent: {
     paddingHorizontal: 16,
     paddingTop: 14,
-    paddingBottom: 10,
+    paddingBottom: 8,
   },
 
   instructorLabel: {
     fontSize: 11,
-    color: '#888',
-    textTransform: 'uppercase',
+    color: '#9AA0A6',
     fontWeight: '700',
+    letterSpacing: 0.6,
   },
 
   instructorName: {
     fontSize: 15,
-    fontWeight: '600',
     color: '#202124',
+    fontWeight: '700',
     marginTop: 4,
   },
 
   cardFooter: {
-    paddingHorizontal: 10,
-    paddingTop: 4,
-    paddingBottom: 12,
-    alignItems: 'flex-end',
+    position: 'relative',
+    minHeight: 36,
+    justifyContent: 'center',
   },
 
   dotButton: {
-    padding: 6,
-    borderRadius: 10,
-    zIndex: 2,
+    alignSelf: 'flex-end',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
   },
 
   bottomBorder: {
     position: 'absolute',
-    bottom: 0,
     left: 0,
     right: 0,
+    bottom: 0,
     height: 4,
+  },
+
+  menuOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.08)',
+  },
+
+  menuBox: {
+    width: 220,
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    paddingVertical: 8,
+    shadowColor: '#000',
+    shadowOpacity: 0.12,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 10,
+  },
+
+  menuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+
+  menuText: {
+    fontSize: 14,
+    fontWeight: '600',
   },
 
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(15, 23, 42, 0.18)',
+    backgroundColor: 'rgba(15, 23, 42, 0.28)',
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 16,
+    paddingHorizontal: 12,
   },
 
   createModalContainerWide: {
     width: '100%',
-    maxWidth: 520,
-    maxHeight: '92%',
+    maxWidth: 700,
+    maxHeight: '90%',
     backgroundColor: '#fff',
-    borderRadius: 18,
-    padding: 20,
-  },
-
-  transparentScroll: {
-    backgroundColor: 'transparent',
-  },
-
-  modalInnerContent: {
-    paddingBottom: 20,
-    backgroundColor: 'transparent',
+    borderRadius: 22,
+    overflow: 'hidden',
   },
 
   modalHeader: {
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F1F1',
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 18,
+    justifyContent: 'space-between',
   },
 
   modalTitle: {
-    fontSize: 22,
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#202124',
+  },
+
+  transparentScroll: {
+    flexGrow: 0,
+  },
+
+  modalInnerContent: {
+    paddingHorizontal: 20,
+    paddingTop: 18,
+    paddingBottom: 22,
+  },
+
+  modalSection: {
+    marginBottom: 18,
+  },
+
+  modalSectionHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 10,
+  },
+
+  modalSectionTitle: {
+    fontSize: 15,
     fontWeight: '700',
     color: '#202124',
   },
 
-  inputLabel: {
+  checkRow: {
+    minHeight: 46,
+    borderWidth: 1,
+    borderColor: '#E7E7E7',
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    marginBottom: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+  },
+
+  checkRowActive: {
+    backgroundColor: '#FFF4F4',
+    borderColor: '#F4B4B4',
+  },
+
+  sectionRow: {
+    minHeight: 46,
+    borderWidth: 1,
+    borderColor: '#E7E7E7',
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    marginBottom: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+  },
+
+  sectionRowActive: {
+    backgroundColor: '#FFF4F4',
+    borderColor: '#F4B4B4',
+  },
+
+  checkboxBase: {
+    width: 18,
+    height: 18,
+    borderRadius: 6,
+    borderWidth: 1.5,
+    borderColor: '#C9CDD2',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
+    backgroundColor: '#fff',
+  },
+
+  checkboxChecked: {
+    backgroundColor: '#D32F2F',
+    borderColor: '#D32F2F',
+  },
+
+  checkText: {
+    flex: 1,
+    color: '#202124',
     fontSize: 14,
-    fontWeight: '600',
-    color: '#333',
+    fontWeight: '500',
+  },
+
+  semesterFieldWrap: {
+    marginBottom: 16,
+    zIndex: 20,
+  },
+
+  inputLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#374151',
     marginBottom: 8,
-    marginTop: 10,
   },
 
   dropdownTrigger: {
+    minHeight: 48,
     borderWidth: 1,
-    borderColor: '#DDD',
-    borderRadius: 12,
+    borderColor: '#E5E7EB',
+    borderRadius: 14,
+    backgroundColor: '#F9FAFB',
     paddingHorizontal: 14,
-    height: 48,
-    backgroundColor: '#fff',
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginTop: 2,
+    justifyContent: 'space-between',
   },
 
   dropdownTriggerText: {
     fontSize: 14,
-    color: '#202124',
+    color: '#111827',
     fontWeight: '500',
-    flex: 1,
-    marginRight: 8,
-  },
-
-  semesterFieldWrap: {
-    position: 'relative',
-    zIndex: 2000,
   },
 
   floatingDropdownDismiss: {
     ...StyleSheet.absoluteFillObject,
-    zIndex: 1,
+    zIndex: 25,
   },
 
   floatingDropdownMenu: {
     position: 'absolute',
-    top: 86,
+    top: 60,
     left: 0,
     right: 0,
-    backgroundColor: 'rgba(255,255,255,0.96)',
-    borderRadius: 12,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
     borderWidth: 1,
-    borderColor: '#E4E4E4',
-    overflow: 'hidden',
+    borderColor: '#E5E7EB',
     shadowColor: '#000',
     shadowOpacity: 0.12,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 8,
-    zIndex: 2,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 14,
+    zIndex: 30,
+    overflow: 'hidden',
   },
 
   floatingDropdownItem: {
-    minHeight: 44,
+    minHeight: 50,
     paddingHorizontal: 14,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: 'transparent',
   },
 
   floatingDropdownItemActive: {
-    backgroundColor: '#FFF7F7',
+    backgroundColor: '#FFF4F4',
   },
 
   floatingDropdownItemBorder: {
     borderBottomWidth: 1,
-    borderBottomColor: '#F1F1F1',
+    borderBottomColor: '#F1F3F4',
   },
 
   floatingDropdownItemText: {
-    flex: 1,
-    fontSize: 13,
+    fontSize: 14,
     color: '#202124',
     fontWeight: '500',
-    paddingRight: 10,
   },
 
   floatingDropdownItemTextActive: {
@@ -1789,7 +1905,7 @@ const styles = StyleSheet.create({
   yearRow: {
     flexDirection: 'row',
     gap: 12,
-    marginTop: 10,
+    marginBottom: 16,
   },
 
   yearCol: {
@@ -1797,51 +1913,49 @@ const styles = StyleSheet.create({
   },
 
   yearInputWrap: {
+    minHeight: 48,
     borderWidth: 1,
-    borderColor: '#DDD',
-    borderRadius: 12,
-    backgroundColor: '#fff',
-    paddingHorizontal: 12,
-    height: 48,
+    borderColor: '#E5E7EB',
+    borderRadius: 14,
+    backgroundColor: '#F9FAFB',
+    paddingHorizontal: 14,
     justifyContent: 'center',
   },
 
   yearInput: {
     fontSize: 14,
-    color: '#202124',
-    fontWeight: '500',
-  },
-
-  textAreaWrap: {
-    marginTop: 2,
-    borderWidth: 1,
-    borderColor: '#DDD',
-    borderRadius: 12,
-    backgroundColor: '#fff',
-    paddingHorizontal: 12,
+    color: '#111827',
     paddingVertical: 10,
   },
 
+  textAreaWrap: {
+    minHeight: 108,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    borderRadius: 16,
+    backgroundColor: '#F9FAFB',
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginBottom: 16,
+  },
+
   textAreaInput: {
-    minHeight: 96,
+    minHeight: 84,
     fontSize: 14,
-    color: '#202124',
-    fontWeight: '400',
+    color: '#111827',
   },
 
   uploadBtn: {
-    marginTop: 8,
+    minHeight: 48,
     borderWidth: 1,
-    borderColor: '#D32F2F',
-    borderStyle: 'dashed',
-    borderRadius: 12,
-    paddingVertical: 14,
-    paddingHorizontal: 12,
+    borderColor: '#F4B4B4',
+    borderRadius: 14,
+    backgroundColor: '#FFF7F7',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    backgroundColor: '#FFF5F5',
+    marginBottom: 14,
   },
 
   uploadBtnText: {
@@ -1851,22 +1965,21 @@ const styles = StyleSheet.create({
   },
 
   bannerPreview: {
-    marginTop: 12,
-    height: 120,
-    width: '100%',
+    height: 150,
+    borderRadius: 16,
     overflow: 'hidden',
-    borderRadius: 12,
+    marginBottom: 14,
   },
 
   previewImage: {
-    borderRadius: 12,
+    borderRadius: 16,
   },
 
   previewOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.25)',
-    justifyContent: 'flex-end',
-    padding: 12,
+    backgroundColor: 'rgba(0,0,0,0.28)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 
   previewText: {
@@ -1876,18 +1989,19 @@ const styles = StyleSheet.create({
   },
 
   codeNoticeBox: {
-    marginTop: 14,
-    backgroundColor: '#F1F8F2',
-    borderWidth: 1,
-    borderColor: '#C8E6C9',
-    borderRadius: 12,
-    padding: 12,
     flexDirection: 'row',
+    gap: 10,
     alignItems: 'center',
+    backgroundColor: '#F4FBF5',
+    borderWidth: 1,
+    borderColor: '#D8F1DC',
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginBottom: 16,
   },
 
   codeNoticeText: {
-    marginLeft: 8,
     flex: 1,
     color: '#2E7D32',
     fontSize: 13,
@@ -1897,178 +2011,86 @@ const styles = StyleSheet.create({
   modalButtonRow: {
     flexDirection: 'row',
     justifyContent: 'flex-end',
-    marginTop: 22,
-    gap: 10,
+    gap: 12,
+    marginTop: 6,
   },
 
   cancelBtn: {
+    minWidth: 110,
+    minHeight: 46,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+    alignItems: 'center',
+    justifyContent: 'center',
     paddingHorizontal: 16,
-    paddingVertical: 11,
-    borderRadius: 10,
-    backgroundColor: '#F3F3F3',
+    backgroundColor: '#fff',
   },
 
   cancelBtnText: {
-    color: '#202124',
-    fontWeight: '600',
+    color: '#444',
+    fontWeight: '700',
+    fontSize: 14,
   },
 
   saveBtn: {
+    minWidth: 130,
+    minHeight: 46,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
     paddingHorizontal: 16,
-    paddingVertical: 11,
-    borderRadius: 10,
     backgroundColor: '#D32F2F',
   },
 
   saveBtnText: {
     color: '#fff',
-    fontWeight: '700',
-  },
-
-  menuOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.08)',
-  },
-
-  menuBox: {
-    backgroundColor: '#FFF',
-    borderRadius: 12,
-    width: 190,
-    paddingVertical: 8,
-    elevation: 5,
-    shadowColor: '#000',
-    shadowOpacity: 0.15,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 3 },
-  },
-
-  menuItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 12,
-    gap: 10,
-  },
-
-  menuText: {
+    fontWeight: '800',
     fontSize: 14,
-    color: '#000',
-    fontWeight: '600',
-  },
-
-  modalSection: {
-    marginBottom: 18,
-  },
-
-  modalSectionHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 10,
-  },
-
-  modalSectionTitle: {
-    marginLeft: 8,
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#202124',
-  },
-
-  checkRow: {
-    minHeight: 46,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#F3D4D4',
-    backgroundColor: '#FFFFFF',
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    marginBottom: 8,
-  },
-
-  checkRowActive: {
-    borderColor: '#D32F2F',
-    backgroundColor: '#FFF7F7',
-  },
-
-  sectionRow: {
-    minHeight: 44,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#F3D4D4',
-    backgroundColor: '#FFFFFF',
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    marginBottom: 8,
-  },
-
-  sectionRowActive: {
-    borderColor: '#D32F2F',
-    backgroundColor: '#FFF7F7',
-  },
-
-  checkboxBase: {
-    width: 18,
-    height: 18,
-    borderRadius: 5,
-    borderWidth: 1.5,
-    borderColor: '#D8B4B4',
-    backgroundColor: '#FFFFFF',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 10,
-  },
-
-  checkboxChecked: {
-    backgroundColor: '#D32F2F',
-    borderColor: '#D32F2F',
-  },
-
-  checkText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#202124',
-    flex: 1,
   },
 
   deleteConfirmBox: {
     width: '100%',
     maxWidth: 360,
-    backgroundColor: '#FFF',
-    borderRadius: 16,
-    padding: 22,
+    backgroundColor: '#fff',
+    borderRadius: 22,
+    paddingHorizontal: 22,
+    paddingVertical: 22,
   },
 
   deleteConfirmTitle: {
     fontSize: 20,
-    fontWeight: '700',
+    fontWeight: '800',
     color: '#202124',
     marginBottom: 10,
   },
 
   deleteConfirmText: {
     fontSize: 14,
-    color: '#555',
-    lineHeight: 21,
-    marginBottom: 20,
+    color: '#5F6368',
+    lineHeight: 22,
   },
 
   deleteConfirmActions: {
     flexDirection: 'row',
     justifyContent: 'flex-end',
-    gap: 10,
+    gap: 12,
+    marginTop: 18,
   },
 
   deleteConfirmBtn: {
+    minWidth: 110,
+    minHeight: 46,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
     paddingHorizontal: 16,
-    paddingVertical: 11,
-    borderRadius: 10,
     backgroundColor: '#D32F2F',
   },
 
   deleteConfirmBtnText: {
-    color: '#FFF',
-    fontWeight: '700',
+    color: '#fff',
+    fontWeight: '800',
+    fontSize: 14,
   },
 });

@@ -37,6 +37,11 @@ export interface AssignmentMaterial {
   title: string;
   type: 'pdf' | 'video' | 'document' | 'link';
   uploadedDate: string;
+  content?: string;
+  fileName?: string;
+  fileUrl?: string;
+  fileUri?: string;
+  fileType?: string;
 }
 
 export interface AssignmentItem {

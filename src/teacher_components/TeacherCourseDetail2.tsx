@@ -1,8 +1,8 @@
-import * as Clipboard from "expo-clipboard";
-import Constants from "expo-constants";
-import * as DocumentPicker from "expo-document-picker";
-import * as FileSystem from "expo-file-system/legacy";
-import React, { useEffect, useState } from "react";
+import * as Clipboard from 'expo-clipboard';
+import Constants from 'expo-constants';
+import * as DocumentPicker from 'expo-document-picker';
+import * as FileSystem from 'expo-file-system/legacy';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Linking,
   Modal,
@@ -13,15 +13,17 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
+  TouchableWithoutFeedback,
   View,
   useWindowDimensions,
-} from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
-import MaterialCommunityIcons from "react-native-vector-icons/MaterialCommunityIcons";
+} from 'react-native';
+import { heightPercentageToDP as hp, widthPercentageToDP as wp } from 'react-native-responsive-screen';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Ionicons from 'react-native-vector-icons/Ionicons';
 
-import TeacherAssignmentSection from "./TeacherAssignmentSection";
-import TeacherMaterialSection from "./TeacherMaterialSection";
-import TeacherSubmissionsSection from "./TeacherSubmissionsSection";
+import TeacherAssignmentSection from './TeacherAssignmentSection';
+import TeacherMaterialSection from './TeacherMaterialSection';
+import TeacherSubmissionsSection from './TeacherSubmissionsSection';
 
 export type Assignment = {
   id: string;
@@ -58,7 +60,7 @@ export type Submission = {
   id: string;
   assignmentId: string;
   studentId: string;
-  status: "pending" | "submitted" | "graded" | "late";
+  status: 'pending' | 'submitted' | 'graded' | 'late';
   score?: number;
   submittedAt?: string;
 };
@@ -75,6 +77,16 @@ export type CourseDetailData = {
   semester?: string;
 };
 
+type SignedInTeacher = {
+  teacherId?: string;
+  authUid?: string | null;
+  firstName?: string;
+  lastName?: string;
+  email?: string;
+  profileImage?: any;
+  bannerImage?: any;
+};
+
 type PickedUploadFile = {
   name?: string;
   uri?: string;
@@ -84,30 +96,30 @@ type PickedUploadFile = {
 } | null;
 
 function getApiBaseUrl() {
-  if (Platform.OS === "web") {
-    return "http://localhost:5000";
+  if (Platform.OS === 'web') {
+    return 'http://localhost:5000';
   }
 
   const possibleHost =
     Constants.expoConfig?.hostUri ||
     Constants.manifest2?.extra?.expoGo?.debuggerHost ||
-    "";
+    '';
 
-  const host = possibleHost.split(":")[0];
+  const host = possibleHost.split(':')[0];
 
   if (host) {
     return `http://${host}:5000`;
   }
 
-  return "http://192.168.1.5:5000";
+  return 'http://192.168.1.5:5000';
 }
 
 const API_BASE_URL = getApiBaseUrl();
 
 const formatDateTime = (value?: any) => {
-  if (!value) return "";
+  if (!value) return '';
 
-  if (typeof value === "string") return value;
+  if (typeof value === 'string') return value;
 
   if (value?._seconds) {
     return new Date(value._seconds * 1000).toLocaleString();
@@ -117,15 +129,15 @@ const formatDateTime = (value?: any) => {
     return new Date(value.seconds * 1000).toLocaleString();
   }
 
-  return "";
+  return '';
 };
 
 const mapMaterial = (item: any): Material => ({
   id: item.id,
-  title: item.title || "",
-  week: item.week || "",
+  title: item.title || '',
+  week: item.week || '',
   posted: formatDateTime(item.createdAt || item.posted),
-  content: item.content || "",
+  content: item.content || '',
   fileName: item.fileName || undefined,
   fileUri: item.fileUrl || item.fileUri || undefined,
   fileType: item.fileType || undefined,
@@ -133,12 +145,12 @@ const mapMaterial = (item: any): Material => ({
 
 const mapAssignment = (item: any): Assignment => ({
   id: item.id,
-  header: item.header || "",
-  instruction: item.instruction || "",
+  header: item.header || '',
+  instruction: item.instruction || '',
   posted: formatDateTime(item.createdAt || item.posted),
-  dueDate: item.dueDate || "",
-  totalScore: String(item.totalScore ?? ""),
-  pointsOnTime: String(item.pointsOnTime ?? ""),
+  dueDate: item.dueDate || '',
+  totalScore: String(item.totalScore ?? ''),
+  pointsOnTime: String(item.pointsOnTime ?? ''),
   repositoryDisabledAfterDue: !!item.repositoryDisabledAfterDue,
   fileName: item.fileName || undefined,
   fileUri: item.fileUrl || item.fileUri || undefined,
@@ -146,46 +158,63 @@ const mapAssignment = (item: any): Assignment => ({
 });
 
 const mapMember = (item: any): Member => ({
-  id: item.userId || item.id || "",
-  name: item.name || "",
-  handle: item.email ? `@${String(item.email).split("@")[0]}` : "@member",
+  id: item.userId || item.id || '',
+  name: item.name || '',
+  handle: item.email ? `@${String(item.email).split('@')[0]}` : '@member',
 });
 
 const mapSubmission = (item: any): Submission => ({
   id: item.id,
-  assignmentId: item.assignmentId || "",
-  studentId: item.studentId || "",
+  assignmentId: item.assignmentId || '',
+  studentId: item.studentId || '',
   status:
-    item.status === "submitted" ||
-    item.status === "graded" ||
-    item.status === "late"
+    item.status === 'submitted' ||
+    item.status === 'graded' ||
+    item.status === 'late'
       ? item.status
-      : "pending",
-  score: typeof item.score === "number" ? item.score : undefined,
+      : 'pending',
+  score: typeof item.score === 'number' ? item.score : undefined,
   submittedAt: formatDateTime(item.submittedAt),
 });
 
 const TeacherCourseDetail2 = ({
   onBack,
   course,
+  currentTeacher,
 }: {
   onBack?: () => void;
   course?: CourseDetailData;
+  currentTeacher: SignedInTeacher;
 }) => {
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
 
+  const isSmallPhone = width < 360;
   const isMobile = width < 768;
-  const isTablet = width >= 768 && width < 1200;
 
-  const mobileTopSpace = isMobile ? insets.top + 10 : 1;
+  const teacherFullName = useMemo(() => {
+    const first = currentTeacher?.firstName?.trim() || '';
+    const last = currentTeacher?.lastName?.trim() || '';
+    const full = `${first} ${last}`.trim();
+    return full || course?.instructor || 'Teacher';
+  }, [currentTeacher, course?.instructor]);
 
-  const [activeTab, setActiveTab] = useState<"Materials" | "Assignments">(
-    "Materials"
+  const teacherIdentity = useMemo(() => {
+    return (
+      currentTeacher?.teacherId?.trim() ||
+      currentTeacher?.authUid?.trim() ||
+      currentTeacher?.email?.trim() ||
+      teacherFullName
+    );
+  }, [currentTeacher, teacherFullName]);
+
+  const [activeTab, setActiveTab] = useState<'Materials' | 'Assignments'>(
+    'Materials'
   );
   const [showSubmissions, setShowSubmissions] = useState(false);
-  const [showUpdateModal, setShowUpdateModal] = useState(false);
+
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showUpdateModal, setShowUpdateModal] = useState(false);
   const [showMaterialModal, setShowMaterialModal] = useState(false);
   const [showUpdateMaterialModal, setShowUpdateMaterialModal] =
     useState(false);
@@ -205,31 +234,31 @@ const TeacherCourseDetail2 = ({
   const [members, setMembers] = useState<Member[]>([]);
   const [submissions, setSubmissions] = useState<Submission[]>([]);
 
-  const [memberIdInput, setMemberIdInput] = useState("");
-  const [formTitle, setFormTitle] = useState("");
-  const [formDesc, setFormDesc] = useState("");
-  const [formPoints, setFormPoints] = useState("");
-  const [formDue, setFormDue] = useState("");
-  const [formWeek, setFormWeek] = useState("");
+  const [formTitle, setFormTitle] = useState('');
+  const [formDesc, setFormDesc] = useState('');
+  const [formPoints, setFormPoints] = useState('');
+  const [formDue, setFormDue] = useState('');
+  const [formWeek, setFormWeek] = useState('');
   const [
     assignmentDisableRepositoryAfterDue,
     setAssignmentDisableRepositoryAfterDue,
   ] = useState(false);
-  const [classCodeCopied, setClassCodeCopied] = useState(false);
 
   const [pickedFile, setPickedFile] = useState<PickedUploadFile>(null);
   const [pickedAssignmentFile, setPickedAssignmentFile] =
     useState<PickedUploadFile>(null);
 
+  const [classCodeCopied, setClassCodeCopied] = useState(false);
+
   const [resultModalVisible, setResultModalVisible] = useState(false);
-  const [resultModalType, setResultModalType] = useState<"success" | "error">(
-    "success"
+  const [resultModalType, setResultModalType] = useState<'success' | 'error'>(
+    'success'
   );
-  const [resultModalTitle, setResultModalTitle] = useState("");
-  const [resultModalMessage, setResultModalMessage] = useState("");
+  const [resultModalTitle, setResultModalTitle] = useState('');
+  const [resultModalMessage, setResultModalMessage] = useState('');
 
   const showResultModal = (
-    type: "success" | "error",
+    type: 'success' | 'error',
     title: string,
     message: string
   ) => {
@@ -237,6 +266,21 @@ const TeacherCourseDetail2 = ({
     setResultModalTitle(title);
     setResultModalMessage(message);
     setResultModalVisible(true);
+  };
+
+  const getMaterialIconName = (fileType?: string) => {
+    const normalized = String(fileType || '').toLowerCase();
+
+    if (normalized.includes('pdf')) return 'document-text-outline';
+    if (normalized.includes('video')) return 'videocam-outline';
+    if (normalized.includes('word') || normalized.includes('doc'))
+      return 'document-outline';
+    if (normalized.includes('sheet') || normalized.includes('excel'))
+      return 'grid-outline';
+    if (normalized.includes('presentation') || normalized.includes('powerpoint'))
+      return 'easel-outline';
+
+    return 'document-outline';
   };
 
   const loadCourseContent = async () => {
@@ -289,7 +333,7 @@ const TeacherCourseDetail2 = ({
           : []
       );
     } catch (error) {
-      console.error("Error loading course content:", error);
+      console.error('Error loading course content:', error);
       setAssignments([]);
       setMaterials([]);
       setMembers([]);
@@ -302,11 +346,11 @@ const TeacherCourseDetail2 = ({
   }, [course?.id]);
 
   const resetCreateForm = () => {
-    setFormTitle("");
-    setFormDesc("");
-    setFormPoints("");
-    setFormDue("");
-    setFormWeek("");
+    setFormTitle('');
+    setFormDesc('');
+    setFormPoints('');
+    setFormDue('');
+    setFormWeek('');
     setAssignmentDisableRepositoryAfterDue(false);
     setPickedFile(null);
     setPickedAssignmentFile(null);
@@ -326,9 +370,9 @@ const TeacherCourseDetail2 = ({
     if (!material) return;
 
     setSelectedMaterialId(material.id);
-    setFormTitle(material.title || "");
-    setFormWeek(material.week || "");
-    setFormDesc(material.content || "");
+    setFormTitle(material.title || '');
+    setFormWeek(material.week || '');
+    setFormDesc(material.content || '');
     setShowMaterialModal(false);
     setShowUpdateMaterialModal(true);
   };
@@ -336,9 +380,9 @@ const TeacherCourseDetail2 = ({
   const handlePickFile = async () => {
     try {
       const result = await DocumentPicker.getDocumentAsync({
-        type: "*/*",
+        type: '*/*',
         copyToCacheDirectory: true,
-        base64: Platform.OS === "web",
+        base64: Platform.OS === 'web',
       });
 
       if (result.canceled) return;
@@ -353,16 +397,16 @@ const TeacherCourseDetail2 = ({
         file: (asset as any).file,
       });
     } catch {
-      showResultModal("error", "Error", "Failed to pick file.");
+      showResultModal('error', 'Error', 'Failed to pick file.');
     }
   };
 
   const handlePickAssignmentFile = async () => {
     try {
       const result = await DocumentPicker.getDocumentAsync({
-        type: "*/*",
+        type: '*/*',
         copyToCacheDirectory: true,
-        base64: Platform.OS === "web",
+        base64: Platform.OS === 'web',
       });
 
       if (result.canceled) return;
@@ -377,19 +421,19 @@ const TeacherCourseDetail2 = ({
         file: (asset as any).file,
       });
     } catch {
-      showResultModal("error", "Error", "Failed to pick assignment file.");
+      showResultModal('error', 'Error', 'Failed to pick assignment file.');
     }
   };
 
   const uploadPickedFile = async (
     picked: PickedUploadFile,
-    kind: "material" | "assignment"
+    kind: 'material' | 'assignment'
   ) => {
     if (!picked || !course?.id) return null;
 
     let fileBase64: string | null = null;
 
-    if (Platform.OS === "web") {
+    if (Platform.OS === 'web') {
       if (picked.base64) {
         fileBase64 = picked.base64;
       } else if (picked.file) {
@@ -398,43 +442,43 @@ const TeacherCourseDetail2 = ({
 
           reader.onload = () => {
             const result = reader.result;
-            if (typeof result === "string") {
-              const base64Part = result.includes(",")
-                ? result.split(",")[1]
+            if (typeof result === 'string') {
+              const base64Part = result.includes(',')
+                ? result.split(',')[1]
                 : result;
               resolve(base64Part);
             } else {
-              reject(new Error("Failed to read file on web."));
+              reject(new Error('Failed to read file on web.'));
             }
           };
 
           reader.onerror = () =>
-            reject(new Error("Failed to read file on web."));
+            reject(new Error('Failed to read file on web.'));
           reader.readAsDataURL(picked.file as File);
         });
       } else {
-        throw new Error("No file data available for web upload.");
+        throw new Error('No file data available for web upload.');
       }
     } else {
       if (!picked.uri) {
-        throw new Error("No file URI available for mobile upload.");
+        throw new Error('No file URI available for mobile upload.');
       }
 
       fileBase64 = await FileSystem.readAsStringAsync(picked.uri, {
-        encoding: "base64" as any,
+        encoding: 'base64' as any,
       });
     }
 
     const response = await fetch(`${API_BASE_URL}/upload-class-file`, {
-      method: "POST",
+      method: 'POST',
       headers: {
-        "Content-Type": "application/json",
+        'Content-Type': 'application/json',
       },
       body: JSON.stringify({
         classId: course.id,
         fileBase64,
-        fileName: picked.name ?? "file",
-        fileType: picked.type ?? "application/octet-stream",
+        fileName: picked.name ?? 'file',
+        fileType: picked.type ?? 'application/octet-stream',
         kind,
       }),
     });
@@ -442,7 +486,7 @@ const TeacherCourseDetail2 = ({
     const data = await response.json();
 
     if (!response.ok) {
-      throw new Error(data.error || "Failed to upload file.");
+      throw new Error(data.error || 'Failed to upload file.');
     }
 
     return data.data;
@@ -450,21 +494,21 @@ const TeacherCourseDetail2 = ({
 
   const handleOpenUploadedFile = async (fileUri?: string) => {
     if (!fileUri) {
-      showResultModal("error", "No File", "No uploaded file available.");
+      showResultModal('error', 'No File', 'No uploaded file available.');
       return;
     }
 
     try {
       await Linking.openURL(fileUri);
     } catch {
-      showResultModal("error", "Error", "Unable to open the file.");
+      showResultModal('error', 'Error', 'Unable to open the file.');
     }
   };
 
   const handleCopyClassCode = async () => {
-    const codeToCopy = course?.classCode || "";
+    const codeToCopy = course?.classCode || '';
 
-    if (!codeToCopy || codeToCopy === "No Class Code") return;
+    if (!codeToCopy || codeToCopy === 'No Class Code') return;
 
     await Clipboard.setStringAsync(codeToCopy);
     setClassCodeCopied(true);
@@ -476,18 +520,18 @@ const TeacherCourseDetail2 = ({
 
   const handleCreate = async () => {
     if (!course?.id) {
-      showResultModal("error", "Error", "No class selected.");
+      showResultModal('error', 'Error', 'No class selected.');
       return;
     }
 
-    if (activeTab === "Materials") {
+    if (activeTab === 'Materials') {
       if (!formTitle.trim()) {
-        showResultModal("error", "Required", "Please enter a title.");
+        showResultModal('error', 'Required', 'Please enter a title.');
         return;
       }
 
       if (!formWeek.trim()) {
-        showResultModal("error", "Required", "Please enter the week.");
+        showResultModal('error', 'Required', 'Please enter the week.');
         return;
       }
 
@@ -495,13 +539,13 @@ const TeacherCourseDetail2 = ({
         let uploadedFile = null;
 
         if (pickedFile?.uri || pickedFile?.base64 || pickedFile?.file) {
-          uploadedFile = await uploadPickedFile(pickedFile, "material");
+          uploadedFile = await uploadPickedFile(pickedFile, 'material');
         }
 
         const response = await fetch(`${API_BASE_URL}/create-class-material`, {
-          method: "POST",
+          method: 'POST',
           headers: {
-            "Content-Type": "application/json",
+            'Content-Type': 'application/json',
           },
           body: JSON.stringify({
             classId: course.id,
@@ -515,31 +559,31 @@ const TeacherCourseDetail2 = ({
             fileType: uploadedFile?.fileType ?? null,
             storagePath: uploadedFile?.storagePath ?? null,
             bucketPath: uploadedFile?.bucketPath ?? null,
-            postedByUid: "teacher_uid_001",
-            postedByName: course.instructor || "Teacher",
+            postedByUid: teacherIdentity,
+            postedByName: teacherFullName,
           }),
         });
 
         const data = await response.json();
 
         if (!response.ok) {
-          throw new Error(data.error || "Failed to create material");
+          throw new Error(data.error || 'Failed to create material');
         }
 
         await loadCourseContent();
         setShowCreateModal(false);
         resetCreateForm();
         showResultModal(
-          "success",
-          "Success",
-          "Material uploaded successfully."
+          'success',
+          'Success',
+          'Material uploaded successfully.'
         );
       } catch (error: any) {
-        console.error("Create material error:", error);
+        console.error('Create material error:', error);
         showResultModal(
-          "error",
-          "Upload Failed",
-          error?.message || "Failed to create material."
+          'error',
+          'Upload Failed',
+          error?.message || 'Failed to create material.'
         );
       }
 
@@ -554,9 +598,9 @@ const TeacherCourseDetail2 = ({
       !formWeek.trim()
     ) {
       showResultModal(
-        "error",
-        "Required",
-        "Please complete all assignment fields."
+        'error',
+        'Required',
+        'Please complete all assignment fields.'
       );
       return;
     }
@@ -571,14 +615,14 @@ const TeacherCourseDetail2 = ({
       ) {
         uploadedFile = await uploadPickedFile(
           pickedAssignmentFile,
-          "assignment"
+          'assignment'
         );
       }
 
       const response = await fetch(`${API_BASE_URL}/create-class-assignment`, {
-        method: "POST",
+        method: 'POST',
         headers: {
-          "Content-Type": "application/json",
+          'Content-Type': 'application/json',
         },
         body: JSON.stringify({
           classId: course.id,
@@ -593,31 +637,31 @@ const TeacherCourseDetail2 = ({
           fileType: uploadedFile?.fileType ?? null,
           storagePath: uploadedFile?.storagePath ?? null,
           bucketPath: uploadedFile?.bucketPath ?? null,
-          postedByUid: "teacher_uid_001",
-          postedByName: course.instructor || "Teacher",
+          postedByUid: teacherIdentity,
+          postedByName: teacherFullName,
         }),
       });
 
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || "Failed to create assignment");
+        throw new Error(data.error || 'Failed to create assignment');
       }
 
       await loadCourseContent();
       setShowCreateModal(false);
       resetCreateForm();
       showResultModal(
-        "success",
-        "Success",
-        "Assignment uploaded successfully."
+        'success',
+        'Success',
+        'Assignment uploaded successfully.'
       );
     } catch (error: any) {
-      console.error("Create assignment error:", error);
+      console.error('Create assignment error:', error);
       showResultModal(
-        "error",
-        "Upload Failed",
-        error?.message || "Failed to create assignment."
+        'error',
+        'Upload Failed',
+        error?.message || 'Failed to create assignment.'
       );
     }
   };
@@ -641,9 +685,9 @@ const TeacherCourseDetail2 = ({
       const response = await fetch(
         `${API_BASE_URL}/update-class-assignment/${selectedId}`,
         {
-          method: "PUT",
+          method: 'PUT',
           headers: {
-            "Content-Type": "application/json",
+            'Content-Type': 'application/json',
           },
           body: JSON.stringify({
             header: formTitle,
@@ -659,15 +703,15 @@ const TeacherCourseDetail2 = ({
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || "Failed to update assignment");
+        throw new Error(data.error || 'Failed to update assignment');
       }
 
       await loadCourseContent();
       setShowUpdateModal(false);
-      showResultModal("success", "Success", "Assignment updated.");
+      showResultModal('success', 'Success', 'Assignment updated.');
     } catch (error) {
-      console.error("Update assignment error:", error);
-      showResultModal("error", "Error", "Failed to update assignment.");
+      console.error('Update assignment error:', error);
+      showResultModal('error', 'Error', 'Failed to update assignment.');
     }
   };
 
@@ -678,23 +722,23 @@ const TeacherCourseDetail2 = ({
       const response = await fetch(
         `${API_BASE_URL}/delete-class-assignment/${selectedId}`,
         {
-          method: "DELETE",
+          method: 'DELETE',
         }
       );
 
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || "Failed to delete assignment");
+        throw new Error(data.error || 'Failed to delete assignment');
       }
 
       await loadCourseContent();
       setShowUpdateModal(false);
       setShowSubmissions(false);
-      showResultModal("success", "Success", "Assignment deleted.");
+      showResultModal('success', 'Success', 'Assignment deleted.');
     } catch (error) {
-      console.error("Delete assignment error:", error);
-      showResultModal("error", "Error", "Failed to delete assignment.");
+      console.error('Delete assignment error:', error);
+      showResultModal('error', 'Error', 'Failed to delete assignment.');
     }
   };
 
@@ -702,12 +746,12 @@ const TeacherCourseDetail2 = ({
     if (!selectedMaterialId) return;
 
     if (!formTitle.trim()) {
-      showResultModal("error", "Required", "Please enter a title.");
+      showResultModal('error', 'Required', 'Please enter a title.');
       return;
     }
 
     if (!formWeek.trim()) {
-      showResultModal("error", "Required", "Please enter the week.");
+      showResultModal('error', 'Required', 'Please enter the week.');
       return;
     }
 
@@ -715,9 +759,9 @@ const TeacherCourseDetail2 = ({
       const response = await fetch(
         `${API_BASE_URL}/update-class-material/${selectedMaterialId}`,
         {
-          method: "PUT",
+          method: 'PUT',
           headers: {
-            "Content-Type": "application/json",
+            'Content-Type': 'application/json',
           },
           body: JSON.stringify({
             title: formTitle.trim(),
@@ -730,20 +774,20 @@ const TeacherCourseDetail2 = ({
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || "Failed to update material");
+        throw new Error(data.error || 'Failed to update material');
       }
 
       await loadCourseContent();
       setShowUpdateMaterialModal(false);
       setSelectedMaterialId(null);
       resetCreateForm();
-      showResultModal("success", "Success", "Material updated successfully.");
+      showResultModal('success', 'Success', 'Material updated successfully.');
     } catch (error: any) {
-      console.error("Update material error:", error);
+      console.error('Update material error:', error);
       showResultModal(
-        "error",
-        "Error",
-        error?.message || "Failed to update material."
+        'error',
+        'Error',
+        error?.message || 'Failed to update material.'
       );
     }
   };
@@ -760,14 +804,14 @@ const TeacherCourseDetail2 = ({
       const response = await fetch(
         `${API_BASE_URL}/delete-class-material/${selectedMaterialId}`,
         {
-          method: "DELETE",
+          method: 'DELETE',
         }
       );
 
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || "Failed to delete material");
+        throw new Error(data.error || 'Failed to delete material');
       }
 
       await loadCourseContent();
@@ -776,64 +820,26 @@ const TeacherCourseDetail2 = ({
       setShowMaterialModal(false);
       setSelectedMaterialId(null);
       resetCreateForm();
-      showResultModal("success", "Success", "Material deleted successfully.");
+      showResultModal('success', 'Success', 'Material deleted successfully.');
     } catch (error: any) {
-      console.error("Delete material error:", error);
+      console.error('Delete material error:', error);
       showResultModal(
-        "error",
-        "Error",
-        error?.message || "Failed to delete material."
+        'error',
+        'Error',
+        error?.message || 'Failed to delete material.'
       );
-    }
-  };
-
-  const handleAddMember = async () => {
-    if (!course?.id) {
-      showResultModal("error", "Error", "No class selected.");
-      return;
-    }
-
-    if (!memberIdInput.trim()) {
-      showResultModal("error", "Required", "Please enter a student ID.");
-      return;
-    }
-
-    try {
-      const response = await fetch(`${API_BASE_URL}/join-class`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          classId: course.id,
-          studentId: memberIdInput.trim(),
-        }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || "Failed to add member");
-      }
-
-      setMemberIdInput("");
-      await loadCourseContent();
-      showResultModal("success", "Success", "Member added successfully.");
-    } catch (error) {
-      console.error("Add member error:", error);
-      showResultModal("error", "Error", "Failed to add member.");
     }
   };
 
   const currentAssignment = assignments.find((a) => a.id === selectedId);
 
-  const visibleCourseCode = course?.courseCode || "No Course Code";
-  const courseName = course?.name || "Untitled Course";
-  const courseSection = course?.section || "";
-  const courseInstructor = course?.instructor || "No Instructor";
-  const classCode = course?.classCode || "No Class Code";
-  const courseYear = course?.year || "";
-  const courseSemester = course?.semester || "";
+  const visibleCourseCode = course?.courseCode || 'No Course Code';
+  const courseName = course?.name || 'Untitled Course';
+  const courseSection = course?.section || '';
+  const courseInstructor = course?.instructor || 'No Instructor';
+  const classCode = course?.classCode || 'No Class Code';
+  const courseYear = course?.year || '';
+  const courseSemester = course?.semester || '';
 
   if (showSubmissions) {
     return (
@@ -847,25 +853,28 @@ const TeacherCourseDetail2 = ({
         />
 
         <Modal visible={showUpdateModal} transparent animationType="fade">
-          <View style={styles.modalOverlay}>
+          <View style={styles.modalOverlayCenter}>
             <View
               style={[
-                styles.sidePanel,
-                { width: isMobile ? Math.min(width - 28, 360) : 380 },
+                styles.modalCardElevated,
+                { width: isMobile ? Math.min(width - 28, 360) : 400 },
               ]}
             >
-              <View style={styles.panelHeader}>
+              <View style={styles.createHeaderRow}>
+                <View style={styles.modalHeaderTextWrap}>
+                  <Text style={styles.createTitle}>Update Assignment</Text>
+                  <Text style={styles.modalSubtitle}>
+                    Edit the selected assignment details.
+                  </Text>
+                </View>
+
                 <TouchableOpacity onPress={() => setShowUpdateModal(false)}>
-                  <MaterialCommunityIcons
-                    name="chevron-left"
-                    size={28}
-                    color="#000"
-                  />
+                  <Ionicons name="close" size={24} color="#111" />
                 </TouchableOpacity>
-                <Text style={styles.panelTitle}>Update Assignment</Text>
               </View>
 
               <ScrollView showsVerticalScrollIndicator={false}>
+                <Text style={styles.sectionLabel}>Header</Text>
                 <TextInput
                   style={styles.inputBox}
                   value={formTitle}
@@ -873,6 +882,8 @@ const TeacherCourseDetail2 = ({
                   placeholder="Enter Header"
                   placeholderTextColor="#999"
                 />
+
+                <Text style={styles.sectionLabel}>Instruction</Text>
                 <TextInput
                   style={styles.textAreaBox}
                   value={formDesc}
@@ -881,6 +892,8 @@ const TeacherCourseDetail2 = ({
                   placeholderTextColor="#999"
                   multiline
                 />
+
+                <Text style={styles.sectionLabel}>Total Score</Text>
                 <TextInput
                   style={styles.inputBox}
                   value={formPoints}
@@ -889,6 +902,8 @@ const TeacherCourseDetail2 = ({
                   placeholder="Total Score"
                   placeholderTextColor="#999"
                 />
+
+                <Text style={styles.sectionLabel}>Points On Time</Text>
                 <TextInput
                   style={styles.inputBox}
                   value={formWeek}
@@ -897,6 +912,8 @@ const TeacherCourseDetail2 = ({
                   placeholder="Points On Time"
                   placeholderTextColor="#999"
                 />
+
+                <Text style={styles.sectionLabel}>Due Date</Text>
                 <TextInput
                   style={styles.inputBox}
                   value={formDue}
@@ -907,8 +924,9 @@ const TeacherCourseDetail2 = ({
 
                 <View style={styles.checkboxRow}>
                   <Text style={styles.checkboxLabel}>
-                    Disabled repository after due
+                    Disable repository after due
                   </Text>
+
                   <TouchableOpacity
                     style={[
                       styles.checkboxBox,
@@ -922,11 +940,7 @@ const TeacherCourseDetail2 = ({
                     }
                   >
                     {assignmentDisableRepositoryAfterDue ? (
-                      <MaterialCommunityIcons
-                        name="check"
-                        size={16}
-                        color="#FFF"
-                      />
+                      <Ionicons name="checkmark" size={16} color="#FFF" />
                     ) : null}
                   </TouchableOpacity>
                 </View>
@@ -956,119 +970,110 @@ const TeacherCourseDetail2 = ({
 
   return (
     <SafeAreaView style={styles.container}>
-      {isMobile ? <View style={{ height: mobileTopSpace }} /> : null}
+      {isMobile ? <View style={{ height: insets.top + 10 }} /> : null}
 
       <View
         style={[
-          styles.redHeader,
+          styles.courseHeader,
           {
-            paddingHorizontal: isMobile ? 16 : 20,
+            paddingHorizontal: isMobile ? 16 : 60,
             paddingTop: isMobile ? 16 : 20,
-            paddingBottom: isMobile ? 22 : 30,
+            paddingBottom: isMobile ? 18 : 24,
           },
         ]}
       >
         <View style={styles.headerTopRow}>
-          <TouchableOpacity onPress={onBack} style={styles.backBtn}>
-            <MaterialCommunityIcons
-              name="chevron-left"
-              size={isMobile ? 30 : 35}
-              color="#FFF"
-            />
+          <TouchableOpacity onPress={onBack} style={styles.backButton}>
+            <Ionicons name="arrow-back" size={24} color="#FFF" />
           </TouchableOpacity>
-
-          <View style={styles.headerInfo}>
-            <Text
-              style={[
-                styles.courseTitle,
-                { fontSize: isMobile ? 21 : isTablet ? 24 : 27 },
-              ]}
-            >
-              {visibleCourseCode} - {courseName}
-            </Text>
-
-            <Text
-              style={[
-                styles.courseSubText,
-                { fontSize: isMobile ? 14 : 16 },
-              ]}
-            >
-              {visibleCourseCode}
-              {courseSection ? ` • ${courseSection}` : ""}
-            </Text>
-
-            {!!courseYear && <Text style={styles.metaText}>{courseYear}</Text>}
-
-            {!!courseSemester && (
-              <Text style={styles.metaText}>{courseSemester}</Text>
-            )}
-
-            <Text style={styles.instructorText}>
-              Instructor: {courseInstructor}
-            </Text>
-
-            <View style={styles.classCodeRow}>
-              <Text style={styles.classCodeText}>Class Code: {classCode}</Text>
-
-              <TouchableOpacity
-                onPress={handleCopyClassCode}
-                style={styles.copyBtn}
-              >
-                <MaterialCommunityIcons
-                  name={classCodeCopied ? "check" : "content-copy"}
-                  size={18}
-                  color="#FFF"
-                />
-              </TouchableOpacity>
-            </View>
-          </View>
         </View>
+
+
+        <Text
+          style={[
+            styles.courseName,
+            { fontSize: isSmallPhone ? 20 : 24 },
+          ]}
+        >
+          {courseName}
+        </Text>
+
+        <Text style={[styles.instructor, { fontSize: isSmallPhone ? 12 : 14 }]}>
+          Instructor: {courseInstructor}
+        </Text>
+
+        {!!courseSemester && !!courseYear && (
+          <Text style={[styles.metaText, { fontSize: isSmallPhone ? 12 : 13 }]}>
+            {courseSemester} - {courseYear}
+          </Text>
+        )}
+
+        {!!courseSection && (
+          <Text style={[styles.metaText, { fontSize: isSmallPhone ? 12 : 13 }]}>
+            {courseSection}
+          </Text>
+        )}
+
+        <Text style={[styles.description, { fontSize: isSmallPhone ? 12 : 13 }]}>
+          No description available.
+        </Text>
       </View>
 
       <View style={styles.tabContainer}>
         <TouchableOpacity
-          style={[styles.tabItem, activeTab === "Materials" && styles.tabActive]}
-          onPress={() => setActiveTab("Materials")}
+          onPress={() => setActiveTab('Materials')}
+          style={[
+            styles.tab,
+            activeTab === 'Materials' && styles.tabActive,
+            { paddingVertical: isSmallPhone ? hp('1.2') : hp('2') },
+          ]}
         >
-          <MaterialCommunityIcons
-            name="book-multiple"
-            size={isMobile ? 20 : 22}
-            color={activeTab === "Materials" ? "#D32F2F" : "#333"}
-          />
-          <Text
-            style={[
-              styles.tabLabel,
-              activeTab === "Materials" && styles.tabLabelActive,
-            ]}
-          >
-            Materials ({materials.length})
-          </Text>
+          <View style={styles.tabContent}>
+            <Ionicons
+              name="document-text-outline"
+              size={16}
+              color={activeTab === 'Materials' ? '#D32F2F' : '#999'}
+            />
+            <Text
+              style={[
+                styles.tabText,
+                activeTab === 'Materials' && styles.tabTextActive,
+                { fontSize: isSmallPhone ? 12 : 13 },
+              ]}
+            >
+              Materials ({materials.length})
+            </Text>
+          </View>
         </TouchableOpacity>
 
         <TouchableOpacity
+          onPress={() => setActiveTab('Assignments')}
           style={[
-            styles.tabItem,
-            activeTab === "Assignments" && styles.tabActive,
+            styles.tab,
+            activeTab === 'Assignments' && styles.tabActive,
+            { paddingVertical: isSmallPhone ? hp('1.2') : hp('2') },
           ]}
-          onPress={() => setActiveTab("Assignments")}
         >
-          <MaterialCommunityIcons
-            name="clipboard-list"
-            size={isMobile ? 20 : 22}
-            color={activeTab === "Assignments" ? "#D32F2F" : "#333"}
-          />
-          <Text
-            style={[
-              styles.tabLabel,
-              activeTab === "Assignments" && styles.tabLabelActive,
-            ]}
-          >
-            Assignments ({assignments.length})
-          </Text>
+          <View style={styles.tabContent}>
+            <Ionicons
+              name="checkmark-circle-outline"
+              size={16}
+              color={activeTab === 'Assignments' ? '#D32F2F' : '#999'}
+            />
+            <Text
+              style={[
+                styles.tabText,
+                activeTab === 'Assignments' && styles.tabTextActive,
+                { fontSize: isSmallPhone ? 12 : 13 },
+              ]}
+            >
+              Assignments ({assignments.length})
+            </Text>
+          </View>
         </TouchableOpacity>
       </View>
 
-      {activeTab === "Materials" ? (
+      {activeTab === 'Materials' ? (
         <TeacherMaterialSection
           materials={materials}
           onCreate={openCreateModal}
@@ -1096,12 +1101,12 @@ const TeacherCourseDetail2 = ({
             <View style={styles.createHeaderRow}>
               <View style={styles.modalHeaderTextWrap}>
                 <Text style={styles.createTitle}>
-                  Create {activeTab === "Materials" ? "Material" : "Assignment"}
+                  Create {activeTab === 'Materials' ? 'Material' : 'Assignment'}
                 </Text>
                 <Text style={styles.modalSubtitle}>
-                  {activeTab === "Materials"
-                    ? "Add a new class material with optional file attachment."
-                    : "Create a new assignment and attach a file if needed."}
+                  {activeTab === 'Materials'
+                    ? 'Add a new class material with optional file attachment.'
+                    : 'Create a new assignment and attach a file if needed.'}
                 </Text>
               </View>
 
@@ -1111,27 +1116,27 @@ const TeacherCourseDetail2 = ({
                   resetCreateForm();
                 }}
               >
-                <MaterialCommunityIcons name="close" size={24} color="#000" />
+                <Ionicons name="close" size={24} color="#111" />
               </TouchableOpacity>
             </View>
 
             <ScrollView showsVerticalScrollIndicator={false}>
               <Text style={styles.sectionLabel}>
-                {activeTab === "Materials" ? "Title" : "Header"}
+                {activeTab === 'Materials' ? 'Title' : 'Header'}
               </Text>
               <TextInput
                 style={styles.inputBox}
                 placeholder={
-                  activeTab === "Materials"
-                    ? "Material Title"
-                    : "Enter Header"
+                  activeTab === 'Materials'
+                    ? 'Material Title'
+                    : 'Enter Header'
                 }
                 placeholderTextColor="#999"
                 value={formTitle}
                 onChangeText={setFormTitle}
               />
 
-              {activeTab === "Materials" ? (
+              {activeTab === 'Materials' ? (
                 <>
                   <Text style={styles.sectionLabel}>Week</Text>
                   <TextInput
@@ -1154,21 +1159,17 @@ const TeacherCourseDetail2 = ({
 
                   <Text style={styles.sectionLabel}>Attachment</Text>
                   <TouchableOpacity
-                    style={styles.uploadBtn}
+                    style={styles.primaryButtonWide}
                     onPress={handlePickFile}
                   >
-                    <MaterialCommunityIcons
-                      name="upload"
-                      size={20}
-                      color="#FFF"
-                    />
+                    <Ionicons name="cloud-upload-outline" size={20} color="#FFF" />
                     <Text style={styles.uploadBtnText}>Upload File</Text>
                   </TouchableOpacity>
 
                   {pickedFile?.name ? (
                     <View style={styles.filePreviewBox}>
-                      <MaterialCommunityIcons
-                        name="file-document-outline"
+                      <Ionicons
+                        name="document-text-outline"
                         size={22}
                         color="#D32F2F"
                       />
@@ -1236,32 +1237,24 @@ const TeacherCourseDetail2 = ({
                       }
                     >
                       {assignmentDisableRepositoryAfterDue ? (
-                        <MaterialCommunityIcons
-                          name="check"
-                          size={16}
-                          color="#FFF"
-                        />
+                        <Ionicons name="checkmark" size={16} color="#FFF" />
                       ) : null}
                     </TouchableOpacity>
                   </View>
 
                   <Text style={styles.sectionLabel}>Attachment</Text>
                   <TouchableOpacity
-                    style={styles.uploadBtn}
+                    style={styles.primaryButtonWide}
                     onPress={handlePickAssignmentFile}
                   >
-                    <MaterialCommunityIcons
-                      name="upload"
-                      size={20}
-                      color="#FFF"
-                    />
+                    <Ionicons name="cloud-upload-outline" size={20} color="#FFF" />
                     <Text style={styles.uploadBtnText}>Upload File</Text>
                   </TouchableOpacity>
 
                   {pickedAssignmentFile?.name ? (
                     <View style={styles.filePreviewBox}>
-                      <MaterialCommunityIcons
-                        name="file-document-outline"
+                      <Ionicons
+                        name="document-text-outline"
                         size={22}
                         color="#D32F2F"
                       />
@@ -1297,78 +1290,93 @@ const TeacherCourseDetail2 = ({
       </Modal>
 
       <Modal visible={showMaterialModal} transparent animationType="fade">
-        <View style={styles.modalOverlayCenter}>
-          <View
-            style={[
-              styles.modalCardElevated,
-              { width: isMobile ? Math.min(width - 28, 360) : 520 },
-            ]}
-          >
-            <View style={styles.createHeaderRow}>
-              <View style={styles.modalHeaderTextWrap}>
-                <Text style={styles.createTitle}>
-                  {selectedMaterial?.title || "Material"}
-                </Text>
-                <Text style={styles.modalSubtitle}>
-                  View the material details and open the uploaded file.
-                </Text>
-              </View>
-              <TouchableOpacity onPress={() => setShowMaterialModal(false)}>
-                <MaterialCommunityIcons name="close" size={24} color="#000" />
-              </TouchableOpacity>
-            </View>
+        <TouchableWithoutFeedback onPress={() => setShowMaterialModal(false)}>
+          <View style={styles.modalOverlay}>
+            <TouchableWithoutFeedback>
+              <View
+                style={[
+                  styles.materialDropdownModal,
+                  {
+                    top: isSmallPhone ? 70 : 80,
+                    right: isSmallPhone ? 14 : 20,
+                    width: isSmallPhone ? Math.min(width - 28, 340) : 360,
+                  },
+                ]}
+              >
+                <View style={styles.joinDropdownHeader}>
+                  <View style={styles.joinDropdownIconWrap}>
+                    <Ionicons
+                      name={getMaterialIconName(selectedMaterial?.fileType)}
+                      size={18}
+                      color="#D32F2F"
+                    />
+                  </View>
 
-            <Text style={styles.materialLabel}>Week</Text>
-            <Text style={styles.materialValue}>
-              {selectedMaterial?.week || "-"}
-            </Text>
+                  <View style={styles.joinDropdownHeaderText}>
+                    <Text style={styles.joinDropdownTitle}>
+                      {selectedMaterial?.title || 'Material'}
+                    </Text>
+                    <Text style={styles.joinDropdownSubtitle}>
+                      View this uploaded material or edit it.
+                    </Text>
+                  </View>
+                </View>
 
-            <Text style={styles.materialLabel}>Posted</Text>
-            <Text style={styles.materialValue}>
-              {selectedMaterial?.posted || "-"}
-            </Text>
-
-            <Text style={styles.materialLabel}>Uploaded File</Text>
-            {selectedMaterial?.fileName ? (
-              <View style={styles.materialFileRow}>
-                <MaterialCommunityIcons
-                  name="file-document-outline"
-                  size={24}
-                  color="#D32F2F"
-                />
-                <View style={styles.materialFileInfo}>
-                  <Text style={styles.materialFileName}>
-                    {selectedMaterial.fileName}
+                <Text style={styles.inputLabel}>Week</Text>
+                <View style={styles.infoBox}>
+                  <Text style={styles.infoBoxText}>
+                    {selectedMaterial?.week || '-'}
                   </Text>
+                </View>
+
+                <Text style={styles.inputLabel}>Posted</Text>
+                <View style={styles.infoBox}>
+                  <Text style={styles.infoBoxText}>
+                    {selectedMaterial?.posted || '-'}
+                  </Text>
+                </View>
+
+                <Text style={styles.inputLabel}>File Name</Text>
+                <View style={styles.infoBox}>
+                  <Text style={styles.infoBoxText}>
+                    {selectedMaterial?.fileName || 'No uploaded file'}
+                  </Text>
+                </View>
+
+                {!!selectedMaterial?.content && (
+                  <>
+                    <Text style={styles.inputLabel}>Description</Text>
+                    <View style={styles.infoBox}>
+                      <Text style={styles.infoBoxText}>
+                        {selectedMaterial.content}
+                      </Text>
+                    </View>
+                  </>
+                )}
+
+                <View style={styles.joinDropdownActions}>
                   <TouchableOpacity
-                    style={styles.openFileBtn}
-                    onPress={() => handleOpenUploadedFile(selectedMaterial.fileUri)}
+                    style={styles.secondaryButtonCompact}
+                    onPress={() => openUpdateMaterialModal(selectedMaterial)}
                   >
-                    <Text style={styles.openFileBtnText}>Open File</Text>
+                    <Text style={styles.secondaryButtonText}>Edit</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[
+                      styles.confirmButton,
+                      !selectedMaterial?.fileUri && styles.confirmButtonDisabled,
+                    ]}
+                    disabled={!selectedMaterial?.fileUri}
+                    onPress={() => handleOpenUploadedFile(selectedMaterial?.fileUri)}
+                  >
+                    <Text style={styles.confirmButtonText}>Open File</Text>
                   </TouchableOpacity>
                 </View>
               </View>
-            ) : (
-              <Text style={styles.noFileText}>No uploaded file</Text>
-            )}
-
-            <View style={styles.buttonRow}>
-              <TouchableOpacity
-                style={styles.secondaryButton}
-                onPress={() => openUpdateMaterialModal(selectedMaterial)}
-              >
-                <Text style={styles.secondaryButtonText}>Edit Material</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.primaryButton}
-                onPress={() => setShowMaterialModal(false)}
-              >
-                <Text style={styles.primaryButtonText}>Close</Text>
-              </TouchableOpacity>
-            </View>
+            </TouchableWithoutFeedback>
           </View>
-        </View>
+        </TouchableWithoutFeedback>
       </Modal>
 
       <Modal visible={showUpdateMaterialModal} transparent animationType="fade">
@@ -1394,7 +1402,7 @@ const TeacherCourseDetail2 = ({
                   resetCreateForm();
                 }}
               >
-                <MaterialCommunityIcons name="close" size={24} color="#000" />
+                <Ionicons name="close" size={24} color="#111" />
               </TouchableOpacity>
             </View>
 
@@ -1462,8 +1470,8 @@ const TeacherCourseDetail2 = ({
             ]}
           >
             <View style={styles.confirmIconWrap}>
-              <MaterialCommunityIcons
-                name="trash-can-outline"
+              <Ionicons
+                name="trash-outline"
                 size={34}
                 color="#D32F2F"
               />
@@ -1501,18 +1509,18 @@ const TeacherCourseDetail2 = ({
               styles.modalCardElevated,
               {
                 width: isMobile ? Math.min(width - 28, 340) : 360,
-                alignItems: "center",
+                alignItems: 'center',
               },
             ]}
           >
-            <MaterialCommunityIcons
+            <Ionicons
               name={
-                resultModalType === "success"
-                  ? "check-circle"
-                  : "close-circle"
+                resultModalType === 'success'
+                  ? 'checkmark-circle'
+                  : 'close-circle'
               }
               size={52}
-              color={resultModalType === "success" ? "#16A34A" : "#D32F2F"}
+              color={resultModalType === 'success' ? '#16A34A' : '#D32F2F'}
               style={{ marginBottom: 12 }}
             />
 
@@ -1521,7 +1529,7 @@ const TeacherCourseDetail2 = ({
             <Text style={styles.confirmMessage}>{resultModalMessage}</Text>
 
             <TouchableOpacity
-              style={[styles.primaryButton, { width: "100%", marginTop: 6 }]}
+              style={[styles.primaryButton, { width: '100%', marginTop: 6 }]}
               onPress={() => setResultModalVisible(false)}
             >
               <Text style={styles.primaryButtonText}>OK</Text>
@@ -1538,60 +1546,67 @@ export default TeacherCourseDetail2;
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#FFF",
+    backgroundColor: '#F5F5F5',
   },
 
-  redHeader: {
-    backgroundColor: "#D32F2F",
+  courseHeader: {
+    
+    backgroundColor: '#D32F2F',
   },
 
   headerTopRow: {
-    flexDirection: "row",
-    alignItems: "center",
+    
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: hp('0.5'),
   },
 
-  backBtn: {
-    marginRight: 8,
-    padding: 2,
+  backButton: {
+    paddingVertical: hp('0.5'),
   },
 
   headerInfo: {
     flex: 1,
   },
 
-  courseTitle: {
-    color: "#FFF",
-    fontWeight: "700",
+  courseCode: {
+    fontWeight: '600',
+    marginTop: 2,
   },
 
-  courseSubText: {
-    color: "rgba(255,255,255,0.95)",
-    marginTop: 4,
-    fontWeight: "600",
+  courseName: {
+    color: '#FFF',
+    fontWeight: '700',
+    marginBottom: hp('1'),
+  },
+
+  instructor: {
+    color: 'rgba(255,255,255,0.9)',
+    marginBottom: hp('0.6'),
+    fontWeight: '500',
   },
 
   metaText: {
-    color: "rgba(255,255,255,0.92)",
-    fontSize: 13,
-    marginTop: 2,
-    fontWeight: "500",
+    color: 'rgba(255,255,255,0.88)',
+    marginBottom: hp('0.6'),
+    fontWeight: '500',
   },
 
-  instructorText: {
-    color: "rgba(255,255,255,0.9)",
-    fontSize: 13,
-    marginTop: 4,
+  description: {
+    color: 'rgba(255,255,255,0.8)',
+    lineHeight: 20,
+    marginTop: hp('0.3'),
   },
 
   classCodeText: {
-    color: "rgba(255,255,255,0.92)",
+    color: 'rgba(255,255,255,0.92)',
     fontSize: 13,
-    fontWeight: "600",
+    fontWeight: '600',
   },
 
   classCodeRow: {
-    flexDirection: "row",
-    alignItems: "center",
+    flexDirection: 'row',
+    alignItems: 'center',
     marginTop: 6,
   },
 
@@ -1602,107 +1617,84 @@ const styles = StyleSheet.create({
   },
 
   tabContainer: {
-    flexDirection: "row",
+    flexDirection: 'row',
+    backgroundColor: '#FFF',
     borderBottomWidth: 1,
-    borderBottomColor: "#E5E5E5",
-    backgroundColor: "#FFF",
+    borderBottomColor: '#E0E0E0',
   },
 
-  tabItem: {
+  tab: {
     flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 14,
-    gap: 8,
+    paddingHorizontal: wp('2'),
+    alignItems: 'center',
+    borderBottomWidth: 3,
+    borderBottomColor: 'transparent',
   },
 
   tabActive: {
-    borderBottomWidth: 3,
-    borderBottomColor: "#D32F2F",
+    borderBottomColor: '#D32F2F',
   },
 
-  tabLabel: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#333",
+  tabContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
   },
 
-  tabLabelActive: {
-    color: "#D32F2F",
+  tabText: {
+    fontWeight: '600',
+    color: '#999',
+  },
+
+  tabTextActive: {
+    color: '#D32F2F',
   },
 
   modalOverlay: {
     flex: 1,
-    backgroundColor: "rgba(15,23,42,0.18)",
-    justifyContent: "center",
-    alignItems: "center",
-    paddingHorizontal: 16,
-  },
-
-  sidePanel: {
-    backgroundColor: "#FFF",
-    maxHeight: "88%",
-    borderRadius: 18,
-    padding: 20,
-    elevation: 8,
-    borderWidth: 1,
-    borderColor: "#EEE",
-  },
-
-  panelHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    marginBottom: 18,
-  },
-
-  panelTitle: {
-    fontSize: 20,
-    fontWeight: "700",
-    color: "#111",
+    backgroundColor: 'rgba(15, 23, 42, 0.18)',
   },
 
   modalOverlayCenter: {
     flex: 1,
-    backgroundColor: "rgba(15,23,42,0.18)",
-    justifyContent: "center",
-    alignItems: "center",
+    backgroundColor: 'rgba(15,23,42,0.18)',
+    justifyContent: 'center',
+    alignItems: 'center',
     paddingHorizontal: 16,
   },
 
-  createModalBox: {
-    backgroundColor: "#FFF",
-    borderRadius: 18,
-    padding: 20,
-    maxHeight: "85%",
-  },
-
-  materialModalBox: {
-    backgroundColor: "#FFF",
-    borderRadius: 18,
-    padding: 20,
-    maxHeight: "80%",
-  },
-
   modalCardElevated: {
-    backgroundColor: "#FFF",
+    backgroundColor: '#FFF',
     borderRadius: 24,
     padding: 22,
-    maxHeight: "88%",
+    maxHeight: '88%',
     borderWidth: 1,
-    borderColor: "#F1F1F1",
-    shadowColor: "#000",
+    borderColor: '#F1F1F1',
+    shadowColor: '#000',
     shadowOpacity: 0.12,
     shadowOffset: { width: 0, height: 10 },
     shadowRadius: 22,
     elevation: 10,
   },
 
+  materialDropdownModal: {
+    position: 'absolute',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 18,
+    borderWidth: 1,
+    borderColor: '#ECECEC',
+    shadowColor: '#000',
+    shadowOpacity: 0.14,
+    shadowRadius: 18,
+    elevation: 10,
+  },
+
   createHeaderRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     marginBottom: 15,
   },
 
@@ -1713,78 +1705,134 @@ const styles = StyleSheet.create({
 
   createTitle: {
     fontSize: 22,
-    fontWeight: "700",
-    color: "#111",
-    flex: 1,
-    marginRight: 12,
+    fontWeight: '700',
+    color: '#111',
   },
 
   modalSubtitle: {
     fontSize: 13,
-    color: "#777",
+    color: '#777',
     marginTop: 4,
     lineHeight: 20,
   },
 
+  joinDropdownHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+    marginBottom: 18,
+  },
+
+  joinDropdownHeaderText: {
+    flex: 1,
+  },
+
+  joinDropdownIconWrap: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    backgroundColor: '#FFF1F1',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  joinDropdownTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#111827',
+    marginBottom: 3,
+  },
+
+  joinDropdownSubtitle: {
+    fontSize: 13,
+    lineHeight: 18,
+    color: '#6B7280',
+  },
+
   sectionLabel: {
     fontSize: 13,
-    fontWeight: "700",
-    color: "#444",
+    fontWeight: '700',
+    color: '#444',
     marginBottom: 8,
     marginTop: 4,
   },
 
+  inputLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#374151',
+    marginBottom: 8,
+  },
+
   inputBox: {
     borderWidth: 1,
-    borderColor: "#DDD",
+    borderColor: '#DDD',
     borderRadius: 12,
     paddingHorizontal: 14,
     height: 48,
     marginBottom: 12,
     fontSize: 14,
-    color: "#333",
-    backgroundColor: "#FFF",
+    color: '#333',
+    backgroundColor: '#FFF',
   },
 
   textAreaBox: {
     borderWidth: 1,
-    borderColor: "#DDD",
+    borderColor: '#DDD',
     borderRadius: 12,
     paddingHorizontal: 14,
     paddingTop: 14,
     paddingBottom: 14,
     marginBottom: 12,
     fontSize: 14,
-    color: "#333",
-    backgroundColor: "#FFF",
+    color: '#333',
+    backgroundColor: '#FFF',
     minHeight: 96,
-    textAlignVertical: "top",
+    textAlignVertical: 'top',
   },
 
-  uploadBtn: {
-    backgroundColor: "#D32F2F",
+  infoBox: {
+    minHeight: 48,
+    borderWidth: 1,
+    borderColor: '#DADDE2',
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    backgroundColor: '#FAFAFA',
+    marginBottom: 16,
+    justifyContent: 'center',
+  },
+
+  infoBoxText: {
+    fontSize: 14,
+    color: '#111827',
+    lineHeight: 20,
+  },
+
+  primaryButtonWide: {
+    backgroundColor: '#D32F2F',
     borderRadius: 12,
     paddingVertical: 12,
     paddingHorizontal: 14,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
     gap: 8,
     marginBottom: 12,
   },
 
   uploadBtnText: {
-    color: "#FFF",
-    fontWeight: "700",
+    color: '#FFF',
+    fontWeight: '700',
     fontSize: 14,
   },
 
   filePreviewBox: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#F9F9F9",
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F9F9F9',
     borderWidth: 1,
-    borderColor: "#EEE",
+    borderColor: '#EEE',
     borderRadius: 12,
     padding: 12,
     marginBottom: 12,
@@ -1792,190 +1840,22 @@ const styles = StyleSheet.create({
 
   filePreviewText: {
     marginLeft: 10,
-    color: "#333",
+    color: '#333',
     flex: 1,
     fontSize: 14,
-  },
-
-  materialLabel: {
-    fontSize: 13,
-    color: "#777",
-    marginTop: 8,
-    marginBottom: 4,
-    fontWeight: "600",
-  },
-
-  materialValue: {
-    fontSize: 15,
-    color: "#222",
-    marginBottom: 8,
-  },
-
-  materialFileRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#FAFAFA",
-    borderWidth: 1,
-    borderColor: "#EEE",
-    borderRadius: 12,
-    padding: 12,
-    marginTop: 4,
-    marginBottom: 18,
-  },
-
-  materialFileInfo: {
-    flex: 1,
-    marginLeft: 10,
-  },
-
-  materialFileName: {
-    fontSize: 15,
-    color: "#222",
-    fontWeight: "600",
-    marginBottom: 8,
-  },
-
-  openFileBtn: {
-    backgroundColor: "#D32F2F",
-    alignSelf: "flex-start",
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 10,
-  },
-
-  openFileBtnText: {
-    color: "#FFF",
-    fontWeight: "700",
-    fontSize: 13,
-  },
-
-  noFileText: {
-    fontSize: 14,
-    color: "#777",
-    marginBottom: 18,
-  },
-
-  deleteButton: {
-    borderWidth: 1,
-    borderColor: "#D32F2F",
-    borderRadius: 10,
-    padding: 11,
-    alignItems: "center",
-    marginBottom: 10,
-  },
-
-  deleteButtonText: {
-    color: "#D32F2F",
-    fontSize: 13,
-    fontWeight: "600",
-  },
-
-  updateButton: {
-    backgroundColor: "#D32F2F",
-    borderRadius: 10,
-    padding: 12,
-    alignItems: "center",
-    marginTop: 5,
-    minWidth: 120,
-  },
-
-  updateButtonText: {
-    color: "#FFF",
-    fontWeight: "700",
-    fontSize: 15,
-  },
-
-  buttonRow: {
-    flexDirection: "row",
-    gap: 10,
-    marginTop: 8,
-  },
-
-  secondaryButton: {
-    flex: 1,
-    borderWidth: 1.5,
-    borderColor: "#D32F2F",
-    borderRadius: 12,
-    paddingVertical: 12,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#FFF",
-  },
-
-  secondaryButtonText: {
-    color: "#D32F2F",
-    fontWeight: "700",
-    fontSize: 14,
-  },
-
-  primaryButton: {
-    flex: 1,
-    backgroundColor: "#D32F2F",
-    borderRadius: 12,
-    paddingVertical: 12,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  primaryButtonText: {
-    color: "#FFF",
-    fontWeight: "700",
-    fontSize: 14,
-  },
-
-  dangerButtonFilled: {
-    flex: 1,
-    backgroundColor: "#D32F2F",
-    borderRadius: 12,
-    paddingVertical: 12,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  dangerButtonFilledText: {
-    color: "#FFF",
-    fontWeight: "700",
-    fontSize: 14,
-  },
-
-  confirmIconWrap: {
-    width: 68,
-    height: 68,
-    borderRadius: 34,
-    backgroundColor: "#FDECEC",
-    alignItems: "center",
-    justifyContent: "center",
-    alignSelf: "center",
-    marginBottom: 14,
-  },
-
-  confirmTitle: {
-    fontSize: 22,
-    fontWeight: "800",
-    color: "#111",
-    textAlign: "center",
-    marginBottom: 8,
-  },
-
-  confirmMessage: {
-    fontSize: 14,
-    color: "#666",
-    textAlign: "center",
-    lineHeight: 22,
-    marginBottom: 20,
   },
 
   checkboxRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     marginBottom: 12,
     gap: 10,
   },
 
   checkboxLabel: {
     fontSize: 14,
-    color: "#333",
+    color: '#333',
     flex: 1,
   },
 
@@ -1983,14 +1863,126 @@ const styles = StyleSheet.create({
     width: 24,
     height: 24,
     borderWidth: 1.5,
-    borderColor: "#D32F2F",
+    borderColor: '#D32F2F',
     borderRadius: 6,
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: "#FFF",
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#FFF',
   },
 
   checkboxBoxChecked: {
-    backgroundColor: "#D32F2F",
+    backgroundColor: '#D32F2F',
+  },
+
+  joinDropdownActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 10,
+  },
+
+  buttonRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 8,
+  },
+
+  secondaryButton: {
+    flex: 1,
+    borderWidth: 1.5,
+    borderColor: '#D32F2F',
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FFF',
+  },
+
+  secondaryButtonCompact: {
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#D32F2F',
+    backgroundColor: '#FFF',
+  },
+
+  secondaryButtonText: {
+    color: '#D32F2F',
+    fontWeight: '700',
+    fontSize: 14,
+  },
+
+  primaryButton: {
+    flex: 1,
+    backgroundColor: '#D32F2F',
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  primaryButtonText: {
+    color: '#FFF',
+    fontWeight: '700',
+    fontSize: 14,
+  },
+
+  confirmButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 11,
+    borderRadius: 12,
+    backgroundColor: '#D32F2F',
+  },
+
+  confirmButtonDisabled: {
+    backgroundColor: '#F0A7A7',
+  },
+
+  confirmButtonText: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+    fontSize: 13,
+  },
+
+  dangerButtonFilled: {
+    flex: 1,
+    backgroundColor: '#D32F2F',
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  dangerButtonFilledText: {
+    color: '#FFF',
+    fontWeight: '700',
+    fontSize: 14,
+  },
+
+  confirmIconWrap: {
+    width: 68,
+    height: 68,
+    borderRadius: 34,
+    backgroundColor: '#FDECEC',
+    alignItems: 'center',
+    justifyContent: 'center',
+    alignSelf: 'center',
+    marginBottom: 14,
+  },
+
+  confirmTitle: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: '#111',
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+
+  confirmMessage: {
+    fontSize: 14,
+    color: '#666',
+    textAlign: 'center',
+    lineHeight: 22,
+    marginBottom: 20,
   },
 });

@@ -1,3 +1,13 @@
+import Constants from 'expo-constants';
+import {
+  getDatabase,
+  off,
+  onValue,
+  push,
+  ref,
+  serverTimestamp,
+  set,
+} from 'firebase/database';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { DimensionValue } from 'react-native';
 import {
@@ -16,9 +26,32 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
+import { auth } from '../../firebaseConfig';
 
-const CURRENT_USER = 'Jade Lisondra';
 const DEFAULT_AVATAR = require('../../assets/images/default_profile.png');
+const RTDB_URL = 'https://parseit2-4b26d-default-rtdb.firebaseio.com/';
+
+function getApiBaseUrl() {
+  if (Platform.OS === 'web') {
+    return 'http://localhost:5000';
+  }
+
+  const possibleHost =
+    Constants.expoConfig?.hostUri ||
+    Constants.manifest2?.extra?.expoGo?.debuggerHost ||
+    '';
+
+  const host = possibleHost.split(':')[0];
+
+  if (host) {
+    return `http://${host}:5000`;
+  }
+
+  return 'http://192.168.1.5:5000';
+}
+
+const API_BASE_URL = getApiBaseUrl();
+const database = getDatabase(auth.app, RTDB_URL);
 
 type MessengerCourse = {
   id: string;
@@ -48,32 +81,29 @@ type Message = {
   fromMe: boolean;
   sender: string;
   text: string;
+  createdAt?: number | null;
+  type?: 'system' | 'text';
 };
-
-const ROOM_MEMBERS = [
-  CURRENT_USER,
-  'Abai Clipord',
-  'Abai Clipord 2',
-  'Abai Clipord 3',
-  'Lude Lisendra',
-];
-
-const INITIAL_MESSAGES: Record<string, Message[]> = {};
 
 const Messenger = ({
   searchQuery = '',
   onConversationActiveChange,
   onBack,
   courses = [],
-  currentUser = CURRENT_USER,
+  currentUser,
+  currentUserName,
 }: {
   searchQuery?: string;
   onConversationActiveChange?: (isActive: boolean) => void;
   onBack?: () => void;
   courses?: MessengerCourse[];
-  currentUser?: string;
+  currentUser: string;
+  currentUserName: string;
 }) => {
   const { width, height } = useWindowDimensions();
+  const flatListRef = useRef<FlatList<Message>>(null);
+  const infoButtonRef = useRef<View>(null);
+  const messageRefs = useRef<Record<string, View | null>>({});
 
   const isTinyPhone = width < 360;
   const isMobile = width < 768;
@@ -84,83 +114,289 @@ const Messenger = ({
   const scale = isDesktop ? 1.15 : isTablet ? 1.05 : 1;
 
   const messageMaxWidth: DimensionValue =
-    isDesktop ? '58%' : isTablet ? '66%' : isTinyPhone ? '88%' : '80%';
+    isDesktop ? '56%' : isTablet ? '64%' : isTinyPhone ? '88%' : '80%';
 
   const sendWidth: DimensionValue =
     isDesktop ? 96 : isTablet ? 84 : isTinyPhone ? 54 : 72;
 
-  const courseConversations = useMemo<Conversation[]>(() => {
-    return courses.map((course) => ({
-      id: `class-${course.id}`,
-      classId: course.id,
-      name: `${course.name} - ${course.semester} (${course.schoolYear})`,
-      last: 'Class conversation created.',
-      avatar: DEFAULT_AVATAR,
-      time: 'Now',
-      isRoom: true,
-      isCreatedRoom: false,
-      admin: course.instructor,
-      members: [course.instructor, currentUser],
-      section: course.section,
-    }));
-  }, [courses, currentUser]);
-
-  const [conversations, setConversations] = useState<Conversation[]>(courseConversations);
+  const [conversations, setConversations] = useState<Conversation[]>([]);
   const [selected, setSelected] = useState<Conversation | null>(null);
   const [messageText, setMessageText] = useState('');
   const [messagesByConversation, setMessagesByConversation] =
-    useState<Record<string, Message[]>>(INITIAL_MESSAGES);
+    useState<Record<string, Message[]>>({});
 
   const [showCreateRoomModal, setShowCreateRoomModal] = useState(false);
   const [showMembersModal, setShowMembersModal] = useState(false);
   const [showInfoMenu, setShowInfoMenu] = useState(false);
 
   const [roomName, setRoomName] = useState('');
-  const [checkedMembers, setCheckedMembers] = useState<string[]>([currentUser]);
+  const [checkedMembers, setCheckedMembers] = useState<string[]>([]);
   const [anchor, setAnchor] = useState({ x: 0, y: 0 });
 
-  const infoButtonRef = useRef<View>(null);
+  const [hoveredMessageId, setHoveredMessageId] = useState<string | null>(null);
+  const [hoveredMessageTime, setHoveredMessageTime] = useState('');
+  const [tooltipPosition, setTooltipPosition] = useState({ x: 0, y: 0 });
+
+  useEffect(() => {
+    setCheckedMembers(currentUserName ? [currentUserName] : []);
+  }, [currentUserName]);
 
   useEffect(() => {
     onConversationActiveChange?.(false);
   }, [onConversationActiveChange]);
 
-  useEffect(() => {
-    setConversations((prev) => {
-      const createdRooms = prev.filter((conversation) => conversation.isCreatedRoom);
-      return [...createdRooms, ...courseConversations];
+  const formatConversationTime = (timestamp?: number | null) => {
+    if (!timestamp) return 'Now';
+    return new Date(timestamp).toLocaleTimeString([], {
+      hour: 'numeric',
+      minute: '2-digit',
     });
+  };
 
-    setMessagesByConversation((prev) => {
-      const next = { ...prev };
+  const formatTooltipTime = (timestamp?: number | null) => {
+    if (!timestamp) return '';
+    return new Date(timestamp).toLocaleString([], {
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+    });
+  };
 
-      courseConversations.forEach((conversation) => {
-        if (!next[conversation.id]) {
-          next[conversation.id] = [
+  const isSystemMessage = (item: any) => {
+    return (
+      item?.type === 'system' ||
+      item?.senderRole === 'system' ||
+      item?.isSystem === true ||
+      (!item?.senderName &&
+        typeof item?.text === 'string' &&
+        item.text.toLowerCase().includes('conversation created'))
+    );
+  };
+
+  const resolveSenderName = (item: any) => {
+    if (isSystemMessage(item)) return 'System';
+
+    if (item?.senderName && String(item.senderName).trim()) {
+      return String(item.senderName).trim();
+    }
+
+    if (item?.displayName && String(item.displayName).trim()) {
+      return String(item.displayName).trim();
+    }
+
+    return 'User';
+  };
+
+  const resolveCreatedAt = (item: any) => {
+    if (typeof item?.createdAt === 'number') return item.createdAt;
+    if (typeof item?.timestamp === 'number') return item.timestamp;
+    if (typeof item?.sentAt === 'number') return item.sentAt;
+
+    if (typeof item?.createdAt?.seconds === 'number') {
+      return item.createdAt.seconds * 1000;
+    }
+
+    if (typeof item?.createdAt === 'string') {
+      const parsed = Date.parse(item.createdAt);
+      return Number.isNaN(parsed) ? null : parsed;
+    }
+
+    if (typeof item?.sentAt === 'string') {
+      const parsed = Date.parse(item.sentAt);
+      return Number.isNaN(parsed) ? null : parsed;
+    }
+
+    if (typeof item?.timestamp === 'string') {
+      const parsed = Date.parse(item.timestamp);
+      return Number.isNaN(parsed) ? null : parsed;
+    }
+
+    return null;
+  };
+
+  const normalizeMessages = (rawMessages: any[]) => {
+    return rawMessages
+      .map((item: any) => {
+        const createdAt = resolveCreatedAt(item);
+        const senderName = resolveSenderName(item);
+        const system = isSystemMessage(item);
+
+        const fromMe =
+          !system &&
+          (item?.senderUid === currentUser ||
+            item?.senderId === currentUser ||
+            item?.senderIdentifier === currentUser ||
+            senderName.toLowerCase() === currentUserName.toLowerCase());
+
+        return {
+          id: String(item?.id || item?.key || `msg-${Math.random()}`),
+          fromMe,
+          sender: senderName,
+          text: item?.text || '',
+          createdAt,
+          type: system ? 'system' : 'text',
+        } as Message;
+      })
+      .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+  };
+
+  useEffect(() => {
+    const loadConversations = async () => {
+      try {
+        const response = await fetch(
+          `${API_BASE_URL}/messenger-conversations?role=student&userId=${encodeURIComponent(
+            currentUser
+          )}`
+        );
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data?.error || 'Failed to load conversations.');
+        }
+
+        const mappedConversations: Conversation[] = (Array.isArray(data) ? data : []).map(
+          (item: any) => ({
+            id: item.id,
+            classId: item.classId,
+            name:
+              item.className && item.semester && item.schoolYear
+                ? `${item.className} - ${item.semester} (${item.schoolYear})`
+                : item.className || item.name || 'Conversation',
+            last: item.lastMessage || 'Conversation created.',
+            avatar: DEFAULT_AVATAR,
+            time: 'Now',
+            isRoom: true,
+            isCreatedRoom: false,
+            admin: item.instructorName || item.ownerName || item.className || 'Teacher',
+            members: Array.isArray(item.participants)
+              ? item.participants
+                  .map((participant: any) => participant?.name)
+                  .filter(Boolean)
+              : [],
+            section: item.section,
+          })
+        );
+
+        setConversations(mappedConversations);
+
+        const seededMessages: Record<string, Message[]> = {};
+        mappedConversations.forEach((conversation) => {
+          seededMessages[conversation.id] = [
             {
-              id: `msg-${conversation.id}`,
+              id: `seed-${conversation.id}`,
               fromMe: false,
-              sender: conversation.admin || conversation.name,
-              text: `${conversation.name} conversation has been created.`,
+              sender: 'System',
+              text: `Conversation created for class ${conversation.name}.`,
+              createdAt: Date.now(),
+              type: 'system',
             },
           ];
+        });
+
+        setMessagesByConversation(seededMessages);
+      } catch (error) {
+        console.error('Load conversations error:', error);
+      }
+    };
+
+    if (currentUser) {
+      loadConversations();
+    }
+  }, [currentUser, currentUserName, courses]);
+
+  useEffect(() => {
+    if (!selected) return;
+
+    const conversationMessagesRef = ref(database, `messenger/${selected.id}/messages`);
+
+    const handleSnapshot = async (snapshot: any) => {
+      try {
+        const realtimeRows = snapshot.exists()
+          ? Object.entries(snapshot.val() || {}).map(([key, value]) => ({
+              ...(value as any),
+              key,
+            }))
+          : [];
+
+        let backendRows: any[] = [];
+
+        try {
+          const response = await fetch(
+            `${API_BASE_URL}/messenger-messages/${selected.id}`
+          );
+
+          const data = await response.json();
+
+          if (response.ok) {
+            backendRows = Array.isArray(data) ? data : [];
+          } else {
+            console.error('Failed to load backend messages:', data?.error);
+          }
+        } catch (fetchError) {
+          console.error('Backend messages fetch error:', fetchError);
         }
-      });
 
-      return next;
-    });
+        const mergedMap = new Map<string, any>();
 
-    setSelected((prev) => {
-      if (!prev) return prev;
+        [...backendRows, ...realtimeRows].forEach((item: any) => {
+          const key =
+            item?.id ||
+            item?.key ||
+            `${item?.senderId || item?.senderName || 'unknown'}-${item?.text || ''}-${resolveCreatedAt(item) || ''}`;
 
-      const matchedCourseConversation = courseConversations.find(
-        (item) => item.id === prev.id
-      );
+          if (!mergedMap.has(String(key))) {
+            mergedMap.set(String(key), item);
+          }
+        });
 
-      if (matchedCourseConversation) return matchedCourseConversation;
-      return prev;
-    });
-  }, [courseConversations]);
+        const mergedMessages = normalizeMessages(Array.from(mergedMap.values()));
+
+        setMessagesByConversation((prev) => ({
+          ...prev,
+          [selected.id]: mergedMessages.length
+            ? mergedMessages
+            : [
+                {
+                  id: `seed-${selected.id}`,
+                  fromMe: false,
+                  sender: 'System',
+                  text: `Conversation created for class ${selected.name}.`,
+                  createdAt: Date.now(),
+                  type: 'system',
+                },
+              ],
+        }));
+
+        const lastMessage = mergedMessages[mergedMessages.length - 1];
+        if (lastMessage) {
+          setConversations((prev) =>
+            prev.map((conversation) =>
+              conversation.id === selected.id
+                ? {
+                    ...conversation,
+                    last:
+                      lastMessage.type === 'system'
+                        ? lastMessage.text
+                        : lastMessage.text || 'Sent a message',
+                    time: formatConversationTime(lastMessage.createdAt),
+                  }
+                : conversation
+            )
+          );
+        }
+      } catch (error) {
+        console.error('Load messages error:', error);
+      }
+    };
+
+    onValue(conversationMessagesRef, handleSnapshot);
+
+    return () => {
+      off(conversationMessagesRef, 'value', handleSnapshot);
+    };
+  }, [selected, currentUser, currentUserName]);
 
   const filtered = useMemo(() => {
     return conversations.filter(
@@ -172,17 +408,35 @@ const Messenger = ({
 
   const currentMessages = selected ? messagesByConversation[selected.id] || [] : [];
 
+  useEffect(() => {
+    if (!selected || currentMessages.length === 0) return;
+
+    const timer = setTimeout(() => {
+      flatListRef.current?.scrollToEnd({ animated: false });
+    }, 80);
+
+    return () => clearTimeout(timer);
+  }, [selected?.id]);
+
+  useEffect(() => {
+    if (!selected || currentMessages.length === 0) return;
+
+    const timer = setTimeout(() => {
+      flatListRef.current?.scrollToEnd({ animated: true });
+    }, 80);
+
+    return () => clearTimeout(timer);
+  }, [currentMessages.length, selected?.id]);
+
   const selectedConversationMembers =
     selected?.members && selected.members.length > 0
       ? selected.members
-      : selected
-      ? [selected.name]
       : [];
 
   const availableRoomMembers = useMemo(() => {
     const baseMembers = selected?.members || [];
-    return Array.from(new Set([currentUser, ...baseMembers, ...ROOM_MEMBERS]));
-  }, [selected, currentUser]);
+    return Array.from(new Set([currentUserName, ...baseMembers].filter(Boolean)));
+  }, [selected, currentUserName]);
 
   const sizes = {
     sidebarWidth: isDesktop ? Math.min(width * 0.28, 380) : isTablet ? 320 : width,
@@ -192,11 +446,11 @@ const Messenger = ({
     backText: isTinyPhone ? 11 : 12,
     headerIcon: isDesktop ? 22 : isTablet ? 20 : 18,
 
-    listAvatar: isDesktop ? 52 : isTablet ? 48 : isTinyPhone ? 38 : 42,
+    listAvatar: isDesktop ? 50 : isTablet ? 46 : isTinyPhone ? 38 : 42,
     listName: isDesktop ? 15 : isTablet ? 14 : isTinyPhone ? 12 : 13,
     listTime: isDesktop ? 12 : isTablet ? 11 : 10,
     listLast: isDesktop ? 13 : isTablet ? 12 : isTinyPhone ? 11 : 12,
-    listRowVertical: isDesktop ? 14 : isTablet ? 12 : isTinyPhone ? 8 : 10,
+    listRowVertical: isDesktop ? 12 : isTablet ? 11 : isTinyPhone ? 8 : 10,
 
     bubbleText: isDesktop ? 13 : isTablet ? 12 : isTinyPhone ? 11 : 12,
     senderName: isDesktop ? 11 : isTablet ? 10 : 9,
@@ -213,14 +467,6 @@ const Messenger = ({
     inputGap: isDesktop ? 12 : isTablet ? 10 : 8,
   };
 
-  const getCurrentTimeLabel = () => {
-    const now = new Date();
-    return now.toLocaleTimeString([], {
-      hour: 'numeric',
-      minute: '2-digit',
-    });
-  };
-
   const handleSelectConversation = (item: Conversation) => {
     setSelected(item);
     onConversationActiveChange?.(true);
@@ -233,22 +479,26 @@ const Messenger = ({
     onConversationActiveChange?.(false);
   };
 
-  const handleSend = () => {
+  const handleSend = async () => {
     const trimmed = messageText.trim();
     if (!trimmed || !selected) return;
 
-    const newMessage: Message = {
-      id: `${selected.id}-${Date.now()}`,
+    const createdAt = Date.now();
+
+    const optimisticMessage: Message = {
+      id: `${selected.id}-${createdAt}`,
       fromMe: true,
-      sender: 'You',
+      sender: currentUserName,
       text: trimmed,
+      createdAt,
+      type: 'text',
     };
 
-    const updatedTime = getCurrentTimeLabel();
+    const updatedTime = formatConversationTime(createdAt);
 
     setMessagesByConversation((prev) => ({
       ...prev,
-      [selected.id]: [...(prev[selected.id] || []), newMessage],
+      [selected.id]: [...(prev[selected.id] || []), optimisticMessage],
     }));
 
     setConversations((prev) =>
@@ -274,10 +524,46 @@ const Messenger = ({
     );
 
     setMessageText('');
+
+    try {
+      const newMessageRef = push(ref(database, `messenger/${selected.id}/messages`));
+
+      await set(newMessageRef, {
+        id: newMessageRef.key,
+        text: trimmed,
+        senderName: currentUserName,
+        senderId: currentUser,
+        senderUid: currentUser,
+        senderRole: 'student',
+        createdAt: serverTimestamp(),
+        type: 'text',
+      });
+    } catch (error) {
+      console.error('Realtime send message error:', error);
+    }
+
+    try {
+      await fetch(`${API_BASE_URL}/messenger-send-message`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          conversationId: selected.id,
+          text: trimmed,
+          senderName: currentUserName,
+          senderId: currentUser,
+          senderUid: currentUser,
+          senderRole: 'student',
+        }),
+      });
+    } catch (error) {
+      console.error('Send message sync error:', error);
+    }
   };
 
   const toggleMember = (member: string) => {
-    if (member === currentUser) return;
+    if (member === currentUserName) return;
 
     setCheckedMembers((prev) =>
       prev.includes(member) ? prev.filter((m) => m !== member) : [...prev, member]
@@ -309,7 +595,7 @@ const Messenger = ({
     if (selected?.isCreatedRoom) return;
 
     setShowInfoMenu(false);
-    setCheckedMembers([currentUser]);
+    setCheckedMembers(currentUserName ? [currentUserName] : []);
     setRoomName('');
     setShowCreateRoomModal(true);
   };
@@ -325,16 +611,17 @@ const Messenger = ({
 
     const conversationName = `${trimmedRoomName} - ${selected.name}`;
     const newConversationId = `room-${Date.now()}`;
-    const nowLabel = getCurrentTimeLabel();
+    const nowLabel = formatConversationTime(Date.now());
 
-    // Only include explicitly selected members + current user
-    const roomMembers = Array.from(new Set([...checkedMembers, currentUser]));
+    const roomMembers = Array.from(new Set([...checkedMembers, currentUserName].filter(Boolean)));
 
     const systemMessage: Message = {
       id: `msg-${Date.now()}`,
       fromMe: false,
-      sender: conversationName,
+      sender: 'System',
       text: 'Discussion room created.',
+      createdAt: Date.now(),
+      type: 'system',
     };
 
     const newConversation: Conversation = {
@@ -346,7 +633,7 @@ const Messenger = ({
       isRoom: true,
       isCreatedRoom: true,
       members: roomMembers,
-      admin: currentUser,
+      admin: currentUserName,
       classId: selected.classId,
       section: selected.section,
     };
@@ -363,7 +650,30 @@ const Messenger = ({
 
     setShowCreateRoomModal(false);
     setRoomName('');
-    setCheckedMembers([currentUser]);
+    setCheckedMembers(currentUserName ? [currentUserName] : []);
+  };
+
+  const showTimeTooltip = (message: Message) => {
+    const target = messageRefs.current[message.id];
+    if (!target || !message.createdAt) return;
+
+    target.measureInWindow((x, y, measuredWidth) => {
+      const tooltipWidth = 150;
+      const left = Math.max(
+        8,
+        Math.min(x + measuredWidth / 2 - tooltipWidth / 2, width - tooltipWidth - 8)
+      );
+      const top = Math.max(12, y - 34);
+
+      setHoveredMessageId(message.id);
+      setHoveredMessageTime(formatTooltipTime(message.createdAt));
+      setTooltipPosition({ x: left, y: top });
+    });
+  };
+
+  const hideTimeTooltip = () => {
+    setHoveredMessageId(null);
+    setHoveredMessageTime('');
   };
 
   const renderConversationList = () => (
@@ -372,8 +682,6 @@ const Messenger = ({
         styles.sidebar,
         isSplitView && {
           width: sizes.sidebarWidth,
-          borderRightWidth: 1,
-          borderRightColor: '#e7e7e7',
         },
       ]}
     >
@@ -393,22 +701,23 @@ const Messenger = ({
       <FlatList
         data={filtered}
         keyExtractor={(item) => item.id}
-        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.sidebarListContent}
+        showsVerticalScrollIndicator={true}
         renderItem={({ item }) => {
           const active = selected?.id === item.id;
 
           return (
             <TouchableOpacity
               style={[
-                styles.convRow,
+                styles.convCard,
                 {
                   paddingHorizontal: sizes.horizontalPadding,
                   paddingVertical: sizes.listRowVertical,
                 },
-                active && styles.convRowActive,
+                active && styles.convCardActive,
               ]}
               onPress={() => handleSelectConversation(item)}
-              activeOpacity={0.85}
+              activeOpacity={0.88}
             >
               <Image
                 source={item.avatar}
@@ -496,44 +805,76 @@ const Messenger = ({
     </View>
   );
 
-  const renderMessage = ({ item }: { item: Message }) => (
-    <View
-      style={[
-        styles.messageRow,
-        {
-          marginBottom: sizes.messageGap,
-          maxWidth: sizes.messageMaxWidth,
-        },
-        item.fromMe ? styles.messageRowMe : styles.messageRowThem,
-      ]}
-    >
-      <Text
-        style={[
-          styles.senderName,
-          { fontSize: sizes.senderName },
-          item.fromMe ? styles.senderNameMe : styles.senderNameThem,
-        ]}
-      >
-        {item.sender}
-      </Text>
+  const renderMessage = ({ item }: { item: Message }) => {
+    if (item.type === 'system') {
+      return (
+        <View style={styles.systemRow}>
+          <View style={styles.systemBubble}>
+            <Text style={styles.systemBubbleText}>{item.text}</Text>
+          </View>
+        </View>
+      );
+    }
 
+    return (
       <View
         style={[
-          styles.bubble,
-          item.fromMe ? styles.bubbleMe : styles.bubbleThem,
+          styles.messageRow,
           {
-            paddingHorizontal: isTinyPhone ? 10 : 12,
-            paddingVertical: isTinyPhone ? 8 : 10,
-            borderRadius: isTinyPhone ? 10 : 12,
+            marginBottom: sizes.messageGap,
+            maxWidth: sizes.messageMaxWidth,
           },
+          item.fromMe ? styles.messageRowMe : styles.messageRowThem,
         ]}
       >
-        <Text style={[styles.bubbleText, { fontSize: sizes.bubbleText }]}>
-          {item.text}
-        </Text>
+        {!item.fromMe ? (
+          <Text
+            style={[
+              styles.senderName,
+              { fontSize: sizes.senderName },
+              styles.senderNameThem,
+            ]}
+          >
+            {item.sender}
+          </Text>
+        ) : null}
+
+        <Pressable
+          ref={(node) => {
+            messageRefs.current[item.id] = node;
+          }}
+          collapsable={false}
+          onHoverIn={Platform.OS === 'web' ? () => showTimeTooltip(item) : undefined}
+          onHoverOut={Platform.OS === 'web' ? hideTimeTooltip : undefined}
+          onLongPress={() => showTimeTooltip(item)}
+          onPressOut={Platform.OS !== 'web' ? hideTimeTooltip : undefined}
+          delayLongPress={220}
+        >
+          <View
+            style={[
+              styles.bubble,
+              item.fromMe ? styles.bubbleMe : styles.bubbleThem,
+              {
+                paddingHorizontal: isTinyPhone ? 10 : 12,
+                paddingVertical: isTinyPhone ? 8 : 10,
+                borderRadius: isTinyPhone ? 10 : 16,
+              },
+            ]}
+          >
+            <Text
+              style={[
+                styles.bubbleText,
+                { fontSize: sizes.bubbleText },
+                item.fromMe && styles.bubbleTextMe,
+              ]}
+            >
+              {item.text}
+            </Text>
+          </View>
+        </Pressable>
       </View>
-    </View>
-  );
+    );
+  };
 
   const renderInfoMenu = () => {
     const menuWidth = isMobile ? 180 : 200;
@@ -643,7 +984,7 @@ const Messenger = ({
             </View>
 
             <ScrollView
-              showsVerticalScrollIndicator={false}
+              showsVerticalScrollIndicator={true}
               contentContainerStyle={styles.professionalModalScrollContent}
             >
               <View style={styles.professionalSection}>
@@ -689,7 +1030,7 @@ const Messenger = ({
                 <View style={styles.professionalMemberList}>
                   {availableRoomMembers.map((member, index) => {
                     const checked = checkedMembers.includes(member);
-                    const isCurrentUser = member === currentUser;
+                    const isCurrentUser = member === currentUserName;
 
                     return (
                       <TouchableOpacity
@@ -801,7 +1142,7 @@ const Messenger = ({
             </View>
 
             <ScrollView
-              showsVerticalScrollIndicator={false}
+              showsVerticalScrollIndicator={true}
               contentContainerStyle={styles.professionalModalScrollContent}
             >
               {selected?.admin && (
@@ -817,7 +1158,7 @@ const Messenger = ({
               <View style={styles.professionalMemberList}>
                 {selectedConversationMembers.map((member, index) => {
                   const isAdmin = member === selected?.admin;
-                  const isCurrentUser = member === currentUser;
+                  const isCurrentUser = member === currentUserName;
 
                   return (
                     <View key={`${member}-${index}`} style={styles.professionalMemberRowStatic}>
@@ -870,6 +1211,7 @@ const Messenger = ({
         {renderChatHeader()}
 
         <FlatList
+          ref={flatListRef}
           data={currentMessages}
           keyExtractor={(item) => item.id}
           renderItem={renderMessage}
@@ -878,9 +1220,28 @@ const Messenger = ({
             paddingTop: 18 * scale,
             paddingBottom: 24 * scale,
             flexGrow: 1,
+            justifyContent: 'flex-end',
           }}
-          showsVerticalScrollIndicator={false}
+          showsVerticalScrollIndicator={true}
+          onContentSizeChange={() =>
+            flatListRef.current?.scrollToEnd({ animated: true })
+          }
         />
+
+        {hoveredMessageId && hoveredMessageTime ? (
+          <View
+            pointerEvents="none"
+            style={[
+              styles.timeTooltip,
+              {
+                left: tooltipPosition.x,
+                top: tooltipPosition.y,
+              },
+            ]}
+          >
+            <Text style={styles.timeTooltipText}>{hoveredMessageTime}</Text>
+          </View>
+        ) : null}
 
         <View
           style={[
@@ -905,7 +1266,7 @@ const Messenger = ({
                 height: sizes.inputHeight,
                 minHeight: sizes.inputHeight,
                 fontSize: sizes.inputText,
-                borderRadius: 10,
+                borderRadius: 18,
                 paddingHorizontal: isDesktop ? 14 : isTablet ? 12 : 10,
                 paddingVertical: 0,
               },
@@ -921,7 +1282,7 @@ const Messenger = ({
                 height: sizes.sendHeight,
                 width: sizes.sendWidth,
                 paddingHorizontal: isDesktop ? 18 : isTablet ? 14 : 10,
-                borderRadius: 10,
+                borderRadius: 18,
               },
             ]}
             activeOpacity={0.85}
@@ -965,21 +1326,33 @@ const Messenger = ({
 const styles = StyleSheet.create({
   mobileScreen: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: '#f7f8fa',
   },
   desktopScreen: {
     flex: 1,
-    backgroundColor: '#f8f8f8',
+    backgroundColor: '#eef1f5',
   },
   splitLayout: {
     flex: 1,
     flexDirection: 'row',
-    backgroundColor: '#fff',
+    backgroundColor: '#eef1f5',
+    padding: 12,
+    gap: 12,
   },
 
   sidebar: {
     backgroundColor: '#fff',
     flexShrink: 0,
+    borderRadius: 22,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 5,
+  },
+  sidebarListContent: {
+    paddingBottom: 14,
+    paddingHorizontal: 10,
   },
   screenBackButton: {
     marginTop: 20,
@@ -1000,19 +1373,27 @@ const styles = StyleSheet.create({
     paddingBottom: 10,
     textAlign: 'left',
     marginTop: 20,
-    paddingHorizontal: 12,
-    marginLeft: 10,
+    paddingHorizontal: 18,
     color: '#111',
   },
-  convRow: {
+
+  convCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
     backgroundColor: '#fff',
+    marginBottom: 8,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: '#f0f0f0',
+    shadowColor: '#000',
+    shadowOpacity: 0.03,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 1,
   },
-  convRowActive: {
-    backgroundColor: '#f6f6f6',
+  convCardActive: {
+    backgroundColor: '#fff6f6',
+    borderColor: '#f1c3c0',
   },
   convContent: {
     flex: 1,
@@ -1043,11 +1424,17 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#fff',
     minWidth: 0,
+    borderRadius: 22,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 5,
+    overflow: 'hidden',
   },
   chatHeader: {
-    marginTop: 25,
     borderBottomWidth: 1,
-    borderBottomColor: '#d9d9d9',
+    borderBottomColor: '#ececec',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -1079,11 +1466,11 @@ const styles = StyleSheet.create({
     overflow: 'visible',
   },
   headerIconButton: {
-    width: 34,
-    height: 34,
+    width: 36,
+    height: 36,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 17,
+    borderRadius: 18,
   },
   headerIconButtonHover: {
     backgroundColor: 'rgba(0,0,0,0.05)',
@@ -1092,16 +1479,16 @@ const styles = StyleSheet.create({
   infoMenu: {
     position: 'absolute',
     backgroundColor: '#fff',
-    borderRadius: 8,
+    borderRadius: 14,
     paddingVertical: 10,
     paddingHorizontal: 10,
     borderWidth: 1,
-    borderColor: '#d9d9d9',
+    borderColor: '#ececec',
     shadowColor: '#000',
     shadowOpacity: 0.08,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 5,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 8,
   },
   infoMenuTitle: {
     fontSize: 12,
@@ -1115,7 +1502,7 @@ const styles = StyleSheet.create({
     gap: 8,
     paddingVertical: 10,
     paddingHorizontal: 6,
-    borderRadius: 6,
+    borderRadius: 8,
   },
   infoMenuButtonText: {
     fontSize: 12,
@@ -1132,45 +1519,79 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
   },
   senderName: {
-    color: '#222',
-    marginBottom: 2,
+    color: '#666',
+    marginBottom: 4,
+    fontWeight: '600',
   },
   senderNameThem: {
     textAlign: 'left',
-    marginLeft: 2,
-  },
-  senderNameMe: {
-    textAlign: 'right',
-    marginRight: 2,
+    marginLeft: 4,
   },
   bubble: {},
   bubbleThem: {
-    backgroundColor: '#de938d',
-    borderTopLeftRadius: 4,
+    backgroundColor: '#f0f2f5',
+    borderTopLeftRadius: 6,
   },
   bubbleMe: {
     backgroundColor: '#d94c43',
-    borderTopRightRadius: 4,
+    borderTopRightRadius: 6,
   },
   bubbleText: {
+    color: '#111',
+  },
+  bubbleTextMe: {
     color: '#fff',
+  },
+
+  systemRow: {
+    alignItems: 'center',
+    marginBottom: 18,
+  },
+  systemBubble: {
+    backgroundColor: '#d9928d',
+    borderRadius: 20,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    maxWidth: '78%',
+  },
+  systemBubbleText: {
+    color: '#fff',
+    fontWeight: '700',
+    textAlign: 'center',
+    fontSize: 13,
+  },
+
+  timeTooltip: {
+    position: 'absolute',
+    backgroundColor: 'rgba(17,17,17,0.94)',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    zIndex: 50,
+    width: 150,
+    alignItems: 'center',
+  },
+  timeTooltipText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: '600',
   },
 
   inputArea: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#fff',
-    borderBottomColor: '#e0e0e0',
-    borderBottomWidth: 1,
+    borderTopWidth: 1,
+    borderTopColor: '#ececec',
   },
   input: {
     alignContent: 'center',
     justifyContent: 'center',
     flex: 1,
     borderWidth: 1,
-    borderColor: '#8a8a8a',
+    borderColor: '#e1e4e8',
     color: '#111',
-    backgroundColor: '#fff',
+    backgroundColor: '#f7f8fa',
   },
   sendBtn: {
     backgroundColor: '#ea1111',

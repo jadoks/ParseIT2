@@ -31,8 +31,19 @@ import Dashboard2 from './teacher_components/TeacherDashboard';
 import TeacherMessenger from './teacher_components/TeacherMessenger';
 import TeacherNotification from './teacher_components/TeacherNotification';
 
+interface SignedInTeacher {
+  teacherId?: string;
+  authUid?: string | null;
+  firstName?: string;
+  lastName?: string;
+  email?: string;
+  profileImage?: any;
+  bannerImage?: any;
+}
+
 interface Props {
   onLogout: () => void;
+  currentTeacher: SignedInTeacher;
 }
 
 type AppScreenType =
@@ -60,10 +71,7 @@ type MessengerCourse = {
   section?: string;
 };
 
-const CURRENT_USER_NAME = 'Ramcee Jade L. Munoz';
-const CURRENT_USER_EMAIL = 'Ludoviceramceejademunoz@email.com';
-
-const CURRENT_USER_PROFILE_IMAGE = require('../assets/images/avatar.jpg');
+const DEFAULT_PROFILE_IMAGE = require('../assets/images/avatar.jpg');
 const DEFAULT_BANNER_IMAGE = require('../assets/announcement/3.png');
 const OTHER_USERS_PROFILE_IMAGE = require('../assets/images/default_profile.png');
 
@@ -88,82 +96,6 @@ const ANNOUNCEMENTS: Announcement[] = [
   },
 ];
 
-const INITIAL_COURSES: CourseWithIcon[] = [
-  {
-    id: '1',
-    name: 'Introduction to Computing',
-    courseCode: 'IT101',
-    classCode: 'IT101-1A',
-    instructor: CURRENT_USER_NAME,
-    section: '1A Microsoft',
-    bannerUri: undefined,
-    year: '1st Year',
-    semester: '1st Semester',
-    icon: 'laptop',
-  },
-  {
-    id: '2',
-    name: 'Computer Programming 1',
-    courseCode: 'IT102',
-    classCode: 'IT102-1B',
-    instructor: CURRENT_USER_NAME,
-    section: '1B Google',
-    bannerUri: undefined,
-    year: '1st Year',
-    semester: '1st Semester',
-    icon: 'code-tags',
-  },
-  {
-    id: '3',
-    name: 'Data Structures and Algorithms',
-    courseCode: 'IT201',
-    classCode: 'IT201-2A',
-    instructor: CURRENT_USER_NAME,
-    section: '2A Algorithm',
-    bannerUri: undefined,
-    year: '2nd Year',
-    semester: '1st Semester',
-    icon: 'sitemap',
-  },
-];
-
-const INITIAL_COMMUNITY_POSTS: CommunityPost[] = [
-  {
-    id: '1',
-    userName: 'Maria Santos',
-    userEmail: 'maria@email.com',
-    avatar: OTHER_USERS_PROFILE_IMAGE,
-    content: 'Please double-check your grade submissions before Friday.',
-    dateTime: 'Feb 24, 2026 10:30 AM',
-    answers: [
-      {
-        id: 'a1',
-        userName: 'John Reyes',
-        avatar: OTHER_USERS_PROFILE_IMAGE,
-        answeredAt: 'Feb 24, 2026 11:00 AM',
-        message: 'Noted, thank you!',
-      },
-    ],
-  },
-  {
-    id: '2',
-    userName: CURRENT_USER_NAME,
-    userEmail: CURRENT_USER_EMAIL,
-    avatar: CURRENT_USER_PROFILE_IMAGE,
-    content: 'Does anyone have a good rubric template for project presentations?',
-    dateTime: 'Feb 23, 2026 11:30 AM',
-    answers: [
-      {
-        id: 'a2',
-        userName: 'Allan Reyes',
-        avatar: OTHER_USERS_PROFILE_IMAGE,
-        answeredAt: 'Feb 23, 2026 01:20 PM',
-        message: 'I can share mine later.',
-      },
-    ],
-  },
-];
-
 const isAppScreen = (screen: string): screen is AppScreenType => {
   return [
     'home',
@@ -179,59 +111,110 @@ const isAppScreen = (screen: string): screen is AppScreenType => {
   ].includes(screen);
 };
 
-export default function TeacherApp({ onLogout }: Props) {
+export default function TeacherApp({ onLogout, currentTeacher }: Props) {
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const isLargeScreen = width >= 768;
   const isMobile = width < 768;
+
+  const teacherFullName = useMemo(() => {
+    const first = currentTeacher?.firstName?.trim() || '';
+    const last = currentTeacher?.lastName?.trim() || '';
+    const full = `${first} ${last}`.trim();
+    return full || 'Teacher';
+  }, [currentTeacher]);
+
+  const teacherEmail = useMemo(() => {
+    return currentTeacher?.email?.trim() || 'teacher@email.com';
+  }, [currentTeacher]);
+
+  const teacherIdentity = useMemo(() => {
+    return (
+      currentTeacher?.teacherId?.trim() ||
+      currentTeacher?.authUid?.trim() ||
+      teacherEmail ||
+      teacherFullName
+    );
+  }, [currentTeacher, teacherEmail, teacherFullName]);
 
   const [activeScreen, setActiveScreen] = useState<AppScreenType>('home');
   const [lastScreen, setLastScreen] = useState<AppScreenType>('home');
   const [showAnnouncement, setShowAnnouncement] = useState(true);
   const [isMobileDrawerOpen, setMobileDrawerOpen] = useState(false);
 
-  const [courses, setCourses] = useState<CourseWithIcon[]>(INITIAL_COURSES);
-  const [selectedCourse, setSelectedCourse] = useState<CourseWithIcon | null>(
-    INITIAL_COURSES[0]
-  );
+  const [courses, setCourses] = useState<CourseWithIcon[]>([]);
+  const [selectedCourse, setSelectedCourse] = useState<CourseWithIcon | null>(null);
 
   const [selectedAnalyticsClass, setSelectedAnalyticsClass] = useState<string>('All');
 
   const [currentUserAvatar, setCurrentUserAvatar] = useState<any>(
-    CURRENT_USER_PROFILE_IMAGE
+    currentTeacher?.profileImage || DEFAULT_PROFILE_IMAGE
   );
   const [currentUserBanner, setCurrentUserBanner] = useState<any>(
-    DEFAULT_BANNER_IMAGE
+    currentTeacher?.bannerImage || DEFAULT_BANNER_IMAGE
   );
 
-  const [communityPosts, setCommunityPosts] = useState<CommunityPost[]>(
-    INITIAL_COMMUNITY_POSTS
-  );
+  const [communityPosts, setCommunityPosts] = useState<CommunityPost[]>([
+    {
+      id: '1',
+      userName: 'Maria Santos',
+      userEmail: 'maria@email.com',
+      avatar: OTHER_USERS_PROFILE_IMAGE,
+      content: 'Please double-check your grade submissions before Friday.',
+      dateTime: 'Feb 24, 2026 10:30 AM',
+      answers: [
+        {
+          id: 'a1',
+          userName: 'John Reyes',
+          avatar: OTHER_USERS_PROFILE_IMAGE,
+          answeredAt: 'Feb 24, 2026 11:00 AM',
+          message: 'Noted, thank you!',
+        },
+      ],
+    },
+    {
+      id: '2',
+      userName: teacherFullName,
+      userEmail: teacherEmail,
+      avatar: currentTeacher?.profileImage || DEFAULT_PROFILE_IMAGE,
+      content: 'Does anyone have a good rubric template for project presentations?',
+      dateTime: 'Feb 23, 2026 11:30 AM',
+      answers: [
+        {
+          id: 'a2',
+          userName: 'Allan Reyes',
+          avatar: OTHER_USERS_PROFILE_IMAGE,
+          answeredAt: 'Feb 23, 2026 01:20 PM',
+          message: 'I can share mine later.',
+        },
+      ],
+    },
+  ]);
 
   const hydratedCommunityPosts = useMemo<CommunityPost[]>(() => {
     return communityPosts.map((post) => ({
       ...post,
       avatar:
-        post.userEmail === CURRENT_USER_EMAIL || post.userName === CURRENT_USER_NAME
+        post.userEmail === teacherEmail || post.userName === teacherFullName
           ? currentUserAvatar
           : post.avatar,
       answers: post.answers.map((answer) => ({
         ...answer,
         avatar:
-          answer.userName === CURRENT_USER_NAME
+          answer.userName === teacherFullName
             ? currentUserAvatar
             : answer.avatar,
       })),
     }));
-  }, [communityPosts, currentUserAvatar]);
+  }, [communityPosts, currentUserAvatar, teacherEmail, teacherFullName]);
 
   const currentUserPosts = useMemo(() => {
     return hydratedCommunityPosts.filter(
       (post) =>
-        post.userName === CURRENT_USER_NAME ||
-        post.userEmail === CURRENT_USER_EMAIL
+        post.userName === teacherFullName ||
+        post.userEmail === teacherEmail
     );
-  }, [hydratedCommunityPosts]);
+  }, [hydratedCommunityPosts, teacherEmail, teacherFullName]);
 
   const messengerCourses = useMemo<MessengerCourse[]>(
     () =>
@@ -272,7 +255,7 @@ export default function TeacherApp({ onLogout }: Props) {
       navigateTo(screen);
     }
   };
-  
+
   const handleDrawerNavigate = (screen: string) => {
     if (isAppScreen(screen)) {
       navigateTo(screen);
@@ -297,8 +280,8 @@ export default function TeacherApp({ onLogout }: Props) {
 
     const newPost: CommunityPost = {
       id: `community-post-${Date.now()}`,
-      userName: CURRENT_USER_NAME,
-      userEmail: CURRENT_USER_EMAIL,
+      userName: teacherFullName,
+      userEmail: teacherEmail,
       avatar: currentUserAvatar,
       dateTime: new Date().toLocaleString(),
       content: trimmedQuery,
@@ -314,7 +297,7 @@ export default function TeacherApp({ onLogout }: Props) {
 
     const newAnswer: CommunityAnswer = {
       id: `community-answer-${Date.now()}`,
-      userName: CURRENT_USER_NAME,
+      userName: teacherFullName,
       avatar: currentUserAvatar,
       answeredAt: new Date().toLocaleString(),
       message: trimmedMessage,
@@ -413,7 +396,7 @@ export default function TeacherApp({ onLogout }: Props) {
 
     const courseWithIcon: CourseWithIcon = {
       ...newCourse,
-      instructor: CURRENT_USER_NAME,
+      instructor: teacherFullName,
       icon: getCourseIcon(newCourse.name),
       year: newCourse.year || '1st Year',
       semester: newCourse.semester || '1st Semester',
@@ -451,8 +434,8 @@ export default function TeacherApp({ onLogout }: Props) {
               isFixed={true}
               activeScreen={activeScreen}
               onNavigate={handleDrawerNavigate}
-              userName={CURRENT_USER_NAME}
-              userEmail={CURRENT_USER_EMAIL}
+              userName={teacherFullName}
+              userEmail={teacherEmail}
               userAvatar={currentUserAvatar}
               onAvatarPress={() => navigateTo('profile')}
               setIsLoggedIn={handleSetIsLoggedIn}
@@ -470,8 +453,8 @@ export default function TeacherApp({ onLogout }: Props) {
               onDeletePost={handleDeleteCommunityPost}
               onEditAnswer={handleEditCommunityAnswer}
               onDeleteAnswer={handleDeleteCommunityAnswer}
-              userName={CURRENT_USER_NAME}
-              userEmail={CURRENT_USER_EMAIL}
+              userName={teacherFullName}
+              userEmail={teacherEmail}
               profileImage={currentUserAvatar}
               bannerImage={currentUserBanner}
               onChangeProfileImage={handleChangeProfileImage}
@@ -479,12 +462,13 @@ export default function TeacherApp({ onLogout }: Props) {
             />
           ) : activeScreen === 'home' ? (
             <Dashboard2
-              announcements={ANNOUNCEMENTS}
-              courses={courses}
-              onOpenCourse={(course: CourseDetailData) => handleOpenCourse(course)}
-              onCreateClass={(course: CourseDetailData) => handleCreateClass(course)}
-              onDeleteCourse={handleDeleteCourse}
-            />
+            announcements={ANNOUNCEMENTS}
+            courses={courses}
+            onOpenCourse={(course: CourseDetailData) => handleOpenCourse(course)}
+            onCreateClass={(course: CourseDetailData) => handleCreateClass(course)}
+            onDeleteCourse={handleDeleteCourse}
+            currentTeacher={currentTeacher}
+          />
           ) : activeScreen === 'honors' ? (
             <Honors />
           ) : activeScreen === 'grades' ? (
@@ -494,8 +478,8 @@ export default function TeacherApp({ onLogout }: Props) {
           ) : activeScreen === 'community' ? (
             <Community2
               posts={hydratedCommunityPosts}
-              userName={CURRENT_USER_NAME}
-              userEmail={CURRENT_USER_EMAIL}
+              userName={teacherFullName}
+              userEmail={teacherEmail}
               userAvatar={currentUserAvatar}
               onCreatePost={handleCreateCommunityPost}
               onAddAnswer={handleAddCommunityAnswer}
@@ -506,22 +490,24 @@ export default function TeacherApp({ onLogout }: Props) {
             />
           ) : activeScreen === 'messenger' ? (
             <TeacherMessenger
-              searchQuery=""
-              onConversationActiveChange={() => {}}
-              currentUser={CURRENT_USER_NAME}
-              courses={messengerCourses}
-              onBack={() => setActiveScreen(lastScreen)}
-            />
+            searchQuery=""
+            onConversationActiveChange={() => {}}
+            currentUser={teacherIdentity}
+            currentUserName={teacherFullName}
+            courses={messengerCourses}
+            onBack={() => setActiveScreen(lastScreen)}
+          />
           ) : activeScreen === 'coursedetail' ? (
             <Coursedetail2
-              onBack={() => setActiveScreen(lastScreen)}
-              course={selectedCourse || undefined}
-            />
+            onBack={() => setActiveScreen(lastScreen)}
+            course={selectedCourse || undefined}
+            currentTeacher={currentTeacher}
+          />
           ) : activeScreen === 'notification' ? (
             <TeacherNotification />
           ) : activeScreen === 'analytics' ? (
             <TeacherAnalytics
-              teacherName={CURRENT_USER_NAME}
+              teacherName={teacherFullName}
               selectedCourseName={selectedCourse?.name || 'Academic Analytics'}
               selectedClass={selectedAnalyticsClass}
               onChangeSelectedClass={setSelectedAnalyticsClass}
@@ -557,8 +543,8 @@ export default function TeacherApp({ onLogout }: Props) {
               onClose={() => setMobileDrawerOpen(false)}
               activeScreen={activeScreen}
               onNavigate={handleDrawerNavigate}
-              userName={CURRENT_USER_NAME}
-              userEmail={CURRENT_USER_EMAIL}
+              userName={teacherFullName}
+              userEmail={teacherEmail}
               userAvatar={currentUserAvatar}
               onAvatarPress={() => {
                 setMobileDrawerOpen(false);

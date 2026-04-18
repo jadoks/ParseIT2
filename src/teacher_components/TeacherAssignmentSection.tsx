@@ -1,14 +1,15 @@
-import React from "react";
+import React from 'react';
 import {
-  ScrollView,
+  FlatList,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
   useWindowDimensions,
-} from "react-native";
-import MaterialCommunityIcons from "react-native-vector-icons/MaterialCommunityIcons";
-import type { Assignment } from "./TeacherCourseDetail2";
+} from 'react-native';
+import { heightPercentageToDP as hp, widthPercentageToDP as wp } from 'react-native-responsive-screen';
+import Ionicons from 'react-native-vector-icons/Ionicons';
+import type { Assignment } from './TeacherCourseDetail2';
 
 type Props = {
   assignments: Assignment[];
@@ -22,286 +23,205 @@ const TeacherAssignmentSection = ({
   onOpenMembers,
 }: Props) => {
   const { width } = useWindowDimensions();
+  const isSmallPhone = width < 360;
 
-  const isMobile = width < 768;
-  const isTablet = width >= 768 && width < 1200;
-  const isLargeScreen = width >= 1200;
+  const renderAssignmentItem = ({ item }: { item: Assignment }) => (
+    <TouchableOpacity
+      style={styles.assignmentCard}
+      activeOpacity={0.85}
+      onPress={() => onOpenMembers(item.id)}
+    >
+      <View style={styles.assignmentHeader}>
+        <View style={styles.assignmentInfo}>
+          <Text style={styles.assignmentTitle}>{item.header}</Text>
 
-  const pagePadding = isMobile ? 14 : isTablet ? 20 : 24;
-  const cardWidth = isMobile ? "100%" : isLargeScreen ? "48.8%" : "48.5%";
+          {!!item.instruction && (
+            <Text style={styles.assignmentTopicText} numberOfLines={2}>
+              {item.instruction}
+            </Text>
+          )}
+        </View>
+
+        <View style={styles.statusBadge}>
+          <Text style={styles.statusText}>Open</Text>
+        </View>
+      </View>
+
+      <View style={styles.assignmentFooter}>
+        <Text style={styles.dueDateText}>Due: {item.dueDate || 'No due date'}</Text>
+        <Text style={styles.pointsText}>
+          Score: {item.totalScore || '0'} • On Time: {item.pointsOnTime || '0'}
+        </Text>
+      </View>
+
+      {!!item.fileName && (
+        <Text style={styles.relatedPreviewText} numberOfLines={1}>
+          File: {item.fileName}
+        </Text>
+      )}
+
+      <View style={styles.recommendationBadge}>
+        <Text style={styles.recommendationText}>
+          {item.repositoryDisabledAfterDue ? 'Repository disabled after due' : 'Open submissions'}
+        </Text>
+      </View>
+    </TouchableOpacity>
+  );
 
   return (
-    <ScrollView
-      contentContainerStyle={[
-        styles.scrollContent,
-        { paddingHorizontal: pagePadding, paddingTop: 18, paddingBottom: 30 },
-      ]}
-      showsVerticalScrollIndicator={false}
-    >
-      <TouchableOpacity
-        style={[
-          styles.createBtn,
-          {
-            paddingHorizontal: isMobile ? 16 : 18,
-            paddingVertical: isMobile ? 11 : 12,
-            borderRadius: 14,
-            marginBottom: isMobile ? 18 : 22,
-          },
-        ]}
-        onPress={onCreate}
-      >
-        <Text style={styles.createBtnText}>+ Create Assignment</Text>
-      </TouchableOpacity>
-
-      <View style={styles.assignmentGrid}>
-        {assignments.map((item) => (
-          <TouchableOpacity
-            key={item.id}
-            style={[
-              styles.assignmentCard,
-              {
-                width: cardWidth,
-                minHeight: isMobile ? 172 : 185,
-              },
-            ]}
-            activeOpacity={0.85}
-            onPress={() => onOpenMembers(item.id)}
-          >
-            <View style={styles.redLeftAccent} />
-
-            <View
-              style={[
-                styles.cardContent,
-                {
-                  paddingHorizontal: isMobile ? 14 : 16,
-                  paddingVertical: isMobile ? 14 : 16,
-                },
-              ]}
-            >
-              <View
-                style={[
-                  styles.iconBackground,
-                  {
-                    width: isMobile ? 48 : 52,
-                    height: isMobile ? 48 : 52,
-                    borderRadius: 12,
-                    marginRight: isMobile ? 12 : 14,
-                  },
-                ]}
-              >
-                <MaterialCommunityIcons
-                  name="clipboard-text-outline"
-                  size={isMobile ? 26 : 30}
-                  color="#000"
-                />
-              </View>
-
-              <View style={styles.assignmentInfo}>
-                <Text
-                  style={[
-                    styles.assignmentHeader,
-                    { fontSize: isMobile ? 16 : 17 },
-                  ]}
-                  numberOfLines={2}
-                >
-                  {item.header}
-                </Text>
-
-                <Text
-                  style={[
-                    styles.assignmentInstruction,
-                    { fontSize: isMobile ? 12 : 13 },
-                  ]}
-                  numberOfLines={2}
-                >
-                  {item.instruction}
-                </Text>
-
-                <View style={styles.metaRow}>
-                  <Text style={styles.metaLabel}>Posted:</Text>
-                  <Text style={styles.metaValue}>{item.posted || "-"}</Text>
-                </View>
-
-                <View style={styles.metaRow}>
-                  <Text style={styles.metaLabel}>Due:</Text>
-                  <Text style={styles.metaValue}>{item.dueDate || "-"}</Text>
-                </View>
-
-                <View style={styles.metaRow}>
-                  <Text style={styles.metaLabel}>Total Score:</Text>
-                  <Text style={styles.metaValue}>{item.totalScore || "-"}</Text>
-                </View>
-
-                <View style={styles.metaRow}>
-                  <Text style={styles.metaLabel}>Points On Time:</Text>
-                  <Text style={styles.metaValue}>{item.pointsOnTime || "-"}</Text>
-                </View>
-
-                <View style={styles.metaRow}>
-                  <Text style={styles.metaLabel}>Repository:</Text>
-                  <Text
-                    style={[
-                      styles.metaValue,
-                      item.repositoryDisabledAfterDue
-                        ? styles.disabledText
-                        : styles.enabledText,
-                    ]}
-                  >
-                    {item.repositoryDisabledAfterDue
-                      ? "Disabled after due"
-                      : "Enabled"}
-                  </Text>
-                </View>
-
-                {!!item.fileName && (
-                  <Text style={styles.fileText} numberOfLines={1}>
-                    File: {item.fileName}
-                  </Text>
-                )}
-
-                <View style={styles.openRow}>
-                  <MaterialCommunityIcons
-                    name="account-group-outline"
-                    size={16}
-                    color="#D32F2F"
-                  />
-                  <Text style={styles.openHint}>Open submissions</Text>
-                </View>
-              </View>
-            </View>
-          </TouchableOpacity>
-        ))}
+    <View style={[styles.container, { paddingHorizontal: wp(isSmallPhone ? '3' : '4') }]}>
+      <View style={styles.topActionRow}>
+        <TouchableOpacity style={styles.createButton} onPress={onCreate}>
+          <Ionicons name="add" size={18} color="#FFF" />
+          <Text style={styles.createButtonText}>Create Assignment</Text>
+        </TouchableOpacity>
       </View>
-    </ScrollView>
+
+      {assignments.length > 0 ? (
+        <FlatList
+          data={assignments}
+          renderItem={renderAssignmentItem}
+          keyExtractor={(item) => item.id}
+          scrollEnabled={false}
+          ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
+          contentContainerStyle={{ paddingBottom: hp('2') }}
+        />
+      ) : (
+        <Text style={styles.emptyText}>No assignments yet</Text>
+      )}
+    </View>
   );
 };
 
 export default TeacherAssignmentSection;
 
 const styles = StyleSheet.create({
-  scrollContent: {
-    paddingBottom: 30,
+  container: {
+    paddingVertical: hp('2'),
+    backgroundColor: '#F5F5F5',
+    flex: 1,
   },
 
-  createBtn: {
-    backgroundColor: "#D32F2F",
-    alignSelf: "flex-start",
-    elevation: 2,
-    shadowColor: "#000",
-    shadowOpacity: 0.08,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 2 },
+  topActionRow: {
+    marginBottom: hp('1.5'),
+    alignItems: 'flex-start',
   },
 
-  createBtnText: {
-    color: "#FFF",
-    fontWeight: "700",
-    fontSize: 14,
+  createButton: {
+    backgroundColor: '#D32F2F',
+    borderRadius: 12,
+    minHeight: 44,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
 
-  assignmentGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    justifyContent: "space-between",
-    gap: 14,
-    width: "100%",
+  createButtonText: {
+    color: '#FFF',
+    fontWeight: '700',
+    fontSize: 13,
   },
 
   assignmentCard: {
-    flexDirection: "row",
-    backgroundColor: "#FFF",
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: "#ECECEC",
-    elevation: 2,
-    shadowColor: "#000",
-    shadowOpacity: 0.04,
-    shadowRadius: 4,
+    borderLeftWidth: 5,
+    borderLeftColor: '#D32F2F',
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 14,
+    shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    overflow: "hidden",
-    marginBottom: 2,
+    shadowOpacity: 0.06,
+    shadowRadius: 4,
+    elevation: 2,
   },
 
-  redLeftAccent: {
-    width: 4,
-    backgroundColor: "#D32F2F",
-  },
-
-  cardContent: {
-    flex: 1,
-    flexDirection: "row",
-  },
-
-  iconBackground: {
-    backgroundColor: "#E0E0E0",
-    justifyContent: "center",
-    alignItems: "center",
-    marginTop: 2,
+  assignmentHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 10,
   },
 
   assignmentInfo: {
     flex: 1,
+    marginRight: 8,
   },
 
-  assignmentHeader: {
-    fontWeight: "700",
-    color: "#222",
-    lineHeight: 22,
+  assignmentTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#000',
+    marginBottom: 4,
   },
 
-  assignmentInstruction: {
-    color: "#555",
+  assignmentTopicText: {
+    color: '#444',
+    fontSize: 12,
+    fontWeight: '600',
     marginTop: 4,
-    marginBottom: 8,
     lineHeight: 18,
   },
 
-  metaRow: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    marginTop: 3,
+  statusBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+    backgroundColor: '#FDECEC',
   },
 
-  metaLabel: {
+  statusText: {
+    fontWeight: '700',
     fontSize: 12,
-    fontWeight: "700",
-    color: "#333",
-    marginRight: 4,
+    color: '#D32F2F',
   },
 
-  metaValue: {
+  assignmentFooter: {
+    borderTopWidth: 1,
+    borderTopColor: '#E6E6E6',
+    paddingTop: 8,
+  },
+
+  dueDateText: {
+    color: '#D32F2F',
+    fontWeight: '600',
+    fontSize: 13,
+    marginBottom: 4,
+  },
+
+  pointsText: {
     fontSize: 12,
-    color: "#666",
-    flex: 1,
+    color: '#666',
+    fontWeight: '600',
   },
 
-  enabledText: {
-    color: "#2E7D32",
-    fontWeight: "700",
-  },
-
-  disabledText: {
-    color: "#D32F2F",
-    fontWeight: "700",
-  },
-
-  fileText: {
+  relatedPreviewText: {
     fontSize: 12,
-    color: "#D32F2F",
+    color: '#666',
     marginTop: 8,
-    fontWeight: "600",
+    lineHeight: 18,
   },
 
-  openRow: {
-    flexDirection: "row",
-    alignItems: "center",
+  recommendationBadge: {
     marginTop: 10,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    alignSelf: 'flex-start',
+    backgroundColor: '#FFF1F1',
   },
 
-  openHint: {
+  recommendationText: {
     fontSize: 12,
-    color: "#D32F2F",
-    marginLeft: 6,
-    fontWeight: "700",
+    fontWeight: '700',
+    color: '#D32F2F',
+  },
+
+  emptyText: {
+    textAlign: 'center',
+    color: '#777',
+    marginTop: 20,
+    fontSize: 14,
   },
 });

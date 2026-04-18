@@ -1,14 +1,17 @@
-import React from "react";
+import React from 'react';
 import {
-  ScrollView,
+  FlatList,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
   useWindowDimensions,
-} from "react-native";
-import MaterialCommunityIcons from "react-native-vector-icons/MaterialCommunityIcons";
-import type { Material } from "./TeacherCourseDetail2";
+} from 'react-native';
+import {
+  heightPercentageToDP as hp
+} from 'react-native-responsive-screen';
+import Ionicons from 'react-native-vector-icons/Ionicons';
+import type { Material } from './TeacherCourseDetail2';
 
 type Props = {
   materials: Material[];
@@ -23,222 +26,217 @@ const TeacherMaterialSection = ({
 }: Props) => {
   const { width } = useWindowDimensions();
 
-  const isMobile = width < 768;
-  const isTablet = width >= 768 && width < 1200;
-  const isLargeScreen = width >= 1200;
+  const isSmallPhone = width < 360;
+  const isTabletOrLargeScreen = width >= 768;
 
-  const pagePadding = isMobile ? 14 : isTablet ? 20 : 24;
-  const cardWidth = isMobile ? "100%" : isLargeScreen ? "48.8%" : "48.5%";
+  const horizontalPadding = isSmallPhone ? 12 : isTabletOrLargeScreen ? 24 : 16;
+  const cardPadding = isSmallPhone ? 10 : isTabletOrLargeScreen ? 18 : 14;
+  const iconSize = isSmallPhone ? 42 : isTabletOrLargeScreen ? 56 : 50;
+  const titleFontSize = isSmallPhone ? 13 : isTabletOrLargeScreen ? 16 : 14;
+  const metaFontSize = isSmallPhone ? 11 : isTabletOrLargeScreen ? 13 : 12;
+  const buttonFontSize = isSmallPhone ? 12 : isTabletOrLargeScreen ? 14 : 13;
+  const chevronSize = isSmallPhone ? 18 : 20;
 
-  return (
-    <ScrollView
-      contentContainerStyle={[
-        styles.scrollContent,
-        { paddingHorizontal: pagePadding, paddingTop: 18, paddingBottom: 30 },
+  const getMaterialIconName = (fileType?: string) => {
+    const normalized = String(fileType || '').toLowerCase();
+
+    if (normalized.includes('pdf')) return 'document-text-outline';
+    if (normalized.includes('video')) return 'videocam-outline';
+    if (normalized.includes('word') || normalized.includes('doc'))
+      return 'document-outline';
+    if (normalized.includes('sheet') || normalized.includes('excel'))
+      return 'grid-outline';
+    if (
+      normalized.includes('presentation') ||
+      normalized.includes('powerpoint')
+    )
+      return 'easel-outline';
+
+    return 'document-outline';
+  };
+
+  const renderMaterialItem = ({ item }: { item: Material }) => (
+    <TouchableOpacity
+      style={[
+        styles.materialCard,
+        {
+          padding: cardPadding,
+          maxWidth: isTabletOrLargeScreen ? 900 : '100%',
+          alignSelf: 'center',
+        },
       ]}
-      showsVerticalScrollIndicator={false}
+      activeOpacity={0.85}
+      onPress={() => onOpenMaterial(item)}
     >
-      <TouchableOpacity
+      <View
         style={[
-          styles.createBtn,
+          styles.materialIcon,
           {
-            paddingHorizontal: isMobile ? 16 : 18,
-            paddingVertical: isMobile ? 11 : 12,
-            borderRadius: 14,
-            marginBottom: isMobile ? 18 : 22,
+            width: iconSize,
+            height: iconSize,
+            borderRadius: isSmallPhone ? 10 : 12,
+            marginRight: isSmallPhone ? 10 : 12,
           },
         ]}
-        onPress={onCreate}
       >
-        <Text style={styles.createBtnText}>+ Create Material</Text>
-      </TouchableOpacity>
-
-      <View style={styles.materialGrid}>
-        {materials.map((item) => (
-          <TouchableOpacity
-            key={item.id}
-            style={[
-              styles.moduleCardWide,
-              {
-                width: cardWidth,
-                minHeight: isMobile ? 108 : 118,
-              },
-            ]}
-            activeOpacity={0.85}
-            onPress={() => onOpenMaterial(item)}
-          >
-            <View style={styles.redLeftAccent} />
-
-            <View
-              style={[
-                styles.cardContent,
-                {
-                  paddingHorizontal: isMobile ? 14 : 18,
-                  paddingVertical: isMobile ? 14 : 18,
-                },
-              ]}
-            >
-              <View
-                style={[
-                  styles.iconBackground,
-                  {
-                    width: isMobile ? 48 : 54,
-                    height: isMobile ? 48 : 54,
-                    borderRadius: 12,
-                    marginRight: isMobile ? 14 : 18,
-                  },
-                ]}
-              >
-                <MaterialCommunityIcons
-                  name="book-open-variant"
-                  size={isMobile ? 26 : 30}
-                  color="#000"
-                />
-              </View>
-
-              <View style={styles.materialInfo}>
-                <Text
-                  style={[styles.weekTitle, { fontSize: isMobile ? 16 : 18 }]}
-                >
-                  {item.week || "Week"}
-                </Text>
-
-                <Text
-                  style={[
-                    styles.materialTitle,
-                    { fontSize: isMobile ? 14 : 15 },
-                  ]}
-                  numberOfLines={2}
-                >
-                  {item.title}
-                </Text>
-
-                <Text
-                  style={[styles.dateText, { fontSize: isMobile ? 11 : 12 }]}
-                >
-                  Posted: {item.posted || "-"}
-                </Text>
-
-                {!!item.fileName && (
-                  <Text
-                    style={[styles.openHint, { fontSize: isMobile ? 11 : 12 }]}
-                    numberOfLines={1}
-                  >
-                    File: {item.fileName}
-                  </Text>
-                )}
-
-                {!!item.content && (
-                  <Text
-                    style={[styles.contentPreview, { fontSize: isMobile ? 11 : 12 }]}
-                    numberOfLines={2}
-                  >
-                    {item.content}
-                  </Text>
-                )}
-              </View>
-            </View>
-          </TouchableOpacity>
-        ))}
+        <Ionicons
+          name={getMaterialIconName(item.fileType)}
+          size={isSmallPhone ? 20 : 24}
+          color="#D32F2F"
+        />
       </View>
-    </ScrollView>
+
+      <View style={styles.materialInfo}>
+        <Text
+          style={[styles.materialTitle, { fontSize: titleFontSize }]}
+          numberOfLines={2}
+        >
+          {item.title}
+        </Text>
+
+        <Text style={[styles.materialType, { fontSize: metaFontSize }]}>
+          {item.week || 'No week'} • {item.posted || 'No date'}
+        </Text>
+
+        {!!item.fileName && (
+          <Text
+            style={[styles.materialFileName, { fontSize: metaFontSize }]}
+            numberOfLines={1}
+          >
+            {item.fileName}
+          </Text>
+        )}
+      </View>
+
+      <Ionicons name="chevron-forward" size={chevronSize} color="#BBB" />
+    </TouchableOpacity>
+  );
+
+  return (
+    <View
+      style={[
+        styles.container,
+        {
+          paddingHorizontal: horizontalPadding,
+        },
+      ]}
+    >
+      <View
+        style={[
+          styles.topActionRow,
+          {
+            maxWidth: isTabletOrLargeScreen ? 900 : '100%',
+            alignSelf: 'center',
+            width: '100%',
+          },
+        ]}
+      >
+        <TouchableOpacity
+          style={[
+            styles.createButton,
+            {
+              minHeight: isSmallPhone ? 40 : 44,
+              paddingHorizontal: isSmallPhone ? 12 : isTabletOrLargeScreen ? 18 : 14,
+              paddingVertical: isSmallPhone ? 8 : 10,
+            },
+          ]}
+          onPress={onCreate}
+        >
+          <Ionicons name="add" size={isSmallPhone ? 16 : 18} color="#FFF" />
+          <Text style={[styles.createButtonText, { fontSize: buttonFontSize }]}>
+            Create Material
+          </Text>
+        </TouchableOpacity>
+      </View>
+
+      {materials.length > 0 ? (
+        <FlatList
+          data={materials}
+          renderItem={renderMaterialItem}
+          keyExtractor={(item) => item.id}
+          scrollEnabled={false}
+          contentContainerStyle={{ paddingBottom: hp('2') }}
+        />
+      ) : (
+        <Text style={[styles.emptyText, { fontSize: isSmallPhone ? 13 : 14 }]}>
+          No materials available yet
+        </Text>
+      )}
+    </View>
   );
 };
 
 export default TeacherMaterialSection;
 
 const styles = StyleSheet.create({
-  scrollContent: {
-    paddingBottom: 30,
-  },
-
-  createBtn: {
-    backgroundColor: "#D32F2F",
-    alignSelf: "flex-start",
-    elevation: 2,
-    shadowColor: "#000",
-    shadowOpacity: 0.08,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 2 },
-  },
-
-  createBtnText: {
-    color: "#FFF",
-    fontWeight: "700",
-    fontSize: 14,
-  },
-
-  materialGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    justifyContent: "space-between",
-    gap: 14,
-    width: "100%",
-  },
-
-  moduleCardWide: {
-    flexDirection: "row",
-    backgroundColor: "#FFF",
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: "#ECECEC",
-    elevation: 2,
-    shadowColor: "#000",
-    shadowOpacity: 0.04,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 2 },
-    overflow: "hidden",
-    marginBottom: 2,
-  },
-
-  redLeftAccent: {
-    width: 4,
-    height: "100%",
-    backgroundColor: "#D32F2F",
-  },
-
-  cardContent: {
+  container: {
+    paddingVertical: hp('2'),
+    backgroundColor: '#F5F5F5',
     flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
   },
 
-  iconBackground: {
-    backgroundColor: "#E0E0E0",
-    justifyContent: "center",
-    alignItems: "center",
+  topActionRow: {
+    marginBottom: hp('1.5'),
+    alignItems: 'flex-start',
+  },
+
+  createButton: {
+    backgroundColor: '#D32F2F',
+    borderRadius: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+
+  createButtonText: {
+    color: '#FFF',
+    fontWeight: '700',
+  },
+
+  materialCard: {
+    flexDirection: 'row',
+    backgroundColor: '#FFF',
+    borderRadius: 14,
+    marginBottom: hp('1.5'),
+    alignItems: 'center',
+    width: '100%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+
+  materialIcon: {
+    backgroundColor: '#FFF1F1',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 
   materialInfo: {
     flex: 1,
-  },
-
-  weekTitle: {
-    fontWeight: "700",
-    color: "#222",
+    minWidth: 0,
   },
 
   materialTitle: {
-    color: "#111",
-    fontWeight: "600",
+    fontWeight: '700',
+    color: '#000',
+    marginBottom: 4,
+  },
+
+  materialType: {
+    color: '#999',
+  },
+
+  materialFileName: {
+    color: '#D32F2F',
     marginTop: 4,
-    lineHeight: 20,
+    fontWeight: '600',
   },
 
-  dateText: {
-    color: "#777",
-    marginTop: 6,
-  },
-
-  openHint: {
-    color: "#D32F2F",
-    marginTop: 8,
-    fontWeight: "600",
-  },
-
-  contentPreview: {
-    color: "#666",
-    marginTop: 6,
-    lineHeight: 16,
+  emptyText: {
+    textAlign: 'center',
+    color: '#777',
+    marginTop: 20,
   },
 });

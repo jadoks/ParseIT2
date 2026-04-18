@@ -424,6 +424,108 @@ async function sendForgotPasswordCodeEmail({ firstName, email, pin }) {
   });
 }
 
+async function ensureTeacherMemberForClass({
+  classId,
+  teacherUid,
+  teacherId,
+  teacherName,
+  teacherEmail,
+}) {
+  if (!classId || !teacherId) return;
+
+  const existingMembership = await db
+    .collection("classMembers")
+    .where("classId", "==", classId)
+    .where("userId", "==", teacherId)
+    .limit(1)
+    .get();
+
+  if (!existingMembership.empty) {
+    return;
+  }
+
+  await db.collection("classMembers").add({
+    classId,
+    userUid: normalizeOptionalText(teacherUid),
+    userId: teacherId,
+    name: normalizeOptionalText(teacherName),
+    email: normalizeOptionalText(teacherEmail),
+    role: "teacher",
+    joinedAt: FieldValue.serverTimestamp(),
+    status: "active",
+  });
+}
+
+async function createClassMessengerConversation({
+  classId,
+  classCode,
+  className,
+  semester,
+  schoolYear,
+  section,
+  teacherUid,
+  teacherId,
+  teacherName,
+  teacherEmail,
+}) {
+  if (!classId || !teacherId) return null;
+
+  const existingConversation = await db
+    .collection("messengerConversations")
+    .where("classId", "==", classId)
+    .limit(1)
+    .get();
+
+  if (!existingConversation.empty) {
+    return existingConversation.docs[0].id;
+  }
+
+  const conversationRef = await db.collection("messengerConversations").add({
+    classId,
+    classCode: normalizeOptionalText(classCode),
+    className: normalizeOptionalText(className),
+    semester: normalizeOptionalText(semester),
+    schoolYear: normalizeOptionalText(schoolYear),
+    section: normalizeOptionalText(section),
+
+    type: "class",
+    ownerRole: "teacher",
+    ownerUid: normalizeOptionalText(teacherUid),
+    ownerId: normalizeOptionalText(teacherId),
+    ownerName: normalizeOptionalText(teacherName),
+    ownerEmail: normalizeOptionalText(teacherEmail),
+
+    instructorName: normalizeOptionalText(teacherName),
+    instructorEmail: normalizeOptionalText(teacherEmail),
+
+    participants: [
+      {
+        userUid: normalizeOptionalText(teacherUid),
+        userId: normalizeOptionalText(teacherId),
+        name: normalizeOptionalText(teacherName),
+        email: normalizeOptionalText(teacherEmail),
+        role: "teacher",
+      },
+    ],
+
+    lastMessage: "Class conversation created.",
+    lastMessageSender: "system",
+    lastMessageAt: FieldValue.serverTimestamp(),
+    createdAt: FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp(),
+  });
+
+  await conversationRef.collection("messages").add({
+    type: "system",
+    text: `Conversation created for class ${className}.`,
+    classId,
+    createdAt: FieldValue.serverTimestamp(),
+    createdByRole: "system",
+  });
+
+  return conversationRef.id;
+}
+
 /**
  * AUTH ROUTES
  */
@@ -474,6 +576,58 @@ app.post("/auth/lookup-user", async (req, res) => {
     console.error("Lookup user error:", error);
     return res.status(500).json({
       error: error.message || "Failed to look up user.",
+    });
+  }
+});
+
+app.post("/auth/user-profile", async (req, res) => {
+  try {
+    const { id, role } = req.body;
+
+    if (!id || !role) {
+      return res.status(400).json({
+        error: "ID and role are required.",
+      });
+    }
+
+    const collectionName = getCollectionNameByRole(role);
+
+    if (!collectionName) {
+      return res.status(400).json({ error: "Invalid role." });
+    }
+
+    const userSnap = await db.collection(collectionName).doc(String(id).trim()).get();
+
+    if (!userSnap.exists) {
+      return res.status(404).json({ error: "User not found." });
+    }
+
+    const userData = userSnap.data() || {};
+
+    return res.json({
+      success: true,
+      data: {
+        role,
+        id:
+          userData.studentId ||
+          userData.teacherId ||
+          userData.adminId ||
+          userSnap.id,
+        email: userData.email || null,
+        authUid: userData.authUid || null,
+        studentId: userData.studentId || undefined,
+        teacherId: userData.teacherId || undefined,
+        adminId: userData.adminId || undefined,
+        firstName: userData.firstName || "",
+        lastName: userData.lastName || "",
+        profileImage: userData.profileImage || null,
+        bannerImage: userData.bannerImage || null,
+      },
+    });
+  } catch (error) {
+    console.error("User profile fetch error:", error);
+    return res.status(500).json({
+      error: error.message || "Failed to fetch user profile.",
     });
   }
 });
@@ -892,7 +1046,7 @@ app.post("/upload-class-file", async (req, res) => {
       fileBase64,
       fileName,
       fileType,
-      kind, // "material" | "assignment"
+      kind,
     } = req.body;
 
     if (!classId) {
@@ -1610,23 +1764,31 @@ app.post("/create-class", async (req, res) => {
       updatedByRole: createdByRole,
 
       status: "active",
-      memberCount: createdByRole === "teacher" ? 1 : 0,
+      memberCount: 1,
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
     });
 
-    if (createdByRole === "teacher") {
-      await db.collection("classMembers").add({
-        classId: classRef.id,
-        userUid: createdByUid,
-        userId: resolvedAssignedTeacherId,
-        name: resolvedInstructorName,
-        email: resolvedInstructorEmail,
-        role: "teacher",
-        joinedAt: FieldValue.serverTimestamp(),
-        status: "active",
-      });
-    }
+    await ensureTeacherMemberForClass({
+      classId: classRef.id,
+      teacherUid: resolvedAssignedTeacherUid,
+      teacherId: resolvedAssignedTeacherId,
+      teacherName: resolvedInstructorName,
+      teacherEmail: resolvedInstructorEmail,
+    });
+
+    const conversationId = await createClassMessengerConversation({
+      classId: classRef.id,
+      classCode,
+      className: name,
+      semester,
+      schoolYear,
+      section,
+      teacherUid: resolvedAssignedTeacherUid,
+      teacherId: resolvedAssignedTeacherId,
+      teacherName: resolvedInstructorName,
+      teacherEmail: resolvedInstructorEmail,
+    });
 
     res.json({
       success: true,
@@ -1635,6 +1797,7 @@ app.post("/create-class", async (req, res) => {
         id: classRef.id,
         classCode,
         bannerUrl: uploadedBanner.bannerUrl,
+        conversationId,
       },
     });
   } catch (error) {
@@ -1754,6 +1917,64 @@ app.put("/update-class/:id", async (req, res) => {
       updatedAt: FieldValue.serverTimestamp(),
     });
 
+    const mergedClassData = {
+      ...existingClass,
+      ...(name ? { name } : {}),
+      ...(courseCode ? { courseCode } : {}),
+      ...(section ? { section } : {}),
+      ...(semester ? { semester } : {}),
+      ...(typeof schoolYear === "string" || schoolYear === null
+        ? { schoolYear }
+        : {}),
+      ...nextTeacherFields,
+    };
+
+    if (
+      mergedClassData.assignedTeacherId ||
+      mergedClassData.assignedTeacherUid ||
+      mergedClassData.instructorName
+    ) {
+      await ensureTeacherMemberForClass({
+        classId: id,
+        teacherUid: mergedClassData.assignedTeacherUid,
+        teacherId: mergedClassData.assignedTeacherId,
+        teacherName: mergedClassData.instructorName,
+        teacherEmail: mergedClassData.instructorEmail,
+      });
+
+      const conversationSnapshot = await db
+        .collection("messengerConversations")
+        .where("classId", "==", id)
+        .limit(1)
+        .get();
+
+      if (!conversationSnapshot.empty) {
+        await conversationSnapshot.docs[0].ref.update({
+          className: normalizeOptionalText(mergedClassData.name),
+          classCode: normalizeOptionalText(mergedClassData.courseCode),
+          semester: normalizeOptionalText(mergedClassData.semester),
+          schoolYear: normalizeOptionalText(mergedClassData.schoolYear),
+          section: normalizeOptionalText(mergedClassData.section),
+          ownerUid: normalizeOptionalText(mergedClassData.assignedTeacherUid),
+          ownerId: normalizeOptionalText(mergedClassData.assignedTeacherId),
+          ownerName: normalizeOptionalText(mergedClassData.instructorName),
+          ownerEmail: normalizeOptionalText(mergedClassData.instructorEmail),
+          instructorName: normalizeOptionalText(mergedClassData.instructorName),
+          instructorEmail: normalizeOptionalText(mergedClassData.instructorEmail),
+          participants: [
+            {
+              userUid: normalizeOptionalText(mergedClassData.assignedTeacherUid),
+              userId: normalizeOptionalText(mergedClassData.assignedTeacherId),
+              name: normalizeOptionalText(mergedClassData.instructorName),
+              email: normalizeOptionalText(mergedClassData.instructorEmail),
+              role: "teacher",
+            },
+          ],
+          updatedAt: FieldValue.serverTimestamp(),
+        });
+      }
+    }
+
     res.json({
       success: true,
       message: "Class updated successfully.",
@@ -1811,6 +2032,21 @@ app.delete("/delete-class/:id", async (req, res) => {
 
       const batch = db.batch();
       submissions.forEach((doc) => batch.delete(doc.ref));
+      await batch.commit();
+    }
+
+    const conversationSnapshot = await db
+      .collection("messengerConversations")
+      .where("classId", "==", id)
+      .get();
+
+    for (const conversationDoc of conversationSnapshot.docs) {
+      const messagesSnapshot = await conversationDoc.ref.collection("messages").get();
+      const batch = db.batch();
+
+      messagesSnapshot.forEach((doc) => batch.delete(doc.ref));
+      batch.delete(conversationDoc.ref);
+
       await batch.commit();
     }
 
@@ -1873,20 +2109,32 @@ app.get("/class-members/:classId", async (req, res) => {
 
 app.post("/join-class", async (req, res) => {
   try {
-    const { classId, studentId } = req.body;
+    const { classCode, studentId } = req.body;
 
-    if (!classId || !studentId) {
-      return res.status(400).json({ error: "Missing required fields." });
+    if (!classCode || !studentId) {
+      return res.status(400).json({
+        error: "classCode and studentId are required.",
+      });
     }
 
+    const normalizedClassCode = String(classCode).trim().toUpperCase();
+    const normalizedStudentId = String(studentId).trim();
+
+    const classQuery = await db
+      .collection("classes")
+      .where("classCode", "==", normalizedClassCode)
+      .limit(1)
+      .get();
+
+    if (classQuery.empty) {
+      return res.status(404).json({ error: "Class code not found." });
+    }
+
+    const classDoc = classQuery.docs[0];
+    const classId = classDoc.id;
     const classRef = db.collection("classes").doc(classId);
-    const classSnap = await classRef.get();
 
-    if (!classSnap.exists) {
-      return res.status(404).json({ error: "Class not found." });
-    }
-
-    const student = await findStudentById(studentId);
+    const student = await findStudentById(normalizedStudentId);
 
     if (!student) {
       return res.status(404).json({ error: "Student not found." });
@@ -1895,19 +2143,24 @@ app.post("/join-class", async (req, res) => {
     const existingMembership = await db
       .collection("classMembers")
       .where("classId", "==", classId)
-      .where("userId", "==", studentId)
+      .where("userId", "==", normalizedStudentId)
       .limit(1)
       .get();
 
     if (!existingMembership.empty) {
-      return res.status(409).json({ error: "Student is already a class member." });
+      return res.status(409).json({
+        error: "Student is already a class member.",
+      });
     }
+
+    const studentFullName =
+      `${student.firstName || ""} ${student.lastName || ""}`.trim();
 
     await db.collection("classMembers").add({
       classId,
       userUid: student.authUid || null,
-      userId: student.studentId,
-      name: `${student.firstName || ""} ${student.lastName || ""}`.trim(),
+      userId: student.studentId || normalizedStudentId,
+      name: studentFullName,
       email: student.email || null,
       role: "student",
       joinedAt: FieldValue.serverTimestamp(),
@@ -1919,14 +2172,240 @@ app.post("/join-class", async (req, res) => {
       updatedAt: FieldValue.serverTimestamp(),
     });
 
-    res.json({
+    const conversationSnapshot = await db
+      .collection("messengerConversations")
+      .where("classId", "==", classId)
+      .limit(1)
+      .get();
+
+    if (!conversationSnapshot.empty) {
+      const conversationRef = conversationSnapshot.docs[0].ref;
+      const conversationData = conversationSnapshot.docs[0].data();
+
+      const existingParticipants = Array.isArray(conversationData.participants)
+        ? conversationData.participants
+        : [];
+
+      const alreadyParticipant = existingParticipants.some(
+        (participant) =>
+          participant?.userId === (student.studentId || normalizedStudentId)
+      );
+
+      if (!alreadyParticipant) {
+        await conversationRef.update({
+          participants: [
+            ...existingParticipants,
+            {
+              userUid: student.authUid || null,
+              userId: student.studentId || normalizedStudentId,
+              name: studentFullName,
+              email: student.email || null,
+              role: "student",
+            },
+          ],
+          updatedAt: FieldValue.serverTimestamp(),
+        });
+
+        await conversationRef.collection("messages").add({
+          type: "system",
+          text: `${studentFullName} joined the class conversation.`,
+          classId,
+          createdAt: FieldValue.serverTimestamp(),
+          createdByRole: "system",
+        });
+      }
+    }
+
+    return res.json({
       success: true,
       message: "Student joined class successfully.",
+      data: {
+        classId,
+        classCode: normalizedClassCode,
+      },
     });
   } catch (error) {
     console.error("Join class error:", error);
-    res.status(500).json({
+    return res.status(500).json({
       error: error.message || "Failed to join class.",
+    });
+  }
+});
+
+app.get("/student-joined-classes/:studentId", async (req, res) => {
+  try {
+    const { studentId } = req.params;
+
+    if (!studentId) {
+      return res.status(400).json({ error: "studentId is required." });
+    }
+
+    const normalizedStudentId = String(studentId).trim();
+
+    const membershipSnapshot = await db
+      .collection("classMembers")
+      .where("userId", "==", normalizedStudentId)
+      .where("role", "==", "student")
+      .where("status", "==", "active")
+      .get();
+
+    if (membershipSnapshot.empty) {
+      return res.json([]);
+    }
+
+    const memberships = membershipSnapshot.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data(),
+    }));
+
+    const classIds = memberships
+      .map((item) => item.classId)
+      .filter(Boolean);
+
+    const uniqueClassIds = [...new Set(classIds)];
+
+    const joinedClasses = await Promise.all(
+      uniqueClassIds.map(async (classId) => {
+        const classSnap = await db.collection("classes").doc(classId).get();
+
+        if (!classSnap.exists) {
+          return null;
+        }
+
+        const classData = classSnap.data() || {};
+
+        const materialsSnapshot = await db
+          .collection("classMaterials")
+          .where("classId", "==", classId)
+          .orderBy("createdAt", "desc")
+          .get();
+
+        const assignmentsSnapshot = await db
+          .collection("classAssignments")
+          .where("classId", "==", classId)
+          .orderBy("createdAt", "desc")
+          .get();
+
+        const materials = materialsSnapshot.docs.map((doc) => {
+          const material = doc.data() || {};
+
+          let materialType = "document";
+          const rawType = String(material.fileType || "").toLowerCase();
+          const fileUrl = material.fileUrl || material.fileUri || null;
+
+          if (rawType.includes("pdf")) {
+            materialType = "pdf";
+          } else if (rawType.includes("video")) {
+            materialType = "video";
+          } else if (!fileUrl) {
+            materialType = "link";
+          }
+
+          return {
+            id: doc.id,
+            title: material.title || "Untitled Material",
+            type: materialType,
+            uploadedDate:
+              typeof material.createdAt?.toDate === "function"
+                ? material.createdAt.toDate().toLocaleString()
+                : "Unknown date",
+            content: material.content || "",
+            fileName: material.fileName || null,
+            fileUrl,
+            fileUri: fileUrl,
+            fileType: material.fileType || null,
+            storagePath: material.storagePath || null,
+            bucketPath: material.bucketPath || null,
+            week: material.week || null,
+            postedByName: material.postedByName || null,
+            createdAt: material.createdAt || null,
+            updatedAt: material.updatedAt || null,
+          };
+        });
+
+        const assignments = assignmentsSnapshot.docs.map((doc) => {
+          const assignment = doc.data() || {};
+
+          return {
+            id: doc.id,
+            title: assignment.header || "Untitled Assignment",
+            dueDate: assignment.dueDate || "",
+            status: "pending",
+            points: 0,
+            maxPoints:
+              typeof assignment.totalScore === "number"
+                ? assignment.totalScore
+                : Number(assignment.totalScore) || 0,
+            topic: assignment.header || "",
+            materialIds: Array.isArray(assignment.materialIds)
+              ? assignment.materialIds
+              : [],
+            files:
+              assignment.fileName || assignment.fileUrl
+                ? [
+                    {
+                      id: `file-${doc.id}`,
+                      name: assignment.fileName || "attachment",
+                      uploadedAt:
+                        typeof assignment.createdAt?.toDate === "function"
+                          ? assignment.createdAt.toDate().toLocaleString()
+                          : "Unknown date",
+                      uri: assignment.fileUrl || null,
+                    },
+                  ]
+                : [],
+            comments: [],
+            instruction: assignment.instruction || "",
+            pointsOnTime:
+              typeof assignment.pointsOnTime === "number"
+                ? assignment.pointsOnTime
+                : Number(assignment.pointsOnTime) || 0,
+            repositoryDisabledAfterDue: !!assignment.repositoryDisabledAfterDue,
+            fileName: assignment.fileName || null,
+            fileUrl: assignment.fileUrl || null,
+            fileType: assignment.fileType || null,
+            storagePath: assignment.storagePath || null,
+            bucketPath: assignment.bucketPath || null,
+            postedByName: assignment.postedByName || null,
+            createdAt: assignment.createdAt || null,
+            updatedAt: assignment.updatedAt || null,
+          };
+        });
+
+        return {
+          id: classSnap.id,
+          name: classData.name || "Untitled Class",
+          classCode: classData.classCode || "",
+          courseCode: classData.courseCode || classData.classCode || "",
+          instructorName:
+            classData.instructorName || classData.teacherName || "Unknown Instructor",
+          description: classData.description || "No description available.",
+          semester: classData.semester || "",
+          schoolYear: classData.schoolYear || "",
+          section: classData.section || "",
+          year: classData.year || "",
+          units:
+            typeof classData.units === "number"
+              ? classData.units
+              : Number(classData.units) || 0,
+          bannerUrl: classData.bannerUrl || null,
+          bannerStoragePath: classData.bannerStoragePath || null,
+          bannerFileName: classData.bannerFileName || null,
+          bannerMimeType: classData.bannerMimeType || null,
+          memberCount: classData.memberCount || 0,
+          materials,
+          assignments,
+          createdAt: classData.createdAt || null,
+          updatedAt: classData.updatedAt || null,
+        };
+      })
+    );
+
+    return res.json(joinedClasses.filter(Boolean));
+  } catch (error) {
+    console.error("Fetch student joined classes error:", error);
+    return res.status(500).json({
+      error: error.message || "Failed to fetch student joined classes.",
     });
   }
 });
@@ -1950,6 +2429,27 @@ app.delete("/remove-class-member/:id", async (req, res) => {
         memberCount: FieldValue.increment(-1),
         updatedAt: FieldValue.serverTimestamp(),
       });
+
+      const conversationSnapshot = await db
+        .collection("messengerConversations")
+        .where("classId", "==", memberData.classId)
+        .limit(1)
+        .get();
+
+      if (!conversationSnapshot.empty && memberData?.userId) {
+        const conversationRef = conversationSnapshot.docs[0].ref;
+        const conversationData = conversationSnapshot.docs[0].data();
+        const existingParticipants = Array.isArray(conversationData.participants)
+          ? conversationData.participants
+          : [];
+
+        await conversationRef.update({
+          participants: existingParticipants.filter(
+            (participant) => participant?.userId !== memberData.userId
+          ),
+          updatedAt: FieldValue.serverTimestamp(),
+        });
+      }
     }
 
     res.json({
@@ -1960,6 +2460,166 @@ app.delete("/remove-class-member/:id", async (req, res) => {
     console.error("Remove class member error:", error);
     res.status(500).json({
       error: error.message || "Failed to remove class member.",
+    });
+  }
+});
+
+app.get("/messenger-conversations", async (req, res) => {
+  try {
+    const {
+      userId,
+      userUid,
+      role,
+      classId,
+    } = req.query;
+
+    let snapshot;
+
+    if (classId) {
+      snapshot = await db
+        .collection("messengerConversations")
+        .where("classId", "==", classId)
+        .orderBy("updatedAt", "desc")
+        .get();
+    } else {
+      snapshot = await db
+        .collection("messengerConversations")
+        .orderBy("updatedAt", "desc")
+        .get();
+    }
+
+    let conversations = snapshot.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data(),
+    }));
+
+    if (role === "teacher") {
+      conversations = conversations.filter((conversation) => {
+        return (
+          conversation.ownerId === userId ||
+          conversation.ownerUid === userUid ||
+          (Array.isArray(conversation.participants) &&
+            conversation.participants.some(
+              (participant) =>
+                participant?.userId === userId || participant?.userUid === userUid
+            ))
+        );
+      });
+    }
+
+    if (role === "student") {
+      conversations = conversations.filter((conversation) => {
+        return (
+          Array.isArray(conversation.participants) &&
+          conversation.participants.some(
+            (participant) =>
+              participant?.userId === userId || participant?.userUid === userUid
+          )
+        );
+      });
+    }
+
+    if (role === "admin") {
+      conversations = conversations.filter(
+        (conversation) => conversation.type === "class"
+      );
+    }
+
+    res.json(conversations);
+  } catch (error) {
+    console.error("Fetch messenger conversations error:", error);
+    res.status(500).json({
+      error: error.message || "Failed to fetch messenger conversations.",
+    });
+  }
+});
+
+app.get("/messenger-messages/:conversationId", async (req, res) => {
+  try {
+    const { conversationId } = req.params;
+
+    const snapshot = await db
+      .collection("messengerConversations")
+      .doc(conversationId)
+      .collection("messages")
+      .orderBy("createdAt", "asc")
+      .get();
+
+    const messages = snapshot.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data(),
+    }));
+
+    res.json(messages);
+  } catch (error) {
+    console.error("Fetch messenger messages error:", error);
+    res.status(500).json({
+      error: error.message || "Failed to fetch messenger messages.",
+    });
+  }
+});
+
+app.post("/messenger-send-message", async (req, res) => {
+  try {
+    const {
+      conversationId,
+      text,
+      senderName,
+      senderId,
+      senderUid,
+      senderRole,
+    } = req.body;
+
+    if (!conversationId || !text || !senderName) {
+      return res.status(400).json({
+        error: "conversationId, text, and senderName are required.",
+      });
+    }
+
+    const conversationRef = db
+      .collection("messengerConversations")
+      .doc(conversationId);
+
+    const conversationSnap = await conversationRef.get();
+
+    if (!conversationSnap.exists) {
+      return res.status(404).json({ error: "Conversation not found." });
+    }
+
+    const trimmedText = String(text).trim();
+
+    if (!trimmedText) {
+      return res.status(400).json({ error: "Message text cannot be empty." });
+    }
+
+    const messageRef = await conversationRef.collection("messages").add({
+      type: "text",
+      text: trimmedText,
+      senderName: normalizeOptionalText(senderName),
+      senderId: normalizeOptionalText(senderId),
+      senderUid: normalizeOptionalText(senderUid),
+      senderRole: normalizeOptionalText(senderRole),
+      createdAt: FieldValue.serverTimestamp(),
+    });
+
+    await conversationRef.update({
+      lastMessage: trimmedText,
+      lastMessageSender: normalizeOptionalText(senderName),
+      lastMessageAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+
+    res.json({
+      success: true,
+      message: "Message sent successfully.",
+      data: {
+        id: messageRef.id,
+      },
+    });
+  } catch (error) {
+    console.error("Send messenger message error:", error);
+    res.status(500).json({
+      error: error.message || "Failed to send messenger message.",
     });
   }
 });
@@ -2462,8 +3122,75 @@ app.get("/health", (req, res) => {
       "POST /create-student",
       "POST /create-teacher",
       "POST /create-admin",
+      "POST /create-class",
+      "GET /messenger-conversations",
+      "GET /messenger-messages/:conversationId",
+      "POST /messenger-send-message",
     ],
   });
+});
+
+app.post("/ai/gemini", async (req, res) => {
+  try {
+    const { message, mode = "assistant", history = [] } = req.body || {};
+
+    if (!message || typeof message !== "string") {
+      return res.status(400).json({ error: "Message is required." });
+    }
+
+    const systemInstruction =
+      mode === "tutor"
+        ? "You are ParseIT AI Tutor. Help students understand lessons step by step. Be clear, encouraging, and concise. Use simple examples."
+        : "You are ParseIT Assistant. Help users navigate the ParseIT system, answer platform questions, and explain features clearly and briefly.";
+
+    const contents = [
+      ...history.map((item) => ({
+        role: item.role === "user" ? "user" : "model",
+        parts: [{ text: item.text }],
+      })),
+      {
+        role: "user",
+        parts: [{ text: message }],
+      },
+    ];
+
+    const response = await fetch(
+      "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-goog-api-key": process.env.GEMINI_API_KEY,
+        },
+        body: JSON.stringify({
+          systemInstruction: {
+            parts: [{ text: systemInstruction }],
+          },
+          contents,
+        }),
+      }
+    );
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      return res.status(response.status).json({
+        error: data?.error?.message || "Gemini request failed.",
+        raw: data,
+      });
+    }
+
+    const text =
+      data?.candidates?.[0]?.content?.parts?.map((p) => p.text).join("") ||
+      "No response returned.";
+
+    return res.json({ reply: text });
+  } catch (error) {
+    console.error("Gemini error:", error);
+    return res.status(500).json({
+      error: error.message || "Internal server error.",
+    });
+  }
 });
 
 const PORT = process.env.PORT || 5000;
