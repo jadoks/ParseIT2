@@ -106,6 +106,33 @@ function normalizeOptionalText(value) {
   return trimmed ? trimmed : null;
 }
 
+function normalizeAvatarValue(value) {
+  if (!value) return null;
+
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed ? trimmed : null;
+  }
+
+  if (typeof value === "object" && typeof value.uri === "string") {
+    const trimmed = value.uri.trim();
+    return trimmed ? trimmed : null;
+  }
+
+  return null;
+}
+
+function formatFirestoreDateTime(value) {
+  if (!value) return "";
+
+  if (typeof value?.toDate === "function") {
+    return value.toDate().toLocaleString();
+  }
+
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? "" : parsed.toLocaleString();
+}
+
 function getFileExtensionFromMimeType(mimeType) {
   switch (mimeType) {
     case "image/jpeg":
@@ -2305,10 +2332,7 @@ app.get("/student-joined-classes/:studentId", async (req, res) => {
             id: doc.id,
             title: material.title || "Untitled Material",
             type: materialType,
-            uploadedDate:
-              typeof material.createdAt?.toDate === "function"
-                ? material.createdAt.toDate().toLocaleString()
-                : "Unknown date",
+            uploadedDate: formatFirestoreDateTime(material.createdAt) || "Unknown date",
             content: material.content || "",
             fileName: material.fileName || null,
             fileUrl,
@@ -2346,10 +2370,7 @@ app.get("/student-joined-classes/:studentId", async (req, res) => {
                     {
                       id: `file-${doc.id}`,
                       name: assignment.fileName || "attachment",
-                      uploadedAt:
-                        typeof assignment.createdAt?.toDate === "function"
-                          ? assignment.createdAt.toDate().toLocaleString()
-                          : "Unknown date",
+                      uploadedAt: formatFirestoreDateTime(assignment.createdAt) || "Unknown date",
                       uri: assignment.fileUrl || null,
                     },
                   ]
@@ -3111,23 +3132,65 @@ app.get("/health", (req, res) => {
   res.json({
     ok: true,
     routes: [
-      "POST /auth/lookup-user",
-      "POST /auth/send-first-login-pin",
-      "POST /auth/verify-first-login-pin",
-      "POST /auth/complete-first-login",
-      "POST /auth/send-forgot-password-pin",
-      "POST /auth/verify-forgot-password-pin",
-      "POST /auth/reset-forgot-password",
-      "POST /upload-class-file",
-      "POST /create-student",
-      "POST /create-teacher",
-      "POST /create-admin",
-      "POST /create-class",
-      "GET /messenger-conversations",
-      "GET /messenger-messages/:conversationId",
-      "POST /messenger-send-message",
-    ],
+  "POST /auth/lookup-user",
+  "POST /auth/send-first-login-pin",
+  "POST /auth/verify-first-login-pin",
+  "POST /auth/complete-first-login",
+  "POST /auth/send-forgot-password-pin",
+  "POST /auth/verify-forgot-password-pin",
+  "POST /auth/reset-forgot-password",
+  "POST /upload-class-file",
+  "POST /create-student",
+  "POST /create-teacher",
+  "POST /create-admin",
+  "POST /create-class",
+
+  "GET /community-posts",
+  "POST /community-posts",
+  "PUT /community-posts/:postId",
+  "DELETE /community-posts/:postId",
+  "POST /community-posts/:postId/answers",
+  "PUT /community-posts/:postId/answers/:answerId",
+  "DELETE /community-posts/:postId/answers/:answerId",
+
+  "GET /messenger-conversations",
+  "GET /messenger-messages/:conversationId",
+  "POST /messenger-send-message",
+],
   });
+});
+
+app.put("/community-posts/:postId", async (req, res) => {
+  try {
+    const { postId } = req.params;
+    const { content } = req.body;
+
+    if (!content || !String(content).trim()) {
+      return res.status(400).json({ error: "content is required." });
+    }
+
+    const postRef = db.collection("communityPosts").doc(postId);
+    const postSnap = await postRef.get();
+
+    if (!postSnap.exists) {
+      return res.status(404).json({ error: "Post not found." });
+    }
+
+    await postRef.update({
+      content: String(content).trim(),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+
+    return res.json({
+      success: true,
+      message: "Post updated successfully.",
+    });
+  } catch (error) {
+    console.error("Update community post error:", error);
+    return res.status(500).json({
+      error: error.message || "Failed to update post.",
+    });
+  }
 });
 
 app.post("/ai/gemini", async (req, res) => {
@@ -3193,6 +3256,286 @@ app.post("/ai/gemini", async (req, res) => {
   }
 });
 
+
+app.get("/community-posts", async (req, res) => {
+  try {
+    const postsSnapshot = await db
+      .collection("communityPosts")
+      .orderBy("createdAt", "desc")
+      .get();
+
+    const posts = await Promise.all(
+      postsSnapshot.docs.map(async (doc) => {
+        const postData = doc.data();
+
+        const answersSnapshot = await db
+          .collection("communityPosts")
+          .doc(doc.id)
+          .collection("answers")
+          .orderBy("createdAt", "asc")
+          .get();
+
+        const answers = answersSnapshot.docs.map((answerDoc) => {
+          const answerData = answerDoc.data();
+          return {
+            id: answerDoc.id,
+            userName: answerData.userName || "Unknown User",
+            avatar: answerData.avatar || null,
+            answeredAt: formatFirestoreDateTime(answerData.createdAt),
+            message: answerData.message || "",
+          };
+        });
+
+        return {
+          id: doc.id,
+          userName: postData.userName || "Unknown User",
+          userEmail: postData.userEmail || "",
+          avatar: postData.avatar || null,
+          dateTime: formatFirestoreDateTime(postData.createdAt),
+          content: postData.content || "",
+          answers,
+        };
+      })
+    );
+
+    return res.json({
+      success: true,
+      data: posts,
+    });
+  } catch (error) {
+    console.error("Fetch community posts error:", error);
+    return res.status(500).json({
+      error: error.message || "Failed to fetch community posts.",
+    });
+  }
+});
+
+
+app.post("/community-posts", async (req, res) => {
+  try {
+    const {
+      content,
+      authorId,
+      authorUid,
+      authorRole,
+      userName,
+      userEmail,
+      avatar,
+    } = req.body;
+
+    if (!content || !authorId || !authorRole || !userName) {
+      return res.status(400).json({
+        error: "content, authorId, authorRole, and userName are required.",
+      });
+    }
+
+    if (!["student", "teacher"].includes(authorRole)) {
+      return res.status(400).json({ error: "Invalid authorRole." });
+    }
+
+    const postRef = await db.collection("communityPosts").add({
+      content: String(content).trim(),
+      authorId: String(authorId).trim(),
+      authorUid: normalizeOptionalText(authorUid),
+      authorRole,
+      userName: String(userName).trim(),
+      userEmail: normalizeOptionalText(userEmail),
+      avatar: normalizeAvatarValue(avatar),
+      createdAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+
+    const createdDoc = await postRef.get();
+    const createdData = createdDoc.data() || {};
+
+    return res.json({
+      success: true,
+      message: "Community post created successfully.",
+      data: {
+        id: postRef.id,
+        userName: createdData.userName || userName,
+        userEmail: createdData.userEmail || userEmail || "",
+        avatar: createdData.avatar || avatar || null,
+        dateTime: new Date().toLocaleString(),
+        content: createdData.content || content,
+        answers: [],
+      },
+    });
+  } catch (error) {
+    console.error("Create community post error:", error);
+    return res.status(500).json({
+      error: error.message || "Failed to create community post.",
+    });
+  }
+});
+
+app.post("/community-posts/:postId/answers", async (req, res) => {
+  try {
+    const { postId } = req.params;
+    const {
+      message,
+      authorId,
+      authorUid,
+      authorRole,
+      userName,
+      avatar,
+    } = req.body;
+
+    if (!postId || !message || !authorId || !authorRole || !userName) {
+      return res.status(400).json({
+        error: "postId, message, authorId, authorRole, and userName are required.",
+      });
+    }
+
+    if (!["student", "teacher"].includes(authorRole)) {
+      return res.status(400).json({ error: "Invalid authorRole." });
+    }
+
+    const postRef = db.collection("communityPosts").doc(postId);
+    const postSnap = await postRef.get();
+
+    if (!postSnap.exists) {
+      return res.status(404).json({ error: "Post not found." });
+    }
+
+    const answerRef = await postRef.collection("answers").add({
+      message: String(message).trim(),
+      authorId: String(authorId).trim(),
+      authorUid: normalizeOptionalText(authorUid),
+      authorRole,
+      userName: String(userName).trim(),
+      avatar: normalizeAvatarValue(avatar),
+      createdAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+
+    await postRef.update({
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+
+    return res.json({
+      success: true,
+      message: "Answer posted successfully.",
+      data: {
+        id: answerRef.id,
+        userName,
+        avatar: normalizeAvatarValue(avatar),
+        answeredAt: new Date().toLocaleString(),
+        message: String(message).trim(),
+      },
+    });
+  } catch (error) {
+    console.error("Create community answer error:", error);
+    return res.status(500).json({
+      error: error.message || "Failed to post answer.",
+    });
+  }
+});
+
+app.delete("/community-posts/:postId", async (req, res) => {
+  try {
+    const { postId } = req.params;
+
+    const postRef = db.collection("communityPosts").doc(postId);
+    const postSnap = await postRef.get();
+
+    if (!postSnap.exists) {
+      return res.status(404).json({ error: "Post not found." });
+    }
+
+    const answersSnapshot = await postRef.collection("answers").get();
+
+    const batch = db.batch();
+
+    answersSnapshot.docs.forEach((doc) => {
+      batch.delete(doc.ref);
+    });
+
+    batch.delete(postRef);
+
+    await batch.commit();
+
+    return res.json({
+      success: true,
+      message: "Post deleted successfully.",
+    });
+  } catch (error) {
+    console.error("Delete community post error:", error);
+    return res.status(500).json({
+      error: error.message || "Failed to delete post.",
+    });
+  }
+});
+
+app.put("/community-posts/:postId/answers/:answerId", async (req, res) => {
+  try {
+    const { postId, answerId } = req.params;
+    const { message } = req.body;
+
+    if (!message || !String(message).trim()) {
+      return res.status(400).json({ error: "message is required." });
+    }
+
+    const postRef = db.collection("communityPosts").doc(postId);
+    const answerRef = postRef.collection("answers").doc(answerId);
+
+    const answerSnap = await answerRef.get();
+
+    if (!answerSnap.exists) {
+      return res.status(404).json({ error: "Answer not found." });
+    }
+
+    await answerRef.update({
+      message: String(message).trim(),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+
+    await postRef.update({
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+
+    return res.json({
+      success: true,
+      message: "Answer updated successfully.",
+    });
+  } catch (error) {
+    console.error("Update answer error:", error);
+    return res.status(500).json({
+      error: error.message || "Failed to update answer.",
+    });
+  }
+});
+
+app.delete("/community-posts/:postId/answers/:answerId", async (req, res) => {
+  try {
+    const { postId, answerId } = req.params;
+
+    const postRef = db.collection("communityPosts").doc(postId);
+    const answerRef = postRef.collection("answers").doc(answerId);
+
+    const answerSnap = await answerRef.get();
+
+    if (!answerSnap.exists) {
+      return res.status(404).json({ error: "Answer not found." });
+    }
+
+    await answerRef.delete();
+
+    await postRef.update({
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+
+    return res.json({
+      success: true,
+      message: "Answer deleted successfully.",
+    });
+  } catch (error) {
+    console.error("Delete answer error:", error);
+    return res.status(500).json({
+      error: error.message || "Failed to delete answer.",
+    });
+  }
+});
 const PORT = process.env.PORT || 5000;
 
 app.listen(PORT, "0.0.0.0", () => {

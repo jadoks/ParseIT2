@@ -24,12 +24,14 @@ import ShareAnnouncement from './teacher_components/TeacherShareAnnouncement';
 
 import TeacherAnalytics from './teacher_components/TeacherAnalytics';
 import Community2, {
-  CommunityAnswer,
-  CommunityPost,
+  CommunityPost
 } from './teacher_components/TeacherCommunity';
 import Dashboard2 from './teacher_components/TeacherDashboard';
 import TeacherMessenger from './teacher_components/TeacherMessenger';
 import TeacherNotification from './teacher_components/TeacherNotification';
+
+import Constants from 'expo-constants';
+import { Alert, Platform } from 'react-native';
 
 interface SignedInTeacher {
   teacherId?: string;
@@ -73,7 +75,6 @@ type MessengerCourse = {
 
 const DEFAULT_PROFILE_IMAGE = require('../assets/images/avatar.jpg');
 const DEFAULT_BANNER_IMAGE = require('../assets/announcement/3.png');
-const OTHER_USERS_PROFILE_IMAGE = require('../assets/images/default_profile.png');
 
 const ANNOUNCEMENTS: Announcement[] = [
   {
@@ -154,42 +155,8 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
     currentTeacher?.bannerImage || DEFAULT_BANNER_IMAGE
   );
 
-  const [communityPosts, setCommunityPosts] = useState<CommunityPost[]>([
-    {
-      id: '1',
-      userName: 'Maria Santos',
-      userEmail: 'maria@email.com',
-      avatar: OTHER_USERS_PROFILE_IMAGE,
-      content: 'Please double-check your grade submissions before Friday.',
-      dateTime: 'Feb 24, 2026 10:30 AM',
-      answers: [
-        {
-          id: 'a1',
-          userName: 'John Reyes',
-          avatar: OTHER_USERS_PROFILE_IMAGE,
-          answeredAt: 'Feb 24, 2026 11:00 AM',
-          message: 'Noted, thank you!',
-        },
-      ],
-    },
-    {
-      id: '2',
-      userName: teacherFullName,
-      userEmail: teacherEmail,
-      avatar: currentTeacher?.profileImage || DEFAULT_PROFILE_IMAGE,
-      content: 'Does anyone have a good rubric template for project presentations?',
-      dateTime: 'Feb 23, 2026 11:30 AM',
-      answers: [
-        {
-          id: 'a2',
-          userName: 'Allan Reyes',
-          avatar: OTHER_USERS_PROFILE_IMAGE,
-          answeredAt: 'Feb 23, 2026 01:20 PM',
-          message: 'I can share mine later.',
-        },
-      ],
-    },
-  ]);
+  // UPDATED: no hardcoded initial posts
+  const [communityPosts, setCommunityPosts] = useState<CommunityPost[]>([]);
 
   const hydratedCommunityPosts = useMemo<CommunityPost[]>(() => {
     return communityPosts.map((post) => ({
@@ -262,6 +229,53 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
     }
   };
 
+  const normalizeCommunityAvatar = (avatar: any) => {
+    if (!avatar) return null;
+    if (typeof avatar === 'string') return avatar;
+    if (avatar?.uri) return avatar.uri;
+    return null;
+  };
+
+  function getApiBaseUrl() {
+    if (Platform.OS === 'web') {
+      return 'http://localhost:5000';
+    }
+
+    const possibleHost =
+      Constants.expoConfig?.hostUri ||
+      Constants.manifest2?.extra?.expoGo?.debuggerHost ||
+      '';
+
+    const host = possibleHost.split(':')[0];
+
+    if (host) {
+      return `http://${host}:5000`;
+    }
+
+    return 'http://192.168.1.5:5000';
+  }
+
+  const API_BASE_URL = getApiBaseUrl();
+
+  const loadCommunityPosts = async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/community-posts`);
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data?.error || 'Failed to load community posts.');
+      }
+
+      setCommunityPosts(Array.isArray(data?.data) ? data.data : []);
+    } catch (error) {
+      console.log('LOAD TEACHER COMMUNITY POSTS ERROR =>', error);
+    }
+  };
+
+  React.useEffect(() => {
+    loadCommunityPosts();
+  }, []);
+
   const handleSearchChange = (_query: string) => {
     // Connect later if needed
   };
@@ -274,60 +288,109 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
     setCurrentUserBanner(image);
   };
 
-  const handleCreateCommunityPost = (query: string) => {
+  const handleCreateCommunityPost = async (query: string) => {
     const trimmedQuery = query.trim();
     if (!trimmedQuery) return;
 
-    const newPost: CommunityPost = {
-      id: `community-post-${Date.now()}`,
-      userName: teacherFullName,
-      userEmail: teacherEmail,
-      avatar: currentUserAvatar,
-      dateTime: new Date().toLocaleString(),
-      content: trimmedQuery,
-      answers: [],
-    };
+    try {
+      const response = await fetch(`${API_BASE_URL}/community-posts`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          content: trimmedQuery,
+          authorId: currentTeacher.teacherId || teacherIdentity,
+          authorUid: currentTeacher.authUid || null,
+          authorRole: 'teacher',
+          userName: teacherFullName,
+          userEmail: teacherEmail,
+          avatar: normalizeCommunityAvatar(currentUserAvatar),
+        }),
+      });
 
-    setCommunityPosts((prev) => [newPost, ...prev]);
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data?.error || 'Failed to create post.');
+      }
+
+      await loadCommunityPosts();
+    } catch (error: any) {
+      Alert.alert('Post Failed', error?.message || 'Unable to create post.');
+    }
   };
 
-  const handleAddCommunityAnswer = (postId: string, message: string) => {
+  const handleAddCommunityAnswer = async (postId: string, message: string) => {
     const trimmedMessage = message.trim();
     if (!trimmedMessage) return;
 
-    const newAnswer: CommunityAnswer = {
-      id: `community-answer-${Date.now()}`,
-      userName: teacherFullName,
-      avatar: currentUserAvatar,
-      answeredAt: new Date().toLocaleString(),
-      message: trimmedMessage,
-    };
+    try {
+      const response = await fetch(`${API_BASE_URL}/community-posts/${postId}/answers`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: trimmedMessage,
+          authorId: currentTeacher.teacherId || teacherIdentity,
+          authorUid: currentTeacher.authUid || null,
+          authorRole: 'teacher',
+          userName: teacherFullName,
+          avatar: normalizeCommunityAvatar(currentUserAvatar),
+        }),
+      });
 
-    setCommunityPosts((prev) =>
-      prev.map((post) =>
-        post.id === postId
-          ? { ...post, answers: [...post.answers, newAnswer] }
-          : post
-      )
-    );
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data?.error || 'Failed to add answer.');
+      }
+
+      await loadCommunityPosts();
+    } catch (error: any) {
+      Alert.alert('Answer Failed', error?.message || 'Unable to post answer.');
+    }
   };
 
-  const handleEditCommunityPost = (postId: string, content: string) => {
+  const handleEditCommunityPost = async (postId: string, content: string) => {
     const trimmedContent = content.trim();
     if (!trimmedContent) return;
 
-    setCommunityPosts((prev) =>
-      prev.map((post) =>
-        post.id === postId ? { ...post, content: trimmedContent } : post
-      )
-    );
+    try {
+      const response = await fetch(`${API_BASE_URL}/community-posts/${postId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: trimmedContent }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data?.error || 'Failed to update post.');
+      }
+
+      await loadCommunityPosts();
+    } catch (error: any) {
+      Alert.alert('Update Failed', error?.message || 'Unable to update post.');
+    }
   };
 
-  const handleDeleteCommunityPost = (postId: string) => {
-    setCommunityPosts((prev) => prev.filter((post) => post.id !== postId));
+  const handleDeleteCommunityPost = async (postId: string) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/community-posts/${postId}`, {
+        method: 'DELETE',
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data?.error || 'Failed to delete post.');
+      }
+
+      await loadCommunityPosts();
+    } catch (error: any) {
+      Alert.alert('Delete Failed', error?.message || 'Unable to delete post.');
+    }
   };
 
-  const handleEditCommunityAnswer = (
+  const handleEditCommunityAnswer = async (
     postId: string,
     answerId: string,
     message: string
@@ -335,33 +398,47 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
     const trimmedMessage = message.trim();
     if (!trimmedMessage) return;
 
-    setCommunityPosts((prev) =>
-      prev.map((post) =>
-        post.id === postId
-          ? {
-              ...post,
-              answers: post.answers.map((answer) =>
-                answer.id === answerId
-                  ? { ...answer, message: trimmedMessage }
-                  : answer
-              ),
-            }
-          : post
-      )
-    );
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/community-posts/${postId}/answers/${answerId}`,
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: trimmedMessage }),
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data?.error || 'Failed to update answer.');
+      }
+
+      await loadCommunityPosts();
+    } catch (error: any) {
+      Alert.alert('Update Failed', error?.message || 'Unable to update answer.');
+    }
   };
 
-  const handleDeleteCommunityAnswer = (postId: string, answerId: string) => {
-    setCommunityPosts((prev) =>
-      prev.map((post) =>
-        post.id === postId
-          ? {
-              ...post,
-              answers: post.answers.filter((answer) => answer.id !== answerId),
-            }
-          : post
-      )
-    );
+  const handleDeleteCommunityAnswer = async (postId: string, answerId: string) => {
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/community-posts/${postId}/answers/${answerId}`,
+        {
+          method: 'DELETE',
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data?.error || 'Failed to delete answer.');
+      }
+
+      await loadCommunityPosts();
+    } catch (error: any) {
+      Alert.alert('Delete Failed', error?.message || 'Unable to delete answer.');
+    }
   };
 
   const handleSetIsLoggedIn = (val: boolean) => {
@@ -462,13 +539,13 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
             />
           ) : activeScreen === 'home' ? (
             <Dashboard2
-            announcements={ANNOUNCEMENTS}
-            courses={courses}
-            onOpenCourse={(course: CourseDetailData) => handleOpenCourse(course)}
-            onCreateClass={(course: CourseDetailData) => handleCreateClass(course)}
-            onDeleteCourse={handleDeleteCourse}
-            currentTeacher={currentTeacher}
-          />
+              announcements={ANNOUNCEMENTS}
+              courses={courses}
+              onOpenCourse={(course: CourseDetailData) => handleOpenCourse(course)}
+              onCreateClass={(course: CourseDetailData) => handleCreateClass(course)}
+              onDeleteCourse={handleDeleteCourse}
+              currentTeacher={currentTeacher}
+            />
           ) : activeScreen === 'honors' ? (
             <Honors />
           ) : activeScreen === 'grades' ? (
@@ -490,19 +567,19 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
             />
           ) : activeScreen === 'messenger' ? (
             <TeacherMessenger
-            searchQuery=""
-            onConversationActiveChange={() => {}}
-            currentUser={teacherIdentity}
-            currentUserName={teacherFullName}
-            courses={messengerCourses}
-            onBack={() => setActiveScreen(lastScreen)}
-          />
+              searchQuery=""
+              onConversationActiveChange={() => {}}
+              currentUser={teacherIdentity}
+              currentUserName={teacherFullName}
+              courses={messengerCourses}
+              onBack={() => setActiveScreen(lastScreen)}
+            />
           ) : activeScreen === 'coursedetail' ? (
             <Coursedetail2
-            onBack={() => setActiveScreen(lastScreen)}
-            course={selectedCourse || undefined}
-            currentTeacher={currentTeacher}
-          />
+              onBack={() => setActiveScreen(lastScreen)}
+              course={selectedCourse || undefined}
+              currentTeacher={currentTeacher}
+            />
           ) : activeScreen === 'notification' ? (
             <TeacherNotification />
           ) : activeScreen === 'analytics' ? (

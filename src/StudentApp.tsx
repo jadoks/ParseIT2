@@ -100,7 +100,6 @@ function getApiBaseUrl() {
 
 const API_BASE_URL = getApiBaseUrl();
 
-const OTHER_USERS_PROFILE_IMAGE = require('../assets/images/default_profile.png');
 const FALLBACK_PROFILE_IMAGE = require('../assets/images/default_profile.png');
 const DEFAULT_BANNER_IMAGE = require('../assets/images/venti_bg.png');
 
@@ -347,63 +346,6 @@ const COURSES: CourseDetailData[] = [
   },
 ];
 
-const buildInitialCommunityPosts = (
-  currentUserName: string,
-  currentUserEmail: string,
-  currentUserAvatar: any
-): CommunityPost[] => [
-  {
-    id: '1',
-    userName: 'Ramcee Bading',
-    userEmail: 'ramcee@email.com',
-    avatar: OTHER_USERS_PROFILE_IMAGE,
-    dateTime: 'Feb 24, 2026 10:30 AM',
-    content: 'How do I solve this programming problem?',
-    answers: [
-      {
-        id: 'a1',
-        userName: 'Maria Santos',
-        avatar: OTHER_USERS_PROFILE_IMAGE,
-        answeredAt: 'Feb 24, 2026 11:00 AM',
-        message:
-          'You can use a loop to repeat the process and make sure your variables are updated correctly.',
-      },
-      {
-        id: 'a2',
-        userName: 'John Reyes',
-        avatar: OTHER_USERS_PROFILE_IMAGE,
-        answeredAt: 'Feb 24, 2026 11:18 AM',
-        message:
-          'Check your variables first, then trace the logic line by line to find where the issue starts.',
-      },
-    ],
-  },
-  {
-    id: '2',
-    userName: currentUserName,
-    userEmail: currentUserEmail,
-    avatar: currentUserAvatar,
-    dateTime: 'Feb 23, 2026 11:30 AM',
-    content: 'Is anyone attending the workshop tomorrow?',
-    answers: [
-      {
-        id: 'a3',
-        userName: 'Abai Clipord',
-        avatar: OTHER_USERS_PROFILE_IMAGE,
-        answeredAt: 'Feb 23, 2026 02:10 PM',
-        message: 'Yes, I will be there tomorrow.',
-      },
-      {
-        id: 'a4',
-        userName: 'Ramcee Bading',
-        avatar: OTHER_USERS_PROFILE_IMAGE,
-        answeredAt: 'Feb 23, 2026 02:40 PM',
-        message: 'Count me in. I already registered.',
-      },
-    ],
-  },
-];
-
 const mapCourseCommentsToAssignmentComments = (
   comments?: CourseAssignmentComment[]
 ): AssignmentComment[] => {
@@ -559,9 +501,8 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
   const [joinedCourses, setJoinedCourses] = useState<CourseDetailData[]>([]);
   const [isLoadingJoinedCourses, setIsLoadingJoinedCourses] = useState(false);
 
-  const [communityPosts, setCommunityPosts] = useState<CommunityPost[]>(
-    buildInitialCommunityPosts(currentUserName, currentUserEmail, initialAvatar)
-  );
+  // UPDATED: no hardcoded initial posts
+  const [communityPosts, setCommunityPosts] = useState<CommunityPost[]>([]);
 
   const isFullscreenScreen =
     activeScreen === 'flipit' ||
@@ -807,91 +748,185 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
     }));
   };
 
-  const handleCreateCommunityPost = (query: string) => {
+  const handleCreateCommunityPost = async (query: string) => {
     const trimmedQuery = query.trim();
     if (!trimmedQuery) return;
 
-    const newPost: CommunityPost = {
-      id: `community-post-${Date.now()}`,
-      userName: currentUserName,
-      userEmail: currentUserEmail,
-      avatar: currentUserAvatar,
-      dateTime: new Date().toLocaleString(),
-      content: trimmedQuery,
-      answers: [],
-    };
+    try {
+      const response = await fetch(`${API_BASE_URL}/community-posts`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          content: trimmedQuery,
+          authorId: currentStudent.studentId,
+          authorUid: currentStudent.authUid || null,
+          authorRole: 'student',
+          userName: currentUserName,
+          userEmail: currentUserEmail,
+          avatar: normalizeCommunityAvatar(currentUserAvatar),
+        }),
+      });
 
-    setCommunityPosts((prev) => [newPost, ...prev]);
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data?.error || 'Failed to create post.');
+      }
+
+      await loadCommunityPosts();
+    } catch (error: any) {
+      Alert.alert('Post Failed', error?.message || 'Unable to create post.');
+    }
   };
 
-  const handleAddCommunityAnswer = (postId: string, message: string) => {
+  const handleAddCommunityAnswer = async (postId: string, message: string) => {
     const trimmedMessage = message.trim();
     if (!trimmedMessage) return;
 
-    const newAnswer = {
-      id: `community-answer-${Date.now()}`,
-      userName: currentUserName,
-      avatar: currentUserAvatar,
-      answeredAt: new Date().toLocaleString(),
-      message: trimmedMessage,
-    };
+    try {
+      const response = await fetch(`${API_BASE_URL}/community-posts/${postId}/answers`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: trimmedMessage,
+          authorId: currentStudent.studentId,
+          authorUid: currentStudent.authUid || null,
+          authorRole: 'student',
+          userName: currentUserName,
+          avatar: normalizeCommunityAvatar(currentUserAvatar),
+        }),
+      });
 
-    setCommunityPosts((prev) =>
-      prev.map((post) =>
-        post.id === postId
-          ? { ...post, answers: [...post.answers, newAnswer] }
-          : post
-      )
-    );
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data?.error || 'Failed to add answer.');
+      }
+
+      await loadCommunityPosts();
+    } catch (error: any) {
+      Alert.alert('Answer Failed', error?.message || 'Unable to post answer.');
+    }
   };
 
-  const handleEditCommunityPost = (postId: string, content: string) => {
+  const handleEditCommunityPost = async (postId: string, content: string) => {
     const trimmedContent = content.trim();
     if (!trimmedContent) return;
 
-    setCommunityPosts((prev) =>
-      prev.map((post) =>
-        post.id === postId ? { ...post, content: trimmedContent } : post
-      )
-    );
+    try {
+      const response = await fetch(`${API_BASE_URL}/community-posts/${postId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: trimmedContent }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data?.error || 'Failed to update post.');
+      }
+
+      await loadCommunityPosts();
+    } catch (error: any) {
+      Alert.alert('Update Failed', error?.message || 'Unable to update post.');
+    }
   };
 
-  const handleDeleteCommunityPost = (postId: string) => {
-    setCommunityPosts((prev) => prev.filter((post) => post.id !== postId));
+  const handleDeleteCommunityPost = async (postId: string) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/community-posts/${postId}`, {
+        method: 'DELETE',
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data?.error || 'Failed to delete post.');
+      }
+
+      await loadCommunityPosts();
+    } catch (error: any) {
+      Alert.alert('Delete Failed', error?.message || 'Unable to delete post.');
+    }
   };
 
-  const handleEditCommunityAnswer = (postId: string, answerId: string, message: string) => {
+  const handleEditCommunityAnswer = async (
+    postId: string,
+    answerId: string,
+    message: string
+  ) => {
     const trimmedMessage = message.trim();
     if (!trimmedMessage) return;
 
-    setCommunityPosts((prev) =>
-      prev.map((post) =>
-        post.id === postId
-          ? {
-              ...post,
-              answers: post.answers.map((answer) =>
-                answer.id === answerId
-                  ? { ...answer, message: trimmedMessage }
-                  : answer
-              ),
-            }
-          : post
-      )
-    );
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/community-posts/${postId}/answers/${answerId}`,
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: trimmedMessage }),
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data?.error || 'Failed to update answer.');
+      }
+
+      await loadCommunityPosts();
+    } catch (error: any) {
+      Alert.alert('Update Failed', error?.message || 'Unable to update answer.');
+    }
   };
 
-  const handleDeleteCommunityAnswer = (postId: string, answerId: string) => {
-    setCommunityPosts((prev) =>
-      prev.map((post) =>
-        post.id === postId
-          ? {
-              ...post,
-              answers: post.answers.filter((answer) => answer.id !== answerId),
-            }
-          : post
-      )
-    );
+  const handleDeleteCommunityAnswer = async (postId: string, answerId: string) => {
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/community-posts/${postId}/answers/${answerId}`,
+        {
+          method: 'DELETE',
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data?.error || 'Failed to delete answer.');
+      }
+
+      await loadCommunityPosts();
+    } catch (error: any) {
+      Alert.alert('Delete Failed', error?.message || 'Unable to delete answer.');
+    }
   };
+
+  const normalizeCommunityAvatar = (avatar: any) => {
+    if (!avatar) return null;
+    if (typeof avatar === 'string') return avatar;
+    if (avatar?.uri) return avatar.uri;
+    return null;
+  };
+
+  const loadCommunityPosts = async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/community-posts`);
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data?.error || 'Failed to load community posts.');
+      }
+
+      const posts = Array.isArray(data?.data) ? data.data : [];
+      setCommunityPosts(posts);
+    } catch (error) {
+      console.log('LOAD COMMUNITY POSTS ERROR =>', error);
+    }
+  };
+
+  useEffect(() => {
+    loadCommunityPosts();
+  }, []);
 
   const getScorePercent = (assignment: {
     status: 'pending' | 'submitted' | 'graded';

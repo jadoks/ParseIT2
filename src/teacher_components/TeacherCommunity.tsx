@@ -99,7 +99,6 @@ const Community: React.FC<CommunityProps> = ({
 
   const [answersModalVisible, setAnswersModalVisible] = useState(false);
   const [selectedPostId, setSelectedPostId] = useState<string | null>(null);
-  const [localPosts, setLocalPosts] = useState<CommunityPost[]>(posts);
   const [answerText, setAnswerText] = useState('');
 
   const [editingPostId, setEditingPostId] = useState<string | null>(null);
@@ -123,18 +122,19 @@ const Community: React.FC<CommunityProps> = ({
   const { width, height } = useWindowDimensions();
   const isLargeScreen = width >= 1024;
 
-  React.useEffect(() => {
-    setLocalPosts(posts);
-  }, [posts]);
-
   const selectedPost = useMemo(
-    () => localPosts.find((post) => post.id === selectedPostId) || null,
-    [localPosts, selectedPostId]
+    () => posts.find((post) => post.id === selectedPostId) || null,
+    [posts, selectedPostId]
   );
 
   const userAvatarSource = useMemo(
     () => normalizeImageSource(userAvatar),
     [userAvatar]
+  );
+
+  const visiblePosts = useMemo(
+    () => posts.filter((post) => !hiddenPosts.includes(post.id)),
+    [posts, hiddenPosts]
   );
 
   const visibleAnswers = useMemo(() => {
@@ -226,22 +226,6 @@ const Community: React.FC<CommunityProps> = ({
     const trimmed = answerText.trim();
     if (!trimmed || !selectedPostId) return;
 
-    const newAnswer: CommunityAnswer = {
-      id: `answer-${Date.now()}`,
-      userName,
-      avatar: userAvatarSource,
-      answeredAt: new Date().toLocaleString(),
-      message: trimmed,
-    };
-
-    setLocalPosts((prev) =>
-      prev.map((post) =>
-        post.id === selectedPostId
-          ? { ...post, answers: [...post.answers, newAnswer] }
-          : post
-      )
-    );
-
     onAddAnswer?.(selectedPostId, trimmed);
     setAnswerText('');
   };
@@ -256,12 +240,6 @@ const Community: React.FC<CommunityProps> = ({
   const handleSaveEditedPost = () => {
     const trimmed = editPostText.trim();
     if (!trimmed || !editingPostId) return;
-
-    setLocalPosts((prev) =>
-      prev.map((post) =>
-        post.id === editingPostId ? { ...post, content: trimmed } : post
-      )
-    );
 
     onEditPost?.(editingPostId, trimmed);
     setEditingPostId(null);
@@ -284,7 +262,6 @@ const Community: React.FC<CommunityProps> = ({
   const confirmDeletePost = () => {
     if (!postToDelete) return;
 
-    setLocalPosts((prev) => prev.filter((post) => post.id !== postToDelete));
     onDeletePost?.(postToDelete);
 
     if (selectedPostId === postToDelete) {
@@ -320,28 +297,12 @@ const Community: React.FC<CommunityProps> = ({
     const trimmed = editAnswerText.trim();
     if (!trimmed || !editingAnswerId || !selectedPostId) return;
 
-    setLocalPosts((prev) =>
-      prev.map((post) =>
-        post.id === selectedPostId
-          ? {
-              ...post,
-              answers: post.answers.map((answer) =>
-                answer.id === editingAnswerId
-                  ? { ...answer, message: trimmed }
-                  : answer
-              ),
-            }
-          : post
-      )
-    );
-
     onEditAnswer?.(selectedPostId, editingAnswerId, trimmed);
 
     setEditAnswerModalVisible(false);
     setEditingAnswerId(null);
     setEditAnswerText('');
     closeAnswerDropdown();
-
     reopenAnswersModal();
   };
 
@@ -350,7 +311,6 @@ const Community: React.FC<CommunityProps> = ({
     setEditingAnswerId(null);
     setEditAnswerText('');
     closeAnswerDropdown();
-
     reopenAnswersModal();
   };
 
@@ -367,23 +327,11 @@ const Community: React.FC<CommunityProps> = ({
   const confirmDeleteAnswer = () => {
     if (!selectedPostId || !answerToDelete) return;
 
-    setLocalPosts((prev) =>
-      prev.map((post) =>
-        post.id === selectedPostId
-          ? {
-              ...post,
-              answers: post.answers.filter((answer) => answer.id !== answerToDelete),
-            }
-          : post
-      )
-    );
-
     onDeleteAnswer?.(selectedPostId, answerToDelete);
 
     setAnswerToDelete(null);
     setDeleteAnswerConfirmVisible(false);
     closeAnswerDropdown();
-
     reopenAnswersModal();
   };
 
@@ -391,7 +339,6 @@ const Community: React.FC<CommunityProps> = ({
     setAnswerToDelete(null);
     setDeleteAnswerConfirmVisible(false);
     closeAnswerDropdown();
-
     reopenAnswersModal();
   };
 
@@ -546,7 +493,7 @@ const Community: React.FC<CommunityProps> = ({
             </View>
 
             <FlatList
-              data={localPosts.filter((post) => !hiddenPosts.includes(post.id))}
+              data={visiblePosts}
               keyExtractor={(item) => item.id}
               renderItem={renderPost}
               scrollEnabled={false}
