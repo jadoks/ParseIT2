@@ -1,15 +1,19 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
+import Constants from "expo-constants";
+import * as DocumentPicker from "expo-document-picker";
 import React, { useState } from "react";
 import {
-    Modal,
-    Pressable,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  Alert,
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
 
 type TriggerItem = {
@@ -23,6 +27,54 @@ type ChatbotModalProps = {
   isMobile: boolean;
 };
 
+type SelectedTrainingFile = {
+  uri: string;
+  name: string;
+  mimeType: string;
+};
+
+function getApiBaseUrl() {
+  if (Platform.OS === "web") {
+    return "http://localhost:5000";
+  }
+
+  const possibleHost =
+    Constants.expoConfig?.hostUri ||
+    Constants.manifest2?.extra?.expoGo?.debuggerHost ||
+    "";
+
+  const host = possibleHost.split(":")[0];
+
+  if (host) {
+    return `http://${host}:5000`;
+  }
+
+  return "http://192.168.1.5:5000";
+}
+
+const API_BASE_URL = getApiBaseUrl();
+
+const fileUriToBase64 = async (uri: string): Promise<string> => {
+  const response = await fetch(uri);
+  const blob = await response.blob();
+
+  return await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+
+    reader.onloadend = () => {
+      const result = reader.result;
+      if (typeof result === "string") {
+        resolve(result);
+      } else {
+        reject(new Error("Failed to convert file to base64."));
+      }
+    };
+
+    reader.onerror = () => reject(new Error("Failed to read selected file."));
+    reader.readAsDataURL(blob);
+  });
+};
+
 export default function Chatbot({
   visible,
   onClose,
@@ -31,13 +83,35 @@ export default function Chatbot({
   const [chatbotResponse, setChatbotResponse] = useState("");
   const [triggerInput, setTriggerInput] = useState("");
   const [triggers, setTriggers] = useState<TriggerItem[]>([]);
+  const [selectedFile, setSelectedFile] = useState<SelectedTrainingFile | null>(null);
+  const [uploadingFile, setUploadingFile] = useState(false);
+  const [saving, setSaving] = useState(false);
 
-  const handleClose = () => onClose();
+  const handleClose = () => {
+    if (saving || uploadingFile) return;
+    onClose();
+  };
+
+  const resetForm = () => {
+    setChatbotResponse("");
+    setTriggerInput("");
+    setTriggers([]);
+    setSelectedFile(null);
+  };
 
   const handleAddTrigger = () => {
     const cleanedValue = triggerInput.trim();
 
     if (!cleanedValue) return;
+
+    const exists = triggers.some(
+      (item) => item.value.toLowerCase() === cleanedValue.toLowerCase()
+    );
+
+    if (exists) {
+      setTriggerInput("");
+      return;
+    }
 
     setTriggers((prev) => [
       ...prev,
@@ -53,13 +127,90 @@ export default function Chatbot({
     setTriggers((prev) => prev.filter((item) => item.id !== id));
   };
 
-  const handleAddData = () => {
-    console.log("Chatbot Response:", chatbotResponse);
-    console.log(
-      "Trigger Inputs:",
-      triggers.map((item) => item.value)
-    );
-    handleClose();
+  const handlePickTrainingFile = async () => {
+    try {
+      setUploadingFile(true);
+
+      const result = await DocumentPicker.getDocumentAsync({
+        multiple: false,
+        copyToCacheDirectory: true,
+        type: "*/*",
+      });
+
+      if (result.canceled || !result.assets?.length) {
+        return;
+      }
+
+      const file = result.assets[0];
+
+      setSelectedFile({
+        uri: file.uri,
+        name: file.name,
+        mimeType: file.mimeType || "application/octet-stream",
+      });
+
+      Alert.alert("Success", "Training file selected successfully.");
+    } catch (error: any) {
+      console.error("Training file select failed:", error);
+      Alert.alert("Error", error?.message || "Failed to select training file.");
+    } finally {
+      setUploadingFile(false);
+    }
+  };
+
+  const handleAddData = async () => {
+    const cleanedResponse = chatbotResponse.trim();
+    const triggerValues = triggers.map((item) => item.value.trim()).filter(Boolean);
+
+    if (!cleanedResponse) {
+      Alert.alert("Required", "Please enter a chatbot response.");
+      return;
+    }
+
+    if (triggerValues.length === 0) {
+      Alert.alert("Required", "Please add at least one trigger input.");
+      return;
+    }
+
+    try {
+      setSaving(true);
+
+      let fileBase64: string | null = null;
+
+      if (selectedFile?.uri) {
+        fileBase64 = await fileUriToBase64(selectedFile.uri);
+      }
+
+      const response = await fetch(`${API_BASE_URL}/chatbot-training`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          response: cleanedResponse,
+          triggers: triggerValues,
+          fileBase64,
+          fileName: selectedFile?.name || null,
+          fileType: selectedFile?.mimeType || null,
+          source: "admin-panel",
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data?.error || "Failed to save training data.");
+      }
+
+      Alert.alert("Success", "Chatbot training data saved successfully.");
+      resetForm();
+      onClose();
+    } catch (error: any) {
+      console.error("Failed to save chatbot training:", error);
+      Alert.alert("Error", error?.message || "Failed to save training data.");
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -81,7 +232,8 @@ export default function Chatbot({
               <View style={styles.modalHeaderTextWrap}>
                 <Text style={styles.modalTitle}>Train Chatbot</Text>
                 <Text style={styles.modalSubtitle}>
-                  Add chatbot response data and trigger phrases for training.
+                  Add chatbot response data, trigger phrases, and optional file
+                  context for training.
                 </Text>
               </View>
             </View>
@@ -90,6 +242,7 @@ export default function Chatbot({
               style={styles.modalCloseButton}
               onPress={handleClose}
               activeOpacity={0.85}
+              disabled={saving || uploadingFile}
             >
               <Ionicons name="close" size={20} color="#7A4A4A" />
             </TouchableOpacity>
@@ -173,6 +326,31 @@ export default function Chatbot({
                   ))}
                 </View>
               )}
+
+              <View style={styles.fieldBlock}>
+                <Text style={styles.fieldLabel}>Optional Training File</Text>
+                <TouchableOpacity
+                  style={styles.uploadButton}
+                  activeOpacity={0.85}
+                  onPress={handlePickTrainingFile}
+                  disabled={uploadingFile || saving}
+                >
+                  <Ionicons
+                    name="cloud-upload-outline"
+                    size={18}
+                    color="#FFFFFF"
+                  />
+                  <Text style={styles.uploadButtonText}>
+                    {uploadingFile ? "Selecting..." : "Upload File"}
+                  </Text>
+                </TouchableOpacity>
+
+                {selectedFile && (
+                  <Text style={styles.uploadedFileText}>
+                    Selected: {selectedFile.name}
+                  </Text>
+                )}
+              </View>
             </View>
           </ScrollView>
 
@@ -181,6 +359,7 @@ export default function Chatbot({
               style={styles.modalSecondaryButton}
               onPress={handleClose}
               activeOpacity={0.85}
+              disabled={saving || uploadingFile}
             >
               <Text style={styles.modalSecondaryButtonText}>Cancel</Text>
             </TouchableOpacity>
@@ -189,9 +368,16 @@ export default function Chatbot({
               style={styles.modalPrimaryButton}
               activeOpacity={0.85}
               onPress={handleAddData}
+              disabled={saving || uploadingFile}
             >
-              <Ionicons name="add-circle-outline" size={18} color="#FFFFFF" />
-              <Text style={styles.modalPrimaryButtonText}>Add Data</Text>
+              <Ionicons
+                name="add-circle-outline"
+                size={18}
+                color="#FFFFFF"
+              />
+              <Text style={styles.modalPrimaryButtonText}>
+                {saving ? "Saving..." : "Add Data"}
+              </Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -337,6 +523,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: "#2B1111",
     fontWeight: "600",
+    height: "80%",
   },
 
   textAreaField: {
@@ -347,6 +534,7 @@ const styles = StyleSheet.create({
 
   textAreaInput: {
     flex: 1,
+    height: "100%",
     width: "100%",
     fontSize: 14,
     color: "#2B1111",
@@ -369,6 +557,29 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     color: "#FFFFFF",
     marginLeft: 8,
+  },
+
+  uploadButton: {
+    height: 52,
+    borderRadius: 16,
+    backgroundColor: "#DC2626",
+    alignItems: "center",
+    justifyContent: "center",
+    flexDirection: "row",
+  },
+
+  uploadButtonText: {
+    fontSize: 14,
+    fontWeight: "800",
+    color: "#FFFFFF",
+    marginLeft: 8,
+  },
+
+  uploadedFileText: {
+    marginTop: 10,
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#7A4A4A",
   },
 
   tagsWrap: {

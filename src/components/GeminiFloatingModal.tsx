@@ -77,9 +77,14 @@ export default function GeminiFloatingModal({
 
   const sendMessage = async () => {
     const trimmed = input.trim();
+
     if (!trimmed || loading) return;
 
-    const userMessage: Message = { role: "user", text: trimmed };
+    const userMessage: Message = {
+      role: "user",
+      text: trimmed,
+    };
+
     const historyForRequest = [...messages, userMessage];
 
     setMessages(historyForRequest);
@@ -127,15 +132,21 @@ export default function GeminiFloatingModal({
 
   const resetForMode = (nextMode: ChatMode) => {
     setMode(nextMode);
+    setInput("");
     setMessages([
       {
         role: "model",
         text:
           nextMode === "assistant"
-            ? "Hello. I can assist you with ParseIT features, navigation, and general system support."
+            ? "Hello. I can assist you with ParseIT features, navigation, and system support."
             : "Hello. I can help explain lessons clearly and guide you step by step.",
       },
     ]);
+  };
+
+  const handleClose = () => {
+    if (loading) return;
+    onClose();
   };
 
   return (
@@ -143,13 +154,13 @@ export default function GeminiFloatingModal({
       visible={visible}
       transparent
       animationType="fade"
-      onRequestClose={onClose}
+      onRequestClose={handleClose}
     >
       <View style={styles.backdrop}>
         <TouchableOpacity
           style={StyleSheet.absoluteFill}
           activeOpacity={1}
-          onPress={onClose}
+          onPress={handleClose}
         />
 
         <SafeAreaView
@@ -157,7 +168,7 @@ export default function GeminiFloatingModal({
             styles.modalContainer,
             {
               width: isMobile ? width * 0.95 : 460,
-              height: isMobile ? height * 0.78 : 640,
+              height: isMobile ? height * 0.78 : 690,
               right: isMobile ? width * 0.025 : 24,
               bottom: isMobile ? 18 : 24,
             },
@@ -172,6 +183,7 @@ export default function GeminiFloatingModal({
             <TouchableOpacity
               style={[styles.modeButton, isAssistant && styles.modeButtonActive]}
               onPress={() => resetForMode("assistant")}
+              disabled={loading}
             >
               <Text
                 style={[
@@ -186,6 +198,7 @@ export default function GeminiFloatingModal({
             <TouchableOpacity
               style={[styles.modeButton, !isAssistant && styles.modeButtonActive]}
               onPress={() => resetForMode("tutor")}
+              disabled={loading}
             >
               <Text
                 style={[
@@ -198,7 +211,10 @@ export default function GeminiFloatingModal({
             </TouchableOpacity>
           </View>
 
-          <ScrollView contentContainerStyle={styles.messages}>
+          <ScrollView
+            contentContainerStyle={styles.messages}
+            showsVerticalScrollIndicator={true}
+          >
             {messages.map((message, index) => {
               const isUser = message.role === "user";
 
@@ -235,6 +251,7 @@ export default function GeminiFloatingModal({
                 <Text style={styles.botLabel}>
                   {mode === "assistant" ? "ParseIT Assistant" : "AI Tutor"}
                 </Text>
+
                 <View style={[styles.messageBubble, styles.botBubble]}>
                   <ActivityIndicator />
                 </View>
@@ -255,11 +272,13 @@ export default function GeminiFloatingModal({
             />
 
             <TouchableOpacity
-              style={styles.sendBtn}
+              style={[styles.sendBtn, loading && styles.sendBtnDisabled]}
               onPress={sendMessage}
               disabled={loading}
             >
-              <Text style={styles.sendText}>Send</Text>
+              <Text style={styles.sendText}>
+                {loading ? "Sending..." : "Send"}
+              </Text>
             </TouchableOpacity>
           </View>
         </SafeAreaView>
@@ -273,6 +292,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.08)",
   },
+
   modalContainer: {
     position: "absolute",
     backgroundColor: "#FFFFFF",
@@ -285,6 +305,7 @@ const styles = StyleSheet.create({
     elevation: 14,
     marginBottom: 48,
   },
+
   header: {
     paddingHorizontal: 18,
     paddingTop: 16,
@@ -293,16 +314,19 @@ const styles = StyleSheet.create({
     borderBottomColor: "#E9E9E9",
     backgroundColor: "#FFFFFF",
   },
+
   title: {
     fontSize: 18,
     fontWeight: "700",
     color: "#D32F2F",
   },
+
   subtitle: {
     marginTop: 4,
     fontSize: 12,
     color: "#667085",
   },
+
   modeSwitchWrap: {
     flexDirection: "row",
     marginHorizontal: 14,
@@ -312,6 +336,7 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     padding: 4,
   },
+
   modeButton: {
     flex: 1,
     height: 40,
@@ -319,33 +344,41 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+
   modeButtonActive: {
     backgroundColor: "#D32F2F",
   },
+
   modeButtonText: {
     fontSize: 14,
     fontWeight: "600",
     color: "#666",
   },
+
   modeButtonTextActive: {
     color: "#FFF",
   },
+
   messages: {
     padding: 14,
     paddingBottom: 20,
   },
+
   messageRow: {
     marginBottom: 12,
     maxWidth: "88%",
   },
+
   userRow: {
     alignSelf: "flex-end",
     alignItems: "flex-end",
   },
+
   botRow: {
     alignSelf: "flex-start",
     alignItems: "flex-start",
   },
+
   botLabel: {
     fontSize: 12,
     fontWeight: "600",
@@ -353,11 +386,13 @@ const styles = StyleSheet.create({
     marginBottom: 6,
     marginLeft: 4,
   },
+
   messageBubble: {
     paddingHorizontal: 14,
     paddingVertical: 12,
     borderRadius: 16,
   },
+
   botBubble: {
     alignSelf: "flex-start",
     backgroundColor: "#FFFFFF",
@@ -371,22 +406,26 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     elevation: 2,
   },
+
   userBubble: {
     alignSelf: "flex-end",
     backgroundColor: "#D32F2F",
     borderRadius: 14,
     borderTopRightRadius: 6,
   },
+
   botText: {
     color: "#1F2937",
     fontSize: 14,
     lineHeight: 22,
   },
+
   userText: {
     color: "#FFFFFF",
     fontSize: 14,
     lineHeight: 22,
   },
+
   inputWrapper: {
     flexDirection: "row",
     alignItems: "center",
@@ -395,6 +434,7 @@ const styles = StyleSheet.create({
     borderTopColor: "#E9E9E9",
     backgroundColor: "#FFFFFF",
   },
+
   input: {
     flex: 1,
     height: 46,
@@ -405,6 +445,7 @@ const styles = StyleSheet.create({
     color: "#000",
     backgroundColor: "#FFFFFF",
   },
+
   sendBtn: {
     marginLeft: 10,
     height: 46,
@@ -414,6 +455,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+
+  sendBtnDisabled: {
+    opacity: 0.7,
+  },
+
   sendText: {
     color: "#FFFFFF",
     fontWeight: "700",

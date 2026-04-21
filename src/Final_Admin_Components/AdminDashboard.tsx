@@ -18,6 +18,7 @@ import AddClassModal from "./AddClassModal";
 import AddStudentModal from "./AddStudentModal";
 import AddTeacherModal from "./AddTeacherModal";
 import Chatbot from "./Chatbot";
+import ModifyChatbotModal from "./ModifyChatbotModal";
 
 import type { AdminFormPayload } from "./adminTypes";
 import type { StudentFormPayload } from "./studentTypes";
@@ -176,6 +177,8 @@ export default function AdminDashboard({
     useState(false);
   const [isAddClassModalVisible, setIsAddClassModalVisible] = useState(false);
   const [isChatbotModalVisible, setIsChatbotModalVisible] = useState(false);
+  const [isModifyChatbotModalVisible, setIsModifyChatbotModalVisible] =
+    useState(false);
   const [classCount, setClassCount] = useState(0);
   const [adminCount, setAdminCount] = useState(0);
   const [studentCount, setStudentCount] = useState(0);
@@ -539,7 +542,10 @@ export default function AdminDashboard({
               primary: true,
               onPress: () => setIsChatbotModalVisible(true),
             },
-            { label: "Modify" },
+            {
+              label: "Modify",
+              onPress: () => setIsModifyChatbotModalVisible(true),
+            },
           ]}
           cardWidth={cardWidth}
         />
@@ -576,6 +582,12 @@ export default function AdminDashboard({
       <Chatbot
         visible={isChatbotModalVisible}
         onClose={() => setIsChatbotModalVisible(false)}
+        isMobile={isMobile}
+      />
+
+      <ModifyChatbotModal
+        visible={isModifyChatbotModalVisible}
+        onClose={() => setIsModifyChatbotModalVisible(false)}
         isMobile={isMobile}
       />
     </View>
@@ -699,13 +711,13 @@ const styles = StyleSheet.create({
 
   card: {
     minWidth: 260,
-  backgroundColor: "#FFFFFF",
-  borderRadius: 24,
-  borderWidth: 1,
-  borderColor: "#F3D4D4",
-  padding: 20,
-  marginBottom: 18,
-  marginRight: 16,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: "#F3D4D4",
+    padding: 20,
+    marginBottom: 18,
+    marginRight: 16,
   },
 
   cardTop: {
