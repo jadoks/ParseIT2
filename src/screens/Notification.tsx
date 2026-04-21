@@ -30,6 +30,8 @@ interface NotificationScreenProps {
   notifications?: NotificationItem[];
   mode?: 'screen' | 'popover';
   onClosePopover?: () => void;
+  onMarkAsRead?: (id: string) => Promise<void> | void;
+  onMarkAllAsRead?: () => Promise<void> | void;
 }
 
 const Notification: React.FC<NotificationScreenProps> = ({
@@ -37,11 +39,14 @@ const Notification: React.FC<NotificationScreenProps> = ({
   notifications: incomingNotifications = [],
   mode = 'screen',
   onClosePopover,
+  onMarkAsRead,
+  onMarkAllAsRead,
 }) => {
   const [notifications, setNotifications] =
     useState<NotificationItem[]>(incomingNotifications);
   const [menuVisible, setMenuVisible] = useState(false);
   const [showAllNotifications, setShowAllNotifications] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const isPopover = mode === 'popover';
 
@@ -63,15 +68,48 @@ const Notification: React.FC<NotificationScreenProps> = ({
     return notifications;
   }, [notifications, isPopover, showAllNotifications]);
 
-  const markAsRead = (id: string) => {
+  const markAsRead = async (id: string) => {
+    const target = notifications.find((item) => item.id === id);
+
+    if (!target || target.read || isSubmitting) {
+      return;
+    }
+
     setNotifications((prev) =>
       prev.map((item) => (item.id === id ? { ...item, read: true } : item))
     );
+
+    try {
+      setIsSubmitting(true);
+      await onMarkAsRead?.(id);
+    } catch (error) {
+      setNotifications((prev) =>
+        prev.map((item) => (item.id === id ? { ...item, read: false } : item))
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
-  const markAllAsRead = () => {
+  const markAllAsRead = async () => {
+    const previousNotifications = notifications;
+
+    if (isSubmitting || previousNotifications.every((item) => item.read)) {
+      setMenuVisible(false);
+      return;
+    }
+
     setNotifications((prev) => prev.map((item) => ({ ...item, read: true })));
     setMenuVisible(false);
+
+    try {
+      setIsSubmitting(true);
+      await onMarkAllAsRead?.();
+    } catch (error) {
+      setNotifications(previousNotifications);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const getNotificationIcon = (type: NotificationType, read: boolean) => {
@@ -123,7 +161,9 @@ const Notification: React.FC<NotificationScreenProps> = ({
 
   const renderItem = ({ item }: { item: NotificationItem }) => (
     <Pressable
-      onPress={() => markAsRead(item.id)}
+      onPress={() => {
+        void markAsRead(item.id);
+      }}
       style={[styles.card, !item.read && styles.unreadCard]}
     >
       <View style={styles.iconWrapper}>
@@ -185,7 +225,9 @@ const Notification: React.FC<NotificationScreenProps> = ({
                 />
                 <View style={styles.popupMenu}>
                   <Pressable
-                    onPress={markAllAsRead}
+                    onPress={() => {
+                      void markAllAsRead();
+                    }}
                     style={styles.popupMenuItem}
                   >
                     <Text style={styles.popupMenuText}>Mark all as read</Text>
@@ -207,7 +249,12 @@ const Notification: React.FC<NotificationScreenProps> = ({
               </Text>
             </View>
 
-            <Pressable onPress={markAllAsRead} style={styles.markAllButton}>
+            <Pressable
+              onPress={() => {
+                void markAllAsRead();
+              }}
+              style={styles.markAllButton}
+            >
               <Text style={styles.markAllText}>Mark all</Text>
             </Pressable>
           </>

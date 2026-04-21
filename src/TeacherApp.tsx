@@ -1,5 +1,10 @@
-import React, { useMemo, useState } from 'react';
+import Constants from 'expo-constants';
+import * as FileSystem from 'expo-file-system/legacy';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  Alert,
+  Platform,
+  Pressable,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -23,15 +28,12 @@ import Profile2 from './teacher_components/TeacherProfile';
 import ShareAnnouncement from './teacher_components/TeacherShareAnnouncement';
 
 import TeacherAnalytics from './teacher_components/TeacherAnalytics';
-import Community2, {
-  CommunityPost
-} from './teacher_components/TeacherCommunity';
+import Community2, { CommunityPost } from './teacher_components/TeacherCommunity';
 import Dashboard2 from './teacher_components/TeacherDashboard';
 import TeacherMessenger from './teacher_components/TeacherMessenger';
-import TeacherNotification from './teacher_components/TeacherNotification';
-
-import Constants from 'expo-constants';
-import { Alert, Platform } from 'react-native';
+import TeacherNotification, {
+  NotificationItem,
+} from './teacher_components/TeacherNotification';
 
 interface SignedInTeacher {
   teacherId?: string;
@@ -39,8 +41,8 @@ interface SignedInTeacher {
   firstName?: string;
   lastName?: string;
   email?: string;
-  profileImage?: any;
-  bannerImage?: any;
+  profileImage?: string | null;
+  bannerImage?: string | null;
 }
 
 interface Props {
@@ -62,6 +64,10 @@ type AppScreenType =
 
 type CourseWithIcon = CourseDetailData & {
   icon?: string;
+  schoolYear?: string;
+  assignedTeacherId?: string;
+  assignedTeacherUid?: string;
+  instructorEmail?: string;
 };
 
 type MessengerCourse = {
@@ -73,29 +79,20 @@ type MessengerCourse = {
   section?: string;
 };
 
-const DEFAULT_PROFILE_IMAGE = require('../assets/images/avatar.jpg');
-const DEFAULT_BANNER_IMAGE = require('../assets/announcement/3.png');
+type TeacherClassAnnouncement = Announcement & {
+  classIds?: string[];
+  bannerKey?: number | null;
+  expiresAt?: any;
+  createdAt?: any;
+  updatedAt?: any;
+};
 
-const ANNOUNCEMENTS: Announcement[] = [
-  {
-    id: '1',
-    title: 'Welcome Back!',
-    message: 'Check out the latest updates and announcements.',
-    bannerImage: require('../assets/announcement/1.png'),
-  },
-  {
-    id: '2',
-    title: 'Midterm Grading',
-    message: 'Please ensure all midterm grades are encoded by the end of the week.',
-    bannerImage: require('../assets/announcement/2.png'),
-  },
-  {
-    id: '3',
-    title: 'Question Answers',
-    message: 'Check your Question Answered from community.',
-    bannerImage: require('../assets/announcement/3.png'),
-  },
-];
+const ANNOUNCEMENT_BANNERS: Record<number, any> = {
+  1: require('../assets/images/Banner1.png'),
+  2: require('../assets/images/Banner2.png'),
+  3: require('../assets/images/Banner3.png'),
+  4: require('../assets/images/Banner4.png'),
+};
 
 const isAppScreen = (screen: string): screen is AppScreenType => {
   return [
@@ -112,51 +109,307 @@ const isAppScreen = (screen: string): screen is AppScreenType => {
   ].includes(screen);
 };
 
+const normalizeText = (value?: string | null) => {
+  if (typeof value !== 'string') return '';
+  return value.trim();
+};
+
+function getApiBaseUrl() {
+  if (Platform.OS === 'web') {
+    return 'http://localhost:5000';
+  }
+
+  const possibleHost =
+    Constants.expoConfig?.hostUri ||
+    Constants.manifest2?.extra?.expoGo?.debuggerHost ||
+    '';
+
+  const host = possibleHost.split(':')[0];
+
+  if (host) {
+    return `http://${host}:5000`;
+  }
+
+  return 'http://192.168.1.5:5000';
+}
+
+const API_BASE_URL = getApiBaseUrl();
+
 export default function TeacherApp({ onLogout, currentTeacher }: Props) {
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const isLargeScreen = width >= 768;
   const isMobile = width < 768;
 
-  const teacherFullName = useMemo(() => {
-    const first = currentTeacher?.firstName?.trim() || '';
-    const last = currentTeacher?.lastName?.trim() || '';
-    const full = `${first} ${last}`.trim();
-    return full || 'Teacher';
-  }, [currentTeacher]);
-
-  const teacherEmail = useMemo(() => {
-    return currentTeacher?.email?.trim() || 'teacher@email.com';
-  }, [currentTeacher]);
-
-  const teacherIdentity = useMemo(() => {
-    return (
-      currentTeacher?.teacherId?.trim() ||
-      currentTeacher?.authUid?.trim() ||
-      teacherEmail ||
-      teacherFullName
-    );
-  }, [currentTeacher, teacherEmail, teacherFullName]);
-
   const [activeScreen, setActiveScreen] = useState<AppScreenType>('home');
   const [lastScreen, setLastScreen] = useState<AppScreenType>('home');
   const [showAnnouncement, setShowAnnouncement] = useState(true);
   const [isMobileDrawerOpen, setMobileDrawerOpen] = useState(false);
+  const [isNotificationOpen, setIsNotificationOpen] = useState(false);
 
   const [courses, setCourses] = useState<CourseWithIcon[]>([]);
+  const [teacherClasses, setTeacherClasses] = useState<CourseWithIcon[]>([]);
   const [selectedCourse, setSelectedCourse] = useState<CourseWithIcon | null>(null);
 
   const [selectedAnalyticsClass, setSelectedAnalyticsClass] = useState<string>('All');
 
-  const [currentUserAvatar, setCurrentUserAvatar] = useState<any>(
-    currentTeacher?.profileImage || DEFAULT_PROFILE_IMAGE
-  );
-  const [currentUserBanner, setCurrentUserBanner] = useState<any>(
-    currentTeacher?.bannerImage || DEFAULT_BANNER_IMAGE
+  const [teacherProfile, setTeacherProfile] = useState<SignedInTeacher | null>(null);
+  const [teacherNotifications, setTeacherNotifications] = useState<NotificationItem[]>([]);
+  const [teacherAnnouncements, setTeacherAnnouncements] = useState<TeacherClassAnnouncement[]>([]);
+
+  const currentTeacherData: SignedInTeacher = teacherProfile || currentTeacher;
+
+  const teacherFullName = useMemo(() => {
+    const first = normalizeText(currentTeacherData?.firstName);
+    const last = normalizeText(currentTeacherData?.lastName);
+    return `${first} ${last}`.trim() || 'Teacher';
+  }, [currentTeacherData]);
+
+  const teacherEmail = useMemo(() => {
+    return normalizeText(currentTeacherData?.email);
+  }, [currentTeacherData]);
+
+  const teacherIdentity = useMemo(() => {
+    return (
+      normalizeText(currentTeacherData?.teacherId) ||
+      normalizeText(currentTeacherData?.authUid || '') ||
+      teacherEmail ||
+      teacherFullName
+    );
+  }, [currentTeacherData, teacherEmail, teacherFullName]);
+
+  const initialAvatar = currentTeacherData?.profileImage
+    ? { uri: currentTeacherData.profileImage }
+    : null;
+
+  const initialBanner = currentTeacherData?.bannerImage
+    ? { uri: currentTeacherData.bannerImage }
+    : null;
+
+  const [currentUserAvatar, setCurrentUserAvatar] = useState<any>(initialAvatar);
+  const [currentUserBanner, setCurrentUserBanner] = useState<any>(initialBanner);
+
+  const [communityPosts, setCommunityPosts] = useState<CommunityPost[]>([]);
+
+  const isProfileScreen = activeScreen === 'profile';
+
+  const unreadNotificationCount = useMemo(
+    () => teacherNotifications.filter((item) => !item.read).length,
+    [teacherNotifications]
   );
 
-  // UPDATED: no hardcoded initial posts
-  const [communityPosts, setCommunityPosts] = useState<CommunityPost[]>([]);
+  const effectiveCourses = useMemo<CourseWithIcon[]>(() => {
+    const merged = [...teacherClasses, ...courses];
+    const seen = new Set<string>();
+
+    return merged.filter((course) => {
+      if (!course?.id) return false;
+      if (seen.has(course.id)) return false;
+      seen.add(course.id);
+      return true;
+    });
+  }, [teacherClasses, courses]);
+
+  useEffect(() => {
+    setCurrentUserAvatar(
+      currentTeacherData?.profileImage ? { uri: currentTeacherData.profileImage } : null
+    );
+  }, [currentTeacherData?.profileImage]);
+
+  useEffect(() => {
+    setCurrentUserBanner(
+      currentTeacherData?.bannerImage ? { uri: currentTeacherData.bannerImage } : null
+    );
+  }, [currentTeacherData?.bannerImage]);
+
+  useEffect(() => {
+    if (!isLargeScreen) {
+      setIsNotificationOpen(false);
+    }
+  }, [isLargeScreen]);
+
+  useEffect(() => {
+    if (activeScreen === 'notification') {
+      setIsNotificationOpen(false);
+    }
+  }, [activeScreen]);
+
+  const loadTeacherProfile = async () => {
+    const teacherId =
+      currentTeacher.teacherId ||
+      currentTeacher.authUid ||
+      currentTeacher.email;
+
+    if (!teacherId) return;
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/auth/user-profile`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: teacherId,
+          role: 'teacher',
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data?.error || 'Failed to load teacher profile.');
+      }
+
+      setTeacherProfile({
+        teacherId: data?.data?.teacherId ?? undefined,
+        authUid: data?.data?.authUid ?? null,
+        firstName: data?.data?.firstName ?? undefined,
+        lastName: data?.data?.lastName ?? undefined,
+        email: data?.data?.email ?? undefined,
+        profileImage: data?.data?.profileImage ?? null,
+        bannerImage: data?.data?.bannerImage ?? null,
+      });
+    } catch (error) {
+      console.log('LOAD TEACHER PROFILE ERROR =>', error);
+    }
+  };
+
+  const loadTeacherNotifications = useCallback(async () => {
+    const teacherId =
+      normalizeText(currentTeacherData?.teacherId) ||
+      normalizeText(currentTeacher?.teacherId);
+
+    if (!teacherId) {
+      setTeacherNotifications([]);
+      return;
+    }
+
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/notifications?userId=${encodeURIComponent(
+          teacherId
+        )}&role=teacher`
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data?.error || 'Failed to load notifications.');
+      }
+
+      setTeacherNotifications(Array.isArray(data?.data) ? data.data : []);
+    } catch (error) {
+      console.log('LOAD TEACHER NOTIFICATIONS ERROR =>', error);
+    }
+  }, [currentTeacher?.teacherId, currentTeacherData?.teacherId]);
+
+  const toMillis = (value: any) => {
+    if (!value) return 0;
+    if (typeof value?.toDate === 'function') return value.toDate().getTime();
+    if (typeof value?._seconds === 'number') return value._seconds * 1000;
+    const parsed = new Date(value).getTime();
+    return Number.isNaN(parsed) ? 0 : parsed;
+  };
+
+  const isAnnouncementActive = (value?: any) => {
+  if (!value) return true;
+  const expiry =
+    typeof value?.toDate === 'function' ? value.toDate() : new Date(value);
+
+  if (Number.isNaN(expiry.getTime())) return true;
+  return expiry.getTime() > Date.now();
+};
+
+  const loadTeacherClasses = useCallback(async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/classes`);
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data?.error || 'Failed to load classes.');
+      }
+
+      const allClasses = Array.isArray(data) ? data : [];
+
+      const filteredClasses = allClasses.filter((item: any) => {
+        return (
+          item.assignedTeacherId === currentTeacherData?.teacherId ||
+          item.assignedTeacherUid === currentTeacherData?.authUid ||
+          item.instructorEmail === currentTeacherData?.email
+        );
+      });
+
+      setTeacherClasses(filteredClasses);
+    } catch (error) {
+      console.log('LOAD TEACHER CLASSES ERROR =>', error);
+      setTeacherClasses([]);
+    }
+  }, [
+    currentTeacherData?.teacherId,
+    currentTeacherData?.authUid,
+    currentTeacherData?.email,
+  ]);
+
+  const loadTeacherAnnouncements = useCallback(async () => {
+  try {
+    const classIds = effectiveCourses.map((item) => item.id).filter(Boolean);
+
+    if (!classIds.length) {
+      setTeacherAnnouncements([]);
+      return;
+    }
+
+    const groupedAnnouncements = await Promise.all(
+      classIds.map(async (classId) => {
+        const response = await fetch(`${API_BASE_URL}/class-announcements/${classId}`);
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data?.error || 'Failed to load announcements.');
+        }
+
+        return Array.isArray(data) ? data : [];
+      })
+    );
+
+    const rawAnnouncements = groupedAnnouncements.flat();
+
+    const active = rawAnnouncements.filter((item: any) =>
+      isAnnouncementActive(item?.expiresAt)
+    );
+
+    const uniqueMap = new Map<string, any>();
+
+    active.forEach((item: any) => {
+      const key = `${item.title}-${item.message}-${item.expiresAt}-${item.bannerKey}`;
+      if (!uniqueMap.has(key)) {
+        uniqueMap.set(key, item);
+      }
+    });
+
+    const mappedAnnouncements: TeacherClassAnnouncement[] = Array.from(
+      uniqueMap.values()
+    )
+      .map((item: any) => ({
+        id: item.id,
+        classIds: Array.isArray(item.classIds) ? item.classIds : [],
+        title: item.title || '',
+        message: item.message || '',
+        bannerKey: typeof item.bannerKey === 'number' ? item.bannerKey : 4,
+        bannerImage:
+          ANNOUNCEMENT_BANNERS[
+            typeof item.bannerKey === 'number' ? item.bannerKey : 4
+          ],
+        expiresAt: item.expiresAt || null,
+        createdAt: item.createdAt || null,
+        updatedAt: item.updatedAt || null,
+      }))
+      .sort((a, b) => toMillis(b.createdAt) - toMillis(a.createdAt));
+
+    setTeacherAnnouncements(mappedAnnouncements);
+  } catch (error) {
+    console.log('LOAD TEACHER ANNOUNCEMENTS ERROR =>', error);
+    setTeacherAnnouncements([]);
+  }
+}, [effectiveCourses]);
 
   const hydratedCommunityPosts = useMemo<CommunityPost[]>(() => {
     return communityPosts.map((post) => ({
@@ -185,15 +438,15 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
 
   const messengerCourses = useMemo<MessengerCourse[]>(
     () =>
-      courses.map((course) => ({
+      effectiveCourses.map((course) => ({
         id: course.id,
         name: `${course.courseCode} - ${course.name}`,
-        instructor: course.instructor,
+        instructor: course.instructor || teacherFullName,
         semester: course.semester || '1st Semester',
-        schoolYear: '2025-2026',
+        schoolYear: course.schoolYear || '2025-2026',
         section: course.section,
       })),
-    [courses]
+    [effectiveCourses, teacherFullName]
   );
 
   const shouldHideMobileHeader =
@@ -207,6 +460,7 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
   const navigateTo = (screen: AppScreenType) => {
     setLastScreen(activeScreen);
     setActiveScreen(screen);
+    setIsNotificationOpen(false);
 
     if (screen === 'analytics') {
       setSelectedAnalyticsClass('All');
@@ -229,33 +483,21 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
     }
   };
 
+  const handleNotificationPress = () => {
+    if (isLargeScreen) {
+      setIsNotificationOpen((prev) => !prev);
+    } else {
+      setLastScreen(activeScreen);
+      setActiveScreen('notification');
+    }
+  };
+
   const normalizeCommunityAvatar = (avatar: any) => {
     if (!avatar) return null;
     if (typeof avatar === 'string') return avatar;
     if (avatar?.uri) return avatar.uri;
     return null;
   };
-
-  function getApiBaseUrl() {
-    if (Platform.OS === 'web') {
-      return 'http://localhost:5000';
-    }
-
-    const possibleHost =
-      Constants.expoConfig?.hostUri ||
-      Constants.manifest2?.extra?.expoGo?.debuggerHost ||
-      '';
-
-    const host = possibleHost.split(':')[0];
-
-    if (host) {
-      return `http://${host}:5000`;
-    }
-
-    return 'http://192.168.1.5:5000';
-  }
-
-  const API_BASE_URL = getApiBaseUrl();
 
   const loadCommunityPosts = async () => {
     try {
@@ -272,20 +514,160 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
     }
   };
 
-  React.useEffect(() => {
+  useEffect(() => {
+    loadTeacherProfile();
     loadCommunityPosts();
-  }, []);
+  }, [currentTeacher?.teacherId, currentTeacher?.authUid, currentTeacher?.email]);
 
-  const handleSearchChange = (_query: string) => {
-    // Connect later if needed
+  useEffect(() => {
+    loadTeacherNotifications();
+  }, [loadTeacherNotifications]);
+
+  useEffect(() => {
+    loadTeacherClasses();
+  }, [loadTeacherClasses]);
+
+  useEffect(() => {
+    loadTeacherAnnouncements();
+  }, [loadTeacherAnnouncements]);
+
+  const handleSearchChange = (_query: string) => {};
+
+  const getBase64FromUri = async (uri: string) => {
+    if (Platform.OS === 'web') {
+      const response = await fetch(uri);
+      const blob = await response.blob();
+
+      return await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+
+        reader.onloadend = () => {
+          const result = reader.result;
+
+          if (typeof result !== 'string') {
+            reject(new Error('Failed to read file as base64.'));
+            return;
+          }
+
+          const base64 = result.includes(',') ? result.split(',')[1] : result;
+          resolve(base64);
+        };
+
+        reader.onerror = () => reject(new Error('Failed to convert blob to base64.'));
+        reader.readAsDataURL(blob);
+      });
+    }
+
+    return await FileSystem.readAsStringAsync(uri, {
+      encoding: 'base64',
+    });
   };
 
-  const handleChangeProfileImage = (image: any) => {
-    setCurrentUserAvatar(image);
+  const resolveCurrentUserDocId = () => {
+    return (
+      currentTeacherData?.teacherId ||
+      currentTeacherData?.authUid ||
+      currentTeacherData?.email
+    );
   };
 
-  const handleChangeBannerImage = (image: any) => {
-    setCurrentUserBanner(image);
+  const saveUserImagesToFirestore = async ({
+    profileImage,
+    bannerImage,
+  }: {
+    profileImage?: any;
+    bannerImage?: any;
+  }) => {
+    const userId = resolveCurrentUserDocId();
+
+    if (!userId) {
+      throw new Error('Teacher ID is missing.');
+    }
+
+    const body: any = {
+      id: userId,
+      role: 'teacher',
+    };
+
+    if (profileImage?.uri) {
+      body.profileImageBase64 = await getBase64FromUri(profileImage.uri);
+      body.profileImageMimeType = 'image/jpeg';
+      body.profileImageFileName = 'profile.jpg';
+    }
+
+    if (bannerImage?.uri) {
+      body.bannerImageBase64 = await getBase64FromUri(bannerImage.uri);
+      body.bannerImageMimeType = 'image/jpeg';
+      body.bannerImageFileName = 'banner.jpg';
+    }
+
+    const response = await fetch(`${API_BASE_URL}/auth/update-user-images`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data?.error || 'Failed to save teacher images.');
+    }
+
+    return data?.data || {};
+  };
+
+  const handleChangeProfileImage = async (image: any) => {
+    try {
+      setCurrentUserAvatar(image);
+
+      if (!image?.uri) return;
+
+      const savedData = await saveUserImagesToFirestore({
+        profileImage: image,
+      });
+
+      if (savedData?.profileImage) {
+        setCurrentUserAvatar({ uri: savedData.profileImage });
+      }
+
+      setTeacherProfile((prev) => ({
+        ...(prev || {}),
+        profileImage: savedData?.profileImage || image.uri,
+      }));
+    } catch (error: any) {
+      console.log('SAVE TEACHER PROFILE IMAGE ERROR =>', error);
+      Alert.alert(
+        'Save Failed',
+        error?.message || 'Unable to save profile image.'
+      );
+    }
+  };
+
+  const handleChangeBannerImage = async (image: any) => {
+    try {
+      setCurrentUserBanner(image);
+
+      if (!image?.uri) return;
+
+      const savedData = await saveUserImagesToFirestore({
+        bannerImage: image,
+      });
+
+      if (savedData?.bannerImage) {
+        setCurrentUserBanner({ uri: savedData.bannerImage });
+      }
+
+      setTeacherProfile((prev) => ({
+        ...(prev || {}),
+        bannerImage: savedData?.bannerImage || image.uri,
+      }));
+    } catch (error: any) {
+      console.log('SAVE TEACHER BANNER IMAGE ERROR =>', error);
+      Alert.alert(
+        'Save Failed',
+        error?.message || 'Unable to save banner image.'
+      );
+    }
   };
 
   const handleCreateCommunityPost = async (query: string) => {
@@ -298,8 +680,8 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           content: trimmedQuery,
-          authorId: currentTeacher.teacherId || teacherIdentity,
-          authorUid: currentTeacher.authUid || null,
+          authorId: currentTeacherData?.teacherId || teacherIdentity,
+          authorUid: currentTeacherData?.authUid || null,
           authorRole: 'teacher',
           userName: teacherFullName,
           userEmail: teacherEmail,
@@ -314,6 +696,7 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
       }
 
       await loadCommunityPosts();
+      await loadTeacherNotifications();
     } catch (error: any) {
       Alert.alert('Post Failed', error?.message || 'Unable to create post.');
     }
@@ -329,8 +712,8 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           message: trimmedMessage,
-          authorId: currentTeacher.teacherId || teacherIdentity,
-          authorUid: currentTeacher.authUid || null,
+          authorId: currentTeacherData?.teacherId || teacherIdentity,
+          authorUid: currentTeacherData?.authUid || null,
           authorRole: 'teacher',
           userName: teacherFullName,
           avatar: normalizeCommunityAvatar(currentUserAvatar),
@@ -344,6 +727,7 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
       }
 
       await loadCommunityPosts();
+      await loadTeacherNotifications();
     } catch (error: any) {
       Alert.alert('Answer Failed', error?.message || 'Unable to post answer.');
     }
@@ -367,6 +751,7 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
       }
 
       await loadCommunityPosts();
+      await loadTeacherNotifications();
     } catch (error: any) {
       Alert.alert('Update Failed', error?.message || 'Unable to update post.');
     }
@@ -385,6 +770,7 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
       }
 
       await loadCommunityPosts();
+      await loadTeacherNotifications();
     } catch (error: any) {
       Alert.alert('Delete Failed', error?.message || 'Unable to delete post.');
     }
@@ -415,6 +801,7 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
       }
 
       await loadCommunityPosts();
+      await loadTeacherNotifications();
     } catch (error: any) {
       Alert.alert('Update Failed', error?.message || 'Unable to update answer.');
     }
@@ -436,6 +823,7 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
       }
 
       await loadCommunityPosts();
+      await loadTeacherNotifications();
     } catch (error: any) {
       Alert.alert('Delete Failed', error?.message || 'Unable to delete answer.');
     }
@@ -453,6 +841,7 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
     }
     setLastScreen(activeScreen);
     setActiveScreen('coursedetail');
+    setIsNotificationOpen(false);
   };
 
   const handleCreateClass = (newCourse: CourseDetailData) => {
@@ -480,17 +869,34 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
     };
 
     setCourses((prev) => [courseWithIcon, ...prev]);
+
+    setTimeout(() => {
+      loadTeacherNotifications();
+      loadTeacherClasses();
+      loadTeacherAnnouncements();
+    }, 500);
   };
 
   const handleDeleteCourse = (id: string) => {
     setCourses((prev) => prev.filter((course) => course.id !== id));
+    setTeacherClasses((prev) => prev.filter((course) => course.id !== id));
     setSelectedCourse((prev) => (prev?.id === id ? null : prev));
+
+    setTimeout(() => {
+      loadTeacherNotifications();
+      loadTeacherClasses();
+      loadTeacherAnnouncements();
+    }, 500);
   };
 
   return (
     <SafeAreaView
       style={styles.mainContainer}
-      edges={shouldHideMobileHeader ? ['left', 'right', 'bottom'] : ['top', 'left', 'right', 'bottom']}
+      edges={
+        shouldHideMobileHeader
+          ? ['left', 'right', 'bottom']
+          : ['top', 'left', 'right', 'bottom']
+      }
     >
       {!shouldHideMobileHeader && (
         <View style={styles.headerWrapper}>
@@ -499,13 +905,44 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
             activeScreen={activeScreen}
             onNavigate={handleHeaderNavigate}
             onSearchChange={handleSearchChange}
-            onMenuPress={() => setMobileDrawerOpen((prev) => !prev)}
+            onMenuPress={() => {
+              if (!isProfileScreen) {
+                setMobileDrawerOpen((prev) => !prev);
+              }
+            }}
+            notificationCount={unreadNotificationCount}
+            onNotificationPress={handleNotificationPress}
           />
         </View>
       )}
 
+      {isLargeScreen && isNotificationOpen && (
+        <>
+          <Pressable
+            style={styles.notificationBackdrop}
+            onPress={() => setIsNotificationOpen(false)}
+          />
+          <View style={styles.notificationPopover}>
+            <TeacherNotification
+              mode="popover"
+              notifications={teacherNotifications}
+              apiBaseUrl={API_BASE_URL}
+              userId={teacherIdentity}
+              role="teacher"
+              onNotificationsUpdated={setTeacherNotifications}
+              onClosePopover={() => setIsNotificationOpen(false)}
+              onBack={() => {
+                setIsNotificationOpen(false);
+                setLastScreen(activeScreen);
+                setActiveScreen('notification');
+              }}
+            />
+          </View>
+        </>
+      )}
+
       <View style={styles.contentWrapper}>
-        {isLargeScreen && (
+        {isLargeScreen && !isProfileScreen && activeScreen !== 'notification' && (
           <View style={styles.desktopDrawer}>
             <TeacherDrawerMenu
               isFixed={true}
@@ -539,19 +976,37 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
             />
           ) : activeScreen === 'home' ? (
             <Dashboard2
-              announcements={ANNOUNCEMENTS}
-              courses={courses}
+              announcements={teacherAnnouncements}
+              courses={effectiveCourses}
               onOpenCourse={(course: CourseDetailData) => handleOpenCourse(course)}
               onCreateClass={(course: CourseDetailData) => handleCreateClass(course)}
               onDeleteCourse={handleDeleteCourse}
-              currentTeacher={currentTeacher}
+              currentTeacher={currentTeacherData}
             />
           ) : activeScreen === 'honors' ? (
             <Honors />
           ) : activeScreen === 'grades' ? (
             <Grades />
           ) : activeScreen === 'announcement' ? (
-            <ShareAnnouncement />
+            <ShareAnnouncement
+              apiBaseUrl={API_BASE_URL}
+              currentTeacher={currentTeacherData}
+              classes={effectiveCourses.map((course) => ({
+                id: course.id,
+                name: course.name,
+                courseCode: course.courseCode,
+                classCode: course.classCode,
+                section: course.section,
+                year: course.year,
+                semester: course.semester,
+              }))}
+              onShared={async () => {
+                await loadTeacherAnnouncements();
+                await loadTeacherNotifications();
+                setShowAnnouncement(true);
+                setActiveScreen('home');
+              }}
+            />
           ) : activeScreen === 'community' ? (
             <Community2
               posts={hydratedCommunityPosts}
@@ -578,17 +1033,25 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
             <Coursedetail2
               onBack={() => setActiveScreen(lastScreen)}
               course={selectedCourse || undefined}
-              currentTeacher={currentTeacher}
+              currentTeacher={currentTeacherData}
             />
           ) : activeScreen === 'notification' ? (
-            <TeacherNotification />
+            <TeacherNotification
+              mode="screen"
+              notifications={teacherNotifications}
+              apiBaseUrl={API_BASE_URL}
+              userId={teacherIdentity}
+              role="teacher"
+              onNotificationsUpdated={setTeacherNotifications}
+              onBack={() => setActiveScreen(lastScreen)}
+            />
           ) : activeScreen === 'analytics' ? (
             <TeacherAnalytics
               teacherName={teacherFullName}
               selectedCourseName={selectedCourse?.name || 'Academic Analytics'}
               selectedClass={selectedAnalyticsClass}
               onChangeSelectedClass={setSelectedAnalyticsClass}
-              availableCourses={courses}
+              availableCourses={effectiveCourses}
             />
           ) : (
             <View style={styles.emptyState}>
@@ -598,7 +1061,7 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
         </View>
       </View>
 
-      {!isLargeScreen && isMobileDrawerOpen && (
+      {!isLargeScreen && isMobileDrawerOpen && !isProfileScreen && (
         <View style={styles.mobileDrawerLayer} pointerEvents="box-none">
           <TouchableOpacity
             style={styles.mobileBackdrop}
@@ -634,9 +1097,13 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
       )}
 
       <AnnouncementModal2
-        visible={activeScreen === 'home' && showAnnouncement}
+        visible={
+          activeScreen === 'home' &&
+          showAnnouncement &&
+          teacherAnnouncements.length > 0
+        }
         onClose={() => setShowAnnouncement(false)}
-        announcements={ANNOUNCEMENTS}
+        announcements={teacherAnnouncements}
       />
     </SafeAreaView>
   );
@@ -656,7 +1123,6 @@ const styles = StyleSheet.create({
   contentWrapper: {
     flex: 1,
     flexDirection: 'row',
-    position: 'relative',
   },
 
   desktopDrawer: {
@@ -668,49 +1134,58 @@ const styles = StyleSheet.create({
 
   screenContainer: {
     flex: 1,
-    minHeight: 0,
+    minWidth: 0,
     backgroundColor: '#FFF',
+  },
+
+  notificationBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 3999,
+    elevation: 3999,
+  },
+
+  notificationPopover: {
+    position: 'absolute',
+    top: 72,
+    right: 20,
+    zIndex: 4000,
+    elevation: 4000,
   },
 
   mobileDrawerLayer: {
     ...StyleSheet.absoluteFillObject,
     zIndex: 9999,
-    elevation: 9999,
-    flexDirection: 'row',
   },
 
   mobileBackdrop: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.35)',
+    backgroundColor: 'rgba(0,0,0,0.28)',
   },
 
   mobileOverlay: {
     position: 'absolute',
     top: 0,
-    bottom: 0,
     left: 0,
-    width: '76%',
-    maxWidth: 340,
-    minWidth: 290,
+    bottom: 0,
+    width: 300,
+    maxWidth: '82%',
     backgroundColor: '#FFF',
     shadowColor: '#000',
-    shadowOpacity: 0.08,
+    shadowOpacity: 0.12,
     shadowRadius: 8,
-    shadowOffset: { width: 2, height: 0 },
-    elevation: 10,
+    shadowOffset: { width: 3, height: 0 },
+    elevation: 14,
   },
 
   emptyState: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 24,
   },
 
   emptyStateText: {
     fontSize: 16,
-    color: '#666',
+    color: '#555',
     fontWeight: '500',
-    textAlign: 'center',
   },
 });

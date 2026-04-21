@@ -2,17 +2,13 @@ import FontAwesome5 from "@expo/vector-icons/FontAwesome5";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import Constants from "expo-constants";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   Alert,
   DimensionValue,
-  Modal,
   Platform,
-  Pressable,
-  ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
@@ -48,18 +44,6 @@ type AdminDashboardProps = {
   onOpenManageStudent: () => void;
   onOpenManageTeacher: () => void;
   onBackToDashboard?: () => void;
-};
-
-type AcademicYearOption = {
-  id: string;
-  label: string;
-};
-
-type DropdownAnchor = {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
 };
 
 function getApiBaseUrl() {
@@ -136,242 +120,6 @@ function DashboardCard({
   );
 }
 
-function AcademicYearCard({
-  cardWidth,
-  isMobile,
-  currentSemester,
-  semesterOptions,
-  onSelectSemester,
-  onCreate,
-  isStarted,
-  onToggleStartEnd,
-}: {
-  cardWidth: DimensionValue;
-  isMobile: boolean;
-  currentSemester: string;
-  semesterOptions: AcademicYearOption[];
-  onSelectSemester: (value: string) => void;
-  onCreate: () => void;
-  isStarted: boolean;
-  onToggleStartEnd: () => void;
-}) {
-  const [isDropdownModalVisible, setIsDropdownModalVisible] = useState(false);
-  const [dropdownAnchor, setDropdownAnchor] = useState<DropdownAnchor | null>(
-    null
-  );
-
-  const dropdownRef = useRef<View | null>(null);
-
-  const openDropdown = () => {
-    if (isMobile) {
-      setIsDropdownModalVisible(true);
-      return;
-    }
-
-    dropdownRef.current?.measureInWindow((x, y, measuredWidth, height) => {
-      setDropdownAnchor({
-        x,
-        y,
-        width: measuredWidth,
-        height,
-      });
-      setIsDropdownModalVisible(true);
-    });
-  };
-
-  return (
-    <>
-      <View style={[styles.card, { width: cardWidth }]}>
-        <View style={styles.cardTop}>
-          <View style={styles.iconBox}>
-            <Ionicons name="calendar-outline" size={24} color="#DC2626" />
-          </View>
-
-          <TouchableOpacity style={styles.moreButton} activeOpacity={0.85}>
-            <Ionicons name="ellipsis-horizontal" size={18} color="#B8A6A6" />
-          </TouchableOpacity>
-        </View>
-
-        <Text style={styles.cardTitle}>Set Up Academic Year</Text>
-
-        <View ref={dropdownRef} collapsable={false}>
-          <TouchableOpacity
-            style={styles.selectField}
-            activeOpacity={0.85}
-            onPress={openDropdown}
-          >
-            <Text style={styles.selectFieldText}>{currentSemester}</Text>
-            <Ionicons
-              name={isMobile ? "chevron-forward" : "chevron-down"}
-              size={18}
-              color="#8A6F6F"
-            />
-          </TouchableOpacity>
-        </View>
-
-        <View style={styles.actionRowAcademic}>
-          <TouchableOpacity
-            style={[
-              styles.actionButton,
-              styles.actionButtonPrimary,
-              styles.actionButtonAcademic,
-              styles.actionButtonAcademicGap,
-            ]}
-            activeOpacity={0.85}
-            onPress={onCreate}
-          >
-            <Text style={[styles.actionText, styles.actionTextPrimary]}>
-              Create
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.actionButton, styles.actionButtonAcademic]}
-            activeOpacity={0.85}
-            onPress={onToggleStartEnd}
-          >
-            <Text style={styles.actionText}>{isStarted ? "End" : "Start"}</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      <Modal
-        visible={isDropdownModalVisible}
-        animationType="fade"
-        transparent
-        onRequestClose={() => {
-          setIsDropdownModalVisible(false);
-          setDropdownAnchor(null);
-        }}
-      >
-        <View style={styles.dropdownModalOverlay}>
-          <Pressable
-            style={StyleSheet.absoluteFill}
-            onPress={() => {
-              setIsDropdownModalVisible(false);
-              setDropdownAnchor(null);
-            }}
-          />
-
-          {isMobile ? (
-            <View style={styles.optionModalCard}>
-              <View style={styles.optionModalHeader}>
-                <Text style={styles.optionModalTitle}>Select Semester</Text>
-                <TouchableOpacity
-                  onPress={() => {
-                    setIsDropdownModalVisible(false);
-                    setDropdownAnchor(null);
-                  }}
-                  activeOpacity={0.85}
-                  style={styles.optionModalCloseButton}
-                >
-                  <Ionicons name="close" size={20} color="#7A4A4A" />
-                </TouchableOpacity>
-              </View>
-
-              <ScrollView showsVerticalScrollIndicator={false}>
-                {semesterOptions.map((option, index) => {
-                  const isActive = option.label === currentSemester;
-                  const isLast = index === semesterOptions.length - 1;
-
-                  return (
-                    <TouchableOpacity
-                      key={option.id}
-                      style={[
-                        styles.optionModalItem,
-                        isActive && styles.dropdownItemActive,
-                        !isLast && styles.dropdownItemBorder,
-                      ]}
-                      activeOpacity={0.85}
-                      onPress={() => {
-                        onSelectSemester(option.label);
-                        setIsDropdownModalVisible(false);
-                        setDropdownAnchor(null);
-                      }}
-                    >
-                      <Text
-                        style={[
-                          styles.dropdownItemText,
-                          isActive && styles.dropdownItemTextActive,
-                        ]}
-                      >
-                        {option.label}
-                      </Text>
-
-                      {isActive && (
-                        <Ionicons
-                          name="checkmark-circle"
-                          size={18}
-                          color="#DC2626"
-                        />
-                      )}
-                    </TouchableOpacity>
-                  );
-                })}
-              </ScrollView>
-            </View>
-          ) : (
-            <View
-              style={[
-                styles.dropdownFloatingCard,
-                dropdownAnchor && {
-                  top: dropdownAnchor.y + dropdownAnchor.height + 8,
-                  left: dropdownAnchor.x,
-                  width: dropdownAnchor.width,
-                },
-              ]}
-            >
-              <ScrollView
-                showsVerticalScrollIndicator={false}
-                style={styles.dropdownFloatingScroll}
-              >
-                {semesterOptions.map((option, index) => {
-                  const isActive = option.label === currentSemester;
-                  const isLast = index === semesterOptions.length - 1;
-
-                  return (
-                    <TouchableOpacity
-                      key={option.id}
-                      style={[
-                        styles.dropdownItem,
-                        isActive && styles.dropdownItemActive,
-                        !isLast && styles.dropdownItemBorder,
-                      ]}
-                      activeOpacity={0.85}
-                      onPress={() => {
-                        onSelectSemester(option.label);
-                        setIsDropdownModalVisible(false);
-                        setDropdownAnchor(null);
-                      }}
-                    >
-                      <Text
-                        style={[
-                          styles.dropdownItemText,
-                          isActive && styles.dropdownItemTextActive,
-                        ]}
-                      >
-                        {option.label}
-                      </Text>
-
-                      {isActive && (
-                        <Ionicons
-                          name="checkmark-circle"
-                          size={18}
-                          color="#DC2626"
-                        />
-                      )}
-                    </TouchableOpacity>
-                  );
-                })}
-              </ScrollView>
-            </View>
-          )}
-        </View>
-      </Modal>
-    </>
-  );
-}
-
 function SummaryCard({
   label,
   value,
@@ -389,199 +137,6 @@ function SummaryCard({
       <Text style={styles.summaryValue}>{value}</Text>
       <Text style={styles.summaryTrend}>{trend}</Text>
     </View>
-  );
-}
-
-function SetAcademicYearModal({
-  visible,
-  onClose,
-  isMobile,
-  onSave,
-}: {
-  visible: boolean;
-  onClose: () => void;
-  isMobile: boolean;
-  onSave: (payload: {
-    semester: "1st" | "2nd" | null;
-    startYear: string;
-    endYear: string;
-  }) => void;
-}) {
-  const [selectedSemester, setSelectedSemester] = useState<"1st" | "2nd" | null>(
-    "1st"
-  );
-  const [startYear, setStartYear] = useState("2026");
-  const [endYear, setEndYear] = useState("2027");
-
-  const handleClose = () => onClose();
-
-  const handleSubmit = () => {
-    onSave({
-      semester: selectedSemester,
-      startYear,
-      endYear,
-    });
-    handleClose();
-  };
-
-  return (
-    <Modal visible={visible} animationType="fade" transparent>
-      <View style={styles.modalOverlay}>
-        <Pressable style={StyleSheet.absoluteFill} onPress={handleClose} />
-
-        <View style={styles.modalCard}>
-          <View style={styles.modalHeader}>
-            <View style={styles.modalHeaderLeft}>
-              <View style={styles.modalIconBox}>
-                <Ionicons name="calendar-outline" size={22} color="#DC2626" />
-              </View>
-
-              <View style={styles.modalHeaderTextWrap}>
-                <Text style={styles.modalTitle}>Create Semester</Text>
-                <Text style={styles.modalSubtitle}>
-                  Create a semester entry for the academic year. This is
-                  temporary only and will reset after refresh.
-                </Text>
-              </View>
-            </View>
-
-            <TouchableOpacity
-              style={styles.modalCloseButton}
-              onPress={handleClose}
-              activeOpacity={0.85}
-            >
-              <Ionicons name="close" size={20} color="#7A4A4A" />
-            </TouchableOpacity>
-          </View>
-
-          <ScrollView
-            showsVerticalScrollIndicator={false}
-            contentContainerStyle={styles.modalContent}
-          >
-            <View style={styles.modalSection}>
-              <View style={styles.modalSectionHeaderRow}>
-                <Ionicons name="book-outline" size={18} color="#DC2626" />
-                <Text style={styles.modalSectionTitle}>Semester Selection</Text>
-              </View>
-
-              <TouchableOpacity
-                style={[
-                  styles.sectionRow,
-                  selectedSemester === "1st" && styles.sectionRowActive,
-                ]}
-                activeOpacity={0.85}
-                onPress={() => setSelectedSemester("1st")}
-              >
-                <View
-                  style={[
-                    styles.checkboxBase,
-                    selectedSemester === "1st" && styles.checkboxChecked,
-                  ]}
-                >
-                  {selectedSemester === "1st" && (
-                    <Ionicons name="checkmark" size={14} color="#FFFFFF" />
-                  )}
-                </View>
-                <Text style={styles.checkText}>1st Semester</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[
-                  styles.sectionRow,
-                  selectedSemester === "2nd" && styles.sectionRowActive,
-                ]}
-                activeOpacity={0.85}
-                onPress={() => setSelectedSemester("2nd")}
-              >
-                <View
-                  style={[
-                    styles.checkboxBase,
-                    selectedSemester === "2nd" && styles.checkboxChecked,
-                  ]}
-                >
-                  {selectedSemester === "2nd" && (
-                    <Ionicons name="checkmark" size={14} color="#FFFFFF" />
-                  )}
-                </View>
-                <Text style={styles.checkText}>2nd Semester</Text>
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.modalSection}>
-              <View style={styles.modalSectionHeaderRow}>
-                <Ionicons name="school-outline" size={18} color="#DC2626" />
-                <Text style={styles.modalSectionTitle}>School Year</Text>
-              </View>
-
-              <View style={[styles.modalRow, isMobile && styles.modalRowStack]}>
-                <View style={styles.modalCol}>
-                  <Text style={styles.fieldLabel}>Start Year</Text>
-                  <View style={styles.inputField}>
-                    <Ionicons
-                      name="calendar-clear-outline"
-                      size={18}
-                      color="#8A6F6F"
-                    />
-                    <TextInput
-                      value={startYear}
-                      onChangeText={setStartYear}
-                      placeholder="Enter start year"
-                      placeholderTextColor="#B79A9A"
-                      style={styles.textInput}
-                      keyboardType="numeric"
-                      maxLength={4}
-                    />
-                  </View>
-                </View>
-
-                <View style={styles.modalCol}>
-                  <Text style={styles.fieldLabel}>End Year</Text>
-                  <View style={styles.inputField}>
-                    <Ionicons
-                      name="calendar-number-outline"
-                      size={18}
-                      color="#8A6F6F"
-                    />
-                    <TextInput
-                      value={endYear}
-                      onChangeText={setEndYear}
-                      placeholder="Enter end year"
-                      placeholderTextColor="#B79A9A"
-                      style={styles.textInput}
-                      keyboardType="numeric"
-                      maxLength={4}
-                    />
-                  </View>
-                </View>
-              </View>
-            </View>
-          </ScrollView>
-
-          <View style={styles.modalFooter}>
-            <TouchableOpacity
-              style={styles.modalSecondaryButton}
-              onPress={handleClose}
-              activeOpacity={0.85}
-            >
-              <Text style={styles.modalSecondaryButtonText}>Cancel</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.modalPrimaryButton}
-              activeOpacity={0.85}
-              onPress={handleSubmit}
-            >
-              <Ionicons
-                name="checkmark-circle-outline"
-                size={18}
-                color="#FFFFFF"
-              />
-              <Text style={styles.modalPrimaryButtonText}>Create</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </View>
-    </Modal>
   );
 }
 
@@ -620,30 +175,10 @@ export default function AdminDashboard({
   const [isAddTeacherModalVisible, setIsAddTeacherModalVisible] =
     useState(false);
   const [isAddClassModalVisible, setIsAddClassModalVisible] = useState(false);
-  const [isAcademicYearModalVisible, setIsAcademicYearModalVisible] =
-    useState(false);
-  const [isAcademicYearStarted, setIsAcademicYearStarted] = useState(false);
   const [isChatbotModalVisible, setIsChatbotModalVisible] = useState(false);
   const [classCount, setClassCount] = useState(0);
   const [adminCount, setAdminCount] = useState(0);
   const [studentCount, setStudentCount] = useState(0);
-
-  const [academicYearOptions, setAcademicYearOptions] = useState<
-    AcademicYearOption[]
-  >([
-    {
-      id: "default-1",
-      label: "1st Semester - S.Y. 2026 - 2027",
-    },
-    {
-      id: "default-2",
-      label: "2nd Semester - S.Y. 2026 - 2027",
-    },
-  ]);
-
-  const [selectedAcademicSemester, setSelectedAcademicSemester] = useState(
-    "1st Semester - S.Y. 2026 - 2027"
-  );
 
   const isMobile = width < 768;
   const isTablet = width >= 768 && width < 1100;
@@ -724,32 +259,6 @@ export default function AdminDashboard({
     } catch (error) {
       console.error("Error saving teacher:", error);
     }
-  };
-
-  const handleCreateAcademicYear = (payload: {
-    semester: "1st" | "2nd" | null;
-    startYear: string;
-    endYear: string;
-  }) => {
-    if (!payload.semester || !payload.startYear || !payload.endYear) return;
-
-    const newLabel = `${payload.semester} Semester - S.Y. ${payload.startYear} - ${payload.endYear}`;
-
-    const existing = academicYearOptions.find(
-      (item) => item.label.toLowerCase() === newLabel.toLowerCase()
-    );
-
-    if (!existing) {
-      const newOption: AcademicYearOption = {
-        id: `${payload.semester}-${payload.startYear}-${payload.endYear}-${Date.now()}`,
-        label: newLabel,
-      };
-
-      setAcademicYearOptions((prev) => [newOption, ...prev]);
-    }
-
-    setSelectedAcademicSemester(newLabel);
-    console.log("Academic Year Setup:", payload);
   };
 
   const handleAddSharedClass = async (payload: {
@@ -930,43 +439,6 @@ export default function AdminDashboard({
       </View>
 
       <View style={styles.grid}>
-        <AcademicYearCard
-          cardWidth={cardWidth}
-          isMobile={isMobile}
-          currentSemester={selectedAcademicSemester}
-          semesterOptions={academicYearOptions}
-          onSelectSemester={setSelectedAcademicSemester}
-          onCreate={() => setIsAcademicYearModalVisible(true)}
-          isStarted={isAcademicYearStarted}
-          onToggleStartEnd={() =>
-            setIsAcademicYearStarted((prevValue) => !prevValue)
-          }
-        />
-
-        <DashboardCard
-          title="Manage Admin"
-          subtitle={`${adminCount} active administrators`}
-          icon={
-            <MaterialCommunityIcons
-              name="account-cog-outline"
-              size={24}
-              color="#DC2626"
-            />
-          }
-          actions={[
-            {
-              label: "+ Add",
-              primary: true,
-              onPress: () => setIsAddAdminModalVisible(true),
-            },
-            {
-              label: "View",
-              onPress: onOpenManageAdmin,
-            },
-          ]}
-          cardWidth={cardWidth}
-        />
-
         <DashboardCard
           title="Manage Class"
           subtitle={`${classCount} classes available`}
@@ -981,27 +453,6 @@ export default function AdminDashboard({
               label: "View",
               onPress: onOpenManageClass,
             },
-          ]}
-          cardWidth={cardWidth}
-        />
-
-        <DashboardCard
-          title="Manage Chatbot"
-          subtitle="AI tutor training and configuration"
-          icon={
-            <MaterialCommunityIcons
-              name="robot-outline"
-              size={24}
-              color="#DC2626"
-            />
-          }
-          actions={[
-            {
-              label: "Train",
-              primary: true,
-              onPress: () => setIsChatbotModalVisible(true),
-            },
-            { label: "Modify" },
           ]}
           cardWidth={cardWidth}
         />
@@ -1047,14 +498,52 @@ export default function AdminDashboard({
           ]}
           cardWidth={cardWidth}
         />
-      </View>
 
-      <SetAcademicYearModal
-        visible={isAcademicYearModalVisible}
-        onClose={() => setIsAcademicYearModalVisible(false)}
-        isMobile={isMobile}
-        onSave={handleCreateAcademicYear}
-      />
+        <DashboardCard
+          title="Manage Admin"
+          subtitle={`${adminCount} active administrators`}
+          icon={
+            <MaterialCommunityIcons
+              name="account-cog-outline"
+              size={24}
+              color="#DC2626"
+            />
+          }
+          actions={[
+            {
+              label: "+ Add",
+              primary: true,
+              onPress: () => setIsAddAdminModalVisible(true),
+            },
+            {
+              label: "View",
+              onPress: onOpenManageAdmin,
+            },
+          ]}
+          cardWidth={cardWidth}
+        />
+
+        <DashboardCard
+          title="Manage Chatbot"
+          subtitle="AI tutor training and configuration"
+          icon={
+            <MaterialCommunityIcons
+              name="robot-outline"
+              size={24}
+              color="#DC2626"
+            />
+          }
+          actions={[
+            {
+              label: "Train",
+              primary: true,
+              onPress: () => setIsChatbotModalVisible(true),
+            },
+            { label: "Modify" },
+          ]}
+          cardWidth={cardWidth}
+        />
+      </View>
 
       <AddAdminModal
         visible={isAddAdminModalVisible}
@@ -1205,17 +694,18 @@ const styles = StyleSheet.create({
   grid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    justifyContent: "space-between",
+    justifyContent: "flex-start",
   },
 
   card: {
     minWidth: 260,
-    backgroundColor: "#FFFFFF",
-    borderRadius: 24,
-    borderWidth: 1,
-    borderColor: "#F3D4D4",
-    padding: 20,
-    marginBottom: 18,
+  backgroundColor: "#FFFFFF",
+  borderRadius: 24,
+  borderWidth: 1,
+  borderColor: "#F3D4D4",
+  padding: 20,
+  marginBottom: 18,
+  marginRight: 16,
   },
 
   cardTop: {
@@ -1263,11 +753,6 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
   },
 
-  actionRowAcademic: {
-    flexDirection: "row",
-    marginTop: 16,
-  },
-
   actionButton: {
     flex: 1,
     height: 46,
@@ -1277,14 +762,6 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFF7F7",
     alignItems: "center",
     justifyContent: "center",
-  },
-
-  actionButtonAcademic: {
-    flex: 1,
-  },
-
-  actionButtonAcademicGap: {
-    marginRight: 12,
   },
 
   actionButtonSpacing: {
@@ -1306,349 +783,5 @@ const styles = StyleSheet.create({
 
   actionTextPrimary: {
     color: "#FFFFFF",
-  },
-
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(43, 17, 17, 0.45)",
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 20,
-  },
-
-  modalCard: {
-    width: "100%",
-    maxWidth: 920,
-    maxHeight: "92%",
-    backgroundColor: "#FFFFFF",
-    borderRadius: 28,
-    borderWidth: 1,
-    borderColor: "#F3D4D4",
-    overflow: "hidden",
-  },
-
-  modalHeader: {
-    paddingHorizontal: 24,
-    paddingTop: 22,
-    paddingBottom: 18,
-    borderBottomWidth: 1,
-    borderBottomColor: "#F8E3E3",
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-  },
-
-  modalHeaderLeft: {
-    flex: 1,
-    flexDirection: "row",
-    paddingRight: 16,
-  },
-
-  modalHeaderTextWrap: {
-    flex: 1,
-  },
-
-  modalIconBox: {
-    width: 52,
-    height: 52,
-    borderRadius: 18,
-    backgroundColor: "#FEE2E2",
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: 14,
-  },
-
-  modalTitle: {
-    fontSize: 22,
-    fontWeight: "800",
-    color: "#2B1111",
-    marginBottom: 4,
-  },
-
-  modalSubtitle: {
-    fontSize: 14,
-    lineHeight: 21,
-    color: "#8A6F6F",
-  },
-
-  modalCloseButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 14,
-    backgroundColor: "#FFF5F5",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  modalContent: {
-    padding: 24,
-    paddingBottom: 12,
-  },
-
-  modalSection: {
-    marginBottom: 22,
-  },
-
-  modalSectionHeaderRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 14,
-  },
-
-  modalSectionTitle: {
-    marginLeft: 8,
-    fontSize: 16,
-    fontWeight: "800",
-    color: "#2B1111",
-  },
-
-  modalRow: {
-    flexDirection: "row",
-    gap: 14,
-    marginBottom: 22,
-    zIndex: 20,
-  },
-
-  modalRowStack: {
-    flexDirection: "column",
-    gap: 14,
-  },
-
-  modalCol: {
-    flex: 1,
-  },
-
-  fieldLabel: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: "#5F3B3B",
-    marginBottom: 10,
-  },
-
-  inputField: {
-    height: 54,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: "#F1CACA",
-    backgroundColor: "#FFF9F9",
-    paddingHorizontal: 14,
-    flexDirection: "row",
-    alignItems: "center",
-  },
-
-  textInput: {
-    flex: 1,
-    marginLeft: 10,
-    fontSize: 14,
-    color: "#2B1111",
-    fontWeight: "600",
-  },
-
-  modalFooter: {
-    paddingHorizontal: 24,
-    paddingTop: 16,
-    paddingBottom: 22,
-    borderTopWidth: 1,
-    borderTopColor: "#F8E3E3",
-    flexDirection: "row",
-    justifyContent: "flex-end",
-  },
-
-  modalSecondaryButton: {
-    height: 48,
-    paddingHorizontal: 18,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: "#E7C0C0",
-    backgroundColor: "#FFF7F7",
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: 12,
-  },
-
-  modalSecondaryButtonText: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: "#7A4A4A",
-  },
-
-  modalPrimaryButton: {
-    height: 48,
-    paddingHorizontal: 18,
-    borderRadius: 14,
-    backgroundColor: "#DC2626",
-    alignItems: "center",
-    justifyContent: "center",
-    flexDirection: "row",
-  },
-
-  modalPrimaryButtonText: {
-    fontSize: 14,
-    fontWeight: "800",
-    color: "#FFFFFF",
-    marginLeft: 8,
-  },
-
-  dropdownModalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(43, 17, 17, 0.12)",
-    justifyContent: "flex-end",
-  },
-
-  dropdownFloatingCard: {
-    position: "absolute",
-    backgroundColor: "#FFFFFF",
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: "#F1CACA",
-    overflow: "hidden",
-    shadowColor: "#2B1111",
-    shadowOpacity: 0.12,
-    shadowRadius: 14,
-    shadowOffset: {
-      width: 0,
-      height: 8,
-    },
-    elevation: 8,
-    zIndex: 5000,
-  },
-
-  dropdownFloatingScroll: {
-    maxHeight: 260,
-  },
-
-  optionModalCard: {
-    backgroundColor: "#FFFFFF",
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    paddingTop: 18,
-    paddingBottom: 24,
-    paddingHorizontal: 20,
-    maxHeight: "65%",
-    borderTopWidth: 1,
-    borderColor: "#F3D4D4",
-  },
-
-  optionModalHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 14,
-  },
-
-  optionModalTitle: {
-    fontSize: 18,
-    fontWeight: "800",
-    color: "#2B1111",
-  },
-
-  optionModalCloseButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 14,
-    backgroundColor: "#FFF5F5",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  optionModalItem: {
-    minHeight: 56,
-    paddingHorizontal: 16,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    backgroundColor: "#FFFFFF",
-  },
-
-  selectField: {
-    height: 54,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: "#F1CACA",
-    backgroundColor: "#FFF9F9",
-    paddingHorizontal: 16,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-
-  selectFieldText: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#2B1111",
-    flex: 1,
-    marginRight: 10,
-  },
-
-  dropdownItem: {
-    minHeight: 52,
-    paddingHorizontal: 16,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-
-  dropdownItemBorder: {
-    borderBottomWidth: 1,
-    borderBottomColor: "#FAE9E9",
-  },
-
-  dropdownItemActive: {
-    backgroundColor: "#FFF7F7",
-  },
-
-  dropdownItemText: {
-    flex: 1,
-    fontSize: 14,
-    color: "#5F3B3B",
-    fontWeight: "600",
-    paddingRight: 10,
-  },
-
-  dropdownItemTextActive: {
-    color: "#DC2626",
-    fontWeight: "700",
-  },
-
-  sectionRow: {
-    minHeight: 54,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: "#F3D4D4",
-    backgroundColor: "#FFFFFF",
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    marginBottom: 10,
-  },
-
-  sectionRowActive: {
-    borderColor: "#DC2626",
-    backgroundColor: "#FFF7F7",
-  },
-
-  checkboxBase: {
-    width: 22,
-    height: 22,
-    borderRadius: 7,
-    borderWidth: 1.5,
-    borderColor: "#D8B4B4",
-    backgroundColor: "#FFFFFF",
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: 14,
-  },
-
-  checkboxChecked: {
-    backgroundColor: "#DC2626",
-    borderColor: "#DC2626",
-  },
-
-  checkText: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: "#2B1111",
-    flex: 1,
   },
 });

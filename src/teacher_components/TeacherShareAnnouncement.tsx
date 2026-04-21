@@ -1,4 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
+import DateTimePicker, {
+  DateTimePickerEvent,
+} from '@react-native-community/datetimepicker';
 import React, { useMemo, useState } from 'react';
 import {
   Alert,
@@ -15,7 +18,7 @@ import {
   useWindowDimensions,
 } from 'react-native';
 
-type LocalClassItem = {
+export type ShareAnnouncementClassItem = {
   id: string;
   name: string;
   courseCode: string;
@@ -25,41 +28,25 @@ type LocalClassItem = {
   semester?: string;
 };
 
+type TeacherIdentity = {
+  teacherId?: string;
+  authUid?: string | null;
+  firstName?: string;
+  lastName?: string;
+};
+
+interface ShareAnnouncementProps {
+  apiBaseUrl: string;
+  currentTeacher: TeacherIdentity;
+  classes: ShareAnnouncementClassItem[];
+  onShared?: () => Promise<void> | void;
+}
+
 const BACKGROUNDS = [
   { id: 1, image: require('../../assets/images/Banner1.png') },
   { id: 2, image: require('../../assets/images/Banner2.png') },
   { id: 3, image: require('../../assets/images/Banner3.png') },
   { id: 4, image: require('../../assets/images/Banner4.png') },
-];
-
-const INITIAL_CLASSES: LocalClassItem[] = [
-  {
-    id: '1',
-    name: 'Introduction to Computing',
-    courseCode: 'IT101',
-    classCode: 'IT101-1A',
-    section: '1A Microsoft',
-    year: '1st Year',
-    semester: '1st Semester',
-  },
-  {
-    id: '2',
-    name: 'Computer Programming 1',
-    courseCode: 'IT102',
-    classCode: 'IT102-1B',
-    section: '1B Google',
-    year: '1st Year',
-    semester: '1st Semester',
-  },
-  {
-    id: '3',
-    name: 'Data Structures and Algorithms',
-    courseCode: 'IT201',
-    classCode: 'IT201-2A',
-    section: '2A Algorithm',
-    year: '2nd Year',
-    semester: '1st Semester',
-  },
 ];
 
 const fontFamily = Platform.select({
@@ -68,31 +55,99 @@ const fontFamily = Platform.select({
   default: 'sans-serif',
 });
 
-export default function ShareAnnouncement() {
+const webNativeInputStyle =
+  Platform.OS === 'web'
+    ? {
+        width: '100%',
+        height: 40,
+        border: 'none',
+        outline: 'none',
+        background: 'transparent',
+        color: '#222',
+        fontSize: '14px',
+        fontFamily: 'inherit',
+      }
+    : {};
+
+const formatDisplayDate = (value: Date | null) => {
+  if (!value) return '';
+  const month = `${value.getMonth() + 1}`.padStart(2, '0');
+  const day = `${value.getDate()}`.padStart(2, '0');
+  const year = value.getFullYear();
+  return `${month}/${day}/${year}`;
+};
+
+const formatDisplayTime = (value: Date | null) => {
+  if (!value) return '';
+  return value.toLocaleTimeString([], {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+};
+
+const buildExpiryIso = (dateValue: Date | null, timeValue: Date | null) => {
+  if (!dateValue || !timeValue) return null;
+
+  const merged = new Date(
+    dateValue.getFullYear(),
+    dateValue.getMonth(),
+    dateValue.getDate(),
+    timeValue.getHours(),
+    timeValue.getMinutes(),
+    0,
+    0
+  );
+
+  if (Number.isNaN(merged.getTime())) return null;
+  return merged.toISOString();
+};
+
+export default function ShareAnnouncement({
+  apiBaseUrl,
+  currentTeacher,
+  classes,
+  onShared,
+}: ShareAnnouncementProps) {
   const { width } = useWindowDimensions();
   const isMobile = Platform.OS !== 'web' || width < 768;
+  const isWeb = Platform.OS === 'web';
 
   const [selectedBg, setSelectedBg] = useState(4);
   const [header, setHeader] = useState('');
   const [description, setDescription] = useState('');
+
+  const [expiryDate, setExpiryDate] = useState<Date | null>(null);
+  const [expiryTime, setExpiryTime] = useState<Date | null>(null);
+
+  const [webDateValue, setWebDateValue] = useState('');
+  const [webTimeValue, setWebTimeValue] = useState('');
+
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [showTimePicker, setShowTimePicker] = useState(false);
+
   const [isHeaderFocused, setIsHeaderFocused] = useState(false);
   const [isDescFocused, setIsDescFocused] = useState(false);
 
   const [showTargetModal, setShowTargetModal] = useState(false);
-  const [showConfirmModal, setShowConfirmModal] = useState(false);
-
   const [selectedClassId, setSelectedClassId] = useState<string | null>(null);
   const [selectAllClasses, setSelectAllClasses] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const teacherName = useMemo(() => {
+    const first = currentTeacher?.firstName?.trim() || '';
+    const last = currentTeacher?.lastName?.trim() || '';
+    return `${first} ${last}`.trim() || 'Teacher';
+  }, [currentTeacher]);
 
   const availableClasses = useMemo(() => {
-    return INITIAL_CLASSES.map((course) => ({
+    return classes.map((course) => ({
       id: course.id,
       label: `${course.classCode} - ${course.name}`,
       subtitle: [course.section, course.year, course.semester]
         .filter(Boolean)
         .join(' • '),
     }));
-  }, []);
+  }, [classes]);
 
   const selectedClass = useMemo(() => {
     return availableClasses.find((course) => course.id === selectedClassId) || null;
@@ -106,29 +161,96 @@ export default function ShareAnnouncement() {
   const resetAll = () => {
     setHeader('');
     setDescription('');
+    setExpiryDate(null);
+    setExpiryTime(null);
+    setWebDateValue('');
+    setWebTimeValue('');
     setSelectedBg(4);
+    setShowDatePicker(false);
+    setShowTimePicker(false);
     resetTargeting();
   };
 
-  const handleShare = () => {
+  const handleDateChange = (event: DateTimePickerEvent, selected?: Date) => {
+    if (Platform.OS !== 'ios') {
+      setShowDatePicker(false);
+    }
+
+    if (event.type === 'dismissed') return;
+    if (selected) {
+      setExpiryDate(selected);
+    }
+  };
+
+  const handleTimeChange = (event: DateTimePickerEvent, selected?: Date) => {
+    if (Platform.OS !== 'ios') {
+      setShowTimePicker(false);
+    }
+
+    if (event.type === 'dismissed') return;
+    if (selected) {
+      setExpiryTime(selected);
+    }
+  };
+
+  const handleWebDateChange = (value: string) => {
+    setWebDateValue(value);
+
+    if (!value) {
+      setExpiryDate(null);
+      return;
+    }
+
+    const parsed = new Date(`${value}T00:00:00`);
+    if (!Number.isNaN(parsed.getTime())) {
+      setExpiryDate(parsed);
+    }
+  };
+
+  const handleWebTimeChange = (value: string) => {
+    setWebTimeValue(value);
+
+    if (!value) {
+      setExpiryTime(null);
+      return;
+    }
+
+    const match = value.match(/^(\d{2}):(\d{2})$/);
+    if (!match) {
+      setExpiryTime(null);
+      return;
+    }
+
+    const [, hh, mm] = match;
+    const time = new Date();
+    time.setHours(Number(hh), Number(mm), 0, 0);
+
+    if (!Number.isNaN(time.getTime())) {
+      setExpiryTime(time);
+    }
+  };
+
+  const handleOpenTargetAudience = () => {
     const trimmedHeader = header.trim();
     const trimmedDesc = description.trim();
 
-    if (!trimmedHeader && !trimmedDesc) {
-      Alert.alert('Error', 'Please fill in all fields.');
-      return;
-    }
-
-    if (!trimmedHeader) {
-      Alert.alert('Missing Header', 'Please enter the announcement header.');
-      return;
-    }
-
-    if (!trimmedDesc) {
+    if (!trimmedHeader || !trimmedDesc || !expiryDate || !expiryTime) {
       Alert.alert(
-        'Missing Description',
-        'Please enter the announcement description.'
+        'Missing Fields',
+        'Please complete header, description, expiry date, and expiry time.'
       );
+      return;
+    }
+
+    const expiresAt = buildExpiryIso(expiryDate, expiryTime);
+
+    if (!expiresAt) {
+      Alert.alert('Invalid Date/Time', 'Please enter a valid expiry date and time.');
+      return;
+    }
+
+    if (new Date(expiresAt).getTime() <= Date.now()) {
+      Alert.alert('Invalid Expiry', 'Please choose a future date and time.');
       return;
     }
 
@@ -162,29 +284,69 @@ export default function ShareAnnouncement() {
     setSelectAllClasses(false);
   };
 
-  const handleProceedToConfirm = () => {
-    if (!selectAllClasses && !selectedClassId) {
+  const handleDirectShare = async () => {
+    try {
+      const trimmedHeader = header.trim();
+      const trimmedDesc = description.trim();
+      const expiresAt = buildExpiryIso(expiryDate, expiryTime);
+
+      if (!expiresAt) {
+        Alert.alert('Invalid Date/Time', 'Please enter a valid expiry date and time.');
+        return;
+      }
+
+      const targetClassIds = selectAllClasses
+        ? availableClasses.map((item) => item.id)
+        : selectedClassId
+        ? [selectedClassId]
+        : [];
+
+      if (!targetClassIds.length) {
+        Alert.alert('Missing Selection', 'Please select a class or choose All Classes.');
+        return;
+      }
+
+      setIsSubmitting(true);
+
+      const response = await fetch(`${apiBaseUrl}/create-class-announcement`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          classIds: targetClassIds,
+          title: trimmedHeader,
+          message: trimmedDesc,
+          bannerKey: selectedBg,
+          expiresAt,
+          postedByUid: currentTeacher?.authUid || currentTeacher?.teacherId || null,
+          postedByName: teacherName,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data?.error || 'Failed to share announcement.');
+      }
+
+      setShowTargetModal(false);
+
       Alert.alert(
-        'Missing Selection',
-        'Please select a class or choose All Classes.'
+        'Success',
+        selectAllClasses
+          ? `Announcement shared successfully to ${targetClassIds.length} classes!`
+          : `Announcement shared successfully to ${selectedClass?.label || 'the selected class'}!`
       );
-      return;
+
+      await onShared?.();
+      resetAll();
+    } catch (error: any) {
+      Alert.alert(
+        'Share Failed',
+        error?.message || 'Unable to share announcement.'
+      );
+    } finally {
+      setIsSubmitting(false);
     }
-
-    setShowTargetModal(false);
-    setShowConfirmModal(true);
-  };
-
-  const confirmShare = () => {
-    const targetText = selectAllClasses
-      ? 'All Classes'
-      : selectedClass?.label || 'Selected Class';
-
-    setShowConfirmModal(false);
-
-    Alert.alert('Success', `Announcement shared successfully to ${targetText}!`);
-
-    resetAll();
   };
 
   const renderCheckboxRow = (
@@ -282,6 +444,90 @@ export default function ShareAnnouncement() {
             />
           </View>
 
+          <View style={styles.dateTimeRow}>
+            <View style={styles.dateTimeBox}>
+              <Text style={styles.innerLabel}>Expiry Date</Text>
+
+              {isWeb ? (
+                <View style={styles.webInputWrap}>
+                  <input
+                    type="date"
+                    value={webDateValue}
+                    min={new Date().toISOString().slice(0, 10)}
+                    onChange={(e) => handleWebDateChange(e.target.value)}
+                    style={webNativeInputStyle as any}
+                  />
+                </View>
+              ) : (
+                <TouchableOpacity
+                  style={styles.pickerButton}
+                  activeOpacity={0.85}
+                  onPress={() => setShowDatePicker(true)}
+                >
+                  <Text
+                    style={[
+                      styles.pickerButtonText,
+                      !expiryDate && styles.pickerPlaceholderText,
+                    ]}
+                  >
+                    {expiryDate ? formatDisplayDate(expiryDate) : 'Select date'}
+                  </Text>
+                  <Ionicons name="calendar-outline" size={20} color="#555" />
+                </TouchableOpacity>
+              )}
+            </View>
+
+            <View style={styles.dateTimeBox}>
+              <Text style={styles.innerLabel}>Expiry Time</Text>
+
+              {isWeb ? (
+                <View style={styles.webInputWrap}>
+                  <input
+                    type="time"
+                    value={webTimeValue}
+                    onChange={(e) => handleWebTimeChange(e.target.value)}
+                    style={webNativeInputStyle as any}
+                  />
+                </View>
+              ) : (
+                <TouchableOpacity
+                  style={styles.pickerButton}
+                  activeOpacity={0.85}
+                  onPress={() => setShowTimePicker(true)}
+                >
+                  <Text
+                    style={[
+                      styles.pickerButtonText,
+                      !expiryTime && styles.pickerPlaceholderText,
+                    ]}
+                  >
+                    {expiryTime ? formatDisplayTime(expiryTime) : 'Select time'}
+                  </Text>
+                  <Ionicons name="time-outline" size={20} color="#555" />
+                </TouchableOpacity>
+              )}
+            </View>
+          </View>
+
+          {!isWeb && showDatePicker && (
+            <DateTimePicker
+              value={expiryDate || new Date()}
+              mode="date"
+              display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+              minimumDate={new Date()}
+              onChange={handleDateChange}
+            />
+          )}
+
+          {!isWeb && showTimePicker && (
+            <DateTimePicker
+              value={expiryTime || new Date()}
+              mode="time"
+              display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+              onChange={handleTimeChange}
+            />
+          )}
+
           <View style={styles.selectorOutlineBox}>
             <Text style={styles.innerLabel}>Select Background Banner</Text>
 
@@ -308,11 +554,14 @@ export default function ShareAnnouncement() {
           </View>
 
           <TouchableOpacity
-            style={styles.submitBtn}
+            style={[styles.submitBtn, isSubmitting && styles.submitBtnDisabled]}
             activeOpacity={0.8}
-            onPress={handleShare}
+            onPress={handleOpenTargetAudience}
+            disabled={isSubmitting}
           >
-            <Text style={styles.submitBtnText}>Share</Text>
+            <Text style={styles.submitBtnText}>
+              {isSubmitting ? 'Processing...' : 'Proceed'}
+            </Text>
           </TouchableOpacity>
         </ScrollView>
       </SafeAreaView>
@@ -382,52 +631,20 @@ export default function ShareAnnouncement() {
                 style={styles.cancelBtn}
                 activeOpacity={0.8}
                 onPress={() => setShowTargetModal(false)}
+                disabled={isSubmitting}
               >
                 <Text style={styles.cancelBtnText}>Cancel</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={styles.confirmBtn}
+                style={[styles.confirmBtn, isSubmitting && styles.submitBtnDisabled]}
                 activeOpacity={0.8}
-                onPress={handleProceedToConfirm}
+                onPress={handleDirectShare}
+                disabled={isSubmitting}
               >
-                <Text style={styles.confirmBtnText}>Proceed</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
-
-      <Modal
-        animationType="fade"
-        transparent
-        visible={showConfirmModal}
-        onRequestClose={() => setShowConfirmModal(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Confirm Share</Text>
-            <Text style={styles.modalMessage}>
-              {selectAllClasses
-                ? 'Do you want to share this announcement to all classes?'
-                : `Do you want to share this announcement to ${selectedClass?.label || 'the selected class'}?`}
-            </Text>
-
-            <View style={styles.modalButtonRow}>
-              <TouchableOpacity
-                style={styles.cancelBtn}
-                activeOpacity={0.8}
-                onPress={() => setShowConfirmModal(false)}
-              >
-                <Text style={styles.cancelBtnText}>Cancel</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.confirmBtn}
-                activeOpacity={0.8}
-                onPress={confirmShare}
-              >
-                <Text style={styles.confirmBtnText}>Share</Text>
+                <Text style={styles.confirmBtnText}>
+                  {isSubmitting ? 'Sharing...' : 'Share'}
+                </Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -440,53 +657,44 @@ export default function ShareAnnouncement() {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    position: 'relative',
     backgroundColor: '#FFF',
   },
-
   safeArea: {
     flex: 1,
     backgroundColor: '#FFF',
   },
-
   container: {
     flex: 1,
   },
-
   mobileContentContainer: {
     flexGrow: 1,
     paddingHorizontal: 20,
     paddingTop: 10,
     paddingBottom: 32,
   },
-
   webContentContainer: {
     flexGrow: 1,
     paddingLeft: 25,
-    paddingRight: 500,
+    paddingRight: 120,
     paddingTop: 10,
     paddingBottom: 32,
   },
-
   headerSpacer: {
     height: 10,
     marginBottom: 20,
   },
-
   formTitle: {
     fontWeight: 'bold',
     color: '#000',
     fontFamily,
     letterSpacing: -0.5,
   },
-
   formSubTitle: {
     fontSize: 14,
     color: '#444',
     marginBottom: 30,
     fontFamily,
   },
-
   inputOutlineBox: {
     borderWidth: 1.5,
     borderColor: '#718096',
@@ -495,11 +703,24 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     backgroundColor: '#FFF',
   },
-
+  dateTimeRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 20,
+    flexWrap: 'wrap',
+  },
+  dateTimeBox: {
+    flex: 1,
+    minWidth: 220,
+    borderWidth: 1.5,
+    borderColor: '#718096',
+    borderRadius: 8,
+    padding: 12,
+    backgroundColor: '#FFF',
+  },
   inputOutlineBoxFocused: {
     borderColor: '#000',
   },
-
   selectorOutlineBox: {
     borderWidth: 1.5,
     borderColor: '#718096',
@@ -508,7 +729,6 @@ const styles = StyleSheet.create({
     marginBottom: 35,
     backgroundColor: '#FFF',
   },
-
   innerLabel: {
     fontSize: 14,
     fontWeight: '600',
@@ -516,12 +736,9 @@ const styles = StyleSheet.create({
     marginBottom: 5,
     fontFamily,
   },
-
   nakedInput: {
     fontSize: 14,
     color: '#222',
-    borderWidth: 0,
-    backgroundColor: 'transparent',
     padding: 0,
     margin: 0,
     fontFamily,
@@ -529,15 +746,41 @@ const styles = StyleSheet.create({
       web: { outlineStyle: 'none' } as any,
     }),
   },
-
+  pickerButton: {
+    minHeight: 44,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    backgroundColor: '#FFF',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  pickerButtonText: {
+    fontSize: 14,
+    color: '#222',
+    fontFamily,
+  },
+  pickerPlaceholderText: {
+    color: '#999',
+  },
+  webInputWrap: {
+    minHeight: 44,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    backgroundColor: '#FFF',
+    justifyContent: 'center',
+    paddingHorizontal: 10,
+  },
   descriptionInput: {
     height: 80,
   },
-
   bgGrid: {
     marginTop: 10,
   },
-
   bgOption: {
     width: '100%',
     height: 80,
@@ -547,25 +790,21 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#E2E8F0',
   },
-
   bgOptionSelected: {
     borderColor: '#B71C1C',
     borderWidth: 3,
   },
-
   bgImage: {
     width: '100%',
     height: '100%',
     resizeMode: 'cover',
   },
-
   checkOverlay: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(183, 28, 28, 0.3)',
     justifyContent: 'center',
     alignItems: 'center',
   },
-
   submitBtn: {
     backgroundColor: '#B71C1C',
     paddingVertical: 16,
@@ -573,14 +812,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 40,
   },
-
+  submitBtnDisabled: {
+    opacity: 0.7,
+  },
   submitBtnText: {
     color: '#FFF',
     fontSize: 18,
     fontWeight: '900',
     fontFamily,
   },
-
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(15, 23, 42, 0.18)',
@@ -588,15 +828,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 20,
   },
-
-  modalCard: {
-    width: '100%',
-    maxWidth: 380,
-    backgroundColor: '#FFF',
-    borderRadius: 18,
-    padding: 22,
-  },
-
   targetModalCard: {
     width: '100%',
     maxWidth: 520,
@@ -605,33 +836,27 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     padding: 20,
   },
-
   targetModalCardMobile: {
     maxHeight: '92%',
   },
-
   targetModalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 14,
   },
-
   targetModalTitle: {
     fontSize: 22,
     fontWeight: '700',
     color: '#222',
     fontFamily,
   },
-
   targetModalScrollContent: {
     paddingBottom: 12,
   },
-
   targetSection: {
     marginBottom: 18,
   },
-
   targetSectionTitle: {
     fontSize: 15,
     fontWeight: '700',
@@ -639,7 +864,6 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     fontFamily,
   },
-
   checkRow: {
     minHeight: 48,
     borderRadius: 12,
@@ -652,7 +876,6 @@ const styles = StyleSheet.create({
     paddingVertical: 9,
     marginBottom: 8,
   },
-
   compactCheckRow: {
     minHeight: 52,
     borderRadius: 10,
@@ -665,12 +888,10 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     marginBottom: 7,
   },
-
   checkRowActive: {
     borderColor: '#D32F2F',
     backgroundColor: '#FFF7F7',
   },
-
   checkboxBase: {
     width: 18,
     height: 18,
@@ -682,107 +903,75 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginRight: 10,
   },
-
   checkboxChecked: {
     backgroundColor: '#D32F2F',
     borderColor: '#D32F2F',
   },
-
   checkTextWrapper: {
     flex: 1,
   },
-
   checkText: {
     fontSize: 13,
     fontWeight: '600',
     color: '#202124',
-    flex: 1,
     fontFamily,
   },
-
   compactCheckText: {
-    fontSize: 12.5,
-    fontWeight: '600',
+    fontSize: 13,
+    fontWeight: '700',
     color: '#202124',
-    flex: 1,
     fontFamily,
   },
-
   checkSubText: {
-    marginTop: 3,
+    marginTop: 2,
     fontSize: 11.5,
-    color: '#666',
+    color: '#6B7280',
     fontFamily,
   },
-
   emptyClassesBox: {
     borderWidth: 1,
-    borderColor: '#E5CACA',
-    borderRadius: 12,
+    borderColor: '#E5E7EB',
+    borderRadius: 10,
     paddingVertical: 16,
-    paddingHorizontal: 12,
-    backgroundColor: '#FFF',
+    paddingHorizontal: 14,
+    backgroundColor: '#FAFAFA',
   },
-
   emptyClassesText: {
+    color: '#6B7280',
     fontSize: 13,
-    color: '#777',
-    fontFamily,
-  },
-
-  modalTitle: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: '#222',
-    textAlign: 'center',
-    marginBottom: 10,
-    fontFamily,
-  },
-
-  modalMessage: {
-    fontSize: 14,
-    color: '#777',
-    lineHeight: 22,
-    marginBottom: 22,
     textAlign: 'center',
     fontFamily,
   },
-
   modalButtonRow: {
     flexDirection: 'row',
-    gap: 12,
-    width: '100%',
+    gap: 10,
   },
-
   cancelBtn: {
     flex: 1,
-    height: 46,
+    backgroundColor: '#F3F4F6',
+    paddingVertical: 13,
     borderRadius: 10,
-    justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#F3F3F3',
+    justifyContent: 'center',
   },
-
   cancelBtnText: {
-    color: '#888',
+    color: '#374151',
+    fontWeight: '700',
     fontSize: 14,
-    fontWeight: '600',
     fontFamily,
   },
-
   confirmBtn: {
     flex: 1,
-    height: 46,
+    backgroundColor: '#B71C1C',
+    paddingVertical: 13,
     borderRadius: 10,
-    justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#D32F2F',
+    justifyContent: 'center',
   },
-
   confirmBtnText: {
     color: '#FFF',
+    fontWeight: '800',
     fontSize: 14,
-    fontWeight: '700',
     fontFamily,
   },
 });

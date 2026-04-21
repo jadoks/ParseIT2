@@ -1,6 +1,8 @@
+import Ionicons from "@expo/vector-icons/Ionicons";
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   Image,
+  LayoutChangeEvent,
   Modal,
   Platform,
   Pressable,
@@ -39,57 +41,101 @@ interface DrawerMenuProps {
   setIsLoggedIn: (val: boolean) => void;
 }
 
-const DEFAULT_AVATAR = require('../../assets/images/avatar.jpg');
 const ACTIVE_RED = '#D32F2F';
-const ACTIVE_BG = '#FCEAEA';
+
+const normalizeText = (value?: string | null) => {
+  if (typeof value !== 'string') return '';
+  return value.trim();
+};
 
 const normalizeImageSource = (img: any) => {
-  if (!img) return DEFAULT_AVATAR;
+  if (!img) return null;
   if (typeof img === 'number') return img;
-  if (img?.uri) return { uri: img.uri };
-  return DEFAULT_AVATAR;
+  if (typeof img === 'string') {
+    const trimmed = img.trim();
+    return trimmed ? { uri: trimmed } : null;
+  }
+  if (img?.uri) {
+    const trimmed = String(img.uri).trim();
+    return trimmed ? { uri: trimmed } : null;
+  }
+  return null;
 };
 
 const MenuItem = ({
+  iconSource,
   iconName,
+  iconLibrary = 'ionicons',
   label,
   onPress,
   active,
 }: {
-  iconName: string;
+  iconSource?: any;
+  iconName?: string;
+  iconLibrary?: 'ionicons' | 'material';
   label: string;
   onPress?: () => void;
   active?: boolean;
 }) => {
   const { width } = useWindowDimensions();
+
   const isMobile = width < 768;
-  const iconSize = isMobile ? 24 : 26;
+  const isLargeScreen = width >= 1024;
+
+  const menuItemVerticalMargin = isMobile ? 12 : isLargeScreen ? 18 : 16;
+  const menuLabelFontSize = isMobile ? 15 : 17;
 
   return (
     <Pressable
       onPress={onPress}
       style={(state) => {
-        const base: StyleProp<ViewStyle> = [styles.menuItem];
-
-        if (active) {
-          base.push(styles.menuItemActive);
-        }
+        const base: StyleProp<ViewStyle> = [
+          styles.menuItem,
+          { marginVertical: menuItemVerticalMargin },
+          active && {
+            backgroundColor: 'rgba(211,47,47,0.08)',
+            borderRadius: 14,
+          },
+        ];
 
         if (Platform.OS === 'web' && (state as any).hovered && !active) {
-          base.push(styles.menuItemHover);
+          base.push({
+            backgroundColor: 'rgba(130,129,129,0.08)',
+            borderRadius: 14,
+          });
         }
 
         return base;
       }}
     >
-      <MaterialCommunityIcons
-        name={iconName}
-        size={iconSize}
-        color={active ? ACTIVE_RED : '#444'}
-        style={styles.menuIcon}
-      />
+      {iconSource ? (
+        <Image
+          source={iconSource}
+          style={[styles.menuIcon, active && { tintColor: ACTIVE_RED }]}
+        />
+      ) : iconLibrary === 'material' ? (
+        <MaterialCommunityIcons
+          name={iconName as any}
+          size={22}
+          color={active ? ACTIVE_RED : '#444'}
+          style={styles.vectorMenuIcon}
+        />
+      ) : (
+        <Ionicons
+          name={iconName as any}
+          size={22}
+          color={active ? ACTIVE_RED : '#444'}
+          style={styles.vectorMenuIcon}
+        />
+      )}
 
-      <Text style={[styles.menuLabel, active && styles.menuLabelActive]}>
+      <Text
+        style={[
+          styles.menuLabel,
+          { fontSize: menuLabelFontSize },
+          active && { color: ACTIVE_RED, fontWeight: '700' },
+        ]}
+      >
         {label}
       </Text>
     </Pressable>
@@ -101,8 +147,8 @@ const DrawerMenu = ({
   onClose,
   onNavigate,
   activeScreen,
-  userName = 'Ramcee Jade L. Munoz',
-  userEmail = 'student@email.com',
+  userName,
+  userEmail,
   userAvatar,
   onAvatarPress,
   setIsLoggedIn,
@@ -113,6 +159,11 @@ const DrawerMenu = ({
     [userAvatar]
   );
 
+  const safeUserName = useMemo(() => normalizeText(userName), [userName]);
+  const safeUserEmail = useMemo(() => normalizeText(userEmail), [userEmail]);
+
+  const [contentHeight, setContentHeight] = useState(0);
+  const [scrollViewHeight, setScrollViewHeight] = useState(0);
   const [isSettingsModalVisible, setSettingsModalVisible] = useState(false);
   const [isLogoutModalVisible, setLogoutModalVisible] = useState(false);
   const [isChangeEmailModalVisible, setChangeEmailModalVisible] =
@@ -130,16 +181,23 @@ const DrawerMenu = ({
       : null
   );
 
-  const [email, setEmail] = useState(userEmail);
+  const [email, setEmail] = useState(safeUserEmail);
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
 
   const isMobile = width < 768;
+  const isTablet = width >= 768 && width < 1024;
+  const isSmallMobile = width < 380;
+
+  const hasOverflow = contentHeight > scrollViewHeight && scrollViewHeight > 0;
+  const shouldShowScrollBar = (isMobile || isTablet) && hasOverflow;
+
+  const drawerWidth = isMobile ? (isSmallMobile ? '85%' : 280) : isTablet ? 300 : 260;
 
   useEffect(() => {
-    setEmail(userEmail);
-  }, [userEmail]);
+    setEmail(safeUserEmail);
+  }, [safeUserEmail]);
 
   useEffect(() => {
     if (activeScreen === 'profile') {
@@ -165,6 +223,14 @@ const DrawerMenu = ({
     }
   };
 
+  const handleContentSizeChange = (_contentW: number, contentH: number) => {
+    setContentHeight(contentH);
+  };
+
+  const handleScrollViewLayout = (e: LayoutChangeEvent) => {
+    setScrollViewHeight(e.nativeEvent.layout.height);
+  };
+
   const modalButtonHover = {
     backgroundColor: 'rgba(130,129,129,0.08)',
     borderRadius: 8,
@@ -174,102 +240,100 @@ const DrawerMenu = ({
     Platform.OS === 'web' && state.hovered ? modalButtonHover : {};
 
   return (
-    <View style={styles.drawerContainer}>
-      <View style={styles.topSection}>
-        <Pressable style={styles.profileSection} onPress={onAvatarPress}>
+    <View style={[styles.drawerContainer, { width: drawerWidth }]}>
+      <Pressable style={styles.profileSection} onPress={onAvatarPress}>
+        {avatarSource ? (
           <Image
             source={avatarSource}
-            style={[
-              styles.avatar,
-              {
-                width: isMobile ? 54 : 56,
-                height: isMobile ? 54 : 56,
-                borderRadius: isMobile ? 27 : 28,
-              },
-            ]}
+            style={styles.avatar}
             resizeMode="cover"
           />
-
-          <View style={styles.profileTextContainer}>
-            <Text style={styles.userName} numberOfLines={2}>
-              {userName}
-            </Text>
-
-            {/* EMAIL REMOVED */}
-            {/*
-            <Text style={styles.userEmail} numberOfLines={1}>
-              {userEmail}
-            </Text>
-            */}
+        ) : (
+          <View style={[styles.avatar, styles.avatarPlaceholder]}>
+            <Ionicons
+              name="person-outline"
+              size={28}
+              color="#B0B0B0"
+            />
           </View>
-        </Pressable>
+        )}
 
-        <ScrollView
-          style={styles.scrollView}
-          contentContainerStyle={styles.scrollContentContainer}
-          showsVerticalScrollIndicator={false}
-        >
-          <MenuItem
-            iconName="account-circle-outline"
-            label="Profile"
-            onPress={() => {
-              setActiveMenu('profile');
-              onNavigate?.('profile');
-              if (!isFixed) onClose?.();
-            }}
-            active={activeMenu === 'profile'}
-          />
+        <View style={{ flex: 1 }}>
+          {!!safeUserName && (
+            <Text style={styles.userName}>{safeUserName}</Text>
+          )}
 
-          <MenuItem
-            iconName="account-group-outline"
-            label="Community"
-            onPress={() => {
-              setActiveMenu('community');
-              onNavigate?.('community');
-              if (!isFixed) onClose?.();
-            }}
-            active={activeMenu === 'community'}
-          />
+          {/*
+          <Text style={styles.userEmail} numberOfLines={1}>
+            {safeUserEmail}
+          </Text>
+          */}
+        </View>
+      </Pressable>
 
-          <MenuItem
-            iconName="chart-box-outline"
-            label="Academic Analytics"
-            onPress={() => {
-              setActiveMenu('analytics');
-              onNavigate?.('analytics');
-              if (!isFixed) onClose?.();
-            }}
-            active={activeMenu === 'analytics'}
-          />
+      <ScrollView
+        style={{ flex: 1 }}
+        showsVerticalScrollIndicator={shouldShowScrollBar}
+        onContentSizeChange={handleContentSizeChange}
+        onLayout={handleScrollViewLayout}
+      >
+        <MenuItem
+          iconSource={require('../../assets/images/person.png')}
+          label="Profile"
+          onPress={() => {
+            setActiveMenu('profile');
+            onNavigate?.('profile');
+            if (!isFixed) onClose?.();
+          }}
+          active={activeMenu === 'profile'}
+        />
 
-          <MenuItem
-            iconName="cog-outline"
-            label="Settings"
-            onPress={() => {
-              setActiveMenu('settings');
-              setSettingsModalVisible(true);
-            }}
-            active={activeMenu === 'settings'}
-          />
-        </ScrollView>
-      </View>
+        <MenuItem
+          iconSource={require('../../assets/images/users-solid.png')}
+          label="Community"
+          onPress={() => {
+            setActiveMenu('community');
+            onNavigate?.('community');
+            if (!isFixed) onClose?.();
+          }}
+          active={activeMenu === 'community'}
+        />
 
-      {/* EVERYTHING BELOW IS UNCHANGED (logout + modals stay exactly the same) */}
+        <MenuItem
+          iconName="chart-line"
+          iconLibrary="material"
+          label="Academic Analytics"
+          onPress={() => {
+            setActiveMenu('analytics');
+            onNavigate?.('analytics');
+            if (!isFixed) onClose?.();
+          }}
+          active={activeMenu === 'analytics'}
+        />
 
-      <View style={styles.logoutSection}>
-        <Pressable
-          style={styles.logoutMenuItem}
-          onPress={() => setLogoutModalVisible(true)}
-        >
-          <MaterialCommunityIcons
-            name="logout"
-            size={30}
-            color={ACTIVE_RED}
-            style={styles.logoutIcon}
-          />
-          <Text style={styles.logoutLabel}>Logout</Text>
-        </Pressable>
-      </View>
+        <MenuItem
+          iconSource={require('../../assets/images/gear-solid.png')}
+          label="Settings"
+          onPress={() => {
+            setActiveMenu('settings');
+            setSettingsModalVisible(true);
+          }}
+          active={activeMenu === 'settings'}
+        />
+      </ScrollView>
+
+      <Pressable
+        style={styles.logoutMenuItem}
+        onPress={() => setLogoutModalVisible(true)}
+      >
+        <MaterialCommunityIcons
+          name="logout"
+          size={28}
+          color="#D32F2F"
+          style={{ marginRight: 20 }}
+        />
+        <Text style={styles.logoutLabel}>Logout</Text>
+      </Pressable>
 
       <Modal
         animationType="fade"
@@ -301,10 +365,10 @@ const DrawerMenu = ({
             >
               <View style={styles.settingsOptionContent}>
                 <View style={styles.settingsOptionIconWrap}>
-                  <MaterialCommunityIcons
-                    name="email-outline"
+                  <Ionicons
+                    name="mail-outline"
                     size={22}
-                    color={ACTIVE_RED}
+                    color="#D32F2F"
                   />
                 </View>
 
@@ -315,8 +379,8 @@ const DrawerMenu = ({
                   </Text>
                 </View>
 
-                <MaterialCommunityIcons
-                  name="chevron-right"
+                <Ionicons
+                  name="chevron-forward"
                   size={24}
                   color="#999"
                 />
@@ -335,10 +399,10 @@ const DrawerMenu = ({
             >
               <View style={styles.settingsOptionContent}>
                 <View style={styles.settingsOptionIconWrap}>
-                  <MaterialCommunityIcons
-                    name="lock-outline"
+                  <Ionicons
+                    name="lock-closed-outline"
                     size={22}
-                    color={ACTIVE_RED}
+                    color="#D32F2F"
                   />
                 </View>
 
@@ -349,8 +413,8 @@ const DrawerMenu = ({
                   </Text>
                 </View>
 
-                <MaterialCommunityIcons
-                  name="chevron-right"
+                <Ionicons
+                  name="chevron-forward"
                   size={24}
                   color="#999"
                 />
@@ -543,43 +607,47 @@ const DrawerMenu = ({
 
 const styles = StyleSheet.create({
   drawerContainer: {
-    flex: 1,
+    height: '100%',
+    padding: 25,
     backgroundColor: '#FFF',
-    paddingTop: 16,
-    paddingHorizontal: 16,
-    paddingBottom: 20,
-    justifyContent: 'space-between',
-  },
-
-  topSection: {
-    flex: 1,
-    minHeight: 0,
+    borderWidth: 0,
+    borderRightWidth: 0,
+    borderLeftWidth: 0,
+    borderTopWidth: 0,
+    borderBottomWidth: 0,
+    borderColor: 'transparent',
+    elevation: 0,
+    shadowColor: 'transparent',
+    shadowOpacity: 0,
+    shadowRadius: 0,
+    shadowOffset: { width: 0, height: 0 },
   },
 
   profileSection: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    marginBottom: 34,
-    paddingHorizontal: 14,
-  },
-
-  profileTextContainer: {
-    flex: 1,
-    paddingTop: 2,
+    alignItems: 'center',
+    marginBottom: 30,
   },
 
   avatar: {
-    marginRight: 16,
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    marginRight: 15,
     overflow: 'hidden',
     aspectRatio: 1,
     backgroundColor: '#f0f0f0',
   },
 
+  avatarPlaceholder: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#F3F4F6',
+  },
+
   userName: {
-    fontSize: 17,
-    lineHeight: 25,
     fontWeight: '700',
-    color: '#111',
+    fontSize: 18,
   },
 
   userEmail: {
@@ -589,75 +657,49 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
 
-  scrollView: {
-    flex: 1,
-  },
-
-  scrollContentContainer: {
-    paddingBottom: 8,
-  },
-
   menuItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    minHeight: 52,
     paddingVertical: 10,
-    paddingHorizontal: 14,
-    borderRadius: 18,
-    marginBottom: 16,
-    marginTop: 16,
-  },
-
-  menuItemActive: {
-    backgroundColor: ACTIVE_BG,
-  },
-
-  menuItemHover: {
-    opacity: 0.8,
+    paddingHorizontal: 10,
   },
 
   menuIcon: {
+    width: 22,
+    height: 22,
     marginRight: 20,
+    resizeMode: 'contain',
+  },
+
+  vectorMenuIcon: {
+    width: 22,
+    marginRight: 20,
+    textAlign: 'center',
   },
 
   menuLabel: {
-    fontSize: 16,
     color: '#444',
-    fontWeight: '600',
-  },
-
-  menuLabelActive: {
-    color: ACTIVE_RED,
-    fontWeight: '700',
-  },
-
-  logoutSection: {
-    borderTopWidth: 1,
-    borderTopColor: '#EEE',
-    paddingTop: 16,
-    marginTop: 12,
-    paddingHorizontal: 14,
+    fontWeight: '500',
   },
 
   logoutMenuItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    minHeight: 56,
-  },
-
-  logoutIcon: {
-    marginRight: 16,
+    marginTop: 20,
+    borderTopWidth: 1,
+    borderTopColor: '#EEE',
+    paddingTop: 15,
   },
 
   logoutLabel: {
     fontSize: 16,
-    color: ACTIVE_RED,
+    color: '#D32F2F',
     fontWeight: '600',
   },
 
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(15, 23, 42, 0.18)',
+    backgroundColor: 'rgba(0,0,0,0.4)',
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -814,7 +856,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: ACTIVE_RED,
+    backgroundColor: '#D32F2F',
   },
 
   formSaveText: {
@@ -874,7 +916,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: ACTIVE_RED,
+    backgroundColor: '#D32F2F',
   },
 
   logoutConfirmText: {

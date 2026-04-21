@@ -21,15 +21,27 @@ import ManageTeacher from "./Final_Admin_Components/ManageTeacher";
 import Settings from "./Final_Admin_Components/Settings";
 import Sidebar from "./Final_Admin_Components/Sidebar";
 
-type Props = {
-  onLogout: () => void;
+type CurrentAdmin = {
+  adminId: string;
+  authUid?: string | null;
+  firstName: string;
+  lastName: string;
+  email: string;
 };
 
-export default function AdminApp({ onLogout }: Props) {
+type Props = {
+  onLogout: () => void;
+  currentAdmin: CurrentAdmin;
+};
+
+export default function AdminApp({ onLogout, currentAdmin }: Props) {
   const { width } = useWindowDimensions();
 
   const isMobile = width < 768;
   const isTablet = width >= 768 && width < 1100;
+
+  const adminName =
+    `${currentAdmin.firstName || ""} ${currentAdmin.lastName || ""}`.trim() || "Admin";
 
   const [activeTopNav, setActiveTopNav] = useState("Dashboard");
   const [activeSideNav, setActiveSideNav] = useState<string | null>(null);
@@ -134,7 +146,7 @@ export default function AdminApp({ onLogout }: Props) {
           onOpenManageAdmin={handleNavigateToManageAdmin}
           onOpenManageStudent={handleNavigateToManageStudent}
           onOpenManageTeacher={handleNavigateToManageTeacher}
-          onBackToDashboard={handleNavigateToDashboard}
+          
         />
       );
     }
@@ -168,7 +180,7 @@ export default function AdminApp({ onLogout }: Props) {
             isMobile={false}
             visible={true}
             onClose={() => {}}
-            adminName="John"
+            adminName={adminName}
           />
         )}
 
@@ -193,7 +205,7 @@ export default function AdminApp({ onLogout }: Props) {
           isMobile={true}
           visible={sidebarVisible}
           onClose={() => setSidebarVisible(false)}
-          adminName="John"
+          adminName={adminName}
         />
       )}
 
@@ -230,11 +242,11 @@ export default function AdminApp({ onLogout }: Props) {
               </TouchableOpacity>
             </View>
 
-          <View style={styles.modalContent}>
-          <Text style={styles.simpleMessage}>
-            Are you sure you want to logout?
-          </Text>
-        </View>
+            <View style={styles.modalContent}>
+              <Text style={styles.simpleMessage}>
+                Are you sure you want to logout?
+              </Text>
+            </View>
 
             <View style={styles.modalFooter}>
               <TouchableOpacity
@@ -390,11 +402,13 @@ const styles = StyleSheet.create({
     padding: 24,
     paddingBottom: 12,
   },
-simpleMessage: {
-  fontSize: 18,
-  color: "#7A4A4A",
-  lineHeight: 22,
-},
+
+  simpleMessage: {
+    fontSize: 18,
+    color: "#7A4A4A",
+    lineHeight: 22,
+  },
+
   messageBox: {
     minHeight: 110,
     borderRadius: 18,

@@ -20,6 +20,15 @@ const db = admin.firestore();
 const bucket = admin.storage().bucket();
 const FieldValue = admin.firestore.FieldValue;
 
+const DEFAULT_PROFILE_IMAGE_URL =
+  "https://firebasestorage.googleapis.com/v0/b/parseit2-4b26d.firebasestorage.app/o/defaults%2Fdefault_profile.png?alt=media&token=4cb70146-a95f-4528-ae7e-52bb9eff7b86";
+
+const DEFAULT_BANNER_IMAGE_URL =
+  "https://firebasestorage.googleapis.com/v0/b/parseit2-4b26d.firebasestorage.app/o/defaults%2Fdefault_banner.png?alt=media&token=0fb348ad-ff47-49cc-b986-6a9c94d576bc";
+
+const DEFAULT_PROFILE_IMAGE_STORAGE_PATH = "defaults/default_profile.png";
+const DEFAULT_BANNER_IMAGE_STORAGE_PATH = "defaults/default_banner.png";
+
 const transporter = nodemailer.createTransport({
   host: "smtp.gmail.com",
   port: 587,
@@ -551,6 +560,114 @@ async function createClassMessengerConversation({
   });
 
   return conversationRef.id;
+}
+
+/**
+ * NOTIFICATION HELPERS
+ */
+
+function buildNotificationResponse(doc) {
+  const data = doc.data() || {};
+
+  return {
+    id: doc.id,
+    userId: data.userId || "",
+    role: data.role || "",
+    type: data.type || "support-activity",
+    title: data.title || "Notification",
+    message: data.message || "",
+    time: formatFirestoreDateTime(data.createdAt),
+    read: !!data.read,
+    relatedId: data.relatedId || null,
+    relatedType: data.relatedType || null,
+    classId: data.classId || null,
+    actorId: data.actorId || null,
+    actorRole: data.actorRole || null,
+    actorName: data.actorName || null,
+    createdAt: data.createdAt || null,
+    updatedAt: data.updatedAt || null,
+    readAt: data.readAt || null,
+  };
+}
+
+async function createNotification({
+  userId,
+  role,
+  type,
+  title,
+  message,
+  relatedId = null,
+  relatedType = null,
+  classId = null,
+  actorId = null,
+  actorRole = null,
+  actorName = null,
+}) {
+  const normalizedUserId = normalizeOptionalText(userId);
+  const normalizedRole = normalizeOptionalText(role);
+
+  if (!normalizedUserId || !normalizedRole) return null;
+
+  const ref = await db.collection("notifications").add({
+    userId: normalizedUserId,
+    role: normalizedRole,
+    type: normalizeOptionalText(type) || "support-activity",
+    title: normalizeOptionalText(title) || "Notification",
+    message: normalizeOptionalText(message) || "",
+    relatedId: normalizeOptionalText(relatedId),
+    relatedType: normalizeOptionalText(relatedType),
+    classId: normalizeOptionalText(classId),
+    actorId: normalizeOptionalText(actorId),
+    actorRole: normalizeOptionalText(actorRole),
+    actorName: normalizeOptionalText(actorName),
+    read: false,
+    readAt: null,
+    createdAt: FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp(),
+  });
+
+  return ref.id;
+}
+
+async function createNotificationsForClassStudents({
+  classId,
+  type,
+  title,
+  messageBuilder,
+  relatedId = null,
+  relatedType = null,
+  actorId = null,
+  actorRole = null,
+  actorName = null,
+}) {
+  if (!classId) return;
+
+  const membersSnapshot = await db
+    .collection("classMembers")
+    .where("classId", "==", classId)
+    .where("role", "==", "student")
+    .get();
+
+  for (const memberDoc of membersSnapshot.docs) {
+    const member = memberDoc.data() || {};
+    const studentId = normalizeOptionalText(member.userId);
+
+    if (!studentId) continue;
+
+    await createNotification({
+      userId: studentId,
+      role: "student",
+      type,
+      title,
+      message: typeof messageBuilder === "function" ? messageBuilder(member) : String(messageBuilder || ""),
+      relatedId,
+      relatedType,
+      classId,
+      actorId,
+      actorRole,
+      actorName,
+    });
+  }
 }
 
 /**
@@ -1168,6 +1285,12 @@ app.post("/create-student", async (req, res) => {
       birthday: parseDateValue(birthday),
       status: studentType,
       authUid: userRecord.uid,
+
+      profileImage: DEFAULT_PROFILE_IMAGE_URL,
+      bannerImage: DEFAULT_BANNER_IMAGE_URL,
+      profileImageStoragePath: DEFAULT_PROFILE_IMAGE_STORAGE_PATH,
+      bannerImageStoragePath: DEFAULT_BANNER_IMAGE_STORAGE_PATH,
+
       accountCreated: true,
       tempPasswordSent: false,
       mustChangePassword: true,
@@ -1262,6 +1385,12 @@ app.post("/create-teacher", async (req, res) => {
       email,
       birthday: parseDateValue(birthday),
       authUid: userRecord.uid,
+
+      profileImage: DEFAULT_PROFILE_IMAGE_URL,
+      bannerImage: DEFAULT_BANNER_IMAGE_URL,
+      profileImageStoragePath: DEFAULT_PROFILE_IMAGE_STORAGE_PATH,
+      bannerImageStoragePath: DEFAULT_BANNER_IMAGE_STORAGE_PATH,
+
       accountCreated: true,
       tempPasswordSent: false,
       mustChangePassword: true,
@@ -2033,6 +2162,7 @@ app.delete("/delete-class/:id", async (req, res) => {
       "classMaterials",
       "classAssignments",
       "classAnnouncements",
+      "notifications",
     ];
 
     for (const collectionName of collectionsToClean) {
@@ -2160,6 +2290,7 @@ app.post("/join-class", async (req, res) => {
     const classDoc = classQuery.docs[0];
     const classId = classDoc.id;
     const classRef = db.collection("classes").doc(classId);
+    const classData = classDoc.data() || {};
 
     const student = await findStudentById(normalizedStudentId);
 
@@ -2198,6 +2329,22 @@ app.post("/join-class", async (req, res) => {
       memberCount: FieldValue.increment(1),
       updatedAt: FieldValue.serverTimestamp(),
     });
+
+    if (classData.assignedTeacherId) {
+      await createNotification({
+        userId: classData.assignedTeacherId,
+        role: "teacher",
+        type: "support-activity",
+        title: "New Student Joined Class",
+        message: `${studentFullName} joined ${classData.name || "your class"}.`,
+        relatedId: classId,
+        relatedType: "class",
+        classId,
+        actorId: student.studentId || normalizedStudentId,
+        actorRole: "student",
+        actorName: studentFullName,
+      });
+    }
 
     const conversationSnapshot = await db
       .collection("messengerConversations")
@@ -2694,6 +2841,8 @@ app.post("/create-class-material", async (req, res) => {
       return res.status(404).json({ error: "Class not found." });
     }
 
+    const classData = classSnap.data() || {};
+
     const ref = await db.collection("classMaterials").add({
       classId,
       title,
@@ -2708,6 +2857,34 @@ app.post("/create-class-material", async (req, res) => {
       postedByName: normalizeOptionalText(postedByName),
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
+    });
+
+    if (classData.assignedTeacherId && normalizeOptionalText(postedByUid) !== normalizeOptionalText(classData.assignedTeacherUid)) {
+      await createNotification({
+        userId: classData.assignedTeacherId,
+        role: "teacher",
+        type: "material",
+        title: "New Material Uploaded",
+        message: `${title} was uploaded in ${classData.name || "your class"}.`,
+        relatedId: ref.id,
+        relatedType: "class-material",
+        classId,
+        actorId: postedByUid,
+        actorRole: "admin",
+        actorName: postedByName,
+      });
+    }
+
+    await createNotificationsForClassStudents({
+      classId,
+      type: "material",
+      title: "New Material",
+      messageBuilder: () => `${classData.name || "Your class"}: ${title} was added to your learning materials.`,
+      relatedId: ref.id,
+      relatedType: "class-material",
+      actorId: postedByUid,
+      actorRole: normalizeOptionalText(postedByUid) === normalizeOptionalText(classData.assignedTeacherUid) ? "teacher" : "admin",
+      actorName: postedByName || classData.instructorName || "Teacher",
     });
 
     res.json({
@@ -2836,6 +3013,8 @@ app.post("/create-class-assignment", async (req, res) => {
       return res.status(404).json({ error: "Class not found." });
     }
 
+    const classData = classSnap.data() || {};
+
     const ref = await db.collection("classAssignments").add({
       classId,
       header,
@@ -2853,6 +3032,34 @@ app.post("/create-class-assignment", async (req, res) => {
       postedByName: normalizeOptionalText(postedByName),
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
+    });
+
+    if (classData.assignedTeacherId && normalizeOptionalText(postedByUid) !== normalizeOptionalText(classData.assignedTeacherUid)) {
+      await createNotification({
+        userId: classData.assignedTeacherId,
+        role: "teacher",
+        type: "assignment",
+        title: "New Assignment Posted",
+        message: `${header} was posted in ${classData.name || "your class"}.`,
+        relatedId: ref.id,
+        relatedType: "class-assignment",
+        classId,
+        actorId: postedByUid,
+        actorRole: "admin",
+        actorName: postedByName,
+      });
+    }
+
+    await createNotificationsForClassStudents({
+      classId,
+      type: "assignment",
+      title: "New Assignment",
+      messageBuilder: () => `${classData.name || "Your class"}: ${header} is available. Due on ${dueDate}.`,
+      relatedId: ref.id,
+      relatedType: "class-assignment",
+      actorId: postedByUid,
+      actorRole: normalizeOptionalText(postedByUid) === normalizeOptionalText(classData.assignedTeacherUid) ? "teacher" : "admin",
+      actorName: postedByName || classData.instructorName || "Teacher",
     });
 
     res.json({
@@ -3008,6 +3215,28 @@ app.post("/create-submission", async (req, res) => {
       gradedAt: null,
     });
 
+    const classSnap = await db.collection("classes").doc(classId).get();
+    const classData = classSnap.exists ? classSnap.data() || {} : {};
+
+    const assignmentSnap = await db.collection("classAssignments").doc(assignmentId).get();
+    const assignmentData = assignmentSnap.exists ? assignmentSnap.data() || {} : {};
+
+    if (classData.assignedTeacherId) {
+      await createNotification({
+        userId: classData.assignedTeacherId,
+        role: "teacher",
+        type: "assignment",
+        title: "New Submission Received",
+        message: `${normalizeOptionalText(studentName) || "A student"} submitted ${assignmentData.header || "an assignment"} in ${classData.name || "your class"}.`,
+        relatedId: ref.id,
+        relatedType: "class-submission",
+        classId,
+        actorId: studentId,
+        actorRole: "student",
+        actorName: studentName,
+      });
+    }
+
     res.json({
       success: true,
       message: "Submission created successfully.",
@@ -3026,14 +3255,64 @@ app.put("/grade-submission/:id", async (req, res) => {
     const { id } = req.params;
     const { status, score, feedback } = req.body;
 
-    await db.collection("classSubmissions").doc(id).update({
+    const submissionRef = db.collection("classSubmissions").doc(id);
+    const submissionSnap = await submissionRef.get();
+
+    if (!submissionSnap.exists) {
+      return res.status(404).json({ error: "Submission not found." });
+    }
+
+    const submissionData = submissionSnap.data() || {};
+    const normalizedScore = score !== undefined ? Number(score) : undefined;
+
+    await submissionRef.update({
       ...(status ? { status } : {}),
-      ...(score !== undefined ? { score: Number(score) } : {}),
-      ...(typeof feedback === "string" || feedback === null
-        ? { feedback }
-        : {}),
+      ...(normalizedScore !== undefined ? { score: normalizedScore } : {}),
+      ...(typeof feedback === "string" || feedback === null ? { feedback } : {}),
       gradedAt: FieldValue.serverTimestamp(),
     });
+
+    const assignmentSnap = await db.collection("classAssignments").doc(submissionData.assignmentId).get();
+    const assignmentData = assignmentSnap.exists ? assignmentSnap.data() || {} : {};
+    const classSnap = await db.collection("classes").doc(submissionData.classId).get();
+    const classData = classSnap.exists ? classSnap.data() || {} : {};
+
+    if (submissionData.studentId) {
+      await createNotification({
+        userId: submissionData.studentId,
+        role: "student",
+        type: "assignment",
+        title: "Assignment Graded",
+        message: `${assignmentData.header || "Your assignment"} in ${classData.name || "your class"} has been graded${normalizedScore !== undefined ? ` with a score of ${normalizedScore}.` : "."}`,
+        relatedId: submissionData.assignmentId || id,
+        relatedType: "class-assignment",
+        classId: submissionData.classId || null,
+        actorId: classData.assignedTeacherId || null,
+        actorRole: "teacher",
+        actorName: classData.instructorName || "Teacher",
+      });
+
+      const totalScore = Number(assignmentData.totalScore || 0);
+      const percent = normalizedScore !== undefined && totalScore > 0
+        ? Math.round((normalizedScore / totalScore) * 100)
+        : null;
+
+      if (percent !== null && percent < 75) {
+        await createNotification({
+          userId: submissionData.studentId,
+          role: "student",
+          type: "support-activity",
+          title: "Support Activity Recommended",
+          message: `You may need extra support for ${assignmentData.header || "this assignment"} in ${classData.name || "your class"}.`,
+          relatedId: submissionData.assignmentId || id,
+          relatedType: "class-assignment",
+          classId: submissionData.classId || null,
+          actorId: classData.assignedTeacherId || null,
+          actorRole: "teacher",
+          actorName: classData.instructorName || "Teacher",
+        });
+      }
+    }
 
     res.json({
       success: true,
@@ -3047,57 +3326,151 @@ app.put("/grade-submission/:id", async (req, res) => {
   }
 });
 
+/**
+ * CLASS ANNOUNCEMENTS
+ */
 app.get("/class-announcements/:classId", async (req, res) => {
   try {
     const { classId } = req.params;
 
     const snapshot = await db
-      .collection("classAnnouncements")
-      .where("classId", "==", classId)
+      .collection("announcements")
+      .where("classIds", "array-contains", classId)
       .orderBy("createdAt", "desc")
       .get();
+    const now = Date.now();
 
-    const announcements = snapshot.docs.map((doc) => ({
-      id: doc.id,
-      ...doc.data(),
-    }));
+    const announcements = snapshot.docs
+      .map((doc) => {
+        const data = doc.data();
+        return { id: doc.id, ...data };
+      })
+      .filter((item) => {
+        if (!item.expiresAt) return true;
+
+        const expiry =
+          typeof item.expiresAt.toDate === "function"
+            ? item.expiresAt.toDate()
+            : new Date(item.expiresAt);
+
+        return expiry.getTime() > now;
+      });
 
     res.json(announcements);
-  } catch (error) {
-    console.error("Fetch class announcements error:", error);
-    res.status(500).json({
-      error: error.message || "Failed to fetch class announcements.",
-    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to fetch announcements" });
   }
 });
 
 app.post("/create-class-announcement", async (req, res) => {
   try {
-    const { classId, title, message, postedByUid, postedByName } = req.body;
-
-    if (!classId || !title || !message) {
-      return res.status(400).json({ error: "Missing required fields." });
-    }
-
-    const ref = await db.collection("classAnnouncements").add({
-      classId,
+    const {
+      classIds,
       title,
       message,
-      postedByUid: normalizeOptionalText(postedByUid),
-      postedByName: normalizeOptionalText(postedByName),
+      bannerKey,
+      expiresAt,
+      postedByUid,
+      postedByName,
+    } = req.body;
+
+    if (!title?.trim() || !message?.trim()) {
+      return res.status(400).json({ error: "Title and message required" });
+    }
+
+    if (!Array.isArray(classIds) || !classIds.length) {
+      return res.status(400).json({ error: "classIds required" });
+    }
+
+    const classChecks = await Promise.all(
+      classIds.map(id => db.collection("classes").doc(id).get())
+    );
+
+    if (classChecks.some(doc => !doc.exists)) {
+      return res.status(400).json({ error: "Invalid classId found" });
+    }
+
+    const expiryDate = new Date(expiresAt);
+    if (Number.isNaN(expiryDate.getTime())) {
+      return res.status(400).json({ error: "Invalid expiry date" });
+    }
+
+    const ref = await db.collection("announcements").add({
+      title: String(title).trim(),
+      message: String(message).trim(),
+      bannerKey: bannerKey !== undefined ? Number(bannerKey) : 4,
+      expiresAt: admin.firestore.Timestamp.fromDate(expiryDate),
+      classIds,
+      postedByUid: postedByUid || null,
+      postedByName: postedByName || "Teacher",
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
     });
 
     res.json({
       success: true,
-      message: "Announcement created successfully.",
-      data: { id: ref.id },
+      id: ref.id,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to create announcement" });
+  }
+});
+
+app.put("/update-class-announcement/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const {
+      title,
+      message,
+      bannerKey,
+      expiresAt,
+    } = req.body;
+
+    const announcementRef = db.collection("announcements").doc(id);
+    const announcementSnap = await announcementRef.get();
+
+    if (!announcementSnap.exists) {
+      return res.status(404).json({ error: "Announcement not found." });
+    }
+
+    const updates = {
+      updatedAt: FieldValue.serverTimestamp(),
+    };
+
+    if (typeof title === "string" && title.trim()) {
+      updates.title = title.trim();
+    }
+
+    if (typeof message === "string" && message.trim()) {
+      updates.message = message.trim();
+    }
+
+    if (typeof bannerKey !== "undefined") {
+      updates.bannerKey = Number(bannerKey) || 4;
+    }
+
+    if (typeof expiresAt !== "undefined") {
+      const expiryDate = new Date(expiresAt);
+
+      if (Number.isNaN(expiryDate.getTime())) {
+        return res.status(400).json({ error: "Invalid expiry date/time." });
+      }
+
+      updates.expiresAt = admin.firestore.Timestamp.fromDate(expiryDate);
+    }
+
+    await announcementRef.update(updates);
+
+    res.json({
+      success: true,
+      message: "Announcement updated successfully.",
     });
   } catch (error) {
-    console.error("Create class announcement error:", error);
+    console.error("Update class announcement error:", error);
     res.status(500).json({
-      error: error.message || "Failed to create class announcement.",
+      error: error.message || "Failed to update class announcement.",
     });
   }
 });
@@ -3106,7 +3479,7 @@ app.delete("/delete-class-announcement/:id", async (req, res) => {
   try {
     const { id } = req.params;
 
-    await db.collection("classAnnouncements").doc(id).delete();
+    await db.collection("announcements").doc(id).delete();
 
     res.json({
       success: true,
@@ -3116,6 +3489,302 @@ app.delete("/delete-class-announcement/:id", async (req, res) => {
     console.error("Delete class announcement error:", error);
     res.status(500).json({
       error: error.message || "Failed to delete class announcement.",
+    });
+  }
+});
+/**
+ * NOTIFICATION ROUTES
+ */
+
+app.get("/notifications", async (req, res) => {
+  try {
+    const { userId, role } = req.query;
+
+    if (!userId || !role) {
+      return res.status(400).json({
+        error: "userId and role are required.",
+      });
+    }
+
+    const snapshot = await db
+      .collection("notifications")
+      .where("userId", "==", String(userId).trim())
+      .where("role", "==", String(role).trim())
+      .orderBy("createdAt", "desc")
+      .get();
+
+    const notifications = snapshot.docs.map(buildNotificationResponse);
+
+    return res.json({
+      success: true,
+      data: notifications,
+    });
+  } catch (error) {
+    console.error("Fetch notifications error:", error);
+    return res.status(500).json({
+      error: error.message || "Failed to fetch notifications.",
+    });
+  }
+});
+
+app.patch("/notifications/:id/read", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const ref = db.collection("notifications").doc(id);
+    const snap = await ref.get();
+
+    if (!snap.exists) {
+      return res.status(404).json({ error: "Notification not found." });
+    }
+
+    await ref.update({
+      read: true,
+      readAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+
+    const updatedSnap = await ref.get();
+
+    return res.json({
+      success: true,
+      message: "Notification marked as read.",
+      data: buildNotificationResponse(updatedSnap),
+    });
+  } catch (error) {
+    console.error("Mark notification as read error:", error);
+    return res.status(500).json({
+      error: error.message || "Failed to mark notification as read.",
+    });
+  }
+});
+
+app.patch("/notifications/read-all", async (req, res) => {
+  try {
+    const { userId, role } = req.body;
+
+    if (!userId || !role) {
+      return res.status(400).json({
+        error: "userId and role are required.",
+      });
+    }
+
+    const snapshot = await db
+      .collection("notifications")
+      .where("userId", "==", String(userId).trim())
+      .where("role", "==", String(role).trim())
+      .where("read", "==", false)
+      .get();
+
+    const batch = db.batch();
+
+    snapshot.forEach((doc) => {
+      batch.update(doc.ref, {
+        read: true,
+        readAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+    });
+
+    await batch.commit();
+
+    return res.json({
+      success: true,
+      message: "All notifications marked as read.",
+      updatedCount: snapshot.size,
+    });
+  } catch (error) {
+    console.error("Mark all notifications as read error:", error);
+    return res.status(500).json({
+      error: error.message || "Failed to mark all notifications as read.",
+    });
+  }
+});
+
+
+app.get("/student-activities/status", async (req, res) => {
+  try {
+    const { studentId, assignmentId } = req.query;
+
+    if (!studentId || !assignmentId) {
+      return res.status(400).json({
+        error: "studentId and assignmentId are required.",
+      });
+    }
+
+    const snapshot = await db
+      .collection("studentActivities")
+      .where("studentId", "==", String(studentId).trim())
+      .where("assignmentId", "==", String(assignmentId).trim())
+      .limit(1)
+      .get();
+
+    if (snapshot.empty) {
+      return res.json({
+        success: true,
+        data: { completed: false },
+      });
+    }
+
+    const doc = snapshot.docs[0];
+    const data = doc.data() || {};
+
+    return res.json({
+      success: true,
+      data: {
+        id: doc.id,
+        completed: data.status === "completed",
+      },
+    });
+  } catch (error) {
+    console.error("Fetch student activity status error:", error);
+    return res.status(500).json({
+      error: error.message || "Failed to fetch student activity status.",
+    });
+  }
+});
+
+app.post("/student-activities/notify-ready", async (req, res) => {
+  try {
+    const {
+      studentId,
+      courseId,
+      assignmentId,
+      courseName,
+      assignmentTitle,
+      topic,
+      recommendationType,
+    } = req.body;
+
+    if (!studentId || !assignmentId) {
+      return res.status(400).json({ error: "studentId and assignmentId are required." });
+    }
+
+    const existingSnapshot = await db
+      .collection("notifications")
+      .where("userId", "==", String(studentId).trim())
+      .where("role", "==", "student")
+      .where("relatedId", "==", String(assignmentId).trim())
+      .where("relatedType", "==", "generated-activity")
+      .limit(1)
+      .get();
+
+    if (existingSnapshot.empty) {
+      await createNotification({
+        userId: String(studentId).trim(),
+        role: "student",
+        type: "support-activity",
+        title: "Support Activity Ready",
+        message: `A ${recommendationType || "follow-up"} activity is ready for ${assignmentTitle || topic || "your assignment"}${courseName ? ` in ${courseName}` : ""}.`,
+        relatedId: String(assignmentId).trim(),
+        relatedType: "generated-activity",
+        classId: normalizeOptionalText(courseId),
+      });
+    }
+
+    return res.json({ success: true, message: "Activity ready notification processed." });
+  } catch (error) {
+    console.error("Notify ready activity error:", error);
+    return res.status(500).json({ error: error.message || "Failed to process activity ready notification." });
+  }
+});
+
+app.post("/student-activities/complete", async (req, res) => {
+  try {
+    const {
+      studentId,
+      courseId,
+      assignmentId,
+      courseName,
+      courseCode,
+      assignmentTitle,
+      topic,
+      recommendationType,
+      difficulty,
+      score,
+      instructions,
+      basedOnMaterials,
+      shortAnswer,
+      selectedOption,
+    } = req.body;
+
+    if (!studentId || !assignmentId) {
+      return res.status(400).json({
+        error: "studentId and assignmentId are required.",
+      });
+    }
+
+    const existingSnapshot = await db
+      .collection("studentActivities")
+      .where("studentId", "==", String(studentId).trim())
+      .where("assignmentId", "==", String(assignmentId).trim())
+      .limit(1)
+      .get();
+
+    let activityRef;
+
+    if (existingSnapshot.empty) {
+      activityRef = await db.collection("studentActivities").add({
+        studentId: String(studentId).trim(),
+        courseId: normalizeOptionalText(courseId),
+        assignmentId: String(assignmentId).trim(),
+        courseName: normalizeOptionalText(courseName),
+        courseCode: normalizeOptionalText(courseCode),
+        assignmentTitle: normalizeOptionalText(assignmentTitle),
+        topic: normalizeOptionalText(topic),
+        recommendationType: normalizeOptionalText(recommendationType),
+        difficulty: normalizeOptionalText(difficulty),
+        score: typeof score === "number" ? score : null,
+        instructions: normalizeOptionalText(instructions),
+        basedOnMaterials: Array.isArray(basedOnMaterials) ? basedOnMaterials : [],
+        shortAnswer: normalizeOptionalText(shortAnswer),
+        selectedOption: typeof selectedOption === "number" ? selectedOption : null,
+        status: "completed",
+        completedAt: FieldValue.serverTimestamp(),
+        createdAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+    } else {
+      activityRef = existingSnapshot.docs[0].ref;
+      await activityRef.update({
+        courseId: normalizeOptionalText(courseId),
+        courseName: normalizeOptionalText(courseName),
+        courseCode: normalizeOptionalText(courseCode),
+        assignmentTitle: normalizeOptionalText(assignmentTitle),
+        topic: normalizeOptionalText(topic),
+        recommendationType: normalizeOptionalText(recommendationType),
+        difficulty: normalizeOptionalText(difficulty),
+        score: typeof score === "number" ? score : null,
+        instructions: normalizeOptionalText(instructions),
+        basedOnMaterials: Array.isArray(basedOnMaterials) ? basedOnMaterials : [],
+        shortAnswer: normalizeOptionalText(shortAnswer),
+        selectedOption: typeof selectedOption === "number" ? selectedOption : null,
+        status: "completed",
+        completedAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+    }
+
+    await createNotification({
+      userId: String(studentId).trim(),
+      role: "student",
+      type: "support-activity",
+      title: "Activity Completed",
+      message: `${assignmentTitle || topic || "Your activity"} has been marked as done.`,
+      relatedId: String(assignmentId).trim(),
+      relatedType: "student-activity",
+      classId: normalizeOptionalText(courseId),
+    });
+
+    return res.json({
+      success: true,
+      message: "Student activity marked as completed.",
+      data: { id: activityRef.id },
+    });
+  } catch (error) {
+    console.error("Complete student activity error:", error);
+    return res.status(500).json({
+      error: error.message || "Failed to complete student activity.",
     });
   }
 });
@@ -3132,31 +3801,35 @@ app.get("/health", (req, res) => {
   res.json({
     ok: true,
     routes: [
-  "POST /auth/lookup-user",
-  "POST /auth/send-first-login-pin",
-  "POST /auth/verify-first-login-pin",
-  "POST /auth/complete-first-login",
-  "POST /auth/send-forgot-password-pin",
-  "POST /auth/verify-forgot-password-pin",
-  "POST /auth/reset-forgot-password",
-  "POST /upload-class-file",
-  "POST /create-student",
-  "POST /create-teacher",
-  "POST /create-admin",
-  "POST /create-class",
+      "POST /auth/lookup-user",
+      "POST /auth/send-first-login-pin",
+      "POST /auth/verify-first-login-pin",
+      "POST /auth/complete-first-login",
+      "POST /auth/send-forgot-password-pin",
+      "POST /auth/verify-forgot-password-pin",
+      "POST /auth/reset-forgot-password",
+      "POST /upload-class-file",
+      "POST /create-student",
+      "POST /create-teacher",
+      "POST /create-admin",
+      "POST /create-class",
 
-  "GET /community-posts",
-  "POST /community-posts",
-  "PUT /community-posts/:postId",
-  "DELETE /community-posts/:postId",
-  "POST /community-posts/:postId/answers",
-  "PUT /community-posts/:postId/answers/:answerId",
-  "DELETE /community-posts/:postId/answers/:answerId",
+      "GET /community-posts",
+      "POST /community-posts",
+      "PUT /community-posts/:postId",
+      "DELETE /community-posts/:postId",
+      "POST /community-posts/:postId/answers",
+      "PUT /community-posts/:postId/answers/:answerId",
+      "DELETE /community-posts/:postId/answers/:answerId",
 
-  "GET /messenger-conversations",
-  "GET /messenger-messages/:conversationId",
-  "POST /messenger-send-message",
-],
+      "GET /messenger-conversations",
+      "GET /messenger-messages/:conversationId",
+      "POST /messenger-send-message",
+
+      "GET /notifications",
+      "PATCH /notifications/:id/read",
+      "PATCH /notifications/read-all",
+    ],
   });
 });
 
@@ -3256,6 +3929,44 @@ app.post("/ai/gemini", async (req, res) => {
   }
 });
 
+async function resolveCommunityUserAvatar(authorRole, authorId, fallbackAvatar) {
+  const normalizedRole = normalizeOptionalText(authorRole);
+  const normalizedAuthorId = normalizeOptionalText(authorId);
+
+  if (!normalizedRole || !normalizedAuthorId) {
+    return fallbackAvatar || null;
+  }
+
+  try {
+    if (normalizedRole === "student") {
+      const studentSnap = await db.collection("students").doc(normalizedAuthorId).get();
+
+      if (studentSnap.exists) {
+        return studentSnap.data()?.profileImage || fallbackAvatar || null;
+      }
+    }
+
+    if (normalizedRole === "teacher") {
+      const teacherSnap = await db.collection("teachers").doc(normalizedAuthorId).get();
+
+      if (teacherSnap.exists) {
+        return teacherSnap.data()?.profileImage || fallbackAvatar || null;
+      }
+    }
+
+    if (normalizedRole === "admin") {
+      const adminSnap = await db.collection("admins").doc(normalizedAuthorId).get();
+
+      if (adminSnap.exists) {
+        return adminSnap.data()?.profileImage || fallbackAvatar || null;
+      }
+    }
+  } catch (error) {
+    console.warn("Resolve community avatar warning:", error?.message || error);
+  }
+
+  return fallbackAvatar || null;
+}
 
 app.get("/community-posts", async (req, res) => {
   try {
@@ -3266,7 +3977,13 @@ app.get("/community-posts", async (req, res) => {
 
     const posts = await Promise.all(
       postsSnapshot.docs.map(async (doc) => {
-        const postData = doc.data();
+        const postData = doc.data() || {};
+
+        const resolvedPostAvatar = await resolveCommunityUserAvatar(
+          postData.authorRole,
+          postData.authorId,
+          postData.avatar || null
+        );
 
         const answersSnapshot = await db
           .collection("communityPosts")
@@ -3275,22 +3992,31 @@ app.get("/community-posts", async (req, res) => {
           .orderBy("createdAt", "asc")
           .get();
 
-        const answers = answersSnapshot.docs.map((answerDoc) => {
-          const answerData = answerDoc.data();
-          return {
-            id: answerDoc.id,
-            userName: answerData.userName || "Unknown User",
-            avatar: answerData.avatar || null,
-            answeredAt: formatFirestoreDateTime(answerData.createdAt),
-            message: answerData.message || "",
-          };
-        });
+        const answers = await Promise.all(
+          answersSnapshot.docs.map(async (answerDoc) => {
+            const answerData = answerDoc.data() || {};
+
+            const resolvedAnswerAvatar = await resolveCommunityUserAvatar(
+              answerData.authorRole,
+              answerData.authorId,
+              answerData.avatar || null
+            );
+
+            return {
+              id: answerDoc.id,
+              userName: answerData.userName || "Unknown User",
+              avatar: resolvedAnswerAvatar,
+              answeredAt: formatFirestoreDateTime(answerData.createdAt),
+              message: answerData.message || "",
+            };
+          })
+        );
 
         return {
           id: doc.id,
           userName: postData.userName || "Unknown User",
           userEmail: postData.userEmail || "",
-          avatar: postData.avatar || null,
+          avatar: resolvedPostAvatar,
           dateTime: formatFirestoreDateTime(postData.createdAt),
           content: postData.content || "",
           answers,
@@ -3309,7 +4035,6 @@ app.get("/community-posts", async (req, res) => {
     });
   }
 });
-
 
 app.post("/community-posts", async (req, res) => {
   try {
@@ -3398,6 +4123,8 @@ app.post("/community-posts/:postId/answers", async (req, res) => {
       return res.status(404).json({ error: "Post not found." });
     }
 
+    const postData = postSnap.data() || {};
+
     const answerRef = await postRef.collection("answers").add({
       message: String(message).trim(),
       authorId: String(authorId).trim(),
@@ -3412,6 +4139,25 @@ app.post("/community-posts/:postId/answers", async (req, res) => {
     await postRef.update({
       updatedAt: FieldValue.serverTimestamp(),
     });
+
+    if (
+      normalizeOptionalText(postData.authorId) &&
+      String(postData.authorId).trim() !== String(authorId).trim() &&
+      ["student", "teacher"].includes(String(postData.authorRole || "").trim())
+    ) {
+      await createNotification({
+        userId: postData.authorId,
+        role: String(postData.authorRole).trim(),
+        type: "community-answer",
+        title: "New Answer on Your Post",
+        message: `${String(userName).trim()} answered your post.`,
+        relatedId: postId,
+        relatedType: "community-post",
+        actorId: authorId,
+        actorRole,
+        actorName: userName,
+      });
+    }
 
     return res.json({
       success: true,
@@ -3536,6 +4282,141 @@ app.delete("/community-posts/:postId/answers/:answerId", async (req, res) => {
     });
   }
 });
+
+async function uploadUserImageToStorage({
+  imageBase64,
+  imageMimeType,
+  fileName,
+  folder,
+  userId,
+}) {
+  if (!imageBase64) {
+    throw new Error("Image data is required.");
+  }
+
+  if (!userId) {
+    throw new Error("User ID is required.");
+  }
+
+  const cleanedBase64 = imageBase64.includes(",")
+    ? imageBase64.split(",")[1]
+    : imageBase64;
+
+  const safeMimeType = normalizeOptionalText(imageMimeType) || "image/jpeg";
+  const extension = getFileExtensionFromMimeType(safeMimeType);
+  const safeFileName = sanitizeFileName(
+    normalizeOptionalText(fileName) || `image.${extension}`
+  );
+
+  const storagePath = `${folder}/${userId}/${Date.now()}-${safeFileName}`;
+  const file = bucket.file(storagePath);
+
+  await file.save(Buffer.from(cleanedBase64, "base64"), {
+    metadata: {
+      contentType: safeMimeType,
+      cacheControl: "public,max-age=31536000",
+    },
+    resumable: false,
+  });
+
+  await file.makePublic();
+
+  return {
+    fileUrl: file.publicUrl(),
+    storagePath,
+    fileName: safeFileName,
+    fileType: safeMimeType,
+  };
+}
+
+app.post("/auth/update-user-images", async (req, res) => {
+  try {
+    const {
+      id,
+      role,
+      profileImageBase64,
+      profileImageMimeType,
+      profileImageFileName,
+      bannerImageBase64,
+      bannerImageMimeType,
+      bannerImageFileName,
+    } = req.body;
+
+    if (!id || !role) {
+      return res.status(400).json({ error: "ID and role are required." });
+    }
+
+    const collectionName = getCollectionNameByRole(role);
+    if (!collectionName) {
+      return res.status(400).json({ error: "Invalid role." });
+    }
+
+    const userRef = db.collection(collectionName).doc(String(id).trim());
+    const userSnap = await userRef.get();
+
+    if (!userSnap.exists) {
+      return res.status(404).json({ error: "User not found." });
+    }
+
+    const userData = userSnap.data() || {};
+    const updates = {
+        updatedAt: FieldValue.serverTimestamp(),
+      };
+
+    if (profileImageBase64) {
+      if (userData.profileImageStoragePath) {
+        await deleteStorageFileIfExists(userData.profileImageStoragePath);
+      }
+
+      const uploadedProfile = await uploadUserImageToStorage({
+        imageBase64: profileImageBase64,
+        imageMimeType: profileImageMimeType,
+        fileName: profileImageFileName || "profile.jpg",
+        folder: "user-profiles",
+        userId: String(id).trim(),
+      });
+
+      updates.profileImage = uploadedProfile.fileUrl;
+      updates.profileImageStoragePath = uploadedProfile.storagePath;
+    }
+
+    if (bannerImageBase64) {
+      if (userData.bannerImageStoragePath) {
+        await deleteStorageFileIfExists(userData.bannerImageStoragePath);
+      }
+
+      const uploadedBanner = await uploadUserImageToStorage({
+        imageBase64: bannerImageBase64,
+        imageMimeType: bannerImageMimeType,
+        fileName: bannerImageFileName || "banner.jpg",
+        folder: "user-banners",
+        userId: String(id).trim(),
+      });
+
+      updates.bannerImage = uploadedBanner.fileUrl;
+      updates.bannerImageStoragePath = uploadedBanner.storagePath;
+    }
+
+    await userRef.update(updates);
+
+    const updatedSnap = await userRef.get();
+    const updatedData = updatedSnap.data() || {};
+
+    return res.json({
+      success: true,
+      data: {
+        profileImage: updatedData.profileImage || null,
+        bannerImage: updatedData.bannerImage || null,
+      },
+    });
+  } catch (error) {
+    console.error("Update user images error:", error);
+    return res.status(500).json({
+      error: error.message || "Failed to update user images.",
+    });
+  }
+});
+
 const PORT = process.env.PORT || 5000;
 
 app.listen(PORT, "0.0.0.0", () => {

@@ -1,7 +1,7 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
+  Alert,
   FlatList,
-  Platform,
   Pressable,
   SafeAreaView,
   StatusBar,
@@ -19,216 +19,549 @@ export type NotificationType =
 
 export type NotificationItem = {
   id: string;
+  userId?: string;
+  role?: string;
   type: NotificationType;
   title: string;
   message: string;
   time: string;
   read: boolean;
+  relatedId?: string | null;
+  relatedType?: string | null;
+  classId?: string | null;
+  actorId?: string | null;
+  actorRole?: string | null;
+  actorName?: string | null;
+  createdAt?: any;
+  updatedAt?: any;
+  readAt?: any;
 };
 
 interface NotificationScreenProps {
   onBack?: () => void;
   notifications?: NotificationItem[];
+  mode?: 'screen' | 'popover';
+  onClosePopover?: () => void;
+  apiBaseUrl: string;
+  userId: string;
+  role?: 'teacher' | 'student' | 'admin';
+  onNotificationsUpdated?: (notifications: NotificationItem[]) => void;
 }
 
-/* 🔥 SAMPLE DATA */
-const SAMPLE_NOTIFICATIONS: NotificationItem[] = [
-  {
-    id: '1',
-    type: 'assignment',
-    title: 'New Assignment Posted',
-    message: 'You created a new assignment in Web Development.',
-    time: '2 min ago',
-    read: false,
-  },
-  {
-    id: '2',
-    type: 'material',
-    title: 'Material Uploaded',
-    message: 'Lecture slides have been uploaded.',
-    time: '10 min ago',
-    read: false,
-  },
-  {
-    id: '3',
-    type: 'community-answer',
-    title: 'Student Answered',
-    message: 'Juan answered your question in Community.',
-    time: '30 min ago',
-    read: true,
-  },
-  {
-    id: '4',
-    type: 'support-activity',
-    title: 'Helpful Contribution',
-    message: 'You helped a student solve a problem.',
-    time: '1 hour ago',
-    read: true,
-  },
-];
-
-const Notification: React.FC<NotificationScreenProps> = ({
+const TeacherNotification: React.FC<NotificationScreenProps> = ({
   onBack,
-  notifications: incomingNotifications,
+  notifications: incomingNotifications = [],
+  mode = 'screen',
+  onClosePopover,
+  apiBaseUrl,
+  userId,
+  role = 'teacher',
+  onNotificationsUpdated,
 }) => {
-  /* 🔥 USE SAMPLE IF EMPTY */
-  const [notifications, setNotifications] = useState<NotificationItem[]>(
-    incomingNotifications?.length ? incomingNotifications : SAMPLE_NOTIFICATIONS
-  );
+  const [notifications, setNotifications] =
+    useState<NotificationItem[]>(incomingNotifications);
+  const [menuVisible, setMenuVisible] = useState(false);
+  const [showAllNotifications, setShowAllNotifications] = useState(false);
+  const [loadingIds, setLoadingIds] = useState<string[]>([]);
+  const [isMarkingAll, setIsMarkingAll] = useState(false);
+
+  const isPopover = mode === 'popover';
+
+  useEffect(() => {
+    setNotifications(incomingNotifications);
+    setShowAllNotifications(false);
+    setMenuVisible(false);
+  }, [incomingNotifications]);
 
   const unreadCount = useMemo(
     () => notifications.filter((item) => !item.read).length,
     [notifications]
   );
 
-  const isWeb = Platform.OS === 'web';
-  const showBackButton = !isWeb && !!onBack;
+  const displayedNotifications = useMemo(() => {
+    if (isPopover && !showAllNotifications) {
+      return notifications.slice(0, 6);
+    }
+    return notifications;
+  }, [notifications, isPopover, showAllNotifications]);
 
-  const markAsRead = (id: string) => {
-    setNotifications((prev) =>
-      prev.map((item) =>
-        item.id === id ? { ...item, read: true } : item
-      )
-    );
+  const syncNotifications = (next: NotificationItem[]) => {
+    setNotifications(next);
+    onNotificationsUpdated?.(next);
   };
 
-  const markAllAsRead = () => {
-    setNotifications((prev) =>
-      prev.map((item) => ({ ...item, read: true }))
-    );
-  };
+  const markAsRead = async (id: string) => {
+    const target = notifications.find((item) => item.id === id);
 
-  const getNotificationIcon = (type: NotificationType, read: boolean) => {
-    const color = read ? '#999' : '#D32F2F';
+    if (!target || target.read) return;
 
-    switch (type) {
-      case 'assignment':
-        return <MaterialCommunityIcons name="clipboard-text" size={24} color={color} />;
-      case 'material':
-        return <MaterialCommunityIcons name="book-open" size={24} color={color} />;
-      case 'community-answer':
-        return <MaterialCommunityIcons name="forum" size={24} color={color} />;
-      case 'support-activity':
-        return <MaterialCommunityIcons name="lightbulb-on" size={24} color={color} />;
-      default:
-        return <MaterialCommunityIcons name="bell" size={24} color={color} />;
+    try {
+      setLoadingIds((prev) => [...prev, id]);
+
+      const response = await fetch(`${apiBaseUrl}/notifications/${id}/read`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data?.error || 'Failed to mark notification as read.');
+      }
+
+      const updated = notifications.map((item) =>
+        item.id === id
+          ? {
+              ...item,
+              read: true,
+              readAt: data?.data?.readAt ?? item.readAt ?? null,
+            }
+          : item
+      );
+
+      syncNotifications(updated);
+    } catch (error: any) {
+      Alert.alert(
+        'Update Failed',
+        error?.message || 'Unable to mark notification as read.'
+      );
+    } finally {
+      setLoadingIds((prev) => prev.filter((value) => value !== id));
     }
   };
 
-  const renderItem = ({ item }: { item: NotificationItem }) => (
-    <Pressable
-      onPress={() => markAsRead(item.id)}
-      style={[styles.card, !item.read && styles.unreadCard]}
-    >
-      <View style={styles.iconWrapper}>
-        {getNotificationIcon(item.type, item.read)}
-      </View>
+  const markAllAsRead = async () => {
+    if (!unreadCount) {
+      setMenuVisible(false);
+      return;
+    }
 
-      <View style={styles.content}>
-        <View style={styles.row}>
-          <Text style={styles.title}>{item.title}</Text>
-          <Text style={styles.time}>{item.time}</Text>
+    try {
+      setIsMarkingAll(true);
+
+      const response = await fetch(`${apiBaseUrl}/notifications/read-all`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          userId,
+          role,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data?.error || 'Failed to mark all notifications as read.');
+      }
+
+      const updated = notifications.map((item) => ({
+        ...item,
+        read: true,
+      }));
+
+      syncNotifications(updated);
+      setMenuVisible(false);
+    } catch (error: any) {
+      Alert.alert(
+        'Update Failed',
+        error?.message || 'Unable to mark all notifications as read.'
+      );
+    } finally {
+      setIsMarkingAll(false);
+    }
+  };
+
+  const getNotificationIcon = (type: NotificationType, read: boolean) => {
+    const color = read ? '#666' : '#D32F2F';
+
+    switch (type) {
+      case 'assignment':
+        return (
+          <MaterialCommunityIcons
+            name="clipboard-text-outline"
+            size={22}
+            color={color}
+          />
+        );
+      case 'material':
+        return (
+          <MaterialCommunityIcons
+            name="book-open-page-variant-outline"
+            size={22}
+            color={color}
+          />
+        );
+      case 'community-answer':
+        return (
+          <MaterialCommunityIcons
+            name="forum-outline"
+            size={22}
+            color={color}
+          />
+        );
+      case 'support-activity':
+        return (
+          <MaterialCommunityIcons
+            name="lightbulb-on-outline"
+            size={22}
+            color={color}
+          />
+        );
+      default:
+        return (
+          <MaterialCommunityIcons
+            name="bell-outline"
+            size={22}
+            color={color}
+          />
+        );
+    }
+  };
+
+  const renderItem = ({ item }: { item: NotificationItem }) => {
+    const isLoading = loadingIds.includes(item.id);
+
+    return (
+      <Pressable
+        onPress={() => markAsRead(item.id)}
+        style={[styles.card, !item.read && styles.unreadCard]}
+      >
+        <View style={styles.iconWrapper}>
+          {getNotificationIcon(item.type, item.read)}
         </View>
 
-        <Text style={styles.message}>{item.message}</Text>
+        <View style={styles.content}>
+          <View style={styles.row}>
+            <Text style={styles.title} numberOfLines={1}>
+              {item.title}
+            </Text>
+            <Text style={styles.time}>{item.time}</Text>
+          </View>
+
+          <Text
+            style={styles.message}
+            numberOfLines={isPopover ? 2 : undefined}
+          >
+            {item.message}
+          </Text>
+
+          {!item.read && (
+            <View style={styles.unreadMetaRow}>
+              <View style={styles.unreadDot} />
+              <Text style={styles.unreadText}>
+                {isLoading ? 'Updating...' : 'Unread'}
+              </Text>
+            </View>
+          )}
+        </View>
+      </Pressable>
+    );
+  };
+
+  const content = (
+    <View style={styles.contentWrapper}>
+      <View style={[styles.header, isPopover && styles.popoverHeader]}>
+        {isPopover ? (
+          <>
+            <View style={styles.headerTextWrapper}>
+              <Text style={styles.headerTitle}>Notifications</Text>
+              <Text style={styles.headerSubtitle}>
+                {unreadCount} unread notification{unreadCount === 1 ? '' : 's'}
+              </Text>
+            </View>
+
+            <View style={styles.popoverActions}>
+              <Pressable
+                onPress={() => setMenuVisible((prev) => !prev)}
+                style={styles.iconButton}
+              >
+                <MaterialCommunityIcons
+                  name="dots-vertical"
+                  size={22}
+                  color="#000"
+                />
+              </Pressable>
+
+              <Pressable onPress={onClosePopover} style={styles.iconButton}>
+                <MaterialCommunityIcons name="close" size={22} color="#000" />
+              </Pressable>
+            </View>
+
+            {menuVisible && (
+              <>
+                <Pressable
+                  style={styles.menuOverlay}
+                  onPress={() => setMenuVisible(false)}
+                />
+                <View style={styles.popupMenu}>
+                  <Pressable
+                    onPress={markAllAsRead}
+                    style={styles.popupMenuItem}
+                    disabled={isMarkingAll}
+                  >
+                    <Text style={styles.popupMenuText}>
+                      {isMarkingAll ? 'Updating...' : 'Mark all as read'}
+                    </Text>
+                  </Pressable>
+                </View>
+              </>
+            )}
+          </>
+        ) : (
+          <>
+            <Pressable onPress={onBack} style={styles.backButton}>
+              <MaterialCommunityIcons name="arrow-left" size={24} color="#000" />
+            </Pressable>
+
+            <View style={styles.headerTextWrapper}>
+              <Text style={styles.headerTitle}>Notifications</Text>
+              <Text style={styles.headerSubtitle}>
+                {unreadCount} unread notification{unreadCount === 1 ? '' : 's'}
+              </Text>
+            </View>
+
+            <Pressable
+              onPress={markAllAsRead}
+              style={styles.markAllButton}
+              disabled={isMarkingAll}
+            >
+              <Text style={styles.markAllText}>
+                {isMarkingAll ? 'Updating...' : 'Mark all'}
+              </Text>
+            </Pressable>
+          </>
+        )}
       </View>
-    </Pressable>
+
+      <FlatList
+        data={displayedNotifications}
+        keyExtractor={(item) => item.id}
+        renderItem={renderItem}
+        style={styles.list}
+        showsVerticalScrollIndicator={true}
+        contentContainerStyle={[
+          styles.listContent,
+          isPopover && styles.popoverListContent,
+          notifications.length === 0 && styles.emptyListContent,
+        ]}
+        ListFooterComponent={
+          isPopover && !showAllNotifications && notifications.length > 6 ? (
+            <Pressable
+              onPress={() => setShowAllNotifications(true)}
+              style={styles.seeAllButton}
+            >
+              <Text style={styles.seeAllButtonText}>See all notifications</Text>
+            </Pressable>
+          ) : null
+        }
+        ListEmptyComponent={
+          <View style={styles.emptyState}>
+            <MaterialCommunityIcons
+              name="bell-check-outline"
+              size={48}
+              color="#999"
+            />
+            <Text style={styles.emptyTitle}>No notifications</Text>
+            <Text style={styles.emptyText}>You’re all caught up.</Text>
+          </View>
+        }
+      />
+    </View>
   );
+
+  if (isPopover) {
+    return <View style={styles.popoverContainer}>{content}</View>;
+  }
 
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFF" />
-
-      {/* HEADER */}
-      <View style={styles.header}>
-        {showBackButton && (
-          <Pressable onPress={onBack} style={styles.backButton} hitSlop={10}>
-            <MaterialCommunityIcons name="arrow-left" size={24} color="#000" />
-          </Pressable>
-        )}
-
-        <View style={{ flex: 1 }}>
-          <Text style={styles.headerTitle}>Notifications</Text>
-          <Text style={styles.headerSubtitle}>
-            {unreadCount} unread
-          </Text>
-        </View>
-
-        <Pressable onPress={markAllAsRead} style={styles.markAllBtn}>
-          <Text style={styles.markAllText}>Mark all</Text>
-        </Pressable>
-      </View>
-
-      {/* LIST */}
-      <FlatList
-        data={notifications}
-        keyExtractor={(item) => item.id}
-        renderItem={renderItem}
-        contentContainerStyle={{ padding: 16 }}
-      />
+      {content}
     </SafeAreaView>
   );
 };
 
-export default Notification;
+export default TeacherNotification;
 
-/* 🔥 STYLES */
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#FFF',
   },
 
+  popoverContainer: {
+    width: 380,
+    height: 500,
+    backgroundColor: '#FFF',
+    borderRadius: 18,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOpacity: 0.12,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 12,
+    borderWidth: 1,
+    borderColor: '#EEE',
+  },
+
+  contentWrapper: {
+    flex: 1,
+  },
+
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
     borderBottomWidth: 1,
     borderBottomColor: '#EEE',
+    backgroundColor: '#FFF',
+    position: 'relative',
+    zIndex: 2,
+  },
+
+  popoverHeader: {
+    paddingVertical: 12,
   },
 
   backButton: {
-    marginRight: 10,
-    padding: 4,
+    padding: 8,
+    marginRight: 6,
+  },
+
+  iconButton: {
+    padding: 8,
+  },
+
+  popoverActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+
+  headerTextWrapper: {
+    flex: 1,
   },
 
   headerTitle: {
     fontSize: 20,
-    fontWeight: 'bold',
+    fontWeight: '700',
+    color: '#111',
   },
 
   headerSubtitle: {
+    marginTop: 2,
     fontSize: 13,
     color: '#666',
   },
 
-  markAllBtn: {
-    backgroundColor: '#FFEAEA',
+  markAllButton: {
     paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: 'rgba(211,47,47,0.08)',
   },
 
   markAllText: {
     color: '#D32F2F',
     fontWeight: '600',
+    fontSize: 13,
+  },
+
+  popupMenu: {
+    position: 'absolute',
+    top: 56,
+    right: 52,
+    backgroundColor: '#FFF',
+    borderRadius: 12,
+    minWidth: 170,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: '#EEE',
+    shadowColor: '#000',
+    shadowOpacity: 0.12,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 10,
+    zIndex: 20,
+  },
+
+  popupMenuItem: {
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+
+  popupMenuText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#111',
+  },
+
+  menuOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 10,
+  },
+
+  list: {
+    flex: 1,
+  },
+
+  listContent: {
+    padding: 16,
+    paddingBottom: 24,
+  },
+
+  popoverListContent: {
+    paddingTop: 8,
+    paddingBottom: 12,
+  },
+
+  emptyListContent: {
+    flexGrow: 1,
+    justifyContent: 'center',
+  },
+
+  seeAllButton: {
+    marginTop: 4,
+    marginBottom: 8,
+    paddingVertical: 12,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(211,47,47,0.08)',
+    borderWidth: 1,
+    borderColor: '#FFD7D7',
+  },
+
+  seeAllButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#D32F2F',
   },
 
   card: {
     flexDirection: 'row',
     padding: 14,
-    borderRadius: 14,
+    borderRadius: 16,
     backgroundColor: '#FAFAFA',
     marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#F0F0F0',
   },
 
   unreadCard: {
-    backgroundColor: '#FFF0F0',
+    backgroundColor: '#FFF5F5',
+    borderColor: '#FFD7D7',
   },
 
   iconWrapper: {
     marginRight: 12,
-    justifyContent: 'center',
+    paddingTop: 2,
+    width: 24,
+    alignItems: 'center',
   },
 
   content: {
@@ -238,11 +571,15 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    gap: 8,
   },
 
   title: {
-    fontWeight: 'bold',
+    flex: 1,
     fontSize: 15,
+    fontWeight: '700',
+    color: '#111',
   },
 
   time: {
@@ -251,7 +588,49 @@ const styles = StyleSheet.create({
   },
 
   message: {
-    marginTop: 5,
+    marginTop: 6,
+    fontSize: 14,
+    lineHeight: 20,
     color: '#444',
+  },
+
+  unreadMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+  },
+
+  unreadDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 999,
+    backgroundColor: '#D32F2F',
+    marginRight: 6,
+  },
+
+  unreadText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#D32F2F',
+  },
+
+  emptyState: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+    paddingVertical: 40,
+  },
+
+  emptyTitle: {
+    marginTop: 12,
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#222',
+  },
+
+  emptyText: {
+    marginTop: 6,
+    fontSize: 14,
+    color: '#777',
   },
 });

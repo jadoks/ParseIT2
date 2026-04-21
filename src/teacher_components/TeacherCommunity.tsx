@@ -71,12 +71,17 @@ const ANSWER_DROPDOWN_WIDTH = 170;
 const normalizeImageSource = (img: any) => {
   if (!img) return DEFAULT_AVATAR;
 
-  if (typeof img === 'number') {
-    return img;
+  if (typeof img === 'number') return img;
+
+  // ✅ handle Firebase string URL
+  if (typeof img === 'string') {
+    const trimmed = img.trim();
+    return trimmed ? { uri: trimmed } : DEFAULT_AVATAR;
   }
 
   if (img?.uri) {
-    return { uri: img.uri };
+    const trimmed = String(img.uri).trim();
+    return trimmed ? { uri: trimmed } : DEFAULT_AVATAR;
   }
 
   return DEFAULT_AVATAR;

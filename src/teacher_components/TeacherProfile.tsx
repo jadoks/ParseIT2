@@ -8,7 +8,6 @@ import {
   Keyboard,
   Modal,
   PanResponder,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -36,8 +35,8 @@ interface ProfileProps {
   onDeleteAnswer?: (postId: string, answerId: string) => void;
   userName?: string;
   userEmail?: string;
-  profileImage: any;
-  bannerImage: any;
+  profileImage?: any;
+  bannerImage?: any;
   onChangeProfileImage: (image: any) => void;
   onChangeBannerImage: (image: any) => void;
 }
@@ -63,17 +62,28 @@ type AnswerDropdownState =
     }
   | null;
 
-const DEFAULT_AVATAR = require('../../assets/images/pogi.jpg');
 const MAX_IMAGE_SIZE_MB = 15;
 const MAX_IMAGE_SIZE_BYTES = MAX_IMAGE_SIZE_MB * 1024 * 1024;
 const POST_DROPDOWN_WIDTH = 165;
 const ANSWER_DROPDOWN_WIDTH = 170;
 
+const normalizeText = (value?: string | null) => {
+  if (typeof value !== 'string') return '';
+  return value.trim();
+};
+
 const normalizeImageSource = (img: any) => {
-  if (!img) return DEFAULT_AVATAR;
+  if (!img) return null;
   if (typeof img === 'number') return img;
-  if (img?.uri) return { uri: img.uri };
-  return DEFAULT_AVATAR;
+  if (typeof img === 'string') {
+    const trimmed = img.trim();
+    return trimmed ? { uri: trimmed } : null;
+  }
+  if (img?.uri) {
+    const trimmed = String(img.uri).trim();
+    return trimmed ? { uri: trimmed } : null;
+  }
+  return null;
 };
 
 const clamp = (value: number, min: number, max: number) =>
@@ -87,14 +97,17 @@ const Profile: React.FC<ProfileProps> = ({
   onDeletePost,
   onEditAnswer,
   onDeleteAnswer,
-  userName = 'Jade Lisondra',
-  userEmail = 'jadelisondra101@gmail.com',
+  userName,
+  userEmail,
   profileImage,
   bannerImage,
   onChangeProfileImage,
   onChangeBannerImage,
 }) => {
   const { width, height } = useWindowDimensions();
+
+  const safeUserName = useMemo(() => normalizeText(userName), [userName]);
+  const safeUserEmail = useMemo(() => normalizeText(userEmail), [userEmail]);
 
   const isSmallPhone = width < 380;
   const isPhone = width < 768;
@@ -560,7 +573,7 @@ const Profile: React.FC<ProfileProps> = ({
 
     const newAnswer: CommunityAnswer = {
       id: `answer-${Date.now()}`,
-      userName,
+      userName: safeUserName,
       avatar: profileImageSource,
       answeredAt: new Date().toLocaleString(),
       message: trimmed,
@@ -733,6 +746,30 @@ const Profile: React.FC<ProfileProps> = ({
     }));
   };
 
+  const renderProfileImage = (source: any, style: any) => {
+    if (source) {
+      return <Image source={source} style={style} resizeMode="cover" />;
+    }
+
+    return (
+      <View style={[style, styles.imagePlaceholder]}>
+        <MaterialCommunityIcons name="account" size={28} color="#A8A8A8" />
+      </View>
+    );
+  };
+
+  const renderBannerImage = (source: any, style: any) => {
+    if (source) {
+      return <Image source={source} style={style} resizeMode="cover" />;
+    }
+
+    return (
+      <View style={[style, styles.bannerPlaceholder]}>
+        <MaterialCommunityIcons name="image-outline" size={34} color="#B5B5B5" />
+      </View>
+    );
+  };
+
   return (
     <TouchableWithoutFeedback
       onPress={() => {
@@ -759,17 +796,16 @@ const Profile: React.FC<ProfileProps> = ({
           keyboardShouldPersistTaps="handled"
         >
           <View style={[styles.bannerContainer, { marginTop: isSmallPhone ? 14 : 20 }]}>
-            <Image
-              source={bannerImageSource}
-              style={[
+            {renderBannerImage(
+              bannerImageSource,
+              [
                 styles.banner,
                 {
                   height: bannerHeight,
                   borderRadius: isSmallPhone ? 10 : 6,
                 },
-              ]}
-              resizeMode="cover"
-            />
+              ]
+            )}
           </View>
 
           <View
@@ -793,18 +829,17 @@ const Profile: React.FC<ProfileProps> = ({
                 },
               ]}
             >
-              <Image
-                source={profileImageSource}
-                style={[
+              {renderProfileImage(
+                profileImageSource,
+                [
                   styles.avatarImage,
                   {
                     width: avatarSize - avatarBorderWidth * 2,
                     height: avatarSize - avatarBorderWidth * 2,
                     borderRadius: (avatarSize - avatarBorderWidth * 2) / 2,
                   },
-                ]}
-                resizeMode="cover"
-              />
+                ]
+              )}
             </View>
 
             <View
@@ -813,25 +848,29 @@ const Profile: React.FC<ProfileProps> = ({
                 { marginTop: isSmallPhone ? 14 : 20, flex: 1 },
               ]}
             >
-              <Text
-                style={[
-                  styles.name,
-                  { fontSize: isSmallPhone ? 18 : isPhone ? 20 : 22 },
-                ]}
-                numberOfLines={1}
-              >
-                {userName}
-              </Text>
+              {!!safeUserName && (
+                <Text
+                  style={[
+                    styles.name,
+                    { fontSize: isSmallPhone ? 18 : isPhone ? 20 : 22 },
+                  ]}
+                  numberOfLines={1}
+                >
+                  {safeUserName}
+                </Text>
+              )}
 
-              <Text
-                style={[
-                  styles.email,
-                  { fontSize: isSmallPhone ? 13 : 14 },
-                ]}
-                numberOfLines={1}
-              >
-                {userEmail}
-              </Text>
+              {!!safeUserEmail && (
+                <Text
+                  style={[
+                    styles.email,
+                    { fontSize: isSmallPhone ? 13 : 14 },
+                  ]}
+                  numberOfLines={1}
+                >
+                  {safeUserEmail}
+                </Text>
+              )}
 
               <View ref={editBtnRef} collapsable={false}>
                 <TouchableOpacity
@@ -885,9 +924,9 @@ const Profile: React.FC<ProfileProps> = ({
               isLargeScreen && { alignSelf: 'center', maxWidth: contentMaxWidth },
             ]}
           >
-            <Image
-              source={profileImageSource}
-              style={[
+            {renderProfileImage(
+              profileImageSource,
+              [
                 styles.smallAvatar,
                 {
                   width: isSmallPhone ? 32 : 35,
@@ -895,9 +934,8 @@ const Profile: React.FC<ProfileProps> = ({
                   borderRadius: isSmallPhone ? 16 : 20,
                   marginRight: isSmallPhone ? 10 : 12,
                 },
-              ]}
-              resizeMode="cover"
-            />
+              ]
+            )}
 
             <TouchableOpacity
               style={[
@@ -913,7 +951,7 @@ const Profile: React.FC<ProfileProps> = ({
                 style={[styles.askText, { fontSize: isSmallPhone ? 13 : 14 }]}
                 numberOfLines={1}
               >
-                Have a question, {userName}?
+                {safeUserName ? `Have a question, ${safeUserName}?` : 'Have a question?'}
               </Text>
             </TouchableOpacity>
           </View>
@@ -933,18 +971,18 @@ const Profile: React.FC<ProfileProps> = ({
             >
               <View style={styles.postHeader}>
                 <View style={styles.userRow}>
-                  <Image
-                    source={normalizeImageSource(post.avatar || profileImage)}
-                    style={[
+                  {renderProfileImage(
+                    normalizeImageSource(post.avatar),
+                    [
                       styles.postAvatar,
                       {
                         width: isSmallPhone ? 32 : 35,
                         height: isSmallPhone ? 32 : 35,
                         borderRadius: isSmallPhone ? 16 : 20,
                       },
-                    ]}
-                    resizeMode="cover"
-                  />
+                    ]
+                  )}
+
                   <View style={{ flex: 1, marginLeft: 8 }}>
                     <Text
                       style={[
@@ -1558,7 +1596,7 @@ const Profile: React.FC<ProfileProps> = ({
                       style={styles.answersScroll}
                       contentContainerStyle={styles.modalAnswersContainer}
                       showsVerticalScrollIndicator={true}
-                      persistentScrollbar={Platform.OS === 'android'}
+                      persistentScrollbar={true}
                       nestedScrollEnabled={true}
                       keyboardShouldPersistTaps="handled"
                       scrollEventThrottle={16}
@@ -1568,11 +1606,10 @@ const Profile: React.FC<ProfileProps> = ({
                           <View key={answer.id} style={styles.answerCard}>
                             <View style={styles.answerPreviewHeader}>
                               <View style={styles.userRow}>
-                                <Image
-                                  source={normalizeImageSource(answer.avatar)}
-                                  style={styles.answerAvatar}
-                                  resizeMode="cover"
-                                />
+                                {renderProfileImage(
+                                  normalizeImageSource(answer.avatar),
+                                  styles.answerAvatar
+                                )}
                                 <View style={{ marginLeft: 8, flex: 1 }}>
                                   <Text style={styles.answerUserName}>{answer.userName}</Text>
                                   <Text style={styles.answerDate}>{answer.answeredAt}</Text>
@@ -1663,7 +1700,7 @@ const Profile: React.FC<ProfileProps> = ({
                         },
                       ]}
                     >
-                      {answerDropdownState.answer.userName === userName ? (
+                      {answerDropdownState.answer.userName === safeUserName ? (
                         <>
                           <TouchableOpacity
                             style={styles.menuItem}
@@ -1734,6 +1771,18 @@ const styles = StyleSheet.create({
   banner: {
     width: '100%',
     maxWidth: 800,
+  },
+
+  bannerPlaceholder: {
+    backgroundColor: '#EFEFEF',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+
+  imagePlaceholder: {
+    backgroundColor: '#F2F2F2',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 
   profileInfo: {

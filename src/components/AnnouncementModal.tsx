@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ImageBackground,
   Modal,
@@ -14,6 +14,8 @@ export interface Announcement {
   title: string;
   message: string;
   bannerImage?: any;
+  expiresAt?: any;
+  classIds?: string[];
 }
 
 interface AnnouncementModalProps {
@@ -23,6 +25,17 @@ interface AnnouncementModalProps {
 }
 
 const AUTO_SLIDE_MS = 3000;
+
+const isAnnouncementActive = (value?: any) => {
+  if (!value) return true;
+
+  const expiry =
+    typeof value?.toDate === 'function' ? value.toDate() : new Date(value);
+
+  if (Number.isNaN(expiry.getTime())) return true;
+
+  return expiry.getTime() > Date.now();
+};
 
 const AnnouncementModal: React.FC<AnnouncementModalProps> = ({
   visible,
@@ -34,10 +47,20 @@ const AnnouncementModal: React.FC<AnnouncementModalProps> = ({
   const [currentIndex, setCurrentIndex] = useState(0);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const activeAnnouncements = useMemo(
+    () => announcements.filter((item) => isAnnouncementActive(item?.expiresAt)),
+    [announcements]
+  );
+
   const isMobile = width < 768;
   const isTablet = width >= 768 && width < 1024;
 
-  const modalWidth = isMobile ? width * 0.9 : isTablet ? width * 0.82 : Math.min(width * 0.78, 1200);
+  const modalWidth = isMobile
+    ? width * 0.9
+    : isTablet
+    ? width * 0.82
+    : Math.min(width * 0.78, 1200);
+
   const modalHeight = isMobile
     ? Math.max(220, Math.min(height * 0.3, 300))
     : isTablet
@@ -47,15 +70,19 @@ const AnnouncementModal: React.FC<AnnouncementModalProps> = ({
   const titleFontSize = isMobile ? 20 : isTablet ? 24 : 30;
   const messageFontSize = isMobile ? 13 : isTablet ? 14 : 16;
 
-  const hasAnnouncements = announcements.length > 0;
-  const current = hasAnnouncements ? announcements[currentIndex] || announcements[0] : null;
+  const hasAnnouncements = activeAnnouncements.length > 0;
+  const current = hasAnnouncements
+    ? activeAnnouncements[currentIndex] || activeAnnouncements[0]
+    : null;
 
   const resetAutoSlide = () => {
     if (timerRef.current) clearTimeout(timerRef.current);
-    if (!visible || announcements.length <= 1) return;
+    if (!visible || activeAnnouncements.length <= 1) return;
 
     timerRef.current = setTimeout(() => {
-      setCurrentIndex((prev) => (prev < announcements.length - 1 ? prev + 1 : 0));
+      setCurrentIndex((prev) =>
+        prev < activeAnnouncements.length - 1 ? prev + 1 : 0
+      );
     }, AUTO_SLIDE_MS);
   };
 
@@ -65,7 +92,7 @@ const AnnouncementModal: React.FC<AnnouncementModalProps> = ({
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);
     };
-  }, [currentIndex, visible, announcements.length]);
+  }, [currentIndex, visible, activeAnnouncements.length]);
 
   useEffect(() => {
     if (!visible) {
@@ -73,14 +100,25 @@ const AnnouncementModal: React.FC<AnnouncementModalProps> = ({
     }
   }, [visible]);
 
+  useEffect(() => {
+    if (!hasAnnouncements) return;
+    if (currentIndex > activeAnnouncements.length - 1) {
+      setCurrentIndex(0);
+    }
+  }, [currentIndex, activeAnnouncements.length, hasAnnouncements]);
+
   if (!hasAnnouncements) return null;
 
   const handleNext = () => {
-    setCurrentIndex((prev) => (prev < announcements.length - 1 ? prev + 1 : 0));
+    setCurrentIndex((prev) =>
+      prev < activeAnnouncements.length - 1 ? prev + 1 : 0
+    );
   };
 
   const handlePrev = () => {
-    setCurrentIndex((prev) => (prev > 0 ? prev - 1 : announcements.length - 1));
+    setCurrentIndex((prev) =>
+      prev > 0 ? prev - 1 : activeAnnouncements.length - 1
+    );
   };
 
   const handleClose = () => {
@@ -97,7 +135,7 @@ const AnnouncementModal: React.FC<AnnouncementModalProps> = ({
     <Modal visible={visible} animationType="fade" transparent>
       <View style={styles.backdrop}>
         <ImageBackground
-          source={current?.bannerImage}
+          source={current?.bannerImage || require('../../assets/images/Banner1.png')}
           style={[
             styles.container,
             {
@@ -112,10 +150,10 @@ const AnnouncementModal: React.FC<AnnouncementModalProps> = ({
           <View style={styles.overlayRed} />
 
           <View style={styles.topRow}>
-            {announcements.length > 1 && (
+            {activeAnnouncements.length > 1 && (
               <View style={styles.counterPill}>
                 <Text style={styles.counterText}>
-                  {currentIndex + 1} / {announcements.length}
+                  {currentIndex + 1} / {activeAnnouncements.length}
                 </Text>
               </View>
             )}
@@ -136,13 +174,15 @@ const AnnouncementModal: React.FC<AnnouncementModalProps> = ({
               >
                 {current?.message}
               </Text>
+
+            
             </View>
           </View>
 
           <View style={styles.bottomWrap}>
-            {announcements.length > 1 && (
+            {activeAnnouncements.length > 1 && (
               <View style={styles.indicators}>
-                {announcements.map((_, idx) => (
+                {activeAnnouncements.map((_, idx) => (
                   <TouchableOpacity
                     key={idx}
                     onPress={() => handleDotPress(idx)}
@@ -193,7 +233,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 16,
   },
-
   container: {
     justifyContent: 'space-between',
     overflow: 'hidden',
@@ -205,41 +244,34 @@ const styles = StyleSheet.create({
     shadowRadius: 16,
     elevation: 6,
   },
-
   imageStyle: {
     borderRadius: 22,
   },
-
   overlayDark: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(0,0,0,0.34)',
   },
-
   overlayRed: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(211,47,47,0.22)',
   },
-
   topRow: {
     alignItems: 'center',
     justifyContent: 'center',
     paddingTop: 16,
     zIndex: 1,
   },
-
   counterPill: {
     backgroundColor: 'rgba(0,0,0,0.25)',
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 999,
   },
-
   counterText: {
     color: '#FFF',
     fontSize: 11,
     fontWeight: '700',
   },
-
   contentOverlay: {
     flex: 1,
     justifyContent: 'center',
@@ -248,12 +280,10 @@ const styles = StyleSheet.create({
     paddingVertical: 20,
     zIndex: 1,
   },
-
   content: {
     alignItems: 'center',
     width: '100%',
   },
-
   title: {
     fontWeight: '800',
     color: '#FFF',
@@ -263,7 +293,6 @@ const styles = StyleSheet.create({
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 4,
   },
-
   message: {
     color: '#FFF',
     lineHeight: 22,
@@ -273,20 +302,24 @@ const styles = StyleSheet.create({
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 4,
   },
-
+  sharedText: {
+    color: '#FFF',
+    fontSize: 11,
+    marginTop: 8,
+    opacity: 0.9,
+    fontWeight: '600',
+  },
   bottomWrap: {
     paddingHorizontal: 14,
     paddingBottom: 14,
     zIndex: 1,
   },
-
   indicators: {
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 10,
   },
-
   dot: {
     width: 8,
     height: 8,
@@ -294,17 +327,14 @@ const styles = StyleSheet.create({
     marginHorizontal: 4,
     backgroundColor: 'rgba(255, 255, 255, 0.45)',
   },
-
   dotActive: {
     width: 24,
     backgroundColor: '#FFFFFF',
   },
-
   buttonRow: {
     flexDirection: 'row',
     gap: 8,
   },
-
   navBtn: {
     flex: 1,
     paddingVertical: 11,
@@ -315,13 +345,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.24)',
   },
-
   navBtnText: {
     fontWeight: '700',
     fontSize: 12,
     color: '#FFF',
   },
-
   closeBtn: {
     flex: 1.2,
     backgroundColor: '#D32F2F',
@@ -330,7 +358,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderRadius: 10,
   },
-
   closeBtnText: {
     color: '#fff',
     fontWeight: '700',

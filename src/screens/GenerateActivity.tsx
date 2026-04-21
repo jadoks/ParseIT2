@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   ScrollView,
   StyleSheet,
@@ -26,9 +26,18 @@ export interface GenerateActivityData {
 interface GenerateActivityProps {
   activity: GenerateActivityData | null;
   onBack?: () => void;
+  currentStudentId?: string;
+  apiBaseUrl?: string;
+  onCompleted?: (activity: GenerateActivityData) => Promise<void> | void;
 }
 
-const GenerateActivity = ({ activity, onBack }: GenerateActivityProps) => {
+const GenerateActivity = ({
+  activity,
+  onBack,
+  currentStudentId,
+  apiBaseUrl,
+  onCompleted,
+}: GenerateActivityProps) => {
   const { width } = useWindowDimensions();
   const isMobile = width < 768;
 
@@ -36,6 +45,49 @@ const GenerateActivity = ({ activity, onBack }: GenerateActivityProps) => {
   const [showAnswer, setShowAnswer] = useState(false);
   const [shortAnswer, setShortAnswer] = useState('');
   const [completed, setCompleted] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadCompletionStatus = async () => {
+      if (!activity || !currentStudentId || !apiBaseUrl) {
+        if (isMounted) {
+          setCompleted(false);
+        }
+        return;
+      }
+
+      try {
+        const response = await fetch(
+          `${apiBaseUrl}/student-activities/status?studentId=${encodeURIComponent(currentStudentId)}&assignmentId=${encodeURIComponent(activity.assignmentId)}`
+        );
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data?.error || 'Failed to load activity status.');
+        }
+
+        if (isMounted) {
+          setCompleted(!!data?.data?.completed);
+        }
+      } catch (error) {
+        if (isMounted) {
+          setCompleted(false);
+        }
+      }
+    };
+
+    setSelectedOption(null);
+    setShowAnswer(false);
+    setShortAnswer('');
+    setCompleted(false);
+    void loadCompletionStatus();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [activity, apiBaseUrl, currentStudentId]);
 
   const quiz = useMemo(() => {
     if (!activity) return null;
@@ -52,9 +104,50 @@ const GenerateActivity = ({ activity, onBack }: GenerateActivityProps) => {
     };
   }, [activity]);
 
-  const handleCheckAnswer = () => {
+  const handleCheckAnswer = async () => {
+    if (!activity || isSubmitting) return;
+
     setShowAnswer(true);
-    setCompleted(true);
+
+    try {
+      setIsSubmitting(true);
+
+      if (currentStudentId && apiBaseUrl) {
+        const response = await fetch(`${apiBaseUrl}/student-activities/complete`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            studentId: currentStudentId,
+            courseId: activity.courseId,
+            assignmentId: activity.assignmentId,
+            courseName: activity.courseName,
+            courseCode: activity.courseCode,
+            assignmentTitle: activity.assignmentTitle,
+            topic: activity.topic,
+            recommendationType: activity.recommendationType,
+            difficulty: activity.difficulty,
+            score: activity.score ?? null,
+            instructions: activity.instructions,
+            basedOnMaterials: activity.basedOnMaterials,
+            shortAnswer: shortAnswer.trim() || null,
+            selectedOption,
+          }),
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data?.error || 'Failed to complete activity.');
+        }
+      }
+
+      setCompleted(true);
+      await onCompleted?.(activity);
+    } catch (error) {
+      console.error('COMPLETE ACTIVITY ERROR =>', error);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   if (!activity) {
@@ -145,8 +238,16 @@ const GenerateActivity = ({ activity, onBack }: GenerateActivityProps) => {
         </View>
 
         {!completed ? (
-          <TouchableOpacity style={styles.submitBtn} onPress={handleCheckAnswer}>
-            <Text style={styles.submitText}>Check Answer</Text>
+          <TouchableOpacity
+            style={[styles.submitBtn, isSubmitting && { opacity: 0.7 }]}
+            onPress={() => {
+              void handleCheckAnswer();
+            }}
+            disabled={isSubmitting}
+          >
+            <Text style={styles.submitText}>
+              {isSubmitting ? 'Saving...' : 'Check Answer'}
+            </Text>
           </TouchableOpacity>
         ) : (
           <View style={styles.completedBtn}>

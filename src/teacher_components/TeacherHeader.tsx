@@ -39,6 +39,7 @@ interface HeaderProps {
   onSearchChange?: (query: string) => void;
   onMenuPress?: () => void;
   notificationCount?: number;
+  onNotificationPress?: () => void;
 }
 
 const TeacherHeader: React.FC<HeaderProps> = ({
@@ -48,6 +49,7 @@ const TeacherHeader: React.FC<HeaderProps> = ({
   onSearchChange,
   onMenuPress,
   notificationCount = 0,
+  onNotificationPress,
 }) => {
   const { width } = useWindowDimensions();
 
@@ -134,7 +136,6 @@ const TeacherHeader: React.FC<HeaderProps> = ({
     return 'Search ParseClass';
   };
 
-  // ✅ ONLY MODIFIED PART
   const renderNavIcon = (screen: ScreenType, size: number) => {
     const color = getIconColor(screen);
 
@@ -344,7 +345,7 @@ const TeacherHeader: React.FC<HeaderProps> = ({
               style={styles.navBtn}
               onPress={() => {
                 toggleSearch(false);
-                onNavigate?.('notification');
+                onNotificationPress?.();
               }}
             >
               <View>
@@ -463,7 +464,7 @@ const TeacherHeader: React.FC<HeaderProps> = ({
           ]}
           onPress={() => {
             toggleSearch(false);
-            onNavigate?.('notification');
+            onNotificationPress?.();
           }}
           onHoverIn={() => {
             if (Platform.OS === 'web') setIsBellHovered(true);

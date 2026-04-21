@@ -61,7 +61,7 @@ export default function GeminiFloatingModal({
   const [messages, setMessages] = useState<Message[]>([
     {
       role: "model",
-      text: "Hello! Ask me anything about ParseIT or your lesson.",
+      text: "Hello. I’m your ParseIT Assistant. How may I assist you today?",
     },
   ]);
 
@@ -132,8 +132,8 @@ export default function GeminiFloatingModal({
         role: "model",
         text:
           nextMode === "assistant"
-            ? "Hello! I can help you use ParseIT features."
-            : "Hi! I can help explain lessons step by step.",
+            ? "Hello. I can assist you with ParseIT features, navigation, and general system support."
+            : "Hello. I can help explain lessons clearly and guide you step by step.",
       },
     ]);
   };
@@ -206,20 +206,38 @@ export default function GeminiFloatingModal({
                 <View
                   key={`${message.role}-${index}`}
                   style={[
-                    styles.messageBubble,
-                    isUser ? styles.userBubble : styles.botBubble,
+                    styles.messageRow,
+                    isUser ? styles.userRow : styles.botRow,
                   ]}
                 >
-                  <Text style={isUser ? styles.userText : styles.botText}>
-                    {message.text}
-                  </Text>
+                  {!isUser && (
+                    <Text style={styles.botLabel}>
+                      {mode === "assistant" ? "ParseIT Assistant" : "AI Tutor"}
+                    </Text>
+                  )}
+
+                  <View
+                    style={[
+                      styles.messageBubble,
+                      isUser ? styles.userBubble : styles.botBubble,
+                    ]}
+                  >
+                    <Text style={isUser ? styles.userText : styles.botText}>
+                      {message.text}
+                    </Text>
+                  </View>
                 </View>
               );
             })}
 
             {loading && (
-              <View style={[styles.messageBubble, styles.botBubble]}>
-                <ActivityIndicator />
+              <View style={[styles.messageRow, styles.botRow]}>
+                <Text style={styles.botLabel}>
+                  {mode === "assistant" ? "ParseIT Assistant" : "AI Tutor"}
+                </Text>
+                <View style={[styles.messageBubble, styles.botBubble]}>
+                  <ActivityIndicator />
+                </View>
               </View>
             )}
           </ScrollView>
@@ -253,25 +271,27 @@ export default function GeminiFloatingModal({
 const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
+    backgroundColor: "rgba(0,0,0,0.08)",
   },
   modalContainer: {
     position: "absolute",
     backgroundColor: "#FFFFFF",
-    borderRadius: 18,
+    borderRadius: 20,
     overflow: "hidden",
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.2,
-    shadowRadius: 16,
-    elevation: 12,
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.18,
+    shadowRadius: 18,
+    elevation: 14,
+    marginBottom: 48,
   },
   header: {
-    paddingHorizontal: 16,
-    paddingTop: 14,
-    paddingBottom: 12,
+    paddingHorizontal: 18,
+    paddingTop: 16,
+    paddingBottom: 14,
     borderBottomWidth: 1,
     borderBottomColor: "#E9E9E9",
-    backgroundColor: "#fff",
+    backgroundColor: "#FFFFFF",
   },
   title: {
     fontSize: 18,
@@ -281,7 +301,7 @@ const styles = StyleSheet.create({
   subtitle: {
     marginTop: 4,
     fontSize: 12,
-    color: "#666",
+    color: "#667085",
   },
   modeSwitchWrap: {
     flexDirection: "row",
@@ -312,31 +332,60 @@ const styles = StyleSheet.create({
   },
   messages: {
     padding: 14,
-    gap: 10,
+    paddingBottom: 20,
+  },
+  messageRow: {
+    marginBottom: 12,
+    maxWidth: "88%",
+  },
+  userRow: {
+    alignSelf: "flex-end",
+    alignItems: "flex-end",
+  },
+  botRow: {
+    alignSelf: "flex-start",
+    alignItems: "flex-start",
+  },
+  botLabel: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#667085",
+    marginBottom: 6,
+    marginLeft: 4,
   },
   messageBubble: {
-    maxWidth: "85%",
     paddingHorizontal: 14,
-    paddingVertical: 10,
+    paddingVertical: 12,
     borderRadius: 16,
   },
   botBubble: {
     alignSelf: "flex-start",
-    backgroundColor: "#F2F2F2",
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#E4E7EC",
+    borderRadius: 14,
+    borderTopLeftRadius: 6,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 6,
+    elevation: 2,
   },
   userBubble: {
     alignSelf: "flex-end",
     backgroundColor: "#D32F2F",
+    borderRadius: 14,
+    borderTopRightRadius: 6,
   },
   botText: {
-    color: "#222",
+    color: "#1F2937",
     fontSize: 14,
-    lineHeight: 20,
+    lineHeight: 22,
   },
   userText: {
-    color: "#FFF",
+    color: "#FFFFFF",
     fontSize: 14,
-    lineHeight: 20,
+    lineHeight: 22,
   },
   inputWrapper: {
     flexDirection: "row",
@@ -344,7 +393,7 @@ const styles = StyleSheet.create({
     padding: 12,
     borderTopWidth: 1,
     borderTopColor: "#E9E9E9",
-    backgroundColor: "#fff",
+    backgroundColor: "#FFFFFF",
   },
   input: {
     flex: 1,
@@ -354,7 +403,7 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     paddingHorizontal: 14,
     color: "#000",
-    backgroundColor: "#fff",
+    backgroundColor: "#FFFFFF",
   },
   sendBtn: {
     marginLeft: 10,
@@ -366,7 +415,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   sendText: {
-    color: "#fff",
+    color: "#FFFFFF",
     fontWeight: "700",
     fontSize: 14,
   },

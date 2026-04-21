@@ -8,7 +8,6 @@ import {
   Keyboard,
   Modal,
   PanResponder,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -72,7 +71,14 @@ const ANSWER_DROPDOWN_WIDTH = 170;
 const normalizeImageSource = (img: any) => {
   if (!img) return DEFAULT_AVATAR;
   if (typeof img === 'number') return img;
-  if (img?.uri) return { uri: img.uri };
+  if (typeof img === 'string') {
+    const trimmed = img.trim();
+    return trimmed ? { uri: trimmed } : DEFAULT_AVATAR;
+  }
+  if (img?.uri) {
+    const trimmed = String(img.uri).trim();
+    return trimmed ? { uri: trimmed } : DEFAULT_AVATAR;
+  }
   return DEFAULT_AVATAR;
 };
 
@@ -942,7 +948,7 @@ const Profile: React.FC<ProfileProps> = ({
                 <View style={styles.postHeader}>
                   <View style={styles.userRow}>
                     <Image
-                      source={normalizeImageSource(post.avatar || profileImage)}
+                      source={normalizeImageSource(post.avatar)}
                       style={[
                         styles.postAvatar,
                         {
@@ -1568,8 +1574,8 @@ const Profile: React.FC<ProfileProps> = ({
                     style={[
                       styles.selectedPostText,
                       {
-                        fontSize: isSmallPhone ? 14 : 15,
-                        lineHeight: isSmallPhone ? 20 : 22,
+                        fontSize: isSmallPhone ? 13 : 14,
+                        lineHeight: isSmallPhone ? 18 : 20,
                       },
                     ]}
                   >
@@ -1580,11 +1586,7 @@ const Profile: React.FC<ProfileProps> = ({
                     <ScrollView
                       style={styles.answersScroll}
                       contentContainerStyle={styles.modalAnswersContainer}
-                      showsVerticalScrollIndicator={true}
-                      persistentScrollbar={Platform.OS === 'android'}
-                      nestedScrollEnabled={true}
                       keyboardShouldPersistTaps="handled"
-                      scrollEventThrottle={16}
                     >
                       {visibleAnswers.length > 0 ? (
                         visibleAnswers.map((answer) => (
@@ -1596,9 +1598,9 @@ const Profile: React.FC<ProfileProps> = ({
                                   style={[
                                     styles.answerAvatar,
                                     {
-                                      width: isSmallPhone ? 28 : 30,
-                                      height: isSmallPhone ? 28 : 30,
-                                      borderRadius: isSmallPhone ? 14 : 15,
+                                      width: isSmallPhone ? 30 : 34,
+                                      height: isSmallPhone ? 30 : 34,
+                                      borderRadius: isSmallPhone ? 15 : 17,
                                     },
                                   ]}
                                   resizeMode="cover"

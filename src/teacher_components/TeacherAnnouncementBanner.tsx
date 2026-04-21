@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   GestureResponderEvent,
   ImageBackground,
@@ -21,6 +21,17 @@ interface AnnouncementBannerProps {
 
 const AUTO_SLIDE_MS = 5000;
 
+const isAnnouncementActive = (value?: any) => {
+  if (!value) return true;
+
+  const expiry =
+    typeof value?.toDate === 'function' ? value.toDate() : new Date(value);
+
+  if (Number.isNaN(expiry.getTime())) return true;
+
+  return expiry.getTime() > Date.now();
+};
+
 const AnnouncementBanner = ({ announcements }: AnnouncementBannerProps) => {
   const { width, height } = useWindowDimensions();
 
@@ -29,13 +40,18 @@ const AnnouncementBanner = ({ announcements }: AnnouncementBannerProps) => {
 
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const activeAnnouncements = useMemo(
+    () => announcements.filter((item) => isAnnouncementActive(item?.expiresAt)),
+    [announcements]
+  );
+
   const isMobile = width < 768;
   const isTablet = width >= 768 && width < 1024;
   const shouldShowSwipe = isMobile || isTablet;
   const minSwipeDistance = width * 0.1;
 
-  const hasAnnouncements = announcements.length > 0;
-  const currentAnnouncement = hasAnnouncements ? announcements[currentIndex] : null;
+  const hasAnnouncements = activeAnnouncements.length > 0;
+  const currentAnnouncement = hasAnnouncements ? activeAnnouncements[currentIndex] : null;
 
   const bannerHeight = isMobile
     ? Math.max(180, Math.min(height * 0.24, 240))
@@ -50,10 +66,10 @@ const AnnouncementBanner = ({ announcements }: AnnouncementBannerProps) => {
   const resetAutoSlide = () => {
     if (timerRef.current) clearTimeout(timerRef.current);
 
-    if (announcements.length <= 1) return;
+    if (activeAnnouncements.length <= 1) return;
 
     timerRef.current = setTimeout(() => {
-      setCurrentIndex((prev) => (prev < announcements.length - 1 ? prev + 1 : 0));
+      setCurrentIndex((prev) => (prev < activeAnnouncements.length - 1 ? prev + 1 : 0));
     }, AUTO_SLIDE_MS);
   };
 
@@ -63,23 +79,23 @@ const AnnouncementBanner = ({ announcements }: AnnouncementBannerProps) => {
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);
     };
-  }, [currentIndex, announcements.length]);
+  }, [currentIndex, activeAnnouncements.length]);
 
   useEffect(() => {
     if (!hasAnnouncements) return;
-    if (currentIndex > announcements.length - 1) {
+    if (currentIndex > activeAnnouncements.length - 1) {
       setCurrentIndex(0);
     }
-  }, [announcements.length, currentIndex, hasAnnouncements]);
+  }, [activeAnnouncements.length, currentIndex, hasAnnouncements]);
 
   const handlePrev = () => {
     if (!hasAnnouncements) return;
-    setCurrentIndex((prev) => (prev > 0 ? prev - 1 : announcements.length - 1));
+    setCurrentIndex((prev) => (prev > 0 ? prev - 1 : activeAnnouncements.length - 1));
   };
 
   const handleNext = () => {
     if (!hasAnnouncements) return;
-    setCurrentIndex((prev) => (prev < announcements.length - 1 ? prev + 1 : 0));
+    setCurrentIndex((prev) => (prev < activeAnnouncements.length - 1 ? prev + 1 : 0));
   };
 
   const handleDotPress = (index: number) => {
@@ -122,7 +138,7 @@ const AnnouncementBanner = ({ announcements }: AnnouncementBannerProps) => {
         style={styles.touchLayer}
       >
         <ImageBackground
-          source={currentAnnouncement?.bannerImage}
+          source={currentAnnouncement?.bannerImage || require('../../assets/images/Banner1.png')}
           style={styles.bannerBackground}
           imageStyle={styles.bannerImage}
           resizeMode="cover"
@@ -131,11 +147,11 @@ const AnnouncementBanner = ({ announcements }: AnnouncementBannerProps) => {
           <View style={styles.overlayRed} />
 
           <View style={[styles.topRow, { paddingTop: isMobile ? 12 : 16 }]}>
-            {announcements.length > 1 && (
+            {activeAnnouncements.length > 1 && (
               <View style={styles.centerCounterWrap}>
                 <View style={styles.counterPill}>
                   <Text style={styles.counterText}>
-                    {currentIndex + 1} / {announcements.length}
+                    {currentIndex + 1} / {activeAnnouncements.length}
                   </Text>
                 </View>
               </View>
@@ -150,7 +166,7 @@ const AnnouncementBanner = ({ announcements }: AnnouncementBannerProps) => {
               },
             ]}
           >
-            {!shouldShowSwipe && announcements.length > 1 ? (
+            {!shouldShowSwipe && activeAnnouncements.length > 1 ? (
               <TouchableOpacity
                 onPress={handlePrev}
                 style={styles.arrowButton}
@@ -177,9 +193,13 @@ const AnnouncementBanner = ({ announcements }: AnnouncementBannerProps) => {
               >
                 {currentAnnouncement?.message}
               </Text>
+
+              <Text style={styles.sharedText}>
+                Shared to {currentAnnouncement?.classIds?.length || 1} classes
+              </Text>
             </View>
 
-            {!shouldShowSwipe && announcements.length > 1 ? (
+            {!shouldShowSwipe && activeAnnouncements.length > 1 ? (
               <TouchableOpacity
                 onPress={handleNext}
                 style={styles.arrowButton}
@@ -194,9 +214,9 @@ const AnnouncementBanner = ({ announcements }: AnnouncementBannerProps) => {
           </View>
 
           <View style={[styles.bottomArea, { paddingBottom: isMobile ? 12 : 16 }]}>
-            {announcements.length > 1 && (
+            {activeAnnouncements.length > 1 && (
               <View style={styles.dotsContainer}>
-                {announcements.map((_, index) => (
+                {activeAnnouncements.map((_, index) => (
                   <TouchableOpacity
                     key={index}
                     onPress={() => handleDotPress(index)}
@@ -210,7 +230,7 @@ const AnnouncementBanner = ({ announcements }: AnnouncementBannerProps) => {
               </View>
             )}
 
-            {shouldShowSwipe && announcements.length > 1 && (
+            {shouldShowSwipe && activeAnnouncements.length > 1 && (
               <View style={styles.swipeHint}>
                 <Text style={styles.swipeHintText}>Swipe to explore announcements</Text>
               </View>
@@ -235,59 +255,49 @@ const styles = StyleSheet.create({
     shadowRadius: 12,
     elevation: 4,
   },
-
   touchLayer: {
     flex: 1,
     width: '100%',
   },
-
   bannerBackground: {
     flex: 1,
     width: '100%',
     justifyContent: 'space-between',
   },
-
   bannerImage: {
     borderRadius: 18,
     height: '100%',
   },
-
   overlayDark: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(0,0,0,0.30)',
   },
-
   overlayRed: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(211,47,47,0.22)',
   },
-
   topRow: {
     zIndex: 2,
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: wp('4'),
   },
-
   centerCounterWrap: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },
-
   counterPill: {
     backgroundColor: 'rgba(0,0,0,0.25)',
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 999,
   },
-
   counterText: {
     color: '#FFF',
     fontSize: 11,
     fontWeight: '700',
   },
-
   contentContainer: {
     flex: 1,
     zIndex: 2,
@@ -295,7 +305,6 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-
   arrowButton: {
     width: 52,
     height: 52,
@@ -304,28 +313,23 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-
   arrowSpacer: {
     width: 52,
     height: 52,
   },
-
   arrowText: {
     fontSize: 50,
     color: '#FFF',
     fontWeight: '400',
     lineHeight: 36,
     marginTop: -10,
-    
   },
-
   contentText: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: wp('2'),
   },
-
   announceTitle: {
     fontWeight: '800',
     color: '#FFF',
@@ -335,7 +339,6 @@ const styles = StyleSheet.create({
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 4,
   },
-
   announceMessage: {
     fontWeight: '500',
     color: '#FFF',
@@ -343,59 +346,56 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     maxWidth: '92%',
   },
-
+  sharedText: {
+    color: '#FFF',
+    fontSize: 11,
+    marginTop: 8,
+    opacity: 0.9,
+    fontWeight: '600',
+  },
   bottomArea: {
     zIndex: 2,
     alignItems: 'center',
     paddingHorizontal: wp('4'),
   },
-
   dotsContainer: {
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
   },
-
   dot: {
     height: 8,
     borderRadius: 999,
     marginHorizontal: 4,
   },
-
   activeDot: {
     width: 24,
     backgroundColor: '#FFFFFF',
   },
-
   inactiveDot: {
     width: 8,
     backgroundColor: 'rgba(255,255,255,0.45)',
   },
-
   swipeHint: {
     marginTop: 8,
   },
-
   swipeHintText: {
     color: 'rgba(255,255,255,0.82)',
     fontSize: 11,
     fontWeight: '600',
     letterSpacing: 0.3,
   },
-
   emptyBanner: {
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 24,
   },
-
   emptyTitle: {
     fontSize: 18,
     fontWeight: '700',
     color: '#333',
     marginBottom: 8,
   },
-
   emptyMessage: {
     fontSize: 13,
     color: '#777',

@@ -1,6 +1,7 @@
 import Constants from 'expo-constants';
+import * as FileSystem from 'expo-file-system/legacy';
 import * as NavigationBar from 'expo-navigation-bar';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   Image,
@@ -61,6 +62,14 @@ interface Props {
   currentStudent: CurrentStudent;
 }
 
+interface RemoteStudentProfile {
+  firstName?: string;
+  lastName?: string;
+  email?: string;
+  profileImage?: string | null;
+  bannerImage?: string | null;
+}
+
 type ScreenType =
   | 'home'
   | 'classes'
@@ -78,6 +87,14 @@ type ScreenType =
   | 'community'
   | 'generateactivity'
   | 'notification';
+
+type StudentClassAnnouncement = Announcement & {
+  classIds?: string[];
+  bannerKey?: number | null;
+  expiresAt?: any;
+  createdAt?: any;
+  updatedAt?: any;
+};
 
 function getApiBaseUrl() {
   if (Platform.OS === 'web') {
@@ -100,31 +117,13 @@ function getApiBaseUrl() {
 
 const API_BASE_URL = getApiBaseUrl();
 
-const FALLBACK_PROFILE_IMAGE = require('../assets/images/default_profile.png');
-const DEFAULT_BANNER_IMAGE = require('../assets/images/venti_bg.png');
+const ANNOUNCEMENT_BANNERS: Record<number, any> = {
+  1: require('../assets/images/Banner1.png'),
+  2: require('../assets/images/Banner2.png'),
+  3: require('../assets/images/Banner3.png'),
+  4: require('../assets/images/Banner4.png'),
+};
 
-const ANNOUNCEMENTS: Announcement[] = [
-  {
-    id: '1',
-    title: 'Welcome Back!',
-    message: 'Check out the latest updates and announcements from your courses.',
-    bannerImage: require('../assets/announcement/1.png'),
-  },
-  {
-    id: '2',
-    title: 'New Course Available!',
-    message: 'Check out the new course on advanced programming techniques.',
-    bannerImage: require('../assets/announcement/2.png'),
-  },
-  {
-    id: '3',
-    title: 'New Assignment Available!',
-    message: 'Check out the new assignment for your current course.',
-    bannerImage: require('../assets/announcement/3.png'),
-  },
-];
-
-// KEEP THESE FOR OTHER MODULES FOR NOW
 const COURSES: CourseDetailData[] = [
   {
     id: '1',
@@ -465,18 +464,22 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
   const isLargeScreen = width >= 768;
   const isSmallScreen = width < 768;
 
+  const [remoteStudentProfile, setRemoteStudentProfile] = useState<RemoteStudentProfile | null>(null);
+
+  const currentUserFirstName = remoteStudentProfile?.firstName || currentStudent.firstName || '';
+  const currentUserLastName = remoteStudentProfile?.lastName || currentStudent.lastName || '';
   const currentUserName =
-    `${currentStudent.firstName || ''} ${currentStudent.lastName || ''}`.trim() || 'Student';
+    `${currentUserFirstName} ${currentUserLastName}`.trim() || 'Student';
 
-  const currentUserEmail = currentStudent.email || '';
+  const currentUserEmail = remoteStudentProfile?.email || currentStudent.email || '';
 
-  const initialAvatar = currentStudent.profileImage
-    ? { uri: currentStudent.profileImage }
-    : FALLBACK_PROFILE_IMAGE;
+  const initialAvatar = remoteStudentProfile?.profileImage || currentStudent.profileImage
+    ? { uri: remoteStudentProfile?.profileImage || currentStudent.profileImage || '' }
+    : null;
 
-  const initialBanner = currentStudent.bannerImage
-    ? { uri: currentStudent.bannerImage }
-    : DEFAULT_BANNER_IMAGE;
+  const initialBanner = remoteStudentProfile?.bannerImage || currentStudent.bannerImage
+    ? { uri: remoteStudentProfile?.bannerImage || currentStudent.bannerImage || '' }
+    : null;
 
   const [activeScreen, setActiveScreen] = useState<ScreenType>('home');
   const [lastScreen, setLastScreen] = useState<ScreenType>('home');
@@ -500,9 +503,10 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
 
   const [joinedCourses, setJoinedCourses] = useState<CourseDetailData[]>([]);
   const [isLoadingJoinedCourses, setIsLoadingJoinedCourses] = useState(false);
+  const [studentAnnouncements, setStudentAnnouncements] = useState<StudentClassAnnouncement[]>([]);
 
-  // UPDATED: no hardcoded initial posts
   const [communityPosts, setCommunityPosts] = useState<CommunityPost[]>([]);
+  const [studentNotifications, setStudentNotifications] = useState<NotificationItem[]>([]);
 
   const isFullscreenScreen =
     activeScreen === 'flipit' ||
@@ -532,6 +536,95 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
       : hasImageChanged
       ? (['top', 'right', 'bottom', 'left'] as const)
       : (['right', 'left'] as const);
+
+  const toMillis = (value: any) => {
+    if (!value) return 0;
+    if (typeof value?.toDate === 'function') return value.toDate().getTime();
+    if (typeof value?._seconds === 'number') return value._seconds * 1000;
+    const parsed = new Date(value).getTime();
+    return Number.isNaN(parsed) ? 0 : parsed;
+  };
+
+  const isAnnouncementActive = (value?: any) => {
+  if (!value) return true;
+  const expiry =
+    typeof value?.toDate === 'function' ? value.toDate() : new Date(value);
+
+  if (Number.isNaN(expiry.getTime())) return true;
+  return expiry.getTime() > Date.now();
+};
+
+  const loadCurrentStudentProfile = async () => {
+    if (!currentStudent?.studentId) return;
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/auth/user-profile`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: currentStudent.studentId,
+          role: 'student',
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data?.error || 'Failed to load user profile.');
+      }
+
+      const profileData = data?.data || {};
+
+      setRemoteStudentProfile({
+        firstName: profileData.firstName || currentStudent.firstName,
+        lastName: profileData.lastName || currentStudent.lastName,
+        email: profileData.email || currentStudent.email,
+        profileImage: profileData.profileImage || null,
+        bannerImage: profileData.bannerImage || null,
+      });
+
+      if (profileData.profileImage) {
+        setCurrentUserAvatar({ uri: profileData.profileImage });
+      } else if (currentStudent.profileImage) {
+        setCurrentUserAvatar({ uri: currentStudent.profileImage });
+      }
+
+      if (profileData.bannerImage) {
+        setCurrentUserBanner({ uri: profileData.bannerImage });
+      } else if (currentStudent.bannerImage) {
+        setCurrentUserBanner({ uri: currentStudent.bannerImage });
+      }
+    } catch (error) {
+      console.log('LOAD CURRENT STUDENT PROFILE ERROR =>', error);
+
+      if (currentStudent.profileImage) {
+        setCurrentUserAvatar({ uri: currentStudent.profileImage });
+      }
+
+      if (currentStudent.bannerImage) {
+        setCurrentUserBanner({ uri: currentStudent.bannerImage });
+      }
+    }
+  };
+
+  useEffect(() => {
+    loadCurrentStudentProfile();
+  }, [currentStudent?.studentId]);
+
+  useEffect(() => {
+    if (!remoteStudentProfile?.profileImage && currentStudent.profileImage) {
+      setCurrentUserAvatar({ uri: currentStudent.profileImage });
+    }
+
+    if (!remoteStudentProfile?.bannerImage && currentStudent.bannerImage) {
+      setCurrentUserBanner({ uri: currentStudent.bannerImage });
+    }
+  }, [
+    currentStudent.bannerImage,
+    currentStudent.profileImage,
+    remoteStudentProfile?.bannerImage,
+    remoteStudentProfile?.profileImage,
+  ]);
 
   useEffect(() => {
     if (Platform.OS !== 'android') return;
@@ -570,15 +663,213 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
     }
   }, [activeScreen, isMobileFullscreenScreen]);
 
-  const handleChangeProfileImage = (image: any) => {
-    setCurrentUserAvatar(image);
-    setHasImageChanged(true);
+  const getBase64FromUri = async (uri: string) => {
+    if (Platform.OS === 'web') {
+      const response = await fetch(uri);
+      const blob = await response.blob();
+
+      return await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+
+        reader.onloadend = () => {
+          const result = reader.result;
+
+          if (typeof result !== 'string') {
+            reject(new Error('Failed to read file as base64.'));
+            return;
+          }
+
+          const base64 = result.includes(',') ? result.split(',')[1] : result;
+          resolve(base64);
+        };
+
+        reader.onerror = () => reject(new Error('Failed to convert blob to base64.'));
+        reader.readAsDataURL(blob);
+      });
+    }
+
+    return await FileSystem.readAsStringAsync(uri, {
+      encoding: 'base64',
+    });
   };
 
-  const handleChangeBannerImage = (image: any) => {
-    setCurrentUserBanner(image);
-    setHasImageChanged(true);
+  const resolveCurrentUserDocId = () => {
+    return (
+      currentStudent.studentId ||
+      currentStudent.authUid ||
+      currentStudent.email
+    );
   };
+
+  const saveUserImagesToFirestore = async ({
+    profileImage,
+    bannerImage,
+  }: {
+    profileImage?: any;
+    bannerImage?: any;
+  }) => {
+    const userId = resolveCurrentUserDocId();
+
+    if (!userId) {
+      throw new Error('User ID is missing.');
+    }
+
+    const body: any = {
+      id: userId,
+      role: 'student',
+    };
+
+    if (profileImage?.uri) {
+      body.profileImageBase64 = await getBase64FromUri(profileImage.uri);
+      body.profileImageMimeType = 'image/jpeg';
+      body.profileImageFileName = 'profile.jpg';
+    }
+
+    if (bannerImage?.uri) {
+      body.bannerImageBase64 = await getBase64FromUri(bannerImage.uri);
+      body.bannerImageMimeType = 'image/jpeg';
+      body.bannerImageFileName = 'banner.jpg';
+    }
+
+    const response = await fetch(`${API_BASE_URL}/auth/update-user-images`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data?.error || 'Failed to save user images.');
+    }
+
+    return data?.data || {};
+  };
+
+  const handleChangeProfileImage = async (image: any) => {
+    try {
+      setCurrentUserAvatar(image);
+      setHasImageChanged(true);
+
+      if (!image?.uri) return;
+
+      const savedData = await saveUserImagesToFirestore({
+        profileImage: image,
+      });
+
+      if (savedData?.profileImage) {
+        setCurrentUserAvatar({ uri: savedData.profileImage });
+        setRemoteStudentProfile((prev) => ({
+          ...(prev || {}),
+          firstName: prev?.firstName || currentStudent.firstName,
+          lastName: prev?.lastName || currentStudent.lastName,
+          email: prev?.email || currentStudent.email,
+          profileImage: savedData.profileImage,
+          bannerImage: prev?.bannerImage || currentUserBanner?.uri || currentStudent.bannerImage || null,
+        }));
+      }
+    } catch (error: any) {
+      console.log('SAVE PROFILE IMAGE ERROR =>', error);
+      Alert.alert(
+        'Save Failed',
+        error?.message || 'Unable to save profile image.'
+      );
+    }
+  };
+
+  const handleChangeBannerImage = async (image: any) => {
+    try {
+      setCurrentUserBanner(image);
+      setHasImageChanged(true);
+
+      if (!image?.uri) return;
+
+      const savedData = await saveUserImagesToFirestore({
+        bannerImage: image,
+      });
+
+      if (savedData?.bannerImage) {
+        setCurrentUserBanner({ uri: savedData.bannerImage });
+        setRemoteStudentProfile((prev) => ({
+          ...(prev || {}),
+          firstName: prev?.firstName || currentStudent.firstName,
+          lastName: prev?.lastName || currentStudent.lastName,
+          email: prev?.email || currentStudent.email,
+          profileImage: prev?.profileImage || currentUserAvatar?.uri || currentStudent.profileImage || null,
+          bannerImage: savedData.bannerImage,
+        }));
+      }
+    } catch (error: any) {
+      console.log('SAVE BANNER IMAGE ERROR =>', error);
+      Alert.alert(
+        'Save Failed',
+        error?.message || 'Unable to save banner image.'
+      );
+    }
+  };
+
+  const loadStudentAnnouncements = async (courses: CourseDetailData[]) => {
+  try {
+    const classIds = courses.map((item) => item.id).filter(Boolean);
+
+    if (!classIds.length) {
+      setStudentAnnouncements([]);
+      return;
+    }
+
+    const groupedAnnouncements = await Promise.all(
+      classIds.map(async (classId) => {
+        const response = await fetch(`${API_BASE_URL}/class-announcements/${classId}`);
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data?.error || 'Failed to load announcements.');
+        }
+
+        return Array.isArray(data) ? data : [];
+      })
+    );
+
+    const rawAnnouncements = groupedAnnouncements.flat();
+
+    const active = rawAnnouncements.filter((item: any) =>
+      isAnnouncementActive(item?.expiresAt)
+    );
+
+    const uniqueMap = new Map<string, any>();
+
+    active.forEach((item: any) => {
+      const key = `${item.title}-${item.message}-${item.expiresAt}-${item.bannerKey}`;
+      if (!uniqueMap.has(key)) {
+        uniqueMap.set(key, item);
+      }
+    });
+
+    const mappedAnnouncements: StudentClassAnnouncement[] = Array.from(
+      uniqueMap.values()
+    )
+      .map((item: any) => ({
+        id: item.id,
+        classIds: Array.isArray(item.classIds) ? item.classIds : [],
+        title: item.title || '',
+        message: item.message || '',
+        bannerKey: typeof item.bannerKey === 'number' ? item.bannerKey : 4,
+        bannerImage:
+          ANNOUNCEMENT_BANNERS[
+            typeof item.bannerKey === 'number' ? item.bannerKey : 4
+          ],
+        expiresAt: item.expiresAt || null,
+        createdAt: item.createdAt || null,
+        updatedAt: item.updatedAt || null,
+      }))
+      .sort((a, b) => toMillis(b.createdAt) - toMillis(a.createdAt));
+
+    setStudentAnnouncements(mappedAnnouncements);
+  } catch (error) {
+    console.log('LOAD STUDENT ANNOUNCEMENTS ERROR =>', error);
+    setStudentAnnouncements([]);
+  }
+};
 
   const loadJoinedClasses = async () => {
     if (!currentStudent?.studentId) return;
@@ -597,10 +888,14 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
       }
 
       const classesArray = Array.isArray(data) ? data : data?.data || [];
-      setJoinedCourses(classesArray.map(mapJoinedClassToCourseDetail));
+      const mappedCourses = classesArray.map(mapJoinedClassToCourseDetail);
+
+      setJoinedCourses(mappedCourses);
+      await loadStudentAnnouncements(mappedCourses);
     } catch (error) {
       console.log('LOAD JOINED CLASSES ERROR =>', error);
       setJoinedCourses([]);
+      setStudentAnnouncements([]);
     } finally {
       setIsLoadingJoinedCourses(false);
     }
@@ -648,17 +943,20 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
   };
 
   const hydratedCommunityPosts = useMemo<CommunityPost[]>(() => {
-    return communityPosts.map((post) => ({
-      ...post,
-      avatar:
-        post.userEmail === currentUserEmail || post.userName === currentUserName
-          ? currentUserAvatar
-          : post.avatar,
-      answers: post.answers.map((answer) => ({
-        ...answer,
-        avatar: answer.userName === currentUserName ? currentUserAvatar : answer.avatar,
-      })),
-    }));
+    return communityPosts.map((post) => {
+      const isCurrentUsersPost = post.userEmail
+        ? post.userEmail === currentUserEmail
+        : post.userName === currentUserName;
+
+      return {
+        ...post,
+        avatar: isCurrentUsersPost ? currentUserAvatar : post.avatar,
+        answers: post.answers.map((answer) => ({
+          ...answer,
+          avatar: answer.userName === currentUserName ? currentUserAvatar : answer.avatar,
+        })),
+      };
+    });
   }, [communityPosts, currentUserAvatar, currentUserEmail, currentUserName]);
 
   const sharedCourses = useMemo(() => mapCoursesToAssignmentCourses(COURSES), []);
@@ -748,6 +1046,29 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
     }));
   };
 
+  const normalizeCommunityAvatar = (avatar: any) => {
+    if (!avatar) return null;
+    if (typeof avatar === 'string') return avatar;
+    if (avatar?.uri) return avatar.uri;
+    return null;
+  };
+
+  const loadCommunityPosts = async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/community-posts`);
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data?.error || 'Failed to load community posts.');
+      }
+
+      const posts = Array.isArray(data?.data) ? data.data : [];
+      setCommunityPosts(posts);
+    } catch (error) {
+      console.log('LOAD COMMUNITY POSTS ERROR =>', error);
+    }
+  };
+
   const handleCreateCommunityPost = async (query: string) => {
     const trimmedQuery = query.trim();
     if (!trimmedQuery) return;
@@ -773,6 +1094,7 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
         throw new Error(data?.error || 'Failed to create post.');
       }
 
+      await loadCurrentStudentProfile();
       await loadCommunityPosts();
     } catch (error: any) {
       Alert.alert('Post Failed', error?.message || 'Unable to create post.');
@@ -901,29 +1223,6 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
     }
   };
 
-  const normalizeCommunityAvatar = (avatar: any) => {
-    if (!avatar) return null;
-    if (typeof avatar === 'string') return avatar;
-    if (avatar?.uri) return avatar.uri;
-    return null;
-  };
-
-  const loadCommunityPosts = async () => {
-    try {
-      const response = await fetch(`${API_BASE_URL}/community-posts`);
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data?.error || 'Failed to load community posts.');
-      }
-
-      const posts = Array.isArray(data?.data) ? data.data : [];
-      setCommunityPosts(posts);
-    } catch (error) {
-      console.log('LOAD COMMUNITY POSTS ERROR =>', error);
-    }
-  };
-
   useEffect(() => {
     loadCommunityPosts();
   }, []);
@@ -985,79 +1284,80 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
     };
   };
 
-  const studentNotifications = useMemo<NotificationItem[]>(() => {
-    const notifications: NotificationItem[] = [];
-
-    joinedAssignmentCourses.forEach((course) => {
-      course.materials.forEach((material) => {
-        notifications.push({
-          id: `material-${course.id}-${material.id}`,
-          type: 'material',
-          title: 'New Material',
-          message: `${course.name}: ${material.title} was added to your learning materials.`,
-          time: material.uploadedDate,
-          read: false,
-        });
-      });
-
-      course.assignments.forEach((assignment) => {
-        notifications.push({
-          id: `assignment-${course.id}-${assignment.id}`,
-          type: 'assignment',
-          title: 'New Assignment',
-          message: `${course.name}: ${assignment.title} is available. Due on ${assignment.dueDate}.`,
-          time: assignment.dueDate,
-          read: assignment.status === 'graded',
-        });
-
-        const score = getScorePercent(assignment);
-
-        if (score !== null && score < 75) {
-          notifications.push({
-            id: `support-${course.id}-${assignment.id}`,
-            type: 'support-activity',
-            title: 'Support Activity Recommended',
-            message: `You may need extra support for ${assignment.topic || assignment.title} in ${course.name}.`,
-            time: assignment.dueDate,
-            read: false,
-          });
-        }
-      });
-    });
-
-    hydratedCommunityPosts.forEach((post) => {
-      const isUsersPost =
-        post.userName === currentUserName || post.userEmail === currentUserEmail;
-
-      if (isUsersPost && post.answers.length > 0) {
-        post.answers.forEach((answer) => {
-          if (answer.userName !== currentUserName) {
-            notifications.push({
-              id: `community-answer-${post.id}-${answer.id}`,
-              type: 'community-answer',
-              title: 'New Answer on Your Question',
-              message: `${answer.userName} answered your post: "${post.content}"`,
-              time: answer.answeredAt,
-              read: false,
-            });
-          }
-        });
-      }
-    });
-
-    if (generatedActivity) {
-      notifications.unshift({
-        id: `generated-activity-${generatedActivity.assignmentId}`,
-        type: 'support-activity',
-        title: 'Support Activity Ready',
-        message: `A ${generatedActivity.recommendationType} activity is ready for ${generatedActivity.assignmentTitle}.`,
-        time: 'Now',
-        read: false,
-      });
+  const loadStudentNotifications = useCallback(async () => {
+    if (!currentStudent?.studentId) {
+      setStudentNotifications([]);
+      return;
     }
 
-    return notifications.sort((a, b) => (a.id < b.id ? 1 : -1));
-  }, [joinedAssignmentCourses, generatedActivity, hydratedCommunityPosts, currentUserEmail, currentUserName]);
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/notifications?userId=${encodeURIComponent(currentStudent.studentId)}&role=student`
+      );
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data?.error || 'Failed to load notifications.');
+      }
+
+      setStudentNotifications(Array.isArray(data?.data) ? data.data : []);
+    } catch (error) {
+      console.log('LOAD STUDENT NOTIFICATIONS ERROR =>', error);
+    }
+  }, [currentStudent?.studentId]);
+
+  useEffect(() => {
+    void loadStudentNotifications();
+  }, [loadStudentNotifications]);
+
+  const handleMarkNotificationAsRead = async (notificationId: string) => {
+    const response = await fetch(`${API_BASE_URL}/notifications/${notificationId}/read`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data?.error || 'Failed to mark notification as read.');
+    }
+
+    setStudentNotifications((prev) =>
+      prev.map((item) =>
+        item.id === notificationId ? { ...item, read: true } : item
+      )
+    );
+  };
+
+  const handleMarkAllNotificationsAsRead = async () => {
+    const response = await fetch(`${API_BASE_URL}/notifications/read-all`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        userId: currentStudent.studentId,
+        role: 'student',
+      }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data?.error || 'Failed to mark all notifications as read.');
+    }
+
+    setStudentNotifications((prev) =>
+      prev.map((item) => ({ ...item, read: true }))
+    );
+  };
+
+  const handleGeneratedActivityCompleted = async (activity: GenerateActivityData) => {
+    await loadStudentNotifications();
+
+    Alert.alert(
+      'Activity Completed',
+      `${activity.assignmentTitle} has been marked as done.`
+    );
+  };
 
   const unreadNotificationCount = useMemo(
     () => studentNotifications.filter((item) => !item.read).length,
@@ -1107,7 +1407,7 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
     }
   };
 
-  const openGeneratedActivity = (
+  const openGeneratedActivity = async (
     course: CourseDetailData,
     assignment: DashboardAssignment | CourseAssignment | AssignmentItem
   ) => {
@@ -1117,6 +1417,25 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
       return;
     }
 
+    try {
+      await fetch(`${API_BASE_URL}/student-activities/notify-ready`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          studentId: currentStudent.studentId,
+          courseId: activity.courseId,
+          assignmentId: activity.assignmentId,
+          courseName: activity.courseName,
+          assignmentTitle: activity.assignmentTitle,
+          topic: activity.topic,
+          recommendationType: activity.recommendationType,
+        }),
+      });
+    } catch (error) {
+      console.log('NOTIFY READY ERROR =>', error);
+    }
+
+    await loadStudentNotifications();
     setSelectedCourse(course);
     setSelectedCourseIdForAssignments(course.id);
     setGeneratedActivity(activity);
@@ -1149,7 +1468,7 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
       case 'home':
         return (
           <Dashboard
-            announcements={ANNOUNCEMENTS}
+            announcements={studentAnnouncements}
             courses={dashboardCourses}
             onOpenCourse={(course) => {
               setSelectedCourse(course as unknown as CourseDetailData);
@@ -1298,6 +1617,8 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
             mode="screen"
             onBack={() => setActiveScreen(lastScreen)}
             notifications={studentNotifications}
+            onMarkAsRead={handleMarkNotificationAsRead}
+            onMarkAllAsRead={handleMarkAllNotificationsAsRead}
           />
         );
 
@@ -1323,6 +1644,9 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
           <GenerateActivity
             activity={generatedActivity}
             onBack={() => setActiveScreen(lastScreen)}
+            currentStudentId={currentStudent.studentId}
+            apiBaseUrl={API_BASE_URL}
+            onCompleted={handleGeneratedActivityCompleted}
           />
         );
 
@@ -1376,6 +1700,8 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
               <Notification
                 mode="popover"
                 notifications={studentNotifications}
+                onMarkAsRead={handleMarkNotificationAsRead}
+                onMarkAllAsRead={handleMarkAllNotificationsAsRead}
                 onClosePopover={() => setIsNotificationOpen(false)}
                 onBack={() => {
                   setIsNotificationOpen(false);
@@ -1447,9 +1773,14 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
           )}
 
         <AnnouncementModal
-          visible={!isFullscreenScreen && activeScreen === 'home' && showAnnouncement}
+          visible={
+            !isFullscreenScreen &&
+            activeScreen === 'home' &&
+            showAnnouncement &&
+            studentAnnouncements.length > 0
+          }
           onClose={() => setShowAnnouncement(false)}
-          announcements={ANNOUNCEMENTS}
+          announcements={studentAnnouncements}
         />
 
         {!isFullscreenScreen &&

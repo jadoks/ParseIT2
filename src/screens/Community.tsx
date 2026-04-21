@@ -75,8 +75,14 @@ const normalizeImageSource = (img: any) => {
     return img;
   }
 
-  if (img?.uri) {
-    return { uri: img.uri };
+  if (typeof img === 'string') {
+    const trimmed = img.trim();
+    return trimmed ? { uri: trimmed } : DEFAULT_AVATAR;
+  }
+
+  if (img?.uri && typeof img.uri === 'string') {
+    const trimmed = img.uri.trim();
+    return trimmed ? { uri: trimmed } : DEFAULT_AVATAR;
   }
 
   return DEFAULT_AVATAR;

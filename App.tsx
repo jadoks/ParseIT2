@@ -98,8 +98,19 @@ export default function App() {
 }
 
   if (currentUser?.role === 'admin') {
-    return <AdminApp onLogout={handleLogout} />;
-  }
+  return (
+    <AdminApp
+      onLogout={handleLogout}
+      currentAdmin={{
+        adminId: currentUser.adminId || currentUser.id,
+        authUid: currentUser.authUid || null,
+        firstName: currentUser.firstName || '',
+        lastName: currentUser.lastName || '',
+        email: currentUser.email || '',
+      }}
+    />
+  );
+}
 
   return null;
 }
