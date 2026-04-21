@@ -2,8 +2,12 @@ import cors from "cors";
 import dotenv from "dotenv";
 import express from "express";
 import admin from "firebase-admin";
+import mammoth from "mammoth";
+import { createRequire } from "module";
 import nodemailer from "nodemailer";
 import serviceAccount from "./serviceAccountKey.json" with { type: "json" };
+const require = createRequire(import.meta.url);
+const pdf = require("pdf-parse");
 
 dotenv.config();
 
@@ -305,6 +309,145 @@ async function uploadGenericFileToStorage({
     fileType: safeMimeType,
     bucketPath: `gs://parseit2-4b26d.firebasestorage.app/${storagePath}`,
   };
+}
+
+async function uploadChatbotTrainingFileToStorage({
+  fileBase64,
+  fileMimeType,
+  fileName,
+}) {
+  if (!fileBase64) {
+    throw new Error("File data is required.");
+  }
+
+  const cleanedBase64 = fileBase64.includes(",")
+    ? fileBase64.split(",")[1]
+    : fileBase64;
+
+  const safeMimeType =
+    normalizeOptionalText(fileMimeType) || "application/octet-stream";
+
+  const fallbackExtension = getFileExtensionFromMimeType(safeMimeType);
+  const safeFileName = sanitizeFileName(
+    normalizeOptionalText(fileName) || `file.${fallbackExtension}`
+  );
+
+  const storagePath = `chatbot-training/${Date.now()}-${safeFileName}`;
+  const file = bucket.file(storagePath);
+
+  await file.save(Buffer.from(cleanedBase64, "base64"), {
+    metadata: {
+      contentType: safeMimeType,
+      cacheControl: "public,max-age=31536000",
+    },
+    resumable: false,
+  });
+
+  await file.makePublic();
+
+  return {
+    fileUrl: file.publicUrl(),
+    storagePath,
+    fileName: safeFileName,
+    fileType: safeMimeType,
+    bucketPath: `gs://parseit2-4b26d.firebasestorage.app/${storagePath}`,
+  };
+}
+
+async function uploadAssistantFileToStorage({
+  fileBase64,
+  fileMimeType,
+  fileName,
+}) {
+  if (!fileBase64) {
+    throw new Error("File data is required.");
+  }
+
+  const cleanedBase64 = fileBase64.includes(",")
+    ? fileBase64.split(",")[1]
+    : fileBase64;
+
+  const safeMimeType =
+    normalizeOptionalText(fileMimeType) || "application/octet-stream";
+
+  const fallbackExtension = getFileExtensionFromMimeType(safeMimeType);
+  const safeFileName = sanitizeFileName(
+    normalizeOptionalText(fileName) || `file.${fallbackExtension}`
+  );
+
+  const storagePath = `assistant-uploads/${Date.now()}-${safeFileName}`;
+  const file = bucket.file(storagePath);
+
+  await file.save(Buffer.from(cleanedBase64, "base64"), {
+    metadata: {
+      contentType: safeMimeType,
+      cacheControl: "public,max-age=31536000",
+    },
+    resumable: false,
+  });
+
+  await file.makePublic();
+
+  return {
+    fileUrl: file.publicUrl(),
+    storagePath,
+    fileName: safeFileName,
+    fileType: safeMimeType,
+    bucketPath: `gs://parseit2-4b26d.firebasestorage.app/${storagePath}`,
+  };
+}
+
+function limitText(text, maxChars = 12000) {
+  if (!text) return "";
+  return text.length > maxChars
+    ? `${text.slice(0, maxChars)}\n...[truncated]`
+    : text;
+}
+
+async function extractTextFromFile(buffer, mimeType = "", fileName = "") {
+  const lowerName = String(fileName || "").toLowerCase();
+  const normalizedMimeType = String(mimeType || "").toLowerCase();
+
+  // Plain text-like files
+  if (
+    normalizedMimeType.includes("text") ||
+    lowerName.endsWith(".txt") ||
+    lowerName.endsWith(".md") ||
+    lowerName.endsWith(".json") ||
+    lowerName.endsWith(".csv")
+  ) {
+    return buffer.toString("utf-8");
+  }
+
+  // PDF
+  if (
+    normalizedMimeType === "application/pdf" ||
+    lowerName.endsWith(".pdf")
+  ) {
+    const parsed = await pdf(buffer);
+    return parsed.text || "";
+  }
+
+  // DOCX
+  if (
+    normalizedMimeType ===
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+    lowerName.endsWith(".docx")
+  ) {
+    const result = await mammoth.extractRawText({ buffer });
+    return result.value || "";
+  }
+
+  // DOC (legacy .doc) - not reliably extractable with current stack
+  if (
+    normalizedMimeType === "application/msword" ||
+    lowerName.endsWith(".doc")
+  ) {
+    return "";
+  }
+
+  // PPT / PPTX / XLS / XLSX / images are not handled here yet
+  return "";
 }
 
 async function deleteStorageFileIfExists(storagePath) {
@@ -3866,6 +4009,184 @@ app.put("/community-posts/:postId", async (req, res) => {
   }
 });
 
+app.post("/assistant/upload-file", async (req, res) => {
+  try {
+    const { fileBase64, fileName, fileType } = req.body || {};
+
+    if (!fileBase64) {
+      return res.status(400).json({ error: "fileBase64 is required." });
+    }
+
+    const uploadedFile = await uploadAssistantFileToStorage({
+      fileBase64,
+      fileMimeType: fileType,
+      fileName,
+    });
+
+    const docRef = await db.collection("assistantUploads").add({
+      fileName: uploadedFile.fileName,
+      storagePath: uploadedFile.storagePath,
+      downloadURL: uploadedFile.fileUrl,
+      mimeType: uploadedFile.fileType,
+      bucketPath: uploadedFile.bucketPath,
+      mode: "assistant",
+      createdAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+
+    return res.json({
+      success: true,
+      message: "Assistant file uploaded successfully.",
+      data: {
+        id: docRef.id,
+        ...uploadedFile,
+      },
+    });
+  } catch (error) {
+    console.error("Assistant upload file error:", error);
+    return res.status(500).json({
+      error: error.message || "Failed to upload assistant file.",
+    });
+  }
+});
+
+function normalizeChatText(value = "") {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/[^\w\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function looksLikeKeywordOnly(value = "") {
+  const raw = String(value || "").trim();
+  if (!raw) return false;
+
+  const normalized = normalizeChatText(raw);
+  if (!normalized) return false;
+
+  const words = normalized.split(" ").filter(Boolean);
+
+  if (
+    /[?.!]/.test(raw) ||
+    /^(what|who|when|where|why|how|can|could|is|are|do|does|did|explain|tell|define)\b/i.test(raw)
+  ) {
+    return false;
+  }
+
+  return words.length <= 4;
+}
+
+function expandKeywordPrompt(value = "", mode = "assistant") {
+  const raw = String(value || "").trim();
+  if (!raw) return raw;
+
+  if (
+    /[?.!]/.test(raw) ||
+    /^(what|who|when|where|why|how|can|could|is|are|do|does|did|explain|tell|define)\b/i.test(raw)
+  ) {
+    return raw;
+  }
+
+  if (looksLikeKeywordOnly(raw)) {
+    return mode === "tutor"
+      ? `Teach me about ${raw} step by step.`
+      : `What is ${raw}?`;
+  }
+
+  return raw;
+}
+
+function scoreTriggerMatch(message, trigger) {
+  const normalizedMessage = normalizeChatText(message);
+  const normalizedTrigger = normalizeChatText(trigger);
+
+  if (!normalizedMessage || !normalizedTrigger) return 0;
+
+  if (normalizedMessage === normalizedTrigger) return 100;
+  if (normalizedMessage.includes(normalizedTrigger)) return 80;
+
+  const triggerWords = normalizedTrigger.split(" ").filter(Boolean);
+  if (!triggerWords.length) return 0;
+
+  const matchedWords = triggerWords.filter((word) =>
+    normalizedMessage.includes(word)
+  );
+
+  const ratio = matchedWords.length / triggerWords.length;
+
+  if (ratio === 1) return 60;
+  if (ratio >= 0.75) return 45;
+  if (ratio >= 0.5) return 30;
+  if (ratio >= 0.34) return 15;
+
+  return 0;
+}
+
+async function findMatchingChatbotTraining(message, limit = 5) {
+  const snapshot = await db.collection("chatbotTraining").get();
+  const normalizedMessage = normalizeChatText(message);
+
+  if (!normalizedMessage) return [];
+
+  const scoredItems = snapshot.docs
+    .map((doc) => {
+      const data = doc.data() || {};
+      const triggers = Array.isArray(data.triggers) ? data.triggers : [];
+
+      let bestScore = 0;
+      let bestTrigger = null;
+
+      for (const trigger of triggers) {
+        const score = scoreTriggerMatch(normalizedMessage, trigger);
+        if (score > bestScore) {
+          bestScore = score;
+          bestTrigger = trigger;
+        }
+      }
+
+      return {
+        id: doc.id,
+        response: data.response || "",
+        triggers,
+        file: data.file || null,
+        bestTrigger,
+        score: bestScore,
+        createdAt: data.createdAt || null,
+        updatedAt: data.updatedAt || null,
+      };
+    })
+    .filter((item) => item.score > 0 && (item.response || item.file?.url))
+    .sort((a, b) => b.score - a.score)
+    .slice(0, limit);
+
+  return scoredItems;
+}
+
+function buildTrainingContextBlock(trainingItems = []) {
+  if (!Array.isArray(trainingItems) || !trainingItems.length) {
+    return "";
+  }
+
+  const lines = trainingItems.map((item, index) => {
+    const triggerText = Array.isArray(item.triggers)
+      ? item.triggers.join(", ")
+      : "";
+
+    return [
+      `Training Entry ${index + 1}:`,
+      `Matched Trigger: ${item.bestTrigger || "N/A"}`,
+      `All Triggers: ${triggerText || "N/A"}`,
+      `Suggested Response: ${item.response || "N/A"}`,
+      item.file?.name ? `Attached Training File: ${item.file.name}` : null,
+    ]
+      .filter(Boolean)
+      .join("\n");
+  });
+
+  return lines.join("\n\n");
+}
+
 app.post("/ai/gemini", async (req, res) => {
   try {
     const { message, mode = "assistant", history = [] } = req.body || {};
@@ -3874,23 +4195,121 @@ app.post("/ai/gemini", async (req, res) => {
       return res.status(400).json({ error: "Message is required." });
     }
 
-    const systemInstruction =
+    const normalizedHistory = Array.isArray(history)
+      ? history
+          .filter(
+            (item) =>
+              item &&
+              typeof item.text === "string" &&
+              (item.role === "user" || item.role === "model")
+          )
+          .map((item) => ({
+            role: item.role === "user" ? "user" : "model",
+            parts: [{ text: item.text }],
+          }))
+      : [];
+
+    const matchedTraining = await findMatchingChatbotTraining(message, 5);
+    const interpretedMessage = expandKeywordPrompt(message, mode);
+    const bestMatch = matchedTraining[0] || null;
+
+    // Direct return for strong assistant trigger matches
+    if (
+      mode === "assistant" &&
+      bestMatch &&
+      bestMatch.score >= 80 &&
+      bestMatch.response
+    ) {
+      return res.json({
+        reply: bestMatch.response,
+        matchedTrainingCount: matchedTraining.length,
+        matchedTrainingIds: matchedTraining.map((item) => item.id),
+        interpretedMessage,
+        source: "stored-training-direct",
+      });
+    }
+
+    let trainingText = "";
+    let fileText = "";
+
+    for (const item of matchedTraining) {
+      if (item.response) {
+        trainingText += `\nTraining Response:\n${item.response}\n`;
+      }
+
+      if (item.file?.url) {
+        try {
+          const fileResponse = await fetch(item.file.url);
+
+          if (fileResponse.ok) {
+            const arrayBuffer = await fileResponse.arrayBuffer();
+            const buffer = Buffer.from(arrayBuffer);
+            const mimeType = item.file.mimeType || "application/octet-stream";
+            const fileName = item.file.name || "training-file";
+
+            const extractedText = await extractTextFromFile(
+              buffer,
+              mimeType,
+              fileName
+            );
+
+            const safeText = limitText(extractedText, 12000);
+
+            if (safeText.trim()) {
+              fileText += `
+[Document: ${fileName}]
+Mime-Type: ${mimeType}
+Extracted Content:
+${safeText}
+[/Document]
+`;
+            } else {
+              fileText += `\nAttached reference file: ${fileName} (content could not be extracted)\n`;
+            }
+          } else {
+            fileText += `\nAttached reference file: ${item.file.name || "training-file"} (download failed)\n`;
+          }
+        } catch (fileError) {
+          console.error("Training file read error:", fileError);
+        }
+      }
+    }
+
+    let contextualPrompt = `User message: ${interpretedMessage}\nMode: ${mode}\n`;
+
+    if (matchedTraining.length > 0) {
+      contextualPrompt += `
+Matched chatbot training exists.
+Use the following training context as highest priority.
+If the answer is present in the attached extracted document content, answer from that content.
+
+${trainingText}
+
+${fileText}
+`;
+    } else {
+      contextualPrompt += `
+No strong stored training matched.
+Do not tell the user that the answer is not in storage.
+In assistant mode, answer helpfully in a natural assistant way.
+In tutor mode, answer like a teacher and explain step by step.
+`;
+    }
+
+    const baseInstruction =
+      "Use extracted document content when available. " +
+      "If matched chatbot training exists, prioritize it. " +
+      "If no matched training exists, still answer naturally and helpfully. " +
+      "Do not mention hidden context, Firestore, storage, or trigger logic.";
+
+    const modeInstruction =
       mode === "tutor"
-        ? "You are ParseIT AI Tutor. Help students understand lessons step by step. Be clear, encouraging, and concise. Use simple examples."
-        : "You are ParseIT Assistant. Help users navigate the ParseIT system, answer platform questions, and explain features clearly and briefly.";
+        ? "You are ParseIT AI Tutor. Teach clearly, explain step by step, simplify difficult concepts, and guide the learner."
+        : "You are ParseIT Assistant. Help users with platform questions, system guidance, and general support.";
 
-    const contents = [
-      ...history.map((item) => ({
-        role: item.role === "user" ? "user" : "model",
-        parts: [{ text: item.text }],
-      })),
-      {
-        role: "user",
-        parts: [{ text: message }],
-      },
-    ];
+    const assistantInstruction = `${modeInstruction} ${baseInstruction}`;
 
-    const response = await fetch(
+    const assistantResponse = await fetch(
       "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent",
       {
         method: "POST",
@@ -3900,27 +4319,53 @@ app.post("/ai/gemini", async (req, res) => {
         },
         body: JSON.stringify({
           systemInstruction: {
-            parts: [{ text: systemInstruction }],
+            parts: [{ text: assistantInstruction }],
           },
-          contents,
+          contents: [
+            ...normalizedHistory,
+            {
+              role: "user",
+              parts: [{ text: contextualPrompt }],
+            },
+          ],
         }),
       }
     );
 
-    const data = await response.json();
+    const assistantData = await assistantResponse.json();
 
-    if (!response.ok) {
-      return res.status(response.status).json({
-        error: data?.error?.message || "Gemini request failed.",
-        raw: data,
+    if (!assistantResponse.ok) {
+      // fallback to stored response if Gemini fails
+      if (bestMatch?.response) {
+        return res.json({
+          reply: bestMatch.response,
+          matchedTrainingCount: matchedTraining.length,
+          matchedTrainingIds: matchedTraining.map((item) => item.id),
+          interpretedMessage,
+          source: "stored-training-fallback",
+        });
+      }
+
+      return res.status(assistantResponse.status).json({
+        error:
+          assistantData?.error?.message || "Gemini assistant request failed.",
+        raw: assistantData,
       });
     }
 
-    const text =
-      data?.candidates?.[0]?.content?.parts?.map((p) => p.text).join("") ||
-      "No response returned.";
+    const assistantText =
+      assistantData?.candidates?.[0]?.content?.parts
+        ?.map((p) => p.text)
+        .filter(Boolean)
+        .join("") || "No response returned.";
 
-    return res.json({ reply: text });
+    return res.json({
+      reply: assistantText,
+      matchedTrainingCount: matchedTraining.length,
+      matchedTrainingIds: matchedTraining.map((item) => item.id),
+      interpretedMessage,
+      source: "gemini",
+    });
   } catch (error) {
     console.error("Gemini error:", error);
     return res.status(500).json({
@@ -3928,6 +4373,14 @@ app.post("/ai/gemini", async (req, res) => {
     });
   }
 });
+
+function serializeTimestamp(value) {
+  if (!value) return null;
+  if (typeof value?.toDate === "function") {
+    return value.toDate().toISOString();
+  }
+  return value;
+}
 
 async function resolveCommunityUserAvatar(authorRole, authorId, fallbackAvatar) {
   const normalizedRole = normalizeOptionalText(authorRole);
@@ -4360,8 +4813,8 @@ app.post("/auth/update-user-images", async (req, res) => {
 
     const userData = userSnap.data() || {};
     const updates = {
-        updatedAt: FieldValue.serverTimestamp(),
-      };
+      updatedAt: FieldValue.serverTimestamp(),
+    };
 
     if (profileImageBase64) {
       if (userData.profileImageStoragePath) {
@@ -4413,6 +4866,317 @@ app.post("/auth/update-user-images", async (req, res) => {
     console.error("Update user images error:", error);
     return res.status(500).json({
       error: error.message || "Failed to update user images.",
+    });
+  }
+});
+
+/**
+ * CHATBOT TRAINING ROUTES
+ */
+app.get("/chatbot-training", async (req, res) => {
+  try {
+    const snapshot = await db
+      .collection("chatbotTraining")
+      .orderBy("createdAt", "desc")
+      .get();
+
+    const items = snapshot.docs.map((doc) => {
+      const data = doc.data() || {};
+
+      return {
+        id: doc.id,
+        ...data,
+        createdAt: serializeTimestamp(data.createdAt),
+        updatedAt: serializeTimestamp(data.updatedAt),
+      };
+    });
+
+    return res.json({
+      success: true,
+      data: items,
+    });
+  } catch (error) {
+    console.error("Fetch chatbot training error:", error);
+    return res.status(500).json({
+      error: error.message || "Failed to fetch chatbot training.",
+    });
+  }
+});
+
+app.post("/chatbot-training", async (req, res) => {
+  try {
+    const {
+      response,
+      triggers,
+      fileBase64,
+      fileName,
+      fileType,
+      source = "admin-panel",
+    } = req.body || {};
+
+    const cleanedResponse = normalizeOptionalText(response);
+
+    if (!cleanedResponse) {
+      return res.status(400).json({ error: "response is required." });
+    }
+
+    if (!Array.isArray(triggers) || triggers.length === 0) {
+      return res.status(400).json({ error: "At least one trigger is required." });
+    }
+
+    const cleanedTriggers = triggers
+      .map((item) => (typeof item === "string" ? item.trim() : ""))
+      .filter(Boolean);
+
+    if (!cleanedTriggers.length) {
+      return res.status(400).json({ error: "At least one valid trigger is required." });
+    }
+
+    let uploadedFile = null;
+
+    if (fileBase64) {
+      uploadedFile = await uploadChatbotTrainingFileToStorage({
+        fileBase64,
+        fileMimeType: fileType,
+        fileName,
+      });
+    }
+
+    const ref = await db.collection("chatbotTraining").add({
+      response: cleanedResponse,
+      triggers: cleanedTriggers,
+      file: uploadedFile
+        ? {
+            name: uploadedFile.fileName,
+            url: uploadedFile.fileUrl,
+            storagePath: uploadedFile.storagePath,
+            mimeType: uploadedFile.fileType,
+            bucketPath: uploadedFile.bucketPath,
+          }
+        : null,
+      source: normalizeOptionalText(source) || "admin-panel",
+      createdAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+
+    const createdSnap = await ref.get();
+    const createdData = createdSnap.data() || {};
+
+    return res.status(201).json({
+      success: true,
+      message: "Chatbot training created successfully.",
+      data: {
+        id: ref.id,
+        ...createdData,
+        createdAt: serializeTimestamp(createdData.createdAt),
+        updatedAt: serializeTimestamp(createdData.updatedAt),
+      },
+    });
+  } catch (error) {
+    console.error("Create chatbot training error:", error);
+    return res.status(500).json({
+      error: error.message || "Failed to create chatbot training.",
+    });
+  }
+});
+
+app.put("/chatbot-training/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { response, triggers, file } = req.body || {};
+
+    const ref = db.collection("chatbotTraining").doc(id);
+    const snap = await ref.get();
+
+    if (!snap.exists) {
+      return res.status(404).json({ error: "Chatbot training not found." });
+    }
+
+    const updates = {
+      updatedAt: FieldValue.serverTimestamp(),
+    };
+
+    if (typeof response === "string") {
+      const cleanedResponse = response.trim();
+
+      if (!cleanedResponse) {
+        return res.status(400).json({ error: "response cannot be empty." });
+      }
+
+      updates.response = cleanedResponse;
+    }
+
+    if (Array.isArray(triggers)) {
+      const cleanedTriggers = triggers
+        .map((item) => (typeof item === "string" ? item.trim() : ""))
+        .filter(Boolean);
+
+      if (!cleanedTriggers.length) {
+        return res.status(400).json({ error: "At least one valid trigger is required." });
+      }
+
+      updates.triggers = cleanedTriggers;
+    }
+
+    if (file !== undefined) {
+      updates.file = file || null;
+    }
+
+    await ref.update(updates);
+
+    const updatedSnap = await ref.get();
+    const updatedData = updatedSnap.data() || {};
+
+    return res.json({
+      success: true,
+      message: "Chatbot training updated successfully.",
+      data: {
+        id: updatedSnap.id,
+        ...updatedData,
+        createdAt: serializeTimestamp(updatedData.createdAt),
+        updatedAt: serializeTimestamp(updatedData.updatedAt),
+      },
+    });
+  } catch (error) {
+    console.error("Update chatbot training error:", error);
+    return res.status(500).json({
+      error: error.message || "Failed to update chatbot training.",
+    });
+  }
+});
+
+app.patch("/chatbot-training/:id/file", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { fileBase64, fileName, fileType } = req.body || {};
+
+    if (!fileBase64) {
+      return res.status(400).json({ error: "fileBase64 is required." });
+    }
+
+    const ref = db.collection("chatbotTraining").doc(id);
+    const snap = await ref.get();
+
+    if (!snap.exists) {
+      return res.status(404).json({ error: "Chatbot training not found." });
+    }
+
+    const existingData = snap.data() || {};
+    const existingFile = existingData.file || null;
+
+    const uploadedFile = await uploadChatbotTrainingFileToStorage({
+      fileBase64,
+      fileMimeType: fileType,
+      fileName,
+    });
+
+    await ref.update({
+      file: {
+        name: uploadedFile.fileName,
+        url: uploadedFile.fileUrl,
+        storagePath: uploadedFile.storagePath,
+        mimeType: uploadedFile.fileType,
+        bucketPath: uploadedFile.bucketPath,
+      },
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+
+    if (existingFile?.storagePath) {
+      await deleteStorageFileIfExists(existingFile.storagePath);
+    }
+
+    const updatedSnap = await ref.get();
+    const updatedData = updatedSnap.data() || {};
+
+    return res.json({
+      success: true,
+      message: "Chatbot training file replaced successfully.",
+      data: {
+        id: updatedSnap.id,
+        ...updatedData,
+        createdAt: serializeTimestamp(updatedData.createdAt),
+        updatedAt: serializeTimestamp(updatedData.updatedAt),
+      },
+    });
+  } catch (error) {
+    console.error("Replace chatbot training file error:", error);
+    return res.status(500).json({
+      error: error.message || "Failed to replace chatbot training file.",
+    });
+  }
+});
+
+app.delete("/chatbot-training/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const ref = db.collection("chatbotTraining").doc(id);
+    const snap = await ref.get();
+
+    if (!snap.exists) {
+      return res.status(404).json({ error: "Chatbot training not found." });
+    }
+
+    const data = snap.data() || {};
+
+    if (data?.file?.storagePath) {
+      await deleteStorageFileIfExists(data.file.storagePath);
+    }
+
+    await ref.delete();
+
+    return res.json({
+      success: true,
+      message: "Chatbot training deleted successfully.",
+    });
+  } catch (error) {
+    console.error("Delete chatbot training error:", error);
+    return res.status(500).json({
+      error: error.message || "Failed to delete chatbot training.",
+    });
+  }
+});
+
+app.delete("/chatbot-training/:id/file", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const ref = db.collection("chatbotTraining").doc(id);
+    const snap = await ref.get();
+
+    if (!snap.exists) {
+      return res.status(404).json({ error: "Chatbot training not found." });
+    }
+
+    const data = snap.data() || {};
+    const existingFile = data.file || null;
+
+    if (existingFile?.storagePath) {
+      await deleteStorageFileIfExists(existingFile.storagePath);
+    }
+
+    await ref.update({
+      file: null,
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+
+    const updatedSnap = await ref.get();
+    const updatedData = updatedSnap.data() || {};
+
+    return res.json({
+      success: true,
+      message: "Chatbot training file removed successfully.",
+      data: {
+        id: updatedSnap.id,
+        ...updatedData,
+        createdAt: serializeTimestamp(updatedData.createdAt),
+        updatedAt: serializeTimestamp(updatedData.updatedAt),
+      },
+    });
+  } catch (error) {
+    console.error("Remove chatbot training file error:", error);
+    return res.status(500).json({
+      error: error.message || "Failed to remove chatbot training file.",
     });
   }
 });
