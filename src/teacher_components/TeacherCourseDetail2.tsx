@@ -7,17 +7,16 @@ import {
   Linking,
   Modal,
   Platform,
+  Pressable,
   SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
-  TouchableWithoutFeedback,
   View,
   useWindowDimensions,
 } from 'react-native';
-import { heightPercentageToDP as hp, widthPercentageToDP as wp } from 'react-native-responsive-screen';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 
@@ -34,6 +33,7 @@ export type Assignment = {
   totalScore: string;
   pointsOnTime: string;
   repositoryDisabledAfterDue: boolean;
+  materialIds?: string[];
   fileName?: string;
   fileUri?: string;
   fileType?: string;
@@ -60,9 +60,14 @@ export type Submission = {
   id: string;
   assignmentId: string;
   studentId: string;
+  studentName?: string;
   status: 'pending' | 'submitted' | 'graded' | 'late';
   score?: number;
   submittedAt?: string;
+  fileName?: string;
+  fileUrl?: string;
+  fileType?: string;
+  feedback?: string;
 };
 
 export type CourseDetailData = {
@@ -75,6 +80,7 @@ export type CourseDetailData = {
   bannerUri?: string;
   year?: string;
   semester?: string;
+  schoolYear?: string | null;
 };
 
 type SignedInTeacher = {
@@ -95,42 +101,116 @@ type PickedUploadFile = {
   file?: File;
 } | null;
 
-function getApiBaseUrl() {
-  if (Platform.OS === 'web') {
-    return 'http://localhost:5000';
-  }
+type FormErrors = {
+  title?: string;
+  instruction?: string;
+  totalScore?: string;
+  pointsOnTime?: string;
+  dueDate?: string;
+  materials?: string;
+};
 
+function getApiBaseUrl() {
+  if (Platform.OS === 'web') return 'http://localhost:5000';
   const possibleHost =
     Constants.expoConfig?.hostUri ||
     Constants.manifest2?.extra?.expoGo?.debuggerHost ||
     '';
-
   const host = possibleHost.split(':')[0];
-
-  if (host) {
-    return `http://${host}:5000`;
-  }
-
+  if (host) return `http://${host}:5000`;
   return 'http://192.168.1.5:5000';
 }
 
 const API_BASE_URL = getApiBaseUrl();
+const WEEKDAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+const pad = (value: number) => String(value).padStart(2, '0');
 
 const formatDateTime = (value?: any) => {
   if (!value) return '';
-
   if (typeof value === 'string') return value;
-
-  if (value?._seconds) {
-    return new Date(value._seconds * 1000).toLocaleString();
-  }
-
-  if (value?.seconds) {
-    return new Date(value.seconds * 1000).toLocaleString();
-  }
-
+  if (value?._seconds) return new Date(value._seconds * 1000).toLocaleString();
+  if (value?.seconds) return new Date(value.seconds * 1000).toLocaleString();
   return '';
 };
+
+const formatDateOnly = (value?: Date | null) => {
+  if (!value) return '';
+  return `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(value.getDate())}`;
+};
+
+const formatTimeOnly = (value?: Date | null) => {
+  if (!value) return '';
+  return `${pad(value.getHours())}:${pad(value.getMinutes())}`;
+};
+
+const formatDueDateTime = (value?: Date | null) => {
+  if (!value) return '';
+  return `${formatDateOnly(value)} ${formatTimeOnly(value)}`;
+};
+
+const parseDueDateTime = (value?: string) => {
+  if (!value?.trim()) return new Date();
+  const normalized = value.trim().replace(' ', 'T');
+  const parsed = new Date(normalized);
+  if (!Number.isNaN(parsed.getTime())) return parsed;
+
+  const dateOnly = value.trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (dateOnly) {
+    return new Date(Number(dateOnly[1]), Number(dateOnly[2]) - 1, Number(dateOnly[3]), 23, 59);
+  }
+
+  return new Date();
+};
+
+const isSameDate = (a?: Date | null, b?: Date | null) => {
+  if (!a || !b) return false;
+  return (
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate()
+  );
+};
+
+const startOfToday = () => {
+  const now = new Date();
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate());
+};
+
+const isPastDay = (date: Date) => {
+  return date.getTime() < startOfToday().getTime();
+};
+
+const getCalendarDays = (visibleMonth: Date) => {
+  const year = visibleMonth.getFullYear();
+  const month = visibleMonth.getMonth();
+  const firstDay = new Date(year, month, 1);
+  const startOffset = firstDay.getDay();
+  const days: Array<{ key: string; date: Date; inCurrentMonth: boolean }> = [];
+
+  for (let i = startOffset; i > 0; i -= 1) {
+    const date = new Date(year, month, 1 - i);
+    days.push({ key: `prev-${date.toISOString()}`, date, inCurrentMonth: false });
+  }
+
+  const lastDay = new Date(year, month + 1, 0).getDate();
+  for (let day = 1; day <= lastDay; day += 1) {
+    const date = new Date(year, month, day);
+    days.push({ key: `curr-${date.toISOString()}`, date, inCurrentMonth: true });
+  }
+
+  let nextDay = 1;
+  while (days.length % 7 !== 0) {
+    const date = new Date(year, month + 1, nextDay);
+    days.push({ key: `next-${date.toISOString()}`, date, inCurrentMonth: false });
+    nextDay += 1;
+  }
+
+  return days;
+};
+
+const monthLabel = (value: Date) =>
+  value.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
 
 const mapMaterial = (item: any): Material => ({
   id: item.id,
@@ -152,6 +232,7 @@ const mapAssignment = (item: any): Assignment => ({
   totalScore: String(item.totalScore ?? ''),
   pointsOnTime: String(item.pointsOnTime ?? ''),
   repositoryDisabledAfterDue: !!item.repositoryDisabledAfterDue,
+  materialIds: Array.isArray(item.materialIds) ? item.materialIds : [],
   fileName: item.fileName || undefined,
   fileUri: item.fileUrl || item.fileUri || undefined,
   fileType: item.fileType || undefined,
@@ -167,14 +248,19 @@ const mapSubmission = (item: any): Submission => ({
   id: item.id,
   assignmentId: item.assignmentId || '',
   studentId: item.studentId || '',
+  studentName: item.studentName || '',
   status:
     item.status === 'submitted' ||
     item.status === 'graded' ||
     item.status === 'late'
       ? item.status
       : 'pending',
-  score: typeof item.score === 'number' ? item.score : undefined,
+  score: typeof item.score === 'number' ? item.score : item.score === null ? undefined : Number(item.score),
   submittedAt: formatDateTime(item.submittedAt),
+  fileName: item.fileName || undefined,
+  fileUrl: item.fileUrl || undefined,
+  fileType: item.fileType || undefined,
+  feedback: item.feedback || '',
 });
 
 const TeacherCourseDetail2 = ({
@@ -186,17 +272,15 @@ const TeacherCourseDetail2 = ({
   course?: CourseDetailData;
   currentTeacher: SignedInTeacher;
 }) => {
-  const { width } = useWindowDimensions();
+  const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
-
   const isSmallPhone = width < 360;
   const isMobile = width < 768;
 
   const teacherFullName = useMemo(() => {
     const first = currentTeacher?.firstName?.trim() || '';
     const last = currentTeacher?.lastName?.trim() || '';
-    const full = `${first} ${last}`.trim();
-    return full || course?.instructor || 'Teacher';
+    return `${first} ${last}`.trim() || course?.instructor || 'Teacher';
   }, [currentTeacher, course?.instructor]);
 
   const teacherIdentity = useMemo(() => {
@@ -208,26 +292,16 @@ const TeacherCourseDetail2 = ({
     );
   }, [currentTeacher, teacherFullName]);
 
-  const [activeTab, setActiveTab] = useState<'Materials' | 'Assignments'>(
-    'Materials'
-  );
+  const [activeTab, setActiveTab] = useState<'Materials' | 'Assignments'>('Materials');
   const [showSubmissions, setShowSubmissions] = useState(false);
 
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showUpdateModal, setShowUpdateModal] = useState(false);
   const [showMaterialModal, setShowMaterialModal] = useState(false);
-  const [showUpdateMaterialModal, setShowUpdateMaterialModal] =
-    useState(false);
-  const [showDeleteMaterialConfirmModal, setShowDeleteMaterialConfirmModal] =
-    useState(false);
+  const [showDateTimeModal, setShowDateTimeModal] = useState(false);
 
-  const [selectedMaterial, setSelectedMaterial] = useState<Material | null>(
-    null
-  );
+  const [selectedMaterial, setSelectedMaterial] = useState<Material | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [selectedMaterialId, setSelectedMaterialId] = useState<string | null>(
-    null
-  );
 
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [materials, setMaterials] = useState<Material[]>([]);
@@ -238,49 +312,27 @@ const TeacherCourseDetail2 = ({
   const [formDesc, setFormDesc] = useState('');
   const [formPoints, setFormPoints] = useState('');
   const [formDue, setFormDue] = useState('');
-  const [formWeek, setFormWeek] = useState('');
-  const [
-    assignmentDisableRepositoryAfterDue,
-    setAssignmentDisableRepositoryAfterDue,
-  ] = useState(false);
-
+  const [formPointsOnTime, setFormPointsOnTime] = useState('');
+  const [selectedMaterialIds, setSelectedMaterialIds] = useState<string[]>([]);
+  const [assignmentDisableRepositoryAfterDue, setAssignmentDisableRepositoryAfterDue] = useState(false);
   const [pickedFile, setPickedFile] = useState<PickedUploadFile>(null);
-  const [pickedAssignmentFile, setPickedAssignmentFile] =
-    useState<PickedUploadFile>(null);
+  const [pickedAssignmentFile, setPickedAssignmentFile] = useState<PickedUploadFile>(null);
+
+  const [draftDueDateTime, setDraftDueDateTime] = useState<Date>(new Date());
+  const [visibleCalendarMonth, setVisibleCalendarMonth] = useState<Date>(new Date());
 
   const [classCodeCopied, setClassCodeCopied] = useState(false);
-
   const [resultModalVisible, setResultModalVisible] = useState(false);
-  const [resultModalType, setResultModalType] = useState<'success' | 'error'>(
-    'success'
-  );
+  const [resultModalType, setResultModalType] = useState<'success' | 'error'>('success');
   const [resultModalTitle, setResultModalTitle] = useState('');
   const [resultModalMessage, setResultModalMessage] = useState('');
+  const [errors, setErrors] = useState<FormErrors>({});
 
-  const showResultModal = (
-    type: 'success' | 'error',
-    title: string,
-    message: string
-  ) => {
+  const showResultModal = (type: 'success' | 'error', title: string, message: string) => {
     setResultModalType(type);
     setResultModalTitle(title);
     setResultModalMessage(message);
     setResultModalVisible(true);
-  };
-
-  const getMaterialIconName = (fileType?: string) => {
-    const normalized = String(fileType || '').toLowerCase();
-
-    if (normalized.includes('pdf')) return 'document-text-outline';
-    if (normalized.includes('video')) return 'videocam-outline';
-    if (normalized.includes('word') || normalized.includes('doc'))
-      return 'document-outline';
-    if (normalized.includes('sheet') || normalized.includes('excel'))
-      return 'grid-outline';
-    if (normalized.includes('presentation') || normalized.includes('powerpoint'))
-      return 'easel-outline';
-
-    return 'document-outline';
   };
 
   const loadCourseContent = async () => {
@@ -293,45 +345,30 @@ const TeacherCourseDetail2 = ({
     }
 
     try {
-      const [materialsRes, assignmentsRes, membersRes, submissionsRes] =
-        await Promise.all([
-          fetch(`${API_BASE_URL}/class-materials/${course.id}`),
-          fetch(`${API_BASE_URL}/class-assignments/${course.id}`),
-          fetch(`${API_BASE_URL}/class-members/${course.id}`),
-          fetch(`${API_BASE_URL}/class-submissions/${course.id}`),
-        ]);
+      const [materialsRes, assignmentsRes, membersRes, submissionsRes] = await Promise.all([
+        fetch(`${API_BASE_URL}/class-materials/${course.id}`),
+        fetch(`${API_BASE_URL}/class-assignments/${course.id}`),
+        fetch(`${API_BASE_URL}/class-members/${course.id}`),
+        fetch(`${API_BASE_URL}/class-submissions/${course.id}`),
+      ]);
 
-      const [materialsData, assignmentsData, membersData, submissionsData] =
-        await Promise.all([
-          materialsRes.json(),
-          assignmentsRes.json(),
-          membersRes.json(),
-          submissionsRes.json(),
-        ]);
+      const [materialsData, assignmentsData, membersData, submissionsData] = await Promise.all([
+        materialsRes.json(),
+        assignmentsRes.json(),
+        membersRes.json(),
+        submissionsRes.json(),
+      ]);
 
-      setMaterials(
-        materialsRes.ok && Array.isArray(materialsData)
-          ? materialsData.map(mapMaterial)
-          : []
-      );
-
-      setAssignments(
-        assignmentsRes.ok && Array.isArray(assignmentsData)
-          ? assignmentsData.map(mapAssignment)
-          : []
-      );
-
+      setMaterials(materialsRes.ok && Array.isArray(materialsData) ? materialsData.map(mapMaterial) : []);
+      setAssignments(assignmentsRes.ok && Array.isArray(assignmentsData) ? assignmentsData.map(mapAssignment) : []);
       setMembers(
         membersRes.ok && Array.isArray(membersData)
-          ? membersData.map(mapMember)
+          ? membersData
+              .filter((item: any) => item?.role === 'student')
+              .map(mapMember)
           : []
       );
-
-      setSubmissions(
-        submissionsRes.ok && Array.isArray(submissionsData)
-          ? submissionsData.map(mapSubmission)
-          : []
-      );
+      setSubmissions(submissionsRes.ok && Array.isArray(submissionsData) ? submissionsData.map(mapSubmission) : []);
     } catch (error) {
       console.error('Error loading course content:', error);
       setAssignments([]);
@@ -350,10 +387,15 @@ const TeacherCourseDetail2 = ({
     setFormDesc('');
     setFormPoints('');
     setFormDue('');
-    setFormWeek('');
+    setFormPointsOnTime('');
+    setSelectedMaterialIds([]);
     setAssignmentDisableRepositoryAfterDue(false);
     setPickedFile(null);
     setPickedAssignmentFile(null);
+    setErrors({});
+    const now = new Date();
+    setDraftDueDateTime(now);
+    setVisibleCalendarMonth(new Date(now.getFullYear(), now.getMonth(), 1));
   };
 
   const openCreateModal = () => {
@@ -361,20 +403,69 @@ const TeacherCourseDetail2 = ({
     setShowCreateModal(true);
   };
 
+  const openUpdateModal = (item: Assignment | undefined) => {
+    if (!item) return;
+    setSelectedId(item.id);
+    setFormTitle(item.header);
+    setFormDesc(item.instruction);
+    setFormPoints(item.totalScore);
+    setFormDue(item.dueDate);
+    setFormPointsOnTime(item.pointsOnTime);
+    setSelectedMaterialIds(item.materialIds || []);
+    setAssignmentDisableRepositoryAfterDue(item.repositoryDisabledAfterDue);
+    setErrors({});
+    const parsed = parseDueDateTime(item.dueDate);
+    setDraftDueDateTime(parsed);
+    setVisibleCalendarMonth(new Date(parsed.getFullYear(), parsed.getMonth(), 1));
+    setShowUpdateModal(true);
+  };
+
   const openMaterialModal = (material: Material) => {
     setSelectedMaterial(material);
     setShowMaterialModal(true);
   };
 
-  const openUpdateMaterialModal = (material: Material | null) => {
-    if (!material) return;
+  const openDateTimePicker = () => {
+    const parsed = parseDueDateTime(formDue);
+    setDraftDueDateTime(parsed);
+    setVisibleCalendarMonth(new Date(parsed.getFullYear(), parsed.getMonth(), 1));
+    setShowDateTimeModal(true);
+  };
 
-    setSelectedMaterialId(material.id);
-    setFormTitle(material.title || '');
-    setFormWeek(material.week || '');
-    setFormDesc(material.content || '');
-    setShowMaterialModal(false);
-    setShowUpdateMaterialModal(true);
+  const applyDraftDateTime = () => {
+    if (draftDueDateTime.getTime() < startOfToday().getTime()) {
+      setErrors((prev) => ({
+        ...prev,
+        dueDate: 'Past dates are not allowed.',
+      }));
+      return;
+    }
+
+    setFormDue(formatDueDateTime(draftDueDateTime));
+    setErrors((prev) => ({ ...prev, dueDate: undefined }));
+    setShowDateTimeModal(false);
+  };
+
+  const selectDraftDate = (date: Date) => {
+    const next = new Date(draftDueDateTime);
+    next.setFullYear(date.getFullYear(), date.getMonth(), date.getDate());
+    setDraftDueDateTime(next);
+  };
+
+  const updateDraftTime = (field: 'hours' | 'minutes', value: number) => {
+    const next = new Date(draftDueDateTime);
+    if (field === 'hours') next.setHours(value);
+    if (field === 'minutes') next.setMinutes(value);
+    setDraftDueDateTime(next);
+  };
+
+  const toggleRelatedMaterial = (materialId: string) => {
+    setSelectedMaterialIds((prev) =>
+      prev.includes(materialId)
+        ? prev.filter((id) => id !== materialId)
+        : [...prev, materialId]
+    );
+    setErrors((prev) => ({ ...prev, materials: undefined }));
   };
 
   const handlePickFile = async () => {
@@ -425,10 +516,7 @@ const TeacherCourseDetail2 = ({
     }
   };
 
-  const uploadPickedFile = async (
-    picked: PickedUploadFile,
-    kind: 'material' | 'assignment'
-  ) => {
+  const uploadPickedFile = async (picked: PickedUploadFile, kind: 'material' | 'assignment') => {
     if (!picked || !course?.id) return null;
 
     let fileBase64: string | null = null;
@@ -439,31 +527,19 @@ const TeacherCourseDetail2 = ({
       } else if (picked.file) {
         fileBase64 = await new Promise<string>((resolve, reject) => {
           const reader = new FileReader();
-
           reader.onload = () => {
             const result = reader.result;
             if (typeof result === 'string') {
-              const base64Part = result.includes(',')
-                ? result.split(',')[1]
-                : result;
-              resolve(base64Part);
+              resolve(result.includes(',') ? result.split(',')[1] : result);
             } else {
               reject(new Error('Failed to read file on web.'));
             }
           };
-
-          reader.onerror = () =>
-            reject(new Error('Failed to read file on web.'));
+          reader.onerror = () => reject(new Error('Failed to read file on web.'));
           reader.readAsDataURL(picked.file as File);
         });
-      } else {
-        throw new Error('No file data available for web upload.');
       }
-    } else {
-      if (!picked.uri) {
-        throw new Error('No file URI available for mobile upload.');
-      }
-
+    } else if (picked.uri) {
       fileBase64 = await FileSystem.readAsStringAsync(picked.uri, {
         encoding: 'base64' as any,
       });
@@ -471,9 +547,7 @@ const TeacherCourseDetail2 = ({
 
     const response = await fetch(`${API_BASE_URL}/upload-class-file`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         classId: course.id,
         fileBase64,
@@ -484,11 +558,7 @@ const TeacherCourseDetail2 = ({
     });
 
     const data = await response.json();
-
-    if (!response.ok) {
-      throw new Error(data.error || 'Failed to upload file.');
-    }
-
+    if (!response.ok) throw new Error(data.error || 'Failed to upload file.');
     return data.data;
   };
 
@@ -497,7 +567,6 @@ const TeacherCourseDetail2 = ({
       showResultModal('error', 'No File', 'No uploaded file available.');
       return;
     }
-
     try {
       await Linking.openURL(fileUri);
     } catch {
@@ -505,17 +574,55 @@ const TeacherCourseDetail2 = ({
     }
   };
 
+
+  const handleGradeSubmission = async (submissionId: string, score: number, feedback?: string) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/grade-submission/${submissionId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          status: 'graded',
+          score,
+          feedback: feedback || null,
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) throw new Error(data?.error || 'Failed to save score.');
+
+      await loadCourseContent();
+      showResultModal('success', 'Score Saved', 'The student submission has been graded.');
+    } catch (error: any) {
+      showResultModal('error', 'Grade Failed', error?.message || 'Unable to save score.');
+    }
+  };
+
   const handleCopyClassCode = async () => {
     const codeToCopy = course?.classCode || '';
-
     if (!codeToCopy || codeToCopy === 'No Class Code') return;
-
     await Clipboard.setStringAsync(codeToCopy);
     setClassCodeCopied(true);
+    setTimeout(() => setClassCodeCopied(false), 2000);
+  };
 
-    setTimeout(() => {
-      setClassCodeCopied(false);
-    }, 2000);
+  const validateAssignmentForm = () => {
+    const nextErrors: FormErrors = {};
+
+    if (!formTitle.trim()) nextErrors.title = 'Header is required.';
+    if (!formDesc.trim()) nextErrors.instruction = 'Instruction is required.';
+    if (!formPoints.trim()) nextErrors.totalScore = 'Total score is required.';
+    if (!formPointsOnTime.trim()) nextErrors.pointsOnTime = 'Points on time is required.';
+    if (!formDue.trim()) nextErrors.dueDate = 'Due date and time is required.';
+    if (selectedMaterialIds.length === 0) nextErrors.materials = 'Select at least one related material.';
+
+    setErrors(nextErrors);
+
+    if (Object.keys(nextErrors).length > 0) {
+      showResultModal('error', 'Required', 'Please complete the highlighted assignment fields.');
+      return false;
+    }
+
+    return true;
   };
 
   const handleCreate = async () => {
@@ -525,35 +632,25 @@ const TeacherCourseDetail2 = ({
     }
 
     if (activeTab === 'Materials') {
-      if (!formTitle.trim()) {
-        showResultModal('error', 'Required', 'Please enter a title.');
-        return;
-      }
-
-      if (!formWeek.trim()) {
-        showResultModal('error', 'Required', 'Please enter the week.');
+      if (!formTitle.trim() || !formPointsOnTime.trim()) {
+        showResultModal('error', 'Required', 'Please enter the title and week.');
         return;
       }
 
       try {
         let uploadedFile = null;
-
         if (pickedFile?.uri || pickedFile?.base64 || pickedFile?.file) {
           uploadedFile = await uploadPickedFile(pickedFile, 'material');
         }
 
         const response = await fetch(`${API_BASE_URL}/create-class-material`, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             classId: course.id,
             title: formTitle.trim(),
-            week: formWeek.trim(),
-            content:
-              formDesc.trim() ||
-              `${formWeek.trim()} material: ${formTitle.trim()}`,
+            week: formPointsOnTime.trim(),
+            content: formDesc.trim() || `${formPointsOnTime.trim()} material: ${formTitle.trim()}`,
             fileName: uploadedFile?.fileName ?? null,
             fileUrl: uploadedFile?.fileUrl ?? null,
             fileType: uploadedFile?.fileType ?? null,
@@ -565,73 +662,38 @@ const TeacherCourseDetail2 = ({
         });
 
         const data = await response.json();
-
-        if (!response.ok) {
-          throw new Error(data.error || 'Failed to create material');
-        }
+        if (!response.ok) throw new Error(data.error || 'Failed to create material');
 
         await loadCourseContent();
         setShowCreateModal(false);
         resetCreateForm();
-        showResultModal(
-          'success',
-          'Success',
-          'Material uploaded successfully.'
-        );
+        showResultModal('success', 'Success', 'Material uploaded successfully.');
       } catch (error: any) {
-        console.error('Create material error:', error);
-        showResultModal(
-          'error',
-          'Upload Failed',
-          error?.message || 'Failed to create material.'
-        );
+        showResultModal('error', 'Upload Failed', error?.message || 'Failed to create material.');
       }
-
       return;
     }
 
-    if (
-      !formTitle.trim() ||
-      !formDesc.trim() ||
-      !formDue.trim() ||
-      !formPoints.trim() ||
-      !formWeek.trim()
-    ) {
-      showResultModal(
-        'error',
-        'Required',
-        'Please complete all assignment fields.'
-      );
-      return;
-    }
+    if (!validateAssignmentForm()) return;
 
     try {
       let uploadedFile = null;
-
-      if (
-        pickedAssignmentFile?.uri ||
-        pickedAssignmentFile?.base64 ||
-        pickedAssignmentFile?.file
-      ) {
-        uploadedFile = await uploadPickedFile(
-          pickedAssignmentFile,
-          'assignment'
-        );
+      if (pickedAssignmentFile?.uri || pickedAssignmentFile?.base64 || pickedAssignmentFile?.file) {
+        uploadedFile = await uploadPickedFile(pickedAssignmentFile, 'assignment');
       }
 
       const response = await fetch(`${API_BASE_URL}/create-class-assignment`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           classId: course.id,
           header: formTitle.trim(),
           instruction: formDesc.trim(),
           dueDate: formDue.trim(),
           totalScore: Number(formPoints),
-          pointsOnTime: Number(formWeek),
+          pointsOnTime: Number(formPointsOnTime),
           repositoryDisabledAfterDue: assignmentDisableRepositoryAfterDue,
+          materialIds: selectedMaterialIds,
           fileName: uploadedFile?.fileName ?? null,
           fileUrl: uploadedFile?.fileUrl ?? null,
           fileType: uploadedFile?.fileType ?? null,
@@ -643,75 +705,44 @@ const TeacherCourseDetail2 = ({
       });
 
       const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to create assignment');
-      }
+      if (!response.ok) throw new Error(data.error || 'Failed to create assignment');
 
       await loadCourseContent();
       setShowCreateModal(false);
       resetCreateForm();
-      showResultModal(
-        'success',
-        'Success',
-        'Assignment uploaded successfully.'
-      );
+      showResultModal('success', 'Success', 'Assignment uploaded successfully.');
     } catch (error: any) {
-      console.error('Create assignment error:', error);
-      showResultModal(
-        'error',
-        'Upload Failed',
-        error?.message || 'Failed to create assignment.'
-      );
+      showResultModal('error', 'Upload Failed', error?.message || 'Failed to create assignment.');
     }
-  };
-
-  const openUpdateModal = (item: Assignment | undefined) => {
-    if (!item) return;
-    setSelectedId(item.id);
-    setFormTitle(item.header);
-    setFormDesc(item.instruction);
-    setFormPoints(item.totalScore);
-    setFormDue(item.dueDate);
-    setFormWeek(item.pointsOnTime);
-    setAssignmentDisableRepositoryAfterDue(item.repositoryDisabledAfterDue);
-    setShowUpdateModal(true);
   };
 
   const handleUpdate = async () => {
     if (!selectedId) return;
+    if (!validateAssignmentForm()) return;
 
     try {
-      const response = await fetch(
-        `${API_BASE_URL}/update-class-assignment/${selectedId}`,
-        {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            header: formTitle,
-            instruction: formDesc,
-            totalScore: Number(formPoints),
-            pointsOnTime: Number(formWeek),
-            dueDate: formDue,
-            repositoryDisabledAfterDue: assignmentDisableRepositoryAfterDue,
-          }),
-        }
-      );
+      const response = await fetch(`${API_BASE_URL}/update-class-assignment/${selectedId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          header: formTitle.trim(),
+          instruction: formDesc.trim(),
+          totalScore: Number(formPoints),
+          pointsOnTime: Number(formPointsOnTime),
+          dueDate: formDue.trim(),
+          repositoryDisabledAfterDue: assignmentDisableRepositoryAfterDue,
+          materialIds: selectedMaterialIds,
+        }),
+      });
 
       const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to update assignment');
-      }
+      if (!response.ok) throw new Error(data.error || 'Failed to update assignment');
 
       await loadCourseContent();
       setShowUpdateModal(false);
       showResultModal('success', 'Success', 'Assignment updated.');
-    } catch (error) {
-      console.error('Update assignment error:', error);
-      showResultModal('error', 'Error', 'Failed to update assignment.');
+    } catch (error: any) {
+      showResultModal('error', 'Error', error?.message || 'Failed to update assignment.');
     }
   };
 
@@ -719,248 +750,291 @@ const TeacherCourseDetail2 = ({
     if (!selectedId) return;
 
     try {
-      const response = await fetch(
-        `${API_BASE_URL}/delete-class-assignment/${selectedId}`,
-        {
-          method: 'DELETE',
-        }
-      );
+      const response = await fetch(`${API_BASE_URL}/delete-class-assignment/${selectedId}`, {
+        method: 'DELETE',
+      });
 
       const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to delete assignment');
-      }
+      if (!response.ok) throw new Error(data.error || 'Failed to delete assignment');
 
       await loadCourseContent();
       setShowUpdateModal(false);
       setShowSubmissions(false);
       showResultModal('success', 'Success', 'Assignment deleted.');
-    } catch (error) {
-      console.error('Delete assignment error:', error);
-      showResultModal('error', 'Error', 'Failed to delete assignment.');
-    }
-  };
-
-  const handleUpdateMaterial = async () => {
-    if (!selectedMaterialId) return;
-
-    if (!formTitle.trim()) {
-      showResultModal('error', 'Required', 'Please enter a title.');
-      return;
-    }
-
-    if (!formWeek.trim()) {
-      showResultModal('error', 'Required', 'Please enter the week.');
-      return;
-    }
-
-    try {
-      const response = await fetch(
-        `${API_BASE_URL}/update-class-material/${selectedMaterialId}`,
-        {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            title: formTitle.trim(),
-            week: formWeek.trim(),
-            content: formDesc.trim(),
-          }),
-        }
-      );
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to update material');
-      }
-
-      await loadCourseContent();
-      setShowUpdateMaterialModal(false);
-      setSelectedMaterialId(null);
-      resetCreateForm();
-      showResultModal('success', 'Success', 'Material updated successfully.');
     } catch (error: any) {
-      console.error('Update material error:', error);
-      showResultModal(
-        'error',
-        'Error',
-        error?.message || 'Failed to update material.'
-      );
+      showResultModal('error', 'Error', error?.message || 'Failed to delete assignment.');
     }
   };
 
-  const confirmDeleteMaterial = () => {
-    if (!selectedMaterialId) return;
-    setShowDeleteMaterialConfirmModal(true);
-  };
-
-  const handleDeleteMaterial = async () => {
-    if (!selectedMaterialId) return;
-
-    try {
-      const response = await fetch(
-        `${API_BASE_URL}/delete-class-material/${selectedMaterialId}`,
-        {
-          method: 'DELETE',
-        }
-      );
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to delete material');
-      }
-
-      await loadCourseContent();
-      setShowDeleteMaterialConfirmModal(false);
-      setShowUpdateMaterialModal(false);
-      setShowMaterialModal(false);
-      setSelectedMaterialId(null);
-      resetCreateForm();
-      showResultModal('success', 'Success', 'Material deleted successfully.');
-    } catch (error: any) {
-      console.error('Delete material error:', error);
-      showResultModal(
-        'error',
-        'Error',
-        error?.message || 'Failed to delete material.'
-      );
-    }
-  };
-
-  const currentAssignment = assignments.find((a) => a.id === selectedId);
-
-  const visibleCourseCode = course?.courseCode || 'No Course Code';
+  const selectedAssignment = assignments.find((a) => a.id === selectedId);
   const courseName = course?.name || 'Untitled Course';
+  const courseYear = course?.year || '';
   const courseSection = course?.section || '';
   const courseInstructor = course?.instructor || 'No Instructor';
   const classCode = course?.classCode || 'No Class Code';
-  const courseYear = course?.year || '';
   const courseSemester = course?.semester || '';
+  const schoolYear = course?.schoolYear || '';
+  const calendarDays = getCalendarDays(visibleCalendarMonth);
+
+  const renderInputError = (message?: string) =>
+    !!message ? <Text style={styles.errorText}>{message}</Text> : null;
+
+  const renderRelatedMaterialsSelector = () => (
+    <View style={styles.sectionBlock}>
+      <Text style={styles.sectionLabel}>Related Material</Text>
+      <Text style={styles.helperText}>
+        Select the materials the AI should use for follow-up activity generation.
+      </Text>
+
+      {materials.length === 0 ? (
+        <Text style={styles.emptyMiniText}>No created materials yet.</Text>
+      ) : (
+        <View
+          style={[
+            styles.materialSelectorWrap,
+            errors.materials ? styles.errorContainer : null,
+          ]}
+        >
+          {materials.map((material) => {
+            const active = selectedMaterialIds.includes(material.id);
+            return (
+              <TouchableOpacity
+                key={material.id}
+                style={[styles.materialChip, active && styles.materialChipActive]}
+                onPress={() => toggleRelatedMaterial(material.id)}
+                activeOpacity={0.85}
+              >
+                <Ionicons
+                  name={active ? 'checkmark-circle' : 'ellipse-outline'}
+                  size={16}
+                  color={active ? '#FFF' : '#D32F2F'}
+                />
+                <Text style={[styles.materialChipText, active && styles.materialChipTextActive]}>
+                  {material.title}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      )}
+      {renderInputError(errors.materials)}
+    </View>
+  );
+
+  const renderDateTimeField = () => (
+    <View style={styles.sectionBlock}>
+      <Text style={styles.sectionLabel}>Due Date & Time</Text>
+      <TouchableOpacity
+        style={[styles.dateButton, errors.dueDate ? styles.errorBorder : null]}
+        onPress={openDateTimePicker}
+        activeOpacity={0.85}
+      >
+        <Ionicons name="calendar-outline" size={18} color="#D32F2F" />
+        <Text style={styles.dateButtonText}>{formDue || 'Select due date and time'}</Text>
+      </TouchableOpacity>
+      {renderInputError(errors.dueDate)}
+    </View>
+  );
+
+  const renderAssignmentFields = () => (
+    <View style={[styles.formGrid, !isMobile && styles.formGridDesktop]}>
+      <View style={[styles.formColumnLeft, !isMobile && styles.formColumnLeftDesktop]}>
+        <Text style={styles.sectionLabel}>Header</Text>
+        <TextInput
+          style={[styles.inputBox, errors.title ? styles.errorBorder : null]}
+          value={formTitle}
+          onChangeText={(value) => {
+            setFormTitle(value);
+            if (errors.title) setErrors((prev) => ({ ...prev, title: undefined }));
+          }}
+          placeholder="Enter Header"
+          placeholderTextColor="#999"
+        />
+        {renderInputError(errors.title)}
+
+        <Text style={styles.sectionLabel}>Instruction</Text>
+        <TextInput
+          style={[styles.textAreaBox, errors.instruction ? styles.errorBorder : null]}
+          value={formDesc}
+          onChangeText={(value) => {
+            setFormDesc(value);
+            if (errors.instruction) setErrors((prev) => ({ ...prev, instruction: undefined }));
+          }}
+          placeholder="Enter Instruction"
+          placeholderTextColor="#999"
+          multiline
+        />
+        {renderInputError(errors.instruction)}
+      </View>
+
+      <View style={[styles.formColumnRight, !isMobile && styles.formColumnRightDesktop]}>
+        {renderDateTimeField()}
+
+        <View style={styles.scoreStackDesktop}>
+          <View style={styles.scoreFieldFull}>
+            <Text style={styles.sectionLabel}>Total Score</Text>
+            <TextInput
+              style={[styles.inputBox, errors.totalScore ? styles.errorBorder : null]}
+              value={formPoints}
+              onChangeText={(value) => {
+                setFormPoints(value);
+                if (errors.totalScore) setErrors((prev) => ({ ...prev, totalScore: undefined }));
+              }}
+              keyboardType="numeric"
+              placeholder="Total Score"
+              placeholderTextColor="#999"
+            />
+            {renderInputError(errors.totalScore)}
+          </View>
+
+          <View style={styles.scoreFieldFull}>
+            <Text style={styles.sectionLabel}>Points On Time</Text>
+            <TextInput
+              style={[styles.inputBox, errors.pointsOnTime ? styles.errorBorder : null]}
+              value={formPointsOnTime}
+              onChangeText={(value) => {
+                setFormPointsOnTime(value);
+                if (errors.pointsOnTime) setErrors((prev) => ({ ...prev, pointsOnTime: undefined }));
+              }}
+              keyboardType="numeric"
+              placeholder="Points On Time"
+              placeholderTextColor="#999"
+            />
+            {renderInputError(errors.pointsOnTime)}
+          </View>
+        </View>
+      </View>
+
+      <View style={styles.fullWidthSection}>
+        {renderRelatedMaterialsSelector()}
+
+        <Text style={styles.sectionLabel}>Attachment</Text>
+        <TouchableOpacity style={styles.primaryButtonWide} onPress={handlePickAssignmentFile}>
+          <Ionicons name="cloud-upload-outline" size={18} color="#FFF" />
+          <Text style={styles.uploadBtnText}>
+            {pickedAssignmentFile?.name ? 'Change File' : 'Upload File'}
+          </Text>
+        </TouchableOpacity>
+
+        {!!pickedAssignmentFile?.name && (
+          <View style={styles.filePreviewBox}>
+            <Ionicons name="document-text-outline" size={20} color="#D32F2F" />
+            <Text style={styles.filePreviewText}>{pickedAssignmentFile.name}</Text>
+          </View>
+        )}
+
+        <View style={styles.checkboxRow}>
+          <TouchableOpacity
+            style={[
+              styles.checkboxBox,
+              assignmentDisableRepositoryAfterDue && styles.checkboxBoxChecked,
+            ]}
+            onPress={() =>
+              setAssignmentDisableRepositoryAfterDue(!assignmentDisableRepositoryAfterDue)
+            }
+          >
+            {assignmentDisableRepositoryAfterDue ? (
+              <Ionicons name="checkmark" size={16} color="#FFF" />
+            ) : null}
+          </TouchableOpacity>
+          <Text style={styles.checkboxLabel}>Disable repository after due</Text>
+        </View>
+      </View>
+    </View>
+  );
+
+  const renderCreateModalBody = () => {
+    if (activeTab === 'Materials') {
+      return (
+        <>
+          <Text style={styles.sectionLabel}>Title</Text>
+          <TextInput
+            style={styles.inputBox}
+            placeholder="Material Title"
+            placeholderTextColor="#999"
+            value={formTitle}
+            onChangeText={setFormTitle}
+          />
+
+          <Text style={styles.sectionLabel}>Week</Text>
+          <TextInput
+            style={styles.inputBox}
+            placeholder="Week (example: Week 1)"
+            placeholderTextColor="#999"
+            value={formPointsOnTime}
+            onChangeText={setFormPointsOnTime}
+          />
+
+          <Text style={styles.sectionLabel}>Description</Text>
+          <TextInput
+            style={styles.textAreaBox}
+            placeholder="Optional description"
+            placeholderTextColor="#999"
+            value={formDesc}
+            onChangeText={setFormDesc}
+            multiline
+          />
+
+          <Text style={styles.sectionLabel}>Attachment</Text>
+          <TouchableOpacity style={styles.primaryButtonWide} onPress={handlePickFile}>
+            <Ionicons name="cloud-upload-outline" size={18} color="#FFF" />
+            <Text style={styles.uploadBtnText}>Upload File</Text>
+          </TouchableOpacity>
+
+          {!!pickedFile?.name && (
+            <View style={styles.filePreviewBox}>
+              <Ionicons name="document-text-outline" size={20} color="#D32F2F" />
+              <Text style={styles.filePreviewText}>{pickedFile.name}</Text>
+            </View>
+          )}
+        </>
+      );
+    }
+
+    return renderAssignmentFields();
+  };
 
   if (showSubmissions) {
     return (
       <>
         <TeacherSubmissionsSection
           members={members}
-          currentAssignment={currentAssignment}
+          currentAssignment={selectedAssignment}
           submissions={submissions}
           onBack={() => setShowSubmissions(false)}
-          onOpenUpdate={() => openUpdateModal(currentAssignment)}
+          onOpenUpdate={() => openUpdateModal(selectedAssignment)}
+          onGradeSubmission={handleGradeSubmission}
         />
 
         <Modal visible={showUpdateModal} transparent animationType="fade">
           <View style={styles.modalOverlayCenter}>
-            <View
-              style={[
-                styles.modalCardElevated,
-                { width: isMobile ? Math.min(width - 28, 360) : 400 },
-              ]}
-            >
+            <View style={[styles.modalCardElevated, { width: isMobile ? Math.min(width - 28, 360) : 820, maxHeight: height * 0.9 }]}>
               <View style={styles.createHeaderRow}>
                 <View style={styles.modalHeaderTextWrap}>
                   <Text style={styles.createTitle}>Update Assignment</Text>
-                  <Text style={styles.modalSubtitle}>
-                    Edit the selected assignment details.
-                  </Text>
+                  <Text style={styles.modalSubtitle}>Edit the selected assignment details.</Text>
                 </View>
-
                 <TouchableOpacity onPress={() => setShowUpdateModal(false)}>
                   <Ionicons name="close" size={24} color="#111" />
                 </TouchableOpacity>
               </View>
 
-              <ScrollView showsVerticalScrollIndicator={false}>
-                <Text style={styles.sectionLabel}>Header</Text>
-                <TextInput
-                  style={styles.inputBox}
-                  value={formTitle}
-                  onChangeText={setFormTitle}
-                  placeholder="Enter Header"
-                  placeholderTextColor="#999"
-                />
-
-                <Text style={styles.sectionLabel}>Instruction</Text>
-                <TextInput
-                  style={styles.textAreaBox}
-                  value={formDesc}
-                  onChangeText={setFormDesc}
-                  placeholder="Enter Instruction"
-                  placeholderTextColor="#999"
-                  multiline
-                />
-
-                <Text style={styles.sectionLabel}>Total Score</Text>
-                <TextInput
-                  style={styles.inputBox}
-                  value={formPoints}
-                  onChangeText={setFormPoints}
-                  keyboardType="numeric"
-                  placeholder="Total Score"
-                  placeholderTextColor="#999"
-                />
-
-                <Text style={styles.sectionLabel}>Points On Time</Text>
-                <TextInput
-                  style={styles.inputBox}
-                  value={formWeek}
-                  onChangeText={setFormWeek}
-                  keyboardType="numeric"
-                  placeholder="Points On Time"
-                  placeholderTextColor="#999"
-                />
-
-                <Text style={styles.sectionLabel}>Due Date</Text>
-                <TextInput
-                  style={styles.inputBox}
-                  value={formDue}
-                  onChangeText={setFormDue}
-                  placeholder="Set Due Date"
-                  placeholderTextColor="#999"
-                />
-
-                <View style={styles.checkboxRow}>
-                  <Text style={styles.checkboxLabel}>
-                    Disable repository after due
-                  </Text>
-
-                  <TouchableOpacity
-                    style={[
-                      styles.checkboxBox,
-                      assignmentDisableRepositoryAfterDue &&
-                        styles.checkboxBoxChecked,
-                    ]}
-                    onPress={() =>
-                      setAssignmentDisableRepositoryAfterDue(
-                        !assignmentDisableRepositoryAfterDue
-                      )
-                    }
-                  >
-                    {assignmentDisableRepositoryAfterDue ? (
-                      <Ionicons name="checkmark" size={16} color="#FFF" />
-                    ) : null}
-                  </TouchableOpacity>
-                </View>
-
-                <View style={styles.buttonRow}>
-                  <TouchableOpacity
-                    style={styles.secondaryButton}
-                    onPress={handleDelete}
-                  >
-                    <Text style={styles.secondaryButtonText}>Delete</Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={styles.primaryButton}
-                    onPress={handleUpdate}
-                  >
-                    <Text style={styles.primaryButtonText}>Update</Text>
-                  </TouchableOpacity>
-                </View>
+              <ScrollView
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={styles.modalScrollContent}
+              >
+                {renderAssignmentFields()}
               </ScrollView>
+
+              <View style={styles.modalBottomActions}>
+                <TouchableOpacity style={styles.secondaryButton} onPress={handleDelete}>
+                  <Text style={styles.secondaryButtonText}>Delete</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity style={styles.primaryButton} onPress={handleUpdate}>
+                  <Text style={styles.primaryButtonText}>Update</Text>
+                </TouchableOpacity>
+              </View>
             </View>
           </View>
         </Modal>
@@ -970,9 +1044,14 @@ const TeacherCourseDetail2 = ({
 
   return (
     <SafeAreaView style={styles.container}>
-      {isMobile ? <View style={{ height: insets.top + 10 }} /> : null}
+      <ScrollView
+        style={styles.screenScroll}
+        contentContainerStyle={styles.screenScrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        {isMobile ? <View style={{ height: insets.top + 10 }} /> : null}
 
-      <View
+        <View
         style={[
           styles.courseHeader,
           {
@@ -982,103 +1061,95 @@ const TeacherCourseDetail2 = ({
           },
         ]}
       >
-        <View style={styles.headerTopRow}>
-          <TouchableOpacity onPress={onBack} style={styles.backButton}>
-            <Ionicons name="arrow-back" size={24} color="#FFF" />
-          </TouchableOpacity>
+        <TouchableOpacity onPress={onBack} style={styles.backButton}>
+          <Ionicons name="arrow-back" size={24} color="#FFF" />
+        </TouchableOpacity>
+
+        <Text style={[styles.courseName, { fontSize: isSmallPhone ? 20 : 24 }]}>{courseName}</Text>
+
+        <View style={styles.headerInfoCard}>
+          <View style={styles.headerInfoRow}>
+            <Text style={styles.headerInfoLabel}>INSTRUCTOR</Text>
+            <Text style={styles.headerInfoValue} numberOfLines={1}>
+              {courseInstructor}
+            </Text>
+          </View>
+
+          <View style={[styles.headerDetailsGrid, !isMobile && styles.headerDetailsGridDesktop]}>
+            {!!courseYear && (
+              <View style={[styles.academicInfoPill, !isMobile && styles.headerDetailItemDesktop]}>
+                <Ionicons name="school-outline" size={14} color="#D32F2F" />
+                <View style={styles.academicInfoTextWrap}>
+                  <Text style={styles.academicInfoLabel}>Year</Text>
+                  <Text style={styles.academicInfoValue} numberOfLines={1}>{courseYear}</Text>
+                </View>
+              </View>
+            )}
+
+            {!!courseSection && (
+              <View style={[styles.academicInfoPill, !isMobile && styles.headerDetailItemDesktop]}>
+                <Ionicons name="people-outline" size={14} color="#D32F2F" />
+                <View style={styles.academicInfoTextWrap}>
+                  <Text style={styles.academicInfoLabel}>Section</Text>
+                  <Text style={styles.academicInfoValue} numberOfLines={1}>{courseSection}</Text>
+                </View>
+              </View>
+            )}
+
+            {!!courseSemester && (
+              <View style={[styles.academicInfoPill, !isMobile && styles.headerDetailItemDesktop]}>
+                <Ionicons name="calendar-outline" size={14} color="#D32F2F" />
+                <View style={styles.academicInfoTextWrap}>
+                  <Text style={styles.academicInfoLabel}>Semester</Text>
+                  <Text style={styles.academicInfoValue} numberOfLines={1}>{courseSemester}</Text>
+                </View>
+              </View>
+            )}
+
+            {!!schoolYear && (
+              <View style={[styles.academicInfoPill, !isMobile && styles.headerDetailItemDesktop]}>
+                <Ionicons name="time-outline" size={14} color="#D32F2F" />
+                <View style={styles.academicInfoTextWrap}>
+                  <Text style={styles.academicInfoLabel}>School Year</Text>
+                  <Text style={styles.academicInfoValue} numberOfLines={1}>{schoolYear}</Text>
+                </View>
+              </View>
+            )}
+
+            <View style={[styles.classCodeBox, !isMobile && styles.headerDetailItemDesktop]}>
+              <Ionicons name="copy-outline" size={14} color="#D32F2F" />
+              <View style={styles.classCodeTextWrap}>
+                <Text style={styles.classCodeLabel}>CLASS CODE</Text>
+                <Text style={styles.classCodeValue} numberOfLines={1}>{classCode}</Text>
+              </View>
+              <TouchableOpacity style={styles.copyCodeButton} onPress={handleCopyClassCode}>
+                <Ionicons
+                  name={classCodeCopied ? 'checkmark-outline' : 'copy-outline'}
+                  size={15}
+                  color="#D32F2F"
+                />
+                <Text style={styles.copyCodeText}>{classCodeCopied ? 'Copied' : 'Copy'}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </View>
+
+        <View style={styles.tabContainer}>
+            <TouchableOpacity onPress={() => setActiveTab('Materials')} style={[styles.tab, activeTab === 'Materials' && styles.tabActive]}>
+          <Text style={[styles.tabText, activeTab === 'Materials' && styles.tabTextActive]}>
+            Materials ({materials.length})
+          </Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => setActiveTab('Assignments')} style={[styles.tab, activeTab === 'Assignments' && styles.tabActive]}>
+          <Text style={[styles.tabText, activeTab === 'Assignments' && styles.tabTextActive]}>
+            Assignments ({assignments.length})
+          </Text>
+            </TouchableOpacity>
         </View>
 
-
-        <Text
-          style={[
-            styles.courseName,
-            { fontSize: isSmallPhone ? 20 : 24 },
-          ]}
-        >
-          {courseName}
-        </Text>
-
-        <Text style={[styles.instructor, { fontSize: isSmallPhone ? 12 : 14 }]}>
-          Instructor: {courseInstructor}
-        </Text>
-
-        {!!courseSemester && !!courseYear && (
-          <Text style={[styles.metaText, { fontSize: isSmallPhone ? 12 : 13 }]}>
-            {courseSemester} - {courseYear}
-          </Text>
-        )}
-
-        {!!courseSection && (
-          <Text style={[styles.metaText, { fontSize: isSmallPhone ? 12 : 13 }]}>
-            {courseSection}
-          </Text>
-        )}
-
-        <Text style={[styles.description, { fontSize: isSmallPhone ? 12 : 13 }]}>
-          No description available.
-        </Text>
-      </View>
-
-      <View style={styles.tabContainer}>
-        <TouchableOpacity
-          onPress={() => setActiveTab('Materials')}
-          style={[
-            styles.tab,
-            activeTab === 'Materials' && styles.tabActive,
-            { paddingVertical: isSmallPhone ? hp('1.2') : hp('2') },
-          ]}
-        >
-          <View style={styles.tabContent}>
-            <Ionicons
-              name="document-text-outline"
-              size={16}
-              color={activeTab === 'Materials' ? '#D32F2F' : '#999'}
-            />
-            <Text
-              style={[
-                styles.tabText,
-                activeTab === 'Materials' && styles.tabTextActive,
-                { fontSize: isSmallPhone ? 12 : 13 },
-              ]}
-            >
-              Materials ({materials.length})
-            </Text>
-          </View>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          onPress={() => setActiveTab('Assignments')}
-          style={[
-            styles.tab,
-            activeTab === 'Assignments' && styles.tabActive,
-            { paddingVertical: isSmallPhone ? hp('1.2') : hp('2') },
-          ]}
-        >
-          <View style={styles.tabContent}>
-            <Ionicons
-              name="checkmark-circle-outline"
-              size={16}
-              color={activeTab === 'Assignments' ? '#D32F2F' : '#999'}
-            />
-            <Text
-              style={[
-                styles.tabText,
-                activeTab === 'Assignments' && styles.tabTextActive,
-                { fontSize: isSmallPhone ? 12 : 13 },
-              ]}
-            >
-              Assignments ({assignments.length})
-            </Text>
-          </View>
-        </TouchableOpacity>
-      </View>
-
-      {activeTab === 'Materials' ? (
-        <TeacherMaterialSection
-          materials={materials}
-          onCreate={openCreateModal}
-          onOpenMaterial={openMaterialModal}
-        />
+        {activeTab === 'Materials' ? (
+        <TeacherMaterialSection materials={materials} onCreate={openCreateModal} onOpenMaterial={openMaterialModal} />
       ) : (
         <TeacherAssignmentSection
           assignments={assignments}
@@ -1088,25 +1159,19 @@ const TeacherCourseDetail2 = ({
             setShowSubmissions(true);
           }}
         />
-      )}
+        )}
+      </ScrollView>
 
       <Modal visible={showCreateModal} transparent animationType="fade">
         <View style={styles.modalOverlayCenter}>
-          <View
-            style={[
-              styles.modalCardElevated,
-              { width: isMobile ? Math.min(width - 28, 370) : 440 },
-            ]}
-          >
+          <View style={[styles.modalCardElevated, { width: isMobile ? Math.min(width - 28, 370) : 900, maxHeight: height * 0.9 }]}>
             <View style={styles.createHeaderRow}>
               <View style={styles.modalHeaderTextWrap}>
-                <Text style={styles.createTitle}>
-                  Create {activeTab === 'Materials' ? 'Material' : 'Assignment'}
-                </Text>
+                <Text style={styles.createTitle}>Create {activeTab === 'Materials' ? 'Material' : 'Assignment'}</Text>
                 <Text style={styles.modalSubtitle}>
                   {activeTab === 'Materials'
                     ? 'Add a new class material with optional file attachment.'
-                    : 'Create a new assignment and attach a file if needed.'}
+                    : 'Create a new assignment with professional responsive layout, aligned date and time, related materials, and optional file upload.'}
                 </Text>
               </View>
 
@@ -1120,419 +1185,215 @@ const TeacherCourseDetail2 = ({
               </TouchableOpacity>
             </View>
 
-            <ScrollView showsVerticalScrollIndicator={false}>
-              <Text style={styles.sectionLabel}>
-                {activeTab === 'Materials' ? 'Title' : 'Header'}
-              </Text>
-              <TextInput
-                style={styles.inputBox}
-                placeholder={
-                  activeTab === 'Materials'
-                    ? 'Material Title'
-                    : 'Enter Header'
-                }
-                placeholderTextColor="#999"
-                value={formTitle}
-                onChangeText={setFormTitle}
-              />
-
-              {activeTab === 'Materials' ? (
-                <>
-                  <Text style={styles.sectionLabel}>Week</Text>
-                  <TextInput
-                    style={styles.inputBox}
-                    placeholder="Week (example: Week 1)"
-                    placeholderTextColor="#999"
-                    value={formWeek}
-                    onChangeText={setFormWeek}
-                  />
-
-                  <Text style={styles.sectionLabel}>Description</Text>
-                  <TextInput
-                    style={styles.textAreaBox}
-                    placeholder="Optional description"
-                    placeholderTextColor="#999"
-                    value={formDesc}
-                    onChangeText={setFormDesc}
-                    multiline
-                  />
-
-                  <Text style={styles.sectionLabel}>Attachment</Text>
-                  <TouchableOpacity
-                    style={styles.primaryButtonWide}
-                    onPress={handlePickFile}
-                  >
-                    <Ionicons name="cloud-upload-outline" size={20} color="#FFF" />
-                    <Text style={styles.uploadBtnText}>Upload File</Text>
-                  </TouchableOpacity>
-
-                  {pickedFile?.name ? (
-                    <View style={styles.filePreviewBox}>
-                      <Ionicons
-                        name="document-text-outline"
-                        size={22}
-                        color="#D32F2F"
-                      />
-                      <Text style={styles.filePreviewText}>
-                        {pickedFile.name}
-                      </Text>
-                    </View>
-                  ) : null}
-                </>
-              ) : (
-                <>
-                  <Text style={styles.sectionLabel}>Instruction</Text>
-                  <TextInput
-                    style={styles.textAreaBox}
-                    placeholder="Enter Instruction"
-                    placeholderTextColor="#999"
-                    value={formDesc}
-                    onChangeText={setFormDesc}
-                    multiline
-                  />
-
-                  <Text style={styles.sectionLabel}>Total Score</Text>
-                  <TextInput
-                    style={styles.inputBox}
-                    placeholder="Total Score"
-                    placeholderTextColor="#999"
-                    keyboardType="numeric"
-                    value={formPoints}
-                    onChangeText={setFormPoints}
-                  />
-
-                  <Text style={styles.sectionLabel}>Points On Time</Text>
-                  <TextInput
-                    style={styles.inputBox}
-                    placeholder="Points On Time"
-                    placeholderTextColor="#999"
-                    keyboardType="numeric"
-                    value={formWeek}
-                    onChangeText={setFormWeek}
-                  />
-
-                  <Text style={styles.sectionLabel}>Due Date</Text>
-                  <TextInput
-                    style={styles.inputBox}
-                    placeholder="Set Due Date"
-                    placeholderTextColor="#999"
-                    value={formDue}
-                    onChangeText={setFormDue}
-                  />
-
-                  <View style={styles.checkboxRow}>
-                    <Text style={styles.checkboxLabel}>
-                      Disable repository after due
-                    </Text>
-                    <TouchableOpacity
-                      style={[
-                        styles.checkboxBox,
-                        assignmentDisableRepositoryAfterDue &&
-                          styles.checkboxBoxChecked,
-                      ]}
-                      onPress={() =>
-                        setAssignmentDisableRepositoryAfterDue(
-                          !assignmentDisableRepositoryAfterDue
-                        )
-                      }
-                    >
-                      {assignmentDisableRepositoryAfterDue ? (
-                        <Ionicons name="checkmark" size={16} color="#FFF" />
-                      ) : null}
-                    </TouchableOpacity>
-                  </View>
-
-                  <Text style={styles.sectionLabel}>Attachment</Text>
-                  <TouchableOpacity
-                    style={styles.primaryButtonWide}
-                    onPress={handlePickAssignmentFile}
-                  >
-                    <Ionicons name="cloud-upload-outline" size={20} color="#FFF" />
-                    <Text style={styles.uploadBtnText}>Upload File</Text>
-                  </TouchableOpacity>
-
-                  {pickedAssignmentFile?.name ? (
-                    <View style={styles.filePreviewBox}>
-                      <Ionicons
-                        name="document-text-outline"
-                        size={22}
-                        color="#D32F2F"
-                      />
-                      <Text style={styles.filePreviewText}>
-                        {pickedAssignmentFile.name}
-                      </Text>
-                    </View>
-                  ) : null}
-                </>
-              )}
-
-              <View style={styles.buttonRow}>
-                <TouchableOpacity
-                  style={styles.secondaryButton}
-                  onPress={() => {
-                    setShowCreateModal(false);
-                    resetCreateForm();
-                  }}
-                >
-                  <Text style={styles.secondaryButtonText}>Cancel</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={styles.primaryButton}
-                  onPress={handleCreate}
-                >
-                  <Text style={styles.primaryButtonText}>Create</Text>
-                </TouchableOpacity>
-              </View>
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={styles.modalScrollContent}
+            >
+              {renderCreateModalBody()}
             </ScrollView>
+
+            <View style={[styles.floatingSaveWrap, isMobile && styles.floatingSaveWrapMobile]}>
+              <TouchableOpacity
+                style={[
+                  styles.floatingSaveButton,
+                  activeTab === 'Assignments' && Object.keys(errors).length > 0 ? styles.floatingSaveButtonWarn : null,
+                ]}
+                onPress={handleCreate}
+              >
+                <Ionicons name="save-outline" size={18} color="#FFF" />
+                <Text style={styles.floatingSaveButtonText}>Save</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </Modal>
 
-      <Modal visible={showMaterialModal} transparent animationType="fade">
-        <TouchableWithoutFeedback onPress={() => setShowMaterialModal(false)}>
-          <View style={styles.modalOverlay}>
-            <TouchableWithoutFeedback>
-              <View
-                style={[
-                  styles.materialDropdownModal,
-                  {
-                    top: isSmallPhone ? 70 : 80,
-                    right: isSmallPhone ? 14 : 20,
-                    width: isSmallPhone ? Math.min(width - 28, 340) : 360,
-                  },
-                ]}
-              >
-                <View style={styles.joinDropdownHeader}>
-                  <View style={styles.joinDropdownIconWrap}>
-                    <Ionicons
-                      name={getMaterialIconName(selectedMaterial?.fileType)}
-                      size={18}
-                      color="#D32F2F"
-                    />
-                  </View>
-
-                  <View style={styles.joinDropdownHeaderText}>
-                    <Text style={styles.joinDropdownTitle}>
-                      {selectedMaterial?.title || 'Material'}
-                    </Text>
-                    <Text style={styles.joinDropdownSubtitle}>
-                      View this uploaded material or edit it.
-                    </Text>
-                  </View>
-                </View>
-
-                <Text style={styles.inputLabel}>Week</Text>
-                <View style={styles.infoBox}>
-                  <Text style={styles.infoBoxText}>
-                    {selectedMaterial?.week || '-'}
-                  </Text>
-                </View>
-
-                <Text style={styles.inputLabel}>Posted</Text>
-                <View style={styles.infoBox}>
-                  <Text style={styles.infoBoxText}>
-                    {selectedMaterial?.posted || '-'}
-                  </Text>
-                </View>
-
-                <Text style={styles.inputLabel}>File Name</Text>
-                <View style={styles.infoBox}>
-                  <Text style={styles.infoBoxText}>
-                    {selectedMaterial?.fileName || 'No uploaded file'}
-                  </Text>
-                </View>
-
-                {!!selectedMaterial?.content && (
-                  <>
-                    <Text style={styles.inputLabel}>Description</Text>
-                    <View style={styles.infoBox}>
-                      <Text style={styles.infoBoxText}>
-                        {selectedMaterial.content}
-                      </Text>
-                    </View>
-                  </>
-                )}
-
-                <View style={styles.joinDropdownActions}>
-                  <TouchableOpacity
-                    style={styles.secondaryButtonCompact}
-                    onPress={() => openUpdateMaterialModal(selectedMaterial)}
-                  >
-                    <Text style={styles.secondaryButtonText}>Edit</Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={[
-                      styles.confirmButton,
-                      !selectedMaterial?.fileUri && styles.confirmButtonDisabled,
-                    ]}
-                    disabled={!selectedMaterial?.fileUri}
-                    onPress={() => handleOpenUploadedFile(selectedMaterial?.fileUri)}
-                  >
-                    <Text style={styles.confirmButtonText}>Open File</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            </TouchableWithoutFeedback>
-          </View>
-        </TouchableWithoutFeedback>
-      </Modal>
-
-      <Modal visible={showUpdateMaterialModal} transparent animationType="fade">
+      <Modal visible={showDateTimeModal} transparent animationType="fade" onRequestClose={() => setShowDateTimeModal(false)}>
         <View style={styles.modalOverlayCenter}>
-          <View
-            style={[
-              styles.modalCardElevated,
-              { width: isMobile ? Math.min(width - 28, 370) : 440 },
-            ]}
-          >
+          <View style={[styles.dateTimeCard, { width: isMobile ? Math.min(width - 28, 360) : 760 }]}>
             <View style={styles.createHeaderRow}>
               <View style={styles.modalHeaderTextWrap}>
-                <Text style={styles.createTitle}>Update Material</Text>
-                <Text style={styles.modalSubtitle}>
-                  Edit the material details or remove it from the class.
-                </Text>
+                <Text style={styles.createTitle}>Select Due Date & Time</Text>
+                <Text style={styles.modalSubtitle}>Works in web and mobile.</Text>
               </View>
-
-              <TouchableOpacity
-                onPress={() => {
-                  setShowUpdateMaterialModal(false);
-                  setSelectedMaterialId(null);
-                  resetCreateForm();
-                }}
-              >
+              <TouchableOpacity onPress={() => setShowDateTimeModal(false)}>
                 <Ionicons name="close" size={24} color="#111" />
               </TouchableOpacity>
             </View>
 
-            <ScrollView showsVerticalScrollIndicator={false}>
-              <Text style={styles.sectionLabel}>Title</Text>
-              <TextInput
-                style={styles.inputBox}
-                placeholder="Material Title"
-                placeholderTextColor="#999"
-                value={formTitle}
-                onChangeText={setFormTitle}
-              />
+            <View style={[styles.dateTimeLayout, !isMobile && styles.dateTimeLayoutDesktop]}>
+              <View style={[styles.calendarPanel, !isMobile && styles.calendarPanelDesktop]}>
+                <View style={styles.calendarHeader}>
+                  <TouchableOpacity
+                    style={styles.calendarNavBtn}
+                    onPress={() =>
+                      setVisibleCalendarMonth(
+                        new Date(visibleCalendarMonth.getFullYear(), visibleCalendarMonth.getMonth() - 1, 1)
+                      )
+                    }
+                  >
+                    <Ionicons name="chevron-back" size={18} color="#D32F2F" />
+                  </TouchableOpacity>
 
-              <Text style={styles.sectionLabel}>Week</Text>
-              <TextInput
-                style={styles.inputBox}
-                placeholder="Week (example: Week 1)"
-                placeholderTextColor="#999"
-                value={formWeek}
-                onChangeText={setFormWeek}
-              />
+                  <Text style={styles.calendarMonthLabel}>{monthLabel(visibleCalendarMonth)}</Text>
 
-              <Text style={styles.sectionLabel}>Description</Text>
-              <TextInput
-                style={styles.textAreaBox}
-                placeholder="Optional description"
-                placeholderTextColor="#999"
-                value={formDesc}
-                onChangeText={setFormDesc}
-                multiline
-              />
+                  <TouchableOpacity
+                    style={styles.calendarNavBtn}
+                    onPress={() =>
+                      setVisibleCalendarMonth(
+                        new Date(visibleCalendarMonth.getFullYear(), visibleCalendarMonth.getMonth() + 1, 1)
+                      )
+                    }
+                  >
+                    <Ionicons name="chevron-forward" size={18} color="#D32F2F" />
+                  </TouchableOpacity>
+                </View>
 
-              <View style={styles.buttonRow}>
-                <TouchableOpacity
-                  style={styles.secondaryButton}
-                  onPress={confirmDeleteMaterial}
-                >
-                  <Text style={styles.secondaryButtonText}>Delete</Text>
-                </TouchableOpacity>
+                <View style={styles.weekRow}>
+                  {WEEKDAY_LABELS.map((label) => (
+                    <Text key={label} style={styles.weekLabel}>{label}</Text>
+                  ))}
+                </View>
 
-                <TouchableOpacity
-                  style={styles.primaryButton}
-                  onPress={handleUpdateMaterial}
-                >
-                  <Text style={styles.primaryButtonText}>Update</Text>
-                </TouchableOpacity>
+                <View style={styles.dayGrid}>
+                  {calendarDays.map((item) => {
+                    const active = isSameDate(item.date, draftDueDateTime);
+                    const disabled = isPastDay(item.date);
+
+                    return (
+                      <TouchableOpacity
+                        key={item.key}
+                        style={[
+                          styles.dayCell,
+                          !item.inCurrentMonth && styles.dayCellOutside,
+                          active && styles.dayCellActive,
+                          disabled && styles.dayCellDisabled,
+                        ]}
+                        onPress={() => {
+                          if (disabled) return;
+                          selectDraftDate(item.date);
+                        }}
+                        disabled={disabled}
+                        activeOpacity={disabled ? 1 : 0.85}
+                      >
+                        <Text
+                          style={[
+                            styles.dayText,
+                            !item.inCurrentMonth && styles.dayTextOutside,
+                            active && styles.dayTextActive,
+                            disabled && styles.dayTextDisabled,
+                          ]}
+                        >
+                          {item.date.getDate()}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
               </View>
-            </ScrollView>
-          </View>
-        </View>
-      </Modal>
 
-      <Modal
-        visible={showDeleteMaterialConfirmModal}
-        transparent
-        animationType="fade"
-      >
-        <View style={styles.modalOverlayCenter}>
-          <View
-            style={[
-              styles.modalCardElevated,
-              {
-                width: isMobile ? Math.min(width - 28, 340) : 360,
-              },
-            ]}
-          >
-            <View style={styles.confirmIconWrap}>
-              <Ionicons
-                name="trash-outline"
-                size={34}
-                color="#D32F2F"
-              />
+              <View style={[styles.timePanel, !isMobile && styles.timePanelDesktop]}>
+                <View style={styles.timePickerWrapRow}>
+                  <View style={styles.timeColumn}>
+                    <Text style={styles.timeLabel}>Hour</Text>
+                    <ScrollView style={styles.timeList} nestedScrollEnabled>
+                      {Array.from({ length: 24 }, (_, hour) => (
+                        <TouchableOpacity
+                          key={`hour-${hour}`}
+                          style={[
+                            styles.timeOption,
+                            draftDueDateTime.getHours() === hour && styles.timeOptionActive,
+                          ]}
+                          onPress={() => updateDraftTime('hours', hour)}
+                        >
+                          <Text
+                            style={[
+                              styles.timeOptionText,
+                              draftDueDateTime.getHours() === hour && styles.timeOptionTextActive,
+                            ]}
+                          >
+                            {pad(hour)}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </ScrollView>
+                  </View>
+
+                  <View style={styles.timeColumn}>
+                    <Text style={styles.timeLabel}>Minute</Text>
+                    <ScrollView style={styles.timeList} nestedScrollEnabled>
+                      {Array.from({ length: 12 }, (_, i) => i * 5).map((minute) => (
+                        <TouchableOpacity
+                          key={`minute-${minute}`}
+                          style={[
+                            styles.timeOption,
+                            draftDueDateTime.getMinutes() === minute && styles.timeOptionActive,
+                          ]}
+                          onPress={() => updateDraftTime('minutes', minute)}
+                        >
+                          <Text
+                            style={[
+                              styles.timeOptionText,
+                              draftDueDateTime.getMinutes() === minute && styles.timeOptionTextActive,
+                            ]}
+                          >
+                            {pad(minute)}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </ScrollView>
+                  </View>
+                </View>
+
+                <View style={styles.datePreviewBox}>
+                  <Text style={styles.datePreviewLabel}>Selected</Text>
+                  <Text style={styles.datePreviewValue}>{formatDueDateTime(draftDueDateTime)}</Text>
+                </View>
+              </View>
             </View>
-
-            <Text style={styles.confirmTitle}>Delete Material?</Text>
-            <Text style={styles.confirmMessage}>
-              This will permanently remove the material and its uploaded file
-              from the class.
-            </Text>
 
             <View style={styles.buttonRow}>
-              <TouchableOpacity
-                style={styles.secondaryButton}
-                onPress={() => setShowDeleteMaterialConfirmModal(false)}
-              >
+              <TouchableOpacity style={styles.secondaryButton} onPress={() => setShowDateTimeModal(false)}>
                 <Text style={styles.secondaryButtonText}>Cancel</Text>
               </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.dangerButtonFilled}
-                onPress={handleDeleteMaterial}
-              >
-                <Text style={styles.dangerButtonFilledText}>Delete</Text>
+              <TouchableOpacity style={styles.primaryButton} onPress={applyDraftDateTime}>
+                <Text style={styles.primaryButtonText}>Apply</Text>
               </TouchableOpacity>
             </View>
           </View>
         </View>
       </Modal>
 
-      <Modal visible={resultModalVisible} transparent animationType="fade">
+      <Modal visible={showMaterialModal} transparent animationType="fade" onRequestClose={() => setShowMaterialModal(false)}>
+        <Pressable style={styles.modalOverlayCenter} onPress={() => setShowMaterialModal(false)}>
+          <Pressable style={[styles.modalCardElevated, { width: isMobile ? Math.min(width - 28, 360) : 430 }]}>
+            <Text style={styles.createTitle}>{selectedMaterial?.title || 'Material'}</Text>
+            <Text style={styles.modalSubtitle}>{selectedMaterial?.week || 'No week'} • {selectedMaterial?.posted || 'No date'}</Text>
+
+            {!!selectedMaterial?.content && <Text style={styles.previewContent}>{selectedMaterial.content}</Text>}
+
+            {!!selectedMaterial?.fileName && (
+              <TouchableOpacity
+                style={styles.openFileButton}
+                onPress={() => handleOpenUploadedFile(selectedMaterial?.fileUri)}
+              >
+                <Ionicons name="document-attach-outline" size={18} color="#FFF" />
+                <Text style={styles.openFileButtonText}>Open {selectedMaterial.fileName}</Text>
+              </TouchableOpacity>
+            )}
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      <Modal visible={resultModalVisible} transparent animationType="fade" onRequestClose={() => setResultModalVisible(false)}>
         <View style={styles.modalOverlayCenter}>
-          <View
-            style={[
-              styles.modalCardElevated,
-              {
-                width: isMobile ? Math.min(width - 28, 340) : 360,
-                alignItems: 'center',
-              },
-            ]}
-          >
-            <Ionicons
-              name={
-                resultModalType === 'success'
-                  ? 'checkmark-circle'
-                  : 'close-circle'
-              }
-              size={52}
-              color={resultModalType === 'success' ? '#16A34A' : '#D32F2F'}
-              style={{ marginBottom: 12 }}
-            />
-
-            <Text style={styles.confirmTitle}>{resultModalTitle}</Text>
-
-            <Text style={styles.confirmMessage}>{resultModalMessage}</Text>
-
-            <TouchableOpacity
-              style={[styles.primaryButton, { width: '100%', marginTop: 6 }]}
-              onPress={() => setResultModalVisible(false)}
-            >
-              <Text style={styles.primaryButtonText}>OK</Text>
+          <View style={[styles.modalCardElevated, { width: isMobile ? Math.min(width - 28, 330) : 360 }]}>
+            <Text style={[styles.createTitle, { color: resultModalType === 'success' ? '#2E7D32' : '#D32F2F' }]}>
+              {resultModalTitle}
+            </Text>
+            <Text style={styles.previewContent}>{resultModalMessage}</Text>
+            <TouchableOpacity style={styles.primaryButtonWide} onPress={() => setResultModalVisible(false)}>
+              <Text style={styles.uploadBtnText}>OK</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -1544,445 +1405,267 @@ const TeacherCourseDetail2 = ({
 export default TeacherCourseDetail2;
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#F5F5F5',
-  },
-
+  container: { flex: 1, backgroundColor: '#ffffff' },
+  screenScroll: { flex: 1, backgroundColor: '#ffffff' },
+  screenScrollContent: { paddingBottom: 40 },
   courseHeader: {
-    
     backgroundColor: '#D32F2F',
-  },
-
-  headerTopRow: {
-    
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: hp('0.5'),
-  },
-
-  backButton: {
-    paddingVertical: hp('0.5'),
-  },
-
-  headerInfo: {
-    flex: 1,
-  },
-
-  courseCode: {
-    fontWeight: '600',
-    marginTop: 2,
-  },
-
-  courseName: {
-    color: '#FFF',
-    fontWeight: '700',
-    marginBottom: hp('1'),
-  },
-
-  instructor: {
-    color: 'rgba(255,255,255,0.9)',
-    marginBottom: hp('0.6'),
-    fontWeight: '500',
-  },
-
-  metaText: {
-    color: 'rgba(255,255,255,0.88)',
-    marginBottom: hp('0.6'),
-    fontWeight: '500',
-  },
-
-  description: {
-    color: 'rgba(255,255,255,0.8)',
-    lineHeight: 20,
-    marginTop: hp('0.3'),
-  },
-
-  classCodeText: {
-    color: 'rgba(255,255,255,0.92)',
-    fontSize: 13,
-    fontWeight: '600',
-  },
-
-  classCodeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 6,
-  },
-
-  copyBtn: {
-    marginLeft: 8,
-    padding: 4,
-    borderRadius: 6,
-  },
-
-  tabContainer: {
-    flexDirection: 'row',
-    backgroundColor: '#FFF',
-    borderBottomWidth: 1,
-    borderBottomColor: '#E0E0E0',
-  },
-
-  tab: {
-    flex: 1,
-    paddingHorizontal: wp('2'),
-    alignItems: 'center',
-    borderBottomWidth: 3,
-    borderBottomColor: 'transparent',
-  },
-
-  tabActive: {
-    borderBottomColor: '#D32F2F',
-  },
-
-  tabContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-  },
-
-  tabText: {
-    fontWeight: '600',
-    color: '#999',
-  },
-
-  tabTextActive: {
-    color: '#D32F2F',
-  },
-
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(15, 23, 42, 0.18)',
-  },
-
-  modalOverlayCenter: {
-    flex: 1,
-    backgroundColor: 'rgba(15,23,42,0.18)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-  },
-
-  modalCardElevated: {
-    backgroundColor: '#FFF',
-    borderRadius: 24,
-    padding: 22,
-    maxHeight: '88%',
-    borderWidth: 1,
-    borderColor: '#F1F1F1',
     shadowColor: '#000',
     shadowOpacity: 0.12,
-    shadowOffset: { width: 0, height: 10 },
-    shadowRadius: 22,
-    elevation: 10,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 6,
   },
-
-  materialDropdownModal: {
-    position: 'absolute',
-    backgroundColor: '#FFFFFF',
-    borderRadius: 20,
-    padding: 18,
-    borderWidth: 1,
-    borderColor: '#ECECEC',
-    shadowColor: '#000',
-    shadowOpacity: 0.14,
-    shadowRadius: 18,
-    elevation: 10,
-  },
-
-  createHeaderRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 15,
-  },
-
-  modalHeaderTextWrap: {
-    flex: 1,
-    marginRight: 12,
-  },
-
-  createTitle: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: '#111',
-  },
-
-  modalSubtitle: {
-    fontSize: 13,
-    color: '#777',
-    marginTop: 4,
-    lineHeight: 20,
-  },
-
-  joinDropdownHeader: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 12,
-    marginBottom: 18,
-  },
-
-  joinDropdownHeaderText: {
-    flex: 1,
-  },
-
-  joinDropdownIconWrap: {
+  backButton: {
     width: 38,
     height: 38,
-    borderRadius: 12,
-    backgroundColor: '#FFF1F1',
+    borderRadius: 19,
+    backgroundColor: 'rgba(255,255,255,0.12)',
     alignItems: 'center',
     justifyContent: 'center',
+    marginBottom: 14,
+    alignSelf: 'flex-start',
   },
-
-  joinDropdownTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#111827',
+  courseName: { color: '#FFF', fontWeight: '900', marginBottom: 14, letterSpacing: 0.2 },
+  instructor: { color: 'rgba(255,255,255,0.92)', marginBottom: 6 },
+  metaText: { color: 'rgba(255,255,255,0.88)', marginBottom: 4 },
+  headerInfoCard: {
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.18)',
+    borderRadius: 18,
+    padding: 14,
+  },
+  headerInfoRow: {
+    marginBottom: 12,
+  },
+  headerInfoLabel: {
+    color: 'rgba(255,255,255,0.72)',
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.8,
     marginBottom: 3,
   },
-
-  joinDropdownSubtitle: {
-    fontSize: 13,
-    lineHeight: 18,
-    color: '#6B7280',
-  },
-
-  sectionLabel: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#444',
-    marginBottom: 8,
-    marginTop: 4,
-  },
-
-  inputLabel: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#374151',
-    marginBottom: 8,
-  },
-
-  inputBox: {
-    borderWidth: 1,
-    borderColor: '#DDD',
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    height: 48,
-    marginBottom: 12,
+  headerInfoValue: {
+    color: '#FFF',
     fontSize: 14,
-    color: '#333',
-    backgroundColor: '#FFF',
+    fontWeight: '800',
   },
-
-  textAreaBox: {
-    borderWidth: 1,
-    borderColor: '#DDD',
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingTop: 14,
-    paddingBottom: 14,
-    marginBottom: 12,
-    fontSize: 14,
-    color: '#333',
-    backgroundColor: '#FFF',
-    minHeight: 96,
-    textAlignVertical: 'top',
+  headerDetailsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
   },
-
-  infoBox: {
-    minHeight: 48,
-    borderWidth: 1,
-    borderColor: '#DADDE2',
+  headerDetailsGridDesktop: {
+    flexWrap: 'nowrap',
+    alignItems: 'stretch',
+  },
+  headerDetailItemDesktop: {
+    flexBasis: 0,
+    flexGrow: 1,
+    minWidth: 0,
+  },
+  academicInfoPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#FFF',
     borderRadius: 14,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    backgroundColor: '#FAFAFA',
-    marginBottom: 16,
-    justifyContent: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+    minWidth: 132,
+    flexGrow: 1,
+    flexBasis: '100%',
   },
-
-  infoBoxText: {
-    fontSize: 14,
-    color: '#111827',
-    lineHeight: 20,
+  academicInfoTextWrap: { flex: 1 },
+  academicInfoLabel: {
+    color: '#8A8A8A',
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
   },
+  academicInfoValue: {
+    color: '#202124',
+    fontSize: 12,
+    fontWeight: '800',
+    marginTop: 2,
+  },
+  classCodeBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+    gap: 8,
+    minWidth: 132,
+    flexGrow: 1,
+    flexBasis: '100%',
+  },
+  classCodeTextWrap: { flex: 1 },
+  classCodeLabel: {
+    color: '#8A8A8A',
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.6,
+  },
+  classCodeValue: {
+    color: '#202124',
+    fontSize: 13,
+    fontWeight: '900',
+    marginTop: 2,
+  },
+  codeRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start', marginTop: 4 },
+  copyCodeButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: '#FFF4F4',
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  copyCodeText: { color: '#D32F2F', fontWeight: '900', fontSize: 12 },
 
-  primaryButtonWide: {
+  tabContainer: { flexDirection: 'row', backgroundColor: '#FFF', borderBottomWidth: 1, borderBottomColor: '#E5E5E5' },
+  tab: { flex: 1, alignItems: 'center', paddingVertical: 14, borderBottomWidth: 3, borderBottomColor: 'transparent' },
+  tabActive: { borderBottomColor: '#D32F2F' },
+  tabText: { color: '#888', fontWeight: '700' },
+  tabTextActive: { color: '#D32F2F' },
+
+  modalOverlayCenter: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.35)', padding: 12 },
+  modalCardElevated: { backgroundColor: '#FFF', borderRadius: 18, padding: 18, maxHeight: '90%' },
+  dateTimeCard: { backgroundColor: '#FFF', borderRadius: 18, padding: 18, maxHeight: '92%' },
+  modalScrollContent: { paddingBottom: 100 },
+
+  createHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14 },
+  modalHeaderTextWrap: { flex: 1, paddingRight: 12 },
+  createTitle: { fontSize: 18, fontWeight: '800', color: '#111' },
+  modalSubtitle: { fontSize: 13, color: '#666', lineHeight: 19, marginTop: 4 },
+
+  formGrid: { gap: 16 },
+  formGridDesktop: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-start', justifyContent: 'space-between' },
+  formColumnLeft: {},
+  formColumnLeftDesktop: { width: '58%' },
+  formColumnRight: {},
+  formColumnRightDesktop: { width: '40%' },
+  fullWidthSection: { width: '100%' },
+
+  sectionLabel: { fontSize: 13, fontWeight: '700', color: '#222', marginBottom: 8, marginTop: 10 },
+  helperText: { fontSize: 12, color: '#777', marginBottom: 8, lineHeight: 18 },
+  emptyMiniText: { fontSize: 12, color: '#999', marginBottom: 6 },
+  errorText: { color: '#D32F2F', fontSize: 12, fontWeight: '600', marginTop: -2, marginBottom: 6 },
+  errorBorder: { borderColor: '#D32F2F', borderWidth: 1.5 },
+  errorContainer: { borderWidth: 1.5, borderColor: '#D32F2F', borderRadius: 14, padding: 8 },
+
+  inputBox: { borderWidth: 1, borderColor: '#DDD', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 12, backgroundColor: '#FFF', marginBottom: 8, fontSize: 14, color: '#111' },
+  textAreaBox: { borderWidth: 1, borderColor: '#DDD', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 12, backgroundColor: '#FFF', marginBottom: 8, minHeight: 120, textAlignVertical: 'top', fontSize: 14, color: '#111' },
+
+  scoreStackDesktop: { gap: 2 },
+  scoreFieldFull: { width: '100%' },
+
+  dateButton: { borderWidth: 1, borderColor: '#DDD', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 13, backgroundColor: '#FFF', flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
+  dateButtonText: { color: '#222', fontWeight: '600', flex: 1 },
+  sectionBlock: { marginTop: 0 },
+
+  materialSelectorWrap: { gap: 8, marginTop: 4 },
+  materialChip: { flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderColor: '#F0B9B9', backgroundColor: '#FFF5F5', paddingHorizontal: 12, paddingVertical: 10, borderRadius: 12 },
+  materialChipActive: { backgroundColor: '#D32F2F', borderColor: '#D32F2F' },
+  materialChipText: { color: '#D32F2F', fontWeight: '700', flex: 1 },
+  materialChipTextActive: { color: '#FFF' },
+
+  primaryButtonWide: { backgroundColor: '#D32F2F', minHeight: 48, borderRadius: 12, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 14, marginTop: 12, flexDirection: 'row', gap: 8, width: '100%' },
+  uploadBtnText: { color: '#FFF', fontWeight: '800', fontSize: 13 },
+  filePreviewBox: { marginTop: 10, borderWidth: 1, borderColor: '#F1D0D0', backgroundColor: '#FFF8F8', padding: 12, borderRadius: 12, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  filePreviewText: { flex: 1, color: '#333', fontWeight: '600' },
+
+  checkboxRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start', marginTop: 16, marginBottom: 8, gap: 12 },
+  checkboxLabel: { color: '#333', fontWeight: '600' },
+  checkboxBox: { width: 26, height: 26, borderRadius: 8, borderWidth: 1, borderColor: '#D32F2F', alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFF' },
+  checkboxBoxChecked: { backgroundColor: '#D32F2F' },
+
+  buttonRow: { flexDirection: 'row', gap: 10, marginTop: 16 },
+  primaryButton: { flex: 1, backgroundColor: '#D32F2F', minHeight: 46, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  primaryButtonText: { color: '#FFF', fontWeight: '800' },
+  secondaryButton: { flex: 1, borderWidth: 1, borderColor: '#D32F2F', minHeight: 46, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFF' },
+  secondaryButtonText: { color: '#D32F2F', fontWeight: '800' },
+
+  floatingSaveWrap: {
+    position: 'absolute',
+    right: 18,
+    left: 18,
+    bottom: 18,
+  },
+  floatingSaveWrapMobile: {
+    right: 18,
+    left: 18,
+    bottom: 18,
+  },
+  floatingSaveButton: {
     backgroundColor: '#D32F2F',
     borderRadius: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
+    minHeight: 48,
+    width: '100%',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.18,
+    shadowRadius: 8,
+    elevation: 8,
   },
-
-  uploadBtnText: {
+  floatingSaveButtonWarn: {
+    backgroundColor: '#C62828',
+  },
+  floatingSaveButtonText: {
     color: '#FFF',
-    fontWeight: '700',
-    fontSize: 14,
-  },
-
-  filePreviewBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#F9F9F9',
-    borderWidth: 1,
-    borderColor: '#EEE',
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 12,
-  },
-
-  filePreviewText: {
-    marginLeft: 10,
-    color: '#333',
-    flex: 1,
-    fontSize: 14,
-  },
-
-  checkboxRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
-    gap: 10,
-  },
-
-  checkboxLabel: {
-    fontSize: 14,
-    color: '#333',
-    flex: 1,
-  },
-
-  checkboxBox: {
-    width: 24,
-    height: 24,
-    borderWidth: 1.5,
-    borderColor: '#D32F2F',
-    borderRadius: 6,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#FFF',
-  },
-
-  checkboxBoxChecked: {
-    backgroundColor: '#D32F2F',
-  },
-
-  joinDropdownActions: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    gap: 10,
-  },
-
-  buttonRow: {
-    flexDirection: 'row',
-    gap: 10,
-    marginTop: 8,
-  },
-
-  secondaryButton: {
-    flex: 1,
-    borderWidth: 1.5,
-    borderColor: '#D32F2F',
-    borderRadius: 12,
-    paddingVertical: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#FFF',
-  },
-
-  secondaryButtonCompact: {
-    paddingHorizontal: 14,
-    paddingVertical: 11,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#D32F2F',
-    backgroundColor: '#FFF',
-  },
-
-  secondaryButtonText: {
-    color: '#D32F2F',
-    fontWeight: '700',
-    fontSize: 14,
-  },
-
-  primaryButton: {
-    flex: 1,
-    backgroundColor: '#D32F2F',
-    borderRadius: 12,
-    paddingVertical: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
-  primaryButtonText: {
-    color: '#FFF',
-    fontWeight: '700',
-    fontSize: 14,
-  },
-
-  confirmButton: {
-    paddingHorizontal: 16,
-    paddingVertical: 11,
-    borderRadius: 12,
-    backgroundColor: '#D32F2F',
-  },
-
-  confirmButtonDisabled: {
-    backgroundColor: '#F0A7A7',
-  },
-
-  confirmButtonText: {
-    color: '#FFFFFF',
-    fontWeight: '700',
-    fontSize: 13,
-  },
-
-  dangerButtonFilled: {
-    flex: 1,
-    backgroundColor: '#D32F2F',
-    borderRadius: 12,
-    paddingVertical: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
-  dangerButtonFilledText: {
-    color: '#FFF',
-    fontWeight: '700',
-    fontSize: 14,
-  },
-
-  confirmIconWrap: {
-    width: 68,
-    height: 68,
-    borderRadius: 34,
-    backgroundColor: '#FDECEC',
-    alignItems: 'center',
-    justifyContent: 'center',
-    alignSelf: 'center',
-    marginBottom: 14,
-  },
-
-  confirmTitle: {
-    fontSize: 22,
     fontWeight: '800',
-    color: '#111',
-    textAlign: 'center',
-    marginBottom: 8,
+    fontSize: 14,
+  },
+  modalBottomActions: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 14,
   },
 
-  confirmMessage: {
-    fontSize: 14,
-    color: '#666',
-    textAlign: 'center',
-    lineHeight: 22,
-    marginBottom: 20,
-  },
+  previewContent: { fontSize: 14, color: '#444', lineHeight: 22, marginTop: 10 },
+  openFileButton: { marginTop: 16, backgroundColor: '#D32F2F', borderRadius: 12, paddingVertical: 12, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  openFileButtonText: { color: '#FFF', fontWeight: '800' },
+
+  dateTimeLayout: { gap: 16 },
+  dateTimeLayoutDesktop: { flexDirection: 'row', alignItems: 'flex-start' },
+  calendarPanel: {},
+  calendarPanelDesktop: { flex: 1.05 },
+  timePanel: {},
+  timePanelDesktop: { flex: 0.95 },
+
+  calendarHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
+  calendarNavBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#FFF1F1', alignItems: 'center', justifyContent: 'center' },
+  calendarMonthLabel: { fontSize: 16, fontWeight: '800', color: '#111' },
+  weekRow: { flexDirection: 'row', marginBottom: 8 },
+  weekLabel: { flex: 1, textAlign: 'center', fontSize: 12, fontWeight: '700', color: '#777' },
+  dayGrid: { flexDirection: 'row', flexWrap: 'wrap', marginBottom: 4 },
+  dayCell: { width: '14.2857%', aspectRatio: 1, alignItems: 'center', justifyContent: 'center', borderRadius: 12, marginBottom: 6 },
+  dayCellOutside: { opacity: 0.35 },
+  dayCellActive: { backgroundColor: '#D32F2F' },
+  dayCellDisabled: { backgroundColor: '#F5F5F5', opacity: 0.45 },
+  dayText: { color: '#222', fontWeight: '600' },
+  dayTextOutside: { color: '#888' },
+  dayTextActive: { color: '#FFF', fontWeight: '800' },
+  dayTextDisabled: { color: '#B0B0B0' },
+
+  timePickerWrapRow: { flexDirection: 'row', gap: 12 },
+  timeColumn: { flex: 1 },
+  timeLabel: { fontSize: 13, fontWeight: '700', color: '#222', marginBottom: 8 },
+  timeList: { maxHeight: 260, borderWidth: 1, borderColor: '#E5E5E5', borderRadius: 12, backgroundColor: '#FAFAFA' },
+  timeOption: { paddingVertical: 10, alignItems: 'center', justifyContent: 'center' },
+  timeOptionActive: { backgroundColor: '#D32F2F' },
+  timeOptionText: { color: '#222', fontWeight: '600' },
+  timeOptionTextActive: { color: '#FFF', fontWeight: '800' },
+  datePreviewBox: { marginTop: 14, borderWidth: 1, borderColor: '#F1D0D0', backgroundColor: '#FFF8F8', borderRadius: 12, padding: 12 },
+  datePreviewLabel: { fontSize: 12, fontWeight: '700', color: '#777', marginBottom: 4 },
+  datePreviewValue: { fontSize: 14, fontWeight: '800', color: '#D32F2F' },
 });

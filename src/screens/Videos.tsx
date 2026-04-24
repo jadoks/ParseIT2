@@ -1,5 +1,6 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  ActivityIndicator,
   Image,
   Platform,
   ScrollView,
@@ -13,13 +14,16 @@ import {
 import { WebView } from 'react-native-webview';
 
 interface VideoItem {
-  id: number;
+  id: string;
   title: string;
   description: string;
-  url: string;
+  embedUrl: string;
+  watchUrl: string;
   channel: string;
   views: string;
   uploadedAt: string;
+  publishedAt?: string | null;
+  thumbnail: string;
 }
 
 interface VideoComment {
@@ -29,36 +33,35 @@ interface VideoComment {
   commentedAt: string;
 }
 
+interface VideosProps {
+  onVideoActiveChange?: (isActive: boolean) => void;
+  currentUserName?: string;
+  currentUserAvatar?: any;
+  currentUserId: string;
+  currentUserRole?: 'student' | 'teacher' | 'admin';
+  apiBaseUrl: string;
+  searchQuery?: string;
+}
+
 const DEFAULT_USER_AVATAR = require('../../assets/images/pogi.jpg');
+const DEFAULT_TECH_QUERY = 'BSIT lessons programming technology computer science tutorial';
 
 const normalizeImageSource = (img: any) => {
   if (!img) return DEFAULT_USER_AVATAR;
-
-  if (typeof img === 'number') {
-    return img;
-  }
-
-  if (img?.uri) {
-    return { uri: img.uri };
-  }
-
+  if (typeof img === 'number') return img;
+  if (img?.uri) return { uri: img.uri };
   return DEFAULT_USER_AVATAR;
-};
-
-const getYoutubeThumbnail = (url: string) => {
-  const id = url.split('/embed/')[1];
-  return `https://img.youtube.com/vi/${id}/hqdefault.jpg`;
 };
 
 const Videos = ({
   onVideoActiveChange,
-  currentUserName = 'Jade Lisondra',
+  currentUserName = 'Student',
   currentUserAvatar = DEFAULT_USER_AVATAR,
-}: {
-  onVideoActiveChange?: (isActive: boolean) => void;
-  currentUserName?: string;
-  currentUserAvatar?: any;
-}) => {
+  currentUserId,
+  currentUserRole = 'student',
+  apiBaseUrl,
+  searchQuery = '',
+}: VideosProps) => {
   const { width } = useWindowDimensions();
 
   const isLargeScreen = width >= 1200;
@@ -76,75 +79,185 @@ const Videos = ({
   const heartPaddingHorizontal = isLargeScreen ? 14 : isTablet ? 14 : 18;
   const heartPaddingVertical = isLargeScreen ? 8 : isTablet ? 8 : 8;
 
-  const initial: VideoItem[] = [
-    {
-      id: 1,
-      title: 'Intro to Flip IT!',
-      description:
-        'Gameplay walkthrough for Flip IT! Learn the mechanics, strategies, and flow of the game.',
-      url: 'https://www.youtube.com/embed/dQw4w9WgXcQ',
-      channel: 'Flip IT Official',
-      views: '24K views',
-      uploadedAt: '2 weeks ago',
-    },
-    {
-      id: 2,
-      title: 'FruitMania Tips',
-      description: 'Solve puzzles faster with these FruitMania tips and tricks.',
-      url: 'https://www.youtube.com/embed/3JZ_D3ELwOQ',
-      channel: 'FruitMania Play',
-      views: '18K views',
-      uploadedAt: '5 days ago',
-    },
-    {
-      id: 3,
-      title: 'Quiz Masters Promo',
-      description: 'Try a sample quiz and discover how Quiz Masters works.',
-      url: 'https://www.youtube.com/embed/V-_O7nl0Ii0',
-      channel: 'Quiz Masters',
-      views: '41K views',
-      uploadedAt: '1 month ago',
-    },
-  ];
-
-  const [videos] = useState<VideoItem[]>(initial);
-  const [saved, setSaved] = useState<number[]>([]);
-  const [liked, setLiked] = useState<number[]>([]);
-  const [comments, setComments] = useState<Record<number, VideoComment[]>>({});
-  const [inputText, setInputText] = useState<Record<number, string>>({});
-  const [selected, setSelected] = useState<number | null>(null);
+  const [videos, setVideos] = useState<VideoItem[]>([]);
+  const [saved, setSaved] = useState<string[]>([]);
+  const [favoriteItems, setFavoriteItems] = useState<VideoItem[]>([]);
+  const [favoritesLoading, setFavoritesLoading] = useState(false);
+  const [savingVideoId, setSavingVideoId] = useState<string | null>(null);
+  const [comments, setComments] = useState<Record<string, VideoComment[]>>({});
+  const [inputText, setInputText] = useState<Record<string, string>>({});
+  const [selected, setSelected] = useState<string | null>(null);
   const [filterFav, setFilterFav] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [activeQuery, setActiveQuery] = useState(DEFAULT_TECH_QUERY);
+  const debounceRef = useRef<any>(null);
 
   const normalizedCurrentUserAvatar = useMemo(
     () => normalizeImageSource(currentUserAvatar),
     [currentUserAvatar]
   );
 
+
+  const loadFavorites = async () => {
+    if (!currentUserId?.trim()) return;
+
+    try {
+      setFavoritesLoading(true);
+
+      const url = new URL(`${apiBaseUrl}/video-favorites`);
+      url.searchParams.set('userId', currentUserId.trim());
+      url.searchParams.set('role', currentUserRole);
+
+      const response = await fetch(url.toString());
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data?.error || 'Failed to load favorites.');
+      }
+
+      const items = Array.isArray(data?.data) ? data.data : [];
+      setFavoriteItems(items);
+      setSaved(items.map((item: VideoItem) => item.id));
+    } catch (err: any) {
+      console.log('LOAD VIDEO FAVORITES ERROR =>', err);
+    } finally {
+      setFavoritesLoading(false);
+    }
+  };
+
+  const fetchVideos = async (query: string) => {
+    try {
+      setLoading(true);
+      setError('');
+
+      const trimmed = query.trim();
+      const url = new URL(`${apiBaseUrl}/youtube/videos`);
+      if (trimmed) {
+        url.searchParams.set('q', trimmed);
+      }
+      url.searchParams.set('maxResults', '12');
+
+      const response = await fetch(url.toString());
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data?.error || 'Failed to load videos.');
+      }
+
+      const items = Array.isArray(data?.data) ? data.data : [];
+      setVideos(items);
+      setActiveQuery(data?.query || trimmed || DEFAULT_TECH_QUERY);
+
+      if (items.length === 0) {
+        setSelected(null);
+      } else if (selected && !items.some((item: VideoItem) => item.id === selected)) {
+        setSelected(null);
+      }
+    } catch (err: any) {
+      setError(err?.message || 'Failed to load videos.');
+      setVideos([]);
+      setSelected(null);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchVideos(DEFAULT_TECH_QUERY);
+  }, []);
+
+  useEffect(() => {
+    loadFavorites();
+  }, [currentUserId, currentUserRole]);
+
+  useEffect(() => {
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current);
+    }
+
+    debounceRef.current = setTimeout(() => {
+      const nextQuery = searchQuery.trim() || DEFAULT_TECH_QUERY;
+      fetchVideos(nextQuery);
+    }, 450);
+
+    return () => {
+      if (debounceRef.current) {
+        clearTimeout(debounceRef.current);
+      }
+    };
+  }, [searchQuery]);
+
   const list = useMemo(() => {
-    return filterFav ? videos.filter((v) => saved.includes(v.id)) : videos;
-  }, [filterFav, saved, videos]);
+    return filterFav ? favoriteItems : videos;
+  }, [filterFav, favoriteItems, videos]);
 
   const selectedVid =
     selected !== null ? videos.find((x) => x.id === selected) ?? null : null;
 
   const relatedVideos = useMemo(() => {
-    if (!selectedVid) return list;
-    return videos.filter((v) => v.id !== selectedVid.id);
-  }, [selectedVid, videos, list]);
+    const sourceList = filterFav ? favoriteItems : videos;
+    if (!selectedVid) return sourceList;
+    return sourceList.filter((v) => v.id !== selectedVid.id);
+  }, [selectedVid, filterFav, favoriteItems, videos]);
 
-  const toggleSave = (id: number) => {
+  const toggleSave = async (video: VideoItem) => {
+    if (!currentUserId?.trim() || savingVideoId) return;
+
+    const videoId = video.id;
+    const wasSaved = saved.includes(videoId);
+
+    setSavingVideoId(videoId);
     setSaved((prev) =>
-      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
+      wasSaved ? prev.filter((item) => item !== videoId) : [...prev, videoId]
     );
+    setFavoriteItems((prev) =>
+      wasSaved
+        ? prev.filter((item) => item.id !== videoId)
+        : [video, ...prev.filter((item) => item.id !== videoId)]
+    );
+
+    try {
+      const response = await fetch(`${apiBaseUrl}/video-favorites/toggle`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: currentUserId.trim(),
+          role: currentUserRole,
+          video,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data?.error || 'Failed to update favorite.');
+      }
+
+      if (data?.saved === false) {
+        setSaved((prev) => prev.filter((item) => item !== videoId));
+        setFavoriteItems((prev) => prev.filter((item) => item.id !== videoId));
+      } else if (data?.saved === true) {
+        const savedVideo = data?.data || video;
+        setSaved((prev) => (prev.includes(videoId) ? prev : [...prev, videoId]));
+        setFavoriteItems((prev) => [savedVideo, ...prev.filter((item) => item.id !== videoId)]);
+      }
+    } catch (err: any) {
+      setSaved((prev) =>
+        wasSaved ? [...prev, videoId] : prev.filter((item) => item !== videoId)
+      );
+      setFavoriteItems((prev) =>
+        wasSaved
+          ? [video, ...prev.filter((item) => item.id !== videoId)]
+          : prev.filter((item) => item.id !== videoId)
+      );
+      setError(err?.message || 'Failed to update favorite.');
+    } finally {
+      setSavingVideoId(null);
+    }
   };
 
-  const toggleLike = (id: number) => {
-    setLiked((prev) =>
-      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
-    );
-  };
-
-  const addComment = (id: number) => {
+  const addComment = (id: string) => {
     const text = inputText[id]?.trim();
     if (!text) return;
 
@@ -166,7 +279,7 @@ const Videos = ({
     }));
   };
 
-  const openVideo = (id: number) => {
+  const openVideo = (id: string) => {
     setSelected(id);
     onVideoActiveChange?.(true);
   };
@@ -191,13 +304,13 @@ const Videos = ({
           <View style={styles.playerWrapper}>
             {Platform.OS === 'web' ? (
               <iframe
-                src={selectedVid.url}
+                src={selectedVid.embedUrl}
                 style={{ width: '100%', height: '100%', border: 'none' }}
                 allowFullScreen
                 title={selectedVid.title}
               />
             ) : (
-              <WebView source={{ uri: selectedVid.url }} style={{ flex: 1 }} />
+              <WebView source={{ uri: selectedVid.embedUrl }} style={{ flex: 1 }} />
             )}
           </View>
 
@@ -216,7 +329,7 @@ const Videos = ({
                 </View>
                 <View>
                   <Text style={styles.channelName}>{selectedVid.channel}</Text>
-                  <Text style={styles.channelSubs}>12.4K subscribers</Text>
+                  <Text style={styles.channelSubs}>YouTube channel</Text>
                 </View>
               </View>
             </View>
@@ -227,7 +340,7 @@ const Videos = ({
                   styles.actionPill,
                   saved.includes(selectedVid.id) && styles.actionPillActive,
                 ]}
-                onPress={() => toggleSave(selectedVid.id)}
+                onPress={() => toggleSave(selectedVid)}
               >
                 <Text
                   style={[
@@ -241,7 +354,7 @@ const Videos = ({
             </View>
 
             <View style={styles.descriptionCard}>
-              <Text style={styles.descriptionText}>{selectedVid.description}</Text>
+              <Text style={styles.descriptionText}>{selectedVid.description || 'No description available.'}</Text>
             </View>
           </View>
         </View>
@@ -296,10 +409,7 @@ const Videos = ({
               activeOpacity={0.9}
               onPress={() => openVideo(v.id)}
             >
-              <Image
-                source={{ uri: getYoutubeThumbnail(v.url) }}
-                style={styles.relatedThumb}
-              />
+              <Image source={{ uri: v.thumbnail }} style={styles.relatedThumb} />
               <View style={styles.relatedInfo}>
                 <Text numberOfLines={2} style={styles.relatedTitle}>
                   {v.title}
@@ -319,7 +429,14 @@ const Videos = ({
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.homeContent}>
       <View style={styles.homeHeader}>
-        <Text style={styles.logoText}>Videos</Text>
+        <View style={styles.homeHeaderTextBlock}>
+          <Text style={styles.logoText}>Videos</Text>
+          <Text style={styles.searchSummary} numberOfLines={2}>
+            {loading
+              ? 'Loading technology and BSIT videos...'
+              : `Results for: ${activeQuery}`}
+          </Text>
+        </View>
 
         <TouchableOpacity
           style={styles.filterBtn}
@@ -331,76 +448,97 @@ const Videos = ({
         </TouchableOpacity>
       </View>
 
-      <View
-        style={[
-          styles.feedGrid,
-          {
-            gap,
-          },
-        ]}
-      >
-        {list.map((v) => (
-          <TouchableOpacity
-            key={v.id}
-            style={[
-              styles.feedCard,
-              {
-                width: cardWidth,
-              },
-            ]}
-            activeOpacity={0.95}
-            onPress={() => openVideo(v.id)}
-          >
-            <Image
-              source={{ uri: getYoutubeThumbnail(v.url) }}
+      {loading ? (
+        <View style={styles.stateWrap}>
+          <ActivityIndicator size="large" color="#D32F2F" />
+          <Text style={styles.stateText}>Loading videos...</Text>
+        </View>
+      ) : error ? (
+        <View style={styles.stateWrap}>
+          <Text style={styles.errorText}>{error}</Text>
+        </View>
+      ) : list.length === 0 ? (
+        <View style={styles.stateWrap}>
+          <Text style={styles.stateText}>
+            {filterFav
+              ? favoritesLoading
+                ? 'Loading favorite videos...'
+                : 'No favorite videos saved yet.'
+              : 'No videos found for this search.'}
+          </Text>
+        </View>
+      ) : (
+        <View
+          style={[
+            styles.feedGrid,
+            {
+              gap,
+            },
+          ]}
+        >
+          {list.map((v) => (
+            <TouchableOpacity
+              key={v.id}
               style={[
-                styles.feedThumbnail,
+                styles.feedCard,
                 {
-                  height: columns === 1 ? 320 : 220,
+                  width: cardWidth,
                 },
               ]}
-            />
-
-            <View style={styles.feedInfoRow}>
-              <View style={styles.feedAvatar}>
-                <Text style={styles.feedAvatarText}>{v.channel.charAt(0)}</Text>
-              </View>
-
-              <View style={styles.feedTextBlock}>
-                <Text style={styles.feedTitle} numberOfLines={2}>
-                  {v.title}
-                </Text>
-                <Text style={styles.feedMeta}>{v.channel}</Text>
-                <Text style={styles.feedMeta}>
-                  {v.views} • {v.uploadedAt}
-                </Text>
-              </View>
-
-              <TouchableOpacity
-                onPress={() => toggleSave(v.id)}
+              activeOpacity={0.95}
+              onPress={() => openVideo(v.id)}
+            >
+              <Image
+                source={{ uri: v.thumbnail }}
                 style={[
-                  styles.smallSaveBtn,
+                  styles.feedThumbnail,
                   {
-                    paddingHorizontal: heartPaddingHorizontal,
-                    paddingVertical: heartPaddingVertical,
+                    height: columns === 1 ? 320 : 220,
                   },
                 ]}
-              >
-                <Text
+              />
+
+              <View style={styles.feedInfoRow}>
+                <View style={styles.feedAvatar}>
+                  <Text style={styles.feedAvatarText}>{v.channel.charAt(0)}</Text>
+                </View>
+
+                <View style={styles.feedTextBlock}>
+                  <Text style={styles.feedTitle} numberOfLines={2}>
+                    {v.title}
+                  </Text>
+                  <Text style={styles.feedMeta}>{v.channel}</Text>
+                  <Text style={styles.feedMeta}>
+                    {v.views} • {v.uploadedAt}
+                  </Text>
+                </View>
+
+                <TouchableOpacity
+                  onPress={() => toggleSave(v)}
                   style={[
-                    styles.smallSaveBtnText,
+                    styles.smallSaveBtn,
                     {
-                      fontSize: heartSize,
+                      paddingHorizontal: heartPaddingHorizontal,
+                      paddingVertical: heartPaddingVertical,
                     },
                   ]}
                 >
-                  {saved.includes(v.id) ? '♥' : '♡'}
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </TouchableOpacity>
-        ))}
-      </View>
+                  <Text
+                    style={[
+                      styles.smallSaveBtnText,
+                      {
+                        fontSize: heartSize,
+                      },
+                    ]}
+                  >
+                    {saved.includes(v.id) ? '♥' : '♡'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
     </ScrollView>
   );
 };
@@ -423,6 +561,11 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     backgroundColor: '#fff',
+    gap: 12,
+  },
+
+  homeHeaderTextBlock: {
+    flex: 1,
   },
 
   logoText: {
@@ -432,7 +575,15 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     paddingBottom: 10,
     textAlign: 'left',
-    marginBottom: 20,
+    marginBottom: 6,
+  },
+
+  searchSummary: {
+    marginLeft: -12,
+    color: '#606060',
+    fontSize: 13,
+    lineHeight: 18,
+    marginBottom: 12,
   },
 
   filterBtn: {
@@ -446,6 +597,24 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#111',
     fontSize: 13,
+  },
+
+  stateWrap: {
+    paddingVertical: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  stateText: {
+    marginTop: 12,
+    color: '#606060',
+    fontSize: 15,
+  },
+
+  errorText: {
+    color: '#D32F2F',
+    fontSize: 15,
+    textAlign: 'center',
   },
 
   feedGrid: {
@@ -712,11 +881,10 @@ const styles = StyleSheet.create({
   },
 
   commentAvatarImage: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    marginRight: 10,
-    marginTop: 2,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    marginRight: 12,
   },
 
   commentBody: {
@@ -730,13 +898,14 @@ const styles = StyleSheet.create({
   },
 
   commentDate: {
+    color: '#888',
     fontSize: 12,
-    color: '#777',
     marginBottom: 4,
   },
 
   commentText: {
     color: '#222',
+    fontSize: 14,
     lineHeight: 20,
   },
 
@@ -751,35 +920,35 @@ const styles = StyleSheet.create({
   },
 
   relatedThumb: {
-    width: 160,
-    height: 90,
+    width: 180,
+    height: 100,
     borderRadius: 10,
     backgroundColor: '#ddd',
-    marginRight: 10,
+    marginRight: 12,
   },
 
   relatedInfo: {
     flex: 1,
-    justifyContent: 'flex-start',
+    justifyContent: 'center',
   },
 
   relatedTitle: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: '700',
     color: '#111',
-    lineHeight: 20,
+    lineHeight: 21,
   },
 
   relatedChannel: {
     marginTop: 6,
-    fontSize: 12,
     color: '#606060',
+    fontSize: 13,
   },
 
   relatedMeta: {
-    marginTop: 2,
-    fontSize: 12,
+    marginTop: 4,
     color: '#606060',
+    fontSize: 12,
   },
 });
 

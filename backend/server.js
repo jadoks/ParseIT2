@@ -185,6 +185,61 @@ function sanitizeFileName(fileName = "file") {
   return String(fileName).replace(/[^a-zA-Z0-9._-]/g, "_");
 }
 
+function sanitizeYouTubeSearchQuery(value = "") {
+  return String(value || "")
+    .replace(/[^a-zA-Z0-9\s+#.()-]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function buildYouTubeLearningQuery(rawQuery = "") {
+  const cleaned = sanitizeYouTubeSearchQuery(rawQuery);
+  const defaultTopic =
+    sanitizeYouTubeSearchQuery(process.env.YOUTUBE_DEFAULT_TOPIC || "") ||
+    "BSIT lessons programming technology computer science tutorial";
+
+  if (!cleaned) return defaultTopic;
+
+  const lowered = cleaned.toLowerCase();
+  const includesContext = /(bsit|it\b|information technology|computer science|programming|coding|technology|tech|software|web|database|network|cyber|java|python|javascript|react|php|c\+\+|c#)/i.test(lowered);
+
+  return includesContext
+    ? cleaned
+    : `${cleaned} ${defaultTopic}`.trim();
+}
+
+function mapYouTubePublishedLabel(value) {
+  if (!value) return "Recently uploaded";
+
+  const publishedDate = new Date(value);
+  if (Number.isNaN(publishedDate.getTime())) return "Recently uploaded";
+
+  const diffMs = Date.now() - publishedDate.getTime();
+  const minute = 60 * 1000;
+  const hour = 60 * minute;
+  const day = 24 * hour;
+  const week = 7 * day;
+  const month = 30 * day;
+  const year = 365 * day;
+
+  if (diffMs < hour) return `${Math.max(1, Math.floor(diffMs / minute))} minutes ago`;
+  if (diffMs < day) return `${Math.max(1, Math.floor(diffMs / hour))} hours ago`;
+  if (diffMs < week) return `${Math.max(1, Math.floor(diffMs / day))} days ago`;
+  if (diffMs < month) return `${Math.max(1, Math.floor(diffMs / week))} weeks ago`;
+  if (diffMs < year) return `${Math.max(1, Math.floor(diffMs / month))} months ago`;
+  return `${Math.max(1, Math.floor(diffMs / year))} years ago`;
+}
+
+function formatYouTubeViewCount(value) {
+  const count = Number(value || 0);
+  if (!Number.isFinite(count) || count <= 0) return "0 views";
+
+  if (count >= 1_000_000_000) return `${(count / 1_000_000_000).toFixed(count >= 10_000_000_000 ? 0 : 1).replace(/\.0$/, "")}B views`;
+  if (count >= 1_000_000) return `${(count / 1_000_000).toFixed(count >= 10_000_000 ? 0 : 1).replace(/\.0$/, "")}M views`;
+  if (count >= 1_000) return `${(count / 1_000).toFixed(count >= 10_000 ? 0 : 1).replace(/\.0$/, "")}K views`;
+  return `${count} views`;
+}
+
 function parseDateValue(value) {
   if (!value) return null;
 
@@ -1350,7 +1405,11 @@ app.post("/upload-class-file", async (req, res) => {
     }
 
     const folder =
-      kind === "assignment" ? "class-assignments" : "class-materials";
+      kind === "assignment"
+        ? "class-assignments"
+        : kind === "submission"
+        ? "class-submissions"
+        : "class-materials";
 
     const uploadedFile = await uploadGenericFileToStorage({
       fileBase64,
@@ -2549,6 +2608,130 @@ app.post("/join-class", async (req, res) => {
   }
 });
 
+app.get("/final-grades/:classId", async (req, res) => {
+  try {
+    const { classId } = req.params;
+
+    if (!classId) {
+      return res.status(400).json({ error: "classId is required." });
+    }
+
+    const snapshot = await db
+      .collection("finalGrades")
+      .where("classId", "==", classId)
+      .get();
+
+    const grades = snapshot.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data(),
+    }));
+
+    return res.json(grades);
+  } catch (error) {
+    console.error("Fetch final grades error:", error);
+    return res.status(500).json({
+      error: error.message || "Failed to fetch final grades.",
+    });
+  }
+});
+
+app.post("/submit-final-grades", async (req, res) => {
+  try {
+    const {
+      classId,
+      conversationId,
+      submittedById,
+      submittedByName,
+      grades,
+    } = req.body;
+
+    if (!classId) {
+      return res.status(400).json({ error: "classId is required." });
+    }
+
+    if (!Array.isArray(grades) || !grades.length) {
+      return res.status(400).json({ error: "grades are required." });
+    }
+
+    const classSnap = await db.collection("classes").doc(classId).get();
+    if (!classSnap.exists) {
+      return res.status(404).json({ error: "Class not found." });
+    }
+
+    const classData = classSnap.data() || {};
+    const batch = db.batch();
+
+    grades.forEach((item) => {
+      const studentId = normalizeOptionalText(item?.studentId);
+      const studentName = normalizeOptionalText(item?.studentName);
+      const status = normalizeOptionalText(item?.status);
+      const finalGrade = normalizeOptionalText(
+        item?.finalGrade !== undefined ? String(item.finalGrade) : ""
+      );
+
+      if (!studentId || !status || !finalGrade) {
+        return;
+      }
+
+      const docRef = db.collection("finalGrades").doc(`${classId}_${studentId}`);
+      batch.set(
+        docRef,
+        {
+          classId,
+          conversationId: normalizeOptionalText(conversationId),
+          studentId,
+          studentName,
+          status,
+          finalGrade,
+          submittedById: normalizeOptionalText(submittedById),
+          submittedByName: normalizeOptionalText(submittedByName),
+          className: normalizeOptionalText(classData.name),
+          courseCode: normalizeOptionalText(classData.courseCode),
+          updatedAt: FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
+    });
+
+    await batch.commit();
+
+    for (const item of grades) {
+      const studentId = normalizeOptionalText(item?.studentId);
+      const studentName = normalizeOptionalText(item?.studentName);
+      const status = normalizeOptionalText(item?.status);
+      const finalGrade = normalizeOptionalText(
+        item?.finalGrade !== undefined ? String(item.finalGrade) : ""
+      );
+
+      if (!studentId || !status || !finalGrade) continue;
+
+      await createNotification({
+        userId: studentId,
+        role: "student",
+        type: "grade",
+        title: "Final Grade Submitted",
+        message: `Your final grade in ${classData.name || "your class"} is ${finalGrade} (${status}).`,
+        relatedId: classId,
+        relatedType: "final-grade",
+        classId,
+        actorId: normalizeOptionalText(submittedById),
+        actorRole: "teacher",
+        actorName: normalizeOptionalText(submittedByName) || studentName || "Teacher",
+      });
+    }
+
+    return res.json({
+      success: true,
+      message: "Final grades submitted successfully.",
+    });
+  } catch (error) {
+    console.error("Submit final grades error:", error);
+    return res.status(500).json({
+      error: error.message || "Failed to submit final grades.",
+    });
+  }
+});
+
 app.get("/student-joined-classes/:studentId", async (req, res) => {
   try {
     const { studentId } = req.params;
@@ -3131,6 +3314,7 @@ app.post("/create-class-assignment", async (req, res) => {
       totalScore,
       pointsOnTime,
       repositoryDisabledAfterDue,
+      materialIds,
       fileName,
       fileUrl,
       fileType,
@@ -3166,6 +3350,7 @@ app.post("/create-class-assignment", async (req, res) => {
       totalScore: Number(totalScore),
       pointsOnTime: Number(pointsOnTime),
       repositoryDisabledAfterDue: !!repositoryDisabledAfterDue,
+      materialIds: Array.isArray(materialIds) ? materialIds.filter(Boolean) : [],
       fileName: normalizeOptionalText(fileName),
       fileUrl: normalizeOptionalText(fileUrl),
       fileType: normalizeOptionalText(fileType),
@@ -3228,6 +3413,7 @@ app.put("/update-class-assignment/:id", async (req, res) => {
       totalScore,
       pointsOnTime,
       repositoryDisabledAfterDue,
+      materialIds,
       fileName,
       fileUrl,
       fileType,
@@ -3243,6 +3429,9 @@ app.put("/update-class-assignment/:id", async (req, res) => {
         : {}),
       ...(repositoryDisabledAfterDue !== undefined
         ? { repositoryDisabledAfterDue: !!repositoryDisabledAfterDue }
+        : {}),
+      ...(materialIds !== undefined
+        ? { materialIds: Array.isArray(materialIds) ? materialIds.filter(Boolean) : [] }
         : {}),
       ...(typeof fileName === "string" || fileName === null ? { fileName } : {}),
       ...(typeof fileUrl === "string" || fileUrl === null ? { fileUrl } : {}),
@@ -3322,6 +3511,69 @@ app.get("/class-submissions/:classId", async (req, res) => {
   }
 });
 
+app.get("/student-submissions/:studentId", async (req, res) => {
+  try {
+    const { studentId } = req.params;
+
+    if (!studentId) {
+      return res.status(400).json({ error: "studentId is required." });
+    }
+
+    const snapshot = await db
+      .collection("classSubmissions")
+      .where("studentId", "==", String(studentId).trim())
+      .get();
+
+    const submissions = await Promise.all(
+      snapshot.docs.map(async (doc) => {
+        const submission = doc.data() || {};
+        let assignmentData = {};
+
+        if (submission.assignmentId) {
+          const assignmentSnap = await db
+            .collection("classAssignments")
+            .doc(submission.assignmentId)
+            .get();
+
+          assignmentData = assignmentSnap.exists ? assignmentSnap.data() || {} : {};
+        }
+
+        const totalScore =
+          typeof assignmentData.totalScore === "number"
+            ? assignmentData.totalScore
+            : Number(assignmentData.totalScore) || null;
+
+        return {
+          id: doc.id,
+          submissionId: doc.id,
+          ...submission,
+          totalScore,
+          maxPoints: totalScore,
+          assignmentTitle: assignmentData.header || "Assignment",
+          assignmentInstruction: assignmentData.instruction || "",
+        };
+      })
+    );
+
+    submissions.sort((a, b) => {
+      const aTime = resolveDate(a.submittedAt)?.getTime() || 0;
+      const bTime = resolveDate(b.submittedAt)?.getTime() || 0;
+      return bTime - aTime;
+    });
+
+    res.json({
+      success: true,
+      data: submissions,
+    });
+  } catch (error) {
+    console.error("Fetch student submissions error:", error);
+    res.status(500).json({
+      error: error.message || "Failed to fetch student submissions.",
+    });
+  }
+});
+
+
 app.post("/create-submission", async (req, res) => {
   try {
     const {
@@ -3336,13 +3588,23 @@ app.post("/create-submission", async (req, res) => {
       fileUrl,
       fileType,
       feedback,
+      storagePath,
+      bucketPath,
     } = req.body;
 
     if (!classId || !assignmentId || !studentId) {
       return res.status(400).json({ error: "Missing required fields." });
     }
 
-    const ref = await db.collection("classSubmissions").add({
+    const existingSnapshot = await db
+      .collection("classSubmissions")
+      .where("classId", "==", classId)
+      .where("assignmentId", "==", assignmentId)
+      .where("studentId", "==", studentId)
+      .limit(1)
+      .get();
+
+    const submissionPayload = {
       classId,
       assignmentId,
       studentUid: normalizeOptionalText(studentUid),
@@ -3353,10 +3615,41 @@ app.post("/create-submission", async (req, res) => {
       fileName: normalizeOptionalText(fileName),
       fileUrl: normalizeOptionalText(fileUrl),
       fileType: normalizeOptionalText(fileType),
+      storagePath: normalizeOptionalText(storagePath),
+      bucketPath: normalizeOptionalText(bucketPath),
       feedback: normalizeOptionalText(feedback),
-      submittedAt: FieldValue.serverTimestamp(),
-      gradedAt: null,
-    });
+      updatedAt: FieldValue.serverTimestamp(),
+    };
+
+    let ref;
+    let createdNew = false;
+
+    if (!existingSnapshot.empty) {
+      const existingDoc = existingSnapshot.docs[0];
+      const existingData = existingDoc.data() || {};
+
+      if (existingData.status === "graded") {
+        return res.status(409).json({
+          error: "This assignment has already been graded and can no longer be changed.",
+        });
+      }
+
+      ref = existingDoc.ref;
+
+      await ref.update({
+        ...submissionPayload,
+        submittedAt: existingData.submittedAt || FieldValue.serverTimestamp(),
+        gradedAt: null,
+      });
+    } else {
+      ref = await db.collection("classSubmissions").add({
+        ...submissionPayload,
+        submittedAt: FieldValue.serverTimestamp(),
+        gradedAt: null,
+        createdAt: FieldValue.serverTimestamp(),
+      });
+      createdNew = true;
+    }
 
     const classSnap = await db.collection("classes").doc(classId).get();
     const classData = classSnap.exists ? classSnap.data() || {} : {};
@@ -3364,7 +3657,7 @@ app.post("/create-submission", async (req, res) => {
     const assignmentSnap = await db.collection("classAssignments").doc(assignmentId).get();
     const assignmentData = assignmentSnap.exists ? assignmentSnap.data() || {} : {};
 
-    if (classData.assignedTeacherId) {
+    if (classData.assignedTeacherId && createdNew) {
       await createNotification({
         userId: classData.assignedTeacherId,
         role: "teacher",
@@ -3382,7 +3675,9 @@ app.post("/create-submission", async (req, res) => {
 
     res.json({
       success: true,
-      message: "Submission created successfully.",
+      message: createdNew
+        ? "Submission created successfully."
+        : "Submission updated successfully.",
       data: { id: ref.id },
     });
   } catch (error) {
@@ -3409,10 +3704,11 @@ app.put("/grade-submission/:id", async (req, res) => {
     const normalizedScore = score !== undefined ? Number(score) : undefined;
 
     await submissionRef.update({
-      ...(status ? { status } : {}),
+      status: normalizeOptionalText(status) || "graded",
       ...(normalizedScore !== undefined ? { score: normalizedScore } : {}),
       ...(typeof feedback === "string" || feedback === null ? { feedback } : {}),
       gradedAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
     });
 
     const assignmentSnap = await db.collection("classAssignments").doc(submissionData.assignmentId).get();
@@ -3638,6 +3934,58 @@ app.delete("/delete-class-announcement/:id", async (req, res) => {
 /**
  * NOTIFICATION ROUTES
  */
+
+
+app.post("/unsubmit-assignment", async (req, res) => {
+  try {
+    const { classId, assignmentId, studentId, studentUid } = req.body;
+
+    if (!classId || !assignmentId || !studentId) {
+      return res.status(400).json({
+        error: "classId, assignmentId, and studentId are required.",
+      });
+    }
+
+    let query = db
+      .collection("classSubmissions")
+      .where("classId", "==", classId)
+      .where("assignmentId", "==", assignmentId)
+      .where("studentId", "==", studentId)
+      .limit(1);
+
+    const snapshot = await query.get();
+
+    if (snapshot.empty) {
+      return res.status(404).json({ error: "Submission not found." });
+    }
+
+    const submissionDoc = snapshot.docs[0];
+    const submissionData = submissionDoc.data() || {};
+
+    if (submissionData.status === "graded") {
+      return res.status(409).json({
+        error: "This assignment has already been graded and cannot be unsubmitted.",
+      });
+    }
+
+    await submissionDoc.ref.update({
+      status: "pending",
+      studentUid: normalizeOptionalText(studentUid) || submissionData.studentUid || null,
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+
+    return res.json({
+      success: true,
+      message: "Assignment unsubmitted successfully.",
+      data: { id: submissionDoc.id },
+    });
+  } catch (error) {
+    console.error("Unsubmit assignment error:", error);
+    return res.status(500).json({
+      error: error.message || "Failed to unsubmit assignment.",
+    });
+  }
+});
 
 app.get("/notifications", async (req, res) => {
   try {
@@ -3932,6 +4280,111 @@ app.post("/student-activities/complete", async (req, res) => {
   }
 });
 
+app.get("/youtube/videos", async (req, res) => {
+  try {
+    if (!process.env.YOUTUBE_API_KEY) {
+      return res.status(500).json({
+        error: "YOUTUBE_API_KEY is not configured.",
+      });
+    }
+
+    const rawQuery = typeof req.query.q === "string" ? req.query.q : "";
+    const query = buildYouTubeLearningQuery(rawQuery);
+    const pageToken = typeof req.query.pageToken === "string" ? req.query.pageToken : "";
+    const maxResults = Math.min(Math.max(Number(req.query.maxResults) || 12, 1), 20);
+
+    const searchParams = new URLSearchParams({
+      key: process.env.YOUTUBE_API_KEY,
+      part: "snippet",
+      type: "video",
+      maxResults: String(maxResults),
+      q: query,
+      safeSearch: "moderate",
+      videoEmbeddable: "true",
+      relevanceLanguage: "en",
+      order: rawQuery ? "relevance" : "viewCount",
+    });
+
+    if (pageToken) {
+      searchParams.set("pageToken", pageToken);
+    }
+
+    const searchResponse = await fetch(`https://www.googleapis.com/youtube/v3/search?${searchParams.toString()}`);
+    const searchData = await searchResponse.json().catch(() => ({}));
+
+    if (!searchResponse.ok) {
+      return res.status(searchResponse.status).json({
+        error: searchData?.error?.message || "Failed to search YouTube videos.",
+      });
+    }
+
+    const ids = Array.isArray(searchData?.items)
+      ? searchData.items
+          .map((item) => item?.id?.videoId)
+          .filter(Boolean)
+      : [];
+
+    let statsById = {};
+
+    if (ids.length) {
+      const videoParams = new URLSearchParams({
+        key: process.env.YOUTUBE_API_KEY,
+        part: "statistics,contentDetails",
+        id: ids.join(","),
+      });
+
+      const videoResponse = await fetch(`https://www.googleapis.com/youtube/v3/videos?${videoParams.toString()}`);
+      const videoData = await videoResponse.json().catch(() => ({}));
+
+      if (videoResponse.ok && Array.isArray(videoData?.items)) {
+        statsById = Object.fromEntries(
+          videoData.items.map((item) => [item.id, item])
+        );
+      }
+    }
+
+    const videos = (searchData?.items || []).map((item) => {
+      const videoId = item?.id?.videoId;
+      const snippet = item?.snippet || {};
+      const stats = statsById[videoId] || {};
+      const thumbnail =
+        snippet?.thumbnails?.high?.url ||
+        snippet?.thumbnails?.medium?.url ||
+        snippet?.thumbnails?.default?.url ||
+        `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`;
+
+      return {
+        id: videoId,
+        title: snippet?.title || "Untitled video",
+        description: snippet?.description || "",
+        channel: snippet?.channelTitle || "YouTube",
+        publishedAt: snippet?.publishedAt || null,
+        uploadedAt: mapYouTubePublishedLabel(snippet?.publishedAt),
+        thumbnail,
+        watchUrl: `https://www.youtube.com/watch?v=${videoId}`,
+        embedUrl: `https://www.youtube.com/embed/${videoId}`,
+        views: formatYouTubeViewCount(stats?.statistics?.viewCount),
+        viewCount: Number(stats?.statistics?.viewCount || 0),
+      };
+    });
+
+    return res.json({
+      success: true,
+      data: videos,
+      pageInfo: searchData?.pageInfo || null,
+      nextPageToken: searchData?.nextPageToken || null,
+      prevPageToken: searchData?.prevPageToken || null,
+      query,
+    });
+  } catch (error) {
+    console.error("YouTube videos fetch error:", error);
+    return res.status(500).json({
+      error: error.message || "Failed to load YouTube videos.",
+    });
+  }
+});
+
+
 app.get("/", (req, res) => {
   res.json({
     ok: true,
@@ -4049,7 +4502,6 @@ app.post("/assistant/upload-file", async (req, res) => {
     });
   }
 });
-
 function normalizeChatText(value = "") {
   return String(value || "")
     .toLowerCase()
@@ -4187,7 +4639,622 @@ function buildTrainingContextBlock(trainingItems = []) {
   return lines.join("\n\n");
 }
 
-app.post("/ai/gemini", async (req, res) => {
+function buildGeminiHistory(history = []) {
+  return Array.isArray(history)
+    ? history
+        .filter(
+          (item) =>
+            item &&
+            typeof item.text === "string" &&
+            (item.role === "user" || item.role === "model")
+        )
+        .map((item) => ({
+          role: item.role === "user" ? "user" : "model",
+          parts: [{ text: item.text }],
+        }))
+    : [];
+}
+
+function buildStandardMessages({
+  assistantInstruction,
+  contextualPrompt,
+  history = [],
+}) {
+  const normalized = Array.isArray(history)
+    ? history
+        .filter(
+          (item) =>
+            item &&
+            typeof item.text === "string" &&
+            (item.role === "user" || item.role === "model")
+        )
+        .map((item) => ({
+          role: item.role === "model" ? "assistant" : "user",
+          content: item.text,
+        }))
+    : [];
+
+  return {
+    system: assistantInstruction,
+    messages: [
+      ...normalized,
+      { role: "user", content: contextualPrompt },
+    ],
+  };
+}
+
+async function withTimeout(promise, ms, label) {
+  let timer;
+
+  const timeoutPromise = new Promise((_, reject) => {
+    timer = setTimeout(() => {
+      reject(new Error(`${label} timed out after ${ms}ms`));
+    }, ms);
+  });
+
+  try {
+    return await Promise.race([promise, timeoutPromise]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function getProviderOrder() {
+  return (process.env.AI_PROVIDER_ORDER ||
+    "gemini,openai,claude,groq,mistral,cohere")
+    .split(",")
+    .map((item) => item.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+function isQuotaLikeError(message = "") {
+  const text = String(message || "").toLowerCase();
+  return (
+    text.includes("quota") ||
+    text.includes("rate limit") ||
+    text.includes("rate-limit") ||
+    text.includes("resource exhausted") ||
+    text.includes("too many requests")
+  );
+}
+
+const providerBackoffUntil = {
+  gemini: 0,
+  openai: 0,
+  claude: 0,
+  groq: 0,
+  mistral: 0,
+  cohere: 0,
+};
+
+function shouldSkipProvider(provider) {
+  return Date.now() < (providerBackoffUntil[provider] || 0);
+}
+
+function markProviderBackoff(provider, ms = 60_000) {
+  providerBackoffUntil[provider] = Date.now() + ms;
+}
+
+async function callGeminiProvider({
+  assistantInstruction,
+  contextualPrompt,
+  normalizedHistory,
+}) {
+  if (!process.env.GEMINI_API_KEY) {
+    throw new Error("Gemini API key is not configured.");
+  }
+
+  const model = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+
+  const response = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-goog-api-key": process.env.GEMINI_API_KEY,
+      },
+      body: JSON.stringify({
+        systemInstruction: {
+          parts: [{ text: assistantInstruction }],
+        },
+        contents: [
+          ...normalizedHistory,
+          {
+            role: "user",
+            parts: [{ text: contextualPrompt }],
+          },
+        ],
+      }),
+    }
+  );
+
+  const data = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new Error(data?.error?.message || "Gemini request failed.");
+  }
+
+  const text =
+    data?.candidates?.[0]?.content?.parts
+      ?.map((p) => p.text)
+      .filter(Boolean)
+      .join("") || "";
+
+  if (!text.trim()) {
+    throw new Error("Gemini returned an empty response.");
+  }
+
+  return {
+    provider: "gemini",
+    text,
+  };
+}
+
+async function callOpenAIProvider({
+  assistantInstruction,
+  contextualPrompt,
+  history,
+}) {
+  if (!process.env.OPENAI_API_KEY) {
+    throw new Error("OpenAI API key is not configured.");
+  }
+
+  const model = process.env.OPENAI_MODEL || "gpt-4o-mini";
+  const { system, messages } = buildStandardMessages({
+    assistantInstruction,
+    contextualPrompt,
+    history,
+  });
+
+  const response = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+    },
+    body: JSON.stringify({
+      model,
+      messages: [{ role: "system", content: system }, ...messages],
+      temperature: 0.7,
+    }),
+  });
+
+  const data = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new Error(data?.error?.message || "OpenAI request failed.");
+  }
+
+  const text = data?.choices?.[0]?.message?.content || "";
+
+  if (!text.trim()) {
+    throw new Error("OpenAI returned an empty response.");
+  }
+
+  return {
+    provider: "openai",
+    text,
+  };
+}
+
+async function callClaudeProvider({
+  assistantInstruction,
+  contextualPrompt,
+  history,
+}) {
+  if (!process.env.ANTHROPIC_API_KEY) {
+    throw new Error("Anthropic API key is not configured.");
+  }
+
+  const model =
+    process.env.ANTHROPIC_MODEL || "claude-3-5-sonnet-latest";
+
+  const { system, messages } = buildStandardMessages({
+    assistantInstruction,
+    contextualPrompt,
+    history,
+  });
+
+  const response = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": process.env.ANTHROPIC_API_KEY,
+      "anthropic-version": "2023-06-01",
+    },
+    body: JSON.stringify({
+      model,
+      max_tokens: 1200,
+      system,
+      messages,
+    }),
+  });
+
+  const data = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new Error(
+      data?.error?.message ||
+        data?.error?.type ||
+        "Anthropic request failed."
+    );
+  }
+
+  const text = Array.isArray(data?.content)
+    ? data.content.map((item) => item?.text || "").join("")
+    : "";
+
+  if (!text.trim()) {
+    throw new Error("Claude returned an empty response.");
+  }
+
+  return {
+    provider: "claude",
+    text,
+  };
+}
+
+async function callGroqProvider({
+  assistantInstruction,
+  contextualPrompt,
+  history,
+}) {
+  if (!process.env.GROQ_API_KEY) {
+    throw new Error("Groq API key is not configured.");
+  }
+
+  const model =
+    process.env.GROQ_MODEL || "llama-3.3-70b-versatile";
+
+  const { system, messages } = buildStandardMessages({
+    assistantInstruction,
+    contextualPrompt,
+    history,
+  });
+
+  const response = await fetch(
+    "https://api.groq.com/openai/v1/chat/completions",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model,
+        messages: [{ role: "system", content: system }, ...messages],
+        temperature: 0.7,
+      }),
+    }
+  );
+
+  const data = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new Error(data?.error?.message || "Groq request failed.");
+  }
+
+  const text = data?.choices?.[0]?.message?.content || "";
+
+  if (!text.trim()) {
+    throw new Error("Groq returned an empty response.");
+  }
+
+  return {
+    provider: "groq",
+    text,
+  };
+}
+
+async function callMistralProvider({
+  assistantInstruction,
+  contextualPrompt,
+  history,
+}) {
+  if (!process.env.MISTRAL_API_KEY) {
+    throw new Error("Mistral API key is not configured.");
+  }
+
+  const model =
+    process.env.MISTRAL_MODEL || "mistral-small-latest";
+
+  const { system, messages } = buildStandardMessages({
+    assistantInstruction,
+    contextualPrompt,
+    history,
+  });
+
+  const response = await fetch(
+    "https://api.mistral.ai/v1/chat/completions",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${process.env.MISTRAL_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model,
+        messages: [{ role: "system", content: system }, ...messages],
+        temperature: 0.7,
+      }),
+    }
+  );
+
+  const data = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new Error(data?.error?.message || "Mistral request failed.");
+  }
+
+  const text = data?.choices?.[0]?.message?.content || "";
+
+  if (!text.trim()) {
+    throw new Error("Mistral returned an empty response.");
+  }
+
+  return {
+    provider: "mistral",
+    text,
+  };
+}
+
+async function callCohereProvider({
+  assistantInstruction,
+  contextualPrompt,
+  history,
+}) {
+  if (!process.env.COHERE_API_KEY) {
+    throw new Error("Cohere API key is not configured.");
+  }
+
+  const model = process.env.COHERE_MODEL || "command-r-plus";
+
+  const { system, messages } = buildStandardMessages({
+    assistantInstruction,
+    contextualPrompt,
+    history,
+  });
+
+  const response = await fetch("https://api.cohere.com/v2/chat", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${process.env.COHERE_API_KEY}`,
+    },
+    body: JSON.stringify({
+      model,
+      messages: [{ role: "system", content: system }, ...messages],
+    }),
+  });
+
+  const data = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new Error(
+      data?.message ||
+        data?.error?.message ||
+        "Cohere request failed."
+    );
+  }
+
+  const text =
+    data?.message?.content?.map((item) => item?.text || "").join("") ||
+    data?.text ||
+    "";
+
+  if (!text.trim()) {
+    throw new Error("Cohere returned an empty response.");
+  }
+
+  return {
+    provider: "cohere",
+    text,
+  };
+}
+
+
+function normalizeProviderName(provider = "") {
+  const value = String(provider || "").trim().toLowerCase();
+
+  if (value === "openai") return "OpenAI";
+  if (value === "gemini") return "Gemini";
+  if (value === "claude") return "Claude";
+  if (value === "groq") return "Groq";
+  if (value === "mistral") return "Mistral";
+  if (value === "cohere") return "Cohere";
+
+  return value ? value.charAt(0).toUpperCase() + value.slice(1) : "AI Provider";
+}
+
+async function createAIQuotaLimitAdminNotifications({ provider, message }) {
+  try {
+    const normalizedProvider = normalizeOptionalText(provider) || "ai-provider";
+    const providerLabel = normalizeProviderName(normalizedProvider);
+    const now = Date.now();
+    const cooldownMs = Number(process.env.AI_QUOTA_NOTIFICATION_COOLDOWN_MS || 15 * 60 * 1000);
+    const alertRef = db.collection("systemAlerts").doc(`ai-quota-${normalizedProvider}`);
+    const alertSnap = await alertRef.get();
+    const alertData = alertSnap.exists ? alertSnap.data() || {} : {};
+    const lastNotifiedAt = resolveDate(alertData.lastNotifiedAt);
+
+    if (lastNotifiedAt && now - lastNotifiedAt.getTime() < cooldownMs) {
+      return;
+    }
+
+    await alertRef.set(
+      {
+        type: "ai-quota-limit",
+        provider: normalizedProvider,
+        providerLabel,
+        message: normalizeOptionalText(message),
+        lastNotifiedAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      },
+      { merge: true }
+    );
+
+    const adminsSnapshot = await db.collection("admins").get();
+
+    for (const adminDoc of adminsSnapshot.docs) {
+      const adminData = adminDoc.data() || {};
+      const adminId = normalizeOptionalText(adminData.adminId) || adminDoc.id;
+
+      await createNotification({
+        userId: adminId,
+        role: "admin",
+        type: "ai-quota-limit",
+        title: `${providerLabel} API quota limit reached`,
+        message:
+          `${providerLabel} is currently rate-limited or out of quota. ` +
+          "The system will try the next available AI provider automatically.",
+        relatedId: normalizedProvider,
+        relatedType: "ai-provider",
+        actorRole: "system",
+        actorName: "ParseIT AI Monitor",
+      });
+    }
+  } catch (notifyError) {
+    console.error("AI quota admin notification error:", notifyError);
+  }
+}
+
+async function callProvider(provider, context) {
+  if (provider === "gemini") {
+    return withTimeout(
+      callGeminiProvider(context),
+      20_000,
+      "Gemini"
+    );
+  }
+
+  if (provider === "openai") {
+    return withTimeout(
+      callOpenAIProvider(context),
+      20_000,
+      "OpenAI"
+    );
+  }
+
+  if (provider === "claude") {
+    return withTimeout(
+      callClaudeProvider(context),
+      20_000,
+      "Claude"
+    );
+  }
+
+  if (provider === "groq") {
+    return withTimeout(
+      callGroqProvider(context),
+      20_000,
+      "Groq"
+    );
+  }
+
+  if (provider === "mistral") {
+    return withTimeout(
+      callMistralProvider(context),
+      20_000,
+      "Mistral"
+    );
+  }
+
+  if (provider === "cohere") {
+    return withTimeout(
+      callCohereProvider(context),
+      20_000,
+      "Cohere"
+    );
+  }
+
+  throw new Error(`Unsupported provider: ${provider}`);
+}
+
+async function callAIWithFallback(context) {
+  const providers = getProviderOrder();
+  const errors = [];
+
+  for (const provider of providers) {
+    if (shouldSkipProvider(provider)) {
+      errors.push(`${provider}: temporarily skipped due to backoff`);
+      continue;
+    }
+
+    try {
+      const result = await callProvider(provider, context);
+      return result;
+    } catch (error) {
+      const message = error?.message || "Unknown provider error";
+      console.error(`[AI FAILOVER] ${provider} failed:`, message);
+
+      if (isQuotaLikeError(message)) {
+        markProviderBackoff(provider, 60_000);
+        await createAIQuotaLimitAdminNotifications({ provider, message });
+      }
+
+      errors.push(`${provider}: ${message}`);
+    }
+  }
+
+  const finalError = new Error("All AI providers failed.");
+  finalError.providerErrors = errors;
+  throw finalError;
+}
+
+async function buildAIContextFromTraining(matchedTraining = []) {
+  let trainingText = "";
+  let fileText = "";
+
+  for (const item of matchedTraining) {
+    if (item.response) {
+      trainingText += `\nTraining Response:\n${item.response}\n`;
+    }
+
+    if (item.file?.url) {
+      try {
+        const fileResponse = await fetch(item.file.url);
+
+        if (fileResponse.ok) {
+          const arrayBuffer = await fileResponse.arrayBuffer();
+          const buffer = Buffer.from(arrayBuffer);
+          const mimeType = item.file.mimeType || "application/octet-stream";
+          const fileName = item.file.name || "training-file";
+
+          const extractedText = await extractTextFromFile(
+            buffer,
+            mimeType,
+            fileName
+          );
+
+          const safeText = limitText(extractedText, 12000);
+
+          if (safeText.trim()) {
+            fileText += `
+[Document: ${fileName}]
+Mime-Type: ${mimeType}
+Extracted Content:
+${safeText}
+[/Document]
+`;
+          } else {
+            fileText += `\nAttached reference file: ${fileName} (content could not be extracted)\n`;
+          }
+        } else {
+          fileText += `\nAttached reference file: ${
+            item.file.name || "training-file"
+          } (download failed)\n`;
+        }
+      } catch (fileError) {
+        console.error("Training file read error:", fileError);
+      }
+    }
+  }
+
+  return { trainingText, fileText };
+}
+
+async function handleAIChat(req, res) {
   try {
     const { message, mode = "assistant", history = [] } = req.body || {};
 
@@ -4195,25 +5262,12 @@ app.post("/ai/gemini", async (req, res) => {
       return res.status(400).json({ error: "Message is required." });
     }
 
-    const normalizedHistory = Array.isArray(history)
-      ? history
-          .filter(
-            (item) =>
-              item &&
-              typeof item.text === "string" &&
-              (item.role === "user" || item.role === "model")
-          )
-          .map((item) => ({
-            role: item.role === "user" ? "user" : "model",
-            parts: [{ text: item.text }],
-          }))
-      : [];
-
+    const normalizedHistory = buildGeminiHistory(history);
     const matchedTraining = await findMatchingChatbotTraining(message, 5);
     const interpretedMessage = expandKeywordPrompt(message, mode);
     const bestMatch = matchedTraining[0] || null;
 
-    // Direct return for strong assistant trigger matches
+    // Keep existing keyword + strong trigger logic
     if (
       mode === "assistant" &&
       bestMatch &&
@@ -4229,51 +5283,9 @@ app.post("/ai/gemini", async (req, res) => {
       });
     }
 
-    let trainingText = "";
-    let fileText = "";
-
-    for (const item of matchedTraining) {
-      if (item.response) {
-        trainingText += `\nTraining Response:\n${item.response}\n`;
-      }
-
-      if (item.file?.url) {
-        try {
-          const fileResponse = await fetch(item.file.url);
-
-          if (fileResponse.ok) {
-            const arrayBuffer = await fileResponse.arrayBuffer();
-            const buffer = Buffer.from(arrayBuffer);
-            const mimeType = item.file.mimeType || "application/octet-stream";
-            const fileName = item.file.name || "training-file";
-
-            const extractedText = await extractTextFromFile(
-              buffer,
-              mimeType,
-              fileName
-            );
-
-            const safeText = limitText(extractedText, 12000);
-
-            if (safeText.trim()) {
-              fileText += `
-[Document: ${fileName}]
-Mime-Type: ${mimeType}
-Extracted Content:
-${safeText}
-[/Document]
-`;
-            } else {
-              fileText += `\nAttached reference file: ${fileName} (content could not be extracted)\n`;
-            }
-          } else {
-            fileText += `\nAttached reference file: ${item.file.name || "training-file"} (download failed)\n`;
-          }
-        } catch (fileError) {
-          console.error("Training file read error:", fileError);
-        }
-      }
-    }
+    const { trainingText, fileText } = await buildAIContextFromTraining(
+      matchedTraining
+    );
 
     let contextualPrompt = `User message: ${interpretedMessage}\nMode: ${mode}\n`;
 
@@ -4309,70 +5321,39 @@ In tutor mode, answer like a teacher and explain step by step.
 
     const assistantInstruction = `${modeInstruction} ${baseInstruction}`;
 
-    const assistantResponse = await fetch(
-      "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-goog-api-key": process.env.GEMINI_API_KEY,
-        },
-        body: JSON.stringify({
-          systemInstruction: {
-            parts: [{ text: assistantInstruction }],
-          },
-          contents: [
-            ...normalizedHistory,
-            {
-              role: "user",
-              parts: [{ text: contextualPrompt }],
-            },
-          ],
-        }),
-      }
-    );
-
-    const assistantData = await assistantResponse.json();
-
-    if (!assistantResponse.ok) {
-      // fallback to stored response if Gemini fails
-      if (bestMatch?.response) {
-        return res.json({
-          reply: bestMatch.response,
-          matchedTrainingCount: matchedTraining.length,
-          matchedTrainingIds: matchedTraining.map((item) => item.id),
-          interpretedMessage,
-          source: "stored-training-fallback",
-        });
-      }
-
-      return res.status(assistantResponse.status).json({
-        error:
-          assistantData?.error?.message || "Gemini assistant request failed.",
-        raw: assistantData,
-      });
-    }
-
-    const assistantText =
-      assistantData?.candidates?.[0]?.content?.parts
-        ?.map((p) => p.text)
-        .filter(Boolean)
-        .join("") || "No response returned.";
+    const aiResult = await callAIWithFallback({
+      assistantInstruction,
+      contextualPrompt,
+      normalizedHistory,
+      history,
+    });
 
     return res.json({
-      reply: assistantText,
+      reply: aiResult.text,
       matchedTrainingCount: matchedTraining.length,
       matchedTrainingIds: matchedTraining.map((item) => item.id),
       interpretedMessage,
-      source: "gemini",
+      source: aiResult.provider,
     });
   } catch (error) {
-    console.error("Gemini error:", error);
+    console.error("AI chat error:", error);
+
+    const providerErrors = Array.isArray(error?.providerErrors)
+      ? error.providerErrors
+      : [error?.message || "Unknown error"];
+
     return res.status(500).json({
       error: error.message || "Internal server error.",
+      providerErrors,
     });
   }
-});
+}
+
+app.post("/ai/chat", handleAIChat);
+
+// keep your old frontend working
+app.post("/ai/gemini", handleAIChat);
+
 
 function serializeTimestamp(value) {
   if (!value) return null;
@@ -4420,6 +5401,234 @@ async function resolveCommunityUserAvatar(authorRole, authorId, fallbackAvatar) 
 
   return fallbackAvatar || null;
 }
+
+// ====================== REAL SETTINGS AUTH ROUTES ======================
+async function getManagedUserRecord(id, role) {
+  const collectionName = getCollectionNameByRole(role);
+  if (!collectionName) throw new Error("Invalid role.");
+
+  const normalizedId = String(id || "").trim();
+  if (!normalizedId) throw new Error("User ID is required.");
+
+  const userRef = db.collection(collectionName).doc(normalizedId);
+  const userSnap = await userRef.get();
+  if (!userSnap.exists) throw new Error("User not found.");
+
+  const userData = userSnap.data() || {};
+  if (!userData.authUid) throw new Error("User auth UID is missing.");
+
+  return { collectionName, userRef, userData, userId: normalizedId };
+}
+
+async function assertEmailNotTakenByAnotherUser(nextEmail, currentAuthUid) {
+  try {
+    const existingUser = await admin.auth().getUserByEmail(nextEmail);
+    if (existingUser?.uid && existingUser.uid !== currentAuthUid) {
+      throw new Error("Email is already in use by another account.");
+    }
+  } catch (error) {
+    if (error?.code === "auth/user-not-found") return;
+    if (error?.message === "Email is already in use by another account.") throw error;
+    throw new Error(error?.message || "Failed to validate email address.");
+  }
+}
+
+app.post("/auth/change-email", async (req, res) => {
+  try {
+    const { id, role, newEmail } = req.body;
+
+    if (!id || !role || !newEmail) {
+      return res.status(400).json({ error: "id, role, and newEmail are required." });
+    }
+
+    const normalizedEmail = String(newEmail).trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+      return res.status(400).json({ error: "Please provide a valid email address." });
+    }
+
+    const { userRef, userData } = await getManagedUserRecord(id, role);
+
+    if ((userData.email || "").toLowerCase() === normalizedEmail) {
+      return res.status(400).json({ error: "Your new email must be different from your current email." });
+    }
+
+    await assertEmailNotTakenByAnotherUser(normalizedEmail, userData.authUid);
+
+    await admin.auth().updateUser(userData.authUid, { email: normalizedEmail });
+    await userRef.update({ email: normalizedEmail, updatedAt: FieldValue.serverTimestamp() });
+
+    return res.json({
+      success: true,
+      message: "Email updated successfully.",
+      data: { email: normalizedEmail },
+    });
+  } catch (error) {
+    console.error("Change email error:", error);
+    return res.status(500).json({ error: error?.message || "Failed to update email." });
+  }
+});
+
+app.post("/auth/change-password", async (req, res) => {
+  try {
+    const { id, role, newPassword } = req.body;
+
+    if (!id || !role || !newPassword) {
+      return res.status(400).json({ error: "id, role, and newPassword are required." });
+    }
+
+    const normalizedPassword = String(newPassword).trim();
+    if (normalizedPassword.length < 8) {
+      return res.status(400).json({ error: "New password must be at least 8 characters long." });
+    }
+
+    const { userRef, userData } = await getManagedUserRecord(id, role);
+
+    await admin.auth().updateUser(userData.authUid, { password: normalizedPassword });
+    await userRef.update({
+      updatedAt: FieldValue.serverTimestamp(),
+      lastPasswordChangeAt: FieldValue.serverTimestamp(),
+    });
+
+    return res.json({ success: true, message: "Password updated successfully." });
+  } catch (error) {
+    console.error("Change password error:", error);
+    return res.status(500).json({ error: error?.message || "Failed to update password." });
+  }
+});
+// ====================== END REAL SETTINGS AUTH ROUTES ======================
+
+
+
+/**
+ * VIDEO FAVORITES ROUTES
+ */
+
+function buildVideoFavoriteResponse(doc) {
+  const data = doc.data() || {};
+
+  return {
+    id: data.videoId || doc.id,
+    favoriteId: doc.id,
+    userId: data.userId || "",
+    role: data.role || "student",
+    videoId: data.videoId || "",
+    title: data.title || "",
+    description: data.description || "",
+    embedUrl: data.embedUrl || "",
+    watchUrl: data.watchUrl || "",
+    channel: data.channel || "",
+    views: data.views || "",
+    uploadedAt: data.uploadedAt || "",
+    publishedAt: data.publishedAt || null,
+    thumbnail: data.thumbnail || "",
+    createdAt: serializeTimestamp(data.createdAt),
+    updatedAt: serializeTimestamp(data.updatedAt),
+  };
+}
+
+app.get("/video-favorites", async (req, res) => {
+  try {
+    const userId = normalizeOptionalText(req.query.userId);
+    const role = normalizeOptionalText(req.query.role) || "student";
+
+    if (!userId) {
+      return res.status(400).json({ error: "userId is required." });
+    }
+
+    const snapshot = await db
+      .collection("videoFavorites")
+      .where("userId", "==", userId)
+      .where("role", "==", role)
+      .orderBy("createdAt", "desc")
+      .get();
+
+    return res.json({
+      success: true,
+      data: snapshot.docs.map((doc) => buildVideoFavoriteResponse(doc)),
+    });
+  } catch (error) {
+    console.error("Fetch video favorites error:", error);
+    return res.status(500).json({
+      error: error.message || "Failed to fetch video favorites.",
+    });
+  }
+});
+
+app.post("/video-favorites/toggle", async (req, res) => {
+  try {
+    const { userId, role = "student", video } = req.body || {};
+
+    const normalizedUserId = normalizeOptionalText(userId);
+    const normalizedRole = normalizeOptionalText(role) || "student";
+
+    if (!normalizedUserId) {
+      return res.status(400).json({ error: "userId is required." });
+    }
+
+    if (!video || typeof video !== "object") {
+      return res.status(400).json({ error: "video is required." });
+    }
+
+    const videoId = normalizeOptionalText(video.videoId || video.id);
+
+    if (!videoId) {
+      return res.status(400).json({ error: "video.id is required." });
+    }
+
+    const existingSnapshot = await db
+      .collection("videoFavorites")
+      .where("userId", "==", normalizedUserId)
+      .where("role", "==", normalizedRole)
+      .where("videoId", "==", videoId)
+      .limit(1)
+      .get();
+
+    if (!existingSnapshot.empty) {
+      const existingDoc = existingSnapshot.docs[0];
+      await existingDoc.ref.delete();
+
+      return res.json({
+        success: true,
+        saved: false,
+        videoId,
+        message: "Video removed from favorites.",
+      });
+    }
+
+    const favoritePayload = {
+      userId: normalizedUserId,
+      role: normalizedRole,
+      videoId,
+      title: normalizeOptionalText(video.title) || "Untitled video",
+      description: typeof video.description === "string" ? video.description : "",
+      embedUrl: normalizeOptionalText(video.embedUrl) || "",
+      watchUrl: normalizeOptionalText(video.watchUrl) || "",
+      channel: normalizeOptionalText(video.channel) || "YouTube",
+      views: normalizeOptionalText(video.views) || "0 views",
+      uploadedAt: normalizeOptionalText(video.uploadedAt) || "Recently uploaded",
+      publishedAt: normalizeOptionalText(video.publishedAt) || null,
+      thumbnail: normalizeOptionalText(video.thumbnail) || "",
+      createdAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    };
+
+    const docRef = await db.collection("videoFavorites").add(favoritePayload);
+    const savedDoc = await docRef.get();
+
+    return res.json({
+      success: true,
+      saved: true,
+      videoId,
+      message: "Video saved to favorites.",
+      data: buildVideoFavoriteResponse(savedDoc),
+    });
+  } catch (error) {
+    console.error("Toggle video favorite error:", error);
+    return res.status(500).json({
+      error: error.message || "Failed to update favorite.",
+    });
+  }
+});
 
 app.get("/community-posts", async (req, res) => {
   try {

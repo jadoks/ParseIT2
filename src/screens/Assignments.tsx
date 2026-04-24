@@ -1,9 +1,13 @@
+import Constants from 'expo-constants';
 import * as DocumentPicker from 'expo-document-picker';
+import * as FileSystem from 'expo-file-system/legacy';
 import React, { useMemo, useState } from 'react';
 import {
   Alert,
   FlatList,
+  Linking,
   Modal,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -30,6 +34,14 @@ export interface AssignmentFileUpload {
   fileName: string;
   fileSize: string;
   uploadedDate: string;
+  fileUrl?: string;
+  fileType?: string;
+  storagePath?: string;
+  bucketPath?: string;
+  submissionId?: string;
+  submittedAt?: string;
+  isSubmitted?: boolean;
+  source?: 'student' | 'teacher';
 }
 
 export interface AssignmentMaterial {
@@ -54,6 +66,12 @@ export interface AssignmentItem {
   topic?: string;
   materialIds?: string[];
   description?: string;
+  fileName?: string | null;
+  fileUrl?: string | null;
+  fileUri?: string | null;
+  fileType?: string | null;
+  storagePath?: string | null;
+  bucketPath?: string | null;
   comments?: AssignmentComment[];
   files?: AssignmentFileUpload[];
 }
@@ -69,6 +87,68 @@ export interface AssignmentCourse {
   section: string;
   materials: AssignmentMaterial[];
   assignments: AssignmentItem[];
+}
+
+
+
+type CurrentStudent = {
+  studentId: string;
+  authUid?: string | null;
+  firstName?: string;
+  lastName?: string;
+  email?: string;
+};
+
+function getApiBaseUrl() {
+  if (Platform.OS === 'web') return 'http://localhost:5000';
+
+  const possibleHost =
+    Constants.expoConfig?.hostUri ||
+    Constants.manifest2?.extra?.expoGo?.debuggerHost ||
+    '';
+
+  const host = possibleHost.split(':')[0];
+  if (host) return `http://${host}:5000`;
+  return 'http://192.168.1.5:5000';
+}
+
+const API_BASE_URL = getApiBaseUrl();
+
+const getDisplayFileSize = (bytes?: number | null) => {
+  if (!bytes || !Number.isFinite(bytes)) return 'Uploaded file';
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+};
+
+async function readPickedFileBase64(asset: any): Promise<string | null> {
+  if (Platform.OS === 'web') {
+    if (asset?.base64) return asset.base64;
+
+    if (asset?.file) {
+      return await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const result = reader.result;
+          if (typeof result === 'string') {
+            resolve(result.includes(',') ? result.split(',')[1] : result);
+          } else {
+            reject(new Error('Failed to read selected file.'));
+          }
+        };
+        reader.onerror = () => reject(new Error('Failed to read selected file.'));
+        reader.readAsDataURL(asset.file as File);
+      });
+    }
+  }
+
+  if (asset?.uri) {
+    return await FileSystem.readAsStringAsync(asset.uri, {
+      encoding: 'base64' as any,
+    });
+  }
+
+  return null;
 }
 
 interface FlattenedAssignment extends AssignmentItem {
@@ -92,7 +172,11 @@ interface AssignmentsProps {
   onAddFile: (assignmentId: string, file: AssignmentFileUpload) => void;
   onRemoveFile: (assignmentId: string, fileId: string) => void;
   onOpenGeneratedActivity?: (course: AssignmentCourse, assignment: AssignmentItem) => void;
+  onUpdateAssignmentStatus?: (assignmentId: string, status: AssignmentItem['status']) => void;
+  onRefreshSubmissions?: () => Promise<void> | void;
+  currentStudent?: CurrentStudent;
 }
+
 
 type FilterType = 'all' | 'pending' | 'submitted' | 'graded';
 
@@ -105,6 +189,9 @@ const Assignments = ({
   onAddFile,
   onRemoveFile,
   onOpenGeneratedActivity,
+  onUpdateAssignmentStatus,
+  onRefreshSubmissions,
+  currentStudent,
 }: AssignmentsProps) => {
   const { width } = useWindowDimensions();
   const isLargeScreen = width >= 768;
@@ -112,6 +199,8 @@ const Assignments = ({
   const [filter, setFilter] = useState<FilterType>('all');
   const [selectedAssignment, setSelectedAssignment] = useState<FlattenedAssignment | null>(null);
   const [newComment, setNewComment] = useState('');
+  const [isUploadingFile, setIsUploadingFile] = useState(false);
+  const [isSubmittingAssignment, setIsSubmittingAssignment] = useState(false);
 
   const sourceCourses = useMemo(() => {
     if (!selectedCourseId) return courses;
@@ -153,19 +242,18 @@ const Assignments = ({
 
   const getRecommendationType = (
     assignment: AssignmentItem
-  ): 'review' | 'practice' | 'advanced' | null => {
+  ): 'review' | 'practice' | null => {
     const percent = getScorePercent(assignment);
     if (percent === null) return null;
     if (percent < 60) return 'review';
     if (percent < 75) return 'practice';
-    return 'advanced';
+    return null;
   };
 
   const getRecommendationLabel = (assignment: AssignmentItem) => {
     const recommendation = getRecommendationType(assignment);
     if (recommendation === 'review') return 'Review Activity';
     if (recommendation === 'practice') return 'Practice Quiz';
-    if (recommendation === 'advanced') return 'Advanced Challenge';
     return null;
   };
 
@@ -173,7 +261,6 @@ const Assignments = ({
     const recommendation = getRecommendationType(assignment);
     if (recommendation === 'review') return '#D32F2F';
     if (recommendation === 'practice') return '#F57C00';
-    if (recommendation === 'advanced') return '#2E7D32';
     return '#999';
   };
 
@@ -216,28 +303,172 @@ const Assignments = ({
 
   const handleFileUpload = async () => {
     if (!selectedAssignment) return;
+    if (!selectedAssignment.courseId) {
+      Alert.alert('No class', 'This assignment is not connected to a class.');
+      return;
+    }
 
     try {
-      const res = await DocumentPicker.getDocumentAsync({ copyToCacheDirectory: false });
+      setIsUploadingFile(true);
+      const res = await DocumentPicker.getDocumentAsync({
+        type: '*/*',
+        copyToCacheDirectory: true,
+        base64: Platform.OS === 'web',
+      });
 
       if (!res.canceled && res.assets?.length) {
         const file = res.assets[0];
+        const fileBase64 = await readPickedFileBase64(file);
+
+        if (!fileBase64) {
+          throw new Error('Unable to read selected file.');
+        }
+
+        const uploadResponse = await fetch(`${API_BASE_URL}/upload-class-file`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            classId: selectedAssignment.courseId,
+            fileBase64,
+            fileName: file.name || 'submission-file',
+            fileType: file.mimeType || 'application/octet-stream',
+            kind: 'submission',
+          }),
+        });
+
+        const uploadData = await uploadResponse.json();
+        if (!uploadResponse.ok) {
+          throw new Error(uploadData?.error || 'Failed to upload file.');
+        }
 
         onAddFile(selectedAssignment.id, {
           id: `f${Date.now()}`,
-          fileName: file.name || 'file',
-          fileSize: '1.2 MB',
+          fileName: uploadData?.data?.fileName || file.name || 'file',
+          fileSize: getDisplayFileSize(file.size),
           uploadedDate: new Date().toLocaleString(),
+          fileUrl: uploadData?.data?.fileUrl,
+          fileType: uploadData?.data?.fileType || file.mimeType,
+          storagePath: uploadData?.data?.storagePath,
+          bucketPath: uploadData?.data?.bucketPath,
+          isSubmitted: false,
+          source: 'student',
         });
       }
-    } catch (err) {
-      console.warn('DocumentPicker error', err);
-      Alert.alert('Upload failed', 'Could not open file picker.');
+    } catch (err: any) {
+      console.warn('DocumentPicker/upload error', err);
+      Alert.alert('Upload failed', err?.message || 'Could not upload the selected file.');
+    } finally {
+      setIsUploadingFile(false);
     }
   };
 
-  const handleSubmitAssignment = () => {
+  const isAssignmentSubmitted = (assignment?: AssignmentItem | null) => {
+    return assignment?.status === 'submitted' || assignment?.status === 'graded';
+  };
+
+  const isAssignmentGraded = (assignment?: AssignmentItem | null) => {
+    return assignment?.status === 'graded';
+  };
+
+  const getSubmittedFiles = (assignment?: AssignmentItem | null) => {
+    if (!assignment) return [];
+
+    return (assignmentFiles[assignment.id] || []).filter(
+      (file) => file.source !== 'teacher'
+    );
+  };
+
+  const getTeacherAssignmentFiles = (assignment?: AssignmentItem | null) => {
+    if (!assignment) return [];
+
+    const mappedFiles = (assignment.files || []).map((file: any, index) => ({
+      id: file.id || `teacher-file-${assignment.id}-${index}`,
+      fileName: file.fileName || file.name || 'Assignment attachment',
+      fileSize: file.fileSize || 'Teacher file',
+      uploadedDate: file.uploadedDate || file.uploadedAt || 'Attached by teacher',
+      fileUrl: file.fileUrl || file.fileUri || file.uri || file.downloadUrl || null,
+      fileType: file.fileType,
+      source: 'teacher' as const,
+    }));
+
+    const topLevelUrl = getAssignmentFileUrl(assignment);
+    if (topLevelUrl) {
+      const alreadyIncluded = mappedFiles.some((file) => file.fileUrl === topLevelUrl);
+      if (!alreadyIncluded) {
+        mappedFiles.unshift({
+          id: `teacher-file-${assignment.id}-main`,
+          fileName: getAssignmentFileName(assignment),
+          fileSize: 'Teacher file',
+          uploadedDate: 'Attached by teacher',
+          fileUrl: topLevelUrl,
+          fileType: (assignment as any)?.fileType || (assignment as any)?.attachmentType,
+          source: 'teacher' as const,
+        });
+      }
+    }
+
+    return mappedFiles;
+  };
+
+  const getAssignmentFileUrl = (assignment?: AssignmentItem | null) => {
+    const raw =
+      assignment?.fileUrl ||
+      assignment?.fileUri ||
+      (assignment as any)?.downloadUrl ||
+      (assignment as any)?.attachmentUrl ||
+      null;
+
+    if (!raw || typeof raw !== 'string') return null;
+    const trimmed = raw.trim();
+    return trimmed || null;
+  };
+
+  const getAssignmentFileName = (assignment?: AssignmentItem | null) => {
+    return (
+      assignment?.fileName ||
+      (assignment as any)?.name ||
+      (assignment as any)?.attachmentName ||
+      'Assignment attachment'
+    );
+  };
+
+  const handleOpenUploadedFile = async (
+    fileUri?: string | null,
+    emptyMessage = 'This file has no URL yet.'
+  ) => {
+    const url = fileUri?.trim();
+
+    if (!url) {
+      Alert.alert('No File', emptyMessage);
+      return;
+    }
+
+    try {
+      const supported = await Linking.canOpenURL(url);
+      if (!supported && Platform.OS !== 'web') throw new Error('Unsupported file URL.');
+      await Linking.openURL(url);
+    } catch {
+      Alert.alert('Open Failed', 'Unable to open this file.');
+    }
+  };
+
+  const syncSelectedAssignmentStatus = (status: AssignmentItem['status']) => {
     if (!selectedAssignment) return;
+    setSelectedAssignment((prev) => (prev ? { ...prev, status } : prev));
+    onUpdateAssignmentStatus?.(selectedAssignment.id, status);
+  };
+
+  const handleSubmitAssignment = async () => {
+    if (!selectedAssignment) return;
+
+    if (isAssignmentSubmitted(selectedAssignment)) {
+      return;
+    }
+
+    if (!currentStudent?.studentId) {
+      Alert.alert('Missing student', 'Student account information is missing. Please sign in again.');
+      return;
+    }
 
     const files = assignmentFiles[selectedAssignment.id] || [];
     if (files.length === 0) {
@@ -245,8 +476,91 @@ const Assignments = ({
       return;
     }
 
-    Alert.alert('Success', `Assignment submitted with ${files.length} file(s).`);
-    closeModal();
+    const file = files[0];
+    if (!file.fileUrl) {
+      Alert.alert('Upload still needed', 'Please re-upload the file before submitting.');
+      return;
+    }
+
+    try {
+      setIsSubmittingAssignment(true);
+      const studentName = `${currentStudent.firstName || ''} ${currentStudent.lastName || ''}`.trim();
+
+      const response = await fetch(`${API_BASE_URL}/create-submission`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          classId: selectedAssignment.courseId,
+          assignmentId: selectedAssignment.id,
+          studentUid: currentStudent.authUid || null,
+          studentId: currentStudent.studentId,
+          studentName,
+          status: 'submitted',
+          score: null,
+          fileName: file.fileName,
+          fileUrl: file.fileUrl,
+          fileType: file.fileType || 'application/octet-stream',
+          storagePath: file.storagePath || null,
+          bucketPath: file.bucketPath || null,
+          feedback: null,
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data?.error || 'Failed to submit assignment.');
+      }
+
+      syncSelectedAssignmentStatus('submitted');
+      await onRefreshSubmissions?.();
+      Alert.alert('Submitted', 'Your assignment was submitted successfully.');
+    } catch (error: any) {
+      Alert.alert('Submit Failed', error?.message || 'Unable to submit assignment.');
+    } finally {
+      setIsSubmittingAssignment(false);
+    }
+  };
+
+  const handleUnsubmitAssignment = async () => {
+    if (!selectedAssignment) return;
+
+    if (selectedAssignment.status === 'graded') {
+      Alert.alert('Already graded', 'This assignment has already been graded and cannot be unsubmitted.');
+      return;
+    }
+
+    if (!currentStudent?.studentId) {
+      Alert.alert('Missing student', 'Student account information is missing. Please sign in again.');
+      return;
+    }
+
+    try {
+      setIsSubmittingAssignment(true);
+
+      const response = await fetch(`${API_BASE_URL}/unsubmit-assignment`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          classId: selectedAssignment.courseId,
+          assignmentId: selectedAssignment.id,
+          studentId: currentStudent.studentId,
+          studentUid: currentStudent.authUid || null,
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data?.error || 'Failed to unsubmit assignment.');
+      }
+
+      syncSelectedAssignmentStatus('pending');
+      await onRefreshSubmissions?.();
+      Alert.alert('Unsubmitted', 'Your file is still attached. You can edit it and submit again.');
+    } catch (error: any) {
+      Alert.alert('Unsubmit Failed', error?.message || 'Unable to unsubmit assignment.');
+    } finally {
+      setIsSubmittingAssignment(false);
+    }
   };
 
   const closeModal = () => {
@@ -462,7 +776,35 @@ const Assignments = ({
                       )}
                     </View>
 
-                    {selectedAssignment.status === 'graded' && (
+                    <View style={styles.section}>
+                      <Text style={styles.sectionTitle}>📄 Assignment File</Text>
+
+                      {getTeacherAssignmentFiles(selectedAssignment).length > 0 ? (
+                        <View>
+                          {getTeacherAssignmentFiles(selectedAssignment).map((file) => (
+                            <View key={file.id} style={styles.attachmentFileCard}>
+                              <Text style={{ fontSize: 22 }}>📎</Text>
+                              <View style={styles.fileInfo}>
+                                <Text style={styles.fileName}>{file.fileName}</Text>
+                                <Text style={styles.fileDetails}>Uploaded by your teacher for this assignment</Text>
+                              </View>
+                              <TouchableOpacity
+                                style={[styles.fileOpenButton, !file.fileUrl && styles.fileOpenButtonDisabled]}
+                                disabled={!file.fileUrl}
+                                activeOpacity={0.85}
+                                onPress={() => handleOpenUploadedFile(file.fileUrl, 'This assignment has no attached file yet.')}
+                              >
+                                <Text style={styles.fileOpenButtonText}>Open</Text>
+                              </TouchableOpacity>
+                            </View>
+                          ))}
+                        </View>
+                      ) : (
+                        <Text style={styles.emptyText}>No assignment file attached.</Text>
+                      )}
+                    </View>
+
+                    {getRecommendationType(selectedAssignment) && (
                       <View style={styles.section}>
                         <Text style={styles.sectionTitle}>🎯 Follow-Up Activity</Text>
 
@@ -502,11 +844,11 @@ const Assignments = ({
                     </View>
 
                     <View style={styles.section}>
-                      <Text style={styles.sectionTitle}>📎 Files</Text>
+                      <Text style={styles.sectionTitle}>📤 Your Uploads</Text>
 
-                      {(assignmentFiles[selectedAssignment.id] || []).length > 0 ? (
+                      {getSubmittedFiles(selectedAssignment).length > 0 ? (
                         <View>
-                          {(assignmentFiles[selectedAssignment.id] || []).map((file) => (
+                          {getSubmittedFiles(selectedAssignment).map((file) => (
                             <View key={file.id} style={styles.fileItem}>
                               <Text style={{ fontSize: 20 }}>📄</Text>
                               <View style={styles.fileInfo}>
@@ -515,42 +857,116 @@ const Assignments = ({
                                   {file.fileSize} • {file.uploadedDate}
                                 </Text>
                               </View>
-                              <TouchableOpacity
-                                onPress={() => onRemoveFile(selectedAssignment.id, file.id)}
-                              >
-                                <Text style={styles.removeButton}>✕</Text>
-                              </TouchableOpacity>
+
+                              <View style={styles.fileActionsRow}>
+                                <TouchableOpacity
+                                  style={[styles.fileOpenButton, !file.fileUrl && styles.fileOpenButtonDisabled]}
+                                  disabled={!file.fileUrl}
+                                  activeOpacity={0.85}
+                                  onPress={() => handleOpenUploadedFile(file.fileUrl, 'This submitted file has no URL yet.')}
+                                >
+                                  <Text style={styles.fileOpenButtonText}>Open</Text>
+                                </TouchableOpacity>
+
+                                <TouchableOpacity
+                                  disabled={isAssignmentSubmitted(selectedAssignment)}
+                                  onPress={() => onRemoveFile(selectedAssignment.id, file.id)}
+                                >
+                                  <Text style={[styles.removeButton, isAssignmentSubmitted(selectedAssignment) && styles.disabledRemoveButton]}>✕</Text>
+                                </TouchableOpacity>
+                              </View>
                             </View>
                           ))}
                         </View>
                       ) : (
-                        <Text style={styles.emptyText}>No files uploaded yet</Text>
+                        <Text style={styles.emptyText}>No student files uploaded yet</Text>
                       )}
 
                       {(() => {
-                        const uploadedFiles = assignmentFiles[selectedAssignment.id] || [];
+                        const uploadedFiles = getSubmittedFiles(selectedAssignment);
                         const hasFiles = uploadedFiles.length > 0;
+                        const isSubmitted = isAssignmentSubmitted(selectedAssignment);
+                        const isGraded = isAssignmentGraded(selectedAssignment);
+                        const canEditFiles = !isSubmitted && !isGraded;
+
+                        if (isGraded) {
+                          return (
+                            <View style={styles.uploadActionsRow}>
+                              <View style={styles.lockedSubmissionBox}>
+                                <Text style={styles.lockedSubmissionTitle}>✅ Assignment already graded</Text>
+                                <Text style={styles.lockedSubmissionText}>
+                                  Your submission is locked. You can no longer upload, remove, submit, or unsubmit files.
+                                </Text>
+                              </View>
+                            </View>
+                          );
+                        }
+
+                        if (isSubmitted) {
+                          return (
+                            <View style={styles.uploadActionsRow}>
+                              <View style={styles.lockedSubmissionBox}>
+                                <Text style={styles.lockedSubmissionTitle}>📨 Already submitted</Text>
+                                <Text style={styles.lockedSubmissionText}>
+                                  Your teacher has received this assignment. Unsubmit only if you need to change your file before grading.
+                                </Text>
+                              </View>
+
+                              <TouchableOpacity
+                                onPress={handleUnsubmitAssignment}
+                                disabled={isSubmittingAssignment}
+                                style={[
+                                  styles.uploadButton,
+                                  { backgroundColor: '#D32F2F' },
+                                  isSubmittingAssignment && styles.sendButtonDisabled,
+                                ]}
+                              >
+                                <Text style={styles.uploadButtonText}>
+                                  {isSubmittingAssignment ? 'UNSUBMITTING...' : 'UNSUBMIT'}
+                                </Text>
+                              </TouchableOpacity>
+                            </View>
+                          );
+                        }
 
                         return (
                           <View style={styles.uploadActionsRow}>
                             {!hasFiles ? (
-                              <TouchableOpacity style={styles.uploadButton} onPress={handleFileUpload}>
-                                <Text style={styles.uploadButtonText}>+ Upload File</Text>
+                              <TouchableOpacity
+                                style={[styles.uploadButton, isUploadingFile && styles.sendButtonDisabled]}
+                                disabled={isUploadingFile}
+                                onPress={handleFileUpload}
+                              >
+                                <Text style={styles.uploadButtonText}>
+                                  {isUploadingFile ? 'Uploading...' : '+ Upload File'}
+                                </Text>
                               </TouchableOpacity>
                             ) : (
                               <>
-                                <TouchableOpacity
-                                  onPress={handleFileUpload}
-                                  style={styles.secondaryButton}
-                                >
-                                  <Text style={styles.secondaryButtonText}>+ Add Another File</Text>
-                                </TouchableOpacity>
+                                {canEditFiles && (
+                                  <TouchableOpacity
+                                    onPress={handleFileUpload}
+                                    disabled={isUploadingFile}
+                                    style={[styles.secondaryButton, isUploadingFile && styles.sendButtonDisabled]}
+                                  >
+                                    <Text style={styles.secondaryButtonText}>
+                                      {isUploadingFile ? 'Uploading...' : '+ Add Another File'}
+                                    </Text>
+                                  </TouchableOpacity>
+                                )}
 
                                 <TouchableOpacity
                                   onPress={handleSubmitAssignment}
-                                  style={[styles.uploadButton, { backgroundColor: '#308C5D' }]}
+                                  disabled={isSubmittingAssignment}
+                                  style={[
+                                    styles.uploadButton,
+                                    { backgroundColor: '#308C5D' },
+                                    isSubmittingAssignment && styles.sendButtonDisabled,
+                                  ]}
                                 >
-                                  <Text style={styles.uploadButtonText}>SUBMIT</Text>
+                                  <Text style={styles.uploadButtonText}>
+                                    {isSubmittingAssignment ? 'SUBMITTING...' : 'SUBMIT'}
+                                  </Text>
                                 </TouchableOpacity>
                               </>
                             )}
@@ -852,6 +1268,17 @@ const styles = StyleSheet.create({
     textTransform: 'capitalize',
   },
 
+  attachmentFileCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFF7F7',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#F3D4D4',
+    padding: 12,
+    marginBottom: 8,
+  },
+
   fileItem: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -874,6 +1301,31 @@ const styles = StyleSheet.create({
     color: '#888',
     fontSize: 12,
   },
+  disabledRemoveButton: {
+  opacity: 0.45,
+},
+  fileActionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginLeft: 8,
+  },
+  fileOpenButton: {
+    minHeight: 34,
+    paddingHorizontal: 14,
+    borderRadius: 10,
+    backgroundColor: '#D32F2F',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  fileOpenButtonDisabled: {
+    backgroundColor: '#D9A0A0',
+  },
+  fileOpenButtonText: {
+    color: '#FFF',
+    fontSize: 12,
+    fontWeight: '800',
+  },
   removeButton: {
     color: '#D32F2F',
     fontWeight: 'bold',
@@ -882,6 +1334,26 @@ const styles = StyleSheet.create({
   uploadActionsRow: {
     gap: 10,
     marginTop: 8,
+  },
+  lockedSubmissionBox: {
+    backgroundColor: '#F5F7FA',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#E4E7EC',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginTop: 8,
+  },
+  lockedSubmissionTitle: {
+    color: '#111',
+    fontWeight: '700',
+    fontSize: 13,
+    marginBottom: 4,
+  },
+  lockedSubmissionText: {
+    color: '#666',
+    fontSize: 12,
+    lineHeight: 18,
   },
   uploadButton: {
     backgroundColor: '#D32F2F',

@@ -117,6 +117,109 @@ function getApiBaseUrl() {
 
 const API_BASE_URL = getApiBaseUrl();
 
+type StoredAssignmentScore = {
+  points?: number;
+  maxPoints?: number;
+  feedback?: string | null;
+};
+
+type StoredAssignmentState = {
+  files: Record<string, AssignmentFileUpload[]>;
+  statuses: Record<string, AssignmentItem['status']>;
+  scores: Record<string, StoredAssignmentScore>;
+};
+
+const getAssignmentStateKey = (studentId: string) => `student-assignment-state-${studentId}`;
+
+const emptyStoredAssignmentState = (): StoredAssignmentState => ({
+  files: {},
+  statuses: {},
+  scores: {},
+});
+
+const readStoredAssignmentState = async (studentId: string): Promise<StoredAssignmentState> => {
+  if (!studentId) return emptyStoredAssignmentState();
+
+  const key = getAssignmentStateKey(studentId);
+
+  try {
+    const raw =
+      Platform.OS === 'web'
+        ? (globalThis as any).localStorage?.getItem(key)
+        : await FileSystem.readAsStringAsync(`${FileSystem.documentDirectory}${key}.json`);
+
+    if (!raw) return emptyStoredAssignmentState();
+
+    const parsed = JSON.parse(raw);
+    return {
+      files: parsed?.files || {},
+      statuses: parsed?.statuses || {},
+      scores: parsed?.scores || {},
+    };
+  } catch {
+    return emptyStoredAssignmentState();
+  }
+};
+
+const writeStoredAssignmentState = async (studentId: string, state: StoredAssignmentState) => {
+  if (!studentId) return;
+
+  const key = getAssignmentStateKey(studentId);
+  const raw = JSON.stringify(state);
+
+  try {
+    if (Platform.OS === 'web') {
+      (globalThis as any).localStorage?.setItem(key, raw);
+      return;
+    }
+
+    await FileSystem.writeAsStringAsync(`${FileSystem.documentDirectory}${key}.json`, raw);
+  } catch (error) {
+    console.log('SAVE ASSIGNMENT STATE ERROR =>', error);
+  }
+};
+
+const normalizeSubmissionList = (value: any): any[] => {
+  if (Array.isArray(value)) return value;
+  if (Array.isArray(value?.data)) return value.data;
+  if (Array.isArray(value?.submissions)) return value.submissions;
+  return [];
+};
+
+const formatRemoteDateTime = (value: any) => {
+  if (!value) return new Date().toLocaleString();
+  if (typeof value === 'string') return value;
+  if (typeof value?.toDate === 'function') return value.toDate().toLocaleString();
+  if (typeof value?._seconds === 'number') return new Date(value._seconds * 1000).toLocaleString();
+  if (typeof value?.seconds === 'number') return new Date(value.seconds * 1000).toLocaleString();
+
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? new Date().toLocaleString() : parsed.toLocaleString();
+};
+
+const mapSubmissionToFile = (submission: any): AssignmentFileUpload | null => {
+  const fileUrl = submission?.fileUrl || submission?.url || submission?.downloadUrl;
+  const fileName = submission?.fileName || submission?.name;
+
+  if (!fileUrl || !fileName) return null;
+
+  return {
+    id: String(submission?.submissionId || submission?.id || `submission-${submission?.assignmentId || Date.now()}`),
+    submissionId: submission?.submissionId || submission?.id,
+    fileName,
+    fileSize: submission?.fileSize || 'Submitted file',
+    uploadedDate: formatRemoteDateTime(submission?.submittedAt || submission?.uploadedDate || submission?.createdAt),
+    submittedAt: formatRemoteDateTime(submission?.submittedAt || submission?.createdAt),
+    fileUrl,
+    fileType: submission?.fileType || 'application/octet-stream',
+    storagePath: submission?.storagePath,
+    bucketPath: submission?.bucketPath,
+    isSubmitted: true,
+    source: 'student',
+  };
+};
+
+
 const ANNOUNCEMENT_BANNERS: Record<number, any> = {
   1: require('../assets/images/Banner1.png'),
   2: require('../assets/images/Banner2.png'),
@@ -363,8 +466,11 @@ const mapCourseFilesToAssignmentFiles = (
   return (files || []).map((file) => ({
     id: file.id,
     fileName: file.name,
-    fileSize: '1.2 MB',
+    fileSize: (file as any).fileSize || '1.2 MB',
     uploadedDate: file.uploadedAt,
+    fileUrl: file.uri || (file as any).fileUrl,
+    fileType: (file as any).fileType,
+    source: 'teacher',
   }));
 };
 
@@ -380,6 +486,13 @@ const mapCourseAssignmentsToAssignmentItems = (
     maxPoints: assignment.maxPoints,
     topic: assignment.topic,
     materialIds: assignment.materialIds,
+    description: (assignment as any).description || (assignment as any).instruction || '',
+    fileName: (assignment as any).fileName || null,
+    fileUrl: (assignment as any).fileUrl || (assignment as any).fileUri || null,
+    fileUri: (assignment as any).fileUri || (assignment as any).fileUrl || null,
+    fileType: (assignment as any).fileType || null,
+    storagePath: (assignment as any).storagePath || null,
+    bucketPath: (assignment as any).bucketPath || null,
     comments: mapCourseCommentsToAssignmentComments(assignment.comments),
     files: mapCourseFilesToAssignmentFiles(assignment.files),
   }));
@@ -410,7 +523,7 @@ const mapCoursesToAssignmentCourses = (courses: CourseDetailData[]): AssignmentC
   }));
 };
 
-const mapJoinedClassToCourseDetail = (item: any): CourseDetailData => ({
+const mapJoinedClassToCourseDetail = (item: any): CourseDetailData & { units?: number } => ({
   id: String(item.id || ''),
   name: item.name || 'Untitled Class',
   code: item.courseCode || item.classCode || '',
@@ -419,6 +532,7 @@ const mapJoinedClassToCourseDetail = (item: any): CourseDetailData => ({
   semester: item.semester || '',
   schoolYear: item.schoolYear || '',
   section: item.section || '',
+  units: typeof item.units === 'number' ? item.units : Number(item.units) || 0,
   materials: Array.isArray(item.materials) ? item.materials : [],
   assignments: Array.isArray(item.assignments) ? item.assignments : [],
 });
@@ -452,6 +566,13 @@ const mapCourseDetailToAssignmentCourse = (course: CourseDetailData): Assignment
     maxPoints: assignment.maxPoints,
     topic: assignment.topic,
     materialIds: assignment.materialIds,
+    description: (assignment as any).description || (assignment as any).instruction || '',
+    fileName: (assignment as any).fileName || null,
+    fileUrl: (assignment as any).fileUrl || (assignment as any).fileUri || null,
+    fileUri: (assignment as any).fileUri || (assignment as any).fileUrl || null,
+    fileType: (assignment as any).fileType || null,
+    storagePath: (assignment as any).storagePath || null,
+    bucketPath: (assignment as any).bucketPath || null,
     comments: mapCourseCommentsToAssignmentComments(assignment.comments),
     files: mapCourseFilesToAssignmentFiles(assignment.files),
   })),
@@ -507,6 +628,7 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
 
   const [communityPosts, setCommunityPosts] = useState<CommunityPost[]>([]);
   const [studentNotifications, setStudentNotifications] = useState<NotificationItem[]>([]);
+  const [videoSearchQuery, setVideoSearchQuery] = useState('');
 
   const isFullscreenScreen =
     activeScreen === 'flipit' ||
@@ -808,6 +930,26 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
     }
   };
 
+  const handleDrawerEmailUpdated = (nextEmail: string) => {
+    setRemoteStudentProfile((prev) => ({
+      ...(prev || {}),
+      firstName: prev?.firstName || currentStudent.firstName,
+      lastName: prev?.lastName || currentStudent.lastName,
+      email: nextEmail,
+      profileImage:
+        prev?.profileImage ||
+        currentUserAvatar?.uri ||
+        currentStudent.profileImage ||
+        null,
+      bannerImage:
+        prev?.bannerImage ||
+        currentUserBanner?.uri ||
+        currentStudent.bannerImage ||
+        null,
+    }));
+  };
+
+
   const loadStudentAnnouncements = async (courses: CourseDetailData[]) => {
   try {
     const classIds = courses.map((item) => item.id).filter(Boolean);
@@ -974,39 +1116,184 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
     () =>
       Object.fromEntries(
         sharedCourses.flatMap((course) =>
-          course.assignments.map((assignment) => [assignment.id, assignment.files || []])
+          course.assignments.map((assignment) => [assignment.id, []])
         )
       )
   );
 
+  const [sharedAssignmentStatuses, setSharedAssignmentStatuses] = useState<Record<string, AssignmentItem['status']>>({});
+  const [sharedAssignmentScores, setSharedAssignmentScores] = useState<Record<string, StoredAssignmentScore>>({});
+  const [hasLoadedAssignmentState, setHasLoadedAssignmentState] = useState(false);
+
   const hydratedSharedCourses = useMemo<AssignmentCourse[]>(() => {
     return sharedCourses.map((course) => ({
       ...course,
-      assignments: course.assignments.map((assignment) => ({
-        ...assignment,
-        comments: sharedAssignmentComments[assignment.id] || [],
-        files: sharedAssignmentFiles[assignment.id] || [],
-      })),
+      assignments: course.assignments.map((assignment) => {
+        const scoreState = sharedAssignmentScores[assignment.id];
+
+        return {
+          ...assignment,
+          status: sharedAssignmentStatuses[assignment.id] || assignment.status,
+          points:
+            scoreState?.points !== undefined
+              ? scoreState.points
+              : assignment.points,
+          maxPoints:
+            scoreState?.maxPoints !== undefined
+              ? scoreState.maxPoints
+              : assignment.maxPoints,
+          comments: sharedAssignmentComments[assignment.id] || [],
+          files: assignment.files || [],
+        };
+      }),
     }));
-  }, [sharedCourses, sharedAssignmentComments, sharedAssignmentFiles]);
+  }, [sharedCourses, sharedAssignmentComments, sharedAssignmentFiles, sharedAssignmentScores, sharedAssignmentStatuses]);
 
   const joinedAssignmentCourses = useMemo<AssignmentCourse[]>(
-    () => mapCoursesToAssignmentCourses(joinedCourses),
-    [joinedCourses]
+    () =>
+      mapCoursesToAssignmentCourses(joinedCourses).map((course) => ({
+        ...course,
+        assignments: course.assignments.map((assignment) => {
+          const scoreState = sharedAssignmentScores[assignment.id];
+
+          return {
+            ...assignment,
+            status: sharedAssignmentStatuses[assignment.id] || assignment.status,
+            points:
+              scoreState?.points !== undefined
+                ? scoreState.points
+                : assignment.points,
+            maxPoints:
+              scoreState?.maxPoints !== undefined
+                ? scoreState.maxPoints
+                : assignment.maxPoints,
+            files: assignment.files || [],
+          };
+        }),
+      })),
+    [joinedCourses, sharedAssignmentFiles, sharedAssignmentScores, sharedAssignmentStatuses]
   );
 
   const selectedAssignmentCourse = useMemo(() => {
-    const joinedMatch = joinedCourses.find((course) => course.id === selectedCourse.id);
-
-    if (joinedMatch) {
-      return mapCourseDetailToAssignmentCourse(joinedMatch);
-    }
-
     return (
+      joinedAssignmentCourses.find((course) => course.id === selectedCourse.id) ||
       hydratedSharedCourses.find((course) => course.id === selectedCourse.id) ||
       hydratedSharedCourses[0]
     );
-  }, [joinedCourses, hydratedSharedCourses, selectedCourse.id]);
+  }, [joinedAssignmentCourses, hydratedSharedCourses, selectedCourse.id]);
+
+  const applySavedAssignmentState = (state: StoredAssignmentState) => {
+    setSharedAssignmentFiles((prev) => ({
+      ...prev,
+      ...state.files,
+    }));
+
+    setSharedAssignmentStatuses((prev) => ({
+      ...prev,
+      ...state.statuses,
+    }));
+
+    setSharedAssignmentScores((prev) => ({
+      ...prev,
+      ...(state.scores || {}),
+    }));
+  };
+
+  const loadStudentSubmissionState = useCallback(async () => {
+    if (!currentStudent?.studentId) return;
+
+    const localState = await readStoredAssignmentState(currentStudent.studentId);
+    applySavedAssignmentState(localState);
+
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/student-submissions/${encodeURIComponent(currentStudent.studentId)}`
+      );
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data?.error || 'Failed to load student submissions.');
+      }
+
+      const filesByAssignment: Record<string, AssignmentFileUpload[]> = {};
+      const statusesByAssignment: Record<string, AssignmentItem['status']> = {};
+      const scoresByAssignment: Record<string, StoredAssignmentScore> = {};
+
+      normalizeSubmissionList(data).forEach((submission) => {
+        const assignmentId = String(submission?.assignmentId || '');
+        if (!assignmentId) return;
+
+        const status =
+          submission?.status === 'graded'
+            ? 'graded'
+            : submission?.status === 'submitted'
+            ? 'submitted'
+            : 'pending';
+
+        statusesByAssignment[assignmentId] = status;
+
+        if (status !== 'graded') {
+          scoresByAssignment[assignmentId] = {};
+        }
+
+        if (status === 'graded') {
+          const numericScore = Number(submission?.score);
+          const numericMaxScore = Number(
+            submission?.maxPoints ??
+              submission?.totalScore ??
+              submission?.maxScore
+          );
+
+          scoresByAssignment[assignmentId] = {
+            ...(Number.isFinite(numericScore) ? { points: numericScore } : {}),
+            ...(Number.isFinite(numericMaxScore) && numericMaxScore > 0
+              ? { maxPoints: numericMaxScore }
+              : {}),
+            feedback: submission?.feedback ?? null,
+          };
+        }
+
+        const mappedFile = mapSubmissionToFile(submission);
+        if (mappedFile) {
+          filesByAssignment[assignmentId] = [
+            ...(filesByAssignment[assignmentId] || []),
+            mappedFile,
+          ];
+        }
+      });
+
+      applySavedAssignmentState({
+        files: filesByAssignment,
+        statuses: statusesByAssignment,
+        scores: scoresByAssignment,
+      });
+    } catch (error) {
+      console.log('LOAD STUDENT SUBMISSIONS FALLBACK TO LOCAL CACHE =>', error);
+    } finally {
+      setHasLoadedAssignmentState(true);
+    }
+  }, [currentStudent?.studentId]);
+
+  useEffect(() => {
+    setHasLoadedAssignmentState(false);
+    void loadStudentSubmissionState();
+  }, [loadStudentSubmissionState]);
+
+  useEffect(() => {
+    if (!currentStudent?.studentId || !hasLoadedAssignmentState) return;
+
+    void writeStoredAssignmentState(currentStudent.studentId, {
+      files: sharedAssignmentFiles,
+      statuses: sharedAssignmentStatuses,
+      scores: sharedAssignmentScores,
+    });
+  }, [
+    currentStudent?.studentId,
+    hasLoadedAssignmentState,
+    sharedAssignmentFiles,
+    sharedAssignmentScores,
+    sharedAssignmentStatuses,
+  ]);
 
   const currentUserPosts = useMemo(() => {
     return hydratedCommunityPosts.filter(
@@ -1044,6 +1331,37 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
       ...prev,
       [assignmentId]: (prev[assignmentId] || []).filter((file) => file.id !== fileId),
     }));
+  };
+
+  const handleUpdateAssignmentStatus = (
+    assignmentId: string,
+    status: AssignmentItem['status']
+  ) => {
+    setSharedAssignmentStatuses((prev) => {
+      const next = {
+        ...prev,
+        [assignmentId]: status,
+      };
+
+      void writeStoredAssignmentState(currentStudent.studentId, {
+        files: sharedAssignmentFiles,
+        statuses: next,
+        scores: sharedAssignmentScores,
+      });
+
+      return next;
+    });
+
+    setJoinedCourses((prev) =>
+      prev.map((course) => ({
+        ...course,
+        assignments: course.assignments.map((assignment) =>
+          assignment.id === assignmentId
+            ? { ...assignment, status }
+            : assignment
+        ),
+      }))
+    );
   };
 
   const normalizeCommunityAvatar = (avatar: any) => {
@@ -1395,6 +1713,9 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
 
     setIsNotificationOpen(false);
     setActiveScreen(screen);
+    if (screen !== 'videos') {
+      setVideoSearchQuery('');
+    }
     setMobileDrawerOpen(false);
   };
 
@@ -1550,14 +1871,25 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
       case 'videos':
         return (
           <Videos
-            onVideoActiveChange={setIsVideoActive}
-            currentUserName={currentUserName}
-            currentUserAvatar={currentUserAvatar}
-          />
+          onVideoActiveChange={setIsVideoActive}
+          currentUserName={currentUserName}
+          currentUserAvatar={currentUserAvatar}
+          currentUserId={currentStudent.studentId}
+          currentUserRole="student"
+          apiBaseUrl={API_BASE_URL}
+          searchQuery={videoSearchQuery}
+        />
         );
 
       case 'myjourney':
-        return <MyJourney />;
+        return (
+          <MyJourney
+            courses={joinedCourses}
+            currentStudent={currentStudent}
+            studentName={currentUserName}
+            apiBaseUrl={API_BASE_URL}
+          />
+        );
 
       case 'analytics':
         return (
@@ -1577,6 +1909,9 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
             onAddComment={handleAddAssignmentComment}
             onAddFile={handleAddAssignmentFile}
             onRemoveFile={handleRemoveAssignmentFile}
+            onUpdateAssignmentStatus={handleUpdateAssignmentStatus}
+            onRefreshSubmissions={loadStudentSubmissionState}
+            currentStudent={currentStudent}
             onOpenGeneratedActivity={(course, assignment) =>
               openGeneratedActivity(course as unknown as CourseDetailData, assignment)
             }
@@ -1633,6 +1968,9 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
             onAddComment={handleAddAssignmentComment}
             onAddFile={handleAddAssignmentFile}
             onRemoveFile={handleRemoveAssignmentFile}
+            onUpdateAssignmentStatus={handleUpdateAssignmentStatus}
+            onRefreshSubmissions={loadStudentSubmissionState}
+            currentStudent={currentStudent}
             onGenerateActivity={(assignment) =>
               openGeneratedActivity(selectedCourse, assignment)
             }
@@ -1682,7 +2020,11 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
               isLargeScreen={isLargeScreen}
               activeScreen={activeScreen}
               onNavigate={handleNavigate}
-              onSearchChange={() => {}}
+              onSearchChange={(query) => {
+                if (activeScreen === 'videos') {
+                  setVideoSearchQuery(query);
+                }
+              }}
               notificationCount={unreadNotificationCount}
               onNotificationPress={handleNotificationPress}
               onMenuPress={() => setMobileDrawerOpen((prev) => !prev)}
@@ -1726,7 +2068,12 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
               activeScreen={activeScreen}
               onNavigate={handleNavigate}
               userName={currentUserName}
+              userEmail={currentUserEmail}
               userAvatar={currentUserAvatar}
+              userId={currentStudent.studentId}
+              userRole="student"
+              apiBaseUrl={API_BASE_URL}
+              onEmailUpdated={handleDrawerEmailUpdated}
               onAvatarPress={() => handleNavigate('profile')}
               setIsLoggedIn={() => onLogout()}
             />
@@ -1761,7 +2108,12 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
                   activeScreen={activeScreen}
                   onNavigate={handleNavigate}
                   userName={currentUserName}
+                  userEmail={currentUserEmail}
                   userAvatar={currentUserAvatar}
+                  userId={currentStudent.studentId}
+                  userRole="student"
+                  apiBaseUrl={API_BASE_URL}
+                  onEmailUpdated={handleDrawerEmailUpdated}
                   onAvatarPress={() => {
                     setMobileDrawerOpen(false);
                     handleNavigate('profile');

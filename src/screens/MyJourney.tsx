@@ -1,118 +1,440 @@
 import { Picker } from '@react-native-picker/picker';
-import React, { useState } from 'react';
-import { Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useEffect, useMemo, useState } from 'react';
+import {
+  ActivityIndicator,
+  Image,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+  useWindowDimensions,
+} from 'react-native';
 
-const YEARS = ['2023 - 2024', '2024 - 2025', '2025 - 2026'];
+type JourneyCourse = {
+  id: string;
+  name: string;
+  code?: string;
+  courseCode?: string;
+  classCode?: string;
+  description?: string;
+  semester?: string;
+  schoolYear?: string;
+  section?: string;
+  units?: number | string | null;
+  assignments?: any[];
+};
+
+type CurrentStudent = {
+  studentId: string;
+  firstName: string;
+  lastName: string;
+  email?: string;
+};
+
+type FinalGradeRecord = {
+  id?: string;
+  classId?: string;
+  studentId?: string;
+  studentName?: string;
+  finalGrade?: string | number;
+  status?: string;
+};
+
+type MyJourneyProps = {
+  courses?: JourneyCourse[];
+  currentStudent: CurrentStudent;
+  studentName?: string;
+  apiBaseUrl: string;
+};
+
 const SEMS = ['First Semester', 'Second Semester', 'Summer'];
 
-const SAMPLE_COURSES = [
-  { subject: 'MATH101', description: 'Algebra I', unit: 3, grade: '88' },
-  { subject: 'ENG101', description: 'English Composition', unit: 3, grade: '91' },
-  { subject: 'CS101', description: 'Intro to Programming', unit: 4, grade: '95' },
-];
+const normalizeSchoolYear = (value?: string | null) => {
+  if (!value) return '';
+  return String(value).replace(/S\.Y\.?/gi, '').replace(/\s+/g, ' ').trim();
+};
 
-const MyJourney = () => {
-  const [year, setYear] = useState(YEARS[2]);
+const normalizeSemester = (value?: string | null) => {
+  const raw = String(value || '').trim().toLowerCase();
+
+  if (!raw) return '';
+  if (raw.includes('summer')) return 'Summer';
+  if (raw.includes('first') || raw.includes('1st')) return 'First Semester';
+  if (raw.includes('second') || raw.includes('2nd')) return 'Second Semester';
+
+  return String(value || '').trim();
+};
+
+const getDefaultStartYear = (courses: JourneyCourse[]) => {
+  const firstCourseWithSchoolYear = courses.find((course) => course.schoolYear);
+  const match = normalizeSchoolYear(firstCourseWithSchoolYear?.schoolYear).match(/(\d{4})/);
+
+  if (match?.[1]) return match[1];
+
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const currentMonth = now.getMonth() + 1;
+
+  return String(currentMonth >= 6 ? currentYear : currentYear - 1);
+};
+
+const getCourseCode = (course: JourneyCourse) => {
+  return course.code || course.courseCode || course.classCode || 'N/A';
+};
+
+const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+const stripCourseCodePrefix = (value?: string | null, code?: string | null) => {
+  const raw = String(value || '').trim();
+  const rawCode = String(code || '').trim();
+
+  if (!raw) return 'Untitled Class';
+
+  if (rawCode && rawCode !== 'N/A') {
+    const codePrefixRegex = new RegExp(`^${escapeRegExp(rawCode)}\\s*[-–—:]\\s*`, 'i');
+    return raw.replace(codePrefixRegex, '').trim() || raw;
+  }
+
+  return raw.replace(/^[A-Z]{2,}\s*\d{2,}[A-Z]?\s*[-–—:]\s*/i, '').trim() || raw;
+};
+
+const getCourseDescription = (course: JourneyCourse) => {
+  const code = getCourseCode(course);
+  return stripCourseCodePrefix(course.name || course.description, code);
+};
+
+const getCourseUnits = (course: JourneyCourse) => {
+  const directUnits = Number(course.units);
+  if (Number.isFinite(directUnits) && directUnits > 0) return directUnits;
+
+  return 0;
+};
+
+const MyJourney = ({
+  courses = [],
+  currentStudent,
+  studentName,
+  apiBaseUrl,
+}: MyJourneyProps) => {
+  const { width } = useWindowDimensions();
+  const isMobile = width < 768;
+  const isTablet = width >= 768 && width < 1100;
+
+  const [startYearInput, setStartYearInput] = useState(() => getDefaultStartYear(courses));
   const [sem, setSem] = useState(SEMS[0]);
   const [show, setShow] = useState(false);
+  const [finalGradesByClassId, setFinalGradesByClassId] = useState<Record<string, FinalGradeRecord>>({});
+  const [isLoadingGrades, setIsLoadingGrades] = useState(false);
+
+  useEffect(() => {
+    setStartYearInput((prev) => prev || getDefaultStartYear(courses));
+  }, [courses]);
+
+  const startYearNumber = Number(startYearInput);
+  const hasValidStartYear = Number.isInteger(startYearNumber) && startYearInput.length === 4;
+  const computedSchoolYear = hasValidStartYear
+    ? `${startYearNumber} - ${startYearNumber + 1}`
+    : '';
+  const compactComputedSchoolYear = computedSchoolYear.replace(/\s/g, '');
+
+  const filteredCourses = useMemo(() => {
+    if (!hasValidStartYear) return [];
+
+    return courses.filter((course) => {
+      const courseSchoolYear = normalizeSchoolYear(course.schoolYear).replace(/\s/g, '');
+      const courseSemester = normalizeSemester(course.semester);
+
+      return courseSchoolYear === compactComputedSchoolYear && courseSemester === sem;
+    });
+  }, [compactComputedSchoolYear, courses, hasValidStartYear, sem]);
+
+  useEffect(() => {
+    if (!show || !apiBaseUrl || !currentStudent?.studentId || !filteredCourses.length) {
+      setFinalGradesByClassId({});
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadFinalGrades = async () => {
+      try {
+        setIsLoadingGrades(true);
+
+        const gradePairs = await Promise.all(
+          filteredCourses.map(async (course) => {
+            const response = await fetch(`${apiBaseUrl}/final-grades/${course.id}`);
+            const data = await response.json();
+
+            if (!response.ok) return [course.id, null] as const;
+
+            const records: FinalGradeRecord[] = Array.isArray(data) ? data : [];
+            const matchedGrade = records.find(
+              (item) => String(item.studentId || '').trim() === String(currentStudent.studentId).trim()
+            );
+
+            return [course.id, matchedGrade || null] as const;
+          })
+        );
+
+        if (cancelled) return;
+
+        const nextGrades: Record<string, FinalGradeRecord> = {};
+        gradePairs.forEach(([classId, grade]) => {
+          if (grade) nextGrades[classId] = grade;
+        });
+
+        setFinalGradesByClassId(nextGrades);
+      } catch (error) {
+        console.log('LOAD MY JOURNEY GRADES ERROR =>', error);
+        if (!cancelled) setFinalGradesByClassId({});
+      } finally {
+        if (!cancelled) setIsLoadingGrades(false);
+      }
+    };
+
+    loadFinalGrades();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [apiBaseUrl, currentStudent?.studentId, filteredCourses, show]);
+
+  const totalUnits = filteredCourses.reduce((total, course) => total + getCourseUnits(course), 0);
+  const resolvedStudentName =
+    studentName || `${currentStudent?.firstName || ''} ${currentStudent?.lastName || ''}`.trim() || 'Student';
+
+  const handleStartYearChange = (value: string) => {
+    const digitsOnly = value.replace(/[^0-9]/g, '').slice(0, 4);
+    setStartYearInput(digitsOnly);
+    setShow(false);
+  };
 
   return (
     <ScrollView
-      contentContainerStyle={{ padding: 20 }}
-      style={{ flex: 1, backgroundColor: '#f5f5f7' }}
+      contentContainerStyle={[
+        styles.container,
+        isTablet && styles.containerTablet,
+        isMobile && styles.containerMobile,
+      ]}
+      style={styles.screen}
     >
-      <Text style={styles.pageTitle}>My Journey</Text>
-
-      <View style={styles.controlsRow}>
-        {/* Academic Year Dropdown */}
-        <View style={styles.selectWrap}>
-          <Text style={styles.selectLabel}>Academic Year</Text>
-          <View style={styles.pickerWrapper}>
-            <Picker
-              selectedValue={year}
-              onValueChange={(itemValue) => setYear(itemValue)}
-              style={styles.picker}
-            >
-              {YEARS.map((y) => (
-                <Picker.Item key={y} label={y} value={y} />
-              ))}
-            </Picker>
-          </View>
-        </View>
-
-        {/* Semester Dropdown */}
-        <View style={styles.selectWrap}>
-          <Text style={styles.selectLabel}>Semester</Text>
-          <View style={styles.pickerWrapper}>
-            <Picker
-              selectedValue={sem}
-              onValueChange={(itemValue) => setSem(itemValue)}
-              style={styles.picker}
-            >
-              {SEMS.map((s) => (
-                <Picker.Item key={s} label={s} value={s} />
-              ))}
-            </Picker>
-          </View>
+      <View style={[styles.pageHeaderCard, isMobile && styles.pageHeaderCardMobile]}>
+        <View style={styles.pageHeaderAccent} />
+        <View style={styles.pageHeaderContent}>
+          <Text style={styles.pageEyebrow}>Academic Record</Text>
+          <Text style={styles.pageTitle}>My Journey</Text>
+          <Text style={styles.pageSubtitle}>
+            Generate your official joined-class record by semester and school year.
+          </Text>
         </View>
       </View>
 
-      <TouchableOpacity
-        style={styles.showBtn}
-        onPress={() => setShow(true)}
-      >
-        <Text style={{ color: '#fff', fontWeight: '700' }}>
-          Show My Journey
-        </Text>
-      </TouchableOpacity>
+      <View style={[styles.filterCard, isMobile && styles.filterCardMobile]}>
+        <View style={[styles.filterHeaderRow, isMobile && styles.filterHeaderRowMobile]}>
+          <View>
+            <Text style={styles.filterTitle}>Record Filters</Text>
+            <Text style={styles.filterSubtitle}>Enter the school year start and select a semester.</Text>
+          </View>
+
+          <View style={styles.schoolYearBadge}>
+            <Text style={styles.schoolYearBadgeLabel}>School Year</Text>
+            <Text style={styles.schoolYearBadgeValue}>
+              {hasValidStartYear ? computedSchoolYear : '---- - ----'}
+            </Text>
+          </View>
+        </View>
+
+        <View style={[styles.controlsRow, isTablet && styles.controlsRowTablet, isMobile && styles.controlsRowMobile]}>
+          <View style={[styles.selectWrap, isTablet && styles.selectWrapTablet, isMobile && styles.selectWrapMobile]}>
+            <Text style={styles.selectLabel}>Academic Year Start</Text>
+            <View style={styles.inputShell}>
+              <TextInput
+                value={startYearInput}
+                onChangeText={handleStartYearChange}
+                placeholder="2025"
+                placeholderTextColor="#9CA3AF"
+                keyboardType="number-pad"
+                maxLength={4}
+                style={styles.textInput}
+              />
+              <Text style={styles.inputSuffix}>+ 1 year</Text>
+            </View>
+            <Text style={styles.helperText}>
+              {hasValidStartYear
+                ? `Automatically becomes S.Y. ${computedSchoolYear}.`
+                : 'Enter a valid 4-digit start year.'}
+            </Text>
+          </View>
+
+          <View style={[styles.selectWrap, isTablet && styles.selectWrapTablet, isMobile && styles.selectWrapMobile]}>
+            <Text style={styles.selectLabel}>Semester</Text>
+            <View style={styles.pickerWrapper}>
+              <Picker
+                selectedValue={sem}
+                onValueChange={(itemValue) => {
+                  setSem(itemValue);
+                  setShow(false);
+                }}
+                style={styles.picker}
+              >
+                {SEMS.map((s) => (
+                  <Picker.Item key={s} label={s} value={s} />
+                ))}
+              </Picker>
+            </View>
+            <Text style={styles.helperText}>Only classes from this semester will be shown.</Text>
+          </View>
+
+          <TouchableOpacity
+            style={[styles.showBtn, isTablet && styles.showBtnTablet, isMobile && styles.showBtnMobile, !hasValidStartYear && styles.showBtnDisabled]}
+            onPress={() => hasValidStartYear && setShow(true)}
+            disabled={!hasValidStartYear}
+            activeOpacity={0.85}
+          >
+            <Text style={styles.showBtnText}>Generate Record</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
 
       {show && (
-        <View style={styles.paper}>
+        <View style={[styles.paper, isTablet && styles.paperTablet, isMobile && styles.paperMobile]}>
           <Image
             source={require('../../assets/images/myjourney-header-template-1.png')}
             style={styles.headerImage}
           />
 
-          <View style={styles.infoCol}>
-            <Text style={styles.infoLabel}>Student ID:</Text>
-            <Text style={styles.infoValue}>2025-00123</Text>
-
-            <Text style={[styles.infoLabel, { marginTop: 12 }]}>
-              Student Name:
-            </Text>
-            <Text style={styles.infoValue}>Jade M. Lisondra</Text>
-
-            <Text style={[styles.infoLabel, { marginTop: 12 }]}>
-              School Year:
-            </Text>
-            <Text style={styles.infoValue}>
-              S.Y. {year} ({sem})
-            </Text>
+          <View style={styles.academicTitleBlock}>
+            <Text style={styles.documentTitle}>Certificate of Grades</Text>
+            <Text style={styles.documentSubtitle}>Academic Journey Record</Text>
           </View>
 
-          <View style={styles.tableWrap}>
-            <View style={[styles.tableRow, styles.tableHeader]}>
-              <Text style={[styles.td, styles.th]}>Subject</Text>
-              <Text style={[styles.td, styles.th]}>Description</Text>
-              <Text style={[styles.td, styles.th]}>Unit</Text>
-              <Text style={[styles.td, styles.th]}>Grade</Text>
+          <View style={styles.studentInfoBox}>
+            <View style={[styles.infoLine, isMobile && styles.infoLineMobile]}>
+              <View style={styles.infoLineItem}>
+                <Text style={styles.infoLabel}>Student ID</Text>
+                <Text style={styles.infoValue}>{currentStudent?.studentId || 'N/A'}</Text>
+              </View>
+
+              <View style={styles.infoLineItemWide}>
+                <Text style={styles.infoLabel}>Student Name</Text>
+                <Text style={styles.infoValue}>{resolvedStudentName}</Text>
+              </View>
             </View>
 
-            {SAMPLE_COURSES.map((c, i) => (
-              <View key={i} style={styles.tableRow}>
-                <Text style={styles.td}>{c.subject}</Text>
-                <Text style={styles.td}>{c.description}</Text>
-                <Text style={styles.td}>{String(c.unit)}</Text>
-                <Text style={styles.td}>{c.grade}</Text>
+            <View style={[styles.infoLine, isMobile && styles.infoLineMobile]}>
+              <View style={styles.infoLineItem}>
+                <Text style={styles.infoLabel}>School Year</Text>
+                <Text style={styles.infoValue}>S.Y. {computedSchoolYear}</Text>
               </View>
-            ))}
+
+              <View style={styles.infoLineItemWide}>
+                <Text style={styles.infoLabel}>Semester</Text>
+                <Text style={styles.infoValue}>{sem}</Text>
+              </View>
+            </View>
           </View>
 
-          <TouchableOpacity style={styles.linkBtn}>
-            <Text style={{ color: '#fff', fontWeight: '700' }}>
-              Get Link
-            </Text>
-          </TouchableOpacity>
+          {filteredCourses.length === 0 ? (
+            <View style={[styles.emptyState, styles.emptyStateBordered]}>
+              <Text style={styles.emptyTitle}>No academic record found</Text>
+              <Text style={styles.emptyText}>
+                You have no joined classes for S.Y. {computedSchoolYear} ({sem}).
+              </Text>
+            </View>
+          ) : isMobile ? (
+            <View style={styles.mobileCourseList}>
+              {filteredCourses.map((course, index) => {
+                const grade = finalGradesByClassId[course.id];
+
+                return (
+                  <View key={course.id} style={styles.mobileCourseCard}>
+                    <View style={styles.mobileCourseHeader}>
+                      <View>
+                        <Text style={styles.mobileCourseIndex}>Subject {index + 1}</Text>
+                        <Text style={styles.mobileCourseCode}>{getCourseCode(course)}</Text>
+                      </View>
+                      <View style={styles.mobileGradeBadge}>
+                        <Text style={styles.mobileGradeLabel}>Grade</Text>
+                        <Text style={styles.mobileGradeValue}>
+                          {isLoadingGrades ? '...' : grade?.finalGrade || 'N/A'}
+                        </Text>
+                      </View>
+                    </View>
+
+                    <Text style={styles.mobileCourseName}>{getCourseDescription(course)}</Text>
+
+                    <View style={styles.mobileCourseMetaRow}>
+                      <View style={styles.mobileMetaItem}>
+                        <Text style={styles.mobileMetaLabel}>Units</Text>
+                        <Text style={styles.mobileMetaValue}>{getCourseUnits(course) || '-'}</Text>
+                      </View>
+                      <View style={styles.mobileMetaItem}>
+                        <Text style={styles.mobileMetaLabel}>Remarks</Text>
+                        <Text style={styles.mobileMetaValue}>{grade?.finalGrade ? 'Passed' : 'Pending'}</Text>
+                      </View>
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
+          ) : (
+            <View style={styles.tableWrap}>
+              <View style={[styles.tableRow, styles.tableHeader]}>
+                <Text style={[styles.tdSubject, styles.th]}>Subject Code</Text>
+                <Text style={[styles.tdDescription, styles.th]}>Descriptive Title</Text>
+                <Text style={[styles.tdSmall, styles.th]}>Units</Text>
+                <Text style={[styles.tdSmall, styles.th, styles.lastCell]}>Final Grade</Text>
+              </View>
+
+              {filteredCourses.map((course, index) => {
+                const grade = finalGradesByClassId[course.id];
+
+                return (
+                  <View
+                    key={course.id}
+                    style={[
+                      styles.tableRow,
+                      index % 2 === 1 && styles.tableRowAlt,
+                    ]}
+                  >
+                    <Text style={styles.tdSubject}>{getCourseCode(course)}</Text>
+                    <Text style={styles.tdDescription}>{getCourseDescription(course)}</Text>
+                    <Text style={styles.tdSmall}>{getCourseUnits(course) || '-'}</Text>
+                    <Text style={[styles.tdSmall, styles.lastCell]}>
+                      {isLoadingGrades ? '...' : grade?.finalGrade || 'N/A'}
+                    </Text>
+                  </View>
+                );
+              })}
+            </View>
+          )}
+
+          {!!filteredCourses.length && (
+            <View style={[styles.summaryPanel, isMobile && styles.summaryPanelMobile]}>
+              <View style={styles.summaryItem}>
+                <Text style={styles.summaryLabel}>Total Subjects</Text>
+                <Text style={styles.summaryValue}>{filteredCourses.length}</Text>
+              </View>
+              <View style={[styles.summaryItem, styles.summaryItemLast]}>
+                <Text style={styles.summaryLabel}>Total Units</Text>
+                <Text style={styles.summaryValue}>{totalUnits || '-'}</Text>
+              </View>
+            </View>
+          )}
+
+          <View style={[styles.footerNoteRow, isMobile && styles.footerNoteRowMobile]}>
+            <Text style={styles.footerNote}>Generated from joined class records.</Text>
+            <Text style={styles.footerNote}>Grades shown are based on submitted final grades.</Text>
+          </View>
+
+          {isLoadingGrades && (
+            <View style={styles.loadingRow}>
+              <ActivityIndicator color="#D32F2F" />
+              <Text style={styles.loadingText}>Loading final grades...</Text>
+            </View>
+          )}
         </View>
       )}
     </ScrollView>
@@ -120,120 +442,641 @@ const MyJourney = () => {
 };
 
 const styles = StyleSheet.create({
+  screen: {
+    flex: 1,
+    backgroundColor: '#F3F4F6',
+  },
+
+  container: {
+    width: '100%',
+    maxWidth: 1280,
+    alignSelf: 'center',
+    padding: 24,
+    paddingBottom: 44,
+  },
+
+  containerTablet: {
+    paddingHorizontal: 20,
+  },
+
+  containerMobile: {
+    padding: 14,
+    paddingBottom: 28,
+  },
+
+  pageHeaderCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    overflow: 'hidden',
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 2,
+  },
+
+  pageHeaderAccent: {
+    height: 8,
+    backgroundColor: '#D32F2F',
+  },
+
+  pageHeaderContent: {
+    paddingHorizontal: 22,
+    paddingVertical: 20,
+  },
+
+  pageHeaderCardMobile: {
+    borderRadius: 18,
+    marginBottom: 14,
+  },
+
+  pageEyebrow: {
+    fontSize: 12,
+    fontWeight: '900',
+    color: '#D32F2F',
+    letterSpacing: 1.1,
+    textTransform: 'uppercase',
+    marginBottom: 6,
+  },
+
   pageTitle: {
-    fontSize: 26,
-    fontWeight: '700',
-    marginBottom: 12,
+    fontSize: 30,
+    fontWeight: '900',
+    color: '#111827',
+    marginBottom: 6,
+  },
+
+  pageSubtitle: {
+    fontSize: 14,
+    color: '#6B7280',
+    lineHeight: 21,
+  },
+
+  filterCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    padding: 18,
+    marginBottom: 22,
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 7 },
+    elevation: 2,
+  },
+
+  filterCardMobile: {
+    borderRadius: 18,
+    padding: 14,
+    marginBottom: 18,
+  },
+
+  filterHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 16,
+    paddingBottom: 16,
+    marginBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
+  },
+
+  filterHeaderRowMobile: {
+    alignItems: 'flex-start',
+    flexDirection: 'column',
+  },
+
+  filterTitle: {
+    fontSize: 18,
+    fontWeight: '900',
+    color: '#111827',
+  },
+
+  filterSubtitle: {
+    marginTop: 4,
+    fontSize: 13,
+    color: '#6B7280',
+  },
+
+  schoolYearBadge: {
+    minWidth: 170,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#FCA5A5',
+    backgroundColor: '#FEF2F2',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+
+  schoolYearBadgeLabel: {
+    fontSize: 10,
+    fontWeight: '900',
+    letterSpacing: 0.8,
+    color: '#991B1B',
+    textTransform: 'uppercase',
+    marginBottom: 3,
+  },
+
+  schoolYearBadgeValue: {
+    fontSize: 16,
+    fontWeight: '900',
+    color: '#D32F2F',
   },
 
   controlsRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
+    gap: 14,
+    flexWrap: 'wrap',
+  },
+
+  controlsRowTablet: {
     gap: 12,
-    marginBottom: 18,
+  },
+
+  controlsRowMobile: {
+    flexDirection: 'column',
   },
 
   selectWrap: {
     flex: 1,
-    maxWidth: 180,
+    minWidth: 220,
+  },
+
+  selectWrapTablet: {
+    minWidth: 260,
+  },
+
+  selectWrapMobile: {
+    width: '100%',
+    minWidth: 0,
   },
 
   selectLabel: {
-    color: '#666',
-    marginBottom: 6,
-    paddingHorizontal: 4,
+    color: '#374151',
+    marginBottom: 8,
+    fontWeight: '900',
+    fontSize: 13,
+  },
+
+  inputShell: {
+    height: 54,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    backgroundColor: '#F9FAFB',
+    flexDirection: 'row',
+    alignItems: 'center',
+    overflow: 'hidden',
+  },
+
+  textInput: {
+    flex: 1,
+    height: 54,
+    paddingHorizontal: 16,
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#111827',
+    backgroundColor: '#FFFFFF',
+  },
+
+  inputSuffix: {
+    height: '100%',
+    paddingHorizontal: 14,
+    textAlignVertical: 'center',
+    color: '#6B7280',
+    fontSize: 12,
+    fontWeight: '800',
+    borderLeftWidth: 1,
+    borderLeftColor: '#E5E7EB',
+  },
+
+  helperText: {
+    marginTop: 7,
+    color: '#6B7280',
+    fontSize: 12,
   },
 
   pickerWrapper: {
-  overflow: 'hidden',
-  paddingRight: 18,
-},
+    height: 54,
+    overflow: 'hidden',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    backgroundColor: '#FFFFFF',
+    justifyContent: 'center',
+  },
 
   picker: {
-    height: 50,
-    borderRadius: 15,
-    paddingLeft: 8, 
-    width: '100%',    
+    height: 54,
+    width: '100%',
+    color: '#111827',
   },
 
   showBtn: {
+    minWidth: 170,
+    height: 54,
     backgroundColor: '#D32F2F',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-    alignSelf: 'flex-start',
-    marginBottom: 18,
+    paddingHorizontal: 20,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 25,
+    shadowColor: '#D32F2F',
+    shadowOpacity: 0.22,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 7 },
+    elevation: 2,
+  },
+
+  showBtnTablet: {
+    flexGrow: 1,
+    minWidth: 220,
+  },
+
+  showBtnMobile: {
+    width: '100%',
+    marginTop: 2,
+  },
+
+  showBtnDisabled: {
+    backgroundColor: '#C9C9C9',
+    shadowOpacity: 0,
+  },
+
+  showBtnText: {
+    color: '#fff',
+    fontWeight: '900',
+    fontSize: 14,
   },
 
   paper: {
     backgroundColor: '#fff',
-    padding: 18,
-    borderRadius: 6,
-    elevation: 2,
+    paddingHorizontal: 28,
+    paddingVertical: 26,
+    borderRadius: 8,
+    elevation: 3,
     shadowColor: '#000',
-    shadowOpacity: 0.05,
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+
+  paperTablet: {
+    paddingHorizontal: 22,
+  },
+
+  paperMobile: {
+    paddingHorizontal: 14,
+    paddingVertical: 18,
   },
 
   headerImage: {
     width: '100%',
-    height: 90,
+    height: 96,
     resizeMode: 'contain',
-    marginBottom: 12,
+    marginBottom: 8,
   },
 
-  infoCol: {
-    marginBottom: 12,
+  academicTitleBlock: {
+    alignItems: 'center',
+    paddingBottom: 14,
+    marginBottom: 16,
+    borderBottomWidth: 2,
+    borderBottomColor: '#222',
+  },
+
+  documentTitle: {
+    fontSize: 20,
+    fontWeight: '900',
+    letterSpacing: 1.2,
+    color: '#111827',
+    textAlign: 'center',
+    textTransform: 'uppercase',
+  },
+
+  documentSubtitle: {
+    marginTop: 4,
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#6B7280',
+    textAlign: 'center',
+  },
+
+  studentInfoBox: {
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    marginBottom: 18,
+  },
+
+  infoLine: {
+    flexDirection: 'row',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+  },
+
+  infoLineMobile: {
+    flexDirection: 'column',
+  },
+
+  infoLineItem: {
+    flex: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRightWidth: 1,
+    borderRightColor: '#E5E7EB',
+  },
+
+  infoLineItemWide: {
+    flex: 1.5,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
   },
 
   infoLabel: {
-    color: '#666',
-    fontWeight: '600',
+    color: '#6B7280',
+    fontWeight: '800',
+    marginBottom: 4,
+    fontSize: 11,
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
   },
 
   infoValue: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#222',
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#111827',
   },
 
   tableWrap: {
-    marginTop: 12,
+    marginTop: 4,
     borderWidth: 1,
-    borderColor: '#eee',
-    borderRadius: 6,
+    borderColor: '#111827',
     overflow: 'hidden',
   },
 
   tableRow: {
     flexDirection: 'row',
-    paddingVertical: 10,
-    paddingHorizontal: 8,
+    minHeight: 46,
     backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#D1D5DB',
+  },
+
+  tableRowAlt: {
+    backgroundColor: '#FAFAFA',
   },
 
   tableHeader: {
-    backgroundColor: '#fafafa',
+    backgroundColor: '#F3F4F6',
+    borderBottomColor: '#111827',
   },
 
-  td: {
+  tdSubject: {
     flex: 1,
-    fontSize: 14,
-    color: '#222',
+    fontSize: 13,
+    color: '#111827',
+    paddingHorizontal: 10,
+    paddingVertical: 12,
+    borderRightWidth: 1,
+    borderRightColor: '#D1D5DB',
+  },
+
+  tdDescription: {
+    flex: 2.5,
+    fontSize: 13,
+    color: '#111827',
+    paddingHorizontal: 10,
+    paddingVertical: 12,
+    borderRightWidth: 1,
+    borderRightColor: '#D1D5DB',
+  },
+
+  tdSmall: {
+    flex: 0.7,
+    fontSize: 13,
+    color: '#111827',
+    textAlign: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 12,
+    borderRightWidth: 1,
+    borderRightColor: '#D1D5DB',
+  },
+
+  lastCell: {
+    borderRightWidth: 0,
   },
 
   th: {
-    fontWeight: '700',
-    color: '#444',
+    fontWeight: '900',
+    color: '#111827',
+    fontSize: 12,
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
   },
 
-  linkBtn: {
-    marginTop: 16,
-    alignSelf: 'flex-end',
-    backgroundColor: '#1976d2',
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    borderRadius: 6,
+
+  mobileCourseList: {
+    gap: 12,
   },
-});
+
+  mobileCourseCard: {
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    borderRadius: 16,
+    backgroundColor: '#FFFFFF',
+    padding: 14,
+  },
+
+  mobileCourseHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    gap: 12,
+    marginBottom: 10,
+  },
+
+  mobileCourseIndex: {
+    fontSize: 10,
+    color: '#991B1B',
+    fontWeight: '900',
+    letterSpacing: 0.7,
+    textTransform: 'uppercase',
+    marginBottom: 3,
+  },
+
+  mobileCourseCode: {
+    fontSize: 17,
+    color: '#111827',
+    fontWeight: '900',
+  },
+
+  mobileGradeBadge: {
+    minWidth: 78,
+    borderRadius: 14,
+    backgroundColor: '#FEF2F2',
+    borderWidth: 1,
+    borderColor: '#FECACA',
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    alignItems: 'center',
+  },
+
+  mobileGradeLabel: {
+    fontSize: 10,
+    color: '#991B1B',
+    fontWeight: '900',
+    textTransform: 'uppercase',
+    marginBottom: 2,
+  },
+
+  mobileGradeValue: {
+    fontSize: 15,
+    color: '#111827',
+    fontWeight: '900',
+  },
+
+  mobileCourseName: {
+    fontSize: 14,
+    lineHeight: 20,
+    color: '#374151',
+    fontWeight: '700',
+    marginBottom: 12,
+  },
+
+  mobileCourseMetaRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+
+  mobileMetaItem: {
+    flex: 1,
+    borderRadius: 12,
+    backgroundColor: '#F9FAFB',
+    borderWidth: 1,
+    borderColor: '#F3F4F6',
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+  },
+
+  mobileMetaLabel: {
+    fontSize: 10,
+    color: '#6B7280',
+    fontWeight: '900',
+    textTransform: 'uppercase',
+    marginBottom: 2,
+  },
+
+  mobileMetaValue: {
+    fontSize: 13,
+    color: '#111827',
+    fontWeight: '900',
+  },
+
+  emptyStateBordered: {
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    borderRadius: 16,
+  },
+
+  emptyState: {
+    padding: 20,
+    alignItems: 'center',
+    backgroundColor: '#FFF',
+  },
+
+  emptyTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#222',
+    marginBottom: 4,
+  },
+
+  emptyText: {
+    fontSize: 13,
+    color: '#777',
+    textAlign: 'center',
+  },
+
+  summaryPanel: {
+    alignSelf: 'flex-end',
+    marginTop: 14,
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    flexDirection: 'row',
+    backgroundColor: '#F9FAFB',
+  },
+
+  summaryPanelMobile: {
+    width: '100%',
+    alignSelf: 'stretch',
+  },
+
+  summaryItem: {
+    minWidth: 130,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRightWidth: 1,
+    borderRightColor: '#D1D5DB',
+  },
+
+  summaryItemLast: {
+    borderRightWidth: 0,
+  },
+
+  summaryLabel: {
+    fontSize: 11,
+    color: '#6B7280',
+    fontWeight: '800',
+    textTransform: 'uppercase',
+  },
+
+  summaryValue: {
+    marginTop: 3,
+    fontSize: 16,
+    color: '#111827',
+    fontWeight: '900',
+  },
+
+  footerNoteRow: {
+    marginTop: 22,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#E5E7EB',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+
+  footerNoteRowMobile: {
+    flexDirection: 'column',
+    gap: 4,
+  },
+
+  footerNote: {
+    color: '#6B7280',
+    fontSize: 11,
+    fontStyle: 'italic',
+  },
+
+  loadingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 14,
+    justifyContent: 'flex-end',
+  },
+
+  loadingText: {
+    marginLeft: 8,
+    color: '#777',
+    fontSize: 13,
+  },
+})
 
 export default MyJourney;

@@ -85,6 +85,27 @@ type Message = {
   type?: 'system' | 'text';
 };
 
+
+type ClassMember = {
+  id: string;
+  userId?: string;
+  userUid?: string | null;
+  name?: string;
+  email?: string | null;
+  role?: string;
+  status?: string;
+};
+
+type FinalGradeRow = {
+  memberDocId: string;
+  studentId: string;
+  studentName: string;
+  currentStatus: string;
+  grade: string;
+};
+
+type FinalGradeStatus = 'passed' | 'failed' | 'incomplete' | 'dropped';
+
 const Messenger = ({
   searchQuery = '',
   onConversationActiveChange,
@@ -127,9 +148,14 @@ const Messenger = ({
 
   const [showCreateRoomModal, setShowCreateRoomModal] = useState(false);
   const [showMembersModal, setShowMembersModal] = useState(false);
+  const [showFinalGradeModal, setShowFinalGradeModal] = useState(false);
   const [showInfoMenu, setShowInfoMenu] = useState(false);
 
   const [roomName, setRoomName] = useState('');
+  const [classMembers, setClassMembers] = useState<ClassMember[]>([]);
+  const [finalGradeRows, setFinalGradeRows] = useState<FinalGradeRow[]>([]);
+  const [loadingFinalGrades, setLoadingFinalGrades] = useState(false);
+  const [submittingFinalGrades, setSubmittingFinalGrades] = useState(false);
   const [checkedMembers, setCheckedMembers] = useState<string[]>([]);
   const [anchor, setAnchor] = useState({ x: 0, y: 0 });
 
@@ -570,6 +596,30 @@ const Messenger = ({
     );
   };
 
+  const FINAL_GRADE_STATUSES: FinalGradeStatus[] = [
+    'passed',
+    'failed',
+    'incomplete',
+    'dropped',
+  ];
+
+  const formatStatusLabel = (value: string) => {
+    if (!value) return 'Choose status';
+    return value.charAt(0).toUpperCase() + value.slice(1);
+  };
+
+  const updateFinalGradeRow = (
+    memberDocId: string,
+    field: 'currentStatus' | 'grade',
+    value: string
+  ) => {
+    setFinalGradeRows((prev) =>
+      prev.map((row) =>
+        row.memberDocId === memberDocId ? { ...row, [field]: value } : row
+      )
+    );
+  };
+
   const openAnchoredMenu = () => {
     if (infoButtonRef.current) {
       infoButtonRef.current.measureInWindow((x, y, measuredWidth, measuredHeight) => {
@@ -603,6 +653,159 @@ const Messenger = ({
   const handleOpenMembersModal = () => {
     setShowInfoMenu(false);
     setShowMembersModal(true);
+  };
+
+  const handleOpenFinalGradeModal = async () => {
+    if (!selected?.classId) return;
+
+    setShowInfoMenu(false);
+    setLoadingFinalGrades(true);
+
+    try {
+      const [membersResponse, gradesResponse] = await Promise.all([
+        fetch(`${API_BASE_URL}/class-members/${selected.classId}`),
+        fetch(`${API_BASE_URL}/final-grades/${selected.classId}`),
+      ]);
+
+      const membersRaw = await membersResponse.text();
+      const gradesRaw = await gradesResponse.text();
+
+      const membersData = membersRaw ? JSON.parse(membersRaw) : [];
+      const gradesData = gradesRaw ? JSON.parse(gradesRaw) : [];
+
+      if (!membersResponse.ok) {
+        throw new Error(membersData?.error || 'Failed to load class members.');
+      }
+
+      if (!gradesResponse.ok) {
+        throw new Error(gradesData?.error || 'Failed to load final grades.');
+      }
+
+      const studentMembers = (Array.isArray(membersData) ? membersData : []).filter(
+        (member: ClassMember) => member?.role === 'student'
+      );
+
+      const savedGradesMap = new Map(
+        (Array.isArray(gradesData) ? gradesData : []).map((item: any) => [
+          String(item.studentId || ''),
+          item,
+        ])
+      );
+
+      setClassMembers(studentMembers);
+      setFinalGradeRows(
+        studentMembers.map((member: ClassMember) => {
+          const studentId = String(member.userId || '');
+          const savedGrade = savedGradesMap.get(studentId);
+
+          return {
+            memberDocId: member.id,
+            studentId,
+            studentName: String(member.name || 'Unnamed Student'),
+            currentStatus: String(savedGrade?.status || member.status || 'active'),
+            grade: String(savedGrade?.finalGrade || ''),
+          };
+        })
+      );
+
+      setShowFinalGradeModal(true);
+    } catch (error: any) {
+      console.error('Load final grade members error:', error);
+      if (Platform.OS === 'web') {
+        window.alert(error?.message || 'Failed to load class members.');
+      }
+    } finally {
+      setLoadingFinalGrades(false);
+    }
+  };
+
+  const handleSubmitFinalGrades = async () => {
+    if (!selected?.classId || finalGradeRows.length === 0) return;
+
+    const invalidRow = finalGradeRows.find(
+      (row) => !row.currentStatus.trim() || !row.grade.trim()
+    );
+
+    if (invalidRow) {
+      if (Platform.OS === 'web') {
+        window.alert(`Please complete status and grade for ${invalidRow.studentName}.`);
+      }
+      return;
+    }
+
+    setSubmittingFinalGrades(true);
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/submit-final-grades`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          classId: selected.classId,
+          conversationId: selected.id,
+          submittedById: currentUser,
+          submittedByName: currentUserName,
+          grades: finalGradeRows.map((row) => ({
+            studentId: row.studentId,
+            studentName: row.studentName,
+            status: row.currentStatus,
+            finalGrade: row.grade,
+          })),
+        }),
+      });
+
+      const raw = await response.text();
+      let data: any = {};
+
+      try {
+        data = raw ? JSON.parse(raw) : {};
+      } catch {
+        throw new Error(raw || 'Server returned a non-JSON response.');
+      }
+
+      if (!response.ok) {
+        throw new Error(data?.error || 'Failed to submit final grades.');
+      }
+
+      setShowFinalGradeModal(false);
+
+      const successMessage = `Final grades submitted for ${finalGradeRows.length} student${
+        finalGradeRows.length > 1 ? 's' : ''
+      }.`;
+
+      const createdAt = Date.now();
+      const optimisticMessage: Message = {
+        id: `final-grade-${createdAt}`,
+        fromMe: false,
+        sender: 'System',
+        text: successMessage,
+        createdAt,
+        type: 'system',
+      };
+
+      setMessagesByConversation((prev) => ({
+        ...prev,
+        [selected.id]: [...(prev[selected.id] || []), optimisticMessage],
+      }));
+
+      setConversations((prev) =>
+        prev.map((conversation) =>
+          conversation.id === selected.id
+            ? {
+                ...conversation,
+                last: successMessage,
+                time: formatConversationTime(createdAt),
+              }
+            : conversation
+        )
+      );
+    } catch (error: any) {
+      console.error('Submit final grades error:', error);
+      if (Platform.OS === 'web') {
+        window.alert(error?.message || 'Failed to submit final grades.');
+      }
+    } finally {
+      setSubmittingFinalGrades(false);
+    }
   };
 
   const handleCreateRoom = () => {
@@ -877,9 +1080,11 @@ const Messenger = ({
   };
 
   const renderInfoMenu = () => {
-    const menuWidth = isMobile ? 180 : 200;
-    const safeLeft = Math.max(8, Math.min(anchor.x, width - menuWidth - 8));
-    const safeTop = Math.max(8, Math.min(anchor.y, height - 160));
+    const modalWidth = Math.min(width - (isMobile ? 24 : 40), isDesktop ? 360 : 320);
+    const modalMaxHeight = Math.min(height * (isMobile ? 0.52 : 0.48), 320);
+
+    const safeLeft = Math.max(8, Math.min(anchor.x, width - modalWidth - 8));
+    const safeTop = Math.max(8, Math.min(anchor.y, height - modalMaxHeight - 16));
 
     return (
       <Modal
@@ -888,39 +1093,84 @@ const Messenger = ({
         animationType="fade"
         onRequestClose={() => setShowInfoMenu(false)}
       >
-        <Pressable style={styles.modalOverlay} onPress={() => setShowInfoMenu(false)}>
+        <Pressable
+          style={[styles.modalOverlay, styles.professionalOverlay]}
+          onPress={() => setShowInfoMenu(false)}
+        >
           <Pressable
             onPress={(e) => e.stopPropagation()}
             style={[
-              styles.infoMenu,
-              {
-                width: menuWidth,
-                left: safeLeft,
-                top: safeTop,
-              },
+              styles.professionalModalCard,
+              isMobile
+                ? [
+                    styles.centeredProfessionalModal,
+                    {
+                      width: modalWidth,
+                      maxHeight: modalMaxHeight,
+                    },
+                  ]
+                : {
+                    position: 'absolute',
+                    width: modalWidth,
+                    maxHeight: modalMaxHeight,
+                    left: safeLeft,
+                    top: safeTop,
+                  },
             ]}
           >
-            <Text style={styles.infoMenuTitle}>Choose Option</Text>
+            <View style={styles.professionalModalHeader}>
+              <View style={styles.professionalModalHeaderTextWrap}>
+                <Text style={styles.professionalModalTitle}>More Info</Text>
+                <Text style={styles.professionalModalSubtitle}>
+                  Choose what you want to do in this class conversation.
+                </Text>
+              </View>
 
-            <TouchableOpacity
-              style={styles.infoMenuButton}
-              activeOpacity={0.85}
-              onPress={handleOpenMembersModal}
-            >
-              <MaterialCommunityIcons name="account-group-outline" size={16} color="#222" />
-              <Text style={styles.infoMenuButtonText}>See Members</Text>
-            </TouchableOpacity>
-
-            {!selected?.isCreatedRoom && (
               <TouchableOpacity
-                style={styles.infoMenuButton}
-                activeOpacity={0.85}
-                onPress={handleOpenCreateRoomModal}
+                style={styles.professionalCloseButton}
+                onPress={() => setShowInfoMenu(false)}
+                activeOpacity={0.8}
               >
-                <MaterialCommunityIcons name="forum-outline" size={16} color="#222" />
-                <Text style={styles.infoMenuButtonText}>Create Room</Text>
+                <MaterialCommunityIcons name="close" size={18} color="#333" />
               </TouchableOpacity>
-            )}
+            </View>
+
+            <View style={styles.professionalModalScrollContent}>
+              <TouchableOpacity
+                style={styles.infoActionCard}
+                activeOpacity={0.85}
+                onPress={handleOpenMembersModal}
+              >
+                <MaterialCommunityIcons name="account-group-outline" size={18} color="#222" />
+                <Text style={styles.infoActionCardText}>See Members</Text>
+              </TouchableOpacity>
+
+              {!selected?.isCreatedRoom && (
+                <TouchableOpacity
+                  style={styles.infoActionCard}
+                  activeOpacity={0.85}
+                  onPress={handleOpenCreateRoomModal}
+                >
+                  <MaterialCommunityIcons name="forum-outline" size={18} color="#222" />
+                  <Text style={styles.infoActionCardText}>Create Room</Text>
+                </TouchableOpacity>
+              )}
+
+              {!selected?.isCreatedRoom && (
+                <TouchableOpacity
+                  style={styles.infoActionCard}
+                  activeOpacity={0.85}
+                  onPress={handleOpenFinalGradeModal}
+                >
+                  <MaterialCommunityIcons
+                    name="clipboard-check-outline"
+                    size={18}
+                    color="#222"
+                  />
+                  <Text style={styles.infoActionCardText}>Submit Final Grade</Text>
+                </TouchableOpacity>
+              )}
+            </View>
           </Pressable>
         </Pressable>
       </Modal>
@@ -1189,6 +1439,159 @@ const Messenger = ({
     );
   };
 
+  const renderFinalGradeModal = () => {
+    const modalWidth = Math.min(width - (isMobile ? 24 : 40), isDesktop ? 620 : 360);
+    const modalMaxHeight = Math.min(height * (isMobile ? 0.82 : 0.76), 620);
+
+    const safeLeft = Math.max(8, Math.min(anchor.x, width - modalWidth - 8));
+    const safeTop = Math.max(8, Math.min(anchor.y, height - modalMaxHeight - 16));
+
+    return (
+      <Modal
+        transparent
+        visible={showFinalGradeModal}
+        animationType="fade"
+        onRequestClose={() => setShowFinalGradeModal(false)}
+      >
+        <Pressable
+          style={[styles.modalOverlay, styles.professionalOverlay]}
+          onPress={() => setShowFinalGradeModal(false)}
+        >
+          <Pressable
+            onPress={(e) => e.stopPropagation()}
+            style={[
+              styles.professionalModalCard,
+              isMobile
+                ? [
+                    styles.centeredProfessionalModal,
+                    {
+                      width: modalWidth,
+                      maxHeight: modalMaxHeight,
+                    },
+                  ]
+                : {
+                    position: 'absolute',
+                    width: modalWidth,
+                    maxHeight: modalMaxHeight,
+                    left: safeLeft,
+                    top: safeTop,
+                  },
+            ]}
+          >
+            <View style={styles.professionalModalHeader}>
+              <View style={styles.professionalModalHeaderTextWrap}>
+                <Text style={styles.professionalModalTitle}>Submit Final Grade</Text>
+                <Text style={styles.professionalModalSubtitle}>
+                  Enter the final grade and status of each class member.
+                </Text>
+              </View>
+
+              <TouchableOpacity
+                style={styles.professionalCloseButton}
+                onPress={() => setShowFinalGradeModal(false)}
+                activeOpacity={0.8}
+              >
+                <MaterialCommunityIcons name="close" size={18} color="#333" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView
+              showsVerticalScrollIndicator={true}
+              contentContainerStyle={styles.professionalModalScrollContent}
+            >
+              {loadingFinalGrades ? (
+                <Text style={styles.professionalHelperText}>Loading class members...</Text>
+              ) : finalGradeRows.length === 0 ? (
+                <Text style={styles.professionalHelperText}>
+                  {classMembers.length === 0
+                    ? 'No student members found in this class.'
+                    : 'No grade rows available.'}
+                </Text>
+              ) : (
+                <View style={styles.finalGradeList}>
+                  {finalGradeRows.map((row) => (
+                    <View key={row.memberDocId} style={styles.finalGradeCard}>
+                      <View style={styles.finalGradeTop}>
+                        <View style={styles.professionalMemberInfo}>
+                          <View style={styles.professionalMemberAvatar}>
+                            <MaterialCommunityIcons name="account" size={16} color="#666" />
+                          </View>
+
+                          <View style={styles.professionalMemberTextWrap}>
+                            <Text style={styles.professionalMemberName}>{row.studentName}</Text>
+                            <Text style={styles.professionalMemberMeta}>ID: {row.studentId}</Text>
+                          </View>
+                        </View>
+                      </View>
+
+                      <Text style={styles.professionalLabel}>Status</Text>
+                      <View style={styles.statusChipsWrap}>
+                        {FINAL_GRADE_STATUSES.map((status) => {
+                          const active = row.currentStatus === status;
+
+                          return (
+                            <TouchableOpacity
+                              key={`${row.memberDocId}-${status}`}
+                              style={[
+                                styles.statusChip,
+                                active && styles.statusChipActive,
+                              ]}
+                              activeOpacity={0.85}
+                              onPress={() =>
+                                updateFinalGradeRow(row.memberDocId, 'currentStatus', status)
+                              }
+                            >
+                              <Text
+                                style={[
+                                  styles.statusChipText,
+                                  active && styles.statusChipTextActive,
+                                ]}
+                              >
+                                {formatStatusLabel(status)}
+                              </Text>
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </View>
+
+                      <Text style={styles.professionalLabel}>Final Grade</Text>
+                      <TextInput
+                        value={row.grade}
+                        onChangeText={(value) =>
+                          updateFinalGradeRow(row.memberDocId, 'grade', value)
+                        }
+                        placeholder="Enter final grade"
+                        placeholderTextColor="#9a9a9a"
+                        keyboardType="numeric"
+                        style={styles.professionalInput}
+                      />
+                    </View>
+                  ))}
+                </View>
+              )}
+
+              <TouchableOpacity
+                style={[
+                  styles.professionalPrimaryButton,
+                  styles.finalGradeSubmitButton,
+                  submittingFinalGrades && { opacity: 0.7 },
+                ]}
+                activeOpacity={0.9}
+                onPress={handleSubmitFinalGrades}
+                disabled={submittingFinalGrades}
+              >
+                <MaterialCommunityIcons name="content-save-outline" size={16} color="#fff" />
+                <Text style={styles.professionalPrimaryButtonText}>
+                  {submittingFinalGrades ? 'Submitting...' : 'Submit Final Grade'}
+                </Text>
+              </TouchableOpacity>
+            </ScrollView>
+          </Pressable>
+        </Pressable>
+      </Modal>
+    );
+  };
+
   const renderChatPane = () => {
     if (!selected) {
       return (
@@ -1301,6 +1704,7 @@ const Messenger = ({
         {renderInfoMenu()}
         {renderCreateRoomModal()}
         {renderMembersModal()}
+        {renderFinalGradeModal()}
       </View>
     );
   };
@@ -1810,6 +2214,68 @@ const styles = StyleSheet.create({
     marginTop: 2,
     fontSize: 11,
     color: '#7a7a7a',
+  },
+  infoActionCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 14,
+    paddingHorizontal: 14,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#ededed',
+    backgroundColor: '#fafafa',
+    marginBottom: 10,
+  },
+  infoActionCardText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#222',
+  },
+  finalGradeList: {
+    gap: 14,
+  },
+  finalGradeCard: {
+    borderWidth: 1,
+    borderColor: '#ececec',
+    borderRadius: 14,
+    backgroundColor: '#fcfcfc',
+    padding: 14,
+    marginBottom: 12,
+  },
+  finalGradeTop: {
+    marginBottom: 12,
+  },
+  statusChipsWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 12,
+  },
+  statusChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#d8d8d8',
+    backgroundColor: '#fff',
+  },
+  statusChipActive: {
+    backgroundColor: '#d94c43',
+    borderColor: '#d94c43',
+  },
+  statusChipText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#444',
+  },
+  statusChipTextActive: {
+    color: '#fff',
+  },
+  finalGradeSubmitButton: {
+    marginTop: 8,
+    alignSelf: 'stretch',
+    justifyContent: 'center',
   },
   conversationMetaCard: {
     marginBottom: 12,

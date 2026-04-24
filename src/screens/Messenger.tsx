@@ -877,9 +877,11 @@ const Messenger = ({
   };
 
   const renderInfoMenu = () => {
-    const menuWidth = isMobile ? 180 : 200;
-    const safeLeft = Math.max(8, Math.min(anchor.x, width - menuWidth - 8));
-    const safeTop = Math.max(8, Math.min(anchor.y, height - 160));
+    const modalWidth = Math.min(width - (isMobile ? 24 : 40), isDesktop ? 360 : 320);
+    const modalMaxHeight = Math.min(height * (isMobile ? 0.52 : 0.48), 320);
+
+    const safeLeft = Math.max(8, Math.min(anchor.x, width - modalWidth - 8));
+    const safeTop = Math.max(8, Math.min(anchor.y, height - modalMaxHeight - 16));
 
     return (
       <Modal
@@ -888,39 +890,69 @@ const Messenger = ({
         animationType="fade"
         onRequestClose={() => setShowInfoMenu(false)}
       >
-        <Pressable style={styles.modalOverlay} onPress={() => setShowInfoMenu(false)}>
+        <Pressable
+          style={[styles.modalOverlay, styles.professionalOverlay]}
+          onPress={() => setShowInfoMenu(false)}
+        >
           <Pressable
             onPress={(e) => e.stopPropagation()}
             style={[
-              styles.infoMenu,
-              {
-                width: menuWidth,
-                left: safeLeft,
-                top: safeTop,
-              },
+              styles.professionalModalCard,
+              isMobile
+                ? [
+                    styles.centeredProfessionalModal,
+                    {
+                      width: modalWidth,
+                      maxHeight: modalMaxHeight,
+                    },
+                  ]
+                : {
+                    position: 'absolute',
+                    width: modalWidth,
+                    maxHeight: modalMaxHeight,
+                    left: safeLeft,
+                    top: safeTop,
+                  },
             ]}
           >
-            <Text style={styles.infoMenuTitle}>Choose Option</Text>
+            <View style={styles.professionalModalHeader}>
+              <View style={styles.professionalModalHeaderTextWrap}>
+                <Text style={styles.professionalModalTitle}>Choose Option</Text>
+                <Text style={styles.professionalModalSubtitle}>
+                  Choose what you want to do in this class conversation.
+                </Text>
+              </View>
 
-            <TouchableOpacity
-              style={styles.infoMenuButton}
-              activeOpacity={0.85}
-              onPress={handleOpenMembersModal}
-            >
-              <MaterialCommunityIcons name="account-group-outline" size={16} color="#222" />
-              <Text style={styles.infoMenuButtonText}>See Members</Text>
-            </TouchableOpacity>
-
-            {!selected?.isCreatedRoom && (
               <TouchableOpacity
-                style={styles.infoMenuButton}
-                activeOpacity={0.85}
-                onPress={handleOpenCreateRoomModal}
+                style={styles.professionalCloseButton}
+                onPress={() => setShowInfoMenu(false)}
+                activeOpacity={0.8}
               >
-                <MaterialCommunityIcons name="forum-outline" size={16} color="#222" />
-                <Text style={styles.infoMenuButtonText}>Create Room</Text>
+                <MaterialCommunityIcons name="close" size={18} color="#333" />
               </TouchableOpacity>
-            )}
+            </View>
+
+            <View style={styles.professionalModalScrollContent}>
+              <TouchableOpacity
+                style={styles.infoActionCard}
+                activeOpacity={0.85}
+                onPress={handleOpenMembersModal}
+              >
+                <MaterialCommunityIcons name="account-group-outline" size={18} color="#222" />
+                <Text style={styles.infoActionCardText}>See Members</Text>
+              </TouchableOpacity>
+
+              {!selected?.isCreatedRoom && (
+                <TouchableOpacity
+                  style={styles.infoActionCard}
+                  activeOpacity={0.85}
+                  onPress={handleOpenCreateRoomModal}
+                >
+                  <MaterialCommunityIcons name="forum-outline" size={18} color="#222" />
+                  <Text style={styles.infoActionCardText}>Create Room</Text>
+                </TouchableOpacity>
+              )}
+            </View>
           </Pressable>
         </Pressable>
       </Modal>
@@ -1476,38 +1508,22 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.05)',
   },
 
-  infoMenu: {
-    position: 'absolute',
-    backgroundColor: '#fff',
-    borderRadius: 14,
-    paddingVertical: 10,
-    paddingHorizontal: 10,
-    borderWidth: 1,
-    borderColor: '#ececec',
-    shadowColor: '#000',
-    shadowOpacity: 0.08,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 8,
-  },
-  infoMenuTitle: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#222',
-    marginBottom: 8,
-  },
-  infoMenuButton: {
+  infoActionCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    paddingVertical: 10,
-    paddingHorizontal: 6,
-    borderRadius: 8,
+    gap: 10,
+    paddingVertical: 14,
+    paddingHorizontal: 14,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#ededed',
+    backgroundColor: '#fafafa',
+    marginBottom: 10,
   },
-  infoMenuButtonText: {
-    fontSize: 12,
+  infoActionCardText: {
+    fontSize: 14,
+    fontWeight: '600',
     color: '#222',
-    fontWeight: '500',
   },
 
   messageRow: {},

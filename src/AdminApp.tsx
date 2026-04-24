@@ -170,6 +170,7 @@ export default function AdminApp({ onLogout, currentAdmin }: Props) {
         isTablet={isTablet}
         onMenuPress={() => setSidebarVisible((prev) => !prev)}
         isSidebarOpen={sidebarVisible || activeSideNav !== null}
+        adminId={currentAdmin.adminId}
       />
 
       <View style={styles.body}>

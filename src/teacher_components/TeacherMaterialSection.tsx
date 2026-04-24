@@ -29,7 +29,11 @@ const TeacherMaterialSection = ({
   const isSmallPhone = width < 360;
   const isTabletOrLargeScreen = width >= 768;
 
-  const horizontalPadding = isSmallPhone ? 12 : isTabletOrLargeScreen ? 24 : 16;
+  const horizontalPadding = isSmallPhone
+  ? 12
+  : isTabletOrLargeScreen
+  ? 60   // match Assignment
+  : 16;
   const cardPadding = isSmallPhone ? 10 : isTabletOrLargeScreen ? 18 : 14;
   const iconSize = isSmallPhone ? 42 : isTabletOrLargeScreen ? 56 : 50;
   const titleFontSize = isSmallPhone ? 13 : isTabletOrLargeScreen ? 16 : 14;
@@ -61,7 +65,7 @@ const TeacherMaterialSection = ({
         styles.materialCard,
         {
           padding: cardPadding,
-          maxWidth: isTabletOrLargeScreen ? 900 : '100%',
+          maxWidth: isTabletOrLargeScreen ? 1100 : '100%',
           alignSelf: 'center',
         },
       ]}
@@ -125,7 +129,7 @@ const TeacherMaterialSection = ({
         style={[
           styles.topActionRow,
           {
-            maxWidth: isTabletOrLargeScreen ? 900 : '100%',
+            maxWidth: isTabletOrLargeScreen ? 1100 : '100%',
             alignSelf: 'center',
             width: '100%',
           },
@@ -151,12 +155,15 @@ const TeacherMaterialSection = ({
 
       {materials.length > 0 ? (
         <FlatList
-          data={materials}
-          renderItem={renderMaterialItem}
-          keyExtractor={(item) => item.id}
-          scrollEnabled={false}
-          contentContainerStyle={{ paddingBottom: hp('2') }}
-        />
+        scrollEnabled={false}
+        data={materials}
+        renderItem={renderMaterialItem}
+        keyExtractor={(item) => item.id}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{
+          paddingBottom: hp('10'),
+        }}
+      />
       ) : (
         <Text style={[styles.emptyText, { fontSize: isSmallPhone ? 13 : 14 }]}>
           No materials available yet
@@ -171,8 +178,7 @@ export default TeacherMaterialSection;
 const styles = StyleSheet.create({
   container: {
     paddingVertical: hp('2'),
-    backgroundColor: '#F5F5F5',
-    flex: 1,
+    backgroundColor: '#FFFFFF',
   },
 
   topActionRow: {
@@ -195,6 +201,8 @@ const styles = StyleSheet.create({
 
   materialCard: {
     flexDirection: 'row',
+    borderWidth: 1,
+    borderColor: '#E6E6E6',
     backgroundColor: '#FFF',
     borderRadius: 14,
     marginBottom: hp('1.5'),

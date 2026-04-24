@@ -60,7 +60,7 @@ interface DashboardProps {
   onJoinClass?: (classCode: string) => void;
 }
 
-type RecommendationType = 'review' | 'practice' | 'advanced';
+type RecommendationType = 'review' | 'practice';
 
 const Dashboard = ({
   announcements = [],
@@ -114,19 +114,25 @@ const Dashboard = ({
     if (percent === null) return null;
     if (percent < 60) return 'review';
     if (percent < 75) return 'practice';
-    return 'advanced';
+    return null;
   };
 
   const getRecommendationColor = (type: RecommendationType) => {
     if (type === 'review') return '#D32F2F';
-    if (type === 'practice') return '#F57C00';
-    return '#2E7D32';
+    return '#F57C00';
   };
 
   const getRecommendationLabel = (type: RecommendationType) => {
     if (type === 'review') return 'Review Activity';
-    if (type === 'practice') return 'Practice Quiz';
-    return 'Advanced Challenge';
+    return 'Practice Quiz';
+  };
+
+  const hasRelatedMaterials = (assignment: DashboardAssignment) => {
+    return Array.isArray(assignment.materialIds) && assignment.materialIds.length > 0;
+  };
+
+  const canGenerateActivity = (assignment: DashboardAssignment) => {
+    return getRecommendationType(assignment) !== null && hasRelatedMaterials(assignment);
   };
 
   const getNextDueAssignment = (assignments: DashboardAssignment[]) => {
@@ -181,10 +187,9 @@ const Dashboard = ({
         return score !== null && score < 75;
       });
 
-      const pendingGenerated = weakAssignments.filter((assignment) => {
-        const type = getRecommendationType(assignment);
-        return type === 'review' || type === 'practice';
-      });
+      const pendingGenerated = weakAssignments.filter((assignment) =>
+        canGenerateActivity(assignment)
+      );
 
       const averageScore =
         gradedAssignments.length > 0
@@ -215,13 +220,14 @@ const Dashboard = ({
       item.weakAssignments
         .map((assignment) => {
           const recommendation = getRecommendationType(assignment);
-          if (!recommendation || recommendation === 'advanced') return null;
+          if (!recommendation) return null;
 
           return {
             course: item.course,
             assignment,
             recommendation,
             score: getScorePercent(assignment),
+            canGenerate: canGenerateActivity(assignment),
           };
         })
         .filter(Boolean) as Array<{
@@ -229,13 +235,15 @@ const Dashboard = ({
         assignment: DashboardAssignment;
         recommendation: RecommendationType;
         score: number | null;
+        canGenerate: boolean;
       }>
     );
   }, [derivedCourses]);
 
   const nextBest = useMemo(() => {
-    if (recommendedAssignments.length === 0) return null;
-    return [...recommendedAssignments].sort(
+    const actionable = recommendedAssignments.filter((item) => item.canGenerate);
+    if (actionable.length === 0) return null;
+    return [...actionable].sort(
       (a, b) => (a.score ?? 100) - (b.score ?? 100)
     )[0];
   }, [recommendedAssignments]);
@@ -474,8 +482,7 @@ const Dashboard = ({
                 { fontSize: isMobile ? 13 : 14 },
               ]}
             >
-              Open an assignment directly or generate a follow-up activity for
-              any graded topic below 75%.
+              Generate Activity is available only for graded assignments below 75% that already have related materials selected by the teacher.
             </Text>
 
             <View style={styles.recommendationList}>
@@ -527,20 +534,40 @@ const Dashboard = ({
                         {item.score !== null ? ` • Score: ${item.score}%` : ''}
                       </Text>
 
+                      {!item.canGenerate && (
+                        <Text style={styles.materialHintText}>
+                          Related material is required before Generate Activity becomes available.
+                        </Text>
+                      )}
+
                       <View style={styles.actionRow}>
-                        <TouchableOpacity
-                          style={[
-                            styles.smallActionBtn,
-                            { backgroundColor: '#D32F2F' },
-                          ]}
-                          onPress={() =>
-                            onOpenGeneratedActivity?.(item.course, item.assignment)
-                          }
-                        >
-                          <Text style={styles.smallActionBtnText}>
-                            Generate Activity
-                          </Text>
-                        </TouchableOpacity>
+                        {item.canGenerate ? (
+                          <TouchableOpacity
+                            style={[
+                              styles.smallActionBtn,
+                              { backgroundColor: '#D32F2F' },
+                            ]}
+                            onPress={() =>
+                              onOpenGeneratedActivity?.(item.course, item.assignment)
+                            }
+                          >
+                            <Text style={styles.smallActionBtnText}>
+                              Generate Activity
+                            </Text>
+                          </TouchableOpacity>
+                        ) : (
+                          <TouchableOpacity
+                            style={[
+                              styles.smallActionBtn,
+                              styles.disabledActionBtn,
+                            ]}
+                            activeOpacity={1}
+                          >
+                            <Text style={styles.smallActionBtnText}>
+                              Waiting for Related Material
+                            </Text>
+                          </TouchableOpacity>
+                        )}
 
                         <TouchableOpacity
                           style={[
@@ -930,6 +957,13 @@ const styles = StyleSheet.create({
   recommendationMeta: {
     color: '#666',
   },
+  materialHintText: {
+    marginTop: 8,
+    color: '#B26A00',
+    fontSize: 12,
+    fontWeight: '600',
+    lineHeight: 18,
+  },
   actionRow: {
     flexDirection: 'row',
     gap: 8,
@@ -939,6 +973,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 10,
+  },
+  disabledActionBtn: {
+    backgroundColor: '#BDBDBD',
   },
   smallActionBtnText: {
     color: '#FFF',

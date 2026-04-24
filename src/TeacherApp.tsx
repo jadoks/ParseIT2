@@ -829,6 +829,13 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
     }
   };
 
+  const handleDrawerEmailUpdated = (nextEmail: string) => {
+    setTeacherProfile((prev) => ({
+      ...(prev || currentTeacherData || {}),
+      email: nextEmail,
+    }));
+  };
+
   const handleSetIsLoggedIn = (val: boolean) => {
     if (!val) {
       onLogout();
@@ -866,6 +873,7 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
       icon: getCourseIcon(newCourse.name),
       year: newCourse.year || '1st Year',
       semester: newCourse.semester || '1st Semester',
+      schoolYear: (newCourse as any).schoolYear || '2025-2026',
     };
 
     setCourses((prev) => [courseWithIcon, ...prev]);
@@ -951,7 +959,11 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
               userName={teacherFullName}
               userEmail={teacherEmail}
               userAvatar={currentUserAvatar}
+              userId={teacherIdentity}
+              userRole="teacher"
+              apiBaseUrl={API_BASE_URL}
               onAvatarPress={() => navigateTo('profile')}
+              onEmailUpdated={handleDrawerEmailUpdated}
               setIsLoggedIn={handleSetIsLoggedIn}
             />
           </View>
@@ -1086,10 +1098,14 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
               userName={teacherFullName}
               userEmail={teacherEmail}
               userAvatar={currentUserAvatar}
+              userId={teacherIdentity}
+              userRole="teacher"
+              apiBaseUrl={API_BASE_URL}
               onAvatarPress={() => {
                 setMobileDrawerOpen(false);
                 navigateTo('profile');
               }}
+              onEmailUpdated={handleDrawerEmailUpdated}
               setIsLoggedIn={handleSetIsLoggedIn}
             />
           </View>

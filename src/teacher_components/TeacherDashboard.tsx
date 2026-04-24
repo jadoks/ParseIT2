@@ -208,13 +208,33 @@ const mapBackendClass = (item: any, fallbackInstructor: string): TeacherCourseDa
   section: item.section || '',
   bannerUri: item.bannerUrl || undefined,
   year: item.year || '',
-  yearSection: item.section || '',
+  yearSection: item.yearSection || item.section || '',
   semester: item.semester || '',
   schoolYear: item.schoolYear || null,
   description: item.description || null,
   position: item.position,
   units: typeof item.units === 'number' ? item.units : undefined,
 });
+
+const getYearSectionLabel = (course: TeacherCourseData) => {
+  const year = course.year?.trim() || '';
+  const section = (course.yearSection || course.section || '').trim();
+
+  if (year && section) return `${year} • ${section}`;
+  if (year) return year;
+  if (section) return section;
+  return 'Year and section not set';
+};
+
+const getSemesterSchoolYearLabel = (course: TeacherCourseData) => {
+  const semester = course.semester?.trim() || '';
+  const schoolYear = course.schoolYear?.trim() || '';
+
+  if (semester && schoolYear) return `${semester} • S.Y. ${schoolYear}`;
+  if (semester) return semester;
+  if (schoolYear) return `S.Y. ${schoolYear}`;
+  return 'Semester and school year not set';
+};
 
 const Dashboard2 = ({
   announcements = [],
@@ -1431,6 +1451,22 @@ const Dashboard2 = ({
                   <Text style={styles.instructorLabel}>INSTRUCTOR</Text>
                   <Text style={styles.instructorName}>{item.instructor}</Text>
 
+                  <View style={styles.classMetaWrap}>
+                    <View style={styles.classMetaPill}>
+                      <Ionicons name="school-outline" size={14} color="#D32F2F" />
+                      <Text style={styles.classMetaText} numberOfLines={1}>
+                        {getYearSectionLabel(item)}
+                      </Text>
+                    </View>
+
+                    <View style={styles.classMetaPill}>
+                      <Ionicons name="calendar-outline" size={14} color="#D32F2F" />
+                      <Text style={styles.classMetaText} numberOfLines={1}>
+                        {getSemesterSchoolYearLabel(item)}
+                      </Text>
+                    </View>
+                  </View>
+
                   <View style={styles.classCodeRow}>
                     <Text style={styles.bannerCode}>Class Code: {item.classCode}</Text>
 
@@ -1622,10 +1658,34 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
 
+  classMetaWrap: {
+    marginTop: 12,
+    gap: 8,
+  },
+
+  classMetaPill: {
+    minHeight: 32,
+    borderRadius: 12,
+    backgroundColor: '#FFF4F4',
+    borderWidth: 1,
+    borderColor: '#F8D7D7',
+    paddingHorizontal: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+  },
+
+  classMetaText: {
+    flex: 1,
+    color: '#7A1F1F',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+
   classCodeRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 6,
+    marginTop: 10,
   },
 
   copyButton: {
