@@ -4385,6 +4385,256 @@ app.get("/youtube/videos", async (req, res) => {
 });
 
 
+
+/**
+ * HONOR ROLL ROUTE
+ * Rule:
+ * - Teacher inputs startYear only, e.g. 2025.
+ * - System builds school year automatically: S.Y 2025 - 2026.
+ * - Student must be enrolled in at least 18 units for that school year + semester.
+ * - Student must have a submitted final grade for every enrolled class in that term.
+ * - Student must NOT have any final grade of 2.6 or above.
+ */
+app.get("/honor-roll", async (req, res) => {
+  try {
+    const rawStartYear = normalizeOptionalText(req.query.startYear);
+    const rawSemester = normalizeOptionalText(req.query.semester);
+
+    if (!rawStartYear || !rawSemester) {
+      return res.status(400).json({
+        error: "startYear and semester are required.",
+      });
+    }
+
+    const startYear = Number(String(rawStartYear).replace(/[^0-9]/g, "").slice(0, 4));
+
+    if (!Number.isInteger(startYear) || String(startYear).length !== 4) {
+      return res.status(400).json({
+        error: "startYear must be a valid 4-digit year. Example: 2025",
+      });
+    }
+
+    const endYear = startYear + 1;
+    const schoolYear = `S.Y ${startYear} - ${endYear}`;
+
+    const normalizeSchoolYearKey = (value = "") =>
+      String(value || "").replace(/[^0-9]/g, "");
+
+    const normalizeSemesterKey = (value = "") => {
+      const text = String(value || "").toLowerCase().trim();
+
+      if (text.includes("first") || text.includes("1st")) return "first";
+      if (text.includes("second") || text.includes("2nd")) return "second";
+
+      return text;
+    };
+
+    const expectedSchoolYearKey = `${startYear}${endYear}`;
+    const expectedSemesterKey = normalizeSemesterKey(rawSemester);
+
+    const classesSnapshot = await db.collection("classes").get();
+
+    const matchedClasses = classesSnapshot.docs
+      .map((doc) => ({
+        id: doc.id,
+        ...(doc.data() || {}),
+      }))
+      .filter((classData) => {
+        return (
+          normalizeSchoolYearKey(classData.schoolYear) === expectedSchoolYearKey &&
+          normalizeSemesterKey(classData.semester) === expectedSemesterKey &&
+          classData.status !== "archived"
+        );
+      });
+
+    if (!matchedClasses.length) {
+      return res.json({
+        success: true,
+        schoolYear,
+        semester: rawSemester,
+        data: [],
+      });
+    }
+
+    const studentsMap = new Map();
+
+    for (const classData of matchedClasses) {
+      const classId = classData.id;
+      const classUnits =
+        typeof classData.units === "number"
+          ? classData.units
+          : Number(classData.units) || 0;
+
+      const membersSnapshot = await db
+        .collection("classMembers")
+        .where("classId", "==", classId)
+        .where("role", "==", "student")
+        .get();
+
+      const gradesSnapshot = await db
+        .collection("finalGrades")
+        .where("classId", "==", classId)
+        .get();
+
+      const gradeByStudentId = new Map();
+
+      gradesSnapshot.docs.forEach((gradeDoc) => {
+        const gradeData = gradeDoc.data() || {};
+        const studentId = normalizeOptionalText(gradeData.studentId);
+
+        if (!studentId) return;
+
+        gradeByStudentId.set(studentId, {
+          id: gradeDoc.id,
+          ...gradeData,
+        });
+      });
+
+      membersSnapshot.docs.forEach((memberDoc) => {
+        const member = memberDoc.data() || {};
+        const studentId = normalizeOptionalText(member.userId);
+
+        if (!studentId || member.status === "inactive") return;
+
+        const gradeData = gradeByStudentId.get(studentId) || null;
+        const finalGrade =
+          gradeData?.finalGrade !== undefined && gradeData?.finalGrade !== null
+            ? Number(gradeData.finalGrade)
+            : null;
+
+        if (!studentsMap.has(studentId)) {
+          studentsMap.set(studentId, {
+            id: studentId,
+            name: normalizeOptionalText(member.name) || normalizeOptionalText(gradeData?.studentName) || studentId,
+            section: normalizeOptionalText(classData.section) || "No Section",
+            yearLevel: normalizeOptionalText(classData.year) || "No Year Level",
+            totalUnits: 0,
+            courses: [],
+          });
+        }
+
+        const student = studentsMap.get(studentId);
+
+        student.totalUnits += classUnits;
+        student.courses.push({
+          classId,
+          courseCode: normalizeOptionalText(classData.courseCode) || "",
+          courseName: normalizeOptionalText(classData.name) || "Untitled Class",
+          section: normalizeOptionalText(classData.section) || "No Section",
+          yearLevel: normalizeOptionalText(classData.year) || "No Year Level",
+          units: classUnits,
+          grade: finalGrade,
+          hasFinalGrade: Number.isFinite(finalGrade),
+        });
+      });
+    }
+
+    const qualifiedStudents = [];
+
+    for (const student of studentsMap.values()) {
+      const hasEnoughUnits = student.totalUnits >= 18;
+      const hasAtLeastOneCourse = student.courses.length > 0;
+      const hasCompleteFinalGrades = student.courses.every((course) => course.hasFinalGrade);
+      const hasNoGrade26Above = student.courses.every(
+        (course) => Number(course.grade) < 2.6
+      );
+
+      if (
+        !hasEnoughUnits ||
+        !hasAtLeastOneCourse ||
+        !hasCompleteFinalGrades ||
+        !hasNoGrade26Above
+      ) {
+        continue;
+      }
+
+      const weightedGradeTotal = student.courses.reduce(
+        (sum, course) => sum + Number(course.grade) * Number(course.units || 0),
+        0
+      );
+
+      const gwa =
+        student.totalUnits > 0 ? weightedGradeTotal / student.totalUnits : 0;
+
+      qualifiedStudents.push({
+        id: student.id,
+        name: student.name,
+        unit: String(student.totalUnits),
+        gpa: gwa.toFixed(3),
+        section: student.section,
+        yearLevel: student.yearLevel,
+        grades: student.courses.map((course) => ({
+          classId: course.classId,
+          courseCode: course.courseCode,
+          courseName: course.courseName,
+          units: course.units,
+          grade: course.grade,
+        })),
+      });
+    }
+
+    const groupedMap = {};
+
+    qualifiedStudents.forEach((student) => {
+      const key = `${student.yearLevel}-${student.section}`;
+
+      if (!groupedMap[key]) {
+        groupedMap[key] = {
+          yearLevel: student.yearLevel,
+          sectionName: student.section,
+          students: [],
+        };
+      }
+
+      groupedMap[key].students.push(student);
+    });
+
+    Object.values(groupedMap).forEach((section) => {
+      section.students.sort((a, b) => {
+        const gwaCompare = Number(a.gpa) - Number(b.gpa);
+        if (gwaCompare !== 0) return gwaCompare;
+        return String(a.name).localeCompare(String(b.name));
+      });
+    });
+
+    const orderedYearLevels = [
+      "First Year",
+      "Second Year",
+      "Third Year",
+      "Fourth Year",
+      "1st Year",
+      "2nd Year",
+      "3rd Year",
+      "4th Year",
+    ];
+
+    const data = Object.values(groupedMap).sort((a, b) => {
+      const aIndex = orderedYearLevels.indexOf(a.yearLevel);
+      const bIndex = orderedYearLevels.indexOf(b.yearLevel);
+
+      const yearCompare =
+        (aIndex === -1 ? 999 : aIndex) - (bIndex === -1 ? 999 : bIndex);
+
+      if (yearCompare !== 0) return yearCompare;
+
+      return String(a.sectionName).localeCompare(String(b.sectionName));
+    });
+
+    return res.json({
+      success: true,
+      schoolYear,
+      semester: rawSemester,
+      data,
+    });
+  } catch (error) {
+    console.error("Honor roll error:", error);
+    return res.status(500).json({
+      error: error.message || "Failed to generate honor roll.",
+    });
+  }
+});
+
+
 app.get("/", (req, res) => {
   res.json({
     ok: true,

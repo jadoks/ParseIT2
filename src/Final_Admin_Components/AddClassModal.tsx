@@ -34,6 +34,7 @@ type SemesterOption = {
 type CourseOption = {
   id: string;
   label: string;
+  units: number;
 };
 
 type BannerFile = {
@@ -48,6 +49,7 @@ export type AddClassModalPayload = {
   courseCode: string;
   semester: string;
   section: string;
+  year?: string | null;
   instructor: string;
   instructorEmail: string | null;
   instructorIdentifier: string | null;
@@ -105,40 +107,95 @@ const SECTION_OPTIONS: Record<string, SectionOption[]> = {
   ],
 };
 
-const COURSE_OPTIONS: Record<string, CourseOption[]> = {
-  "1st": [
-    { id: "IT101", label: "IT101 - Introduction to Computing" },
-    { id: "IT102", label: "IT102 - Computer Programming 1" },
-  ],
-  "2nd": [
-    { id: "IT201", label: "IT201 - Data Structures and Algorithms" },
-    { id: "IT202", label: "IT202 - Object-Oriented Programming" },
-  ],
-  "3rd": [
-    { id: "IT301", label: "IT301 - Mobile Application Development" },
-    { id: "IT302", label: "IT302 - Web Systems and Technologies" },
-  ],
-  "4th": [
-    { id: "IT401", label: "IT401 - Capstone Project 1" },
-    { id: "IT402", label: "IT402 - Systems Integration and Architecture" },
-  ],
-};
-
-const COURSE_UNITS: Record<string, number> = {
-  IT101: 3,
-  IT102: 3,
-  IT201: 3,
-  IT202: 3,
-  IT301: 3,
-  IT302: 3,
-  IT401: 6,
-  IT402: 3,
+const COURSE_OPTIONS: Record<string, Record<string, CourseOption[]>> = {
+  "1st": {
+    "sem-1": [
+      { id: "AP 1", label: "AP 1 - MULTIMEDIA", units: 3.00 },
+      { id: "CC 111", label: "CC 111 - INTRODUCTION TO COMPUTING", units: 3.00 },
+      { id: "CC 112", label: "CC 112 - COMPUTER PROGRAMMING 1 (LEC)", units: 2.00 },
+      { id: "CC 112 L", label: "CC 112 L - COMPUTER PROGRAMMING 1 (LAB)", units: 3.00 },
+      { id: "GEC-MMW", label: "GEC-MMW - MATHEMATICS IN THE MODERN WORLD", units: 3.00 },
+      { id: "GEC-RPH", label: "GEC-RPH - READINGS IN PHILIPPINE HISTORY", units: 3.00 },
+      { id: "GEE-TEM", label: "GEE-TEM - THE ENTREPRENEURIAL MIND", units: 3.00 },
+      { id: "NSTP 1", label: "NSTP 1 - NATIONAL SERVICE TRAINING PROGRAM 1", units: 3.00 },
+      { id: "PATHFIT 1", label: "PATHFIT 1 - PHYSICAL ACTIVITIES TOWARDS HEALTH AND FITNESS 1", units: 2.00 },
+    ],
+    "sem-2": [
+      { id: "GEC-PC", label: "GEC-PC - PURPOSIVE COMMUNICATION", units: 3.00 },
+      { id: "NSTP 2", label: "NSTP 2 - NATIONAL SERVICE TRAINING PROGRAM 2", units: 3.00 },
+      { id: "GEC-STS", label: "GEC-STS - SCIENCE, TECHNOLOGY AND SOCIETY", units: 3.00 },
+      { id: "GEC-US", label: "GEC-US - UNDERSTANDING THE SELF", units: 3.00 },
+      { id: "GEE-GSPS", label: "GEE-GSPS - GENDER AND SOCIETY WITH PEACE STUDIES", units: 3.00 },
+      { id: "CC 123", label: "CC 123 - COMPUTER PROGRAMMING 2 (LEC)", units: 2.00 },
+      { id: "CC 123L", label: "CC 123L - COMPUTER PROGRAMMING 2 (LAB)", units: 3.00 },
+      { id: "PC 121/MATH-E 2", label: "PC 121/MATH-E 2 - DISCRETE MATHEMATICS", units: 3.00 },
+      { id: "AP 2", label: "AP 2 - DIGITAL LOGIC DESIGN", units: 3.00 },
+      { id: "PATHFIT 2", label: "PATHFIT 2 - PHYSICAL ACTIVITIES TOWARDS HEALTH AND FITNESS 2", units: 2.00 },
+    ],
+    "sem-3": [],
+  },
+  "2nd": {
+    "sem-1": [
+      { id: "GEC-E", label: "GEC-E - ETHICS", units: 3.00 },
+      { id: "GEE-ES", label: "GEE-ES - ENVIRONMENTAL SCIENCE", units: 3.00 },
+      { id: "GEC-LWR", label: "GEC-LWR - LIFE AND WORKS OF RIZAL", units: 3.00 },
+      { id: "PC 212", label: "PC 212 - QUANTITATIVE METHODS (MODELING & SIMULATION)", units: 3.00 },
+      { id: "CC 214", label: "CC 214 - DATA STRUCTURES AND ALGORITHMS (LEC)", units: 2.00 },
+      { id: "CC 214L", label: "CC 214L - DATA STRUCTURES AND ALGORITHMS (LAB)", units: 3.00 },
+      { id: "P ELEC 1", label: "P ELEC 1 - OBJECT-ORIENTED PROGRAMMING", units: 3.00 },
+      { id: "P ELEC 2", label: "P ELEC 2 - WEB SYSTEMS AND TECHNOLOGIES", units: 3.00 },
+      { id: "PATHFIT 3", label: "PATHFIT 3 - PHYSICAL ACTIVITIES TOWARDS HEALTH AND FITNESS 3", units: 2.00 },
+    ],
+    "sem-2": [
+      { id: "GEC-TCW", label: "GEC-TCW - THE CONTEMPORARY WORLD", units: 3.00 },
+      { id: "PC 223", label: "PC 223 - INTEGRATIVE PROGRAMMING AND TECHNOLOGIES 1", units: 3.00 },
+      { id: "PC 224", label: "PC 224 - NETWORKING 1", units: 3.00 },
+      { id: "CC 225", label: "CC 225 - INFORMATION MANAGEMENT (LEC)", units: 2.00 },
+      { id: "CC 225L", label: "CC 225L - INFORMATION MANAGEMENT (LAB)", units: 3.00 },
+      { id: "P ELEC 3", label: "P ELEC 3 - PLATFORM TECHNOLOGIES", units: 3.00 },
+      { id: "AP 3", label: "AP 3 - ASP.NET", units: 3.00 },
+      { id: "PATHFIT 4", label: "PATHFIT 4 - PHYSICAL ACTIVITIES TOWARDS HEALTH AND FITNESS 4", units: 2.00 },
+    ],
+    "sem-3": [],
+  },
+  "3rd": {
+    "sem-1": [
+      { id: "PC 317", label: "PC 317 - INTRODUCTION TO HUMAN COMPUTER INTERACTION", units: 3.00 },
+      { id: "PC 318", label: "PC 318 - DATABASE MANAGEMENT SYSTEMS", units: 3.00 },
+      { id: "CC 316", label: "CC 316 - APPLICATIONS DEVELOPMENT AND EMERGING TECHNOLOGIES", units: 3.00 },
+      { id: "GEE-FE", label: "GEE-FE - FUNCTIONAL ENGLISH", units: 3.00 },
+      { id: "PC 315", label: "PC 315 - NETWORKING 2 (LEC)", units: 2.00 },
+      { id: "PC 315L", label: "PC 315L - NETWORKING 2 (LAB)", units: 3.00 },
+      { id: "PC 316", label: "PC 316 - SYSTEMS INTEGRATION AND ARCHITECTURE 1", units: 3.00 },
+    ],
+    "sem-2": [
+      { id: "PC 3210", label: "PC 3210 - SOCIAL AND PROFESSIONAL ISSUES", units: 3.00 },
+      { id: "PC 3211", label: "PC 3211 - INFORMATION ASSURANCE AND SECURITY 1 (LEC)", units: 2.00 },
+      { id: "PC 3211L", label: "PC 3211L - INFORMATION ASSURANCE AND SECURITY 1 (LAB)", units: 3.00 },
+      { id: "AP 4", label: "AP 4 - IOS MOBILE APPLICATION DEVELOPMENT CROSS-PLATFORM", units: 3.00 },
+      { id: "AP 5", label: "AP 5 - TECHNOLOGY AND THE APPLICATION OF THE INTERNET OF THINGS", units: 3.00 },
+      { id: "GEC-AA", label: "GEC-AA - ART APPRECIATION", units: 3.00 },
+      { id: "GEE-PEE", label: "GEE-PEE - PEOPLE AND THE EARTH'S ECOSYSTEMS", units: 3.00 },
+      { id: "PC 329", label: "PC 329 - CAPSTONE PROJECT AND RESEARCH 1", units: 3.00 },
+    ],
+    "sem-3": [],
+  },
+  "4th": {
+    "sem-1": [
+      { id: "PC 411", label: "PC 411 - CAPSTONE PROJECT AND RESEARCH 2", units: 3.00 },
+      { id: "PC 412", label: "PC 412 - PRACTICUM / INTERNSHIP", units: 6.00 },
+    ],
+    "sem-2": [
+      { id: "PC 421", label: "PC 421 - SYSTEM ADMINISTRATION AND MAINTENANCE", units: 3.00 },
+      { id: "PC 422", label: "PC 422 - PROFESSIONAL ELECTIVE", units: 3.00 },
+    ],
+    "sem-3": [],
+  },
 };
 
 const SEMESTER_OPTIONS: SemesterOption[] = [
   { id: "sem-1", label: "1st Semester" },
   { id: "sem-2", label: "2nd Semester" },
-  { id: "sem-3", label: "Summer" },
 ];
 
 export default function AddClassModal({
@@ -158,7 +215,7 @@ export default function AddClassModal({
 }) {
   const [selectedYear, setSelectedYear] = useState<string | null>(null);
   const [selectedSection, setSelectedSection] = useState<string | null>(null);
-  const [selectedSemester, setSelectedSemester] = useState("sem-1");
+  const [selectedSemester, setSelectedSemester] = useState<string | null>(null);
   const [selectedCourse, setSelectedCourse] = useState<string | null>(null);
   const [isSemesterModalVisible, setIsSemesterModalVisible] = useState(false);
 
@@ -179,8 +236,23 @@ export default function AddClassModal({
     );
   }, [selectedSemester]);
 
+  const visibleCourseOptions = useMemo<CourseOption[]>(() => {
+    if (!selectedYear || !selectedSemester) return [];
+    return COURSE_OPTIONS[selectedYear]?.[selectedSemester] || [];
+  }, [selectedYear, selectedSemester]);
+
   const shouldShowBannerOverlay =
     !bannerFile?.uri || isMobile || Platform.OS !== "web" || isBannerHovered;
+
+  useEffect(() => {
+    const parsedStartYear = Number(startYear.trim());
+
+    if (startYear.trim().length === 4 && Number.isFinite(parsedStartYear)) {
+      setEndYear(String(parsedStartYear + 1));
+    } else {
+      setEndYear("");
+    }
+  }, [startYear]);
 
   const generateRandomClassCode = () => {
     const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
@@ -201,15 +273,24 @@ export default function AddClassModal({
     setIsSemesterModalVisible(false);
   };
 
+  const handleSelectSemester = (semesterId: string) => {
+    setSelectedSemester(semesterId);
+    setSelectedSection(null);
+    setSelectedCourse(null);
+    closeSemesterDropdown();
+  };
+
   const toggleYear = (yearId: string) => {
     if (selectedYear === yearId) {
       setSelectedYear(null);
+      setSelectedSemester(null);
       setSelectedSection(null);
       setSelectedCourse(null);
       return;
     }
 
     setSelectedYear(yearId);
+    setSelectedSemester(null);
     setSelectedSection(null);
     setSelectedCourse(null);
   };
@@ -274,7 +355,7 @@ export default function AddClassModal({
     setSelectedYear(null);
     setSelectedSection(null);
     setSelectedCourse(null);
-    setSelectedSemester("sem-1");
+    setSelectedSemester(null);
     setBannerFile(null);
     setIsBannerHovered(false);
     closeSemesterDropdown();
@@ -311,8 +392,10 @@ export default function AddClassModal({
     let matchedYear: string | null = null;
 
     if (initialData.courseCode) {
-      const yearEntry = Object.entries(COURSE_OPTIONS).find(([, courses]) =>
-        courses.some((course) => course.id === initialData.courseCode)
+      const yearEntry = Object.entries(COURSE_OPTIONS).find(([, semesterMap]) =>
+        Object.values(semesterMap).some((courses) =>
+          courses.some((course) => course.id === initialData.courseCode)
+        )
       );
       matchedYear = yearEntry?.[0] || null;
     }
@@ -333,7 +416,7 @@ export default function AddClassModal({
         )?.id || null;
 
       const matchedCourse =
-        COURSE_OPTIONS[matchedYear]?.find(
+        COURSE_OPTIONS[matchedYear]?.[matchedSemester]?.find(
           (course) => course.id === initialData.courseCode
         )?.id || null;
 
@@ -368,6 +451,11 @@ export default function AddClassModal({
       return;
     }
 
+    if (!selectedSemester) {
+      Alert.alert("Missing Field", "Please select a semester.");
+      return;
+    }
+
     if (!selectedSection) {
       Alert.alert("Missing Field", "Please select a section.");
       return;
@@ -379,7 +467,7 @@ export default function AddClassModal({
     }
 
     if (!startYear.trim() || !endYear.trim()) {
-      Alert.alert("Missing Field", "Please enter start year and end year.");
+      Alert.alert("Missing Field", "Please enter start year.");
       return;
     }
 
@@ -388,19 +476,22 @@ export default function AddClassModal({
       return;
     }
 
+    const selectedYearLabel =
+      YEAR_OPTIONS.find((year) => year.id === selectedYear)?.label || null;
+
     const selectedSectionLabel =
-      SECTION_OPTIONS[selectedYear].find(
+      SECTION_OPTIONS[selectedYear]?.find(
         (section) => section.id === selectedSection
       )?.label || "Not set";
 
     const selectedCourseItem =
-      COURSE_OPTIONS[selectedYear].find(
+      COURSE_OPTIONS[selectedYear]?.[selectedSemester]?.find(
         (course) => course.id === selectedCourse
       ) || null;
 
     const selectedCourseLabel = selectedCourseItem?.label || "Untitled Course";
     const selectedCourseCode = selectedCourseItem?.id || "";
-    const units = COURSE_UNITS[selectedCourseCode] || 0;
+    const units = selectedCourseItem?.units || 0;
 
     const schoolYear = `${startYear.trim()}-${endYear.trim()}`;
 
@@ -412,6 +503,7 @@ export default function AddClassModal({
       courseCode: selectedCourseCode,
       semester: selectedSemesterLabel,
       section: selectedSectionLabel,
+      year: selectedYearLabel,
       instructor: instructor.trim(),
       instructorEmail: instructorEmail.trim() || null,
       instructorIdentifier: instructorIdentifier.trim() || null,
@@ -447,7 +539,7 @@ export default function AddClassModal({
                   <Text style={styles.modalSubtitle}>
                     {isEditMode
                       ? "Update class details with existing values already selected."
-                      : "Create a class by selecting year, section, course, instructor, semester, school year, optional description, and an optional banner file."}
+                      : "Create a class by selecting year, semester, section, course, instructor, school year, optional description, and an optional banner file."}
                   </Text>
                 </View>
               </View>
@@ -517,6 +609,36 @@ export default function AddClassModal({
                   <View style={styles.modalSection}>
                     <View style={styles.modalSectionHeaderRow}>
                       <Ionicons
+                        name="calendar-outline"
+                        size={18}
+                        color="#DC2626"
+                      />
+                      <Text style={styles.modalSectionTitle}>
+                        Select Semester
+                      </Text>
+                    </View>
+
+                    <TouchableOpacity
+                      style={styles.selectField}
+                      activeOpacity={0.85}
+                      onPress={openSemesterDropdown}
+                    >
+                      <Text style={styles.selectFieldText}>
+                        {selectedSemesterLabel}
+                      </Text>
+                      <Ionicons
+                        name={isMobile ? "chevron-forward" : "chevron-down"}
+                        size={18}
+                        color="#8A6F6F"
+                      />
+                    </TouchableOpacity>
+                  </View>
+                )}
+
+                {selectedYear && selectedSemester && (
+                  <View style={styles.modalSection}>
+                    <View style={styles.modalSectionHeaderRow}>
+                      <Ionicons
                         name="layers-outline"
                         size={18}
                         color="#DC2626"
@@ -561,7 +683,7 @@ export default function AddClassModal({
                   </View>
                 )}
 
-                {selectedYear && (
+                {selectedYear && selectedSemester && (
                   <View style={styles.modalSection}>
                     <View style={styles.modalSectionHeaderRow}>
                       <Ionicons name="book-outline" size={18} color="#DC2626" />
@@ -570,7 +692,7 @@ export default function AddClassModal({
                       </Text>
                     </View>
 
-                    {COURSE_OPTIONS[selectedYear].map((course) => {
+                    {visibleCourseOptions.map((course) => {
                       const isChecked = selectedCourse === course.id;
 
                       return (
@@ -624,25 +746,6 @@ export default function AddClassModal({
                         style={styles.textInput}
                       />
                     </View>
-                  </View>
-
-                  <View style={styles.modalCol}>
-                    <Text style={styles.fieldLabel}>Semester</Text>
-
-                    <TouchableOpacity
-                      style={styles.selectField}
-                      activeOpacity={0.85}
-                      onPress={openSemesterDropdown}
-                    >
-                      <Text style={styles.selectFieldText}>
-                        {selectedSemesterLabel}
-                      </Text>
-                      <Ionicons
-                        name={isMobile ? "chevron-forward" : "chevron-down"}
-                        size={18}
-                        color="#8A6F6F"
-                      />
-                    </TouchableOpacity>
                   </View>
                 </View>
 
@@ -721,11 +824,9 @@ export default function AddClassModal({
                       />
                       <TextInput
                         value={endYear}
-                        onChangeText={setEndYear}
-                        placeholder="2026"
+                        placeholder="Auto"
                         placeholderTextColor="#B79A9A"
-                        keyboardType="number-pad"
-                        maxLength={4}
+                        editable={false}
                         style={styles.textInput}
                       />
                     </View>
@@ -904,10 +1005,7 @@ export default function AddClassModal({
                       !isLast && styles.dropdownItemBorder,
                     ]}
                     activeOpacity={0.85}
-                    onPress={() => {
-                      setSelectedSemester(semester.id);
-                      closeSemesterDropdown();
-                    }}
+                    onPress={() => handleSelectSemester(semester.id)}
                   >
                     <Text
                       style={[

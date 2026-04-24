@@ -3,7 +3,7 @@ import * as Clipboard from 'expo-clipboard';
 import Constants from 'expo-constants';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
-  Alert,
+  ActivityIndicator,
   ImageBackground,
   Modal,
   Platform,
@@ -21,8 +21,6 @@ import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityI
 
 import AnnouncementBanner from './TeacherAnnouncementBanner';
 import AnnouncementModal, { Announcement } from './TeacherAnnouncementModal';
-
-const DEFAULT_COURSE_IMAGE = require('../../assets/parseclass/AP1.jpg');
 
 export type TeacherCourseData = {
   id: string;
@@ -140,29 +138,90 @@ const SECTION_OPTIONS: Record<string, SectionOption[]> = {
   ],
 };
 
-const COURSE_OPTIONS: Record<string, CourseOption[]> = {
-  '1st': [
-    { id: 'IT101', label: 'IT101 - Introduction to Computing', units: 3 },
-    { id: 'IT102', label: 'IT102 - Computer Programming 1', units: 3 },
-  ],
-  '2nd': [
-    { id: 'IT201', label: 'IT201 - Data Structures and Algorithms', units: 3 },
-    { id: 'IT202', label: 'IT202 - Object-Oriented Programming', units: 3 },
-  ],
-  '3rd': [
-    { id: 'IT301', label: 'IT301 - Mobile Application Development', units: 3 },
-    { id: 'IT302', label: 'IT302 - Web Systems and Technologies', units: 3 },
-  ],
-  '4th': [
-    { id: 'IT401', label: 'IT401 - Capstone Project 1', units: 3 },
-    { id: 'IT402', label: 'IT402 - Systems Integration and Architecture', units: 3 },
-  ],
+const COURSE_OPTIONS: Record<string, Record<string, CourseOption[]>> = {
+  '1st': {
+    'sem-1': [
+      { id: 'AP 1', label: 'AP 1 - MULTIMEDIA', units: 3.00 },
+      { id: 'CC 111', label: 'CC 111 - INTRODUCTION TO COMPUTING', units: 3.00 },
+      { id: 'CC 112', label: 'CC 112 - COMPUTER PROGRAMMING 1 (LEC)', units: 2.00 },
+      { id: 'CC 112 L', label: 'CC 112 L - COMPUTER PROGRAMMING 1 (LAB)', units: 3.00 },
+      { id: 'GEC-MMW', label: 'GEC-MMW - MATHEMATICS IN THE MODERN WORLD', units: 3.00 },
+      { id: 'GEC-RPH', label: 'GEC-RPH - READINGS IN PHILIPPINE HISTORY', units: 3.00 },
+      { id: 'GEE-TEM', label: 'GEE-TEM - THE ENTREPRENEURIAL MIND', units: 3.00 },
+      { id: 'NSTP 1', label: 'NSTP 1 - NATIONAL SERVICE TRAINING PROGRAM 1 (CWTS 1/LTS 1/ROTC 1)', units: 3.00 },
+      { id: 'PATHFIT 1', label: 'PATHFIT 1 - PHYSICAL ACTIVITIES TOWARDS HEALTH AND FITNESS 1: MOVEMENT COMPETENCY TRAINING', units: 2.00 },
+    ],
+    'sem-2': [
+      { id: 'GEC-PC', label: 'GEC-PC - PURPOSIVE COMMUNICATION', units: 3.00 },
+      { id: 'NSTP 2', label: 'NSTP 2 - NATIONAL SERVICE TRAINING PROGRAM 2 (CWTS 2/LTS 2/ROTC 2)', units: 3.00 },
+      { id: 'GEC-STS', label: 'GEC-STS - SCIENCE, TECHNOLOGY AND SOCIETY', units: 3.00 },
+      { id: 'GEC-US', label: 'GEC-US - UNDERSTANDING THE SELF', units: 3.00 },
+      { id: 'GEE-GSPS', label: 'GEE-GSPS - GENDER AND SOCIETY WITH PEACE STUDIES', units: 3.00 },
+      { id: 'CC 123', label: 'CC 123 - COMPUTER PROGRAMMING 2 (LEC)', units: 2.00 },
+      { id: 'CC 123L', label: 'CC 123L - COMPUTER PROGRAMMING 2 (LAB)', units: 3.00 },
+      { id: 'PC 121/MATH-E 2', label: 'PC 121/MATH-E 2 - DISCRETE MATHEMATICS', units: 3.00 },
+      { id: 'AP 2', label: 'AP 2 - DIGITAL LOGIC DESIGN', units: 3.00 },
+      { id: 'PATHFIT 2', label: 'PATHFIT 2 - PHYSICAL ACTIVITIES TOWARDS HEALTH AND FITNESS 2: EXERCISE-BASED FITNESS ACTIVITIES', units: 2.00 },
+    ],
+    'sem-3': [],
+  },
+  '2nd': {
+    'sem-1': [
+      { id: 'GEC-E', label: 'GEC-E - ETHICS', units: 3.00 },
+      { id: 'GEE-ES', label: 'GEE-ES - ENVIRONMENTAL SCIENCE', units: 3.00 },
+      { id: 'GEC-LWR', label: 'GEC-LWR - LIFE AND WORKS OF RIZAL', units: 3.00 },
+      { id: 'PC 212', label: 'PC 212 - QUANTITATIVE METHODS (MODELING & SIMULATION)', units: 3.00 },
+      { id: 'CC 214', label: 'CC 214 - DATA STRUCTURES AND ALGORITHMS (LEC)', units: 2.00 },
+      { id: 'CC 214L', label: 'CC 214L - DATA STRUCTURES AND ALGORITHMS (LAB)', units: 3.00 },
+      { id: 'P ELEC 1', label: 'P ELEC 1 - OBJECT-ORIENTED PROGRAMMING', units: 3.00 },
+      { id: 'P ELEC 2', label: 'P ELEC 2 - WEB SYSTEMS AND TECHNOLOGIES', units: 3.00 },
+      { id: 'PATHFIT 3', label: 'PATHFIT 3 - PHYSICAL ACTIVITIES TOWARDS HEALTH AND FITNESS 3: DANCE/SPORTS/MARTIAL ARTS/GROUP EXERCISE/OUTDOOR AND ADVENTURE ACTIVITIES', units: 2.00 },
+    ],
+    'sem-2': [
+      { id: 'GEC-TCW', label: 'GEC-TCW - THE CONTEMPORARY WORLD', units: 3.00 },
+      { id: 'PC 223', label: 'PC 223 - INTEGRATIVE PROGRAMMING AND TECHNOLOGIES 1', units: 3.00 },
+      { id: 'PC 224', label: 'PC 224 - NETWORKING 1', units: 3.00 },
+      { id: 'CC 225', label: 'CC 225 - INFORMATION MANAGEMENT (LEC)', units: 2.00 },
+      { id: 'CC 225L', label: 'CC 225L - INFORMATION MANAGEMENT (LAB)', units: 3.00 },
+      { id: 'P Elec 3', label: 'P Elec 3 - PLATFORM TECHNOLOGIES', units: 3.00 },
+      { id: 'AP 3', label: 'AP 3 - ASP.NET', units: 3.00 },
+      { id: 'PATHFIT 4', label: 'PATHFIT 4 - PHYSICAL ACTIVITIES TOWARDS HEALTH AND FITNESS 4: DANCE/SPORTS/MARTIAL ARTS/GROUP EXERCISE/OUTDOOR AND ADVENTURE ACTIVITIES', units: 2.00 },
+    ],
+    'sem-3': [],
+  },
+  '3rd': {
+    'sem-1': [
+      { id: 'PC 317', label: 'PC 317 - INTRODUCTION TO HUMAN COMPUTER INTERACTION', units: 3.00 },
+      { id: 'PC 318', label: 'PC 318 - DATABASE MANAGEMENT SYSTEMS', units: 3.00 },
+      { id: 'CC 31 CC 316', label: 'CC 31 CC 316 - APPLICATIONS DEVELOPMENT AND EMERGING TECHNOLOGIES', units: 3.00 },
+      { id: 'GEE-FE', label: 'GEE-FE - FUNCTIONAL ENGLISH', units: 3.00 },
+      { id: 'PC 315', label: 'PC 315 - NETWORKING 2 (LEC)', units: 2.00 },
+      { id: 'PC 315L', label: 'PC 315L - NETWORKING 2 (LAB)', units: 3.00 },
+      { id: 'PC 316', label: 'PC 316 - SYSTEMS INTEGRATION AND ARCHITECTURE 1', units: 3.00 },
+    ],
+    'sem-2': [
+      { id: 'PC 3210', label: 'PC 3210 - SOCIAL AND PROFESSIONAL ISSUES', units: 3.00 },
+      { id: 'PC 3211', label: 'PC 3211 - INFORMATION ASSURANCE AND SECURITY 1 (LEC)', units: 2.00 },
+      { id: 'PC 3211L', label: 'PC 3211L - INFORMATION ASSURANCE AND SECURITY 1 (LAB)', units: 3.00 },
+      { id: 'AP 4', label: 'AP 4 - IOS MOBILE APPLICATION DEVELOPMENT CROSS-PLATFORM', units: 3.00 },
+      { id: 'AP 5', label: 'AP 5 - TECHNOLOGY AND THE APPLICATION OF THE INTERNET OF THINGS', units: 3.00 },
+      { id: 'GEC-AA', label: 'GEC-AA - ART APPRECIATION', units: 3.00 },
+      { id: 'GEE-PEE', label: "GEE-PEE - PEOPLE AND THE EARTH'S ECOSYSTEMS", units: 3.00 },
+      { id: 'PC 329', label: 'PC 329 - CAPSTONE PROJECT AND RESEARCH 1', units: 3.00 },
+    ],
+    'sem-3': [],
+  },
+  '4th': {
+    'sem-1': [],
+    'sem-2': [],
+    'sem-3': [],
+  },
 };
 
 const SEMESTER_OPTIONS: SemesterOption[] = [
   { id: 'sem-1', label: '1st Semester' },
   { id: 'sem-2', label: '2nd Semester' },
-  { id: 'sem-3', label: 'Summer' },
+
 ];
 
 const normalizeCoursePositions = (courseList: TeacherCourseData[]) => {
@@ -206,7 +265,7 @@ const mapBackendClass = (item: any, fallbackInstructor: string): TeacherCourseDa
   classCode: item.classCode || '',
   instructor: item.instructorName || fallbackInstructor,
   section: item.section || '',
-  bannerUri: item.bannerUrl || undefined,
+  bannerUri: item.bannerUrl || item.bannerUri || item.bannerLocalUri || undefined,
   year: item.year || '',
   yearSection: item.yearSection || item.section || '',
   semester: item.semester || '',
@@ -236,6 +295,19 @@ const getSemesterSchoolYearLabel = (course: TeacherCourseData) => {
   return 'Semester and school year not set';
 };
 
+const getBannerRenderUri = (bannerUri?: string) => {
+  if (!bannerUri) return undefined;
+
+  if (
+    bannerUri.startsWith('http://') ||
+    bannerUri.startsWith('https://')
+  ) {
+    return `${bannerUri}${bannerUri.includes('?') ? '&' : '?'}refresh=${Date.now()}`;
+  }
+
+  return bannerUri;
+};
+
 const Dashboard2 = ({
   announcements = [],
   courses = [],
@@ -259,6 +331,10 @@ const Dashboard2 = ({
   const [isAnnouncementModalVisible, setAnnouncementModalVisible] = useState(false);
   const [isCreateModalVisible, setCreateModalVisible] = useState(false);
   const [isEditModalVisible, setEditModalVisible] = useState(false);
+  const [isCreatingClass, setIsCreatingClass] = useState(false);
+  const [toastVisible, setToastVisible] = useState(false);
+  const [toastMessage, setToastMessage] = useState('');
+  const [toastType, setToastType] = useState<'success' | 'error'>('success');
   const [isMenuVisible, setMenuVisible] = useState(false);
 
   const [isSemesterDropdownVisible, setSemesterDropdownVisible] = useState(false);
@@ -270,21 +346,19 @@ const Dashboard2 = ({
 
   const [selectedYear, setSelectedYear] = useState<string | null>(null);
   const [selectedSection, setSelectedSection] = useState<string | null>(null);
-  const [selectedSemester, setSelectedSemester] = useState<string>('sem-1');
+  const [selectedSemester, setSelectedSemester] = useState<string | null>(null);
   const [selectedCourse, setSelectedCourse] = useState<string | null>(null);
   const [classBanner, setClassBanner] = useState('');
   const [description, setDescription] = useState('');
   const [startYear, setStartYear] = useState('2025');
-  const [endYear, setEndYear] = useState('2026');
 
   const [editSelectedYear, setEditSelectedYear] = useState<string | null>(null);
   const [editSelectedSection, setEditSelectedSection] = useState<string | null>(null);
-  const [editSelectedSemester, setEditSelectedSemester] = useState<string>('sem-1');
+  const [editSelectedSemester, setEditSelectedSemester] = useState<string | null>(null);
   const [editSelectedCourse, setEditSelectedCourse] = useState<string | null>(null);
   const [editClassBanner, setEditClassBanner] = useState('');
   const [editDescription, setEditDescription] = useState('');
   const [editStartYear, setEditStartYear] = useState('2025');
-  const [editEndYear, setEditEndYear] = useState('2026');
 
   const isMobile = width < 768;
   const isLargeScreen = width >= 1200;
@@ -308,6 +382,16 @@ const Dashboard2 = ({
     return currentTeacher?.teacherId?.trim() || '';
   }, [currentTeacher]);
 
+  const showToast = (message: string, type: 'success' | 'error' = 'error') => {
+    setToastMessage(message);
+    setToastType(type);
+    setToastVisible(true);
+
+    setTimeout(() => {
+      setToastVisible(false);
+    }, 2800);
+  };
+
   const loadTeacherClasses = async () => {
     try {
       const response = await fetch(`${API_BASE_URL}/classes`);
@@ -329,11 +413,22 @@ const Dashboard2 = ({
         )
         .map((item) => mapBackendClass(item, teacherFullName));
 
-      setLocalCourses(normalizeCoursePositions(teacherClasses));
+      const normalizedClasses = normalizeCoursePositions(teacherClasses);
+      setLocalCourses(normalizedClasses);
+      return normalizedClasses;
     } catch (error) {
       console.error('Error loading teacher classes:', error);
-      Alert.alert('Error', 'Failed to load classes.');
+      showToast('Failed to load classes.', 'error');
+      return [];
     }
+  };
+
+  const refreshClassesAfterStorageWrite = async () => {
+    await loadTeacherClasses();
+
+    setTimeout(() => {
+      loadTeacherClasses();
+    }, 800);
   };
 
   useEffect(() => {
@@ -341,10 +436,10 @@ const Dashboard2 = ({
   }, [teacherUid, teacherEmail, teacherId, teacherFullName]);
 
   useEffect(() => {
-    if (courses.length > 0) {
+    if (courses.length > 0 && localCourses.length === 0) {
       setLocalCourses(normalizeCoursePositions(courses));
     }
-  }, [courses]);
+  }, [courses, localCourses.length]);
 
   const processedCourses = useMemo(() => {
     return [...localCourses]
@@ -364,6 +459,11 @@ const Dashboard2 = ({
     );
   }, [selectedSemester]);
 
+  const endYear = useMemo(() => {
+    const parsedStartYear = Number.parseInt(startYear.trim(), 10);
+    return Number.isNaN(parsedStartYear) ? '' : String(parsedStartYear + 1);
+  }, [startYear]);
+
   const editSelectedSemesterLabel = useMemo(() => {
     return (
       SEMESTER_OPTIONS.find((item) => item.id === editSelectedSemester)?.label ||
@@ -371,27 +471,32 @@ const Dashboard2 = ({
     );
   }, [editSelectedSemester]);
 
+  const editEndYear = useMemo(() => {
+    const parsedStartYear = Number.parseInt(editStartYear.trim(), 10);
+    return Number.isNaN(parsedStartYear) ? '' : String(parsedStartYear + 1);
+  }, [editStartYear]);
+
   const resetCreateForm = () => {
+    setIsCreatingClass(false);
     setSelectedYear(null);
+    setSelectedSemester(null);
     setSelectedSection(null);
     setSelectedCourse(null);
-    setSelectedSemester('sem-1');
     setClassBanner('');
     setDescription('');
     setStartYear('2025');
-    setEndYear('2026');
     setSemesterDropdownVisible(false);
   };
 
   const resetEditForm = () => {
-    setEditSelectedYear(null);
-    setEditSelectedSection(null);
+    setEditSelectedSemester(null);
+      setEditSelectedSection(null);
     setEditSelectedCourse(null);
-    setEditSelectedSemester('sem-1');
+    setEditSelectedSemester(null);
     setEditClassBanner('');
     setEditDescription('');
     setEditStartYear('2025');
-    setEditEndYear('2026');
+
     setEditSemesterDropdownVisible(false);
     setEditingCourse(null);
   };
@@ -405,7 +510,7 @@ const Dashboard2 = ({
     if (result.didCancel) return;
 
     if (result.errorCode) {
-      Alert.alert('Upload failed', result.errorMessage || 'Unable to pick image.');
+      showToast(result.errorMessage || 'Unable to pick image.', 'error');
       return;
     }
 
@@ -424,7 +529,7 @@ const Dashboard2 = ({
     if (result.didCancel) return;
 
     if (result.errorCode) {
-      Alert.alert('Upload failed', result.errorMessage || 'Unable to pick image.');
+      showToast(result.errorMessage || 'Unable to pick image.', 'error');
       return;
     }
 
@@ -437,12 +542,14 @@ const Dashboard2 = ({
   const toggleYear = (yearId: string) => {
     if (selectedYear === yearId) {
       setSelectedYear(null);
+      setSelectedSemester(null);
       setSelectedSection(null);
       setSelectedCourse(null);
       return;
     }
 
     setSelectedYear(yearId);
+    setSelectedSemester(null);
     setSelectedSection(null);
     setSelectedCourse(null);
   };
@@ -468,12 +575,14 @@ const Dashboard2 = ({
   const toggleEditYear = (yearId: string) => {
     if (editSelectedYear === yearId) {
       setEditSelectedYear(null);
+      setEditSelectedSemester(null);
       setEditSelectedSection(null);
       setEditSelectedCourse(null);
       return;
     }
 
     setEditSelectedYear(yearId);
+    setEditSelectedSemester(null);
     setEditSelectedSection(null);
     setEditSelectedCourse(null);
   };
@@ -497,39 +606,56 @@ const Dashboard2 = ({
   };
 
   const handleCreateClass = async () => {
-    if (!selectedYear) {
-      Alert.alert('Missing Field', 'Please select a year.');
+    if (isCreatingClass) return;
+
+    const activeYear = selectedYear;
+    const activeSemester = selectedSemester;
+
+    if (!activeYear) {
+      showToast('Please select a year.', 'error');
+      return;
+    }
+
+    if (!activeSemester) {
+      showToast('Please select a semester.', 'error');
       return;
     }
 
     if (!selectedSection) {
-      Alert.alert('Missing Field', 'Please select a section.');
+      showToast('Please select a section.', 'error');
       return;
     }
 
     if (!selectedCourse) {
-      Alert.alert('Missing Field', 'Please select a course code with course name.');
+      showToast('Please select a course code with course name.', 'error');
       return;
     }
 
-    if (!startYear.trim() || !endYear.trim()) {
-      Alert.alert('Missing Field', 'Please enter start year and end year.');
+    if (!startYear.trim() || !endYear) {
+      showToast('Please enter a valid start year.', 'error');
+      return;
+    }
+
+    if (!classBanner) {
+      showToast('Please upload a class banner.', 'error');
       return;
     }
 
     const yearLabel =
-      YEAR_OPTIONS.find((year) => year.id === selectedYear)?.label || '';
+      YEAR_OPTIONS.find((year) => year.id === activeYear)?.label || '';
 
     const sectionLabel =
-      SECTION_OPTIONS[selectedYear]?.find((section) => section.id === selectedSection)?.label ||
+      SECTION_OPTIONS[activeYear]?.find((section: SectionOption) => section.id === selectedSection)?.label ||
       '';
 
     const selectedCourseItem =
-      COURSE_OPTIONS[selectedYear]?.find((course) => course.id === selectedCourse);
+      COURSE_OPTIONS[activeYear]?.[activeSemester]?.find((course: CourseOption) => course.id === selectedCourse);
 
     const courseLabel = selectedCourseItem?.label || '';
     const courseCode = selectedCourseItem?.id || '';
     const units = selectedCourseItem?.units || 0;
+
+    setIsCreatingClass(true);
 
     try {
       let bannerBase64: string | null = null;
@@ -548,7 +674,7 @@ const Dashboard2 = ({
           courseCode,
           section: sectionLabel,
           semester: selectedSemesterLabel,
-          schoolYear: `${startYear.trim()}-${endYear.trim()}`,
+          schoolYear: `${startYear.trim()}-${endYear}`,
           description: description.trim() ? description.trim() : null,
           bannerBase64,
           bannerFileName: classBanner ? 'teacher-banner.jpg' : null,
@@ -570,8 +696,6 @@ const Dashboard2 = ({
         throw new Error(data.error || 'Failed to create class');
       }
 
-      await loadTeacherClasses();
-
       const createdCourse: TeacherCourseData = {
         id: data?.data?.id || Date.now().toString(),
         name: courseLabel,
@@ -579,27 +703,34 @@ const Dashboard2 = ({
         classCode: data?.data?.classCode || '',
         section: sectionLabel,
         instructor: teacherFullName,
-        bannerUri: data?.data?.bannerUrl || classBanner || undefined,
+        bannerUri: data?.data?.bannerUrl || undefined,
         year: yearLabel,
         yearSection: sectionLabel,
         semester: selectedSemesterLabel,
-        schoolYear: `${startYear.trim()}-${endYear.trim()}`,
+        schoolYear: `${startYear.trim()}-${endYear}`,
         description: description.trim() ? description.trim() : null,
         units,
       };
 
+      setLocalCourses((prev) =>
+        normalizeCoursePositions([
+          createdCourse,
+          ...prev.filter((item) => item.id !== createdCourse.id),
+        ])
+      );
+
       onCreateClass?.(createdCourse);
+      await refreshClassesAfterStorageWrite();
 
       resetCreateForm();
       setCreateModalVisible(false);
 
-      Alert.alert(
-        'Success',
-        `Class created successfully.\nClass Code: ${data?.data?.classCode || ''}`
-      );
+      showToast(`Class created successfully. Class Code: ${data?.data?.classCode || ''}`, 'success');
     } catch (error) {
       console.error('Error creating class:', error);
-      Alert.alert('Error', 'Failed to create class.');
+      showToast('Failed to create class.', 'error');
+    } finally {
+      setIsCreatingClass(false);
     }
   };
 
@@ -609,27 +740,27 @@ const Dashboard2 = ({
     const matchedYear =
       YEAR_OPTIONS.find((year) => year.label === menuCourse.year)?.id ||
       Object.entries(SECTION_OPTIONS).find(([, sections]) =>
-        sections.some((section) => section.label === (menuCourse.yearSection || menuCourse.section))
+        sections.some((section: SectionOption) => section.label === (menuCourse.yearSection || menuCourse.section))
       )?.[0] ||
       null;
 
     const matchedSection =
       matchedYear
         ? SECTION_OPTIONS[matchedYear]?.find(
-            (section) => section.label === (menuCourse.yearSection || menuCourse.section)
-          )?.id || null
-        : null;
-
-    const matchedCourse =
-      matchedYear
-        ? COURSE_OPTIONS[matchedYear]?.find(
-            (course) =>
-              course.id === menuCourse.courseCode || course.label === menuCourse.name
+            (section: SectionOption) => section.label === (menuCourse.yearSection || menuCourse.section)
           )?.id || null
         : null;
 
     const matchedSemester =
-      SEMESTER_OPTIONS.find((semester) => semester.label === menuCourse.semester)?.id || 'sem-1';
+      SEMESTER_OPTIONS.find((semester) => semester.label === menuCourse.semester)?.id || null;
+
+    const matchedCourse =
+      matchedYear && matchedSemester
+        ? COURSE_OPTIONS[matchedYear]?.[matchedSemester]?.find(
+            (course: CourseOption) =>
+              course.id === menuCourse.courseCode || course.label === menuCourse.name
+          )?.id || null
+        : null;
 
     const schoolYearParts = (menuCourse.schoolYear || '2025-2026').split('-');
 
@@ -641,7 +772,7 @@ const Dashboard2 = ({
     setEditClassBanner(menuCourse.bannerUri || '');
     setEditDescription(menuCourse.description || '');
     setEditStartYear(schoolYearParts[0] || '2025');
-    setEditEndYear(schoolYearParts[1] || '2026');
+
 
     closeMenu();
     setEditModalVisible(true);
@@ -650,37 +781,50 @@ const Dashboard2 = ({
   const handleSaveEdit = async () => {
     if (!editingCourse) return;
 
-    if (!editSelectedYear) {
-      Alert.alert('Missing Field', 'Please select a year.');
+    const activeEditYear = editSelectedYear;
+    const activeEditSemester = editSelectedSemester;
+
+    if (!activeEditYear) {
+      showToast('Please select a year.', 'error');
+      return;
+    }
+
+    if (!activeEditSemester) {
+      showToast('Please select a semester.', 'error');
       return;
     }
 
     if (!editSelectedSection) {
-      Alert.alert('Missing Field', 'Please select a section.');
+      showToast('Please select a section.', 'error');
       return;
     }
 
     if (!editSelectedCourse) {
-      Alert.alert('Missing Field', 'Please select a course code with course name.');
+      showToast('Please select a course code with course name.', 'error');
       return;
     }
 
-    if (!editStartYear.trim() || !editEndYear.trim()) {
-      Alert.alert('Missing Field', 'Please enter start year and end year.');
+    if (!editStartYear.trim() || !editEndYear) {
+      showToast('Please enter a valid start year.', 'error');
+      return;
+    }
+
+    if (!editClassBanner) {
+      showToast('Please upload a class banner.', 'error');
       return;
     }
 
     const yearLabel =
-      YEAR_OPTIONS.find((year) => year.id === editSelectedYear)?.label || '';
+      YEAR_OPTIONS.find((year) => year.id === activeEditYear)?.label || '';
 
     const sectionLabel =
-      SECTION_OPTIONS[editSelectedYear]?.find(
-        (section) => section.id === editSelectedSection
+      SECTION_OPTIONS[activeEditYear]?.find(
+        (section: SectionOption) => section.id === editSelectedSection
       )?.label || '';
 
     const selectedCourseItem =
-      COURSE_OPTIONS[editSelectedYear]?.find(
-        (course) => course.id === editSelectedCourse
+      COURSE_OPTIONS[activeEditYear]?.[activeEditSemester]?.find(
+        (course: CourseOption) => course.id === editSelectedCourse
       );
 
     const courseLabel = selectedCourseItem?.label || '';
@@ -714,7 +858,7 @@ const Dashboard2 = ({
             courseCode,
             section: sectionLabel,
             semester: editSelectedSemesterLabel,
-            schoolYear: `${editStartYear.trim()}-${editEndYear.trim()}`,
+            schoolYear: `${editStartYear.trim()}-${editEndYear}`,
             description: editDescription.trim() ? editDescription.trim() : null,
             bannerBase64,
             bannerFileName: editClassBanner ? 'teacher-banner.jpg' : null,
@@ -744,22 +888,28 @@ const Dashboard2 = ({
         yearSection: sectionLabel,
         section: sectionLabel,
         semester: editSelectedSemesterLabel,
-        schoolYear: `${editStartYear.trim()}-${editEndYear.trim()}`,
+        schoolYear: `${editStartYear.trim()}-${editEndYear}`,
         description: editDescription.trim() ? editDescription.trim() : null,
-        bannerUri: editClassBanner || undefined,
+        bannerUri: data?.data?.bannerUrl || editClassBanner || undefined,
         instructor: teacherFullName,
         units,
       };
 
-      await loadTeacherClasses();
+      setLocalCourses((prev) =>
+        normalizeCoursePositions(
+          prev.map((item) => (item.id === updatedCourse.id ? updatedCourse : item))
+        )
+      );
+
       onEditCourse?.(updatedCourse);
+      await refreshClassesAfterStorageWrite();
 
       resetEditForm();
       setEditModalVisible(false);
-      Alert.alert('Success', 'Class updated successfully.');
+      showToast('Class updated successfully.', 'success');
     } catch (error) {
       console.error('Error updating class:', error);
-      Alert.alert('Error', 'Failed to update class.');
+      showToast('Failed to update class.', 'error');
     }
   };
 
@@ -796,14 +946,14 @@ const Dashboard2 = ({
         throw new Error(data.error || 'Failed to delete class');
       }
 
-      await loadTeacherClasses();
+      await refreshClassesAfterStorageWrite();
       onDeleteCourse?.(courseToDelete.id);
 
       setDeleteConfirmVisible(false);
       setCourseToDelete(null);
     } catch (error) {
       console.error('Error deleting class:', error);
-      Alert.alert('Error', 'Failed to delete class.');
+      showToast('Failed to delete class.', 'error');
     }
   };
 
@@ -848,6 +998,7 @@ const Dashboard2 = ({
           <Pressable
             style={StyleSheet.absoluteFill}
             onPress={() => {
+              if (isCreatingClass) return;
               resetCreateForm();
               setCreateModalVisible(false);
             }}
@@ -857,7 +1008,9 @@ const Dashboard2 = ({
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Create Class</Text>
               <TouchableOpacity
+                disabled={isCreatingClass}
                 onPress={() => {
+                  if (isCreatingClass) return;
                   resetCreateForm();
                   setCreateModalVisible(false);
                 }}
@@ -865,6 +1018,14 @@ const Dashboard2 = ({
                 <MaterialCommunityIcons name="close" size={24} color="#202124" />
               </TouchableOpacity>
             </View>
+
+            {isCreatingClass && (
+              <View style={styles.creatingOverlay}>
+                <ActivityIndicator size="large" color="#D32F2F" />
+                <Text style={styles.creatingTitle}>Creating class...</Text>
+                <Text style={styles.creatingSubtitle}>Please wait while the class is saved to Firestore.</Text>
+              </View>
+            )}
 
             <ScrollView
               style={styles.transparentScroll}
@@ -891,13 +1052,72 @@ const Dashboard2 = ({
               </View>
 
               {selectedYear && (
+                <View style={styles.semesterFieldWrap}>
+                  <Text style={styles.inputLabel}>Semester Selection</Text>
+
+                  <TouchableOpacity
+                    style={styles.dropdownTrigger}
+                    onPress={() => setSemesterDropdownVisible((prev) => !prev)}
+                  >
+                    <Text style={styles.dropdownTriggerText}>{selectedSemesterLabel}</Text>
+                    <MaterialCommunityIcons name="chevron-down" size={20} color="#666" />
+                  </TouchableOpacity>
+
+                  {isSemesterDropdownVisible && (
+                    <>
+                      <Pressable
+                        style={styles.floatingDropdownDismiss}
+                        onPress={() => setSemesterDropdownVisible(false)}
+                      />
+                      <View style={styles.floatingDropdownMenu}>
+                        {SEMESTER_OPTIONS.map((semester, index) => {
+                          const isActive = selectedSemester === semester.id;
+                          const isLast = index === SEMESTER_OPTIONS.length - 1;
+
+                          return (
+                            <TouchableOpacity
+                              key={semester.id}
+                              style={[
+                                styles.floatingDropdownItem,
+                                isActive && styles.floatingDropdownItemActive,
+                                !isLast && styles.floatingDropdownItemBorder,
+                              ]}
+                              onPress={() => {
+                                setSelectedSemester(semester.id);
+                                setSelectedSection(null);
+                                setSelectedCourse(null);
+                                setSemesterDropdownVisible(false);
+                              }}
+                            >
+                              <Text
+                                style={[
+                                  styles.floatingDropdownItemText,
+                                  isActive && styles.floatingDropdownItemTextActive,
+                                ]}
+                              >
+                                {semester.label}
+                              </Text>
+
+                              {isActive && (
+                                <Ionicons name="checkmark-circle" size={18} color="#D32F2F" />
+                              )}
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </View>
+                    </>
+                  )}
+                </View>
+              )}
+
+              {selectedYear && selectedSemester && (
                 <View style={styles.modalSection}>
                   <View style={styles.modalSectionHeaderRow}>
                     <Ionicons name="layers-outline" size={18} color="#D32F2F" />
                     <Text style={styles.modalSectionTitle}>Select Section</Text>
                   </View>
 
-                  {SECTION_OPTIONS[selectedYear].map((section) => (
+                  {(selectedYear ? SECTION_OPTIONS[selectedYear] || [] : []).map((section: SectionOption) => (
                     <TouchableOpacity
                       key={section.id}
                       style={[
@@ -923,14 +1143,14 @@ const Dashboard2 = ({
                 </View>
               )}
 
-              {selectedYear && (
+              {selectedYear && selectedSemester && (
                 <View style={styles.modalSection}>
                   <View style={styles.modalSectionHeaderRow}>
                     <Ionicons name="book-outline" size={18} color="#D32F2F" />
-                    <Text style={styles.modalSectionTitle}>Select Course Code with Course Name</Text>
+                    <Text style={styles.modalSectionTitle}>Select Course Subject with Course Name</Text>
                   </View>
 
-                  {COURSE_OPTIONS[selectedYear].map((course) => (
+                  {(selectedYear && selectedSemester ? COURSE_OPTIONS[selectedYear]?.[selectedSemester] || [] : []).map((course: CourseOption) => (
                     <View key={course.id}>
                       {renderCheckboxRow(
                         `${course.label} (${course.units} units)`,
@@ -942,61 +1162,6 @@ const Dashboard2 = ({
                   ))}
                 </View>
               )}
-
-              <View style={styles.semesterFieldWrap}>
-                <Text style={styles.inputLabel}>Semester Selection</Text>
-
-                <TouchableOpacity
-                  style={styles.dropdownTrigger}
-                  onPress={() => setSemesterDropdownVisible((prev) => !prev)}
-                >
-                  <Text style={styles.dropdownTriggerText}>{selectedSemesterLabel}</Text>
-                  <MaterialCommunityIcons name="chevron-down" size={20} color="#666" />
-                </TouchableOpacity>
-
-                {isSemesterDropdownVisible && (
-                  <>
-                    <Pressable
-                      style={styles.floatingDropdownDismiss}
-                      onPress={() => setSemesterDropdownVisible(false)}
-                    />
-                    <View style={styles.floatingDropdownMenu}>
-                      {SEMESTER_OPTIONS.map((semester, index) => {
-                        const isActive = selectedSemester === semester.id;
-                        const isLast = index === SEMESTER_OPTIONS.length - 1;
-
-                        return (
-                          <TouchableOpacity
-                            key={semester.id}
-                            style={[
-                              styles.floatingDropdownItem,
-                              isActive && styles.floatingDropdownItemActive,
-                              !isLast && styles.floatingDropdownItemBorder,
-                            ]}
-                            onPress={() => {
-                              setSelectedSemester(semester.id);
-                              setSemesterDropdownVisible(false);
-                            }}
-                          >
-                            <Text
-                              style={[
-                                styles.floatingDropdownItemText,
-                                isActive && styles.floatingDropdownItemTextActive,
-                              ]}
-                            >
-                              {semester.label}
-                            </Text>
-
-                            {isActive && (
-                              <Ionicons name="checkmark-circle" size={18} color="#D32F2F" />
-                            )}
-                          </TouchableOpacity>
-                        );
-                      })}
-                    </View>
-                  </>
-                )}
-              </View>
 
               <View style={styles.yearRow}>
                 <View style={styles.yearCol}>
@@ -1017,15 +1182,7 @@ const Dashboard2 = ({
                 <View style={styles.yearCol}>
                   <Text style={styles.inputLabel}>End Year</Text>
                   <View style={styles.yearInputWrap}>
-                    <TextInput
-                      value={endYear}
-                      onChangeText={setEndYear}
-                      placeholder="2026"
-                      placeholderTextColor="#9AA0A6"
-                      keyboardType="number-pad"
-                      maxLength={4}
-                      style={styles.yearInput}
-                    />
+                    <Text style={styles.autoYearText}>{endYear || 'Auto'}</Text>
                   </View>
                 </View>
               </View>
@@ -1044,7 +1201,11 @@ const Dashboard2 = ({
               </View>
 
               <Text style={styles.inputLabel}>Class Banner / Background Photo</Text>
-              <TouchableOpacity style={styles.uploadBtn} onPress={handlePickBanner}>
+              <TouchableOpacity
+                style={[styles.uploadBtn, isCreatingClass && styles.disabledBtn]}
+                onPress={handlePickBanner}
+                disabled={isCreatingClass}
+              >
                 <MaterialCommunityIcons name="image-plus" size={20} color="#D32F2F" />
                 <Text style={styles.uploadBtnText}>
                   {classBanner ? 'Change Banner Photo' : 'Upload Banner Photo'}
@@ -1072,8 +1233,10 @@ const Dashboard2 = ({
 
               <View style={styles.modalButtonRow}>
                 <TouchableOpacity
-                  style={styles.cancelBtn}
+                  style={[styles.cancelBtn, isCreatingClass && styles.disabledBtn]}
+                  disabled={isCreatingClass}
                   onPress={() => {
+                    if (isCreatingClass) return;
                     resetCreateForm();
                     setCreateModalVisible(false);
                   }}
@@ -1081,8 +1244,19 @@ const Dashboard2 = ({
                   <Text style={styles.cancelBtnText}>Cancel</Text>
                 </TouchableOpacity>
 
-                <TouchableOpacity style={styles.saveBtn} onPress={handleCreateClass}>
-                  <Text style={styles.saveBtnText}>Create</Text>
+                <TouchableOpacity
+                  style={[styles.saveBtn, isCreatingClass && styles.disabledBtn]}
+                  onPress={handleCreateClass}
+                  disabled={isCreatingClass}
+                >
+                  {isCreatingClass ? (
+                    <View style={styles.loadingButtonContent}>
+                      <ActivityIndicator size="small" color="#FFFFFF" />
+                      <Text style={styles.saveBtnText}>Creating...</Text>
+                    </View>
+                  ) : (
+                    <Text style={styles.saveBtnText}>Create</Text>
+                  )}
                 </TouchableOpacity>
               </View>
             </ScrollView>
@@ -1143,13 +1317,72 @@ const Dashboard2 = ({
               </View>
 
               {editSelectedYear && (
+                <View style={styles.semesterFieldWrap}>
+                  <Text style={styles.inputLabel}>Semester Selection</Text>
+
+                  <TouchableOpacity
+                    style={styles.dropdownTrigger}
+                    onPress={() => setEditSemesterDropdownVisible((prev) => !prev)}
+                  >
+                    <Text style={styles.dropdownTriggerText}>{editSelectedSemesterLabel}</Text>
+                    <MaterialCommunityIcons name="chevron-down" size={20} color="#666" />
+                  </TouchableOpacity>
+
+                  {isEditSemesterDropdownVisible && (
+                    <>
+                      <Pressable
+                        style={styles.floatingDropdownDismiss}
+                        onPress={() => setEditSemesterDropdownVisible(false)}
+                      />
+                      <View style={styles.floatingDropdownMenu}>
+                        {SEMESTER_OPTIONS.map((semester, index) => {
+                          const isActive = editSelectedSemester === semester.id;
+                          const isLast = index === SEMESTER_OPTIONS.length - 1;
+
+                          return (
+                            <TouchableOpacity
+                              key={semester.id}
+                              style={[
+                                styles.floatingDropdownItem,
+                                isActive && styles.floatingDropdownItemActive,
+                                !isLast && styles.floatingDropdownItemBorder,
+                              ]}
+                              onPress={() => {
+                                setEditSelectedSemester(semester.id);
+                                setEditSelectedSection(null);
+                                setEditSelectedCourse(null);
+                                setEditSemesterDropdownVisible(false);
+                              }}
+                            >
+                              <Text
+                                style={[
+                                  styles.floatingDropdownItemText,
+                                  isActive && styles.floatingDropdownItemTextActive,
+                                ]}
+                              >
+                                {semester.label}
+                              </Text>
+
+                              {isActive && (
+                                <Ionicons name="checkmark-circle" size={18} color="#D32F2F" />
+                              )}
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </View>
+                    </>
+                  )}
+                </View>
+              )}
+
+              {editSelectedYear && editSelectedSemester && (
                 <View style={styles.modalSection}>
                   <View style={styles.modalSectionHeaderRow}>
                     <Ionicons name="layers-outline" size={18} color="#D32F2F" />
                     <Text style={styles.modalSectionTitle}>Select Section</Text>
                   </View>
 
-                  {SECTION_OPTIONS[editSelectedYear].map((section) => (
+                  {(editSelectedYear ? SECTION_OPTIONS[editSelectedYear] || [] : []).map((section: SectionOption) => (
                     <TouchableOpacity
                       key={section.id}
                       style={[
@@ -1175,14 +1408,14 @@ const Dashboard2 = ({
                 </View>
               )}
 
-              {editSelectedYear && (
+              {editSelectedYear && editSelectedSemester && (
                 <View style={styles.modalSection}>
                   <View style={styles.modalSectionHeaderRow}>
                     <Ionicons name="book-outline" size={18} color="#D32F2F" />
-                    <Text style={styles.modalSectionTitle}>Select Course Code with Course Name</Text>
+                    <Text style={styles.modalSectionTitle}>Select Course Subject with Course Name</Text>
                   </View>
 
-                  {COURSE_OPTIONS[editSelectedYear].map((course) => (
+                  {(editSelectedYear && editSelectedSemester ? COURSE_OPTIONS[editSelectedYear]?.[editSelectedSemester] || [] : []).map((course: CourseOption) => (
                     <View key={course.id}>
                       {renderCheckboxRow(
                         `${course.label} (${course.units} units)`,
@@ -1194,61 +1427,6 @@ const Dashboard2 = ({
                   ))}
                 </View>
               )}
-
-              <View style={styles.semesterFieldWrap}>
-                <Text style={styles.inputLabel}>Semester Selection</Text>
-
-                <TouchableOpacity
-                  style={styles.dropdownTrigger}
-                  onPress={() => setEditSemesterDropdownVisible((prev) => !prev)}
-                >
-                  <Text style={styles.dropdownTriggerText}>{editSelectedSemesterLabel}</Text>
-                  <MaterialCommunityIcons name="chevron-down" size={20} color="#666" />
-                </TouchableOpacity>
-
-                {isEditSemesterDropdownVisible && (
-                  <>
-                    <Pressable
-                      style={styles.floatingDropdownDismiss}
-                      onPress={() => setEditSemesterDropdownVisible(false)}
-                    />
-                    <View style={styles.floatingDropdownMenu}>
-                      {SEMESTER_OPTIONS.map((semester, index) => {
-                        const isActive = editSelectedSemester === semester.id;
-                        const isLast = index === SEMESTER_OPTIONS.length - 1;
-
-                        return (
-                          <TouchableOpacity
-                            key={semester.id}
-                            style={[
-                              styles.floatingDropdownItem,
-                              isActive && styles.floatingDropdownItemActive,
-                              !isLast && styles.floatingDropdownItemBorder,
-                            ]}
-                            onPress={() => {
-                              setEditSelectedSemester(semester.id);
-                              setEditSemesterDropdownVisible(false);
-                            }}
-                          >
-                            <Text
-                              style={[
-                                styles.floatingDropdownItemText,
-                                isActive && styles.floatingDropdownItemTextActive,
-                              ]}
-                            >
-                              {semester.label}
-                            </Text>
-
-                            {isActive && (
-                              <Ionicons name="checkmark-circle" size={18} color="#D32F2F" />
-                            )}
-                          </TouchableOpacity>
-                        );
-                      })}
-                    </View>
-                  </>
-                )}
-              </View>
 
               <View style={styles.yearRow}>
                 <View style={styles.yearCol}>
@@ -1269,15 +1447,7 @@ const Dashboard2 = ({
                 <View style={styles.yearCol}>
                   <Text style={styles.inputLabel}>End Year</Text>
                   <View style={styles.yearInputWrap}>
-                    <TextInput
-                      value={editEndYear}
-                      onChangeText={setEditEndYear}
-                      placeholder="2026"
-                      placeholderTextColor="#9AA0A6"
-                      keyboardType="number-pad"
-                      maxLength={4}
-                      style={styles.yearInput}
-                    />
+                    <Text style={styles.autoYearText}>{editEndYear || 'Auto'}</Text>
                   </View>
                 </View>
               </View>
@@ -1434,17 +1604,28 @@ const Dashboard2 = ({
                 activeOpacity={0.9}
               >
                 <View style={styles.bannerWrapper}>
-                  <ImageBackground
-                    source={item.bannerUri ? { uri: item.bannerUri } : DEFAULT_COURSE_IMAGE}
-                    style={styles.banner}
-                    imageStyle={styles.cardBannerImage}
-                  >
-                    <View style={styles.bannerOverlay}>
-                      <Text style={styles.bannerName} numberOfLines={2}>
+                  {item.bannerUri ? (
+                    <ImageBackground
+                      source={{ uri: item.bannerUri }}
+                      style={styles.banner}
+                      imageStyle={styles.cardBannerImage}
+                    >
+                      <View style={styles.bannerOverlay}>
+                        <Text style={styles.bannerName} numberOfLines={2}>
+                          {item.name}
+                        </Text>
+                      </View>
+                    </ImageBackground>
+                  ) : (
+                    <View style={styles.missingBannerBox}>
+                      <Text style={styles.missingBannerText} numberOfLines={2}>
                         {item.name}
                       </Text>
+                      <Text style={styles.missingBannerSubText}>
+                        No banner stored
+                      </Text>
                     </View>
-                  </ImageBackground>
+                  )}
                 </View>
 
                 <View style={styles.cardContent}>
@@ -1527,6 +1708,24 @@ const Dashboard2 = ({
           </View>
         </View>
       </ScrollView>
+
+      {toastVisible && (
+        <View style={styles.toastContainer} pointerEvents="none">
+          <View
+            style={[
+              styles.toastBox,
+              toastType === 'success' ? styles.toastSuccess : styles.toastError,
+            ]}
+          >
+            <Ionicons
+              name={toastType === 'success' ? 'checkmark-circle' : 'alert-circle'}
+              size={18}
+              color="#FFFFFF"
+            />
+            <Text style={styles.toastText}>{toastMessage}</Text>
+          </View>
+        </View>
+      )}
     </View>
   );
 };
@@ -1631,6 +1830,28 @@ const styles = StyleSheet.create({
 
   banner: {
     flex: 1,
+  },
+
+  missingBannerBox: {
+    flex: 1,
+    backgroundColor: '#F3F4F6',
+    borderTopLeftRadius: 18,
+    borderTopRightRadius: 18,
+    padding: 16,
+    justifyContent: 'flex-end',
+  },
+
+  missingBannerText: {
+    color: '#202124',
+    fontSize: 18,
+    fontWeight: '700',
+  },
+
+  missingBannerSubText: {
+    color: '#6B7280',
+    fontSize: 12,
+    fontWeight: '700',
+    marginTop: 4,
   },
 
   cardBannerImage: {
@@ -1988,6 +2209,13 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
 
+  autoYearText: {
+    fontSize: 14,
+    color: '#111827',
+    fontWeight: '600',
+    paddingVertical: 10,
+  },
+
   textAreaWrap: {
     minHeight: 108,
     borderWidth: 1,
@@ -2107,6 +2335,90 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: '800',
     fontSize: 14,
+  },
+
+  disabledBtn: {
+    opacity: 0.65,
+  },
+
+
+
+  loadingButtonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+
+
+
+  creatingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(255, 255, 255, 0.88)',
+    zIndex: 100,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+  },
+
+
+
+  creatingTitle: {
+    marginTop: 14,
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#202124',
+  },
+
+
+
+  creatingSubtitle: {
+    marginTop: 6,
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#5F6368',
+    textAlign: 'center',
+  },
+
+  toastContainer: {
+    position: 'absolute',
+    top: 20,
+    right: 20,
+    zIndex: 9999,
+    elevation: 9999,
+  },
+
+  toastBox: {
+    minWidth: 240,
+    maxWidth: 340,
+    minHeight: 52,
+    borderRadius: 14,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    shadowColor: '#000',
+    shadowOpacity: 0.18,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 12,
+  },
+
+  toastSuccess: {
+    backgroundColor: '#2E7D32',
+  },
+
+  toastError: {
+    backgroundColor: '#D32F2F',
+  },
+
+  toastText: {
+    flex: 1,
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '800',
+    lineHeight: 18,
   },
 
   deleteConfirmBox: {

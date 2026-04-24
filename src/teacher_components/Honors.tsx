@@ -10,12 +10,27 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
   useWindowDimensions,
 } from 'react-native';
 
 const headerImage = require('../../assets/images/myjourney-header-template-1.png');
+
+const API_BASE_URL =
+  Platform.OS === 'web' ? 'http://localhost:5000' : 'http://192.168.1.5:5000';
+
+const buildSchoolYear = (startYear: string) => {
+  const cleanStartYear = startYear.replace(/[^0-9]/g, '').slice(0, 4);
+  const parsedStartYear = Number(cleanStartYear);
+
+  if (!Number.isInteger(parsedStartYear) || cleanStartYear.length !== 4) {
+    return '';
+  }
+
+  return `S.Y ${parsedStartYear} - ${parsedStartYear + 1}`;
+};
 
 type Student = {
   name: string;
@@ -24,6 +39,13 @@ type Student = {
   gpa: string;
   section: string;
   yearLevel: string;
+  grades?: {
+    classId: string;
+    courseCode: string;
+    courseName: string;
+    units: number;
+    grade: number;
+  }[];
 };
 
 type GeneratedSection = {
@@ -32,7 +54,7 @@ type GeneratedSection = {
   students: Student[];
 };
 
-type DropdownName = 'schoolYear' | 'semester';
+type DropdownName = 'semester';
 
 type DropdownProps = {
   value: string;
@@ -292,107 +314,95 @@ export default function HonorsScreen() {
   const { width } = useWindowDimensions();
   const isMobile = width < 768;
 
-  const academicYears = [
-    'S.Y 2023 - 2024',
-    'S.Y 2024 - 2025',
-    'S.Y 2025 - 2026',
-    'S.Y 2026 - 2027',
-  ];
-
   const semesters = ['First Semester', 'Second Semester'];
 
-  const [schoolYear, setSchoolYear] = useState('S.Y 2025 - 2026');
+  const [startYear, setStartYear] = useState('2025');
+  const schoolYear = buildSchoolYear(startYear);
   const [semester, setSemester] = useState('First Semester');
   const [generatedSections, setGeneratedSections] = useState<GeneratedSection[]>([]);
-  const [selectedSection, setSelectedSection] = useState<GeneratedSection | null>(null);
-  const [previewVisible, setPreviewVisible] = useState(false);
   const [openDropdown, setOpenDropdown] = useState<DropdownName | null>(null);
+  const [isGenerating, setIsGenerating] = useState(false);
 
   const adviser = 'Tristan Mondisico';
 
- const allStudents: Student[] = [
-  // 1st Year
-  { name: 'Alvarez, Tangal', id: '1', unit: '25', gpa: '1.500', section: '1A Microsoft', yearLevel: 'First Year' },
-  { name: 'Almonia, Emo Cyril', id: '2', unit: '24', gpa: '1.520', section: '1A Microsoft', yearLevel: 'First Year' },
-  { name: 'Rivera, Hannah', id: '3', unit: '23', gpa: '1.410', section: '1B Google', yearLevel: 'First Year' },
-  { name: 'Dela Cruz, Joshua', id: '4', unit: '25', gpa: '1.780', section: '1B Google', yearLevel: 'First Year' },
+  const handleGenerateHonorRoll = async () => {
+    const normalizedStartYear = startYear.replace(/[^0-9]/g, '').slice(0, 4);
+    const parsedStartYear = Number(normalizedStartYear);
 
-  // 2nd Year
-  { name: 'Sarmiento, Jade Anne', id: '5', unit: '26', gpa: '1.430', section: '2A Algorithm', yearLevel: 'Second Year' },
-  { name: 'Reyes, Mark Daniel', id: '6', unit: '25', gpa: '1.610', section: '2A Algorithm', yearLevel: 'Second Year' },
-  { name: 'Torres, Angela Mae', id: '7', unit: '23', gpa: '1.720', section: '2B Pseudocode', yearLevel: 'Second Year' },
-  { name: 'Lopez, Maria', id: '8', unit: '24', gpa: '1.400', section: '2B Pseudocode', yearLevel: 'Second Year' },
-
-  // 3rd Year
-  { name: 'Santos, Kevin', id: '9', unit: '22', gpa: '1.300', section: '3A Python', yearLevel: 'Third Year' },
-  { name: 'Garcia, Nina', id: '10', unit: '23', gpa: '1.650', section: '3A Python', yearLevel: 'Third Year' },
-  { name: 'Fernandez, Carlo', id: '11', unit: '24', gpa: '1.890', section: '3B Java', yearLevel: 'Third Year' },
-  { name: 'Mendoza, Claire', id: '12', unit: '25', gpa: '1.550', section: '3B Java', yearLevel: 'Third Year' },
-
-  // 4th Year
-  { name: 'Aquino, Paolo', id: '13', unit: '21', gpa: '1.600', section: '4A Xamarin', yearLevel: 'Fourth Year' },
-  { name: 'Gonzales, Bea', id: '14', unit: '24', gpa: '1.450', section: '4A Xamarin', yearLevel: 'Fourth Year' },
-  { name: 'Villanueva, Sean', id: '15', unit: '23', gpa: '1.700', section: '4B Laravel', yearLevel: 'Fourth Year' },
-  { name: 'Navarro, Kate', id: '16', unit: '24', gpa: '1.320', section: '4B Laravel', yearLevel: 'Fourth Year' },
-];
-
-  const handleGenerateHonorRoll = () => {
-    const groupedMap: Record<string, GeneratedSection> = {};
-
-    allStudents
-      .filter((student) => Number(student.gpa) <= 2.0)
-      .forEach((student) => {
-        const key = `${student.yearLevel}-${student.section}`;
-
-        if (!groupedMap[key]) {
-          groupedMap[key] = {
-            yearLevel: student.yearLevel,
-            sectionName: student.section,
-            students: [],
-          };
-        }
-
-        groupedMap[key].students.push(student);
-      });
-
-    const orderedYearLevels = [
-      'First Year',
-      'Second Year',
-      'Third Year',
-      'Fourth Year',
-    ];
-
-    const orderedSections = Object.values(groupedMap).sort((a, b) => {
-      const yearCompare =
-        orderedYearLevels.indexOf(a.yearLevel) - orderedYearLevels.indexOf(b.yearLevel);
-
-      if (yearCompare !== 0) return yearCompare;
-
-      return a.sectionName.localeCompare(b.sectionName);
-    });
-
-    setGeneratedSections(orderedSections);
-    setSelectedSection(null);
-    setPreviewVisible(false);
-    setOpenDropdown(null);
-
-    if (orderedSections.length === 0) {
-      Alert.alert('No Results', 'No honor roll students found.');
+    if (!Number.isInteger(parsedStartYear) || normalizedStartYear.length !== 4) {
+      Alert.alert('Invalid Start Year', 'Please enter a valid 4-digit start year. Example: 2025');
+      return;
     }
-  };
 
-  const handleOpenHonorList = (section: GeneratedSection) => {
-    setSelectedSection(section);
-    setPreviewVisible(true);
+    try {
+      setIsGenerating(true);
+
+      const response = await fetch(
+        `${API_BASE_URL}/honor-roll?startYear=${encodeURIComponent(
+          normalizedStartYear
+        )}&semester=${encodeURIComponent(semester)}`
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data?.error || 'Failed to generate honor roll.');
+      }
+
+      const orderedYearLevels = [
+        'First Year',
+        'Second Year',
+        'Third Year',
+        'Fourth Year',
+        '1st Year',
+        '2nd Year',
+        '3rd Year',
+        '4th Year',
+      ];
+
+      const orderedSections = (Array.isArray(data?.data) ? data.data : []).sort(
+        (a: GeneratedSection, b: GeneratedSection) => {
+          const aIndex = orderedYearLevels.indexOf(a.yearLevel);
+          const bIndex = orderedYearLevels.indexOf(b.yearLevel);
+
+          const yearCompare =
+            (aIndex === -1 ? 999 : aIndex) - (bIndex === -1 ? 999 : bIndex);
+
+          if (yearCompare !== 0) return yearCompare;
+
+          return String(a.sectionName).localeCompare(String(b.sectionName));
+        }
+      );
+
+      const rankedSections = orderedSections.map((section: GeneratedSection) => ({
+        ...section,
+        students: [...section.students].sort((a, b) => {
+          const aGwa = Number(a.gpa);
+          const bGwa = Number(b.gpa);
+
+          if (Number.isFinite(aGwa) && Number.isFinite(bGwa) && aGwa !== bGwa) {
+            return aGwa - bGwa;
+          }
+
+          return String(a.name).localeCompare(String(b.name));
+        }),
+      }));
+
+      setGeneratedSections(rankedSections);
+      setOpenDropdown(null);
+
+      if (rankedSections.length === 0) {
+        Alert.alert('No Results', `No honor roll students found for ${buildSchoolYear(normalizedStartYear)} - ${semester}.`);
+      }
+    } catch (error: any) {
+      Alert.alert('Generate Failed', error?.message || 'Unable to generate honor roll.');
+    } finally {
+      setIsGenerating(false);
+    }
   };
 
   const handleDropdownToggle = (dropdownName: DropdownName) => {
     setOpenDropdown((prev) => (prev === dropdownName ? null : dropdownName));
-  };
-
-  const handleSchoolYearSelect = (value: string) => {
-    setSchoolYear(value);
-    setOpenDropdown(null);
   };
 
   const handleSemesterSelect = (value: string) => {
@@ -412,9 +422,9 @@ export default function HonorsScreen() {
         </View>
 
         <View style={[styles.subHeader, isMobile && styles.subHeaderMobile]}>
-          <Text style={styles.mainHeading}>Generate Honor Roll</Text>
+          <Text style={styles.mainHeading}>Honor Roll Generation</Text>
           <Text style={styles.subHeadingText}>
-            Automatically generate honor roll by section and year level
+            Provide the academic start year and semester to generate the official list of qualified honor students.
           </Text>
         </View>
 
@@ -423,17 +433,24 @@ export default function HonorsScreen() {
             {isMobile ? (
               <View style={styles.mobileDropdownRow}>
                 <View style={styles.mobileDropdownItem}>
-                  <CustomDropdown
-                    value={schoolYear}
-                    options={academicYears}
-                    onSelect={handleSchoolYearSelect}
-                    visible={openDropdown === 'schoolYear'}
-                    onToggle={() => handleDropdownToggle('schoolYear')}
-                    isMobile={isMobile}
+                  <Text style={styles.academicControlLabel}>Academic Start Year</Text>
+                  <TextInput
+                    style={[styles.startYearInput, styles.startYearInputMobile]}
+                    value={startYear}
+                    onChangeText={(value) => setStartYear(value.replace(/[^0-9]/g, '').slice(0, 4))}
+                    placeholder="e.g. 2025"
+                    placeholderTextColor="#8A8A8A"
+                    keyboardType="number-pad"
+                    maxLength={4}
                   />
+                  <View style={[styles.schoolYearBadge, styles.schoolYearBadgeMobile]}>
+                    <Text style={styles.schoolYearBadgeLabel}>Computed School Year</Text>
+                    <Text style={styles.schoolYearBadgeValue}>{schoolYear || 'S.Y ---- - ----'}</Text>
+                  </View>
                 </View>
 
                 <View style={styles.mobileDropdownItem}>
+                  <Text style={styles.academicControlLabel}>Semester</Text>
                   <CustomDropdown
                     value={semester}
                     options={semesters}
@@ -446,18 +463,28 @@ export default function HonorsScreen() {
               </View>
             ) : (
               <>
-                <View style={{ width: 170 }}>
-                  <CustomDropdown
-                    value={schoolYear}
-                    options={academicYears}
-                    onSelect={handleSchoolYearSelect}
-                    visible={openDropdown === 'schoolYear'}
-                    onToggle={() => handleDropdownToggle('schoolYear')}
-                    isMobile={isMobile}
+                <View style={styles.academicInputGroup}>
+                  <Text style={styles.academicControlLabel}>Academic Start Year</Text>
+                  <TextInput
+                    style={styles.startYearInput}
+                    value={startYear}
+                    onChangeText={(value) => setStartYear(value.replace(/[^0-9]/g, '').slice(0, 4))}
+                    placeholder="e.g. 2025"
+                    placeholderTextColor="#8A8A8A"
+                    keyboardType="number-pad"
+                    maxLength={4}
                   />
                 </View>
 
-                <View style={{ width: 160 }}>
+                <View style={styles.academicSchoolYearGroup}>
+                  <Text style={styles.academicControlLabel}>Computed School Year</Text>
+                  <View style={styles.schoolYearBadge}>
+                    <Text style={styles.schoolYearBadgeValue}>{schoolYear || 'S.Y ---- - ----'}</Text>
+                  </View>
+                </View>
+
+                <View style={styles.academicSemesterGroup}>
+                  <Text style={styles.academicControlLabel}>Semester</Text>
                   <CustomDropdown
                     value={semester}
                     options={semesters}
@@ -471,91 +498,92 @@ export default function HonorsScreen() {
             )}
 
             <TouchableOpacity
-              style={[styles.generateBtn, isMobile && styles.generateBtnMobile]}
+              style={[
+                styles.generateBtn,
+                isMobile && styles.generateBtnMobile,
+                isGenerating && styles.generateBtnDisabled,
+              ]}
               onPress={handleGenerateHonorRoll}
+              disabled={isGenerating}
             >
-              <Text style={styles.generateBtnText}>Generate Honor Roll</Text>
+              <Text style={styles.generateBtnText}>
+                {isGenerating ? 'Generating Honor List...' : 'Generate Honor List'}
+              </Text>
             </TouchableOpacity>
           </View>
         </View>
 
-        {!isMobile && (
-          <View style={styles.tableHeader}>
-            <Text style={[styles.headerCell, { flex: 1.2 }]}>Year Level</Text>
-            <Text style={[styles.headerCell, { flex: 1 }]}>Section</Text>
-            <Text style={[styles.headerCell, { flex: 1.2 }]}>Honor Students</Text>
-            <Text style={[styles.headerCell, { width: 100, textAlign: 'center' }]}>
-              Action
-            </Text>
-          </View>
-        )}
-
         {generatedSections.length === 0 ? (
           <View style={[styles.emptyState, isMobile && styles.emptyStateMobile]}>
             <Text style={styles.emptyStateText}>
-              Click Generate Honor Roll to display each level and section.
+              Click Generate Honor Roll to display qualified honor students.
             </Text>
           </View>
-        ) : isMobile ? (
-          <View style={styles.mobileList}>
-            {generatedSections.map((item, index) => (
-              <View key={`${item.sectionName}-${index}`} style={styles.mobileCard}>
-                <View style={styles.mobileCardTop}>
-                  <View style={styles.mobileInfoWrap}>
-                    <Text style={styles.mobileYearText}>{item.yearLevel}</Text>
-                    <Text style={styles.mobileSectionText}>Section {item.sectionName}</Text>
+        ) : (
+          <View style={styles.honorTablesWrap}>
+            {generatedSections.map((section, sectionIndex) => (
+              <View
+                key={`${section.yearLevel}-${section.sectionName}-${sectionIndex}`}
+                style={[styles.honorSectionCard, isMobile && styles.honorSectionCardMobile]}
+              >
+                <View style={[styles.honorAcademicHeader, isMobile && styles.honorAcademicHeaderMobile]}>
+                  <View style={styles.honorAcademicTitleWrap}>
+                    <Text style={[styles.honorAcademicTitle, isMobile && styles.honorAcademicTitleMobile]}>
+                      HONOR LIST
+                    </Text>
+                    <Text style={[styles.honorAcademicSubtitle, isMobile && styles.honorAcademicSubtitleMobile]}>
+                      {section.yearLevel} — Section {section.sectionName}
+                    </Text>
+                    <Text style={[styles.honorAcademicMeta, isMobile && styles.honorAcademicMetaMobile]}>
+                      Academic Year: {schoolYear || 'S.Y ---- - ----'} | Semester: {semester}
+                    </Text>
                   </View>
 
-                  <View style={styles.mobileCountWrap}>
-                    <Text style={styles.mobileCountNumber}>{item.students.length}</Text>
-                    <Text style={styles.mobileCountLabel}>Honors</Text>
+                  <View style={[styles.honorCountBadge, isMobile && styles.honorCountBadgeMobile]}>
+                    <Text style={styles.honorCountNumber}>{section.students.length}</Text>
+                    <Text style={styles.honorCountLabel}>Students</Text>
                   </View>
                 </View>
 
-                <TouchableOpacity
-                  style={styles.mobileOpenBtn}
-                  onPress={() => handleOpenHonorList(item)}
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={isMobile}
+                  contentContainerStyle={styles.honorTableHorizontal}
+                  style={styles.honorTableScroll}
                 >
-                  <Text style={styles.mobileOpenBtnText}>Open Honor List</Text>
-                </TouchableOpacity>
+                  <View style={[styles.honorTable, isMobile && styles.honorTableMobile]}>
+                    <View style={styles.honorTableHeader}>
+                      <Text style={[styles.honorHeaderCell, { width: isMobile ? 64 : 80 }]}>Rank</Text>
+                      <Text style={[styles.honorHeaderCell, styles.honorStudentNameColumn]}>
+                        Student Name
+                      </Text>
+                      <Text style={[styles.honorHeaderCell, { width: isMobile ? 90 : 110 }]}>GWA</Text>
+                    </View>
+
+                    {section.students.map((student, index) => (
+                      <View key={`${student.id}-${index}`} style={styles.honorTableRow}>
+                        <Text style={[styles.honorRankCell, { width: isMobile ? 64 : 80 }]}>
+                          {index + 1}
+                        </Text>
+                        <Text
+                          style={[styles.honorNameCell, styles.honorStudentNameColumn]}
+                          numberOfLines={isMobile ? 2 : 1}
+                        >
+                          {student.name}
+                        </Text>
+                        <Text style={[styles.honorGwaCell, { width: isMobile ? 90 : 110 }]}>
+                          {student.gpa}
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
+                </ScrollView>
               </View>
             ))}
           </View>
-        ) : (
-          generatedSections.map((item, index) => (
-            <View key={`${item.sectionName}-${index}`} style={styles.tableRow}>
-              <Text style={[styles.cellText, { flex: 1.2 }]}>
-                {item.yearLevel}
-              </Text>
-              <Text style={[styles.cellText, { flex: 1 }]}>
-                {item.sectionName}
-              </Text>
-              <Text style={[styles.cellText, { flex: 1.2 }]}>
-                {item.students.length}
-              </Text>
-
-              <View style={{ width: 100, alignItems: 'center' }}>
-                <TouchableOpacity
-                  style={styles.openBtn}
-                  onPress={() => handleOpenHonorList(item)}
-                >
-                  <Text style={styles.openBtnText}>Open</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          ))
         )}
-      </ScrollView>
 
-      <HonorRollPreviewModal
-        visible={previewVisible}
-        onClose={() => setPreviewVisible(false)}
-        adviser={adviser}
-        generatedSections={selectedSection ? [selectedSection] : []}
-        schoolYear={schoolYear}
-        semester={semester}
-        isMobile={isMobile}
-      />
+      </ScrollView>
     </SafeAreaView>
   );
 }
@@ -615,24 +643,36 @@ const styles = StyleSheet.create({
 
   controlsCard: {
     marginBottom: 25,
+    padding: 18,
+    borderWidth: 1,
+    borderColor: '#E6E1DC',
+    borderRadius: 16,
+    backgroundColor: '#FFFDF9',
     zIndex: 3000,
     elevation: 0,
+    shadowColor: '#000',
+    shadowOpacity: 0.035,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
   },
   controlsCardMobile: {
     marginBottom: 18,
+    padding: 14,
+    borderRadius: 14,
   },
 
   controlsRow: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 15,
+    alignItems: 'flex-end',
+    gap: 16,
     flexWrap: 'wrap',
     zIndex: 3000,
     elevation: 0,
   },
   controlsRowMobile: {
     flexDirection: 'column',
-    gap: 12,
+    alignItems: 'stretch',
+    gap: 14,
   },
 
   mobileDropdownRow: {
@@ -646,6 +686,79 @@ const styles = StyleSheet.create({
     flex: 1,
   },
 
+
+  academicInputGroup: {
+    width: 190,
+  },
+  academicSchoolYearGroup: {
+    width: 220,
+  },
+  academicSemesterGroup: {
+    width: 190,
+    zIndex: 5000,
+    elevation: 0,
+  },
+  academicControlLabel: {
+    color: '#3B332E',
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 0.4,
+    marginBottom: 7,
+    textTransform: 'uppercase',
+  },
+
+  startYearInput: {
+    width: '100%',
+    height: 46,
+    borderWidth: 1,
+    borderColor: '#B8AFA7',
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    backgroundColor: '#FFFFFF',
+    color: '#111',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  startYearInputMobile: {
+    height: 48,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    fontSize: 15,
+  },
+  schoolYearHint: {
+    marginTop: 4,
+    color: '#666',
+    fontSize: 11,
+    lineHeight: 14,
+  },
+  schoolYearBadge: {
+    minHeight: 46,
+    borderWidth: 1,
+    borderColor: '#D8D0C8',
+    borderRadius: 10,
+    backgroundColor: '#F7F2EC',
+    justifyContent: 'center',
+    paddingHorizontal: 14,
+  },
+  schoolYearBadgeMobile: {
+    marginTop: 10,
+    minHeight: 52,
+    borderRadius: 12,
+  },
+  schoolYearBadgeLabel: {
+    color: '#7A6E66',
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.35,
+    marginBottom: 2,
+    textTransform: 'uppercase',
+  },
+  schoolYearBadgeValue: {
+    color: '#2D2926',
+    fontSize: 14,
+    fontWeight: '800',
+  },
+
   dropdownContainer: {
     position: 'relative',
     width: '100%',
@@ -656,11 +769,11 @@ const styles = StyleSheet.create({
 
   dropdownButton: {
     width: '100%',
-    height: 40,
+    height: 46,
     borderWidth: 1,
-    borderColor: '#333',
-    borderRadius: 8,
-    paddingHorizontal: 10,
+    borderColor: '#B8AFA7',
+    borderRadius: 10,
+    paddingHorizontal: 14,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -674,15 +787,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
   },
   dropdownButtonText: {
-    fontSize: 12,
-    color: '#000',
+    fontSize: 14,
+    color: '#111',
+    fontWeight: '700',
     flexShrink: 1,
     marginRight: 8,
   },
 
   inlineDropdownMenu: {
     position: 'absolute',
-    top: 44,
+    top: 50,
     left: 0,
     width: '100%',
     backgroundColor: '#FFFFFF',
@@ -720,24 +834,31 @@ const styles = StyleSheet.create({
 
   generateBtn: {
     backgroundColor: '#B71C1C',
-    minWidth: 190,
-    height: 40,
-    paddingHorizontal: 20,
-    borderRadius: 22,
+    minWidth: 210,
+    height: 46,
+    paddingHorizontal: 24,
+    borderRadius: 10,
     justifyContent: 'center',
     alignItems: 'center',
+    borderBottomWidth: 3,
+    borderBottomColor: '#7F1010',
   },
   generateBtnMobile: {
     width: '100%',
     minWidth: 0,
-    height: 48,
+    height: 50,
     paddingHorizontal: 16,
     borderRadius: 12,
   },
+  generateBtnDisabled: {
+    opacity: 0.65,
+  },
   generateBtnText: {
     color: '#FFF',
-    fontSize: 12,
-    fontWeight: '700',
+    fontSize: 13,
+    fontWeight: '900',
+    letterSpacing: 0.25,
+    textTransform: 'uppercase',
   },
 
   tableHeader: {
@@ -1123,4 +1244,173 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     fontSize: 14,
   },
+
+  honorTablesWrap: {
+    gap: 18,
+    marginTop: 8,
+    paddingBottom: 30,
+    width: '100%',
+  },
+  honorSectionCard: {
+    width: '100%',
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E8E8E8',
+    borderRadius: 14,
+    padding: 18,
+    shadowColor: '#000',
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 1,
+  },
+  honorSectionCardMobile: {
+    padding: 14,
+    borderRadius: 16,
+  },
+  honorAcademicHeader: {
+    width: '100%',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 14,
+  },
+  honorAcademicHeaderMobile: {
+    alignItems: 'flex-start',
+  },
+  honorAcademicTitleWrap: {
+    flex: 1,
+  },
+  honorAcademicTitle: {
+    color: '#111',
+    fontSize: 18,
+    fontWeight: '900',
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+  },
+  honorAcademicTitleMobile: {
+    fontSize: 16,
+    letterSpacing: 0.5,
+  },
+  honorAcademicSubtitle: {
+    color: '#333',
+    fontSize: 14,
+    fontWeight: '700',
+    marginTop: 4,
+  },
+  honorAcademicSubtitleMobile: {
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  honorAcademicMeta: {
+    color: '#666',
+    fontSize: 12,
+    marginTop: 3,
+  },
+  honorAcademicMetaMobile: {
+    fontSize: 11,
+    lineHeight: 16,
+  },
+  honorCountBadge: {
+    minWidth: 76,
+    borderRadius: 14,
+    backgroundColor: '#FDECEC',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 9,
+    paddingHorizontal: 10,
+  },
+  honorCountBadgeMobile: {
+    minWidth: 66,
+    paddingVertical: 8,
+    paddingHorizontal: 8,
+  },
+  honorCountNumber: {
+    color: '#B71C1C',
+    fontSize: 18,
+    fontWeight: '800',
+    lineHeight: 20,
+  },
+  honorCountLabel: {
+    color: '#B71C1C',
+    fontSize: 11,
+    fontWeight: '700',
+    marginTop: 2,
+  },
+  honorTableScroll: {
+    width: '100%',
+  },
+  honorTableHorizontal: {
+    flexGrow: 1,
+  },
+  honorTable: {
+    width: '100%',
+    minWidth: 520,
+    borderWidth: 1,
+    borderColor: '#EFEFEF',
+    borderRadius: 10,
+    overflow: 'hidden',
+    backgroundColor: '#FFFFFF',
+  },
+  honorTableMobile: {
+    minWidth: 360,
+  },
+  honorTableHeader: {
+    flexDirection: 'row',
+    backgroundColor: '#F3F3F3',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E7E7E7',
+  },
+  honorHeaderCell: {
+    paddingVertical: 12,
+    paddingHorizontal: 10,
+    color: '#555',
+    fontSize: 12,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    textAlign: 'center',
+  },
+  honorStudentNameColumn: {
+    flex: 1,
+    textAlign: 'center',
+  },
+  honorTableRow: {
+    flexDirection: 'row',
+    borderBottomWidth: 1,
+    borderBottomColor: '#F0F0F0',
+    backgroundColor: '#FFFFFF',
+  },
+  honorRankCell: {
+    paddingVertical: 12,
+    paddingHorizontal: 10,
+    color: '#B71C1C',
+    fontSize: 13,
+    fontWeight: '900',
+    textAlign: 'center',
+  },
+  honorNameCell: {
+    paddingVertical: 12,
+    paddingHorizontal: 10,
+    color: '#111',
+    fontSize: 13,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    textAlign: 'center',
+  },
+  honorRowCell: {
+    paddingVertical: 12,
+    paddingHorizontal: 10,
+    color: '#111',
+    fontSize: 13,
+  },
+  honorGwaCell: {
+    paddingVertical: 12,
+    paddingHorizontal: 10,
+    color: '#111',
+    fontSize: 13,
+    fontWeight: '800',
+    textAlign: 'center',
+  },
+
 });
