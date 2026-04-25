@@ -1,5 +1,6 @@
 import {
   getAssignmentAverage,
+  getGradedCount,
   getMissingCount,
   getPendingCount,
   normalizeAssignments,
@@ -9,8 +10,13 @@ import { AnalyticsAssignment, RiskLevel } from './types';
 export const getRiskLevel = (
   averageScore: number,
   pendingCount: number,
-  missingCount: number
+  missingCount: number,
+  gradedCount: number = 0
 ): RiskLevel => {
+  if (gradedCount === 0 && missingCount === 0) {
+    return 'No Data';
+  }
+
   if (averageScore < 75 || missingCount >= 3) {
     return 'High';
   }
@@ -25,8 +31,13 @@ export const getRiskLevel = (
 export const getRiskReason = (
   averageScore: number,
   pendingCount: number,
-  missingCount: number
+  missingCount: number,
+  gradedCount: number = 0
 ): string => {
+  if (gradedCount === 0 && missingCount === 0) {
+    return 'No graded submissions yet. Risk cannot be evaluated.';
+  }
+
   if (averageScore < 75 && missingCount >= 3) {
     return 'Low average and repeated missing assignments.';
   }
@@ -58,9 +69,24 @@ export const getRecommendations = (
   averageScore: number,
   pendingCount: number,
   missingCount: number,
-  weakestSubject?: string
+  weakestSubject?: string,
+  gradedCount: number = 0
 ): string[] => {
   const recommendations: string[] = [];
+
+  if (gradedCount === 0 && missingCount === 0) {
+    recommendations.push(
+      'Wait for graded submissions before evaluating academic risk.'
+    );
+
+    if (pendingCount > 0) {
+      recommendations.push(
+        'Remind students to submit pending assignments before their due dates.'
+      );
+    }
+
+    return recommendations;
+  }
 
   if (missingCount > 0) {
     recommendations.push(
@@ -105,14 +131,28 @@ export const evaluateAssignmentRisk = (
   const averageScore = getAssignmentAverage(normalizedAssignments);
   const pendingCount = getPendingCount(normalizedAssignments);
   const missingCount = getMissingCount(normalizedAssignments);
+  const gradedCount = getGradedCount(normalizedAssignments);
 
-  const riskLevel = getRiskLevel(averageScore, pendingCount, missingCount);
-  const riskReason = getRiskReason(averageScore, pendingCount, missingCount);
+  const riskLevel = getRiskLevel(
+    averageScore,
+    pendingCount,
+    missingCount,
+    gradedCount
+  );
+
+  const riskReason = getRiskReason(
+    averageScore,
+    pendingCount,
+    missingCount,
+    gradedCount
+  );
+
   const recommendations = getRecommendations(
     averageScore,
     pendingCount,
     missingCount,
-    weakestSubject
+    weakestSubject,
+    gradedCount
   );
 
   return {
@@ -120,6 +160,7 @@ export const evaluateAssignmentRisk = (
     averageScore,
     pendingCount,
     missingCount,
+    gradedCount,
     riskLevel,
     riskReason,
     recommendations,

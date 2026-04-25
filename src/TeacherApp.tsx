@@ -135,6 +135,12 @@ function getApiBaseUrl() {
 
 const API_BASE_URL = getApiBaseUrl();
 
+const TEACHER_ALLOWED_NOTIFICATION_TYPES = new Set([
+  'submitted-assignment',
+  'community-answer',
+  'student-at-risk',
+]);
+
 export default function TeacherApp({ onLogout, currentTeacher }: Props) {
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
@@ -152,6 +158,7 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
   const [selectedCourse, setSelectedCourse] = useState<CourseWithIcon | null>(null);
 
   const [selectedAnalyticsClass, setSelectedAnalyticsClass] = useState<string>('All');
+  const [analyticsStudents, setAnalyticsStudents] = useState<any[]>([]);
 
   const [teacherProfile, setTeacherProfile] = useState<SignedInTeacher | null>(null);
   const [teacherNotifications, setTeacherNotifications] = useState<NotificationItem[]>([]);
@@ -295,7 +302,13 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
         throw new Error(data?.error || 'Failed to load notifications.');
       }
 
-      setTeacherNotifications(Array.isArray(data?.data) ? data.data : []);
+      const teacherOnlyNotifications = Array.isArray(data?.data)
+        ? data.data.filter((item: NotificationItem) =>
+            TEACHER_ALLOWED_NOTIFICATION_TYPES.has(item.type)
+          )
+        : [];
+
+      setTeacherNotifications(teacherOnlyNotifications);
     } catch (error) {
       console.log('LOAD TEACHER NOTIFICATIONS ERROR =>', error);
     }
@@ -343,6 +356,43 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
       setTeacherClasses([]);
     }
   }, [
+    currentTeacherData?.teacherId,
+    currentTeacherData?.authUid,
+    currentTeacherData?.email,
+  ]);
+
+  const loadTeacherAnalytics = useCallback(async () => {
+    const teacherId =
+      normalizeText(currentTeacherData?.teacherId) ||
+      normalizeText(currentTeacher?.teacherId) ||
+      normalizeText(currentTeacherData?.authUid || '') ||
+      normalizeText(currentTeacherData?.email);
+
+    if (!teacherId) {
+      setAnalyticsStudents([]);
+      return;
+    }
+
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/teacher-analytics/${encodeURIComponent(teacherId)}`
+      );
+
+      const rawText = await response.text();
+      const data = rawText ? JSON.parse(rawText) : {};
+
+      if (!response.ok) {
+        throw new Error(data?.error || 'Failed to load teacher analytics.');
+      }
+
+      console.log('TEACHER ANALYTICS RESPONSE =>', data);
+      setAnalyticsStudents(Array.isArray(data?.data) ? data.data : []);
+    } catch (error) {
+      console.log('LOAD TEACHER ANALYTICS ERROR =>', error);
+      setAnalyticsStudents([]);
+    }
+  }, [
+    currentTeacher?.teacherId,
     currentTeacherData?.teacherId,
     currentTeacherData?.authUid,
     currentTeacherData?.email,
@@ -526,6 +576,17 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
   useEffect(() => {
     loadTeacherClasses();
   }, [loadTeacherClasses]);
+
+  useEffect(() => {
+    loadTeacherAnalytics();
+  }, [loadTeacherAnalytics]);
+
+  useEffect(() => {
+    if (activeScreen === 'analytics') {
+      loadTeacherClasses();
+      loadTeacherAnalytics();
+    }
+  }, [activeScreen, loadTeacherClasses, loadTeacherAnalytics]);
 
   useEffect(() => {
     loadTeacherAnnouncements();
@@ -881,6 +942,7 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
     setTimeout(() => {
       loadTeacherNotifications();
       loadTeacherClasses();
+      loadTeacherAnalytics();
       loadTeacherAnnouncements();
     }, 500);
   };
@@ -893,6 +955,7 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
     setTimeout(() => {
       loadTeacherNotifications();
       loadTeacherClasses();
+      loadTeacherAnalytics();
       loadTeacherAnnouncements();
     }, 500);
   };
@@ -1064,6 +1127,7 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
               selectedClass={selectedAnalyticsClass}
               onChangeSelectedClass={setSelectedAnalyticsClass}
               availableCourses={effectiveCourses}
+              students={analyticsStudents}
             />
           ) : (
             <View style={styles.emptyState}>

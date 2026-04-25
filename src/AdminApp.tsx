@@ -1,7 +1,9 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
+import Constants from "expo-constants";
 import React, { useState } from "react";
 import {
   Modal,
+  Platform,
   Pressable,
   SafeAreaView,
   ScrollView,
@@ -20,6 +22,27 @@ import ManageStudent from "./Final_Admin_Components/ManageStudent";
 import ManageTeacher from "./Final_Admin_Components/ManageTeacher";
 import Settings from "./Final_Admin_Components/Settings";
 import Sidebar from "./Final_Admin_Components/Sidebar";
+
+function getApiBaseUrl() {
+  if (Platform.OS === "web") {
+    return "http://localhost:5000";
+  }
+
+  const possibleHost =
+    Constants.expoConfig?.hostUri ||
+    Constants.manifest2?.extra?.expoGo?.debuggerHost ||
+    "";
+
+  const host = possibleHost.split(":")[0];
+
+  if (host) {
+    return `http://${host}:5000`;
+  }
+
+  return "http://192.168.1.5:5000";
+}
+
+const API_BASE_URL = getApiBaseUrl();
 
 type CurrentAdmin = {
   adminId: string;
@@ -115,7 +138,7 @@ export default function AdminApp({ onLogout, currentAdmin }: Props) {
 
   const renderContent = () => {
     if (activeSideNav === "Analytics") {
-      return <Analytics width={width} />;
+      return <Analytics width={width} apiBaseUrl={API_BASE_URL} />;
     }
 
     if (activeSideNav === "Settings") {

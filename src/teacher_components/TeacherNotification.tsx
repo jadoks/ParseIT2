@@ -12,10 +12,9 @@ import {
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 
 export type NotificationType =
-  | 'assignment'
-  | 'material'
+  | 'submitted-assignment'
   | 'community-answer'
-  | 'support-activity';
+  | 'student-at-risk';
 
 export type NotificationItem = {
   id: string;
@@ -73,17 +72,31 @@ const TeacherNotification: React.FC<NotificationScreenProps> = ({
     setMenuVisible(false);
   }, [incomingNotifications]);
 
+  const teacherAllowedTypes: NotificationType[] = [
+    'submitted-assignment',
+    'community-answer',
+    'student-at-risk',
+  ];
+
+  const filteredNotifications = useMemo(() => {
+    if (role !== 'teacher') return notifications;
+
+    return notifications.filter((item) =>
+      teacherAllowedTypes.includes(item.type)
+    );
+  }, [notifications, role]);
+
   const unreadCount = useMemo(
-    () => notifications.filter((item) => !item.read).length,
-    [notifications]
+    () => filteredNotifications.filter((item) => !item.read).length,
+    [filteredNotifications]
   );
 
   const displayedNotifications = useMemo(() => {
     if (isPopover && !showAllNotifications) {
-      return notifications.slice(0, 6);
+      return filteredNotifications.slice(0, 6);
     }
-    return notifications;
-  }, [notifications, isPopover, showAllNotifications]);
+    return filteredNotifications;
+  }, [filteredNotifications, isPopover, showAllNotifications]);
 
   const syncNotifications = (next: NotificationItem[]) => {
     setNotifications(next);
@@ -158,10 +171,14 @@ const TeacherNotification: React.FC<NotificationScreenProps> = ({
         throw new Error(data?.error || 'Failed to mark all notifications as read.');
       }
 
-      const updated = notifications.map((item) => ({
-        ...item,
-        read: true,
-      }));
+      const updated = notifications.map((item) =>
+        role === 'teacher' && !teacherAllowedTypes.includes(item.type)
+          ? item
+          : {
+              ...item,
+              read: true,
+            }
+      );
 
       syncNotifications(updated);
       setMenuVisible(false);
@@ -179,18 +196,10 @@ const TeacherNotification: React.FC<NotificationScreenProps> = ({
     const color = read ? '#666' : '#D32F2F';
 
     switch (type) {
-      case 'assignment':
+      case 'submitted-assignment':
         return (
           <MaterialCommunityIcons
-            name="clipboard-text-outline"
-            size={22}
-            color={color}
-          />
-        );
-      case 'material':
-        return (
-          <MaterialCommunityIcons
-            name="book-open-page-variant-outline"
+            name="file-upload-outline"
             size={22}
             color={color}
           />
@@ -203,10 +212,10 @@ const TeacherNotification: React.FC<NotificationScreenProps> = ({
             color={color}
           />
         );
-      case 'support-activity':
+      case 'student-at-risk':
         return (
           <MaterialCommunityIcons
-            name="lightbulb-on-outline"
+            name="account-alert-outline"
             size={22}
             color={color}
           />
@@ -346,10 +355,10 @@ const TeacherNotification: React.FC<NotificationScreenProps> = ({
         contentContainerStyle={[
           styles.listContent,
           isPopover && styles.popoverListContent,
-          notifications.length === 0 && styles.emptyListContent,
+          filteredNotifications.length === 0 && styles.emptyListContent,
         ]}
         ListFooterComponent={
-          isPopover && !showAllNotifications && notifications.length > 6 ? (
+          isPopover && !showAllNotifications && filteredNotifications.length > 6 ? (
             <Pressable
               onPress={() => setShowAllNotifications(true)}
               style={styles.seeAllButton}

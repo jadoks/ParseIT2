@@ -1,4 +1,4 @@
-export type RiskLevel = 'Low' | 'Moderate' | 'High';
+export type RiskLevel = 'No Data' | 'Low' | 'Moderate' | 'High';
 
 export type TrendDirection = 'up' | 'down' | 'stable';
 
@@ -12,9 +12,25 @@ export interface AnalyticsAssignment {
   id: string;
   title: string;
   status: AssignmentStatusType;
+
+  /**
+   * Raw earned score from Firebase / backend.
+   * Example: if the student got 40 out of 50, points should be 40.
+   * Do not store percentage here.
+   */
   points?: number;
+
+  /**
+   * Total possible score for the assignment.
+   * Example: if the student got 40 out of 50, maxPoints should be 50.
+   */
   maxPoints?: number;
-  dueDate?: string;
+
+  rawPoints?: number | null;
+  dueDate?: any;
+  submittedAt?: any;
+  gradedAt?: any;
+  feedback?: string | null;
   topic?: string;
 }
 
@@ -22,7 +38,13 @@ export interface AnalyticsCourse {
   id: string;
   name: string;
   code: string;
+  courseCode?: string;
+  classCode?: string;
   instructor: string;
+  section?: string;
+  yearLevel?: string;
+  semester?: string;
+  schoolYear?: string;
   assignments: AnalyticsAssignment[];
 }
 
@@ -55,6 +77,7 @@ export interface StudentAnalyticsSummary {
   totalPendingAssignments: number;
   totalMissingAssignments: number;
   totalSubmittedAssignments: number;
+  totalGradedAssignments: number;
 
   weakestSubject: string;
   strongestSubject: string;
@@ -77,6 +100,7 @@ export interface TeacherStudentRow {
   totalPendingAssignments: number;
   totalMissingAssignments: number;
   totalSubmittedAssignments: number;
+  totalGradedAssignments: number;
   riskLevel: RiskLevel;
   overallTrend?: number;
 }
@@ -84,6 +108,7 @@ export interface TeacherStudentRow {
 export interface TeacherAnalyticsSummary {
   classAverage: number;
   totalStudents: number;
+  noDataCount: number;
   highRiskCount: number;
   moderateRiskCount: number;
   lowRiskCount: number;
@@ -96,6 +121,7 @@ export interface AdminCourseRow {
   courseCode: string;
   instructor: string;
   average: number;
+  noDataCount: number;
   highRiskCount: number;
   moderateRiskCount: number;
   lowRiskCount: number;
@@ -105,6 +131,7 @@ export interface AdminAnalyticsSummary {
   departmentAverage: number;
   totalCourses: number;
   totalStudents: number;
+  totalNoData: number;
   totalHighRisk: number;
   totalModerateRisk: number;
   totalLowRisk: number;

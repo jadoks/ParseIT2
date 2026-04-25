@@ -318,6 +318,7 @@ const Dashboard2 = ({
   currentTeacher,
 }: DashboardProps) => {
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [showAllClasses, setShowAllClasses] = useState(false);
 
   const { width } = useWindowDimensions();
 
@@ -449,6 +450,12 @@ const Dashboard2 = ({
         themeColor: '#2E7D32',
       }));
   }, [localCourses]);
+
+  const visibleCourses = useMemo(() => {
+    return showAllClasses ? processedCourses : processedCourses.slice(0, 6);
+  }, [processedCourses, showAllClasses]);
+
+  const hiddenCourseCount = Math.max(processedCourses.length - 6, 0);
 
   const cardWidth = isMobile ? '100%' : isLargeScreen ? '31.5%' : '48%';
 
@@ -1023,7 +1030,7 @@ const Dashboard2 = ({
               <View style={styles.creatingOverlay}>
                 <ActivityIndicator size="large" color="#D32F2F" />
                 <Text style={styles.creatingTitle}>Creating class...</Text>
-                <Text style={styles.creatingSubtitle}>Please wait while the class is saved to Firestore.</Text>
+                <Text style={styles.creatingSubtitle}>Please wait while the class is being saved</Text>
               </View>
             )}
 
@@ -1587,16 +1594,31 @@ const Dashboard2 = ({
 
           <View style={styles.classesHeaderRow}>
             <Text style={styles.classesTitle}>My Classes</Text>
-            <TouchableOpacity
-              style={styles.createBtn}
-              onPress={() => setCreateModalVisible(true)}
-            >
-              <Text style={styles.createBtnText}>+ Create Class</Text>
-            </TouchableOpacity>
+
+            <View style={styles.classesHeaderActions}>
+              {hiddenCourseCount > 0 ? (
+                <TouchableOpacity
+                  style={styles.seeAllButton}
+                  onPress={() => setShowAllClasses((prev) => !prev)}
+                  activeOpacity={0.85}
+                >
+                  <Text style={styles.seeAllButtonText}>
+                    {showAllClasses ? 'Show Less' : `See All (${processedCourses.length})`}
+                  </Text>
+                </TouchableOpacity>
+              ) : null}
+
+              <TouchableOpacity
+                style={styles.createBtn}
+                onPress={() => setCreateModalVisible(true)}
+              >
+                <Text style={styles.createBtnText}>+ Create Class</Text>
+              </TouchableOpacity>
+            </View>
           </View>
 
           <View style={styles.courseGrid}>
-            {processedCourses.map((item) => (
+            {visibleCourses.map((item) => (
               <TouchableOpacity
                 key={item.id}
                 style={[styles.card, { width: cardWidth }]}
@@ -1775,6 +1797,29 @@ const styles = StyleSheet.create({
     marginTop: 20,
     marginBottom: 16,
     gap: 12,
+  },
+
+  classesHeaderActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    flexWrap: 'wrap',
+    justifyContent: 'flex-end',
+  },
+
+  seeAllButton: {
+    backgroundColor: '#FFF1F1',
+    borderWidth: 1,
+    borderColor: '#F3C6C6',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 14,
+  },
+
+  seeAllButtonText: {
+    color: '#D32F2F',
+    fontWeight: '800',
+    fontSize: 14,
   },
 
   classesTitle: {

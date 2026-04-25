@@ -1,14 +1,18 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState } from "react";
 import {
   Modal,
+  Pressable,
   ScrollView,
+  StyleProp,
   StyleSheet,
   Text,
-  TouchableOpacity,
+  useWindowDimensions,
   View,
-} from 'react-native';
-import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
-import { buildTeacherAnalytics } from '../analytics/analyticsService';
+  ViewStyle,
+} from "react-native";
+import { LineChart } from "react-native-chart-kit";
+import MaterialCommunityIcons from "react-native-vector-icons/MaterialCommunityIcons";
+import { buildTeacherAnalytics } from "../analytics/analyticsService";
 
 type TeacherStudentInput = {
   studentId: string;
@@ -38,6 +42,7 @@ type StudentInsight = {
   overallAverage: number;
   totalPendingAssignments: number;
   totalSubmittedAssignments: number;
+  totalGradedAssignments: number;
   riskLevel: string;
   overallTrend?: number | string;
   latestGrade: number | null;
@@ -46,6 +51,21 @@ type StudentInsight = {
   riskReason: string;
   recommendedIntervention: string;
   classLabel?: string;
+  percentileRank: number;
+  rank: number;
+};
+
+type TrendPoint = {
+  label: string;
+  average: number;
+  count: number;
+};
+
+type AcademicInsight = {
+  title: string;
+  body: string;
+  tone: "success" | "warning" | "danger" | "info";
+  icon: string;
 };
 
 interface TeacherAnalyticsProps {
@@ -57,185 +77,145 @@ interface TeacherAnalyticsProps {
   students?: TeacherStudentInput[];
 }
 
-const FALLBACK_STUDENTS: TeacherStudentInput[] = [
-  {
-    studentId: 's1',
-    studentName: 'Maria Santos',
-    courses: [
-      {
-        id: '1',
-        name: 'Web Development 101',
-        code: 'CS-101',
-        courseCode: 'CS-101',
-        instructor: 'Ramcee Jade L. Munoz',
-        section: 'A',
-        assignments: [
-          { id: 'a1', title: 'HTML Quiz', status: 'graded', points: 92, maxPoints: 100, topic: 'HTML' },
-          { id: 'a2', title: 'CSS Lab', status: 'graded', points: 89, maxPoints: 100, topic: 'CSS' },
-          { id: 'a3', title: 'Landing Page Project', status: 'submitted', maxPoints: 100, topic: 'Project' },
-        ],
-      },
-    ],
-  },
-  {
-    studentId: 's2',
-    studentName: 'John Reyes',
-    courses: [
-      {
-        id: '1',
-        name: 'Web Development 101',
-        code: 'CS-101',
-        courseCode: 'CS-101',
-        instructor: 'Ramcee Jade L. Munoz',
-        section: 'A',
-        assignments: [
-          { id: 'a1', title: 'HTML Quiz', status: 'graded', points: 74, maxPoints: 100, topic: 'HTML' },
-          { id: 'a2', title: 'CSS Lab', status: 'pending', maxPoints: 100, topic: 'CSS' },
-          { id: 'a3', title: 'Landing Page Project', status: 'pending', maxPoints: 100, topic: 'Project' },
-        ],
-      },
-    ],
-  },
-  {
-    studentId: 's3',
-    studentName: 'Allan Reyes',
-    courses: [
-      {
-        id: '2',
-        name: 'Programming Logic',
-        code: 'CS-102',
-        courseCode: 'CS-102',
-        instructor: 'Ramcee Jade L. Munoz',
-        section: 'B',
-        assignments: [
-          { id: 'a1', title: 'Flowchart Quiz', status: 'graded', points: 85, maxPoints: 100, topic: 'Logic' },
-          { id: 'a2', title: 'Pseudo Code Lab', status: 'graded', points: 81, maxPoints: 100, topic: 'Programming' },
-          { id: 'a3', title: 'Algorithm Project', status: 'submitted', maxPoints: 100, topic: 'Project' },
-        ],
-      },
-    ],
-  },
-  {
-    studentId: 's4',
-    studentName: 'Angela Cruz',
-    courses: [
-      {
-        id: '2',
-        name: 'Programming Logic',
-        code: 'CS-102',
-        courseCode: 'CS-102',
-        instructor: 'Ramcee Jade L. Munoz',
-        section: 'B',
-        assignments: [
-          { id: 'a1', title: 'Flowchart Quiz', status: 'graded', points: 61, maxPoints: 100, topic: 'Logic' },
-          { id: 'a2', title: 'Pseudo Code Lab', status: 'graded', points: 58, maxPoints: 100, topic: 'Programming' },
-          { id: 'a3', title: 'Algorithm Project', status: 'pending', maxPoints: 100, topic: 'Project' },
-        ],
-      },
-    ],
-  },
-];
-
 const palette = {
-  bg: '#F4F7FB',
-  surface: '#FFFFFF',
-  border: '#E7EDF5',
-  textStrong: '#102A43',
-  text: '#334E68',
-  textMuted: '#7B8794',
-  primary: '#D32F2F',
-  primarySoft: '#FDECEC',
-  blue: '#2563EB',
-  blueSoft: '#EAF2FF',
-  green: '#059669',
-  greenSoft: '#EAF8F3',
-  orange: '#F59E0B',
-  orangeSoft: '#FFF4E5',
-  purple: '#7C3AED',
-  purpleSoft: '#F3E8FF',
-  red: '#EF4444',
-  redSoft: '#FEECEC',
-  slateBar: '#E8EEF5',
+  bg: "#F4F7FB",
+  surface: "#FFFFFF",
+  border: "#E7EDF5",
+  textStrong: "#102A43",
+  text: "#334E68",
+  textMuted: "#7B8794",
+  primary: "#D32F2F",
+  primarySoft: "#FDECEC",
+  blue: "#2563EB",
+  blueSoft: "#EAF2FF",
+  green: "#059669",
+  greenSoft: "#EAF8F3",
+  orange: "#F59E0B",
+  orangeSoft: "#FFF4E5",
+  purple: "#7C3AED",
+  purpleSoft: "#F3E8FF",
+  red: "#EF4444",
+  redSoft: "#FEECEC",
+  slateBar: "#E8EEF5",
+};
+
+const insightTone = {
+  success: { bg: palette.greenSoft, color: palette.green },
+  warning: { bg: palette.orangeSoft, color: palette.orange },
+  danger: { bg: palette.redSoft, color: palette.red },
+  info: { bg: palette.blueSoft, color: palette.blue },
 };
 
 const formatPercentWidth = (value: number, maxValue: number): `${number}%` => {
-  if (maxValue <= 0) return '0%';
-  const safe = Math.max((value / maxValue) * 100, 4);
-  return `${safe}%`;
+  if (maxValue <= 0) return "0%";
+  const safe = Math.max((value / maxValue) * 100, value > 0 ? 4 : 0);
+  return `${Math.min(safe, 100)}%`;
 };
 
-const normalizeText = (value: any) => String(value ?? '').trim().toLowerCase();
+const normalizeText = (value: any) =>
+  String(value ?? "")
+    .trim()
+    .toLowerCase();
 
 const buildCourseOptionLabel = (course: TeacherCourseOption | any) => {
-  const name = course?.name || 'Untitled Class';
-  const section = course?.section ? ` • Section ${course.section}` : '';
+  const name = course?.name || "Untitled Class";
+  const section = course?.section ? ` • Section ${course.section}` : "";
   return `${name}${section}`;
 };
 
 const getCourseClassLabel = (course: any) => {
-  const name = course?.name || '';
-  const section = course?.section ? ` • Section ${course.section}` : '';
+  const name = course?.name || "";
+  const section = course?.section ? ` • Section ${course.section}` : "";
   return `${name}${section}`;
 };
 
 const isGenericAllClass = (course: any) => {
   const label = normalizeText(getCourseClassLabel(course));
   const name = normalizeText(course?.name);
-  return (
-    label === 'all' ||
-    name === 'all' ||
-    name === 'all class'
-  );
+  return label === "all" || name === "all" || name === "all class";
+};
+
+const getNumericTime = (value: any, fallback = 0) => {
+  if (!value) return fallback;
+  if (typeof value?.toDate === "function") return value.toDate().getTime();
+  if (typeof value?._seconds === "number") return value._seconds * 1000;
+  const parsed = new Date(value).getTime();
+  return Number.isNaN(parsed) ? fallback : parsed;
+};
+
+const getAssignmentPercent = (assignment: any): number | null => {
+  if (
+    assignment?.status !== "graded" ||
+    typeof assignment?.points !== "number"
+  ) {
+    return null;
+  }
+
+  const maxPoints =
+    typeof assignment?.maxPoints === "number" && assignment.maxPoints > 0
+      ? assignment.maxPoints
+      : 100;
+
+  return Math.round((assignment.points / maxPoints) * 100);
 };
 
 const getRiskPalette = (risk: string) => {
-  if (risk === 'High') {
+  if (risk === "No Data") {
     return {
-      bg: palette.redSoft,
-      text: '#B42318',
-      fill: palette.red,
-      icon: 'alert-circle',
+      bg: palette.blueSoft,
+      text: palette.blue,
+      fill: palette.blue,
+      icon: "database-search-outline",
     };
   }
 
-  if (risk === 'Moderate') {
+  if (risk === "High") {
+    return {
+      bg: palette.redSoft,
+      text: "#B42318",
+      fill: palette.red,
+      icon: "alert-circle",
+    };
+  }
+
+  if (risk === "Moderate") {
     return {
       bg: palette.orangeSoft,
-      text: '#B54708',
+      text: "#B54708",
       fill: palette.orange,
-      icon: 'alert-outline',
+      icon: "alert-outline",
     };
   }
 
   return {
     bg: palette.greenSoft,
-    text: '#027A48',
-    fill: '#22C55E',
-    icon: 'check-circle-outline',
+    text: "#027A48",
+    fill: "#22C55E",
+    icon: "check-circle-outline",
   };
 };
 
 const getTrendMeta = (trend?: number | string) => {
-  const value = typeof trend === 'number' ? trend : 0;
+  const value = typeof trend === "number" ? trend : 0;
   if (value > 0) {
     return {
-      label: 'Improving',
-      icon: 'trending-up',
+      label: "Improving",
+      icon: "trending-up",
       color: palette.green,
       bg: palette.greenSoft,
     };
   }
   if (value < 0) {
     return {
-      label: 'Declining',
-      icon: 'trending-down',
+      label: "Declining",
+      icon: "trending-down",
       color: palette.red,
       bg: palette.redSoft,
     };
   }
   return {
-    label: 'Stable',
-    icon: 'trending-neutral',
+    label: "Stable",
+    icon: "trending-neutral",
     color: palette.blue,
     bg: palette.blueSoft,
   };
@@ -246,17 +226,21 @@ const SectionCard = ({
   subtitle,
   rightNode,
   children,
+  style,
 }: {
   title: string;
   subtitle?: string;
   rightNode?: React.ReactNode;
   children: React.ReactNode;
+  style?: StyleProp<ViewStyle>;
 }) => (
-  <View style={styles.sectionCard}>
+  <View style={[styles.sectionCard, style]}>
     <View style={styles.sectionHeader}>
       <View style={styles.sectionHeaderText}>
         <Text style={styles.sectionTitle}>{title}</Text>
-        {subtitle ? <Text style={styles.sectionSubtitle}>{subtitle}</Text> : null}
+        {subtitle ? (
+          <Text style={styles.sectionSubtitle}>{subtitle}</Text>
+        ) : null}
       </View>
       {rightNode}
     </View>
@@ -318,10 +302,7 @@ const HorizontalBar = ({
         <View
           style={[
             styles.barFill,
-            {
-              width: widthPercent,
-              backgroundColor: color,
-            },
+            { width: widthPercent, backgroundColor: color },
           ]}
         />
       </View>
@@ -355,77 +336,83 @@ const insightReason = ({
   average,
   pending,
   trend,
+  graded,
 }: {
   average: number;
   pending: number;
   trend: number;
+  graded: number;
 }) => {
-  if (average < 75 && pending >= 2 && trend < 0) {
-    return 'Low average, multiple missing tasks, and declining trend';
-  }
-  if (average < 75 && pending >= 2) {
-    return 'Low average and repeated missing tasks';
-  }
-  if (average < 75) {
-    return 'Average is below passing threshold';
-  }
-  if (pending >= 2) {
-    return 'Several missing assignments need completion';
-  }
-  if (trend < 0) {
-    return 'Recent performance trend is declining';
-  }
-  return 'Monitor for consistency and maintain current progress';
+  if (graded === 0) return "No graded submissions yet. Risk cannot be evaluated.";
+  if (average < 75 && pending >= 2 && trend < 0)
+    return "Low average, multiple missing tasks, and declining trend";
+  if (average < 75 && pending >= 2)
+    return "Low average and repeated missing tasks";
+  if (average < 75) return "Average is below passing threshold";
+  if (pending >= 2) return "Several missing assignments need completion";
+  if (trend < 0) return "Recent performance trend is declining";
+  return "Monitor for consistency and maintain current progress";
 };
 
 const insightIntervention = ({
   average,
   pending,
   trend,
+  graded,
 }: {
   average: number;
   pending: number;
   trend: number;
+  graded: number;
 }) => {
-  if (average < 75 && pending >= 2) {
-    return 'Schedule 1:1 remediation and set a submission recovery plan.';
-  }
-  if (average < 75) {
-    return 'Provide targeted tutoring and reassessment support.';
-  }
-  if (pending >= 2) {
-    return 'Follow up on missing tasks and set short-term deadlines.';
-  }
-  if (trend < 0) {
-    return 'Check recent learning barriers and monitor next assessment.';
-  }
-  return 'Sustain progress with light-touch monitoring.';
+  if (graded === 0)
+    return "Wait for graded submissions before assigning academic intervention.";
+  if (average < 75 && pending >= 2)
+    return "Schedule 1:1 remediation and set a submission recovery plan.";
+  if (average < 75)
+    return "Provide targeted tutoring and reassessment support.";
+  if (pending >= 2)
+    return "Follow up on missing tasks and set short-term deadlines.";
+  if (trend < 0)
+    return "Check recent learning barriers and monitor next assessment.";
+  return "Sustain progress with light-touch monitoring.";
 };
 
 export default function TeacherAnalytics({
-  teacherName = 'Ramcee Jade L. Munoz',
-  selectedCourseName = 'Academic Analytics',
-  selectedClass = 'All',
+  teacherName = "Teacher",
+  selectedCourseName = "Academic Analytics",
+  selectedClass = "All",
   onChangeSelectedClass,
   availableCourses = [],
-  students = FALLBACK_STUDENTS,
+  students = [],
 }: TeacherAnalyticsProps) {
   const [showClassDropdown, setShowClassDropdown] = useState(false);
+  const { width } = useWindowDimensions();
+  const isSmallScreen = width < 600;
+  const isTabletScreen = width >= 600 && width < 1024;
+  const pagePadding = isSmallScreen ? 12 : isTabletScreen ? 16 : 18;
+  const chartWidth = isSmallScreen
+    ? Math.max(width - pagePadding * 2 - 40, 320)
+    : Math.min(width - pagePadding * 2 - 64, 980);
+  const chartHeight = isSmallScreen ? 210 : 240;
+  const responsiveSectionStyle = isSmallScreen
+    ? styles.sectionCardFull
+    : styles.sectionCardHalf;
+  const responsiveMetricStyle = isSmallScreen
+    ? styles.metricsGridSingle
+    : styles.metricsGrid;
+  const responsiveHeroStyle = isSmallScreen ? styles.heroCardCompact : null;
 
   const classOptions = useMemo(() => {
     const seen = new Set<string>();
-    const options = [{ label: 'All Classes', value: 'All' }];
+    const options = [{ label: "All Classes", value: "All" }];
 
     availableCourses.forEach((course) => {
       if (isGenericAllClass(course)) return;
-
       const label = buildCourseOptionLabel(course);
       if (!seen.has(label)) {
         seen.add(label);
-        options.push({
-          label,
-          value: label,
-        });
+        options.push({ label, value: label });
       }
     });
 
@@ -439,24 +426,23 @@ export default function TeacherAnalytics({
       .map((student) => {
         const filteredCourses = (student.courses || []).filter((course) => {
           if (isGenericAllClass(course)) return false;
-
-          if (!normalizedSelectedClass || normalizedSelectedClass === 'all') {
+          if (!normalizedSelectedClass || normalizedSelectedClass === "all")
             return true;
-          }
-
-          const classLabel = normalizeText(getCourseClassLabel(course));
-          return classLabel === normalizedSelectedClass;
+          return (
+            normalizeText(getCourseClassLabel(course)) ===
+            normalizedSelectedClass
+          );
         });
 
-        return {
-          ...student,
-          courses: filteredCourses,
-        };
+        return { ...student, courses: filteredCourses };
       })
       .filter((student) => student.courses.length > 0);
   }, [students, selectedClass]);
 
-  const summary = useMemo(() => buildTeacherAnalytics(filteredStudents), [filteredStudents]);
+  const summary = useMemo(
+    () => buildTeacherAnalytics(filteredStudents),
+    [filteredStudents],
+  );
 
   const allAssignments = useMemo(
     () =>
@@ -469,28 +455,28 @@ export default function TeacherAnalytics({
             courseName: course.name,
             classLabel: getCourseClassLabel(course),
             orderIndex: index,
-          }))
-        )
+          })),
+        ),
       ),
-    [filteredStudents]
+    [filteredStudents],
   );
 
   const totalPending = useMemo(
     () =>
       summary.studentRows.reduce(
         (sum, student) => sum + student.totalPendingAssignments,
-        0
+        0,
       ),
-    [summary.studentRows]
+    [summary.studentRows],
   );
 
   const totalSubmitted = useMemo(
     () =>
       summary.studentRows.reduce(
         (sum, student) => sum + student.totalSubmittedAssignments,
-        0
+        0,
       ),
-    [summary.studentRows]
+    [summary.studentRows],
   );
 
   const completionRate = useMemo(() => {
@@ -500,57 +486,83 @@ export default function TeacherAnalytics({
   }, [totalPending, totalSubmitted]);
 
   const studentInsights = useMemo<StudentInsight[]>(() => {
-    return filteredStudents.map((student) => {
-      const row = summary.studentRows.find((item) => item.studentId === student.studentId);
-      const assignments = student.courses.flatMap((course) => course.assignments || []);
+    const baseRows = filteredStudents.map((student) => {
+      const row = summary.studentRows.find(
+        (item) => item.studentId === student.studentId,
+      );
+      const assignments = student.courses.flatMap(
+        (course) => course.assignments || [],
+      );
       const primaryCourse = student.courses[0];
-
       const gradedAssignments = assignments.filter(
         (assignment: any) =>
-          assignment.status === 'graded' &&
-          typeof assignment.points === 'number'
+          assignment.status === "graded" &&
+          typeof assignment.points === "number",
       );
-
-      const latestGraded = [...gradedAssignments].sort((a: any, b: any) => {
-        const aDate = a.dueDate ? new Date(a.dueDate).getTime() : 0;
-        const bDate = b.dueDate ? new Date(b.dueDate).getTime() : 0;
-        return bDate - aDate;
-      })[0] ?? gradedAssignments[gradedAssignments.length - 1];
-
-      const scores = gradedAssignments.map((assignment: any) => assignment.points);
-
-      const highestScore = scores.length ? Math.max(...scores) : null;
-      const lowestScore = scores.length ? Math.min(...scores) : null;
-      const latestGrade = latestGraded?.points ?? null;
-      const trendNumber =
-        typeof row?.overallTrend === 'number' ? row.overallTrend : 0;
-
+      const latestGraded =
+        [...gradedAssignments].sort((a: any, b: any) => {
+          const aDate = getNumericTime(
+            a.gradedAt || a.submittedAt || a.dueDate,
+            0,
+          );
+          const bDate = getNumericTime(
+            b.gradedAt || b.submittedAt || b.dueDate,
+            0,
+          );
+          return bDate - aDate;
+        })[0] ?? gradedAssignments[gradedAssignments.length - 1];
+      const scores = gradedAssignments
+        .map(getAssignmentPercent)
+        .filter((value): value is number => value !== null);
       const average = row?.overallAverage ?? 0;
       const pending = row?.totalPendingAssignments ?? 0;
+      const graded = row?.totalGradedAssignments ?? gradedAssignments.length;
+      const trendNumber =
+        typeof row?.overallTrend === "number" ? row.overallTrend : 0;
 
       return {
         studentId: student.studentId,
         studentName: student.studentName,
-        classLabel: primaryCourse ? getCourseClassLabel(primaryCourse) : 'Unassigned',
+        classLabel: primaryCourse
+          ? getCourseClassLabel(primaryCourse)
+          : "Unassigned",
         overallAverage: average,
         totalPendingAssignments: row?.totalPendingAssignments ?? 0,
         totalSubmittedAssignments: row?.totalSubmittedAssignments ?? 0,
-        riskLevel: row?.riskLevel ?? 'Low',
+        totalGradedAssignments: graded,
+        riskLevel: row?.riskLevel ?? (graded === 0 ? "No Data" : "Low"),
         overallTrend: row?.overallTrend ?? 0,
-        latestGrade,
-        highestScore,
-        lowestScore,
-        riskReason: insightReason({
-          average,
-          pending,
-          trend: trendNumber,
-        }),
+        latestGrade: latestGraded ? getAssignmentPercent(latestGraded) : null,
+        highestScore: scores.length ? Math.max(...scores) : null,
+        lowestScore: scores.length ? Math.min(...scores) : null,
+        riskReason: insightReason({ average, pending, trend: trendNumber, graded }),
         recommendedIntervention: insightIntervention({
           average,
           pending,
           trend: trendNumber,
+          graded,
         }),
+        percentileRank: 0,
+        rank: 0,
       };
+    });
+
+    const sortedDescending = [...baseRows].sort(
+      (a, b) => b.overallAverage - a.overallAverage,
+    );
+    const total = sortedDescending.length;
+
+    return baseRows.map((student) => {
+      const betterCount = sortedDescending.filter(
+        (item) => item.overallAverage > student.overallAverage,
+      ).length;
+      const lowerOrEqualCount = sortedDescending.filter(
+        (item) => item.overallAverage <= student.overallAverage,
+      ).length;
+      const rank = betterCount + 1;
+      const percentileRank =
+        total > 0 ? Math.round((lowerOrEqualCount / total) * 100) : 0;
+      return { ...student, percentileRank, rank };
     });
   }, [filteredStudents, summary.studentRows]);
 
@@ -559,33 +571,43 @@ export default function TeacherAnalytics({
       studentInsights
         .filter(
           (student) =>
-            student.riskLevel === 'High' || student.riskLevel === 'Moderate'
+            student.riskLevel === "High" || student.riskLevel === "Moderate",
         )
         .sort((a, b) => {
-          const riskOrder = { High: 2, Moderate: 1, Low: 0 };
+          const riskOrder = { High: 3, Moderate: 2, Low: 1, "No Data": 0 };
           const aRisk = riskOrder[a.riskLevel as keyof typeof riskOrder] ?? 0;
           const bRisk = riskOrder[b.riskLevel as keyof typeof riskOrder] ?? 0;
-
           if (bRisk !== aRisk) return bRisk - aRisk;
           if (b.totalPendingAssignments !== a.totalPendingAssignments) {
             return b.totalPendingAssignments - a.totalPendingAssignments;
           }
           return a.overallAverage - b.overallAverage;
         }),
-    [studentInsights]
+    [studentInsights],
   );
 
   const topStudents = useMemo(
     () =>
       [...studentInsights]
+        .filter((student) => student.totalGradedAssignments > 0)
         .sort((a, b) => b.overallAverage - a.overallAverage)
         .slice(0, 5),
-    [studentInsights]
+    [studentInsights],
   );
 
-  const sortedStudents = useMemo(
-    () => [...studentInsights].sort((a, b) => a.overallAverage - b.overallAverage),
-    [studentInsights]
+  const percentileRows = useMemo(
+    () =>
+      [...studentInsights].sort(
+        (a, b) => {
+          if (a.totalGradedAssignments === 0 && b.totalGradedAssignments > 0) return 1;
+          if (b.totalGradedAssignments === 0 && a.totalGradedAssignments > 0) return -1;
+          return (
+            b.percentileRank - a.percentileRank ||
+            b.overallAverage - a.overallAverage
+          );
+        },
+      ),
+    [studentInsights],
   );
 
   const mostPendingStudents = useMemo(
@@ -593,7 +615,7 @@ export default function TeacherAnalytics({
       [...studentInsights]
         .sort((a, b) => b.totalPendingAssignments - a.totalPendingAssignments)
         .slice(0, 5),
-    [studentInsights]
+    [studentInsights],
   );
 
   const gradeBuckets = useMemo(() => {
@@ -603,6 +625,7 @@ export default function TeacherAnalytics({
     let needsSupport = 0;
 
     studentInsights.forEach((student) => {
+      if (student.totalGradedAssignments === 0) return;
       if (student.overallAverage >= 90) excellent += 1;
       else if (student.overallAverage >= 80) good += 1;
       else if (student.overallAverage >= 75) fair += 1;
@@ -610,20 +633,34 @@ export default function TeacherAnalytics({
     });
 
     return [
-      { label: '90–100', value: excellent, color: '#22C55E' },
-      { label: '80–89', value: good, color: '#3B82F6' },
-      { label: '75–79', value: fair, color: '#F59E0B' },
-      { label: 'Below 75', value: needsSupport, color: '#EF4444' },
+      { label: "90-100", value: excellent, color: "#22C55E" },
+      { label: "80-89", value: good, color: "#3B82F6" },
+      { label: "75-79", value: fair, color: "#F59E0B" },
+      { label: "Below 75", value: needsSupport, color: "#EF4444" },
     ];
   }, [studentInsights]);
 
   const riskBuckets = useMemo(
     () => [
-      { label: 'High Risk', value: summary.highRiskCount, color: '#EF4444' },
-      { label: 'Moderate Risk', value: summary.moderateRiskCount, color: '#F59E0B' },
-      { label: 'Low Risk', value: summary.lowRiskCount, color: '#22C55E' },
+      {
+        label: "No Data",
+        value: summary.noDataCount ?? 0,
+        color: "#2563EB",
+      },
+      { label: "High Risk", value: summary.highRiskCount, color: "#EF4444" },
+      {
+        label: "Moderate Risk",
+        value: summary.moderateRiskCount,
+        color: "#F59E0B",
+      },
+      { label: "Low Risk", value: summary.lowRiskCount, color: "#22C55E" },
     ],
-    [summary.highRiskCount, summary.moderateRiskCount, summary.lowRiskCount]
+    [
+      summary.noDataCount,
+      summary.highRiskCount,
+      summary.moderateRiskCount,
+      summary.lowRiskCount,
+    ],
   );
 
   const topicSummaries = useMemo<TopicSummary[]>(() => {
@@ -633,18 +670,21 @@ export default function TeacherAnalytics({
     >();
 
     allAssignments.forEach((assignment: any) => {
-      const topic = assignment.topic || 'Uncategorized';
+      const topic = assignment.topic || assignment.title || "Uncategorized";
       const current = topicMap.get(topic) || { total: 0, count: 0, pending: 0 };
 
-      if (assignment.status === 'graded' && typeof assignment.points === 'number') {
-        current.total += assignment.points;
-        current.count += 1;
+      if (
+        assignment.status === "graded" &&
+        typeof assignment.points === "number"
+      ) {
+        const percent = getAssignmentPercent(assignment);
+        if (percent !== null) {
+          current.total += percent;
+          current.count += 1;
+        }
       }
 
-      if (assignment.status === 'pending') {
-        current.pending += 1;
-      }
-
+      if (assignment.status === "pending") current.pending += 1;
       topicMap.set(topic, current);
     });
 
@@ -658,15 +698,20 @@ export default function TeacherAnalytics({
       .sort((a, b) => a.average - b.average);
   }, [allAssignments]);
 
-  const weakTopics = useMemo(() => topicSummaries.slice(0, 5), [topicSummaries]);
+  const weakTopics = useMemo(
+    () => topicSummaries.slice(0, 5),
+    [topicSummaries],
+  );
 
   const classHighestScore = useMemo(() => {
     const scores = allAssignments
       .filter(
         (assignment: any) =>
-          assignment.status === 'graded' && typeof assignment.points === 'number'
+          assignment.status === "graded" &&
+          typeof assignment.points === "number",
       )
-      .map((assignment: any) => assignment.points);
+      .map(getAssignmentPercent)
+      .filter((value): value is number => value !== null);
     return scores.length ? Math.max(...scores) : 0;
   }, [allAssignments]);
 
@@ -674,49 +719,259 @@ export default function TeacherAnalytics({
     const scores = allAssignments
       .filter(
         (assignment: any) =>
-          assignment.status === 'graded' && typeof assignment.points === 'number'
+          assignment.status === "graded" &&
+          typeof assignment.points === "number",
       )
-      .map((assignment: any) => assignment.points);
+      .map(getAssignmentPercent)
+      .filter((value): value is number => value !== null);
     return scores.length ? Math.min(...scores) : 0;
   }, [allAssignments]);
 
-  const maxAverage = useMemo(() => {
-    const values = studentInsights.map((student) => student.overallAverage);
-    return Math.max(...values, 100);
-  }, [studentInsights]);
-
-  const maxPending = useMemo(() => {
-    const values = studentInsights.map((student) => student.totalPendingAssignments);
-    return Math.max(...values, 1);
-  }, [studentInsights]);
-
-  const maxTopicAverage = useMemo(() => {
-    const values = topicSummaries.map((topic) => topic.average);
-    return Math.max(...values, 100);
-  }, [topicSummaries]);
+  const maxAverage = useMemo(
+    () =>
+      Math.max(
+        ...studentInsights.map((student) => student.overallAverage),
+        100,
+      ),
+    [studentInsights],
+  );
+  const maxPending = useMemo(
+    () =>
+      Math.max(
+        ...studentInsights.map((student) => student.totalPendingAssignments),
+        1,
+      ),
+    [studentInsights],
+  );
+  const maxTopicAverage = useMemo(
+    () => Math.max(...topicSummaries.map((topic) => topic.average), 100),
+    [topicSummaries],
+  );
 
   const attentionIndex = useMemo(() => {
-    if (summary.totalStudents === 0) return 0;
+    const evaluatedStudents =
+      summary.totalStudents - (summary.noDataCount ?? 0);
+
+    if (evaluatedStudents <= 0) return 0;
+
     return Math.round(
       ((summary.highRiskCount * 2 + summary.moderateRiskCount) /
-        summary.totalStudents) *
-        100
+        evaluatedStudents) *
+        100,
     );
-  }, [summary.highRiskCount, summary.moderateRiskCount, summary.totalStudents]);
+  }, [
+    summary.noDataCount,
+    summary.highRiskCount,
+    summary.moderateRiskCount,
+    summary.totalStudents,
+  ]);
 
   const passingRate = useMemo(() => {
-    if (summary.totalStudents === 0) return 0;
-    const passed = studentInsights.filter(
-      (student) => student.overallAverage >= 75
+    const evaluatedStudents = studentInsights.filter(
+      (student) => student.totalGradedAssignments > 0,
+    );
+
+    if (evaluatedStudents.length === 0) return 0;
+
+    const passed = evaluatedStudents.filter(
+      (student) => student.overallAverage >= 75,
     ).length;
-    return Math.round((passed / summary.totalStudents) * 100);
-  }, [studentInsights, summary.totalStudents]);
+
+    return Math.round((passed / evaluatedStudents.length) * 100);
+  }, [studentInsights]);
 
   const classHealth = useMemo(() => {
-    if (summary.classAverage >= 85) return 'Strong';
-    if (summary.classAverage >= 75) return 'Stable';
-    return 'Needs Attention';
-  }, [summary.classAverage]);
+    const hasGraded = allAssignments.some(
+      (assignment: any) => assignment.status === "graded",
+    );
+
+    if (summary.totalStudents === 0 || !hasGraded) return "No Data";
+    if (summary.classAverage >= 85) return "Strong";
+    if (summary.classAverage >= 75) return "Stable";
+    return "Needs Attention";
+  }, [summary.classAverage, summary.totalStudents, allAssignments]);
+
+  const performanceTrend = useMemo<TrendPoint[]>(() => {
+    const graded = allAssignments
+      .filter(
+        (assignment: any) =>
+          assignment.status === "graded" &&
+          typeof assignment.points === "number",
+      )
+      .sort((a: any, b: any) => {
+        const aTime = getNumericTime(
+          a.gradedAt || a.submittedAt || a.dueDate,
+          a.orderIndex || 0,
+        );
+        const bTime = getNumericTime(
+          b.gradedAt || b.submittedAt || b.dueDate,
+          b.orderIndex || 0,
+        );
+        return aTime - bTime;
+      });
+
+    const bucketMap = new Map<
+      string,
+      { total: number; count: number; order: number }
+    >();
+
+    graded.forEach((assignment: any, index: number) => {
+      const fallbackLabel = `A${Math.min(index + 1, 6)}`;
+      const time = getNumericTime(
+        assignment.gradedAt || assignment.submittedAt || assignment.dueDate,
+        0,
+      );
+      const label = time
+        ? new Date(time).toLocaleDateString(undefined, {
+            month: "short",
+            day: "numeric",
+          })
+        : fallbackLabel;
+      const current = bucketMap.get(label) || {
+        total: 0,
+        count: 0,
+        order: index,
+      };
+      const percent = getAssignmentPercent(assignment);
+      if (percent !== null) {
+        current.total += percent;
+        current.count += 1;
+      }
+      bucketMap.set(label, current);
+    });
+
+    const points = Array.from(bucketMap.entries())
+      .sort((a, b) => a[1].order - b[1].order)
+      .filter(([, value]) => value.count > 0)
+      .map(([label, value]) => ({
+        label,
+        average: Math.round(value.total / value.count),
+        count: value.count,
+      }));
+
+    return points.slice(-6);
+  }, [allAssignments]);
+
+  const trendDelta = useMemo(() => {
+    if (performanceTrend.length < 2) return 0;
+    return (
+      performanceTrend[performanceTrend.length - 1].average -
+      performanceTrend[0].average
+    );
+  }, [performanceTrend]);
+
+  const academicInsights = useMemo<AcademicInsight[]>(() => {
+    const insights: AcademicInsight[] = [];
+    const mostCritical = atRiskStudents[0];
+    const weakestTopic = weakTopics[0];
+
+    if (summary.totalStudents === 0) {
+      return [
+        {
+          title: "No enrolled students",
+          body: "No enrolled students were found for this analytics scope. Add students to activate the dashboard.",
+          tone: "info",
+          icon: "account-search-outline",
+        },
+      ];
+    }
+
+    const hasGraded = allAssignments.some(
+      (assignment: any) => assignment.status === "graded",
+    );
+
+    if (!hasGraded) {
+      return [
+        {
+          title: "No graded submissions yet",
+          body: "Students may have pending or submitted work, but no graded records are available yet. Risk indicators will activate after grading or when assignments become missing.",
+          tone: "info",
+          icon: "database-search-outline",
+        },
+      ];
+    }
+
+    if (trendDelta >= 5) {
+      insights.push({
+        title: "Positive performance trajectory",
+        body: `The class trend increased by ${trendDelta} percentage points across recent graded activities, indicating improving mastery.`,
+        tone: "success",
+        icon: "chart-line-variant",
+      });
+    } else if (trendDelta <= -5) {
+      insights.push({
+        title: "Declining performance trend",
+        body: `The class trend dropped by ${Math.abs(trendDelta)} percentage points. Review recent assessment difficulty and provide targeted reinforcement.`,
+        tone: "danger",
+        icon: "chart-line-variant",
+      });
+    } else {
+      insights.push({
+        title: "Stable class performance",
+        body: "Recent graded activities show a stable trend. Continue monitoring students near the passing threshold.",
+        tone: "info",
+        icon: "chart-timeline-variant",
+      });
+    }
+
+    if (attentionIndex >= 40) {
+      insights.push({
+        title: "High intervention load",
+        body: `${attentionIndex}% attention index suggests a heavy support requirement. Prioritize high-risk learners and missing submissions first.`,
+        tone: "warning",
+        icon: "account-alert-outline",
+      });
+    } else {
+      insights.push({
+        title: "Manageable intervention load",
+        body: `${attentionIndex}% attention index indicates the class is within a manageable monitoring range.`,
+        tone: "success",
+        icon: "shield-check-outline",
+      });
+    }
+
+    if (weakestTopic && weakestTopic.gradedCount > 0) {
+      insights.push({
+        title: "Lowest mastery topic",
+        body: `${weakestTopic.topic} has the lowest recorded average at ${weakestTopic.average}%. Consider remediation, examples, or a short formative quiz.`,
+        tone: weakestTopic.average < 75 ? "danger" : "warning",
+        icon: "book-alert-outline",
+      });
+    }
+
+    if (mostCritical) {
+      insights.push({
+        title: "Priority learner for follow-up",
+        body: `${mostCritical.studentName} is ranked as ${mostCritical.riskLevel.toLowerCase()} priority with ${mostCritical.totalPendingAssignments} pending task(s) and ${mostCritical.overallAverage}% average.`,
+        tone: mostCritical.riskLevel === "High" ? "danger" : "warning",
+        icon: "account-heart-outline",
+      });
+    }
+
+    return insights.slice(0, 4);
+  }, [
+    allAssignments,
+    atRiskStudents,
+    attentionIndex,
+    summary.totalStudents,
+    trendDelta,
+    weakTopics,
+  ]);
+
+  const chartData = useMemo(() => {
+    const fallback = performanceTrend.length
+      ? performanceTrend
+      : [{ label: "No Data", average: 0, count: 0 }];
+    return {
+      labels: fallback.map((item) => item.label),
+      datasets: [
+        {
+          data: fallback.map((item) => item.average),
+          strokeWidth: 3,
+        },
+      ],
+    };
+  }, [performanceTrend]);
 
   return (
     <>
@@ -726,19 +981,21 @@ export default function TeacherAnalytics({
         animationType="fade"
         onRequestClose={() => setShowClassDropdown(false)}
       >
-        <TouchableOpacity
-          activeOpacity={1}
+        <Pressable
+         
           style={styles.dropdownOverlay}
           onPress={() => setShowClassDropdown(false)}
         >
           <View style={styles.dropdownModal}>
             {classOptions.map((option) => {
               const isSelected = option.value === selectedClass;
-
               return (
-                <TouchableOpacity
+                <Pressable
                   key={option.value}
-                  style={[styles.dropdownItem, isSelected && styles.dropdownItemActive]}
+                  style={[
+                    styles.dropdownItem,
+                    isSelected && styles.dropdownItemActive,
+                  ]}
                   onPress={() => {
                     onChangeSelectedClass?.(option.value);
                     setShowClassDropdown(false);
@@ -752,7 +1009,6 @@ export default function TeacherAnalytics({
                   >
                     {option.label}
                   </Text>
-
                   {isSelected ? (
                     <MaterialCommunityIcons
                       name="check"
@@ -760,36 +1016,39 @@ export default function TeacherAnalytics({
                       color={palette.primary}
                     />
                   ) : null}
-                </TouchableOpacity>
+                </Pressable>
               );
             })}
           </View>
-        </TouchableOpacity>
+        </Pressable>
       </Modal>
 
-      <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-        <View style={styles.heroCard}>
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={[styles.content, { padding: pagePadding }]}
+      >
+        <View style={[styles.heroCard, responsiveHeroStyle]}>
           <View style={styles.heroLeft}>
             <View style={styles.heroTopRow}>
-              <View style={styles.heroEyebrowRow}>
-                <View style={styles.heroEyebrowBadge}>
-                  <MaterialCommunityIcons
-                    name="chart-box-outline"
-                    size={16}
-                    color={palette.primary}
-                  />
-                  <Text style={styles.heroEyebrow}>Teacher Analytics Dashboard</Text>
-                </View>
+              <View style={styles.heroEyebrowBadge}>
+                <MaterialCommunityIcons
+                  name="chart-box-outline"
+                  size={16}
+                  color={palette.primary}
+                />
+                <Text style={styles.heroEyebrow}>
+                  Academic Analytics Report
+                </Text>
               </View>
 
-              <TouchableOpacity
+              <Pressable
                 style={styles.classDropdownButton}
                 onPress={() => setShowClassDropdown(true)}
               >
                 <View style={styles.classDropdownTextWrap}>
                   <Text style={styles.classDropdownLabel}>Selected Class</Text>
                   <Text style={styles.classDropdownValue} numberOfLines={1}>
-                    {selectedClass === 'All' ? 'All Classes' : selectedClass}
+                    {selectedClass === "All" ? "All Classes" : selectedClass}
                   </Text>
                 </View>
                 <MaterialCommunityIcons
@@ -797,23 +1056,28 @@ export default function TeacherAnalytics({
                   size={20}
                   color={palette.textStrong}
                 />
-              </TouchableOpacity>
+              </Pressable>
             </View>
 
-            <Text style={styles.heroTitle}>Academic Performance Overview</Text>
+            <Text style={styles.heroTitle}>
+              Teacher Academic Performance Analytics
+            </Text>
             <Text style={styles.heroSubtitle}>
               {teacherName} • {selectedCourseName}
             </Text>
             <Text style={styles.heroDescription}>
-              Review class outcomes, identify intervention priorities, monitor submission gaps,
-              and surface weak learning topics for early intervention.
+              Academic-format monitoring for class performance trends,
+              percentile ranking, learning gaps, risk profile, and AI-generated
+              instructional recommendations.
             </Text>
           </View>
 
-          <View style={styles.heroRight}>
+          <View
+            style={[styles.heroRight, isSmallScreen && styles.heroRightCompact]}
+          >
             <CircularMiniStat
-              value={`${summary.classAverage}%`}
-              label="Class Average"
+              value={classHealth === "No Data" ? "No Data" : `${summary.classAverage}%`}
+              label="Class Mean"
               accent={palette.primary}
               softBg={palette.primarySoft}
               icon="chart-line"
@@ -827,7 +1091,7 @@ export default function TeacherAnalytics({
             />
             <CircularMiniStat
               value={classHealth}
-              label="Class Health"
+              label="Academic Status"
               accent={palette.blue}
               softBg={palette.blueSoft}
               icon="shield-check-outline"
@@ -835,11 +1099,11 @@ export default function TeacherAnalytics({
           </View>
         </View>
 
-        <View style={styles.metricsGrid}>
+        <View style={responsiveMetricStyle}>
           <MetricCard
             title="Total Students"
             value={summary.totalStudents}
-            helper="Students under your current monitoring scope"
+            helper="Learners included in current analytics scope"
             icon="account-group-outline"
             accent={palette.blue}
             softBg={palette.blueSoft}
@@ -847,7 +1111,7 @@ export default function TeacherAnalytics({
           <MetricCard
             title="Completion Rate"
             value={`${completionRate}%`}
-            helper="Completed work compared with active workload"
+            helper="Submitted work against total active workload"
             icon="check-decagram-outline"
             accent={palette.green}
             softBg={palette.greenSoft}
@@ -855,7 +1119,7 @@ export default function TeacherAnalytics({
           <MetricCard
             title="At-Risk Students"
             value={summary.highRiskCount + summary.moderateRiskCount}
-            helper="Students who need closer academic support"
+            helper="Learners requiring academic support"
             icon="alert-circle-outline"
             accent={palette.orange}
             softBg={palette.orangeSoft}
@@ -863,18 +1127,18 @@ export default function TeacherAnalytics({
           <MetricCard
             title="Attention Index"
             value={`${attentionIndex}%`}
-            helper="Weighted pressure level for intervention planning"
+            helper="Weighted intervention pressure indicator"
             icon="radar"
             accent={palette.primary}
             softBg={palette.primarySoft}
           />
         </View>
 
-        <View style={styles.metricsGrid}>
+        <View style={responsiveMetricStyle}>
           <MetricCard
             title="Highest Score"
             value={classHighestScore}
-            helper="Best graded score recorded in class"
+            helper="Highest graded percentage recorded"
             icon="arrow-up-bold-circle-outline"
             accent={palette.green}
             softBg={palette.greenSoft}
@@ -882,7 +1146,7 @@ export default function TeacherAnalytics({
           <MetricCard
             title="Lowest Score"
             value={classLowestScore}
-            helper="Lowest graded score requiring attention"
+            helper="Lowest graded percentage recorded"
             icon="arrow-down-bold-circle-outline"
             accent={palette.red}
             softBg={palette.redSoft}
@@ -890,7 +1154,7 @@ export default function TeacherAnalytics({
           <MetricCard
             title="Pending Tasks"
             value={totalPending}
-            helper="Unfinished work currently affecting class progress"
+            helper="Unfinished work affecting progress"
             icon="clipboard-text-clock-outline"
             accent={palette.purple}
             softBg={palette.purpleSoft}
@@ -898,17 +1162,93 @@ export default function TeacherAnalytics({
           <MetricCard
             title="Submitted Tasks"
             value={totalSubmitted}
-            helper="Tasks submitted and ready for tracking or grading"
+            helper="Completed submissions counted in monitoring"
             icon="file-check-outline"
             accent="#0891B2"
             softBg="#E0F7FF"
           />
         </View>
 
-        <View style={styles.dualColumn}>
+        <SectionCard
+          title="Performance Trend Line Graph"
+          subtitle="Class average across recent graded activities"
+          rightNode={
+            <Text
+              style={[
+                styles.trendDelta,
+                { color: trendDelta >= 0 ? palette.green : palette.red },
+              ]}
+            >
+              {trendDelta >= 0 ? "+" : ""}
+              {trendDelta} pts
+            </Text>
+          }
+        >
+          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            <LineChart
+              data={chartData}
+              width={chartWidth}
+              height={chartHeight}
+              yAxisSuffix="%"
+              yAxisInterval={1}
+              chartConfig={{
+                backgroundColor: palette.surface,
+                backgroundGradientFrom: palette.surface,
+                backgroundGradientTo: palette.surface,
+                decimalPlaces: 0,
+                color: (opacity = 1) => `rgba(37, 99, 235, ${opacity})`,
+                labelColor: (opacity = 1) => `rgba(51, 78, 104, ${opacity})`,
+                propsForDots: {
+                  r: "5",
+                  strokeWidth: "2",
+                  stroke: palette.blue,
+                },
+                propsForBackgroundLines: {
+                  strokeDasharray: "4 6",
+                  stroke: "#E6EEF8",
+                },
+              }}
+              bezier
+              style={styles.lineChart}
+            />
+          </ScrollView>
+        </SectionCard>
+
+        <SectionCard
+          title="AI-Generated Academic Insights"
+          subtitle="Rule-based instructional insights generated from the current analytics data"
+        >
+          <View style={styles.aiGrid}>
+            {academicInsights.map((insight) => {
+              const tone = insightTone[insight.tone];
+              return (
+                <View key={insight.title} style={styles.aiCard}>
+                  <View
+                    style={[styles.aiIconWrap, { backgroundColor: tone.bg }]}
+                  >
+                    <MaterialCommunityIcons
+                      name={insight.icon}
+                      size={20}
+                      color={tone.color}
+                    />
+                  </View>
+                  <View style={styles.aiTextWrap}>
+                    <Text style={styles.aiTitle}>{insight.title}</Text>
+                    <Text style={styles.aiBody}>{insight.body}</Text>
+                  </View>
+                </View>
+              );
+            })}
+          </View>
+        </SectionCard>
+
+        <View
+          style={[styles.dualColumn, isSmallScreen && styles.dualColumnCompact]}
+        >
           <SectionCard
+            style={responsiveSectionStyle}
             title="Class Overview"
-            subtitle="Overall student risk and grade segmentation"
+            subtitle="Risk profile and grade distribution"
           >
             {riskBuckets.map((item) => (
               <HorizontalBar
@@ -917,12 +1257,10 @@ export default function TeacherAnalytics({
                 value={item.value}
                 maxValue={summary.totalStudents || 1}
                 color={item.color}
-                rightText={`${item.value} student${item.value === 1 ? '' : 's'}`}
+                rightText={`${item.value} student${item.value === 1 ? "" : "s"}`}
               />
             ))}
-
             <View style={styles.chartDivider} />
-
             {gradeBuckets.map((item) => (
               <HorizontalBar
                 key={item.label}
@@ -936,9 +1274,15 @@ export default function TeacherAnalytics({
           </SectionCard>
 
           <SectionCard
+            style={responsiveSectionStyle}
             title="Submission Monitoring"
             subtitle="Students with the heaviest unfinished workload"
           >
+            {mostPendingStudents.length === 0 ? (
+              <Text style={styles.emptyText}>
+                No pending submissions detected.
+              </Text>
+            ) : null}
             {mostPendingStudents.map((student) => (
               <HorizontalBar
                 key={student.studentId}
@@ -952,8 +1296,11 @@ export default function TeacherAnalytics({
           </SectionCard>
         </View>
 
-        <View style={styles.dualColumn}>
+        <View
+          style={[styles.dualColumn, isSmallScreen && styles.dualColumnCompact]}
+        >
           <SectionCard
+            style={responsiveSectionStyle}
             title="Topic Mastery"
             subtitle="Weak topics by class performance average"
           >
@@ -978,6 +1325,7 @@ export default function TeacherAnalytics({
           </SectionCard>
 
           <SectionCard
+            style={responsiveSectionStyle}
             title="Top Performing Students"
             subtitle="Highest-performing learners by average"
           >
@@ -987,7 +1335,7 @@ export default function TeacherAnalytics({
               topStudents.map((student) => (
                 <HorizontalBar
                   key={student.studentId}
-                  label={student.studentName}
+                  label={`#${student.rank} ${student.studentName}`}
                   value={student.overallAverage}
                   maxValue={maxAverage}
                   color={palette.blue}
@@ -997,6 +1345,79 @@ export default function TeacherAnalytics({
             )}
           </SectionCard>
         </View>
+
+        <SectionCard
+          title="Student Percentile Ranking"
+          subtitle="Academic standing based on overall average within the selected scope"
+        >
+          {percentileRows.length === 0 ? (
+            <Text style={styles.emptyText}>
+              No student ranking data available yet.
+            </Text>
+          ) : (
+            <ScrollView
+              style={styles.rankingScroll}
+              nestedScrollEnabled
+              showsVerticalScrollIndicator
+            >
+              {percentileRows.map((student) => {
+                const risk = getRiskPalette(student.riskLevel);
+                return (
+                  <View
+                    key={student.studentId}
+                    style={[
+                      styles.rankingRow,
+                      isSmallScreen && styles.rankingRowCompact,
+                    ]}
+                  >
+                    <View style={styles.rankBadge}>
+                      <Text style={styles.rankBadgeText}>#{student.rank}</Text>
+                    </View>
+                    <View style={styles.rankingInfo}>
+                      <Text style={styles.rankingName}>
+                        {student.studentName}
+                      </Text>
+                      <Text style={styles.rankingMeta}>
+                        {student.classLabel} • Average{" "}
+                        {student.totalGradedAssignments === 0
+                          ? "No Data"
+                          : `${student.overallAverage}%`}
+                      </Text>
+                      <View style={styles.percentileTrack}>
+                        <View
+                          style={[
+                            styles.percentileFill,
+                            {
+                              width:
+                                student.totalGradedAssignments === 0
+                                  ? "0%"
+                                  : `${student.percentileRank}%`,
+                              backgroundColor: risk.fill,
+                            },
+                          ]}
+                        />
+                      </View>
+                    </View>
+                    <View
+                      style={[
+                        styles.percentilePill,
+                        { backgroundColor: risk.bg },
+                      ]}
+                    >
+                      <Text
+                        style={[styles.percentileText, { color: risk.text }]}
+                      >
+                        {student.totalGradedAssignments === 0
+                          ? "No Data"
+                          : `P${student.percentileRank}`}
+                      </Text>
+                    </View>
+                  </View>
+                );
+              })}
+            </ScrollView>
+          )}
+        </SectionCard>
 
         <SectionCard
           title="At-Risk Students"
@@ -1017,22 +1438,27 @@ export default function TeacherAnalytics({
             <ScrollView
               style={styles.interventionScroll}
               contentContainerStyle={styles.interventionScrollContent}
-              showsVerticalScrollIndicator={true}
-              nestedScrollEnabled={true}
+              showsVerticalScrollIndicator
+              nestedScrollEnabled
             >
               {atRiskStudents.map((student) => {
                 const risk = getRiskPalette(student.riskLevel);
                 const trend = getTrendMeta(student.overallTrend);
-
                 return (
                   <View
                     key={student.studentId}
                     style={[
                       styles.interventionCard,
+                      isSmallScreen && styles.interventionCardCompact,
                       { borderLeftColor: risk.fill },
                     ]}
                   >
-                    <View style={styles.interventionLeft}>
+                    <View
+                      style={[
+                        styles.interventionLeft,
+                        isSmallScreen && styles.interventionLeftCompact,
+                      ]}
+                    >
                       <View
                         style={[
                           styles.avatarCircle,
@@ -1051,70 +1477,59 @@ export default function TeacherAnalytics({
                           <Text style={styles.interventionName}>
                             {student.studentName}
                           </Text>
-
-                          <View style={[styles.trendChip, { backgroundColor: trend.bg }]}>
+                          <View
+                            style={[
+                              styles.trendChip,
+                              { backgroundColor: trend.bg },
+                            ]}
+                          >
                             <MaterialCommunityIcons
                               name={trend.icon}
                               size={14}
                               color={trend.color}
                             />
-                            <Text style={[styles.trendChipText, { color: trend.color }]}>
+                            <Text
+                              style={[
+                                styles.trendChipText,
+                                { color: trend.color },
+                              ]}
+                            >
                               {trend.label}
                             </Text>
                           </View>
                         </View>
 
                         <Text style={styles.interventionMeta}>
-                          {student.classLabel} • Average {student.overallAverage}% • Latest Grade {student.latestGrade ?? 'N/A'} • Missing {student.totalPendingAssignments}
+                          {student.classLabel} • Average{" "}
+                          {student.totalGradedAssignments === 0
+                            ? "No Data"
+                            : `${student.overallAverage}%`}{" "}
+                          • Percentile{" "}
+                          {student.totalGradedAssignments === 0
+                            ? "No Data"
+                            : `P${student.percentileRank}`}{" "}
+                          • Pending {student.totalPendingAssignments}
                         </Text>
-
                         <Text style={styles.reasonText}>
                           Risk Reason: {student.riskReason}
                         </Text>
-
                         <Text style={styles.recommendationText}>
-                          Recommended Intervention: {student.recommendedIntervention}
+                          Recommended Intervention:{" "}
+                          {student.recommendedIntervention}
                         </Text>
-
-                        <View
-                          style={[
-                            styles.priorityTag,
-                            { backgroundColor: risk.bg },
-                          ]}
-                        >
-                          <Text style={[styles.priorityText, { color: risk.text }]}>
-                            {student.riskLevel} Priority
-                          </Text>
-                        </View>
                       </View>
                     </View>
 
-                    <View style={styles.interventionActions}>
-                      <View style={[styles.riskPill, { backgroundColor: risk.bg }]}>
-                        <Text style={[styles.riskPillText, { color: risk.text }]}>
-                          {student.riskLevel}
-                        </Text>
-                      </View>
-
-                      <View style={styles.actionButtons}>
-                        <View style={styles.actionBtn}>
-                          <MaterialCommunityIcons
-                            name="eye-outline"
-                            size={16}
-                            color="#2563EB"
-                          />
-                          <Text style={styles.actionText}>View</Text>
-                        </View>
-
-                        <View style={styles.actionBtn}>
-                          <MaterialCommunityIcons
-                            name="message-text-outline"
-                            size={16}
-                            color="#059669"
-                          />
-                          <Text style={styles.actionText}>Message</Text>
-                        </View>
-                      </View>
+                    <View
+                      style={[
+                        styles.riskPill,
+                        isSmallScreen && styles.riskPillCompact,
+                        { backgroundColor: risk.bg },
+                      ]}
+                    >
+                      <Text style={[styles.riskPillText, { color: risk.text }]}>
+                        {student.riskLevel}
+                      </Text>
                     </View>
                   </View>
                 );
@@ -1122,576 +1537,417 @@ export default function TeacherAnalytics({
             </ScrollView>
           )}
         </SectionCard>
-
-        <SectionCard
-          title="Intervention Suggestions"
-          subtitle="Recommended faculty response aligned with early intervention"
-        >
-          {atRiskStudents.length === 0 ? (
-            <Text style={styles.emptyText}>
-              No intervention actions needed at the moment.
-            </Text>
-          ) : (
-            atRiskStudents.slice(0, 5).map((student) => (
-              <View key={student.studentId} style={styles.suggestionRow}>
-                <View style={styles.suggestionIconWrap}>
-                  <MaterialCommunityIcons
-                    name="lightbulb-on-outline"
-                    size={18}
-                    color={palette.orange}
-                  />
-                </View>
-                <View style={styles.suggestionTextWrap}>
-                  <Text style={styles.suggestionTitle}>{student.studentName}</Text>
-                  <Text style={styles.suggestionBody}>
-                    {student.recommendedIntervention}
-                  </Text>
-                </View>
-              </View>
-            ))
-          )}
-        </SectionCard>
-
-        <SectionCard
-          title="Student Performance Table"
-          subtitle="Average, latest grade, trend, missing tasks, and risk detail"
-        >
-          <View style={styles.tableHeader}>
-            <Text style={[styles.tableHeaderText, styles.flex2]}>Student</Text>
-            <Text style={styles.tableHeaderText}>Average</Text>
-            <Text style={styles.tableHeaderText}>Latest</Text>
-            <Text style={styles.tableHeaderText}>Missing</Text>
-            <Text style={styles.tableHeaderText}>Risk</Text>
-          </View>
-
-          {sortedStudents.map((student) => {
-            const risk = getRiskPalette(student.riskLevel);
-
-            return (
-              <View key={student.studentId} style={styles.tableRow}>
-                <View style={[styles.flex2]}>
-                  <Text style={styles.tableCell} numberOfLines={1}>
-                    {student.studentName}
-                  </Text>
-                  <Text style={styles.tableSubCell} numberOfLines={1}>
-                    {student.classLabel} • {student.riskReason}
-                  </Text>
-                </View>
-                <Text style={styles.tableCell}>{student.overallAverage}%</Text>
-                <Text style={styles.tableCell}>{student.latestGrade ?? 'N/A'}</Text>
-                <Text style={styles.tableCell}>{student.totalPendingAssignments}</Text>
-                <View style={[styles.tableCell, styles.riskCell]}>
-                  <View style={[styles.riskDot, { backgroundColor: risk.fill }]} />
-                  <Text style={styles.riskCellText}>{student.riskLevel}</Text>
-                </View>
-              </View>
-            );
-          })}
-        </SectionCard>
       </ScrollView>
     </>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  container: { flex: 1, backgroundColor: palette.bg },
+  content: { gap: 14, paddingBottom: 36 },
+  dropdownOverlay: {
     flex: 1,
-    backgroundColor: palette.bg,
+    backgroundColor: "rgba(16, 42, 67, 0.22)",
+    justifyContent: "flex-start",
+    alignItems: "center",
+    paddingTop: 90,
+    paddingHorizontal: 16,
   },
-  content: {
-    padding: 20,
-    paddingBottom: 36,
-  },
-  heroCard: {
+  dropdownModal: {
+    width: 320,
+    maxWidth: "90%",
     backgroundColor: palette.surface,
-    borderRadius: 24,
+    borderRadius: 18,
+    paddingVertical: 8,
     borderWidth: 1,
     borderColor: palette.border,
+    shadowColor: "#0F172A",
+    shadowOpacity: 0.16,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 12 },
+    elevation: 10,
+  },
+  dropdownItem: {
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  dropdownItemActive: { backgroundColor: palette.primarySoft },
+  dropdownItemText: { fontSize: 14, color: palette.text, fontWeight: "700" },
+  dropdownItemTextActive: { color: palette.primary },
+  heroCard: {
+    backgroundColor: palette.surface,
+    borderRadius: 26,
     padding: 22,
-    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: palette.border,
+    flexDirection: "row",
+    gap: 18,
+    flexWrap: "wrap",
+    shadowColor: "#0F172A",
+    shadowOpacity: 0.06,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 3,
   },
-  heroLeft: {
-    marginBottom: 18,
-  },
+  heroCardCompact: { borderRadius: 20, padding: 14, flexDirection: "column" },
+  heroLeft: { flex: 1, minWidth: 0 },
   heroTopRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     gap: 12,
-    marginBottom: 12,
-    flexWrap: 'wrap',
-  },
-  heroEyebrowRow: {
-    flexDirection: 'row',
+    flexWrap: "wrap",
   },
   heroEyebrowBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    alignSelf: "flex-start",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
     backgroundColor: palette.primarySoft,
     borderRadius: 999,
     paddingHorizontal: 12,
-    paddingVertical: 7,
-  },
-  heroEyebrow: {
-    marginLeft: 6,
-    color: palette.primary,
-    fontSize: 12,
-    fontWeight: 'bold',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  classDropdownButton: {
-    minWidth: 220,
-    maxWidth: 320,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 10,
-    backgroundColor: '#F8FBFF',
-    borderWidth: 1,
-    borderColor: palette.border,
-    borderRadius: 16,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-  },
-  classDropdownTextWrap: {
-    flex: 1,
-  },
-  classDropdownLabel: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: palette.textMuted,
-    textTransform: 'uppercase',
-  },
-  classDropdownValue: {
-    marginTop: 4,
-    fontSize: 14,
-    fontWeight: '700',
-    color: palette.textStrong,
-  },
-  dropdownOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.12)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-  },
-  dropdownModal: {
-    width: '100%',
-    maxWidth: 360,
-    backgroundColor: '#fff',
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: palette.border,
     paddingVertical: 8,
   },
-  dropdownItem: {
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+  heroEyebrow: {
+    color: palette.primary,
+    fontWeight: "800",
+    fontSize: 12,
+    letterSpacing: 0.4,
+    textTransform: "uppercase",
   },
-  dropdownItemActive: {
-    backgroundColor: palette.primarySoft,
+  classDropdownButton: {
+    minWidth: 0,
+    width: "100%",
+    maxWidth: 320,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    borderWidth: 1,
+    borderColor: palette.border,
+    backgroundColor: "#FBFCFE",
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    gap: 10,
   },
-  dropdownItemText: {
-    flex: 1,
+  classDropdownTextWrap: { flex: 1 },
+  classDropdownLabel: {
+    fontSize: 11,
+    color: palette.textMuted,
+    fontWeight: "700",
+    textTransform: "uppercase",
+  },
+  classDropdownValue: {
     fontSize: 14,
     color: palette.textStrong,
-    fontWeight: '600',
-  },
-  dropdownItemTextActive: {
-    color: palette.primary,
-    fontWeight: '800',
+    fontWeight: "800",
+    marginTop: 2,
   },
   heroTitle: {
-    fontSize: 28,
-    fontWeight: '800',
+    fontSize: 24,
+    lineHeight: 31,
     color: palette.textStrong,
+    fontWeight: "900",
+    marginTop: 18,
   },
   heroSubtitle: {
     marginTop: 6,
     fontSize: 14,
-    fontWeight: '600',
     color: palette.text,
+    fontWeight: "700",
   },
   heroDescription: {
     marginTop: 10,
     fontSize: 14,
-    lineHeight: 21,
+    lineHeight: 22,
     color: palette.textMuted,
-    maxWidth: 680,
+    maxWidth: 760,
   },
   heroRight: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
+    minWidth: 0,
+    flexDirection: "row",
+    flexWrap: "wrap",
     gap: 10,
+    alignContent: "flex-start",
+    justifyContent: "flex-end",
   },
+  heroRightCompact: { width: "100%", justifyContent: "space-between" },
   miniStatCard: {
-    minWidth: 110,
-    backgroundColor: '#F8FBFF',
-    borderRadius: 18,
+    flexGrow: 1,
+    flexBasis: 104,
+    minHeight: 108,
     borderWidth: 1,
     borderColor: palette.border,
-    paddingVertical: 14,
-    paddingHorizontal: 12,
-    alignItems: 'center',
+    borderRadius: 20,
+    padding: 12,
+    backgroundColor: "#FBFCFE",
   },
   miniStatIcon: {
     width: 34,
     height: 34,
     borderRadius: 17,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 8,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 10,
   },
-  miniStatValue: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: palette.textStrong,
-  },
+  miniStatValue: { color: palette.textStrong, fontSize: 20, fontWeight: "900" },
   miniStatLabel: {
-    marginTop: 4,
-    fontSize: 12,
     color: palette.textMuted,
-    textAlign: 'center',
+    fontSize: 11,
+    fontWeight: "700",
+    marginTop: 3,
   },
-  metricsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
-    marginBottom: 12,
-  },
+  metricsGrid: { flexDirection: "row", flexWrap: "wrap", gap: 12 },
+  metricsGridSingle: { flexDirection: "column", gap: 12 },
   metricCard: {
-    minWidth: 180,
-    flexGrow: 1,
-    flexBasis: 220,
+    flex: 1,
+    minWidth: 0,
+    flexBasis: 190,
     backgroundColor: palette.surface,
-    borderRadius: 20,
+    borderRadius: 22,
+    padding: 16,
     borderWidth: 1,
     borderColor: palette.border,
-    padding: 16,
   },
   metricTopRow: {
-    marginBottom: 12,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
   },
   metricIconWrap: {
     width: 42,
     height: 42,
     borderRadius: 14,
-    justifyContent: 'center',
-    alignItems: 'center',
+    alignItems: "center",
+    justifyContent: "center",
   },
   metricValue: {
-    fontSize: 26,
-    fontWeight: '800',
+    marginTop: 14,
+    fontSize: 28,
     color: palette.textStrong,
+    fontWeight: "900",
   },
   metricTitle: {
-    marginTop: 6,
-    fontSize: 13,
-    fontWeight: '700',
-    color: palette.text,
+    marginTop: 4,
+    color: palette.textStrong,
+    fontSize: 14,
+    fontWeight: "800",
   },
   metricHelper: {
     marginTop: 6,
-    fontSize: 12,
-    lineHeight: 17,
     color: palette.textMuted,
-  },
-  dualColumn: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
-    
+    fontSize: 12,
+    lineHeight: 18,
   },
   sectionCard: {
-    flex: 1,
-    minWidth: 300,
     backgroundColor: palette.surface,
     borderRadius: 22,
+    padding: 16,
     borderWidth: 1,
     borderColor: palette.border,
-    padding: 18,
-    marginBottom: 12,
+    shadowColor: "#0F172A",
+    shadowOpacity: 0.04,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 2,
   },
+  sectionCardHalf: { flex: 1, minWidth: 300 },
+  sectionCardFull: { width: "100%", minWidth: 0 },
   sectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    justifyContent: "space-between",
     gap: 12,
-    marginBottom: 14,
+    alignItems: "flex-start",
+    marginBottom: 16,
   },
-  sectionHeaderText: {
-    flex: 1,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: palette.textStrong,
-  },
+  sectionHeaderText: { flex: 1 },
+  sectionTitle: { color: palette.textStrong, fontSize: 18, fontWeight: "900" },
   sectionSubtitle: {
-    marginTop: 4,
-    fontSize: 13,
     color: palette.textMuted,
+    fontSize: 12,
+    marginTop: 4,
+    lineHeight: 18,
   },
   sectionBadge: {
     backgroundColor: palette.primarySoft,
-    borderRadius: 999,
-    alignSelf: 'flex-start',
     paddingHorizontal: 10,
-    paddingVertical: 6,
+    paddingVertical: 7,
+    borderRadius: 999,
   },
-  sectionBadgeText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: palette.primary,
+  sectionBadgeText: { color: palette.primary, fontSize: 12, fontWeight: "800" },
+  trendDelta: {
+    fontWeight: "900",
+    fontSize: 13,
+    backgroundColor: "#F8FAFC",
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 999,
   },
-  barRow: {
-    marginBottom: 14,
-  },
-  barTextRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 8,
-    gap: 12,
-  },
-  barLabel: {
+  lineChart: { borderRadius: 18 },
+  aiGrid: { flexDirection: "row", flexWrap: "wrap", gap: 12 },
+  aiCard: {
     flex: 1,
-    fontSize: 13,
-    fontWeight: '700',
-    color: palette.text,
+    minWidth: 0,
+    flexBasis: 260,
+    flexDirection: "row",
+    gap: 12,
+    borderWidth: 1,
+    borderColor: palette.border,
+    borderRadius: 18,
+    padding: 14,
+    backgroundColor: "#FBFCFE",
   },
-  barRightValue: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: palette.textStrong,
+  aiIconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
   },
+  aiTextWrap: { flex: 1 },
+  aiTitle: { color: palette.textStrong, fontSize: 14, fontWeight: "900" },
+  aiBody: { color: palette.text, fontSize: 12, lineHeight: 18, marginTop: 4 },
+  dualColumn: { flexDirection: "row", flexWrap: "wrap", gap: 16 },
+  dualColumnCompact: { flexDirection: "column", gap: 14 },
+  barRow: { marginBottom: 14 },
+  barTextRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: 10,
+    marginBottom: 7,
+  },
+  barLabel: { flex: 1, color: palette.text, fontSize: 13, fontWeight: "800" },
+  barRightValue: { color: palette.textMuted, fontSize: 12, fontWeight: "800" },
   barTrack: {
     height: 10,
-    borderRadius: 999,
     backgroundColor: palette.slateBar,
-    overflow: 'hidden',
-  },
-  barFill: {
-    height: '100%',
     borderRadius: 999,
+    overflow: "hidden",
   },
+  barFill: { height: "100%", borderRadius: 999 },
   chartDivider: {
     height: 1,
     backgroundColor: palette.border,
     marginVertical: 10,
   },
-  topicRow: {
-    marginBottom: 10,
-  },
+  topicRow: { marginBottom: 8 },
   topicMeta: {
-    marginTop: 2,
-    fontSize: 12,
+    marginTop: -6,
+    marginBottom: 10,
     color: palette.textMuted,
+    fontSize: 11,
+    fontWeight: "700",
   },
-  emptyText: {
-    fontSize: 14,
-    color: palette.textMuted,
+  rankingScroll: { maxHeight: 430 },
+  rankingRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: palette.border,
   },
-  interventionScroll: {
-    maxHeight: 380,
+  rankingRowCompact: { alignItems: "flex-start" },
+  rankBadge: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: palette.blueSoft,
   },
-  interventionScrollContent: {
-    paddingRight: 4,
+  rankBadgeText: { color: palette.blue, fontWeight: "900", fontSize: 13 },
+  rankingInfo: { flex: 1 },
+  rankingName: { color: palette.textStrong, fontSize: 14, fontWeight: "900" },
+  rankingMeta: { color: palette.textMuted, fontSize: 12, marginTop: 3 },
+  percentileTrack: {
+    marginTop: 8,
+    height: 8,
+    borderRadius: 999,
+    backgroundColor: palette.slateBar,
+    overflow: "hidden",
   },
+  percentileFill: { height: "100%", borderRadius: 999 },
+  percentilePill: {
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 999,
+  },
+  percentileText: { fontSize: 12, fontWeight: "900" },
+  interventionScroll: { maxHeight: 460 },
+  interventionScrollContent: { gap: 12 },
   interventionCard: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    paddingVertical: 14,
-    paddingHorizontal: 14,
-    borderRadius: 16,
     borderWidth: 1,
-    borderColor: '#EEF2F6',
-    marginBottom: 12,
-    backgroundColor: '#FFFFFF',
-    borderLeftWidth: 4,
+    borderColor: palette.border,
+    borderLeftWidth: 5,
+    borderRadius: 18,
+    padding: 14,
+    backgroundColor: "#FBFCFE",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    gap: 12,
   },
-  interventionLeft: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    flex: 1,
-  },
+  interventionCardCompact: { flexDirection: "column" },
+  interventionLeft: { flex: 1, flexDirection: "row", gap: 12 },
+  interventionLeftCompact: { width: "100%" },
   avatarCircle: {
     width: 42,
     height: 42,
-    borderRadius: 21,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
   },
-  interventionTextWrapEnhanced: {
-    flex: 1,
-  },
+  interventionTextWrapEnhanced: { flex: 1 },
   nameAndTrendRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flexWrap: 'wrap',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 8,
+    flexWrap: "wrap",
   },
   interventionName: {
-    fontSize: 15,
-    fontWeight: '700',
     color: palette.textStrong,
-  },
-  interventionMeta: {
-    marginTop: 4,
-    fontSize: 13,
-    lineHeight: 18,
-    color: palette.textMuted,
-  },
-  reasonText: {
-    marginTop: 6,
-    fontSize: 12,
-    color: palette.text,
-    lineHeight: 17,
-    fontWeight: '600',
-  },
-  recommendationText: {
-    marginTop: 5,
-    fontSize: 12,
-    color: palette.textMuted,
-    lineHeight: 17,
+    fontSize: 15,
+    fontWeight: "900",
   },
   trendChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 4,
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 999,
   },
-  trendChipText: {
-    fontSize: 11,
-    fontWeight: '700',
+  trendChipText: { fontSize: 11, fontWeight: "800" },
+  interventionMeta: {
+    marginTop: 5,
+    color: palette.textMuted,
+    fontSize: 12,
+    lineHeight: 18,
   },
-  priorityTag: {
+  reasonText: {
     marginTop: 8,
-    alignSelf: 'flex-start',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 999,
-  },
-  priorityText: {
-    fontSize: 11,
-    fontWeight: '700',
-  },
-  interventionActions: {
-    alignItems: 'flex-end',
-    gap: 8,
-    marginLeft: 12,
-  },
-  riskPill: {
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-  },
-  riskPillText: {
+    color: palette.text,
     fontSize: 12,
-    fontWeight: '800',
+    lineHeight: 18,
+    fontWeight: "700",
   },
-  actionButtons: {
-    flexDirection: 'row',
-    gap: 10,
-  },
-  actionBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 8,
-    backgroundColor: '#F4F7FB',
-  },
-  actionText: {
+  recommendationText: {
+    marginTop: 4,
+    color: palette.text,
     fontSize: 12,
-    fontWeight: '600',
-    color: '#334E68',
+    lineHeight: 18,
   },
-  suggestionRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: '#EEF2F6',
-  },
-  suggestionIconWrap: {
-    width: 34,
-    height: 34,
-    borderRadius: 12,
-    backgroundColor: palette.orangeSoft,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 10,
-  },
-  suggestionTextWrap: {
-    flex: 1,
-  },
-  suggestionTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: palette.textStrong,
-  },
-  suggestionBody: {
-    marginTop: 3,
-    fontSize: 12,
+  riskPill: { paddingHorizontal: 10, paddingVertical: 7, borderRadius: 999 },
+  riskPillCompact: { alignSelf: "flex-start" },
+  riskPillText: { fontSize: 12, fontWeight: "900" },
+  emptyText: {
     color: palette.textMuted,
-    lineHeight: 17,
-  },
-  tableHeader: {
-    flexDirection: 'row',
-    paddingBottom: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5EAF1',
-    marginBottom: 4,
-  },
-  tableHeaderText: {
-    flex: 1,
-    fontSize: 12,
-    fontWeight: '800',
-    color: '#64748B',
-    textTransform: 'uppercase',
-  },
-  tableRow: {
-    flexDirection: 'row',
-    paddingVertical: 13,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F1F5F9',
-    alignItems: 'center',
-  },
-  tableCell: {
-    flex: 1,
     fontSize: 13,
-    color: palette.textStrong,
-    fontWeight: '500',
-  },
-  tableSubCell: {
-    marginTop: 3,
-    fontSize: 11,
-    color: palette.textMuted,
-  },
-  flex2: {
-    flex: 2,
-  },
-  riskCell: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  riskDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    marginRight: 6,
-  },
-  riskCellText: {
-    fontSize: 13,
-    color: palette.textStrong,
-    fontWeight: '600',
+    lineHeight: 20,
+    fontWeight: "700",
   },
 });

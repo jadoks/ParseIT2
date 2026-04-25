@@ -1048,40 +1048,42 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
   }, [currentStudent?.studentId]);
 
   const handleJoinClass = async (classCode: string) => {
-    const trimmedCode = classCode.trim().toUpperCase();
+    const trimmedCode = String(classCode || '').trim().toUpperCase();
 
-    if (!trimmedCode) return;
-
-    try {
-      const joinResponse = await fetch(`${API_BASE_URL}/join-class`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          classCode: trimmedCode,
-          studentId: currentStudent.studentId,
-        }),
-      });
-
-      const joinData = await joinResponse.json();
-
-      if (joinResponse.status === 409) {
-        await loadJoinedClasses();
-        Alert.alert(
-          'Already Joined',
-          joinData?.error || 'You are already a member of this class.'
-        );
-        return;
-      }
-
-      if (!joinResponse.ok) {
-        throw new Error(joinData?.error || 'Failed to join class.');
-      }
-
-      await loadJoinedClasses();
-      Alert.alert('Success', 'You joined the class successfully.');
-    } catch (error: any) {
-      Alert.alert('Join Class Failed', error?.message || 'Unable to join class.');
+    if (!trimmedCode) {
+      throw new Error('Please enter a class code.');
     }
+
+    if (!currentStudent?.studentId) {
+      throw new Error('Student ID is missing. Please log in again.');
+    }
+
+    const joinResponse = await fetch(`${API_BASE_URL}/join-class`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        classCode: trimmedCode,
+        studentId: currentStudent.studentId,
+      }),
+    });
+
+    const joinData = await joinResponse.json().catch(() => ({}));
+
+    if (!joinResponse.ok) {
+      throw new Error(
+        joinData?.error ||
+          joinData?.message ||
+          'Failed to join class. Please check the class code.'
+      );
+    }
+
+    await loadJoinedClasses();
+
+    return {
+      success: true,
+      message: joinData?.message || 'Class joined successfully.',
+      data: joinData?.data,
+    };
   };
 
   const hydratedCommunityPosts = useMemo<CommunityPost[]>(() => {

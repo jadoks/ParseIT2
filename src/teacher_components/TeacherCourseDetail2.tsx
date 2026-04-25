@@ -4,6 +4,7 @@ import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
+  ActivityIndicator,
   Linking,
   Modal,
   Platform,
@@ -327,6 +328,7 @@ const TeacherCourseDetail2 = ({
   const [resultModalTitle, setResultModalTitle] = useState('');
   const [resultModalMessage, setResultModalMessage] = useState('');
   const [errors, setErrors] = useState<FormErrors>({});
+  const [isSaving, setIsSaving] = useState(false);
 
   const showResultModal = (type: 'success' | 'error', title: string, message: string) => {
     setResultModalType(type);
@@ -626,6 +628,8 @@ const TeacherCourseDetail2 = ({
   };
 
   const handleCreate = async () => {
+    if (isSaving) return;
+
     if (!course?.id) {
       showResultModal('error', 'Error', 'No class selected.');
       return;
@@ -636,6 +640,8 @@ const TeacherCourseDetail2 = ({
         showResultModal('error', 'Required', 'Please enter the title and week.');
         return;
       }
+
+      setIsSaving(true);
 
       try {
         let uploadedFile = null;
@@ -670,11 +676,16 @@ const TeacherCourseDetail2 = ({
         showResultModal('success', 'Success', 'Material uploaded successfully.');
       } catch (error: any) {
         showResultModal('error', 'Upload Failed', error?.message || 'Failed to create material.');
+      } finally {
+        setIsSaving(false);
       }
+
       return;
     }
 
     if (!validateAssignmentForm()) return;
+
+    setIsSaving(true);
 
     try {
       let uploadedFile = null;
@@ -713,6 +724,8 @@ const TeacherCourseDetail2 = ({
       showResultModal('success', 'Success', 'Assignment uploaded successfully.');
     } catch (error: any) {
       showResultModal('error', 'Upload Failed', error?.message || 'Failed to create assignment.');
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -803,6 +816,7 @@ const TeacherCourseDetail2 = ({
                 style={[styles.materialChip, active && styles.materialChipActive]}
                 onPress={() => toggleRelatedMaterial(material.id)}
                 activeOpacity={0.85}
+                disabled={isSaving}
               >
                 <Ionicons
                   name={active ? 'checkmark-circle' : 'ellipse-outline'}
@@ -825,9 +839,10 @@ const TeacherCourseDetail2 = ({
     <View style={styles.sectionBlock}>
       <Text style={styles.sectionLabel}>Due Date & Time</Text>
       <TouchableOpacity
-        style={[styles.dateButton, errors.dueDate ? styles.errorBorder : null]}
+        style={[styles.dateButton, errors.dueDate ? styles.errorBorder : null, isSaving ? styles.disabledInput : null]}
         onPress={openDateTimePicker}
         activeOpacity={0.85}
+        disabled={isSaving}
       >
         <Ionicons name="calendar-outline" size={18} color="#D32F2F" />
         <Text style={styles.dateButtonText}>{formDue || 'Select due date and time'}</Text>
@@ -849,6 +864,7 @@ const TeacherCourseDetail2 = ({
           }}
           placeholder="Enter Header"
           placeholderTextColor="#999"
+          editable={!isSaving}
         />
         {renderInputError(errors.title)}
 
@@ -863,6 +879,7 @@ const TeacherCourseDetail2 = ({
           placeholder="Enter Instruction"
           placeholderTextColor="#999"
           multiline
+          editable={!isSaving}
         />
         {renderInputError(errors.instruction)}
       </View>
@@ -883,6 +900,7 @@ const TeacherCourseDetail2 = ({
               keyboardType="numeric"
               placeholder="Total Score"
               placeholderTextColor="#999"
+              editable={!isSaving}
             />
             {renderInputError(errors.totalScore)}
           </View>
@@ -899,6 +917,7 @@ const TeacherCourseDetail2 = ({
               keyboardType="numeric"
               placeholder="Points On Time"
               placeholderTextColor="#999"
+              editable={!isSaving}
             />
             {renderInputError(errors.pointsOnTime)}
           </View>
@@ -909,7 +928,11 @@ const TeacherCourseDetail2 = ({
         {renderRelatedMaterialsSelector()}
 
         <Text style={styles.sectionLabel}>Attachment</Text>
-        <TouchableOpacity style={styles.primaryButtonWide} onPress={handlePickAssignmentFile}>
+        <TouchableOpacity
+          style={[styles.primaryButtonWide, isSaving ? styles.disabledButton : null]}
+          onPress={handlePickAssignmentFile}
+          disabled={isSaving}
+        >
           <Ionicons name="cloud-upload-outline" size={18} color="#FFF" />
           <Text style={styles.uploadBtnText}>
             {pickedAssignmentFile?.name ? 'Change File' : 'Upload File'}
@@ -976,7 +999,11 @@ const TeacherCourseDetail2 = ({
           />
 
           <Text style={styles.sectionLabel}>Attachment</Text>
-          <TouchableOpacity style={styles.primaryButtonWide} onPress={handlePickFile}>
+          <TouchableOpacity
+            style={[styles.primaryButtonWide, isSaving ? styles.disabledButton : null]}
+            onPress={handlePickFile}
+            disabled={isSaving}
+          >
             <Ionicons name="cloud-upload-outline" size={18} color="#FFF" />
             <Text style={styles.uploadBtnText}>Upload File</Text>
           </TouchableOpacity>
@@ -1177,9 +1204,11 @@ const TeacherCourseDetail2 = ({
 
               <TouchableOpacity
                 onPress={() => {
+                  if (isSaving) return;
                   setShowCreateModal(false);
                   resetCreateForm();
                 }}
+                disabled={isSaving}
               >
                 <Ionicons name="close" size={24} color="#111" />
               </TouchableOpacity>
@@ -1197,11 +1226,25 @@ const TeacherCourseDetail2 = ({
                 style={[
                   styles.floatingSaveButton,
                   activeTab === 'Assignments' && Object.keys(errors).length > 0 ? styles.floatingSaveButtonWarn : null,
+                  isSaving ? styles.floatingSaveButtonDisabled : null,
                 ]}
                 onPress={handleCreate}
+                disabled={isSaving}
+                activeOpacity={isSaving ? 1 : 0.85}
               >
-                <Ionicons name="save-outline" size={18} color="#FFF" />
-                <Text style={styles.floatingSaveButtonText}>Save</Text>
+                {isSaving ? (
+                  <>
+                    <ActivityIndicator size="small" color="#FFF" />
+                    <Text style={styles.floatingSaveButtonText}>
+                      {activeTab === 'Materials' ? 'Saving Material...' : 'Saving Assignment...'}
+                    </Text>
+                  </>
+                ) : (
+                  <>
+                    <Ionicons name="save-outline" size={18} color="#FFF" />
+                    <Text style={styles.floatingSaveButtonText}>Save</Text>
+                  </>
+                )}
               </TouchableOpacity>
             </View>
           </View>
@@ -1398,6 +1441,20 @@ const TeacherCourseDetail2 = ({
           </View>
         </View>
       </Modal>
+
+      {isSaving && (
+        <View style={styles.savingOverlay} pointerEvents="auto">
+          <View style={styles.savingCard}>
+            <ActivityIndicator size="large" color="#D32F2F" />
+            <Text style={styles.savingTitle}>
+              {activeTab === 'Materials' ? 'Saving Material' : 'Saving Assignment'}
+            </Text>
+            <Text style={styles.savingMessage}>
+              Please wait while your file and details are being stored in Firebase.
+            </Text>
+          </View>
+        </View>
+      )}
     </SafeAreaView>
   );
 };
@@ -1619,6 +1676,53 @@ const styles = StyleSheet.create({
   },
   floatingSaveButtonWarn: {
     backgroundColor: '#C62828',
+  },
+  floatingSaveButtonDisabled: {
+    opacity: 0.72,
+  },
+  disabledButton: {
+    opacity: 0.65,
+  },
+  disabledInput: {
+    opacity: 0.65,
+    backgroundColor: '#F8F8F8',
+  },
+  savingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.38)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 18,
+    zIndex: 9999,
+    elevation: 9999,
+  },
+  savingCard: {
+    width: '100%',
+    maxWidth: 330,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 18,
+    paddingVertical: 24,
+    paddingHorizontal: 18,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.18,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 12,
+  },
+  savingTitle: {
+    marginTop: 12,
+    fontSize: 17,
+    fontWeight: '900',
+    color: '#111',
+    textAlign: 'center',
+  },
+  savingMessage: {
+    marginTop: 6,
+    fontSize: 13,
+    lineHeight: 19,
+    color: '#666',
+    textAlign: 'center',
   },
   floatingSaveButtonText: {
     color: '#FFF',

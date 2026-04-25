@@ -1,4 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
+import * as FileSystem from 'expo-file-system/legacy';
+import * as Print from 'expo-print';
 import React, { useMemo, useState } from 'react';
 import {
   ActivityIndicator,
@@ -75,6 +77,19 @@ const normalizeSemester = (value?: string | null) => {
 const formatGrade = (value: number) => {
   if (!Number.isFinite(value)) return '';
   return value.toFixed(3);
+};
+
+const escapeHtml = (value: string | number) => {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+};
+
+const sanitizeFileName = (value: string) => {
+  return value.replace(/[^a-z0-9-_]+/gi, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
 };
 
 const escapeRegExp = (value: string) => {
@@ -441,6 +456,431 @@ const Grades = () => {
     loadStudentGradesFromDatabase();
   };
 
+  const buildGradeReportHtml = (record: StudentRecord) => {
+    const rows = record.grades
+      .map(
+        (item) => `
+          <tr>
+            <td>${escapeHtml(item.code)}</td>
+            <td>${escapeHtml(item.desc)}</td>
+            <td class="center">${escapeHtml(item.unit.toFixed(1))}</td>
+            <td class="center bold">${escapeHtml(formatGrade(item.grade))}</td>
+          </tr>
+        `
+      )
+      .join('');
+
+    return `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="utf-8" />
+          <style>
+            @page {
+              size: A4;
+              margin: 22mm 14mm;
+            }
+
+            * {
+              box-sizing: border-box;
+            }
+
+            body {
+              margin: 0;
+              font-family: Arial, Helvetica, sans-serif;
+              color: #000;
+              background: #fff;
+            }
+
+            .report {
+              width: 100%;
+            }
+
+            .school-header {
+              text-align: center;
+              margin-bottom: 24px;
+              line-height: 1.25;
+            }
+
+            .republic {
+              font-size: 12px;
+              margin-bottom: 2px;
+            }
+
+            .school-name {
+              font-size: 16px;
+              font-weight: 800;
+              letter-spacing: 0.4px;
+            }
+
+            .campus {
+              font-size: 13px;
+              font-weight: 700;
+            }
+
+            .address,
+            .contact {
+              font-size: 9px;
+            }
+
+            .title {
+              text-align: center;
+              font-size: 18px;
+              font-weight: 900;
+              letter-spacing: 1.5px;
+              margin-top: 16px;
+              margin-bottom: 6px;
+            }
+
+            .subtitle {
+              text-align: center;
+              font-size: 12px;
+              font-weight: 700;
+              margin-bottom: 14px;
+            }
+
+            .divider {
+              border-top: 1px solid #ddd;
+              margin: 12px 0 14px;
+            }
+
+            .student-panel {
+              width: 100%;
+              border: 1px solid #e2d8cf;
+              border-radius: 9px;
+              padding: 12px 14px;
+              margin-bottom: 16px;
+            }
+
+            .student-grid {
+              width: 100%;
+              border-collapse: collapse;
+            }
+
+            .student-grid td {
+              border: 0;
+              padding: 4px 0;
+              font-size: 12px;
+            }
+
+            .label {
+              color: #5b514b;
+              font-weight: 900;
+              text-transform: uppercase;
+              width: 19%;
+            }
+
+            .value {
+              color: #000;
+              font-weight: 900;
+              width: 31%;
+              text-align: right;
+              padding-right: 24px;
+            }
+
+            .gwa {
+              color: #b71c1c;
+            }
+
+            table.grades {
+              width: 100%;
+              border-collapse: separate;
+              border-spacing: 0;
+              border: 1px solid #cfcfcf;
+              border-radius: 6px;
+              overflow: hidden;
+              font-size: 12px;
+            }
+
+            .grades th {
+              background: #b71c1c;
+              color: white;
+              border-right: 1px solid #ffffff;
+              padding: 10px 8px;
+              text-align: center;
+              text-transform: uppercase;
+              font-weight: 900;
+            }
+
+            .grades th:last-child {
+              border-right: 0;
+            }
+
+            .grades td {
+              border-top: 1px solid #d9d9d9;
+              border-right: 1px solid #d9d9d9;
+              padding: 10px 8px;
+              vertical-align: middle;
+            }
+
+            .grades td:last-child {
+              border-right: 0;
+            }
+
+            .code {
+              width: 13%;
+            }
+
+            .detail {
+              width: 67%;
+            }
+
+            .units {
+              width: 10%;
+            }
+
+            .grade {
+              width: 10%;
+            }
+
+            .center {
+              text-align: center;
+            }
+
+            .bold {
+              font-weight: 900;
+            }
+          </style>
+        </head>
+
+        <body>
+          <main class="report">
+            <section class="school-header">
+              <div class="republic">Republic of the Philippines</div>
+              <div class="school-name">CEBU TECHNOLOGICAL UNIVERSITY</div>
+              <div class="campus">ARGAO CAMPUS</div>
+              <div class="address">Ed Kintanar Street, Lamacan, Argao Cebu Philippines</div>
+              <div class="contact">Website: http://www.argao.ctu.edu.ph &nbsp; E-mail: ctuargao@ctu.edu.ph</div>
+            </section>
+
+            <section>
+              <div class="title">OFFICIAL GRADE REPORT</div>
+              <div class="subtitle">Academic Year ${escapeHtml(record.schoolYear)} | ${escapeHtml(record.semester)}</div>
+              <div class="divider"></div>
+            </section>
+
+            <section class="student-panel">
+              <table class="student-grid">
+                <tr>
+                  <td class="label">Student ID</td>
+                  <td class="value">${escapeHtml(record.studentId)}</td>
+                  <td class="label">Student Name</td>
+                  <td class="value">${escapeHtml(record.fullName)}</td>
+                </tr>
+                <tr>
+                  <td class="label">Total Units</td>
+                  <td class="value">${escapeHtml(record.totalUnits.toFixed(1))}</td>
+                  <td class="label">GWA</td>
+                  <td class="value gwa">${escapeHtml(formatGrade(record.gwa))}</td>
+                </tr>
+              </table>
+            </section>
+
+            <table class="grades">
+              <thead>
+                <tr>
+                  <th class="code">Course<br />Code</th>
+                  <th class="detail">Course Detail</th>
+                  <th class="units">Units</th>
+                  <th class="grade">Final Grade</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${rows}
+              </tbody>
+            </table>
+          </main>
+        </body>
+      </html>
+    `;
+  };
+
+  const downloadGradeReportPdfOnWeb = async (record: StudentRecord, fileName: string) => {
+    const { jsPDF } = await import('jspdf');
+
+    const doc = new jsPDF({
+      orientation: 'portrait',
+      unit: 'pt',
+      format: 'a4',
+    });
+
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const margin = 40;
+    const tableWidth = pageWidth - margin * 2;
+    let y = 48;
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(10);
+    doc.text('Republic of the Philippines', pageWidth / 2, y, { align: 'center' });
+
+    y += 14;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(14);
+    doc.text('CEBU TECHNOLOGICAL UNIVERSITY', pageWidth / 2, y, { align: 'center' });
+
+    y += 13;
+    doc.setFontSize(11);
+    doc.text('ARGAO CAMPUS', pageWidth / 2, y, { align: 'center' });
+
+    y += 12;
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.text('Ed Kintanar Street, Lamacan, Argao Cebu Philippines', pageWidth / 2, y, { align: 'center' });
+
+    y += 42;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(18);
+    doc.text('OFFICIAL GRADE REPORT', pageWidth / 2, y, { align: 'center' });
+
+    y += 16;
+    doc.setFontSize(10);
+    doc.text(`Academic Year ${record.schoolYear} | ${record.semester}`, pageWidth / 2, y, { align: 'center' });
+
+    y += 16;
+    doc.line(margin, y, pageWidth - margin, y);
+
+    y += 24;
+    doc.setDrawColor(226, 216, 207);
+    doc.roundedRect(margin, y - 14, tableWidth, 46, 6, 6);
+
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'bold');
+    doc.text('STUDENT ID', margin + 12, y);
+    doc.text(record.studentId, margin + 250, y, { align: 'right' });
+    doc.text('STUDENT NAME', margin + 290, y);
+    doc.text(record.fullName, pageWidth - margin - 12, y, { align: 'right' });
+
+    y += 22;
+    doc.text('TOTAL UNITS', margin + 12, y);
+    doc.text(record.totalUnits.toFixed(1), margin + 250, y, { align: 'right' });
+    doc.text('GWA', margin + 290, y);
+    doc.text(formatGrade(record.gwa), pageWidth - margin - 12, y, { align: 'right' });
+
+    y += 34;
+
+    const colWidths = [70, tableWidth - 70 - 58 - 78, 58, 78];
+    const colX = [
+      margin,
+      margin + colWidths[0],
+      margin + colWidths[0] + colWidths[1],
+      margin + colWidths[0] + colWidths[1] + colWidths[2],
+    ];
+
+    const drawTableHeader = () => {
+      doc.setFillColor(183, 28, 28);
+      doc.rect(margin, y, tableWidth, 38, 'F');
+
+      doc.setTextColor(255, 255, 255);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(8);
+      doc.text('COURSE\nCODE', colX[0] + colWidths[0] / 2, y + 15, { align: 'center' });
+      doc.text('COURSE DETAIL', colX[1] + colWidths[1] / 2, y + 22, { align: 'center' });
+      doc.text('UNITS', colX[2] + colWidths[2] / 2, y + 22, { align: 'center' });
+      doc.text('FINAL GRADE', colX[3] + colWidths[3] / 2, y + 22, { align: 'center' });
+
+      doc.setTextColor(0, 0, 0);
+      y += 38;
+    };
+
+    drawTableHeader();
+
+    record.grades.forEach((item) => {
+      const detailLines = doc.splitTextToSize(item.desc, colWidths[1] - 14);
+      const rowHeight = Math.max(36, detailLines.length * 12 + 18);
+
+      if (y + rowHeight > pageHeight - 40) {
+        doc.addPage();
+        y = 40;
+        drawTableHeader();
+      }
+
+      doc.setDrawColor(217, 217, 217);
+      doc.rect(margin, y, tableWidth, rowHeight);
+
+      let xCursor = margin;
+      colWidths.forEach((widthValue) => {
+        doc.line(xCursor, y, xCursor, y + rowHeight);
+        xCursor += widthValue;
+      });
+      doc.line(margin + tableWidth, y, margin + tableWidth, y + rowHeight);
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(9);
+      doc.text(item.code, colX[0] + 8, y + 22);
+      doc.text(detailLines, colX[1] + 8, y + 22);
+      doc.text(item.unit.toFixed(1), colX[2] + colWidths[2] / 2, y + 22, { align: 'center' });
+
+      doc.setFont('helvetica', 'bold');
+      doc.text(formatGrade(item.grade), colX[3] + colWidths[3] / 2, y + 22, { align: 'center' });
+
+      y += rowHeight;
+    });
+
+    doc.save(fileName);
+  };
+
+  const downloadGradeReportPdf = async () => {
+    if (!studentRecord) {
+      Alert.alert('No Report', 'Please generate a grade report first.');
+      return;
+    }
+
+    const safeSchoolYear = sanitizeFileName(studentRecord.schoolYear.replace(/S\.?Y\.?/gi, '').trim());
+    const safeSemester = sanitizeFileName(studentRecord.semester);
+    const fileName = `grade-report-${sanitizeFileName(studentRecord.studentId)}-${safeSchoolYear}-${safeSemester}.pdf`;
+    const html = buildGradeReportHtml(studentRecord);
+
+    try {
+      if (Platform.OS === 'web') {
+        await downloadGradeReportPdfOnWeb(studentRecord, fileName);
+        return;
+      }
+
+      const { uri } = await Print.printToFileAsync({
+        html,
+        base64: false,
+      });
+
+      if (Platform.OS === 'android') {
+        const permissions = await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync();
+
+        if (!permissions.granted) {
+          Alert.alert('Cancelled', 'No folder selected.');
+          return;
+        }
+
+        const base64Pdf = await FileSystem.readAsStringAsync(uri, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+
+        const savedFileUri = await FileSystem.StorageAccessFramework.createFileAsync(
+          permissions.directoryUri,
+          fileName,
+          'application/pdf'
+        );
+
+        await FileSystem.writeAsStringAsync(savedFileUri, base64Pdf, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+
+        Alert.alert('Downloaded', 'Grade report PDF saved successfully.');
+        return;
+      }
+
+      const savedUri = `${FileSystem.documentDirectory}${fileName}`;
+
+      await FileSystem.copyAsync({
+        from: uri,
+        to: savedUri,
+      });
+
+      Alert.alert('Downloaded', `Grade report PDF saved successfully.\n${savedUri}`);
+    } catch (error: any) {
+      Alert.alert('Download Failed', error?.message || 'Unable to save the PDF file.');
+    }
+  };
+
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -501,10 +941,10 @@ const Grades = () => {
                       keyboardType="numeric"
                       maxLength={4}
                     />
-                  </View>
+                  </View> 
 
                   <View style={[styles.schoolYearBadge, styles.schoolYearBadgeMobile]}>
-                    <Text style={styles.schoolYearBadgeLabel}>Computed School Year</Text>
+                    <Text style={styles.schoolYearBadgeLabel}>School Year</Text>
                     <Text style={styles.schoolYearBadgeValue}>
                       {schoolYear || 'S.Y ---- - ----'}
                     </Text>
@@ -581,7 +1021,7 @@ const Grades = () => {
                     </View>
 
                     <View style={styles.academicSchoolYearField}>
-                      <Text style={styles.academicLabel}>Computed School Year</Text>
+                      <Text style={styles.academicLabel}>School Year</Text>
                       <View style={styles.schoolYearBadge}>
                         <Text style={styles.schoolYearBadgeValue}>
                           {schoolYear || 'S.Y ---- - ----'}
@@ -758,6 +1198,15 @@ const Grades = () => {
                     ))}
                   </View>
                 </ScrollView>
+
+                <TouchableOpacity
+                  style={[styles.downloadButton, isPhone && styles.downloadButtonMobile]}
+                  onPress={downloadGradeReportPdf}
+                  activeOpacity={0.85}
+                >
+                  <Ionicons name="download-outline" size={18} color="#FFFFFF" />
+                  <Text style={styles.downloadButtonText}>Download PDF</Text>
+                </TouchableOpacity>
 
               </View>
             </View>
@@ -1342,6 +1791,34 @@ const styles = StyleSheet.create({
   gradeText: {
     fontWeight: '900',
     color: '#111',
+  },
+
+  downloadButton: {
+    marginTop: 18,
+    backgroundColor: '#1F1F1F',
+    height: 46,
+    paddingHorizontal: 22,
+    borderRadius: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    alignSelf: 'center',
+  },
+
+  downloadButtonMobile: {
+    width: '100%',
+    height: 48,
+    borderRadius: 12,
+  },
+
+  downloadButtonText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '900',
+    letterSpacing: 0.25,
+    textTransform: 'uppercase',
+    fontFamily,
   },
 
 });

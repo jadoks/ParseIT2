@@ -74,6 +74,9 @@ type Conversation = {
   admin?: string;
   classId?: string;
   section?: string;
+  lastMessageAt?: any;
+  updatedAt?: any;
+  createdAt?: any;
 };
 
 type Message = {
@@ -171,11 +174,59 @@ const Messenger = ({
     onConversationActiveChange?.(false);
   }, [onConversationActiveChange]);
 
-  const formatConversationTime = (timestamp?: number | null) => {
-    if (!timestamp) return 'Now';
-    return new Date(timestamp).toLocaleTimeString([], {
-      hour: 'numeric',
-      minute: '2-digit',
+  const toMillis = (value: any): number => {
+    if (!value) return 0;
+
+    if (typeof value === 'number') {
+      return value > 0 ? value : 0;
+    }
+
+    if (typeof value?.toDate === 'function') {
+      const parsed = value.toDate().getTime();
+      return Number.isNaN(parsed) ? 0 : parsed;
+    }
+
+    if (typeof value?._seconds === 'number') {
+      return value._seconds * 1000;
+    }
+
+    if (typeof value?.seconds === 'number') {
+      return value.seconds * 1000;
+    }
+
+    if (typeof value === 'string') {
+      const parsed = Date.parse(value);
+      return Number.isNaN(parsed) ? 0 : parsed;
+    }
+
+    return 0;
+  };
+
+  const formatConversationTime = (timestamp?: any) => {
+    const time = toMillis(timestamp);
+    if (!time) return '';
+
+    const diff = Date.now() - time;
+    const minute = 60 * 1000;
+    const hour = 60 * minute;
+    const day = 24 * hour;
+    const week = 7 * day;
+
+    if (diff < 0) {
+      return new Date(time).toLocaleTimeString([], {
+        hour: 'numeric',
+        minute: '2-digit',
+      });
+    }
+
+    if (diff < minute) return 'Now';
+    if (diff < hour) return `${Math.floor(diff / minute)}m ago`;
+    if (diff < day) return `${Math.floor(diff / hour)}h ago`;
+    if (diff < week) return `${Math.floor(diff / day)}d ago`;
+
+    return new Date(time).toLocaleDateString([], {
+      month: 'short',
+      day: 'numeric',
     });
   };
 
@@ -215,30 +266,14 @@ const Messenger = ({
   };
 
   const resolveCreatedAt = (item: any) => {
-    if (typeof item?.createdAt === 'number') return item.createdAt;
-    if (typeof item?.timestamp === 'number') return item.timestamp;
-    if (typeof item?.sentAt === 'number') return item.sentAt;
-
-    if (typeof item?.createdAt?.seconds === 'number') {
-      return item.createdAt.seconds * 1000;
-    }
-
-    if (typeof item?.createdAt === 'string') {
-      const parsed = Date.parse(item.createdAt);
-      return Number.isNaN(parsed) ? null : parsed;
-    }
-
-    if (typeof item?.sentAt === 'string') {
-      const parsed = Date.parse(item.sentAt);
-      return Number.isNaN(parsed) ? null : parsed;
-    }
-
-    if (typeof item?.timestamp === 'string') {
-      const parsed = Date.parse(item.timestamp);
-      return Number.isNaN(parsed) ? null : parsed;
-    }
-
-    return null;
+    return (
+      toMillis(item?.createdAt) ||
+      toMillis(item?.lastMessageAt) ||
+      toMillis(item?.updatedAt) ||
+      toMillis(item?.timestamp) ||
+      toMillis(item?.sentAt) ||
+      null
+    );
   };
 
   const normalizeMessages = (rawMessages: any[]) => {
@@ -286,13 +321,15 @@ const Messenger = ({
           (item: any) => ({
             id: item.id,
             classId: item.classId,
-            name:
-              item.className && item.semester && item.schoolYear
-                ? `${item.className} - ${item.semester} (${item.schoolYear})`
-                : item.className || item.name || 'Conversation',
+            name: formatConversationName(item),
             last: item.lastMessage || 'Conversation created.',
             avatar: DEFAULT_AVATAR,
-            time: 'Now',
+            time: formatConversationTime(
+              item.lastMessageAt || item.updatedAt || item.createdAt
+            ),
+            lastMessageAt: item.lastMessageAt || null,
+            updatedAt: item.updatedAt || null,
+            createdAt: item.createdAt || null,
             isRoom: true,
             isCreatedRoom: false,
             admin: item.instructorName || item.ownerName || currentUserName,
@@ -315,7 +352,11 @@ const Messenger = ({
               fromMe: false,
               sender: 'System',
               text: `Conversation created for class ${conversation.name}.`,
-              createdAt: Date.now(),
+              createdAt:
+                toMillis(conversation.createdAt) ||
+                toMillis(conversation.updatedAt) ||
+                toMillis(conversation.lastMessageAt) ||
+                null,
               type: 'system',
             },
           ];
@@ -389,7 +430,11 @@ const Messenger = ({
                   fromMe: false,
                   sender: 'System',
                   text: `Conversation created for class ${selected.name}.`,
-                  createdAt: Date.now(),
+                  createdAt:
+                    toMillis(selected.createdAt) ||
+                    toMillis(selected.updatedAt) ||
+                    toMillis(selected.lastMessageAt) ||
+                    null,
                   type: 'system',
                 },
               ],
@@ -407,6 +452,7 @@ const Messenger = ({
                         ? lastMessage.text
                         : lastMessage.text || 'Sent a message',
                     time: formatConversationTime(lastMessage.createdAt),
+                    lastMessageAt: lastMessage.createdAt,
                   }
                 : conversation
             )
@@ -431,6 +477,23 @@ const Messenger = ({
         c.last.toLowerCase().includes(searchQuery.toLowerCase())
     );
   }, [conversations, searchQuery]);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setConversations((prev) =>
+        prev.map((conversation) => ({
+          ...conversation,
+          time: formatConversationTime(
+            conversation.lastMessageAt ||
+              conversation.updatedAt ||
+              conversation.createdAt
+          ),
+        }))
+      );
+    }, 60 * 1000);
+
+    return () => clearInterval(timer);
+  }, []);
 
   const currentMessages = selected ? messagesByConversation[selected.id] || [] : [];
 
@@ -463,6 +526,35 @@ const Messenger = ({
     const baseMembers = selected?.members || [];
     return Array.from(new Set([currentUserName, ...baseMembers].filter(Boolean)));
   }, [selected, currentUserName]);
+
+  const getShortCourseName = (value?: string) => {
+    const raw = String(value || '').trim();
+
+    if (!raw) return 'Conversation';
+
+    // Keep course code intact, remove only the description after " - "
+    return raw.split(' - ')[0].trim() || raw;
+  };
+
+  const formatConversationName = (item: any) => {
+    const shortName = getShortCourseName(item.className || item.name);
+    const section = String(item.section || '').trim();
+    const subjectWithSection = section ? `${shortName} (${section})` : shortName;
+
+    if (item.semester && item.schoolYear) {
+      return `${subjectWithSection} - ${item.semester} (${item.schoolYear})`;
+    }
+
+    if (item.semester) {
+      return `${subjectWithSection} - ${item.semester}`;
+    }
+
+    if (item.schoolYear) {
+      return `${subjectWithSection} (${item.schoolYear})`;
+    }
+
+    return subjectWithSection;
+  };
 
   const sizes = {
     sidebarWidth: isDesktop ? Math.min(width * 0.28, 380) : isTablet ? 320 : width,
@@ -534,6 +626,7 @@ const Messenger = ({
               ...conversation,
               last: trimmed,
               time: updatedTime,
+              lastMessageAt: createdAt,
             }
           : conversation
       )
@@ -545,6 +638,7 @@ const Messenger = ({
             ...prev,
             last: trimmed,
             time: updatedTime,
+            lastMessageAt: createdAt,
           }
         : prev
     );
@@ -794,6 +888,7 @@ const Messenger = ({
                 ...conversation,
                 last: successMessage,
                 time: formatConversationTime(createdAt),
+                lastMessageAt: createdAt,
               }
             : conversation
         )
@@ -833,6 +928,8 @@ const Messenger = ({
       last: systemMessage.text,
       avatar: DEFAULT_AVATAR,
       time: nowLabel,
+      lastMessageAt: Date.now(),
+      createdAt: Date.now(),
       isRoom: true,
       isCreatedRoom: true,
       members: roomMembers,

@@ -1,3 +1,9 @@
+// TEACHER NOTIFICATION RULE:
+// Teachers receive ONLY:
+// 1. submitted-assignment
+// 2. community-answer
+// 3. student-at-risk
+
 import cors from "cors";
 import dotenv from "dotenv";
 import express from "express";
@@ -23,6 +29,12 @@ admin.initializeApp({
 const db = admin.firestore();
 const bucket = admin.storage().bucket();
 const FieldValue = admin.firestore.FieldValue;
+
+const TEACHER_ALLOWED_NOTIFICATION_TYPES = new Set([
+  "submitted-assignment",
+  "community-answer",
+  "student-at-risk",
+]);
 
 const DEFAULT_PROFILE_IMAGE_URL =
   "https://firebasestorage.googleapis.com/v0/b/parseit2-4b26d.firebasestorage.app/o/defaults%2Fdefault_profile.png?alt=media&token=4cb70146-a95f-4528-ae7e-52bb9eff7b86";
@@ -270,6 +282,37 @@ function resolveDate(value) {
   const parsed = new Date(value);
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
+
+
+function getPercentFromScore(score, maxPoints) {
+  const numericScore = Number(score);
+  const numericMax = Number(maxPoints || 100);
+
+  if (!Number.isFinite(numericScore) || !Number.isFinite(numericMax) || numericMax <= 0) {
+    return null;
+  }
+
+  return Math.round((numericScore / numericMax) * 100);
+}
+
+function normalizeAnalyticsDateLabel(value, fallbackLabel = "No Date") {
+  const date = resolveDate(value);
+
+  if (!date) return fallbackLabel;
+
+  return date.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+  });
+}
+
+function getAdminRiskLevel({ average, gradedCount, missingCount, pendingCount }) {
+  if (gradedCount === 0 && missingCount === 0) return "No Data";
+  if (average < 75 || missingCount >= 3) return "High";
+  if (average < 85 || missingCount >= 1 || pendingCount >= 3) return "Moderate";
+  return "Low";
+}
+
 
 async function uploadBannerToStorage({
   bannerBase64,
@@ -826,6 +869,102 @@ async function createNotification({
 
   return ref.id;
 }
+
+
+async function createSubmittedAssignmentNotificationForTeacher({
+  classId,
+  assignmentId,
+  submissionId,
+  studentId,
+  studentName,
+}) {
+  if (!classId || !assignmentId || !submissionId || !studentId) return null;
+
+  const [classSnap, assignmentSnap] = await Promise.all([
+    db.collection("classes").doc(classId).get(),
+    db.collection("classAssignments").doc(assignmentId).get(),
+  ]);
+
+  if (!classSnap.exists) return null;
+
+  const classData = classSnap.data() || {};
+  const assignmentData = assignmentSnap.exists ? assignmentSnap.data() || {} : {};
+
+  const teacherId = normalizeOptionalText(classData.assignedTeacherId);
+  if (!teacherId) return null;
+
+  const existing = await db
+    .collection("notifications")
+    .where("userId", "==", teacherId)
+    .where("role", "==", "teacher")
+    .where("type", "==", "submitted-assignment")
+    .where("relatedId", "==", submissionId)
+    .limit(1)
+    .get();
+
+  if (!existing.empty) return existing.docs[0].id;
+
+  return createNotification({
+    userId: teacherId,
+    role: "teacher",
+    type: "submitted-assignment",
+    title: "Assignment Submitted",
+    message: `${studentName || "A student"} submitted ${
+      assignmentData.header || "an assignment"
+    } in ${classData.name || "your class"}.`,
+    relatedId: submissionId,
+    relatedType: "class-submission",
+    classId,
+    actorId: studentId,
+    actorRole: "student",
+    actorName: studentName || studentId,
+  });
+}
+
+async function createStudentAtRiskNotificationForTeacher({
+  classId,
+  studentId,
+  studentName,
+  reason,
+}) {
+  if (!classId || !studentId) return null;
+
+  const classSnap = await db.collection("classes").doc(classId).get();
+  if (!classSnap.exists) return null;
+
+  const classData = classSnap.data() || {};
+  const teacherId = normalizeOptionalText(classData.assignedTeacherId);
+  if (!teacherId) return null;
+
+  const existing = await db
+    .collection("notifications")
+    .where("userId", "==", teacherId)
+    .where("role", "==", "teacher")
+    .where("type", "==", "student-at-risk")
+    .where("actorId", "==", studentId)
+    .where("classId", "==", classId)
+    .limit(1)
+    .get();
+
+  if (!existing.empty) return existing.docs[0].id;
+
+  return createNotification({
+    userId: teacherId,
+    role: "teacher",
+    type: "student-at-risk",
+    title: "Student At Risk",
+    message: `${studentName || "A student"} may need support in ${
+      classData.name || "your class"
+    }. ${reason || ""}`.trim(),
+    relatedId: studentId,
+    relatedType: "student-risk",
+    classId,
+    actorId: studentId,
+    actorRole: "student",
+    actorName: studentName || studentId,
+  });
+}
+
 
 async function createNotificationsForClassStudents({
   classId,
@@ -2421,6 +2560,894 @@ app.delete("/delete-class/:id", async (req, res) => {
   }
 });
 
+app.get("/teacher-analytics/:teacherId", async (req, res) => {
+  try {
+    const teacherId = normalizeOptionalText(req.params.teacherId);
+
+    if (!teacherId) {
+      return res.status(400).json({ error: "teacherId is required." });
+    }
+
+    const classQueries = await Promise.all([
+      db.collection("classes").where("assignedTeacherId", "==", teacherId).get(),
+      db.collection("classes").where("assignedTeacherUid", "==", teacherId).get(),
+      db.collection("classes").where("instructorEmail", "==", teacherId).get(),
+    ]);
+
+    const classMap = new Map();
+
+    classQueries.forEach((snapshot) => {
+      snapshot.docs.forEach((doc) => {
+        classMap.set(doc.id, {
+          id: doc.id,
+          ...(doc.data() || {}),
+        });
+      });
+    });
+
+    const studentsMap = new Map();
+
+    for (const classData of classMap.values()) {
+      const classId = classData.id;
+
+      const [membersSnapshot, assignmentsSnapshot, submissionsSnapshot] =
+        await Promise.all([
+          db
+            .collection("classMembers")
+            .where("classId", "==", classId)
+            .where("role", "==", "student")
+            .where("status", "==", "active")
+            .get(),
+          db
+            .collection("classAssignments")
+            .where("classId", "==", classId)
+            .get(),
+          db
+            .collection("classSubmissions")
+            .where("classId", "==", classId)
+            .get(),
+        ]);
+
+      const submissionsByStudentAssignment = new Map();
+
+      submissionsSnapshot.docs.forEach((doc) => {
+        const submission = {
+          id: doc.id,
+          ...(doc.data() || {}),
+        };
+
+        if (submission.studentId && submission.assignmentId) {
+          submissionsByStudentAssignment.set(
+            `${submission.studentId}_${submission.assignmentId}`,
+            submission
+          );
+        }
+      });
+
+      membersSnapshot.docs.forEach((memberDoc) => {
+        const member = memberDoc.data() || {};
+        const studentId = normalizeOptionalText(member.userId);
+
+        if (!studentId) return;
+
+        if (!studentsMap.has(studentId)) {
+          studentsMap.set(studentId, {
+            studentId,
+            studentName: normalizeOptionalText(member.name) || studentId,
+            courses: [],
+          });
+        }
+
+        const assignments = assignmentsSnapshot.docs.map((assignmentDoc, index) => {
+          const assignment = assignmentDoc.data() || {};
+          const submission = submissionsByStudentAssignment.get(
+            `${studentId}_${assignmentDoc.id}`
+          );
+
+          const maxPoints = Number(assignment.totalScore || 100) || 100;
+          const rawScore = Number(submission?.score);
+          const isGraded =
+            submission?.status === "graded" && Number.isFinite(rawScore);
+
+          return {
+            id: assignmentDoc.id,
+            title: assignment.header || `Assignment ${index + 1}`,
+            status: isGraded ? "graded" : submission?.status || "pending",
+            // Send raw score here. The frontend will calculate percentage using points / maxPoints * 100.
+            points: isGraded ? rawScore : undefined,
+            rawPoints: isGraded ? rawScore : null,
+            maxPoints,
+            topic: assignment.header || classData.name || "General",
+            dueDate: assignment.dueDate || null,
+            submittedAt: submission?.submittedAt || null,
+            gradedAt: submission?.gradedAt || null,
+            feedback: submission?.feedback || null,
+          };
+        });
+
+        studentsMap.get(studentId).courses.push({
+          id: classId,
+          name: classData.name || "Untitled Class",
+          code: classData.courseCode || "",
+          courseCode: classData.courseCode || "",
+          classCode: classData.classCode || "",
+          instructor: classData.instructorName || "",
+          section: classData.section || "",
+          yearLevel: classData.year || "",
+          semester: classData.semester || "",
+          schoolYear: classData.schoolYear || "",
+          assignments,
+        });
+      });
+    }
+
+    return res.json({
+      success: true,
+      data: Array.from(studentsMap.values()),
+    });
+  } catch (error) {
+    console.error("Teacher analytics error:", error);
+    return res.status(500).json({
+      error: error.message || "Failed to load teacher analytics.",
+    });
+  }
+});
+
+
+app.post("/teacher-risk-notifications/:teacherId", async (req, res) => {
+  try {
+    const teacherId = normalizeOptionalText(req.params.teacherId);
+
+    if (!teacherId) {
+      return res.status(400).json({ error: "teacherId is required." });
+    }
+
+    // Reuse the existing teacher analytics endpoint logic through direct local calculation is complex,
+    // so this route uses the same source collections and creates notifications only for students
+    // with clear risk signals: missing assignments >= 1 or graded average below 75.
+    const classQueries = await Promise.all([
+      db.collection("classes").where("assignedTeacherId", "==", teacherId).get(),
+      db.collection("classes").where("assignedTeacherUid", "==", teacherId).get(),
+      db.collection("classes").where("instructorEmail", "==", teacherId).get(),
+      db.collection("classes").where("createdByUid", "==", teacherId).get(),
+    ]);
+
+    const classMap = new Map();
+    classQueries.forEach((snapshot) => {
+      snapshot.docs.forEach((doc) => {
+        const data = doc.data() || {};
+        if (data.status === "archived") return;
+        classMap.set(doc.id, { id: doc.id, ...data });
+      });
+    });
+
+    let createdCount = 0;
+
+    for (const classData of classMap.values()) {
+      const classId = classData.id;
+
+      const [membersSnapshot, assignmentsSnapshot, submissionsSnapshot] =
+        await Promise.all([
+          db.collection("classMembers")
+            .where("classId", "==", classId)
+            .where("role", "==", "student")
+            .get(),
+          db.collection("classAssignments")
+            .where("classId", "==", classId)
+            .get(),
+          db.collection("classSubmissions")
+            .where("classId", "==", classId)
+            .get(),
+        ]);
+
+      const submissionsByStudentAssignment = new Map();
+      submissionsSnapshot.docs.forEach((doc) => {
+        const submission = { id: doc.id, ...(doc.data() || {}) };
+        if (submission.studentId && submission.assignmentId) {
+          submissionsByStudentAssignment.set(
+            `${submission.studentId}_${submission.assignmentId}`,
+            submission
+          );
+        }
+      });
+
+      for (const memberDoc of membersSnapshot.docs) {
+        const member = memberDoc.data() || {};
+        const studentId = normalizeOptionalText(member.userId);
+        if (!studentId) continue;
+
+        let gradedTotal = 0;
+        let gradedCount = 0;
+        let missingCount = 0;
+
+        assignmentsSnapshot.docs.forEach((assignmentDoc) => {
+          const assignment = assignmentDoc.data() || {};
+          const submission = submissionsByStudentAssignment.get(
+            `${studentId}_${assignmentDoc.id}`
+          );
+
+          const maxPoints = Number(assignment.totalScore || 100) || 100;
+          const score = Number(submission?.score);
+
+          if (submission?.status === "graded" && Number.isFinite(score)) {
+            gradedTotal += Math.round((score / maxPoints) * 100);
+            gradedCount += 1;
+            return;
+          }
+
+          const dueDate = resolveDate(assignment.dueDate);
+          if (!submission && dueDate && dueDate.getTime() < Date.now()) {
+            missingCount += 1;
+          }
+        });
+
+        const average = gradedCount > 0 ? Math.round(gradedTotal / gradedCount) : 0;
+        const isAtRisk = missingCount > 0 || (gradedCount > 0 && average < 75);
+
+        if (!isAtRisk) continue;
+
+        const notificationId = await createStudentAtRiskNotificationForTeacher({
+          classId,
+          studentId,
+          studentName: member.name || studentId,
+          reason: `Average: ${gradedCount > 0 ? `${average}%` : "No graded data"}, Missing: ${missingCount}.`,
+        });
+
+        if (notificationId) createdCount += 1;
+      }
+    }
+
+    return res.json({
+      success: true,
+      createdCount,
+    });
+  } catch (error) {
+    console.error("Create teacher risk notifications error:", error);
+    return res.status(500).json({
+      error: error.message || "Failed to create risk notifications.",
+    });
+  }
+});
+
+
+app.get("/admin-analytics", async (req, res) => {
+  try {
+    const [
+      studentsSnapshot,
+      teachersSnapshot,
+      classesSnapshot,
+      membersSnapshot,
+      assignmentsSnapshot,
+      submissionsSnapshot,
+    ] = await Promise.all([
+      db.collection("students").get(),
+      db.collection("teachers").get(),
+      db.collection("classes").get(),
+      db.collection("classMembers").get(),
+      db.collection("classAssignments").get(),
+      db.collection("classSubmissions").get(),
+    ]);
+
+    const classes = classesSnapshot.docs
+      .map((doc) => ({ id: doc.id, ...(doc.data() || {}) }))
+      .filter((item) => item.status !== "archived");
+
+    const members = membersSnapshot.docs.map((doc) => ({
+      id: doc.id,
+      ...(doc.data() || {}),
+    }));
+
+    const assignments = assignmentsSnapshot.docs.map((doc) => ({
+      id: doc.id,
+      ...(doc.data() || {}),
+    }));
+
+    const submissions = submissionsSnapshot.docs.map((doc) => ({
+      id: doc.id,
+      ...(doc.data() || {}),
+    }));
+
+    const activeStudentIdsFromStudentCollection = new Set(
+      studentsSnapshot.docs
+        .map((doc) => normalizeOptionalText(doc.id))
+        .filter(Boolean)
+    );
+
+    const uniqueEnrolledStudentIds = new Set();
+
+    const membersByClass = new Map();
+    const assignmentsByClass = new Map();
+    const submissionsByStudentAssignment = new Map();
+
+    members.forEach((member) => {
+      if (!member.classId) return;
+      if (!membersByClass.has(member.classId)) {
+        membersByClass.set(member.classId, []);
+      }
+      membersByClass.get(member.classId).push(member);
+    });
+
+    assignments.forEach((assignment) => {
+      if (!assignment.classId) return;
+      if (!assignmentsByClass.has(assignment.classId)) {
+        assignmentsByClass.set(assignment.classId, []);
+      }
+      assignmentsByClass.get(assignment.classId).push(assignment);
+    });
+
+    submissions.forEach((submission) => {
+      if (submission.studentId && submission.assignmentId) {
+        submissionsByStudentAssignment.set(
+          `${submission.studentId}_${submission.assignmentId}`,
+          submission
+        );
+      }
+    });
+
+    const studentRiskMap = new Map();
+
+    // Enrollment-aware comparison maps.
+    // These are based on class membership records, because 1 student can be enrolled in many classes.
+    const sectionMap = new Map();
+    const yearMap = new Map();
+    const classRows = [];
+    const subjectMap = new Map();
+    const trendMap = new Map();
+
+    let totalGradedScores = 0;
+    let totalGradedCount = 0;
+    let totalPendingAssignments = 0;
+    let totalSubmittedAssignments = 0;
+    let totalMissingAssignments = 0;
+    let totalEnrollmentRecords = 0;
+
+    for (const classData of classes) {
+      const classId = classData.id;
+      const classMembers = (membersByClass.get(classId) || []).filter(
+        (member) =>
+          member.role === "student" &&
+          !["inactive", "removed", "deleted"].includes(
+            String(member.status || "").toLowerCase()
+          )
+      );
+
+      const classAssignments = assignmentsByClass.get(classId) || [];
+      const sectionKey = normalizeOptionalText(classData.section) || "Unassigned";
+      const yearKey = normalizeOptionalText(classData.year) || "Unspecified Year";
+
+      let classScoreTotal = 0;
+      let classGradedCount = 0;
+      let classPendingCount = 0;
+      let classSubmittedCount = 0;
+      let classMissingCount = 0;
+      let classEvaluatedStudents = 0;
+      let classScoreByStudentTotal = 0;
+
+      totalEnrollmentRecords += classMembers.length;
+
+      for (const member of classMembers) {
+        const studentId = normalizeOptionalText(member.userId);
+        if (!studentId) continue;
+
+        uniqueEnrolledStudentIds.add(studentId);
+
+        let studentScoreTotal = 0;
+        let studentGradedCount = 0;
+        let studentPendingCount = 0;
+        let studentSubmittedCount = 0;
+        let studentMissingCount = 0;
+
+        for (const assignment of classAssignments) {
+          const assignmentId = assignment.id;
+          const submission = submissionsByStudentAssignment.get(
+            `${studentId}_${assignmentId}`
+          );
+
+          const maxPoints = Number(assignment.totalScore || 100) || 100;
+
+          if (submission?.status === "graded") {
+            const percent = getPercentFromScore(submission.score, maxPoints);
+
+            if (percent !== null) {
+              studentScoreTotal += percent;
+              studentGradedCount += 1;
+
+              classScoreTotal += percent;
+              classGradedCount += 1;
+
+              totalGradedScores += percent;
+              totalGradedCount += 1;
+
+              const subjectKey =
+                normalizeOptionalText(assignment.header) ||
+                normalizeOptionalText(classData.name) ||
+                "Uncategorized";
+
+              const subjectCurrent = subjectMap.get(subjectKey) || {
+                subject: subjectKey,
+                total: 0,
+                count: 0,
+                pending: 0,
+                missing: 0,
+                enrolledStudents: new Set(),
+              };
+              subjectCurrent.total += percent;
+              subjectCurrent.count += 1;
+              subjectCurrent.enrolledStudents.add(studentId);
+              subjectMap.set(subjectKey, subjectCurrent);
+
+              const trendSourceDate =
+                submission.gradedAt ||
+                submission.submittedAt ||
+                assignment.dueDate ||
+                assignment.createdAt;
+
+              const trendLabel = normalizeAnalyticsDateLabel(
+                trendSourceDate,
+                `Activity ${trendMap.size + 1}`
+              );
+
+              const currentTrend = trendMap.get(trendLabel) || {
+                label: trendLabel,
+                total: 0,
+                count: 0,
+                order:
+                  resolveDate(trendSourceDate)?.getTime() ||
+                  Date.now() + trendMap.size,
+              };
+
+              currentTrend.total += percent;
+              currentTrend.count += 1;
+              trendMap.set(trendLabel, currentTrend);
+            }
+
+            continue;
+          }
+
+          if (submission?.status === "submitted") {
+            studentSubmittedCount += 1;
+            classSubmittedCount += 1;
+            totalSubmittedAssignments += 1;
+            continue;
+          }
+
+          const dueDate = resolveDate(assignment.dueDate);
+
+          if (dueDate && dueDate.getTime() < Date.now()) {
+            studentMissingCount += 1;
+            classMissingCount += 1;
+            totalMissingAssignments += 1;
+
+            const subjectKey =
+              normalizeOptionalText(assignment.header) ||
+              normalizeOptionalText(classData.name) ||
+              "Uncategorized";
+
+            const subjectCurrent = subjectMap.get(subjectKey) || {
+              subject: subjectKey,
+              total: 0,
+              count: 0,
+              pending: 0,
+              missing: 0,
+              enrolledStudents: new Set(),
+            };
+            subjectCurrent.missing += 1;
+            subjectCurrent.enrolledStudents.add(studentId);
+            subjectMap.set(subjectKey, subjectCurrent);
+          } else {
+            studentPendingCount += 1;
+            classPendingCount += 1;
+            totalPendingAssignments += 1;
+
+            const subjectKey =
+              normalizeOptionalText(assignment.header) ||
+              normalizeOptionalText(classData.name) ||
+              "Uncategorized";
+
+            const subjectCurrent = subjectMap.get(subjectKey) || {
+              subject: subjectKey,
+              total: 0,
+              count: 0,
+              pending: 0,
+              missing: 0,
+              enrolledStudents: new Set(),
+            };
+            subjectCurrent.pending += 1;
+            subjectCurrent.enrolledStudents.add(studentId);
+            subjectMap.set(subjectKey, subjectCurrent);
+          }
+        }
+
+        const studentClassAverage =
+          studentGradedCount > 0
+            ? Math.round(studentScoreTotal / studentGradedCount)
+            : 0;
+
+        if (studentGradedCount > 0) {
+          classEvaluatedStudents += 1;
+          classScoreByStudentTotal += studentClassAverage;
+        }
+
+        if (!studentRiskMap.has(studentId)) {
+          studentRiskMap.set(studentId, {
+            studentId,
+            studentName: normalizeOptionalText(member.name) || studentId,
+            sections: new Set(),
+            classes: new Set(),
+            averageTotal: 0,
+            averageCount: 0,
+            pending: 0,
+            submitted: 0,
+            missing: 0,
+            graded: 0,
+            enrollmentCount: 0,
+          });
+        }
+
+        const riskRecord = studentRiskMap.get(studentId);
+        riskRecord.sections.add(sectionKey);
+        riskRecord.classes.add(normalizeOptionalText(classData.name) || "Untitled Class");
+        riskRecord.enrollmentCount += 1;
+        riskRecord.pending += studentPendingCount;
+        riskRecord.submitted += studentSubmittedCount;
+        riskRecord.missing += studentMissingCount;
+        riskRecord.graded += studentGradedCount;
+
+        if (studentGradedCount > 0) {
+          riskRecord.averageTotal += studentClassAverage;
+          riskRecord.averageCount += 1;
+        }
+      }
+
+      // Class average is student-weighted:
+      // each enrolled student in this class contributes once, not each assignment point.
+      const classAverage =
+        classEvaluatedStudents > 0
+          ? Math.round(classScoreByStudentTotal / classEvaluatedStudents)
+          : 0;
+
+      classRows.push({
+        classId,
+        className: normalizeOptionalText(classData.name) || "Untitled Class",
+        courseCode: normalizeOptionalText(classData.courseCode) || "",
+        section: sectionKey,
+        year: yearKey,
+        instructor: normalizeOptionalText(classData.instructorName) || "Unassigned",
+        average: classAverage,
+        gradedCount: classGradedCount,
+        evaluatedStudents: classEvaluatedStudents,
+        studentCount: classMembers.length,
+        pendingCount: classPendingCount,
+        submittedCount: classSubmittedCount,
+        missingCount: classMissingCount,
+      });
+
+      const sectionCurrent = sectionMap.get(sectionKey) || {
+        label: sectionKey,
+        weightedTotal: 0,
+        evaluatedStudents: 0,
+        enrollmentCount: 0,
+        uniqueStudents: new Set(),
+        missing: 0,
+        pending: 0,
+      };
+
+      if (classEvaluatedStudents > 0) {
+        sectionCurrent.weightedTotal += classAverage * classEvaluatedStudents;
+        sectionCurrent.evaluatedStudents += classEvaluatedStudents;
+      }
+
+      sectionCurrent.enrollmentCount += classMembers.length;
+      sectionCurrent.missing += classMissingCount;
+      sectionCurrent.pending += classPendingCount;
+      classMembers.forEach((member) => {
+        const studentId = normalizeOptionalText(member.userId);
+        if (studentId) sectionCurrent.uniqueStudents.add(studentId);
+      });
+      sectionMap.set(sectionKey, sectionCurrent);
+
+      const yearCurrent = yearMap.get(yearKey) || {
+        label: yearKey,
+        weightedTotal: 0,
+        evaluatedStudents: 0,
+        enrollmentCount: 0,
+        uniqueStudents: new Set(),
+        missing: 0,
+        pending: 0,
+      };
+
+      if (classEvaluatedStudents > 0) {
+        yearCurrent.weightedTotal += classAverage * classEvaluatedStudents;
+        yearCurrent.evaluatedStudents += classEvaluatedStudents;
+      }
+
+      yearCurrent.enrollmentCount += classMembers.length;
+      yearCurrent.missing += classMissingCount;
+      yearCurrent.pending += classPendingCount;
+      classMembers.forEach((member) => {
+        const studentId = normalizeOptionalText(member.userId);
+        if (studentId) yearCurrent.uniqueStudents.add(studentId);
+      });
+      yearMap.set(yearKey, yearCurrent);
+    }
+
+    const studentRows = Array.from(studentRiskMap.values()).map((student) => {
+      const average =
+        student.averageCount > 0
+          ? Math.round(student.averageTotal / student.averageCount)
+          : 0;
+
+      const riskLevel = getAdminRiskLevel({
+        average,
+        gradedCount: student.graded,
+        missingCount: student.missing,
+        pendingCount: student.pending,
+      });
+
+      return {
+        studentId: student.studentId,
+        studentName: student.studentName,
+        section: Array.from(student.sections).join(", ") || "Unassigned",
+        className: Array.from(student.classes).slice(0, 3).join(", ") || "No Class",
+        enrollmentCount: student.enrollmentCount,
+        average,
+        pendingCount: student.pending,
+        submittedCount: student.submitted,
+        missingCount: student.missing,
+        gradedCount: student.graded,
+        riskLevel,
+      };
+    });
+
+    const evaluatedStudents = studentRows.filter((student) => student.gradedCount > 0);
+    const passingStudents = evaluatedStudents.filter((student) => student.average >= 75);
+    const failedStudents = evaluatedStudents.filter((student) => student.average < 75);
+
+    const noDataCount = studentRows.filter((student) => student.riskLevel === "No Data").length;
+    const highRiskCount = studentRows.filter((student) => student.riskLevel === "High").length;
+    const moderateRiskCount = studentRows.filter((student) => student.riskLevel === "Moderate").length;
+    const lowRiskCount = studentRows.filter((student) => student.riskLevel === "Low").length;
+
+    // Department average is unique-student weighted:
+    // each student contributes once using their average across classes.
+    const departmentAverage =
+      evaluatedStudents.length > 0
+        ? Math.round(
+            evaluatedStudents.reduce((sum, student) => sum + student.average, 0) /
+              evaluatedStudents.length
+          )
+        : 0;
+
+    const passRate =
+      evaluatedStudents.length > 0
+        ? Math.round((passingStudents.length / evaluatedStudents.length) * 100)
+        : 0;
+
+    const failRate =
+      evaluatedStudents.length > 0
+        ? Math.round((failedStudents.length / evaluatedStudents.length) * 100)
+        : 0;
+
+    const activeWorkload =
+      totalPendingAssignments +
+      totalSubmittedAssignments +
+      totalMissingAssignments +
+      totalGradedCount;
+
+    const completionRate =
+      activeWorkload > 0
+        ? Math.round(
+            ((totalSubmittedAssignments + totalGradedCount) / activeWorkload) * 100
+          )
+        : 0;
+
+    const assignmentCompletionRate =
+      activeWorkload > 0
+        ? Math.round((totalGradedCount / activeWorkload) * 100)
+        : 0;
+
+    const onTimeSubmissionRate =
+      totalSubmittedAssignments + totalGradedCount > 0
+        ? Math.round(
+            (totalGradedCount / (totalSubmittedAssignments + totalGradedCount)) *
+              100
+          )
+        : 0;
+
+    const sectionComparison = Array.from(sectionMap.values())
+      .map((section) => ({
+        label: section.label,
+        value:
+          section.evaluatedStudents > 0
+            ? Math.round(section.weightedTotal / section.evaluatedStudents)
+            : 0,
+        students: section.uniqueStudents.size,
+        enrollmentCount: section.enrollmentCount,
+        evaluatedStudents: section.evaluatedStudents,
+        missing: section.missing,
+        pending: section.pending,
+      }))
+      .sort((a, b) => {
+        if (a.value === 0 && b.value > 0) return 1;
+        if (b.value === 0 && a.value > 0) return -1;
+        return a.value - b.value;
+      });
+
+    const yearLevelComparison = Array.from(yearMap.values())
+      .map((year) => ({
+        label: year.label,
+        value:
+          year.evaluatedStudents > 0
+            ? Math.round(year.weightedTotal / year.evaluatedStudents)
+            : 0,
+        students: year.uniqueStudents.size,
+        enrollmentCount: year.enrollmentCount,
+        evaluatedStudents: year.evaluatedStudents,
+        missing: year.missing,
+        pending: year.pending,
+      }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+
+    const subjectDifficulty = Array.from(subjectMap.values())
+      .map((subject) => {
+        const average =
+          subject.count > 0 ? Math.round(subject.total / subject.count) : 0;
+
+        return {
+          subject: subject.subject,
+          average,
+          gradedCount: subject.count,
+          pendingCount: subject.pending,
+          missingCount: subject.missing,
+          students: subject.enrolledStudents.size,
+          difficulty:
+            subject.count > 0 && average < 75
+              ? "High Difficulty"
+              : subject.missing > 0 || subject.pending >= 3
+              ? "Moderate Difficulty"
+              : subject.count === 0
+              ? "No Data"
+              : "Stable",
+        };
+      })
+      .sort((a, b) => {
+        const priority = {
+          "High Difficulty": 4,
+          "Moderate Difficulty": 3,
+          "No Data": 2,
+          Stable: 1,
+        };
+
+        const difficultyDifference =
+          (priority[b.difficulty] || 0) - (priority[a.difficulty] || 0);
+
+        if (difficultyDifference !== 0) return difficultyDifference;
+
+        if (a.average === 0 && b.average > 0) return 1;
+        if (b.average === 0 && a.average > 0) return -1;
+
+        return a.average - b.average;
+      })
+      .slice(0, 8);
+
+    const trend = Array.from(trendMap.values())
+      .sort((a, b) => a.order - b.order)
+      .map((item) => ({
+        label: item.label,
+        average: item.count > 0 ? Math.round(item.total / item.count) : 0,
+        count: item.count,
+      }))
+      .slice(-8);
+
+    const atRiskStudents = studentRows
+      .filter(
+        (student) =>
+          student.riskLevel === "High" || student.riskLevel === "Moderate"
+      )
+      .sort((a, b) => {
+        const priority = { High: 2, Moderate: 1 };
+        const riskDiff =
+          (priority[b.riskLevel] || 0) - (priority[a.riskLevel] || 0);
+
+        if (riskDiff !== 0) return riskDiff;
+        if (b.missingCount !== a.missingCount) {
+          return b.missingCount - a.missingCount;
+        }
+
+        return a.average - b.average;
+      })
+      .slice(0, 8)
+      .map((student) => ({
+        ...student,
+        reason:
+          student.missingCount > 0
+            ? `${student.missingCount} missing assignment(s) across ${student.enrollmentCount} enrolled class(es).`
+            : student.average < 75
+            ? `Average below passing threshold across enrolled classes.`
+            : `${student.pendingCount} pending assignment(s) across ${student.enrollmentCount} enrolled class(es).`,
+      }));
+
+    const weakestSection = sectionComparison[0] || null;
+    const hardestSubject = subjectDifficulty[0] || null;
+
+    const suggestions = [];
+
+    if (weakestSection) {
+      suggestions.push({
+        title: "Priority Section",
+        text: `Focus intervention on ${weakestSection.label}. It has ${weakestSection.students} unique student(s), ${weakestSection.enrollmentCount} class enrollment(s), ${weakestSection.value}% average, and ${weakestSection.missing} missing work item(s).`,
+      });
+    }
+
+    if (hardestSubject) {
+      suggestions.push({
+        title: "Faculty Recommendation",
+        text: `${hardestSubject.subject} is currently marked as ${hardestSubject.difficulty}. It involves ${hardestSubject.students} unique student(s). Consider reinforcement sessions and targeted review materials.`,
+      });
+    }
+
+    if (highRiskCount + moderateRiskCount > 0) {
+      suggestions.push({
+        title: "System Recommendation",
+        text: `There are ${highRiskCount + moderateRiskCount} unique learner(s) requiring monitoring. Coordinate with advisers and teachers for intervention.`,
+      });
+    }
+
+    if (!suggestions.length) {
+      suggestions.push({
+        title: "System Recommendation",
+        text: "No urgent academic risk detected. Continue monitoring completion and graded performance.",
+      });
+    }
+
+    return res.json({
+      success: true,
+      data: {
+        generatedAt: new Date().toISOString(),
+        totals: {
+          totalStudents: activeStudentIdsFromStudentCollection.size,
+          totalTeachers: teachersSnapshot.size,
+          totalClasses: classes.length,
+          monitoredStudents: uniqueEnrolledStudentIds.size,
+          evaluatedStudents: evaluatedStudents.length,
+          totalClassEnrollments: totalEnrollmentRecords,
+        },
+        summary: {
+          departmentAverage,
+          atRiskCount: highRiskCount + moderateRiskCount,
+          highRiskCount,
+          moderateRiskCount,
+          lowRiskCount,
+          noDataCount,
+          passRate,
+          failRate,
+          backlogCount: totalPendingAssignments + totalMissingAssignments,
+          completionRate,
+          assignmentCompletionRate,
+          onTimeSubmissionRate,
+          totalPendingAssignments,
+          totalSubmittedAssignments,
+          totalMissingAssignments,
+          totalGradedAssignments: totalGradedCount,
+        },
+        classRows,
+        sectionComparison,
+        yearLevelComparison,
+        subjectDifficulty,
+        atRiskStudents,
+        trend,
+        suggestions,
+      },
+    });
+  } catch (error) {
+    console.error("Admin analytics error:", error);
+    return res.status(500).json({
+      error: error.message || "Failed to load admin analytics.",
+    });
+  }
+});
+
+
 app.get("/classes", async (req, res) => {
   try {
     const snapshot = await db
@@ -2532,21 +3559,6 @@ app.post("/join-class", async (req, res) => {
       updatedAt: FieldValue.serverTimestamp(),
     });
 
-    if (classData.assignedTeacherId) {
-      await createNotification({
-        userId: classData.assignedTeacherId,
-        role: "teacher",
-        type: "support-activity",
-        title: "New Student Joined Class",
-        message: `${studentFullName} joined ${classData.name || "your class"}.`,
-        relatedId: classId,
-        relatedType: "class",
-        classId,
-        actorId: student.studentId || normalizedStudentId,
-        actorRole: "student",
-        actorName: studentFullName,
-      });
-    }
 
     const conversationSnapshot = await db
       .collection("messengerConversations")
@@ -2958,6 +3970,10 @@ app.delete("/remove-class-member/:id", async (req, res) => {
   }
 });
 
+// Messenger conversations return lastMessageAt/createdAt/updatedAt.
+ // Frontend formats these into relative labels like "5m ago" instead of always "Now".
+// Messenger conversations include lastMessageAt, createdAt, and updatedAt.
+ // Student and teacher messenger screens use these timestamps for relative time labels.
 app.get("/messenger-conversations", async (req, res) => {
   try {
     const {
@@ -3185,21 +4201,6 @@ app.post("/create-class-material", async (req, res) => {
       updatedAt: FieldValue.serverTimestamp(),
     });
 
-    if (classData.assignedTeacherId && normalizeOptionalText(postedByUid) !== normalizeOptionalText(classData.assignedTeacherUid)) {
-      await createNotification({
-        userId: classData.assignedTeacherId,
-        role: "teacher",
-        type: "material",
-        title: "New Material Uploaded",
-        message: `${title} was uploaded in ${classData.name || "your class"}.`,
-        relatedId: ref.id,
-        relatedType: "class-material",
-        classId,
-        actorId: postedByUid,
-        actorRole: "admin",
-        actorName: postedByName,
-      });
-    }
 
     await createNotificationsForClassStudents({
       classId,
@@ -3362,21 +4363,6 @@ app.post("/create-class-assignment", async (req, res) => {
       updatedAt: FieldValue.serverTimestamp(),
     });
 
-    if (classData.assignedTeacherId && normalizeOptionalText(postedByUid) !== normalizeOptionalText(classData.assignedTeacherUid)) {
-      await createNotification({
-        userId: classData.assignedTeacherId,
-        role: "teacher",
-        type: "assignment",
-        title: "New Assignment Posted",
-        message: `${header} was posted in ${classData.name || "your class"}.`,
-        relatedId: ref.id,
-        relatedType: "class-assignment",
-        classId,
-        actorId: postedByUid,
-        actorRole: "admin",
-        actorName: postedByName,
-      });
-    }
 
     await createNotificationsForClassStudents({
       classId,
@@ -3657,19 +4643,13 @@ app.post("/create-submission", async (req, res) => {
     const assignmentSnap = await db.collection("classAssignments").doc(assignmentId).get();
     const assignmentData = assignmentSnap.exists ? assignmentSnap.data() || {} : {};
 
-    if (classData.assignedTeacherId && createdNew) {
-      await createNotification({
-        userId: classData.assignedTeacherId,
-        role: "teacher",
-        type: "assignment",
-        title: "New Submission Received",
-        message: `${normalizeOptionalText(studentName) || "A student"} submitted ${assignmentData.header || "an assignment"} in ${classData.name || "your class"}.`,
-        relatedId: ref.id,
-        relatedType: "class-submission",
+    if ((normalizeOptionalText(status) || "submitted") === "submitted") {
+      await createSubmittedAssignmentNotificationForTeacher({
         classId,
-        actorId: studentId,
-        actorRole: "student",
-        actorName: studentName,
+        assignmentId,
+        submissionId: ref.id,
+        studentId,
+        studentName: normalizeOptionalText(studentName) || studentId,
       });
     }
 
@@ -3749,6 +4729,13 @@ app.put("/grade-submission/:id", async (req, res) => {
           actorId: classData.assignedTeacherId || null,
           actorRole: "teacher",
           actorName: classData.instructorName || "Teacher",
+        });
+
+        await createStudentAtRiskNotificationForTeacher({
+          classId: submissionData.classId,
+          studentId: submissionData.studentId,
+          studentName: submissionData.studentName || submissionData.studentId,
+          reason: `Low score detected: ${percent}% in ${assignmentData.header || "an assignment"}.`,
         });
       }
     }
@@ -3989,7 +4976,8 @@ app.post("/unsubmit-assignment", async (req, res) => {
 
 app.get("/notifications", async (req, res) => {
   try {
-    const { userId, role } = req.query;
+    const userId = normalizeOptionalText(req.query.userId);
+    const role = normalizeOptionalText(req.query.role);
 
     if (!userId || !role) {
       return res.status(400).json({
@@ -3999,12 +4987,22 @@ app.get("/notifications", async (req, res) => {
 
     const snapshot = await db
       .collection("notifications")
-      .where("userId", "==", String(userId).trim())
-      .where("role", "==", String(role).trim())
+      .where("userId", "==", userId)
+      .where("role", "==", role)
       .orderBy("createdAt", "desc")
       .get();
 
-    const notifications = snapshot.docs.map(buildNotificationResponse);
+    let notifications = snapshot.docs.map(buildNotificationResponse);
+
+    // Teachers receive only:
+    // 1. submitted-assignment
+    // 2. community-answer
+    // 3. student-at-risk
+    if (role === "teacher") {
+      notifications = notifications.filter((item) =>
+        TEACHER_ALLOWED_NOTIFICATION_TYPES.has(item.type)
+      );
+    }
 
     return res.json({
       success: true,
@@ -4068,13 +5066,24 @@ app.patch("/notifications/read-all", async (req, res) => {
       .get();
 
     const batch = db.batch();
+    let updatedCount = 0;
 
     snapshot.forEach((doc) => {
+      const data = doc.data() || {};
+
+      if (
+        String(role).trim() === "teacher" &&
+        !TEACHER_ALLOWED_NOTIFICATION_TYPES.has(data.type)
+      ) {
+        return;
+      }
+
       batch.update(doc.ref, {
         read: true,
         readAt: FieldValue.serverTimestamp(),
         updatedAt: FieldValue.serverTimestamp(),
       });
+      updatedCount += 1;
     });
 
     await batch.commit();
@@ -4082,7 +5091,7 @@ app.patch("/notifications/read-all", async (req, res) => {
     return res.json({
       success: true,
       message: "All notifications marked as read.",
-      updatedCount: snapshot.size,
+      updatedCount,
     });
   } catch (error) {
     console.error("Mark all notifications as read error:", error);

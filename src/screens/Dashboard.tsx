@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import {
+  ActivityIndicator,
   Modal,
   ScrollView,
   StyleSheet,
@@ -57,7 +58,7 @@ interface DashboardProps {
     course: DashboardCourse,
     assignment: DashboardAssignment
   ) => void;
-  onJoinClass?: (classCode: string) => void;
+  onJoinClass?: (classCode: string) => void | Promise<void> | Promise<any> | any;
 }
 
 type RecommendationType = 'review' | 'practice';
@@ -74,6 +75,11 @@ const Dashboard = ({
   const { width } = useWindowDimensions();
   const [joinModalVisible, setJoinModalVisible] = useState(false);
   const [classCode, setClassCode] = useState('');
+  const [showAllCourses, setShowAllCourses] = useState(false);
+  const [joinFeedbackVisible, setJoinFeedbackVisible] = useState(false);
+  const [joinFeedbackType, setJoinFeedbackType] = useState<'success' | 'error'>('success');
+  const [joinFeedbackMessage, setJoinFeedbackMessage] = useState('');
+  const [isJoiningClass, setIsJoiningClass] = useState(false);
 
   const isMobile = width < 768;
   const isTablet = width >= 768 && width < 1200;
@@ -85,13 +91,61 @@ const Dashboard = ({
   const bannerHeight = isMobile ? 110 : isTablet ? 125 : 140;
   const contentMaxWidth = isLargeScreen ? 1280 : 1100;
 
-  const handleJoinClass = () => {
-    const trimmedCode = classCode.trim();
-    if (!trimmedCode) return;
+  const showJoinFeedback = (
+    message: string,
+    type: 'success' | 'error' = 'success'
+  ) => {
+    setJoinFeedbackMessage(message);
+    setJoinFeedbackType(type);
+    setJoinFeedbackVisible(true);
 
-    onJoinClass?.(trimmedCode);
-    setClassCode('');
-    setJoinModalVisible(false);
+    setTimeout(() => {
+      setJoinFeedbackVisible(false);
+    }, 2800);
+  };
+
+  const handleJoinClass = async () => {
+    if (isJoiningClass) return;
+
+    const trimmedCode = classCode.trim().toUpperCase();
+
+    if (!trimmedCode) {
+      showJoinFeedback('Please enter a class code.', 'error');
+      return;
+    }
+
+    if (!onJoinClass) {
+      showJoinFeedback('Join class action is not available.', 'error');
+      return;
+    }
+
+    try {
+      setIsJoiningClass(true);
+
+      const result: any = await onJoinClass(trimmedCode);
+
+      if (result && result.success === false) {
+        throw new Error(
+          result.error ||
+            result.message ||
+            'Failed to join class. Please check the class code.'
+        );
+      }
+
+      setClassCode('');
+      setJoinModalVisible(false);
+      showJoinFeedback(
+        result?.message || 'Class joined successfully.',
+        'success'
+      );
+    } catch (error: any) {
+      showJoinFeedback(
+        error?.message || 'Failed to join class. Please check the class code.',
+        'error'
+      );
+    } finally {
+      setIsJoiningClass(false);
+    }
   };
 
   const getScorePercent = (assignment: DashboardAssignment) => {
@@ -214,6 +268,12 @@ const Dashboard = ({
       };
     });
   }, [courses]);
+
+  const visibleCourses = useMemo(() => {
+    return showAllCourses ? derivedCourses : derivedCourses.slice(0, 6);
+  }, [derivedCourses, showAllCourses]);
+
+  const hiddenCourseCount = Math.max(derivedCourses.length - 6, 0);
 
   const recommendedAssignments = useMemo(() => {
     return derivedCourses.flatMap((item) =>
@@ -638,17 +698,32 @@ const Dashboard = ({
             </Text>
           )}
 
-          <Text
+          <View
             style={[
-              styles.pageTitle,
-              {
-                fontSize: titleSize,
-                marginTop: sectionSpacing,
-              },
+              styles.sectionHeaderRow,
+              { marginTop: sectionSpacing }
             ]}
           >
-            Course Progress Overview
-          </Text>
+            <Text
+              style={[
+                styles.pageTitle,
+                { fontSize: titleSize, flex: 1, paddingBottom: 0 }
+              ]}
+            >
+              Course Progress Overview
+            </Text>
+
+            {hiddenCourseCount > 0 && (
+              <TouchableOpacity
+                style={styles.seeAllButton}
+                onPress={() => setShowAllCourses(prev => !prev)}
+              >
+                <Text style={styles.seeAllButtonText}>
+                  {showAllCourses ? 'Show Less' : `See All (${derivedCourses.length})`}
+                </Text>
+              </TouchableOpacity>
+            )}
+          </View>
 
           <View
             style={[
@@ -657,7 +732,7 @@ const Dashboard = ({
               isLargeScreen && styles.courseGridLarge,
             ]}
           >
-            {derivedCourses.map((item) => {
+            {visibleCourses.map((item) => {
               const weakCourseColor =
                 item.weakAssignments.length > 0
                   ? getRecommendationColor(
@@ -743,13 +818,43 @@ const Dashboard = ({
         </View>
       </ScrollView>
 
+      {joinFeedbackVisible ? (
+        <View pointerEvents="none" style={styles.joinFeedbackContainer}>
+          <View
+            style={[
+              styles.joinFeedbackBox,
+              joinFeedbackType === 'success'
+                ? styles.joinFeedbackSuccess
+                : styles.joinFeedbackError,
+            ]}
+          >
+            <Ionicons
+              name={
+                joinFeedbackType === 'success'
+                  ? 'checkmark-circle'
+                  : 'alert-circle'
+              }
+              size={20}
+              color="#FFFFFF"
+            />
+            <Text style={styles.joinFeedbackText}>{joinFeedbackMessage}</Text>
+          </View>
+        </View>
+      ) : null}
+
       <Modal
         visible={joinModalVisible}
         transparent
         animationType="fade"
         onRequestClose={() => setJoinModalVisible(false)}
       >
-        <TouchableWithoutFeedback onPress={() => setJoinModalVisible(false)}>
+        <TouchableWithoutFeedback
+          onPress={() => {
+            if (!isJoiningClass) {
+              setJoinModalVisible(false);
+            }
+          }}
+        >
           <View style={styles.modalOverlay}>
             <TouchableWithoutFeedback>
               <View
@@ -778,7 +883,7 @@ const Dashboard = ({
                 <Text style={styles.inputLabel}>Class Code</Text>
                 <TextInput
                   value={classCode}
-                  onChangeText={setClassCode}
+                  onChangeText={(value) => setClassCode(value.toUpperCase())}
                   placeholder="Enter class code"
                   placeholderTextColor="#999"
                   autoCapitalize="characters"
@@ -788,7 +893,8 @@ const Dashboard = ({
 
                 <View style={styles.joinDropdownActions}>
                   <TouchableOpacity
-                    style={styles.cancelButton}
+                    style={[styles.cancelButton, isJoiningClass && styles.joinDisabledButton]}
+                    disabled={isJoiningClass}
                     onPress={() => {
                       setClassCode('');
                       setJoinModalVisible(false);
@@ -800,12 +906,19 @@ const Dashboard = ({
                   <TouchableOpacity
                     style={[
                       styles.confirmButton,
-                      !classCode.trim() && styles.confirmButtonDisabled,
+                      (!classCode.trim() || isJoiningClass) && styles.confirmButtonDisabled,
                     ]}
                     onPress={handleJoinClass}
-                    disabled={!classCode.trim()}
+                    disabled={!classCode.trim() || isJoiningClass}
                   >
-                    <Text style={styles.confirmButtonText}>Join Now</Text>
+                    {isJoiningClass ? (
+                      <View style={styles.joinLoadingContent}>
+                        <ActivityIndicator size="small" color="#FFFFFF" />
+                        <Text style={styles.confirmButtonText}>Joining...</Text>
+                      </View>
+                    ) : (
+                      <Text style={styles.confirmButtonText}>Join Now</Text>
+                    )}
                   </TouchableOpacity>
                 </View>
               </View>
@@ -888,6 +1001,26 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '800',
     color: '#111',
+  },
+
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+  },
+  seeAllButton: {
+    backgroundColor: '#FFF1F1',
+    borderWidth: 1,
+    borderColor: '#F3C6C6',
+    borderRadius: 999,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+  },
+  seeAllButtonText: {
+    color: '#D32F2F',
+    fontSize: 13,
+    fontWeight: '800',
   },
 
   joinClassButton: {
@@ -1105,6 +1238,45 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
 
+  joinFeedbackContainer: {
+    position: 'absolute',
+    top: 18,
+    left: 0,
+    right: 0,
+    zIndex: 9999,
+    elevation: 9999,
+    alignItems: 'center',
+    paddingHorizontal: 16,
+  },
+  joinFeedbackBox: {
+    maxWidth: 420,
+    minHeight: 52,
+    borderRadius: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    shadowColor: '#000',
+    shadowOpacity: 0.18,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 5 },
+    elevation: 12,
+  },
+  joinFeedbackSuccess: {
+    backgroundColor: '#2E7D32',
+  },
+  joinFeedbackError: {
+    backgroundColor: '#D32F2F',
+  },
+  joinFeedbackText: {
+    flex: 1,
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '800',
+    lineHeight: 19,
+  },
+
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(15, 23, 42, 0.18)',
@@ -1182,6 +1354,16 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     fontSize: 13,
   },
+  joinDisabledButton: {
+    opacity: 0.65,
+  },
+  joinLoadingContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+
   confirmButton: {
     paddingHorizontal: 16,
     paddingVertical: 11,

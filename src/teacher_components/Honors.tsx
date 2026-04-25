@@ -477,7 +477,7 @@ export default function HonorsScreen() {
                 </View>
 
                 <View style={styles.academicSchoolYearGroup}>
-                  <Text style={styles.academicControlLabel}>Computed School Year</Text>
+                  <Text style={styles.academicControlLabel}>School Year</Text>
                   <View style={styles.schoolYearBadge}>
                     <Text style={styles.schoolYearBadgeValue}>{schoolYear || 'S.Y ---- - ----'}</Text>
                   </View>

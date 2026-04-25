@@ -86,8 +86,10 @@ export const getPredictedGrade = (
   averageScore: number,
   pendingCount: number,
   submittedCount: number,
-  missingCount: number
+  missingCount: number,
+  gradedCount: number = 0
 ): number => {
+  if (gradedCount === 0) return 0;
   if (averageScore === 0) return 0;
 
   const predicted =
@@ -128,13 +130,30 @@ export const getTrendSymbol = (trend: number): string => {
   return '→';
 };
 
+export const parseDateValue = (value: any): Date | null => {
+  if (!value) return null;
+
+  if (typeof value?.toDate === 'function') {
+    return value.toDate();
+  }
+
+  if (typeof value?._seconds === 'number') {
+    return new Date(value._seconds * 1000);
+  }
+
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
 export const isAssignmentMissing = (
   assignment: AnalyticsAssignment,
   currentDate: Date = new Date()
 ): boolean => {
   if (assignment.status !== 'pending' || !assignment.dueDate) return false;
 
-  const dueDate = new Date(assignment.dueDate);
+  const dueDate = parseDateValue(assignment.dueDate);
+  if (!dueDate) return false;
+
   return dueDate.getTime() < currentDate.getTime();
 };
 
@@ -153,7 +172,7 @@ export const normalizeAssignmentStatus = (
 };
 
 export const normalizeAssignments = (
-  assignments: AnalyticsAssignment[],
+  assignments: AnalyticsAssignment[] = [],
   currentDate: Date = new Date()
 ): AnalyticsAssignment[] => {
   return assignments.map((assignment) =>

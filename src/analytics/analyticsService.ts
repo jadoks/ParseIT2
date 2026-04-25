@@ -32,18 +32,26 @@ import {
 const getStrongestSubject = (
   subjectSummaries: SubjectAnalyticsSummary[]
 ): string => {
-  if (!subjectSummaries.length) return 'N/A';
+  const subjectsWithData = subjectSummaries.filter(
+    (summary) => summary.gradedCount > 0
+  );
 
-  return [...subjectSummaries].sort((a, b) => b.average - a.average)[0]
+  if (!subjectsWithData.length) return 'N/A';
+
+  return [...subjectsWithData].sort((a, b) => b.average - a.average)[0]
     .courseName;
 };
 
 const getWeakestSubject = (
   subjectSummaries: SubjectAnalyticsSummary[]
 ): string => {
-  if (!subjectSummaries.length) return 'N/A';
+  const subjectsWithData = subjectSummaries.filter(
+    (summary) => summary.gradedCount > 0
+  );
 
-  return [...subjectSummaries].sort((a, b) => a.average - b.average)[0]
+  if (!subjectsWithData.length) return 'N/A';
+
+  return [...subjectsWithData].sort((a, b) => a.average - b.average)[0]
     .courseName;
 };
 
@@ -52,7 +60,7 @@ export const buildSubjectAnalyticsSummary = (
   currentDate: Date = new Date()
 ): SubjectAnalyticsSummary => {
   const normalizedAssignments = normalizeAssignments(
-    course.assignments,
+    course.assignments || [],
     currentDate
   );
 
@@ -66,7 +74,8 @@ export const buildSubjectAnalyticsSummary = (
     averageScore,
     pendingCount,
     submittedCount,
-    missingCount
+    missingCount,
+    gradedCount
   );
 
   const scoreSeries = getAssignmentScoreSeries(normalizedAssignments);
@@ -74,12 +83,17 @@ export const buildSubjectAnalyticsSummary = (
   const trendDirection = getTrendDirection(trend);
   const trendSymbol = getTrendSymbol(trend);
 
-  const riskLevel = getRiskLevel(averageScore, pendingCount, missingCount);
+  const riskLevel = getRiskLevel(
+    averageScore,
+    pendingCount,
+    missingCount,
+    gradedCount
+  );
 
   return {
     courseId: course.id,
     courseName: course.name,
-    courseCode: course.code,
+    courseCode: course.code || course.courseCode || '',
     instructor: course.instructor,
     totalAssignments: normalizedAssignments.length,
     gradedCount,
@@ -96,7 +110,7 @@ export const buildSubjectAnalyticsSummary = (
 };
 
 export const buildStudentAnalytics = (
-  courses: AnalyticsCourse[],
+  courses: AnalyticsCourse[] = [],
   currentDate: Date = new Date()
 ): StudentAnalyticsSummary => {
   const subjectSummaries = courses.map((course) =>
@@ -104,13 +118,18 @@ export const buildStudentAnalytics = (
   );
 
   const allAssignments: AnalyticsAssignment[] = courses.flatMap((course) =>
-    normalizeAssignments(course.assignments, currentDate)
+    normalizeAssignments(course.assignments || [], currentDate)
+  );
+
+  const totalGradedAssignments = subjectSummaries.reduce(
+    (sum, summary) => sum + summary.gradedCount,
+    0
   );
 
   const overallAverage = average(
     subjectSummaries
+      .filter((summary) => summary.gradedCount > 0)
       .map((summary) => summary.average)
-      .filter((value) => value > 0)
   );
 
   const totalPendingAssignments = subjectSummaries.reduce(
@@ -132,12 +151,13 @@ export const buildStudentAnalytics = (
     overallAverage,
     totalPendingAssignments,
     totalSubmittedAssignments,
-    totalMissingAssignments
+    totalMissingAssignments,
+    totalGradedAssignments
   );
 
   const scoreSeries = subjectSummaries
-    .map((summary) => summary.average)
-    .filter((value) => value > 0);
+    .filter((summary) => summary.gradedCount > 0)
+    .map((summary) => summary.average);
 
   const overallTrend = getTrendValue(scoreSeries);
 
@@ -147,14 +167,16 @@ export const buildStudentAnalytics = (
   const overallRisk = getRiskLevel(
     overallAverage,
     totalPendingAssignments,
-    totalMissingAssignments
+    totalMissingAssignments,
+    totalGradedAssignments
   );
 
   const recommendations = getRecommendations(
     overallAverage,
     totalPendingAssignments,
     totalMissingAssignments,
-    weakestSubject !== 'N/A' ? weakestSubject : undefined
+    weakestSubject !== 'N/A' ? weakestSubject : undefined,
+    totalGradedAssignments
   );
 
   const missingAssignments = getMissingAssignments(allAssignments);
@@ -165,6 +187,7 @@ export const buildStudentAnalytics = (
     totalPendingAssignments,
     totalMissingAssignments,
     totalSubmittedAssignments,
+    totalGradedAssignments,
     weakestSubject,
     strongestSubject,
     overallRisk,
@@ -178,7 +201,7 @@ export const buildStudentAnalytics = (
 export const buildTeacherStudentRow = (
   studentId: string,
   studentName: string,
-  courses: AnalyticsCourse[],
+  courses: AnalyticsCourse[] = [],
   currentDate: Date = new Date()
 ): TeacherStudentRow => {
   const studentSummary = buildStudentAnalytics(courses, currentDate);
@@ -190,6 +213,7 @@ export const buildTeacherStudentRow = (
     totalPendingAssignments: studentSummary.totalPendingAssignments,
     totalMissingAssignments: studentSummary.totalMissingAssignments,
     totalSubmittedAssignments: studentSummary.totalSubmittedAssignments,
+    totalGradedAssignments: studentSummary.totalGradedAssignments,
     riskLevel: studentSummary.overallRisk,
     overallTrend: studentSummary.overallTrend,
   };
@@ -200,25 +224,29 @@ export const buildTeacherAnalyticsSummary = (
     studentId: string;
     studentName: string;
     courses: AnalyticsCourse[];
-  }[],
+  }[] = [],
   currentDate: Date = new Date()
 ): TeacherAnalyticsSummary => {
   const studentRows: TeacherStudentRow[] = students.map((student) =>
     buildTeacherStudentRow(
       student.studentId,
       student.studentName,
-      student.courses,
+      student.courses || [],
       currentDate
     )
   );
 
   const classAverage = average(
     studentRows
+      .filter((student) => student.totalGradedAssignments > 0)
       .map((student) => student.overallAverage)
-      .filter((value) => value > 0)
   );
 
   const totalStudents = studentRows.length;
+
+  const noDataCount = studentRows.filter(
+    (student) => student.riskLevel === 'No Data'
+  ).length;
 
   const highRiskCount = studentRows.filter(
     (student) => student.riskLevel === 'High'
@@ -235,6 +263,7 @@ export const buildTeacherAnalyticsSummary = (
   return {
     classAverage,
     totalStudents,
+    noDataCount,
     highRiskCount,
     moderateRiskCount,
     lowRiskCount,
@@ -251,12 +280,12 @@ export const buildAdminCourseRow = (
     studentId: string;
     studentName: string;
     courses: AnalyticsCourse[];
-  }[],
+  }[] = [],
   currentDate: Date = new Date()
 ): AdminCourseRow => {
   const matchingCourseSummaries = enrolledStudents
     .map((student) =>
-      student.courses.find((studentCourse) => studentCourse.id === course.id)
+      (student.courses || []).find((studentCourse) => studentCourse.id === course.id)
     )
     .filter(
       (studentCourse): studentCourse is AnalyticsCourse =>
@@ -268,9 +297,13 @@ export const buildAdminCourseRow = (
 
   const averageScore = average(
     matchingCourseSummaries
+      .filter((summary) => summary.gradedCount > 0)
       .map((summary) => summary.average)
-      .filter((value) => value > 0)
   );
+
+  const noDataCount = matchingCourseSummaries.filter(
+    (summary) => summary.riskLevel === 'No Data'
+  ).length;
 
   const highRiskCount = matchingCourseSummaries.filter(
     (summary) => summary.riskLevel === 'High'
@@ -287,9 +320,10 @@ export const buildAdminCourseRow = (
   return {
     courseId: course.id,
     courseName: course.name,
-    courseCode: course.code,
+    courseCode: course.code || course.courseCode || '',
     instructor: course.instructor,
     average: averageScore,
+    noDataCount,
     highRiskCount,
     moderateRiskCount,
     lowRiskCount,
@@ -297,12 +331,12 @@ export const buildAdminCourseRow = (
 };
 
 export const buildAdminAnalyticsSummary = (
-  courses: AnalyticsCourse[],
+  courses: AnalyticsCourse[] = [],
   students: {
     studentId: string;
     studentName: string;
     courses: AnalyticsCourse[];
-  }[],
+  }[] = [],
   currentDate: Date = new Date()
 ): AdminAnalyticsSummary => {
   const courseRows = courses.map((course) =>
@@ -319,6 +353,7 @@ export const buildAdminAnalyticsSummary = (
     departmentAverage,
     totalCourses: courses.length,
     totalStudents: teacherSummary.totalStudents,
+    totalNoData: teacherSummary.noDataCount,
     totalHighRisk: teacherSummary.highRiskCount,
     totalModerateRisk: teacherSummary.moderateRiskCount,
     totalLowRisk: teacherSummary.lowRiskCount,
@@ -327,7 +362,7 @@ export const buildAdminAnalyticsSummary = (
 };
 
 export const buildStudentAnalyticsWithRiskDetails = (
-  courses: AnalyticsCourse[],
+  courses: AnalyticsCourse[] = [],
   currentDate: Date = new Date()
 ) => {
   const studentSummary = buildStudentAnalytics(courses, currentDate);
@@ -342,7 +377,7 @@ export const buildStudentAnalyticsWithRiskDetails = (
 
   const riskDetails = weakestCourse
     ? evaluateAssignmentRisk(
-        weakestCourse.assignments,
+        weakestCourse.assignments || [],
         weakestCourse.name,
         currentDate
       )

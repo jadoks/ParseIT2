@@ -1,8 +1,9 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   ScrollView,
   StyleSheet,
   Text,
+  TouchableOpacity,
   View,
   useWindowDimensions,
 } from 'react-native';
@@ -253,6 +254,7 @@ const FloatingLineLabels = ({
 
 const Analytics: React.FC<AnalyticsProps> = ({ courses, studentName }) => {
   const { width } = useWindowDimensions();
+  const [showAllSubjects, setShowAllSubjects] = useState(false);
 
   const isMobile = width < 768;
   const isTablet = width >= 768;
@@ -425,6 +427,44 @@ const Analytics: React.FC<AnalyticsProps> = ({ courses, studentName }) => {
   const subjectValues = subjectBarData.datasets[0]?.data ?? [];
   const predictedValues = predictedLineData.datasets[0]?.data ?? [];
 
+  const sortedSubjectSummaries = useMemo(() => {
+    const riskPriority: Record<string, number> = {
+      High: 4,
+      Moderate: 3,
+      Low: 2,
+      'No Data': 1,
+    };
+
+    return [...analytics.subjectSummaries].sort(
+      (a: SubjectAnalyticsSummary, b: SubjectAnalyticsSummary) => {
+        const riskDifference =
+          (riskPriority[b.riskLevel] ?? 0) -
+          (riskPriority[a.riskLevel] ?? 0);
+
+        if (riskDifference !== 0) return riskDifference;
+
+        if (a.missingCount !== b.missingCount) {
+          return b.missingCount - a.missingCount;
+        }
+
+        if (a.pendingCount !== b.pendingCount) {
+          return b.pendingCount - a.pendingCount;
+        }
+
+        if (a.gradedCount === 0 && b.gradedCount > 0) return 1;
+        if (b.gradedCount === 0 && a.gradedCount > 0) return -1;
+
+        return a.average - b.average;
+      }
+    );
+  }, [analytics.subjectSummaries]);
+
+  const visibleSubjectSummaries = showAllSubjects
+    ? sortedSubjectSummaries
+    : sortedSubjectSummaries.slice(0, 3);
+  const hasMoreSubjects = sortedSubjectSummaries.length > 3;
+  const hiddenSubjectCount = Math.max(sortedSubjectSummaries.length - 3, 0);
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <View style={styles.heroCard}>
@@ -495,26 +535,6 @@ const Analytics: React.FC<AnalyticsProps> = ({ courses, studentName }) => {
           subtitle="Awaiting grading"
           accentColor={COLORS.primary}
           cardStyle={metricCardResponsiveStyle}
-        />
-        <MetricCard
-          title="Weakest Subject"
-          value={analytics.weakestSubject}
-          subtitle="Needs more focus"
-          accentColor={COLORS.danger}
-          cardStyle={[
-            metricCardResponsiveStyle,
-            isMobile && styles.fullWidthCard
-          ]}
-        />
-        <MetricCard
-          title="Strongest Subject"
-          value={analytics.strongestSubject}
-          subtitle="Best current standing"
-          accentColor={COLORS.success}
-          cardStyle={[
-            metricCardResponsiveStyle,
-            isMobile && styles.fullWidthCard
-          ]}
         />
       </View>
 
@@ -736,8 +756,26 @@ const Analytics: React.FC<AnalyticsProps> = ({ courses, studentName }) => {
       <View style={styles.sectionCard}>
         <Text style={styles.sectionTitle}>Per-Subject Details</Text>
         <Text style={styles.sectionCaption}>
-          Detailed course-level analytics summary
+          Subjects are ranked by academic risk. Highest-risk subjects are shown first.
         </Text>
+
+        <View style={styles.subjectSectionHeaderRow}>
+          <Text style={styles.subjectCountText}>
+            {visibleSubjectSummaries.length} of {analytics.subjectSummaries.length} subjects shown
+          </Text>
+
+          {hasMoreSubjects ? (
+            <TouchableOpacity
+              activeOpacity={0.85}
+              style={styles.seeAllButton}
+              onPress={() => setShowAllSubjects((prev) => !prev)}
+            >
+              <Text style={styles.seeAllButtonText}>
+                {showAllSubjects ? 'Show Less' : `See All (${hiddenSubjectCount})`}
+              </Text>
+            </TouchableOpacity>
+          ) : null}
+        </View>
 
         <View
           style={[
@@ -746,7 +784,7 @@ const Analytics: React.FC<AnalyticsProps> = ({ courses, studentName }) => {
             isDesktop && styles.subjectGridDesktop,
           ]}
         >
-          {analytics.subjectSummaries.map((subject: SubjectAnalyticsSummary) => {
+          {visibleSubjectSummaries.map((subject: SubjectAnalyticsSummary) => {
             const riskColor = getRiskColor(subject.riskLevel);
 
             return (
@@ -1170,6 +1208,33 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '800',
     color: '#FFFFFF',
+  },
+
+  subjectSectionHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    marginBottom: 12,
+  },
+  subjectCountText: {
+    flex: 1,
+    fontSize: 13,
+    color: COLORS.subtext,
+    fontWeight: '600',
+  },
+  seeAllButton: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: '#FEF2F2',
+    borderWidth: 1,
+    borderColor: '#FECACA',
+  },
+  seeAllButtonText: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: COLORS.primary,
   },
 
   subjectGrid: {
