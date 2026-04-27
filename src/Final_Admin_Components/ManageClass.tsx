@@ -21,6 +21,13 @@ import AddClassModal, {
 
 type ManageClassProps = {
   width: number;
+  currentAdmin?: {
+    adminId?: string;
+    authUid?: string | null;
+    firstName?: string;
+    lastName?: string;
+    email?: string;
+  };
 };
 
 type BackendClassItem = {
@@ -41,6 +48,8 @@ type BackendClassItem = {
   createdByUid?: string;
   createdByRole?: "teacher" | "admin";
   instructorEmail?: string;
+  assignedTeacherId?: string;
+  assignedTeacherUid?: string;
   status?: "active" | "archived";
 };
 
@@ -96,7 +105,7 @@ const fileUriToBase64 = async (uri: string): Promise<string> => {
   });
 };
 
-export default function ManageClass({ width }: ManageClassProps) {
+export default function ManageClass({ width, currentAdmin }: ManageClassProps) {
   const [classes, setClasses] = useState<TableClassItem[]>([]);
   const [rawClasses, setRawClasses] = useState<BackendClassItem[]>([]);
   const [isAddModalVisible, setIsAddModalVisible] = useState(false);
@@ -231,7 +240,7 @@ export default function ManageClass({ width }: ManageClassProps) {
               bannerBase64,
               bannerFileName: payload.bannerFileName,
               bannerMimeType: payload.bannerMimeType,
-              instructorName: payload.instructor,
+              instructorIdentifier: payload.instructorIdentifier,
               memberCount: payload.classMembers,
             }),
           }
@@ -264,10 +273,10 @@ export default function ManageClass({ width }: ManageClassProps) {
           bannerBase64,
           bannerFileName: payload.bannerFileName,
           bannerMimeType: payload.bannerMimeType,
-          instructorName: payload.instructor,
-          instructorEmail: "admin@email.com",
-          createdByUid: "admin_uid_001",
+          instructorIdentifier: payload.instructorIdentifier,
+          createdByUid: currentAdmin?.authUid || currentAdmin?.adminId || "admin_uid_001",
           createdByRole: "admin",
+          createdByName: `${currentAdmin?.firstName || ""} ${currentAdmin?.lastName || ""}`.trim() || "Admin",
         }),
       });
 
@@ -306,7 +315,7 @@ export default function ManageClass({ width }: ManageClassProps) {
       courseCode: fullClass.courseCode,
       semester: fullClass.semester,
       section: fullClass.section,
-      instructor: fullClass.instructorName,
+      instructorIdentifier: fullClass.assignedTeacherId || "",
       classMembers: fullClass.memberCount ?? 0,
       schoolYear: fullClass.schoolYear ?? null,
       description: fullClass.description ?? null,

@@ -1062,9 +1062,6 @@ export default function TeacherAnalytics({
             <Text style={styles.heroTitle}>
               Teacher Academic Performance Analytics
             </Text>
-            <Text style={styles.heroSubtitle}>
-              {teacherName} • {selectedCourseName}
-            </Text>
             <Text style={styles.heroDescription}>
               Academic-format monitoring for class performance trends,
               percentile ranking, learning gaps, risk profile, and AI-generated

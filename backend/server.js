@@ -3,6 +3,7 @@
 // 1. submitted-assignment
 // 2. community-answer
 // 3. student-at-risk
+// 4. class-assigned
 
 import cors from "cors";
 import dotenv from "dotenv";
@@ -34,6 +35,7 @@ const TEACHER_ALLOWED_NOTIFICATION_TYPES = new Set([
   "submitted-assignment",
   "community-answer",
   "student-at-risk",
+  "class-assigned",
 ]);
 
 const DEFAULT_PROFILE_IMAGE_URL =
@@ -962,6 +964,47 @@ async function createStudentAtRiskNotificationForTeacher({
     actorId: studentId,
     actorRole: "student",
     actorName: studentName || studentId,
+  });
+}
+
+async function createClassAssignedNotificationForTeacher({
+  classId,
+  classCode,
+  className,
+  teacherId,
+  assignedById = null,
+  assignedByName = null,
+}) {
+  const normalizedTeacherId = normalizeOptionalText(teacherId);
+  const normalizedClassId = normalizeOptionalText(classId);
+
+  if (!normalizedTeacherId || !normalizedClassId) return null;
+
+  const existing = await db
+    .collection("notifications")
+    .where("userId", "==", normalizedTeacherId)
+    .where("role", "==", "teacher")
+    .where("type", "==", "class-assigned")
+    .where("relatedId", "==", normalizedClassId)
+    .limit(1)
+    .get();
+
+  if (!existing.empty) return existing.docs[0].id;
+
+  return createNotification({
+    userId: normalizedTeacherId,
+    role: "teacher",
+    type: "class-assigned",
+    title: "Class Assigned",
+    message: `You have been assigned to ${className || "a class"}${
+      classCode ? ` (${classCode})` : ""
+    }.`,
+    relatedId: normalizedClassId,
+    relatedType: "class",
+    classId: normalizedClassId,
+    actorId: assignedById,
+    actorRole: "admin",
+    actorName: assignedByName || "Admin",
   });
 }
 
@@ -2188,15 +2231,19 @@ app.post("/create-class", async (req, res) => {
     let assignedTeacher = null;
 
     if (createdByRole === "admin") {
-      const teacherLookupValue =
-        instructorIdentifier || instructorEmail || instructorName;
+      const teacherLookupValue = normalizeOptionalText(instructorIdentifier);
+
+      if (!teacherLookupValue) {
+        return res.status(400).json({
+          error: "Teacher ID is required.",
+        });
+      }
 
       assignedTeacher = await findTeacherByIdentifier(teacherLookupValue);
 
       if (!assignedTeacher) {
         return res.status(400).json({
-          error:
-            "Assigned teacher not found. Use a valid teacher ID, email, or exact name.",
+          error: "Assigned teacher not found. Use a valid teacher ID.",
         });
       }
     }
@@ -2286,6 +2333,17 @@ app.post("/create-class", async (req, res) => {
       teacherName: resolvedInstructorName,
       teacherEmail: resolvedInstructorEmail,
     });
+
+    if (createdByRole === "admin") {
+      await createClassAssignedNotificationForTeacher({
+        classId: classRef.id,
+        classCode,
+        className: name,
+        teacherId: resolvedAssignedTeacherId,
+        assignedById: createdByUid,
+        assignedByName: normalizeOptionalText(createdByName) || "Admin",
+      });
+    }
 
     res.json({
       success: true,
@@ -4998,6 +5056,7 @@ app.get("/notifications", async (req, res) => {
     // 1. submitted-assignment
     // 2. community-answer
     // 3. student-at-risk
+    // 4. class-assigned
     if (role === "teacher") {
       notifications = notifications.filter((item) =>
         TEACHER_ALLOWED_NOTIFICATION_TYPES.has(item.type)
@@ -5474,49 +5533,59 @@ app.get("/honor-roll", async (req, res) => {
           ? classData.units
           : Number(classData.units) || 0;
 
-      const membersSnapshot = await db
-        .collection("classMembers")
-        .where("classId", "==", classId)
-        .where("role", "==", "student")
-        .get();
-
       const gradesSnapshot = await db
         .collection("finalGrades")
         .where("classId", "==", classId)
         .get();
 
-      const gradeByStudentId = new Map();
-
-      gradesSnapshot.docs.forEach((gradeDoc) => {
+      for (const gradeDoc of gradesSnapshot.docs) {
         const gradeData = gradeDoc.data() || {};
         const studentId = normalizeOptionalText(gradeData.studentId);
 
-        if (!studentId) return;
+        if (!studentId) continue;
 
-        gradeByStudentId.set(studentId, {
-          id: gradeDoc.id,
-          ...gradeData,
-        });
-      });
-
-      membersSnapshot.docs.forEach((memberDoc) => {
-        const member = memberDoc.data() || {};
-        const studentId = normalizeOptionalText(member.userId);
-
-        if (!studentId || member.status === "inactive") return;
-
-        const gradeData = gradeByStudentId.get(studentId) || null;
         const finalGrade =
           gradeData?.finalGrade !== undefined && gradeData?.finalGrade !== null
             ? Number(gradeData.finalGrade)
             : null;
 
+        let studentProfile = null;
+
+        try {
+          const studentSnap = await db.collection("students").doc(studentId).get();
+          if (studentSnap.exists) {
+            studentProfile = studentSnap.data() || null;
+          }
+        } catch (studentLookupError) {
+          console.warn(
+            "Honor roll student lookup warning:",
+            studentLookupError?.message || studentLookupError
+          );
+        }
+
+        const profileName = studentProfile
+          ? `${studentProfile.firstName || ""} ${studentProfile.lastName || ""}`.trim()
+          : "";
+
         if (!studentsMap.has(studentId)) {
           studentsMap.set(studentId, {
             id: studentId,
-            name: normalizeOptionalText(member.name) || normalizeOptionalText(gradeData?.studentName) || studentId,
-            section: normalizeOptionalText(classData.section) || "No Section",
-            yearLevel: normalizeOptionalText(classData.year) || "No Year Level",
+            name:
+              normalizeOptionalText(gradeData.studentName) ||
+              normalizeOptionalText(profileName) ||
+              normalizeOptionalText(studentProfile?.name) ||
+              studentId,
+            section:
+              normalizeOptionalText(gradeData.section) ||
+              normalizeOptionalText(studentProfile?.section) ||
+              normalizeOptionalText(classData.section) ||
+              "No Section",
+            yearLevel:
+              normalizeOptionalText(gradeData.yearLevel) ||
+              normalizeOptionalText(studentProfile?.yearLevel) ||
+              normalizeOptionalText(studentProfile?.year) ||
+              normalizeOptionalText(classData.year) ||
+              "No Year Level",
             totalUnits: 0,
             courses: [],
           });
@@ -5535,7 +5604,7 @@ app.get("/honor-roll", async (req, res) => {
           grade: finalGrade,
           hasFinalGrade: Number.isFinite(finalGrade),
         });
-      });
+      }
     }
 
     const qualifiedStudents = [];
@@ -5642,7 +5711,6 @@ app.get("/honor-roll", async (req, res) => {
     });
   }
 });
-
 
 app.get("/", (req, res) => {
   res.json({
@@ -7655,3 +7723,4 @@ app.listen(PORT, "0.0.0.0", () => {
   console.log(`Server running on http://localhost:${PORT}`);
   console.log(`Health check: http://localhost:${PORT}/health`);
 });
+ 

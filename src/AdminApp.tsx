@@ -146,7 +146,7 @@ export default function AdminApp({ onLogout, currentAdmin }: Props) {
     }
 
     if (activeTopNav === "Class" || activeContentScreen === "Class") {
-      return <ManageClass width={width} />;
+      return <ManageClass width={width} currentAdmin={currentAdmin} />;
     }
 
     if (activeTopNav === "Admin" || activeContentScreen === "Admin") {

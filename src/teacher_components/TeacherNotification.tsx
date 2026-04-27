@@ -14,7 +14,8 @@ import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityI
 export type NotificationType =
   | 'submitted-assignment'
   | 'community-answer'
-  | 'student-at-risk';
+  | 'student-at-risk'
+  | 'class-assigned';
 
 export type NotificationItem = {
   id: string;
@@ -76,6 +77,7 @@ const TeacherNotification: React.FC<NotificationScreenProps> = ({
     'submitted-assignment',
     'community-answer',
     'student-at-risk',
+    'class-assigned',
   ];
 
   const filteredNotifications = useMemo(() => {
@@ -216,6 +218,14 @@ const TeacherNotification: React.FC<NotificationScreenProps> = ({
         return (
           <MaterialCommunityIcons
             name="account-alert-outline"
+            size={22}
+            color={color}
+          />
+        );
+      case 'class-assigned':
+        return (
+          <MaterialCommunityIcons
+            name="google-classroom"
             size={22}
             color={color}
           />

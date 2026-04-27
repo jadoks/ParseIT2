@@ -3,6 +3,7 @@ import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import * as DocumentPicker from "expo-document-picker";
 import React, { useEffect, useMemo, useState } from "react";
 import {
+  ActivityIndicator,
   Alert,
   Image,
   Modal,
@@ -50,9 +51,7 @@ export type AddClassModalPayload = {
   semester: string;
   section: string;
   year?: string | null;
-  instructor: string;
-  instructorEmail: string | null;
-  instructorIdentifier: string | null;
+  instructorIdentifier: string;
   classMembers: number;
   schoolYear: string | null;
   description: string | null;
@@ -69,8 +68,6 @@ export type AddClassModalInitialData = {
   courseCode?: string;
   semester?: string;
   section?: string;
-  instructor?: string;
-  instructorEmail?: string | null;
   instructorIdentifier?: string | null;
   classMembers?: number;
   schoolYear?: string | null;
@@ -205,6 +202,7 @@ export default function AddClassModal({
   onCreateClass,
   initialData,
   isEditMode = false,
+  isSubmitting = false,
 }: {
   visible: boolean;
   onClose: () => void;
@@ -212,6 +210,7 @@ export default function AddClassModal({
   onCreateClass: (payload: AddClassModalPayload) => void;
   initialData?: AddClassModalInitialData | null;
   isEditMode?: boolean;
+  isSubmitting?: boolean;
 }) {
   const [selectedYear, setSelectedYear] = useState<string | null>(null);
   const [selectedSection, setSelectedSection] = useState<string | null>(null);
@@ -219,8 +218,6 @@ export default function AddClassModal({
   const [selectedCourse, setSelectedCourse] = useState<string | null>(null);
   const [isSemesterModalVisible, setIsSemesterModalVisible] = useState(false);
 
-  const [instructor, setInstructor] = useState("");
-  const [instructorEmail, setInstructorEmail] = useState("");
   const [instructorIdentifier, setInstructorIdentifier] = useState("");
 
   const [description, setDescription] = useState("");
@@ -346,8 +343,6 @@ export default function AddClassModal({
   };
 
   const resetForm = () => {
-    setInstructor("");
-    setInstructorEmail("");
     setInstructorIdentifier("");
     setDescription("");
     setStartYear("2025");
@@ -369,8 +364,6 @@ export default function AddClassModal({
       return;
     }
 
-    setInstructor(initialData.instructor || "");
-    setInstructorEmail(initialData.instructorEmail || "");
     setInstructorIdentifier(initialData.instructorIdentifier || "");
     setDescription(initialData.description || "");
 
@@ -441,11 +434,14 @@ export default function AddClassModal({
   }, [visible, isEditMode, initialData]);
 
   const handleClose = () => {
+    if (isSubmitting) return;
     resetForm();
     onClose();
   };
 
   const handleSubmit = () => {
+    if (isSubmitting) return;
+
     if (!selectedYear) {
       Alert.alert("Missing Field", "Please select a year.");
       return;
@@ -471,8 +467,8 @@ export default function AddClassModal({
       return;
     }
 
-    if (!instructor.trim()) {
-      Alert.alert("Missing Field", "Please enter instructor name.");
+    if (!instructorIdentifier.trim()) {
+      Alert.alert("Missing Field", "Please enter teacher ID.");
       return;
     }
 
@@ -504,9 +500,7 @@ export default function AddClassModal({
       semester: selectedSemesterLabel,
       section: selectedSectionLabel,
       year: selectedYearLabel,
-      instructor: instructor.trim(),
-      instructorEmail: instructorEmail.trim() || null,
-      instructorIdentifier: instructorIdentifier.trim() || null,
+      instructorIdentifier: instructorIdentifier.trim(),
       classMembers: isEditMode ? initialData?.classMembers ?? 0 : 0,
       schoolYear,
       description: description.trim() ? description.trim() : null,
@@ -539,15 +533,19 @@ export default function AddClassModal({
                   <Text style={styles.modalSubtitle}>
                     {isEditMode
                       ? "Update class details with existing values already selected."
-                      : "Create a class by selecting year, semester, section, course, instructor, school year, optional description, and an optional banner file."}
+                      : "Create a class by selecting year, semester, section, course, teacher ID, school year, optional description, and an optional banner file."}
                   </Text>
                 </View>
               </View>
 
               <TouchableOpacity
-                style={styles.modalCloseButton}
+                style={[
+                  styles.modalCloseButton,
+                  isSubmitting && styles.modalSecondaryButtonDisabled,
+                ]}
                 onPress={handleClose}
                 activeOpacity={0.85}
+                disabled={isSubmitting}
               >
                 <Ionicons name="close" size={20} color="#7A4A4A" />
               </TouchableOpacity>
@@ -731,29 +729,11 @@ export default function AddClassModal({
                   style={[styles.modalRow, isMobile && styles.modalRowStack]}
                 >
                   <View style={styles.modalCol}>
-                    <Text style={styles.fieldLabel}>Instructor Name</Text>
-                    <View style={styles.inputField}>
-                      <Ionicons
-                        name="person-outline"
-                        size={18}
-                        color="#8A6F6F"
-                      />
-                      <TextInput
-                        value={instructor}
-                        onChangeText={setInstructor}
-                        placeholder="Enter instructor full name"
-                        placeholderTextColor="#B79A9A"
-                        style={styles.textInput}
-                      />
-                    </View>
-                  </View>
-                </View>
-
-                <View
-                  style={[styles.modalRow, isMobile && styles.modalRowStack]}
-                >
-                  <View style={styles.modalCol}>
                     <Text style={styles.fieldLabel}>Instructor ID</Text>
+                    <Text style={styles.helperText}>
+                      Enter only the teacher ID. The system will automatically fetch
+                      the teacher name and email.
+                    </Text>
                     <View style={styles.inputField}>
                       <Ionicons
                         name="card-outline"
@@ -766,25 +746,6 @@ export default function AddClassModal({
                         placeholder="Enter teacher ID"
                         placeholderTextColor="#B79A9A"
                         style={styles.textInput}
-                      />
-                    </View>
-                  </View>
-
-                  <View style={styles.modalCol}>
-                    <Text style={styles.fieldLabel}>Instructor Email</Text>
-                    <View style={styles.inputField}>
-                      <Ionicons
-                        name="mail-outline"
-                        size={18}
-                        color="#8A6F6F"
-                      />
-                      <TextInput
-                        value={instructorEmail}
-                        onChangeText={setInstructorEmail}
-                        placeholder="Enter teacher email"
-                        placeholderTextColor="#B79A9A"
-                        style={styles.textInput}
-                        keyboardType="email-address"
                         autoCapitalize="none"
                       />
                     </View>
@@ -941,25 +902,44 @@ export default function AddClassModal({
 
             <View style={styles.modalFooter}>
               <TouchableOpacity
-                style={styles.modalSecondaryButton}
+                style={[
+                  styles.modalSecondaryButton,
+                  isSubmitting && styles.modalSecondaryButtonDisabled,
+                ]}
                 onPress={handleClose}
                 activeOpacity={0.85}
+                disabled={isSubmitting}
               >
                 <Text style={styles.modalSecondaryButtonText}>Cancel</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={styles.modalPrimaryButton}
+                style={[
+                  styles.modalPrimaryButton,
+                  isSubmitting && styles.modalPrimaryButtonDisabled,
+                ]}
                 activeOpacity={0.85}
                 onPress={handleSubmit}
+                disabled={isSubmitting}
               >
-                <Ionicons
-                  name="add-circle-outline"
-                  size={18}
-                  color="#FFFFFF"
-                />
+                {isSubmitting ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <Ionicons
+                    name={isEditMode ? "save-outline" : "add-circle-outline"}
+                    size={18}
+                    color="#FFFFFF"
+                  />
+                )}
+
                 <Text style={styles.modalPrimaryButtonText}>
-                  {isEditMode ? "Update Class" : "Create Class"}
+                  {isSubmitting
+                    ? isEditMode
+                      ? "Updating..."
+                      : "Creating..."
+                    : isEditMode
+                    ? "Update Class"
+                    : "Create Class"}
                 </Text>
               </TouchableOpacity>
             </View>
@@ -1186,6 +1166,14 @@ const styles = StyleSheet.create({
   modalCol: {
     flex: 1,
   },
+  helperText: {
+    fontSize: 13,
+    lineHeight: 19,
+    color: "#8A6F6F",
+    marginTop: -2,
+    marginBottom: 10,
+  },
+
   fieldLabel: {
     fontSize: 14,
     fontWeight: "700",
@@ -1374,6 +1362,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     flexDirection: "row",
+  },
+  modalPrimaryButtonDisabled: {
+    opacity: 0.75,
+  },
+  modalSecondaryButtonDisabled: {
+    opacity: 0.55,
   },
   modalPrimaryButtonText: {
     fontSize: 14,

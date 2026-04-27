@@ -139,6 +139,7 @@ const TEACHER_ALLOWED_NOTIFICATION_TYPES = new Set([
   'submitted-assignment',
   'community-answer',
   'student-at-risk',
+  'class-assigned',
 ]);
 
 export default function TeacherApp({ onLogout, currentTeacher }: Props) {
