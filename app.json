@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "ParseIT",
-    "slug": "parseit",
+    "name": "Parsers Hub",
+    "slug": "parsers-hub",
     "version": "1.0.0",
     "icon": "./assets/images/logo.png",
     "web": {
