@@ -127,10 +127,10 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
 
   const features: FeatureCard[] = [
     {
-      icon: <MaterialCommunityIcons name="brain" size={30} color="#fff" />,
-      title: "AI Assistant",
+      icon: <MaterialCommunityIcons name="account-school-outline" size={30} color="#fff" />,
+      title: "Adaptive Learning Support",
       description:
-        "ChatGPT-style intelligent tutor for coding and learning support. Get instant help with programming concepts, debugging, and problem-solving.",
+        "Personalized academic guidance that helps students access learning materials, receive intelligent recommendations, and strengthen weak topics through AI-supported assistance.",
       color: ["#ff3b30", "#ff7a00"],
     },
     {
@@ -141,10 +141,10 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
       color: ["#ff2d7a", "#ff3b72"],
     },
     {
-      icon: <Feather name="code" size={30} color="#fff" />,
-      title: "Programming Practice & Debugging",
+      icon: <Feather name="activity" size={30} color="#fff" />,
+      title: "AI-Driven Academic Support System",
       description:
-        "Interactive coding exercises with real-time AI feedback. Debug code efficiently with intelligent suggestions and explanations.",
+        "Parsers Hub 2.0 delivers adaptive learning, real-time assistance, and predictive analytics to support both students and educators in improving academic performance and decision-making.",
       color: ["#ff8a00", "#ffb000"],
     },
     {
