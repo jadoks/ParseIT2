@@ -20,6 +20,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from 'react-native-vector-icons/Ionicons';
+import * as XLSX from 'xlsx';
 
 import TeacherAssignmentSection from './TeacherAssignmentSection';
 import TeacherMaterialSection from './TeacherMaterialSection';
@@ -126,6 +127,25 @@ const API_BASE_URL = getApiBaseUrl();
 const WEEKDAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 const pad = (value: number) => String(value).padStart(2, '0');
+
+const sanitizeFileName = (value: string) => {
+  return String(value || 'file')
+    .replace(/[^a-z0-9-_]+/gi, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '') || 'file';
+};
+
+const getExportTimestamp = () => {
+  const now = new Date();
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}`;
+};
+
+const formatExportDateTime = (value?: string) => {
+  if (!value) return '';
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+  return parsed.toLocaleString();
+};
 
 const formatDateTime = (value?: any) => {
   if (!value) return '';
@@ -605,6 +625,262 @@ const TeacherCourseDetail2 = ({
     await Clipboard.setStringAsync(codeToCopy);
     setClassCodeCopied(true);
     setTimeout(() => setClassCodeCopied(false), 2000);
+  };
+
+
+  const getStudentSubmissionForAssignment = (assignmentId: string, studentId: string) => {
+    return submissions.find(
+      (item) => item.assignmentId === assignmentId && item.studentId === studentId
+    );
+  };
+
+  const getSubmissionStatusText = (status?: Submission['status']) => {
+    switch (status) {
+      case 'graded':
+        return 'Graded';
+      case 'submitted':
+        return 'Submitted';
+      case 'late':
+        return 'Late';
+      case 'pending':
+        return 'Pending';
+      default:
+        return 'No submission';
+    }
+  };
+
+  const getSubmissionFileUrl = (submission?: Submission) => {
+    const candidate =
+      (submission as any)?.fileUrl ||
+      (submission as any)?.fileUri ||
+      (submission as any)?.url ||
+      '';
+
+    return typeof candidate === 'string' ? candidate.trim() : '';
+  };
+
+  const downloadClassGradesExcel = async () => {
+    if (!course?.id) {
+      showResultModal('error', 'No Class', 'No class selected.');
+      return;
+    }
+
+    if (assignments.length === 0) {
+      showResultModal('error', 'No Assignments', 'There are no assignments to export for this class.');
+      return;
+    }
+
+    if (members.length === 0) {
+      showResultModal('error', 'No Students', 'There are no students to export for this class.');
+      return;
+    }
+
+    const classInfoRows = [
+      ['Class Name', courseName],
+      ['Course Code', course?.courseCode || ''],
+      ['Class Code', classCode],
+      ['Instructor', courseInstructor],
+      ['Year', courseYear],
+      ['Section', courseSection],
+      ['Semester', courseSemester],
+      ['School Year', schoolYear],
+      ['Exported At', new Date().toLocaleString()],
+    ];
+
+    const allRows = assignments.flatMap((assignment, assignmentIndex) => {
+      const totalScore = Number(assignment.totalScore || 0);
+
+      return members.map((student, studentIndex) => {
+        const submission = getStudentSubmissionForAssignment(assignment.id, student.id);
+        const score = typeof submission?.score === 'number' ? submission.score : '';
+        const percentage =
+          typeof submission?.score === 'number' && totalScore > 0
+            ? `${Math.round((submission.score / totalScore) * 100)}%`
+            : '';
+
+        return {
+          'Assignment No.': assignmentIndex + 1,
+          'Assignment ID': assignment.id,
+          Assignment: assignment.header || 'Untitled Assignment',
+          'Due Date': assignment.dueDate || '',
+          'Student No.': studentIndex + 1,
+          'Student ID': student.id,
+          'Student Name': student.name,
+          Handle: student.handle,
+          Status: getSubmissionStatusText(submission?.status),
+          Score: score,
+          'Total Score': totalScore,
+          Percentage: percentage,
+          'Submitted At': formatExportDateTime(submission?.submittedAt),
+          Feedback: submission?.feedback || '',
+          'Submitted File / Link': getSubmissionFileUrl(submission),
+        };
+      });
+    });
+
+    const summaryRows = assignments.map((assignment, index) => {
+      const assignmentSubmissions = submissions.filter((item) => item.assignmentId === assignment.id);
+      const submittedCount = assignmentSubmissions.filter(
+        (item) => item.status === 'submitted' || item.status === 'graded' || item.status === 'late'
+      ).length;
+      const gradedCount = assignmentSubmissions.filter((item) => item.status === 'graded').length;
+      const lateCount = assignmentSubmissions.filter((item) => item.status === 'late').length;
+      const totalScore = Number(assignment.totalScore || 0);
+      const scoredSubmissions = assignmentSubmissions.filter((item) => typeof item.score === 'number');
+      const averageScore =
+        scoredSubmissions.length > 0
+          ? scoredSubmissions.reduce((sum, item) => sum + Number(item.score || 0), 0) / scoredSubmissions.length
+          : null;
+
+      return {
+        No: index + 1,
+        'Assignment ID': assignment.id,
+        Assignment: assignment.header || 'Untitled Assignment',
+        'Due Date': assignment.dueDate || '',
+        'Total Score': totalScore,
+        Students: members.length,
+        Submitted: submittedCount,
+        Graded: gradedCount,
+        Late: lateCount,
+        Missing: Math.max(0, members.length - submittedCount),
+        'Completion %': members.length > 0 ? `${Math.round((submittedCount / members.length) * 100)}%` : '0%',
+        'Average Score': averageScore === null ? '' : Number(averageScore.toFixed(2)),
+      };
+    });
+
+    const workbook = XLSX.utils.book_new();
+
+    const classInfoSheet = XLSX.utils.aoa_to_sheet(classInfoRows);
+    classInfoSheet['!cols'] = [{ wch: 18 }, { wch: 42 }];
+    XLSX.utils.book_append_sheet(workbook, classInfoSheet, 'Class Info');
+
+    const summarySheet = XLSX.utils.json_to_sheet(summaryRows);
+    summarySheet['!cols'] = [
+      { wch: 6 },
+      { wch: 22 },
+      { wch: 32 },
+      { wch: 20 },
+      { wch: 12 },
+      { wch: 10 },
+      { wch: 10 },
+      { wch: 10 },
+      { wch: 10 },
+      { wch: 10 },
+      { wch: 14 },
+      { wch: 14 },
+    ];
+    XLSX.utils.book_append_sheet(workbook, summarySheet, 'Assignment Summary');
+
+    const allGradesSheet = XLSX.utils.json_to_sheet(allRows);
+    allGradesSheet['!cols'] = [
+      { wch: 14 },
+      { wch: 22 },
+      { wch: 32 },
+      { wch: 20 },
+      { wch: 12 },
+      { wch: 18 },
+      { wch: 28 },
+      { wch: 22 },
+      { wch: 16 },
+      { wch: 10 },
+      { wch: 12 },
+      { wch: 12 },
+      { wch: 24 },
+      { wch: 32 },
+      { wch: 48 },
+    ];
+    XLSX.utils.book_append_sheet(workbook, allGradesSheet, 'All Grades');
+
+    assignments.forEach((assignment, assignmentIndex) => {
+      const totalScore = Number(assignment.totalScore || 0);
+      const rows = members.map((student, studentIndex) => {
+        const submission = getStudentSubmissionForAssignment(assignment.id, student.id);
+        const score = typeof submission?.score === 'number' ? submission.score : '';
+        const percentage =
+          typeof submission?.score === 'number' && totalScore > 0
+            ? `${Math.round((submission.score / totalScore) * 100)}%`
+            : '';
+
+        return {
+          No: studentIndex + 1,
+          'Student ID': student.id,
+          'Student Name': student.name,
+          Handle: student.handle,
+          Status: getSubmissionStatusText(submission?.status),
+          Score: score,
+          'Total Score': totalScore,
+          Percentage: percentage,
+          'Submitted At': formatExportDateTime(submission?.submittedAt),
+          Feedback: submission?.feedback || '',
+          'Submitted File / Link': getSubmissionFileUrl(submission),
+        };
+      });
+
+      const sheet = XLSX.utils.json_to_sheet(rows);
+      sheet['!cols'] = [
+        { wch: 6 },
+        { wch: 18 },
+        { wch: 28 },
+        { wch: 22 },
+        { wch: 16 },
+        { wch: 10 },
+        { wch: 12 },
+        { wch: 12 },
+        { wch: 24 },
+        { wch: 32 },
+        { wch: 48 },
+      ];
+
+      const sheetName = sanitizeFileName(`${assignmentIndex + 1}-${assignment.header || 'Assignment'}`).slice(0, 31) || `Assignment ${assignmentIndex + 1}`;
+      XLSX.utils.book_append_sheet(workbook, sheet, sheetName);
+    });
+
+    const safeCourse = sanitizeFileName(course?.courseCode || courseName || 'class');
+    const fileName = `class-grades-${safeCourse}-${getExportTimestamp()}.xlsx`;
+
+    try {
+      if (Platform.OS === 'web') {
+        XLSX.writeFile(workbook, fileName);
+        return;
+      }
+
+      const base64 = XLSX.write(workbook, {
+        type: 'base64',
+        bookType: 'xlsx',
+      });
+
+      if (Platform.OS === 'android') {
+        const permissions = await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync();
+
+        if (!permissions.granted) {
+          showResultModal('error', 'Cancelled', 'No folder selected.');
+          return;
+        }
+
+        const savedFileUri = await FileSystem.StorageAccessFramework.createFileAsync(
+          permissions.directoryUri,
+          fileName,
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        );
+
+        await FileSystem.writeAsStringAsync(savedFileUri, base64, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+
+        showResultModal('success', 'Downloaded', 'Class grades Excel report saved successfully.');
+        return;
+      }
+
+      const savedUri = `${FileSystem.documentDirectory}${fileName}`;
+
+      await FileSystem.writeAsStringAsync(savedUri, base64, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+
+      showResultModal('success', 'Downloaded', `Class grades Excel report saved successfully.\n${savedUri}`);
+    } catch (error: any) {
+      showResultModal('error', 'Download Failed', error?.message || 'Unable to save the Excel file.');
+    }
   };
 
   const validateAssignmentForm = () => {
@@ -1160,6 +1436,15 @@ const TeacherCourseDetail2 = ({
             </View>
           </View>
         </View>
+
+        <TouchableOpacity
+          style={[styles.exportGradesButton, isMobile && styles.exportGradesButtonMobile]}
+          onPress={downloadClassGradesExcel}
+          activeOpacity={0.85}
+        >
+          <Ionicons name="download-outline" size={18} color="#FFFFFF" />
+          <Text style={styles.exportGradesButtonText}>Export Grades Excel</Text>
+        </TouchableOpacity>
       </View>
 
         <View style={styles.tabContainer}>
@@ -1585,6 +1870,33 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   copyCodeText: { color: '#D32F2F', fontWeight: '900', fontSize: 12 },
+  exportGradesButton: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: 8,
+  backgroundColor: '#1F7A3A',
+  paddingHorizontal: 14,
+  height: 42,
+  borderRadius: 10,
+  borderBottomWidth: 3,
+  borderBottomColor: '#145A2A',
+},
+
+exportGradesButtonMobile: {
+  width: '100%',
+  height: 46,
+  borderRadius: 12,
+  marginTop: 10,
+},
+
+exportGradesButtonText: {
+  color: '#FFFFFF',
+  fontSize: 13,
+  fontWeight: '900',
+  letterSpacing: 0.25,
+  textTransform: 'uppercase',
+},
 
   tabContainer: { flexDirection: 'row', backgroundColor: '#FFF', borderBottomWidth: 1, borderBottomColor: '#E5E5E5' },
   tab: { flex: 1, alignItems: 'center', paddingVertical: 14, borderBottomWidth: 3, borderBottomColor: 'transparent' },

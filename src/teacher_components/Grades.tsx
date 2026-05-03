@@ -1,6 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as FileSystem from 'expo-file-system/legacy';
-import * as Print from 'expo-print';
 import React, { useMemo, useState } from 'react';
 import {
   ActivityIndicator,
@@ -16,8 +15,10 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
+import * as XLSX from 'xlsx';
 
 const JourneyHeader = require('../../assets/images/myjourney-header-template-1.png');
+const FooterImage = require('../../assets/images/footer.png');
 
 const API_BASE_URL =
   Platform.OS === 'web' ? 'http://localhost:5000' : 'http://192.168.1.5:5000';
@@ -90,6 +91,12 @@ const escapeHtml = (value: string | number) => {
 
 const sanitizeFileName = (value: string) => {
   return value.replace(/[^a-z0-9-_]+/gi, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
+};
+
+const getExportTimestamp = () => {
+  const now = new Date();
+  const pad = (value: number) => String(value).padStart(2, '0');
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}`;
 };
 
 const escapeRegExp = (value: string) => {
@@ -695,132 +702,7 @@ const Grades = () => {
     `;
   };
 
-  const downloadGradeReportPdfOnWeb = async (record: StudentRecord, fileName: string) => {
-    const { jsPDF } = await import('jspdf');
-
-    const doc = new jsPDF({
-      orientation: 'portrait',
-      unit: 'pt',
-      format: 'a4',
-    });
-
-    const pageWidth = doc.internal.pageSize.getWidth();
-    const pageHeight = doc.internal.pageSize.getHeight();
-    const margin = 40;
-    const tableWidth = pageWidth - margin * 2;
-    let y = 48;
-
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(10);
-    doc.text('Republic of the Philippines', pageWidth / 2, y, { align: 'center' });
-
-    y += 14;
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(14);
-    doc.text('CEBU TECHNOLOGICAL UNIVERSITY', pageWidth / 2, y, { align: 'center' });
-
-    y += 13;
-    doc.setFontSize(11);
-    doc.text('ARGAO CAMPUS', pageWidth / 2, y, { align: 'center' });
-
-    y += 12;
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(8);
-    doc.text('Ed Kintanar Street, Lamacan, Argao Cebu Philippines', pageWidth / 2, y, { align: 'center' });
-
-    y += 42;
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(18);
-    doc.text('OFFICIAL GRADE REPORT', pageWidth / 2, y, { align: 'center' });
-
-    y += 16;
-    doc.setFontSize(10);
-    doc.text(`Academic Year ${record.schoolYear} | ${record.semester}`, pageWidth / 2, y, { align: 'center' });
-
-    y += 16;
-    doc.line(margin, y, pageWidth - margin, y);
-
-    y += 24;
-    doc.setDrawColor(226, 216, 207);
-    doc.roundedRect(margin, y - 14, tableWidth, 46, 6, 6);
-
-    doc.setFontSize(9);
-    doc.setFont('helvetica', 'bold');
-    doc.text('STUDENT ID', margin + 12, y);
-    doc.text(record.studentId, margin + 250, y, { align: 'right' });
-    doc.text('STUDENT NAME', margin + 290, y);
-    doc.text(record.fullName, pageWidth - margin - 12, y, { align: 'right' });
-
-    y += 22;
-    doc.text('TOTAL UNITS', margin + 12, y);
-    doc.text(record.totalUnits.toFixed(1), margin + 250, y, { align: 'right' });
-    doc.text('GWA', margin + 290, y);
-    doc.text(formatGrade(record.gwa), pageWidth - margin - 12, y, { align: 'right' });
-
-    y += 34;
-
-    const colWidths = [70, tableWidth - 70 - 58 - 78, 58, 78];
-    const colX = [
-      margin,
-      margin + colWidths[0],
-      margin + colWidths[0] + colWidths[1],
-      margin + colWidths[0] + colWidths[1] + colWidths[2],
-    ];
-
-    const drawTableHeader = () => {
-      doc.setFillColor(183, 28, 28);
-      doc.rect(margin, y, tableWidth, 38, 'F');
-
-      doc.setTextColor(255, 255, 255);
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(8);
-      doc.text('COURSE\nCODE', colX[0] + colWidths[0] / 2, y + 15, { align: 'center' });
-      doc.text('COURSE DETAIL', colX[1] + colWidths[1] / 2, y + 22, { align: 'center' });
-      doc.text('UNITS', colX[2] + colWidths[2] / 2, y + 22, { align: 'center' });
-      doc.text('FINAL GRADE', colX[3] + colWidths[3] / 2, y + 22, { align: 'center' });
-
-      doc.setTextColor(0, 0, 0);
-      y += 38;
-    };
-
-    drawTableHeader();
-
-    record.grades.forEach((item) => {
-      const detailLines = doc.splitTextToSize(item.desc, colWidths[1] - 14);
-      const rowHeight = Math.max(36, detailLines.length * 12 + 18);
-
-      if (y + rowHeight > pageHeight - 40) {
-        doc.addPage();
-        y = 40;
-        drawTableHeader();
-      }
-
-      doc.setDrawColor(217, 217, 217);
-      doc.rect(margin, y, tableWidth, rowHeight);
-
-      let xCursor = margin;
-      colWidths.forEach((widthValue) => {
-        doc.line(xCursor, y, xCursor, y + rowHeight);
-        xCursor += widthValue;
-      });
-      doc.line(margin + tableWidth, y, margin + tableWidth, y + rowHeight);
-
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(9);
-      doc.text(item.code, colX[0] + 8, y + 22);
-      doc.text(detailLines, colX[1] + 8, y + 22);
-      doc.text(item.unit.toFixed(1), colX[2] + colWidths[2] / 2, y + 22, { align: 'center' });
-
-      doc.setFont('helvetica', 'bold');
-      doc.text(formatGrade(item.grade), colX[3] + colWidths[3] / 2, y + 22, { align: 'center' });
-
-      y += rowHeight;
-    });
-
-    doc.save(fileName);
-  };
-
-  const downloadGradeReportPdf = async () => {
+  const downloadGradeReportExcel = async () => {
     if (!studentRecord) {
       Alert.alert('No Report', 'Please generate a grade report first.');
       return;
@@ -828,18 +710,51 @@ const Grades = () => {
 
     const safeSchoolYear = sanitizeFileName(studentRecord.schoolYear.replace(/S\.?Y\.?/gi, '').trim());
     const safeSemester = sanitizeFileName(studentRecord.semester);
-    const fileName = `grade-report-${sanitizeFileName(studentRecord.studentId)}-${safeSchoolYear}-${safeSemester}.pdf`;
-    const html = buildGradeReportHtml(studentRecord);
+    const fileName = `grade-report-${sanitizeFileName(studentRecord.studentId)}-${safeSchoolYear}-${safeSemester}-${getExportTimestamp()}.xlsx`;
+
+    const summaryRows = [
+      ['Student ID', studentRecord.studentId],
+      ['Student Name', studentRecord.fullName],
+      ['Academic Year', studentRecord.schoolYear],
+      ['Semester', studentRecord.semester],
+      ['Total Units', Number(studentRecord.totalUnits.toFixed(1))],
+      ['GWA', Number(formatGrade(studentRecord.gwa))],
+      ['Exported At', new Date().toLocaleString()],
+    ];
+
+    const gradeRows = studentRecord.grades.map((item, index) => ({
+      No: index + 1,
+      'Course Code': item.code,
+      'Course Detail': item.desc,
+      Units: Number(item.unit.toFixed(1)),
+      'Final Grade': Number(formatGrade(item.grade)),
+    }));
 
     try {
+      const workbook = XLSX.utils.book_new();
+
+      const summarySheet = XLSX.utils.aoa_to_sheet(summaryRows);
+      summarySheet['!cols'] = [{ wch: 18 }, { wch: 42 }];
+      XLSX.utils.book_append_sheet(workbook, summarySheet, 'Student Summary');
+
+      const gradesSheet = XLSX.utils.json_to_sheet(gradeRows);
+      gradesSheet['!cols'] = [
+        { wch: 6 },
+        { wch: 16 },
+        { wch: 48 },
+        { wch: 10 },
+        { wch: 14 },
+      ];
+      XLSX.utils.book_append_sheet(workbook, gradesSheet, 'Grades');
+
       if (Platform.OS === 'web') {
-        await downloadGradeReportPdfOnWeb(studentRecord, fileName);
+        XLSX.writeFile(workbook, fileName);
         return;
       }
 
-      const { uri } = await Print.printToFileAsync({
-        html,
-        base64: false,
+      const base64 = XLSX.write(workbook, {
+        type: 'base64',
+        bookType: 'xlsx',
       });
 
       if (Platform.OS === 'android') {
@@ -850,34 +765,29 @@ const Grades = () => {
           return;
         }
 
-        const base64Pdf = await FileSystem.readAsStringAsync(uri, {
-          encoding: FileSystem.EncodingType.Base64,
-        });
-
         const savedFileUri = await FileSystem.StorageAccessFramework.createFileAsync(
           permissions.directoryUri,
           fileName,
-          'application/pdf'
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
         );
 
-        await FileSystem.writeAsStringAsync(savedFileUri, base64Pdf, {
+        await FileSystem.writeAsStringAsync(savedFileUri, base64, {
           encoding: FileSystem.EncodingType.Base64,
         });
 
-        Alert.alert('Downloaded', 'Grade report PDF saved successfully.');
+        Alert.alert('Downloaded', 'Grade report Excel file saved successfully.');
         return;
       }
 
       const savedUri = `${FileSystem.documentDirectory}${fileName}`;
 
-      await FileSystem.copyAsync({
-        from: uri,
-        to: savedUri,
+      await FileSystem.writeAsStringAsync(savedUri, base64, {
+        encoding: FileSystem.EncodingType.Base64,
       });
 
-      Alert.alert('Downloaded', `Grade report PDF saved successfully.\n${savedUri}`);
+      Alert.alert('Downloaded', `Grade report Excel file saved successfully.\n${savedUri}`);
     } catch (error: any) {
-      Alert.alert('Download Failed', error?.message || 'Unable to save the PDF file.');
+      Alert.alert('Download Failed', error?.message || 'Unable to save the Excel file.');
     }
   };
 
@@ -1199,13 +1109,29 @@ const Grades = () => {
                   </View>
                 </ScrollView>
 
+                <View
+                  style={[
+                    styles.footerWrapper,
+                    !isPhone && { width: webTableWidth },
+                  ]}
+                >
+                  <Image
+                    source={FooterImage}
+                    style={[
+                      styles.footerImage,
+                      isPhone ? styles.footerImageMobile : styles.footerImageWeb,
+                    ]}
+                    resizeMode="contain"
+                  />
+                </View>
+
                 <TouchableOpacity
                   style={[styles.downloadButton, isPhone && styles.downloadButtonMobile]}
-                  onPress={downloadGradeReportPdf}
+                  onPress={downloadGradeReportExcel}
                   activeOpacity={0.85}
                 >
                   <Ionicons name="download-outline" size={18} color="#FFFFFF" />
-                  <Text style={styles.downloadButtonText}>Download PDF</Text>
+                  <Text style={styles.downloadButtonText}>Download Excel</Text>
                 </TouchableOpacity>
 
               </View>
@@ -1791,6 +1717,23 @@ const styles = StyleSheet.create({
   gradeText: {
     fontWeight: '900',
     color: '#111',
+  },
+
+  footerWrapper: {
+    alignItems: 'center',
+    marginTop: 18,
+  },
+
+  footerImage: {
+    width: '100%',
+  },
+
+  footerImageMobile: {
+    height: 70,
+  },
+
+  footerImageWeb: {
+    height: 120,
   },
 
   downloadButton: {

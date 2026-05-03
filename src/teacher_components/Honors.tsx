@@ -1,4 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
+import * as FileSystem from 'expo-file-system/legacy';
+import * as Print from 'expo-print';
 import React, { useState } from 'react';
 import {
   Alert,
@@ -15,6 +17,7 @@ import {
   View,
   useWindowDimensions,
 } from 'react-native';
+import * as XLSX from 'xlsx';
 
 const headerImage = require('../../assets/images/myjourney-header-template-1.png');
 
@@ -30,6 +33,30 @@ const buildSchoolYear = (startYear: string) => {
   }
 
   return `S.Y ${parsedStartYear} - ${parsedStartYear + 1}`;
+};
+
+const escapeHtml = (value: string | number) => {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+};
+
+const sanitizeFileName = (value: string) => {
+  return String(value || 'file')
+    .replace(/[^a-z0-9-_]+/gi, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '') || 'file';
+};
+
+
+const getExportTimestamp = () => {
+  const now = new Date();
+  const pad = (value: number) => String(value).padStart(2, '0');
+
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}`;
 };
 
 type Student = {
@@ -410,6 +437,656 @@ export default function HonorsScreen() {
     setOpenDropdown(null);
   };
 
+  const buildHonorReportHtml = () => {
+    const sectionBlocks = generatedSections
+      .map((section) => {
+        const rows = section.students
+          .map(
+            (student, index) => `
+              <tr>
+                <td class="rank">${index + 1}</td>
+                <td>${escapeHtml(student.name)}</td>
+                <td class="center">${escapeHtml(student.gpa)}</td>
+              </tr>
+            `
+          )
+          .join('');
+
+        return `
+          <section class="honor-section">
+            <div class="section-heading">
+              <div>
+                <h2>HONOR LIST</h2>
+                <p>${escapeHtml(section.yearLevel)} - Section ${escapeHtml(section.sectionName)}</p>
+                <p>Academic Year: ${escapeHtml(schoolYear || 'S.Y ---- - ----')} | Semester: ${escapeHtml(semester)}</p>
+              </div>
+              <div class="count-box">
+                <strong>${section.students.length}</strong>
+                <span>Students</span>
+              </div>
+            </div>
+
+            <div class="meta-box">
+              <div><strong>Section:</strong> ${escapeHtml(section.sectionName)}</div>
+              <div><strong>Adviser:</strong> ${escapeHtml(adviser)}</div>
+              <div><strong>Academic Year:</strong> ${escapeHtml(schoolYear || 'S.Y ---- - ----')}</div>
+              <div><strong>Semester:</strong> ${escapeHtml(semester)}</div>
+            </div>
+
+            <table>
+              <thead>
+                <tr>
+                  <th class="rank">Rank</th>
+                  <th>Student Name</th>
+                  <th class="center">GWA</th>
+                </tr>
+              </thead>
+              <tbody>${rows}</tbody>
+            </table>
+          </section>
+        `;
+      })
+      .join('');
+
+    return `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="utf-8" />
+          <style>
+            @page {
+              size: A4;
+              margin: 18mm 14mm;
+            }
+
+            * {
+              box-sizing: border-box;
+            }
+
+            body {
+              margin: 0;
+              font-family: Arial, Helvetica, sans-serif;
+              color: #111;
+              background: #fff;
+            }
+
+            .school-header {
+              text-align: center;
+              margin-bottom: 22px;
+              line-height: 1.25;
+            }
+
+            .republic {
+              font-size: 12px;
+            }
+
+            .school-name {
+              font-size: 16px;
+              font-weight: 900;
+              letter-spacing: 0.5px;
+            }
+
+            .campus {
+              font-size: 13px;
+              font-weight: 800;
+            }
+
+            .address,
+            .contact {
+              font-size: 9px;
+            }
+
+            .main-title {
+              text-align: center;
+              font-size: 20px;
+              font-weight: 900;
+              letter-spacing: 1.2px;
+              margin: 18px 0 4px;
+            }
+
+            .main-subtitle {
+              text-align: center;
+              font-size: 12px;
+              font-weight: 700;
+              color: #5e5650;
+              margin-bottom: 16px;
+            }
+
+            .honor-section {
+              page-break-inside: avoid;
+              margin-bottom: 26px;
+              border: 1px solid #e6e1dc;
+              border-radius: 10px;
+              overflow: hidden;
+            }
+
+            .section-heading {
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+              background: #b71c1c;
+              color: #fff;
+              padding: 14px 16px;
+            }
+
+            .section-heading h2 {
+              margin: 0 0 4px;
+              font-size: 16px;
+              letter-spacing: 0.8px;
+            }
+
+            .section-heading p {
+              margin: 2px 0;
+              font-size: 11px;
+              font-weight: 700;
+            }
+
+            .count-box {
+              width: 78px;
+              min-height: 62px;
+              border: 1px solid rgba(255, 255, 255, 0.65);
+              border-radius: 8px;
+              display: flex;
+              flex-direction: column;
+              align-items: center;
+              justify-content: center;
+            }
+
+            .count-box strong {
+              font-size: 22px;
+              line-height: 1;
+            }
+
+            .count-box span {
+              margin-top: 3px;
+              font-size: 9px;
+              text-transform: uppercase;
+              font-weight: 800;
+            }
+
+            .meta-box {
+              display: grid;
+              grid-template-columns: 1fr 1fr;
+              gap: 6px 18px;
+              padding: 12px 16px;
+              background: #fffdf9;
+              border-bottom: 1px solid #e6e1dc;
+              font-size: 11px;
+            }
+
+            table {
+              width: 100%;
+              border-collapse: collapse;
+              font-size: 12px;
+            }
+
+            th {
+              background: #1f1f1f;
+              color: #fff;
+              text-transform: uppercase;
+              letter-spacing: 0.3px;
+              padding: 10px 8px;
+              border-right: 1px solid #fff;
+            }
+
+            th:last-child {
+              border-right: 0;
+            }
+
+            td {
+              padding: 9px 8px;
+              border-top: 1px solid #dadada;
+              border-right: 1px solid #dadada;
+              vertical-align: middle;
+            }
+
+            td:last-child {
+              border-right: 0;
+            }
+
+            .rank {
+              width: 70px;
+              text-align: center;
+            }
+
+            .center {
+              width: 90px;
+              text-align: center;
+              font-weight: 900;
+            }
+          </style>
+        </head>
+        <body>
+          <section class="school-header">
+            <div class="republic">Republic of the Philippines</div>
+            <div class="school-name">CEBU TECHNOLOGICAL UNIVERSITY</div>
+            <div class="campus">ARGAO CAMPUS</div>
+            <div class="address">Ed Kintanar Street, Lamacan, Argao Cebu Philippines</div>
+            <div class="contact">Website: http://www.argao.ctu.edu.ph &nbsp; E-mail: ctuargao@ctu.edu.ph</div>
+          </section>
+
+          <div class="main-title">OFFICIAL HONOR LIST</div>
+          <div class="main-subtitle">Academic Year ${escapeHtml(schoolYear || 'S.Y ---- - ----')} | ${escapeHtml(semester)}</div>
+
+          ${sectionBlocks}
+        </body>
+      </html>
+    `;
+  };
+
+  const downloadHonorPdfOnWeb = async (fileName: string) => {
+    const { jsPDF } = await import('jspdf');
+
+    const doc = new jsPDF({
+      orientation: 'portrait',
+      unit: 'pt',
+      format: 'a4',
+    });
+
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const margin = 40;
+    const tableWidth = pageWidth - margin * 2;
+    let y = 46;
+
+    const addHeader = () => {
+      doc.setTextColor(0, 0, 0);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(10);
+      doc.text('Republic of the Philippines', pageWidth / 2, y, { align: 'center' });
+
+      y += 14;
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(14);
+      doc.text('CEBU TECHNOLOGICAL UNIVERSITY', pageWidth / 2, y, { align: 'center' });
+
+      y += 13;
+      doc.setFontSize(11);
+      doc.text('ARGAO CAMPUS', pageWidth / 2, y, { align: 'center' });
+
+      y += 12;
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      doc.text('Ed Kintanar Street, Lamacan, Argao Cebu Philippines', pageWidth / 2, y, { align: 'center' });
+
+      y += 36;
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(18);
+      doc.text('OFFICIAL HONOR LIST', pageWidth / 2, y, { align: 'center' });
+
+      y += 16;
+      doc.setFontSize(10);
+      doc.text(`Academic Year ${schoolYear || 'S.Y ---- - ----'} | ${semester}`, pageWidth / 2, y, { align: 'center' });
+
+      y += 16;
+      doc.line(margin, y, pageWidth - margin, y);
+      y += 24;
+    };
+
+    const ensureSpace = (neededHeight: number) => {
+      if (y + neededHeight <= pageHeight - 40) return;
+      doc.addPage();
+      y = 46;
+      addHeader();
+    };
+
+    addHeader();
+
+    generatedSections.forEach((section) => {
+      ensureSpace(120);
+
+      doc.setFillColor(183, 28, 28);
+      doc.roundedRect(margin, y, tableWidth, 58, 8, 8, 'F');
+
+      doc.setTextColor(255, 255, 255);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(14);
+      doc.text('HONOR LIST', margin + 14, y + 21);
+
+      doc.setFontSize(9);
+      doc.text(`${section.yearLevel} - Section ${section.sectionName}`, margin + 14, y + 37);
+      doc.text(`Academic Year: ${schoolYear || 'S.Y ---- - ----'} | Semester: ${semester}`, margin + 14, y + 50);
+
+      doc.setDrawColor(255, 255, 255);
+      doc.roundedRect(pageWidth - margin - 78, y + 10, 62, 38, 6, 6);
+      doc.setFontSize(16);
+      doc.text(String(section.students.length), pageWidth - margin - 47, y + 27, { align: 'center' });
+      doc.setFontSize(7);
+      doc.text('STUDENTS', pageWidth - margin - 47, y + 39, { align: 'center' });
+
+      y += 72;
+      doc.setTextColor(0, 0, 0);
+      doc.setDrawColor(230, 225, 220);
+      doc.roundedRect(margin, y - 4, tableWidth, 42, 6, 6);
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(9);
+      doc.text('Section:', margin + 10, y + 10);
+      doc.text('Adviser:', margin + tableWidth / 2, y + 10);
+      doc.text('Academic Year:', margin + 10, y + 28);
+      doc.text('Semester:', margin + tableWidth / 2, y + 28);
+
+      doc.setFont('helvetica', 'normal');
+      doc.text(String(section.sectionName), margin + 62, y + 10);
+      doc.text(adviser, margin + tableWidth / 2 + 54, y + 10);
+      doc.text(schoolYear || 'S.Y ---- - ----', margin + 90, y + 28);
+      doc.text(semester, margin + tableWidth / 2 + 62, y + 28);
+
+      y += 54;
+
+      const colWidths = [70, tableWidth - 70 - 90, 90];
+      const colX = [margin, margin + colWidths[0], margin + colWidths[0] + colWidths[1]];
+
+      const drawTableHeader = () => {
+        doc.setFillColor(31, 31, 31);
+        doc.rect(margin, y, tableWidth, 32, 'F');
+        doc.setTextColor(255, 255, 255);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(8);
+        doc.text('RANK', colX[0] + colWidths[0] / 2, y + 20, { align: 'center' });
+        doc.text('STUDENT NAME', colX[1] + colWidths[1] / 2, y + 20, { align: 'center' });
+        doc.text('GWA', colX[2] + colWidths[2] / 2, y + 20, { align: 'center' });
+        doc.setTextColor(0, 0, 0);
+        y += 32;
+      };
+
+      drawTableHeader();
+
+      section.students.forEach((student, index) => {
+        const nameLines = doc.splitTextToSize(student.name, colWidths[1] - 16);
+        const rowHeight = Math.max(30, nameLines.length * 11 + 14);
+
+        if (y + rowHeight > pageHeight - 40) {
+          doc.addPage();
+          y = 46;
+          addHeader();
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(11);
+          doc.text(`${section.yearLevel} - Section ${section.sectionName} (continued)`, margin, y);
+          y += 16;
+          drawTableHeader();
+        }
+
+        doc.setDrawColor(217, 217, 217);
+        doc.rect(margin, y, tableWidth, rowHeight);
+        doc.line(colX[1], y, colX[1], y + rowHeight);
+        doc.line(colX[2], y, colX[2], y + rowHeight);
+
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(9);
+        doc.text(String(index + 1), colX[0] + colWidths[0] / 2, y + 19, { align: 'center' });
+        doc.text(nameLines, colX[1] + 8, y + 19);
+
+        doc.setFont('helvetica', 'bold');
+        doc.text(String(student.gpa), colX[2] + colWidths[2] / 2, y + 19, { align: 'center' });
+
+        y += rowHeight;
+      });
+
+      y += 26;
+    });
+
+    doc.save(fileName);
+  };
+
+  const downloadHonorPdf = async () => {
+    if (generatedSections.length === 0) {
+      Alert.alert('No Honor List', 'Please generate the honor list first.');
+      return;
+    }
+
+    const safeSchoolYear = sanitizeFileName(schoolYear.replace(/S\.?Y\.?/gi, '').trim());
+    const safeSemester = sanitizeFileName(semester);
+    const fileName = `honor-list-${safeSchoolYear}-${safeSemester}.pdf`;
+    const html = buildHonorReportHtml();
+
+    try {
+      if (Platform.OS === 'web') {
+        await downloadHonorPdfOnWeb(fileName);
+        return;
+      }
+
+      const { uri } = await Print.printToFileAsync({
+        html,
+        base64: false,
+      });
+
+      if (Platform.OS === 'android') {
+        const permissions = await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync();
+
+        if (!permissions.granted) {
+          Alert.alert('Cancelled', 'No folder selected.');
+          return;
+        }
+
+        const base64Pdf = await FileSystem.readAsStringAsync(uri, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+
+        const savedFileUri = await FileSystem.StorageAccessFramework.createFileAsync(
+          permissions.directoryUri,
+          fileName,
+          'application/pdf'
+        );
+
+        await FileSystem.writeAsStringAsync(savedFileUri, base64Pdf, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+
+        Alert.alert('Downloaded', 'Honor list PDF saved successfully.');
+        return;
+      }
+
+      const savedUri = `${FileSystem.documentDirectory}${fileName}`;
+
+      await FileSystem.copyAsync({
+        from: uri,
+        to: savedUri,
+      });
+
+      Alert.alert('Downloaded', `Honor list PDF saved successfully.\n${savedUri}`);
+    } catch (error: any) {
+      Alert.alert('Download Failed', error?.message || 'Unable to save the PDF file.');
+    }
+  };
+
+
+  const downloadHonorExcel = async () => {
+    if (generatedSections.length === 0) {
+      Alert.alert('No Honor List', 'Please generate the honor list first.');
+      return;
+    }
+
+    const safeSchoolYear = sanitizeFileName(schoolYear.replace(/S\.?Y\.?/gi, '').trim());
+    const safeSemester = sanitizeFileName(semester);
+    const fileName = `honor-list-${safeSchoolYear}-${safeSemester}-${getExportTimestamp()}.xlsx`;
+
+    const workbook = XLSX.utils.book_new();
+
+    const infoRows = [
+      ['Report', 'Honor List'],
+      ['Academic Year', schoolYear || 'S.Y ---- - ----'],
+      ['Semester', semester],
+      ['Total Sections', generatedSections.length],
+      [
+        'Total Honor Students',
+        generatedSections.reduce((total, section) => total + section.students.length, 0),
+      ],
+      ['Exported At', new Date().toLocaleString()],
+    ];
+
+    const infoSheet = XLSX.utils.aoa_to_sheet(infoRows);
+    infoSheet['!cols'] = [{ wch: 22 }, { wch: 40 }];
+    XLSX.utils.book_append_sheet(workbook, infoSheet, 'Honor Info');
+
+    const summaryRows = generatedSections.map((section, index) => ({
+      No: index + 1,
+      'Year Level': section.yearLevel,
+      Section: section.sectionName,
+      'Honor Students': section.students.length,
+      'Academic Year': schoolYear || 'S.Y ---- - ----',
+      Semester: semester,
+    }));
+
+    const summarySheet = XLSX.utils.json_to_sheet(summaryRows);
+    summarySheet['!cols'] = [
+      { wch: 6 },
+      { wch: 18 },
+      { wch: 18 },
+      { wch: 16 },
+      { wch: 22 },
+      { wch: 18 },
+    ];
+    XLSX.utils.book_append_sheet(workbook, summarySheet, 'Section Summary');
+
+    const honorRows = generatedSections.flatMap((section) =>
+      section.students.map((student, index) => ({
+        Rank: index + 1,
+        'Student ID': student.id,
+        'Student Name': student.name,
+        GWA: student.gpa,
+        Section: section.sectionName,
+        'Year Level': section.yearLevel,
+        'Academic Year': schoolYear || 'S.Y ---- - ----',
+        Semester: semester,
+        }))
+    );
+
+    const honorSheet = XLSX.utils.json_to_sheet(honorRows);
+    honorSheet['!cols'] = [
+      { wch: 8 },
+      { wch: 18 },
+      { wch: 32 },
+      { wch: 10 },
+      { wch: 18 },
+      { wch: 18 },
+      { wch: 22 },
+      { wch: 18 },
+    ];
+    XLSX.utils.book_append_sheet(workbook, honorSheet, 'Honor List');
+
+    const courseGradeRows: any[] = generatedSections.flatMap((section) =>
+      section.students.flatMap((student) => {
+        if (Array.isArray(student.grades) && student.grades.length > 0) {
+          return student.grades.map((grade) => ({
+            'Student ID': student.id,
+            'Student Name': student.name,
+            GWA: student.gpa,
+            Section: section.sectionName,
+            'Year Level': section.yearLevel,
+            'Course Code': grade.courseCode,
+            'Course Name': grade.courseName,
+            Units: Number(grade.units || 0),
+            Grade: Number(grade.grade || 0),
+          }));
+        }
+
+        return [
+          {
+            'Student ID': student.id,
+            'Student Name': student.name,
+            GWA: student.gpa,
+            Section: section.sectionName,
+            'Year Level': section.yearLevel,
+            'Course Code': '',
+            'Course Name': '',
+            Units: 0,
+            Grade: 0,
+          },
+        ];
+      })
+    );
+
+    const courseGradeSheet = XLSX.utils.json_to_sheet(courseGradeRows);
+    courseGradeSheet['!cols'] = [
+      { wch: 18 },
+      { wch: 32 },
+      { wch: 10 },
+      { wch: 18 },
+      { wch: 18 },
+      { wch: 16 },
+      { wch: 34 },
+      { wch: 10 },
+      { wch: 10 },
+    ];
+    XLSX.utils.book_append_sheet(workbook, courseGradeSheet, 'Course Grades');
+
+    generatedSections.forEach((section, sectionIndex) => {
+      const sectionRows = section.students.map((student, index) => ({
+        Rank: index + 1,
+        'Student ID': student.id,
+        'Student Name': student.name,
+        GWA: student.gpa,
+        Section: section.sectionName,
+        'Year Level': section.yearLevel,
+      }));
+
+      const sectionSheet = XLSX.utils.json_to_sheet(sectionRows);
+      sectionSheet['!cols'] = [
+        { wch: 8 },
+        { wch: 18 },
+        { wch: 32 },
+        { wch: 10 },
+        { wch: 18 },
+        { wch: 18 },
+      ];
+
+      const safeSheetName = sanitizeFileName(
+        `${section.yearLevel}-${section.sectionName}`
+      ).slice(0, 24) || `Section-${sectionIndex + 1}`;
+
+      XLSX.utils.book_append_sheet(
+        workbook,
+        sectionSheet,
+        safeSheetName || `Section-${sectionIndex + 1}`
+      );
+    });
+
+    try {
+      if (Platform.OS === 'web') {
+        XLSX.writeFile(workbook, fileName);
+        return;
+      }
+
+      const base64 = XLSX.write(workbook, {
+        type: 'base64',
+        bookType: 'xlsx',
+      });
+
+      if (Platform.OS === 'android') {
+        const permissions = await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync();
+
+        if (!permissions.granted) {
+          Alert.alert('Cancelled', 'No folder selected.');
+          return;
+        }
+
+        const savedFileUri = await FileSystem.StorageAccessFramework.createFileAsync(
+          permissions.directoryUri,
+          fileName,
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        );
+
+        await FileSystem.writeAsStringAsync(savedFileUri, base64, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+
+        Alert.alert('Downloaded', 'Honor list Excel file saved successfully.');
+        return;
+      }
+
+      const savedUri = `${FileSystem.documentDirectory}${fileName}`;
+
+      await FileSystem.writeAsStringAsync(savedUri, base64, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+
+      Alert.alert('Downloaded', `Honor list Excel file saved successfully.\n${savedUri}`);
+    } catch (error: any) {
+      Alert.alert('Download Failed', error?.message || 'Unable to save the Excel file.');
+    }
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView
@@ -419,6 +1096,20 @@ export default function HonorsScreen() {
       >
         <View style={styles.headerRow}>
           <Text style={styles.title}>Honors</Text>
+
+          <TouchableOpacity
+            style={[
+              styles.exportHonorBtn,
+              isMobile && styles.exportHonorBtnMobile,
+              generatedSections.length === 0 && styles.exportHonorBtnDisabled,
+            ]}
+            onPress={downloadHonorExcel}
+            disabled={generatedSections.length === 0}
+            activeOpacity={0.85}
+          >
+            <Ionicons name="download-outline" size={18} color="#FFFFFF" />
+            <Text style={styles.exportHonorBtnText}>Download Excel</Text>
+          </TouchableOpacity>
         </View>
 
         <View style={[styles.subHeader, isMobile && styles.subHeaderMobile]}>
@@ -613,6 +1304,32 @@ const styles = StyleSheet.create({
     fontSize: 36,
     fontWeight: 'bold',
     color: '#000',
+  },
+  exportHonorBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    minHeight: 42,
+    paddingHorizontal: 16,
+    borderRadius: 10,
+    backgroundColor: '#1F1F1F',
+    borderBottomWidth: 3,
+    borderBottomColor: '#000000',
+  },
+  exportHonorBtnMobile: {
+    minHeight: 40,
+    paddingHorizontal: 12,
+  },
+  exportHonorBtnDisabled: {
+    opacity: 0.45,
+  },
+  exportHonorBtnText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '900',
+    letterSpacing: 0.25,
+    textTransform: 'uppercase',
   },
   infoIcon: {
     color: '#B71C1C',

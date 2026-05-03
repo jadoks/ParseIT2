@@ -108,7 +108,13 @@ function NotificationList({
   onMarkAllAsRead: () => void;
   isMobile: boolean;
 }) {
+  const [showAllNotifications, setShowAllNotifications] = useState(false);
+
   const unreadCount = notifications.filter((item) => !item.read).length;
+  const visibleNotifications = showAllNotifications
+    ? notifications
+    : notifications.slice(0, 6);
+  const hasMoreNotifications = notifications.length > 6;
 
   return (
     <View style={[styles.notificationPanel, isMobile && styles.notificationPanelMobile]}>
@@ -169,7 +175,7 @@ function NotificationList({
       <ScrollView
         style={styles.notificationScroll}
         contentContainerStyle={styles.notificationScrollContent}
-        showsVerticalScrollIndicator={false}
+        showsVerticalScrollIndicator={true}
       >
         {loading ? (
           <View style={styles.emptyNotificationBox}>
@@ -185,60 +191,74 @@ function NotificationList({
             </Text>
           </View>
         ) : (
-          notifications.map((item) => {
-            const unread = !item.read;
+          <>
+            {visibleNotifications.map((item) => {
+              const unread = !item.read;
 
-            return (
-              <TouchableOpacity
-                key={item.id}
-                style={[styles.notificationItem, unread && styles.notificationItemUnread]}
-                activeOpacity={0.85}
-                onPress={() => onMarkAsRead(item.id)}
-              >
-                <View style={[styles.notificationItemIcon, unread && styles.notificationItemIconUnread]}>
-                  <Ionicons
-                    name={getNotificationIcon(item.type)}
-                    size={20}
-                    color={unread ? "#DC2626" : "#A07C7C"}
-                  />
-                </View>
-
-                <View style={styles.notificationItemBody}>
-                  <View style={styles.notificationItemTopRow}>
-                    <Text style={styles.notificationItemTitle} numberOfLines={1}>
-                      {item.title}
-                    </Text>
-                    {unread && <View style={styles.unreadDot} />}
+              return (
+                <TouchableOpacity
+                  key={item.id}
+                  style={[styles.notificationItem, unread && styles.notificationItemUnread]}
+                  activeOpacity={0.85}
+                  onPress={() => onMarkAsRead(item.id)}
+                >
+                  <View style={[styles.notificationItemIcon, unread && styles.notificationItemIconUnread]}>
+                    <Ionicons
+                      name={getNotificationIcon(item.type)}
+                      size={20}
+                      color={unread ? "#DC2626" : "#A07C7C"}
+                    />
                   </View>
 
-                  {item.type === "ai-quota-limit" && (
-                    <View style={styles.aiQuotaDetailBox}>
-                      <Text style={styles.aiQuotaDetailText}>
-                        AI Provider: {item.providerLabel || item.aiProvider || item.provider || "Unknown AI"}
+                  <View style={styles.notificationItemBody}>
+                    <View style={styles.notificationItemTopRow}>
+                      <Text style={styles.notificationItemTitle} numberOfLines={1}>
+                        {item.title}
                       </Text>
-                      {!!item.model && (
-                        <Text style={styles.aiQuotaDetailText}>
-                          Model: {item.model}
-                        </Text>
-                      )}
+                      {unread && <View style={styles.unreadDot} />}
                     </View>
-                  )}
 
-                  <Text style={styles.notificationItemMessage} numberOfLines={4}>
-                    {item.message}
-                  </Text>
+                    {item.type === "ai-quota-limit" && (
+                      <View style={styles.aiQuotaDetailBox}>
+                        <Text style={styles.aiQuotaDetailText}>
+                          AI Provider: {item.providerLabel || item.aiProvider || item.provider || "Unknown AI"}
+                        </Text>
+                        {!!item.model && (
+                          <Text style={styles.aiQuotaDetailText}>
+                            Model: {item.model}
+                          </Text>
+                        )}
+                      </View>
+                    )}
 
-                  {!!item.errorMessage && item.type === "ai-quota-limit" && (
-                    <Text style={styles.aiQuotaErrorText} numberOfLines={3}>
-                      Reason: {item.errorMessage}
+                    <Text style={styles.notificationItemMessage} numberOfLines={4}>
+                      {item.message}
                     </Text>
-                  )}
 
-                  {!!item.time && <Text style={styles.notificationItemTime}>{item.time}</Text>}
-                </View>
+                    {!!item.errorMessage && item.type === "ai-quota-limit" && (
+                      <Text style={styles.aiQuotaErrorText} numberOfLines={3}>
+                        Reason: {item.errorMessage}
+                      </Text>
+                    )}
+
+                    {!!item.time && <Text style={styles.notificationItemTime}>{item.time}</Text>}
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
+
+            {hasMoreNotifications && !showAllNotifications && (
+              <TouchableOpacity
+                style={styles.seeAllButton}
+                onPress={() => setShowAllNotifications(true)}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.seeAllButtonText}>
+                  See All Notifications
+                </Text>
               </TouchableOpacity>
-            );
-          })
+            )}
+          </>
         )}
       </ScrollView>
     </View>
@@ -648,7 +668,7 @@ const styles = StyleSheet.create({
     top: 58,
     right: 0,
     width: 390,
-    maxHeight: 540,
+    height: 540,
     zIndex: 30,
   },
 
@@ -658,6 +678,7 @@ const styles = StyleSheet.create({
   },
 
   notificationPanel: {
+    height: "100%",
     backgroundColor: "#FFFFFF",
     borderRadius: 24,
     borderWidth: 1,
@@ -754,7 +775,7 @@ const styles = StyleSheet.create({
   },
 
   notificationScroll: {
-    flexGrow: 0,
+    flex: 1,
   },
 
   notificationScrollContent: {
@@ -856,6 +877,21 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     padding: 8,
     marginTop: 8,
+  },
+
+  seeAllButton: {
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: "#DC2626",
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 4,
+  },
+
+  seeAllButtonText: {
+    fontSize: 14,
+    fontWeight: "800",
+    color: "#FFFFFF",
   },
 
   emptyNotificationBox: {
