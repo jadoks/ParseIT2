@@ -59,6 +59,15 @@ interface DashboardProps {
     assignment: DashboardAssignment
   ) => void;
   onJoinClass?: (classCode: string) => void | Promise<void> | Promise<any> | any;
+  isGeneratingActivity?: boolean;
+  completedActivityScores?: Record<
+    string,
+    {
+      scorePercent: number | null;
+      completed: boolean;
+      mastered: boolean;
+    }
+  >;
 }
 
 type RecommendationType = 'review' | 'practice';
@@ -71,6 +80,8 @@ const Dashboard = ({
   onOpenMaterials,
   onOpenGeneratedActivity,
   onJoinClass,
+  isGeneratingActivity = false,
+  completedActivityScores = {},
 }: DashboardProps) => {
   const { width } = useWindowDimensions();
   const [joinModalVisible, setJoinModalVisible] = useState(false);
@@ -181,12 +192,38 @@ const Dashboard = ({
     return 'Practice Quiz';
   };
 
+  const getRelatedMaterials = (
+    course: DashboardCourse,
+    assignment: DashboardAssignment
+  ) => {
+    if (!Array.isArray(assignment.materialIds) || assignment.materialIds.length === 0) {
+      return [];
+    }
+
+    return course.materials.filter((material) =>
+      assignment.materialIds?.includes(material.id)
+    );
+  };
+
   const hasRelatedMaterials = (assignment: DashboardAssignment) => {
     return Array.isArray(assignment.materialIds) && assignment.materialIds.length > 0;
   };
 
+  const hasMasteredGeneratedActivity = (assignment: DashboardAssignment) => {
+    const activityScore = completedActivityScores[assignment.id];
+    return (
+      !!activityScore?.completed &&
+      activityScore.scorePercent !== null &&
+      activityScore.scorePercent >= 75
+    );
+  };
+
   const canGenerateActivity = (assignment: DashboardAssignment) => {
-    return getRecommendationType(assignment) !== null && hasRelatedMaterials(assignment);
+    return (
+      getRecommendationType(assignment) !== null &&
+      hasRelatedMaterials(assignment) &&
+      !hasMasteredGeneratedActivity(assignment)
+    );
   };
 
   const getNextDueAssignment = (assignments: DashboardAssignment[]) => {
@@ -194,6 +231,10 @@ const Dashboard = ({
 
     const upcoming = assignments
       .filter((assignment) => {
+        if (assignment.status === 'submitted' || assignment.status === 'graded') {
+          return false;
+        }
+
         const due = new Date(assignment.dueDate);
         return !Number.isNaN(due.getTime()) && due >= today;
       })
@@ -282,12 +323,19 @@ const Dashboard = ({
           const recommendation = getRecommendationType(assignment);
           if (!recommendation) return null;
 
+          const relatedMaterials = getRelatedMaterials(item.course, assignment);
+
           return {
             course: item.course,
             assignment,
             recommendation,
             score: getScorePercent(assignment),
             canGenerate: canGenerateActivity(assignment),
+            relatedMaterials,
+            materialTitle:
+              relatedMaterials.map((material) => material.title).join(", ") ||
+              assignment.topic ||
+              assignment.title,
           };
         })
         .filter(Boolean) as Array<{
@@ -296,6 +344,8 @@ const Dashboard = ({
         recommendation: RecommendationType;
         score: number | null;
         canGenerate: boolean;
+        relatedMaterials: DashboardMaterial[];
+        materialTitle: string;
       }>
     );
   }, [derivedCourses]);
@@ -581,7 +631,7 @@ const Dashboard = ({
                           { fontSize: isMobile ? 12 : 13, marginTop: 4 },
                         ]}
                       >
-                        Weak topic: {item.assignment.topic || item.assignment.title}
+                        Related material: {item.materialTitle}
                       </Text>
 
                       <Text
@@ -607,13 +657,19 @@ const Dashboard = ({
                               styles.smallActionBtn,
                               { backgroundColor: '#D32F2F' },
                             ]}
-                            onPress={() =>
-                              onOpenGeneratedActivity?.(item.course, item.assignment)
-                            }
+                            disabled={isGeneratingActivity}
+                            onPress={() => {
+                              if (isGeneratingActivity) return;
+                              onOpenGeneratedActivity?.(item.course, item.assignment);
+                            }}
                           >
-                            <Text style={styles.smallActionBtnText}>
-                              Generate Activity
-                            </Text>
+                            {isGeneratingActivity ? (
+                              <ActivityIndicator size="small" color="#FFFFFF" />
+                            ) : (
+                              <Text style={styles.smallActionBtnText}>
+                                Generate Activity
+                              </Text>
+                            )}
                           </TouchableOpacity>
                         ) : (
                           <TouchableOpacity
@@ -624,7 +680,7 @@ const Dashboard = ({
                             activeOpacity={1}
                           >
                             <Text style={styles.smallActionBtnText}>
-                              Waiting for Related Material
+                              Waiting / Completed
                             </Text>
                           </TouchableOpacity>
                         )}
@@ -679,7 +735,7 @@ const Dashboard = ({
                 <Text
                   style={[styles.lessonTitle, { fontSize: isMobile ? 15 : 16 }]}
                 >
-                  {nextBest.assignment.topic || nextBest.assignment.title}
+                  {nextBest.materialTitle}
                 </Text>
                 <Text
                   style={[
@@ -687,8 +743,16 @@ const Dashboard = ({
                     { fontSize: isMobile ? 13 : 14 },
                   ]}
                 >
-                  Recommended next step in {nextBest.course.name}. Open materials
-                  related to this topic.
+                  Recommended next lesson material in {nextBest.course.name}. This is based on the related material selected by your teacher for the assignment where your score was below 75%.
+                </Text>
+
+                <Text
+                  style={[
+                    styles.lessonSubtitle,
+                    { fontSize: isMobile ? 12 : 13, marginTop: 6, color: '#D32F2F', fontWeight: '700' },
+                  ]}
+                >
+                  From assignment score: {nextBest.score ?? 'N/A'}%
                 </Text>
               </View>
             </TouchableOpacity>

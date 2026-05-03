@@ -49,6 +49,19 @@ interface CourseCardProps {
   onAssignmentPress?: (course: CourseCardCourse) => void;
   onMaterialsPress?: (course: CourseCardCourse) => void;
   onGeneratePress?: (course: CourseCardCourse, assignment: CourseCardAssignment) => void;
+  completedActivityScores?: Record<
+    string,
+    {
+      scorePercent?: number | null;
+      assessmentScorePercent?: number | null;
+      completed?: boolean;
+      mastered?: boolean;
+      status?: string;
+      activityScore?: {
+        percent?: number | null;
+      } | null;
+    }
+  >;
 }
 
 type RecommendationType = 'review' | 'practice' | 'advanced';
@@ -65,6 +78,7 @@ const DROPDOWN_WIDTH = 170;
 const CourseCard: React.FC<CourseCardProps> = ({
   course,
   onPress,
+  completedActivityScores = {},
 }) => {
   const { width, height } = useWindowDimensions();
   const isSmallScreen = width < 380;
@@ -92,8 +106,8 @@ const CourseCard: React.FC<CourseCardProps> = ({
     const percent = getScorePercent(assignment);
     if (percent === null) return null;
     if (percent < 60) return 'review';
-    if (percent < 80) return 'practice';
-    return 'advanced';
+    if (percent < 75) return 'practice';
+    return null;
   };
 
   const getRecommendationColor = (type: RecommendationType) => {
@@ -108,17 +122,58 @@ const CourseCard: React.FC<CourseCardProps> = ({
     return 'Advanced Challenge';
   };
 
+  const getRelatedMaterials = (assignment?: CourseCardAssignment | null) => {
+    if (!assignment?.materialIds?.length) return [];
+
+    return course.materials.filter((material) =>
+      assignment.materialIds?.includes(material.id)
+    );
+  };
+
+  const getRelatedMaterialTitle = (assignment?: CourseCardAssignment | null) => {
+    const relatedMaterials = getRelatedMaterials(assignment);
+
+    return (
+      relatedMaterials.map((material) => material.title).join(', ') ||
+      assignment?.topic ||
+      assignment?.title ||
+      'No related material yet'
+    );
+  };
+
+  const getCompletedActivityScorePercent = (assignment: CourseCardAssignment) => {
+    const activityScore = completedActivityScores[assignment.id];
+
+    if (!activityScore) return null;
+
+    if (Number.isFinite(Number(activityScore.scorePercent))) {
+      return Number(activityScore.scorePercent);
+    }
+
+    if (Number.isFinite(Number(activityScore.assessmentScorePercent))) {
+      return Number(activityScore.assessmentScorePercent);
+    }
+
+    if (Number.isFinite(Number(activityScore.activityScore?.percent))) {
+      return Number(activityScore.activityScore?.percent);
+    }
+
+    return null;
+  };
+
+  const hasMasteredGeneratedActivity = (assignment: CourseCardAssignment) => {
+    const activityScore = completedActivityScores[assignment.id];
+    const scorePercent = getCompletedActivityScorePercent(assignment);
+
+    return (
+      activityScore?.mastered === true ||
+      (!!activityScore?.completed && scorePercent !== null && scorePercent >= 75) ||
+      (activityScore?.status === 'completed' && scorePercent !== null && scorePercent >= 75)
+    );
+  };
+
   const analytics = useMemo(() => {
     const gradedAssignments = course.assignments.filter((a) => a.status === 'graded');
-
-    const weakestAssignment =
-      gradedAssignments.length > 0
-        ? [...gradedAssignments].sort((a, b) => {
-            const aScore = getScorePercent(a) ?? 999;
-            const bScore = getScorePercent(b) ?? 999;
-            return aScore - bScore;
-          })[0]
-        : null;
 
     const averageScore =
       gradedAssignments.length > 0
@@ -129,24 +184,45 @@ const CourseCard: React.FC<CourseCardProps> = ({
           )
         : null;
 
-    const supportAssignments = gradedAssignments.filter((a) => {
-      const type = getRecommendationType(a);
-      return type === 'review' || type === 'practice';
-    });
+    const supportAssignments = gradedAssignments
+      .filter((assignment) => {
+        const score = getScorePercent(assignment);
+        const type = getRecommendationType(assignment);
+
+        return (
+          score !== null &&
+          score < 75 &&
+          (type === 'review' || type === 'practice') &&
+          assignment.materialIds?.length &&
+          !hasMasteredGeneratedActivity(assignment)
+        );
+      })
+      .sort((a, b) => {
+        const aScore = getScorePercent(a) ?? 999;
+        const bScore = getScorePercent(b) ?? 999;
+        return aScore - bScore;
+      });
+
+    const recommendedAssignment = supportAssignments[0] || null;
+    const recommendedRelatedMaterials = getRelatedMaterials(recommendedAssignment);
+    const recommendedRelatedMaterialTitle =
+      recommendedAssignment ? getRelatedMaterialTitle(recommendedAssignment) : null;
 
     return {
-      weakestAssignment,
+      recommendedAssignment,
+      recommendedRelatedMaterials,
+      recommendedRelatedMaterialTitle,
       averageScore,
       supportCount: supportAssignments.length,
     };
-  }, [course]);
+  }, [course, completedActivityScores]);
 
-  const weakestRecommendation = analytics.weakestAssignment
-    ? getRecommendationType(analytics.weakestAssignment)
+  const recommendedRecommendation = analytics.recommendedAssignment
+    ? getRecommendationType(analytics.recommendedAssignment)
     : null;
 
-  const topColor = weakestRecommendation
-    ? getRecommendationColor(weakestRecommendation)
+  const topColor = recommendedRecommendation
+    ? getRecommendationColor(recommendedRecommendation)
     : '#2E7D32';
 
   const horizontalPadding = 16;
@@ -240,12 +316,27 @@ const CourseCard: React.FC<CourseCardProps> = ({
         </View>
 
         <View style={styles.cardBody}>
-          <View style={styles.metaBlock}>
-            <Text style={styles.metaLabel}>Weakest topic</Text>
-            <Text style={styles.metaValue}>
-              {analytics.weakestAssignment?.topic || 'No graded topic yet'}
-            </Text>
-          </View>
+          {analytics.recommendedAssignment ? (
+            <>
+              <View style={styles.metaBlock}>
+                <Text style={styles.metaLabel}>Recommended material</Text>
+                <Text style={styles.metaValue}>
+                  {analytics.recommendedRelatedMaterialTitle}
+                </Text>
+              </View>
+
+              {getScorePercent(analytics.recommendedAssignment) !== null && (
+                <Text style={styles.weakScoreText}>
+                  Based on assignment score: {getScorePercent(analytics.recommendedAssignment)}%
+                </Text>
+              )}
+            </>
+          ) : (
+            <View style={styles.metaBlock}>
+              <Text style={styles.metaLabel}>Learning status</Text>
+              <Text style={styles.metaValue}>No pending support activity</Text>
+            </View>
+          )}
 
           <View style={styles.metaBlockRow}>
             <View style={styles.metaBlockHalf}>
@@ -261,25 +352,25 @@ const CourseCard: React.FC<CourseCardProps> = ({
             </View>
           </View>
 
-          {analytics.weakestAssignment && weakestRecommendation && (
+          {analytics.recommendedAssignment && recommendedRecommendation ? (
             <View
               style={[
                 styles.supportBadge,
-                { backgroundColor: `${getRecommendationColor(weakestRecommendation)}18` },
+                { backgroundColor: `${getRecommendationColor(recommendedRecommendation)}18` },
               ]}
             >
               <Text
                 style={[
                   styles.supportBadgeText,
-                  { color: getRecommendationColor(weakestRecommendation) },
+                  { color: getRecommendationColor(recommendedRecommendation) },
                 ]}
               >
                 {analytics.supportCount > 0
-                  ? `${analytics.supportCount} support activit${analytics.supportCount > 1 ? 'ies' : 'y'} available`
-                  : getRecommendationLabel(weakestRecommendation)}
+                  ? `${analytics.supportCount} material-based support activit${analytics.supportCount > 1 ? 'ies' : 'y'} available`
+                  : getRecommendationLabel(recommendedRecommendation)}
               </Text>
             </View>
-          )}
+          ) : null}
         </View>
 
         <View style={styles.cardFooter}>
@@ -406,6 +497,13 @@ const styles = StyleSheet.create({
   metaBlock: {
     marginBottom: 10,
   },
+  weakScoreText: {
+    fontSize: 12,
+    color: '#D32F2F',
+    fontWeight: '700',
+    marginTop: -4,
+    marginBottom: 10,
+  },
   metaBlockRow: {
     flexDirection: 'row',
     gap: 12,
@@ -434,6 +532,19 @@ const styles = StyleSheet.create({
   supportBadgeText: {
     fontWeight: '700',
     fontSize: 12,
+  },
+  masteredBadge: {
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    alignSelf: 'flex-start',
+    marginBottom: 12,
+    backgroundColor: '#E8F5E9',
+  },
+  masteredBadgeText: {
+    fontWeight: '700',
+    fontSize: 12,
+    color: '#2E7D32',
   },
   cardFooter: {
     paddingHorizontal: 12,

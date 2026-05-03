@@ -3,6 +3,7 @@ import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system/legacy";
 import React, { useEffect, useRef, useState } from "react";
 import {
+  ActivityIndicator,
   Alert,
   FlatList,
   Linking,
@@ -169,6 +170,17 @@ interface CourseDetailProps {
   onAddFile: (assignmentId: string, file: AssignmentFileUpload) => void;
   onRemoveFile: (assignmentId: string, fileId: string) => void;
   currentStudent?: CurrentStudent;
+  isGeneratingActivity?: boolean;
+  completedActivityScores?: Record<
+    string,
+    {
+      scorePercent: number | null;
+      completed: boolean;
+      mastered: boolean;
+      activityId?: string;
+      completedAt?: string | null;
+    }
+  >;
 }
 
 const EMPTY_COURSE: AssignmentCourse = {
@@ -199,6 +211,8 @@ const CourseDetail = ({
   onAddFile,
   onRemoveFile,
   currentStudent,
+  isGeneratingActivity = false,
+  completedActivityScores = {},
 }: CourseDetailProps) => {
   const { width } = useWindowDimensions();
   const isSmallPhone = width < 360;
@@ -214,6 +228,7 @@ const CourseDetail = ({
     AssignmentCourse["materials"][number] | null
   >(null);
   const [newComment, setNewComment] = useState("");
+  const [submissionLink, setSubmissionLink] = useState("");
   const [isUploadingFile, setIsUploadingFile] = useState(false);
   const [isSubmittingAssignment, setIsSubmittingAssignment] = useState(false);
   const autoHandledRef = useRef<string | null>(null);
@@ -280,10 +295,28 @@ const CourseDetail = ({
     );
   };
 
+  const getCompletedActivityScore = (assignment: AssignmentItem) => {
+    return completedActivityScores[assignment.id] || null;
+  };
+
+  const hasMasteredGeneratedActivity = (assignment: AssignmentItem) => {
+    const activityScore = getCompletedActivityScore(assignment);
+
+    return (
+      !!activityScore?.completed &&
+      activityScore.scorePercent !== null &&
+      activityScore.scorePercent >= 75
+    );
+  };
+
   const canGenerateActivity = (assignment: AssignmentItem) => {
     const score = getScorePercent(assignment);
+
     return (
-      score !== null && score < 75 && getRelatedMaterials(assignment).length > 0
+      score !== null &&
+      score < 75 &&
+      getRelatedMaterials(assignment).length > 0 &&
+      !hasMasteredGeneratedActivity(assignment)
     );
   };
 
@@ -345,6 +378,7 @@ const CourseDetail = ({
     assignment: AssignmentItem,
     silent = false,
   ) => {
+    if (isGeneratingActivity) return;
     if (!canGenerateActivity(assignment)) {
       if (!silent) {
         const score = getScorePercent(assignment);
@@ -353,23 +387,36 @@ const CourseDetail = ({
             "Not available",
             "Generate Activity is only available for graded assignments below 75%.",
           );
+        } else if (hasMasteredGeneratedActivity(assignment)) {
+          const activityScore = getCompletedActivityScore(assignment);
+
+          Alert.alert(
+            "Already mastered",
+            `You already scored ${activityScore?.scorePercent ?? 75}% or above on the generated follow-up activity for this assignment.`,
+          );
         } else {
           Alert.alert(
             "Not available",
-            "This assignment needs at least one related material with content or file.",
+            "This assignment needs at least one teacher-selected related material. The AI activity will use that material, not the assignment title.",
           );
         }
       }
       return;
     }
 
+    const relatedMaterials = getRelatedMaterials(assignment);
+
     setSelectedAssignment(null);
-    onGenerateActivity?.(assignment);
+    onGenerateActivity?.({
+      ...assignment,
+      relatedMaterials,
+      materialIds: relatedMaterials.map((material) => material.id),
+    } as any);
 
     if (!silent) {
       Alert.alert(
         "Activity Generated",
-        "The activity will be based on the related materials selected by the teacher.",
+        "The activity will be generated from the related materials selected by the teacher. The backend will download/read the Firebase material files and create questions from that content.",
       );
     }
   };
@@ -394,7 +441,7 @@ const CourseDetail = ({
       handleGenerateActivity(targetAssignment, true);
       onConsumedAutoOpenAssignment?.();
     }, 150);
-  }, [autoOpenAssignmentId, safeCourse.assignments]);
+  }, [autoOpenAssignmentId, safeCourse.assignments, completedActivityScores]);
 
   const handleAddComment = () => {
     if (!selectedAssignment || !newComment.trim()) return;
@@ -462,9 +509,40 @@ const CourseDetail = ({
     }
   };
 
+
+  const normalizeSubmissionLink = (value: string) => {
+    const trimmed = String(value || "").trim();
+    if (!trimmed) return "";
+    return /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+  };
+
+  const handleAddLinkSubmission = () => {
+    if (!selectedAssignment) return;
+
+    const linkUrl = normalizeSubmissionLink(submissionLink);
+    if (!linkUrl) {
+      Alert.alert("Missing link", "Please paste a submission link first.");
+      return;
+    }
+
+    onAddFile(selectedAssignment.id, {
+      id: `link-${Date.now()}`,
+      fileName: "Submitted link",
+      fileSize: "Link submission",
+      uploadedDate: new Date().toLocaleString(),
+      fileUrl: linkUrl,
+      fileType: "text/uri-list",
+      isSubmitted: false,
+      source: "student",
+    });
+
+    setSubmissionLink("");
+  };
+
   const closeAssignmentModal = () => {
     setSelectedAssignment(null);
     setNewComment("");
+    setSubmissionLink("");
   };
 
   const isAssignmentSubmitted = (assignment?: AssignmentItem | null) => {
@@ -707,7 +785,14 @@ const CourseDetail = ({
           </Text>
         )}
 
-        {recommendationLabel && (
+        {hasMasteredGeneratedActivity(item) ? (
+          <View style={styles.masteredActivityBadge}>
+            <Ionicons name="checkmark-circle" size={14} color="#2E7D32" />
+            <Text style={styles.masteredActivityText}>
+              Follow-up mastered ({getCompletedActivityScore(item)?.scorePercent}%)
+            </Text>
+          </View>
+        ) : recommendationLabel ? (
           <View
             style={[
               styles.recommendationBadge,
@@ -723,7 +808,7 @@ const CourseDetail = ({
               {recommendationLabel}
             </Text>
           </View>
-        )}
+        ) : null}
       </TouchableOpacity>
     );
   };
@@ -1114,7 +1199,19 @@ const CourseDetail = ({
                           </View>
                         )}
 
-                        {!canGenerateActivity(selectedAssignment) &&
+                        {hasMasteredGeneratedActivity(selectedAssignment) ? (
+                          <View style={styles.masteredActivityNotice}>
+                            <Ionicons name="checkmark-circle" size={18} color="#2E7D32" />
+                            <View style={{ flex: 1 }}>
+                              <Text style={styles.masteredActivityNoticeTitle}>
+                                Follow-up activity mastered
+                              </Text>
+                              <Text style={styles.masteredActivityNoticeText}>
+                                You scored {getCompletedActivityScore(selectedAssignment)?.scorePercent}% on the generated follow-up activity, so the Generate Activity button is hidden for this assignment.
+                              </Text>
+                            </View>
+                          </View>
+                        ) : !canGenerateActivity(selectedAssignment) &&
                           getScorePercent(selectedAssignment) !== null &&
                           getScorePercent(selectedAssignment)! < 75 && (
                             <Text style={styles.materialWarningText}>
@@ -1134,17 +1231,28 @@ const CourseDetail = ({
                             onPress={() =>
                               handleGenerateActivity(selectedAssignment)
                             }
+                            disabled={isGeneratingActivity}
                             style={[
                               styles.uploadButtonWide,
                               {
                                 backgroundColor:
                                   getRecommendationColor(selectedAssignment),
+                                opacity: isGeneratingActivity ? 0.75 : 1,
                               },
                             ]}
                           >
-                            <Text style={styles.uploadButtonText}>
-                              Generate Activity
-                            </Text>
+                            {isGeneratingActivity ? (
+                              <View style={styles.loadingButtonContent}>
+                                <ActivityIndicator size="small" color="#FFFFFF" />
+                                <Text style={styles.uploadButtonText}>
+                                  Generating...
+                                </Text>
+                              </View>
+                            ) : (
+                              <Text style={styles.uploadButtonText}>
+                                Generate Activity
+                              </Text>
+                            )}
                           </TouchableOpacity>
                         </View>
                       )}
@@ -1224,7 +1332,7 @@ const CourseDetail = ({
                               (file) => (
                                 <View key={file.id} style={styles.fileItem}>
                                   <Ionicons
-                                    name="document-text-outline"
+                                    name={file.fileType === "text/uri-list" ? "link-outline" : "document-text-outline"}
                                     size={20}
                                     color="#D32F2F"
                                   />
@@ -1270,7 +1378,7 @@ const CourseDetail = ({
                           </View>
                         ) : (
                           <Text style={styles.emptyText}>
-                            No student files uploaded yet
+                            No student submission added yet
                           </Text>
                         )}
 
@@ -1329,6 +1437,29 @@ const CourseDetail = ({
 
                           return (
                             <View style={styles.uploadActionsRow}>
+                              {canEditFiles && (
+                                <View style={styles.linkSubmitBox}>
+                                  <TextInput
+                                    style={styles.linkInput}
+                                    value={submissionLink}
+                                    onChangeText={setSubmissionLink}
+                                    placeholder="Paste submission link here"
+                                    placeholderTextColor="#999"
+                                    autoCapitalize="none"
+                                    autoCorrect={false}
+                                    keyboardType="url"
+                                  />
+
+                                  <TouchableOpacity
+                                    style={styles.secondaryButton}
+                                    onPress={handleAddLinkSubmission}
+                                    activeOpacity={0.85}
+                                  >
+                                    <Text style={styles.secondaryButtonText}>+ Add Link</Text>
+                                  </TouchableOpacity>
+                                </View>
+                              )}
+
                               {!hasFiles ? (
                                 <TouchableOpacity
                                   style={[styles.uploadButtonWide, isUploadingFile && styles.sendButtonDisabled]}
@@ -1449,6 +1580,13 @@ const CourseDetail = ({
 export default CourseDetail;
 
 const styles = StyleSheet.create({
+
+  loadingButtonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
   container: { flex: 1, backgroundColor: "#FFFFFF" },
   screenScroll: { flex: 1, backgroundColor: "#FFFFFF" },
   screenScrollContent: { paddingBottom: 40 },
@@ -1713,6 +1851,50 @@ const styles = StyleSheet.create({
     marginTop: 8,
     lineHeight: 18,
   },
+  masteredActivityBadge: {
+    marginTop: 10,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    alignSelf: "flex-start",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "#E8F5E9",
+  },
+
+  masteredActivityText: {
+    fontSize: 12,
+    fontWeight: "800",
+    color: "#2E7D32",
+  },
+
+  masteredActivityNotice: {
+    marginTop: 12,
+    backgroundColor: "#E8F5E9",
+    borderWidth: 1,
+    borderColor: "#B7E0BC",
+    borderRadius: 12,
+    padding: 12,
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 10,
+  },
+
+  masteredActivityNoticeTitle: {
+    color: "#1B5E20",
+    fontSize: 13,
+    fontWeight: "800",
+    marginBottom: 3,
+  },
+
+  masteredActivityNoticeText: {
+    color: "#2E7D32",
+    fontSize: 12,
+    lineHeight: 18,
+    fontWeight: "600",
+  },
+
   recommendationBadge: {
     marginTop: 10,
     borderRadius: 999,
@@ -1944,6 +2126,17 @@ const styles = StyleSheet.create({
     fontWeight: "800",
   },
   uploadActionsRow: { gap: 10, marginTop: 8 },
+  linkSubmitBox: { gap: 8, marginTop: 8 },
+  linkInput: {
+    backgroundColor: "#FFF",
+    borderWidth: 1,
+    borderColor: "#DDD",
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 13,
+    color: "#000",
+  },
   lockedSubmissionBox: {
     flexDirection: "row",
     alignItems: "flex-start",

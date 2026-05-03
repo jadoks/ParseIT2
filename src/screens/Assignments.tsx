@@ -3,6 +3,7 @@ import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import React, { useMemo, useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
   FlatList,
   Linking,
@@ -175,6 +176,15 @@ interface AssignmentsProps {
   onUpdateAssignmentStatus?: (assignmentId: string, status: AssignmentItem['status']) => void;
   onRefreshSubmissions?: () => Promise<void> | void;
   currentStudent?: CurrentStudent;
+  isGeneratingActivity?: boolean;
+  completedActivityScores?: Record<
+    string,
+    {
+      scorePercent: number | null;
+      completed: boolean;
+      mastered: boolean;
+    }
+  >;
 }
 
 
@@ -192,6 +202,8 @@ const Assignments = ({
   onUpdateAssignmentStatus,
   onRefreshSubmissions,
   currentStudent,
+  isGeneratingActivity = false,
+  completedActivityScores = {},
 }: AssignmentsProps) => {
   const { width } = useWindowDimensions();
   const isLargeScreen = width >= 768;
@@ -199,6 +211,7 @@ const Assignments = ({
   const [filter, setFilter] = useState<FilterType>('all');
   const [selectedAssignment, setSelectedAssignment] = useState<FlattenedAssignment | null>(null);
   const [newComment, setNewComment] = useState('');
+  const [submissionLink, setSubmissionLink] = useState('');
   const [isUploadingFile, setIsUploadingFile] = useState(false);
   const [isSubmittingAssignment, setIsSubmittingAssignment] = useState(false);
 
@@ -295,6 +308,46 @@ const Assignments = ({
     return assignment.materials.filter((m) => assignment.materialIds?.includes(m.id));
   };
 
+  const hasMasteredGeneratedActivity = (assignment: AssignmentItem) => {
+    const activityScore = completedActivityScores[assignment.id];
+    return (
+      !!activityScore?.completed &&
+      activityScore.scorePercent !== null &&
+      activityScore.scorePercent >= 75
+    );
+  };
+
+  const canGenerateActivity = (assignment: FlattenedAssignment) => {
+    return (
+      !!getRecommendationType(assignment) &&
+      getRelatedMaterials(assignment).length > 0 &&
+      !hasMasteredGeneratedActivity(assignment)
+    );
+  };
+
+  const handleOpenGeneratedActivity = (assignment: FlattenedAssignment) => {
+    if (isGeneratingActivity) return;
+
+    const relatedMaterials = getRelatedMaterials(assignment);
+
+    if (!relatedMaterials.length) {
+      Alert.alert(
+        'Related materials required',
+        'The teacher must select related materials first. The AI follow-up activity is generated from those materials, not from the assignment title.'
+      );
+      return;
+    }
+
+    const course = courses.find((c) => c.id === assignment.courseId);
+    if (course && onOpenGeneratedActivity) {
+      onOpenGeneratedActivity(course, {
+        ...assignment,
+        relatedMaterials,
+        materialIds: relatedMaterials.map((material) => material.id),
+      } as any);
+    }
+  };
+
   const handleAddComment = () => {
     if (!selectedAssignment || !newComment.trim()) return;
     onAddComment(selectedAssignment.id, newComment);
@@ -360,6 +413,36 @@ const Assignments = ({
     } finally {
       setIsUploadingFile(false);
     }
+  };
+
+
+  const normalizeSubmissionLink = (value: string) => {
+    const trimmed = String(value || '').trim();
+    if (!trimmed) return '';
+    return /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+  };
+
+  const handleAddLinkSubmission = () => {
+    if (!selectedAssignment) return;
+
+    const linkUrl = normalizeSubmissionLink(submissionLink);
+    if (!linkUrl) {
+      Alert.alert('Missing link', 'Please paste a submission link first.');
+      return;
+    }
+
+    onAddFile(selectedAssignment.id, {
+      id: `link-${Date.now()}`,
+      fileName: 'Submitted link',
+      fileSize: 'Link submission',
+      uploadedDate: new Date().toLocaleString(),
+      fileUrl: linkUrl,
+      fileType: 'text/uri-list',
+      isSubmitted: false,
+      source: 'student',
+    });
+
+    setSubmissionLink('');
   };
 
   const isAssignmentSubmitted = (assignment?: AssignmentItem | null) => {
@@ -808,21 +891,33 @@ const Assignments = ({
                       <View style={styles.section}>
                         <Text style={styles.sectionTitle}>🎯 Follow-Up Activity</Text>
 
+                        {!canGenerateActivity(selectedAssignment) && (
+                          <Text style={styles.materialWarningText}>
+                            The teacher must link related materials first. AI will generate this activity from those related materials only.
+                          </Text>
+                        )}
+
                         <TouchableOpacity
-                          onPress={() => {
-                            const course = courses.find((c) => c.id === selectedAssignment.courseId);
-                            if (course && onOpenGeneratedActivity) {
-                              onOpenGeneratedActivity(course, selectedAssignment);
-                            }
-                          }}
+                          onPress={() => handleOpenGeneratedActivity(selectedAssignment)}
+                          disabled={!canGenerateActivity(selectedAssignment) || isGeneratingActivity}
                           style={[
                             styles.uploadButton,
                             {
-                              backgroundColor: getRecommendationColor(selectedAssignment),
+                              backgroundColor: canGenerateActivity(selectedAssignment)
+                                ? getRecommendationColor(selectedAssignment)
+                                : '#CCC',
+                              opacity: isGeneratingActivity ? 0.75 : 1,
                             },
                           ]}
                         >
-                          <Text style={styles.uploadButtonText}>Generate Follow-Up Activity</Text>
+                          {isGeneratingActivity ? (
+                            <View style={styles.loadingButtonContent}>
+                              <ActivityIndicator size="small" color="#FFFFFF" />
+                              <Text style={styles.uploadButtonText}>Generating...</Text>
+                            </View>
+                          ) : (
+                            <Text style={styles.uploadButtonText}>Generate Follow-Up Activity</Text>
+                          )}
                         </TouchableOpacity>
                       </View>
                     )}
@@ -836,6 +931,9 @@ const Assignments = ({
                             <Text style={styles.relatedMaterialMeta}>
                               {material.type} • {material.uploadedDate}
                             </Text>
+                            {!!material.fileName && (
+                              <Text style={styles.relatedMaterialFileName}>{material.fileName}</Text>
+                            )}
                           </View>
                         ))
                       ) : (
@@ -850,7 +948,7 @@ const Assignments = ({
                         <View>
                           {getSubmittedFiles(selectedAssignment).map((file) => (
                             <View key={file.id} style={styles.fileItem}>
-                              <Text style={{ fontSize: 20 }}>📄</Text>
+                              <Text style={{ fontSize: 20 }}>{file.fileType === 'text/uri-list' ? '🔗' : '📄'}</Text>
                               <View style={styles.fileInfo}>
                                 <Text style={styles.fileName}>{file.fileName}</Text>
                                 <Text style={styles.fileDetails}>
@@ -879,7 +977,7 @@ const Assignments = ({
                           ))}
                         </View>
                       ) : (
-                        <Text style={styles.emptyText}>No student files uploaded yet</Text>
+                        <Text style={styles.emptyText}>No student submission added yet</Text>
                       )}
 
                       {(() => {
@@ -931,6 +1029,29 @@ const Assignments = ({
 
                         return (
                           <View style={styles.uploadActionsRow}>
+                            {canEditFiles && (
+                              <View style={styles.linkSubmitBox}>
+                                <TextInput
+                                  style={styles.linkInput}
+                                  value={submissionLink}
+                                  onChangeText={setSubmissionLink}
+                                  placeholder="Paste submission link here"
+                                  placeholderTextColor="#999"
+                                  autoCapitalize="none"
+                                  autoCorrect={false}
+                                  keyboardType="url"
+                                />
+
+                                <TouchableOpacity
+                                  style={styles.secondaryButton}
+                                  onPress={handleAddLinkSubmission}
+                                  activeOpacity={0.85}
+                                >
+                                  <Text style={styles.secondaryButtonText}>+ Add Link</Text>
+                                </TouchableOpacity>
+                              </View>
+                            )}
+
                             {!hasFiles ? (
                               <TouchableOpacity
                                 style={[styles.uploadButton, isUploadingFile && styles.sendButtonDisabled]}
@@ -1036,6 +1157,13 @@ const Assignments = ({
 };
 
 const styles = StyleSheet.create({
+
+  loadingButtonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
   container: {
     flex: 1,
     backgroundColor: '#F5F5F5',
@@ -1267,6 +1395,19 @@ const styles = StyleSheet.create({
     fontSize: 12,
     textTransform: 'capitalize',
   },
+  relatedMaterialFileName: {
+    color: '#D32F2F',
+    fontSize: 12,
+    fontWeight: '600',
+    marginTop: 4,
+  },
+  materialWarningText: {
+    color: '#B26A00',
+    fontSize: 12,
+    lineHeight: 18,
+    fontWeight: '600',
+    marginBottom: 8,
+  },
 
   attachmentFileCard: {
     flexDirection: 'row',
@@ -1334,6 +1475,20 @@ const styles = StyleSheet.create({
   uploadActionsRow: {
     gap: 10,
     marginTop: 8,
+  },
+  linkSubmitBox: {
+    gap: 8,
+    marginTop: 8,
+  },
+  linkInput: {
+    backgroundColor: '#FFF',
+    borderWidth: 1,
+    borderColor: '#DDD',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 13,
+    color: '#000',
   },
   lockedSubmissionBox: {
     backgroundColor: '#F5F7FA',

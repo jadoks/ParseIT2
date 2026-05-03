@@ -1,7 +1,10 @@
-import React from 'react';
+import * as DocumentPicker from 'expo-document-picker';
+import React, { useRef, useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
   ImageBackground,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -12,6 +15,13 @@ import {
 
 type GameScreen = 'flipit' | 'fruitmania' | 'quizmasters';
 
+export interface QuizQuestion {
+  question: string;
+  options: string[];
+  answer: string;
+  explanation?: string;
+}
+
 interface GameItem {
   id: number;
   title: string;
@@ -21,12 +31,25 @@ interface GameItem {
 }
 
 interface Props {
-  onNavigate?: (screen: GameScreen) => void;
+  onNavigate?: (screen: GameScreen, generatedQuiz?: QuizQuestion[] | null) => void;
 }
+
+function getGameAiBaseUrl() {
+  if (Platform.OS === 'web') {
+    return 'http://localhost:5000';
+  }
+
+  // For Android/iOS Expo testing, replace this fallback with your computer IP if needed.
+  return 'http://192.168.1.5:5000';
+}
+
+const GAME_AI_BASE_URL = getGameAiBaseUrl();
 
 const Game = ({ onNavigate }: Props) => {
   const { width } = useWindowDimensions();
   const isSmallScreen = width < 768;
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [isGeneratingQuiz, setIsGeneratingQuiz] = useState(false);
 
   const games: GameItem[] = [
     {
@@ -46,8 +69,8 @@ const Game = ({ onNavigate }: Props) => {
     {
       id: 3,
       title: 'Quiz Masters',
-      description: 'Trivia Games',
-      category: 'Trivia',
+      description: 'Upload a lesson file, then choose a game mode',
+      category: 'Study Games',
       screen: 'quizmasters',
     },
   ];
@@ -67,19 +90,129 @@ const Game = ({ onNavigate }: Props) => {
 
   const handlePress = (screen: GameScreen) => {
     if (typeof onNavigate === 'function') {
-      onNavigate(screen);
+      onNavigate(screen, null);
       return;
     }
 
-    Alert.alert(
-      'Navigation not connected',
-      'Game screen navigation is not connected yet.'
-    );
+    Alert.alert('Navigation not connected', 'Game screen navigation is not connected yet.');
+  };
+
+  const uploadFileToGameApi = async (filePayload: any) => {
+    try {
+      setIsGeneratingQuiz(true);
+
+      const formData = new FormData();
+      formData.append('file', filePayload as any);
+
+      const response = await fetch(`${GAME_AI_BASE_URL}/game-ai/generate-quiz-masters`, {
+        method: 'POST',
+        body: formData,
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data?.error || 'Failed to generate Quiz Masters game.');
+      }
+
+      if (!Array.isArray(data?.questions) || data.questions.length === 0) {
+        throw new Error('The game API did not return quiz questions.');
+      }
+
+      onNavigate?.('quizmasters', data.questions);
+    } catch (error: any) {
+      Alert.alert(
+        'Quiz generation failed',
+        error?.message || 'Unable to generate Quiz Masters from this file.'
+      );
+    } finally {
+      setIsGeneratingQuiz(false);
+    }
+  };
+
+  const handleUploadPress = async () => {
+    if (Platform.OS === 'web') {
+      fileInputRef.current?.click();
+      return;
+    }
+
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: [
+          'application/pdf',
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          'text/plain',
+          'text/markdown',
+          'application/json',
+          'text/csv',
+        ],
+        copyToCacheDirectory: true,
+        multiple: false,
+      });
+
+      if (result.canceled || !result.assets?.length) return;
+
+      const asset = result.assets[0];
+      await uploadFileToGameApi({
+        uri: asset.uri,
+        name: asset.name || 'lesson-file',
+        type: asset.mimeType || 'application/octet-stream',
+      });
+    } catch (error: any) {
+      Alert.alert('Upload failed', error?.message || 'Unable to select this file.');
+    }
+  };
+
+  const handleFileChange = async (event: any) => {
+    const file = event?.target?.files?.[0];
+    if (!file) return;
+
+    await uploadFileToGameApi(file);
+
+    if (event?.target) {
+      event.target.value = '';
+    }
   };
 
   return (
-    <ScrollView style={styles.container}>
-      <Text style={styles.pageTitle}>Games</Text>
+    <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
+      <View style={styles.headerRow}>
+        <View style={styles.titleWrap}>
+          <Text style={styles.pageTitle}>Games</Text>
+          <Text style={styles.pageSubtitle}>
+            Upload a lesson file and create Matching Cards, Flashcards, Fill-in-the-Blank, and Trivia.
+          </Text>
+        </View>
+
+        <Pressable
+          style={({ pressed }) => [
+            styles.uploadButton,
+            pressed && styles.uploadButtonPressed,
+            isGeneratingQuiz && styles.uploadButtonDisabled,
+          ]}
+          onPress={handleUploadPress}
+          disabled={isGeneratingQuiz}
+        >
+          {isGeneratingQuiz ? (
+            <View style={styles.loadingRow}>
+              <ActivityIndicator color="#FFF" size="small" />
+              <Text style={styles.uploadButtonText}>Generating...</Text>
+            </View>
+          ) : (
+            <Text style={styles.uploadButtonText}>+ Upload File</Text>
+          )}
+        </Pressable>
+
+        {Platform.OS === 'web' ? (
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".pdf,.docx,.txt,.md,.json,.csv"
+            style={{ display: 'none' }}
+            onChange={handleFileChange}
+          />
+        ) : null}
+      </View>
 
       <View style={styles.grid}>
         {games.map((game) => {
@@ -126,12 +259,59 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: 20,
   },
+  contentContainer: {
+    paddingBottom: 32,
+  },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 16,
+    marginBottom: 20,
+  },
+  titleWrap: {
+    flex: 1,
+  },
   pageTitle: {
     fontSize: 30,
     fontWeight: 'bold',
-    paddingBottom: 10,
     textAlign: 'left',
-    marginBottom: 20,
+  },
+  pageSubtitle: {
+    color: '#666',
+    marginTop: 4,
+    fontSize: 14,
+  },
+  uploadButton: {
+    backgroundColor: '#D32F2F',
+    paddingHorizontal: 18,
+    paddingVertical: 12,
+    borderRadius: 16,
+    minWidth: 132,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 6,
+    elevation: 3,
+  },
+  uploadButtonPressed: {
+    transform: [{ scale: 0.98 }],
+    opacity: 0.95,
+  },
+  uploadButtonDisabled: {
+    opacity: 0.75,
+  },
+  uploadButtonText: {
+    color: '#FFF',
+    fontWeight: '800',
+    fontSize: 14,
+  },
+  loadingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   grid: {
     flexDirection: 'row',
@@ -162,10 +342,7 @@ const styles = StyleSheet.create({
   cardHeader: {
     backgroundColor: '#D32F2F',
     height: '100%',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    borderBottomLeftRadius: 20,
-    borderBottomRightRadius: 20,
+    borderRadius: 20,
     position: 'relative',
     justifyContent: 'space-between',
     alignItems: 'flex-start',

@@ -30,6 +30,11 @@ type AdminNotification = {
   message: string;
   time?: string;
   read: boolean;
+  provider?: string | null;
+  providerLabel?: string | null;
+  model?: string | null;
+  errorMessage?: string | null;
+  aiProvider?: string | null;
   createdAt?: unknown;
 };
 
@@ -206,9 +211,28 @@ function NotificationList({
                     {unread && <View style={styles.unreadDot} />}
                   </View>
 
-                  <Text style={styles.notificationItemMessage} numberOfLines={3}>
+                  {item.type === "ai-quota-limit" && (
+                    <View style={styles.aiQuotaDetailBox}>
+                      <Text style={styles.aiQuotaDetailText}>
+                        AI Provider: {item.providerLabel || item.aiProvider || item.provider || "Unknown AI"}
+                      </Text>
+                      {!!item.model && (
+                        <Text style={styles.aiQuotaDetailText}>
+                          Model: {item.model}
+                        </Text>
+                      )}
+                    </View>
+                  )}
+
+                  <Text style={styles.notificationItemMessage} numberOfLines={4}>
                     {item.message}
                   </Text>
+
+                  {!!item.errorMessage && item.type === "ai-quota-limit" && (
+                    <Text style={styles.aiQuotaErrorText} numberOfLines={3}>
+                      Reason: {item.errorMessage}
+                    </Text>
+                  )}
 
                   {!!item.time && <Text style={styles.notificationItemTime}>{item.time}</Text>}
                 </View>
@@ -802,6 +826,35 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: "700",
     color: "#A07C7C",
+    marginTop: 8,
+  },
+
+  aiQuotaDetailBox: {
+    backgroundColor: "#FFF5F5",
+    borderWidth: 1,
+    borderColor: "#F3D4D4",
+    borderRadius: 12,
+    padding: 10,
+    marginTop: 8,
+    marginBottom: 8,
+  },
+
+  aiQuotaDetailText: {
+    fontSize: 12,
+    fontWeight: "800",
+    color: "#7A1F1F",
+    lineHeight: 18,
+  },
+
+  aiQuotaErrorText: {
+    fontSize: 12,
+    lineHeight: 18,
+    color: "#9A3412",
+    backgroundColor: "#FFF7ED",
+    borderWidth: 1,
+    borderColor: "#FED7AA",
+    borderRadius: 10,
+    padding: 8,
     marginTop: 8,
   },
 

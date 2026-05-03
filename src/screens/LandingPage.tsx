@@ -229,7 +229,7 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
       description:
         "Get personalized assistance while learning to code, receive instant feedback on your work, and track your progress in real-time.",
       bullets: [
-        "24/7 AI tutoring for programming concepts",
+        "24/7 AI tutoring ",
         "Instant debugging and code feedback",
         "Personalized learning recommendations",
         "Track your performance and progress",
@@ -349,7 +349,7 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
           <SectionWrapper scrollY={scrollY} onLayout={onSectionLayout("how")}>
             <SectionHeader scrollY={scrollY} title="How It Works" subtitle="A seamless learning experience powered by AI and data analytics" />
             <View style={[styles.stepsGrid, isMobile && styles.stepsGridMobile]}>
-              <StepCard revealDirection="left" index={1} title="Student Interacts" description="Students engage with the platform—asking questions, submitting assignments, and practicing coding challenges." icon={<Feather name="user" size={30} color="#ff6b78" />} />
+              <StepCard revealDirection="left" index={1} title="Student Interacts" description="Students engage with the platform by asking questions, submitting assignments, and completing practice challenges, while the system generates follow-up activities based on their performance." icon={<Feather name="user" size={30} color="#ff6b78" />} />
               <StepArrow hidden={isMobile} />
               <StepCard revealDirection="up" index={2} title="AI Processes & Guides" description="The AI assistant analyzes inputs, provides intelligent feedback, and offers personalized tutoring in real-time." icon={<MaterialCommunityIcons name="brain" size={34} color="#ff9700" />} />
               <StepArrow hidden={isMobile} />
@@ -403,7 +403,7 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
               <Pill icon={<Feather name="zap" size={17} color="#ff9aa5" />} text="Transform Learning with AI" centered />
               <Text style={[styles.ctaTitle, isSmall && styles.ctaTitleSmall]}>Ready to Revolutionize Education?</Text>
               <Text style={styles.ctaText}>
-                Join Parsers Hub 2.0 and experience the future of programming education. Empower students with AI tutoring, enable teachers with analytics, and transform your institution.
+               Join Parsers Hub 2.0 and experience the future of AI-powered education. Empower students with intelligent tutoring, equip teachers with advanced analytics, and transform your institution.
               </Text>
               <View style={[styles.ctaActions, isSmall && styles.ctaActionsSmall]}>
                 <TouchableOpacity activeOpacity={0.9} onPress={goToSignIn} style={[styles.ctaPrimary, isSmall && styles.buttonFull]}>
@@ -1137,15 +1137,15 @@ function Footer() {
             </View>
           </View>
           <Text style={styles.footerDescription}>
-            An intelligent academic platform designed for BSIT students and faculty at Cebu Technological University. Combining AI tutoring with predictive analytics for next-generation programming education.
+           An intelligent academic platform designed for BSIT students and faculty at Cebu Technological University, combining AI-powered tutoring with predictive analytics for next-generation education.
           </Text>
           <View style={styles.universityRow}>
             <LinearGradient colors={["#2563eb", "#1d4ed8"]} style={styles.universityIcon}>
               <Ionicons name="school-outline" size={27} color="#fff" />
             </LinearGradient>
             <View>
-              <Text style={styles.universityTitle}>Cebu Technological University</Text>
-              <Text style={styles.universitySub}>College of Computer Studies</Text>
+              <Text style={styles.universityTitle}>Cebu Technological University - Argao Campus</Text>
+              <Text style={styles.universitySub}>College of Technology and Engineering</Text>
             </View>
           </View>
         </View>

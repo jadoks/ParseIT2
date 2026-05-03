@@ -20,6 +20,16 @@ import { AssignmentCourse } from './Assignments';
 interface AnalyticsProps {
   courses: AssignmentCourse[];
   studentName: string;
+  completedActivityScores?: Record<
+    string,
+    {
+      scorePercent: number | null;
+      completed: boolean;
+      mastered: boolean;
+      topic?: string | null;
+      completedAt?: string | null;
+    }
+  >;
 }
 
 const COLORS = {
@@ -252,7 +262,11 @@ const FloatingLineLabels = ({
   );
 };
 
-const Analytics: React.FC<AnalyticsProps> = ({ courses, studentName }) => {
+const Analytics: React.FC<AnalyticsProps> = ({
+  courses,
+  studentName,
+  completedActivityScores = {},
+}) => {
   const { width } = useWindowDimensions();
   const [showAllSubjects, setShowAllSubjects] = useState(false);
 
@@ -265,6 +279,35 @@ const Analytics: React.FC<AnalyticsProps> = ({ courses, studentName }) => {
     () => buildStudentAnalytics(courses),
     [courses]
   );
+
+  const supportActivitySummary = useMemo(() => {
+    const activities = Object.values(completedActivityScores || {}).filter(
+      (item) => item?.completed
+    );
+
+    const scoredActivities = activities.filter((item) =>
+      Number.isFinite(Number(item.scorePercent))
+    );
+
+    const averageScore = scoredActivities.length
+      ? Math.round(
+          scoredActivities.reduce(
+            (sum, item) => sum + Number(item.scorePercent || 0),
+            0
+          ) / scoredActivities.length
+        )
+      : 0;
+
+    const masteredCount = scoredActivities.filter(
+      (item) => Number(item.scorePercent) >= 75
+    ).length;
+
+    return {
+      completedCount: activities.length,
+      masteredCount,
+      averageScore,
+    };
+  }, [completedActivityScores]);
 
   const overallRiskColor = getRiskColor(analytics.overallRisk);
 
@@ -513,6 +556,17 @@ const Analytics: React.FC<AnalyticsProps> = ({ courses, studentName }) => {
           }
           subtitle="Based on current academic output"
           accentColor={COLORS.info}
+          cardStyle={metricCardResponsiveStyle}
+        />
+        <MetricCard
+          title="Follow-up Activities"
+          value={`${supportActivitySummary.masteredCount}/${supportActivitySummary.completedCount}`}
+          subtitle={
+            supportActivitySummary.completedCount > 0
+              ? `Avg follow-up score: ${supportActivitySummary.averageScore}%`
+              : 'No completed AI activities yet'
+          }
+          accentColor={COLORS.primary}
           cardStyle={metricCardResponsiveStyle}
         />
         <MetricCard

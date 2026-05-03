@@ -3,6 +3,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import * as NavigationBar from 'expo-navigation-bar';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
   Image,
   Platform,
@@ -127,6 +128,17 @@ type StoredAssignmentState = {
   files: Record<string, AssignmentFileUpload[]>;
   statuses: Record<string, AssignmentItem['status']>;
   scores: Record<string, StoredAssignmentScore>;
+};
+
+type CompletedActivityScore = {
+  activityId?: string;
+  assignmentId: string;
+  courseId?: string | null;
+  topic?: string | null;
+  scorePercent: number | null;
+  completed: boolean;
+  mastered: boolean;
+  completedAt?: string | null;
 };
 
 const getAssignmentStateKey = (studentId: string) => `student-assignment-state-${studentId}`;
@@ -607,6 +619,9 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
   const [selectedCourse, setSelectedCourse] = useState<CourseDetailData>(COURSES[0]);
   const [selectedCourseIdForAssignments, setSelectedCourseIdForAssignments] = useState<string | null>(null);
   const [generatedActivity, setGeneratedActivity] = useState<GenerateActivityData | null>(null);
+  const [generatedQuizMastersData, setGeneratedQuizMastersData] = useState<any[] | null>(null);
+  const [isGeneratingActivity, setIsGeneratingActivity] = useState(false);
+  const [completedActivityScores, setCompletedActivityScores] = useState<Record<string, CompletedActivityScore>>({});
 
   const [showAnnouncement, setShowAnnouncement] = useState(true);
   const [isMobileDrawerOpen, setMobileDrawerOpen] = useState(false);
@@ -1604,6 +1619,32 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
     };
   };
 
+  const loadCompletedActivityScores = useCallback(async () => {
+    if (!currentStudent?.studentId) {
+      setCompletedActivityScores({});
+      return;
+    }
+
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/student-activities/completed-scores/${encodeURIComponent(currentStudent.studentId)}`
+      );
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data?.error || 'Failed to load completed support activities.');
+      }
+
+      setCompletedActivityScores(data?.data?.scores || {});
+    } catch (error) {
+      console.log('LOAD COMPLETED ACTIVITY SCORES ERROR =>', error);
+    }
+  }, [currentStudent?.studentId]);
+
+  useEffect(() => {
+    void loadCompletedActivityScores();
+  }, [loadCompletedActivityScores]);
+
   const loadStudentNotifications = useCallback(async () => {
     if (!currentStudent?.studentId) {
       setStudentNotifications([]);
@@ -1671,7 +1712,10 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
   };
 
   const handleGeneratedActivityCompleted = async (activity: GenerateActivityData) => {
-    await loadStudentNotifications();
+    await Promise.all([
+      loadStudentNotifications(),
+      loadCompletedActivityScores(),
+    ]);
 
     Alert.alert(
       'Activity Completed',
@@ -1683,6 +1727,133 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
     () => studentNotifications.filter((item) => !item.read).length,
     [studentNotifications]
   );
+
+  const cleanVideoSearchText = (value = '') => {
+    return String(value || '')
+      .replace(/[\/]/g, ' ')
+      .replace(/[^a-zA-Z0-9\s+#.()-]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  };
+
+  const getRotatingIndex = (length: number, salt = 0) => {
+    if (length <= 0) return 0;
+
+    const today = new Date();
+    const daySeed = Math.floor(
+      new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime() /
+        86400000
+    );
+
+    return Math.abs(daySeed + salt) % length;
+  };
+
+  const adaptiveVideoRecommendation = useMemo(() => {
+    const weakRecommendations = joinedAssignmentCourses
+      .flatMap((course) =>
+        course.assignments
+          .map((assignment) => {
+            const score = getScorePercent(assignment);
+
+            if (score === null || score >= 75) return null;
+
+            const relatedMaterialTitles = (course.materials || [])
+              .filter((material) => assignment.materialIds?.includes(material.id))
+              .map((material) => cleanVideoSearchText(material.title))
+              .filter(Boolean);
+
+            const primaryMaterial =
+              relatedMaterialTitles[getRotatingIndex(relatedMaterialTitles.length, assignment.id.length)] ||
+              cleanVideoSearchText(assignment.topic || '') ||
+              cleanVideoSearchText(course.name);
+
+            if (!primaryMaterial) return null;
+
+            return {
+              type: 'weak' as const,
+              primaryTopic: primaryMaterial,
+              score,
+              query: `${primaryMaterial}`.trim(),
+              reason:
+                relatedMaterialTitles.length > 0
+                  ? `Related material (${primaryMaterial})`
+                  : `Weak topic (${primaryMaterial})`,
+            };
+          })
+          .filter(Boolean)
+      )
+      .sort((a: any, b: any) => (a.score ?? 100) - (b.score ?? 100)) as Array<{
+      type: 'weak';
+      primaryTopic: string;
+      score: number;
+      query: string;
+      reason: string;
+    }>;
+
+    const courseRecommendations = joinedAssignmentCourses
+      .map((course, courseIndex) => {
+        const materialTitles = (course.materials || [])
+          .map((material) => cleanVideoSearchText(material.title))
+          .filter(Boolean);
+
+        const rotatingMaterial =
+          materialTitles[getRotatingIndex(materialTitles.length, courseIndex)] ||
+          cleanVideoSearchText(course.name);
+
+        if (!rotatingMaterial) return null;
+
+        return {
+          type: 'course' as const,
+          primaryTopic: rotatingMaterial,
+          query: `${rotatingMaterial} tutorial lesson explanation`.trim(),
+          reason: `Course topic (${course.name})`,
+        };
+      })
+      .filter(Boolean) as Array<{
+      type: 'course';
+      primaryTopic: string;
+      query: string;
+      reason: string;
+    }>;
+
+    if (weakRecommendations.length > 0) {
+      const shouldUseWeakTopic = getRotatingIndex(10) < 7;
+
+      if (shouldUseWeakTopic || courseRecommendations.length === 0) {
+        const selectedWeak = weakRecommendations[getRotatingIndex(weakRecommendations.length)];
+
+        return {
+          query: selectedWeak.query,
+          reason: `${selectedWeak.reason}`,
+          rotationKey: getRotatingIndex(1000),
+        };
+      }
+
+      const selectedCourse = courseRecommendations[getRotatingIndex(courseRecommendations.length, 3)];
+
+      return {
+        query: selectedCourse.query,
+        reason: `${selectedCourse.reason}`,
+        rotationKey: getRotatingIndex(1000, 3),
+      };
+    }
+
+    if (courseRecommendations.length > 0) {
+      const selectedCourse = courseRecommendations[getRotatingIndex(courseRecommendations.length, 5)];
+
+      return {
+        query: selectedCourse.query,
+        reason: selectedCourse.reason,
+        rotationKey: getRotatingIndex(1000, 5),
+      };
+    }
+
+    return {
+      query: 'educational video lesson explanation',
+      reason: 'Recommended educational videos',
+      rotationKey: getRotatingIndex(1000, 9),
+    };
+  }, [joinedAssignmentCourses, sharedAssignmentScores, sharedAssignmentStatuses]);
 
   const dashboardCourses = joinedAssignmentCourses;
   const classesScreenCourses = joinedAssignmentCourses;
@@ -1730,41 +1901,193 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
     }
   };
 
+  const normalizeCourseForActivity = (course: any): CourseDetailData => {
+    return {
+      id: String(course?.id || ''),
+      name: course?.name || 'Untitled Class',
+      code: course?.code || course?.courseCode || course?.classCode || '',
+      instructor: course?.instructor || course?.instructorName || 'Unknown Instructor',
+      description: course?.description || '',
+      semester: course?.semester || '',
+      schoolYear: course?.schoolYear || '',
+      section: course?.section || '',
+      materials: Array.isArray(course?.materials) ? course.materials : [],
+      assignments: Array.isArray(course?.assignments) ? course.assignments : [],
+    };
+  };
+
+  const findFreshCourseForActivity = (course: any): CourseDetailData => {
+    const courseId = String(course?.id || '');
+
+    const fromJoined = joinedCourses.find((item) => item.id === courseId);
+    if (fromJoined) return normalizeCourseForActivity(fromJoined);
+
+    const fromAssignmentCourses = joinedAssignmentCourses.find((item) => item.id === courseId);
+    if (fromAssignmentCourses) return normalizeCourseForActivity(fromAssignmentCourses);
+
+    const fromSelected = selectedAssignmentCourse?.id === courseId ? selectedAssignmentCourse : null;
+    if (fromSelected) return normalizeCourseForActivity(fromSelected);
+
+    return normalizeCourseForActivity(course);
+  };
+
+  const buildLocalMaterialFallbackActivity = ({
+    course,
+    assignment,
+    score,
+    relatedMaterials,
+  }: {
+    course: CourseDetailData;
+    assignment: DashboardAssignment | CourseAssignment | AssignmentItem;
+    score: number;
+    relatedMaterials: CourseDetailData['materials'];
+  }): GenerateActivityData => {
+    const recommendationType: GenerateActivityData['recommendationType'] =
+      score < 60 ? 'review' : 'practice';
+
+    const difficulty: GenerateActivityData['difficulty'] =
+      recommendationType === 'review' ? 'easy' : 'medium';
+
+    const materialTitles = relatedMaterials.map((material) => material.title).filter(Boolean);
+    const topic = materialTitles.length
+      ? materialTitles.join(', ')
+      : assignment.topic || assignment.title;
+
+    return {
+      courseId: course.id,
+      courseName: course.name,
+      courseCode: course.code,
+      assignmentId: assignment.id,
+      assignmentTitle: assignment.title,
+      topic,
+      score,
+      recommendationType,
+      difficulty,
+      instructions:
+        recommendationType === 'review'
+          ? 'Review the related lesson material carefully, answer the quick check, and explain the concept in your own words.'
+          : 'Complete this guided practice based on the related lesson material to improve your understanding.',
+      basedOnMaterials: materialTitles,
+      quiz: null,
+    };
+  };
+
   const openGeneratedActivity = async (
     course: CourseDetailData,
     assignment: DashboardAssignment | CourseAssignment | AssignmentItem
   ) => {
-    const activity = buildGeneratedActivity(course, assignment);
+    if (isGeneratingActivity) return;
 
-    if (!activity) {
+    const normalizedCourse = findFreshCourseForActivity(course);
+    const score = getScorePercent(assignment);
+
+    if (score === null) {
+      Alert.alert(
+        'Not available',
+        'Generate Activity is only available after the assignment has been graded.'
+      );
+      return;
+    }
+
+    if (score >= 75) {
+      Alert.alert(
+        'Not available',
+        'Generate Activity is only available for graded assignments below 75%.'
+      );
+      return;
+    }
+
+    const completedSupportActivity = completedActivityScores[assignment.id];
+    if (
+      completedSupportActivity?.completed &&
+      completedSupportActivity.scorePercent !== null &&
+      completedSupportActivity.scorePercent >= 75
+    ) {
+      Alert.alert(
+        'Already mastered',
+        `You already scored ${completedSupportActivity.scorePercent}% on the generated follow-up activity for this assignment.`
+      );
+      return;
+    }
+
+    const materialIds = Array.isArray(assignment.materialIds)
+      ? assignment.materialIds.filter(Boolean)
+      : [];
+
+    const relatedMaterials = (normalizedCourse.materials || []).filter((material) =>
+      materialIds.includes(material.id)
+    );
+
+    if (!relatedMaterials.length) {
+      Alert.alert(
+        'Related materials required',
+        'The teacher must select related materials first. AI follow-up activities are generated from those materials, not from the assignment title.'
+      );
       return;
     }
 
     try {
-      await fetch(`${API_BASE_URL}/student-activities/notify-ready`, {
+      setIsGeneratingActivity(true);
+      setSelectedCourse(normalizedCourse);
+      setSelectedCourseIdForAssignments(normalizedCourse.id);
+      setLastScreen(activeScreen);
+      setIsNotificationOpen(false);
+
+      const response = await fetch(`${API_BASE_URL}/student-activities/generate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           studentId: currentStudent.studentId,
-          courseId: activity.courseId,
-          assignmentId: activity.assignmentId,
-          courseName: activity.courseName,
-          assignmentTitle: activity.assignmentTitle,
-          topic: activity.topic,
-          recommendationType: activity.recommendationType,
+          courseId: normalizedCourse.id,
+          classId: normalizedCourse.id,
+          courseName: normalizedCourse.name,
+          courseCode: normalizedCourse.code,
+          assignmentId: assignment.id,
+          assignmentTitle: assignment.title,
+          topic:
+            relatedMaterials.map((material) => material.title).join(', ') ||
+            assignment.topic ||
+            assignment.title,
+          score,
+          materialIds,
+          relatedMaterials: relatedMaterials.map((material) => ({
+            id: material.id,
+            title: material.title,
+            type: material.type,
+            content: material.content || null,
+            fileName: material.fileName || null,
+            fileUrl: material.fileUrl || material.fileUri || null,
+            fileUri: material.fileUri || material.fileUrl || null,
+            fileType: material.fileType || null,
+          })),
         }),
       });
-    } catch (error) {
-      console.log('NOTIFY READY ERROR =>', error);
-    }
 
-    await loadStudentNotifications();
-    setSelectedCourse(course);
-    setSelectedCourseIdForAssignments(course.id);
-    setGeneratedActivity(activity);
-    setLastScreen(activeScreen);
-    setIsNotificationOpen(false);
-    setActiveScreen('generateactivity');
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(data?.error || data?.message || 'Failed to generate follow-up activity.');
+      }
+
+      const activity = data?.data as GenerateActivityData | undefined;
+
+      if (!activity || !activity.assignmentId) {
+        throw new Error('The server did not return a valid generated activity.');
+      }
+
+      await loadStudentNotifications();
+      setGeneratedActivity(activity);
+      setActiveScreen('generateactivity');
+    } catch (error: any) {
+      console.log('GENERATE ACTIVITY ERROR =>', error);
+
+      Alert.alert(
+        'Generate Activity Failed',
+        error?.message || 'The AI material scan failed. Please try again after confirming the related material file is readable.'
+      );
+    } finally {
+      setIsGeneratingActivity(false);
+    }
   };
 
   const renderScreen = () => {
@@ -1822,6 +2145,8 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
               openGeneratedActivity(course as unknown as CourseDetailData, assignment)
             }
             onJoinClass={handleJoinClass}
+            isGeneratingActivity={isGeneratingActivity}
+            completedActivityScores={completedActivityScores}
           />
         );
 
@@ -1829,6 +2154,7 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
         return (
           <ClassesScreen
             courses={classesScreenCourses}
+            completedActivityScores={completedActivityScores}
             onCoursePress={(course) => {
               setSelectedCourse(course as unknown as CourseDetailData);
               setGeneratedActivity(null);
@@ -1859,7 +2185,17 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
         );
 
       case 'game':
-        return <Game onNavigate={handleNavigate} />;
+        return (
+          <Game
+            onNavigate={(screen, generatedQuiz) => {
+              if (screen === 'quizmasters' && Array.isArray(generatedQuiz) && generatedQuiz.length > 0) {
+                setGeneratedQuizMastersData(generatedQuiz);
+              }
+
+              handleNavigate(screen);
+            }}
+          />
+        );
 
       case 'flipit':
         return <FlipIt onBack={() => setActiveScreen('game')} />;
@@ -1868,7 +2204,12 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
         return <FruitMania onBack={() => setActiveScreen('game')} />;
 
       case 'quizmasters':
-        return <QuizMasters onBack={() => setActiveScreen('game')} />;
+        return (
+          <QuizMasters
+            onBack={() => setActiveScreen('game')}
+            generatedQuestions={generatedQuizMastersData}
+          />
+        );
 
       case 'videos':
         return (
@@ -1880,6 +2221,9 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
           currentUserRole="student"
           apiBaseUrl={API_BASE_URL}
           searchQuery={videoSearchQuery}
+          adaptiveQuery={adaptiveVideoRecommendation.query}
+          adaptiveReason={adaptiveVideoRecommendation.reason}
+          queryRotationKey={adaptiveVideoRecommendation.rotationKey}
         />
         );
 
@@ -1898,6 +2242,7 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
           <Analytics
             courses={joinedAssignmentCourses}
             studentName={currentUserName}
+            completedActivityScores={completedActivityScores}
           />
         );
 
@@ -1914,6 +2259,8 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
             onUpdateAssignmentStatus={handleUpdateAssignmentStatus}
             onRefreshSubmissions={loadStudentSubmissionState}
             currentStudent={currentStudent}
+            isGeneratingActivity={isGeneratingActivity}
+            completedActivityScores={completedActivityScores}
             onOpenGeneratedActivity={(course, assignment) =>
               openGeneratedActivity(course as unknown as CourseDetailData, assignment)
             }
@@ -1973,8 +2320,10 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
             onUpdateAssignmentStatus={handleUpdateAssignmentStatus}
             onRefreshSubmissions={loadStudentSubmissionState}
             currentStudent={currentStudent}
+            isGeneratingActivity={isGeneratingActivity}
+            completedActivityScores={completedActivityScores}
             onGenerateActivity={(assignment) =>
-              openGeneratedActivity(selectedCourse, assignment)
+              openGeneratedActivity(selectedAssignmentCourse as unknown as CourseDetailData, assignment)
             }
           />
         );
@@ -2174,7 +2523,20 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
           <GeminiFloatingModal
             visible={isChatOpen}
             onClose={() => setIsChatOpen(false)}
+            currentStudentId={currentStudent.studentId}
           />
+        )}
+
+        {isGeneratingActivity && (
+          <View style={styles.generatingOverlay} pointerEvents="auto">
+            <View style={styles.generatingCard}>
+              <ActivityIndicator size="large" color="#D32F2F" />
+              <Text style={styles.generatingTitle}>Generating activity...</Text>
+              <Text style={styles.generatingText}>
+                AI is reading the related material file and creating 10 mixed quiz/activity questions.
+              </Text>
+            </View>
+          </View>
         )}
       </SafeAreaView>
     </>
@@ -2287,5 +2649,45 @@ const styles = StyleSheet.create({
 
   chatClose: {
     fontSize: 20,
+  },
+
+  generatingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 9000,
+    elevation: 9000,
+    backgroundColor: 'rgba(0,0,0,0.28)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+  },
+
+  generatingCard: {
+    width: '100%',
+    maxWidth: 360,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 24,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.18,
+    shadowRadius: 18,
+    elevation: 16,
+  },
+
+  generatingTitle: {
+    marginTop: 14,
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#111',
+    textAlign: 'center',
+  },
+
+  generatingText: {
+    marginTop: 8,
+    fontSize: 14,
+    color: '#555',
+    lineHeight: 20,
+    textAlign: 'center',
   },
 });

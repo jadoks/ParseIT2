@@ -1,16 +1,12 @@
-// TEACHER NOTIFICATION RULE:
-// Teachers receive ONLY:
-// 1. submitted-assignment
-// 2. community-answer
-// 3. student-at-risk
-// 4. class-assigned
 
+import { GoogleGenerativeAI } from "@google/generative-ai";
 import cors from "cors";
 import dotenv from "dotenv";
 import express from "express";
 import admin from "firebase-admin";
 import mammoth from "mammoth";
 import { createRequire } from "module";
+import multer from "multer";
 import nodemailer from "nodemailer";
 import serviceAccount from "./serviceAccountKey.json" with { type: "json" };
 const require = createRequire(import.meta.url);
@@ -30,6 +26,19 @@ admin.initializeApp({
 const db = admin.firestore();
 const bucket = admin.storage().bucket();
 const FieldValue = admin.firestore.FieldValue;
+
+const GEMINI_GAME_MODEL = process.env.GEMINI_GAME_MODEL || "gemini-2.5-flash";
+const geminiGameAI = process.env.GEMINI_API_KEY
+  ? new GoogleGenerativeAI(process.env.GEMINI_API_KEY)
+  : null;
+
+const gameUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: Number(process.env.GAME_UPLOAD_MAX_BYTES || 15 * 1024 * 1024),
+  },
+});
+
 
 const TEACHER_ALLOWED_NOTIFICATION_TYPES = new Set([
   "submitted-assignment",
@@ -208,18 +217,15 @@ function sanitizeYouTubeSearchQuery(value = "") {
 
 function buildYouTubeLearningQuery(rawQuery = "") {
   const cleaned = sanitizeYouTubeSearchQuery(rawQuery);
-  const defaultTopic =
+
+  if (cleaned) {
+    return cleaned;
+  }
+
+  return (
     sanitizeYouTubeSearchQuery(process.env.YOUTUBE_DEFAULT_TOPIC || "") ||
-    "BSIT lessons programming technology computer science tutorial";
-
-  if (!cleaned) return defaultTopic;
-
-  const lowered = cleaned.toLowerCase();
-  const includesContext = /(bsit|it\b|information technology|computer science|programming|coding|technology|tech|software|web|database|network|cyber|java|python|javascript|react|php|c\+\+|c#)/i.test(lowered);
-
-  return includesContext
-    ? cleaned
-    : `${cleaned} ${defaultTopic}`.trim();
+    "educational video lesson explanation"
+  );
 }
 
 function mapYouTubePublishedLabel(value) {
@@ -550,6 +556,120 @@ async function extractTextFromFile(buffer, mimeType = "", fileName = "") {
   return "";
 }
 
+
+function parseGeminiJsonResponse(rawText = "") {
+  const cleaned = String(rawText || "")
+    .trim()
+    .replace(/^```json\s*/i, "")
+    .replace(/^```\s*/i, "")
+    .replace(/```$/i, "")
+    .trim();
+
+  if (!cleaned) {
+    throw new Error("Gemini returned an empty response.");
+  }
+
+  return JSON.parse(cleaned);
+}
+
+function normalizeQuizMastersQuestions(value) {
+  const sourceQuestions = Array.isArray(value?.questions) ? value.questions : [];
+
+  const normalized = sourceQuestions
+    .map((item) => {
+      const question = normalizeOptionalText(item?.question);
+      const options = Array.isArray(item?.options)
+        ? item.options
+            .map((option) => normalizeOptionalText(option))
+            .filter(Boolean)
+        : [];
+      const answer = normalizeOptionalText(item?.answer);
+
+      if (!question || options.length !== 4 || !answer) return null;
+
+      const matchingAnswer = options.find(
+        (option) => option.toLowerCase() === answer.toLowerCase()
+      );
+
+      if (!matchingAnswer) return null;
+
+      return {
+        question,
+        options,
+        answer: matchingAnswer,
+      };
+    })
+    .filter(Boolean);
+
+  return normalized.slice(0, 10);
+}
+
+function buildQuizMastersPrompt({ extractedText, fileName }) {
+  return `
+You are generating an educational Quiz Masters game from an uploaded learning file.
+
+Create exactly 10 multiple-choice quiz questions based ONLY on the provided content.
+
+Rules:
+- Use student-friendly wording.
+- Each question must have exactly 4 answer options.
+- Only one option must be correct.
+- The answer must exactly match one of the options.
+- Do not invent facts outside the uploaded content.
+- Avoid trick questions.
+- Keep questions concise.
+- Return JSON only.
+
+Uploaded file name:
+${fileName || "uploaded-file"}
+
+Learning content:
+${limitText(extractedText, 12000)}
+`;
+}
+
+async function generateQuizMastersWithGemini({ extractedText, fileName }) {
+  if (!geminiGameAI) {
+    throw new Error("GEMINI_API_KEY is missing in your backend .env file.");
+  }
+
+  const model = geminiGameAI.getGenerativeModel({
+    model: GEMINI_GAME_MODEL,
+    generationConfig: {
+      temperature: 0.4,
+      maxOutputTokens: 4096,
+      responseMimeType: "application/json",
+    },
+  });
+
+  const prompt = `
+${buildQuizMastersPrompt({ extractedText, fileName })}
+
+Return ONLY valid JSON in this exact format, with exactly 10 questions:
+{
+  "questions": [
+    {
+      "question": "Question text",
+      "options": ["Option A", "Option B", "Option C", "Option D"],
+      "answer": "Option A"
+    }
+  ]
+}
+`;
+
+  const result = await model.generateContent(prompt);
+  const rawText = result.response.text();
+
+  const parsed = parseGeminiJsonResponse(rawText);
+  const questions = normalizeQuizMastersQuestions(parsed);
+
+  if (questions.length < 5) {
+    throw new Error("Gemini did not generate enough valid quiz questions.");
+  }
+
+  return questions;
+}
+
 async function deleteStorageFileIfExists(storagePath) {
   if (!storagePath) return;
 
@@ -827,6 +947,11 @@ function buildNotificationResponse(doc) {
     actorId: data.actorId || null,
     actorRole: data.actorRole || null,
     actorName: data.actorName || null,
+    provider: data.provider || null,
+    providerLabel: data.providerLabel || null,
+    model: data.model || null,
+    errorMessage: data.errorMessage || null,
+    aiProvider: data.aiProvider || null,
     createdAt: data.createdAt || null,
     updatedAt: data.updatedAt || null,
     readAt: data.readAt || null,
@@ -845,6 +970,11 @@ async function createNotification({
   actorId = null,
   actorRole = null,
   actorName = null,
+  provider = null,
+  providerLabel = null,
+  model = null,
+  errorMessage = null,
+  aiProvider = null,
 }) {
   const normalizedUserId = normalizeOptionalText(userId);
   const normalizedRole = normalizeOptionalText(role);
@@ -863,6 +993,11 @@ async function createNotification({
     actorId: normalizeOptionalText(actorId),
     actorRole: normalizeOptionalText(actorRole),
     actorName: normalizeOptionalText(actorName),
+    provider: normalizeOptionalText(provider),
+    providerLabel: normalizeOptionalText(providerLabel),
+    model: normalizeOptionalText(model),
+    errorMessage: normalizeOptionalText(errorMessage),
+    aiProvider: normalizeOptionalText(aiProvider),
     read: false,
     readAt: null,
     createdAt: FieldValue.serverTimestamp(),
@@ -1049,6 +1184,56 @@ async function createNotificationsForClassStudents({
     });
   }
 }
+
+
+app.post("/admin/repair-ai-quota-notifications", async (req, res) => {
+  try {
+    const snapshot = await db
+      .collection("notifications")
+      .where("role", "==", "admin")
+      .where("type", "==", "ai-quota-limit")
+      .get();
+
+    let repairedCount = 0;
+
+    for (const doc of snapshot.docs) {
+      const data = doc.data() || {};
+      const existingProvider = normalizeOptionalText(data.provider);
+      const inferredProvider =
+        existingProvider ||
+        inferProviderFromQuotaMessage(`${data.title || ""} ${data.message || ""} ${data.errorMessage || ""}`);
+
+      if (!inferredProvider) continue;
+
+      const providerLabel = normalizeProviderName(inferredProvider);
+      const model = getProviderModelName(inferredProvider);
+
+      await doc.ref.set(
+        {
+          provider: inferredProvider,
+          providerLabel,
+          model,
+          aiProvider: providerLabel,
+          updatedAt: FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
+
+      repairedCount += 1;
+    }
+
+    return res.json({
+      success: true,
+      repairedCount,
+    });
+  } catch (error) {
+    console.error("Repair AI quota notifications error:", error);
+    return res.status(500).json({
+      error: error.message || "Failed to repair AI quota notifications.",
+    });
+  }
+});
+
 
 /**
  * AUTH ROUTES
@@ -1558,6 +1743,60 @@ app.post("/auth/reset-forgot-password", async (req, res) => {
     });
   }
 });
+
+
+/**
+ * QUIZ MASTERS GAME GENERATION ROUTE
+ * Separate Gemini-powered API for uploaded-file game creation.
+ *
+ * Required npm packages:
+ *   npm install multer @google/generative-ai
+ *
+ * Required .env values:
+ *   GEMINI_API_KEY=your_gemini_api_key_here
+ *   GEMINI_GAME_MODEL=gemini-2.5-flash
+ */
+app.post("/game-ai/generate-quiz-masters", gameUpload.single("file"), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({
+        error: "File is required.",
+      });
+    }
+
+    const extractedText = await extractTextFromFile(
+      req.file.buffer,
+      req.file.mimetype,
+      req.file.originalname
+    );
+
+    if (!normalizeOptionalText(extractedText)) {
+      return res.status(400).json({
+        error: "No readable text found. Please upload a PDF, DOCX, TXT, MD, JSON, or CSV file.",
+      });
+    }
+
+    const questions = await generateQuizMastersWithGemini({
+      extractedText,
+      fileName: req.file.originalname,
+    });
+
+    return res.json({
+      success: true,
+      game: "quizmasters",
+      provider: "gemini",
+      model: GEMINI_GAME_MODEL,
+      fileName: req.file.originalname,
+      questions,
+    });
+  } catch (error) {
+    console.error("Quiz Masters Gemini generation error:", error);
+    return res.status(500).json({
+      error: error.message || "Failed to generate Quiz Masters game.",
+    });
+  }
+});
+
 
 /**
  * FILE UPLOAD ROUTE
@@ -5161,6 +5400,1006 @@ app.patch("/notifications/read-all", async (req, res) => {
 });
 
 
+
+/**
+ * AI TUTOR + REMEDIATION HELPERS
+ * These helpers make AI Tutor different from a normal chatbot by connecting
+ * tutoring behavior to student performance, weak lessons, assignment scores,
+ * related materials, generated activities, and progress tracking.
+ */
+const PASSING_PERCENT = 75;
+const GENERATED_ACTIVITY_SCHEMA_VERSION = 3;
+
+function clampNumber(value, min, max, fallback = 0) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return fallback;
+  return Math.max(min, Math.min(max, numeric));
+}
+
+function normalizeLessonKey(value = '') {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 80) || 'general-topic';
+}
+
+function safeJsonParse(value, fallback = null) {
+  try {
+    return JSON.parse(value);
+  } catch (_) {
+    return fallback;
+  }
+}
+
+function extractJsonObjectFromText(value = '') {
+  const raw = String(value || '').trim();
+  if (!raw) return null;
+
+  const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (fenced?.[1]) {
+    const parsed = safeJsonParse(fenced[1].trim(), null);
+    if (parsed) return parsed;
+  }
+
+  const firstBrace = raw.indexOf('{');
+  const lastBrace = raw.lastIndexOf('}');
+
+  if (firstBrace >= 0 && lastBrace > firstBrace) {
+    return safeJsonParse(raw.slice(firstBrace, lastBrace + 1), null);
+  }
+
+  return null;
+}
+
+function normalizeQuiz(value, fallbackTopic = 'the lesson') {
+  const fallbackQuiz = {
+    question: `Which statement best describes ${fallbackTopic}?`,
+    options: [
+      `It is an important concept related to ${fallbackTopic}.`,
+      'It is unrelated to the lesson.',
+      'It is only used for decoration.',
+      'It has no practical use.',
+    ],
+    correctIndex: 0,
+    explanation: `This question checks if you understand the main idea of ${fallbackTopic}.`,
+  };
+
+  if (!value || typeof value !== 'object') return fallbackQuiz;
+
+  const question = normalizeOptionalText(value.question) || fallbackQuiz.question;
+  const rawOptions = Array.isArray(value.options) ? value.options : [];
+  const options = rawOptions
+    .map((item) => normalizeOptionalText(String(item || '')))
+    .filter(Boolean)
+    .slice(0, 4);
+
+  while (options.length < 4) {
+    options.push(fallbackQuiz.options[options.length]);
+  }
+
+  const correctIndex = clampNumber(value.correctIndex, 0, options.length - 1, 0);
+  const explanation = normalizeOptionalText(value.explanation) || fallbackQuiz.explanation;
+
+  return { question, options, correctIndex, explanation };
+}
+
+
+function normalizeMaterialQuiz(value) {
+  if (!value || typeof value !== "object") return null;
+
+  const question = normalizeOptionalText(value.question);
+  const options = Array.isArray(value.options)
+    ? value.options.map((item) => normalizeOptionalText(String(item || ""))).filter(Boolean).slice(0, 4)
+    : [];
+  const correctIndex = Number(value.correctIndex);
+  const explanation = normalizeOptionalText(value.explanation);
+
+  if (!question || options.length !== 4 || !Number.isInteger(correctIndex) || correctIndex < 0 || correctIndex > 3 || !explanation) {
+    return null;
+  }
+
+  const genericPattern = /main purpose of studying|best describes the main purpose|important concept related|memorize random information|avoid reading the related lesson|replace all assignment instructions/i;
+  const joined = [question, ...options, explanation].join(" ");
+  if (genericPattern.test(joined)) return null;
+
+  return { question, options, correctIndex, explanation };
+}
+
+const ACTIVITY_ITEM_TYPES = new Set([
+  "multiple_choice",
+  "true_false",
+  "identification",
+  "short_answer",
+]);
+
+function normalizeActivityItem(value, index = 0) {
+  if (!value || typeof value !== "object") return null;
+
+  const type = normalizeOptionalText(value.type);
+  const question = normalizeOptionalText(value.question);
+  const explanation = normalizeOptionalText(value.explanation) || "Review the related material for the supporting idea.";
+
+  if (!ACTIVITY_ITEM_TYPES.has(type) || !question) return null;
+
+  const base = {
+    id: normalizeOptionalText(value.id) || `item-${index + 1}`,
+    type,
+    question,
+    explanation,
+    points: clampNumber(value.points, 1, 10, 1),
+  };
+
+  if (type === "multiple_choice") {
+    const options = Array.isArray(value.options)
+      ? value.options.map((item) => normalizeOptionalText(String(item || ""))).filter(Boolean).slice(0, 4)
+      : [];
+    const correctIndex = Number(value.correctIndex);
+
+    if (options.length !== 4 || !Number.isInteger(correctIndex) || correctIndex < 0 || correctIndex > 3) {
+      return null;
+    }
+
+    return {
+      ...base,
+      options,
+      correctIndex,
+    };
+  }
+
+  if (type === "true_false") {
+    let correctAnswer = value.correctAnswer ?? value.answer;
+
+    if (typeof correctAnswer === "string") {
+      const lowered = correctAnswer.trim().toLowerCase();
+      if (lowered === "true") correctAnswer = true;
+      if (lowered === "false") correctAnswer = false;
+    }
+
+    if (typeof correctAnswer !== "boolean") return null;
+
+    return {
+      ...base,
+      correctAnswer,
+      answer: correctAnswer,
+    };
+  }
+
+  if (type === "identification") {
+    const acceptableAnswers = Array.isArray(value.acceptableAnswers)
+      ? value.acceptableAnswers.map((item) => normalizeOptionalText(String(item || ""))).filter(Boolean).slice(0, 8)
+      : [];
+
+    if (!acceptableAnswers.length) return null;
+
+    return {
+      ...base,
+      acceptableAnswers,
+      answer: acceptableAnswers[0],
+    };
+  }
+
+  if (type === "short_answer") {
+    const expectedAnswer = normalizeOptionalText(value.expectedAnswer);
+    const rubric = normalizeOptionalText(value.rubric) || expectedAnswer || "Answer should clearly explain the idea using details from the related material.";
+
+    if (!rubric) return null;
+
+    return {
+      ...base,
+      expectedAnswer: expectedAnswer || null,
+      answer: expectedAnswer || null,
+      rubric,
+    };
+  }
+
+  return null;
+}
+
+function normalizeAssessmentItems(value, fallbackQuiz = null) {
+  const rawItems = Array.isArray(value) ? value : [];
+  const normalizedItems = rawItems
+    .map((item, index) => normalizeActivityItem(item, index))
+    .filter(Boolean);
+
+  const multipleChoice = normalizedItems
+    .filter((item) => item.type === "multiple_choice")
+    .slice(0, 15)
+    .map((item, index) => ({
+      ...item,
+      id: normalizeOptionalText(item.id) || `mc-${index + 1}`,
+    }));
+
+  const trueFalse = normalizedItems
+    .filter((item) => item.type === "true_false")
+    .slice(0, 15)
+    .map((item, index) => ({
+      ...item,
+      id: normalizeOptionalText(item.id) || `tf-${index + 1}`,
+    }));
+
+  const identification = normalizedItems
+    .filter((item) => item.type === "identification")
+    .slice(0, 15)
+    .map((item, index) => ({
+      ...item,
+      id: normalizeOptionalText(item.id) || `id-${index + 1}`,
+    }));
+
+  if (multipleChoice.length < 10 || trueFalse.length < 10 || identification.length < 10) {
+    return null;
+  }
+
+  return [
+    ...multipleChoice,
+    ...trueFalse,
+    ...identification,
+  ].map((item, index) => ({
+    ...item,
+    id: normalizeOptionalText(item.id) || `item-${index + 1}`,
+    points: clampNumber(item.points, 1, 10, 1),
+  }));
+}
+
+function getFirstMultipleChoiceQuiz(assessmentItems = []) {
+  const item = assessmentItems.find((entry) => entry.type === "multiple_choice");
+  if (!item) return null;
+
+  return {
+    question: item.question,
+    options: item.options,
+    correctIndex: item.correctIndex,
+    explanation: item.explanation,
+  };
+}
+
+function getMaterialKeywordEvidence(materialText = "") {
+  const text = String(materialText || "");
+  const sentences = text
+    .replace(/\s+/g, " ")
+    .split(/(?<=[.!?])\s+/)
+    .map((item) => item.trim())
+    .filter((item) => item.length >= 40 && item.length <= 280)
+    .slice(0, 30);
+
+  return sentences.join("\n");
+}
+
+function normalizeGeneratedActivityFromAI({
+  generated,
+  readableMaterials,
+  materialTitles,
+  resolvedScore,
+  courseId,
+  courseName,
+  courseCode,
+  assignmentId,
+  assignmentTitle,
+  topic,
+  context,
+}) {
+  if (!generated || typeof generated !== "object") return null;
+
+  const assessmentItems = normalizeAssessmentItems(generated.assessmentItems, generated.quiz);
+  if (!assessmentItems) return null;
+
+  const quiz = getFirstMultipleChoiceQuiz(assessmentItems);
+  if (!quiz) return null;
+
+  const recommendationType = ["review", "practice", "advanced"].includes(generated.recommendationType)
+    ? generated.recommendationType
+    : resolvedScore !== null && resolvedScore < 60
+    ? "review"
+    : "practice";
+
+  const difficulty = ["easy", "medium", "hard"].includes(generated.difficulty)
+    ? generated.difficulty
+    : recommendationType === "review"
+    ? "easy"
+    : "medium";
+
+  return {
+    schemaVersion: GENERATED_ACTIVITY_SCHEMA_VERSION,
+    courseId: normalizeOptionalText(courseId || context.classInfo.id),
+    courseName: normalizeOptionalText(courseName || context.classInfo.name) || "Class",
+    courseCode: normalizeOptionalText(courseCode || context.classInfo.courseCode) || "",
+    assignmentId: String(assignmentId).trim(),
+    assignmentTitle: normalizeOptionalText(assignmentTitle || context.assignment.title) || "Assignment",
+    topic: normalizeOptionalText(generated.topic || readableMaterials[0]?.title || topic || context.assignment.title) || "Related Material Review",
+    score: resolvedScore,
+    recommendationType,
+    difficulty,
+    estimatedMinutes: clampNumber(generated.estimatedMinutes, 5, 60, 20),
+    basedOnMaterials: materialTitles,
+    materialExtractionStatus: context.materials.map((material) => ({
+      id: material.id,
+      title: material.title,
+      fileName: material.fileName,
+      fileType: material.fileType,
+      status: material.extractionStatus || "unknown",
+    })),
+    learningObjectives: Array.isArray(generated.learningObjectives)
+      ? generated.learningObjectives.map(String).filter(Boolean).slice(0, 5)
+      : [`Review key ideas from ${readableMaterials[0]?.title || "the related material"}.`],
+    instructions:
+      normalizeOptionalText(generated.instructions) ||
+      "Review the related material carefully, answer each activity item, and explain the concept in your own words.",
+    steps: Array.isArray(generated.steps)
+      ? generated.steps.map(String).filter(Boolean).slice(0, 8)
+      : [
+          "Review the related material content.",
+          "Answer the multiple choice item.",
+          "Answer the true or false and identification items.",
+          "Write a short explanation using your own words.",
+        ],
+    assessmentItems,
+    activityItems: assessmentItems,
+    quiz,
+    shortAnswerPrompt:
+      normalizeOptionalText(generated.shortAnswerPrompt) ||
+      "Explain the key idea from the related material in your own words and give one example.",
+    tutorTip:
+      normalizeOptionalText(generated.tutorTip) ||
+      "Use the related material as your guide and explain the idea step by step.",
+  };
+}
+
+
+function hasSimpleAnswerMatch(studentAnswer = "", correctAnswers = []) {
+  const normalizedStudentAnswer = String(studentAnswer || "")
+    .trim()
+    .toLowerCase();
+
+  if (!normalizedStudentAnswer) return false;
+
+  return correctAnswers.some((answer) => {
+    const normalizedAnswer = String(answer || "")
+      .trim()
+      .toLowerCase();
+
+    if (!normalizedAnswer) return false;
+
+    return (
+      normalizedStudentAnswer === normalizedAnswer ||
+      normalizedStudentAnswer.includes(normalizedAnswer) ||
+      normalizedAnswer.includes(normalizedStudentAnswer)
+    );
+  });
+}
+
+function normalizeSemanticEvaluation(value = {}) {
+  return {
+    isCorrect: !!value.isCorrect,
+    confidence: clampNumber(value.confidence, 0, 1, value.isCorrect ? 0.75 : 0.25),
+    feedback:
+      normalizeOptionalText(value.feedback) ||
+      (value.isCorrect
+        ? "Accepted because the answer is conceptually similar."
+        : "Review the expected concept from the related material."),
+  };
+}
+
+async function evaluateIdentificationAnswerWithAI({
+  studentAnswer,
+  correctAnswers,
+  question,
+  explanation,
+  topic,
+  basedOnMaterials,
+}) {
+  const cleanStudentAnswer = normalizeOptionalText(studentAnswer);
+  const cleanCorrectAnswers = Array.isArray(correctAnswers)
+    ? correctAnswers.map((item) => normalizeOptionalText(String(item || ""))).filter(Boolean)
+    : [];
+
+  if (!cleanStudentAnswer) {
+    return {
+      isCorrect: false,
+      confidence: 0,
+      feedback: "No answer was provided.",
+    };
+  }
+
+  if (hasSimpleAnswerMatch(cleanStudentAnswer, cleanCorrectAnswers)) {
+    return {
+      isCorrect: true,
+      confidence: 1,
+      feedback: "Accepted because the answer directly matches the expected concept.",
+    };
+  }
+
+  const assistantInstruction = `
+You are ParseIT's fair identification-answer grading assistant.
+Grade whether the student's answer is conceptually correct.
+Return VALID JSON ONLY. No markdown.
+`;
+
+  const contextualPrompt = `
+Question:
+${question || "N/A"}
+
+Student answer:
+${cleanStudentAnswer}
+
+Expected / acceptable answers:
+${cleanCorrectAnswers.join(", ") || "N/A"}
+
+Teacher material topic:
+${topic || "N/A"}
+
+Related material names:
+${Array.isArray(basedOnMaterials) ? basedOnMaterials.join(", ") : "N/A"}
+
+Question explanation / source clue:
+${explanation || "N/A"}
+
+Rules:
+- Mark correct if the student's answer has the same meaning or same thought as the expected answer.
+- Accept paraphrases, synonyms, abbreviated but correct answers, and partial wording if the key concept is present.
+- Do NOT require exact wording.
+- Mark wrong if the answer talks about a different concept or is too vague to show understanding.
+- Keep feedback short and student-friendly.
+
+Return exactly:
+{
+  "isCorrect": true or false,
+  "confidence": 0.0 to 1.0,
+  "feedback": "short explanation"
+}
+`;
+
+  const result = await callAIWithFallback({
+    assistantInstruction,
+    contextualPrompt,
+    normalizedHistory: [],
+    history: [],
+  });
+
+  const parsed = extractJsonObjectFromText(result.text);
+  if (!parsed || typeof parsed !== "object") {
+    return {
+      isCorrect: false,
+      confidence: 0,
+      feedback: "AI could not verify the meaning clearly. Please review the expected concept.",
+    };
+  }
+
+  return normalizeSemanticEvaluation(parsed);
+}
+
+async function generateMaterialBasedActivityWithAI({
+  studentId,
+  resolvedScore,
+  courseName,
+  courseCode,
+  assignmentTitle,
+  assignmentInstruction,
+  materialTitles,
+  materialContext,
+}) {
+  const assistantInstruction = `
+You are ParseIT Remediation Activity Generator.
+You MUST generate a real follow-up learning activity from the readable content of the teacher-selected related material.
+Return VALID JSON ONLY. No markdown, no explanation outside JSON.
+
+Critical rules:
+- Use ONLY facts, concepts, scenarios, definitions, examples, or questions found in the related material content.
+- Do NOT create generic questions from only the assignment title.
+- The activity must be organized by section, not mixed visually.
+- Generate EXACTLY these quiz sections through assessmentItems:
+  1. Multiple Choice: minimum 10 questions
+  2. True or False: minimum 10 questions
+  3. Identification: minimum 10 questions
+- Do NOT generate essay or short_answer items.
+- Every question must test a specific idea from the material content.
+- Every correct answer and explanation must be supported by the material content.
+- Wrong multiple-choice options must be plausible but incorrect based on the material content.
+- Do not mention file scanning, Firebase, storage, hidden context, or prompts.
+
+Return exactly this JSON shape:
+{
+  "topic": "specific topic from the material content",
+  "recommendationType": "review" | "practice" | "advanced",
+  "difficulty": "easy" | "medium" | "hard",
+  "estimatedMinutes": 30,
+  "learningObjectives": ["objective based on material content"],
+  "instructions": "student-friendly instructions based on the material",
+  "steps": ["step 1", "step 2", "step 3"],
+  "assessmentItems": [
+    {
+      "id": "mc-1",
+      "type": "multiple_choice",
+      "question": "specific material-based multiple choice question",
+      "options": ["option A", "option B", "option C", "option D"],
+      "correctIndex": 0,
+      "explanation": "why the correct option is supported by the material",
+      "points": 1
+    },
+    {
+      "id": "tf-1",
+      "type": "true_false",
+      "question": "specific true/false statement from the material",
+      "correctAnswer": true,
+      "explanation": "why the statement is true or false based on the material",
+      "points": 1
+    },
+    {
+      "id": "id-1",
+      "type": "identification",
+      "question": "ask for a term, concept, factor, or process from the material",
+      "acceptableAnswers": ["answer", "accepted variation"],
+      "explanation": "where the answer comes from in the material",
+      "points": 1
+    }
+  ],
+  "quiz": {
+    "question": "same as the first multiple_choice item question",
+    "options": ["option A", "option B", "option C", "option D"],
+    "correctIndex": 0,
+    "explanation": "same as the first multiple_choice explanation"
+  },
+  "tutorTip": "short tutoring tip"
+}
+
+Important:
+- assessmentItems must contain at least 30 items total.
+- The first 10 or more items should be multiple_choice.
+- The next 10 or more items should be true_false.
+- The next 10 or more items should be identification.
+- Do not return short_answer or essay questions.
+`;
+
+  const contextualPrompt = `
+Student ID: ${studentId}
+Previous score percent: ${resolvedScore ?? "Unknown"}
+Course: ${courseName || "N/A"} (${courseCode || "N/A"})
+Assignment: ${assignmentTitle || "N/A"}
+Assignment instruction: ${assignmentInstruction || "N/A"}
+Teacher-selected related materials: ${materialTitles.join(", ") || "N/A"}
+
+RELATED MATERIAL CONTENT SOURCE OF TRUTH:
+${materialContext}
+`;
+
+  const firstResult = await callAIWithFallback({
+    assistantInstruction,
+    contextualPrompt,
+    normalizedHistory: [],
+    history: [],
+  });
+
+  let generated = extractJsonObjectFromText(firstResult.text);
+  if (generated && normalizeAssessmentItems(generated.assessmentItems, generated.quiz)) {
+    return generated;
+  }
+
+  const repairInstruction = `
+You are a strict JSON repair and real quiz generation assistant.
+The previous output was invalid, incomplete, or generic.
+Generate a NEW activity JSON using ONLY the material content below.
+Return JSON only.
+
+Required output:
+- At least 10 multiple_choice items.
+- At least 10 true_false items.
+- At least 10 identification items.
+- No short_answer or essay items.
+- Every item must be specific to the material content.
+`;
+
+  const repairPrompt = `
+Previous invalid output:
+${limitText(firstResult.text || "", 4000)}
+
+Material evidence sentences:
+${getMaterialKeywordEvidence(materialContext)}
+
+Full readable material content:
+${limitText(materialContext, 12000)}
+
+Generate the required JSON now with assessmentItems. Do not return generic questions.
+`;
+
+  const repairResult = await callAIWithFallback({
+    assistantInstruction: repairInstruction,
+    contextualPrompt: repairPrompt,
+    normalizedHistory: [],
+    history: [],
+  });
+
+  generated = extractJsonObjectFromText(repairResult.text);
+  if (generated && normalizeAssessmentItems(generated.assessmentItems, generated.quiz)) {
+    return generated;
+  }
+
+  const error = new Error("AI did not return valid material-based sectioned assessment items.");
+  error.firstAIText = firstResult.text;
+  error.repairAIText = repairResult.text;
+  throw error;
+}
+
+function buildActivityFallback({
+  courseId,
+  courseName,
+  courseCode,
+  assignmentId,
+  assignmentTitle,
+  topic,
+  score,
+  materialTitles = [],
+}) {
+  const safeTopic = normalizeOptionalText(topic) || normalizeOptionalText(assignmentTitle) || 'the lesson';
+  const safeCourseName = normalizeOptionalText(courseName) || 'your course';
+
+  return {
+    schemaVersion: GENERATED_ACTIVITY_SCHEMA_VERSION,
+    courseId: normalizeOptionalText(courseId),
+    courseName: safeCourseName,
+    courseCode: normalizeOptionalText(courseCode) || '',
+    assignmentId: normalizeOptionalText(assignmentId),
+    assignmentTitle: normalizeOptionalText(assignmentTitle) || 'Assignment',
+    topic: safeTopic,
+    score: typeof score === 'number' ? score : null,
+    recommendationType: 'review',
+    difficulty: 'easy',
+    estimatedMinutes: 15,
+    basedOnMaterials: materialTitles,
+    learningObjectives: [
+      `Review the main idea of ${safeTopic}.`,
+      'Identify where the mistake or confusion may have happened.',
+      'Practice the skill again using a simpler example.',
+    ],
+    instructions:
+      `Review ${safeTopic} from ${safeCourseName}. Start by writing the main idea in your own words, then solve one simple example related to the assignment.`,
+    steps: [
+      `Read or review the related material for ${safeTopic}.`,
+      'Write down the part that is confusing.',
+      'Answer the quick check question.',
+      'Write a short explanation using your own words.',
+    ],
+    quiz: normalizeQuiz(null, safeTopic),
+    shortAnswerPrompt: `Explain ${safeTopic} in your own words and give one example.`,
+    tutorTip: 'Focus on understanding the process, not just getting the final answer.',
+  };
+}
+
+function resolveStoragePathFromMaterial(material = {}) {
+  const directPath = normalizeOptionalText(material.storagePath);
+  if (directPath) return directPath;
+
+  const bucketPath = normalizeOptionalText(material.bucketPath);
+  if (bucketPath) {
+    if (bucketPath.startsWith('gs://')) {
+      const withoutScheme = bucketPath.replace(/^gs:\/\//, '');
+      const firstSlash = withoutScheme.indexOf('/');
+      return firstSlash >= 0 ? withoutScheme.slice(firstSlash + 1) : '';
+    }
+    return bucketPath;
+  }
+
+  const fileUrl = normalizeOptionalText(material.fileUrl || material.fileUri || material.downloadUrl);
+  if (!fileUrl) return '';
+
+  try {
+    const decodedUrl = decodeURIComponent(fileUrl);
+    const marker = '/o/';
+    const markerIndex = decodedUrl.indexOf(marker);
+    if (markerIndex >= 0) {
+      const afterMarker = decodedUrl.slice(markerIndex + marker.length);
+      return afterMarker.split('?')[0];
+    }
+  } catch {
+    return '';
+  }
+
+  return '';
+}
+
+async function fetchFileTextFromUrl(fileUrl, mimeType = '', fileName = 'material') {
+  if (!fileUrl) return '';
+
+  try {
+    const response = await fetch(fileUrl);
+    if (!response.ok) return '';
+
+    const arrayBuffer = await response.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+    const extracted = await extractTextFromFile(buffer, mimeType, fileName);
+    return limitText(extracted, 12000);
+  } catch (error) {
+    console.warn('Material URL extraction warning:', error?.message || error);
+    return '';
+  }
+}
+
+async function fetchFileTextFromStoragePath(storagePath, mimeType = '', fileName = 'material') {
+  const normalizedStoragePath = normalizeOptionalText(storagePath);
+  if (!normalizedStoragePath) return '';
+
+  try {
+    const [buffer] = await bucket.file(normalizedStoragePath).download();
+    const extracted = await extractTextFromFile(buffer, mimeType, fileName);
+    return limitText(extracted, 12000);
+  } catch (error) {
+    console.warn('Material storage extraction warning:', error?.message || error);
+    return '';
+  }
+}
+
+async function extractReadableTextFromMaterial(material = {}) {
+  const contentText = limitText(material.content || material.description || '', 5000);
+  const savedExtractedText = limitText(material.extractedText || material.fileText || '', 12000);
+
+  const fileName = material.fileName || material.title || 'material';
+  const mimeType = material.fileType || material.mimeType || '';
+  const storagePath = resolveStoragePathFromMaterial(material);
+  const fileUrl = material.fileUrl || material.fileUri || material.downloadUrl || null;
+
+  let downloadedText = '';
+
+  if (storagePath) {
+    downloadedText = await fetchFileTextFromStoragePath(storagePath, mimeType, fileName);
+  }
+
+  if (!downloadedText && fileUrl) {
+    downloadedText = await fetchFileTextFromUrl(fileUrl, mimeType, fileName);
+  }
+
+  const readableText = [contentText, savedExtractedText, downloadedText]
+    .filter((item) => typeof item === 'string' && item.trim())
+    .join('\n\n')
+    .trim();
+
+  return {
+    readableText: limitText(readableText, 18000),
+    extractionStatus: readableText ? 'readable' : 'unreadable',
+    storagePath: storagePath || null,
+    fileUrl: fileUrl || null,
+  };
+}
+
+async function getAssignmentLearningContext({ assignmentId, classId }) {
+  const assignmentRef = assignmentId
+    ? db.collection('classAssignments').doc(String(assignmentId).trim())
+    : null;
+
+  const assignmentSnap = assignmentRef ? await assignmentRef.get() : null;
+  const assignmentData = assignmentSnap?.exists ? assignmentSnap.data() || {} : {};
+
+  const resolvedClassId =
+    normalizeOptionalText(classId) || normalizeOptionalText(assignmentData.classId);
+
+  const classSnap = resolvedClassId
+    ? await db.collection('classes').doc(resolvedClassId).get()
+    : null;
+
+  const classData = classSnap?.exists ? classSnap.data() || {} : {};
+
+  const materialIds = Array.isArray(assignmentData.materialIds)
+    ? assignmentData.materialIds.filter(Boolean)
+    : [];
+
+  const materials = [];
+
+  for (const materialId of materialIds.slice(0, 8)) {
+    try {
+      const materialSnap = await db.collection('classMaterials').doc(String(materialId)).get();
+      if (!materialSnap.exists) continue;
+
+      const material = materialSnap.data() || {};
+      const extracted = await extractReadableTextFromMaterial(material);
+
+      materials.push({
+        id: materialSnap.id,
+        title: material.title || material.fileName || 'Untitled Material',
+        week: material.week || material.weekTopic || null,
+        content: limitText(material.content || material.description || '', 5000),
+        fileName: material.fileName || null,
+        fileType: material.fileType || material.mimeType || null,
+        fileUrl: extracted.fileUrl,
+        storagePath: extracted.storagePath,
+        extractedText: extracted.readableText,
+        extractionStatus: extracted.extractionStatus,
+      });
+    } catch (error) {
+      console.warn('Load related material warning:', error?.message || error);
+    }
+  }
+
+  return {
+    assignment: {
+      id: assignmentSnap?.id || normalizeOptionalText(assignmentId),
+      title: assignmentData.header || assignmentData.title || 'Assignment',
+      instruction: assignmentData.instruction || '',
+      dueDate: assignmentData.dueDate || null,
+      totalScore: Number(assignmentData.totalScore || 0) || null,
+      materialIds,
+      raw: assignmentData,
+    },
+    classInfo: {
+      id: resolvedClassId,
+      name: classData.name || 'Class',
+      courseCode: classData.courseCode || classData.classCode || '',
+      section: classData.section || '',
+      semester: classData.semester || '',
+      schoolYear: classData.schoolYear || '',
+      instructorName: classData.instructorName || 'Teacher',
+      raw: classData,
+    },
+    materials,
+  };
+}
+
+async function getRecentStudentActivities(studentId, limit = 8) {
+  const normalizedStudentId = normalizeOptionalText(studentId);
+  if (!normalizedStudentId) return [];
+
+  const snapshot = await db
+    .collection('studentActivities')
+    .where('studentId', '==', normalizedStudentId)
+    .limit(limit)
+    .get();
+
+  return snapshot.docs
+    .map((doc) => ({ id: doc.id, ...(doc.data() || {}) }))
+    .sort((a, b) => {
+      const aTime = resolveDate(a.updatedAt || a.completedAt || a.createdAt)?.getTime() || 0;
+      const bTime = resolveDate(b.updatedAt || b.completedAt || b.createdAt)?.getTime() || 0;
+      return bTime - aTime;
+    })
+    .slice(0, limit);
+}
+
+async function getStudentLessonProgress(studentId, limit = 10) {
+  const normalizedStudentId = normalizeOptionalText(studentId);
+  if (!normalizedStudentId) return [];
+
+  const snapshot = await db
+    .collection('studentLessonProgress')
+    .where('studentId', '==', normalizedStudentId)
+    .limit(limit)
+    .get();
+
+  return snapshot.docs
+    .map((doc) => ({ id: doc.id, ...(doc.data() || {}) }))
+    .sort((a, b) => {
+      const priority = { needs_review: 3, improving: 2, mastered: 1 };
+      const statusDiff = (priority[b.status] || 0) - (priority[a.status] || 0);
+      if (statusDiff !== 0) return statusDiff;
+      return (b.struggleCount || 0) - (a.struggleCount || 0);
+    })
+    .slice(0, limit);
+}
+
+async function upsertLessonProgress({
+  studentId,
+  courseId = null,
+  courseName = null,
+  courseCode = null,
+  assignmentId = null,
+  assignmentTitle = null,
+  topic = null,
+  score = null,
+  status = null,
+  source = 'system',
+  notes = null,
+}) {
+  const normalizedStudentId = normalizeOptionalText(studentId);
+  const normalizedTopic = normalizeOptionalText(topic) || normalizeOptionalText(assignmentTitle) || 'General Lesson';
+
+  if (!normalizedStudentId || !normalizedTopic) return null;
+
+  const lessonKey = normalizeLessonKey(`${courseId || courseName || 'course'}-${normalizedTopic}`);
+  const docId = `${normalizedStudentId}_${lessonKey}`.slice(0, 220);
+  const ref = db.collection('studentLessonProgress').doc(docId);
+  const snap = await ref.get();
+
+  const numericScore = typeof score === 'number' ? score : Number(score);
+  const hasScore = Number.isFinite(numericScore);
+  const resolvedStatus =
+    normalizeOptionalText(status) ||
+    (hasScore && numericScore >= PASSING_PERCENT ? 'improving' : 'needs_review');
+
+  const payload = {
+    studentId: normalizedStudentId,
+    lessonKey,
+    topic: normalizedTopic,
+    courseId: normalizeOptionalText(courseId),
+    courseName: normalizeOptionalText(courseName),
+    courseCode: normalizeOptionalText(courseCode),
+    assignmentId: normalizeOptionalText(assignmentId),
+    assignmentTitle: normalizeOptionalText(assignmentTitle),
+    lastScore: hasScore ? numericScore : null,
+    status: resolvedStatus,
+    source: normalizeOptionalText(source) || 'system',
+    notes: normalizeOptionalText(notes),
+    updatedAt: FieldValue.serverTimestamp(),
+  };
+
+  if (!snap.exists) {
+    await ref.set({
+      ...payload,
+      struggleCount: resolvedStatus === 'needs_review' ? 1 : 0,
+      completedActivities: resolvedStatus === 'improving' ? 1 : 0,
+      createdAt: FieldValue.serverTimestamp(),
+    });
+  } else {
+    await ref.set(
+      {
+        ...payload,
+        struggleCount:
+          resolvedStatus === 'needs_review'
+            ? FieldValue.increment(1)
+            : FieldValue.increment(0),
+        completedActivities:
+          resolvedStatus === 'improving' || resolvedStatus === 'mastered'
+            ? FieldValue.increment(1)
+            : FieldValue.increment(0),
+      },
+      { merge: true }
+    );
+  }
+
+  return ref.id;
+}
+
+function buildTutorProfileContext({ progress = [], activities = [], studentId = null }) {
+  const weakLessons = progress
+    .filter((item) => item.status === 'needs_review' || item.status === 'improving')
+    .slice(0, 6)
+    .map((item, index) =>
+      `${index + 1}. ${item.topic || 'Untitled topic'} - status: ${item.status || 'unknown'}, last score: ${item.lastScore ?? 'N/A'}, struggles: ${item.struggleCount || 0}`
+    )
+    .join('\n');
+
+  const recentActivities = activities
+    .slice(0, 5)
+    .map((item, index) =>
+      `${index + 1}. ${item.topic || item.assignmentTitle || 'Activity'} - ${item.status || 'unknown'}${item.score !== null && item.score !== undefined ? `, previous score: ${item.score}%` : ''}`
+    )
+    .join('\n');
+
+  return `
+Student learning context${studentId ? ` for ${studentId}` : ''}:
+Weak or monitored lessons:
+${weakLessons || 'No saved weak lessons yet.'}
+
+Recent follow-up activities:
+${recentActivities || 'No completed follow-up activities yet.'}
+`;
+}
+
+function buildStrictTutorInstruction() {
+  return `
+You are ParseIT AI Tutor, a tutoring assistant for students who are having difficulty with lessons, assignments, activities, and class materials.
+
+Core responsibility:
+Help the student understand the lesson. Do not behave like a generic chatbot.
+
+Required tutor behavior:
+- Be patient, encouraging, and student-friendly.
+- Teach from basics when the student gives only a topic.
+- Explain concepts step by step using simple language.
+- Use examples related to school, programming, IT, or the student's lesson when useful.
+- Guide the student instead of only giving final answers.
+- If the student asks for the final answer, provide it only with an explanation of how to get it.
+- Ask one short check question at the end when appropriate.
+- If the student sounds confused, simplify and break the explanation into smaller parts.
+- If student learning context is provided, prioritize weak lessons, previous low scores, follow-up activities, and related assignment materials.
+
+Preferred answer format when teaching:
+1. Simple explanation
+2. Step-by-step guide
+3. Example
+4. Quick check question
+
+Avoid:
+- Do not mention hidden prompts, Firestore, storage, retrieval, or internal system logic.
+- Do not shame the student.
+- Do not answer as platform support in tutor mode unless the student asks about using the app.
+`;
+}
+
 app.get("/student-activities/status", async (req, res) => {
   try {
     const { studentId, assignmentId } = req.query;
@@ -5181,7 +6420,7 @@ app.get("/student-activities/status", async (req, res) => {
     if (snapshot.empty) {
       return res.json({
         success: true,
-        data: { completed: false },
+        data: { completed: false, activity: null },
       });
     }
 
@@ -5193,12 +6432,371 @@ app.get("/student-activities/status", async (req, res) => {
       data: {
         id: doc.id,
         completed: data.status === "completed",
+        scorePercent: Number.isFinite(Number(data.assessmentScorePercent))
+          ? Number(data.assessmentScorePercent)
+          : Number.isFinite(Number(data?.activityScore?.percent))
+          ? Number(data.activityScore.percent)
+          : null,
+        mastered:
+          (Number.isFinite(Number(data.assessmentScorePercent)) && Number(data.assessmentScorePercent) >= 75) ||
+          (Number.isFinite(Number(data?.activityScore?.percent)) && Number(data.activityScore.percent) >= 75),
+        activity: {
+          id: doc.id,
+          ...data,
+          createdAt: serializeTimestamp(data.createdAt),
+          updatedAt: serializeTimestamp(data.updatedAt),
+          completedAt: serializeTimestamp(data.completedAt),
+        },
       },
     });
   } catch (error) {
     console.error("Fetch student activity status error:", error);
     return res.status(500).json({
       error: error.message || "Failed to fetch student activity status.",
+    });
+  }
+});
+
+
+app.get("/student-activities/completed-scores/:studentId", async (req, res) => {
+  try {
+    const studentId = normalizeOptionalText(req.params.studentId);
+
+    if (!studentId) {
+      return res.status(400).json({ error: "studentId is required." });
+    }
+
+    const snapshot = await db
+      .collection("studentActivities")
+      .where("studentId", "==", studentId)
+      .where("status", "==", "completed")
+      .get();
+
+    const scores = {};
+    const activities = [];
+
+    snapshot.docs.forEach((doc) => {
+      const data = doc.data() || {};
+      const assignmentId = normalizeOptionalText(data.assignmentId);
+      if (!assignmentId) return;
+
+      const scorePercent = Number.isFinite(Number(data.assessmentScorePercent))
+        ? Number(data.assessmentScorePercent)
+        : Number.isFinite(Number(data?.activityScore?.percent))
+        ? Number(data.activityScore.percent)
+        : null;
+
+      scores[assignmentId] = {
+        activityId: doc.id,
+        assignmentId,
+        courseId: data.courseId || null,
+        topic: data.topic || data.assignmentTitle || null,
+        scorePercent,
+        completed: data.status === "completed",
+        mastered: scorePercent !== null && scorePercent >= 75,
+        completedAt: serializeTimestamp(data.completedAt),
+      };
+
+      activities.push({
+        id: doc.id,
+        ...scores[assignmentId],
+      });
+    });
+
+    return res.json({
+      success: true,
+      data: {
+        scores,
+        activities,
+      },
+    });
+  } catch (error) {
+    console.error("Fetch completed activity scores error:", error);
+    return res.status(500).json({
+      error: error.message || "Failed to fetch completed activity scores.",
+    });
+  }
+});
+
+app.get("/student-activities/tutor-suggestions/:studentId", async (req, res) => {
+  try {
+    const studentId = normalizeOptionalText(req.params.studentId);
+
+    if (!studentId) {
+      return res.status(400).json({ error: "studentId is required." });
+    }
+
+    const suggestionsMap = new Map();
+
+    const addSuggestion = (suggestion) => {
+      if (!suggestion) return;
+
+      const assignmentId = normalizeOptionalText(suggestion.assignmentId);
+      const topic = normalizeOptionalText(suggestion.topic);
+      const key =
+        assignmentId ||
+        `${normalizeOptionalText(suggestion.courseId) || "course"}-${normalizeLessonKey(topic || suggestion.assignmentTitle || "lesson")}`;
+
+      if (!key) return;
+
+      const existing = suggestionsMap.get(key);
+
+      if (!existing) {
+        suggestionsMap.set(key, suggestion);
+        return;
+      }
+
+      const existingScore =
+        Number.isFinite(Number(existing.lastScore)) ? Number(existing.lastScore) : 999;
+      const nextScore =
+        Number.isFinite(Number(suggestion.lastScore)) ? Number(suggestion.lastScore) : 999;
+
+      if (nextScore < existingScore) {
+        suggestionsMap.set(key, {
+          ...existing,
+          ...suggestion,
+        });
+      }
+    };
+
+    const completedActivitiesSnapshot = await db
+      .collection("studentActivities")
+      .where("studentId", "==", studentId)
+      .where("status", "==", "completed")
+      .get();
+
+    const masteredAssignmentIds = new Set();
+
+    completedActivitiesSnapshot.docs.forEach((doc) => {
+      const data = doc.data() || {};
+      const assignmentId = normalizeOptionalText(data.assignmentId);
+
+      const scorePercent = Number.isFinite(Number(data.assessmentScorePercent))
+        ? Number(data.assessmentScorePercent)
+        : Number.isFinite(Number(data?.activityScore?.percent))
+        ? Number(data.activityScore.percent)
+        : null;
+
+      if (assignmentId && scorePercent !== null && scorePercent >= PASSING_PERCENT) {
+        masteredAssignmentIds.add(assignmentId);
+      }
+    });
+
+    const progressSnapshot = await db
+      .collection("studentLessonProgress")
+      .where("studentId", "==", studentId)
+      .limit(50)
+      .get();
+
+    progressSnapshot.docs.forEach((doc) => {
+      const item = doc.data() || {};
+      const assignmentId = normalizeOptionalText(item.assignmentId);
+      const lastScore = Number.isFinite(Number(item.lastScore))
+        ? Number(item.lastScore)
+        : null;
+
+      if (assignmentId && masteredAssignmentIds.has(assignmentId)) {
+        return;
+      }
+
+      if (
+        item.status !== "needs_review" &&
+        item.status !== "improving" &&
+        !(lastScore !== null && lastScore < PASSING_PERCENT)
+      ) {
+        return;
+      }
+
+      const topic =
+        normalizeOptionalText(item.materialTitle) ||
+        normalizeOptionalText(item.relatedMaterialTitle) ||
+        normalizeOptionalText(item.topic) ||
+        normalizeOptionalText(item.assignmentTitle) ||
+        "this lesson";
+
+      addSuggestion({
+        id: doc.id,
+        source: "lesson-progress",
+        courseId: item.courseId || null,
+        assignmentId: assignmentId || null,
+        topic,
+        materialTitle:
+          normalizeOptionalText(item.materialTitle) ||
+          normalizeOptionalText(item.relatedMaterialTitle) ||
+          topic,
+        courseName: item.courseName || null,
+        courseCode: item.courseCode || null,
+        assignmentTitle: item.assignmentTitle || null,
+        lastScore,
+        status: item.status || "needs_review",
+        text: `Help me understand ${topic} step by step.`,
+      });
+    });
+
+    const membershipSnapshot = await db
+      .collection("classMembers")
+      .where("userId", "==", studentId)
+      .where("role", "==", "student")
+      .where("status", "==", "active")
+      .get();
+
+    const submissionsSnapshot = await db
+      .collection("classSubmissions")
+      .where("studentId", "==", studentId)
+      .get();
+
+    const submissionsByAssignmentId = new Map();
+
+    submissionsSnapshot.docs.forEach((doc) => {
+      const submission = {
+        id: doc.id,
+        ...(doc.data() || {}),
+      };
+
+      const assignmentId = normalizeOptionalText(submission.assignmentId);
+      if (assignmentId) {
+        submissionsByAssignmentId.set(assignmentId, submission);
+      }
+    });
+
+    const classIds = [
+      ...new Set(
+        membershipSnapshot.docs
+          .map((doc) => normalizeOptionalText(doc.data()?.classId))
+          .filter(Boolean)
+      ),
+    ];
+
+    for (const classId of classIds) {
+      const [classSnap, materialsSnapshot, assignmentsSnapshot] = await Promise.all([
+        db.collection("classes").doc(classId).get(),
+        db.collection("classMaterials").where("classId", "==", classId).get(),
+        db.collection("classAssignments").where("classId", "==", classId).get(),
+      ]);
+
+      const classData = classSnap.exists ? classSnap.data() || {} : {};
+      const materialsById = new Map();
+
+      materialsSnapshot.docs.forEach((doc) => {
+        const material = doc.data() || {};
+        materialsById.set(doc.id, {
+          id: doc.id,
+          title: normalizeOptionalText(material.title) || "Untitled Material",
+          fileName: normalizeOptionalText(material.fileName),
+          fileType: normalizeOptionalText(material.fileType),
+        });
+      });
+
+      assignmentsSnapshot.docs.forEach((doc) => {
+        const assignment = doc.data() || {};
+        const assignmentId = doc.id;
+
+        if (masteredAssignmentIds.has(assignmentId)) {
+          return;
+        }
+
+        const submission = submissionsByAssignmentId.get(assignmentId);
+
+        if (!submission || submission.status !== "graded") {
+          return;
+        }
+
+        const totalScore =
+          typeof assignment.totalScore === "number"
+            ? assignment.totalScore
+            : Number(assignment.totalScore) || 100;
+
+        const scorePercent = getPercentFromScore(submission.score, totalScore);
+
+        if (scorePercent === null || scorePercent >= PASSING_PERCENT) {
+          return;
+        }
+
+        const materialIds = Array.isArray(assignment.materialIds)
+          ? assignment.materialIds
+          : [];
+
+        if (materialIds.length === 0) {
+          return;
+        }
+
+        const relatedMaterials = materialIds
+          .map((materialId) => materialsById.get(materialId))
+          .filter(Boolean);
+
+        if (relatedMaterials.length === 0) {
+          return;
+        }
+
+        const materialTitle = relatedMaterials
+          .map((material) => material.title)
+          .filter(Boolean)
+          .join(", ");
+
+        const assignmentTitle =
+          normalizeOptionalText(assignment.header) ||
+          normalizeOptionalText(assignment.title) ||
+          "Assignment";
+
+        const topic = materialTitle || assignmentTitle;
+
+        addSuggestion({
+          id: `assignment-${assignmentId}`,
+          source: "graded-assignment",
+          courseId: classId,
+          assignmentId,
+          topic,
+          materialTitle: topic,
+          courseName: classData.name || null,
+          courseCode: classData.courseCode || classData.classCode || null,
+          assignmentTitle,
+          lastScore: scorePercent,
+          status: "needs_review",
+          relatedMaterials,
+          text: `Help me understand ${topic} step by step. I scored ${scorePercent}% on ${assignmentTitle}, so please tutor me using the related material.`,
+        });
+      });
+    }
+
+    const suggestions = Array.from(suggestionsMap.values())
+      .filter((item) => item.status === "needs_review" || (item.lastScore !== null && item.lastScore < PASSING_PERCENT))
+      .sort((a, b) => (a.lastScore ?? 100) - (b.lastScore ?? 100))
+      .slice(0, 8);
+
+    return res.json({
+      success: true,
+      data: suggestions,
+    });
+  } catch (error) {
+    console.error("Fetch tutor suggestions error:", error);
+    return res.status(500).json({
+      error: error.message || "Failed to fetch tutor suggestions.",
+    });
+  }
+});
+
+app.get("/student-activities/weak-lessons/:studentId", async (req, res) => {
+  try {
+    const studentId = normalizeOptionalText(req.params.studentId);
+
+    if (!studentId) {
+      return res.status(400).json({ error: "studentId is required." });
+    }
+
+    const progress = await getStudentLessonProgress(studentId, 20);
+
+    return res.json({
+      success: true,
+      data: progress.map((item) => ({
+        ...item,
+        createdAt: serializeTimestamp(item.createdAt),
+        updatedAt: serializeTimestamp(item.updatedAt),
+      })),
+    });
+  } catch (error) {
+    console.error("Fetch weak lessons error:", error);
+    return res.status(500).json({
+      error: error.message || "Failed to fetch weak lessons.",
     });
   }
 });
@@ -5213,11 +6811,25 @@ app.post("/student-activities/notify-ready", async (req, res) => {
       assignmentTitle,
       topic,
       recommendationType,
+      score,
     } = req.body;
 
     if (!studentId || !assignmentId) {
       return res.status(400).json({ error: "studentId and assignmentId are required." });
     }
+
+    await upsertLessonProgress({
+      studentId,
+      courseId,
+      courseName,
+      assignmentId,
+      assignmentTitle,
+      topic,
+      score,
+      status: "needs_review",
+      source: "activity-ready",
+      notes: "Follow-up activity was recommended.",
+    });
 
     const existingSnapshot = await db
       .collection("notifications")
@@ -5248,6 +6860,243 @@ app.post("/student-activities/notify-ready", async (req, res) => {
   }
 });
 
+app.post("/student-activities/generate", async (req, res) => {
+  try {
+    const {
+      studentId,
+      courseId,
+      classId,
+      courseName,
+      courseCode,
+      assignmentId,
+      assignmentTitle,
+      topic,
+      score,
+      submissionId,
+    } = req.body || {};
+
+    if (!studentId || !assignmentId) {
+      return res.status(400).json({
+        error: "studentId and assignmentId are required.",
+      });
+    }
+
+    const context = await getAssignmentLearningContext({
+      assignmentId,
+      classId: classId || courseId,
+    });
+
+    let resolvedScore = typeof score === "number" ? score : Number(score);
+    if (!Number.isFinite(resolvedScore)) resolvedScore = null;
+
+    if (resolvedScore === null && submissionId) {
+      const submissionSnap = await db.collection("classSubmissions").doc(String(submissionId)).get();
+      const submissionData = submissionSnap.exists ? submissionSnap.data() || {} : {};
+      const totalScore = Number(context.assignment.totalScore || 0);
+      const rawScore = Number(submissionData.score);
+      if (Number.isFinite(rawScore) && totalScore > 0) {
+        resolvedScore = Math.round((rawScore / totalScore) * 100);
+      }
+    }
+
+    const materialTitles = context.materials.map((item) => item.title).filter(Boolean);
+    const readableMaterials = context.materials.filter((material) =>
+      normalizeOptionalText(material.extractedText || material.content)
+    );
+
+    if (!context.materials.length) {
+      return res.status(400).json({
+        error: "No related materials found. The teacher must select related materials before AI can generate a follow-up activity.",
+      });
+    }
+
+    if (!readableMaterials.length) {
+      return res.status(422).json({
+        error: "No readable content found in the selected related material files. Please upload PDF, DOCX, TXT, MD, CSV, JSON, or material text content, then try again.",
+        materialExtractionStatus: context.materials.map((material) => ({
+          id: material.id,
+          title: material.title,
+          fileName: material.fileName,
+          fileType: material.fileType,
+          status: material.extractionStatus || "unreadable",
+        })),
+      });
+    }
+
+    const materialContext = readableMaterials
+      .map((material, index) => `
+Material ${index + 1}: ${material.title}
+Week / Related Material Topic: ${material.week || material.title || "N/A"}
+File name: ${material.fileName || "N/A"}
+Content extracted from the teacher-selected related material:
+${limitText([material.content, material.extractedText].filter(Boolean).join("\n\n"), 12000)}
+`)
+      .join("\n---\n");
+
+    let generated;
+
+    try {
+      generated = await generateMaterialBasedActivityWithAI({
+        studentId,
+        resolvedScore,
+        courseName: courseName || context.classInfo.name,
+        courseCode: courseCode || context.classInfo.courseCode,
+        assignmentTitle: assignmentTitle || context.assignment.title,
+        assignmentInstruction: context.assignment.instruction,
+        materialTitles,
+        materialContext,
+      });
+    } catch (aiError) {
+      console.error("Material-based AI activity generation failed:", aiError?.message || aiError);
+      return res.status(502).json({
+        error: "AI failed to generate a valid quiz from the related material content. Please try again.",
+        details: aiError?.message || "Invalid AI output",
+        materialExtractionStatus: context.materials.map((material) => ({
+          id: material.id,
+          title: material.title,
+          fileName: material.fileName,
+          fileType: material.fileType,
+          status: material.extractionStatus || "unknown",
+        })),
+      });
+    }
+
+    const activity = normalizeGeneratedActivityFromAI({
+      generated,
+      readableMaterials,
+      materialTitles,
+      resolvedScore,
+      courseId,
+      courseName,
+      courseCode,
+      assignmentId,
+      assignmentTitle,
+      topic,
+      context,
+    });
+
+    if (!activity?.quiz) {
+      return res.status(502).json({
+        error: "AI did not return a valid material-based quiz. Please try again.",
+      });
+    }
+
+    const existingSnapshot = await db
+      .collection("studentActivities")
+      .where("studentId", "==", String(studentId).trim())
+      .where("assignmentId", "==", String(assignmentId).trim())
+      .limit(1)
+      .get();
+
+    let activityRef;
+    const payload = {
+      ...activity,
+      studentId: String(studentId).trim(),
+      status: "generated",
+      generatedAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    };
+
+    if (existingSnapshot.empty) {
+      activityRef = await db.collection("studentActivities").add({
+        ...payload,
+        createdAt: FieldValue.serverTimestamp(),
+      });
+    } else {
+      activityRef = existingSnapshot.docs[0].ref;
+      await activityRef.set(payload, { merge: true });
+    }
+
+    await upsertLessonProgress({
+      studentId,
+      courseId: activity.courseId,
+      courseName: activity.courseName,
+      courseCode: activity.courseCode,
+      assignmentId: activity.assignmentId,
+      assignmentTitle: activity.assignmentTitle,
+      topic: activity.topic,
+      score: resolvedScore,
+      status: "needs_review",
+      source: "generated-activity",
+      notes: "AI generated a follow-up activity from readable teacher-selected related material content.",
+    });
+
+    await createNotification({
+      userId: String(studentId).trim(),
+      role: "student",
+      type: "support-activity",
+      title: "Support Activity Ready",
+      message: `A follow-up activity is ready for ${activity.assignmentTitle || activity.topic || "your assignment"}.`,
+      relatedId: String(assignmentId).trim(),
+      relatedType: "generated-activity",
+      classId: normalizeOptionalText(activity.courseId),
+    });
+
+    return res.json({
+      success: true,
+      message: "Follow-up activity generated successfully from related material content.",
+      data: {
+        id: activityRef.id,
+        ...activity,
+      },
+    });
+  } catch (error) {
+    console.error("Generate student activity error:", error);
+    return res.status(500).json({
+      error: error.message || "Failed to generate student activity.",
+    });
+  }
+});
+
+
+app.post("/student-activities/check-identification-answer", async (req, res) => {
+  try {
+    const {
+      studentAnswer,
+      correctAnswers,
+      question,
+      explanation,
+      topic,
+      basedOnMaterials,
+    } = req.body || {};
+
+    const cleanCorrectAnswers = Array.isArray(correctAnswers)
+      ? correctAnswers.map((item) => normalizeOptionalText(String(item || ""))).filter(Boolean)
+      : [];
+
+    if (!normalizeOptionalText(studentAnswer)) {
+      return res.status(400).json({
+        error: "studentAnswer is required.",
+      });
+    }
+
+    if (!cleanCorrectAnswers.length) {
+      return res.status(400).json({
+        error: "correctAnswers are required.",
+      });
+    }
+
+    const evaluation = await evaluateIdentificationAnswerWithAI({
+      studentAnswer,
+      correctAnswers: cleanCorrectAnswers,
+      question,
+      explanation,
+      topic,
+      basedOnMaterials,
+    });
+
+    return res.json({
+      success: true,
+      data: evaluation,
+    });
+  } catch (error) {
+    console.error("Check identification answer error:", error);
+    return res.status(500).json({
+      error: error.message || "Failed to check identification answer.",
+    });
+  }
+});
+
 app.post("/student-activities/complete", async (req, res) => {
   try {
     const {
@@ -5263,8 +7112,15 @@ app.post("/student-activities/complete", async (req, res) => {
       score,
       instructions,
       basedOnMaterials,
-      shortAnswer,
-      selectedOption,
+      quiz,
+      assessmentItems,
+      activityItems,
+      activityResults,
+      activityScore,
+      sectionScores,
+      assessmentAnswers,
+      assessmentScorePercent,
+      tutorTip,
     } = req.body;
 
     if (!studentId || !assignmentId) {
@@ -5273,77 +7129,242 @@ app.post("/student-activities/complete", async (req, res) => {
       });
     }
 
+    const normalizedStudentId = String(studentId).trim();
+    const normalizedAssignmentId = String(assignmentId).trim();
+    const normalizedCourseId = normalizeOptionalText(courseId);
+
+    const normalizedItems = Array.isArray(activityItems)
+      ? activityItems
+      : Array.isArray(assessmentItems)
+      ? assessmentItems
+      : [];
+
+    const normalizedResults = Array.isArray(activityResults) ? activityResults : [];
+    const scoreObject =
+      activityScore && typeof activityScore === "object"
+        ? activityScore
+        : {
+            correct: normalizedResults.filter((item) => item?.correct === true).length,
+            total: normalizedResults.length,
+            percent: Number.isFinite(Number(assessmentScorePercent))
+              ? Number(assessmentScorePercent)
+              : normalizedResults.length
+              ? Math.round(
+                  (normalizedResults.filter((item) => item?.correct === true).length /
+                    normalizedResults.length) *
+                    100
+                )
+              : null,
+          };
+
+    const scorePercent = Number.isFinite(Number(scoreObject?.percent))
+      ? Number(scoreObject.percent)
+      : Number.isFinite(Number(assessmentScorePercent))
+      ? Number(assessmentScorePercent)
+      : null;
+
+    const normalizedQuiz = normalizeQuiz(quiz, topic || assignmentTitle || "the lesson");
+
     const existingSnapshot = await db
       .collection("studentActivities")
-      .where("studentId", "==", String(studentId).trim())
-      .where("assignmentId", "==", String(assignmentId).trim())
+      .where("studentId", "==", normalizedStudentId)
+      .where("assignmentId", "==", normalizedAssignmentId)
       .limit(1)
       .get();
+
+    const activityPayload = {
+      studentId: normalizedStudentId,
+      courseId: normalizedCourseId,
+      assignmentId: normalizedAssignmentId,
+      courseName: normalizeOptionalText(courseName),
+      courseCode: normalizeOptionalText(courseCode),
+      assignmentTitle: normalizeOptionalText(assignmentTitle),
+      topic: normalizeOptionalText(topic),
+      recommendationType: normalizeOptionalText(recommendationType),
+      difficulty: normalizeOptionalText(difficulty),
+      previousAssignmentScore:
+        typeof score === "number" ? score : Number.isFinite(Number(score)) ? Number(score) : null,
+      instructions: normalizeOptionalText(instructions),
+      basedOnMaterials: Array.isArray(basedOnMaterials) ? basedOnMaterials : [],
+      quiz: normalizedQuiz,
+      assessmentItems: normalizedItems,
+      activityItems: normalizedItems,
+      activityResults: normalizedResults,
+      activityScore: scoreObject,
+      sectionScores: sectionScores && typeof sectionScores === "object" ? sectionScores : null,
+      assessmentAnswers: assessmentAnswers && typeof assessmentAnswers === "object" ? assessmentAnswers : {},
+      assessmentScorePercent: scorePercent,
+      tutorTip: normalizeOptionalText(tutorTip),
+      status: "completed",
+      completedAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    };
 
     let activityRef;
 
     if (existingSnapshot.empty) {
       activityRef = await db.collection("studentActivities").add({
-        studentId: String(studentId).trim(),
-        courseId: normalizeOptionalText(courseId),
-        assignmentId: String(assignmentId).trim(),
-        courseName: normalizeOptionalText(courseName),
-        courseCode: normalizeOptionalText(courseCode),
-        assignmentTitle: normalizeOptionalText(assignmentTitle),
-        topic: normalizeOptionalText(topic),
-        recommendationType: normalizeOptionalText(recommendationType),
-        difficulty: normalizeOptionalText(difficulty),
-        score: typeof score === "number" ? score : null,
-        instructions: normalizeOptionalText(instructions),
-        basedOnMaterials: Array.isArray(basedOnMaterials) ? basedOnMaterials : [],
-        shortAnswer: normalizeOptionalText(shortAnswer),
-        selectedOption: typeof selectedOption === "number" ? selectedOption : null,
-        status: "completed",
-        completedAt: FieldValue.serverTimestamp(),
+        ...activityPayload,
         createdAt: FieldValue.serverTimestamp(),
-        updatedAt: FieldValue.serverTimestamp(),
       });
     } else {
       activityRef = existingSnapshot.docs[0].ref;
-      await activityRef.update({
-        courseId: normalizeOptionalText(courseId),
-        courseName: normalizeOptionalText(courseName),
-        courseCode: normalizeOptionalText(courseCode),
-        assignmentTitle: normalizeOptionalText(assignmentTitle),
-        topic: normalizeOptionalText(topic),
-        recommendationType: normalizeOptionalText(recommendationType),
-        difficulty: normalizeOptionalText(difficulty),
-        score: typeof score === "number" ? score : null,
-        instructions: normalizeOptionalText(instructions),
-        basedOnMaterials: Array.isArray(basedOnMaterials) ? basedOnMaterials : [],
-        shortAnswer: normalizeOptionalText(shortAnswer),
-        selectedOption: typeof selectedOption === "number" ? selectedOption : null,
-        status: "completed",
-        completedAt: FieldValue.serverTimestamp(),
-        updatedAt: FieldValue.serverTimestamp(),
-      });
+      await activityRef.set(activityPayload, { merge: true });
     }
 
+    const progressStatus =
+      scorePercent === null
+        ? "improving"
+        : scorePercent < 75
+        ? "needs_review"
+        : "mastered";
+
+    await upsertLessonProgress({
+      studentId: normalizedStudentId,
+      courseId: normalizedCourseId,
+      courseName,
+      courseCode,
+      assignmentId: normalizedAssignmentId,
+      assignmentTitle,
+      topic,
+      score: scorePercent,
+      status: progressStatus,
+      source: "activity-completed",
+      notes:
+        scorePercent === null
+          ? "Student completed the generated follow-up activity."
+          : `Student completed the generated follow-up activity with ${scorePercent}%.`,
+    });
+
     await createNotification({
-      userId: String(studentId).trim(),
+      userId: normalizedStudentId,
       role: "student",
       type: "support-activity",
       title: "Activity Completed",
-      message: `${assignmentTitle || topic || "Your activity"} has been marked as done.`,
-      relatedId: String(assignmentId).trim(),
+      message: `${assignmentTitle || topic || "Your activity"} has been marked as done. Score: ${
+        scorePercent === null ? "N/A" : `${scorePercent}%`
+      }.`,
+      relatedId: normalizedAssignmentId,
       relatedType: "student-activity",
-      classId: normalizeOptionalText(courseId),
+      classId: normalizedCourseId,
     });
+
+    if (normalizedCourseId) {
+      const classSnap = await db.collection("classes").doc(normalizedCourseId).get();
+      const classData = classSnap.exists ? classSnap.data() || {} : {};
+      const teacherId = normalizeOptionalText(classData.assignedTeacherId);
+
+      if (teacherId) {
+        await createNotification({
+          userId: teacherId,
+          role: "teacher",
+          type: "support-activity",
+          title: "Follow-up Activity Completed",
+          message: `${normalizedStudentId} completed ${
+            assignmentTitle || topic || "a generated follow-up activity"
+          } with score ${scorePercent === null ? "N/A" : `${scorePercent}%`}.`,
+          relatedId: activityRef.id,
+          relatedType: "student-activity",
+          classId: normalizedCourseId,
+          actorId: normalizedStudentId,
+          actorRole: "student",
+          actorName: normalizedStudentId,
+        });
+      }
+    }
 
     return res.json({
       success: true,
-      message: "Student activity marked as completed.",
-      data: { id: activityRef.id },
+      message: "Student activity score saved successfully.",
+      data: {
+        id: activityRef.id,
+        score: scoreObject,
+        progressStatus,
+      },
     });
   } catch (error) {
     console.error("Complete student activity error:", error);
     return res.status(500).json({
       error: error.message || "Failed to complete student activity.",
+    });
+  }
+});
+
+
+app.get("/teacher-support-activities/:teacherId", async (req, res) => {
+  try {
+    const teacherId = normalizeOptionalText(req.params.teacherId);
+
+    if (!teacherId) {
+      return res.status(400).json({ error: "teacherId is required." });
+    }
+
+    const classQueries = await Promise.all([
+      db.collection("classes").where("assignedTeacherId", "==", teacherId).get(),
+      db.collection("classes").where("assignedTeacherUid", "==", teacherId).get(),
+      db.collection("classes").where("instructorEmail", "==", teacherId).get(),
+      db.collection("classes").where("createdByUid", "==", teacherId).get(),
+    ]);
+
+    const classIds = Array.from(
+      new Set(
+        classQueries.flatMap((snapshot) => snapshot.docs.map((doc) => doc.id))
+      )
+    );
+
+    const activities = [];
+
+    for (const classId of classIds) {
+      const snap = await db
+        .collection("studentActivities")
+        .where("courseId", "==", classId)
+        .where("status", "==", "completed")
+        .get();
+
+      snap.docs.forEach((doc) => {
+        activities.push({
+          id: doc.id,
+          ...(doc.data() || {}),
+        });
+      });
+    }
+
+    const totalCompleted = activities.length;
+    const scoredActivities = activities.filter((item) =>
+      Number.isFinite(Number(item.assessmentScorePercent))
+    );
+    const averageScore = scoredActivities.length
+      ? Math.round(
+          scoredActivities.reduce(
+            (sum, item) => sum + Number(item.assessmentScorePercent || 0),
+            0
+          ) / scoredActivities.length
+        )
+      : 0;
+
+    const needsReviewCount = activities.filter(
+      (item) => Number(item.assessmentScorePercent) < 75
+    ).length;
+
+    return res.json({
+      success: true,
+      data: {
+        totalCompleted,
+        averageScore,
+        needsReviewCount,
+        activities: activities
+          .sort((a, b) => {
+            const aTime = resolveDate(a.completedAt)?.getTime?.() || 0;
+            const bTime = resolveDate(b.completedAt)?.getTime?.() || 0;
+            return bTime - aTime;
+          })
+          .slice(0, 100),
+      },
+    });
+  } catch (error) {
+    console.error("Teacher support activity analytics error:", error);
+    return res.status(500).json({
+      error: error.message || "Failed to load teacher support activity analytics.",
     });
   }
 });
@@ -6394,12 +8415,64 @@ function normalizeProviderName(provider = "") {
   return value ? value.charAt(0).toUpperCase() + value.slice(1) : "AI Provider";
 }
 
+function getProviderModelName(provider = "") {
+  const value = String(provider || "").trim().toLowerCase();
+
+  if (value === "gemini") return process.env.GEMINI_MODEL || "gemini-2.5-flash";
+  if (value === "openai") return process.env.OPENAI_MODEL || "gpt-4o-mini";
+  if (value === "claude") return process.env.CLAUDE_MODEL || "claude-3-5-haiku-latest";
+  if (value === "groq") return process.env.GROQ_MODEL || "llama-3.1-8b-instant";
+  if (value === "mistral") return process.env.MISTRAL_MODEL || "mistral-small-latest";
+  if (value === "cohere") return process.env.COHERE_MODEL || "command-r";
+
+  return "Unknown model";
+}
+
+function normalizeQuotaErrorMessage(message = "") {
+  const text = normalizeOptionalText(message) || "Quota or rate limit reached.";
+
+  return text.length > 240 ? `${text.slice(0, 240)}...` : text;
+}
+
+function inferProviderFromQuotaMessage(message = "") {
+  const text = String(message || "").toLowerCase();
+
+  if (text.includes("openai") || text.includes("gpt-") || text.includes("chat/completions")) return "openai";
+  if (text.includes("gemini") || text.includes("generativelanguage.googleapis")) return "gemini";
+  if (text.includes("claude") || text.includes("anthropic")) return "claude";
+  if (text.includes("groq")) return "groq";
+  if (text.includes("mistral")) return "mistral";
+  if (text.includes("cohere") || text.includes("command-r")) return "cohere";
+
+  return null;
+}
+
+
+
 async function createAIQuotaLimitAdminNotifications({ provider, message }) {
   try {
-    const normalizedProvider = normalizeOptionalText(provider) || "ai-provider";
+    const inferredProvider = inferProviderFromQuotaMessage(message);
+    const normalizedProvider =
+      normalizeOptionalText(provider) ||
+      inferredProvider ||
+      "unknown-ai";
+
     const providerLabel = normalizeProviderName(normalizedProvider);
+    const model = getProviderModelName(normalizedProvider);
+    const quotaErrorMessage = normalizeQuotaErrorMessage(message);
+
+    console.log("AI QUOTA LIMIT DETECTED =>", {
+      provider: normalizedProvider,
+      providerLabel,
+      model,
+      reason: quotaErrorMessage,
+    });
+
     const now = Date.now();
-    const cooldownMs = Number(process.env.AI_QUOTA_NOTIFICATION_COOLDOWN_MS || 15 * 60 * 1000);
+    const cooldownMs = Number(
+      process.env.AI_QUOTA_NOTIFICATION_COOLDOWN_MS || 15 * 60 * 1000
+    );
+
     const alertRef = db.collection("systemAlerts").doc(`ai-quota-${normalizedProvider}`);
     const alertSnap = await alertRef.get();
     const alertData = alertSnap.exists ? alertSnap.data() || {} : {};
@@ -6414,7 +8487,8 @@ async function createAIQuotaLimitAdminNotifications({ provider, message }) {
         type: "ai-quota-limit",
         provider: normalizedProvider,
         providerLabel,
-        message: normalizeOptionalText(message),
+        model,
+        message: quotaErrorMessage,
         lastNotifiedAt: FieldValue.serverTimestamp(),
         updatedAt: FieldValue.serverTimestamp(),
       },
@@ -6431,14 +8505,20 @@ async function createAIQuotaLimitAdminNotifications({ provider, message }) {
         userId: adminId,
         role: "admin",
         type: "ai-quota-limit",
-        title: `${providerLabel} API quota limit reached`,
+        title: `${providerLabel} AI quota limit reached`,
         message:
-          `${providerLabel} is currently rate-limited or out of quota. ` +
+          `AI Provider: ${providerLabel}${model ? ` (${model})` : ""}. ` +
+          `${providerLabel} reached its quota or rate limit. ` +
           "The system will try the next available AI provider automatically.",
         relatedId: normalizedProvider,
         relatedType: "ai-provider",
         actorRole: "system",
         actorName: "ParseIT AI Monitor",
+        provider: normalizedProvider,
+        providerLabel,
+        model,
+        errorMessage: quotaErrorMessage,
+        aiProvider: providerLabel,
       });
     }
   } catch (notifyError) {
@@ -6583,20 +8663,30 @@ ${safeText}
 
 async function handleAIChat(req, res) {
   try {
-    const { message, mode = "assistant", history = [] } = req.body || {};
+    const {
+      message,
+      mode = "assistant",
+      history = [],
+      studentId = null,
+      courseId = null,
+      assignmentId = null,
+      topic = null,
+    } = req.body || {};
 
     if (!message || typeof message !== "string") {
       return res.status(400).json({ error: "Message is required." });
     }
 
+    const normalizedMode = mode === "tutor" ? "tutor" : "assistant";
     const normalizedHistory = buildGeminiHistory(history);
     const matchedTraining = await findMatchingChatbotTraining(message, 5);
-    const interpretedMessage = expandKeywordPrompt(message, mode);
+    const interpretedMessage = expandKeywordPrompt(message, normalizedMode);
     const bestMatch = matchedTraining[0] || null;
 
-    // Keep existing keyword + strong trigger logic
+    // Keep existing keyword + strong trigger logic for Assistant only.
+    // Tutor mode should still teach, guide, and adapt instead of returning a canned answer directly.
     if (
-      mode === "assistant" &&
+      normalizedMode === "assistant" &&
       bestMatch &&
       bestMatch.score >= 80 &&
       bestMatch.response
@@ -6614,13 +8704,62 @@ async function handleAIChat(req, res) {
       matchedTraining
     );
 
-    let contextualPrompt = `User message: ${interpretedMessage}\nMode: ${mode}\n`;
+    let tutorProfileContext = "";
+    let assignmentContextText = "";
+
+    if (normalizedMode === "tutor") {
+      const [progress, activities] = await Promise.all([
+        getStudentLessonProgress(studentId, 10),
+        getRecentStudentActivities(studentId, 8),
+      ]);
+
+      tutorProfileContext = buildTutorProfileContext({
+        progress,
+        activities,
+        studentId,
+      });
+
+      if (assignmentId) {
+        const assignmentContext = await getAssignmentLearningContext({
+          assignmentId,
+          classId: courseId,
+        });
+
+        const materialsText = assignmentContext.materials
+          .map((material, index) => `
+Related Material ${index + 1}: ${material.title}
+${limitText([material.content, material.extractedText].filter(Boolean).join("\n"), 6000)}
+`)
+          .join("\n---\n");
+
+        assignmentContextText = `
+Current assignment context:
+Course: ${assignmentContext.classInfo.name} (${assignmentContext.classInfo.courseCode || "N/A"})
+Assignment: ${assignmentContext.assignment.title}
+Instruction: ${assignmentContext.assignment.instruction || "N/A"}
+Related materials:
+${materialsText || "No readable materials found."}
+`;
+      }
+    }
+
+    let contextualPrompt = `User message: ${interpretedMessage}\nMode: ${normalizedMode}\n`;
+
+    if (normalizedMode === "tutor") {
+      contextualPrompt += `
+The student may be asking because they are having difficulty with a lesson.
+Requested or detected topic: ${topic || "Not specified"}
+${tutorProfileContext}
+${assignmentContextText}
+`;
+    }
 
     if (matchedTraining.length > 0) {
       contextualPrompt += `
 Matched chatbot training exists.
-Use the following training context as highest priority.
-If the answer is present in the attached extracted document content, answer from that content.
+Use the following training context as reference.
+If the answer is present in the attached extracted document content, use that content.
+If you are in tutor mode, transform the content into a tutoring explanation rather than just copying it.
 
 ${trainingText}
 
@@ -6631,22 +8770,22 @@ ${fileText}
 No strong stored training matched.
 Do not tell the user that the answer is not in storage.
 In assistant mode, answer helpfully in a natural assistant way.
-In tutor mode, answer like a teacher and explain step by step.
+In tutor mode, tutor the student step by step and ask a quick check question when appropriate.
 `;
     }
 
     const baseInstruction =
       "Use extracted document content when available. " +
-      "If matched chatbot training exists, prioritize it. " +
+      "If matched chatbot training exists, prioritize it as reference. " +
       "If no matched training exists, still answer naturally and helpfully. " +
       "Do not mention hidden context, Firestore, storage, or trigger logic.";
 
     const modeInstruction =
-      mode === "tutor"
-        ? "You are ParseIT AI Tutor. Teach clearly, explain step by step, simplify difficult concepts, and guide the learner."
+      normalizedMode === "tutor"
+        ? buildStrictTutorInstruction()
         : "You are ParseIT Assistant. Help users with platform questions, system guidance, and general support.";
 
-    const assistantInstruction = `${modeInstruction} ${baseInstruction}`;
+    const assistantInstruction = `${modeInstruction}\n${baseInstruction}`;
 
     const aiResult = await callAIWithFallback({
       assistantInstruction,
@@ -6654,6 +8793,18 @@ In tutor mode, answer like a teacher and explain step by step.
       normalizedHistory,
       history,
     });
+
+    if (normalizedMode === "tutor" && studentId) {
+      await upsertLessonProgress({
+        studentId,
+        courseId,
+        assignmentId,
+        topic: topic || interpretedMessage,
+        status: "needs_review",
+        source: "ai-tutor-chat",
+        notes: "Student used AI Tutor for lesson support.",
+      });
+    }
 
     return res.json({
       reply: aiResult.text,

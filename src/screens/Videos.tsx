@@ -41,10 +41,13 @@ interface VideosProps {
   currentUserRole?: 'student' | 'teacher' | 'admin';
   apiBaseUrl: string;
   searchQuery?: string;
+  adaptiveQuery?: string;
+  adaptiveReason?: string;
+  queryRotationKey?: number;
 }
 
 const DEFAULT_USER_AVATAR = require('../../assets/images/pogi.jpg');
-const DEFAULT_TECH_QUERY = 'BSIT lessons programming technology computer science tutorial';
+const DEFAULT_TECH_QUERY = 'educational video lesson explanation';
 
 const normalizeImageSource = (img: any) => {
   if (!img) return DEFAULT_USER_AVATAR;
@@ -61,6 +64,9 @@ const Videos = ({
   currentUserRole = 'student',
   apiBaseUrl,
   searchQuery = '',
+  adaptiveQuery = '',
+  adaptiveReason = '',
+  queryRotationKey = 0,
 }: VideosProps) => {
   const { width } = useWindowDimensions();
 
@@ -97,6 +103,33 @@ const Videos = ({
     () => normalizeImageSource(currentUserAvatar),
     [currentUserAvatar]
   );
+
+  const effectiveQuery = useMemo(() => {
+    return searchQuery.trim() || adaptiveQuery.trim() || DEFAULT_TECH_QUERY;
+  }, [searchQuery, adaptiveQuery]);
+
+  const displayQuery = useMemo(() => {
+    const source = searchQuery.trim() || adaptiveQuery.trim() || DEFAULT_TECH_QUERY;
+
+    const cleaned = source
+      .replace(/educational video lesson explanation/gi, '')
+      .replace(/educational video/gi, '')
+      .replace(/lesson explanation/gi, '')
+      .replace(/tutorial lesson explanation/gi, '')
+      .replace(/tutorial/gi, '')
+      .replace(/explained for students/gi, '')
+      .replace(/for students/gi, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    return cleaned.length > 58 ? `${cleaned.slice(0, 58)}...` : cleaned;
+  }, [searchQuery, adaptiveQuery]);
+
+  const searchSourceLabel = useMemo(() => {
+    if (searchQuery.trim()) return 'Search results';
+    if (adaptiveReason.trim()) return adaptiveReason.trim();
+    return 'Recommended videos for your courses';
+  }, [searchQuery, adaptiveReason]);
 
 
   const loadFavorites = async () => {
@@ -164,10 +197,6 @@ const Videos = ({
   };
 
   useEffect(() => {
-    fetchVideos(DEFAULT_TECH_QUERY);
-  }, []);
-
-  useEffect(() => {
     loadFavorites();
   }, [currentUserId, currentUserRole]);
 
@@ -177,8 +206,7 @@ const Videos = ({
     }
 
     debounceRef.current = setTimeout(() => {
-      const nextQuery = searchQuery.trim() || DEFAULT_TECH_QUERY;
-      fetchVideos(nextQuery);
+      fetchVideos(effectiveQuery);
     }, 450);
 
     return () => {
@@ -186,7 +214,7 @@ const Videos = ({
         clearTimeout(debounceRef.current);
       }
     };
-  }, [searchQuery]);
+  }, [effectiveQuery, queryRotationKey]);
 
   const list = useMemo(() => {
     return filterFav ? favoriteItems : videos;
@@ -433,8 +461,8 @@ const Videos = ({
           <Text style={styles.logoText}>Videos</Text>
           <Text style={styles.searchSummary} numberOfLines={2}>
             {loading
-              ? 'Loading technology and BSIT videos...'
-              : `Results for: ${activeQuery}`}
+              ? 'Loading adaptive learning videos...'
+              : `${searchSourceLabel}: ${displayQuery}`}
           </Text>
         </View>
 

@@ -1,8 +1,11 @@
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import Constants from "expo-constants";
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Modal,
+  NativeScrollEvent,
+  NativeSyntheticEvent,
   Platform,
   SafeAreaView,
   ScrollView,
@@ -17,6 +20,7 @@ import {
 interface GeminiFloatingModalProps {
   visible: boolean;
   onClose: () => void;
+  currentStudentId?: string;
 }
 
 type ChatMode = "assistant" | "tutor";
@@ -25,6 +29,35 @@ type Message = {
   role: "user" | "model";
   text: string;
 };
+
+type TutorSuggestion = {
+  id: string;
+  topic: string;
+  text: string;
+  courseId?: string | null;
+  assignmentId?: string | null;
+  courseName?: string | null;
+  assignmentTitle?: string | null;
+  lastScore?: number | null;
+};
+
+const CHAT_MODE_KEY = "parseit-ai-chat-mode";
+const PAGE_SIZE = 30;
+
+const getChatStorageKey = (mode: ChatMode) =>
+  `parseit-ai-chat-history-${mode}`;
+
+function getDefaultMessages(mode: ChatMode): Message[] {
+  return [
+    {
+      role: "model",
+      text:
+        mode === "assistant"
+          ? "Hello. I’m your ParseIT Assistant. How may I assist you today?"
+          : "Hello. I’m your ParseIT AI Tutor. Tell me the lesson, topic, assignment, or concept that feels difficult, and we’ll study it step by step.",
+    },
+  ];
+}
 
 function getApiBaseUrl() {
   if (Platform.OS === "web") {
@@ -50,35 +83,235 @@ const API_BASE_URL = getApiBaseUrl();
 export default function GeminiFloatingModal({
   visible,
   onClose,
+  currentStudentId,
 }: GeminiFloatingModalProps) {
   const { width, height } = useWindowDimensions();
   const isMobile = width < 768;
 
+  const scrollViewRef = useRef<ScrollView | null>(null);
+  const shouldScrollToBottomRef = useRef(true);
+
   const [mode, setMode] = useState<ChatMode>("assistant");
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [hydrated, setHydrated] = useState(false);
+  const [tutorSuggestions, setTutorSuggestions] = useState<TutorSuggestion[]>([]);
+  const [loadingTutorSuggestions, setLoadingTutorSuggestions] = useState(false);
 
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      role: "model",
-      text: "Hello. I’m your ParseIT Assistant. How may I assist you today?",
-    },
-  ]);
+  const [messages, setMessages] = useState<Message[]>(
+    getDefaultMessages("assistant")
+  );
+
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
 
   const isAssistant = mode === "assistant";
+
+  const visibleMessages = useMemo(() => {
+    return messages.slice(-visibleCount);
+  }, [messages, visibleCount]);
 
   const subtitle = useMemo(
     () =>
       isAssistant
         ? "General support and system help"
-        : "Learning guidance and lesson assistance",
+        : "Lesson tutoring, guided practice, and learning support",
     [isAssistant]
   );
+
+  const scrollToBottom = (animated = true) => {
+    requestAnimationFrame(() => {
+      scrollViewRef.current?.scrollToEnd({ animated });
+    });
+  };
+
+  const loadOlderMessages = () => {
+    if (visibleCount >= messages.length) return;
+
+    shouldScrollToBottomRef.current = false;
+
+    setVisibleCount((prev) => Math.min(prev + PAGE_SIZE, messages.length));
+  };
+
+  const handleMessagesScroll = (
+    event: NativeSyntheticEvent<NativeScrollEvent>
+  ) => {
+    const offsetY = event.nativeEvent.contentOffset.y;
+
+    if (offsetY <= 20) {
+      loadOlderMessages();
+    }
+  };
+
+  useEffect(() => {
+    const loadSavedChat = async () => {
+      try {
+        const savedMode = await AsyncStorage.getItem(CHAT_MODE_KEY);
+
+        const restoredMode: ChatMode =
+          savedMode === "assistant" || savedMode === "tutor"
+            ? savedMode
+            : "assistant";
+
+        setMode(restoredMode);
+
+        const savedMessages = await AsyncStorage.getItem(
+          getChatStorageKey(restoredMode)
+        );
+
+        if (savedMessages) {
+          const parsedMessages = JSON.parse(savedMessages);
+
+          if (Array.isArray(parsedMessages) && parsedMessages.length > 0) {
+            setMessages(parsedMessages);
+          } else {
+            setMessages(getDefaultMessages(restoredMode));
+          }
+        } else {
+          setMessages(getDefaultMessages(restoredMode));
+        }
+
+        setVisibleCount(PAGE_SIZE);
+      } catch (error) {
+        console.warn("Failed to load saved AI chat:", error);
+      } finally {
+        setHydrated(true);
+      }
+    };
+
+    loadSavedChat();
+  }, []);
+
+  useEffect(() => {
+    if (!hydrated) return;
+
+    AsyncStorage.setItem(CHAT_MODE_KEY, mode).catch((error) => {
+      console.warn("Failed to save AI chat mode:", error);
+    });
+  }, [mode, hydrated]);
+
+  useEffect(() => {
+    if (!hydrated) return;
+
+    AsyncStorage.setItem(getChatStorageKey(mode), JSON.stringify(messages)).catch(
+      (error) => {
+        console.warn("Failed to save AI chat:", error);
+      }
+    );
+  }, [messages, mode, hydrated]);
+
+  useEffect(() => {
+    if (visible) {
+      shouldScrollToBottomRef.current = true;
+      setVisibleCount(PAGE_SIZE);
+      scrollToBottom(false);
+    }
+  }, [visible]);
+
+  useEffect(() => {
+    if (shouldScrollToBottomRef.current) {
+      scrollToBottom();
+    }
+  }, [messages, loading]);
+
+  const loadTutorSuggestions = async () => {
+    if (!currentStudentId) {
+      setTutorSuggestions([]);
+      return;
+    }
+
+    try {
+      setLoadingTutorSuggestions(true);
+
+      const response = await fetch(
+        `${API_BASE_URL}/student-activities/tutor-suggestions/${encodeURIComponent(currentStudentId)}`
+      );
+      const data = await response.json();
+
+      if (response.ok && Array.isArray(data?.data)) {
+        setTutorSuggestions(data.data);
+      }
+    } catch (error) {
+      console.warn("Failed to load tutor suggestions:", error);
+    } finally {
+      setLoadingTutorSuggestions(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!visible || mode !== "tutor") return;
+    void loadTutorSuggestions();
+  }, [visible, mode, currentStudentId]);
+
+  const sendTutorSuggestion = async (suggestion: TutorSuggestion) => {
+    if (loading) return;
+
+    shouldScrollToBottomRef.current = true;
+
+    const prompt = suggestion.text || `Help me understand ${suggestion.topic} step by step.`;
+
+    const userMessage: Message = {
+      role: "user",
+      text: prompt,
+    };
+
+    const historyForRequest = [...messages, userMessage];
+
+    setMessages(historyForRequest);
+    setVisibleCount(PAGE_SIZE);
+    setInput("");
+    setLoading(true);
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/ai/gemini`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          message: prompt,
+          mode: "tutor",
+          studentId: currentStudentId || null,
+          courseId: suggestion.courseId || null,
+          assignmentId: suggestion.assignmentId || null,
+          topic: suggestion.topic || null,
+          history: historyForRequest.slice(-10),
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data?.error || "Failed to get AI tutor response.");
+      }
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "model",
+          text: data.reply || "No response returned.",
+        },
+      ]);
+
+      setVisibleCount(PAGE_SIZE);
+    } catch (error: any) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "model",
+          text: `Error: ${error?.message || "Something went wrong."}`,
+        },
+      ]);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const sendMessage = async () => {
     const trimmed = input.trim();
 
     if (!trimmed || loading) return;
+
+    shouldScrollToBottomRef.current = true;
 
     const userMessage: Message = {
       role: "user",
@@ -88,6 +321,7 @@ export default function GeminiFloatingModal({
     const historyForRequest = [...messages, userMessage];
 
     setMessages(historyForRequest);
+    setVisibleCount(PAGE_SIZE);
     setInput("");
     setLoading(true);
 
@@ -100,7 +334,8 @@ export default function GeminiFloatingModal({
         body: JSON.stringify({
           message: trimmed,
           mode,
-          history: messages.slice(-10),
+          studentId: currentStudentId || null,
+          history: historyForRequest.slice(-10),
         }),
       });
 
@@ -117,6 +352,8 @@ export default function GeminiFloatingModal({
           text: data.reply || "No response returned.",
         },
       ]);
+
+      setVisibleCount(PAGE_SIZE);
     } catch (error: any) {
       setMessages((prev) => [
         ...prev,
@@ -125,23 +362,50 @@ export default function GeminiFloatingModal({
           text: `Error: ${error?.message || "Something went wrong."}`,
         },
       ]);
+
+      setVisibleCount(PAGE_SIZE);
     } finally {
       setLoading(false);
     }
   };
 
-  const resetForMode = (nextMode: ChatMode) => {
-    setMode(nextMode);
-    setInput("");
-    setMessages([
-      {
-        role: "model",
-        text:
-          nextMode === "assistant"
-            ? "Hello. I can assist you with ParseIT features, navigation, and system support."
-            : "Hello. I can help explain lessons clearly and guide you step by step.",
-      },
-    ]);
+  const resetForMode = async (nextMode: ChatMode) => {
+    if (nextMode === mode || loading) return;
+
+    try {
+      shouldScrollToBottomRef.current = true;
+
+      await AsyncStorage.setItem(
+        getChatStorageKey(mode),
+        JSON.stringify(messages)
+      );
+
+      setMode(nextMode);
+      setInput("");
+      setVisibleCount(PAGE_SIZE);
+
+      const savedMessages = await AsyncStorage.getItem(
+        getChatStorageKey(nextMode)
+      );
+
+      if (savedMessages) {
+        const parsedMessages = JSON.parse(savedMessages);
+
+        if (Array.isArray(parsedMessages) && parsedMessages.length > 0) {
+          setMessages(parsedMessages);
+          return;
+        }
+      }
+
+      setMessages(getDefaultMessages(nextMode));
+    } catch (error) {
+      console.warn("Failed to switch AI chat mode:", error);
+
+      setMode(nextMode);
+      setInput("");
+      setVisibleCount(PAGE_SIZE);
+      setMessages(getDefaultMessages(nextMode));
+    }
   };
 
   const handleClose = () => {
@@ -211,16 +475,76 @@ export default function GeminiFloatingModal({
             </TouchableOpacity>
           </View>
 
+
+          {!isAssistant && (
+            <View style={styles.tutorSuggestionWrap}>
+              <View style={styles.tutorSuggestionHeader}>
+                <Text style={styles.tutorSuggestionTitle}>Need help with these lessons?</Text>
+                {loadingTutorSuggestions && (
+                  <ActivityIndicator size="small" color="#D32F2F" />
+                )}
+              </View>
+
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.tutorSuggestionList}
+              >
+                {tutorSuggestions.length > 0 ? (
+                  tutorSuggestions.map((suggestion) => (
+                    <TouchableOpacity
+                      key={suggestion.id}
+                      style={styles.tutorSuggestionBubble}
+                      onPress={() => sendTutorSuggestion(suggestion)}
+                      disabled={loading}
+                      activeOpacity={0.85}
+                    >
+                      <Text style={styles.tutorSuggestionBubbleText} numberOfLines={2}>
+                        {suggestion.topic}
+                      </Text>
+                      {suggestion.lastScore !== null && suggestion.lastScore !== undefined && (
+                        <Text style={styles.tutorSuggestionScore}>
+                          Last score: {suggestion.lastScore}%
+                        </Text>
+                      )}
+                    </TouchableOpacity>
+                  ))
+                ) : (
+                  <Text style={styles.tutorSuggestionEmpty}>
+                    No weak lesson suggestions yet.
+                  </Text>
+                )}
+              </ScrollView>
+            </View>
+          )}
+
           <ScrollView
+            ref={scrollViewRef}
             contentContainerStyle={styles.messages}
             showsVerticalScrollIndicator={true}
+            onScroll={handleMessagesScroll}
+            scrollEventThrottle={16}
+            onContentSizeChange={() => {
+              if (shouldScrollToBottomRef.current) {
+                scrollToBottom(false);
+              }
+            }}
           >
-            {messages.map((message, index) => {
+            {visibleCount < messages.length && (
+              <View style={styles.loadOlderWrap}>
+                <Text style={styles.loadOlderText}>
+                  Scroll up to load older messages
+                </Text>
+              </View>
+            )}
+
+            {visibleMessages.map((message, index) => {
               const isUser = message.role === "user";
+              const actualIndex = messages.length - visibleMessages.length + index;
 
               return (
                 <View
-                  key={`${message.role}-${index}`}
+                  key={`${message.role}-${actualIndex}`}
                   style={[
                     styles.messageRow,
                     isUser ? styles.userRow : styles.botRow,
@@ -262,7 +586,11 @@ export default function GeminiFloatingModal({
           <View style={styles.inputWrapper}>
             <TextInput
               style={styles.input}
-              placeholder="Type your question..."
+              placeholder={
+                mode === "tutor"
+                  ? "Ask about a difficult lesson..."
+                  : "Type your question..."
+              }
               placeholderTextColor="#999"
               value={input}
               onChangeText={setInput}
@@ -362,6 +690,16 @@ const styles = StyleSheet.create({
   messages: {
     padding: 14,
     paddingBottom: 20,
+  },
+
+  loadOlderWrap: {
+    alignItems: "center",
+    marginBottom: 12,
+  },
+
+  loadOlderText: {
+    fontSize: 12,
+    color: "#667085",
   },
 
   messageRow: {
@@ -465,4 +803,61 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     fontSize: 14,
   },
+
+  tutorSuggestionWrap: {
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: "#F3D4D4",
+    backgroundColor: "#FFFDFD",
+  },
+
+  tutorSuggestionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 8,
+  },
+
+  tutorSuggestionTitle: {
+    fontSize: 12,
+    fontWeight: "800",
+    color: "#7A1F1F",
+  },
+
+  tutorSuggestionList: {
+    paddingRight: 10,
+  },
+
+  tutorSuggestionBubble: {
+    maxWidth: 210,
+    backgroundColor: "#FFF5F5",
+    borderWidth: 1,
+    borderColor: "#F3B4B4",
+    borderRadius: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    marginRight: 8,
+  },
+
+  tutorSuggestionBubbleText: {
+    color: "#2B1111",
+    fontWeight: "800",
+    fontSize: 12,
+    lineHeight: 16,
+  },
+
+  tutorSuggestionScore: {
+    color: "#D32F2F",
+    fontWeight: "700",
+    fontSize: 11,
+    marginTop: 4,
+  },
+
+  tutorSuggestionEmpty: {
+    color: "#8A6F6F",
+    fontSize: 12,
+    paddingVertical: 8,
+  },
+
 });

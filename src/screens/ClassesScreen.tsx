@@ -20,6 +20,19 @@ interface ClassesScreenProps {
   onMaterialsPress?: (course: CourseCardCourse) => void;
   onGeneratePress?: (course: CourseCardCourse) => void;
   onJoinClass?: (classCode: string) => void;
+  completedActivityScores?: Record<
+    string,
+    {
+      scorePercent?: number | null;
+      assessmentScorePercent?: number | null;
+      completed?: boolean;
+      mastered?: boolean;
+      status?: string;
+      activityScore?: {
+        percent?: number | null;
+      } | null;
+    }
+  >;
 }
 
 const DEFAULT_COURSES: CourseCardCourse[] = [
@@ -212,6 +225,7 @@ const ClassesScreen = ({
   onMaterialsPress,
   onGeneratePress,
   onJoinClass,
+  completedActivityScores = {},
 }: ClassesScreenProps) => {
   const { width } = useWindowDimensions();
   const [joinModalVisible, setJoinModalVisible] = useState(false);
@@ -269,6 +283,7 @@ const ClassesScreen = ({
                 onAssignmentPress={(selectedCourse) => onAssignmentPress?.(selectedCourse)}
                 onMaterialsPress={(selectedCourse) => onMaterialsPress?.(selectedCourse)}
                 onGeneratePress={(selectedCourse) => onGeneratePress?.(selectedCourse)}
+                completedActivityScores={completedActivityScores}
               />
             ))}
           </View>

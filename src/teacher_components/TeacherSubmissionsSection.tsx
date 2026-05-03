@@ -162,7 +162,15 @@ const TeacherSubmissionsSection = ({
     return trimmed || null;
   };
 
+  const isLinkSubmission = (submission?: Submission) => {
+    const type = String((submission as any)?.fileType || "").toLowerCase();
+    const url = getSubmissionFileUrl(submission);
+    return type === "text/uri-list" || (!!url && !submission?.fileName);
+  };
+
   const getSubmissionFileName = (submission?: Submission) => {
+    if (isLinkSubmission(submission)) return "Submitted link";
+
     return (
       (submission as any)?.fileName ||
       (submission as any)?.name ||
@@ -446,15 +454,17 @@ const TeacherSubmissionsSection = ({
                       >
                         <MaterialCommunityIcons
                           name={
-                            String((submission as any)?.fileType || "").startsWith("image/")
-                              ? "image-outline"
-                              : "file-document-outline"
+                            isLinkSubmission(submission)
+                              ? "link-variant"
+                              : String((submission as any)?.fileType || "").startsWith("image/")
+                                ? "image-outline"
+                                : "file-document-outline"
                           }
                           size={17}
                           color="#D32F2F"
                         />
                         <Text style={styles.viewFileText} numberOfLines={1}>
-                          View {getSubmissionFileName(submission)}
+                          {isLinkSubmission(submission) ? "Open" : "View"} {getSubmissionFileName(submission)}
                         </Text>
                       </TouchableOpacity>
                     )}
