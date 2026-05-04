@@ -816,7 +816,7 @@ const Grades = () => {
             <View style={[styles.headerBlock, isPhone && styles.headerBlockMobile]}>
               <Text style={[styles.mainTitle, { fontSize: titleSize }]}>Grades</Text>
               <Text style={styles.subTitle}>
-                Generate an official academic grade report from database records.
+                Generate an official academic grade report from records.
               </Text>
             </View>
 

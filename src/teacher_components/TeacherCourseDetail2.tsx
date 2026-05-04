@@ -1368,7 +1368,28 @@ const TeacherCourseDetail2 = ({
           <Ionicons name="arrow-back" size={24} color="#FFF" />
         </TouchableOpacity>
 
-        <Text style={[styles.courseName, { fontSize: isSmallPhone ? 20 : 24 }]}>{courseName}</Text>
+        <View style={styles.headerTopRow}>
+          <Text
+            style={[
+              styles.courseName,
+              { fontSize: isSmallPhone ? 20 : 24, flex: 1 },
+            ]}
+            numberOfLines={1}
+          >
+            {courseName}
+          </Text>
+
+          <TouchableOpacity
+            style={styles.exportGradesButtonInline}
+            onPress={downloadClassGradesExcel}
+            activeOpacity={0.85}
+          >
+            <Ionicons name="download-outline" size={18} color="#FFFFFF" />
+            {!isMobile && (
+              <Text style={styles.exportGradesButtonText}>Export Grades Excel</Text>
+            )}
+          </TouchableOpacity>
+        </View>
 
         <View style={styles.headerInfoCard}>
           <View style={styles.headerInfoRow}>
@@ -1437,14 +1458,6 @@ const TeacherCourseDetail2 = ({
           </View>
         </View>
 
-        <TouchableOpacity
-          style={[styles.exportGradesButton, isMobile && styles.exportGradesButtonMobile]}
-          onPress={downloadClassGradesExcel}
-          activeOpacity={0.85}
-        >
-          <Ionicons name="download-outline" size={18} color="#FFFFFF" />
-          <Text style={styles.exportGradesButtonText}>Export Grades Excel</Text>
-        </TouchableOpacity>
       </View>
 
         <View style={styles.tabContainer}>
@@ -1768,7 +1781,14 @@ const styles = StyleSheet.create({
     marginBottom: 14,
     alignSelf: 'flex-start',
   },
-  courseName: { color: '#FFF', fontWeight: '900', marginBottom: 14, letterSpacing: 0.2 },
+  headerTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    marginBottom: 14,
+  },
+  courseName: { color: '#FFF', fontWeight: '900', marginBottom: 0, letterSpacing: 0.2 },
   instructor: { color: 'rgba(255,255,255,0.92)', marginBottom: 6 },
   metaText: { color: 'rgba(255,255,255,0.88)', marginBottom: 4 },
   headerInfoCard: {
@@ -1870,33 +1890,27 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   copyCodeText: { color: '#D32F2F', fontWeight: '900', fontSize: 12 },
-  exportGradesButton: {
-  flexDirection: 'row',
-  alignItems: 'center',
-  justifyContent: 'center',
-  gap: 8,
-  backgroundColor: '#1F7A3A',
-  paddingHorizontal: 14,
-  height: 42,
-  borderRadius: 10,
-  borderBottomWidth: 3,
-  borderBottomColor: '#145A2A',
-},
+  exportGradesButtonInline: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: '#1F7A3A',
+    paddingHorizontal: 12,
+    minWidth: 42,
+    height: 42,
+    borderRadius: 10,
+    borderBottomWidth: 3,
+    borderBottomColor: '#145A2A',
+  },
 
-exportGradesButtonMobile: {
-  width: '100%',
-  height: 46,
-  borderRadius: 12,
-  marginTop: 10,
-},
-
-exportGradesButtonText: {
-  color: '#FFFFFF',
-  fontSize: 13,
-  fontWeight: '900',
-  letterSpacing: 0.25,
-  textTransform: 'uppercase',
-},
+  exportGradesButtonText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '900',
+    letterSpacing: 0.25,
+    textTransform: 'uppercase',
+  },
 
   tabContainer: { flexDirection: 'row', backgroundColor: '#FFF', borderBottomWidth: 1, borderBottomColor: '#E5E5E5' },
   tab: { flex: 1, alignItems: 'center', paddingVertical: 14, borderBottomWidth: 3, borderBottomColor: 'transparent' },
