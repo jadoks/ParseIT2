@@ -271,6 +271,7 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
 
   const navItems: { label: string; section: SectionKey }[] = [
     { label: "Features", section: "features" },
+    { label: "How It Works", section: "how" },
     { label: "Modules", section: "modules" },
     { label: "Analytics", section: "analytics" },
   ];

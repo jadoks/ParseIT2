@@ -377,7 +377,7 @@ export default function Header({
               style={styles.logo}
               resizeMode="contain"
             />
-            <Text style={styles.brand}>ParseIT</Text>
+            <Text style={styles.brand}>Parsers Hub</Text>
           </View>
 
           <View style={styles.navRow}>
@@ -442,7 +442,7 @@ export default function Header({
                 resizeMode="contain"
               />
 
-              <Text style={styles.brand}>ParseIT</Text>
+              <Text style={styles.brand}>Parsers Hub</Text>
             </View>
 
             {notificationButton}

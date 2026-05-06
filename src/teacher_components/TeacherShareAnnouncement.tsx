@@ -129,7 +129,7 @@ export default function ShareAnnouncement({
   const [isDescFocused, setIsDescFocused] = useState(false);
 
   const [showTargetModal, setShowTargetModal] = useState(false);
-  const [selectedClassId, setSelectedClassId] = useState<string | null>(null);
+  const [selectedClassIds, setSelectedClassIds] = useState<string[]>([]);
   const [selectAllClasses, setSelectAllClasses] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -149,12 +149,12 @@ export default function ShareAnnouncement({
     }));
   }, [classes]);
 
-  const selectedClass = useMemo(() => {
-    return availableClasses.find((course) => course.id === selectedClassId) || null;
-  }, [availableClasses, selectedClassId]);
+  const selectedClasses = useMemo(() => {
+    return availableClasses.filter((course) => selectedClassIds.includes(course.id));
+  }, [availableClasses, selectedClassIds]);
 
   const resetTargeting = () => {
-    setSelectedClassId(null);
+    setSelectedClassIds([]);
     setSelectAllClasses(false);
   };
 
@@ -268,20 +268,22 @@ export default function ShareAnnouncement({
   const toggleAllClasses = () => {
     const next = !selectAllClasses;
     setSelectAllClasses(next);
-
-    if (next) {
-      setSelectedClassId(null);
-    }
+    setSelectedClassIds(next ? availableClasses.map((item) => item.id) : []);
   };
 
   const toggleClass = (classId: string) => {
-    if (selectedClassId === classId) {
-      setSelectedClassId(null);
-      return;
-    }
+    setSelectedClassIds((prev) => {
+      const alreadySelected = prev.includes(classId);
+      const nextSelected = alreadySelected
+        ? prev.filter((id) => id !== classId)
+        : [...prev, classId];
 
-    setSelectedClassId(classId);
-    setSelectAllClasses(false);
+      setSelectAllClasses(
+        availableClasses.length > 0 && nextSelected.length === availableClasses.length
+      );
+
+      return nextSelected;
+    });
   };
 
   const handleDirectShare = async () => {
@@ -297,9 +299,7 @@ export default function ShareAnnouncement({
 
       const targetClassIds = selectAllClasses
         ? availableClasses.map((item) => item.id)
-        : selectedClassId
-        ? [selectedClassId]
-        : [];
+        : selectedClassIds;
 
       if (!targetClassIds.length) {
         Alert.alert('Missing Selection', 'Please select a class or choose All Classes.');
@@ -332,9 +332,9 @@ export default function ShareAnnouncement({
 
       Alert.alert(
         'Success',
-        selectAllClasses
+        selectAllClasses || targetClassIds.length > 1
           ? `Announcement shared successfully to ${targetClassIds.length} classes!`
-          : `Announcement shared successfully to ${selectedClass?.label || 'the selected class'}!`
+          : `Announcement shared successfully to ${selectedClasses[0]?.label || 'the selected class'}!`
       );
 
       await onShared?.();
@@ -610,7 +610,7 @@ export default function ShareAnnouncement({
                   availableClasses.map((course) =>
                     renderCheckboxRow(
                       course.label,
-                      selectedClassId === course.id,
+                      selectedClassIds.includes(course.id),
                       () => toggleClass(course.id),
                       course.subtitle,
                       true

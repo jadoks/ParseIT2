@@ -1757,6 +1757,14 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
 
             if (score === null || score >= 75) return null;
 
+            const completedSupportActivity = completedActivityScores[assignment.id];
+            const alreadyCompletedSupportActivity =
+              !!completedSupportActivity?.completed &&
+              completedSupportActivity.scorePercent !== null &&
+              completedSupportActivity.scorePercent >= 75;
+
+            if (alreadyCompletedSupportActivity) return null;
+
             const relatedMaterialTitles = (course.materials || [])
               .filter((material) => assignment.materialIds?.includes(material.id))
               .map((material) => cleanVideoSearchText(material.title))
@@ -1817,24 +1825,15 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
     }>;
 
     if (weakRecommendations.length > 0) {
-      const shouldUseWeakTopic = getRotatingIndex(10) < 7;
-
-      if (shouldUseWeakTopic || courseRecommendations.length === 0) {
-        const selectedWeak = weakRecommendations[getRotatingIndex(weakRecommendations.length)];
-
-        return {
-          query: selectedWeak.query,
-          reason: `${selectedWeak.reason}`,
-          rotationKey: getRotatingIndex(1000),
-        };
-      }
-
-      const selectedCourse = courseRecommendations[getRotatingIndex(courseRecommendations.length, 3)];
+      // Always prioritize the exact weak related material shown on the Dashboard.
+      // Example: if Dashboard shows "Major Environmental Hazards to Human Health",
+      // Videos must search that same topic, not the course name.
+      const selectedWeak = weakRecommendations[0];
 
       return {
-        query: selectedCourse.query,
-        reason: `${selectedCourse.reason}`,
-        rotationKey: getRotatingIndex(1000, 3),
+        query: selectedWeak.query,
+        reason: `${selectedWeak.reason}`,
+        rotationKey: selectedWeak.query.length + selectedWeak.score,
       };
     }
 

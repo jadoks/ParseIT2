@@ -799,7 +799,7 @@ const Grades = () => {
       <View style={styles.flexOne}>
         <ScrollView
           contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}
+          showsVerticalScrollIndicator={true}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
           bounces={Platform.OS === 'ios'}

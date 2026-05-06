@@ -28,6 +28,8 @@ const bucket = admin.storage().bucket();
 const FieldValue = admin.firestore.FieldValue;
 
 const GEMINI_GAME_MODEL = process.env.GEMINI_GAME_MODEL || "gemini-2.5-flash";
+const OPENAI_GAME_MODEL =
+  process.env.OPENAI_GAME_MODEL || process.env.OPENAI_MODEL || "gpt-4o-mini";
 const geminiGameAI = process.env.GEMINI_API_KEY
   ? new GoogleGenerativeAI(process.env.GEMINI_API_KEY)
   : null;
@@ -557,7 +559,7 @@ async function extractTextFromFile(buffer, mimeType = "", fileName = "") {
 }
 
 
-function parseGeminiJsonResponse(rawText = "") {
+function parseQuizMastersJsonResponse(rawText = "", providerLabel = "AI") {
   const cleaned = String(rawText || "")
     .trim()
     .replace(/^```json\s*/i, "")
@@ -566,10 +568,29 @@ function parseGeminiJsonResponse(rawText = "") {
     .trim();
 
   if (!cleaned) {
-    throw new Error("Gemini returned an empty response.");
+    throw new Error(`${providerLabel} returned an empty response.`);
   }
 
-  return JSON.parse(cleaned);
+  try {
+    return JSON.parse(cleaned);
+  } catch (jsonError) {
+    const firstBrace = cleaned.indexOf("{");
+    const lastBrace = cleaned.lastIndexOf("}");
+
+    if (firstBrace >= 0 && lastBrace > firstBrace) {
+      const jsonSlice = cleaned.slice(firstBrace, lastBrace + 1);
+
+      try {
+        return JSON.parse(jsonSlice);
+      } catch {
+        // Fall through to the clearer error below.
+      }
+    }
+
+    throw new Error(
+      `${providerLabel} returned invalid or incomplete JSON: ${jsonError.message}`
+    );
+  }
 }
 
 function normalizeQuizMastersQuestions(value) {
@@ -637,7 +658,7 @@ async function generateQuizMastersWithGemini({ extractedText, fileName }) {
     model: GEMINI_GAME_MODEL,
     generationConfig: {
       temperature: 0.4,
-      maxOutputTokens: 4096,
+      maxOutputTokens: 1200,
       responseMimeType: "application/json",
     },
   });
@@ -660,7 +681,7 @@ Return ONLY valid JSON in this exact format, with exactly 10 questions:
   const result = await model.generateContent(prompt);
   const rawText = result.response.text();
 
-  const parsed = parseGeminiJsonResponse(rawText);
+  const parsed = parseQuizMastersJsonResponse(rawText, "Gemini");
   const questions = normalizeQuizMastersQuestions(parsed);
 
   if (questions.length < 5) {
@@ -668,6 +689,260 @@ Return ONLY valid JSON in this exact format, with exactly 10 questions:
   }
 
   return questions;
+}
+
+function isGeminiQuotaError(error) {
+  const message = String(error?.message || "").toLowerCase();
+  const status = Number(error?.status || error?.response?.status || 0);
+
+  return (
+    status === 429 ||
+    message.includes("429") ||
+    message.includes("too many requests") ||
+    message.includes("quota") ||
+    message.includes("credits are depleted") ||
+    message.includes("prepayment credits")
+  );
+}
+
+async function generateQuizMastersWithOpenAI({ extractedText, fileName }) {
+  if (!process.env.OPENAI_API_KEY) {
+    throw new Error("OPENAI_API_KEY is missing in your backend .env file.");
+  }
+
+  const prompt = `
+${buildQuizMastersPrompt({ extractedText, fileName })}
+
+Return ONLY valid JSON in this exact format, with exactly 10 questions:
+{
+  "questions": [
+    {
+      "question": "Question text",
+      "options": ["Option A", "Option B", "Option C", "Option D"],
+      "answer": "Option A"
+    }
+  ]
+}
+`;
+
+  const response = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+    },
+    body: JSON.stringify({
+      model: OPENAI_GAME_MODEL,
+      messages: [
+        {
+          role: "system",
+          content:
+            "You generate student-friendly multiple-choice quizzes from provided learning content. Return valid JSON only.",
+        },
+        {
+          role: "user",
+          content: prompt,
+        },
+      ],
+      temperature: 0.4,
+      max_tokens: 1200,
+      response_format: { type: "json_object" },
+    }),
+  });
+
+  const data = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new Error(data?.error?.message || "OpenAI request failed.");
+  }
+
+  const rawText = data?.choices?.[0]?.message?.content || "";
+  const parsed = parseQuizMastersJsonResponse(rawText, "OpenAI");
+  const questions = normalizeQuizMastersQuestions(parsed);
+
+  if (questions.length < 5) {
+    throw new Error("OpenAI did not generate enough valid quiz questions.");
+  }
+
+  return questions;
+}
+
+function getGeminiFallbackReason(error) {
+  const message = String(error?.message || "Gemini generation failed.");
+
+  if (isGeminiQuotaError(error)) {
+    return "Gemini quota exceeded or credits depleted.";
+  }
+
+  if (
+    message.toLowerCase().includes("invalid") ||
+    message.toLowerCase().includes("incomplete json") ||
+    message.toLowerCase().includes("empty response") ||
+    message.toLowerCase().includes("not generate enough") ||
+    message.toLowerCase().includes("unexpected end of json")
+  ) {
+    return "Gemini returned invalid, incomplete, or insufficient JSON.";
+  }
+
+  return `Gemini failed: ${message}`;
+}
+
+function cleanQuizMastersSentence(value = "") {
+  return String(value || "")
+    .replace(/\s+/g, " ")
+    .replace(/[•●▪︎◦]/g, "")
+    .trim();
+}
+
+function splitQuizMastersSentences(text = "") {
+  const cleaned = String(text || "")
+    .replace(/\r/g, "\n")
+    .replace(/\t/g, " ")
+    .replace(/\n+/g, ". ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  return cleaned
+    .split(/(?<=[.!?])\s+|\s+-\s+|;\s+/)
+    .map(cleanQuizMastersSentence)
+    .map((sentence) => sentence.replace(/^[\d.)\-\s]+/, "").trim())
+    .filter((sentence) => {
+      if (sentence.length < 35 || sentence.length > 180) return false;
+      if (!/[a-zA-Z]/.test(sentence)) return false;
+      const words = sentence.split(/\s+/).filter(Boolean);
+      return words.length >= 7;
+    });
+}
+
+function uniqueQuizMastersSentences(sentences = []) {
+  const seen = new Set();
+  const unique = [];
+
+  for (const sentence of sentences) {
+    const key = sentence.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    unique.push(sentence);
+  }
+
+  return unique;
+}
+
+function rotateQuizMastersOptions(options, offset) {
+  const copy = options.slice(0, 4);
+  const shift = offset % copy.length;
+  return copy.slice(shift).concat(copy.slice(0, shift));
+}
+
+function generateQuizMastersLocally({ extractedText, fileName }) {
+  const sentences = uniqueQuizMastersSentences(
+    splitQuizMastersSentences(limitText(extractedText, 16000))
+  );
+
+  if (sentences.length < 4) {
+    throw new Error(
+      "Local quiz fallback could not find enough readable statements in the uploaded file."
+    );
+  }
+
+  const questions = [];
+  const questionTemplates = [
+    "Which statement is supported by the uploaded learning file?",
+    "According to the uploaded file, which statement is correct?",
+    "Which option best matches the uploaded learning content?",
+    "What does the uploaded file say?",
+    "Which statement comes from the uploaded material?",
+  ];
+
+  const maxQuestions = Math.min(10, sentences.length);
+
+  for (let i = 0; i < maxQuestions; i++) {
+    const answer = sentences[i];
+    const distractors = [];
+
+    for (let step = 1; distractors.length < 3 && step < sentences.length + 4; step++) {
+      const candidate = sentences[(i + step * 2 + 1) % sentences.length];
+      if (candidate && candidate !== answer && !distractors.includes(candidate)) {
+        distractors.push(candidate);
+      }
+    }
+
+    if (distractors.length < 3) continue;
+
+    const options = rotateQuizMastersOptions([answer, ...distractors], i + 1);
+
+    questions.push({
+      question: `${questionTemplates[i % questionTemplates.length]} (${fileName || "uploaded file"})`,
+      options,
+      answer,
+    });
+  }
+
+  if (questions.length < 5) {
+    throw new Error(
+      "Local quiz fallback did not generate enough valid quiz questions."
+    );
+  }
+
+  return normalizeQuizMastersQuestions({ questions });
+}
+
+async function generateQuizMastersWithFallback({ extractedText, fileName }) {
+  try {
+    const questions = await generateQuizMastersWithGemini({
+      extractedText,
+      fileName,
+    });
+
+    return {
+      questions,
+      provider: "gemini",
+      model: GEMINI_GAME_MODEL,
+      fallbackUsed: false,
+    };
+  } catch (geminiError) {
+    const fallbackReason = getGeminiFallbackReason(geminiError);
+
+    console.warn(
+      "Gemini failed for Quiz Masters. Falling back to OpenAI:",
+      geminiError?.message || geminiError
+    );
+
+    try {
+      const questions = await generateQuizMastersWithOpenAI({
+        extractedText,
+        fileName,
+      });
+
+      return {
+        questions,
+        provider: "openai",
+        model: OPENAI_GAME_MODEL,
+        fallbackUsed: true,
+        fallbackReason,
+      };
+    } catch (openAIError) {
+      console.warn(
+        "OpenAI fallback failed for Quiz Masters. Using local fallback:",
+        openAIError?.message || openAIError
+      );
+
+      const questions = generateQuizMastersLocally({
+        extractedText,
+        fileName,
+      });
+
+      return {
+        questions,
+        provider: "local",
+        model: "extractive-local-fallback",
+        fallbackUsed: true,
+        fallbackReason: `${fallbackReason} OpenAI fallback also failed: ${
+          openAIError?.message || openAIError
+        }. Used local non-AI fallback.`,
+      };
+    }
+  }
 }
 
 async function deleteStorageFileIfExists(storagePath) {
@@ -1776,7 +2051,7 @@ app.post("/game-ai/generate-quiz-masters", gameUpload.single("file"), async (req
       });
     }
 
-    const questions = await generateQuizMastersWithGemini({
+    const generated = await generateQuizMastersWithFallback({
       extractedText,
       fileName: req.file.originalname,
     });
@@ -1784,13 +2059,15 @@ app.post("/game-ai/generate-quiz-masters", gameUpload.single("file"), async (req
     return res.json({
       success: true,
       game: "quizmasters",
-      provider: "gemini",
-      model: GEMINI_GAME_MODEL,
+      provider: generated.provider,
+      model: generated.model,
+      fallbackUsed: generated.fallbackUsed,
+      fallbackReason: generated.fallbackReason || null,
       fileName: req.file.originalname,
-      questions,
+      questions: generated.questions,
     });
   } catch (error) {
-    console.error("Quiz Masters Gemini generation error:", error);
+    console.error("Quiz Masters AI generation error:", error);
     return res.status(500).json({
       error: error.message || "Failed to generate Quiz Masters game.",
     });
@@ -9294,7 +9571,7 @@ app.post("/community-posts/:postId/answers", async (req, res) => {
         relatedId: postId,
         relatedType: "community-post",
         actorId: authorId,
-        actorRole,
+        actorRole: authorRole,
         actorName: userName,
       });
     }
