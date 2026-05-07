@@ -297,7 +297,7 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
     }
 
     try {
-      const response = await fetch(
+      const response = await apiFetch(
         `${API_BASE_URL}/notifications?userId=${encodeURIComponent(
           teacherId
         )}&role=teacher`
@@ -381,7 +381,7 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
     }
 
     try {
-      const response = await fetch(
+      const response = await apiFetch(
         `${API_BASE_URL}/teacher-analytics/${encodeURIComponent(teacherId)}`
       );
 
@@ -852,7 +852,7 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
     if (!trimmedMessage) return;
 
     try {
-      const response = await fetch(
+      const response = await apiFetch(
         `${API_BASE_URL}/community-posts/${postId}/answers/${answerId}`,
         {
           method: 'PUT',
@@ -876,7 +876,7 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
 
   const handleDeleteCommunityAnswer = async (postId: string, answerId: string) => {
     try {
-      const response = await fetch(
+      const response = await apiFetch(
         `${API_BASE_URL}/community-posts/${postId}/answers/${answerId}`,
         {
           method: 'DELETE',

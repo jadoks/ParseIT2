@@ -61,6 +61,12 @@ function getApiBaseUrl() {
 
 const API_BASE_URL = getApiBaseUrl();
 
+const apiFetch = (url: string, options: any = {}) =>
+  fetch(url, {
+    credentials: 'include',
+    ...options,
+  });
+
 function formatBirthday(value: BackendAdminItem["birthday"]): string {
   if (!value) return "";
 
@@ -118,7 +124,7 @@ export default function ManageAdmin({ width }: ManageAdminProps) {
     try {
       setIsLoading(true);
 
-      const response = await fetch(`${API_BASE_URL}/admins`, {
+      const response = await apiFetch(`${API_BASE_URL}/admins`, {
         method: "GET",
         headers: {
           "Content-Type": "application/json",
@@ -175,8 +181,7 @@ export default function ManageAdmin({ width }: ManageAdminProps) {
   const handleSubmitAdmin = async (payload: AdminFormPayload) => {
     try {
       if (isEditMode && selectedAdmin?.id) {
-        const response = await fetch(
-          `${API_BASE_URL}/update-admin/${selectedAdmin.id}`,
+        const response = await apiFetch(`${API_BASE_URL}/update-admin/${selectedAdmin.id}`,
           {
             method: "PUT",
             headers: {
@@ -198,7 +203,7 @@ export default function ManageAdmin({ width }: ManageAdminProps) {
         return;
       }
 
-      const response = await fetch(`${API_BASE_URL}/create-admin`, {
+      const response = await apiFetch(`${API_BASE_URL}/create-admin`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -256,8 +261,7 @@ export default function ManageAdmin({ width }: ManageAdminProps) {
     if (!adminToDelete) return;
 
     try {
-      const response = await fetch(
-        `${API_BASE_URL}/delete-admin/${adminToDelete.id}`,
+      const response = await apiFetch(`${API_BASE_URL}/delete-admin/${adminToDelete.id}`,
         {
           method: "DELETE",
           headers: {

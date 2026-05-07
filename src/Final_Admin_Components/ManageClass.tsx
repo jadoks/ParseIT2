@@ -84,6 +84,12 @@ function getApiBaseUrl() {
 
 const API_BASE_URL = getApiBaseUrl();
 
+const apiFetch = (url: string, options: any = {}) =>
+  fetch(url, {
+    credentials: 'include',
+    ...options,
+  });
+
 const fileUriToBase64 = async (uri: string): Promise<string> => {
   const response = await fetch(uri);
   const blob = await response.blob();
@@ -151,7 +157,7 @@ export default function ManageClass({ width, currentAdmin }: ManageClassProps) {
     try {
       setIsLoading(true);
 
-      const response = await fetch(`${API_BASE_URL}/classes`, {
+      const response = await apiFetch(`${API_BASE_URL}/classes`, {
         method: "GET",
         headers: {
           "Content-Type": "application/json",
@@ -223,8 +229,7 @@ export default function ManageClass({ width, currentAdmin }: ManageClassProps) {
       }
 
       if (isEditMode && selectedClass?.id) {
-        const response = await fetch(
-          `${API_BASE_URL}/update-class/${selectedClass.id}`,
+        const response = await apiFetch(`${API_BASE_URL}/update-class/${selectedClass.id}`,
           {
             method: "PUT",
             headers: {
@@ -258,7 +263,7 @@ export default function ManageClass({ width, currentAdmin }: ManageClassProps) {
         return;
       }
 
-      const response = await fetch(`${API_BASE_URL}/create-class`, {
+      const response = await apiFetch(`${API_BASE_URL}/create-class`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -341,8 +346,7 @@ export default function ManageClass({ width, currentAdmin }: ManageClassProps) {
     if (!classToDelete) return;
 
     try {
-      const response = await fetch(
-        `${API_BASE_URL}/delete-class/${classToDelete.id}`,
+      const response = await apiFetch(`${API_BASE_URL}/delete-class/${classToDelete.id}`,
         {
           method: "DELETE",
           headers: {
@@ -775,18 +779,20 @@ const styles = StyleSheet.create({
   },
 
   classNameColumn: {
-    width: 300,
+    width: 360,
     paddingRight: 12,
   },
 
   sectionColumn: {
     width: 170,
-    paddingRight: 12,
+    paddingRight: 22,
+    paddingLeft: 40,
   },
 
   instructorColumn: {
     width: 240,
     paddingRight: 12,
+    paddingLeft: 50,
   },
 
   memberColumn: {

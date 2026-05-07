@@ -74,6 +74,12 @@ function getApiBaseUrl() {
 
 const API_BASE_URL = getApiBaseUrl();
 
+const apiFetch = (url: string, options: any = {}) =>
+  fetch(url, {
+    credentials: 'include',
+    ...options,
+  });
+
 function formatBirthday(value: BackendStudentItem["birthday"]): string {
   if (!value) return "";
 
@@ -136,7 +142,7 @@ export default function ManageStudent({ width }: ManageStudentProps) {
     try {
       setIsLoading(true);
 
-      const response = await fetch(`${API_BASE_URL}/students`, {
+      const response = await apiFetch(`${API_BASE_URL}/students`, {
         method: "GET",
         headers: {
           "Content-Type": "application/json",
@@ -194,8 +200,7 @@ export default function ManageStudent({ width }: ManageStudentProps) {
   const handleSubmitStudent = async (payload: StudentFormPayload) => {
     try {
       if (isEditMode && selectedStudent?.id) {
-        const response = await fetch(
-          `${API_BASE_URL}/update-student/${selectedStudent.id}`,
+        const response = await apiFetch(`${API_BASE_URL}/update-student/${selectedStudent.id}`,
           {
             method: "PUT",
             headers: {
@@ -217,7 +222,7 @@ export default function ManageStudent({ width }: ManageStudentProps) {
         return;
       }
 
-      const response = await fetch(`${API_BASE_URL}/create-student`, {
+      const response = await apiFetch(`${API_BASE_URL}/create-student`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -282,8 +287,7 @@ export default function ManageStudent({ width }: ManageStudentProps) {
     if (!studentToDelete) return;
 
     try {
-      const response = await fetch(
-        `${API_BASE_URL}/delete-student/${studentToDelete.id}`,
+      const response = await apiFetch(`${API_BASE_URL}/delete-student/${studentToDelete.id}`,
         {
           method: "DELETE",
           headers: {

@@ -1,8 +1,10 @@
-import React, { useMemo, useState } from 'react';
+import Constants from 'expo-constants';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   Image,
   Modal,
+  Platform,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -41,6 +43,10 @@ export interface CourseCardCourse {
   materials: CourseCardMaterial[];
   assignments: CourseCardAssignment[];
   section?: string;
+  bannerUrl?: string | null;
+  bannerStoragePath?: string | null;
+  bannerFileName?: string | null;
+  bannerMimeType?: string | null;
 }
 
 interface CourseCardProps {
@@ -73,6 +79,34 @@ type DropdownState =
     }
   | null;
 
+
+function getApiBaseUrl() {
+  if (Platform.OS === 'web') {
+    return 'http://localhost:5000';
+  }
+
+  const possibleHost =
+    Constants.expoConfig?.hostUri ||
+    Constants.manifest2?.extra?.expoGo?.debuggerHost ||
+    '';
+
+  const host = possibleHost.split(':')[0];
+
+  if (host) {
+    return `http://${host}:5000`;
+  }
+
+  return 'http://192.168.1.5:5000';
+}
+
+const API_BASE_URL = getApiBaseUrl();
+
+const apiFetch = (url: string, options: any = {}) =>
+  fetch(url, {
+    credentials: 'include',
+    ...options,
+  });
+
 const DROPDOWN_WIDTH = 170;
 
 const CourseCard: React.FC<CourseCardProps> = ({
@@ -86,6 +120,8 @@ const CourseCard: React.FC<CourseCardProps> = ({
   const isLargeTablet = width >= 1024;
 
   const [dropdownState, setDropdownState] = useState<DropdownState>(null);
+  const [signedBannerUrl, setSignedBannerUrl] = useState<string | null>(null);
+  const [bannerLoadFailed, setBannerLoadFailed] = useState(false);
 
   const getScorePercent = (assignment: CourseCardAssignment) => {
     if (
@@ -244,6 +280,52 @@ const CourseCard: React.FC<CourseCardProps> = ({
 
   const bannerHeight = isSmallScreen ? 120 : 140;
 
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadSignedBannerUrl = async () => {
+      setBannerLoadFailed(false);
+      setSignedBannerUrl(null);
+
+      if (!course.bannerStoragePath) {
+        return;
+      }
+
+      try {
+        const response = await apiFetch(`${API_BASE_URL}/storage/signed-url`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            storagePath: course.bannerStoragePath,
+            classId: course.id,
+          }),
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data?.error || 'Unable to load class banner.');
+        }
+
+        if (isMounted && data?.url) {
+          setSignedBannerUrl(data.url);
+        }
+      } catch (error) {
+        if (isMounted) {
+          setBannerLoadFailed(true);
+        }
+      }
+    };
+
+    loadSignedBannerUrl();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [course.id, course.bannerStoragePath]);
+
   const getCourseImage = () => {
     const imageMap: { [key: string]: any } = {
       'CC111 – Introduction to Computing': require('../../assets/parseclass/CC111.jpg'),
@@ -256,6 +338,14 @@ const CourseCard: React.FC<CourseCardProps> = ({
       'Programming Logic': require('../../assets/parseclass/AP1.jpg'),
       'Computer Fundamentals': require('../../assets/parseclass/AP1.jpg'),
     };
+
+    if (signedBannerUrl && !bannerLoadFailed) {
+      return { uri: signedBannerUrl };
+    }
+
+    if (course.bannerUrl && !bannerLoadFailed) {
+      return { uri: course.bannerUrl };
+    }
 
     return imageMap[course.name] || require('../../assets/parseclass/AP1.jpg');
   };
@@ -300,6 +390,7 @@ const CourseCard: React.FC<CourseCardProps> = ({
             source={getCourseImage()}
             style={styles.bannerImage}
             resizeMode="cover"
+            onError={() => setBannerLoadFailed(true)}
           />
           <View style={styles.overlay} />
           <View style={styles.bannerTextContainer}>

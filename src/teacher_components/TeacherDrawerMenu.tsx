@@ -218,6 +218,7 @@ const TeacherDrawerMenu = ({
 
       const response = await fetch(`${apiBaseUrl}/auth/change-email`, {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           id: userId,
@@ -266,6 +267,7 @@ const TeacherDrawerMenu = ({
 
       const response = await fetch(`${apiBaseUrl}/auth/change-password`, {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           id: userId,
@@ -291,8 +293,16 @@ const TeacherDrawerMenu = ({
 
   const handleLogout = async () => {
     try {
+      await fetch(`${apiBaseUrl}/auth/session-logout`, {
+        method: 'POST',
+        credentials: 'include',
+      });
+    } catch {}
+
+    try {
       await signOut(auth);
     } catch {}
+
     setLogoutModalVisible(false);
     if (!isFixed) onClose?.();
     setIsLoggedIn(false);

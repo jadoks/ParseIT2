@@ -308,8 +308,7 @@ const Messenger = ({
         const response = await fetch(
           `${API_BASE_URL}/messenger-conversations?role=teacher&userId=${encodeURIComponent(
             currentUser
-          )}`
-        );
+          )}`, { credentials: 'include' });
 
         const data = await response.json();
 
@@ -391,8 +390,7 @@ const Messenger = ({
 
         try {
           const response = await fetch(
-            `${API_BASE_URL}/messenger-messages/${selected.id}`
-          );
+            `${API_BASE_URL}/messenger-messages/${selected.id}`, { credentials: 'include' });
 
           const data = await response.json();
 
@@ -664,6 +662,7 @@ const Messenger = ({
 
     try {
       await fetch(`${API_BASE_URL}/messenger-send-message`, {
+        credentials: 'include',
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -757,8 +756,8 @@ const Messenger = ({
 
     try {
       const [membersResponse, gradesResponse] = await Promise.all([
-        fetch(`${API_BASE_URL}/class-members/${selected.classId}`),
-        fetch(`${API_BASE_URL}/final-grades/${selected.classId}`),
+        fetch(`${API_BASE_URL}/class-members/${selected.classId}`, { credentials: 'include' }),
+        fetch(`${API_BASE_URL}/final-grades/${selected.classId}`, { credentials: 'include' }),
       ]);
 
       const membersRaw = await membersResponse.text();
@@ -831,6 +830,7 @@ const Messenger = ({
 
     try {
       const response = await fetch(`${API_BASE_URL}/submit-final-grades`, {
+        credentials: 'include',
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

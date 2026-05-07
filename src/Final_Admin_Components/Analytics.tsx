@@ -12,6 +12,12 @@ import {
 } from "react-native";
 import Svg, { Circle, Line, Path, Rect, Text as SvgText } from "react-native-svg";
 
+const apiFetch = (url: string, options: any = {}) =>
+  fetch(url, {
+    credentials: 'include',
+    ...options,
+  });
+
 type AnalyticsProps = {
   width: number;
   apiBaseUrl?: string;
@@ -601,7 +607,7 @@ export default function Analytics({ width, apiBaseUrl }: AnalyticsProps) {
     setLoadError("");
 
     try {
-      const response = await fetch(`${resolvedApiBaseUrl}/admin-analytics`);
+      const response = await apiFetch(`${resolvedApiBaseUrl}/admin-analytics`);
       const data = await response.json();
 
       if (!response.ok) {

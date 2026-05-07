@@ -309,6 +309,7 @@ export default function ShareAnnouncement({
       setIsSubmitting(true);
 
       const response = await fetch(`${apiBaseUrl}/create-class-announcement`, {
+        credentials: 'include',
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

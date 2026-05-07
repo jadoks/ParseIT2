@@ -54,6 +54,12 @@ function getApiBaseUrl() {
 
 const API_BASE_URL = getApiBaseUrl();
 
+const apiFetch = (url: string, options: any = {}) =>
+  fetch(url, {
+    credentials: 'include',
+    ...options,
+  });
+
 const fileUriToBase64 = async (uri: string): Promise<string> => {
   const response = await fetch(uri);
   const blob = await response.blob();
@@ -181,7 +187,7 @@ export default function Chatbot({
         fileBase64 = await fileUriToBase64(selectedFile.uri);
       }
 
-      const response = await fetch(`${API_BASE_URL}/chatbot-training`, {
+      const response = await apiFetch(`${API_BASE_URL}/chatbot-training`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

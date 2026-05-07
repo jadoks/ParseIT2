@@ -395,7 +395,7 @@ const Dashboard2 = ({
 
   const loadTeacherClasses = async () => {
     try {
-      const response = await fetch(`${API_BASE_URL}/classes`);
+      const response = await fetch(`${API_BASE_URL}/classes`, { credentials: 'include' });
       const data = await response.json();
 
       if (!response.ok) {
@@ -672,6 +672,7 @@ const Dashboard2 = ({
       }
 
       const response = await fetch(`${API_BASE_URL}/create-class`, {
+        credentials: 'include',
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -856,6 +857,7 @@ const Dashboard2 = ({
       const response = await fetch(
         `${API_BASE_URL}/update-class/${editingCourse.id}`,
         {
+        credentials: 'include',
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
@@ -940,6 +942,7 @@ const Dashboard2 = ({
       const response = await fetch(
         `${API_BASE_URL}/delete-class/${courseToDelete.id}`,
         {
+        credentials: 'include',
           method: 'DELETE',
           headers: {
             'Content-Type': 'application/json',

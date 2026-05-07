@@ -80,6 +80,12 @@ function getApiBaseUrl() {
 
 const API_BASE_URL = getApiBaseUrl();
 
+const apiFetch = (url: string, options: any = {}) =>
+  fetch(url, {
+    credentials: 'include',
+    ...options,
+  });
+
 export default function GeminiFloatingModal({
   visible,
   onClose,
@@ -222,8 +228,7 @@ export default function GeminiFloatingModal({
     try {
       setLoadingTutorSuggestions(true);
 
-      const response = await fetch(
-        `${API_BASE_URL}/student-activities/tutor-suggestions/${encodeURIComponent(currentStudentId)}`
+      const response = await apiFetch(`${API_BASE_URL}/student-activities/tutor-suggestions/${encodeURIComponent(currentStudentId)}`
       );
       const data = await response.json();
 
@@ -262,7 +267,7 @@ export default function GeminiFloatingModal({
     setLoading(true);
 
     try {
-      const response = await fetch(`${API_BASE_URL}/ai/gemini`, {
+      const response = await apiFetch(`${API_BASE_URL}/ai/gemini`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -326,7 +331,7 @@ export default function GeminiFloatingModal({
     setLoading(true);
 
     try {
-      const response = await fetch(`${API_BASE_URL}/ai/gemini`, {
+      const response = await apiFetch(`${API_BASE_URL}/ai/gemini`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

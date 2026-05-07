@@ -114,6 +114,7 @@ const TeacherNotification: React.FC<NotificationScreenProps> = ({
       setLoadingIds((prev) => [...prev, id]);
 
       const response = await fetch(`${apiBaseUrl}/notifications/${id}/read`, {
+        credentials: 'include',
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -157,6 +158,7 @@ const TeacherNotification: React.FC<NotificationScreenProps> = ({
       setIsMarkingAll(true);
 
       const response = await fetch(`${apiBaseUrl}/notifications/read-all`, {
+        credentials: 'include',
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',

@@ -368,10 +368,10 @@ const TeacherCourseDetail2 = ({
 
     try {
       const [materialsRes, assignmentsRes, membersRes, submissionsRes] = await Promise.all([
-        fetch(`${API_BASE_URL}/class-materials/${course.id}`),
-        fetch(`${API_BASE_URL}/class-assignments/${course.id}`),
-        fetch(`${API_BASE_URL}/class-members/${course.id}`),
-        fetch(`${API_BASE_URL}/class-submissions/${course.id}`),
+        fetch(`${API_BASE_URL}/class-materials/${course.id}`, { credentials: 'include' }),
+        fetch(`${API_BASE_URL}/class-assignments/${course.id}`, { credentials: 'include' }),
+        fetch(`${API_BASE_URL}/class-members/${course.id}`, { credentials: 'include' }),
+        fetch(`${API_BASE_URL}/class-submissions/${course.id}`, { credentials: 'include' }),
       ]);
 
       const [materialsData, assignmentsData, membersData, submissionsData] = await Promise.all([
@@ -568,6 +568,7 @@ const TeacherCourseDetail2 = ({
     }
 
     const response = await fetch(`${API_BASE_URL}/upload-class-file`, {
+        credentials: 'include',
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -600,6 +601,7 @@ const TeacherCourseDetail2 = ({
   const handleGradeSubmission = async (submissionId: string, score: number, feedback?: string) => {
     try {
       const response = await fetch(`${API_BASE_URL}/grade-submission/${submissionId}`, {
+        credentials: 'include',
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -926,6 +928,7 @@ const TeacherCourseDetail2 = ({
         }
 
         const response = await fetch(`${API_BASE_URL}/create-class-material`, {
+        credentials: 'include',
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -970,6 +973,7 @@ const TeacherCourseDetail2 = ({
       }
 
       const response = await fetch(`${API_BASE_URL}/create-class-assignment`, {
+        credentials: 'include',
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1011,6 +1015,7 @@ const TeacherCourseDetail2 = ({
 
     try {
       const response = await fetch(`${API_BASE_URL}/update-class-assignment/${selectedId}`, {
+        credentials: 'include',
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1040,6 +1045,7 @@ const TeacherCourseDetail2 = ({
 
     try {
       const response = await fetch(`${API_BASE_URL}/delete-class-assignment/${selectedId}`, {
+        credentials: 'include',
         method: 'DELETE',
       });
 

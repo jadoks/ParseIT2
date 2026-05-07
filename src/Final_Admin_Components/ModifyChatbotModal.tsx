@@ -4,17 +4,17 @@ import Constants from "expo-constants";
 import * as DocumentPicker from "expo-document-picker";
 import React, { useEffect, useMemo, useState } from "react";
 import {
-    ActivityIndicator,
-    Alert,
-    Modal,
-    Platform,
-    Pressable,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Alert,
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
 
 type ModifyChatbotModalProps = {
@@ -62,6 +62,12 @@ function getApiBaseUrl() {
 }
 
 const API_BASE_URL = getApiBaseUrl();
+
+const apiFetch = (url: string, options: any = {}) =>
+  fetch(url, {
+    credentials: 'include',
+    ...options,
+  });
 
 function formatDate(value: any) {
   if (!value) return "Unknown date";
@@ -136,7 +142,7 @@ export default function ModifyChatbotModal({
     try {
       setLoading(true);
 
-      const response = await fetch(`${API_BASE_URL}/chatbot-training`);
+      const response = await apiFetch(`${API_BASE_URL}/chatbot-training`);
       const data = await response.json();
 
       if (!response.ok) {
@@ -221,7 +227,7 @@ export default function ModifyChatbotModal({
     try {
       setSavingId(item.id);
 
-      const response = await fetch(`${API_BASE_URL}/chatbot-training/${item.id}`, {
+      const response = await apiFetch(`${API_BASE_URL}/chatbot-training/${item.id}`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
@@ -277,8 +283,7 @@ export default function ModifyChatbotModal({
       const file = result.assets[0];
       const fileBase64 = await fileUriToBase64(file.uri);
 
-      const response = await fetch(
-        `${API_BASE_URL}/chatbot-training/${item.id}/file`,
+      const response = await apiFetch(`${API_BASE_URL}/chatbot-training/${item.id}/file`,
         {
           method: "PATCH",
           headers: {
@@ -323,8 +328,7 @@ export default function ModifyChatbotModal({
     try {
       setRemovingFileId(item.id);
 
-      const response = await fetch(
-        `${API_BASE_URL}/chatbot-training/${item.id}/file`,
+      const response = await apiFetch(`${API_BASE_URL}/chatbot-training/${item.id}/file`,
         {
           method: "DELETE",
         }
@@ -372,8 +376,7 @@ export default function ModifyChatbotModal({
     try {
       setDeletingId(confirmDeleteItem.id);
 
-      const response = await fetch(
-        `${API_BASE_URL}/chatbot-training/${confirmDeleteItem.id}`,
+      const response = await apiFetch(`${API_BASE_URL}/chatbot-training/${confirmDeleteItem.id}`,
         {
           method: "DELETE",
         }

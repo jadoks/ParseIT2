@@ -10,6 +10,12 @@ import {
   useWindowDimensions,
 } from 'react-native';
 
+const apiFetch = (url: string, options: any = {}) =>
+  fetch(url, {
+    credentials: 'include',
+    ...options,
+  });
+
 export type ActivityItemType =
   | 'multiple_choice'
   | 'true_false'
@@ -233,8 +239,7 @@ const GenerateActivity = ({
       }
 
       try {
-        const response = await fetch(
-          `${apiBaseUrl}/student-activities/status?studentId=${encodeURIComponent(currentStudentId)}&assignmentId=${encodeURIComponent(activity.assignmentId)}`
+        const response = await apiFetch(`${apiBaseUrl}/student-activities/status?studentId=${encodeURIComponent(currentStudentId)}&assignmentId=${encodeURIComponent(activity.assignmentId)}`
         );
         const data = await response.json();
 
@@ -370,7 +375,7 @@ const GenerateActivity = ({
     }
 
     try {
-      const response = await fetch(`${apiBaseUrl}/student-activities/check-identification-answer`, {
+      const response = await apiFetch(`${apiBaseUrl}/student-activities/check-identification-answer`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -544,7 +549,7 @@ const GenerateActivity = ({
       };
 
       if (currentStudentId && apiBaseUrl) {
-        const response = await fetch(`${apiBaseUrl}/student-activities/complete`, {
+        const response = await apiFetch(`${apiBaseUrl}/student-activities/complete`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({

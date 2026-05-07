@@ -115,6 +115,12 @@ function getApiBaseUrl() {
 
 const API_BASE_URL = getApiBaseUrl();
 
+const apiFetch = (url: string, options: any = {}) =>
+  fetch(url, {
+    credentials: 'include',
+    ...options,
+  });
+
 const getDisplayFileSize = (bytes?: number | null) => {
   if (!bytes || !Number.isFinite(bytes)) return 'Uploaded file';
   if (bytes < 1024) return `${bytes} B`;
@@ -207,6 +213,8 @@ const Assignments = ({
 }: AssignmentsProps) => {
   const { width } = useWindowDimensions();
   const isLargeScreen = width >= 768;
+  const isSmallScreen = width < 480;
+  const modalWidth = isLargeScreen ? '72%' : isSmallScreen ? '92%' : '88%';
 
   const [filter, setFilter] = useState<FilterType>('all');
   const [selectedAssignment, setSelectedAssignment] = useState<FlattenedAssignment | null>(null);
@@ -377,7 +385,7 @@ const Assignments = ({
           throw new Error('Unable to read selected file.');
         }
 
-        const uploadResponse = await fetch(`${API_BASE_URL}/upload-class-file`, {
+        const uploadResponse = await apiFetch(`${API_BASE_URL}/upload-class-file`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -569,7 +577,7 @@ const Assignments = ({
       setIsSubmittingAssignment(true);
       const studentName = `${currentStudent.firstName || ''} ${currentStudent.lastName || ''}`.trim();
 
-      const response = await fetch(`${API_BASE_URL}/create-submission`, {
+      const response = await apiFetch(`${API_BASE_URL}/create-submission`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -620,7 +628,7 @@ const Assignments = ({
     try {
       setIsSubmittingAssignment(true);
 
-      const response = await fetch(`${API_BASE_URL}/unsubmit-assignment`, {
+      const response = await apiFetch(`${API_BASE_URL}/unsubmit-assignment`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -665,9 +673,13 @@ const Assignments = ({
         <View style={styles.assignmentHeader}>
           <View style={styles.assignmentInfo}>
             <Text style={styles.assignmentTitle}>{item.title}</Text>
-            {!!item.topic && <Text style={styles.assignmentTopicText}>Topic: {item.topic}</Text>}
+            {!!(item.description || item.topic) && (
+              <Text style={styles.assignmentTopicText}>
+                Instruction: {item.description || item.topic}
+              </Text>
+            )}
             <Text style={styles.courseName}>
-              {item.courseName} • {item.courseCode}
+              {item.courseName}
             </Text>
           </View>
 
@@ -768,73 +780,100 @@ const Assignments = ({
 
       <Modal visible={!!selectedAssignment} animationType="slide" transparent onRequestClose={closeModal}>
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalWrapper, { width: isLargeScreen ? '72%' : '100%' }]}>
-            <ScrollView contentContainerStyle={styles.detailContainer}>
+          <View style={[styles.modalWrapper, { width: modalWidth }, !isLargeScreen && styles.modalWrapperMobile]}>
+            <ScrollView
+              contentContainerStyle={[
+                styles.detailContainer,
+                !isLargeScreen && styles.detailContainerMobile,
+              ]}
+            >
               {selectedAssignment && (
                 <>
-                  <View style={styles.detailHeader}>
-                    <TouchableOpacity onPress={closeModal}>
-                      <Text style={styles.closeButton}>✕</Text>
-                    </TouchableOpacity>
-                    <Text style={styles.detailTitle}>{selectedAssignment.title}</Text>
-                    <View style={{ width: 30 }} />
-                  </View>
-
                   <View style={styles.detailContent}>
-                    <View style={styles.infoCard}>
-                      <Text style={styles.detailCourseName}>
-                        {selectedAssignment.courseName} • {selectedAssignment.courseCode}
+                    {/* ── INFO CARD ── */}
+                    <View style={[styles.infoCard, !isLargeScreen && styles.infoCardMobile]}>
+
+                      {/* Close button */}
+                      <TouchableOpacity onPress={closeModal} style={styles.modalCloseFloating}>
+                        <Text style={styles.closeButton}>✕</Text>
+                      </TouchableOpacity>
+
+                      {/* Title — always centered, full width, respects padding */}
+                      <Text
+                        style={[
+                          styles.assignmentModalTitle,
+                          !isLargeScreen && styles.assignmentModalTitleMobile,
+                        ]}
+                      >
+                        {selectedAssignment.title}
                       </Text>
 
-                      <Text style={styles.detailMetaText}>
-                        {selectedAssignment.semester} - {selectedAssignment.schoolYear}
-                      </Text>
-                      <Text style={styles.detailMetaText}>{selectedAssignment.section}</Text>
+                      {/* Meta block — label/value rows, never inline Text nesting */}
+                      <View style={styles.infoMetaBlock}>
+                        <View style={styles.infoMetaRow}>
+                          <Text style={styles.infoMetaLabel}>Class</Text>
+                          <Text style={styles.infoMetaValue} numberOfLines={3}>
+                            {selectedAssignment.courseName}
+                          </Text>
+                        </View>
 
-                      {!!selectedAssignment.topic && (
-                        <Text style={styles.detailTopicText}>
-                          Topic: {selectedAssignment.topic}
+                        <View style={styles.infoMetaRow}>
+                          <Text style={styles.infoMetaLabel}>Semester</Text>
+                          <Text style={styles.infoMetaValue}>
+                            {selectedAssignment.semester}
+                          </Text>
+                        </View>
+
+                        <View style={styles.infoMetaRow}>
+                          <Text style={styles.infoMetaLabel}>School Year</Text>
+                          <Text style={styles.infoMetaValue}>
+                            {selectedAssignment.schoolYear}
+                          </Text>
+                        </View>
+
+                        <View style={styles.infoMetaRow}>
+                          <Text style={styles.infoMetaLabel}>Instructor</Text>
+                          <Text style={styles.infoMetaValue} numberOfLines={3}>
+                            {selectedAssignment.instructor}
+                          </Text>
+                        </View>
+
+                        <View style={styles.infoMetaRow}>
+                          <Text style={styles.infoMetaLabel}>Due</Text>
+                          <Text style={[styles.infoMetaValue, styles.infoMetaValueDue]}>
+                            {selectedAssignment.dueDate}
+                          </Text>
+                        </View>
+
+                        {selectedAssignment.maxPoints !== undefined && (
+                          <View style={styles.infoMetaRow}>
+                            <Text style={styles.infoMetaLabel}>Points</Text>
+                            <Text style={styles.infoMetaValue}>
+                              {selectedAssignment.points}/{selectedAssignment.maxPoints}
+                            </Text>
+                          </View>
+                        )}
+
+                        {getScorePercent(selectedAssignment) !== null && (
+                          <View style={styles.infoMetaRow}>
+                            <Text style={styles.infoMetaLabel}>Score</Text>
+                            <Text style={styles.infoMetaValue}>
+                              {getScorePercent(selectedAssignment)}%
+                            </Text>
+                          </View>
+                        )}
+                      </View>
+
+                      {/* Instruction — separate block so it never overflows */}
+                      <View style={styles.infoInstructionBlock}>
+                        <Text style={styles.infoMetaLabel}>Instruction</Text>
+                        <Text style={styles.infoInstructionText}>
+                          {
+                            selectedAssignment.description ||
+                            
+                            'No instruction provided.'}
                         </Text>
-                      )}
-
-                      <Text style={styles.detailDescription}>
-                        {selectedAssignment.description ||
-                          selectedAssignment.courseDescription ||
-                          'No description provided.'}
-                      </Text>
-
-                      <View style={styles.infoRow}>
-                        <Text style={styles.infoLabel}>Instructor:</Text>
-                        <Text style={styles.infoValue}>{selectedAssignment.instructor}</Text>
                       </View>
-
-                      <View style={styles.infoRow}>
-                        <Text style={styles.infoLabel}>Due Date:</Text>
-                        <Text style={styles.infoValue}>{selectedAssignment.dueDate}</Text>
-                      </View>
-
-                      {selectedAssignment.maxPoints !== undefined && (
-                        <View style={styles.infoRow}>
-                          <Text style={styles.infoLabel}>Points:</Text>
-                          <Text style={styles.infoValue}>
-                            {selectedAssignment.points}/{selectedAssignment.maxPoints}
-                          </Text>
-                        </View>
-                      )}
-
-                      {getScorePercent(selectedAssignment) !== null && (
-                        <View style={styles.infoRow}>
-                          <Text style={styles.infoLabel}>Score:</Text>
-                          <Text
-                            style={[
-                              styles.infoValue,
-                              { color: getRecommendationColor(selectedAssignment) },
-                            ]}
-                          >
-                            {getScorePercent(selectedAssignment)}%
-                          </Text>
-                        </View>
-                      )}
 
                       {getRecommendationLabel(selectedAssignment) && (
                         <View
@@ -843,7 +882,7 @@ const Assignments = ({
                             {
                               backgroundColor: `${getRecommendationColor(selectedAssignment)}18`,
                               alignSelf: 'flex-start',
-                              marginTop: 10,
+                              marginTop: 12,
                             },
                           ]}
                         >
@@ -865,14 +904,14 @@ const Assignments = ({
                       {getTeacherAssignmentFiles(selectedAssignment).length > 0 ? (
                         <View>
                           {getTeacherAssignmentFiles(selectedAssignment).map((file) => (
-                            <View key={file.id} style={styles.attachmentFileCard}>
+                            <View key={file.id} style={[styles.attachmentFileCard, !isLargeScreen && styles.fileCardMobile]}>
                               <Text style={{ fontSize: 22 }}>📎</Text>
                               <View style={styles.fileInfo}>
                                 <Text style={styles.fileName}>{file.fileName}</Text>
                                 <Text style={styles.fileDetails}>Uploaded by your teacher for this assignment</Text>
                               </View>
                               <TouchableOpacity
-                                style={[styles.fileOpenButton, !file.fileUrl && styles.fileOpenButtonDisabled]}
+                                style={[styles.fileOpenButton, !isLargeScreen && styles.fileOpenButtonMobile, !file.fileUrl && styles.fileOpenButtonDisabled]}
                                 disabled={!file.fileUrl}
                                 activeOpacity={0.85}
                                 onPress={() => handleOpenUploadedFile(file.fileUrl, 'This assignment has no attached file yet.')}
@@ -947,7 +986,7 @@ const Assignments = ({
                       {getSubmittedFiles(selectedAssignment).length > 0 ? (
                         <View>
                           {getSubmittedFiles(selectedAssignment).map((file) => (
-                            <View key={file.id} style={styles.fileItem}>
+                            <View key={file.id} style={[styles.fileItem, !isLargeScreen && styles.fileCardMobile]}>
                               <Text style={{ fontSize: 20 }}>{file.fileType === 'text/uri-list' ? '🔗' : '📄'}</Text>
                               <View style={styles.fileInfo}>
                                 <Text style={styles.fileName}>{file.fileName}</Text>
@@ -956,9 +995,9 @@ const Assignments = ({
                                 </Text>
                               </View>
 
-                              <View style={styles.fileActionsRow}>
+                              <View style={[styles.fileActionsRow, !isLargeScreen && styles.fileActionsRowMobile]}>
                                 <TouchableOpacity
-                                  style={[styles.fileOpenButton, !file.fileUrl && styles.fileOpenButtonDisabled]}
+                                  style={[styles.fileOpenButton, !isLargeScreen && styles.fileOpenButtonMobile, !file.fileUrl && styles.fileOpenButtonDisabled]}
                                   disabled={!file.fileUrl}
                                   activeOpacity={0.85}
                                   onPress={() => handleOpenUploadedFile(file.fileUrl, 'This submitted file has no URL yet.')}
@@ -1157,18 +1196,24 @@ const Assignments = ({
 };
 
 const styles = StyleSheet.create({
-
-  loadingButtonContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-  },
+  // ─── Layout ───────────────────────────────────────────────────────────────
   container: {
     flex: 1,
     backgroundColor: '#F5F5F5',
   },
+  detailContainer: {
+    padding: 16,
+    paddingBottom: 40,
+    backgroundColor: '#fff',
+    borderRadius: 30,
+  },
+  detailContainerMobile: {
+    padding: 12,
+    paddingBottom: 40,
+  },
+  detailContent: {},
 
+  // ─── List header ──────────────────────────────────────────────────────────
   title: {
     fontSize: 24,
     fontWeight: '700',
@@ -1176,6 +1221,7 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
 
+  // ─── Filter chips ─────────────────────────────────────────────────────────
   filterRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -1200,6 +1246,7 @@ const styles = StyleSheet.create({
     color: '#FFF',
   },
 
+  // ─── Assignment list card ─────────────────────────────────────────────────
   assignmentCard: {
     borderLeftWidth: 5,
     borderLeftColor: '#D32F2F',
@@ -1284,6 +1331,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
 
+  // ─── Modal shell ──────────────────────────────────────────────────────────
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.45)',
@@ -1292,83 +1340,124 @@ const styles = StyleSheet.create({
   },
   modalWrapper: {
     maxHeight: '92%',
+    maxWidth: 1180,
     backgroundColor: '#fff',
     borderRadius: 16,
     overflow: 'hidden',
   },
-  detailContainer: {
-    padding: 16,
-    paddingBottom: 40,
-    backgroundColor: '#fff',
+  modalWrapperMobile: {
+    maxHeight: '94%',
+    borderRadius: 14,
+    overflow: 'hidden',
   },
-  detailHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+
+  // ─── Close button ─────────────────────────────────────────────────────────
+  modalCloseFloating: {
+    position: 'absolute',
+    top: -10,
+    left: -10,
+    zIndex: 20,
+    width: 42,
+    height: 42,
+    borderRadius: 999,
+    backgroundColor: '#FFF',
+    justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 14,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.12,
+    shadowRadius: 6,
+    elevation: 5,
   },
   closeButton: {
     fontSize: 20,
     color: '#666',
   },
-  detailTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#000',
-    flex: 1,
-    textAlign: 'center',
-    marginHorizontal: 8,
-  },
-  detailContent: {},
+
+  // ─── INFO CARD ────────────────────────────────────────────────────────────
   infoCard: {
+    position: 'relative',
     backgroundColor: '#F9F9F9',
     borderRadius: 12,
-    padding: 14,
+    padding: 22,
+    paddingTop: 28,        // extra room so close button doesn't clip title
     marginBottom: 16,
     borderLeftWidth: 4,
     borderLeftColor: '#D32F2F',
   },
-  detailCourseName: {
-    color: '#666',
-    fontWeight: '600',
-    fontSize: 13,
-  },
-  detailMetaText: {
-    color: '#555',
-    fontSize: 12,
-    fontWeight: '600',
-    marginTop: 4,
-  },
-  detailTopicText: {
-    color: '#444',
-    fontSize: 12,
-    fontWeight: '600',
-    marginTop: 8,
-  },
-  detailDescription: {
-    color: '#666',
-    marginVertical: 8,
-    lineHeight: 20,
-    fontSize: 13,
-  },
-  infoRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginVertical: 6,
-    flexWrap: 'wrap',
-  },
-  infoLabel: {
-    fontWeight: '600',
-    color: '#666',
-    fontSize: 13,
-  },
-  infoValue: {
-    fontWeight: '700',
-    color: '#000',
-    fontSize: 13,
-    marginLeft: 10,
+  infoCardMobile: {
+    padding: 16,
+    paddingTop: 28,
   },
 
+  // Title — full width, no flex row, no nested spacers
+  assignmentModalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#000',
+    textAlign: 'center',
+    marginBottom: 16,
+    // leave room on left for the floating close button
+    paddingLeft: 24,
+    paddingRight: 8,
+  },
+  assignmentModalTitleMobile: {
+    fontSize: 16,
+    lineHeight: 24,
+    marginBottom: 14,
+    paddingLeft: 24,
+    paddingRight: 4,
+  },
+
+  // Meta rows — label on the left, value on the right, wraps cleanly
+  infoMetaBlock: {
+    borderTopWidth: 1,
+    borderTopColor: '#EBEBEB',
+    paddingTop: 12,
+    marginBottom: 4,
+    gap: 8,
+  },
+  infoMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+  },
+  infoMetaLabel: {
+    width: 90,           // fixed label column so values align
+    flexShrink: 0,
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#000',
+    lineHeight: 20,
+  },
+  infoMetaValue: {
+    flex: 1,             // takes all remaining space and wraps naturally
+    fontSize: 13,
+    fontWeight: '500',
+    color: '#333',
+    lineHeight: 20,
+  },
+  infoMetaValueDue: {
+    color: '#D32F2F',
+    fontWeight: '600',
+  },
+
+  // Instruction — its own block beneath the grid
+  infoInstructionBlock: {
+    marginTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#EBEBEB',
+    paddingTop: 12,
+    gap: 4,
+  },
+  infoInstructionText: {
+    fontSize: 13,
+    fontWeight: '400',
+    color: '#444',
+    lineHeight: 20,
+  },
+
+  // ─── Sections inside modal ────────────────────────────────────────────────
   section: {
     marginBottom: 18,
   },
@@ -1379,6 +1468,7 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
 
+  // ─── Related materials ────────────────────────────────────────────────────
   relatedMaterialItem: {
     backgroundColor: '#F5F5F5',
     borderRadius: 10,
@@ -1409,6 +1499,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
 
+  // ─── File cards ───────────────────────────────────────────────────────────
   attachmentFileCard: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1419,7 +1510,6 @@ const styles = StyleSheet.create({
     padding: 12,
     marginBottom: 8,
   },
-
   fileItem: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1442,14 +1532,22 @@ const styles = StyleSheet.create({
     color: '#888',
     fontSize: 12,
   },
-  disabledRemoveButton: {
-  opacity: 0.45,
-},
+  fileCardMobile: {
+    alignItems: 'flex-start',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
   fileActionsRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
     marginLeft: 8,
+  },
+  fileActionsRowMobile: {
+    width: '100%',
+    justifyContent: 'flex-end',
+    marginLeft: 0,
+    marginTop: 4,
   },
   fileOpenButton: {
     minHeight: 34,
@@ -1458,6 +1556,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#D32F2F',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  fileOpenButtonMobile: {
+    minWidth: 82,
   },
   fileOpenButtonDisabled: {
     backgroundColor: '#D9A0A0',
@@ -1472,6 +1573,11 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     paddingLeft: 8,
   },
+  disabledRemoveButton: {
+    opacity: 0.45,
+  },
+
+  // ─── Upload / submit actions ──────────────────────────────────────────────
   uploadActionsRow: {
     gap: 10,
     marginTop: 8,
@@ -1536,7 +1642,14 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     fontSize: 13,
   },
+  loadingButtonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
 
+  // ─── Empty state ──────────────────────────────────────────────────────────
   emptyText: {
     fontSize: 14,
     color: '#999',
@@ -1544,6 +1657,7 @@ const styles = StyleSheet.create({
     marginVertical: 20,
   },
 
+  // ─── Comments ─────────────────────────────────────────────────────────────
   commentItem: {
     backgroundColor: '#F9F9F9',
     borderRadius: 8,
@@ -1613,6 +1727,67 @@ const styles = StyleSheet.create({
   },
   sendButtonText: {
     color: '#FFF',
+    fontWeight: '700',
+    fontSize: 13,
+  },
+
+  // ─── Unused legacy styles kept for safety ────────────────────────────────
+  detailHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 14,
+  },
+  detailTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#000',
+    flex: 1,
+    textAlign: 'center',
+    marginHorizontal: 8,
+  },
+  detailCourseName: {
+    color: '#666',
+    fontWeight: '600',
+    fontSize: 13,
+  },
+  detailMetaText: {
+    color: '#555',
+    fontSize: 12,
+    fontWeight: '600',
+    marginTop: 4,
+  },
+  detailTopicText: {
+    color: '#444',
+    fontSize: 12,
+    fontWeight: '600',
+    marginTop: 8,
+  },
+  detailDescription: {
+    color: '#666',
+    marginVertical: 8,
+    lineHeight: 20,
+    fontSize: 13,
+  },
+  infoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: 6,
+    flexWrap: 'wrap',
+  },
+  infoLabel: {
+    fontWeight: '600',
+    color: '#666',
+    fontSize: 13,
+  },
+  infoValue: {
+    fontWeight: '700',
+    color: '#000',
+    fontSize: 13,
+    marginLeft: 10,
+  },
+  assignmentInlineLabel: {
+    color: '#000',
     fontWeight: '700',
     fontSize: 13,
   },

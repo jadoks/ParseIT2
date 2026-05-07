@@ -367,8 +367,7 @@ export default function HonorsScreen() {
       const response = await fetch(
         `${API_BASE_URL}/honor-roll?startYear=${encodeURIComponent(
           normalizedStartYear
-        )}&semester=${encodeURIComponent(semester)}`
-      );
+        )}&semester=${encodeURIComponent(semester)}`, { credentials: 'include' });
 
       const data = await response.json();
 

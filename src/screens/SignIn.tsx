@@ -85,7 +85,6 @@ function getApiBaseUrl() {
 }
 
 const API_BASE_URL = getApiBaseUrl();
-console.log('SIGNIN API BASE URL:', API_BASE_URL);
 
 const SignIn = ({ onLogIn, onGoToLanding }: SignInProps) => {
   const [id, setId] = useState('');
@@ -234,12 +233,41 @@ const SignIn = ({ onLogIn, onGoToLanding }: SignInProps) => {
     return data;
   };
 
+  const createBackendSession = async () => {
+    const currentUser = auth.currentUser;
+
+    if (!currentUser) {
+      throw new Error('Firebase user session is missing.');
+    }
+
+    const idToken = await currentUser.getIdToken(true);
+
+    const response = await fetch(`${API_BASE_URL}/auth/session-login`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        idToken,
+        deviceId: Platform.OS,
+      }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data?.error || 'Failed to create secure backend session.');
+    }
+
+    return data;
+  };
+
   const fetchSignedInUserProfile = async (
     userId: string,
     role: UserRole
   ): Promise<SignedInUser> => {
     const response = await fetch(`${API_BASE_URL}/auth/user-profile`, {
       method: 'POST',
+      credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         id: userId,
@@ -261,8 +289,8 @@ const SignIn = ({ onLogIn, onGoToLanding }: SignInProps) => {
   };
 
   const completeLogin = async (userId: string, role: UserRole) => {
+    await createBackendSession();
     const signedInUser = await fetchSignedInUserProfile(userId, role);
-    console.log('SIGNED IN USER PROFILE =>', signedInUser);
     onLogIn?.(signedInUser);
   };
 
@@ -340,7 +368,7 @@ const SignIn = ({ onLogIn, onGoToLanding }: SignInProps) => {
 
   const firebasePasswordSignIn = async (email: string, rawPassword: string) => {
     try {
-      await signInWithEmailAndPassword(auth, email, rawPassword);
+      return await signInWithEmailAndPassword(auth, email, rawPassword);
     } catch (error: any) {
       const code = error?.code || '';
 
@@ -395,8 +423,14 @@ const SignIn = ({ onLogIn, onGoToLanding }: SignInProps) => {
         return;
       }
 
-      showFeedback('success', 'Login Successful', 'Welcome back.', async () => {
-        await completeLogin(user.id, user.role);
+      showFeedback('success', 'Login Successful', 'Welcome back.', () => {
+        setTimeout(async () => {
+          try {
+            await completeLogin(user.id, user.role);
+          } catch (error) {
+            console.log('POST LOGIN ERROR =>', error);
+          }
+        }, 50);
       });
     } catch (error: any) {
       console.log('LOGIN ERROR =>', error);
@@ -618,11 +652,18 @@ const SignIn = ({ onLogIn, onGoToLanding }: SignInProps) => {
       const role = pendingRole;
       const userId = pendingUserId;
 
-      showFeedback('success', 'Success', 'Your password has been set successfully.', async () => {
+      showFeedback('success', 'Success', 'Your password has been set successfully.', () => {
         resetFirstLoginState();
-        if (role) {
-          await completeLogin(userId, role);
-        }
+
+        setTimeout(async () => {
+          try {
+            if (role) {
+              await completeLogin(userId, role);
+            }
+          } catch (error) {
+            console.log('POST FIRST LOGIN ERROR =>', error);
+          }
+        }, 50);
       });
     } catch (error: any) {
       showFeedback(

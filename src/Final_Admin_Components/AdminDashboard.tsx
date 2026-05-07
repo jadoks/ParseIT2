@@ -14,7 +14,7 @@ import {
 } from "react-native";
 
 import AddAdminModal from "./AddAdminModal";
-import AddClassModal from "./AddClassModal";
+import AddClassModal, { AddClassModalPayload } from "./AddClassModal";
 import AddStudentModal from "./AddStudentModal";
 import AddTeacherModal from "./AddTeacherModal";
 import Chatbot from "./Chatbot";
@@ -67,6 +67,12 @@ function getApiBaseUrl() {
 }
 
 const API_BASE_URL = getApiBaseUrl();
+
+const apiFetch = (url: string, options: any = {}) =>
+  fetch(url, {
+    credentials: 'include',
+    ...options,
+  });
 
 function DashboardCard({
   title,
@@ -202,10 +208,10 @@ export default function AdminDashboard({
     try {
       const [studentsRes, teachersRes, adminsRes, classesRes] =
         await Promise.all([
-          fetch(`${API_BASE_URL}/students`),
-          fetch(`${API_BASE_URL}/teachers`),
-          fetch(`${API_BASE_URL}/admins`),
-          fetch(`${API_BASE_URL}/classes`),
+          apiFetch(`${API_BASE_URL}/students`),
+          apiFetch(`${API_BASE_URL}/teachers`),
+          apiFetch(`${API_BASE_URL}/admins`),
+          apiFetch(`${API_BASE_URL}/classes`),
         ]);
 
       const [studentsData, teachersData, adminsData, classesData] =
@@ -242,7 +248,7 @@ export default function AdminDashboard({
 
   const handleAddSharedTeacher = async (payload: TeacherFormPayload) => {
     try {
-      const response = await fetch(`${API_BASE_URL}/create-teacher`, {
+      const response = await apiFetch(`${API_BASE_URL}/create-teacher`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -264,30 +270,15 @@ export default function AdminDashboard({
     }
   };
 
-  const handleAddSharedClass = async (payload: {
-    classCode: string;
-    className: string;
-    courseCode: string;
-    semester: string;
-    section: string;
-    instructor: string;
-    instructorEmail: string | null;
-    instructorIdentifier: string | null;
-    classMembers: number;
-    schoolYear: string | null;
-    description: string | null;
-    bannerLocalUri: string | null;
-    bannerFileName: string | null;
-    bannerMimeType: string | null;
-  }) => {
+  const handleAddSharedClass = async (payload: AddClassModalPayload) => {
     try {
-      let bannerBase64 = null;
+      let bannerBase64: string | null = null;
 
       if (payload.bannerLocalUri) {
         bannerBase64 = await fileUriToBase64(payload.bannerLocalUri);
       }
 
-      const response = await fetch(`${API_BASE_URL}/create-class`, {
+      const response = await apiFetch(`${API_BASE_URL}/create-class`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -302,11 +293,9 @@ export default function AdminDashboard({
           bannerBase64,
           bannerFileName: payload.bannerFileName,
           bannerMimeType: payload.bannerMimeType,
-
-          instructorName: payload.instructor,
-          instructorEmail: payload.instructorEmail,
           instructorIdentifier: payload.instructorIdentifier,
-
+          memberCount: payload.classMembers,
+          units: payload.units,
           createdByUid: "admin_uid_001",
           createdByRole: "admin",
           createdByName: "Jadoks",
@@ -324,12 +313,11 @@ export default function AdminDashboard({
 
       Alert.alert(
         "Success",
-        `Class created successfully.\nClass Code: ${
+        `Class created successfully.
+Class Code: ${
           data?.data?.classCode || payload.classCode
         }`
       );
-
-      console.log("Class saved to Firebase:", data);
     } catch (error) {
       console.error("Error saving class:", error);
       Alert.alert("Error", "Failed to create class.");
@@ -338,7 +326,7 @@ export default function AdminDashboard({
 
   const handleAddSharedAdmin = async (payload: AdminFormPayload) => {
     try {
-      const response = await fetch(`${API_BASE_URL}/create-admin`, {
+      const response = await apiFetch(`${API_BASE_URL}/create-admin`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -362,7 +350,7 @@ export default function AdminDashboard({
 
   const handleAddSharedStudent = async (payload: StudentFormPayload) => {
     try {
-      const response = await fetch(`${API_BASE_URL}/create-student`, {
+      const response = await apiFetch(`${API_BASE_URL}/create-student`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

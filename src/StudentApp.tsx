@@ -516,7 +516,7 @@ const mapCourseAssignmentsToAssignmentItems = (
   }));
 };
 
-const mapCoursesToAssignmentCourses = (courses: CourseDetailData[]): AssignmentCourse[] => {
+const mapCoursesToAssignmentCourses = (courses: CourseDetailData[]): AssignmentCourseWithBannerFields[] => {
   return courses.map((course) => ({
     id: course.id,
     name: course.name,
@@ -526,6 +526,10 @@ const mapCoursesToAssignmentCourses = (courses: CourseDetailData[]): AssignmentC
     semester: course.semester,
     schoolYear: course.schoolYear,
     section: course.section,
+    bannerUrl: (course as any).bannerUrl || null,
+    bannerStoragePath: (course as any).bannerStoragePath || null,
+    bannerFileName: (course as any).bannerFileName || null,
+    bannerMimeType: (course as any).bannerMimeType || null,
     materials: course.materials.map((material) => ({
       id: material.id,
       title: material.title,
@@ -541,7 +545,22 @@ const mapCoursesToAssignmentCourses = (courses: CourseDetailData[]): AssignmentC
   }));
 };
 
-const mapJoinedClassToCourseDetail = (item: any): CourseDetailData & { units?: number } => ({
+type CourseWithBannerFields = CourseDetailData & {
+  units?: number;
+  bannerUrl?: string | null;
+  bannerStoragePath?: string | null;
+  bannerFileName?: string | null;
+  bannerMimeType?: string | null;
+};
+
+type AssignmentCourseWithBannerFields = AssignmentCourse & {
+  bannerUrl?: string | null;
+  bannerStoragePath?: string | null;
+  bannerFileName?: string | null;
+  bannerMimeType?: string | null;
+};
+
+const mapJoinedClassToCourseDetail = (item: any): CourseWithBannerFields => ({
   id: String(item.id || ''),
   name: item.name || 'Untitled Class',
   code: item.courseCode || item.classCode || '',
@@ -550,12 +569,16 @@ const mapJoinedClassToCourseDetail = (item: any): CourseDetailData & { units?: n
   semester: item.semester || '',
   schoolYear: item.schoolYear || '',
   section: item.section || '',
+  bannerUrl: item.bannerUrl || null,
+  bannerStoragePath: item.bannerStoragePath || null,
+  bannerFileName: item.bannerFileName || null,
+  bannerMimeType: item.bannerMimeType || null,
   units: typeof item.units === 'number' ? item.units : Number(item.units) || 0,
   materials: Array.isArray(item.materials) ? item.materials : [],
   assignments: Array.isArray(item.assignments) ? item.assignments : [],
 });
 
-const mapCourseDetailToAssignmentCourse = (course: CourseDetailData): AssignmentCourse => ({
+const mapCourseDetailToAssignmentCourse = (course: CourseDetailData): AssignmentCourseWithBannerFields => ({
   id: course.id,
   name: course.name,
   code: course.code,
@@ -564,6 +587,10 @@ const mapCourseDetailToAssignmentCourse = (course: CourseDetailData): Assignment
   semester: course.semester,
   schoolYear: course.schoolYear,
   section: course.section,
+  bannerUrl: (course as any).bannerUrl || null,
+  bannerStoragePath: (course as any).bannerStoragePath || null,
+  bannerFileName: (course as any).bannerFileName || null,
+  bannerMimeType: (course as any).bannerMimeType || null,
   materials: (course.materials || []).map((material) => ({
     id: material.id,
     title: material.title,
@@ -1040,8 +1067,7 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
     try {
       setIsLoadingJoinedCourses(true);
 
-      const response = await fetch(
-        `${API_BASE_URL}/student-joined-classes/${currentStudent.studentId}`
+      const response = await apiFetch(`${API_BASE_URL}/student-joined-classes/${currentStudent.studentId}`
       );
 
       const data = await response.json();
@@ -1229,8 +1255,7 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
     applySavedAssignmentState(localState);
 
     try {
-      const response = await fetch(
-        `${API_BASE_URL}/student-submissions/${encodeURIComponent(currentStudent.studentId)}`
+      const response = await apiFetch(`${API_BASE_URL}/student-submissions/${encodeURIComponent(currentStudent.studentId)}`
       );
       const data = await response.json();
 
@@ -1522,8 +1547,7 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
     if (!trimmedMessage) return;
 
     try {
-      const response = await fetch(
-        `${API_BASE_URL}/community-posts/${postId}/answers/${answerId}`,
+      const response = await apiFetch(`${API_BASE_URL}/community-posts/${postId}/answers/${answerId}`,
         {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
@@ -1545,8 +1569,7 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
 
   const handleDeleteCommunityAnswer = async (postId: string, answerId: string) => {
     try {
-      const response = await fetch(
-        `${API_BASE_URL}/community-posts/${postId}/answers/${answerId}`,
+      const response = await apiFetch(`${API_BASE_URL}/community-posts/${postId}/answers/${answerId}`,
         {
           method: 'DELETE',
         }
@@ -1632,8 +1655,7 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
     }
 
     try {
-      const response = await fetch(
-        `${API_BASE_URL}/student-activities/completed-scores/${encodeURIComponent(currentStudent.studentId)}`
+      const response = await apiFetch(`${API_BASE_URL}/student-activities/completed-scores/${encodeURIComponent(currentStudent.studentId)}`
       );
       const data = await response.json();
 
@@ -1658,8 +1680,7 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
     }
 
     try {
-      const response = await fetch(
-        `${API_BASE_URL}/notifications?userId=${encodeURIComponent(currentStudent.studentId)}&role=student`
+      const response = await apiFetch(`${API_BASE_URL}/notifications?userId=${encodeURIComponent(currentStudent.studentId)}&role=student`
       );
       const data = await response.json();
 
@@ -1906,7 +1927,7 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
     }
   };
 
-  const normalizeCourseForActivity = (course: any): CourseDetailData => {
+  const normalizeCourseForActivity = (course: any): CourseWithBannerFields => {
     return {
       id: String(course?.id || ''),
       name: course?.name || 'Untitled Class',
@@ -1916,6 +1937,10 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
       semester: course?.semester || '',
       schoolYear: course?.schoolYear || '',
       section: course?.section || '',
+      bannerUrl: course?.bannerUrl || null,
+      bannerStoragePath: course?.bannerStoragePath || null,
+      bannerFileName: course?.bannerFileName || null,
+      bannerMimeType: course?.bannerMimeType || null,
       materials: Array.isArray(course?.materials) ? course.materials : [],
       assignments: Array.isArray(course?.assignments) ? course.assignments : [],
     };

@@ -337,8 +337,7 @@ const Grades = () => {
       setOpenDropdown(null);
 
       const joinedResponse = await fetch(
-        `${API_BASE_URL}/student-joined-classes/${encodeURIComponent(trimmedId)}`
-      );
+        `${API_BASE_URL}/student-joined-classes/${encodeURIComponent(trimmedId)}`, { credentials: 'include' });
 
       const joinedData = await joinedResponse.json();
 
@@ -375,8 +374,7 @@ const Grades = () => {
       const finalGradeGroups = await Promise.all(
         matchingClasses.map(async (classItem) => {
           const response = await fetch(
-            `${API_BASE_URL}/final-grades/${encodeURIComponent(classItem.id)}`
-          );
+            `${API_BASE_URL}/final-grades/${encodeURIComponent(classItem.id)}`, { credentials: 'include' });
 
           const data = await response.json();
 

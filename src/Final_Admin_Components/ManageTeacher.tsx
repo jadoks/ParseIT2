@@ -70,6 +70,12 @@ function getApiBaseUrl() {
 
 const API_BASE_URL = getApiBaseUrl();
 
+const apiFetch = (url: string, options: any = {}) =>
+  fetch(url, {
+    credentials: 'include',
+    ...options,
+  });
+
 function formatBirthday(value: BackendTeacherItem["birthday"]): string {
   if (!value) return "";
 
@@ -126,7 +132,7 @@ export default function ManageTeacher({ width }: ManageTeacherProps) {
     try {
       setIsLoading(true);
 
-      const response = await fetch(`${API_BASE_URL}/teachers`, {
+      const response = await apiFetch(`${API_BASE_URL}/teachers`, {
         method: "GET",
         headers: {
           "Content-Type": "application/json",
@@ -183,8 +189,7 @@ export default function ManageTeacher({ width }: ManageTeacherProps) {
   const handleSubmitTeacher = async (payload: TeacherFormPayload) => {
     try {
       if (isEditMode && selectedTeacher?.id) {
-        const response = await fetch(
-          `${API_BASE_URL}/update-teacher/${selectedTeacher.id}`,
+        const response = await apiFetch(`${API_BASE_URL}/update-teacher/${selectedTeacher.id}`,
           {
             method: "PUT",
             headers: {
@@ -206,7 +211,7 @@ export default function ManageTeacher({ width }: ManageTeacherProps) {
         return;
       }
 
-      const response = await fetch(`${API_BASE_URL}/create-teacher`, {
+      const response = await apiFetch(`${API_BASE_URL}/create-teacher`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -264,8 +269,7 @@ export default function ManageTeacher({ width }: ManageTeacherProps) {
     if (!teacherToDelete) return;
 
     try {
-      const response = await fetch(
-        `${API_BASE_URL}/delete-teacher/${teacherToDelete.id}`,
+      const response = await apiFetch(`${API_BASE_URL}/delete-teacher/${teacherToDelete.id}`,
         {
           method: "DELETE",
           headers: {

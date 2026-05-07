@@ -51,6 +51,12 @@ function getApiBaseUrl() {
 }
 
 const API_BASE_URL = getApiBaseUrl();
+
+const apiFetch = (url: string, options: any = {}) =>
+  fetch(url, {
+    credentials: 'include',
+    ...options,
+  });
 const database = getDatabase(auth.app, RTDB_URL);
 
 type MessengerCourse = {
@@ -310,8 +316,7 @@ const Messenger = ({
   useEffect(() => {
     const loadConversations = async () => {
       try {
-        const response = await fetch(
-          `${API_BASE_URL}/messenger-conversations?role=student&userId=${encodeURIComponent(
+        const response = await apiFetch(`${API_BASE_URL}/messenger-conversations?role=student&userId=${encodeURIComponent(
             currentUser
           )}`
         );
@@ -395,8 +400,7 @@ const Messenger = ({
         let backendRows: any[] = [];
 
         try {
-          const response = await fetch(
-            `${API_BASE_URL}/messenger-messages/${selected.id}`
+          const response = await apiFetch(`${API_BASE_URL}/messenger-messages/${selected.id}`
           );
 
           const data = await response.json();
@@ -639,7 +643,7 @@ const Messenger = ({
     }
 
     try {
-      await fetch(`${API_BASE_URL}/messenger-send-message`, {
+      await apiFetch(`${API_BASE_URL}/messenger-send-message`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

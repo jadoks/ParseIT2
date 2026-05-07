@@ -13,6 +13,12 @@ import {
 } from 'react-native';
 import { WebView } from 'react-native-webview';
 
+const apiFetch = (url: string, options: any = {}) =>
+  fetch(url, {
+    credentials: 'include',
+    ...options,
+  });
+
 interface VideoItem {
   id: string;
   title: string;
@@ -142,7 +148,7 @@ const Videos = ({
       url.searchParams.set('userId', currentUserId.trim());
       url.searchParams.set('role', currentUserRole);
 
-      const response = await fetch(url.toString());
+      const response = await apiFetch(url.toString());
       const data = await response.json();
 
       if (!response.ok) {
@@ -171,7 +177,7 @@ const Videos = ({
       }
       url.searchParams.set('maxResults', '12');
 
-      const response = await fetch(url.toString());
+      const response = await apiFetch(url.toString());
       const data = await response.json();
 
       if (!response.ok) {
@@ -246,7 +252,7 @@ const Videos = ({
     );
 
     try {
-      const response = await fetch(`${apiBaseUrl}/video-favorites/toggle`, {
+      const response = await apiFetch(`${apiBaseUrl}/video-favorites/toggle`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

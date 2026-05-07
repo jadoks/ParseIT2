@@ -144,7 +144,7 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
       icon: <Feather name="activity" size={30} color="#fff" />,
       title: "AI-Driven Academic Support System",
       description:
-        "Parsers Hub 2.0 delivers adaptive learning, real-time assistance, and predictive analytics to support both students and educators in improving academic performance and decision-making.",
+        "ParseIT Hub delivers adaptive learning, real-time assistance, and predictive analytics to support both students and educators in improving academic performance and decision-making.",
       color: ["#ff8a00", "#ffb000"],
     },
     {
@@ -165,7 +165,7 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
       icon: <Ionicons name="phone-portrait-outline" size={30} color="#fff" />,
       title: "Cross-Platform Access",
       description:
-        "Access Parsers Hub on any device. Fully responsive web app and native mobile experience built with React Native (Expo).",
+        "Access ParseIT Hub on any device. Fully responsive web app and native mobile experience built with React Native (Expo).",
       color: ["#ff2d7a", "#ff4385"],
     },
   ];
@@ -310,7 +310,7 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
                 </GradientTextLike>
 
                 <Text style={[styles.heroDescription, isTablet && styles.heroDescriptionTablet, isSmall && styles.heroDescriptionSmall]}>
-                  Parsers Hub 2.0 combines an intelligent AI tutor with predictive analytics to transform programming education. Get personalized learning assistance, track student performance, and gain actionable academic insights—all in one platform.
+                  ParseIT Hub combines an intelligent AI tutor with predictive analytics to transform programming education. Get personalized learning assistance, track student performance, and gain actionable academic insights—all in one platform.
                 </Text>
 
                 <View style={[styles.heroButtons, isSmall && styles.heroButtonsSmall]}>
@@ -339,7 +339,7 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
           </View>
 
           <SectionWrapper scrollY={scrollY} onLayout={onSectionLayout("features")}>
-            <SectionHeader scrollY={scrollY} title="Complete Academic Ecosystem" subtitle="More than just a chatbot—Parsers Hub 2.0 is a comprehensive platform combining AI tutoring with powerful analytics for next-generation learning." />
+            <SectionHeader scrollY={scrollY} title="Complete Academic Ecosystem" subtitle="More than just a chatbot—ParseIT Hub is a comprehensive platform combining AI tutoring with powerful analytics for next-generation learning." />
             <ResponsiveGrid>
               {features.map((feature, index) => (
                 <FeatureTile key={feature.title} feature={feature} index={index} />
@@ -404,12 +404,12 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
               <Pill icon={<Feather name="zap" size={17} color="#ff9aa5" />} text="Transform Learning with AI" centered />
               <Text style={[styles.ctaTitle, isSmall && styles.ctaTitleSmall]}>Ready to Revolutionize Education?</Text>
               <Text style={styles.ctaText}>
-               Join Parsers Hub 2.0 and experience the future of AI-powered education. Empower students with intelligent tutoring, equip teachers with advanced analytics, and transform your institution.
+               Join ParseIT Hub 2.0 and experience the future of AI-powered education. Empower students with intelligent tutoring, equip teachers with advanced analytics, and transform your institution.
               </Text>
               <View style={[styles.ctaActions, isSmall && styles.ctaActionsSmall]}>
                 <TouchableOpacity activeOpacity={0.9} onPress={goToSignIn} style={[styles.ctaPrimary, isSmall && styles.buttonFull]}>
                   <LinearGradient colors={["#ff0019", "#ff4f00"]} style={styles.ctaPrimaryGradient}>
-                    <Text style={styles.ctaPrimaryText}>Start Using Parsers Hub Today</Text>
+                    <Text style={styles.ctaPrimaryText}>Start Using ParseIT Hub Today</Text>
                     <Feather name="arrow-right" size={22} color="#fff" />
                   </LinearGradient>
                 </TouchableOpacity>
@@ -509,7 +509,7 @@ function Header({ isMobile, isSmall, navItems, scrollToSection, onGetStarted }: 
           />
         </View>
         <View style={styles.brandTextWrap}>
-          <Text style={[styles.brandTitle, isSmall && styles.brandTitleSmall]}>Parsers Hub 2.0</Text>
+          <Text style={[styles.brandTitle, isSmall && styles.brandTitleSmall]}>ParseIT Hub</Text>
           <Text style={styles.brandSubtitle}>AI-Powered Learning Platform</Text>
         </View>
       </View>
@@ -595,7 +595,7 @@ function HeroMockup({ compact }: { compact: boolean }) {
               />
             </View>
             <View>
-              <Text style={styles.mockupTitle}>Parsers Hub 2.0</Text>
+              <Text style={styles.mockupTitle}>ParseIT Hub</Text>
               <Text style={styles.mockupSubtitle}>Student Dashboard</Text>
             </View>
           </View>
@@ -1133,7 +1133,7 @@ function Footer() {
               />
             </View>
             <View>
-              <Text style={styles.footerBrandTitle}>Parsers Hub 2.0</Text>
+              <Text style={styles.footerBrandTitle}>ParseIT Hub</Text>
               <Text style={styles.footerBrandSub}>AI-Powered Learning Platform</Text>
             </View>
           </View>
@@ -1180,7 +1180,7 @@ function Footer() {
         </View>
       </View>
       <View style={styles.footerBottom}>
-        <Text style={styles.copyright}>© 2026 Parsers Hub 2.0 - Cebu Technological University. All rights reserved.</Text>
+        <Text style={styles.copyright}>© 2026 ParseIT Hub 2.0 - Cebu Technological University. All rights reserved.</Text>
       </View>
     </View>
   );

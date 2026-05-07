@@ -45,6 +45,12 @@ function getGameAiBaseUrl() {
 
 const GAME_AI_BASE_URL = getGameAiBaseUrl();
 
+const apiFetch = (url: string, options: any = {}) =>
+  fetch(url, {
+    credentials: 'include',
+    ...options,
+  });
+
 const Game = ({ onNavigate }: Props) => {
   const { width } = useWindowDimensions();
   const isSmallScreen = width < 768;
@@ -104,7 +110,7 @@ const Game = ({ onNavigate }: Props) => {
       const formData = new FormData();
       formData.append('file', filePayload as any);
 
-      const response = await fetch(`${GAME_AI_BASE_URL}/game-ai/generate-quiz-masters`, {
+      const response = await apiFetch(`${GAME_AI_BASE_URL}/game-ai/generate-quiz-masters`, {
         method: 'POST',
         body: formData,
       });

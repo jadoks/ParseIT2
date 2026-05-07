@@ -85,7 +85,13 @@ export default function AdminApp({ onLogout, currentAdmin }: Props) {
     setSidebarVisible(false);
   };
 
-  const confirmLogout = () => {
+  const confirmLogout = async () => {
+    try {
+      await apiFetch(`${API_BASE_URL}/auth/session-logout`, {
+        method: "POST",
+      });
+    } catch {}
+
     setIsLogoutModalVisible(false);
     setActiveTopNav("Dashboard");
     setActiveSideNav(null);

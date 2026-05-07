@@ -12,6 +12,12 @@ import {
   useWindowDimensions,
 } from 'react-native';
 
+const apiFetch = (url: string, options: any = {}) =>
+  fetch(url, {
+    credentials: 'include',
+    ...options,
+  });
+
 type JourneyCourse = {
   id: string;
   name: string;
@@ -164,7 +170,7 @@ const MyJourney = ({
 
         const gradePairs = await Promise.all(
           filteredCourses.map(async (course) => {
-            const response = await fetch(`${apiBaseUrl}/final-grades/${course.id}`);
+            const response = await apiFetch(`${apiBaseUrl}/final-grades/${course.id}`);
             const data = await response.json();
 
             if (!response.ok) return [course.id, null] as const;

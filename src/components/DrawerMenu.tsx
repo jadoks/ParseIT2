@@ -19,6 +19,12 @@ import {
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { auth } from '../../firebaseConfig';
 
+const apiFetch = (url: string, options: any = {}) =>
+  fetch(url, {
+    credentials: 'include',
+    ...options,
+  });
+
 type ScreenType =
   | 'home'
   | 'classes'
@@ -222,7 +228,7 @@ const DrawerMenu = ({
       setSavingEmail(true);
       await reauthenticateCurrentUser(userEmail, trimmedPassword);
 
-      const response = await fetch(`${apiBaseUrl}/auth/change-email`, {
+      const response = await apiFetch(`${apiBaseUrl}/auth/change-email`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -270,7 +276,7 @@ const DrawerMenu = ({
       setSavingPassword(true);
       await reauthenticateCurrentUser(userEmail, trimmedCurrentPassword);
 
-      const response = await fetch(`${apiBaseUrl}/auth/change-password`, {
+      const response = await apiFetch(`${apiBaseUrl}/auth/change-password`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -297,8 +303,15 @@ const DrawerMenu = ({
 
   const handleLogout = async () => {
     try {
+      await apiFetch(`${apiBaseUrl}/auth/session-logout`, {
+        method: 'POST',
+      });
+    } catch {}
+
+    try {
       await signOut(auth);
     } catch {}
+
     setLogoutModalVisible(false);
     if (!isFixed) onClose?.();
     setIsLoggedIn(false);

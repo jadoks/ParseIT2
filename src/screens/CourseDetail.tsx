@@ -55,6 +55,12 @@ function getApiBaseUrl() {
 
 const API_BASE_URL = getApiBaseUrl();
 
+const apiFetch = (url: string, options: any = {}) =>
+  fetch(url, {
+    credentials: 'include',
+    ...options,
+  });
+
 const getDisplayFileSize = (bytes?: number | null) => {
   if (!bytes || !Number.isFinite(bytes)) return "Uploaded file";
   if (bytes < 1024) return `${bytes} B`;
@@ -472,7 +478,7 @@ const CourseDetail = ({
           throw new Error("Unable to read selected file.");
         }
 
-        const uploadResponse = await fetch(`${API_BASE_URL}/upload-class-file`, {
+        const uploadResponse = await apiFetch(`${API_BASE_URL}/upload-class-file`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -630,7 +636,7 @@ const CourseDetail = ({
       setIsSubmittingAssignment(true);
       const studentName = `${currentStudent.firstName || ""} ${currentStudent.lastName || ""}`.trim();
 
-      const response = await fetch(`${API_BASE_URL}/create-submission`, {
+      const response = await apiFetch(`${API_BASE_URL}/create-submission`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -681,7 +687,7 @@ const CourseDetail = ({
     try {
       setIsSubmittingAssignment(true);
 
-      const response = await fetch(`${API_BASE_URL}/unsubmit-assignment`, {
+      const response = await apiFetch(`${API_BASE_URL}/unsubmit-assignment`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -754,9 +760,9 @@ const CourseDetail = ({
         <View style={styles.assignmentHeader}>
           <View style={styles.assignmentInfo}>
             <Text style={styles.assignmentTitle}>{item.title}</Text>
-            {!!item.topic && (
+            {!!((item as any).description || item.topic) && (
               <Text style={styles.assignmentTopicText}>
-                Topic: {item.topic}
+                Instruction: {(item as any).description || item.topic}
               </Text>
             )}
           </View>
@@ -1119,85 +1125,92 @@ const CourseDetail = ({
             <View
               style={[
                 styles.modalWrapper,
-                { width: isLargeScreen ? "72%" : "100%" },
+                { width: isLargeScreen ? "72%" : width < 480 ? "92%" : "88%" },
+                !isLargeScreen && styles.modalWrapperMobile,
               ]}
             >
               <ScrollView contentContainerStyle={styles.detailContainer}>
                 {selectedAssignment && (
                   <>
-                    <View style={styles.detailHeader}>
-                      <TouchableOpacity onPress={closeAssignmentModal}>
-                        <Text style={styles.closeButton}>✕</Text>
-                      </TouchableOpacity>
-                      <Text style={styles.detailTitle}>
-                        {selectedAssignment.title}
-                      </Text>
-                      <View style={{ width: 30 }} />
-                    </View>
-
                     <View style={styles.detailContent}>
-                      <View style={styles.infoCard}>
-                        <Text style={styles.detailCourseName}>
-                          {safeCourse.name} • {safeCourse.code}
+                      <View style={[styles.infoCard, !isLargeScreen && styles.infoCardMobile]}>
+                        <TouchableOpacity
+                          onPress={closeAssignmentModal}
+                          style={styles.modalCloseFloating}
+                        >
+                          <Text style={styles.closeButton}>✕</Text>
+                        </TouchableOpacity>
+
+                        <Text
+                          style={[
+                            styles.assignmentModalTitle,
+                            !isLargeScreen && styles.assignmentModalTitleMobile,
+                          ]}
+                        >
+                          {selectedAssignment.title}
                         </Text>
 
-                        <Text style={styles.detailMetaText}>
-                          {safeCourse.semester} - {safeCourse.schoolYear}
-                        </Text>
-                        <Text style={styles.detailMetaText}>
-                          {safeCourse.section}
-                        </Text>
-
-                        {!!selectedAssignment.topic && (
-                          <Text style={styles.detailTopicText}>
-                            Topic: {selectedAssignment.topic}
-                          </Text>
-                        )}
-
-                        <Text style={styles.detailDescription}>
-                          {safeCourse.description || "No description provided."}
-                        </Text>
-
-                        <View style={styles.infoRow}>
-                          <Text style={styles.infoLabel}>Instructor:</Text>
-                          <Text style={styles.infoValue}>
-                            {safeCourse.instructor}
-                          </Text>
-                        </View>
-
-                        <View style={styles.infoRow}>
-                          <Text style={styles.infoLabel}>Due Date:</Text>
-                          <Text style={styles.infoValue}>
-                            {selectedAssignment.dueDate}
-                          </Text>
-                        </View>
-
-                        {selectedAssignment.maxPoints !== undefined && (
-                          <View style={styles.infoRow}>
-                            <Text style={styles.infoLabel}>Points:</Text>
-                            <Text style={styles.infoValue}>
-                              {selectedAssignment.points}/
-                              {selectedAssignment.maxPoints}
+                        <View style={styles.infoMetaBlock}>
+                          <View style={styles.infoMetaRow}>
+                            <Text style={styles.infoMetaLabel}>Class</Text>
+                            <Text style={styles.infoMetaValue} numberOfLines={3}>
+                              {safeCourse.name}
                             </Text>
                           </View>
-                        )}
 
-                        {getScorePercent(selectedAssignment) !== null && (
-                          <View style={styles.infoRow}>
-                            <Text style={styles.infoLabel}>Score:</Text>
-                            <Text
-                              style={[
-                                styles.infoValue,
-                                {
-                                  color:
-                                    getRecommendationColor(selectedAssignment),
-                                },
-                              ]}
-                            >
-                              {getScorePercent(selectedAssignment)}%
+                          <View style={styles.infoMetaRow}>
+                            <Text style={styles.infoMetaLabel}>Semester</Text>
+                            <Text style={styles.infoMetaValue}>
+                              {safeCourse.semester}
                             </Text>
                           </View>
-                        )}
+
+                          <View style={styles.infoMetaRow}>
+                            <Text style={styles.infoMetaLabel}>School Year</Text>
+                            <Text style={styles.infoMetaValue}>
+                              {safeCourse.schoolYear}
+                            </Text>
+                          </View>
+
+                          <View style={styles.infoMetaRow}>
+                            <Text style={styles.infoMetaLabel}>Instructor</Text>
+                            <Text style={styles.infoMetaValue} numberOfLines={3}>
+                              {safeCourse.instructor}
+                            </Text>
+                          </View>
+
+                          <View style={styles.infoMetaRow}>
+                            <Text style={styles.infoMetaLabel}>Due</Text>
+                            <Text style={[styles.infoMetaValue, styles.infoMetaValueDue]}>
+                              {selectedAssignment.dueDate}
+                            </Text>
+                          </View>
+
+                          {selectedAssignment.maxPoints !== undefined && (
+                            <View style={styles.infoMetaRow}>
+                              <Text style={styles.infoMetaLabel}>Points</Text>
+                              <Text style={styles.infoMetaValue}>
+                                {selectedAssignment.points}/{selectedAssignment.maxPoints}
+                              </Text>
+                            </View>
+                          )}
+
+                          {getScorePercent(selectedAssignment) !== null && (
+                            <View style={styles.infoMetaRow}>
+                              <Text style={styles.infoMetaLabel}>Score</Text>
+                              <Text style={styles.infoMetaValue}>
+                                {getScorePercent(selectedAssignment)}%
+                              </Text>
+                            </View>
+                          )}
+                        </View>
+
+                        <View style={styles.infoInstructionBlock}>
+                          <Text style={styles.infoMetaLabel}>Instruction</Text>
+                          <Text style={styles.infoInstructionText}>
+                            {(selectedAssignment as any).description || "No instruction provided."}
+                          </Text>
+                        </View>
 
                         {hasMasteredGeneratedActivity(selectedAssignment) ? (
                           <View style={styles.masteredActivityNotice}>
@@ -1990,11 +2003,21 @@ const styles = StyleSheet.create({
   confirmButtonText: { color: "#FFFFFF", fontWeight: "700", fontSize: 13 },
   modalWrapper: {
     maxHeight: "92%",
+    maxWidth: 1180,
     backgroundColor: "#FFF",
     borderRadius: 16,
     overflow: "hidden",
   },
-  detailContainer: { padding: 16, paddingBottom: 40, backgroundColor: "#FFF" },
+  modalWrapperMobile: {
+    maxHeight: "94%",
+    borderRadius: 14,
+    overflow: "hidden",
+  },
+  detailContainer: {
+    padding: 16,
+    paddingBottom: 40,
+    backgroundColor: "#FFF",
+  },
   detailHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -2002,6 +2025,87 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
   closeButton: { fontSize: 20, color: "#666" },
+  modalCloseFloating: {
+    position: "absolute",
+    top: -10,
+    left: -10,
+    zIndex: 20,
+    width: 42,
+    height: 42,
+    borderRadius: 999,
+    backgroundColor: "#FFF",
+    justifyContent: "center",
+    alignItems: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.12,
+    shadowRadius: 6,
+    elevation: 5,
+  },
+  infoCardMobile: {
+    padding: 16,
+    paddingTop: 28,
+  },
+  assignmentModalTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#000",
+    textAlign: "center",
+    marginBottom: 16,
+    paddingLeft: 24,
+    paddingRight: 8,
+  },
+  assignmentModalTitleMobile: {
+    fontSize: 16,
+    lineHeight: 24,
+    marginBottom: 14,
+    paddingLeft: 24,
+    paddingRight: 4,
+  },
+  infoMetaBlock: {
+    borderTopWidth: 1,
+    borderTopColor: "#EBEBEB",
+    paddingTop: 12,
+    marginBottom: 4,
+    gap: 8,
+  },
+  infoMetaRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 8,
+  },
+  infoMetaLabel: {
+    width: 90,
+    flexShrink: 0,
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#000",
+    lineHeight: 20,
+  },
+  infoMetaValue: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: "500",
+    color: "#333",
+    lineHeight: 20,
+  },
+  infoMetaValueDue: {
+    color: "#D32F2F",
+    fontWeight: "600",
+  },
+  infoInstructionBlock: {
+    marginTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: "#EBEBEB",
+    paddingTop: 12,
+    gap: 4,
+  },
+  infoInstructionText: {
+    fontSize: 13,
+    fontWeight: "400",
+    color: "#444",
+    lineHeight: 20,
+  },
   detailTitle: {
     fontSize: 18,
     fontWeight: "700",
@@ -2012,9 +2116,11 @@ const styles = StyleSheet.create({
   },
   detailContent: {},
   infoCard: {
+    position: "relative",
     backgroundColor: "#F9F9F9",
     borderRadius: 12,
-    padding: 14,
+    padding: 22,
+    paddingTop: 28,
     marginBottom: 16,
     borderLeftWidth: 4,
     borderLeftColor: "#D32F2F",
