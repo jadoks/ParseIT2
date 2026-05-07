@@ -1,6 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import * as Clipboard from 'expo-clipboard';
 import Constants from 'expo-constants';
+import * as FileSystem from 'expo-file-system/legacy';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
@@ -30,6 +31,9 @@ export type TeacherCourseData = {
   instructor: string;
   section?: string;
   bannerUri?: string;
+  bannerStoragePath?: string | null;
+  bannerFileName?: string | null;
+  bannerMimeType?: string | null;
   year?: string;
   yearSection?: string;
   semester?: string;
@@ -238,24 +242,32 @@ const normalizeCoursePositions = (courseList: TeacherCourseData[]) => {
 };
 
 const fileUriToBase64 = async (uri: string): Promise<string> => {
-  const response = await fetch(uri);
-  const blob = await response.blob();
+  if (Platform.OS === 'web') {
+    const response = await fetch(uri);
+    const blob = await response.blob();
 
-  return await new Promise((resolve, reject) => {
-    const reader = new FileReader();
+    return await new Promise((resolve, reject) => {
+      const reader = new FileReader();
 
-    reader.onloadend = () => {
-      const result = reader.result;
-      if (typeof result === 'string') {
-        resolve(result);
-      } else {
-        reject(new Error('Failed to convert image to base64.'));
-      }
-    };
+      reader.onloadend = () => {
+        const result = reader.result;
+        if (typeof result === 'string') {
+          resolve(result);
+        } else {
+          reject(new Error('Failed to convert image to base64.'));
+        }
+      };
 
-    reader.onerror = () => reject(new Error('Failed to read selected image.'));
-    reader.readAsDataURL(blob);
+      reader.onerror = () => reject(new Error('Failed to read selected image.'));
+      reader.readAsDataURL(blob);
+    });
+  }
+
+  const base64 = await FileSystem.readAsStringAsync(uri, {
+    encoding: FileSystem.EncodingType.Base64,
   });
+
+  return base64;
 };
 
 const mapBackendClass = (item: any, fallbackInstructor: string): TeacherCourseData => ({
@@ -265,7 +277,14 @@ const mapBackendClass = (item: any, fallbackInstructor: string): TeacherCourseDa
   classCode: item.classCode || '',
   instructor: item.instructorName || fallbackInstructor,
   section: item.section || '',
-  bannerUri: item.bannerUrl || item.bannerUri || item.bannerLocalUri || undefined,
+  bannerUri:
+    item.bannerUrl ||
+    item.bannerUri ||
+    item.bannerLocalUri ||
+    undefined,
+  bannerStoragePath: item.bannerStoragePath || null,
+  bannerFileName: item.bannerFileName || null,
+  bannerMimeType: item.bannerMimeType || null,
   year: item.year || '',
   yearSection: item.yearSection || item.section || '',
   semester: item.semester || '',
@@ -297,13 +316,6 @@ const getSemesterSchoolYearLabel = (course: TeacherCourseData) => {
 
 const getBannerRenderUri = (bannerUri?: string) => {
   if (!bannerUri) return undefined;
-
-  if (
-    bannerUri.startsWith('http://') ||
-    bannerUri.startsWith('https://')
-  ) {
-    return `${bannerUri}${bannerUri.includes('?') ? '&' : '?'}refresh=${Date.now()}`;
-  }
 
   return bannerUri;
 };
@@ -350,6 +362,8 @@ const Dashboard2 = ({
   const [selectedSemester, setSelectedSemester] = useState<string | null>(null);
   const [selectedCourse, setSelectedCourse] = useState<string | null>(null);
   const [classBanner, setClassBanner] = useState('');
+  const [classBannerFileName, setClassBannerFileName] = useState<string | null>(null);
+  const [classBannerMimeType, setClassBannerMimeType] = useState<string | null>(null);
   const [description, setDescription] = useState('');
   const [startYear, setStartYear] = useState('2025');
 
@@ -358,6 +372,8 @@ const Dashboard2 = ({
   const [editSelectedSemester, setEditSelectedSemester] = useState<string | null>(null);
   const [editSelectedCourse, setEditSelectedCourse] = useState<string | null>(null);
   const [editClassBanner, setEditClassBanner] = useState('');
+  const [editClassBannerFileName, setEditClassBannerFileName] = useState<string | null>(null);
+  const [editClassBannerMimeType, setEditClassBannerMimeType] = useState<string | null>(null);
   const [editDescription, setEditDescription] = useState('');
   const [editStartYear, setEditStartYear] = useState('2025');
 
@@ -490,6 +506,8 @@ const Dashboard2 = ({
     setSelectedSection(null);
     setSelectedCourse(null);
     setClassBanner('');
+    setClassBannerFileName(null);
+    setClassBannerMimeType(null);
     setDescription('');
     setStartYear('2025');
     setSemesterDropdownVisible(false);
@@ -501,6 +519,8 @@ const Dashboard2 = ({
     setEditSelectedCourse(null);
     setEditSelectedSemester(null);
     setEditClassBanner('');
+    setEditClassBannerFileName(null);
+    setEditClassBannerMimeType(null);
     setEditDescription('');
     setEditStartYear('2025');
 
@@ -521,9 +541,23 @@ const Dashboard2 = ({
       return;
     }
 
-    const uri = result.assets?.[0]?.uri;
+    const asset = result.assets?.[0];
+    const uri = asset?.uri;
+
+    if (asset?.fileSize && asset.fileSize > 5 * 1024 * 1024) {
+      showToast('Class banner must be below 5MB.', 'error');
+      return;
+    }
+
+    if (asset?.type && !['image/jpeg', 'image/png', 'image/webp'].includes(asset.type)) {
+      showToast('Only JPG, PNG, and WEBP banner images are allowed.', 'error');
+      return;
+    }
+
     if (uri) {
       setClassBanner(uri);
+      setClassBannerFileName(asset.fileName || 'teacher-banner.jpg');
+      setClassBannerMimeType(asset.type || 'image/jpeg');
     }
   };
 
@@ -540,9 +574,23 @@ const Dashboard2 = ({
       return;
     }
 
-    const uri = result.assets?.[0]?.uri;
+    const asset = result.assets?.[0];
+    const uri = asset?.uri;
+
+    if (asset?.fileSize && asset.fileSize > 5 * 1024 * 1024) {
+      showToast('Class banner must be below 5MB.', 'error');
+      return;
+    }
+
+    if (asset?.type && !['image/jpeg', 'image/png', 'image/webp'].includes(asset.type)) {
+      showToast('Only JPG, PNG, and WEBP banner images are allowed.', 'error');
+      return;
+    }
+
     if (uri) {
       setEditClassBanner(uri);
+      setEditClassBannerFileName(asset.fileName || 'teacher-banner.jpg');
+      setEditClassBannerMimeType(asset.type || 'image/jpeg');
     }
   };
 
@@ -685,8 +733,8 @@ const Dashboard2 = ({
           schoolYear: `${startYear.trim()}-${endYear}`,
           description: description.trim() ? description.trim() : null,
           bannerBase64,
-          bannerFileName: classBanner ? 'teacher-banner.jpg' : null,
-          bannerMimeType: classBanner ? 'image/jpeg' : null,
+          bannerFileName: classBanner ? classBannerFileName || 'teacher-banner.jpg' : null,
+          bannerMimeType: classBanner ? classBannerMimeType || 'image/jpeg' : null,
           instructorName: teacherFullName,
           instructorEmail: teacherEmail || null,
           instructorIdentifier: teacherId || null,
@@ -712,6 +760,9 @@ const Dashboard2 = ({
         section: sectionLabel,
         instructor: teacherFullName,
         bannerUri: data?.data?.bannerUrl || undefined,
+        bannerStoragePath: data?.data?.bannerStoragePath || null,
+        bannerFileName: data?.data?.bannerFileName || null,
+        bannerMimeType: data?.data?.bannerMimeType || null,
         year: yearLabel,
         yearSection: sectionLabel,
         semester: selectedSemesterLabel,
@@ -778,6 +829,8 @@ const Dashboard2 = ({
     setEditSelectedCourse(matchedCourse);
     setEditSelectedSemester(matchedSemester);
     setEditClassBanner(menuCourse.bannerUri || '');
+    setEditClassBannerFileName(menuCourse.bannerFileName || null);
+    setEditClassBannerMimeType(menuCourse.bannerMimeType || null);
     setEditDescription(menuCourse.description || '');
     setEditStartYear(schoolYearParts[0] || '2025');
 
@@ -870,8 +923,8 @@ const Dashboard2 = ({
             schoolYear: `${editStartYear.trim()}-${editEndYear}`,
             description: editDescription.trim() ? editDescription.trim() : null,
             bannerBase64,
-            bannerFileName: editClassBanner ? 'teacher-banner.jpg' : null,
-            bannerMimeType: editClassBanner ? 'image/jpeg' : null,
+            bannerFileName: editClassBanner ? editClassBannerFileName || 'teacher-banner.jpg' : null,
+            bannerMimeType: editClassBanner ? editClassBannerMimeType || 'image/jpeg' : null,
             instructorName: teacherFullName,
             instructorEmail: teacherEmail || null,
             instructorIdentifier: teacherId || null,
@@ -900,6 +953,9 @@ const Dashboard2 = ({
         schoolYear: `${editStartYear.trim()}-${editEndYear}`,
         description: editDescription.trim() ? editDescription.trim() : null,
         bannerUri: data?.data?.bannerUrl || editClassBanner || undefined,
+        bannerStoragePath: data?.data?.bannerStoragePath || editingCourse.bannerStoragePath || null,
+        bannerFileName: data?.data?.bannerFileName || editClassBannerFileName || editingCourse.bannerFileName || null,
+        bannerMimeType: data?.data?.bannerMimeType || editClassBannerMimeType || editingCourse.bannerMimeType || null,
         instructor: teacherFullName,
         units,
       };

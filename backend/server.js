@@ -39,7 +39,7 @@ const SESSION_EXPIRES_IN_MS = Number(
   process.env.SESSION_EXPIRES_IN_MS || 60 * 60 * 1000
 );
 const SIGNED_URL_EXPIRES_IN_MS = Number(
-  process.env.SIGNED_URL_EXPIRES_IN_MS || 5 * 60 * 1000
+  process.env.SIGNED_URL_EXPIRES_IN_MS || 60 * 60 * 1000
 );
 
 const COOKIE_OPTIONS = {
@@ -201,6 +201,61 @@ async function createReadSignedUrl(storagePath) {
   });
 
   return url;
+}
+
+
+async function createReadSignedUrlIfExists(storagePath) {
+  const normalizedPath = normalizeOptionalText(storagePath);
+
+  if (!normalizedPath) {
+    return null;
+  }
+
+  try {
+    const file = bucket.file(normalizedPath);
+    const [exists] = await file.exists();
+
+    if (!exists) {
+      return null;
+    }
+
+    return await createReadSignedUrl(normalizedPath);
+  } catch (error) {
+    console.warn("Signed URL refresh skipped:", error?.message || error);
+    return null;
+  }
+}
+
+async function hydrateClassBannerUrl(classData = {}) {
+  const refreshedBannerUrl = await createReadSignedUrlIfExists(
+    classData.bannerStoragePath
+  );
+
+  return {
+    ...classData,
+    bannerUrl: refreshedBannerUrl || null,
+  };
+}
+
+
+async function hydrateUserImageUrls(userData = {}) {
+  const refreshedProfileImage = await createReadSignedUrlIfExists(
+    userData.profileImageStoragePath
+  );
+
+  const refreshedBannerImage = await createReadSignedUrlIfExists(
+    userData.bannerImageStoragePath
+  );
+
+  return {
+    ...userData,
+    profileImage:
+      refreshedProfileImage ||
+      (!userData.profileImageStoragePath ? userData.profileImage || null : null),
+    bannerImage:
+      refreshedBannerImage ||
+      (!userData.bannerImageStoragePath ? userData.bannerImage || null : null),
+  };
 }
 
 
@@ -538,8 +593,10 @@ async function uploadBannerToStorage({
   });
 
 
+  const bannerUrl = await createReadSignedUrl(storagePath);
+
   return {
-    bannerUrl: null,
+    bannerUrl,
     bannerStoragePath: storagePath,
     bannerFileName: safeFileName,
     bannerMimeType: safeMimeType,
@@ -1770,6 +1827,9 @@ app.post("/auth/session-logout", async (req, res) => {
 app.get("/auth/session-me", requireAuth, async (req, res) => {
   try {
     const profile = await findUserProfileByAuthUid(req.user.uid);
+    const hydratedUserData = profile
+      ? await hydrateUserImageUrls(profile.data || {})
+      : null;
 
     return res.json({
       success: true,
@@ -1781,11 +1841,13 @@ app.get("/auth/session-me", requireAuth, async (req, res) => {
         ? {
             id: profile.id,
             role: profile.role,
-            email: profile.data.email || null,
-            firstName: profile.data.firstName || "",
-            lastName: profile.data.lastName || "",
-            profileImage: profile.data.profileImage || null,
-            bannerImage: profile.data.bannerImage || null,
+            email: hydratedUserData.email || null,
+            firstName: hydratedUserData.firstName || "",
+            lastName: hydratedUserData.lastName || "",
+            profileImage: hydratedUserData.profileImage || null,
+            bannerImage: hydratedUserData.bannerImage || null,
+            profileImageStoragePath: hydratedUserData.profileImageStoragePath || null,
+            bannerImageStoragePath: hydratedUserData.bannerImageStoragePath || null,
           }
         : null,
     });
@@ -1800,6 +1862,46 @@ app.get("/auth/session-me", requireAuth, async (req, res) => {
 /**
  * PRIVATE STORAGE ROUTES
  */
+app.post("/storage/user-image-signed-url", requireAuth, async (req, res) => {
+  try {
+    const { storagePath } = req.body;
+
+    if (!storagePath || typeof storagePath !== "string") {
+      return res.status(400).json({ error: "storagePath is required." });
+    }
+
+    if (storagePath.includes("..") || storagePath.startsWith("/")) {
+      return res.status(400).json({ error: "Invalid storagePath." });
+    }
+
+    const allowedPrefixes = ["user-profiles/", "user-banners/", "defaults/"];
+
+    if (!allowedPrefixes.some((prefix) => storagePath.startsWith(prefix))) {
+      return res.status(403).json({
+        error: "This user image path is not allowed.",
+      });
+    }
+
+    const [exists] = await bucket.file(storagePath).exists();
+    if (!exists) {
+      return res.status(404).json({ error: "File not found." });
+    }
+
+    const url = await createReadSignedUrl(storagePath);
+
+    return res.json({
+      success: true,
+      url,
+      expiresIn: SIGNED_URL_EXPIRES_IN_MS,
+    });
+  } catch (error) {
+    console.error("User image signed URL error:", error);
+    return res.status(error.statusCode || 500).json({
+      error: error.message || "Failed to generate user image signed URL.",
+    });
+  }
+});
+
 app.post("/storage/signed-url", requireAuth, async (req, res) => {
   try {
     const { storagePath, classId } = req.body;
@@ -1937,20 +2039,24 @@ app.post("/auth/user-profile", requireAuth, async (req, res) => {
       return res.status(403).json({ error: "You cannot access this user profile." });
     }
 
+    const hydratedUserData = await hydrateUserImageUrls(profile.data || {});
+
     return res.json({
       success: true,
       data: {
         role: profile.role,
         id: profileDocId,
-        email: profile.data.email || null,
-        authUid: profile.data.authUid || null,
-        studentId: profile.data.studentId || undefined,
-        teacherId: profile.data.teacherId || undefined,
-        adminId: profile.data.adminId || undefined,
-        firstName: profile.data.firstName || "",
-        lastName: profile.data.lastName || "",
-        profileImage: profile.data.profileImage || null,
-        bannerImage: profile.data.bannerImage || null,
+        email: hydratedUserData.email || null,
+        authUid: hydratedUserData.authUid || null,
+        studentId: hydratedUserData.studentId || undefined,
+        teacherId: hydratedUserData.teacherId || undefined,
+        adminId: hydratedUserData.adminId || undefined,
+        firstName: hydratedUserData.firstName || "",
+        lastName: hydratedUserData.lastName || "",
+        profileImage: hydratedUserData.profileImage || null,
+        bannerImage: hydratedUserData.bannerImage || null,
+        profileImageStoragePath: hydratedUserData.profileImageStoragePath || null,
+        bannerImageStoragePath: hydratedUserData.bannerImageStoragePath || null,
       },
     });
   } catch (error) {
@@ -3159,7 +3265,7 @@ app.post("/create-class", async (req, res) => {
       year: normalizeOptionalText(year),
       units: typeof units === "number" ? units : Number(units) || 0,
 
-      bannerUrl: uploadedBanner.bannerUrl,
+      bannerUrl: null,
       bannerStoragePath: uploadedBanner.bannerStoragePath,
       bannerFileName: uploadedBanner.bannerFileName,
       bannerMimeType: uploadedBanner.bannerMimeType,
@@ -3219,7 +3325,10 @@ app.post("/create-class", async (req, res) => {
       data: {
         id: classRef.id,
         classCode,
-        bannerUrl: uploadedBanner.bannerUrl,
+        bannerUrl: null,
+        bannerStoragePath: uploadedBanner.bannerStoragePath,
+        bannerFileName: uploadedBanner.bannerFileName,
+        bannerMimeType: uploadedBanner.bannerMimeType,
         conversationId,
       },
     });
@@ -3276,7 +3385,7 @@ app.put("/update-class/:id", async (req, res) => {
       });
 
       nextBannerFields = {
-        bannerUrl: uploadedBanner.bannerUrl,
+        bannerUrl: null,
         bannerStoragePath: uploadedBanner.bannerStoragePath,
         bannerFileName: uploadedBanner.bannerFileName,
         bannerMimeType: uploadedBanner.bannerMimeType,
@@ -3398,9 +3507,28 @@ app.put("/update-class/:id", async (req, res) => {
       }
     }
 
+    const updatedClassSnap = await classRef.get();
+    const updatedClassData = updatedClassSnap.exists ? updatedClassSnap.data() || {} : {};
+
+    let signedBannerUrl = updatedClassData.bannerUrl || null;
+    if (updatedClassData.bannerStoragePath) {
+      try {
+        signedBannerUrl = await createReadSignedUrl(updatedClassData.bannerStoragePath);
+      } catch (signedUrlError) {
+        console.warn("Update class signed banner URL skipped:", signedUrlError?.message || signedUrlError);
+      }
+    }
+
     res.json({
       success: true,
       message: "Class updated successfully.",
+      data: {
+        id,
+        bannerUrl: signedBannerUrl,
+        bannerStoragePath: updatedClassData.bannerStoragePath || null,
+        bannerFileName: updatedClassData.bannerFileName || null,
+        bannerMimeType: updatedClassData.bannerMimeType || null,
+      },
     });
   } catch (error) {
     console.error("Update class error:", error);
@@ -4381,10 +4509,17 @@ app.get("/classes", async (req, res) => {
       .orderBy("createdAt", "desc")
       .get();
 
-    const classes = snapshot.docs.map((doc) => ({
-      id: doc.id,
-      ...doc.data(),
-    }));
+    const classes = await Promise.all(
+      snapshot.docs.map(async (doc) => {
+        const classData = doc.data() || {};
+        const hydratedClassData = await hydrateClassBannerUrl(classData);
+
+        return {
+          id: doc.id,
+          ...hydratedClassData,
+        };
+      })
+    );
 
     res.json(classes);
   } catch (error) {
@@ -9474,39 +9609,57 @@ async function resolveCommunityUserAvatar(authorRole, authorId, fallbackAvatar) 
   const normalizedRole = normalizeOptionalText(authorRole);
   const normalizedAuthorId = normalizeOptionalText(authorId);
 
+  const fallback = normalizeOptionalText(fallbackAvatar);
+
+  const emptyResult = {
+    avatar: fallback || null,
+    avatarStoragePath: null,
+  };
+
   if (!normalizedRole || !normalizedAuthorId) {
-    return fallbackAvatar || null;
+    return emptyResult;
   }
 
   try {
+    let snap = null;
+
     if (normalizedRole === "student") {
-      const studentSnap = await db.collection("students").doc(normalizedAuthorId).get();
-
-      if (studentSnap.exists) {
-        return studentSnap.data()?.profileImage || fallbackAvatar || null;
-      }
+      snap = await db.collection("students").doc(normalizedAuthorId).get();
+    } else if (normalizedRole === "teacher") {
+      snap = await db.collection("teachers").doc(normalizedAuthorId).get();
+    } else if (normalizedRole === "admin") {
+      snap = await db.collection("admins").doc(normalizedAuthorId).get();
     }
 
-    if (normalizedRole === "teacher") {
-      const teacherSnap = await db.collection("teachers").doc(normalizedAuthorId).get();
-
-      if (teacherSnap.exists) {
-        return teacherSnap.data()?.profileImage || fallbackAvatar || null;
-      }
+    if (!snap?.exists) {
+      return emptyResult;
     }
 
-    if (normalizedRole === "admin") {
-      const adminSnap = await db.collection("admins").doc(normalizedAuthorId).get();
+    const data = snap.data() || {};
+    const profileImageStoragePath = normalizeOptionalText(
+      data.profileImageStoragePath
+    );
 
-      if (adminSnap.exists) {
-        return adminSnap.data()?.profileImage || fallbackAvatar || null;
-      }
+    if (profileImageStoragePath) {
+      const freshAvatar = await createReadSignedUrlIfExists(
+        profileImageStoragePath
+      );
+
+      return {
+        avatar: freshAvatar || null,
+        avatarStoragePath: profileImageStoragePath,
+      };
     }
+
+    return {
+      avatar: data.profileImage || fallback || null,
+      avatarStoragePath: null,
+    };
   } catch (error) {
     console.warn("Resolve community avatar warning:", error?.message || error);
   }
 
-  return fallbackAvatar || null;
+  return emptyResult;
 }
 
 // ====================== REAL SETTINGS AUTH ROUTES ======================
@@ -9774,7 +9927,11 @@ app.get("/community-posts", async (req, res) => {
             return {
               id: answerDoc.id,
               userName: answerData.userName || "Unknown User",
-              avatar: resolvedAnswerAvatar,
+              avatar: resolvedAnswerAvatar.avatar,
+              avatarStoragePath:
+                resolvedAnswerAvatar.avatarStoragePath ||
+                answerData.avatarStoragePath ||
+                null,
               answeredAt: formatFirestoreDateTime(answerData.createdAt),
               message: answerData.message || "",
             };
@@ -9785,7 +9942,11 @@ app.get("/community-posts", async (req, res) => {
           id: doc.id,
           userName: postData.userName || "Unknown User",
           userEmail: postData.userEmail || "",
-          avatar: resolvedPostAvatar,
+          avatar: resolvedPostAvatar.avatar,
+          avatarStoragePath:
+            resolvedPostAvatar.avatarStoragePath ||
+            postData.avatarStoragePath ||
+            null,
           dateTime: formatFirestoreDateTime(postData.createdAt),
           content: postData.content || "",
           answers,
@@ -9827,6 +9988,12 @@ app.post("/community-posts", async (req, res) => {
       return res.status(400).json({ error: "Invalid authorRole." });
     }
 
+    const authorAvatar = await resolveCommunityUserAvatar(
+      authorRole,
+      authorId,
+      avatar || null
+    );
+
     const postRef = await db.collection("communityPosts").add({
       content: String(content).trim(),
       authorId: String(authorId).trim(),
@@ -9834,7 +10001,8 @@ app.post("/community-posts", async (req, res) => {
       authorRole,
       userName: String(userName).trim(),
       userEmail: normalizeOptionalText(userEmail),
-      avatar: normalizeAvatarValue(avatar),
+      avatar: authorAvatar.avatar || null,
+      avatarStoragePath: authorAvatar.avatarStoragePath || null,
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
     });
@@ -9849,7 +10017,8 @@ app.post("/community-posts", async (req, res) => {
         id: postRef.id,
         userName: createdData.userName || userName,
         userEmail: createdData.userEmail || userEmail || "",
-        avatar: createdData.avatar || avatar || null,
+        avatar: createdData.avatar || null,
+        avatarStoragePath: createdData.avatarStoragePath || null,
         dateTime: new Date().toLocaleString(),
         content: createdData.content || content,
         answers: [],
@@ -9894,13 +10063,20 @@ app.post("/community-posts/:postId/answers", async (req, res) => {
 
     const postData = postSnap.data() || {};
 
+    const authorAvatar = await resolveCommunityUserAvatar(
+      authorRole,
+      authorId,
+      avatar || null
+    );
+
     const answerRef = await postRef.collection("answers").add({
       message: String(message).trim(),
       authorId: String(authorId).trim(),
       authorUid: normalizeOptionalText(authorUid),
       authorRole,
       userName: String(userName).trim(),
-      avatar: normalizeAvatarValue(avatar),
+      avatar: authorAvatar.avatar || null,
+      avatarStoragePath: authorAvatar.avatarStoragePath || null,
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
     });
@@ -9934,7 +10110,8 @@ app.post("/community-posts/:postId/answers", async (req, res) => {
       data: {
         id: answerRef.id,
         userName,
-        avatar: normalizeAvatarValue(avatar),
+        avatar: authorAvatar.avatar || null,
+        avatarStoragePath: authorAvatar.avatarStoragePath || null,
         answeredAt: new Date().toLocaleString(),
         message: String(message).trim(),
       },
@@ -10088,39 +10265,48 @@ async function uploadUserImageToStorage({
     resumable: false,
   });
 
+  const fileUrl = await createReadSignedUrl(storagePath);
 
   return {
-    fileUrl: null,
+    fileUrl,
     storagePath,
     fileName: safeFileName,
     fileType: safeMimeType,
   };
 }
 
-app.post("/auth/update-user-images", async (req, res) => {
+function isDefaultUserImageStoragePath(storagePath) {
+  return (
+    storagePath === DEFAULT_PROFILE_IMAGE_STORAGE_PATH ||
+    storagePath === DEFAULT_BANNER_IMAGE_STORAGE_PATH ||
+    String(storagePath || "").startsWith("defaults/")
+  );
+}
+
+app.post("/auth/update-user-images", requireAuth, async (req, res) => {
   try {
     const {
-      id,
-      role,
       profileImageBase64,
       profileImageMimeType,
       profileImageFileName,
       bannerImageBase64,
       bannerImageMimeType,
       bannerImageFileName,
-    } = req.body;
+    } = req.body || {};
 
-    if (!id || !role) {
-      return res.status(400).json({ error: "ID and role are required." });
+    const profile = await findUserProfileByAuthUid(req.user.uid);
+
+    if (!profile?.ref) {
+      return res.status(403).json({ error: "User profile not found." });
     }
 
-    const collectionName = getCollectionNameByRole(role);
-    if (!collectionName) {
-      return res.status(400).json({ error: "Invalid role." });
-    }
+    const normalizedUserId =
+      profile.data.studentId ||
+      profile.data.teacherId ||
+      profile.data.adminId ||
+      profile.id;
 
-    const userRef = db.collection(collectionName).doc(String(id).trim());
-    const userSnap = await userRef.get();
+    const userSnap = await profile.ref.get();
 
     if (!userSnap.exists) {
       return res.status(404).json({ error: "User not found." });
@@ -10132,7 +10318,10 @@ app.post("/auth/update-user-images", async (req, res) => {
     };
 
     if (profileImageBase64) {
-      if (userData.profileImageStoragePath) {
+      if (
+        userData.profileImageStoragePath &&
+        !isDefaultUserImageStoragePath(userData.profileImageStoragePath)
+      ) {
         await deleteStorageFileIfExists(userData.profileImageStoragePath);
       }
 
@@ -10141,7 +10330,7 @@ app.post("/auth/update-user-images", async (req, res) => {
         imageMimeType: profileImageMimeType,
         fileName: profileImageFileName || "profile.jpg",
         folder: "user-profiles",
-        userId: String(id).trim(),
+        userId: normalizedUserId,
       });
 
       updates.profileImage = uploadedProfile.fileUrl;
@@ -10149,7 +10338,10 @@ app.post("/auth/update-user-images", async (req, res) => {
     }
 
     if (bannerImageBase64) {
-      if (userData.bannerImageStoragePath) {
+      if (
+        userData.bannerImageStoragePath &&
+        !isDefaultUserImageStoragePath(userData.bannerImageStoragePath)
+      ) {
         await deleteStorageFileIfExists(userData.bannerImageStoragePath);
       }
 
@@ -10158,29 +10350,33 @@ app.post("/auth/update-user-images", async (req, res) => {
         imageMimeType: bannerImageMimeType,
         fileName: bannerImageFileName || "banner.jpg",
         folder: "user-banners",
-        userId: String(id).trim(),
+        userId: normalizedUserId,
       });
 
       updates.bannerImage = uploadedBanner.fileUrl;
       updates.bannerImageStoragePath = uploadedBanner.storagePath;
     }
 
-    await userRef.update(updates);
+    await profile.ref.update(updates);
 
-    const updatedSnap = await userRef.get();
+    const updatedSnap = await profile.ref.get();
     const updatedData = updatedSnap.data() || {};
 
     return res.json({
       success: true,
       data: {
+        id: profile.id,
+        role: profile.role,
         profileImage: updatedData.profileImage || null,
+        profileImageStoragePath: updatedData.profileImageStoragePath || null,
         bannerImage: updatedData.bannerImage || null,
+        bannerImageStoragePath: updatedData.bannerImageStoragePath || null,
       },
     });
   } catch (error) {
-    console.error("Update user images error:", error);
+    console.error("Update user images error:", error?.message || error);
     return res.status(500).json({
-      error: error.message || "Failed to update user images.",
+      error: error?.message || "Failed to update user images.",
     });
   }
 });

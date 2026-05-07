@@ -285,7 +285,7 @@ export default function FlipIt({ onBack }: Props) {
                   style={[styles.menuButton, styles.homeButton]}
                   onPress={onBack}
                 >
-                  <Text style={styles.menuButtonText}>Back to Home</Text>
+                  <Text style={styles.menuButtonText}>Back to Games</Text>
                 </Pressable>
 
                 <Pressable style={[styles.menuButton, styles.leaderboardButton]}>
@@ -430,7 +430,7 @@ export default function FlipIt({ onBack }: Props) {
             </View>
 
             <Pressable style={styles.stopButton} onPress={stopGame}>
-              <Text style={styles.stopButtonText}>Stop Game</Text>
+              <Text style={styles.stopButtonText}>Back to Menu</Text>
             </Pressable>
 
             {isFinished && (

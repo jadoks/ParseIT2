@@ -1,13 +1,16 @@
+import Constants from 'expo-constants';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Animated,
   GestureResponderEvent,
   Image,
+  ImageSourcePropType,
   Keyboard,
   Modal,
   PanResponder,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -37,6 +40,8 @@ interface ProfileProps {
   userEmail?: string;
   profileImage?: any;
   bannerImage?: any;
+  profileImageStoragePath?: string | null;
+  bannerImageStoragePath?: string | null;
   onChangeProfileImage: (image: any) => void;
   onChangeBannerImage: (image: any) => void;
 }
@@ -62,6 +67,57 @@ type AnswerDropdownState =
     }
   | null;
 
+function getApiBaseUrl() {
+  if (Platform.OS === 'web') {
+    return 'http://localhost:5000';
+  }
+
+  const possibleHost =
+    Constants.expoConfig?.hostUri ||
+    Constants.manifest2?.extra?.expoGo?.debuggerHost ||
+    '';
+
+  const host = possibleHost.split(':')[0];
+
+  if (host) {
+    return `http://${host}:5000`;
+  }
+
+  return 'http://192.168.1.5:5000';
+}
+
+const API_BASE_URL = getApiBaseUrl();
+
+const apiFetch = (url: string, options: any = {}) =>
+  fetch(url, {
+    credentials: 'include',
+    ...options,
+  });
+
+const refreshUserImageUrl = async (storagePath?: string | null) => {
+  if (!storagePath) return null;
+
+  try {
+    const response = await apiFetch(`${API_BASE_URL}/storage/user-image-signed-url`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ storagePath }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data?.error || 'Unable to refresh user image.');
+    }
+
+    return data?.url || null;
+  } catch {
+    return null;
+  }
+};
+
 const MAX_IMAGE_SIZE_MB = 15;
 const MAX_IMAGE_SIZE_BYTES = MAX_IMAGE_SIZE_MB * 1024 * 1024;
 const POST_DROPDOWN_WIDTH = 165;
@@ -72,18 +128,21 @@ const normalizeText = (value?: string | null) => {
   return value.trim();
 };
 
-const normalizeImageSource = (img: any) => {
-  if (!img) return null;
+const normalizeImageSource = (img: any): ImageSourcePropType | undefined => {
+  if (!img) return undefined;
   if (typeof img === 'number') return img;
+
   if (typeof img === 'string') {
     const trimmed = img.trim();
-    return trimmed ? { uri: trimmed } : null;
+    return trimmed ? { uri: trimmed } : undefined;
   }
+
   if (img?.uri) {
     const trimmed = String(img.uri).trim();
-    return trimmed ? { uri: trimmed } : null;
+    return trimmed ? { uri: trimmed } : undefined;
   }
-  return null;
+
+  return undefined;
 };
 
 const clamp = (value: number, min: number, max: number) =>
@@ -101,6 +160,8 @@ const Profile: React.FC<ProfileProps> = ({
   userEmail,
   profileImage,
   bannerImage,
+  profileImageStoragePath,
+  bannerImageStoragePath,
   onChangeProfileImage,
   onChangeBannerImage,
 }) => {
@@ -171,14 +232,39 @@ const Profile: React.FC<ProfileProps> = ({
     [localPosts, selectedPostId]
   );
 
+  const [refreshedProfileImageUrl, setRefreshedProfileImageUrl] = useState<string | null>(null);
+  const [refreshedBannerImageUrl, setRefreshedBannerImageUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const refreshProfileImages = async () => {
+      const [nextProfileUrl, nextBannerUrl] = await Promise.all([
+        refreshUserImageUrl(profileImageStoragePath),
+        refreshUserImageUrl(bannerImageStoragePath),
+      ]);
+
+      if (isMounted) {
+        setRefreshedProfileImageUrl(nextProfileUrl);
+        setRefreshedBannerImageUrl(nextBannerUrl);
+      }
+    };
+
+    refreshProfileImages();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [profileImageStoragePath, bannerImageStoragePath]);
+
   const profileImageSource = useMemo(
-    () => normalizeImageSource(profileImage),
-    [profileImage]
+    () => normalizeImageSource(refreshedProfileImageUrl || profileImage),
+    [profileImage, refreshedProfileImageUrl]
   );
 
   const bannerImageSource = useMemo(
-    () => normalizeImageSource(bannerImage),
-    [bannerImage]
+    () => normalizeImageSource(refreshedBannerImageUrl || bannerImage),
+    [bannerImage, refreshedBannerImageUrl]
   );
 
   const visibleAnswers = useMemo(() => {
@@ -746,7 +832,7 @@ const Profile: React.FC<ProfileProps> = ({
     }));
   };
 
-  const renderProfileImage = (source: any, style: any) => {
+  const renderProfileImage = (source: ImageSourcePropType | undefined, style: any) => {
     if (source) {
       return <Image source={source} style={style} resizeMode="cover" />;
     }
@@ -758,7 +844,7 @@ const Profile: React.FC<ProfileProps> = ({
     );
   };
 
-  const renderBannerImage = (source: any, style: any) => {
+  const renderBannerImage = (source: ImageSourcePropType | undefined, style: any) => {
     if (source) {
       return <Image source={source} style={style} resizeMode="cover" />;
     }

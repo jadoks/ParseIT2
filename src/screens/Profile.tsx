@@ -5,6 +5,7 @@ import {
   Animated,
   GestureResponderEvent,
   Image,
+  ImageSourcePropType,
   Keyboard,
   Modal,
   PanResponder,
@@ -35,8 +36,8 @@ interface ProfileProps {
   onDeleteAnswer?: (postId: string, answerId: string) => void;
   userName?: string;
   userEmail?: string;
-  profileImage: any;
-  bannerImage: any;
+  profileImage?: any;
+  bannerImage?: any;
   onChangeProfileImage: (image: any) => void;
   onChangeBannerImage: (image: any) => void;
 }
@@ -62,24 +63,31 @@ type AnswerDropdownState =
     }
   | null;
 
-const DEFAULT_AVATAR = require('../../assets/images/pogi.jpg');
+const normalizeText = (value?: string | null) => {
+  if (typeof value !== 'string') return '';
+  return value.trim();
+};
+
 const MAX_IMAGE_SIZE_MB = 15;
 const MAX_IMAGE_SIZE_BYTES = MAX_IMAGE_SIZE_MB * 1024 * 1024;
 const POST_DROPDOWN_WIDTH = 165;
 const ANSWER_DROPDOWN_WIDTH = 170;
 
-const normalizeImageSource = (img: any) => {
-  if (!img) return DEFAULT_AVATAR;
+const normalizeImageSource = (img: any): ImageSourcePropType | undefined => {
+  if (!img) return undefined;
   if (typeof img === 'number') return img;
+
   if (typeof img === 'string') {
     const trimmed = img.trim();
-    return trimmed ? { uri: trimmed } : DEFAULT_AVATAR;
+    return trimmed ? { uri: trimmed } : undefined;
   }
+
   if (img?.uri) {
     const trimmed = String(img.uri).trim();
-    return trimmed ? { uri: trimmed } : DEFAULT_AVATAR;
+    return trimmed ? { uri: trimmed } : undefined;
   }
-  return DEFAULT_AVATAR;
+
+  return undefined;
 };
 
 const clamp = (value: number, min: number, max: number) =>
@@ -93,14 +101,17 @@ const Profile: React.FC<ProfileProps> = ({
   onDeletePost,
   onEditAnswer,
   onDeleteAnswer,
-  userName = 'Jade Lisondra',
-  userEmail = 'jadelisondra101@gmail.com',
+  userName,
+  userEmail,
   profileImage,
   bannerImage,
   onChangeProfileImage,
   onChangeBannerImage,
 }) => {
   const { width, height } = useWindowDimensions();
+
+  const safeUserName = useMemo(() => normalizeText(userName), [userName]);
+  const safeUserEmail = useMemo(() => normalizeText(userEmail), [userEmail]);
 
   const isSmallPhone = width < 380;
   const isPhone = width < 768;
@@ -567,7 +578,7 @@ const Profile: React.FC<ProfileProps> = ({
 
     const newAnswer: CommunityAnswer = {
       id: `answer-${Date.now()}`,
-      userName,
+      userName: safeUserName,
       avatar: profileImageSource,
       answeredAt: new Date().toLocaleString(),
       message: trimmed,
@@ -745,6 +756,30 @@ const Profile: React.FC<ProfileProps> = ({
     }));
   };
 
+  const renderProfileImage = (source: ImageSourcePropType | undefined, style: any) => {
+    if (source) {
+      return <Image source={source} style={style} resizeMode="cover" />;
+    }
+
+    return (
+      <View style={[style, styles.imagePlaceholder]}>
+        <MaterialCommunityIcons name="account" size={28} color="#A8A8A8" />
+      </View>
+    );
+  };
+
+  const renderBannerImage = (source: ImageSourcePropType | undefined, style: any) => {
+    if (source) {
+      return <Image source={source} style={style} resizeMode="cover" />;
+    }
+
+    return (
+      <View style={[style, styles.bannerPlaceholder]}>
+        <MaterialCommunityIcons name="image-outline" size={34} color="#B5B5B5" />
+      </View>
+    );
+  };
+
   return (
     <TouchableWithoutFeedback
       onPress={() => {
@@ -771,17 +806,16 @@ const Profile: React.FC<ProfileProps> = ({
           keyboardShouldPersistTaps="handled"
         >
           <View style={[styles.bannerContainer, { marginTop: isSmallPhone ? 14 : 20 }]}>
-            <Image
-              source={bannerImageSource}
-              style={[
+            {renderBannerImage(
+              bannerImageSource,
+              [
                 styles.banner,
                 {
                   height: bannerHeight,
                   borderRadius: isSmallPhone ? 10 : 6,
                 },
-              ]}
-              resizeMode="cover"
-            />
+              ]
+            )}
           </View>
 
           <View
@@ -805,18 +839,17 @@ const Profile: React.FC<ProfileProps> = ({
                 },
               ]}
             >
-              <Image
-                source={profileImageSource}
-                style={[
+              {renderProfileImage(
+                profileImageSource,
+                [
                   styles.avatarImage,
                   {
                     width: avatarSize - avatarBorderWidth * 2,
                     height: avatarSize - avatarBorderWidth * 2,
                     borderRadius: (avatarSize - avatarBorderWidth * 2) / 2,
                   },
-                ]}
-                resizeMode="cover"
-              />
+                ]
+              )}
             </View>
 
             <View
@@ -832,18 +865,20 @@ const Profile: React.FC<ProfileProps> = ({
                 ]}
                 numberOfLines={1}
               >
-                {userName}
+                {safeUserName}
               </Text>
 
-              <Text
-                style={[
-                  styles.email,
-                  { fontSize: isSmallPhone ? 13 : 14 },
-                ]}
-                numberOfLines={1}
-              >
-                {userEmail}
-              </Text>
+              {!!safeUserEmail && (
+                <Text
+                  style={[
+                    styles.email,
+                    { fontSize: isSmallPhone ? 13 : 14 },
+                  ]}
+                  numberOfLines={1}
+                >
+                  {safeUserEmail}
+                </Text>
+              )}
 
               <View ref={editBtnRef} collapsable={false}>
                 <TouchableOpacity
@@ -897,9 +932,9 @@ const Profile: React.FC<ProfileProps> = ({
               isLargeScreen && { alignSelf: 'center', maxWidth: contentMaxWidth },
             ]}
           >
-            <Image
-              source={profileImageSource}
-              style={[
+            {renderProfileImage(
+              profileImageSource,
+              [
                 styles.smallAvatar,
                 {
                   width: isSmallPhone ? 32 : 35,
@@ -907,9 +942,8 @@ const Profile: React.FC<ProfileProps> = ({
                   borderRadius: isSmallPhone ? 16 : 20,
                   marginRight: isSmallPhone ? 10 : 12,
                 },
-              ]}
-              resizeMode="cover"
-            />
+              ]
+            )}
 
             <TouchableOpacity
               style={[
@@ -925,7 +959,7 @@ const Profile: React.FC<ProfileProps> = ({
                 style={[styles.askText, { fontSize: isSmallPhone ? 13 : 14 }]}
                 numberOfLines={1}
               >
-                Have a question, {userName}?
+                {safeUserName ? `Have a question, ${safeUserName}?` : 'Have a question?'}
               </Text>
             </TouchableOpacity>
           </View>
@@ -947,18 +981,17 @@ const Profile: React.FC<ProfileProps> = ({
               >
                 <View style={styles.postHeader}>
                   <View style={styles.userRow}>
-                    <Image
-                      source={normalizeImageSource(post.avatar)}
-                      style={[
+                    {renderProfileImage(
+                      normalizeImageSource(post.avatar),
+                      [
                         styles.postAvatar,
                         {
                           width: isSmallPhone ? 32 : 35,
                           height: isSmallPhone ? 32 : 35,
                           borderRadius: isSmallPhone ? 16 : 20,
                         },
-                      ]}
-                      resizeMode="cover"
-                    />
+                      ]
+                    )}
                     <View style={{ flex: 1, marginLeft: 8 }}>
                       <Text
                         style={[
@@ -1778,6 +1811,18 @@ const Profile: React.FC<ProfileProps> = ({
 };
 
 const styles = StyleSheet.create({
+  imagePlaceholder: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#F2F2F2',
+  },
+
+  bannerPlaceholder: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#F6F6F6',
+  },
+
   container: {
     flex: 1,
     backgroundColor: '#ffffff',

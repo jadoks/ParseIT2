@@ -43,6 +43,8 @@ interface SignedInTeacher {
   email?: string;
   profileImage?: string | null;
   bannerImage?: string | null;
+  profileImageStoragePath?: string | null;
+  bannerImageStoragePath?: string | null;
 }
 
 interface Props {
@@ -225,15 +227,15 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
   }, [teacherClasses, courses]);
 
   useEffect(() => {
-    setCurrentUserAvatar(
-      currentTeacherData?.profileImage ? { uri: currentTeacherData.profileImage } : null
-    );
+    if (currentTeacherData?.profileImage) {
+      setCurrentUserAvatar({ uri: currentTeacherData.profileImage });
+    }
   }, [currentTeacherData?.profileImage]);
 
   useEffect(() => {
-    setCurrentUserBanner(
-      currentTeacherData?.bannerImage ? { uri: currentTeacherData.bannerImage } : null
-    );
+    if (currentTeacherData?.bannerImage) {
+      setCurrentUserBanner({ uri: currentTeacherData.bannerImage });
+    }
   }, [currentTeacherData?.bannerImage]);
 
   useEffect(() => {
@@ -280,6 +282,8 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
         email: data?.data?.email ?? undefined,
         profileImage: data?.data?.profileImage ?? null,
         bannerImage: data?.data?.bannerImage ?? null,
+        profileImageStoragePath: data?.data?.profileImageStoragePath ?? null,
+        bannerImageStoragePath: data?.data?.bannerImageStoragePath ?? null,
       });
     } catch (error) {
       console.log('LOAD TEACHER PROFILE ERROR =>', error);
@@ -651,10 +655,7 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
       throw new Error('Teacher ID is missing.');
     }
 
-    const body: any = {
-      id: userId,
-      role: 'teacher',
-    };
+    const body: any = {};
 
     if (profileImage?.uri) {
       body.profileImageBase64 = await getBase64FromUri(profileImage.uri);
@@ -684,6 +685,8 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
   };
 
   const handleChangeProfileImage = async (image: any) => {
+    const previousAvatar = currentUserAvatar;
+
     try {
       setCurrentUserAvatar(image);
 
@@ -693,15 +696,22 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
         profileImage: image,
       });
 
-      if (savedData?.profileImage) {
-        setCurrentUserAvatar({ uri: savedData.profileImage });
+      if (!savedData?.profileImage) {
+        throw new Error('Backend did not return the saved profile image URL.');
       }
+
+      setCurrentUserAvatar({ uri: savedData.profileImage });
 
       setTeacherProfile((prev) => ({
         ...(prev || {}),
-        profileImage: savedData?.profileImage || image.uri,
+        profileImage: savedData.profileImage,
+        profileImageStoragePath:
+          savedData.profileImageStoragePath ||
+          prev?.profileImageStoragePath ||
+          null,
       }));
     } catch (error: any) {
+      setCurrentUserAvatar(previousAvatar);
       console.log('SAVE TEACHER PROFILE IMAGE ERROR =>', error);
       Alert.alert(
         'Save Failed',
@@ -711,6 +721,8 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
   };
 
   const handleChangeBannerImage = async (image: any) => {
+    const previousBanner = currentUserBanner;
+
     try {
       setCurrentUserBanner(image);
 
@@ -720,15 +732,22 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
         bannerImage: image,
       });
 
-      if (savedData?.bannerImage) {
-        setCurrentUserBanner({ uri: savedData.bannerImage });
+      if (!savedData?.bannerImage) {
+        throw new Error('Backend did not return the saved banner image URL.');
       }
+
+      setCurrentUserBanner({ uri: savedData.bannerImage });
 
       setTeacherProfile((prev) => ({
         ...(prev || {}),
-        bannerImage: savedData?.bannerImage || image.uri,
+        bannerImage: savedData.bannerImage,
+        bannerImageStoragePath:
+          savedData.bannerImageStoragePath ||
+          prev?.bannerImageStoragePath ||
+          null,
       }));
     } catch (error: any) {
+      setCurrentUserBanner(previousBanner);
       console.log('SAVE TEACHER BANNER IMAGE ERROR =>', error);
       Alert.alert(
         'Save Failed',

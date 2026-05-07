@@ -80,6 +80,8 @@ type DropdownState =
   | null;
 
 
+
+
 function getApiBaseUrl() {
   if (Platform.OS === 'web') {
     return 'http://localhost:5000';
@@ -109,6 +111,12 @@ const apiFetch = (url: string, options: any = {}) =>
 
 const DROPDOWN_WIDTH = 170;
 
+const getBannerRenderUri = (bannerUrl?: string | null) => {
+  if (!bannerUrl) return undefined;
+
+  return bannerUrl;
+};
+
 const CourseCard: React.FC<CourseCardProps> = ({
   course,
   onPress,
@@ -120,8 +128,9 @@ const CourseCard: React.FC<CourseCardProps> = ({
   const isLargeTablet = width >= 1024;
 
   const [dropdownState, setDropdownState] = useState<DropdownState>(null);
-  const [signedBannerUrl, setSignedBannerUrl] = useState<string | null>(null);
   const [bannerLoadFailed, setBannerLoadFailed] = useState(false);
+  const [signedBannerUrl, setSignedBannerUrl] = useState<string | null>(null);
+  const [isRefreshingBanner, setIsRefreshingBanner] = useState(false);
 
   const getScorePercent = (assignment: CourseCardAssignment) => {
     if (
@@ -283,7 +292,7 @@ const CourseCard: React.FC<CourseCardProps> = ({
   useEffect(() => {
     let isMounted = true;
 
-    const loadSignedBannerUrl = async () => {
+    const refreshSignedBannerUrl = async () => {
       setBannerLoadFailed(false);
       setSignedBannerUrl(null);
 
@@ -292,6 +301,8 @@ const CourseCard: React.FC<CourseCardProps> = ({
       }
 
       try {
+        setIsRefreshingBanner(true);
+
         const response = await apiFetch(`${API_BASE_URL}/storage/signed-url`, {
           method: 'POST',
           headers: {
@@ -306,25 +317,29 @@ const CourseCard: React.FC<CourseCardProps> = ({
         const data = await response.json();
 
         if (!response.ok) {
-          throw new Error(data?.error || 'Unable to load class banner.');
+          throw new Error(data?.error || 'Unable to refresh class banner.');
         }
 
         if (isMounted && data?.url) {
           setSignedBannerUrl(data.url);
         }
-      } catch (error) {
+      } catch {
         if (isMounted) {
           setBannerLoadFailed(true);
+        }
+      } finally {
+        if (isMounted) {
+          setIsRefreshingBanner(false);
         }
       }
     };
 
-    loadSignedBannerUrl();
+    refreshSignedBannerUrl();
 
     return () => {
       isMounted = false;
     };
-  }, [course.id, course.bannerStoragePath]);
+  }, [course.id, course.bannerUrl, course.bannerStoragePath]);
 
   const getCourseImage = () => {
     const imageMap: { [key: string]: any } = {
@@ -339,12 +354,10 @@ const CourseCard: React.FC<CourseCardProps> = ({
       'Computer Fundamentals': require('../../assets/parseclass/AP1.jpg'),
     };
 
-    if (signedBannerUrl && !bannerLoadFailed) {
-      return { uri: signedBannerUrl };
-    }
+    const bannerRenderUri = getBannerRenderUri(signedBannerUrl || course.bannerUrl);
 
-    if (course.bannerUrl && !bannerLoadFailed) {
-      return { uri: course.bannerUrl };
+    if (bannerRenderUri && !bannerLoadFailed && !isRefreshingBanner) {
+      return { uri: bannerRenderUri };
     }
 
     return imageMap[course.name] || require('../../assets/parseclass/AP1.jpg');

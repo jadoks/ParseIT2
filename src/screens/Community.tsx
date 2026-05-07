@@ -1,4 +1,5 @@
-import React, { useMemo, useState } from 'react';
+import Constants from 'expo-constants';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   FlatList,
   GestureResponderEvent,
@@ -22,6 +23,7 @@ export interface CommunityAnswer {
   id: string;
   userName: string;
   avatar: any;
+  avatarStoragePath?: string | null;
   answeredAt: string;
   message: string;
 }
@@ -31,6 +33,7 @@ export interface CommunityPost {
   userName: string;
   userEmail?: string;
   avatar: any;
+  avatarStoragePath?: string | null;
   dateTime: string;
   content: string;
   answers: CommunityAnswer[];
@@ -63,6 +66,57 @@ type AnswerDropdownState = {
   x: number;
   y: number;
 } | null;
+
+function getApiBaseUrl() {
+  if (Platform.OS === 'web') {
+    return 'http://localhost:5000';
+  }
+
+  const possibleHost =
+    Constants.expoConfig?.hostUri ||
+    Constants.manifest2?.extra?.expoGo?.debuggerHost ||
+    '';
+
+  const host = possibleHost.split(':')[0];
+
+  if (host) {
+    return `http://${host}:5000`;
+  }
+
+  return 'http://192.168.1.5:5000';
+}
+
+const API_BASE_URL = getApiBaseUrl();
+
+const apiFetch = (url: string, options: any = {}) =>
+  fetch(url, {
+    credentials: 'include',
+    ...options,
+  });
+
+const refreshUserImageUrl = async (storagePath?: string | null) => {
+  if (!storagePath) return null;
+
+  try {
+    const response = await apiFetch(`${API_BASE_URL}/storage/user-image-signed-url`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ storagePath }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data?.error || 'Unable to refresh user image.');
+    }
+
+    return data?.url || null;
+  } catch {
+    return null;
+  }
+};
 
 const DEFAULT_AVATAR = require('../../assets/images/pogi.jpg');
 const POST_DROPDOWN_WIDTH = 160;
@@ -137,6 +191,47 @@ const Community: React.FC<CommunityProps> = ({
     () => normalizeImageSource(userAvatar),
     [userAvatar]
   );
+
+  const [refreshedPostAvatars, setRefreshedPostAvatars] = useState<Record<string, string>>({});
+  const [refreshedAnswerAvatars, setRefreshedAnswerAvatars] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const refreshAvatars = async () => {
+      const nextPostAvatars: Record<string, string> = {};
+      const nextAnswerAvatars: Record<string, string> = {};
+
+      for (const post of posts) {
+        if (post.avatarStoragePath) {
+          const url = await refreshUserImageUrl(post.avatarStoragePath);
+          if (url) {
+            nextPostAvatars[post.id] = url;
+          }
+        }
+
+        for (const answer of post.answers || []) {
+          if (answer.avatarStoragePath) {
+            const url = await refreshUserImageUrl(answer.avatarStoragePath);
+            if (url) {
+              nextAnswerAvatars[answer.id] = url;
+            }
+          }
+        }
+      }
+
+      if (isMounted) {
+        setRefreshedPostAvatars(nextPostAvatars);
+        setRefreshedAnswerAvatars(nextAnswerAvatars);
+      }
+    };
+
+    refreshAvatars();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [posts]);
 
   const visiblePosts = useMemo(
     () => posts.filter((post) => !hiddenPosts.includes(post.id)),
@@ -365,7 +460,7 @@ const Community: React.FC<CommunityProps> = ({
         <View style={styles.postHeader}>
           <View style={styles.userRow}>
             <Image
-              source={normalizeImageSource(item.avatar)}
+              source={normalizeImageSource(refreshedPostAvatars[item.id] || item.avatar)}
               style={styles.postAvatar}
               resizeMode="cover"
             />
@@ -723,7 +818,7 @@ const Community: React.FC<CommunityProps> = ({
                             <View style={styles.answerPreviewHeader}>
                               <View style={styles.userRow}>
                                 <Image
-                                  source={normalizeImageSource(answer.avatar)}
+                                  source={normalizeImageSource(refreshedAnswerAvatars[answer.id] || answer.avatar)}
                                   style={styles.answerAvatar}
                                   resizeMode="cover"
                                 />

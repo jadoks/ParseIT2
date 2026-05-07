@@ -369,7 +369,7 @@ export default function FruitMania({ onBack }: any) {
             </Pressable>
 
             <Pressable style={styles.darkButton} onPress={onBack}>
-              <Text style={styles.darkButtonText}>Back to Home</Text>
+              <Text style={styles.darkButtonText}>Back to Games</Text>
             </Pressable>
 
             <Pressable style={styles.yellowButtonDisabled}>

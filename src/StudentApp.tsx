@@ -56,6 +56,8 @@ interface CurrentStudent {
   email: string;
   profileImage?: string | null;
   bannerImage?: string | null;
+  profileImageStoragePath?: string | null;
+  bannerImageStoragePath?: string | null;
 }
 
 interface Props {
@@ -69,6 +71,8 @@ interface RemoteStudentProfile {
   email?: string;
   profileImage?: string | null;
   bannerImage?: string | null;
+  profileImageStoragePath?: string | null;
+  bannerImageStoragePath?: string | null;
 }
 
 type ScreenType =
@@ -123,6 +127,39 @@ const apiFetch = (url: string, options: any = {}) =>
     credentials: 'include',
     ...options,
   });
+
+const refreshClassBannerUrl = async (course: any) => {
+  if (!course?.bannerStoragePath || !course?.id) {
+    return course;
+  }
+
+  try {
+    const response = await apiFetch(`${API_BASE_URL}/storage/signed-url`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        storagePath: course.bannerStoragePath,
+        classId: course.id,
+      }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data?.error || 'Unable to refresh class banner.');
+    }
+
+    return {
+      ...course,
+      bannerUrl: data?.url || course.bannerUrl || null,
+    };
+  } catch (error) {
+    console.log('REFRESH CLASS BANNER ERROR =>', error);
+    return course;
+  }
+};
 
 type StoredAssignmentScore = {
   points?: number;
@@ -526,7 +563,7 @@ const mapCoursesToAssignmentCourses = (courses: CourseDetailData[]): AssignmentC
     semester: course.semester,
     schoolYear: course.schoolYear,
     section: course.section,
-    bannerUrl: (course as any).bannerUrl || null,
+    bannerUrl: (course as any).bannerUrl || (course as any).bannerUri || null,
     bannerStoragePath: (course as any).bannerStoragePath || null,
     bannerFileName: (course as any).bannerFileName || null,
     bannerMimeType: (course as any).bannerMimeType || null,
@@ -569,7 +606,7 @@ const mapJoinedClassToCourseDetail = (item: any): CourseWithBannerFields => ({
   semester: item.semester || '',
   schoolYear: item.schoolYear || '',
   section: item.section || '',
-  bannerUrl: item.bannerUrl || null,
+  bannerUrl: item.bannerStoragePath ? null : item.bannerUrl || item.bannerUri || item.bannerLocalUri || null,
   bannerStoragePath: item.bannerStoragePath || null,
   bannerFileName: item.bannerFileName || null,
   bannerMimeType: item.bannerMimeType || null,
@@ -751,6 +788,8 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
         email: profileData.email || currentStudent.email,
         profileImage: profileData.profileImage || null,
         bannerImage: profileData.bannerImage || null,
+        profileImageStoragePath: profileData.profileImageStoragePath || null,
+        bannerImageStoragePath: profileData.bannerImageStoragePath || null,
       });
 
       if (profileData.profileImage) {
@@ -884,10 +923,7 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
       throw new Error('User ID is missing.');
     }
 
-    const body: any = {
-      id: userId,
-      role: 'student',
-    };
+    const body: any = {};
 
     if (profileImage?.uri) {
       body.profileImageBase64 = await getBase64FromUri(profileImage.uri);
@@ -917,6 +953,8 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
   };
 
   const handleChangeProfileImage = async (image: any) => {
+    const previousAvatar = currentUserAvatar;
+
     try {
       setCurrentUserAvatar(image);
       setHasImageChanged(true);
@@ -927,18 +965,26 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
         profileImage: image,
       });
 
-      if (savedData?.profileImage) {
-        setCurrentUserAvatar({ uri: savedData.profileImage });
-        setRemoteStudentProfile((prev) => ({
-          ...(prev || {}),
-          firstName: prev?.firstName || currentStudent.firstName,
-          lastName: prev?.lastName || currentStudent.lastName,
-          email: prev?.email || currentStudent.email,
-          profileImage: savedData.profileImage,
-          bannerImage: prev?.bannerImage || currentUserBanner?.uri || currentStudent.bannerImage || null,
-        }));
+      if (!savedData?.profileImage) {
+        throw new Error('Backend did not return the saved profile image URL.');
       }
+
+      setCurrentUserAvatar({ uri: savedData.profileImage });
+
+      setRemoteStudentProfile((prev) => ({
+        ...(prev || {}),
+        firstName: prev?.firstName || currentStudent.firstName,
+        lastName: prev?.lastName || currentStudent.lastName,
+        email: prev?.email || currentStudent.email,
+        profileImage: savedData.profileImage,
+        bannerImage:
+          prev?.bannerImage ||
+          currentUserBanner?.uri ||
+          currentStudent.bannerImage ||
+          null,
+      }));
     } catch (error: any) {
+      setCurrentUserAvatar(previousAvatar);
       console.log('SAVE PROFILE IMAGE ERROR =>', error);
       Alert.alert(
         'Save Failed',
@@ -948,6 +994,8 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
   };
 
   const handleChangeBannerImage = async (image: any) => {
+    const previousBanner = currentUserBanner;
+
     try {
       setCurrentUserBanner(image);
       setHasImageChanged(true);
@@ -958,18 +1006,26 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
         bannerImage: image,
       });
 
-      if (savedData?.bannerImage) {
-        setCurrentUserBanner({ uri: savedData.bannerImage });
-        setRemoteStudentProfile((prev) => ({
-          ...(prev || {}),
-          firstName: prev?.firstName || currentStudent.firstName,
-          lastName: prev?.lastName || currentStudent.lastName,
-          email: prev?.email || currentStudent.email,
-          profileImage: prev?.profileImage || currentUserAvatar?.uri || currentStudent.profileImage || null,
-          bannerImage: savedData.bannerImage,
-        }));
+      if (!savedData?.bannerImage) {
+        throw new Error('Backend did not return the saved banner image URL.');
       }
+
+      setCurrentUserBanner({ uri: savedData.bannerImage });
+
+      setRemoteStudentProfile((prev) => ({
+        ...(prev || {}),
+        firstName: prev?.firstName || currentStudent.firstName,
+        lastName: prev?.lastName || currentStudent.lastName,
+        email: prev?.email || currentStudent.email,
+        profileImage:
+          prev?.profileImage ||
+          currentUserAvatar?.uri ||
+          currentStudent.profileImage ||
+          null,
+        bannerImage: savedData.bannerImage,
+      }));
     } catch (error: any) {
+      setCurrentUserBanner(previousBanner);
       console.log('SAVE BANNER IMAGE ERROR =>', error);
       Alert.alert(
         'Save Failed',
@@ -1078,9 +1134,12 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
 
       const classesArray = Array.isArray(data) ? data : data?.data || [];
       const mappedCourses = classesArray.map(mapJoinedClassToCourseDetail);
+      const mappedCoursesWithFreshBanners = await Promise.all(
+        mappedCourses.map(refreshClassBannerUrl)
+      );
 
-      setJoinedCourses(mappedCourses);
-      await loadStudentAnnouncements(mappedCourses);
+      setJoinedCourses(mappedCoursesWithFreshBanners);
+      await loadStudentAnnouncements(mappedCoursesWithFreshBanners);
     } catch (error) {
       console.log('LOAD JOINED CLASSES ERROR =>', error);
       setJoinedCourses([]);
@@ -1911,11 +1970,24 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
     }
 
     setIsNotificationOpen(false);
+    setIsChatOpen(false);
+    setMobileDrawerOpen(false);
     setActiveScreen(screen);
+
     if (screen !== 'videos') {
       setVideoSearchQuery('');
     }
+  };
+
+  const exitFullscreenGameToGames = () => {
+    setLastScreen('game');
+    setIsNotificationOpen(false);
+    setIsChatOpen(false);
+    setIsConversationActive(false);
+    setIsVideoActive(false);
     setMobileDrawerOpen(false);
+    setActiveScreen('game');
+    setVideoSearchQuery('');
   };
 
   const handleNotificationPress = () => {
@@ -2228,15 +2300,15 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
         );
 
       case 'flipit':
-        return <FlipIt onBack={() => setActiveScreen('game')} />;
+        return <FlipIt onBack={exitFullscreenGameToGames} />;
 
       case 'fruitmania':
-        return <FruitMania onBack={() => setActiveScreen('game')} />;
+        return <FruitMania onBack={exitFullscreenGameToGames} />;
 
       case 'quizmasters':
         return (
           <QuizMasters
-            onBack={() => setActiveScreen('game')}
+            onBack={exitFullscreenGameToGames}
             generatedQuestions={generatedQuizMastersData}
           />
         );

@@ -1,13 +1,4 @@
 import Constants from 'expo-constants';
-import {
-  getDatabase,
-  off,
-  onValue,
-  push,
-  ref,
-  serverTimestamp,
-  set,
-} from 'firebase/database';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { DimensionValue } from 'react-native';
 import {
@@ -26,11 +17,8 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
-import { auth } from '../../firebaseConfig';
 
 const DEFAULT_AVATAR = require('../../assets/images/default_profile.png');
-const RTDB_URL = 'https://parseit2-4b26d-default-rtdb.firebaseio.com/';
-
 function getApiBaseUrl() {
   if (Platform.OS === 'web') {
     return 'http://localhost:5000';
@@ -51,7 +39,6 @@ function getApiBaseUrl() {
 }
 
 const API_BASE_URL = getApiBaseUrl();
-const database = getDatabase(auth.app, RTDB_URL);
 
 type MessengerCourse = {
   id: string;
@@ -375,70 +362,45 @@ const Messenger = ({
   useEffect(() => {
     if (!selected) return;
 
-    const conversationMessagesRef = ref(database, `messenger/${selected.id}/messages`);
+    let cancelled = false;
 
-    const handleSnapshot = async (snapshot: any) => {
+    const loadMessages = async () => {
       try {
-        const realtimeRows = snapshot.exists()
-          ? Object.entries(snapshot.val() || {}).map(([key, value]) => ({
-              ...(value as any),
-              key,
-            }))
-          : [];
+        const response = await fetch(`${API_BASE_URL}/messenger-messages/${selected.id}`, { credentials: 'include' });
+        const data = await response.json();
 
-        let backendRows: any[] = [];
-
-        try {
-          const response = await fetch(
-            `${API_BASE_URL}/messenger-messages/${selected.id}`, { credentials: 'include' });
-
-          const data = await response.json();
-
-          if (response.ok) {
-            backendRows = Array.isArray(data) ? data : [];
-          } else {
-            console.error('Failed to load backend messages:', data?.error);
-          }
-        } catch (fetchError) {
-          console.error('Backend messages fetch error:', fetchError);
+        if (!response.ok) {
+          throw new Error(data?.error || 'Failed to load messages.');
         }
 
-        const mergedMap = new Map<string, any>();
+        if (cancelled) return;
 
-        [...backendRows, ...realtimeRows].forEach((item: any) => {
-          const key =
-            item?.id ||
-            item?.key ||
-            `${item?.senderId || item?.senderName || 'unknown'}-${item?.text || ''}-${resolveCreatedAt(item) || ''}`;
+        const backendRows = Array.isArray(data) ? data : [];
+        const backendMessages = normalizeMessages(backendRows);
 
-          if (!mergedMap.has(String(key))) {
-            mergedMap.set(String(key), item);
-          }
-        });
-
-        const mergedMessages = normalizeMessages(Array.from(mergedMap.values()));
+        const nextMessages = backendMessages.length
+          ? backendMessages
+          : [
+              {
+                id: `seed-${selected.id}`,
+                fromMe: false,
+                sender: 'System',
+                text: `Conversation created for class ${selected.name}.`,
+                createdAt:
+                  toMillis(selected.createdAt) ||
+                  toMillis(selected.updatedAt) ||
+                  toMillis(selected.lastMessageAt) ||
+                  null,
+                type: 'system',
+              } as Message,
+            ];
 
         setMessagesByConversation((prev) => ({
           ...prev,
-          [selected.id]: mergedMessages.length
-            ? mergedMessages
-            : [
-                {
-                  id: `seed-${selected.id}`,
-                  fromMe: false,
-                  sender: 'System',
-                  text: `Conversation created for class ${selected.name}.`,
-                  createdAt:
-                    toMillis(selected.createdAt) ||
-                    toMillis(selected.updatedAt) ||
-                    toMillis(selected.lastMessageAt) ||
-                    null,
-                  type: 'system',
-                },
-              ],
+          [selected.id]: nextMessages,
         }));
 
-        const lastMessage = mergedMessages[mergedMessages.length - 1];
+        const lastMessage = backendMessages[backendMessages.length - 1];
         if (lastMessage) {
           setConversations((prev) =>
             prev.map((conversation) =>
@@ -461,10 +423,12 @@ const Messenger = ({
       }
     };
 
-    onValue(conversationMessagesRef, handleSnapshot);
+    loadMessages();
+    const interval = setInterval(loadMessages, 3000);
 
     return () => {
-      off(conversationMessagesRef, 'value', handleSnapshot);
+      cancelled = true;
+      clearInterval(interval);
     };
   }, [selected, currentUser, currentUserName]);
 
@@ -643,22 +607,6 @@ const Messenger = ({
 
     setMessageText('');
 
-    try {
-      const newMessageRef = push(ref(database, `messenger/${selected.id}/messages`));
-
-      await set(newMessageRef, {
-        id: newMessageRef.key,
-        text: trimmed,
-        senderName: currentUserName,
-        senderId: currentUser,
-        senderUid: currentUser,
-        senderRole: 'teacher',
-        createdAt: serverTimestamp(),
-        type: 'text',
-      });
-    } catch (error) {
-      console.error('Realtime send message error:', error);
-    }
 
     try {
       await fetch(`${API_BASE_URL}/messenger-send-message`, {
@@ -980,6 +928,7 @@ const Messenger = ({
     <View
       style={[
         styles.sidebar,
+        isMobile && styles.sidebarMobile,
         isSplitView && {
           width: sizes.sidebarWidth,
         },
@@ -1001,8 +950,12 @@ const Messenger = ({
       <FlatList
         data={filtered}
         keyExtractor={(item) => item.id}
+        style={styles.sidebarList}
         contentContainerStyle={styles.sidebarListContent}
         showsVerticalScrollIndicator={true}
+        indicatorStyle="black"
+        nestedScrollEnabled={true}
+        keyboardShouldPersistTaps="handled"
         renderItem={({ item }) => {
           const active = selected?.id === item.id;
 
@@ -1707,7 +1660,7 @@ const Messenger = ({
     }
 
     return (
-      <View style={styles.chatPane}>
+      <View style={[styles.chatPane, isMobile && styles.chatPaneMobile]}>
         {renderChatHeader()}
 
         <FlatList
@@ -1715,14 +1668,18 @@ const Messenger = ({
           data={currentMessages}
           keyExtractor={(item) => item.id}
           renderItem={renderMessage}
+          style={styles.messagesList}
           contentContainerStyle={{
             paddingHorizontal: sizes.horizontalPadding,
             paddingTop: 18 * scale,
             paddingBottom: 24 * scale,
             flexGrow: 1,
-            justifyContent: 'flex-end',
+            justifyContent: currentMessages.length ? 'flex-end' : 'center',
           }}
           showsVerticalScrollIndicator={true}
+          indicatorStyle="black"
+          nestedScrollEnabled={true}
+          keyboardShouldPersistTaps="handled"
           onContentSizeChange={() =>
             flatListRef.current?.scrollToEnd({ animated: true })
           }
@@ -1808,10 +1765,18 @@ const Messenger = ({
 
   if (isMobile) {
     if (selected) {
-      return <SafeAreaView style={styles.mobileScreen}>{renderChatPane()}</SafeAreaView>;
+      return (
+        <SafeAreaView style={styles.mobileScreen}>
+          <View style={styles.mobileContent}>{renderChatPane()}</View>
+        </SafeAreaView>
+      );
     }
 
-    return <SafeAreaView style={styles.mobileScreen}>{renderConversationList()}</SafeAreaView>;
+    return (
+      <SafeAreaView style={styles.mobileScreen}>
+        <View style={styles.mobileContent}>{renderConversationList()}</View>
+      </SafeAreaView>
+    );
   }
 
   return (
@@ -1829,6 +1794,10 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#f7f8fa',
   },
+  mobileContent: {
+    flex: 1,
+    minHeight: 0,
+  },
   desktopScreen: {
     flex: 1,
     backgroundColor: '#eef1f5',
@@ -1842,6 +1811,8 @@ const styles = StyleSheet.create({
   },
 
   sidebar: {
+    flex: 1,
+    minHeight: 0,
     backgroundColor: '#fff',
     flexShrink: 0,
     borderRadius: 22,
@@ -1851,9 +1822,18 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 6 },
     elevation: 5,
   },
+  sidebarList: {
+    flex: 1,
+    minHeight: 0,
+  },
   sidebarListContent: {
     paddingBottom: 14,
     paddingHorizontal: 10,
+  },
+  sidebarMobile: {
+    borderRadius: 0,
+    shadowOpacity: 0,
+    elevation: 0,
   },
   screenBackButton: {
     marginTop: 20,
@@ -1923,6 +1903,7 @@ const styles = StyleSheet.create({
 
   chatPane: {
     flex: 1,
+    minHeight: 0,
     backgroundColor: '#fff',
     minWidth: 0,
     borderRadius: 22,
@@ -1932,6 +1913,15 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 6 },
     elevation: 5,
     overflow: 'hidden',
+  },
+  messagesList: {
+    flex: 1,
+    minHeight: 0,
+  },
+  chatPaneMobile: {
+    borderRadius: 0,
+    shadowOpacity: 0,
+    elevation: 0,
   },
   chatHeader: {
     borderBottomWidth: 1,
