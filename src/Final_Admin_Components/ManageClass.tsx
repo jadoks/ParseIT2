@@ -375,7 +375,7 @@ export default function ManageClass({ width, currentAdmin }: ManageClassProps) {
         >
           <Text style={styles.heroEyebrow}>CLASS MANAGEMENT</Text>
           <Text style={[styles.heroTitle, isMobile && styles.heroTitleMobile]}>
-            Manage Class
+            Manage Classes
           </Text>
           <Text style={styles.heroSubtitle}>
             View all added classes, manage records, and maintain class details in

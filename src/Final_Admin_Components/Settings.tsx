@@ -2,14 +2,14 @@ import Feather from "@expo/vector-icons/Feather";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import React, { useRef, useState } from "react";
 import {
-    Modal,
-    Pressable,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  Modal,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
 
 type SettingsProps = {
@@ -110,8 +110,8 @@ export default function Settings({ width }: SettingsProps) {
     setChangePasswordPin(updated);
   };
 
-  const settingsCardWidth = isMobile ? "100%" : isTablet ? "88%" : "72%";
-  const childModalWidth = isMobile ? "100%" : isTablet ? "82%" : "58%";
+  const settingsCardWidth = isMobile ? "100%" : isTablet ? "74%" : "42%";
+  const childModalWidth = isMobile ? "100%" : isTablet ? "68%" : "36%";
 
   return (
     <>
@@ -624,11 +624,12 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(43, 17, 17, 0.45)",
     justifyContent: "center",
     alignItems: "center",
-    padding: 20,
+    paddingHorizontal: 20,
+    paddingVertical: 24,
   },
 
   modalCard: {
-    maxWidth: 980,
+    maxWidth: 560,
     maxHeight: "92%",
     backgroundColor: "#FFFFFF",
     borderRadius: 28,
@@ -638,7 +639,7 @@ const styles = StyleSheet.create({
   },
 
   modalCardSmall: {
-    maxWidth: 760,
+    maxWidth: 480,
     maxHeight: "92%",
     backgroundColor: "#FFFFFF",
     borderRadius: 28,
@@ -751,7 +752,7 @@ const styles = StyleSheet.create({
   },
 
   actionCard: {
-    minHeight: 72,
+    minHeight: 70,
     borderRadius: 18,
     borderWidth: 1,
     borderColor: "#F3D4D4",
@@ -831,8 +832,9 @@ const styles = StyleSheet.create({
   pinRow: {
     flexDirection: "row",
     justifyContent: "center",
-    gap: 14,
+    gap: 10,
     marginTop: 8,
+    flexWrap: "wrap",
   },
 
   pinRowMobile: {
@@ -840,8 +842,8 @@ const styles = StyleSheet.create({
   },
 
   pinBox: {
-    width: 72,
-    height: 64,
+    width: 58,
+    height: 58,
     borderRadius: 16,
     borderWidth: 1,
     borderColor: "#F1CACA",

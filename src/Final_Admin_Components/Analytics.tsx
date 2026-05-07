@@ -192,7 +192,12 @@ function SectionCard({
   return (
     <View style={[styles.sectionCard, { width: widthValue }]}>
       <View style={styles.sectionCardHeader}>
-        <View style={styles.sectionCardHeaderLeft}>
+        <View
+          style={[
+            styles.sectionCardHeaderLeft,
+            widthValue === "100%" && styles.sectionCardHeaderLeftWide,
+          ]}
+        >
           <View style={styles.iconBox}>{icon}</View>
 
           <View style={styles.sectionCardHeaderTextWrap}>
@@ -259,24 +264,48 @@ function StudentRiskItem({
   average,
   reason,
   riskLevel,
+  isMobile = false,
 }: {
   name: string;
   section: string;
   average: string;
   reason: string;
   riskLevel: string;
+  isMobile?: boolean;
 }) {
   const isHigh = riskLevel === "High";
 
   return (
-    <View style={[styles.riskCard, isHigh && styles.riskCardHigh]}>
-      <View style={styles.riskTopRow}>
-        <View style={styles.riskTextWrap}>
+    <View
+      style={[
+        styles.riskCard,
+        isMobile && styles.riskCardMobile,
+        isHigh && styles.riskCardHigh,
+      ]}
+    >
+      <View style={[styles.riskTopRow, isMobile && styles.riskTopRowMobile]}>
+        <View style={[styles.riskTextWrap, isMobile && styles.riskTextWrapMobile]}>
           <Text style={styles.riskName}>{name}</Text>
-          <Text style={styles.riskSection}>{section}</Text>
+          <View style={styles.riskTagContainer}>
+            {section
+              .split(",")
+              .map((item) => item.trim())
+              .filter(Boolean)
+              .map((item, index) => (
+                <View key={`${item}-${index}`} style={styles.riskTag}>
+                  <Text style={styles.riskTagText}>{item}</Text>
+                </View>
+              ))}
+          </View>
         </View>
 
-        <View style={[styles.riskBadge, isHigh && styles.riskBadgeHigh]}>
+        <View
+          style={[
+            styles.riskBadge,
+            isMobile && styles.riskBadgeMobile,
+            isHigh && styles.riskBadgeHigh,
+          ]}
+        >
           <Text style={styles.riskBadgeText}>{average}</Text>
         </View>
       </View>
@@ -701,43 +730,43 @@ export default function Analytics({ width, apiBaseUrl }: AnalyticsProps) {
             <Ionicons name="analytics-outline" size={24} color="#DC2626" />
           }
         >
-          <View style={styles.departmentOverviewGrid}>
-            <View style={styles.departmentOverviewItem}>
+          <View style={[styles.departmentOverviewGrid, isMobile && styles.departmentOverviewGridMobile]}>
+            <View style={[styles.departmentOverviewItem, isMobile && styles.departmentOverviewItemMobile]}>
               <StatRow label="Total Students" value={`${analytics.totals.totalStudents}`} />
             </View>
-            <View style={styles.departmentOverviewItem}>
+            <View style={[styles.departmentOverviewItem, isMobile && styles.departmentOverviewItemMobile]}>
               <StatRow label="Total Teachers" value={`${analytics.totals.totalTeachers}`} />
             </View>
-            <View style={styles.departmentOverviewItem}>
+            <View style={[styles.departmentOverviewItem, isMobile && styles.departmentOverviewItemMobile]}>
               <StatRow label="Total Classes" value={`${analytics.totals.totalClasses}`} />
             </View>
-            <View style={styles.departmentOverviewItem}>
+            <View style={[styles.departmentOverviewItem, isMobile && styles.departmentOverviewItemMobile]}>
               <StatRow
                 label="Class Enrollments"
                 value={`${analytics.totals.totalClassEnrollments ?? 0}`}
               />
             </View>
-            <View style={styles.departmentOverviewItem}>
+            <View style={[styles.departmentOverviewItem, isMobile && styles.departmentOverviewItemMobile]}>
               <StatRow
                 label="Department Average"
                 value={`${analytics.summary.departmentAverage}%`}
                 tone={analytics.summary.departmentAverage >= 75 ? "success" : "danger"}
               />
             </View>
-            <View style={styles.departmentOverviewItem}>
+            <View style={[styles.departmentOverviewItem, isMobile && styles.departmentOverviewItemMobile]}>
               <StatRow
                 label="At-Risk Population"
                 value={`${analytics.summary.atRiskCount}`}
                 tone={analytics.summary.atRiskCount > 0 ? "danger" : "success"}
               />
             </View>
-            <View style={styles.departmentOverviewItem}>
+            <View style={[styles.departmentOverviewItem, isMobile && styles.departmentOverviewItemMobile]}>
               <StatRow label="No Data Students" value={`${analytics.summary.noDataCount}`} />
             </View>
-            <View style={styles.departmentOverviewItem}>
+            <View style={[styles.departmentOverviewItem, isMobile && styles.departmentOverviewItemMobile]}>
               <StatRow label="Pass Rate" value={`${analytics.summary.passRate}%`} tone="success" />
             </View>
-            <View style={styles.departmentOverviewItem}>
+            <View style={[styles.departmentOverviewItem, isMobile && styles.departmentOverviewItemMobile]}>
               <StatRow label="Fail Rate" value={`${analytics.summary.failRate}%`} tone="danger" />
             </View>
           </View>
@@ -887,7 +916,7 @@ export default function Analytics({ width, apiBaseUrl }: AnalyticsProps) {
           icon={<Ionicons name="warning-outline" size={24} color="#DC2626" />}
         >
           {analytics.atRiskStudents.length ? (
-            <View style={styles.riskGrid}>
+            <View style={[styles.riskGrid, isMobile && styles.riskGridMobile]}>
               {analytics.atRiskStudents.map((student) => (
                 <StudentRiskItem
                   key={`${student.studentId}-${student.className}`}
@@ -898,6 +927,7 @@ export default function Analytics({ width, apiBaseUrl }: AnalyticsProps) {
                   }
                   riskLevel={student.riskLevel}
                   reason={student.reason}
+                  isMobile={isMobile}
                 />
               ))}
             </View>
@@ -1094,6 +1124,7 @@ const styles = StyleSheet.create({
     borderColor: "#F3D4D4",
     padding: 20,
     marginBottom: 18,
+    minWidth: 0,
   },
 
   sectionCardHeader: {
@@ -1103,6 +1134,10 @@ const styles = StyleSheet.create({
   sectionCardHeaderLeft: {
     flexDirection: "row",
     alignItems: "center",
+  },
+
+  sectionCardHeaderLeftWide: {
+    flexWrap: "wrap",
   },
 
   sectionCardHeaderTextWrap: {
@@ -1235,17 +1270,32 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     flexWrap: "wrap",
     justifyContent: "space-between",
+    gap: 12,
+  },
+
+  riskGridMobile: {
+    flexDirection: "column",
+    gap: 10,
   },
 
   riskCard: {
-    width: "48.7%",
-    minWidth: 240,
+    flexGrow: 1,
+    flexBasis: "48%",
+    maxWidth: "49%",
+    minWidth: 280,
     borderRadius: 18,
     borderWidth: 1,
     borderColor: "#F3D4D4",
     backgroundColor: "#FFFFFF",
     padding: 16,
-    marginBottom: 12,
+    marginBottom: 0,
+  },
+
+  riskCardMobile: {
+    width: "100%",
+    maxWidth: "100%",
+    minWidth: 0,
+    padding: 14,
   },
 
   riskCardHigh: {
@@ -1258,11 +1308,22 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "flex-start",
     marginBottom: 10,
+    gap: 10,
+  },
+
+  riskTopRowMobile: {
+    flexDirection: "column",
+    alignItems: "stretch",
   },
 
   riskTextWrap: {
     flex: 1,
-    paddingRight: 12,
+    minWidth: 0,
+    paddingRight: 0,
+  },
+
+  riskTextWrapMobile: {
+    width: "100%",
   },
 
   riskName: {
@@ -1278,11 +1339,40 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
 
+  riskTagContainer: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    marginTop: 6,
+    gap: 6,
+  },
+
+  riskTag: {
+    backgroundColor: "#FFF1F1",
+    borderWidth: 1,
+    borderColor: "#F3D4D4",
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    maxWidth: "100%",
+  },
+
+  riskTagText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#7A4A4A",
+    flexShrink: 1,
+  },
+
   riskBadge: {
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 999,
     backgroundColor: "#FEF3C7",
+    alignSelf: "flex-start",
+  },
+
+  riskBadgeMobile: {
+    alignSelf: "flex-start",
   },
 
   riskBadgeHigh: {
@@ -1299,6 +1389,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 20,
     color: "#7A4A4A",
+    marginTop: 4,
   },
 
   emptyState: {
@@ -1321,12 +1412,26 @@ departmentOverviewGrid: {
   flexDirection: "row",
   flexWrap: "wrap",
   justifyContent: "space-between",
+  gap: 10,
+},
+
+departmentOverviewGridMobile: {
+  flexDirection: "column",
+  gap: 0,
 },
 
 departmentOverviewItem: {
-  width: "32%",
+  flexGrow: 1,
+  flexBasis: "31%",
   minWidth: 180,
-  marginBottom: 10,
+  marginBottom: 0,
+},
+
+departmentOverviewItemMobile: {
+  width: "100%",
+  minWidth: 0,
+  flexBasis: "auto",
+  marginBottom: 0,
 },
 
 // ===== TREND CHART =====
