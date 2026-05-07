@@ -135,6 +135,12 @@ function getApiBaseUrl() {
 
 const API_BASE_URL = getApiBaseUrl();
 
+const apiFetch = (url: string, options: any = {}) =>
+  fetch(url, {
+    credentials: 'include',
+    ...options,
+  });
+
 const TEACHER_ALLOWED_NOTIFICATION_TYPES = new Set([
   'submitted-assignment',
   'community-answer',
@@ -251,7 +257,7 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
     if (!teacherId) return;
 
     try {
-      const response = await fetch(`${API_BASE_URL}/auth/user-profile`, {
+      const response = await apiFetch(`${API_BASE_URL}/auth/user-profile`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -334,7 +340,7 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
 
   const loadTeacherClasses = useCallback(async () => {
     try {
-      const response = await fetch(`${API_BASE_URL}/classes`);
+      const response = await apiFetch(`${API_BASE_URL}/classes`);
       const data = await response.json();
 
       if (!response.ok) {
@@ -386,7 +392,6 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
         throw new Error(data?.error || 'Failed to load teacher analytics.');
       }
 
-      console.log('TEACHER ANALYTICS RESPONSE =>', data);
       setAnalyticsStudents(Array.isArray(data?.data) ? data.data : []);
     } catch (error) {
       console.log('LOAD TEACHER ANALYTICS ERROR =>', error);
@@ -410,7 +415,7 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
 
     const groupedAnnouncements = await Promise.all(
       classIds.map(async (classId) => {
-        const response = await fetch(`${API_BASE_URL}/class-announcements/${classId}`);
+        const response = await apiFetch(`${API_BASE_URL}/class-announcements/${classId}`);
         const data = await response.json();
 
         if (!response.ok) {
@@ -552,7 +557,7 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
 
   const loadCommunityPosts = async () => {
     try {
-      const response = await fetch(`${API_BASE_URL}/community-posts`);
+      const response = await apiFetch(`${API_BASE_URL}/community-posts`);
       const data = await response.json();
 
       if (!response.ok) {
@@ -663,7 +668,7 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
       body.bannerImageFileName = 'banner.jpg';
     }
 
-    const response = await fetch(`${API_BASE_URL}/auth/update-user-images`, {
+    const response = await apiFetch(`${API_BASE_URL}/auth/update-user-images`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
@@ -737,7 +742,7 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
     if (!trimmedQuery) return;
 
     try {
-      const response = await fetch(`${API_BASE_URL}/community-posts`, {
+      const response = await apiFetch(`${API_BASE_URL}/community-posts`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -769,7 +774,7 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
     if (!trimmedMessage) return;
 
     try {
-      const response = await fetch(`${API_BASE_URL}/community-posts/${postId}/answers`, {
+      const response = await apiFetch(`${API_BASE_URL}/community-posts/${postId}/answers`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -800,7 +805,7 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
     if (!trimmedContent) return;
 
     try {
-      const response = await fetch(`${API_BASE_URL}/community-posts/${postId}`, {
+      const response = await apiFetch(`${API_BASE_URL}/community-posts/${postId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ content: trimmedContent }),
@@ -821,7 +826,7 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
 
   const handleDeleteCommunityPost = async (postId: string) => {
     try {
-      const response = await fetch(`${API_BASE_URL}/community-posts/${postId}`, {
+      const response = await apiFetch(`${API_BASE_URL}/community-posts/${postId}`, {
         method: 'DELETE',
       });
 

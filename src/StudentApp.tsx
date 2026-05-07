@@ -118,6 +118,12 @@ function getApiBaseUrl() {
 
 const API_BASE_URL = getApiBaseUrl();
 
+const apiFetch = (url: string, options: any = {}) =>
+  fetch(url, {
+    credentials: 'include',
+    ...options,
+  });
+
 type StoredAssignmentScore = {
   points?: number;
   maxPoints?: number;
@@ -695,7 +701,7 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
     if (!currentStudent?.studentId) return;
 
     try {
-      const response = await fetch(`${API_BASE_URL}/auth/user-profile`, {
+      const response = await apiFetch(`${API_BASE_URL}/auth/user-profile`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -868,7 +874,7 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
       body.bannerImageFileName = 'banner.jpg';
     }
 
-    const response = await fetch(`${API_BASE_URL}/auth/update-user-images`, {
+    const response = await apiFetch(`${API_BASE_URL}/auth/update-user-images`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
@@ -976,7 +982,7 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
 
     const groupedAnnouncements = await Promise.all(
       classIds.map(async (classId) => {
-        const response = await fetch(`${API_BASE_URL}/class-announcements/${classId}`);
+        const response = await apiFetch(`${API_BASE_URL}/class-announcements/${classId}`);
         const data = await response.json();
 
         if (!response.ok) {
@@ -1073,7 +1079,7 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
       throw new Error('Student ID is missing. Please log in again.');
     }
 
-    const joinResponse = await fetch(`${API_BASE_URL}/join-class`, {
+    const joinResponse = await apiFetch(`${API_BASE_URL}/join-class`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -1390,7 +1396,7 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
 
   const loadCommunityPosts = async () => {
     try {
-      const response = await fetch(`${API_BASE_URL}/community-posts`);
+      const response = await apiFetch(`${API_BASE_URL}/community-posts`);
       const data = await response.json();
 
       if (!response.ok) {
@@ -1409,7 +1415,7 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
     if (!trimmedQuery) return;
 
     try {
-      const response = await fetch(`${API_BASE_URL}/community-posts`, {
+      const response = await apiFetch(`${API_BASE_URL}/community-posts`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1441,7 +1447,7 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
     if (!trimmedMessage) return;
 
     try {
-      const response = await fetch(`${API_BASE_URL}/community-posts/${postId}/answers`, {
+      const response = await apiFetch(`${API_BASE_URL}/community-posts/${postId}/answers`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1471,7 +1477,7 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
     if (!trimmedContent) return;
 
     try {
-      const response = await fetch(`${API_BASE_URL}/community-posts/${postId}`, {
+      const response = await apiFetch(`${API_BASE_URL}/community-posts/${postId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ content: trimmedContent }),
@@ -1491,7 +1497,7 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
 
   const handleDeleteCommunityPost = async (postId: string) => {
     try {
-      const response = await fetch(`${API_BASE_URL}/community-posts/${postId}`, {
+      const response = await apiFetch(`${API_BASE_URL}/community-posts/${postId}`, {
         method: 'DELETE',
       });
 
@@ -1672,7 +1678,7 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
   }, [loadStudentNotifications]);
 
   const handleMarkNotificationAsRead = async (notificationId: string) => {
-    const response = await fetch(`${API_BASE_URL}/notifications/${notificationId}/read`, {
+    const response = await apiFetch(`${API_BASE_URL}/notifications/${notificationId}/read`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
     });
@@ -1691,7 +1697,7 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
   };
 
   const handleMarkAllNotificationsAsRead = async () => {
-    const response = await fetch(`${API_BASE_URL}/notifications/read-all`, {
+    const response = await apiFetch(`${API_BASE_URL}/notifications/read-all`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -2032,7 +2038,7 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
       setLastScreen(activeScreen);
       setIsNotificationOpen(false);
 
-      const response = await fetch(`${API_BASE_URL}/student-activities/generate`, {
+      const response = await apiFetch(`${API_BASE_URL}/student-activities/generate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

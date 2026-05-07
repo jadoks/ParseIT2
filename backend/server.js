@@ -1,5 +1,6 @@
 
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import cookieParser from "cookie-parser";
 import cors from "cors";
 import dotenv from "dotenv";
 import express from "express";
@@ -15,8 +16,14 @@ const pdf = require("pdf-parse");
 dotenv.config();
 
 const app = express();
-app.use(cors());
+app.use(
+  cors({
+    origin: process.env.FRONTEND_ORIGIN || "http://localhost:8081",
+    credentials: true,
+  })
+);
 app.use(express.json({ limit: "50mb" }));
+app.use(cookieParser());
 
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
@@ -26,6 +33,177 @@ admin.initializeApp({
 const db = admin.firestore();
 const bucket = admin.storage().bucket();
 const FieldValue = admin.firestore.FieldValue;
+
+const SESSION_COOKIE_NAME = process.env.SESSION_COOKIE_NAME || "session";
+const SESSION_EXPIRES_IN_MS = Number(
+  process.env.SESSION_EXPIRES_IN_MS || 60 * 60 * 1000
+);
+const SIGNED_URL_EXPIRES_IN_MS = Number(
+  process.env.SIGNED_URL_EXPIRES_IN_MS || 5 * 60 * 1000
+);
+
+const COOKIE_OPTIONS = {
+  httpOnly: true,
+  secure: process.env.NODE_ENV === "production",
+  sameSite: process.env.COOKIE_SAMESITE || "strict",
+};
+
+function getClientIp(req) {
+  const forwardedFor = req.headers["x-forwarded-for"];
+  if (typeof forwardedFor === "string" && forwardedFor.trim()) {
+    return forwardedFor.split(",")[0].trim();
+  }
+
+  return req.socket?.remoteAddress || req.ip || "";
+}
+
+function getAuthBearerToken(req) {
+  const authHeader = req.headers.authorization || "";
+  if (!authHeader.startsWith("Bearer ")) return null;
+  return authHeader.slice(7).trim() || null;
+}
+
+async function requireAuth(req, res, next) {
+  try {
+    const sessionCookie = req.cookies?.[SESSION_COOKIE_NAME] || "";
+    const bearerToken = getAuthBearerToken(req);
+    let decoded = null;
+
+    if (sessionCookie) {
+      decoded = await admin.auth().verifySessionCookie(sessionCookie, true);
+    } else if (bearerToken) {
+      decoded = await admin.auth().verifyIdToken(bearerToken, true);
+    }
+
+    if (!decoded?.uid) {
+      return res.status(401).json({ error: "Authentication required." });
+    }
+
+    req.user = decoded;
+    req.clientIp = getClientIp(req);
+    return next();
+  } catch (error) {
+    console.warn("Authentication failed:", error?.message || error);
+    return res.status(401).json({ error: "Invalid or expired session." });
+  }
+}
+
+async function findUserProfileByAuthUid(authUid) {
+  if (!authUid) return null;
+
+  const roles = [
+    { role: "student", collection: "students" },
+    { role: "teacher", collection: "teachers" },
+    { role: "admin", collection: "admins" },
+  ];
+
+  for (const item of roles) {
+    const snapshot = await db
+      .collection(item.collection)
+      .where("authUid", "==", authUid)
+      .limit(1)
+      .get();
+
+    if (!snapshot.empty) {
+      const doc = snapshot.docs[0];
+      return {
+        id: doc.id,
+        role: item.role,
+        collection: item.collection,
+        ref: doc.ref,
+        data: doc.data() || {},
+      };
+    }
+  }
+
+  return null;
+}
+
+async function requireClassAccess({ authUid, classId, allowedRoles = [] }) {
+  const profile = await findUserProfileByAuthUid(authUid);
+
+  if (!profile) {
+    const error = new Error("User profile not found.");
+    error.statusCode = 403;
+    throw error;
+  }
+
+  if (profile.role === "admin") {
+    return profile;
+  }
+
+  if (allowedRoles.length && !allowedRoles.includes(profile.role)) {
+    const error = new Error("User role is not allowed for this action.");
+    error.statusCode = 403;
+    throw error;
+  }
+
+  const userId =
+    profile.data.studentId ||
+    profile.data.teacherId ||
+    profile.data.adminId ||
+    profile.id;
+
+  if (!classId) {
+    return profile;
+  }
+
+  const membership = await db
+    .collection("classMembers")
+    .where("classId", "==", classId)
+    .where("userId", "==", userId)
+    .where("status", "==", "active")
+    .limit(1)
+    .get();
+
+  if (!membership.empty) {
+    return profile;
+  }
+
+  const classSnap = await db.collection("classes").doc(classId).get();
+  const classData = classSnap.exists ? classSnap.data() || {} : null;
+
+  const isTeacherOwner =
+    profile.role === "teacher" &&
+    classData &&
+    (classData.assignedTeacherId === userId ||
+      classData.assignedTeacherUid === authUid ||
+      classData.createdByUid === authUid);
+
+  if (isTeacherOwner) {
+    return profile;
+  }
+
+  const error = new Error("You do not have access to this class.");
+  error.statusCode = 403;
+  throw error;
+}
+
+function isStoragePathAllowedForClass(storagePath, classId) {
+  if (!storagePath || !classId) return false;
+
+  const allowedPrefixes = [
+    `class-files/${classId}/`,
+    `class-materials/${classId}/`,
+    `class-assignments/${classId}/`,
+    `class-submissions/${classId}/`,
+    `class-banners/`,
+  ];
+
+  return allowedPrefixes.some((prefix) => storagePath.startsWith(prefix));
+}
+
+async function createReadSignedUrl(storagePath) {
+  const [url] = await bucket.file(storagePath).getSignedUrl({
+    version: "v4",
+    action: "read",
+    expires: Date.now() + SIGNED_URL_EXPIRES_IN_MS,
+  });
+
+  return url;
+}
+
+
 
 const GEMINI_GAME_MODEL = process.env.GEMINI_GAME_MODEL || "gemini-2.5-flash";
 const OPENAI_GAME_MODEL =
@@ -354,15 +532,14 @@ async function uploadBannerToStorage({
   await file.save(Buffer.from(cleanedBase64, "base64"), {
     metadata: {
       contentType: safeMimeType,
-      cacheControl: "public,max-age=31536000",
+      cacheControl: "private,max-age=0,no-transform",
     },
     resumable: false,
   });
 
-  await file.makePublic();
 
   return {
-    bannerUrl: file.publicUrl(),
+    bannerUrl: null,
     bannerStoragePath: storagePath,
     bannerFileName: safeFileName,
     bannerMimeType: safeMimeType,
@@ -403,15 +580,14 @@ async function uploadGenericFileToStorage({
   await file.save(Buffer.from(cleanedBase64, "base64"), {
     metadata: {
       contentType: safeMimeType,
-      cacheControl: "public,max-age=31536000",
+      cacheControl: "private,max-age=0,no-transform",
     },
     resumable: false,
   });
 
-  await file.makePublic();
 
   return {
-    fileUrl: file.publicUrl(),
+    fileUrl: null,
     storagePath,
     fileName: safeFileName,
     fileType: safeMimeType,
@@ -446,15 +622,14 @@ async function uploadChatbotTrainingFileToStorage({
   await file.save(Buffer.from(cleanedBase64, "base64"), {
     metadata: {
       contentType: safeMimeType,
-      cacheControl: "public,max-age=31536000",
+      cacheControl: "private,max-age=0,no-transform",
     },
     resumable: false,
   });
 
-  await file.makePublic();
 
   return {
-    fileUrl: file.publicUrl(),
+    fileUrl: null,
     storagePath,
     fileName: safeFileName,
     fileType: safeMimeType,
@@ -489,15 +664,14 @@ async function uploadAssistantFileToStorage({
   await file.save(Buffer.from(cleanedBase64, "base64"), {
     metadata: {
       contentType: safeMimeType,
-      cacheControl: "public,max-age=31536000",
+      cacheControl: "private,max-age=0,no-transform",
     },
     resumable: false,
   });
 
-  await file.makePublic();
 
   return {
-    fileUrl: file.publicUrl(),
+    fileUrl: null,
     storagePath,
     fileName: safeFileName,
     fileType: safeMimeType,
@@ -1514,6 +1688,172 @@ app.post("/admin/repair-ai-quota-notifications", async (req, res) => {
  * AUTH ROUTES
  */
 
+/**
+ * SESSION COOKIE ROUTES
+ *
+ * Frontend flow:
+ * 1. Sign in with Firebase client SDK.
+ * 2. Send the Firebase ID token once to /auth/session-login.
+ * 3. Backend sets an HttpOnly cookie.
+ * 4. Future requests use credentials: "include".
+ */
+app.post("/auth/session-login", async (req, res) => {
+  try {
+    const { idToken, deviceId } = req.body;
+
+    if (!idToken || typeof idToken !== "string") {
+      return res.status(400).json({ error: "idToken is required." });
+    }
+
+    const decodedToken = await admin.auth().verifyIdToken(idToken, true);
+    const sessionCookie = await admin.auth().createSessionCookie(idToken, {
+      expiresIn: SESSION_EXPIRES_IN_MS,
+    });
+
+    res.cookie(SESSION_COOKIE_NAME, sessionCookie, {
+      ...COOKIE_OPTIONS,
+      maxAge: SESSION_EXPIRES_IN_MS,
+    });
+
+    const profile = await findUserProfileByAuthUid(decodedToken.uid);
+    if (profile?.ref) {
+      await profile.ref.set(
+        {
+          lastLoginAt: FieldValue.serverTimestamp(),
+          lastSessionIp: getClientIp(req),
+          lastSessionUserAgent: normalizeOptionalText(req.headers["user-agent"]),
+          lastSessionDeviceId: normalizeOptionalText(deviceId),
+          updatedAt: FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
+    }
+
+    return res.json({
+      success: true,
+      uid: decodedToken.uid,
+      role: profile?.role || null,
+      id: profile?.id || null,
+      expiresIn: SESSION_EXPIRES_IN_MS,
+    });
+  } catch (error) {
+    console.error("Session login error:", error);
+    return res.status(401).json({
+      error: error.message || "Failed to create login session.",
+    });
+  }
+});
+
+app.post("/auth/session-logout", async (req, res) => {
+  try {
+    const sessionCookie = req.cookies?.[SESSION_COOKIE_NAME];
+
+    if (sessionCookie) {
+      try {
+        const decoded = await admin.auth().verifySessionCookie(sessionCookie);
+        await admin.auth().revokeRefreshTokens(decoded.sub || decoded.uid);
+      } catch (error) {
+        console.warn("Session revoke skipped:", error?.message || error);
+      }
+    }
+
+    res.clearCookie(SESSION_COOKIE_NAME, COOKIE_OPTIONS);
+    return res.json({ success: true });
+  } catch (error) {
+    console.error("Session logout error:", error);
+    return res.status(500).json({
+      error: error.message || "Failed to clear login session.",
+    });
+  }
+});
+
+app.get("/auth/session-me", requireAuth, async (req, res) => {
+  try {
+    const profile = await findUserProfileByAuthUid(req.user.uid);
+
+    return res.json({
+      success: true,
+      uid: req.user.uid,
+      email: req.user.email || null,
+      role: profile?.role || null,
+      id: profile?.id || null,
+      profile: profile
+        ? {
+            id: profile.id,
+            role: profile.role,
+            email: profile.data.email || null,
+            firstName: profile.data.firstName || "",
+            lastName: profile.data.lastName || "",
+            profileImage: profile.data.profileImage || null,
+            bannerImage: profile.data.bannerImage || null,
+          }
+        : null,
+    });
+  } catch (error) {
+    console.error("Session me error:", error);
+    return res.status(500).json({
+      error: error.message || "Failed to read login session.",
+    });
+  }
+});
+
+/**
+ * PRIVATE STORAGE ROUTES
+ */
+app.post("/storage/signed-url", requireAuth, async (req, res) => {
+  try {
+    const { storagePath, classId } = req.body;
+
+    if (!storagePath || typeof storagePath !== "string") {
+      return res.status(400).json({ error: "storagePath is required." });
+    }
+
+    if (storagePath.includes("..") || storagePath.startsWith("/")) {
+      return res.status(400).json({ error: "Invalid storagePath." });
+    }
+
+    if (classId) {
+      await requireClassAccess({
+        authUid: req.user.uid,
+        classId,
+        allowedRoles: ["student", "teacher"],
+      });
+
+      if (!isStoragePathAllowedForClass(storagePath, classId)) {
+        return res.status(403).json({
+          error: "This file path is not allowed for the requested class.",
+        });
+      }
+    } else if (!storagePath.startsWith("defaults/")) {
+      const profile = await findUserProfileByAuthUid(req.user.uid);
+      if (profile?.role !== "admin") {
+        return res.status(403).json({
+          error: "classId is required for private class files.",
+        });
+      }
+    }
+
+    const [exists] = await bucket.file(storagePath).exists();
+    if (!exists) {
+      return res.status(404).json({ error: "File not found." });
+    }
+
+    const url = await createReadSignedUrl(storagePath);
+
+    return res.json({
+      success: true,
+      url,
+      expiresIn: SIGNED_URL_EXPIRES_IN_MS,
+    });
+  } catch (error) {
+    console.error("Signed URL error:", error);
+    return res.status(error.statusCode || 500).json({
+      error: error.message || "Failed to generate signed URL.",
+    });
+  }
+});
+
+
 app.post("/auth/lookup-user", async (req, res) => {
   try {
     const { id } = req.body;
@@ -1564,52 +1904,57 @@ app.post("/auth/lookup-user", async (req, res) => {
   }
 });
 
-app.post("/auth/user-profile", async (req, res) => {
+app.post("/auth/user-profile", requireAuth, async (req, res) => {
   try {
     const { id, role } = req.body;
+    const profile = await findUserProfileByAuthUid(req.user.uid);
 
-    if (!id || !role) {
-      return res.status(400).json({
-        error: "ID and role are required.",
-      });
+    if (!profile) {
+      return res.status(404).json({ error: "User profile not found." });
     }
 
-    const collectionName = getCollectionNameByRole(role);
+    const requestedId = normalizeOptionalText(id);
+    const requestedRole = normalizeOptionalText(role);
 
-    if (!collectionName) {
-      return res.status(400).json({ error: "Invalid role." });
+    if (requestedRole && requestedRole !== profile.role && profile.role !== "admin") {
+      return res.status(403).json({ error: "You cannot access this user profile." });
     }
 
-    const userSnap = await db.collection(collectionName).doc(String(id).trim()).get();
+    const profileDocId =
+      profile.data.studentId ||
+      profile.data.teacherId ||
+      profile.data.adminId ||
+      profile.id;
 
-    if (!userSnap.exists) {
-      return res.status(404).json({ error: "User not found." });
+    if (
+      requestedId &&
+      requestedId !== profileDocId &&
+      requestedId !== profile.id &&
+      requestedId !== profile.data.email &&
+      requestedId !== profile.data.authUid &&
+      profile.role !== "admin"
+    ) {
+      return res.status(403).json({ error: "You cannot access this user profile." });
     }
-
-    const userData = userSnap.data() || {};
 
     return res.json({
       success: true,
       data: {
-        role,
-        id:
-          userData.studentId ||
-          userData.teacherId ||
-          userData.adminId ||
-          userSnap.id,
-        email: userData.email || null,
-        authUid: userData.authUid || null,
-        studentId: userData.studentId || undefined,
-        teacherId: userData.teacherId || undefined,
-        adminId: userData.adminId || undefined,
-        firstName: userData.firstName || "",
-        lastName: userData.lastName || "",
-        profileImage: userData.profileImage || null,
-        bannerImage: userData.bannerImage || null,
+        role: profile.role,
+        id: profileDocId,
+        email: profile.data.email || null,
+        authUid: profile.data.authUid || null,
+        studentId: profile.data.studentId || undefined,
+        teacherId: profile.data.teacherId || undefined,
+        adminId: profile.data.adminId || undefined,
+        firstName: profile.data.firstName || "",
+        lastName: profile.data.lastName || "",
+        profileImage: profile.data.profileImage || null,
+        bannerImage: profile.data.bannerImage || null,
       },
     });
   } catch (error) {
-    console.error("User profile fetch error:", error);
+    console.error("User profile fetch error:", error?.message || error);
     return res.status(500).json({
       error: error.message || "Failed to fetch user profile.",
     });
@@ -2031,7 +2376,7 @@ app.post("/auth/reset-forgot-password", async (req, res) => {
  *   GEMINI_API_KEY=your_gemini_api_key_here
  *   GEMINI_GAME_MODEL=gemini-2.5-flash
  */
-app.post("/game-ai/generate-quiz-masters", gameUpload.single("file"), async (req, res) => {
+app.post("/game-ai/generate-quiz-masters", requireAuth, gameUpload.single("file"), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({
@@ -2079,7 +2424,7 @@ app.post("/game-ai/generate-quiz-masters", gameUpload.single("file"), async (req
  * FILE UPLOAD ROUTE
  */
 
-app.post("/upload-class-file", async (req, res) => {
+app.post("/upload-class-file", requireAuth, async (req, res) => {
   try {
     const {
       classId,
@@ -2101,6 +2446,13 @@ app.post("/upload-class-file", async (req, res) => {
     if (!classSnap.exists) {
       return res.status(404).json({ error: "Class not found." });
     }
+
+    await requireClassAccess({
+      authUid: req.user.uid,
+      classId,
+      allowedRoles:
+        kind === "submission" ? ["student", "teacher"] : ["teacher"],
+    });
 
     const folder =
       kind === "assignment"
@@ -9731,15 +10083,14 @@ async function uploadUserImageToStorage({
   await file.save(Buffer.from(cleanedBase64, "base64"), {
     metadata: {
       contentType: safeMimeType,
-      cacheControl: "public,max-age=31536000",
+      cacheControl: "private,max-age=0,no-transform",
     },
     resumable: false,
   });
 
-  await file.makePublic();
 
   return {
-    fileUrl: file.publicUrl(),
+    fileUrl: null,
     storagePath,
     fileName: safeFileName,
     fileType: safeMimeType,
