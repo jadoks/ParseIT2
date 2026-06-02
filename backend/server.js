@@ -933,20 +933,39 @@ function normalizeQuizMastersQuestions(value) {
   return normalized.slice(0, 10);
 }
 
-function buildQuizMastersPrompt({ extractedText, fileName }) {
-  return `
-You are generating an educational Quiz Masters game from an uploaded learning file.
+function buildQuizMastersPrompt({ extractedText, fileName, gameType }) {
+  let gameStyleInstruction = "";
+  
+  switch (gameType) {
+    case "memory_match":
+      gameStyleInstruction = "Style: Memory Match. Focus on matching terms to their exact definitions. The options should be closely related terms to make matching challenging.";
+      break;
+    case "fill_in_blanks":
+      gameStyleInstruction = "Style: Fill-in-the-Blanks. Format the question as a sentence with a missing keyword (e.g., 'The process of ___ is defined as...'). The correct answer must be the exact missing word/phrase.";
+      break;
+    case "flashcard":
+      gameStyleInstruction = "Style: Flashcard Challenge. Generate concise, direct questions with clear, short answers. Focus on key facts and core definitions.";
+      break;
+    case "boss_battle":
+      gameStyleInstruction = "Style: Boss Battle. Generate highly difficult, complex, and tricky questions. The wrong options (distractors) must be very plausible and require deep understanding of the material.";
+      break;
+    case "quiz_master":
+    default:
+      gameStyleInstruction = "Style: Quiz Master. Generate standard, well-balanced timed multiple-choice questions testing overall comprehension of the material.";
+      break;
+  }
 
+  return `
+You are generating an educational game quiz from an uploaded learning file.
 Create exactly 10 multiple-choice quiz questions.
 
-IMPORTANT:
-- Return ONLY valid JSON.
-- No markdown.
-- No explanations.
-- No code fences.
-- No text before or after JSON.
-- All questions must have exactly 4 options.
-- The answer must exactly match one option.
+GAME TYPE INSTRUCTIONS:
+${gameStyleInstruction}
+
+CRITICAL FORMATTING RULES:
+- Return ONLY valid JSON. No markdown, no explanations, no code fences.
+- All questions MUST have exactly 4 options.
+- The answer MUST exactly match one of the 4 options.
 
 Uploaded file name:
 ${fileName || "uploaded-file"}
@@ -956,114 +975,93 @@ ${limitText(extractedText, 12000)}
 `;
 }
 
-async function generateQuizMastersWithGemini({ extractedText, fileName }) {
+async function generateQuizMastersWithGemini({ extractedText, fileName, gameType }) {
   if (!geminiGameAI) {
     throw new Error("GEMINI_API_KEY is missing in your backend .env file.");
   }
-
   const model = geminiGameAI.getGenerativeModel({
-  model: GEMINI_GAME_MODEL,
-  generationConfig: {
-    temperature: 0.2,
-    maxOutputTokens: 4096,
-    responseMimeType: "application/json",
-    responseSchema: {
-    type: SchemaType.OBJECT,  
-      properties: {
-        questions: {
-          type: SchemaType.ARRAY,
-          items: {
-            type: SchemaType.OBJECT,
-            properties: {
-              question: {
-                type: SchemaType.STRING,
-              },
-              options: {
-                type: SchemaType.ARRAY,
-                items: {
+    model: GEMINI_GAME_MODEL,
+    generationConfig: {
+      temperature: 0.2,
+      maxOutputTokens: 4096,
+      responseMimeType: "application/json",
+      responseSchema: {
+        type: SchemaType.OBJECT,
+        properties: {
+          questions: {
+            type: SchemaType.ARRAY,
+            items: {
+              type: SchemaType.OBJECT,
+              properties: {
+                question: {
+                  type: SchemaType.STRING,
+                },
+                options: {
+                  type: SchemaType.ARRAY,
+                  items: {
+                    type: SchemaType.STRING,
+                  },
+                },
+                answer: {
                   type: SchemaType.STRING,
                 },
               },
-              answer: {
-                type: SchemaType.STRING,
-              },
+              required: ["question", "options", "answer"],
             },
-            required: ["question", "options", "answer"],
           },
         },
+        required: ["questions"],
       },
-      required: ["questions"],
     },
-  },
-});
-
+  });
   const prompt = `
-${buildQuizMastersPrompt({ extractedText, fileName })}
-
+${buildQuizMastersPrompt({ extractedText, fileName, gameType })}
 Return ONLY valid JSON in this exact format, with exactly 10 questions:
 {
-  "questions": [
-    {
-      "question": "Question text",
-      "options": ["Option A", "Option B", "Option C", "Option D"],
-      "answer": "Option A"
-    }
-  ]
+"questions": [
+{
+"question": "Question text",
+"options": ["Option A", "Option B", "Option C", "Option D"],
+"answer": "Option A"
+}
+]
 }
 `;
-
   let rawText = "";
-
-for (let attempt = 1; attempt <= 3; attempt++) {
-  try {
-    const result = await model.generateContent(prompt);
-    rawText = result.response.text();
-
-    const parsed = parseQuizMastersJsonResponse(
-      rawText,
-      "Gemini"
-    );
-
-    const questions =
-      normalizeQuizMastersQuestions(parsed);
-
-    if (questions.length >= 10) {
-      return questions;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      const result = await model.generateContent(prompt);
+      rawText = result.response.text();
+      const parsed = parseQuizMastersJsonResponse(
+        rawText,
+        "Gemini"
+      );
+      const questions =
+        normalizeQuizMastersQuestions(parsed);
+      if (questions.length >= 10) {
+        return questions;
+      }
+    } catch (error) {
+      console.log(
+        `Gemini attempt ${attempt} failed`,
+        error.message
+      );
     }
-  } catch (error) {
-    console.log(
-      `Gemini attempt ${attempt} failed`,
-      error.message
-    );
   }
-}
-
-throw new Error(
-  "Gemini failed after 3 attempts."
-);
-}
-
-function isGeminiQuotaError(error) {
-  const message = String(error?.message || "").toLowerCase();
-  const status = Number(error?.status || error?.response?.status || 0);
-
-  return (
-    status === 429 ||
-    message.includes("429") ||
-    message.includes("too many requests") ||
-    message.includes("quota") ||
-    message.includes("credits are depleted") ||
-    message.includes("prepayment credits")
+  throw new Error(
+    "Gemini failed after 3 attempts."
   );
 }
 
-async function generateQuizMastersWithOpenAI({ extractedText, fileName }) {
+
+
+async function generateQuizMastersWithOpenAI({ extractedText, fileName , gameType}) {
   if (!process.env.OPENAI_API_KEY) {
     throw new Error("OPENAI_API_KEY is missing in your backend .env file.");
   }
 
   const prompt = `
-${buildQuizMastersPrompt({ extractedText, fileName })}
+${buildQuizMastersPrompt({ extractedText, fileName , gameType})}
 
 Return ONLY valid JSON in this exact format, with exactly 10 questions:
 {
@@ -1238,14 +1236,13 @@ function generateQuizMastersLocally({ extractedText, fileName }) {
 
   return normalizeQuizMastersQuestions({ questions });
 }
-
-async function generateQuizMastersWithFallback({ extractedText, fileName }) {
+async function generateQuizMastersWithFallback({ extractedText, fileName, gameType }) {
   try {
     const questions = await generateQuizMastersWithGemini({
       extractedText,
       fileName,
+      gameType,
     });
-
     return {
       questions,
       provider: "gemini",
@@ -1254,18 +1251,16 @@ async function generateQuizMastersWithFallback({ extractedText, fileName }) {
     };
   } catch (geminiError) {
     const fallbackReason = getGeminiFallbackReason(geminiError);
-
     console.warn(
       "Gemini failed for Quiz Masters. Falling back to OpenAI:",
       geminiError?.message || geminiError
     );
-
     try {
       const questions = await generateQuizMastersWithOpenAI({
         extractedText,
         fileName,
+        gameType,
       });
-
       return {
         questions,
         provider: "openai",
@@ -1278,12 +1273,10 @@ async function generateQuizMastersWithFallback({ extractedText, fileName }) {
         "OpenAI fallback failed for Quiz Masters. Using local fallback:",
         openAIError?.message || openAIError
       );
-
       const questions = generateQuizMastersLocally({
         extractedText,
         fileName,
       });
-
       return {
         questions,
         provider: "local",
@@ -2797,81 +2790,67 @@ app.post("/game-ai/generate-quiz-masters", requireAuth, gameUpload.single("file"
 });
 
 // === NEW: Generate quiz from selected class materials ===
-app.post("/game-ai/generate-quiz-materials",  requireAuth,async (req, res) => {
+app.post("/game-ai/generate-quiz-materials", requireAuth, async (req, res) => {
   try {
-    const { classId, materialIds } = req.body;
-
-    
+    const { classId, materialIds, gameType, authUid  } = req.body;
     if (!classId || !Array.isArray(materialIds) || materialIds.length === 0) {
       return res.status(400).json({ error: "classId and at least one materialId are required." });
     }
-    
     // Use req.user.uid if cookie auth worked, otherwise fallback to authUid sent from frontend
-    const userAuthUid = req.user?.uid || authUid;
-    
+    const userAuthUid = req.user.uid;
     if (!userAuthUid) {
       return res.status(401).json({ error: "Authentication required. Please log in again." });
     }
-
     // Check user belongs to the class (updated to allow teachers too)
     await requireClassAccess({ authUid: userAuthUid, classId, allowedRoles: ["student", "teacher"] });
-
     // Fetch materials and extract file content from Firebase Storage
-const materials = [];
-const extractionSummary = [];
-
-for (const materialId of materialIds) {
-  const materialSnap = await db.collection("classMaterials").doc(materialId).get();
-  if (!materialSnap.exists) continue;
-  const material = materialSnap.data() || {};
-  
-  console.log(`\n[QUIZ GEN] 📄 Processing material: "${material.title || materialId}"`);
-  console.log(`[QUIZ GEN] 📁 Storage path: ${material.storagePath || 'none'}`);
-  console.log(`[QUIZ GEN] 📋 File type: ${material.fileType || 'unknown'}`);
-  console.log(`[QUIZ GEN] 📝 Description: ${(material.content || '').substring(0, 100)}...`);
-  
-  // This downloads the actual file from Firebase Storage and extracts text
-  const extracted = await extractReadableTextFromMaterial(material);
-  
-  console.log(`[QUIZ GEN] ✅ Extraction status: ${extracted.extractionStatus}`);
-  console.log(`[QUIZ GEN] 📊 Extracted text length: ${extracted.readableText.length} characters`);
-  
-  if (extracted.readableText.length > 0) {
-    console.log(`[QUIZ GEN] 📖 First 200 chars of extracted content: "${extracted.readableText.substring(0, 200)}..."`);
-  }
-  
-  extractionSummary.push({
-    title: material.title || "Untitled",
-    fileType: material.fileType || "unknown",
-    status: extracted.extractionStatus,
-    charsExtracted: extracted.readableText.length,
-  });
-  
-  materials.push({
-    id: materialSnap.id,
-    title: material.title || "Untitled",
-    extractedText: extracted.readableText,
-  });
-}
-
-console.log(`\n[QUIZ GEN] 📊 EXTRACTION SUMMARY:`, extractionSummary);
-
-if (materials.length === 0 || materials.every(m => m.extractedText.length === 0)) {
-  return res.status(400).json({ 
-    error: "No readable material content found. Please upload PDF, DOCX, TXT, MD, JSON, or CSV files.",
-    extractionSummary 
-  });
-}
-
+    const materials = [];
+    const extractionSummary = [];
+    for (const materialId of materialIds) {
+      const materialSnap = await db.collection("classMaterials").doc(materialId).get();
+      if (!materialSnap.exists) continue;
+      const material = materialSnap.data() || {};
+      console.log(`
+[QUIZ GEN] 📄 Processing material: "${material.title || materialId}"`);
+      console.log(`[QUIZ GEN] 📁 Storage path: ${material.storagePath || 'none'}`);
+      console.log(`[QUIZ GEN] 📋 File type: ${material.fileType || 'unknown'}`);
+      console.log(`[QUIZ GEN] 📝 Description: ${(material.content || '').substring(0, 100)}...`);
+      // This downloads the actual file from Firebase Storage and extracts text
+      const extracted = await extractReadableTextFromMaterial(material);
+      console.log(`[QUIZ GEN] ✅ Extraction status: ${extracted.extractionStatus}`);
+      console.log(`[QUIZ GEN] 📊 Extracted text length: ${extracted.readableText.length} characters`);
+      if (extracted.readableText.length > 0) {
+        console.log(`[QUIZ GEN] 📖 First 200 chars of extracted content: "${extracted.readableText.substring(0, 200)}..."`);
+      }
+      extractionSummary.push({
+        title: material.title || "Untitled",
+        fileType: material.fileType || "unknown",
+        status: extracted.extractionStatus,
+        charsExtracted: extracted.readableText.length,
+      });
+      materials.push({
+        id: materialSnap.id,
+        title: material.title || "Untitled",
+        extractedText: extracted.readableText,
+      });
+    }
+    console.log(`
+[QUIZ GEN] 📊 EXTRACTION SUMMARY:`, extractionSummary);
+    if (materials.length === 0 || materials.every(m => m.extractedText.length === 0)) {
+      return res.status(400).json({
+        error: "No readable material content found. Please upload PDF, DOCX, TXT, MD, JSON, or CSV files.",
+        extractionSummary
+      });
+    }
     // Combine all extracted text
-    const combinedText = materials.map(m => `File: ${m.title}\n${m.extractedText}`).join("\n\n---\n\n");
+    const combinedText = materials.map(m => `File: ${m.title}
+${m.extractedText}`).join("---");
     const fileName = `class-${classId}-materials`;
-
     const generated = await generateQuizMastersWithFallback({
       extractedText: combinedText,
       fileName,
+      gameType, // 👈 PASS gameType HERE
     });
-
     return res.json({
       success: true,
       questions: generated.questions,

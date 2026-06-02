@@ -1,4 +1,3 @@
-
 import * as Clipboard from 'expo-clipboard';
 import Constants from 'expo-constants';
 import * as DocumentPicker from 'expo-document-picker';
@@ -475,22 +474,40 @@ const TeacherCourseDetail2 = ({
     return true;
   };
 
-  // NEW: Generate Questions Handler
+  // UPDATED: Generate Questions Handler
   const handleGenerateQuestions = async () => {
+    // 1. ENFORCE GAME TYPE SELECTION FIRST
+    if (!gameType) {
+      showResultModal('error', 'Error', 'Please select a game type first before generating questions.');
+      return;
+    }
+
     if (selectedMaterialIds.length === 0) {
       showResultModal('error', 'Error', 'Please select at least one learning material first.');
       return;
     }
+    
     setIsGenerating(true);
     try {
       const response = await fetch(`${API_BASE_URL}/game-ai/generate-quiz-materials`, {
         credentials: 'include', method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ classId: course?.id, materialIds: selectedMaterialIds, studentId: currentTeacher?.teacherId || 'teacher-preview' }),
+        body: JSON.stringify({ 
+          classId: course?.id, 
+          materialIds: selectedMaterialIds, 
+          studentId: currentTeacher?.teacherId || 'teacher-preview',
+          gameType: gameType // 👈 PASS THE GAME TYPE TO THE BACKEND
+        }),
       });
-      const data = await response.json();
+            const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Failed to generate questions.');
       
-      const editableQuestions = data.questions.map((q: any, index: number) => ({
+      // ✅ SAFELY VALIDATE THE ARRAY
+      const questionsArray = Array.isArray(data.questions) ? data.questions : [];
+      if (questionsArray.length === 0) {
+        throw new Error('AI did not return any valid questions. Please try again.');
+      }
+
+      const editableQuestions = questionsArray.map((q: any, index: number) => ({
         id: `gen-${index}`,
         question: q.question || '',
         options: q.options && q.options.length === 4 ? q.options : ['', '', '', ''],
@@ -784,12 +801,23 @@ const TeacherCourseDetail2 = ({
       <View style={styles.fullWidthSection}>
         {renderRelatedMaterialsSelector()}
 
-        {/* NEW: Generate Questions Button */}
-        {assignmentType === 'game_based' && selectedMaterialIds.length > 0 && (
+        {/* UPDATED: Generate Questions Button Logic */}
+        {/* ACTIVE BUTTON: Only shows when Game Type AND Materials are selected */}
+        {assignmentType === 'game_based' && selectedMaterialIds.length > 0 && gameType && (
           <TouchableOpacity style={[styles.generateButton, isGenerating ? styles.disabledButton : null]} onPress={handleGenerateQuestions} disabled={isGenerating || isSaving}>
             {isGenerating ? <ActivityIndicator size="small" color="#FFF" /> : <Ionicons name="sparkles-outline" size={18} color="#FFF" />}
-            <Text style={styles.generateButtonText}>{isGenerating ? 'Generating...' : 'Generate Questions from Materials'}</Text>
+            <Text style={styles.generateButtonText}>
+              {isGenerating ? 'Generating...' : `Generate ${gameOptions.find(g => g.value === gameType)?.label || ''} Questions`}
+            </Text>
           </TouchableOpacity>
+        )}
+
+        {/* DISABLED STATE: Shows when Materials are selected but NO Game Type is chosen */}
+        {assignmentType === 'game_based' && selectedMaterialIds.length > 0 && !gameType && (
+          <View style={[styles.generateButton, { backgroundColor: '#9E9E9E' }]}>
+            <Ionicons name="alert-circle-outline" size={18} color="#FFF" />
+            <Text style={styles.generateButtonText}>Select a Game Type to Generate Questions</Text>
+          </View>
         )}
 
         {assignmentType === 'regular' && (
@@ -843,6 +871,127 @@ const TeacherCourseDetail2 = ({
       );
     }
     return renderAssignmentFields();
+  };
+
+  // ✅ NEW: DYNAMIC QUESTION EDITOR BASED ON GAME TYPE
+  const renderQuestionEditor = (q: any, qIndex: number) => {
+    switch (gameType) {
+      case 'memory_match':
+        return (
+          <View key={q.id} style={styles.generatedQuestionBlock}>
+            <Text style={styles.sectionLabel}>Pair {qIndex + 1}</Text>
+            
+            <Text style={styles.sectionLabel}>Term</Text>
+            <TextInput 
+              style={styles.inputBox} 
+              value={q.question} 
+              onChangeText={(val) => updateGeneratedQuestion(qIndex, 'question', val)} 
+              placeholder="Enter the term" 
+            />
+            
+            <Text style={styles.sectionLabel}>Definitions (1 Correct, 3 Distractors)</Text>
+            {q.options.map((opt: string, oIndex: number) => {
+               const isAnswer = opt === q.answer;
+               return (
+                 <View key={oIndex} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                   <TextInput 
+                     style={[styles.inputBox, { flex: 1, marginBottom: 0, borderColor: isAnswer ? '#2E7D32' : '#DDD' }]} 
+                     value={opt} 
+                     onChangeText={(val) => updateGeneratedOption(qIndex, oIndex, val)} 
+                     placeholder={isAnswer ? "Correct Definition" : `Distractor ${oIndex + 1}`} 
+                   />
+                   <Text style={{ fontSize: 12, color: isAnswer ? '#2E7D32' : '#888', fontWeight: '700', width: 60, textAlign: 'right' }}>
+                     {isAnswer ? 'Correct' : 'Wrong'}
+                   </Text>
+                 </View>
+               );
+            })}
+            <Text style={styles.helperText}>Ensure exactly one definition is marked as Correct.</Text>
+          </View>
+        );
+
+      case 'fill_in_blanks':
+        return (
+          <View key={q.id} style={styles.generatedQuestionBlock}>
+            <Text style={styles.sectionLabel}>Item {qIndex + 1}</Text>
+            
+            <Text style={styles.sectionLabel}>Sentence (Use '___' for the blank)</Text>
+            <TextInput 
+              style={styles.inputBox} 
+              value={q.question} 
+              onChangeText={(val) => updateGeneratedQuestion(qIndex, 'question', val)} 
+              placeholder="The process of ___ is defined as..." 
+              multiline
+            />
+            
+            <Text style={styles.sectionLabel}>Missing Word / Correct Answer</Text>
+            <TextInput 
+              style={styles.inputBox} 
+              value={q.answer} 
+              onChangeText={(val) => updateGeneratedQuestion(qIndex, 'answer', val)} 
+              placeholder="Enter the exact word to fill in the blank" 
+            />
+          </View>
+        );
+
+      case 'flashcard':
+        return (
+          <View key={q.id} style={styles.generatedQuestionBlock}>
+            <Text style={styles.sectionLabel}>Flashcard {qIndex + 1}</Text>
+            
+            <Text style={styles.sectionLabel}>Front of Card (Question / Prompt)</Text>
+            <TextInput 
+              style={styles.inputBox} 
+              value={q.question} 
+              onChangeText={(val) => updateGeneratedQuestion(qIndex, 'question', val)} 
+              placeholder="What is the capital of France?" 
+              multiline
+            />
+            
+            <Text style={styles.sectionLabel}>Back of Card (Answer)</Text>
+            <TextInput 
+              style={styles.inputBox} 
+              value={q.answer} 
+              onChangeText={(val) => updateGeneratedQuestion(qIndex, 'answer', val)} 
+              placeholder="Paris" 
+            />
+          </View>
+        );
+
+      case 'quiz_master':
+      case 'boss_battle':
+      default:
+        return (
+          <View key={q.id} style={styles.generatedQuestionBlock}>
+            <Text style={styles.sectionLabel}>{gameType === 'boss_battle' ? 'Boss Battle Question' : 'Question'} {qIndex + 1}</Text>
+            <TextInput 
+              style={styles.inputBox} 
+              value={q.question} 
+              onChangeText={(val) => updateGeneratedQuestion(qIndex, 'question', val)} 
+              placeholder="Enter question" 
+              multiline 
+            />
+            <Text style={styles.sectionLabel}>Options</Text>
+            {q.options.map((opt: string, oIndex: number) => (
+              <TextInput 
+                key={oIndex} 
+                style={[styles.inputBox, { marginBottom: 8 }]} 
+                value={opt} 
+                onChangeText={(val) => updateGeneratedOption(qIndex, oIndex, val)} 
+                placeholder={`Option ${String.fromCharCode(65 + oIndex)}`} 
+              />
+            ))}
+            <Text style={styles.sectionLabel}>Correct Answer</Text>
+            <TextInput 
+              style={[styles.inputBox, q.answer && !q.options.includes(q.answer) ? styles.errorBorder : null]} 
+              value={q.answer} 
+              onChangeText={(val) => updateGeneratedQuestion(qIndex, 'answer', val)} 
+              placeholder="Must match one of the options exactly" 
+            />
+            {q.answer && !q.options.includes(q.answer) && <Text style={styles.errorText}>Answer must exactly match one of the options above.</Text>}
+          </View>
+        );
+    }
   };
 
   if (showSubmissions) {
@@ -1106,40 +1255,42 @@ const TeacherCourseDetail2 = ({
         </Pressable>
       </Modal>
 
-      {/* NEW: GENERATED QUESTIONS PREVIEW MODAL */}
+      {/* ✅ UPDATED: GENERATED QUESTIONS PREVIEW MODAL WITH DYNAMIC UI */}
       <Modal visible={showGeneratedPreview} transparent animationType="fade" onRequestClose={() => setShowGeneratedPreview(false)}>
         <View style={styles.modalOverlayCenter}>
           <View style={[styles.modalCardElevated, { width: isMobile ? Math.min(width - 28, 380) : 700, maxHeight: height * 0.9 }]}>
             <View style={styles.createHeaderRow}>
               <View style={styles.modalHeaderTextWrap}>
                 <Text style={styles.createTitle}>Preview & Edit Generated Questions</Text>
-                <Text style={styles.modalSubtitle}>Review and tweak the AI-generated questions before saving the assignment.</Text>
+                <Text style={styles.modalSubtitle}>
+                  {gameType === 'memory_match' ? 'Review terms and definitions for Memory Match.' :
+                   gameType === 'fill_in_blanks' ? 'Review sentences and missing words for Fill-in-the-Blanks.' :
+                   gameType === 'flashcard' ? 'Review front and back of cards for Flashcard Challenge.' :
+                   gameType === 'boss_battle' ? 'Review complex questions for Boss Battle.' :
+                   'Review and tweak the AI-generated questions before saving the assignment.'}
+                </Text>
               </View>
               <TouchableOpacity onPress={() => setShowGeneratedPreview(false)}><Ionicons name="close" size={24} color="#111" /></TouchableOpacity>
             </View>
             <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.modalScrollContent}>
-              {generatedQuestions.map((q, qIndex) => (
-                <View key={q.id} style={styles.generatedQuestionBlock}>
-                  <Text style={styles.sectionLabel}>Question {qIndex + 1}</Text>
-                  <TextInput style={styles.inputBox} value={q.question} onChangeText={(val) => updateGeneratedQuestion(qIndex, 'question', val)} placeholder="Enter question" multiline />
-                  <Text style={styles.sectionLabel}>Options</Text>
-                  {q.options.map((opt: string, oIndex: number) => (
-                    <TextInput key={oIndex} style={[styles.inputBox, { marginBottom: 8 }]} value={opt} onChangeText={(val) => updateGeneratedOption(qIndex, oIndex, val)} placeholder={`Option ${String.fromCharCode(65 + oIndex)}`} />
-                  ))}
-                  <Text style={styles.sectionLabel}>Correct Answer</Text>
-                  <TextInput style={[styles.inputBox, q.answer && !q.options.includes(q.answer) ? styles.errorBorder : null]} value={q.answer} onChangeText={(val) => updateGeneratedQuestion(qIndex, 'answer', val)} placeholder="Must match one of the options exactly" />
-                  {q.answer && !q.options.includes(q.answer) && <Text style={styles.errorText}>Answer must exactly match one of the options above.</Text>}
-                </View>
-              ))}
+              {generatedQuestions.map((q, qIndex) => renderQuestionEditor(q, qIndex))}
             </ScrollView>
             <View style={styles.buttonRow}>
               <TouchableOpacity style={styles.secondaryButton} onPress={() => setShowGeneratedPreview(false)}>
                 <Text style={styles.secondaryButtonText}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.primaryButton} onPress={() => {
-                const hasInvalid = generatedQuestions.some(q => !q.options.includes(q.answer) || !q.question.trim());
+                let hasInvalid = false;
+                if (gameType === 'fill_in_blanks' || gameType === 'flashcard') {
+                  hasInvalid = generatedQuestions.some(q => !q.question.trim() || !q.answer.trim());
+                } else if (gameType === 'memory_match') {
+                  hasInvalid = generatedQuestions.some(q => !q.question.trim() || !q.answer.trim() || !q.options.includes(q.answer));
+                } else {
+                  hasInvalid = generatedQuestions.some(q => !q.options.includes(q.answer) || !q.question.trim());
+                }
+
                 if (hasInvalid) {
-                  showResultModal('error', 'Invalid Questions', 'Please ensure all questions have text and the correct answer exactly matches one of the options.');
+                  showResultModal('error', 'Invalid Questions', 'Please ensure all items have text and answers are correctly set.');
                   return;
                 }
                 setShowGeneratedPreview(false);
