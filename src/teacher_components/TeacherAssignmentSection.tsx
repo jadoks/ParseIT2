@@ -23,24 +23,17 @@ const TeacherAssignmentSection = ({
   onOpenMembers,
 }: Props) => {
   const { width } = useWindowDimensions();
-
   const isMobile = width < 768;
   const isTablet = width >= 768 && width < 1200;
-  const isLargeScreen = width >= 1200;
-
-  // ✅ container padding (unchanged logic)
+  
   const containerPadding = isMobile ? 16 : isTablet ? 40 : 80;
-
-  // ✅ NEW: card inner padding (this is what you want)
   const cardPaddingHorizontal = isMobile ? 14 : isTablet ? 22 : 38;
 
   const renderAssignmentItem = ({ item }: { item: Assignment }) => (
     <TouchableOpacity
       style={[
         styles.assignmentCard,
-        {
-          paddingHorizontal: cardPaddingHorizontal, // ✅ KEY FIX
-        },
+        { paddingHorizontal: cardPaddingHorizontal },
       ]}
       activeOpacity={0.85}
       onPress={() => onOpenMembers(item.id)}
@@ -48,7 +41,6 @@ const TeacherAssignmentSection = ({
       <View style={styles.assignmentHeader}>
         <View style={styles.assignmentInfo}>
           <Text style={styles.assignmentTitle}>{item.header}</Text>
-
           {!!item.instruction && (
             <Text style={styles.assignmentTopicText} numberOfLines={2}>
               {item.instruction}
@@ -84,6 +76,19 @@ const TeacherAssignmentSection = ({
             : 'Open submissions'}
         </Text>
       </View>
+
+      {/* NEW: Game-Based Badge */}
+      {!!item.assignmentType && item.assignmentType === 'game_based' && (
+        <View style={styles.gameBadge}>
+          <Ionicons name="game-controller" size={12} color="#2E7D32" style={{ marginRight: 4 }} />
+          <Text style={styles.gameBadgeText}>
+            {item.gameType === 'quiz_master' ? 'Quiz Master' : 
+             item.gameType === 'memory_match' ? 'Memory Match' :
+             item.gameType === 'fill_in_blanks' ? 'Fill-in-Blanks' :
+             item.gameType === 'flashcard' ? 'Flashcard' : 'Boss Battle'}
+          </Text>
+        </View>
+      )}
     </TouchableOpacity>
   );
 
@@ -95,7 +100,6 @@ const TeacherAssignmentSection = ({
           <Text style={styles.createButtonText}>Create Assignment</Text>
         </TouchableOpacity>
       </View>
-
       {assignments.length > 0 ? (
         <FlatList
           scrollEnabled={false}
@@ -104,9 +108,7 @@ const TeacherAssignmentSection = ({
           keyExtractor={(item) => item.id}
           showsVerticalScrollIndicator={false}
           ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
-          contentContainerStyle={{
-            paddingBottom: hp('10'),
-          }}
+          contentContainerStyle={{ paddingBottom: hp('10') }}
         />
       ) : (
         <Text style={styles.emptyText}>No assignments yet</Text>
@@ -118,132 +120,38 @@ const TeacherAssignmentSection = ({
 export default TeacherAssignmentSection;
 
 const styles = StyleSheet.create({
-  container: {
-    paddingVertical: hp('2'),
-    backgroundColor: '#ffffff',
-  },
-
-  topActionRow: {
-    marginBottom: hp('1.5'),
-    alignItems: 'flex-start',
-  },
-
-  createButton: {
-    backgroundColor: '#D32F2F',
-    borderRadius: 12,
-    minHeight: 44,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-
-  createButtonText: {
-    color: '#FFF',
-    fontWeight: '700',
-    fontSize: 13,
-  },
-
-  // ❗ IMPORTANT: remove paddingHorizontal here
-  assignmentCard: {
-    borderWidth: 1,
-    borderColor: '#E6E6E6',
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    paddingVertical: 14, // keep vertical only
-    shadowColor: '#000',
-    shadowOffset: { width: 4, height: 4 },
-    shadowOpacity: 0.06,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-
-  assignmentHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 10,
-  },
-
-  assignmentInfo: {
-    flex: 1,
-    marginRight: 8,
-  },
-
-  assignmentTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#000',
-    marginBottom: 4,
-  },
-
-  assignmentTopicText: {
-    color: '#444',
-    fontSize: 12,
-    fontWeight: '600',
-    marginTop: 4,
-    lineHeight: 18,
-  },
-
-  statusBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 8,
-    backgroundColor: '#FDECEC',
-  },
-
-  statusText: {
-    fontWeight: '700',
-    fontSize: 12,
-    color: '#D32F2F',
-  },
-
-  assignmentFooter: {
-    borderTopWidth: 1,
-    borderTopColor: '#E6E6E6',
-    paddingTop: 8,
-  },
-
-  dueDateText: {
-    color: '#D32F2F',
-    fontWeight: '600',
-    fontSize: 13,
-    marginBottom: 4,
-  },
-
-  pointsText: {
-    fontSize: 12,
-    color: '#666',
-    fontWeight: '600',
-  },
-
-  relatedPreviewText: {
-    fontSize: 12,
-    color: '#666',
-    marginTop: 8,
-    lineHeight: 18,
-  },
-
-  recommendationBadge: {
+  container: { paddingVertical: hp('2'), backgroundColor: '#ffffff' },
+  topActionRow: { marginBottom: hp('1.5'), alignItems: 'flex-start' },
+  createButton: { backgroundColor: '#D32F2F', borderRadius: 12, minHeight: 44, paddingHorizontal: 14, paddingVertical: 10, flexDirection: 'row', alignItems: 'center', gap: 8 },
+  createButtonText: { color: '#FFF', fontWeight: '700', fontSize: 13 },
+  assignmentCard: { borderWidth: 1, borderColor: '#E6E6E6', backgroundColor: '#fff', borderRadius: 12, paddingVertical: 14, shadowColor: '#000', shadowOffset: { width: 4, height: 4 }, shadowOpacity: 0.06, shadowRadius: 4, elevation: 2 },
+  assignmentHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 },
+  assignmentInfo: { flex: 1, marginRight: 8 },
+  assignmentTitle: { fontSize: 16, fontWeight: '700', color: '#000', marginBottom: 4 },
+  assignmentTopicText: { color: '#444', fontSize: 12, fontWeight: '600', marginTop: 4, lineHeight: 18 },
+  statusBadge: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, backgroundColor: '#FDECEC' },
+  statusText: { fontWeight: '700', fontSize: 12, color: '#D32F2F' },
+  assignmentFooter: { borderTopWidth: 1, borderTopColor: '#E6E6E6', paddingTop: 8 },
+  dueDateText: { color: '#D32F2F', fontWeight: '600', fontSize: 13, marginBottom: 4 },
+  pointsText: { fontSize: 12, color: '#666', fontWeight: '600' },
+  relatedPreviewText: { fontSize: 12, color: '#666', marginTop: 8, lineHeight: 18 },
+  recommendationBadge: { marginTop: 10, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 7, alignSelf: 'flex-start', backgroundColor: '#FFF1F1' },
+  recommendationText: { fontSize: 12, fontWeight: '700', color: '#D32F2F' },
+  emptyText: { textAlign: 'center', color: '#777', marginTop: 20, fontSize: 14 },
+  // NEW STYLES FOR GAME BADGE
+  gameBadge: {
     marginTop: 10,
     borderRadius: 999,
     paddingHorizontal: 12,
     paddingVertical: 7,
     alignSelf: 'flex-start',
-    backgroundColor: '#FFF1F1',
+    backgroundColor: '#E8F5E9',
+    flexDirection: 'row',
+    alignItems: 'center',
   },
-
-  recommendationText: {
+  gameBadgeText: {
     fontSize: 12,
     fontWeight: '700',
-    color: '#D32F2F',
-  },
-
-  emptyText: {
-    textAlign: 'center',
-    color: '#777',
-    marginTop: 20,
-    fontSize: 14,
+    color: '#2E7D32',
   },
 });

@@ -1134,6 +1134,7 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
               onBack={() => setActiveScreen(lastScreen)}
               course={selectedCourse || undefined}
               currentTeacher={currentTeacherData}
+              availableCourses={effectiveCourses}
             />
           ) : activeScreen === 'notification' ? (
             <TeacherNotification

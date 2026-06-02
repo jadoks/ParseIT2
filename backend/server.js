@@ -1,5 +1,5 @@
 
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GoogleGenerativeAI, SchemaType } from "@google/generative-ai";
 import cookieParser from "cookie-parser";
 import cors from "cors";
 import dotenv from "dotenv";
@@ -9,6 +9,7 @@ import mammoth from "mammoth";
 import { createRequire } from "module";
 import multer from "multer";
 import nodemailer from "nodemailer";
+import officeparser from "officeparser";
 import serviceAccount from "./serviceAccountKey.json" with { type: "json" };
 const require = createRequire(import.meta.url);
 const pdf = require("pdf-parse");
@@ -746,7 +747,7 @@ function limitText(text, maxChars = 12000) {
 async function extractTextFromFile(buffer, mimeType = "", fileName = "") {
   const lowerName = String(fileName || "").toLowerCase();
   const normalizedMimeType = String(mimeType || "").toLowerCase();
-
+  
   // Plain text-like files
   if (
     normalizedMimeType.includes("text") ||
@@ -757,38 +758,114 @@ async function extractTextFromFile(buffer, mimeType = "", fileName = "") {
   ) {
     return buffer.toString("utf-8");
   }
-
+  
   // PDF
   if (
     normalizedMimeType === "application/pdf" ||
     lowerName.endsWith(".pdf")
   ) {
-    const parsed = await pdf(buffer);
-    return parsed.text || "";
+    try {
+      const parsed = await pdf(buffer);
+      return parsed.text || "";
+    } catch (error) {
+      console.warn("PDF extraction failed:", error?.message || error);
+      return "";
+    }
   }
-
-  // DOCX
+  
+  // DOCX (modern Word document)
   if (
     normalizedMimeType ===
       "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
     lowerName.endsWith(".docx")
   ) {
-    const result = await mammoth.extractRawText({ buffer });
-    return result.value || "";
+    try {
+      const result = await mammoth.extractRawText({ buffer });
+      return result.value || "";
+    } catch (error) {
+      console.warn("DOCX extraction failed:", error?.message || error);
+      return "";
+    }
   }
-
-  // DOC (legacy .doc) - not reliably extractable with current stack
+  
+  // DOC (legacy Word document) - use word-extractor
   if (
     normalizedMimeType === "application/msword" ||
     lowerName.endsWith(".doc")
   ) {
-    return "";
-  }
+    try {
+      const WordExtractor = require("word-extractor");
+      const extractor = new WordExtractor();
 
-  // PPT / PPTX / XLS / XLSX / images are not handled here yet
+      const extracted = await extractor.extract(buffer);
+      return extracted.getBody() || "";
+    } catch (error) {
+      console.warn("DOC extraction failed:", error?.message || error);
+      return "";
+    }
+  }
+  
+  // PPTX (modern PowerPoint) - use officeparser
+  if (
+    normalizedMimeType ===
+      "application/vnd.openxmlformats-officedocument.presentationml.presentation" ||
+    lowerName.endsWith(".pptx")
+  ) {
+    try {
+      const text = await officeparser.parseOffice(buffer);
+      return text || "";
+    } catch (error) {
+      console.warn("PPTX extraction failed:", error?.message || error);
+      return "";
+    }
+  }
+  
+  // PPT (legacy PowerPoint) - use officeparser
+  if (
+    normalizedMimeType === "application/vnd.ms-powerpoint" ||
+    lowerName.endsWith(".ppt")
+  ) {
+    try {
+      const text = await officeparser.parseOffice(buffer);
+      return text || "";
+    } catch (error) {
+      console.warn("PPT extraction failed:", error?.message || error);
+      return "";
+    }
+  }
+  
+  // XLSX (modern Excel) - use officeparser
+  if (
+    normalizedMimeType ===
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
+    lowerName.endsWith(".xlsx")
+  ) {
+    try {
+      const text = await officeparser.parseOffice(buffer);
+      return text || "";
+    } catch (error) {
+      console.warn("XLSX extraction failed:", error?.message || error);
+      return "";
+    }
+  }
+  
+  // XLS (legacy Excel) - use officeparser
+  if (
+    normalizedMimeType === "application/vnd.ms-excel" ||
+    lowerName.endsWith(".xls")
+  ) {
+    try {
+      const text = await officeparser.parseOffice(buffer);
+      return text || "";
+    } catch (error) {
+      console.warn("XLS extraction failed:", error?.message || error);
+      return "";
+    }
+  }
+  
+  console.warn(`Unsupported file type: ${normalizedMimeType || lowerName}`);
   return "";
 }
-
 
 function parseQuizMastersJsonResponse(rawText = "", providerLabel = "AI") {
   const cleaned = String(rawText || "")
@@ -860,17 +937,16 @@ function buildQuizMastersPrompt({ extractedText, fileName }) {
   return `
 You are generating an educational Quiz Masters game from an uploaded learning file.
 
-Create exactly 10 multiple-choice quiz questions based ONLY on the provided content.
+Create exactly 10 multiple-choice quiz questions.
 
-Rules:
-- Use student-friendly wording.
-- Each question must have exactly 4 answer options.
-- Only one option must be correct.
-- The answer must exactly match one of the options.
-- Do not invent facts outside the uploaded content.
-- Avoid trick questions.
-- Keep questions concise.
-- Return JSON only.
+IMPORTANT:
+- Return ONLY valid JSON.
+- No markdown.
+- No explanations.
+- No code fences.
+- No text before or after JSON.
+- All questions must have exactly 4 options.
+- The answer must exactly match one option.
 
 Uploaded file name:
 ${fileName || "uploaded-file"}
@@ -886,13 +962,40 @@ async function generateQuizMastersWithGemini({ extractedText, fileName }) {
   }
 
   const model = geminiGameAI.getGenerativeModel({
-    model: GEMINI_GAME_MODEL,
-    generationConfig: {
-      temperature: 0.4,
-      maxOutputTokens: 1200,
-      responseMimeType: "application/json",
+  model: GEMINI_GAME_MODEL,
+  generationConfig: {
+    temperature: 0.2,
+    maxOutputTokens: 4096,
+    responseMimeType: "application/json",
+    responseSchema: {
+    type: SchemaType.OBJECT,  
+      properties: {
+        questions: {
+          type: SchemaType.ARRAY,
+          items: {
+            type: SchemaType.OBJECT,
+            properties: {
+              question: {
+                type: SchemaType.STRING,
+              },
+              options: {
+                type: SchemaType.ARRAY,
+                items: {
+                  type: SchemaType.STRING,
+                },
+              },
+              answer: {
+                type: SchemaType.STRING,
+              },
+            },
+            required: ["question", "options", "answer"],
+          },
+        },
+      },
+      required: ["questions"],
     },
-  });
+  },
+});
 
   const prompt = `
 ${buildQuizMastersPrompt({ extractedText, fileName })}
@@ -909,17 +1012,35 @@ Return ONLY valid JSON in this exact format, with exactly 10 questions:
 }
 `;
 
-  const result = await model.generateContent(prompt);
-  const rawText = result.response.text();
+  let rawText = "";
 
-  const parsed = parseQuizMastersJsonResponse(rawText, "Gemini");
-  const questions = normalizeQuizMastersQuestions(parsed);
+for (let attempt = 1; attempt <= 3; attempt++) {
+  try {
+    const result = await model.generateContent(prompt);
+    rawText = result.response.text();
 
-  if (questions.length < 5) {
-    throw new Error("Gemini did not generate enough valid quiz questions.");
+    const parsed = parseQuizMastersJsonResponse(
+      rawText,
+      "Gemini"
+    );
+
+    const questions =
+      normalizeQuizMastersQuestions(parsed);
+
+    if (questions.length >= 10) {
+      return questions;
+    }
+  } catch (error) {
+    console.log(
+      `Gemini attempt ${attempt} failed`,
+      error.message
+    );
   }
+}
 
-  return questions;
+throw new Error(
+  "Gemini failed after 3 attempts."
+);
 }
 
 function isGeminiQuotaError(error) {
@@ -2676,33 +2797,71 @@ app.post("/game-ai/generate-quiz-masters", requireAuth, gameUpload.single("file"
 });
 
 // === NEW: Generate quiz from selected class materials ===
-app.post("/game-ai/generate-quiz-materials", requireAuth, async (req, res) => {
+app.post("/game-ai/generate-quiz-materials",  requireAuth,async (req, res) => {
   try {
-    const { classId, materialIds, studentId } = req.body;
+    const { classId, materialIds } = req.body;
+
+    
     if (!classId || !Array.isArray(materialIds) || materialIds.length === 0) {
       return res.status(400).json({ error: "classId and at least one materialId are required." });
     }
-
-    // Check student belongs to the class
-    await requireClassAccess({ authUid: req.user.uid, classId, allowedRoles: ["student"] });
-
-    // Fetch materials
-    const materials = [];
-    for (const materialId of materialIds) {
-      const materialSnap = await db.collection("classMaterials").doc(materialId).get();
-      if (!materialSnap.exists) continue;
-      const material = materialSnap.data() || {};
-      const extracted = await extractReadableTextFromMaterial(material);
-      materials.push({
-        id: materialSnap.id,
-        title: material.title || "Untitled",
-        extractedText: extracted.readableText,
-      });
+    
+    // Use req.user.uid if cookie auth worked, otherwise fallback to authUid sent from frontend
+    const userAuthUid = req.user?.uid || authUid;
+    
+    if (!userAuthUid) {
+      return res.status(401).json({ error: "Authentication required. Please log in again." });
     }
 
-    if (materials.length === 0) {
-      return res.status(400).json({ error: "No readable material content found." });
-    }
+    // Check user belongs to the class (updated to allow teachers too)
+    await requireClassAccess({ authUid: userAuthUid, classId, allowedRoles: ["student", "teacher"] });
+
+    // Fetch materials and extract file content from Firebase Storage
+const materials = [];
+const extractionSummary = [];
+
+for (const materialId of materialIds) {
+  const materialSnap = await db.collection("classMaterials").doc(materialId).get();
+  if (!materialSnap.exists) continue;
+  const material = materialSnap.data() || {};
+  
+  console.log(`\n[QUIZ GEN] 📄 Processing material: "${material.title || materialId}"`);
+  console.log(`[QUIZ GEN] 📁 Storage path: ${material.storagePath || 'none'}`);
+  console.log(`[QUIZ GEN] 📋 File type: ${material.fileType || 'unknown'}`);
+  console.log(`[QUIZ GEN] 📝 Description: ${(material.content || '').substring(0, 100)}...`);
+  
+  // This downloads the actual file from Firebase Storage and extracts text
+  const extracted = await extractReadableTextFromMaterial(material);
+  
+  console.log(`[QUIZ GEN] ✅ Extraction status: ${extracted.extractionStatus}`);
+  console.log(`[QUIZ GEN] 📊 Extracted text length: ${extracted.readableText.length} characters`);
+  
+  if (extracted.readableText.length > 0) {
+    console.log(`[QUIZ GEN] 📖 First 200 chars of extracted content: "${extracted.readableText.substring(0, 200)}..."`);
+  }
+  
+  extractionSummary.push({
+    title: material.title || "Untitled",
+    fileType: material.fileType || "unknown",
+    status: extracted.extractionStatus,
+    charsExtracted: extracted.readableText.length,
+  });
+  
+  materials.push({
+    id: materialSnap.id,
+    title: material.title || "Untitled",
+    extractedText: extracted.readableText,
+  });
+}
+
+console.log(`\n[QUIZ GEN] 📊 EXTRACTION SUMMARY:`, extractionSummary);
+
+if (materials.length === 0 || materials.every(m => m.extractedText.length === 0)) {
+  return res.status(400).json({ 
+    error: "No readable material content found. Please upload PDF, DOCX, TXT, MD, JSON, or CSV files.",
+    extractionSummary 
+  });
+}
 
     // Combine all extracted text
     const combinedText = materials.map(m => `File: ${m.title}\n${m.extractedText}`).join("\n\n---\n\n");
@@ -5635,6 +5794,7 @@ app.post("/create-class-assignment", async (req, res) => {
       bucketPath,
       postedByUid,
       postedByName,
+      questions,
     } = req.body;
 
     if (
@@ -5671,6 +5831,7 @@ app.post("/create-class-assignment", async (req, res) => {
       bucketPath: normalizeOptionalText(bucketPath),
       postedByUid: normalizeOptionalText(postedByUid),
       postedByName: normalizeOptionalText(postedByName),
+      questions: Array.isArray(questions) ? questions : [],
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
     });
@@ -5715,6 +5876,7 @@ app.put("/update-class-assignment/:id", async (req, res) => {
       fileName,
       fileUrl,
       fileType,
+       questions,
     } = req.body;
 
     await db.collection("classAssignments").doc(id).update({
@@ -5734,6 +5896,7 @@ app.put("/update-class-assignment/:id", async (req, res) => {
       ...(typeof fileName === "string" || fileName === null ? { fileName } : {}),
       ...(typeof fileUrl === "string" || fileUrl === null ? { fileUrl } : {}),
       ...(typeof fileType === "string" || fileType === null ? { fileType } : {}),
+        ...(questions !== undefined ? { questions: Array.isArray(questions) ? questions : [] } : {}),
       updatedAt: FieldValue.serverTimestamp(),
     });
 
