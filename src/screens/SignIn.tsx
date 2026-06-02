@@ -40,6 +40,7 @@ interface SignedInUser {
 interface SignInProps {
   onLogIn?: (user: SignedInUser) => void;
   onGoToLanding?: () => void;
+  onGoToRegister?: () => void;
 }
 
 type LookupUserResponse = {
@@ -86,7 +87,7 @@ function getApiBaseUrl() {
 
 const API_BASE_URL = getApiBaseUrl();
 
-const SignIn = ({ onLogIn, onGoToLanding }: SignInProps) => {
+const SignIn = ({ onLogIn, onGoToLanding, onGoToRegister }: SignInProps) => {
   const [id, setId] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -918,6 +919,15 @@ const SignIn = ({ onLogIn, onGoToLanding }: SignInProps) => {
                   {isLoading ? 'Signing in...' : 'Sign In'}
                 </Text>
               </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.registerButton}
+                onPress={onGoToRegister}
+                disabled={isLoading}
+              >
+                <Text style={styles.registerButtonText}>
+                  Don't have an account? Register
+                </Text>
+              </TouchableOpacity>
             </View>
           </View>
         </ScrollView>
@@ -1547,6 +1557,16 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontWeight: '800',
   },
+  registerButton: {
+  marginTop: 16,
+  alignItems: 'center',
+},
+
+registerButtonText: {
+  color: '#D32F2F',
+  fontSize: 14,
+  fontWeight: '700',
+},
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.55)',

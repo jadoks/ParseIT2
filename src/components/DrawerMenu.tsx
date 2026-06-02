@@ -59,7 +59,7 @@ interface DrawerMenuProps {
   setIsLoggedIn: React.Dispatch<React.SetStateAction<boolean>>;
 }
 
-const DEFAULT_AVATAR = require('../../assets/images/pogi.jpg');
+const DEFAULT_AVATAR = require('../../assets/images/default_profile.png');
 
 const normalizeImageSource = (img: any) => {
   if (!img) return DEFAULT_AVATAR;

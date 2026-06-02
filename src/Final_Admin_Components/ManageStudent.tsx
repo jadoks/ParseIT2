@@ -29,7 +29,6 @@ type StudentFormPayload = {
   lastName: string;
   birthday: string;
   email: string;
-  studentType: "regular" | "irregular" | "";
 };
 
 type BackendStudentItem = {
@@ -39,8 +38,6 @@ type BackendStudentItem = {
   lastName?: string;
   birthday?: string | { _seconds?: number; seconds?: number } | null;
   email?: string;
-  studentType?: "regular" | "irregular" | "";
-  status?: "regular" | "irregular" | "" | string;
 };
 
 type TableStudentItem = {
@@ -50,7 +47,7 @@ type TableStudentItem = {
   lastName: string;
   birthday: string;
   email: string;
-  studentType: "regular" | "irregular" | "";
+  
 };
 
 function getApiBaseUrl() {
@@ -105,8 +102,6 @@ function formatBirthday(value: BackendStudentItem["birthday"]): string {
 }
 
 function mapStudent(item: BackendStudentItem): TableStudentItem {
-  const resolvedType = item.studentType || item.status || "";
-
   return {
     id: item.id || item.studentId || "",
     studentId: item.studentId || "",
@@ -114,10 +109,6 @@ function mapStudent(item: BackendStudentItem): TableStudentItem {
     lastName: item.lastName || "",
     birthday: formatBirthday(item.birthday),
     email: item.email || "",
-    studentType:
-      resolvedType === "regular" || resolvedType === "irregular"
-        ? resolvedType
-        : "",
   };
 }
 
@@ -182,7 +173,6 @@ export default function ManageStudent({ width }: ManageStudentProps) {
         item.lastName,
         item.birthday,
         item.email,
-        item.studentType,
       ]
         .join(" ")
         .toLowerCase();
@@ -260,13 +250,7 @@ export default function ManageStudent({ width }: ManageStudentProps) {
       lastName: fullStudent.lastName || "",
       birthday: formatBirthday(fullStudent.birthday),
       email: fullStudent.email || "",
-      studentType:
-        fullStudent.studentType === "regular" ||
-        fullStudent.studentType === "irregular"
-          ? fullStudent.studentType
-          : fullStudent.status === "regular" || fullStudent.status === "irregular"
-          ? (fullStudent.status as "regular" | "irregular")
-          : "",
+
     });
 
     setIsEditMode(true);
@@ -335,7 +319,7 @@ export default function ManageStudent({ width }: ManageStudentProps) {
             <TextInput
               value={searchText}
               onChangeText={setSearchText}
-              placeholder="Search student ID, name, birthday, email, or status"
+              placeholder="Search student ID, name, birthday,or email"
               placeholderTextColor="#B79A9A"
               style={styles.searchInput}
             />
@@ -384,9 +368,7 @@ export default function ManageStudent({ width }: ManageStudentProps) {
                 <Text style={[styles.tableHeaderText, styles.emailColumn]}>
                   Email
                 </Text>
-                <Text style={[styles.tableHeaderText, styles.statusColumn]}>
-                  Status
-                </Text>
+                
                 <Text style={[styles.tableHeaderText, styles.actionColumn]}>
                   Action
                 </Text>
@@ -444,11 +426,7 @@ export default function ManageStudent({ width }: ManageStudentProps) {
                         <Text style={styles.tablePrimaryText}>{item.email}</Text>
                       </View>
 
-                      <View style={styles.statusColumn}>
-                        <Text style={styles.tablePrimaryText}>
-                          {(item.studentType || "Not set").toUpperCase()}
-                        </Text>
-                      </View>
+              
 
                       <View style={[styles.actionColumn, styles.actionCellRow]}>
                         <TouchableOpacity
@@ -736,10 +714,6 @@ const styles = StyleSheet.create({
     paddingRight: 12,
   },
 
-  statusColumn: {
-    width: 180,
-    paddingRight: 12,
-  },
 
   actionColumn: {
     width: 220,

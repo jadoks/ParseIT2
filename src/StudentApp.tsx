@@ -2287,17 +2287,36 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
         );
 
       case 'game':
-        return (
-          <Game
-            onNavigate={(screen, generatedQuiz) => {
-              if (screen === 'quizmasters' && Array.isArray(generatedQuiz) && generatedQuiz.length > 0) {
-                setGeneratedQuizMastersData(generatedQuiz);
-              }
-
-              handleNavigate(screen);
-            }}
-          />
-        );
+  return (
+    <Game
+      enrolledCourses={joinedCourses.map(course => ({
+        id: course.id,
+        name: course.name,
+        materials: course.materials.map(m => ({ id: m.id, title: m.title, type: m.type })),
+      }))}
+      studentId={currentStudent.studentId}
+      onSaveQuizScore={async ({ classId, materialIds, score, totalQuestions, answers }) => {
+        try {
+          const response = await apiFetch(`${API_BASE_URL}/game-ai/save-quiz-score`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              classId,
+              materialIds,
+              score,
+              totalQuestions,
+              answers,
+            }),
+          });
+          if (!response.ok) throw new Error('Failed to save score');
+          await loadCompletedActivityScores();
+        } catch (err) {
+          console.error('Save quiz score error', err);
+          Alert.alert('Error', 'Could not save your quiz score.');
+        }
+      }}
+    />
+  );
 
       case 'flipit':
         return <FlipIt onBack={exitFullscreenGameToGames} />;

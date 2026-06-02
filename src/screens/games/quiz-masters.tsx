@@ -21,6 +21,7 @@ export interface QuizQuestion {
 interface Props {
   onBack: () => void;
   generatedQuestions?: QuizQuestion[] | null;
+  onComplete?: (score: number, totalQuestions: number, answers: any[]) => void;
 }
 
 type GameMode = 'menu' | 'matchingCards' | 'flashcards' | 'fillBlank' | 'trivia';
@@ -127,7 +128,7 @@ function createMatchingCards(questions: QuizQuestion[]): MatchingCard[] {
   return shuffleArray(cards);
 }
 
-export default function QuizMasters({ onBack, generatedQuestions }: Props) {
+export default function QuizMasters({ onBack, generatedQuestions, onComplete }: Props) {
   const { width, height } = useWindowDimensions();
 
   const contentWidth = useMemo(() => {
@@ -368,12 +369,18 @@ export default function QuizMasters({ onBack, generatedQuestions }: Props) {
           })}
         </View>
 
-        {isMatchingComplete ? (
+        {isMatchingComplete && (
           <View style={styles.resultCard}>
             <Text style={styles.resultText}>All terms matched.</Text>
             <Text style={styles.resultSubtext}>Completed in {matchingMoves} move{matchingMoves === 1 ? '' : 's'}.</Text>
+            <Pressable style={styles.secondaryButtonFull} onPress={() => {
+              if (onComplete) onComplete(matchedPairs, totalMatchingPairs, []);
+              goToMenu();
+            }}>
+              <Text style={styles.secondaryButtonText}>Back to Menu</Text>
+            </Pressable>
           </View>
-        ) : null}
+        )}
 
         <View style={styles.buttonRow}>
           <Pressable style={styles.secondaryButton} onPress={resetMatchingCards}>
@@ -431,7 +438,6 @@ export default function QuizMasters({ onBack, generatedQuestions }: Props) {
                     goToMenu();
                     return;
                   }
-
                   setFlashcardIndex((prev) => prev + 1);
                   setIsFlashcardAnswerVisible(false);
                 }}
@@ -548,7 +554,10 @@ export default function QuizMasters({ onBack, generatedQuestions }: Props) {
                 <Text style={styles.primaryButtonText}>Play Again</Text>
               </Pressable>
 
-              <Pressable style={styles.secondaryButtonFull} onPress={goToMenu}>
+              <Pressable style={styles.secondaryButtonFull} onPress={() => {
+                if (onComplete) onComplete(fillScore, fillBlankItems.length, []);
+                goToMenu();
+              }}>
                 <Text style={styles.secondaryButtonText}>Back to Menu</Text>
               </Pressable>
             </View>
@@ -674,7 +683,10 @@ export default function QuizMasters({ onBack, generatedQuestions }: Props) {
                 <Text style={styles.primaryButtonText}>Play Again</Text>
               </Pressable>
 
-              <Pressable style={styles.secondaryButtonFull} onPress={goToMenu}>
+              <Pressable style={styles.secondaryButtonFull} onPress={() => {
+                if (onComplete) onComplete(triviaScore, questions.length, []);
+                goToMenu();
+              }}>
                 <Text style={styles.secondaryButtonText}>Back to Menu</Text>
               </Pressable>
             </View>

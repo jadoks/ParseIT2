@@ -3,6 +3,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import AdminApp from './src/AdminApp';
 import LandingPage from './src/screens/LandingPage';
+import Register from './src/screens/Register';
 import SignIn from './src/screens/SignIn';
 import StudentApp from './src/StudentApp';
 import TeacherApp from './src/TeacherApp';
@@ -25,29 +26,53 @@ type SignedInUser = {
 
 export default function App() {
   const [showLanding, setShowLanding] = useState(true);
+  const [showRegister, setShowRegister] = useState(false);
+
   const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [currentUser, setCurrentUser] = useState<SignedInUser | null>(null);
+  const [currentUser, setCurrentUser] =
+    useState<SignedInUser | null>(null);
 
   const handleLogin = (user: SignedInUser) => {
     setCurrentUser(user);
     setIsLoggedIn(true);
     setShowLanding(false);
+    setShowRegister(false);
   };
 
   const handleLogout = () => {
     setCurrentUser(null);
     setIsLoggedIn(false);
     setShowLanding(true);
+    setShowRegister(false);
   };
 
   const handleGetStarted = () => {
     setShowLanding(false);
+    setShowRegister(false);  // ✅ Explicitly close Register so SignIn is shown
+  };
+
+  const handleRegisterSuccess = () => {
+    setShowRegister(false);
   };
 
   if (showLanding) {
     return (
       <SafeAreaView style={{ flex: 1 }}>
-        <LandingPage onGetStarted={handleGetStarted} />
+        <LandingPage
+          onGetStarted={handleGetStarted}
+        />
+      </SafeAreaView>
+    );
+  }
+
+  if (showRegister) {
+    return (
+      <SafeAreaView style={{ flex: 1 }}>
+        <Register
+          onBack={() => setShowRegister(false)}
+          onRegisterSuccess={handleRegisterSuccess}
+          onGoToLanding={() => setShowLanding(true)}
+        />
       </SafeAreaView>
     );
   }
@@ -57,7 +82,12 @@ export default function App() {
       <SafeAreaView style={{ flex: 1 }}>
         <SignIn
           onLogIn={handleLogin}
-          onGoToLanding={() => setShowLanding(true)}
+          onGoToLanding={() =>
+            setShowLanding(true)
+          }
+          onGoToRegister={() =>
+            setShowRegister(true)
+          }
         />
       </SafeAreaView>
     );
@@ -68,49 +98,75 @@ export default function App() {
       <TeacherApp
         onLogout={handleLogout}
         currentTeacher={{
-          teacherId: currentUser.teacherId || currentUser.id,
-          authUid: currentUser.authUid || null,
-          firstName: currentUser.firstName || '',
-          lastName: currentUser.lastName || '',
-          email: currentUser.email || '',
-          profileImage: currentUser.profileImage || null,
-          bannerImage: currentUser.bannerImage || null,
+          teacherId:
+            currentUser.teacherId ||
+            currentUser.id,
+          authUid:
+            currentUser.authUid || null,
+          firstName:
+            currentUser.firstName || '',
+          lastName:
+            currentUser.lastName || '',
+          email:
+            currentUser.email || '',
+          profileImage:
+            currentUser.profileImage ||
+            null,
+          bannerImage:
+            currentUser.bannerImage ||
+            null,
         }}
       />
     );
   }
 
- if (currentUser?.role === 'student') {
+  if (currentUser?.role === 'student') {
     return (
       <StudentApp
         onLogout={handleLogout}
         currentStudent={{
-          studentId: currentUser.studentId || currentUser.id,
-          authUid: currentUser.authUid || null,
-          firstName: currentUser.firstName || '',
-          lastName: currentUser.lastName || '',
-          email: currentUser.email || '',
-          profileImage: currentUser.profileImage || null,
-          bannerImage: currentUser.bannerImage || null,
+          studentId:
+            currentUser.studentId ||
+            currentUser.id,
+          authUid:
+            currentUser.authUid || null,
+          firstName:
+            currentUser.firstName || '',
+          lastName:
+            currentUser.lastName || '',
+          email:
+            currentUser.email || '',
+          profileImage:
+            currentUser.profileImage ||
+            null,
+          bannerImage:
+            currentUser.bannerImage ||
+            null,
         }}
       />
     );
-}
+  }
 
   if (currentUser?.role === 'admin') {
-  return (
-    <AdminApp
-      onLogout={handleLogout}
-      currentAdmin={{
-        adminId: currentUser.adminId || currentUser.id,
-        authUid: currentUser.authUid || null,
-        firstName: currentUser.firstName || '',
-        lastName: currentUser.lastName || '',
-        email: currentUser.email || '',
-      }}
-    />
-  );
-}
+    return (
+      <AdminApp
+        onLogout={handleLogout}
+        currentAdmin={{
+          adminId:
+            currentUser.adminId ||
+            currentUser.id,
+          authUid:
+            currentUser.authUid || null,
+          firstName:
+            currentUser.firstName || '',
+          lastName:
+            currentUser.lastName || '',
+          email:
+            currentUser.email || '',
+        }}
+      />
+    );
+  }
 
   return null;
 }

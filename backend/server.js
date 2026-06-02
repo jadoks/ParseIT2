@@ -1740,6 +1740,156 @@ app.post("/admin/repair-ai-quota-notifications", async (req, res) => {
   }
 });
 
+app.post("/auth/register", async (req, res) => {
+  try {
+    const {
+      role,
+      id,
+      email,
+      password,
+      firstName,
+      lastName,
+      birthday,
+    } = req.body;
+
+    if (
+      !role ||
+      !id ||
+      !email ||
+      !password ||
+      !firstName ||
+      !lastName||
+      !birthday
+    ) {
+      return res.status(400).json({
+        error:
+          "role, id, email, password, firstName, lastName, and birthday are required.",
+      });
+    }
+
+    const normalizedRole = String(role).trim().toLowerCase();
+    const normalizedId = String(id).trim();
+    const normalizedEmail = String(email).trim().toLowerCase();
+
+    if (!["student", "teacher"].includes(normalizedRole)) {
+      return res.status(400).json({
+        error: "Role must be student or teacher.",
+      });
+    }
+
+    if (password.length < 8) {
+      return res.status(400).json({
+        error: "Password must be at least 8 characters.",
+      });
+    }
+
+    // Check duplicate ID across all roles
+    const existingId = await findUsersByIdAcrossAllRoles(normalizedId);
+
+    if (existingId.length > 0) {
+      return res.status(409).json({
+        error: "ID already exists.",
+      });
+    }
+
+    // Check duplicate email
+    const existingEmail = await findUserByEmailAcrossRoles(
+      normalizedEmail
+    );
+
+    if (existingEmail) {
+      return res.status(409).json({
+        error: "Email already exists.",
+      });
+    }
+
+    // Check Firebase Auth email
+    try {
+      await admin.auth().getUserByEmail(normalizedEmail);
+
+      return res.status(409).json({
+        error: "Email already exists.",
+      });
+    } catch (error) {
+      if (error.code !== "auth/user-not-found") {
+        throw error;
+      }
+    }
+
+    // Create Firebase Auth account
+    const authUser = await admin.auth().createUser({
+      email: normalizedEmail,
+      password,
+      displayName: `${firstName} ${lastName}`,
+    });
+
+    
+
+    const userData = {
+      authUid: authUser.uid,
+
+      email: normalizedEmail,
+      firstName: String(firstName).trim(),
+      lastName: String(lastName).trim(),
+      birthday: birthday
+      ? admin.firestore.Timestamp.fromDate(
+          parseDateValue(birthday)
+        )
+      : null,
+
+      profileImage: DEFAULT_PROFILE_IMAGE_URL,
+      bannerImage: DEFAULT_BANNER_IMAGE_URL,
+
+      profileImageStoragePath:
+        DEFAULT_PROFILE_IMAGE_STORAGE_PATH,
+      bannerImageStoragePath:
+        DEFAULT_BANNER_IMAGE_STORAGE_PATH,
+
+      accountCreated: true,
+      mustChangePassword: false,
+      codeVerified: true,
+
+      createdAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+      lastLoginAt: null,
+    };
+
+    if (normalizedRole === "student") {
+      await db
+        .collection("students")
+        .doc(normalizedId)
+        .set({
+          studentId: normalizedId,
+          ...userData,
+        });
+    }
+
+    if (normalizedRole === "teacher") {
+      await db
+        .collection("teachers")
+        .doc(normalizedId)
+        .set({
+          teacherId: normalizedId,
+          ...userData,
+        });
+    }
+
+    return res.status(201).json({
+      success: true,
+      message: "Account created successfully.",
+      uid: authUser.uid,
+      role: normalizedRole,
+      id: normalizedId,
+    });
+  } catch (error) {
+    console.error("Register error:", error);
+
+    return res.status(500).json({
+      error: error.message || "Failed to register user.",
+    });
+  }
+});
+
 
 /**
  * AUTH ROUTES
@@ -2525,7 +2675,109 @@ app.post("/game-ai/generate-quiz-masters", requireAuth, gameUpload.single("file"
   }
 });
 
+// === NEW: Generate quiz from selected class materials ===
+app.post("/game-ai/generate-quiz-materials", requireAuth, async (req, res) => {
+  try {
+    const { classId, materialIds, studentId } = req.body;
+    if (!classId || !Array.isArray(materialIds) || materialIds.length === 0) {
+      return res.status(400).json({ error: "classId and at least one materialId are required." });
+    }
 
+    // Check student belongs to the class
+    await requireClassAccess({ authUid: req.user.uid, classId, allowedRoles: ["student"] });
+
+    // Fetch materials
+    const materials = [];
+    for (const materialId of materialIds) {
+      const materialSnap = await db.collection("classMaterials").doc(materialId).get();
+      if (!materialSnap.exists) continue;
+      const material = materialSnap.data() || {};
+      const extracted = await extractReadableTextFromMaterial(material);
+      materials.push({
+        id: materialSnap.id,
+        title: material.title || "Untitled",
+        extractedText: extracted.readableText,
+      });
+    }
+
+    if (materials.length === 0) {
+      return res.status(400).json({ error: "No readable material content found." });
+    }
+
+    // Combine all extracted text
+    const combinedText = materials.map(m => `File: ${m.title}\n${m.extractedText}`).join("\n\n---\n\n");
+    const fileName = `class-${classId}-materials`;
+
+    const generated = await generateQuizMastersWithFallback({
+      extractedText: combinedText,
+      fileName,
+    });
+
+    return res.json({
+      success: true,
+      questions: generated.questions,
+      provider: generated.provider,
+      model: generated.model,
+      classId,
+      materialIds,
+    });
+  } catch (error) {
+    console.error("Generate quiz from materials error:", error);
+    return res.status(500).json({ error: error.message || "Failed to generate quiz from materials." });
+  }
+});
+
+// === NEW: Save quiz score for a class activity ===
+app.post("/game-ai/save-quiz-score", requireAuth, async (req, res) => {
+  try {
+    const { classId, materialIds, score, totalQuestions, answers } = req.body;
+    if (!classId || !materialIds || score === undefined || !totalQuestions) {
+      return res.status(400).json({ error: "classId, materialIds, score, and totalQuestions are required." });
+    }
+
+    const profile = await findUserProfileByAuthUid(req.user.uid);
+    if (!profile || profile.role !== "student") {
+      return res.status(403).json({ error: "Only students can save quiz scores." });
+    }
+
+    const studentId = profile.data.studentId || profile.id;
+    const percent = Math.round((score / totalQuestions) * 100);
+
+    // Store in studentActivities with class context
+    const activityData = {
+      studentId,
+      classId,
+      materialIds,
+      type: "quiz-masters",
+      score,
+      totalQuestions,
+      percent,
+      answers: answers || {},
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    };
+
+    await db.collection("studentActivities").add(activityData);
+
+    // Also update lesson progress for the class materials
+    for (const materialId of materialIds) {
+      await upsertLessonProgress({
+        studentId,
+        courseId: classId,
+        topic: `Material-${materialId}`,
+        score: percent,
+        status: percent >= 75 ? "improving" : "needs_review",
+        source: "quiz-masters",
+        notes: `Quiz score ${percent}% from materials`,
+      });
+    }
+
+    return res.json({ success: true, percent });
+  } catch (error) {
+    console.error("Save quiz score error:", error);
+    return res.status(500).json({ error: error.message || "Failed to save quiz score." });
+  }
+});
 /**
  * FILE UPLOAD ROUTE
  */
@@ -2600,7 +2852,7 @@ app.post("/create-student", async (req, res) => {
       lastName,
       email,
       birthday,
-      studentType,
+     
     } = req.body;
 
     if (
@@ -2608,8 +2860,8 @@ app.post("/create-student", async (req, res) => {
       !firstName ||
       !lastName ||
       !email ||
-      !birthday ||
-      !studentType
+      !birthday 
+      
     ) {
       return res.status(400).json({ error: "Missing required fields." });
     }
@@ -2641,7 +2893,6 @@ app.post("/create-student", async (req, res) => {
       lastName,
       email,
       birthday: parseDateValue(birthday),
-      status: studentType,
       authUid: userRecord.uid,
 
       profileImage: DEFAULT_PROFILE_IMAGE_URL,
@@ -3098,7 +3349,7 @@ app.delete("/delete-teacher/:id", async (req, res) => {
 app.put("/update-student/:id", async (req, res) => {
   try {
     const { id } = req.params;
-    const { studentId, firstName, lastName, birthday, email, studentType } =
+    const { studentId, firstName, lastName, birthday, email } =
       req.body;
 
     if (studentId && studentId !== id) {
@@ -3128,7 +3379,7 @@ app.put("/update-student/:id", async (req, res) => {
         ...(lastName ? { lastName } : {}),
         ...(birthday ? { birthday: parseDateValue(birthday) } : {}),
         ...(email ? { email } : {}),
-        ...(studentType ? { status: studentType } : {}),
+        
         studentId,
         updatedAt: FieldValue.serverTimestamp(),
       };
@@ -3142,7 +3393,7 @@ app.put("/update-student/:id", async (req, res) => {
         ...(lastName ? { lastName } : {}),
         ...(birthday ? { birthday: parseDateValue(birthday) } : {}),
         ...(email ? { email } : {}),
-        ...(studentType ? { status: studentType } : {}),
+        
         updatedAt: FieldValue.serverTimestamp(),
       });
     }

@@ -4,5 +4,4 @@ export type StudentFormPayload = {
   lastName: string;
   birthday: string;
   email: string;
-  studentType: "regular" | "irregular" | "";
 };

@@ -41,7 +41,7 @@ export type AddStudentModalInitialData = {
   lastName?: string;
   birthday?: string | null;
   email?: string;
-  studentType?: "regular" | "irregular" | "";
+
 };
 
 function BirthdayField({
@@ -380,7 +380,6 @@ export default function AddStudentModal({
     lastName: string;
     birthday: string;
     email: string;
-    studentType: "regular" | "irregular" | "";
   }) => void | Promise<void>;
   initialData?: AddStudentModalInitialData | null;
   isEditMode?: boolean;
@@ -390,9 +389,7 @@ export default function AddStudentModal({
   const [lastName, setLastName] = useState("");
   const [birthday, setBirthday] = useState<Date | null>(null);
   const [email, setEmail] = useState("");
-  const [studentType, setStudentType] = useState<"regular" | "irregular" | "">(
-    ""
-  );
+  
 
   const resetForm = () => {
     setStudentId("");
@@ -400,7 +397,7 @@ export default function AddStudentModal({
     setLastName("");
     setBirthday(null);
     setEmail("");
-    setStudentType("");
+   
   };
 
   useEffect(() => {
@@ -412,7 +409,7 @@ export default function AddStudentModal({
       setLastName(initialData.lastName || "");
       setBirthday(parseDateString(initialData.birthday));
       setEmail(initialData.email || "");
-      setStudentType(initialData.studentType || "");
+      
       return;
     }
 
@@ -431,7 +428,7 @@ export default function AddStudentModal({
       lastName,
       birthday: birthday ? formatDate(birthday) : "",
       email,
-      studentType,
+     
     };
 
     try {
@@ -443,7 +440,7 @@ export default function AddStudentModal({
         console.log("Last Name:", payload.lastName);
         console.log("Birthday:", payload.birthday);
         console.log("Email Address:", payload.email);
-        console.log("Student Type:", payload.studentType);
+      
       }
 
       handleClose();
@@ -568,58 +565,7 @@ export default function AddStudentModal({
               </View>
             </View>
 
-            <View style={styles.modalSection}>
-              <View style={styles.modalSectionHeaderRow}>
-                <Ionicons
-                  name="git-compare-outline"
-                  size={18}
-                  color="#DC2626"
-                />
-                <Text style={styles.modalSectionTitle}>Student Status</Text>
-              </View>
-
-              <TouchableOpacity
-                style={[
-                  styles.sectionRow,
-                  studentType === "regular" && styles.sectionRowActive,
-                ]}
-                activeOpacity={0.85}
-                onPress={() => setStudentType("regular")}
-              >
-                <View
-                  style={[
-                    styles.checkboxBase,
-                    studentType === "regular" && styles.checkboxChecked,
-                  ]}
-                >
-                  {studentType === "regular" && (
-                    <Ionicons name="checkmark" size={14} color="#FFFFFF" />
-                  )}
-                </View>
-                <Text style={styles.checkText}>Regular Student</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[
-                  styles.sectionRow,
-                  studentType === "irregular" && styles.sectionRowActive,
-                ]}
-                activeOpacity={0.85}
-                onPress={() => setStudentType("irregular")}
-              >
-                <View
-                  style={[
-                    styles.checkboxBase,
-                    studentType === "irregular" && styles.checkboxChecked,
-                  ]}
-                >
-                  {studentType === "irregular" && (
-                    <Ionicons name="checkmark" size={14} color="#FFFFFF" />
-                  )}
-                </View>
-                <Text style={styles.checkText}>Irregular Student</Text>
-              </TouchableOpacity>
-            </View>
+            
           </ScrollView>
 
           <View style={styles.modalFooter}>
