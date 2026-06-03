@@ -430,21 +430,34 @@ const TeacherSubmissionsSection = ({
                       {student.handle}
                     </Text>
 
-                    <View style={styles.metaGrid}>
-                      <View style={styles.metaItem}>
-                        <Text style={styles.metaLabel}>Score</Text>
-                        <Text style={styles.gradeRatio}>
-                          {submission?.score ?? 0}/{totalScoreValue}
-                        </Text>
-                      </View>
+                    
 
+                    <View style={styles.metaGrid}>
+                    <View style={styles.metaItem}>
+                      <Text style={styles.metaLabel}>Score</Text>
+                      <Text style={styles.gradeRatio}>
+                        {submission?.score ?? 0}/{totalScoreValue}
+                      </Text>
+                    </View>
+
+                    {/* 🌟 NEW: Show raw game score and attempt number if it was a game-based submission */}
+                    {(submission as any)?.gameScore !== undefined && (
                       <View style={styles.metaItem}>
-                        <Text style={styles.metaLabel}>Submitted</Text>
-                        <Text style={styles.dateText} numberOfLines={1}>
-                          {submission?.submittedAt || "Not yet"}
+                        <Text style={styles.metaLabel}>Game Score</Text>
+                        <Text style={styles.gradeRatio}>
+                          {(submission as any).gameScore}/{(submission as any).gameTotalQuestions || '?'}
+                          {(submission as any).attemptNumber > 1 ? ` (Att. ${(submission as any).attemptNumber})` : ''}
                         </Text>
                       </View>
+                    )}
+
+                    <View style={styles.metaItem}>
+                      <Text style={styles.metaLabel}>Submitted</Text>
+                      <Text style={styles.dateText} numberOfLines={1}>
+                        {submission?.submittedAt || "Not yet"}
+                      </Text>
                     </View>
+                  </View>
 
                     {!!fileUrl && (
                       <TouchableOpacity

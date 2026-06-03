@@ -23,14 +23,12 @@ import {
   widthPercentageToDP as wp,
 } from "react-native-responsive-screen";
 import Ionicons from "react-native-vector-icons/Ionicons";
-
 import {
   AssignmentComment,
   AssignmentCourse,
   AssignmentFileUpload,
   AssignmentItem,
 } from "./Assignments";
-
 
 type CurrentStudent = {
   studentId: string;
@@ -42,19 +40,16 @@ type CurrentStudent = {
 
 function getApiBaseUrl() {
   if (Platform.OS === "web") return "http://localhost:5000";
-
   const possibleHost =
     Constants.expoConfig?.hostUri ||
     Constants.manifest2?.extra?.expoGo?.debuggerHost ||
     "";
-
   const host = possibleHost.split(":")[0];
   if (host) return `http://${host}:5000`;
   return "http://192.168.1.5:5000";
 }
 
 const API_BASE_URL = getApiBaseUrl();
-
 const apiFetch = (url: string, options: any = {}) =>
   fetch(url, {
     credentials: 'include',
@@ -71,7 +66,6 @@ const getDisplayFileSize = (bytes?: number | null) => {
 async function readPickedFileBase64(asset: any): Promise<string | null> {
   if (Platform.OS === "web") {
     if (asset?.base64) return asset.base64;
-
     if (asset?.file) {
       return await new Promise<string>((resolve, reject) => {
         const reader = new FileReader();
@@ -88,16 +82,13 @@ async function readPickedFileBase64(asset: any): Promise<string | null> {
       });
     }
   }
-
   if (asset?.uri) {
     return await FileSystem.readAsStringAsync(asset.uri, {
       encoding: "base64" as any,
     });
   }
-
   return null;
 }
-
 
 export interface Material {
   id: string;
@@ -146,6 +137,8 @@ export interface CourseAssignment {
   bucketPath?: string | null;
   files?: AssignmentFile[];
   comments?: CourseAssignmentComment[];
+  assignmentType?: 'regular' | 'game_based'; // 👈 ADDED
+  gameType?: string;                         // 👈 ADDED
 }
 
 export interface CourseDetailData {
@@ -187,6 +180,7 @@ interface CourseDetailProps {
       completedAt?: string | null;
     }
   >;
+  onPlayGame?: (assignment: AssignmentItem) => void; // 👈 ADDED
 }
 
 const EMPTY_COURSE: AssignmentCourse = {
@@ -219,10 +213,12 @@ const CourseDetail = ({
   currentStudent,
   isGeneratingActivity = false,
   completedActivityScores = {},
+  onPlayGame, // 👈 ADDED
 }: CourseDetailProps) => {
   const { width } = useWindowDimensions();
   const isSmallPhone = width < 360;
   const isLargeScreen = width >= 768;
+
   const safeCourse = course ?? EMPTY_COURSE;
 
   const [activeTab, setActiveTab] = useState<"materials" | "assignments">(
@@ -237,6 +233,7 @@ const CourseDetail = ({
   const [submissionLink, setSubmissionLink] = useState("");
   const [isUploadingFile, setIsUploadingFile] = useState(false);
   const [isSubmittingAssignment, setIsSubmittingAssignment] = useState(false);
+
   const autoHandledRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -307,7 +304,6 @@ const CourseDetail = ({
 
   const hasMasteredGeneratedActivity = (assignment: AssignmentItem) => {
     const activityScore = getCompletedActivityScore(assignment);
-
     return (
       !!activityScore?.completed &&
       activityScore.scorePercent !== null &&
@@ -317,7 +313,6 @@ const CourseDetail = ({
 
   const canGenerateActivity = (assignment: AssignmentItem) => {
     const score = getScorePercent(assignment);
-
     return (
       score !== null &&
       score < 75 &&
@@ -344,7 +339,6 @@ const CourseDetail = ({
       (assignment as any)?.downloadUrl ||
       (assignment as any)?.attachmentUrl ||
       null;
-
     if (!raw || typeof raw !== "string") return null;
     const trimmed = raw.trim();
     return trimmed || null;
@@ -395,7 +389,6 @@ const CourseDetail = ({
           );
         } else if (hasMasteredGeneratedActivity(assignment)) {
           const activityScore = getCompletedActivityScore(assignment);
-
           Alert.alert(
             "Already mastered",
             `You already scored ${activityScore?.scorePercent ?? 75}% or above on the generated follow-up activity for this assignment.`,
@@ -434,6 +427,7 @@ const CourseDetail = ({
     const targetAssignment = safeCourse.assignments.find(
       (assignment) => assignment.id === autoOpenAssignmentId,
     );
+
     if (!targetAssignment) {
       onConsumedAutoOpenAssignment?.();
       return;
@@ -441,10 +435,10 @@ const CourseDetail = ({
 
     autoHandledRef.current = autoOpenAssignmentId;
     setActiveTab("assignments");
-    setSelectedAssignment(targetAssignment);
+    setSelectedAssignment(targetAssignment as any);
 
     setTimeout(() => {
-      handleGenerateActivity(targetAssignment, true);
+      handleGenerateActivity(targetAssignment as any, true);
       onConsumedAutoOpenAssignment?.();
     }, 150);
   }, [autoOpenAssignmentId, safeCourse.assignments, completedActivityScores]);
@@ -461,7 +455,6 @@ const CourseDetail = ({
       Alert.alert("No class", "This assignment is not connected to a class.");
       return;
     }
-
     try {
       setIsUploadingFile(true);
       const res = await DocumentPicker.getDocumentAsync({
@@ -515,7 +508,6 @@ const CourseDetail = ({
     }
   };
 
-
   const normalizeSubmissionLink = (value: string) => {
     const trimmed = String(value || "").trim();
     if (!trimmed) return "";
@@ -524,7 +516,6 @@ const CourseDetail = ({
 
   const handleAddLinkSubmission = () => {
     if (!selectedAssignment) return;
-
     const linkUrl = normalizeSubmissionLink(submissionLink);
     if (!linkUrl) {
       Alert.alert("Missing link", "Please paste a submission link first.");
@@ -561,7 +552,6 @@ const CourseDetail = ({
 
   const getSubmittedFiles = (assignment?: AssignmentItem | null) => {
     if (!assignment) return [];
-
     return (assignmentFiles[assignment.id] || []).filter(
       (file) => file.source !== 'teacher'
     );
@@ -569,7 +559,6 @@ const CourseDetail = ({
 
   const getTeacherAssignmentFiles = (assignment?: AssignmentItem | null) => {
     if (!assignment) return [];
-
     const mappedFiles = (assignment.files || []).map((file: any, index) => ({
       id: file.id || `teacher-file-${assignment.id}-${index}`,
       fileName: file.fileName || file.name || 'Assignment attachment',
@@ -607,7 +596,6 @@ const CourseDetail = ({
 
   const handleSubmitAssignment = async () => {
     if (!selectedAssignment || !course?.id) return;
-
     if (isAssignmentSubmitted(selectedAssignment)) {
       return;
     }
@@ -673,7 +661,6 @@ const CourseDetail = ({
 
   const handleUnsubmitAssignment = async () => {
     if (!selectedAssignment || !course?.id) return;
-
     if (selectedAssignment.status === "graded") {
       Alert.alert("Already graded", "This assignment has already been graded and cannot be unsubmitted.");
       return;
@@ -750,7 +737,6 @@ const CourseDetail = ({
     const percent = getScorePercent(item);
     const recommendationLabel = getRecommendationLabel(item);
     const relatedMaterials = getRelatedMaterials(item);
-
     return (
       <TouchableOpacity
         style={styles.assignmentCard}
@@ -873,7 +859,6 @@ const CourseDetail = ({
             <Ionicons name="arrow-back" size={24} color="#FFF" />
           </TouchableOpacity>
         )}
-
         <Text style={[styles.courseName, { fontSize: isSmallPhone ? 20 : 24 }]}>
           {safeCourse.name}
         </Text>
@@ -1008,7 +993,7 @@ const CourseDetail = ({
           )
         ) : safeCourse.assignments.length > 0 ? (
           <FlatList
-            data={safeCourse.assignments}
+            data={safeCourse.assignments as any[]}
             renderItem={renderAssignmentItem}
             keyExtractor={(item) => item.id}
             scrollEnabled={false}
@@ -1272,7 +1257,6 @@ const CourseDetail = ({
 
                       <View style={styles.section}>
                         <Text style={styles.sectionTitle}>📄 Assignment File</Text>
-
                         {getTeacherAssignmentFiles(selectedAssignment).length > 0 ? (
                           <View>
                             {getTeacherAssignmentFiles(selectedAssignment).map((file) => (
@@ -1298,6 +1282,22 @@ const CourseDetail = ({
                           <Text style={styles.emptyText}>No assignment file attached.</Text>
                         )}
                       </View>
+
+                      {/* 👇 GAME BASED ASSIGNMENT BUTTON */}
+                      {selectedAssignment.assignmentType === 'game_based' && (
+                        <View style={styles.section}>
+                          <Text style={styles.sectionTitle}>🎮 Game-Based Assignment</Text>
+                          <Text style={{ color: '#666', marginBottom: 10, fontSize: 13 }}>
+                            This is an interactive game assignment. Click below to start playing!
+                          </Text>
+                          <TouchableOpacity
+                            style={[styles.uploadButtonWide, { backgroundColor: '#4CAF50' }]}
+                            onPress={() => onPlayGame && onPlayGame(selectedAssignment)}
+                          >
+                            <Text style={styles.uploadButtonText}>Start Game</Text>
+                          </TouchableOpacity>
+                        </View>
+                      )}
 
                       <View style={styles.section}>
                         <Text style={styles.sectionTitle}>
@@ -1337,9 +1337,7 @@ const CourseDetail = ({
 
                       <View style={styles.section}>
                         <Text style={styles.sectionTitle}>📤 Your Uploads</Text>
-
-                        {getSubmittedFiles(selectedAssignment).length >
-                        0 ? (
+                        {getSubmittedFiles(selectedAssignment).length > 0 ? (
                           <View>
                             {getSubmittedFiles(selectedAssignment).map(
                               (file) => (
@@ -1519,7 +1517,6 @@ const CourseDetail = ({
 
                       <View style={styles.section}>
                         <Text style={styles.sectionTitle}>💬 Comments</Text>
-
                         {(assignmentComments[selectedAssignment.id] || [])
                           .length > 0 ? (
                           <View>
@@ -1593,7 +1590,6 @@ const CourseDetail = ({
 export default CourseDetail;
 
 const styles = StyleSheet.create({
-
   loadingButtonContent: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1875,13 +1871,11 @@ const styles = StyleSheet.create({
     gap: 6,
     backgroundColor: "#E8F5E9",
   },
-
   masteredActivityText: {
     fontSize: 12,
     fontWeight: "800",
     color: "#2E7D32",
   },
-
   masteredActivityNotice: {
     marginTop: 12,
     backgroundColor: "#E8F5E9",
@@ -1893,21 +1887,18 @@ const styles = StyleSheet.create({
     alignItems: "flex-start",
     gap: 10,
   },
-
   masteredActivityNoticeTitle: {
     color: "#1B5E20",
     fontSize: 13,
     fontWeight: "800",
     marginBottom: 3,
   },
-
   masteredActivityNoticeText: {
     color: "#2E7D32",
     fontSize: 12,
     lineHeight: 18,
     fontWeight: "600",
   },
-
   recommendationBadge: {
     marginTop: 10,
     borderRadius: 999,
@@ -2195,7 +2186,6 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     gap: 10,
   },
-
   fileItem: {
     flexDirection: "row",
     alignItems: "center",

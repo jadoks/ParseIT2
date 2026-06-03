@@ -17,11 +17,9 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
-
 /* =========================
-   TYPES
+TYPES
 ========================= */
-
 export interface AssignmentComment {
   id: string;
   author: string;
@@ -29,7 +27,6 @@ export interface AssignmentComment {
   timestamp: string;
   isInstructor: boolean;
 }
-
 export interface AssignmentFileUpload {
   id: string;
   fileName: string;
@@ -44,7 +41,6 @@ export interface AssignmentFileUpload {
   isSubmitted?: boolean;
   source?: 'student' | 'teacher';
 }
-
 export interface AssignmentMaterial {
   id: string;
   title: string;
@@ -56,7 +52,6 @@ export interface AssignmentMaterial {
   fileUri?: string;
   fileType?: string;
 }
-
 export interface AssignmentItem {
   id: string;
   title: string;
@@ -75,8 +70,12 @@ export interface AssignmentItem {
   bucketPath?: string | null;
   comments?: AssignmentComment[];
   files?: AssignmentFileUpload[];
+  assignmentType?: 'regular' | 'game_based';
+  gameType?: string;
+  numberOfAttempts?: string | null;
+  customAttempts?: string | null;
+  attemptNumber?: number;
 }
-
 export interface AssignmentCourse {
   id: string;
   name: string;
@@ -89,9 +88,6 @@ export interface AssignmentCourse {
   materials: AssignmentMaterial[];
   assignments: AssignmentItem[];
 }
-
-
-
 type CurrentStudent = {
   studentId: string;
   authUid?: string | null;
@@ -99,39 +95,31 @@ type CurrentStudent = {
   lastName?: string;
   email?: string;
 };
-
 function getApiBaseUrl() {
   if (Platform.OS === 'web') return 'http://localhost:5000';
-
   const possibleHost =
     Constants.expoConfig?.hostUri ||
     Constants.manifest2?.extra?.expoGo?.debuggerHost ||
     '';
-
   const host = possibleHost.split(':')[0];
   if (host) return `http://${host}:5000`;
   return 'http://192.168.1.5:5000';
 }
-
 const API_BASE_URL = getApiBaseUrl();
-
 const apiFetch = (url: string, options: any = {}) =>
   fetch(url, {
     credentials: 'include',
     ...options,
   });
-
 const getDisplayFileSize = (bytes?: number | null) => {
   if (!bytes || !Number.isFinite(bytes)) return 'Uploaded file';
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 };
-
 async function readPickedFileBase64(asset: any): Promise<string | null> {
   if (Platform.OS === 'web') {
     if (asset?.base64) return asset.base64;
-
     if (asset?.file) {
       return await new Promise<string>((resolve, reject) => {
         const reader = new FileReader();
@@ -148,16 +136,13 @@ async function readPickedFileBase64(asset: any): Promise<string | null> {
       });
     }
   }
-
   if (asset?.uri) {
     return await FileSystem.readAsStringAsync(asset.uri, {
       encoding: 'base64' as any,
     });
   }
-
   return null;
 }
-
 interface FlattenedAssignment extends AssignmentItem {
   courseId: string;
   courseName: string;
@@ -169,7 +154,6 @@ interface FlattenedAssignment extends AssignmentItem {
   courseDescription: string;
   materials: AssignmentMaterial[];
 }
-
 interface AssignmentsProps {
   courses: AssignmentCourse[];
   selectedCourseId?: string | null;
@@ -191,11 +175,9 @@ interface AssignmentsProps {
       mastered: boolean;
     }
   >;
+  onPlayGame?: (assignment: AssignmentItem) => void;
 }
-
-
 type FilterType = 'all' | 'pending' | 'submitted' | 'graded';
-
 const Assignments = ({
   courses,
   selectedCourseId = null,
@@ -210,24 +192,24 @@ const Assignments = ({
   currentStudent,
   isGeneratingActivity = false,
   completedActivityScores = {},
+  onPlayGame,
 }: AssignmentsProps) => {
   const { width } = useWindowDimensions();
   const isLargeScreen = width >= 768;
   const isSmallScreen = width < 480;
   const modalWidth = isLargeScreen ? '72%' : isSmallScreen ? '92%' : '88%';
-
   const [filter, setFilter] = useState<FilterType>('all');
   const [selectedAssignment, setSelectedAssignment] = useState<FlattenedAssignment | null>(null);
   const [newComment, setNewComment] = useState('');
   const [submissionLink, setSubmissionLink] = useState('');
   const [isUploadingFile, setIsUploadingFile] = useState(false);
   const [isSubmittingAssignment, setIsSubmittingAssignment] = useState(false);
-
+  const [gameAttempts, setGameAttempts] = useState<Record<string, number>>({});
+  const [isLoadingAttempts, setIsLoadingAttempts] = useState<Record<string, boolean>>({});
   const sourceCourses = useMemo(() => {
     if (!selectedCourseId) return courses;
     return courses.filter((c) => c.id === selectedCourseId);
   }, [courses, selectedCourseId]);
-
   const allAssignments = useMemo<FlattenedAssignment[]>(() => {
     return sourceCourses.flatMap((course) =>
       course.assignments.map((assignment) => ({
@@ -244,10 +226,8 @@ const Assignments = ({
       }))
     );
   }, [sourceCourses]);
-
   const filteredAssignments =
     filter === 'all' ? allAssignments : allAssignments.filter((a) => a.status === filter);
-
   const getScorePercent = (assignment: AssignmentItem) => {
     if (
       assignment.status !== 'graded' ||
@@ -257,65 +237,47 @@ const Assignments = ({
     ) {
       return null;
     }
-
     return Math.round((assignment.points / assignment.maxPoints) * 100);
   };
-
-  const getRecommendationType = (
-    assignment: AssignmentItem
-  ): 'review' | 'practice' | null => {
+  const getRecommendationType = (assignment: AssignmentItem): 'review' | 'practice' | null => {
     const percent = getScorePercent(assignment);
     if (percent === null) return null;
     if (percent < 60) return 'review';
     if (percent < 75) return 'practice';
     return null;
   };
-
   const getRecommendationLabel = (assignment: AssignmentItem) => {
     const recommendation = getRecommendationType(assignment);
     if (recommendation === 'review') return 'Review Activity';
     if (recommendation === 'practice') return 'Practice Quiz';
     return null;
   };
-
   const getRecommendationColor = (assignment: AssignmentItem) => {
     const recommendation = getRecommendationType(assignment);
     if (recommendation === 'review') return '#D32F2F';
     if (recommendation === 'practice') return '#F57C00';
     return '#999';
   };
-
   const getStatusColor = (status: AssignmentItem['status']) => {
     switch (status) {
-      case 'pending':
-        return '#FFE082';
-      case 'submitted':
-        return '#BBDEFB';
-      case 'graded':
-        return '#A5D6A7';
-      default:
-        return '#DDD';
+      case 'pending': return '#FFE082';
+      case 'submitted': return '#BBDEFB';
+      case 'graded': return '#A5D6A7';
+      default: return '#DDD';
     }
   };
-
   const getStatusTextColor = (status: AssignmentItem['status']) => {
     switch (status) {
-      case 'pending':
-        return '#7A5600';
-      case 'submitted':
-        return '#0D47A1';
-      case 'graded':
-        return '#1B5E20';
-      default:
-        return '#555';
+      case 'pending': return '#7A5600';
+      case 'submitted': return '#0D47A1';
+      case 'graded': return '#1B5E20';
+      default: return '#555';
     }
   };
-
   const getRelatedMaterials = (assignment: FlattenedAssignment) => {
     if (!assignment.materialIds?.length) return [];
     return assignment.materials.filter((m) => assignment.materialIds?.includes(m.id));
   };
-
   const hasMasteredGeneratedActivity = (assignment: AssignmentItem) => {
     const activityScore = completedActivityScores[assignment.id];
     return (
@@ -324,7 +286,6 @@ const Assignments = ({
       activityScore.scorePercent >= 75
     );
   };
-
   const canGenerateActivity = (assignment: FlattenedAssignment) => {
     return (
       !!getRecommendationType(assignment) &&
@@ -332,12 +293,9 @@ const Assignments = ({
       !hasMasteredGeneratedActivity(assignment)
     );
   };
-
   const handleOpenGeneratedActivity = (assignment: FlattenedAssignment) => {
     if (isGeneratingActivity) return;
-
     const relatedMaterials = getRelatedMaterials(assignment);
-
     if (!relatedMaterials.length) {
       Alert.alert(
         'Related materials required',
@@ -345,7 +303,6 @@ const Assignments = ({
       );
       return;
     }
-
     const course = courses.find((c) => c.id === assignment.courseId);
     if (course && onOpenGeneratedActivity) {
       onOpenGeneratedActivity(course, {
@@ -355,36 +312,30 @@ const Assignments = ({
       } as any);
     }
   };
-
   const handleAddComment = () => {
     if (!selectedAssignment || !newComment.trim()) return;
     onAddComment(selectedAssignment.id, newComment);
     setNewComment('');
   };
-
   const handleFileUpload = async () => {
     if (!selectedAssignment) return;
     if (!selectedAssignment.courseId) {
       Alert.alert('No class', 'This assignment is not connected to a class.');
       return;
     }
-
     try {
       setIsUploadingFile(true);
       const res = await DocumentPicker.getDocumentAsync({
-        type: '*/*',
+        type: '/',
         copyToCacheDirectory: true,
         base64: Platform.OS === 'web',
       });
-
       if (!res.canceled && res.assets?.length) {
         const file = res.assets[0];
         const fileBase64 = await readPickedFileBase64(file);
-
         if (!fileBase64) {
           throw new Error('Unable to read selected file.');
         }
-
         const uploadResponse = await apiFetch(`${API_BASE_URL}/upload-class-file`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -396,12 +347,10 @@ const Assignments = ({
             kind: 'submission',
           }),
         });
-
         const uploadData = await uploadResponse.json();
         if (!uploadResponse.ok) {
           throw new Error(uploadData?.error || 'Failed to upload file.');
         }
-
         onAddFile(selectedAssignment.id, {
           id: `f${Date.now()}`,
           fileName: uploadData?.data?.fileName || file.name || 'file',
@@ -422,23 +371,18 @@ const Assignments = ({
       setIsUploadingFile(false);
     }
   };
-
-
   const normalizeSubmissionLink = (value: string) => {
     const trimmed = String(value || '').trim();
     if (!trimmed) return '';
     return /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
   };
-
   const handleAddLinkSubmission = () => {
     if (!selectedAssignment) return;
-
     const linkUrl = normalizeSubmissionLink(submissionLink);
     if (!linkUrl) {
       Alert.alert('Missing link', 'Please paste a submission link first.');
       return;
     }
-
     onAddFile(selectedAssignment.id, {
       id: `link-${Date.now()}`,
       fileName: 'Submitted link',
@@ -449,29 +393,22 @@ const Assignments = ({
       isSubmitted: false,
       source: 'student',
     });
-
     setSubmissionLink('');
   };
-
   const isAssignmentSubmitted = (assignment?: AssignmentItem | null) => {
     return assignment?.status === 'submitted' || assignment?.status === 'graded';
   };
-
   const isAssignmentGraded = (assignment?: AssignmentItem | null) => {
     return assignment?.status === 'graded';
   };
-
   const getSubmittedFiles = (assignment?: AssignmentItem | null) => {
     if (!assignment) return [];
-
     return (assignmentFiles[assignment.id] || []).filter(
       (file) => file.source !== 'teacher'
     );
   };
-
   const getTeacherAssignmentFiles = (assignment?: AssignmentItem | null) => {
     if (!assignment) return [];
-
     const mappedFiles = (assignment.files || []).map((file: any, index) => ({
       id: file.id || `teacher-file-${assignment.id}-${index}`,
       fileName: file.fileName || file.name || 'Assignment attachment',
@@ -481,7 +418,6 @@ const Assignments = ({
       fileType: file.fileType,
       source: 'teacher' as const,
     }));
-
     const topLevelUrl = getAssignmentFileUrl(assignment);
     if (topLevelUrl) {
       const alreadyIncluded = mappedFiles.some((file) => file.fileUrl === topLevelUrl);
@@ -497,10 +433,8 @@ const Assignments = ({
         });
       }
     }
-
     return mappedFiles;
   };
-
   const getAssignmentFileUrl = (assignment?: AssignmentItem | null) => {
     const raw =
       assignment?.fileUrl ||
@@ -508,12 +442,10 @@ const Assignments = ({
       (assignment as any)?.downloadUrl ||
       (assignment as any)?.attachmentUrl ||
       null;
-
     if (!raw || typeof raw !== 'string') return null;
     const trimmed = raw.trim();
     return trimmed || null;
   };
-
   const getAssignmentFileName = (assignment?: AssignmentItem | null) => {
     return (
       assignment?.fileName ||
@@ -522,18 +454,15 @@ const Assignments = ({
       'Assignment attachment'
     );
   };
-
   const handleOpenUploadedFile = async (
     fileUri?: string | null,
     emptyMessage = 'This file has no URL yet.'
   ) => {
     const url = fileUri?.trim();
-
     if (!url) {
       Alert.alert('No File', emptyMessage);
       return;
     }
-
     try {
       const supported = await Linking.canOpenURL(url);
       if (!supported && Platform.OS !== 'web') throw new Error('Unsupported file URL.');
@@ -542,41 +471,33 @@ const Assignments = ({
       Alert.alert('Open Failed', 'Unable to open this file.');
     }
   };
-
   const syncSelectedAssignmentStatus = (status: AssignmentItem['status']) => {
     if (!selectedAssignment) return;
     setSelectedAssignment((prev) => (prev ? { ...prev, status } : prev));
     onUpdateAssignmentStatus?.(selectedAssignment.id, status);
   };
-
   const handleSubmitAssignment = async () => {
     if (!selectedAssignment) return;
-
     if (isAssignmentSubmitted(selectedAssignment)) {
       return;
     }
-
     if (!currentStudent?.studentId) {
       Alert.alert('Missing student', 'Student account information is missing. Please sign in again.');
       return;
     }
-
     const files = assignmentFiles[selectedAssignment.id] || [];
     if (files.length === 0) {
       Alert.alert('No files', 'Please upload at least one file before submitting.');
       return;
     }
-
     const file = files[0];
     if (!file.fileUrl) {
       Alert.alert('Upload still needed', 'Please re-upload the file before submitting.');
       return;
     }
-
     try {
       setIsSubmittingAssignment(true);
       const studentName = `${currentStudent.firstName || ''} ${currentStudent.lastName || ''}`.trim();
-
       const response = await apiFetch(`${API_BASE_URL}/create-submission`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -596,12 +517,10 @@ const Assignments = ({
           feedback: null,
         }),
       });
-
       const data = await response.json();
       if (!response.ok) {
         throw new Error(data?.error || 'Failed to submit assignment.');
       }
-
       syncSelectedAssignmentStatus('submitted');
       await onRefreshSubmissions?.();
       Alert.alert('Submitted', 'Your assignment was submitted successfully.');
@@ -611,23 +530,18 @@ const Assignments = ({
       setIsSubmittingAssignment(false);
     }
   };
-
   const handleUnsubmitAssignment = async () => {
     if (!selectedAssignment) return;
-
     if (selectedAssignment.status === 'graded') {
       Alert.alert('Already graded', 'This assignment has already been graded and cannot be unsubmitted.');
       return;
     }
-
     if (!currentStudent?.studentId) {
       Alert.alert('Missing student', 'Student account information is missing. Please sign in again.');
       return;
     }
-
     try {
       setIsSubmittingAssignment(true);
-
       const response = await apiFetch(`${API_BASE_URL}/unsubmit-assignment`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -638,12 +552,10 @@ const Assignments = ({
           studentUid: currentStudent.authUid || null,
         }),
       });
-
       const data = await response.json();
       if (!response.ok) {
         throw new Error(data?.error || 'Failed to unsubmit assignment.');
       }
-
       syncSelectedAssignmentStatus('pending');
       await onRefreshSubmissions?.();
       Alert.alert('Unsubmitted', 'Your file is still attached. You can edit it and submit again.');
@@ -653,22 +565,69 @@ const Assignments = ({
       setIsSubmittingAssignment(false);
     }
   };
-
   const closeModal = () => {
     setSelectedAssignment(null);
     setNewComment('');
   };
-
+  // Fetch game attempts for an assignment
+  const fetchGameAttempts = async (assignmentId: string) => {
+    if (!currentStudent?.studentId) return;
+    setIsLoadingAttempts((prev) => ({ ...prev, [assignmentId]: true }));
+    try {
+      const response = await apiFetch(`${API_BASE_URL}/student-submissions/${currentStudent.studentId}`);
+      const data = await response.json();
+      if (response.ok && data?.data) {
+        const submissions = Array.isArray(data.data) ? data.data : [];
+        const assignmentSubmissions = submissions.filter(
+          (sub: any) => sub.assignmentId === assignmentId
+        );
+        const attemptCount = assignmentSubmissions.length;
+        setGameAttempts((prev) => ({ ...prev, [assignmentId]: attemptCount }));
+      }
+    } catch (error) {
+      console.error('Error fetching game attempts:', error);
+    } finally {
+      setIsLoadingAttempts((prev) => ({ ...prev, [assignmentId]: false }));
+    }
+  };
+  const getRemainingAttempts = (assignment: AssignmentItem) => {
+    const attemptsUsed = gameAttempts[assignment.id] || 0;
+    const maxAttempts = assignment.numberOfAttempts === 'unlimited' 
+      ? Infinity 
+      : parseInt(assignment.numberOfAttempts || '1');
+    return maxAttempts - attemptsUsed;
+  };
+  const canPlayGame = (assignment: AssignmentItem) => {
+    const remaining = getRemainingAttempts(assignment);
+    return remaining > 0;
+  };
+  const handlePlayGameWithAttemptCheck = async (assignment: AssignmentItem) => {
+    if (!canPlayGame(assignment)) {
+      const remaining = getRemainingAttempts(assignment);
+      Alert.alert(
+        'No Attempts Remaining',
+        `You have used all your attempts for this game-based assignment.${remaining < 0 ? ` You have ${Math.abs(remaining)} extra attempt(s).` : ''}`
+      );
+      return;
+    }
+    if (onPlayGame) {
+      onPlayGame(assignment);
+    }
+  };
   const renderAssignmentItem = ({ item }: { item: FlattenedAssignment }) => {
     const percent = getScorePercent(item);
     const recommendationLabel = getRecommendationLabel(item);
     const relatedMaterials = getRelatedMaterials(item);
-
     return (
       <TouchableOpacity
         style={styles.assignmentCard}
         activeOpacity={0.85}
-        onPress={() => setSelectedAssignment(item)}
+        onPress={() => {
+          setSelectedAssignment(item);
+          if (item.assignmentType === 'game_based') {
+            fetchGameAttempts(item.id);
+          }
+        }}
       >
         <View style={styles.assignmentHeader}>
           <View style={styles.assignmentInfo}>
@@ -682,7 +641,6 @@ const Assignments = ({
               {item.courseName}
             </Text>
           </View>
-
           <View
             style={[
               styles.statusBadge,
@@ -699,10 +657,8 @@ const Assignments = ({
             </Text>
           </View>
         </View>
-
         <View style={styles.assignmentFooter}>
           <Text style={styles.dueDateText}>Due: {item.dueDate}</Text>
-
           {percent !== null ? (
             <Text style={styles.pointsText}>
               Score: {item.points}/{item.maxPoints} ({percent}%)
@@ -713,13 +669,11 @@ const Assignments = ({
             </Text>
           ) : null}
         </View>
-
         {relatedMaterials.length > 0 && (
           <Text style={styles.relatedPreviewText}>
             Based on: {relatedMaterials.map((m) => m.title).join(', ')}
           </Text>
         )}
-
         {recommendationLabel && (
           <View
             style={[
@@ -740,7 +694,6 @@ const Assignments = ({
       </TouchableOpacity>
     );
   };
-
   return (
     <ScrollView
       style={styles.container}
@@ -749,7 +702,6 @@ const Assignments = ({
       }}
     >
       <Text style={styles.title}>Assignments</Text>
-
       <View style={styles.filterRow}>
         {(['all', 'pending', 'submitted', 'graded'] as FilterType[]).map((item) => (
           <TouchableOpacity
@@ -768,7 +720,6 @@ const Assignments = ({
           </TouchableOpacity>
         ))}
       </View>
-
       <FlatList
         data={filteredAssignments}
         renderItem={renderAssignmentItem}
@@ -777,7 +728,6 @@ const Assignments = ({
         ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
         ListEmptyComponent={<Text style={styles.emptyText}>No assignments found.</Text>}
       />
-
       <Modal visible={!!selectedAssignment} animationType="slide" transparent onRequestClose={closeModal}>
         <View style={styles.modalOverlay}>
           <View style={[styles.modalWrapper, { width: modalWidth }, !isLargeScreen && styles.modalWrapperMobile]}>
@@ -790,15 +740,10 @@ const Assignments = ({
               {selectedAssignment && (
                 <>
                   <View style={styles.detailContent}>
-                    {/* ── INFO CARD ── */}
                     <View style={[styles.infoCard, !isLargeScreen && styles.infoCardMobile]}>
-
-                      {/* Close button */}
                       <TouchableOpacity onPress={closeModal} style={styles.modalCloseFloating}>
                         <Text style={styles.closeButton}>✕</Text>
                       </TouchableOpacity>
-
-                      {/* Title — always centered, full width, respects padding */}
                       <Text
                         style={[
                           styles.assignmentModalTitle,
@@ -807,8 +752,6 @@ const Assignments = ({
                       >
                         {selectedAssignment.title}
                       </Text>
-
-                      {/* Meta block — label/value rows, never inline Text nesting */}
                       <View style={styles.infoMetaBlock}>
                         <View style={styles.infoMetaRow}>
                           <Text style={styles.infoMetaLabel}>Class</Text>
@@ -816,35 +759,30 @@ const Assignments = ({
                             {selectedAssignment.courseName}
                           </Text>
                         </View>
-
                         <View style={styles.infoMetaRow}>
                           <Text style={styles.infoMetaLabel}>Semester</Text>
                           <Text style={styles.infoMetaValue}>
                             {selectedAssignment.semester}
                           </Text>
                         </View>
-
                         <View style={styles.infoMetaRow}>
                           <Text style={styles.infoMetaLabel}>School Year</Text>
                           <Text style={styles.infoMetaValue}>
                             {selectedAssignment.schoolYear}
                           </Text>
                         </View>
-
                         <View style={styles.infoMetaRow}>
                           <Text style={styles.infoMetaLabel}>Instructor</Text>
                           <Text style={styles.infoMetaValue} numberOfLines={3}>
                             {selectedAssignment.instructor}
                           </Text>
                         </View>
-
                         <View style={styles.infoMetaRow}>
                           <Text style={styles.infoMetaLabel}>Due</Text>
                           <Text style={[styles.infoMetaValue, styles.infoMetaValueDue]}>
                             {selectedAssignment.dueDate}
                           </Text>
                         </View>
-
                         {selectedAssignment.maxPoints !== undefined && (
                           <View style={styles.infoMetaRow}>
                             <Text style={styles.infoMetaLabel}>Points</Text>
@@ -853,7 +791,6 @@ const Assignments = ({
                             </Text>
                           </View>
                         )}
-
                         {getScorePercent(selectedAssignment) !== null && (
                           <View style={styles.infoMetaRow}>
                             <Text style={styles.infoMetaLabel}>Score</Text>
@@ -862,19 +799,23 @@ const Assignments = ({
                             </Text>
                           </View>
                         )}
+                        {selectedAssignment.assignmentType === 'game_based' && selectedAssignment.numberOfAttempts && (
+                          <View style={styles.infoMetaRow}>
+                            <Text style={styles.infoMetaLabel}>Attempts</Text>
+                            <Text style={styles.infoMetaValue}>
+                              {selectedAssignment.numberOfAttempts === 'unlimited' 
+                                ? 'Unlimited' 
+                                : `${selectedAssignment.numberOfAttempts} max`}
+                            </Text>
+                          </View>
+                        )}
                       </View>
-
-                      {/* Instruction — separate block so it never overflows */}
                       <View style={styles.infoInstructionBlock}>
                         <Text style={styles.infoMetaLabel}>Instruction</Text>
                         <Text style={styles.infoInstructionText}>
-                          {
-                            selectedAssignment.description ||
-                            
-                            'No instruction provided.'}
+                          {selectedAssignment.description || 'No instruction provided.'}
                         </Text>
                       </View>
-
                       {getRecommendationLabel(selectedAssignment) && (
                         <View
                           style={[
@@ -897,10 +838,8 @@ const Assignments = ({
                         </View>
                       )}
                     </View>
-
                     <View style={styles.section}>
                       <Text style={styles.sectionTitle}>📄 Assignment File</Text>
-
                       {getTeacherAssignmentFiles(selectedAssignment).length > 0 ? (
                         <View>
                           {getTeacherAssignmentFiles(selectedAssignment).map((file) => (
@@ -925,17 +864,59 @@ const Assignments = ({
                         <Text style={styles.emptyText}>No assignment file attached.</Text>
                       )}
                     </View>
-
+                    {/* 👇 GAME BASED ASSIGNMENT BUTTON WITH ATTEMPT CHECK */}
+                    {selectedAssignment.assignmentType === 'game_based' && (
+                      <View style={styles.section}>
+                        <Text style={styles.sectionTitle}>🎮 Game-Based Assignment</Text>
+                        <Text style={{ color: '#666', marginBottom: 10, fontSize: 13 }}>
+                          This is an interactive game assignment. Click below to start playing!
+                        </Text>
+                        {isLoadingAttempts[selectedAssignment.id] ? (
+                          <View style={[styles.uploadButton, { backgroundColor: '#CCC' }]}>
+                            <ActivityIndicator size="small" color="#666" />
+                            <Text style={[styles.uploadButtonText, { color: '#666' }]}>
+                              Checking attempts...
+                            </Text>
+                          </View>
+                        ) : (
+                          <>
+                            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                              <Text style={{ fontSize: 13, color: '#666' }}>
+                                Attempts used: {gameAttempts[selectedAssignment.id] || 0}
+                                {selectedAssignment.numberOfAttempts && selectedAssignment.numberOfAttempts !== 'unlimited' 
+                                  ? ` / ${selectedAssignment.numberOfAttempts}`
+                                  : ''}
+                              </Text>
+                              {selectedAssignment.numberOfAttempts && selectedAssignment.numberOfAttempts !== 'unlimited' && (
+                                <Text style={{ fontSize: 13, fontWeight: '600', color: canPlayGame(selectedAssignment) ? '#4CAF50' : '#F44336' }}>
+                                  {getRemainingAttempts(selectedAssignment)} remaining
+                                </Text>
+                              )}
+                            </View>
+                            <TouchableOpacity
+                              style={[
+                                styles.uploadButton, 
+                                { backgroundColor: canPlayGame(selectedAssignment) ? '#4CAF50' : '#CCC' }
+                              ]}
+                              onPress={() => handlePlayGameWithAttemptCheck(selectedAssignment)}
+                              disabled={!canPlayGame(selectedAssignment)}
+                            >
+                              <Text style={styles.uploadButtonText}>
+                                {canPlayGame(selectedAssignment) ? 'Start Game' : 'No Attempts Remaining'}
+                              </Text>
+                            </TouchableOpacity>
+                          </>
+                        )}
+                      </View>
+                    )}
                     {getRecommendationType(selectedAssignment) && (
                       <View style={styles.section}>
                         <Text style={styles.sectionTitle}>🎯 Follow-Up Activity</Text>
-
                         {!canGenerateActivity(selectedAssignment) && (
                           <Text style={styles.materialWarningText}>
                             The teacher must link related materials first. AI will generate this activity from those related materials only.
                           </Text>
                         )}
-
                         <TouchableOpacity
                           onPress={() => handleOpenGeneratedActivity(selectedAssignment)}
                           disabled={!canGenerateActivity(selectedAssignment) || isGeneratingActivity}
@@ -960,7 +941,6 @@ const Assignments = ({
                         </TouchableOpacity>
                       </View>
                     )}
-
                     <View style={styles.section}>
                       <Text style={styles.sectionTitle}>📚 Related Materials</Text>
                       {getRelatedMaterials(selectedAssignment).length > 0 ? (
@@ -979,10 +959,8 @@ const Assignments = ({
                         <Text style={styles.emptyText}>No linked materials.</Text>
                       )}
                     </View>
-
                     <View style={styles.section}>
                       <Text style={styles.sectionTitle}>📤 Your Uploads</Text>
-
                       {getSubmittedFiles(selectedAssignment).length > 0 ? (
                         <View>
                           {getSubmittedFiles(selectedAssignment).map((file) => (
@@ -994,7 +972,6 @@ const Assignments = ({
                                   {file.fileSize} • {file.uploadedDate}
                                 </Text>
                               </View>
-
                               <View style={[styles.fileActionsRow, !isLargeScreen && styles.fileActionsRowMobile]}>
                                 <TouchableOpacity
                                   style={[styles.fileOpenButton, !isLargeScreen && styles.fileOpenButtonMobile, !file.fileUrl && styles.fileOpenButtonDisabled]}
@@ -1004,7 +981,6 @@ const Assignments = ({
                                 >
                                   <Text style={styles.fileOpenButtonText}>Open</Text>
                                 </TouchableOpacity>
-
                                 <TouchableOpacity
                                   disabled={isAssignmentSubmitted(selectedAssignment)}
                                   onPress={() => onRemoveFile(selectedAssignment.id, file.id)}
@@ -1018,14 +994,12 @@ const Assignments = ({
                       ) : (
                         <Text style={styles.emptyText}>No student submission added yet</Text>
                       )}
-
                       {(() => {
                         const uploadedFiles = getSubmittedFiles(selectedAssignment);
                         const hasFiles = uploadedFiles.length > 0;
                         const isSubmitted = isAssignmentSubmitted(selectedAssignment);
                         const isGraded = isAssignmentGraded(selectedAssignment);
                         const canEditFiles = !isSubmitted && !isGraded;
-
                         if (isGraded) {
                           return (
                             <View style={styles.uploadActionsRow}>
@@ -1038,7 +1012,6 @@ const Assignments = ({
                             </View>
                           );
                         }
-
                         if (isSubmitted) {
                           return (
                             <View style={styles.uploadActionsRow}>
@@ -1048,7 +1021,6 @@ const Assignments = ({
                                   Your teacher has received this assignment. Unsubmit only if you need to change your file before grading.
                                 </Text>
                               </View>
-
                               <TouchableOpacity
                                 onPress={handleUnsubmitAssignment}
                                 disabled={isSubmittingAssignment}
@@ -1065,7 +1037,6 @@ const Assignments = ({
                             </View>
                           );
                         }
-
                         return (
                           <View style={styles.uploadActionsRow}>
                             {canEditFiles && (
@@ -1080,7 +1051,6 @@ const Assignments = ({
                                   autoCorrect={false}
                                   keyboardType="url"
                                 />
-
                                 <TouchableOpacity
                                   style={styles.secondaryButton}
                                   onPress={handleAddLinkSubmission}
@@ -1090,7 +1060,6 @@ const Assignments = ({
                                 </TouchableOpacity>
                               </View>
                             )}
-
                             {!hasFiles ? (
                               <TouchableOpacity
                                 style={[styles.uploadButton, isUploadingFile && styles.sendButtonDisabled]}
@@ -1114,7 +1083,6 @@ const Assignments = ({
                                     </Text>
                                   </TouchableOpacity>
                                 )}
-
                                 <TouchableOpacity
                                   onPress={handleSubmitAssignment}
                                   disabled={isSubmittingAssignment}
@@ -1134,10 +1102,8 @@ const Assignments = ({
                         );
                       })()}
                     </View>
-
                     <View style={styles.section}>
                       <Text style={styles.sectionTitle}>💬 Comments</Text>
-
                       {(assignmentComments[selectedAssignment.id] || []).length > 0 ? (
                         <View>
                           {(assignmentComments[selectedAssignment.id] || []).map((comment) => (
@@ -1162,7 +1128,6 @@ const Assignments = ({
                       ) : (
                         <Text style={styles.emptyText}>No comments yet</Text>
                       )}
-
                       <View style={styles.commentInputContainer}>
                         <TextInput
                           style={styles.commentInput}
@@ -1194,603 +1159,91 @@ const Assignments = ({
     </ScrollView>
   );
 };
-
 const styles = StyleSheet.create({
-  // ─── Layout ───────────────────────────────────────────────────────────────
-  container: {
-    flex: 1,
-    backgroundColor: '#F5F5F5',
-  },
-  detailContainer: {
-    padding: 16,
-    paddingBottom: 40,
-    backgroundColor: '#fff',
-    borderRadius: 30,
-  },
-  detailContainerMobile: {
-    padding: 12,
-    paddingBottom: 40,
-  },
+  container: { flex: 1, backgroundColor: '#F5F5F5' },
+  detailContainer: { padding: 16, paddingBottom: 40, backgroundColor: '#fff', borderRadius: 30 },
+  detailContainerMobile: { padding: 12, paddingBottom: 40 },
   detailContent: {},
-
-  // ─── List header ──────────────────────────────────────────────────────────
-  title: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: '#000',
-    marginBottom: 16,
-  },
-
-  // ─── Filter chips ─────────────────────────────────────────────────────────
-  filterRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginBottom: 16,
-  },
-  filterChip: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    backgroundColor: '#EFEFEF',
-    borderRadius: 999,
-  },
-  filterChipActive: {
-    backgroundColor: '#D32F2F',
-  },
-  filterChipText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#555',
-  },
-  filterChipTextActive: {
-    color: '#FFF',
-  },
-
-  // ─── Assignment list card ─────────────────────────────────────────────────
-  assignmentCard: {
-    borderLeftWidth: 5,
-    borderLeftColor: '#D32F2F',
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 14,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  assignmentHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 10,
-  },
-  assignmentInfo: {
-    flex: 1,
-    marginRight: 8,
-  },
-  assignmentTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#000',
-    marginBottom: 4,
-  },
-  assignmentTopicText: {
-    color: '#444',
-    fontSize: 12,
-    fontWeight: '600',
-    marginTop: 4,
-  },
-  courseName: {
-    color: '#666',
-    fontSize: 12,
-    fontWeight: '600',
-    marginTop: 6,
-  },
-  statusBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 8,
-  },
-  statusText: {
-    fontWeight: '700',
-    textTransform: 'capitalize',
-    fontSize: 12,
-  },
-  assignmentFooter: {
-    borderTopWidth: 1,
-    borderTopColor: '#E6E6E6',
-    paddingTop: 8,
-  },
-  dueDateText: {
-    color: '#D32F2F',
-    fontWeight: '600',
-    fontSize: 13,
-    marginBottom: 4,
-  },
-  pointsText: {
-    fontSize: 12,
-    color: '#666',
-    fontWeight: '600',
-  },
-  relatedPreviewText: {
-    fontSize: 12,
-    color: '#666',
-    marginTop: 8,
-    lineHeight: 18,
-  },
-  recommendationBadge: {
-    marginTop: 10,
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    alignSelf: 'flex-start',
-  },
-  recommendationText: {
-    fontWeight: '700',
-    fontSize: 12,
-  },
-
-  // ─── Modal shell ──────────────────────────────────────────────────────────
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.45)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  modalWrapper: {
-    maxHeight: '92%',
-    maxWidth: 1180,
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    overflow: 'hidden',
-  },
-  modalWrapperMobile: {
-    maxHeight: '94%',
-    borderRadius: 14,
-    overflow: 'hidden',
-  },
-
-  // ─── Close button ─────────────────────────────────────────────────────────
-  modalCloseFloating: {
-    position: 'absolute',
-    top: -10,
-    left: -10,
-    zIndex: 20,
-    width: 42,
-    height: 42,
-    borderRadius: 999,
-    backgroundColor: '#FFF',
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.12,
-    shadowRadius: 6,
-    elevation: 5,
-  },
-  closeButton: {
-    fontSize: 20,
-    color: '#666',
-  },
-
-  // ─── INFO CARD ────────────────────────────────────────────────────────────
-  infoCard: {
-    position: 'relative',
-    backgroundColor: '#F9F9F9',
-    borderRadius: 12,
-    padding: 22,
-    paddingTop: 28,        // extra room so close button doesn't clip title
-    marginBottom: 16,
-    borderLeftWidth: 4,
-    borderLeftColor: '#D32F2F',
-  },
-  infoCardMobile: {
-    padding: 16,
-    paddingTop: 28,
-  },
-
-  // Title — full width, no flex row, no nested spacers
-  assignmentModalTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#000',
-    textAlign: 'center',
-    marginBottom: 16,
-    // leave room on left for the floating close button
-    paddingLeft: 24,
-    paddingRight: 8,
-  },
-  assignmentModalTitleMobile: {
-    fontSize: 16,
-    lineHeight: 24,
-    marginBottom: 14,
-    paddingLeft: 24,
-    paddingRight: 4,
-  },
-
-  // Meta rows — label on the left, value on the right, wraps cleanly
-  infoMetaBlock: {
-    borderTopWidth: 1,
-    borderTopColor: '#EBEBEB',
-    paddingTop: 12,
-    marginBottom: 4,
-    gap: 8,
-  },
-  infoMetaRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 8,
-  },
-  infoMetaLabel: {
-    width: 90,           // fixed label column so values align
-    flexShrink: 0,
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#000',
-    lineHeight: 20,
-  },
-  infoMetaValue: {
-    flex: 1,             // takes all remaining space and wraps naturally
-    fontSize: 13,
-    fontWeight: '500',
-    color: '#333',
-    lineHeight: 20,
-  },
-  infoMetaValueDue: {
-    color: '#D32F2F',
-    fontWeight: '600',
-  },
-
-  // Instruction — its own block beneath the grid
-  infoInstructionBlock: {
-    marginTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: '#EBEBEB',
-    paddingTop: 12,
-    gap: 4,
-  },
-  infoInstructionText: {
-    fontSize: 13,
-    fontWeight: '400',
-    color: '#444',
-    lineHeight: 20,
-  },
-
-  // ─── Sections inside modal ────────────────────────────────────────────────
-  section: {
-    marginBottom: 18,
-  },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#000',
-    marginBottom: 10,
-  },
-
-  // ─── Related materials ────────────────────────────────────────────────────
-  relatedMaterialItem: {
-    backgroundColor: '#F5F5F5',
-    borderRadius: 10,
-    padding: 10,
-    marginBottom: 8,
-  },
-  relatedMaterialTitle: {
-    fontWeight: '600',
-    color: '#111',
-    marginBottom: 4,
-  },
-  relatedMaterialMeta: {
-    color: '#777',
-    fontSize: 12,
-    textTransform: 'capitalize',
-  },
-  relatedMaterialFileName: {
-    color: '#D32F2F',
-    fontSize: 12,
-    fontWeight: '600',
-    marginTop: 4,
-  },
-  materialWarningText: {
-    color: '#B26A00',
-    fontSize: 12,
-    lineHeight: 18,
-    fontWeight: '600',
-    marginBottom: 8,
-  },
-
-  // ─── File cards ───────────────────────────────────────────────────────────
-  attachmentFileCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#FFF7F7',
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#F3D4D4',
-    padding: 12,
-    marginBottom: 8,
-  },
-  fileItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#F5F5F5',
-    borderRadius: 10,
-    padding: 10,
-    marginBottom: 8,
-  },
-  fileInfo: {
-    flex: 1,
-    marginLeft: 8,
-  },
-  fileName: {
-    fontWeight: '600',
-    color: '#000',
-    marginBottom: 4,
-    fontSize: 13,
-  },
-  fileDetails: {
-    color: '#888',
-    fontSize: 12,
-  },
-  fileCardMobile: {
-    alignItems: 'flex-start',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  fileActionsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    marginLeft: 8,
-  },
-  fileActionsRowMobile: {
-    width: '100%',
-    justifyContent: 'flex-end',
-    marginLeft: 0,
-    marginTop: 4,
-  },
-  fileOpenButton: {
-    minHeight: 34,
-    paddingHorizontal: 14,
-    borderRadius: 10,
-    backgroundColor: '#D32F2F',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  fileOpenButtonMobile: {
-    minWidth: 82,
-  },
-  fileOpenButtonDisabled: {
-    backgroundColor: '#D9A0A0',
-  },
-  fileOpenButtonText: {
-    color: '#FFF',
-    fontSize: 12,
-    fontWeight: '800',
-  },
-  removeButton: {
-    color: '#D32F2F',
-    fontWeight: 'bold',
-    paddingLeft: 8,
-  },
-  disabledRemoveButton: {
-    opacity: 0.45,
-  },
-
-  // ─── Upload / submit actions ──────────────────────────────────────────────
-  uploadActionsRow: {
-    gap: 10,
-    marginTop: 8,
-  },
-  linkSubmitBox: {
-    gap: 8,
-    marginTop: 8,
-  },
-  linkInput: {
-    backgroundColor: '#FFF',
-    borderWidth: 1,
-    borderColor: '#DDD',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 13,
-    color: '#000',
-  },
-  lockedSubmissionBox: {
-    backgroundColor: '#F5F7FA',
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#E4E7EC',
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    marginTop: 8,
-  },
-  lockedSubmissionTitle: {
-    color: '#111',
-    fontWeight: '700',
-    fontSize: 13,
-    marginBottom: 4,
-  },
-  lockedSubmissionText: {
-    color: '#666',
-    fontSize: 12,
-    lineHeight: 18,
-  },
-  uploadButton: {
-    backgroundColor: '#D32F2F',
-    borderRadius: 8,
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    alignItems: 'center',
-    marginTop: 8,
-  },
-  uploadButtonText: {
-    color: '#fff',
-    fontWeight: '700',
-    fontSize: 14,
-  },
-  secondaryButton: {
-    backgroundColor: '#EFEFEF',
-    borderRadius: 8,
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    alignItems: 'center',
-    marginTop: 8,
-  },
-  secondaryButtonText: {
-    color: '#444',
-    fontWeight: '700',
-    fontSize: 13,
-  },
-  loadingButtonContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-  },
-
-  // ─── Empty state ──────────────────────────────────────────────────────────
-  emptyText: {
-    fontSize: 14,
-    color: '#999',
-    textAlign: 'center',
-    marginVertical: 20,
-  },
-
-  // ─── Comments ─────────────────────────────────────────────────────────────
-  commentItem: {
-    backgroundColor: '#F9F9F9',
-    borderRadius: 8,
-    padding: 10,
-    marginBottom: 8,
-    borderLeftWidth: 3,
-    borderLeftColor: '#2196F3',
-  },
-  instructorComment: {
-    backgroundColor: '#FFF9C4',
-    borderLeftColor: '#FBC02D',
-  },
-  commentHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 6,
-  },
-  commentAuthor: {
-    fontWeight: '700',
-    color: '#000',
-    fontSize: 13,
-  },
-  teacherBadge: {
-    fontWeight: '600',
-    color: '#1f1f1f',
-    backgroundColor: '#fbc12d99',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-    fontSize: 11,
-  },
-  commentContent: {
-    fontSize: 13,
-    color: '#333',
-    lineHeight: 18,
-    marginBottom: 6,
-  },
-  commentTime: {
-    fontSize: 11,
-    color: '#888',
-    fontWeight: '500',
-  },
-  commentInputContainer: {
-    marginTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: '#E0E0E0',
-    paddingTop: 12,
-  },
-  commentInput: {
-    backgroundColor: '#F5F5F5',
-    borderRadius: 8,
-    padding: 10,
-    minHeight: 60,
-    fontSize: 13,
-    color: '#000',
-    marginBottom: 8,
-  },
-  sendButton: {
-    backgroundColor: '#D32F2F',
-    borderRadius: 8,
-    paddingVertical: 10,
-    alignItems: 'center',
-  },
-  sendButtonDisabled: {
-    backgroundColor: '#CCC',
-  },
-  sendButtonText: {
-    color: '#FFF',
-    fontWeight: '700',
-    fontSize: 13,
-  },
-
-  // ─── Unused legacy styles kept for safety ────────────────────────────────
-  detailHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 14,
-  },
-  detailTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#000',
-    flex: 1,
-    textAlign: 'center',
-    marginHorizontal: 8,
-  },
-  detailCourseName: {
-    color: '#666',
-    fontWeight: '600',
-    fontSize: 13,
-  },
-  detailMetaText: {
-    color: '#555',
-    fontSize: 12,
-    fontWeight: '600',
-    marginTop: 4,
-  },
-  detailTopicText: {
-    color: '#444',
-    fontSize: 12,
-    fontWeight: '600',
-    marginTop: 8,
-  },
-  detailDescription: {
-    color: '#666',
-    marginVertical: 8,
-    lineHeight: 20,
-    fontSize: 13,
-  },
-  infoRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginVertical: 6,
-    flexWrap: 'wrap',
-  },
-  infoLabel: {
-    fontWeight: '600',
-    color: '#666',
-    fontSize: 13,
-  },
-  infoValue: {
-    fontWeight: '700',
-    color: '#000',
-    fontSize: 13,
-    marginLeft: 10,
-  },
-  assignmentInlineLabel: {
-    color: '#000',
-    fontWeight: '700',
-    fontSize: 13,
-  },
+  title: { fontSize: 24, fontWeight: '700', color: '#000', marginBottom: 16 },
+  filterRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 },
+  filterChip: { paddingHorizontal: 14, paddingVertical: 8, backgroundColor: '#EFEFEF', borderRadius: 999 },
+  filterChipActive: { backgroundColor: '#D32F2F' },
+  filterChipText: { fontSize: 12, fontWeight: '700', color: '#555' },
+  filterChipTextActive: { color: '#FFF' },
+  assignmentCard: { borderLeftWidth: 5, borderLeftColor: '#D32F2F', backgroundColor: '#fff', borderRadius: 12, padding: 14, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 4, elevation: 2 },
+  assignmentHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 },
+  assignmentInfo: { flex: 1, marginRight: 8 },
+  assignmentTitle: { fontSize: 16, fontWeight: '700', color: '#000', marginBottom: 4 },
+  assignmentTopicText: { color: '#444', fontSize: 12, fontWeight: '600', marginTop: 4 },
+  courseName: { color: '#666', fontSize: 12, fontWeight: '600', marginTop: 6 },
+  statusBadge: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8 },
+  statusText: { fontWeight: '700', textTransform: 'capitalize', fontSize: 12 },
+  assignmentFooter: { borderTopWidth: 1, borderTopColor: '#E6E6E6', paddingTop: 8 },
+  dueDateText: { color: '#D32F2F', fontWeight: '600', fontSize: 13, marginBottom: 4 },
+  pointsText: { fontSize: 12, color: '#666', fontWeight: '600' },
+  relatedPreviewText: { fontSize: 12, color: '#666', marginTop: 8, lineHeight: 18 },
+  recommendationBadge: { marginTop: 10, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 7, alignSelf: 'flex-start' },
+  recommendationText: { fontWeight: '700', fontSize: 12 },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'center', alignItems: 'center' },
+  modalWrapper: { maxHeight: '92%', maxWidth: 1180, backgroundColor: '#fff', borderRadius: 16, overflow: 'hidden' },
+  modalWrapperMobile: { maxHeight: '94%', borderRadius: 14, overflow: 'hidden' },
+  modalCloseFloating: { position: 'absolute', top: -10, left: -10, zIndex: 20, width: 42, height: 42, borderRadius: 999, backgroundColor: '#FFF', justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.12, shadowRadius: 6, elevation: 5 },
+  closeButton: { fontSize: 20, color: '#666' },
+  infoCard: { position: 'relative', backgroundColor: '#F9F9F9', borderRadius: 12, padding: 22, paddingTop: 28, marginBottom: 16, borderLeftWidth: 4, borderLeftColor: '#D32F2F' },
+  infoCardMobile: { padding: 16, paddingTop: 28 },
+  assignmentModalTitle: { fontSize: 18, fontWeight: '700', color: '#000', textAlign: 'center', marginBottom: 16, paddingLeft: 24, paddingRight: 8 },
+  assignmentModalTitleMobile: { fontSize: 16, lineHeight: 24, marginBottom: 14, paddingLeft: 24, paddingRight: 4 },
+  infoMetaBlock: { borderTopWidth: 1, borderTopColor: '#EBEBEB', paddingTop: 12, marginBottom: 4, gap: 8 },
+  infoMetaRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
+  infoMetaLabel: { width: 90, flexShrink: 0, fontSize: 13, fontWeight: '700', color: '#000', lineHeight: 20 },
+  infoMetaValue: { flex: 1, fontSize: 13, fontWeight: '500', color: '#333', lineHeight: 20 },
+  infoMetaValueDue: { color: '#D32F2F', fontWeight: '600' },
+  infoInstructionBlock: { marginTop: 12, borderTopWidth: 1, borderTopColor: '#EBEBEB', paddingTop: 12, gap: 4 },
+  infoInstructionText: { fontSize: 13, fontWeight: '400', color: '#444', lineHeight: 20 },
+  section: { marginBottom: 18 },
+  sectionTitle: { fontSize: 16, fontWeight: '700', color: '#000', marginBottom: 10 },
+  relatedMaterialItem: { backgroundColor: '#F5F5F5', borderRadius: 10, padding: 10, marginBottom: 8 },
+  relatedMaterialTitle: { fontWeight: '600', color: '#111', marginBottom: 4 },
+  relatedMaterialMeta: { color: '#777', fontSize: 12, textTransform: 'capitalize' },
+  relatedMaterialFileName: { color: '#D32F2F', fontSize: 12, fontWeight: '600', marginTop: 4 },
+  materialWarningText: { color: '#B26A00', fontSize: 12, lineHeight: 18, fontWeight: '600', marginBottom: 8 },
+  attachmentFileCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFF7F7', borderRadius: 12, borderWidth: 1, borderColor: '#F3D4D4', padding: 12, marginBottom: 8 },
+  fileItem: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F5F5F5', borderRadius: 10, padding: 10, marginBottom: 8 },
+  fileInfo: { flex: 1, marginLeft: 8 },
+  fileName: { fontWeight: '600', color: '#000', marginBottom: 4, fontSize: 13 },
+  fileDetails: { color: '#888', fontSize: 12 },
+  fileCardMobile: { alignItems: 'flex-start', flexWrap: 'wrap', gap: 8 },
+  fileActionsRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginLeft: 8 },
+  fileActionsRowMobile: { width: '100%', justifyContent: 'flex-end', marginLeft: 0, marginTop: 4 },
+  fileOpenButton: { minHeight: 34, paddingHorizontal: 14, borderRadius: 10, backgroundColor: '#D32F2F', alignItems: 'center', justifyContent: 'center' },
+  fileOpenButtonMobile: { minWidth: 82 },
+  fileOpenButtonDisabled: { backgroundColor: '#D9A0A0' },
+  fileOpenButtonText: { color: '#FFF', fontSize: 12, fontWeight: '800' },
+  removeButton: { color: '#D32F2F', fontWeight: 'bold', paddingLeft: 8 },
+  disabledRemoveButton: { opacity: 0.45 },
+  uploadActionsRow: { gap: 10, marginTop: 8 },
+  linkSubmitBox: { gap: 8, marginTop: 8 },
+  linkInput: { backgroundColor: '#FFF', borderWidth: 1, borderColor: '#DDD', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, fontSize: 13, color: '#000' },
+  lockedSubmissionBox: { backgroundColor: '#F5F7FA', borderRadius: 10, borderWidth: 1, borderColor: '#E4E7EC', paddingHorizontal: 12, paddingVertical: 10, marginTop: 8 },
+  lockedSubmissionTitle: { color: '#111', fontWeight: '700', fontSize: 13, marginBottom: 4 },
+  lockedSubmissionText: { color: '#666', fontSize: 12, lineHeight: 18 },
+  uploadButton: { backgroundColor: '#D32F2F', borderRadius: 8, paddingVertical: 10, paddingHorizontal: 14, alignItems: 'center', marginTop: 8 },
+  uploadButtonText: { color: '#fff', fontWeight: '700', fontSize: 14 },
+  secondaryButton: { backgroundColor: '#EFEFEF', borderRadius: 8, paddingVertical: 10, paddingHorizontal: 14, alignItems: 'center', marginTop: 8 },
+  secondaryButtonText: { color: '#444', fontWeight: '700', fontSize: 13 },
+  loadingButtonContent: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  emptyText: { fontSize: 14, color: '#999', textAlign: 'center', marginVertical: 20 },
+  commentItem: { backgroundColor: '#F9F9F9', borderRadius: 8, padding: 10, marginBottom: 8, borderLeftWidth: 3, borderLeftColor: '#2196F3' },
+  instructorComment: { backgroundColor: '#FFF9C4', borderLeftColor: '#FBC02D' },
+  commentHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
+  commentAuthor: { fontWeight: '700', color: '#000', fontSize: 13 },
+  teacherBadge: { fontWeight: '600', color: '#1f1f1f', backgroundColor: '#fbc12d99', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, fontSize: 11 },
+  commentContent: { fontSize: 13, color: '#333', lineHeight: 18, marginBottom: 6 },
+  commentTime: { fontSize: 11, color: '#888', fontWeight: '500' },
+  commentInputContainer: { marginTop: 12, borderTopWidth: 1, borderTopColor: '#E0E0E0', paddingTop: 12 },
+  commentInput: { backgroundColor: '#F5F5F5', borderRadius: 8, padding: 10, minHeight: 60, fontSize: 13, color: '#000', marginBottom: 8 },
+  sendButton: { backgroundColor: '#D32F2F', borderRadius: 8, paddingVertical: 10, alignItems: 'center' },
+  sendButtonDisabled: { backgroundColor: '#CCC' },
+  sendButtonText: { color: '#FFF', fontWeight: '700', fontSize: 13 },
 });
-
 export default Assignments;

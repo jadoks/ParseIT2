@@ -946,9 +946,6 @@ function buildQuizMastersPrompt({ extractedText, fileName, gameType }) {
     case "flashcard":
       gameStyleInstruction = "Style: Flashcard Challenge. Generate concise, direct questions with clear, short answers. Focus on key facts and core definitions.";
       break;
-    case "boss_battle":
-      gameStyleInstruction = "Style: Boss Battle. Generate highly difficult, complex, and tricky questions. The wrong options (distractors) must be very plausible and require deep understanding of the material.";
-      break;
     case "quiz_master":
     default:
       gameStyleInstruction = "Style: Quiz Master. Generate standard, well-balanced timed multiple-choice questions testing overall comprehension of the material.";
@@ -2746,6 +2743,184 @@ app.post("/auth/reset-forgot-password", async (req, res) => {
  *   GEMINI_API_KEY=your_gemini_api_key_here
  *   GEMINI_GAME_MODEL=gemini-2.5-flash
  */
+// === NEW: Automatically grade game-based assignment submission ===
+// === UPDATED: Automatically grade game-based assignment submission ===
+app.post("/game-ai/submit-game-assignment", requireAuth, async (req, res) => {
+  try {
+    const { assignmentId, score, totalQuestions, answers } = req.body;
+    const profile = await findUserProfileByAuthUid(req.user.uid);
+    
+    if (!profile || profile.role !== "student") {
+      return res.status(403).json({ error: "Only students can submit game scores." });
+    }
+    const studentId = profile.data.studentId || profile.id;
+
+    if (!assignmentId || score === undefined || !totalQuestions) {
+      return res.status(400).json({ error: "assignmentId, score, and totalQuestions are required." });
+    }
+
+    // Get assignment to get classId and maxPoints
+    const assignmentSnap = await db.collection("classAssignments").doc(assignmentId).get();
+    if (!assignmentSnap.exists) {
+      return res.status(404).json({ error: "Assignment not found." });
+    }
+    const assignmentData = assignmentSnap.data();
+    const classId = assignmentData.classId;
+    const maxPoints = Number(assignmentData.totalScore || 100);
+
+    // Scale the game score to the assignment's maxPoints
+    const percent = totalQuestions > 0 ? (score / totalQuestions) : 0;
+    const scaledScore = Math.round(percent * maxPoints);
+
+    // Find existing submission or create a new one
+    const existingSubmissions = await db.collection("classSubmissions")
+      .where("classId", "==", classId)
+      .where("assignmentId", "==", assignmentId)
+      .where("studentId", "==", studentId)
+      .limit(1)
+      .get();
+
+    if (!existingSubmissions.empty) {
+  const subRef = existingSubmissions.docs[0].ref;
+  const existingData = existingSubmissions.docs[0].data();
+  
+  // 🌟 Keep the highest score if the student plays multiple attempts
+  const currentScore = existingData.score || 0;
+  const finalScore = scaledScore > currentScore ? scaledScore : currentScore;
+  const nextAttemptNumber = (existingData.attemptNumber || 0) + 1;
+
+  await subRef.update({
+    status: "graded",
+    score: finalScore,
+    gradedAt: FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp(),
+    gameScore: score, // Always update raw game score to latest
+    gameTotalQuestions: totalQuestions,
+    gameAnswers: answers || null,
+    attemptNumber: nextAttemptNumber,
+  });
+  
+  return res.json({ success: true, score: finalScore, maxPoints, attemptNumber: nextAttemptNumber });
+} else {
+  await db.collection("classSubmissions").add({
+    classId,
+    assignmentId,
+    studentId,
+    studentUid: profile.data.authUid || null,
+    studentName: `${profile.data.firstName || ''} ${profile.data.lastName || ''}`.trim(),
+    status: "graded",
+    score: scaledScore,
+    gradedAt: FieldValue.serverTimestamp(),
+    submittedAt: FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp(),
+    gameScore: score,
+    gameTotalQuestions: totalQuestions,
+    gameAnswers: answers || null,
+    attemptNumber: 1,
+  });
+  
+  return res.json({ success: true, score: scaledScore, maxPoints, attemptNumber: 1 });
+}
+  } catch (error) {
+    console.error("Submit game assignment error:", error);
+    return res.status(500).json({ error: error.message || "Failed to submit game score." });
+  }
+});
+
+// POST /game-ai/save-game-submission
+app.post("/game-ai/save-game-submission", requireAuth, async (req, res) => {
+  try {
+    const { 
+      classId, 
+      assignmentId, 
+      score, 
+      totalQuestions, 
+      attemptNumber = 1,
+      answers 
+    } = req.body;
+
+    const profile = await findUserProfileByAuthUid(req.user.uid);
+    if (!profile || profile.role !== "student") {
+      return res.status(403).json({ error: "Only students can save game submissions." });
+    }
+
+    const studentId = profile.data.studentId || profile.id;
+    const percent = Math.round((score / totalQuestions) * 100);
+
+    // Check if submission already exists
+    const existingSnapshot = await db
+      .collection("classSubmissions")
+      .where("classId", "==", classId)
+      .where("assignmentId", "==", assignmentId)
+      .where("studentId", "==", studentId)
+      .limit(1)
+      .get();
+
+    const submissionData = {
+      classId,
+      assignmentId,
+      studentId,
+      studentUid: profile.data.authUid || null,
+      studentName: `${profile.data.firstName || ""} ${profile.data.lastName || ""}`.trim(),
+      status: "submitted",
+      score: percent,
+      submittedAt: FieldValue.serverTimestamp(),
+      fileType: "game_submission",
+      fileName: `Game Attempt ${attemptNumber}`,
+      attemptNumber,
+      answers: answers || {},
+      createdAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    };
+
+    let submissionId;
+
+    if (!existingSnapshot.empty) {
+      // Update existing submission (for multiple attempts)
+      const existingDoc = existingSnapshot.docs[0];
+      await existingDoc.ref.update({
+        ...submissionData,
+        submittedAt: FieldValue.serverTimestamp(),
+      });
+      submissionId = existingDoc.id;
+    } else {
+      // Create new submission
+      const newRef = await db.collection("classSubmissions").add(submissionData);
+      submissionId = newRef.id;
+    }
+
+    // Create notification for teacher
+    const assignmentSnap = await db.collection("classAssignments").doc(assignmentId).get();
+    const assignmentData = assignmentSnap.exists ? assignmentSnap.data() || {} : {};
+    
+    await createNotification({
+      userId: assignmentData.assignedTeacherId || assignmentData.postedByUid,
+      role: "teacher",
+      type: "submitted-assignment",
+      title: "Game Assignment Submitted",
+      message: `${submissionData.studentName} completed ${assignmentData.header || "a game assignment"} with score ${percent}%.`,
+      relatedId: submissionId,
+      relatedType: "class-submission",
+      classId,
+      actorId: studentId,
+      actorRole: "student",
+      actorName: submissionData.studentName,
+    });
+
+    return res.json({ 
+      success: true, 
+      submissionId,
+      percent,
+      message: attemptNumber > 1 ? "Submission updated" : "Game submission saved"
+    });
+  } catch (error) {
+    console.error("Save game submission error:", error);
+    return res.status(500).json({ 
+      error: error.message || "Failed to save game submission." 
+    });
+  }
+});
+
 app.post("/game-ai/generate-quiz-masters", requireAuth, gameUpload.single("file"), async (req, res) => {
   try {
     if (!req.file) {
@@ -2914,6 +3089,56 @@ app.post("/game-ai/save-quiz-score", requireAuth, async (req, res) => {
   } catch (error) {
     console.error("Save quiz score error:", error);
     return res.status(500).json({ error: error.message || "Failed to save quiz score." });
+  }
+});
+
+// === NEW: Securely fetch game questions for students ===
+app.get("/game-ai/get-game-questions/:assignmentId", requireAuth, async (req, res) => {
+  try {
+    const { assignmentId } = req.params;
+    const profile = await findUserProfileByAuthUid(req.user.uid);
+    
+    if (!profile || profile.role !== "student") {
+      return res.status(403).json({ error: "Only students can fetch game questions." });
+    }
+    
+    const studentId = profile.data.studentId || profile.id;
+    const assignmentSnap = await db.collection("classAssignments").doc(assignmentId).get();
+    
+    if (!assignmentSnap.exists) {
+      return res.status(404).json({ error: "Assignment not found." });
+    }
+    
+    const assignment = assignmentSnap.data() || {};
+    
+    if (assignment.assignmentType !== "game_based") {
+      return res.status(400).json({ error: "This is not a game-based assignment." });
+    }
+
+    // Verify student is enrolled in the class
+    const classId = assignment.classId;
+    const membership = await db.collection("classMembers")
+      .where("classId", "==", classId)
+      .where("userId", "==", studentId)
+      .where("status", "==", "active")
+      .limit(1).get();
+    
+    if (membership.empty) {
+      return res.status(403).json({ error: "You are not enrolled in this class." });
+    }
+
+    // Return the questions and game settings securely
+    return res.json({
+      success: true,
+      questions: assignment.questions || [],
+      gameType: assignment.gameType,
+      timeLimit: assignment.timeLimit || null,
+      customTimeLimit: assignment.customTimeLimit || null, 
+      numberOfAttempts: assignment.numberOfAttempts || '1',
+    });
+  } catch (error) {
+    console.error("Get game questions error:", error);
+    return res.status(500).json({ error: error.message || "Failed to fetch game questions." });
   }
 });
 /**
@@ -5283,50 +5508,49 @@ app.get("/student-joined-classes/:studentId", async (req, res) => {
         });
 
         const assignments = assignmentsSnapshot.docs.map((doc) => {
-          const assignment = doc.data() || {};
-
-          return {
-            id: doc.id,
-            title: assignment.header || "Untitled Assignment",
-            dueDate: assignment.dueDate || "",
-            status: "pending",
-            points: 0,
-            maxPoints:
-              typeof assignment.totalScore === "number"
-                ? assignment.totalScore
-                : Number(assignment.totalScore) || 0,
-            topic: assignment.header || "",
-            materialIds: Array.isArray(assignment.materialIds)
-              ? assignment.materialIds
+        const assignment = doc.data() || {};
+        return {
+          id: doc.id,
+          title: assignment.header || "Untitled Assignment",
+          dueDate: assignment.dueDate || "",
+          status: "pending",
+          points: 0,
+          maxPoints: typeof assignment.totalScore === "number" ? assignment.totalScore : Number(assignment.totalScore) || 0,
+          topic: assignment.header || "",
+          materialIds: Array.isArray(assignment.materialIds) ? assignment.materialIds : [],
+          
+          // 👇 ADD THESE TWO LINES SO THE FRONTEND KNOWS IT'S A GAME
+          assignmentType: assignment.assignmentType || "regular",
+          gameType: assignment.gameType || null,
+          
+          files:
+            assignment.fileName || assignment.fileUrl
+              ? [
+                  {
+                    id: `file-${doc.id}`,
+                    name: assignment.fileName || "attachment",
+                    uploadedAt: formatFirestoreDateTime(assignment.createdAt) || "Unknown date",
+                    uri: assignment.fileUrl || null,
+                  },
+                ]
               : [],
-            files:
-              assignment.fileName || assignment.fileUrl
-                ? [
-                    {
-                      id: `file-${doc.id}`,
-                      name: assignment.fileName || "attachment",
-                      uploadedAt: formatFirestoreDateTime(assignment.createdAt) || "Unknown date",
-                      uri: assignment.fileUrl || null,
-                    },
-                  ]
-                : [],
-            comments: [],
-            instruction: assignment.instruction || "",
-            pointsOnTime:
-              typeof assignment.pointsOnTime === "number"
-                ? assignment.pointsOnTime
-                : Number(assignment.pointsOnTime) || 0,
-            repositoryDisabledAfterDue: !!assignment.repositoryDisabledAfterDue,
-            fileName: assignment.fileName || null,
-            fileUrl: assignment.fileUrl || null,
-            fileType: assignment.fileType || null,
-            storagePath: assignment.storagePath || null,
-            bucketPath: assignment.bucketPath || null,
-            postedByName: assignment.postedByName || null,
-            createdAt: assignment.createdAt || null,
-            updatedAt: assignment.updatedAt || null,
-          };
-        });
+          comments: [],
+          instruction: assignment.instruction || "",
+          pointsOnTime:
+            typeof assignment.pointsOnTime === "number"
+              ? assignment.pointsOnTime
+              : Number(assignment.pointsOnTime) || 0,
+          repositoryDisabledAfterDue: !!assignment.repositoryDisabledAfterDue,
+          fileName: assignment.fileName || null,
+          fileUrl: assignment.fileUrl || null,
+          fileType: assignment.fileType || null,
+          storagePath: assignment.storagePath || null,
+          bucketPath: assignment.bucketPath || null,
+          postedByName: assignment.postedByName || null,
+          createdAt: assignment.createdAt || null,
+          updatedAt: assignment.updatedAt || null,
+        };
+      });
 
         return {
           id: classSnap.id,
@@ -5774,6 +5998,12 @@ app.post("/create-class-assignment", async (req, res) => {
       postedByUid,
       postedByName,
       questions,
+      assignmentType,
+      gameType,
+      numberOfAttempts,
+      customAttempts,
+      timeLimit,
+      customTimeLimit,
     } = req.body;
 
     if (
@@ -5811,6 +6041,12 @@ app.post("/create-class-assignment", async (req, res) => {
       postedByUid: normalizeOptionalText(postedByUid),
       postedByName: normalizeOptionalText(postedByName),
       questions: Array.isArray(questions) ? questions : [],
+      assignmentType: assignmentType || 'regular',
+      gameType: gameType || null,
+      numberOfAttempts: numberOfAttempts || null,
+      customAttempts: customAttempts || null,
+      timeLimit: timeLimit || null,
+      customTimeLimit: customTimeLimit || null,
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
     });
@@ -5856,6 +6092,12 @@ app.put("/update-class-assignment/:id", async (req, res) => {
       fileUrl,
       fileType,
        questions,
+       assignmentType,
+      gameType,
+      numberOfAttempts,
+      customAttempts,
+      timeLimit,
+      customTimeLimit,
     } = req.body;
 
     await db.collection("classAssignments").doc(id).update({
@@ -5876,6 +6118,12 @@ app.put("/update-class-assignment/:id", async (req, res) => {
       ...(typeof fileUrl === "string" || fileUrl === null ? { fileUrl } : {}),
       ...(typeof fileType === "string" || fileType === null ? { fileType } : {}),
         ...(questions !== undefined ? { questions: Array.isArray(questions) ? questions : [] } : {}),
+        ...(assignmentType !== undefined ? { assignmentType: assignmentType || 'regular' } : {}),
+      ...(gameType !== undefined ? { gameType: gameType || null } : {}),
+      ...(numberOfAttempts !== undefined ? { numberOfAttempts: numberOfAttempts || null } : {}),
+      ...(customAttempts !== undefined ? { customAttempts: customAttempts || null } : {}),
+      ...(timeLimit !== undefined ? { timeLimit: timeLimit || null } : {}),
+      ...(customTimeLimit !== undefined ? { customTimeLimit: customTimeLimit || null } : {}),
       updatedAt: FieldValue.serverTimestamp(),
     });
 

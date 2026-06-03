@@ -37,8 +37,7 @@ export type Assignment = {
   fileName?: string;
   fileUri?: string;
   fileType?: string;
-  questions?: any[]; // <-- ADDED
-  // GAME-BASED FIELDS
+  questions?: any[];
   assignmentType?: 'regular' | 'game_based';
   gameType?: 'quiz_master' | 'memory_match' | 'fill_in_blanks' | 'flashcard' | 'boss_battle';
   numberOfAttempts?: string;
@@ -288,7 +287,6 @@ const TeacherCourseDetail2 = ({
   const [showGameTypeModal, setShowGameTypeModal] = useState(false);
   const [showClassModal, setShowClassModal] = useState(false);
   
-  // NEW: Generated Questions States
   const [generatedQuestions, setGeneratedQuestions] = useState<any[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
   const [showGeneratedPreview, setShowGeneratedPreview] = useState(false);
@@ -298,7 +296,6 @@ const TeacherCourseDetail2 = ({
     { value: 'memory_match', label: 'Memory Match', desc: 'Match terms ↔ definitions' },
     { value: 'fill_in_blanks', label: 'Fill-in-the-Blanks', desc: 'Complete missing keywords' },
     { value: 'flashcard', label: 'Flashcard Challenge', desc: 'Review flashcards & answer questions' },
-    { value: 'boss_battle', label: 'Boss Battle', desc: 'Mixed questions, highest multiplier' },
   ];
 
   const showResultModal = (type: 'success' | 'error', title: string, message: string) => {
@@ -351,7 +348,22 @@ const TeacherCourseDetail2 = ({
     setSelectedClassId(course?.id || ''); setNumberOfAttempts(String((item as any).numberOfAttempts || '1'));
     setCustomAttempts(String((item as any).customAttempts || '')); setTimeLimit(String((item as any).timeLimit || ''));
     setCustomTimeLimit(String((item as any).customTimeLimit || ''));
-    setGeneratedQuestions((item as any).questions || []);
+    
+    const existingQuestions = (item as any).questions || [];
+    const mappedQuestions = existingQuestions.map((q: any, index: number) => {
+      const options = q.options && q.options.length === 4 ? q.options : ['', '', '', ''];
+      const answer = q.answer || options[0] || '';
+      const correctIndex = options.indexOf(answer);
+      return {
+        ...q,
+        id: q.id || `existing-${index}`,
+        options,
+        answer,
+        correctIndex: correctIndex !== -1 ? correctIndex : 0,
+      };
+    });
+    setGeneratedQuestions(mappedQuestions);
+
     setShowGameTypeModal(false); setShowClassModal(false); setShowUpdateModal(true);
   };
 
@@ -452,12 +464,21 @@ const TeacherCourseDetail2 = ({
     if (members.length === 0) { showResultModal('error', 'No Students', 'There are no students to export for this class.'); return; }
   };
 
+  // 🌟 UPDATED: Auto-calculate Total Score for Game-Based Assignments
   const validateAssignmentForm = () => {
     const nextErrors: FormErrors = {};
     if (!formTitle.trim()) nextErrors.title = 'Header is required.';
     if (!formDesc.trim()) nextErrors.instruction = 'Instruction is required.';
-    if (!formPoints.trim()) nextErrors.totalScore = 'Total score is required.';
-    if (!formPointsOnTime.trim()) nextErrors.pointsOnTime = 'Points on time is required.';
+    
+    if (assignmentType === 'game_based') {
+      if (generatedQuestions.length === 0) {
+        nextErrors.totalScore = 'Please generate at least one question for the game.';
+      }
+    } else {
+      if (!formPoints.trim()) nextErrors.totalScore = 'Total score is required.';
+      if (!formPointsOnTime.trim()) nextErrors.pointsOnTime = 'Points on time is required.';
+    }
+
     if (!formDue.trim()) nextErrors.dueDate = 'Due date and time is required.';
     if (selectedMaterialIds.length === 0) nextErrors.materials = 'Select at least one related material.';
 
@@ -474,14 +495,11 @@ const TeacherCourseDetail2 = ({
     return true;
   };
 
-  // UPDATED: Generate Questions Handler
   const handleGenerateQuestions = async () => {
-    // 1. ENFORCE GAME TYPE SELECTION FIRST
     if (!gameType) {
       showResultModal('error', 'Error', 'Please select a game type first before generating questions.');
       return;
     }
-
     if (selectedMaterialIds.length === 0) {
       showResultModal('error', 'Error', 'Please select at least one learning material first.');
       return;
@@ -495,27 +513,78 @@ const TeacherCourseDetail2 = ({
           classId: course?.id, 
           materialIds: selectedMaterialIds, 
           studentId: currentTeacher?.teacherId || 'teacher-preview',
-          gameType: gameType // 👈 PASS THE GAME TYPE TO THE BACKEND
+          gameType: gameType
         }),
       });
-            const data = await response.json();
+      const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Failed to generate questions.');
       
-      // ✅ SAFELY VALIDATE THE ARRAY
       const questionsArray = Array.isArray(data.questions) ? data.questions : [];
       if (questionsArray.length === 0) {
         throw new Error('AI did not return any valid questions. Please try again.');
       }
 
-      const editableQuestions = questionsArray.map((q: any, index: number) => ({
-        id: `gen-${index}`,
-        question: q.question || '',
-        options: q.options && q.options.length === 4 ? q.options : ['', '', '', ''],
-        answer: q.answer || q.options?.[0] || '',
-      }));
+      const editableQuestions = questionsArray.map((q: any, index: number) => {
+        const options = q.options && q.options.length === 4 ? q.options : ['', '', '', ''];
+        const answer = q.answer || options[0] || '';
+        const correctIndex = options.indexOf(answer);
+        return {
+          id: `gen-${Date.now()}-${index}`,
+          question: q.question || '',
+          options,
+          answer,
+          correctIndex: correctIndex !== -1 ? correctIndex : 0,
+        };
+      });
       setGeneratedQuestions(editableQuestions);
       setShowGeneratedPreview(true);
       showResultModal('success', 'Generated', 'Questions generated successfully! You can edit them before saving.');
+    } catch (error: any) {
+      showResultModal('error', 'Generation Failed', error?.message || 'Unable to generate questions.');
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const handleGenerateMoreQuestions = async () => {
+    if (selectedMaterialIds.length === 0) {
+      showResultModal('error', 'Error', 'Please select at least one learning material first.');
+      return;
+    }
+    setIsGenerating(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/game-ai/generate-quiz-materials`, {
+        credentials: 'include', method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          classId: course?.id, 
+          materialIds: selectedMaterialIds, 
+          studentId: currentTeacher?.teacherId || 'teacher-preview',
+          gameType: gameType 
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Failed to generate questions.');
+      
+      const questionsArray = Array.isArray(data.questions) ? data.questions : [];
+      if (questionsArray.length === 0) {
+        throw new Error('AI did not return any valid questions. Please try again.');
+      }
+
+      const newQuestions = questionsArray.map((q: any, index: number) => {
+        const options = q.options && q.options.length === 4 ? q.options : ['', '', '', ''];
+        const answer = q.answer || options[0] || '';
+        const correctIndex = options.indexOf(answer);
+        return {
+          id: `gen-more-${Date.now()}-${index}`,
+          question: q.question || '',
+          options,
+          answer,
+          correctIndex: correctIndex !== -1 ? correctIndex : 0,
+        };
+      });
+
+      setGeneratedQuestions(prev => [...prev, ...newQuestions]);
+      showResultModal('success', 'Generated', `${newQuestions.length} more questions added successfully!`);
     } catch (error: any) {
       showResultModal('error', 'Generation Failed', error?.message || 'Unable to generate questions.');
     } finally {
@@ -531,9 +600,34 @@ const TeacherCourseDetail2 = ({
 
   const updateGeneratedOption = (qIndex: number, oIndex: number, value: string) => {
     setGeneratedQuestions(prev => {
-      const next = [...prev]; const newOptions = [...next[qIndex].options]; newOptions[oIndex] = value;
-      next[qIndex] = { ...next[qIndex], options: newOptions }; return next;
+      const next = [...prev]; 
+      const newOptions = [...next[qIndex].options]; 
+      newOptions[oIndex] = value;
+      let newAnswer = next[qIndex].answer;
+      
+      if (next[qIndex].correctIndex === oIndex) {
+        newAnswer = value;
+      }
+      
+      next[qIndex] = { ...next[qIndex], options: newOptions, answer: newAnswer }; 
+      return next;
     });
+  };
+
+  const toggleCorrectOption = (qIndex: number, oIndex: number) => {
+    setGeneratedQuestions(prev => {
+      const next = [...prev];
+      next[qIndex] = { 
+        ...next[qIndex], 
+        correctIndex: oIndex, 
+        answer: next[qIndex].options[oIndex] 
+      }; 
+      return next;
+    });
+  };
+
+  const deleteGeneratedQuestion = (qIndex: number) => {
+    setGeneratedQuestions(prev => prev.filter((_, index) => index !== qIndex));
   };
 
   const handleCreate = async () => {
@@ -571,14 +665,17 @@ const TeacherCourseDetail2 = ({
         credentials: 'include', method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           classId: assignmentType === 'game_based' && selectedClassId ? selectedClassId : course?.id,
-          header: formTitle.trim(), instruction: formDesc.trim(), dueDate: formDue.trim(), totalScore: Number(formPoints), pointsOnTime: Number(formPointsOnTime),
+          header: formTitle.trim(), instruction: formDesc.trim(), dueDate: formDue.trim(), 
+          // 🌟 Auto-calculate scores for game-based assignments
+          totalScore: assignmentType === 'game_based' ? generatedQuestions.length : Number(formPoints), 
+          pointsOnTime: assignmentType === 'game_based' ? generatedQuestions.length : Number(formPointsOnTime), 
           repositoryDisabledAfterDue: assignmentDisableRepositoryAfterDue, materialIds: selectedMaterialIds,
           assignmentType, gameType: assignmentType === 'game_based' ? gameType : undefined,
           numberOfAttempts: assignmentType === 'game_based' ? (numberOfAttempts === 'custom' ? 'custom' : numberOfAttempts) : undefined,
           customAttempts: assignmentType === 'game_based' && numberOfAttempts === 'custom' ? customAttempts : undefined,
           timeLimit: assignmentType === 'game_based' ? timeLimit : undefined,
           customTimeLimit: assignmentType === 'game_based' && timeLimit === 'custom' ? customTimeLimit : undefined,
-          questions: assignmentType === 'game_based' ? generatedQuestions : undefined, // <-- ADDED
+          questions: assignmentType === 'game_based' ? generatedQuestions : undefined,
           fileName: uploadedFile?.fileName ?? null, fileUrl: uploadedFile?.fileUrl ?? null, fileType: uploadedFile?.fileType ?? null,
           storagePath: uploadedFile?.storagePath ?? null, bucketPath: uploadedFile?.bucketPath ?? null, postedByUid: teacherIdentity, postedByName: teacherFullName,
         }),
@@ -595,14 +692,18 @@ const TeacherCourseDetail2 = ({
       const response = await fetch(`${API_BASE_URL}/update-class-assignment/${selectedId}`, {
         credentials: 'include', method: 'PUT', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          header: formTitle.trim(), instruction: formDesc.trim(), totalScore: Number(formPoints), pointsOnTime: Number(formPointsOnTime), dueDate: formDue.trim(),
+          header: formTitle.trim(), instruction: formDesc.trim(), 
+          // 🌟 Auto-calculate scores for game-based assignments
+          totalScore: assignmentType === 'game_based' ? generatedQuestions.length : Number(formPoints), 
+          pointsOnTime: assignmentType === 'game_based' ? generatedQuestions.length : Number(formPointsOnTime), 
+          dueDate: formDue.trim(),
           repositoryDisabledAfterDue: assignmentDisableRepositoryAfterDue, materialIds: selectedMaterialIds,
           assignmentType, gameType: assignmentType === 'game_based' ? gameType : undefined,
           numberOfAttempts: assignmentType === 'game_based' ? (numberOfAttempts === 'custom' ? 'custom' : numberOfAttempts) : undefined,
           customAttempts: assignmentType === 'game_based' && numberOfAttempts === 'custom' ? customAttempts : undefined,
           timeLimit: assignmentType === 'game_based' ? timeLimit : undefined,
           customTimeLimit: assignmentType === 'game_based' && timeLimit === 'custom' ? customTimeLimit : undefined,
-          questions: assignmentType === 'game_based' ? generatedQuestions : undefined, // <-- ADDED
+          questions: assignmentType === 'game_based' ? generatedQuestions : undefined,
         }),
       });
       const data = await response.json();
@@ -719,31 +820,52 @@ const TeacherCourseDetail2 = ({
     </View>
   );
 
-  // UPDATED: Added 'unlimited' to Time Limit options
   const renderTimeLimitSelector = () => (
-    <View style={styles.sectionBlock}>
-      <Text style={styles.sectionLabel}>Time Limit</Text>
-      <View style={{ flexDirection: 'row', gap: 10, marginTop: 8, flexWrap: 'wrap' }}>
-        {['5', '10', '15', '30', '60', 'custom', 'unlimited'].map((val) => (
-          <TouchableOpacity key={val} style={[styles.timeChip, timeLimit === val && styles.timeChipActive]} onPress={() => {
-            setTimeLimit(val); if (val !== 'custom') setCustomTimeLimit('');
+  <View style={styles.sectionBlock}>
+    <Text style={styles.sectionLabel}>
+      {gameType === 'quiz_master' ? 'Time Limit per Item' : 'Time Limit'}
+    </Text>
+    {gameType === 'quiz_master' && (
+      <Text style={styles.helperText}>
+        Each question will have this time limit
+      </Text>
+    )}
+    <View style={{ flexDirection: 'row', gap: 10, marginTop: 8, flexWrap: 'wrap' }}>
+      {['5', '10', '15', '30', '60', 'custom', 'unlimited'].map((val) => (
+        <TouchableOpacity 
+          key={val} 
+          style={[styles.timeChip, timeLimit === val && styles.timeChipActive]} 
+          onPress={() => {
+            setTimeLimit(val); 
+            if (val !== 'custom') setCustomTimeLimit('');
             if (errors.timeLimit) setErrors((prev) => ({ ...prev, timeLimit: undefined }));
             if (errors.customTimeLimit) setErrors((prev) => ({ ...prev, customTimeLimit: undefined }));
-          }} disabled={isSaving}>
-            <Text style={[styles.timeChipText, timeLimit === val && styles.timeChipTextActive]}>
-              {val === 'custom' ? 'Custom' : val === 'unlimited' ? 'Unlimited' : `${val} mins`}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-      {timeLimit === 'custom' && (
-        <TextInput style={[styles.inputBox, { marginTop: 10 }, errors.customTimeLimit ? styles.errorBorder : null]} value={customTimeLimit} onChangeText={(val) => {
-          setCustomTimeLimit(val.replace(/[^0-9]/g, '')); if (errors.customTimeLimit) setErrors((prev) => ({ ...prev, customTimeLimit: undefined }));
-        }} keyboardType="numeric" placeholder="Enter minutes (e.g., 45)" placeholderTextColor="#999" editable={!isSaving} />
-      )}
-      {renderInputError(errors.timeLimit || errors.customTimeLimit)}
+          }} 
+          disabled={isSaving}
+        >
+          <Text style={[styles.timeChipText, timeLimit === val && styles.timeChipTextActive]}>
+            {val === 'custom' ? 'Custom' : val === 'unlimited' ? 'Unlimited' : `${val} mins`}
+          </Text>
+        </TouchableOpacity>
+      ))}
     </View>
-  );
+    {timeLimit === 'custom' && (
+      <TextInput 
+        style={[styles.inputBox, { marginTop: 10 }, errors.customTimeLimit ? styles.errorBorder : null]} 
+        value={customTimeLimit} 
+        onChangeText={(val) => {
+          setCustomTimeLimit(val.replace(/[^0-9]/g, '')); 
+          if (errors.customTimeLimit) setErrors((prev) => ({ ...prev, customTimeLimit: undefined }));
+        }} 
+        keyboardType="numeric" 
+        placeholder="Enter minutes (e.g., 45)" 
+        placeholderTextColor="#999" 
+        editable={!isSaving} 
+      />
+    )}
+    {renderInputError(errors.timeLimit || errors.customTimeLimit)}
+  </View>
+);
 
   const renderAssignmentFields = () => (
     <View style={[styles.formGrid, !isMobile && styles.formGridDesktop]}>
@@ -780,29 +902,49 @@ const TeacherCourseDetail2 = ({
 
       <View style={[styles.formColumnRight, !isMobile && styles.formColumnRightDesktop]}>
         {renderDateTimeField()}
+        
+        {/* 🌟 UPDATED: Auto-calculate Total Score & Hide Points On Time for Games */}
         <View style={styles.scoreStackDesktop}>
           <View style={styles.scoreFieldFull}>
             <Text style={styles.sectionLabel}>Total Score</Text>
-            <TextInput style={[styles.inputBox, errors.totalScore ? styles.errorBorder : null]} value={formPoints} onChangeText={(value) => {
-              setFormPoints(value); if (errors.totalScore) setErrors((prev) => ({ ...prev, totalScore: undefined }));
-            }} keyboardType="numeric" placeholder="Total Score" placeholderTextColor="#999" editable={!isSaving} />
+            <TextInput 
+              style={[
+                styles.inputBox, 
+                errors.totalScore ? styles.errorBorder : null,
+                assignmentType === 'game_based' ? { backgroundColor: '#F5F5F5', color: '#666' } : null
+              ]} 
+              value={assignmentType === 'game_based' ? String(generatedQuestions.length) : formPoints} 
+              onChangeText={(value) => {
+                setFormPoints(value); if (errors.totalScore) setErrors((prev) => ({ ...prev, totalScore: undefined }));
+              }} 
+              keyboardType="numeric" 
+              placeholder="Total Score" 
+              placeholderTextColor="#999" 
+              editable={assignmentType !== 'game_based' && !isSaving} 
+            />
+            {assignmentType === 'game_based' && (
+              <Text style={{ fontSize: 11, color: '#888', marginTop: -4, marginBottom: 8, marginLeft: 4 }}>
+                * Auto-calculated based on the number of generated questions (1 point per item).
+              </Text>
+            )}
             {renderInputError(errors.totalScore)}
           </View>
-          <View style={styles.scoreFieldFull}>
-            <Text style={styles.sectionLabel}>Points On Time</Text>
-            <TextInput style={[styles.inputBox, errors.pointsOnTime ? styles.errorBorder : null]} value={formPointsOnTime} onChangeText={(value) => {
-              setFormPointsOnTime(value); if (errors.pointsOnTime) setErrors((prev) => ({ ...prev, pointsOnTime: undefined }));
-            }} keyboardType="numeric" placeholder="Points On Time" placeholderTextColor="#999" editable={!isSaving} />
-            {renderInputError(errors.pointsOnTime)}
-          </View>
+
+          {assignmentType !== 'game_based' && (
+            <View style={styles.scoreFieldFull}>
+              <Text style={styles.sectionLabel}>Points On Time</Text>
+              <TextInput style={[styles.inputBox, errors.pointsOnTime ? styles.errorBorder : null]} value={formPointsOnTime} onChangeText={(value) => {
+                setFormPointsOnTime(value); if (errors.pointsOnTime) setErrors((prev) => ({ ...prev, pointsOnTime: undefined }));
+              }} keyboardType="numeric" placeholder="Points On Time" placeholderTextColor="#999" editable={!isSaving} />
+              {renderInputError(errors.pointsOnTime)}
+            </View>
+          )}
         </View>
       </View>
 
       <View style={styles.fullWidthSection}>
         {renderRelatedMaterialsSelector()}
 
-        {/* UPDATED: Generate Questions Button Logic */}
-        {/* ACTIVE BUTTON: Only shows when Game Type AND Materials are selected */}
         {assignmentType === 'game_based' && selectedMaterialIds.length > 0 && gameType && (
           <TouchableOpacity style={[styles.generateButton, isGenerating ? styles.disabledButton : null]} onPress={handleGenerateQuestions} disabled={isGenerating || isSaving}>
             {isGenerating ? <ActivityIndicator size="small" color="#FFF" /> : <Ionicons name="sparkles-outline" size={18} color="#FFF" />}
@@ -812,7 +954,6 @@ const TeacherCourseDetail2 = ({
           </TouchableOpacity>
         )}
 
-        {/* DISABLED STATE: Shows when Materials are selected but NO Game Type is chosen */}
         {assignmentType === 'game_based' && selectedMaterialIds.length > 0 && !gameType && (
           <View style={[styles.generateButton, { backgroundColor: '#9E9E9E' }]}>
             <Ionicons name="alert-circle-outline" size={18} color="#FFF" />
@@ -873,13 +1014,44 @@ const TeacherCourseDetail2 = ({
     return renderAssignmentFields();
   };
 
-  // ✅ NEW: DYNAMIC QUESTION EDITOR BASED ON GAME TYPE
   const renderQuestionEditor = (q: any, qIndex: number) => {
+    const renderHeader = (title: string) => (
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+        <Text style={[styles.sectionLabel, { marginBottom: 0 }]}>{title}</Text>
+        <TouchableOpacity onPress={() => deleteGeneratedQuestion(qIndex)} style={{ padding: 6, backgroundColor: '#FFEBEE', borderRadius: 8 }}>
+          <Ionicons name="trash-outline" size={18} color="#D32F2F" />
+        </TouchableOpacity>
+      </View>
+    );
+
+    const renderOptionWithDropdown = (opt: string, oIndex: number, placeholderPrefix: string) => {
+      const isCorrect = q.correctIndex === oIndex;
+      return (
+        <View key={oIndex} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+          <TextInput 
+            style={[styles.inputBox, { flex: 1, marginBottom: 0, borderColor: isCorrect ? '#2E7D32' : '#DDD' }]} 
+            value={opt} 
+            onChangeText={(val) => updateGeneratedOption(qIndex, oIndex, val)} 
+            placeholder={isCorrect ? `${placeholderPrefix} (Correct)` : `${placeholderPrefix} ${oIndex + 1}`} 
+          />
+          <TouchableOpacity 
+            style={[styles.correctnessDropdown, { borderColor: isCorrect ? '#2E7D32' : '#DDD', backgroundColor: isCorrect ? '#E8F5E9' : '#FFF' }]}
+            onPress={() => toggleCorrectOption(qIndex, oIndex)}
+          >
+            <Text style={{ color: isCorrect ? '#2E7D32' : '#888', fontWeight: '700', fontSize: 12 }}>
+              {isCorrect ? 'Correct' : 'Wrong'}
+            </Text>
+            <Ionicons name={isCorrect ? "checkmark-circle" : "ellipse-outline"} size={16} color={isCorrect ? '#2E7D32' : '#888'} />
+          </TouchableOpacity>
+        </View>
+      );
+    };
+
     switch (gameType) {
       case 'memory_match':
         return (
           <View key={q.id} style={styles.generatedQuestionBlock}>
-            <Text style={styles.sectionLabel}>Pair {qIndex + 1}</Text>
+            {renderHeader(`Pair ${qIndex + 1}`)}
             
             <Text style={styles.sectionLabel}>Term</Text>
             <TextInput 
@@ -889,31 +1061,15 @@ const TeacherCourseDetail2 = ({
               placeholder="Enter the term" 
             />
             
-            <Text style={styles.sectionLabel}>Definitions (1 Correct, 3 Distractors)</Text>
-            {q.options.map((opt: string, oIndex: number) => {
-               const isAnswer = opt === q.answer;
-               return (
-                 <View key={oIndex} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                   <TextInput 
-                     style={[styles.inputBox, { flex: 1, marginBottom: 0, borderColor: isAnswer ? '#2E7D32' : '#DDD' }]} 
-                     value={opt} 
-                     onChangeText={(val) => updateGeneratedOption(qIndex, oIndex, val)} 
-                     placeholder={isAnswer ? "Correct Definition" : `Distractor ${oIndex + 1}`} 
-                   />
-                   <Text style={{ fontSize: 12, color: isAnswer ? '#2E7D32' : '#888', fontWeight: '700', width: 60, textAlign: 'right' }}>
-                     {isAnswer ? 'Correct' : 'Wrong'}
-                   </Text>
-                 </View>
-               );
-            })}
-            <Text style={styles.helperText}>Ensure exactly one definition is marked as Correct.</Text>
+            <Text style={styles.sectionLabel}>Definitions (Select Correct or Wrong)</Text>
+            {q.options.map((opt: string, oIndex: number) => renderOptionWithDropdown(opt, oIndex, 'Definition'))}
           </View>
         );
 
       case 'fill_in_blanks':
         return (
           <View key={q.id} style={styles.generatedQuestionBlock}>
-            <Text style={styles.sectionLabel}>Item {qIndex + 1}</Text>
+            {renderHeader(`Item ${qIndex + 1}`)}
             
             <Text style={styles.sectionLabel}>Sentence (Use '___' for the blank)</Text>
             <TextInput 
@@ -937,7 +1093,7 @@ const TeacherCourseDetail2 = ({
       case 'flashcard':
         return (
           <View key={q.id} style={styles.generatedQuestionBlock}>
-            <Text style={styles.sectionLabel}>Flashcard {qIndex + 1}</Text>
+            {renderHeader(`Flashcard ${qIndex + 1}`)}
             
             <Text style={styles.sectionLabel}>Front of Card (Question / Prompt)</Text>
             <TextInput 
@@ -963,7 +1119,8 @@ const TeacherCourseDetail2 = ({
       default:
         return (
           <View key={q.id} style={styles.generatedQuestionBlock}>
-            <Text style={styles.sectionLabel}>{gameType === 'boss_battle' ? 'Boss Battle Question' : 'Question'} {qIndex + 1}</Text>
+            {renderHeader(`${gameType === 'boss_battle' ? 'Boss Battle Question' : 'Question'} ${qIndex + 1}`)}
+            
             <TextInput 
               style={styles.inputBox} 
               value={q.question} 
@@ -971,24 +1128,9 @@ const TeacherCourseDetail2 = ({
               placeholder="Enter question" 
               multiline 
             />
-            <Text style={styles.sectionLabel}>Options</Text>
-            {q.options.map((opt: string, oIndex: number) => (
-              <TextInput 
-                key={oIndex} 
-                style={[styles.inputBox, { marginBottom: 8 }]} 
-                value={opt} 
-                onChangeText={(val) => updateGeneratedOption(qIndex, oIndex, val)} 
-                placeholder={`Option ${String.fromCharCode(65 + oIndex)}`} 
-              />
-            ))}
-            <Text style={styles.sectionLabel}>Correct Answer</Text>
-            <TextInput 
-              style={[styles.inputBox, q.answer && !q.options.includes(q.answer) ? styles.errorBorder : null]} 
-              value={q.answer} 
-              onChangeText={(val) => updateGeneratedQuestion(qIndex, 'answer', val)} 
-              placeholder="Must match one of the options exactly" 
-            />
-            {q.answer && !q.options.includes(q.answer) && <Text style={styles.errorText}>Answer must exactly match one of the options above.</Text>}
+            
+            <Text style={styles.sectionLabel}>Options (Select Correct or Wrong)</Text>
+            {q.options.map((opt: string, oIndex: number) => renderOptionWithDropdown(opt, oIndex, `Option ${String.fromCharCode(65 + oIndex)}`))}
           </View>
         );
     }
@@ -1202,7 +1344,6 @@ const TeacherCourseDetail2 = ({
         </Pressable>
       </Modal>
 
-      {/* GAME TYPE MODAL */}
       <Modal visible={showGameTypeModal} transparent animationType="fade" onRequestClose={() => setShowGameTypeModal(false)}>
         <Pressable style={styles.modalOverlayCenter} onPress={() => setShowGameTypeModal(false)}>
           <Pressable style={[styles.modalCardElevated, { width: isMobile ? Math.min(width - 28, 360) : 450, maxHeight: height * 0.8 }]}>
@@ -1230,7 +1371,6 @@ const TeacherCourseDetail2 = ({
         </Pressable>
       </Modal>
 
-      {/* CLASS MODAL */}
       <Modal visible={showClassModal} transparent animationType="fade" onRequestClose={() => setShowClassModal(false)}>
         <Pressable style={styles.modalOverlayCenter} onPress={() => setShowClassModal(false)}>
           <Pressable style={[styles.modalCardElevated, { width: isMobile ? Math.min(width - 28, 360) : 450, maxHeight: height * 0.8 }]}>
@@ -1255,7 +1395,6 @@ const TeacherCourseDetail2 = ({
         </Pressable>
       </Modal>
 
-      {/* ✅ UPDATED: GENERATED QUESTIONS PREVIEW MODAL WITH DYNAMIC UI */}
       <Modal visible={showGeneratedPreview} transparent animationType="fade" onRequestClose={() => setShowGeneratedPreview(false)}>
         <View style={styles.modalOverlayCenter}>
           <View style={[styles.modalCardElevated, { width: isMobile ? Math.min(width - 28, 380) : 700, maxHeight: height * 0.9 }]}>
@@ -1273,24 +1412,51 @@ const TeacherCourseDetail2 = ({
               <TouchableOpacity onPress={() => setShowGeneratedPreview(false)}><Ionicons name="close" size={24} color="#111" /></TouchableOpacity>
             </View>
             <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.modalScrollContent}>
+              {generatedQuestions.length === 0 && (
+                <Text style={styles.emptyMiniText}>No questions generated yet.</Text>
+              )}
               {generatedQuestions.map((q, qIndex) => renderQuestionEditor(q, qIndex))}
+              
+              <TouchableOpacity 
+                style={[styles.generateButton, { backgroundColor: '#1976D2', marginTop: 16 }]} 
+                onPress={handleGenerateMoreQuestions} 
+                disabled={isGenerating}
+              >
+                {isGenerating ? <ActivityIndicator size="small" color="#FFF" /> : <Ionicons name="add-circle-outline" size={18} color="#FFF" />}
+                <Text style={styles.generateButtonText}>Generate 10 More Questions</Text>
+              </TouchableOpacity>
             </ScrollView>
             <View style={styles.buttonRow}>
               <TouchableOpacity style={styles.secondaryButton} onPress={() => setShowGeneratedPreview(false)}>
                 <Text style={styles.secondaryButtonText}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.primaryButton} onPress={() => {
+                if (generatedQuestions.length === 0) {
+                  showResultModal('error', 'Invalid Questions', 'You must have at least one question.');
+                  return;
+                }
+
                 let hasInvalid = false;
                 if (gameType === 'fill_in_blanks' || gameType === 'flashcard') {
                   hasInvalid = generatedQuestions.some(q => !q.question.trim() || !q.answer.trim());
                 } else if (gameType === 'memory_match') {
-                  hasInvalid = generatedQuestions.some(q => !q.question.trim() || !q.answer.trim() || !q.options.includes(q.answer));
+                  hasInvalid = generatedQuestions.some(q => 
+                    !q.question.trim() || 
+                    q.correctIndex === undefined || 
+                    q.correctIndex === -1 || 
+                    !q.options[q.correctIndex]?.trim()
+                  );
                 } else {
-                  hasInvalid = generatedQuestions.some(q => !q.options.includes(q.answer) || !q.question.trim());
+                  hasInvalid = generatedQuestions.some(q => 
+                    q.correctIndex === undefined || 
+                    q.correctIndex === -1 || 
+                    !q.options[q.correctIndex]?.trim() || 
+                    !q.question.trim()
+                  );
                 }
 
                 if (hasInvalid) {
-                  showResultModal('error', 'Invalid Questions', 'Please ensure all items have text and answers are correctly set.');
+                  showResultModal('error', 'Invalid Questions', 'Please ensure all items have text and a correct option is selected.');
                   return;
                 }
                 setShowGeneratedPreview(false);
@@ -1453,14 +1619,10 @@ const styles = StyleSheet.create({
   datePreviewBox: { marginTop: 14, borderWidth: 1, borderColor: '#F1D0D0', backgroundColor: '#FFF8F8', borderRadius: 12, padding: 12 },
   datePreviewLabel: { fontSize: 12, fontWeight: '700', color: '#777', marginBottom: 4 },
   datePreviewValue: { fontSize: 14, fontWeight: '800', color: '#D32F2F' },
-
-  // ASSIGNMENT TYPE CHIPS
   typeChip: { flex: 1, paddingVertical: 12, paddingHorizontal: 16, borderRadius: 12, borderWidth: 1, borderColor: '#F0B9B9', backgroundColor: '#FFF5F5', alignItems: 'center' },
   typeChipActive: { backgroundColor: '#D32F2F', borderColor: '#D32F2F' },
   typeChipText: { color: '#D32F2F', fontWeight: '700', fontSize: 14 },
   typeChipTextActive: { color: '#FFF' },
-
-  // GAME + CLASS ROW LAYOUT
   gameAndClassRow: { flexDirection: 'row', gap: 16, alignItems: 'flex-start' },
   gameAndClassRowMobile: { flexDirection: 'column', gap: 12 },
   dropdownWrap: { flex: 1 },
@@ -1474,21 +1636,26 @@ const styles = StyleSheet.create({
   dropdownItemTextActive: { color: '#FFF' },
   dropdownItemDesc: { color: '#888', fontSize: 11, marginTop: 2, lineHeight: 15 },
   dropdownItemDescActive: { color: '#FFE0E0' },
-
-  // ATTEMPTS CHIPS
   attemptChip: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 10, borderWidth: 1, borderColor: '#F0B9B9', backgroundColor: '#FFF5F5' },
   attemptChipActive: { backgroundColor: '#D32F2F', borderColor: '#D32F2F' },
   attemptChipText: { color: '#D32F2F', fontWeight: '700', fontSize: 13 },
   attemptChipTextActive: { color: '#FFF' },
-
-  // TIME LIMIT CHIPS
   timeChip: { paddingHorizontal: 12, paddingVertical: 10, borderRadius: 10, borderWidth: 1, borderColor: '#F0B9B9', backgroundColor: '#FFF5F5' },
   timeChipActive: { backgroundColor: '#D32F2F', borderColor: '#D32F2F' },
   timeChipText: { color: '#D32F2F', fontWeight: '700', fontSize: 13 },
   timeChipTextActive: { color: '#FFF' },
-
-  // NEW: GENERATED QUESTIONS STYLES
   generatedQuestionBlock: { marginBottom: 24, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: '#EEE' },
   generateButton: { backgroundColor: '#4CAF50', minHeight: 48, borderRadius: 12, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 14, marginTop: 12, flexDirection: 'row', gap: 8, width: '100%' },
   generateButtonText: { color: '#FFF', fontWeight: '800', fontSize: 14 },
+  correctnessDropdown: { 
+    borderWidth: 1, 
+    borderRadius: 8, 
+    paddingHorizontal: 10, 
+    paddingVertical: 10, 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    gap: 6, 
+    minWidth: 90, 
+    justifyContent: 'center' 
+  },
 });

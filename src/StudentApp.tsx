@@ -15,12 +15,10 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-
 import AnnouncementModal, { Announcement } from './components/AnnouncementModal';
 import DrawerMenu from './components/DrawerMenu';
 import GeminiFloatingModal from './components/GeminiFloatingModal';
 import Header from './components/Header';
-
 import Analytics from './screens/Analytics';
 import Assignments, {
   AssignmentComment,
@@ -43,7 +41,7 @@ import MyJourney from './screens/MyJourney';
 import Notification, { NotificationItem } from './screens/Notification';
 import Profile from './screens/Profile';
 import Videos from './screens/Videos';
-
+import GameBasedAssignment from './screens/games/GameBasedAssignment'; // 👈 ADDED IMPORT
 import FlipIt from './screens/games/flip-it';
 import FruitMania from './screens/games/fruit-mania';
 import QuizMasters from './screens/games/quiz-masters';
@@ -82,6 +80,7 @@ type ScreenType =
   | 'flipit'
   | 'fruitmania'
   | 'quizmasters'
+  | 'gamebasedassignment' // 👈 ADDED SCREEN TYPE
   | 'videos'
   | 'myjourney'
   | 'analytics'
@@ -105,23 +104,18 @@ function getApiBaseUrl() {
   if (Platform.OS === 'web') {
     return 'http://localhost:5000';
   }
-
   const possibleHost =
     Constants.expoConfig?.hostUri ||
     Constants.manifest2?.extra?.expoGo?.debuggerHost ||
     '';
-
   const host = possibleHost.split(':')[0];
-
   if (host) {
     return `http://${host}:5000`;
   }
-
   return 'http://192.168.1.5:5000';
 }
 
 const API_BASE_URL = getApiBaseUrl();
-
 const apiFetch = (url: string, options: any = {}) =>
   fetch(url, {
     credentials: 'include',
@@ -132,7 +126,6 @@ const refreshClassBannerUrl = async (course: any) => {
   if (!course?.bannerStoragePath || !course?.id) {
     return course;
   }
-
   try {
     const response = await apiFetch(`${API_BASE_URL}/storage/signed-url`, {
       method: 'POST',
@@ -144,7 +137,6 @@ const refreshClassBannerUrl = async (course: any) => {
         classId: course.id,
       }),
     });
-
     const data = await response.json();
 
     if (!response.ok) {
@@ -165,6 +157,9 @@ type StoredAssignmentScore = {
   points?: number;
   maxPoints?: number;
   feedback?: string | null;
+  gameScore?: number;
+  gameTotalQuestions?: number;
+  attemptNumber?: number;
 };
 
 type StoredAssignmentState = {
@@ -185,7 +180,6 @@ type CompletedActivityScore = {
 };
 
 const getAssignmentStateKey = (studentId: string) => `student-assignment-state-${studentId}`;
-
 const emptyStoredAssignmentState = (): StoredAssignmentState => ({
   files: {},
   statuses: {},
@@ -194,15 +188,12 @@ const emptyStoredAssignmentState = (): StoredAssignmentState => ({
 
 const readStoredAssignmentState = async (studentId: string): Promise<StoredAssignmentState> => {
   if (!studentId) return emptyStoredAssignmentState();
-
   const key = getAssignmentStateKey(studentId);
-
   try {
     const raw =
       Platform.OS === 'web'
         ? (globalThis as any).localStorage?.getItem(key)
         : await FileSystem.readAsStringAsync(`${FileSystem.documentDirectory}${key}.json`);
-
     if (!raw) return emptyStoredAssignmentState();
 
     const parsed = JSON.parse(raw);
@@ -218,16 +209,13 @@ const readStoredAssignmentState = async (studentId: string): Promise<StoredAssig
 
 const writeStoredAssignmentState = async (studentId: string, state: StoredAssignmentState) => {
   if (!studentId) return;
-
   const key = getAssignmentStateKey(studentId);
   const raw = JSON.stringify(state);
-
   try {
     if (Platform.OS === 'web') {
       (globalThis as any).localStorage?.setItem(key, raw);
       return;
     }
-
     await FileSystem.writeAsStringAsync(`${FileSystem.documentDirectory}${key}.json`, raw);
   } catch (error) {
     console.log('SAVE ASSIGNMENT STATE ERROR =>', error);
@@ -247,7 +235,6 @@ const formatRemoteDateTime = (value: any) => {
   if (typeof value?.toDate === 'function') return value.toDate().toLocaleString();
   if (typeof value?._seconds === 'number') return new Date(value._seconds * 1000).toLocaleString();
   if (typeof value?.seconds === 'number') return new Date(value.seconds * 1000).toLocaleString();
-
   const parsed = new Date(value);
   return Number.isNaN(parsed.getTime()) ? new Date().toLocaleString() : parsed.toLocaleString();
 };
@@ -255,9 +242,7 @@ const formatRemoteDateTime = (value: any) => {
 const mapSubmissionToFile = (submission: any): AssignmentFileUpload | null => {
   const fileUrl = submission?.fileUrl || submission?.url || submission?.downloadUrl;
   const fileName = submission?.fileName || submission?.name;
-
   if (!fileUrl || !fileName) return null;
-
   return {
     id: String(submission?.submissionId || submission?.id || `submission-${submission?.assignmentId || Date.now()}`),
     submissionId: submission?.submissionId || submission?.id,
@@ -273,7 +258,6 @@ const mapSubmissionToFile = (submission: any): AssignmentFileUpload | null => {
     source: 'student',
   };
 };
-
 
 const ANNOUNCEMENT_BANNERS: Record<number, any> = {
   1: require('../assets/images/Banner1.png'),
@@ -550,6 +534,10 @@ const mapCourseAssignmentsToAssignmentItems = (
     bucketPath: (assignment as any).bucketPath || null,
     comments: mapCourseCommentsToAssignmentComments(assignment.comments),
     files: mapCourseFilesToAssignmentFiles(assignment.files),
+    assignmentType: (assignment as any).assignmentType || 'regular',
+    gameType: (assignment as any).gameType || null,
+    numberOfAttempts: (assignment as any).numberOfAttempts || null, 
+    customAttempts: (assignment as any).customAttempts || null,
   }));
 };
 
@@ -610,9 +598,14 @@ const mapJoinedClassToCourseDetail = (item: any): CourseWithBannerFields => ({
   bannerStoragePath: item.bannerStoragePath || null,
   bannerFileName: item.bannerFileName || null,
   bannerMimeType: item.bannerMimeType || null,
+  
   units: typeof item.units === 'number' ? item.units : Number(item.units) || 0,
   materials: Array.isArray(item.materials) ? item.materials : [],
-  assignments: Array.isArray(item.assignments) ? item.assignments : [],
+  assignments: Array.isArray(item.assignments) ? item.assignments.map((a: any) => ({
+    ...a,
+    assignmentType: a.assignmentType || 'regular',
+    gameType: a.gameType || null,
+  })) : [],
 });
 
 const mapCourseDetailToAssignmentCourse = (course: CourseDetailData): AssignmentCourseWithBannerFields => ({
@@ -657,29 +650,27 @@ const mapCourseDetailToAssignmentCourse = (course: CourseDetailData): Assignment
     bucketPath: (assignment as any).bucketPath || null,
     comments: mapCourseCommentsToAssignmentComments(assignment.comments),
     files: mapCourseFilesToAssignmentFiles(assignment.files),
+    assignmentType: (assignment as any).assignmentType || 'regular',
+    gameType: (assignment as any).gameType || null,
   })),
 });
 
 export default function StudentApp({ onLogout, currentStudent }: Props) {
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
-
   const isLargeScreen = width >= 768;
   const isSmallScreen = width < 768;
 
   const [remoteStudentProfile, setRemoteStudentProfile] = useState<RemoteStudentProfile | null>(null);
-
   const currentUserFirstName = remoteStudentProfile?.firstName || currentStudent.firstName || '';
   const currentUserLastName = remoteStudentProfile?.lastName || currentStudent.lastName || '';
   const currentUserName =
     `${currentUserFirstName} ${currentUserLastName}`.trim() || 'Student';
-
   const currentUserEmail = remoteStudentProfile?.email || currentStudent.email || '';
 
   const initialAvatar = remoteStudentProfile?.profileImage || currentStudent.profileImage
     ? { uri: remoteStudentProfile?.profileImage || currentStudent.profileImage || '' }
     : null;
-
   const initialBanner = remoteStudentProfile?.bannerImage || currentStudent.bannerImage
     ? { uri: remoteStudentProfile?.bannerImage || currentStudent.bannerImage || '' }
     : null;
@@ -692,33 +683,40 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
   const [generatedQuizMastersData, setGeneratedQuizMastersData] = useState<any[] | null>(null);
   const [isGeneratingActivity, setIsGeneratingActivity] = useState(false);
   const [completedActivityScores, setCompletedActivityScores] = useState<Record<string, CompletedActivityScore>>({});
-
   const [showAnnouncement, setShowAnnouncement] = useState(true);
   const [isMobileDrawerOpen, setMobileDrawerOpen] = useState(false);
-
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [isConversationActive, setIsConversationActive] = useState(false);
   const [isVideoActive, setIsVideoActive] = useState(false);
-
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
-
   const [activeCourseTab, setActiveCourseTab] = useState<'materials' | 'assignments'>('materials');
   const [currentUserAvatar, setCurrentUserAvatar] = useState<any>(initialAvatar);
   const [currentUserBanner, setCurrentUserBanner] = useState<any>(initialBanner);
   const [hasImageChanged, setHasImageChanged] = useState(false);
-
   const [joinedCourses, setJoinedCourses] = useState<CourseDetailData[]>([]);
   const [isLoadingJoinedCourses, setIsLoadingJoinedCourses] = useState(false);
   const [studentAnnouncements, setStudentAnnouncements] = useState<StudentClassAnnouncement[]>([]);
-
   const [communityPosts, setCommunityPosts] = useState<CommunityPost[]>([]);
   const [studentNotifications, setStudentNotifications] = useState<NotificationItem[]>([]);
   const [videoSearchQuery, setVideoSearchQuery] = useState('');
+  
+  const [isFetchingGame, setIsFetchingGame] = useState(false);
+  // 👇 ADDED STATE FOR GAME DATA
+  const [gameAssignmentData, setGameAssignmentData] = useState<{
+    assignmentId: string;
+    assignmentTitle: string;
+    gameType: string;
+    questions: any[];
+    timeLimit?: string | null;
+    customTimeLimit?: string | null;
+    numberOfAttempts?: string;
+  } | null>(null);
 
   const isFullscreenScreen =
     activeScreen === 'flipit' ||
     activeScreen === 'fruitmania' ||
-    activeScreen === 'quizmasters';
+    activeScreen === 'quizmasters' ||
+    activeScreen === 'gamebasedassignment'; // 👈 ADDED
 
   const isMobileFullscreenScreen =
     isSmallScreen &&
@@ -741,8 +739,8 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
     isFullscreenScreen
       ? []
       : hasImageChanged
-      ? (['top', 'right', 'bottom', 'left'] as const)
-      : (['right', 'left'] as const);
+        ? (['top', 'right', 'bottom', 'left'] as const)
+        : (['right', 'left'] as const);
 
   const toMillis = (value: any) => {
     if (!value) return 0;
@@ -753,17 +751,15 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
   };
 
   const isAnnouncementActive = (value?: any) => {
-  if (!value) return true;
-  const expiry =
-    typeof value?.toDate === 'function' ? value.toDate() : new Date(value);
-
-  if (Number.isNaN(expiry.getTime())) return true;
-  return expiry.getTime() > Date.now();
-};
+    if (!value) return true;
+    const expiry =
+      typeof value?.toDate === 'function' ? value.toDate() : new Date(value);
+    if (Number.isNaN(expiry.getTime())) return true;
+    return expiry.getTime() > Date.now();
+  };
 
   const loadCurrentStudentProfile = async () => {
     if (!currentStudent?.studentId) return;
-
     try {
       const response = await apiFetch(`${API_BASE_URL}/auth/user-profile`, {
         method: 'POST',
@@ -824,7 +820,6 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
     if (!remoteStudentProfile?.profileImage && currentStudent.profileImage) {
       setCurrentUserAvatar({ uri: currentStudent.profileImage });
     }
-
     if (!remoteStudentProfile?.bannerImage && currentStudent.bannerImage) {
       setCurrentUserBanner({ uri: currentStudent.bannerImage });
     }
@@ -837,7 +832,6 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
 
   useEffect(() => {
     if (Platform.OS !== 'android') return;
-
     const setupNavigation = async () => {
       try {
         if (isFullscreenScreen) {
@@ -876,22 +870,17 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
     if (Platform.OS === 'web') {
       const response = await fetch(uri);
       const blob = await response.blob();
-
       return await new Promise<string>((resolve, reject) => {
         const reader = new FileReader();
-
         reader.onloadend = () => {
           const result = reader.result;
-
           if (typeof result !== 'string') {
             reject(new Error('Failed to read file as base64.'));
             return;
           }
-
           const base64 = result.includes(',') ? result.split(',')[1] : result;
           resolve(base64);
         };
-
         reader.onerror = () => reject(new Error('Failed to convert blob to base64.'));
         reader.readAsDataURL(blob);
       });
@@ -918,7 +907,6 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
     bannerImage?: any;
   }) => {
     const userId = resolveCurrentUserDocId();
-
     if (!userId) {
       throw new Error('User ID is missing.');
     }
@@ -954,7 +942,6 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
 
   const handleChangeProfileImage = async (image: any) => {
     const previousAvatar = currentUserAvatar;
-
     try {
       setCurrentUserAvatar(image);
       setHasImageChanged(true);
@@ -995,7 +982,6 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
 
   const handleChangeBannerImage = async (image: any) => {
     const previousBanner = currentUserBanner;
-
     try {
       setCurrentUserBanner(image);
       setHasImageChanged(true);
@@ -1053,73 +1039,70 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
     }));
   };
 
-
   const loadStudentAnnouncements = async (courses: CourseDetailData[]) => {
-  try {
-    const classIds = courses.map((item) => item.id).filter(Boolean);
-
-    if (!classIds.length) {
-      setStudentAnnouncements([]);
-      return;
-    }
-
-    const groupedAnnouncements = await Promise.all(
-      classIds.map(async (classId) => {
-        const response = await apiFetch(`${API_BASE_URL}/class-announcements/${classId}`);
-        const data = await response.json();
-
-        if (!response.ok) {
-          throw new Error(data?.error || 'Failed to load announcements.');
-        }
-
-        return Array.isArray(data) ? data : [];
-      })
-    );
-
-    const rawAnnouncements = groupedAnnouncements.flat();
-
-    const active = rawAnnouncements.filter((item: any) =>
-      isAnnouncementActive(item?.expiresAt)
-    );
-
-    const uniqueMap = new Map<string, any>();
-
-    active.forEach((item: any) => {
-      const key = `${item.title}-${item.message}-${item.expiresAt}-${item.bannerKey}`;
-      if (!uniqueMap.has(key)) {
-        uniqueMap.set(key, item);
+    try {
+      const classIds = courses.map((item) => item.id).filter(Boolean);
+      if (!classIds.length) {
+        setStudentAnnouncements([]);
+        return;
       }
-    });
 
-    const mappedAnnouncements: StudentClassAnnouncement[] = Array.from(
-      uniqueMap.values()
-    )
-      .map((item: any) => ({
-        id: item.id,
-        classIds: Array.isArray(item.classIds) ? item.classIds : [],
-        title: item.title || '',
-        message: item.message || '',
-        bannerKey: typeof item.bannerKey === 'number' ? item.bannerKey : 4,
-        bannerImage:
-          ANNOUNCEMENT_BANNERS[
-            typeof item.bannerKey === 'number' ? item.bannerKey : 4
-          ],
-        expiresAt: item.expiresAt || null,
-        createdAt: item.createdAt || null,
-        updatedAt: item.updatedAt || null,
-      }))
-      .sort((a, b) => toMillis(b.createdAt) - toMillis(a.createdAt));
+      const groupedAnnouncements = await Promise.all(
+        classIds.map(async (classId) => {
+          const response = await apiFetch(`${API_BASE_URL}/class-announcements/${classId}`);
+          const data = await response.json();
 
-    setStudentAnnouncements(mappedAnnouncements);
-  } catch (error) {
-    console.log('LOAD STUDENT ANNOUNCEMENTS ERROR =>', error);
-    setStudentAnnouncements([]);
-  }
-};
+          if (!response.ok) {
+            throw new Error(data?.error || 'Failed to load announcements.');
+          }
+
+          return Array.isArray(data) ? data : [];
+        })
+      );
+
+      const rawAnnouncements = groupedAnnouncements.flat();
+
+      const active = rawAnnouncements.filter((item: any) =>
+        isAnnouncementActive(item?.expiresAt)
+      );
+
+      const uniqueMap = new Map<string, any>();
+
+      active.forEach((item: any) => {
+        const key = `${item.title}-${item.message}-${item.expiresAt}-${item.bannerKey}`;
+        if (!uniqueMap.has(key)) {
+          uniqueMap.set(key, item);
+        }
+      });
+
+      const mappedAnnouncements: StudentClassAnnouncement[] = Array.from(
+        uniqueMap.values()
+      )
+        .map((item: any) => ({
+          id: item.id,
+          classIds: Array.isArray(item.classIds) ? item.classIds : [],
+          title: item.title || '',
+          message: item.message || '',
+          bannerKey: typeof item.bannerKey === 'number' ? item.bannerKey : 4,
+          bannerImage:
+            ANNOUNCEMENT_BANNERS[
+              typeof item.bannerKey === 'number' ? item.bannerKey : 4
+            ],
+          expiresAt: item.expiresAt || null,
+          createdAt: item.createdAt || null,
+          updatedAt: item.updatedAt || null,
+        }))
+        .sort((a, b) => toMillis(b.createdAt) - toMillis(a.createdAt));
+
+      setStudentAnnouncements(mappedAnnouncements);
+    } catch (error) {
+      console.log('LOAD STUDENT ANNOUNCEMENTS ERROR =>', error);
+      setStudentAnnouncements([]);
+    }
+  };
 
   const loadJoinedClasses = async () => {
     if (!currentStudent?.studentId) return;
-
     try {
       setIsLoadingJoinedCourses(true);
 
@@ -1155,7 +1138,6 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
 
   const handleJoinClass = async (classCode: string) => {
     const trimmedCode = String(classCode || '').trim().toUpperCase();
-
     if (!trimmedCode) {
       throw new Error('Please enter a class code.');
     }
@@ -1192,12 +1174,21 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
     };
   };
 
+  const parseTimeLimit = (limitStr?: string, customStr?: string): number | null => {
+  if (!limitStr || limitStr === 'unlimited') return null;
+  if (limitStr === 'custom') {
+    const val = Number(customStr);
+    return val > 0 ? val : null;
+  }
+  const val = Number(limitStr);
+  return val > 0 ? val : null;
+};
+
   const hydratedCommunityPosts = useMemo<CommunityPost[]>(() => {
     return communityPosts.map((post) => {
       const isCurrentUsersPost = post.userEmail
         ? post.userEmail === currentUserEmail
         : post.userName === currentUserName;
-
       return {
         ...post,
         avatar: isCurrentUsersPost ? currentUserAvatar : post.avatar,
@@ -1210,7 +1201,6 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
   }, [communityPosts, currentUserAvatar, currentUserEmail, currentUserName]);
 
   const sharedCourses = useMemo(() => mapCoursesToAssignmentCourses(COURSES), []);
-
   const [sharedAssignmentComments, setSharedAssignmentComments] = useState<Record<string, AssignmentComment[]>>(
     () =>
       Object.fromEntries(
@@ -1219,7 +1209,6 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
         )
       )
   );
-
   const [sharedAssignmentFiles, setSharedAssignmentFiles] = useState<Record<string, AssignmentFileUpload[]>>(
     () =>
       Object.fromEntries(
@@ -1228,7 +1217,6 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
         )
       )
   );
-
   const [sharedAssignmentStatuses, setSharedAssignmentStatuses] = useState<Record<string, AssignmentItem['status']>>({});
   const [sharedAssignmentScores, setSharedAssignmentScores] = useState<Record<string, StoredAssignmentScore>>({});
   const [hasLoadedAssignmentState, setHasLoadedAssignmentState] = useState(false);
@@ -1238,7 +1226,6 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
       ...course,
       assignments: course.assignments.map((assignment) => {
         const scoreState = sharedAssignmentScores[assignment.id];
-
         return {
           ...assignment,
           status: sharedAssignmentStatuses[assignment.id] || assignment.status,
@@ -1252,6 +1239,9 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
               : assignment.maxPoints,
           comments: sharedAssignmentComments[assignment.id] || [],
           files: assignment.files || [],
+          gameScore: scoreState?.gameScore !== undefined ? scoreState.gameScore : (assignment as any).gameScore,
+  gameTotalQuestions: scoreState?.gameTotalQuestions !== undefined ? scoreState.gameTotalQuestions : (assignment as any).gameTotalQuestions,
+  attemptNumber: scoreState?.attemptNumber !== undefined ? scoreState.attemptNumber : (assignment as any).attemptNumber,
         };
       }),
     }));
@@ -1263,7 +1253,6 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
         ...course,
         assignments: course.assignments.map((assignment) => {
           const scoreState = sharedAssignmentScores[assignment.id];
-
           return {
             ...assignment,
             status: sharedAssignmentStatuses[assignment.id] || assignment.status,
@@ -1276,6 +1265,9 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
                 ? scoreState.maxPoints
                 : assignment.maxPoints,
             files: assignment.files || [],
+            gameScore: scoreState?.gameScore !== undefined ? scoreState.gameScore : (assignment as any).gameScore,
+  gameTotalQuestions: scoreState?.gameTotalQuestions !== undefined ? scoreState.gameTotalQuestions : (assignment as any).gameTotalQuestions,
+  attemptNumber: scoreState?.attemptNumber !== undefined ? scoreState.attemptNumber : (assignment as any).attemptNumber,
           };
         }),
       })),
@@ -1295,7 +1287,6 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
       ...prev,
       ...state.files,
     }));
-
     setSharedAssignmentStatuses((prev) => ({
       ...prev,
       ...state.statuses,
@@ -1309,7 +1300,6 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
 
   const loadStudentSubmissionState = useCallback(async () => {
     if (!currentStudent?.studentId) return;
-
     const localState = await readStoredAssignmentState(currentStudent.studentId);
     applySavedAssignmentState(localState);
 
@@ -1334,8 +1324,8 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
           submission?.status === 'graded'
             ? 'graded'
             : submission?.status === 'submitted'
-            ? 'submitted'
-            : 'pending';
+              ? 'submitted'
+              : 'pending';
 
         statusesByAssignment[assignmentId] = status;
 
@@ -1343,23 +1333,25 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
           scoresByAssignment[assignmentId] = {};
         }
 
-        if (status === 'graded') {
-          const numericScore = Number(submission?.score);
-          const numericMaxScore = Number(
-            submission?.maxPoints ??
-              submission?.totalScore ??
-              submission?.maxScore
-          );
+            if (status === 'graded') {
+            const numericScore = Number(submission?.score);
+            const numericMaxScore = Number(
+              submission?.maxPoints ??
+                submission?.totalScore ??
+                submission?.maxScore
+            );
 
-          scoresByAssignment[assignmentId] = {
-            ...(Number.isFinite(numericScore) ? { points: numericScore } : {}),
-            ...(Number.isFinite(numericMaxScore) && numericMaxScore > 0
-              ? { maxPoints: numericMaxScore }
-              : {}),
-            feedback: submission?.feedback ?? null,
-          };
-        }
-
+            scoresByAssignment[assignmentId] = {
+              ...(Number.isFinite(numericScore) ? { points: numericScore } : {}),
+              ...(Number.isFinite(numericMaxScore) && numericMaxScore > 0
+                ? { maxPoints: numericMaxScore }
+                : {}),
+              feedback: submission?.feedback ?? null,
+              gameScore: submission?.gameScore,
+              gameTotalQuestions: submission?.gameTotalQuestions,
+              attemptNumber: submission?.attemptNumber,
+            };
+          }
         const mappedFile = mapSubmissionToFile(submission);
         if (mappedFile) {
           filesByAssignment[assignmentId] = [
@@ -1388,7 +1380,6 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
 
   useEffect(() => {
     if (!currentStudent?.studentId || !hasLoadedAssignmentState) return;
-
     void writeStoredAssignmentState(currentStudent.studentId, {
       files: sharedAssignmentFiles,
       statuses: sharedAssignmentStatuses,
@@ -1410,7 +1401,6 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
 
   const handleAddAssignmentComment = (assignmentId: string, content: string) => {
     if (!content.trim()) return;
-
     setSharedAssignmentComments((prev) => ({
       ...prev,
       [assignmentId]: [
@@ -1449,7 +1439,6 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
         ...prev,
         [assignmentId]: status,
       };
-
       void writeStoredAssignmentState(currentStudent.studentId, {
         files: sharedAssignmentFiles,
         statuses: next,
@@ -1482,7 +1471,6 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
     try {
       const response = await apiFetch(`${API_BASE_URL}/community-posts`);
       const data = await response.json();
-
       if (!response.ok) {
         throw new Error(data?.error || 'Failed to load community posts.');
       }
@@ -1497,7 +1485,6 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
   const handleCreateCommunityPost = async (query: string) => {
     const trimmedQuery = query.trim();
     if (!trimmedQuery) return;
-
     try {
       const response = await apiFetch(`${API_BASE_URL}/community-posts`, {
         method: 'POST',
@@ -1529,7 +1516,6 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
   const handleAddCommunityAnswer = async (postId: string, message: string) => {
     const trimmedMessage = message.trim();
     if (!trimmedMessage) return;
-
     try {
       const response = await apiFetch(`${API_BASE_URL}/community-posts/${postId}/answers`, {
         method: 'POST',
@@ -1559,7 +1545,6 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
   const handleEditCommunityPost = async (postId: string, content: string) => {
     const trimmedContent = content.trim();
     if (!trimmedContent) return;
-
     try {
       const response = await apiFetch(`${API_BASE_URL}/community-posts/${postId}`, {
         method: 'PUT',
@@ -1584,7 +1569,6 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
       const response = await apiFetch(`${API_BASE_URL}/community-posts/${postId}`, {
         method: 'DELETE',
       });
-
       const data = await response.json();
 
       if (!response.ok) {
@@ -1604,9 +1588,9 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
   ) => {
     const trimmedMessage = message.trim();
     if (!trimmedMessage) return;
-
     try {
-      const response = await apiFetch(`${API_BASE_URL}/community-posts/${postId}/answers/${answerId}`,
+      const response = await apiFetch(
+        `${API_BASE_URL}/community-posts/${postId}/answers/${answerId}`,
         {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
@@ -1628,12 +1612,12 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
 
   const handleDeleteCommunityAnswer = async (postId: string, answerId: string) => {
     try {
-      const response = await apiFetch(`${API_BASE_URL}/community-posts/${postId}/answers/${answerId}`,
+      const response = await apiFetch(
+        `${API_BASE_URL}/community-posts/${postId}/answers/${answerId}`,
         {
           method: 'DELETE',
         }
       );
-
       const data = await response.json();
 
       if (!response.ok) {
@@ -1672,7 +1656,6 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
   ): GenerateActivityData | null => {
     const score = getScorePercent(assignment);
     if (score === null) return null;
-
     const recommendationType: GenerateActivityData['recommendationType'] =
       score < 60 ? 'review' : score < 75 ? 'practice' : 'advanced';
 
@@ -1680,15 +1663,15 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
       recommendationType === 'review'
         ? 'easy'
         : recommendationType === 'practice'
-        ? 'medium'
-        : 'hard';
+          ? 'medium'
+          : 'hard';
 
     const instructions =
       recommendationType === 'review'
         ? 'Review the concept explanation, answer the quick check, and complete the short response to strengthen your foundation.'
         : recommendationType === 'practice'
-        ? 'Complete this guided practice to improve your understanding and become more confident with the topic.'
-        : 'Take on this advanced follow-up activity to deepen your mastery of the topic.';
+          ? 'Complete this guided practice to improve your understanding and become more confident with the topic.'
+          : 'Take on this advanced follow-up activity to deepen your mastery of the topic.';
 
     return {
       courseId: course.id,
@@ -1712,7 +1695,6 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
       setCompletedActivityScores({});
       return;
     }
-
     try {
       const response = await apiFetch(`${API_BASE_URL}/student-activities/completed-scores/${encodeURIComponent(currentStudent.studentId)}`
       );
@@ -1737,7 +1719,6 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
       setStudentNotifications([]);
       return;
     }
-
     try {
       const response = await apiFetch(`${API_BASE_URL}/notifications?userId=${encodeURIComponent(currentStudent.studentId)}&role=student`
       );
@@ -1762,7 +1743,6 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
     });
-
     const data = await response.json();
 
     if (!response.ok) {
@@ -1785,7 +1765,6 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
         role: 'student',
       }),
     });
-
     const data = await response.json();
 
     if (!response.ok) {
@@ -1802,7 +1781,6 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
       loadStudentNotifications(),
       loadCompletedActivityScores(),
     ]);
-
     Alert.alert(
       'Activity Completed',
       `${activity.assignmentTitle} has been marked as done.`
@@ -1816,7 +1794,7 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
 
   const cleanVideoSearchText = (value = '') => {
     return String(value || '')
-      .replace(/[\/]/g, ' ')
+      .replace(/\//g, ' ')
       .replace(/[^a-zA-Z0-9\s+#.()-]/g, ' ')
       .replace(/\s+/g, ' ')
       .trim();
@@ -1824,7 +1802,6 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
 
   const getRotatingIndex = (length: number, salt = 0) => {
     if (length <= 0) return 0;
-
     const today = new Date();
     const daySeed = Math.floor(
       new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime() /
@@ -1840,7 +1817,6 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
         course.assignments
           .map((assignment) => {
             const score = getScorePercent(assignment);
-
             if (score === null || score >= 75) return null;
 
             const completedSupportActivity = completedActivityScores[assignment.id];
@@ -1877,12 +1853,12 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
           .filter(Boolean)
       )
       .sort((a: any, b: any) => (a.score ?? 100) - (b.score ?? 100)) as Array<{
-      type: 'weak';
-      primaryTopic: string;
-      score: number;
-      query: string;
-      reason: string;
-    }>;
+        type: 'weak';
+        primaryTopic: string;
+        score: number;
+        query: string;
+        reason: string;
+      }>;
 
     const courseRecommendations = joinedAssignmentCourses
       .map((course, courseIndex) => {
@@ -1904,16 +1880,13 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
         };
       })
       .filter(Boolean) as Array<{
-      type: 'course';
-      primaryTopic: string;
-      query: string;
-      reason: string;
-    }>;
+        type: 'course';
+        primaryTopic: string;
+        query: string;
+        reason: string;
+      }>;
 
     if (weakRecommendations.length > 0) {
-      // Always prioritize the exact weak related material shown on the Dashboard.
-      // Example: if Dashboard shows "Major Environmental Hazards to Human Health",
-      // Videos must search that same topic, not the course name.
       const selectedWeak = weakRecommendations[0];
 
       return {
@@ -1960,7 +1933,6 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
     if (activeScreen !== screen) {
       setLastScreen(activeScreen);
     }
-
     if (screen === 'assignments') {
       setSelectedCourseIdForAssignments(null);
     }
@@ -2020,7 +1992,6 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
 
   const findFreshCourseForActivity = (course: any): CourseDetailData => {
     const courseId = String(course?.id || '');
-
     const fromJoined = joinedCourses.find((item) => item.id === courseId);
     if (fromJoined) return normalizeCourseForActivity(fromJoined);
 
@@ -2046,7 +2017,6 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
   }): GenerateActivityData => {
     const recommendationType: GenerateActivityData['recommendationType'] =
       score < 60 ? 'review' : 'practice';
-
     const difficulty: GenerateActivityData['difficulty'] =
       recommendationType === 'review' ? 'easy' : 'medium';
 
@@ -2079,7 +2049,6 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
     assignment: DashboardAssignment | CourseAssignment | AssignmentItem
   ) => {
     if (isGeneratingActivity) return;
-
     const normalizedCourse = findFreshCourseForActivity(course);
     const score = getScorePercent(assignment);
 
@@ -2192,6 +2161,44 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
     }
   };
 
+  // 👇 UPDATED: Handle playing game-based assignments
+  const handlePlayGame = async (assignment: any) => {
+    if (isFetchingGame) return;
+    setIsFetchingGame(true);
+    
+    try {
+      const response = await apiFetch(`${API_BASE_URL}/game-ai/get-game-questions/${assignment.id}`);
+      const data = await response.json();
+      
+      if (!response.ok) throw new Error(data?.error || 'Failed to load game.');
+      
+      const questions = (data.questions || []).map((q: any, idx: number) => ({
+        id: q.id || `q-${idx}`,
+        question: q.question,
+        options: q.options,
+        answer: q.answer,
+        correctIndex: q.options ? q.options.indexOf(q.answer) : 0,
+      }));
+
+      setGameAssignmentData({
+        assignmentId: assignment.id,
+        assignmentTitle: assignment.title || assignment.header || 'Game Assignment',
+        gameType: data.gameType || assignment.gameType || 'quiz_master',
+        questions: questions,
+        timeLimit: data.timeLimit || assignment.timeLimit || null,
+        customTimeLimit: data.customTimeLimit || assignment.customTimeLimit || null, // 🌟 ADD THIS LINE
+        numberOfAttempts: data.numberOfAttempts || assignment.numberOfAttempts || '1',
+      });
+      
+      setLastScreen(activeScreen);
+      setActiveScreen('gamebasedassignment'); 
+    } catch (error: any) {
+      Alert.alert('Game Error', error?.message || 'Unable to start the game.');
+    } finally {
+      setIsFetchingGame(false);
+    }
+  };
+
   const renderScreen = () => {
     switch (activeScreen) {
       case 'profile':
@@ -2212,7 +2219,6 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
             onChangeBannerImage={handleChangeBannerImage}
           />
         );
-
       case 'home':
         return (
           <Dashboard
@@ -2287,37 +2293,36 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
         );
 
       case 'game':
-  return (
-    <Game
-      enrolledCourses={joinedCourses.map(course => ({
-        id: course.id,
-        name: course.name,
-        materials: course.materials.map(m => ({ id: m.id, title: m.title, type: m.type })),
-      }))}
-      studentId={currentStudent.studentId}
-      onSaveQuizScore={async ({ classId, materialIds, score, totalQuestions, answers }) => {
-        try {
-          const response = await apiFetch(`${API_BASE_URL}/game-ai/save-quiz-score`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              classId,
-              materialIds,
-              score,
-              totalQuestions,
-              answers,
-            }),
-          });
-          if (!response.ok) throw new Error('Failed to save score');
-          await loadCompletedActivityScores();
-        } catch (err) {
-          console.error('Save quiz score error', err);
-          Alert.alert('Error', 'Could not save your quiz score.');
-        }
-      }}
-    />
-  );
-
+        return (
+          <Game
+            enrolledCourses={joinedCourses.map(course => ({
+              id: course.id,
+              name: course.name,
+              materials: course.materials.map(m => ({ id: m.id, title: m.title, type: m.type })),
+            }))}
+            studentId={currentStudent.studentId}
+            onSaveQuizScore={async ({ classId, materialIds, score, totalQuestions, answers }) => {
+              try {
+                const response = await apiFetch(`${API_BASE_URL}/game-ai/save-quiz-score`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    classId,
+                    materialIds,
+                    score,
+                    totalQuestions,
+                    answers,
+                  }),
+                });
+                if (!response.ok) throw new Error('Failed to save score');
+                await loadCompletedActivityScores();
+              } catch (err) {
+                console.error('Save quiz score error', err);
+                Alert.alert('Error', 'Could not save your quiz score.');
+              }
+            }}
+          />
+        );
       case 'flipit':
         return <FlipIt onBack={exitFullscreenGameToGames} />;
 
@@ -2332,20 +2337,70 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
           />
         );
 
+       
+
+      case 'gamebasedassignment':
+        return (
+          <GameBasedAssignment
+  assignmentTitle={gameAssignmentData?.assignmentTitle || 'Game'}
+  questions={gameAssignmentData?.questions || []}
+  gameType={gameAssignmentData?.gameType || 'quiz_master'}
+  // 🌟 Pass time limit in MINUTES
+  timeLimitMinutes={
+    gameAssignmentData?.timeLimit === 'unlimited' 
+      ? null 
+      : gameAssignmentData?.timeLimit === 'custom'
+        ? Number(gameAssignmentData?.customTimeLimit) || null
+        : Number(gameAssignmentData?.timeLimit) || null
+  }
+  onBack={() => setActiveScreen(lastScreen)}
+  onComplete={async (score, totalQuestions) => {
+              try {
+                const response = await apiFetch(`${API_BASE_URL}/game-ai/submit-game-assignment`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    assignmentId: gameAssignmentData?.assignmentId,
+                    score,
+                    totalQuestions,
+                  }),
+                });
+                
+                if (response.ok) {
+                  const data = await response.json();
+                  const attemptMsg = data.attemptNumber > 1 ? ` (Attempt ${data.attemptNumber} - Best score kept!)` : '';
+                  Alert.alert('Game Completed', `You scored ${score} out of ${totalQuestions}! Your assignment has been automatically graded.${attemptMsg}`);
+                } else {
+                  Alert.alert('Game Completed', `You scored ${score} out of ${totalQuestions}!`);
+                  const data = await response.json();
+                  console.warn('Game submission warning:', data?.error);
+                }
+              } catch (e: any) {
+                Alert.alert('Game Completed', `You scored ${score} out of ${totalQuestions}!`);
+                console.error('Game submission error:', e);
+              }
+              
+              // 🌟 Refresh submissions so the graded status shows up immediately in the UI
+              await loadStudentSubmissionState();
+              setActiveScreen(lastScreen);
+            }}
+          />
+        );
+
       case 'videos':
         return (
           <Videos
-          onVideoActiveChange={setIsVideoActive}
-          currentUserName={currentUserName}
-          currentUserAvatar={currentUserAvatar}
-          currentUserId={currentStudent.studentId}
-          currentUserRole="student"
-          apiBaseUrl={API_BASE_URL}
-          searchQuery={videoSearchQuery}
-          adaptiveQuery={adaptiveVideoRecommendation.query}
-          adaptiveReason={adaptiveVideoRecommendation.reason}
-          queryRotationKey={adaptiveVideoRecommendation.rotationKey}
-        />
+            onVideoActiveChange={setIsVideoActive}
+            currentUserName={currentUserName}
+            currentUserAvatar={currentUserAvatar}
+            currentUserId={currentStudent.studentId}
+            currentUserRole="student"
+            apiBaseUrl={API_BASE_URL}
+            searchQuery={videoSearchQuery}
+            adaptiveQuery={adaptiveVideoRecommendation.query}
+            adaptiveReason={adaptiveVideoRecommendation.reason}
+            queryRotationKey={adaptiveVideoRecommendation.rotationKey}
+          />
         );
 
       case 'myjourney':
@@ -2385,6 +2440,7 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
             onOpenGeneratedActivity={(course, assignment) =>
               openGeneratedActivity(course as unknown as CourseDetailData, assignment)
             }
+            onPlayGame={handlePlayGame} // 👈 PASSED PROP
           />
         );
 
@@ -2446,6 +2502,7 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
             onGenerateActivity={(assignment) =>
               openGeneratedActivity(selectedAssignmentCourse as unknown as CourseDetailData, assignment)
             }
+            onPlayGame={handlePlayGame} // 👈 PASSED PROP
           />
         );
 
@@ -2477,7 +2534,6 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
         backgroundColor={isFullscreenScreen ? 'transparent' : '#fff'}
         barStyle="dark-content"
       />
-
       <SafeAreaView
         style={[
           styles.safeArea,
@@ -2669,42 +2725,34 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#fff',
   },
-
   safeAreaFullscreen: {
     backgroundColor: '#000',
   },
-
   safeAreaMobileFullscreen: {
     backgroundColor: '#fff',
   },
-
   headerLayer: {
     position: 'relative',
     zIndex: 1000,
     elevation: 1000,
   },
-
   contentLayer: {
     flex: 1,
     flexDirection: 'row',
     position: 'relative',
     zIndex: 1,
   },
-
   contentLayerFullscreen: {
     flexDirection: 'column',
   },
-
   contentLayerMobileFullscreen: {
     flexDirection: 'column',
   },
-
   notificationBackdrop: {
     ...StyleSheet.absoluteFillObject,
     zIndex: 3999,
     elevation: 3999,
   },
-
   notificationPopover: {
     position: 'absolute',
     top: 72,
@@ -2712,19 +2760,16 @@ const styles = StyleSheet.create({
     zIndex: 4000,
     elevation: 4000,
   },
-
   mobileDrawerPortal: {
     ...StyleSheet.absoluteFillObject,
     zIndex: 5000,
     elevation: 5000,
     flexDirection: 'row',
   },
-
   mobileBackdrop: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(0,0,0,0.5)',
   },
-
   mobileOverlay: {
     width: 250,
     height: '100%',
@@ -2732,7 +2777,6 @@ const styles = StyleSheet.create({
     zIndex: 5001,
     elevation: 5001,
   },
-
   floatingChatBtn: {
     position: 'absolute',
     bottom: 12,
@@ -2748,30 +2792,25 @@ const styles = StyleSheet.create({
     borderRadius: 28,
     paddingHorizontal: 16,
   },
-
   floatingChatBtnSmall: {
     width: 56,
     height: 56,
     borderRadius: 28,
   },
-
   chatBtnImage: {
     width: 22,
     height: 22,
     resizeMode: 'contain',
     tintColor: '#FFFFFF',
   },
-
   chatBtnLabel: {
     fontSize: 12,
     fontWeight: '600',
     color: '#FFF',
   },
-
   chatClose: {
     fontSize: 20,
   },
-
   generatingOverlay: {
     ...StyleSheet.absoluteFillObject,
     zIndex: 9000,
@@ -2781,7 +2820,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     padding: 24,
   },
-
   generatingCard: {
     width: '100%',
     maxWidth: 360,
@@ -2795,7 +2833,6 @@ const styles = StyleSheet.create({
     shadowRadius: 18,
     elevation: 16,
   },
-
   generatingTitle: {
     marginTop: 14,
     fontSize: 18,
@@ -2803,7 +2840,6 @@ const styles = StyleSheet.create({
     color: '#111',
     textAlign: 'center',
   },
-
   generatingText: {
     marginTop: 8,
     fontSize: 14,
