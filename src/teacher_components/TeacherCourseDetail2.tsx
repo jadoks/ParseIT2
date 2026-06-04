@@ -20,6 +20,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from 'react-native-vector-icons/Ionicons';
+import * as XLSX from "xlsx";
 import TeacherAssignmentSection from './TeacherAssignmentSection';
 import TeacherMaterialSection from './TeacherMaterialSection';
 import TeacherSubmissionsSection from './TeacherSubmissionsSection';
@@ -350,10 +351,24 @@ const TeacherCourseDetail2 = ({
     setCustomTimeLimit(String((item as any).customTimeLimit || ''));
     
     const existingQuestions = (item as any).questions || [];
+
     const mappedQuestions = existingQuestions.map((q: any, index: number) => {
-      const options = q.options && q.options.length === 4 ? q.options : ['', '', '', ''];
+      if ((item as any).gameType === 'memory_match') {
+        return {
+          id: q.id || `existing-${index}`,
+          question: q.question || '',
+          answer: q.answer || '',
+        };
+      }
+
+      const options =
+        q.options && q.options.length === 4
+          ? q.options
+          : ['', '', '', ''];
+
       const answer = q.answer || options[0] || '';
       const correctIndex = options.indexOf(answer);
+
       return {
         ...q,
         id: q.id || `existing-${index}`,
@@ -459,10 +474,159 @@ const TeacherCourseDetail2 = ({
   };
 
   const downloadClassGradesExcel = async () => {
-    if (!course?.id) { showResultModal('error', 'No Class', 'No class selected.'); return; }
-    if (assignments.length === 0) { showResultModal('error', 'No Assignments', 'There are no assignments to export for this class.'); return; }
-    if (members.length === 0) { showResultModal('error', 'No Students', 'There are no students to export for this class.'); return; }
-  };
+  if (!course?.id) {
+    showResultModal("error", "No Class", "No class selected.");
+    return;
+  }
+
+  try {
+    // ===========================
+    // LOAD GAME SCORES
+    // ===========================
+    const gameResponse = await fetch(
+      `${API_BASE_URL}/class-game-scores/${course.id}`,
+      {
+        credentials: "include",
+      }
+    );
+
+    const gameScores = gameResponse.ok
+      ? await gameResponse.json()
+      : [];
+
+    const workbook = XLSX.utils.book_new();
+
+    // ===========================
+    // SHEET 1 - ASSIGNMENT GRADES
+    // ===========================
+
+    const headers = [
+      "Student Name",
+      ...assignments.map((a) => a.header),
+    ];
+
+    const gradeRows = members.map((member) => {
+      const studentSubmissions = submissions.filter(
+        (s) => s.studentId === member.id
+      );
+
+      const scores = assignments.map((assignment) => {
+        const submission = studentSubmissions.find(
+          (s) => s.assignmentId === assignment.id
+        );
+
+        return submission?.status === "graded"
+          ? submission.score
+          : "";
+      });
+
+      return {
+        "Student Name": member.name,
+        ...Object.fromEntries(
+          assignments.map((a, i) => [
+            a.header,
+            scores[i],
+          ])
+        ),
+      };
+    });
+
+    const gradesSheet =
+      XLSX.utils.json_to_sheet(gradeRows);
+
+    XLSX.utils.book_append_sheet(
+      workbook,
+      gradesSheet,
+      "Assignment Grades"
+    );
+
+    // ===========================
+    // SHEET 2 - QUIZ MASTERS
+    // ===========================
+
+    const gameRows = gameScores.map(
+      (game: any, index: number) => ({
+        No: index + 1,
+        "Student ID": game.studentId,
+        "Student Name": game.studentName,
+        Score: game.score,
+        "Total Questions": game.totalQuestions,
+        Percentage: `${game.percent}%`,
+      })
+    );
+
+    const gameSheet =
+      XLSX.utils.json_to_sheet(gameRows);
+
+    XLSX.utils.book_append_sheet(
+      workbook,
+      gameSheet,
+      "Quiz Masters Scores"
+    );
+
+    // ===========================
+    // EXPORT
+    // ===========================
+
+    const wbout = XLSX.write(workbook, {
+      type: "array",
+      bookType: "xlsx",
+    });
+
+    if (Platform.OS === "web") {
+      const blob = new Blob([wbout], {
+        type:
+          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      });
+
+      const url = URL.createObjectURL(blob);
+
+      const link = document.createElement("a");
+
+      link.href = url;
+
+      link.download =
+        `${course.name}_Grades.xlsx`;
+
+      link.click();
+
+      URL.revokeObjectURL(url);
+    } else {
+      const base64 = XLSX.write(workbook, {
+        type: "base64",
+        bookType: "xlsx",
+      });
+
+      const fileUri =
+        `${FileSystem.documentDirectory}${course.name}_Grades.xlsx`;
+
+      await FileSystem.writeAsStringAsync(
+        fileUri,
+        base64,
+        {
+          encoding: FileSystem.EncodingType.Base64,
+        }
+      );
+
+      await Linking.openURL(fileUri);
+    }
+
+    showResultModal(
+      "success",
+      "Export Successful",
+      "Excel exported successfully."
+    );
+  } catch (error: any) {
+    console.error(error);
+
+    showResultModal(
+      "error",
+      "Export Failed",
+      error?.message ||
+        "Failed to export Excel."
+    );
+  }
+};
 
   // 🌟 UPDATED: Auto-calculate Total Score for Game-Based Assignments
   const validateAssignmentForm = () => {
@@ -525,9 +689,22 @@ const TeacherCourseDetail2 = ({
       }
 
       const editableQuestions = questionsArray.map((q: any, index: number) => {
-        const options = q.options && q.options.length === 4 ? q.options : ['', '', '', ''];
+        if (gameType === 'memory_match') {
+          return {
+            id: `gen-${Date.now()}-${index}`,
+            question: q.question || '',
+            answer: q.answer || '',
+          };
+        }
+
+        const options =
+          q.options && q.options.length === 4
+            ? q.options
+            : ['', '', '', ''];
+
         const answer = q.answer || options[0] || '';
         const correctIndex = options.indexOf(answer);
+
         return {
           id: `gen-${Date.now()}-${index}`,
           question: q.question || '',
@@ -571,11 +748,24 @@ const TeacherCourseDetail2 = ({
       }
 
       const newQuestions = questionsArray.map((q: any, index: number) => {
-        const options = q.options && q.options.length === 4 ? q.options : ['', '', '', ''];
+        if (gameType === 'memory_match') {
+          return {
+            id: `gen-${Date.now()}-${index}`,
+            question: q.question || '',
+            answer: q.answer || '',
+          };
+        }
+
+        const options =
+          q.options && q.options.length === 4
+            ? q.options
+            : ['', '', '', ''];
+
         const answer = q.answer || options[0] || '';
         const correctIndex = options.indexOf(answer);
+
         return {
-          id: `gen-more-${Date.now()}-${index}`,
+          id: `gen-${Date.now()}-${index}`,
           question: q.question || '',
           options,
           answer,
@@ -820,52 +1010,46 @@ const TeacherCourseDetail2 = ({
     </View>
   );
 
+  // 🌟 UPDATED: Removed "per Item" logic for Quiz Master. Now displays uniformly as Global Game Time Limit.
   const renderTimeLimitSelector = () => (
-  <View style={styles.sectionBlock}>
-    <Text style={styles.sectionLabel}>
-      {gameType === 'quiz_master' ? 'Time Limit per Item' : 'Time Limit'}
-    </Text>
-    {gameType === 'quiz_master' && (
-      <Text style={styles.helperText}>
-        Each question will have this time limit
-      </Text>
-    )}
-    <View style={{ flexDirection: 'row', gap: 10, marginTop: 8, flexWrap: 'wrap' }}>
-      {['5', '10', '15', '30', '60', 'custom', 'unlimited'].map((val) => (
-        <TouchableOpacity 
-          key={val} 
-          style={[styles.timeChip, timeLimit === val && styles.timeChipActive]} 
-          onPress={() => {
-            setTimeLimit(val); 
-            if (val !== 'custom') setCustomTimeLimit('');
-            if (errors.timeLimit) setErrors((prev) => ({ ...prev, timeLimit: undefined }));
+    <View style={styles.sectionBlock}>
+      <Text style={styles.sectionLabel}>Time Limit</Text>
+      <View style={{ flexDirection: 'row', gap: 10, marginTop: 8, flexWrap: 'wrap' }}>
+        {['5', '10', '15', '30', '60', 'custom', 'unlimited'].map((val) => (
+          <TouchableOpacity 
+            key={val} 
+            style={[styles.timeChip, timeLimit === val && styles.timeChipActive]} 
+            onPress={() => {
+              setTimeLimit(val); 
+              if (val !== 'custom') setCustomTimeLimit('');
+              if (errors.timeLimit) setErrors((prev) => ({ ...prev, timeLimit: undefined }));
+              if (errors.customTimeLimit) setErrors((prev) => ({ ...prev, customTimeLimit: undefined }));
+            }} 
+            disabled={isSaving}
+          >
+            <Text style={[styles.timeChipText, timeLimit === val && styles.timeChipTextActive]}>
+              {val === 'custom' ? 'Custom' : val === 'unlimited' ? 'Unlimited' : `${val} mins`}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+      {timeLimit === 'custom' && (
+        <TextInput 
+          style={[styles.inputBox, { marginTop: 10 }, errors.customTimeLimit ? styles.errorBorder : null]} 
+          value={customTimeLimit} 
+          onChangeText={(val) => {
+            setCustomTimeLimit(val.replace(/[^0-9]/g, '')); 
             if (errors.customTimeLimit) setErrors((prev) => ({ ...prev, customTimeLimit: undefined }));
           }} 
-          disabled={isSaving}
-        >
-          <Text style={[styles.timeChipText, timeLimit === val && styles.timeChipTextActive]}>
-            {val === 'custom' ? 'Custom' : val === 'unlimited' ? 'Unlimited' : `${val} mins`}
-          </Text>
-        </TouchableOpacity>
-      ))}
+          keyboardType="numeric" 
+          placeholder="Enter minutes (e.g., 45)" 
+          placeholderTextColor="#999" 
+          editable={!isSaving} 
+        />
+      )}
+      {renderInputError(errors.timeLimit || errors.customTimeLimit)}
     </View>
-    {timeLimit === 'custom' && (
-      <TextInput 
-        style={[styles.inputBox, { marginTop: 10 }, errors.customTimeLimit ? styles.errorBorder : null]} 
-        value={customTimeLimit} 
-        onChangeText={(val) => {
-          setCustomTimeLimit(val.replace(/[^0-9]/g, '')); 
-          if (errors.customTimeLimit) setErrors((prev) => ({ ...prev, customTimeLimit: undefined }));
-        }} 
-        keyboardType="numeric" 
-        placeholder="Enter minutes (e.g., 45)" 
-        placeholderTextColor="#999" 
-        editable={!isSaving} 
-      />
-    )}
-    {renderInputError(errors.timeLimit || errors.customTimeLimit)}
-  </View>
-);
+  );
 
   const renderAssignmentFields = () => (
     <View style={[styles.formGrid, !isMobile && styles.formGridDesktop]}>
@@ -1052,17 +1236,27 @@ const TeacherCourseDetail2 = ({
         return (
           <View key={q.id} style={styles.generatedQuestionBlock}>
             {renderHeader(`Pair ${qIndex + 1}`)}
-            
+
             <Text style={styles.sectionLabel}>Term</Text>
-            <TextInput 
-              style={styles.inputBox} 
-              value={q.question} 
-              onChangeText={(val) => updateGeneratedQuestion(qIndex, 'question', val)} 
-              placeholder="Enter the term" 
+            <TextInput
+              style={styles.inputBox}
+              value={q.question}
+              onChangeText={(val) =>
+                updateGeneratedQuestion(qIndex, 'question', val)
+              }
+              placeholder="HTML"
             />
-            
-            <Text style={styles.sectionLabel}>Definitions (Select Correct or Wrong)</Text>
-            {q.options.map((opt: string, oIndex: number) => renderOptionWithDropdown(opt, oIndex, 'Definition'))}
+
+            <Text style={styles.sectionLabel}>Definition</Text>
+            <TextInput
+              style={styles.inputBox}
+              value={q.answer}
+              onChangeText={(val) =>
+                updateGeneratedQuestion(qIndex, 'answer', val)
+              }
+              placeholder="HyperText Markup Language"
+              multiline
+            />
           </View>
         );
 
@@ -1440,11 +1634,9 @@ const TeacherCourseDetail2 = ({
                 if (gameType === 'fill_in_blanks' || gameType === 'flashcard') {
                   hasInvalid = generatedQuestions.some(q => !q.question.trim() || !q.answer.trim());
                 } else if (gameType === 'memory_match') {
-                  hasInvalid = generatedQuestions.some(q => 
-                    !q.question.trim() || 
-                    q.correctIndex === undefined || 
-                    q.correctIndex === -1 || 
-                    !q.options[q.correctIndex]?.trim()
+                  hasInvalid = generatedQuestions.some(q =>
+                    !q.question?.trim() ||
+                    !q.answer?.trim()
                   );
                 } else {
                   hasInvalid = generatedQuestions.some(q => 
@@ -1456,7 +1648,13 @@ const TeacherCourseDetail2 = ({
                 }
 
                 if (hasInvalid) {
-                  showResultModal('error', 'Invalid Questions', 'Please ensure all items have text and a correct option is selected.');
+                  showResultModal(
+                    'error',
+                    'Invalid Questions',
+                    gameType === 'memory_match'
+                      ? 'Please ensure every term and definition has text.'
+                      : 'Please ensure all items have text and a correct option is selected.'
+                  );
                   return;
                 }
                 setShowGeneratedPreview(false);

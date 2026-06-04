@@ -17,8 +17,9 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
+
 /* =========================
-TYPES
+   TYPES
 ========================= */
 export interface AssignmentComment {
   id: string;
@@ -27,6 +28,7 @@ export interface AssignmentComment {
   timestamp: string;
   isInstructor: boolean;
 }
+
 export interface AssignmentFileUpload {
   id: string;
   fileName: string;
@@ -41,6 +43,7 @@ export interface AssignmentFileUpload {
   isSubmitted?: boolean;
   source?: 'student' | 'teacher';
 }
+
 export interface AssignmentMaterial {
   id: string;
   title: string;
@@ -52,6 +55,7 @@ export interface AssignmentMaterial {
   fileUri?: string;
   fileType?: string;
 }
+
 export interface AssignmentItem {
   id: string;
   title: string;
@@ -76,6 +80,7 @@ export interface AssignmentItem {
   customAttempts?: string | null;
   attemptNumber?: number;
 }
+
 export interface AssignmentCourse {
   id: string;
   name: string;
@@ -88,6 +93,7 @@ export interface AssignmentCourse {
   materials: AssignmentMaterial[];
   assignments: AssignmentItem[];
 }
+
 type CurrentStudent = {
   studentId: string;
   authUid?: string | null;
@@ -95,6 +101,7 @@ type CurrentStudent = {
   lastName?: string;
   email?: string;
 };
+
 function getApiBaseUrl() {
   if (Platform.OS === 'web') return 'http://localhost:5000';
   const possibleHost =
@@ -105,18 +112,22 @@ function getApiBaseUrl() {
   if (host) return `http://${host}:5000`;
   return 'http://192.168.1.5:5000';
 }
+
 const API_BASE_URL = getApiBaseUrl();
+
 const apiFetch = (url: string, options: any = {}) =>
   fetch(url, {
     credentials: 'include',
     ...options,
   });
+
 const getDisplayFileSize = (bytes?: number | null) => {
   if (!bytes || !Number.isFinite(bytes)) return 'Uploaded file';
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 };
+
 async function readPickedFileBase64(asset: any): Promise<string | null> {
   if (Platform.OS === 'web') {
     if (asset?.base64) return asset.base64;
@@ -143,6 +154,7 @@ async function readPickedFileBase64(asset: any): Promise<string | null> {
   }
   return null;
 }
+
 interface FlattenedAssignment extends AssignmentItem {
   courseId: string;
   courseName: string;
@@ -154,9 +166,12 @@ interface FlattenedAssignment extends AssignmentItem {
   courseDescription: string;
   materials: AssignmentMaterial[];
 }
+
+// 👇 UPDATED INTERFACE TO INCLUDE SEARCH QUERY
 interface AssignmentsProps {
   courses: AssignmentCourse[];
   selectedCourseId?: string | null;
+  searchQuery?: string; // 👈 ADDED
   assignmentComments: Record<string, AssignmentComment[]>;
   assignmentFiles: Record<string, AssignmentFileUpload[]>;
   onAddComment: (assignmentId: string, content: string) => void;
@@ -177,12 +192,15 @@ interface AssignmentsProps {
   >;
   onPlayGame?: (assignment: AssignmentItem) => void;
 }
+
 type FilterType = 'all' | 'pending' | 'submitted' | 'graded';
+
 const Assignments = ({
   courses,
   selectedCourseId = null,
   assignmentComments,
   assignmentFiles,
+  searchQuery = '', // 👈 DEFAULT VALUE
   onAddComment,
   onAddFile,
   onRemoveFile,
@@ -198,18 +216,23 @@ const Assignments = ({
   const isLargeScreen = width >= 768;
   const isSmallScreen = width < 480;
   const modalWidth = isLargeScreen ? '72%' : isSmallScreen ? '92%' : '88%';
+
   const [filter, setFilter] = useState<FilterType>('all');
   const [selectedAssignment, setSelectedAssignment] = useState<FlattenedAssignment | null>(null);
   const [newComment, setNewComment] = useState('');
   const [submissionLink, setSubmissionLink] = useState('');
   const [isUploadingFile, setIsUploadingFile] = useState(false);
   const [isSubmittingAssignment, setIsSubmittingAssignment] = useState(false);
+
+  // Game Attempt States
   const [gameAttempts, setGameAttempts] = useState<Record<string, number>>({});
   const [isLoadingAttempts, setIsLoadingAttempts] = useState<Record<string, boolean>>({});
+
   const sourceCourses = useMemo(() => {
     if (!selectedCourseId) return courses;
     return courses.filter((c) => c.id === selectedCourseId);
   }, [courses, selectedCourseId]);
+
   const allAssignments = useMemo<FlattenedAssignment[]>(() => {
     return sourceCourses.flatMap((course) =>
       course.assignments.map((assignment) => ({
@@ -226,8 +249,29 @@ const Assignments = ({
       }))
     );
   }, [sourceCourses]);
-  const filteredAssignments =
-    filter === 'all' ? allAssignments : allAssignments.filter((a) => a.status === filter);
+
+  // 👇 STEP 1: FILTER BY STATUS TAB FIRST
+  const statusFilteredAssignments = useMemo(() => {
+    return filter === 'all'
+      ? allAssignments
+      : allAssignments.filter((a) => a.status === filter);
+  }, [filter, allAssignments]);
+
+  // 👇 STEP 2: APPLY TEXT SEARCH ON TOP OF STATUS FILTER
+const searchedAndFilteredAssignments = useMemo(() => {
+  const trimmedQuery = searchQuery.trim();
+  if (!trimmedQuery) return statusFilteredAssignments;
+  
+  const lowerQuery = trimmedQuery.toLowerCase();
+
+  return statusFilteredAssignments.filter((a) => 
+    a.title.toLowerCase().startsWith(lowerQuery) ||
+    a.courseName.toLowerCase().startsWith(lowerQuery) ||
+    a.instructor.toLowerCase().startsWith(lowerQuery) ||
+    (a.description && a.description.toLowerCase().startsWith(lowerQuery))
+  );
+}, [searchQuery, statusFilteredAssignments]);
+
   const getScorePercent = (assignment: AssignmentItem) => {
     if (
       assignment.status !== 'graded' ||
@@ -239,6 +283,7 @@ const Assignments = ({
     }
     return Math.round((assignment.points / assignment.maxPoints) * 100);
   };
+
   const getRecommendationType = (assignment: AssignmentItem): 'review' | 'practice' | null => {
     const percent = getScorePercent(assignment);
     if (percent === null) return null;
@@ -246,18 +291,21 @@ const Assignments = ({
     if (percent < 75) return 'practice';
     return null;
   };
+
   const getRecommendationLabel = (assignment: AssignmentItem) => {
     const recommendation = getRecommendationType(assignment);
     if (recommendation === 'review') return 'Review Activity';
     if (recommendation === 'practice') return 'Practice Quiz';
     return null;
   };
+
   const getRecommendationColor = (assignment: AssignmentItem) => {
     const recommendation = getRecommendationType(assignment);
     if (recommendation === 'review') return '#D32F2F';
     if (recommendation === 'practice') return '#F57C00';
     return '#999';
   };
+
   const getStatusColor = (status: AssignmentItem['status']) => {
     switch (status) {
       case 'pending': return '#FFE082';
@@ -266,6 +314,7 @@ const Assignments = ({
       default: return '#DDD';
     }
   };
+
   const getStatusTextColor = (status: AssignmentItem['status']) => {
     switch (status) {
       case 'pending': return '#7A5600';
@@ -274,10 +323,12 @@ const Assignments = ({
       default: return '#555';
     }
   };
+
   const getRelatedMaterials = (assignment: FlattenedAssignment) => {
     if (!assignment.materialIds?.length) return [];
     return assignment.materials.filter((m) => assignment.materialIds?.includes(m.id));
   };
+
   const hasMasteredGeneratedActivity = (assignment: AssignmentItem) => {
     const activityScore = completedActivityScores[assignment.id];
     return (
@@ -286,6 +337,7 @@ const Assignments = ({
       activityScore.scorePercent >= 75
     );
   };
+
   const canGenerateActivity = (assignment: FlattenedAssignment) => {
     return (
       !!getRecommendationType(assignment) &&
@@ -293,6 +345,7 @@ const Assignments = ({
       !hasMasteredGeneratedActivity(assignment)
     );
   };
+
   const handleOpenGeneratedActivity = (assignment: FlattenedAssignment) => {
     if (isGeneratingActivity) return;
     const relatedMaterials = getRelatedMaterials(assignment);
@@ -312,11 +365,13 @@ const Assignments = ({
       } as any);
     }
   };
+
   const handleAddComment = () => {
     if (!selectedAssignment || !newComment.trim()) return;
     onAddComment(selectedAssignment.id, newComment);
     setNewComment('');
   };
+
   const handleFileUpload = async () => {
     if (!selectedAssignment) return;
     if (!selectedAssignment.courseId) {
@@ -336,6 +391,7 @@ const Assignments = ({
         if (!fileBase64) {
           throw new Error('Unable to read selected file.');
         }
+
         const uploadResponse = await apiFetch(`${API_BASE_URL}/upload-class-file`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -347,10 +403,12 @@ const Assignments = ({
             kind: 'submission',
           }),
         });
+
         const uploadData = await uploadResponse.json();
         if (!uploadResponse.ok) {
           throw new Error(uploadData?.error || 'Failed to upload file.');
         }
+
         onAddFile(selectedAssignment.id, {
           id: `f${Date.now()}`,
           fileName: uploadData?.data?.fileName || file.name || 'file',
@@ -371,11 +429,13 @@ const Assignments = ({
       setIsUploadingFile(false);
     }
   };
+
   const normalizeSubmissionLink = (value: string) => {
     const trimmed = String(value || '').trim();
     if (!trimmed) return '';
     return /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
   };
+
   const handleAddLinkSubmission = () => {
     if (!selectedAssignment) return;
     const linkUrl = normalizeSubmissionLink(submissionLink);
@@ -395,18 +455,22 @@ const Assignments = ({
     });
     setSubmissionLink('');
   };
+
   const isAssignmentSubmitted = (assignment?: AssignmentItem | null) => {
     return assignment?.status === 'submitted' || assignment?.status === 'graded';
   };
+
   const isAssignmentGraded = (assignment?: AssignmentItem | null) => {
     return assignment?.status === 'graded';
   };
+
   const getSubmittedFiles = (assignment?: AssignmentItem | null) => {
     if (!assignment) return [];
     return (assignmentFiles[assignment.id] || []).filter(
       (file) => file.source !== 'teacher'
     );
   };
+
   const getTeacherAssignmentFiles = (assignment?: AssignmentItem | null) => {
     if (!assignment) return [];
     const mappedFiles = (assignment.files || []).map((file: any, index) => ({
@@ -418,6 +482,7 @@ const Assignments = ({
       fileType: file.fileType,
       source: 'teacher' as const,
     }));
+
     const topLevelUrl = getAssignmentFileUrl(assignment);
     if (topLevelUrl) {
       const alreadyIncluded = mappedFiles.some((file) => file.fileUrl === topLevelUrl);
@@ -435,6 +500,7 @@ const Assignments = ({
     }
     return mappedFiles;
   };
+
   const getAssignmentFileUrl = (assignment?: AssignmentItem | null) => {
     const raw =
       assignment?.fileUrl ||
@@ -446,6 +512,7 @@ const Assignments = ({
     const trimmed = raw.trim();
     return trimmed || null;
   };
+
   const getAssignmentFileName = (assignment?: AssignmentItem | null) => {
     return (
       assignment?.fileName ||
@@ -454,6 +521,7 @@ const Assignments = ({
       'Assignment attachment'
     );
   };
+
   const handleOpenUploadedFile = async (
     fileUri?: string | null,
     emptyMessage = 'This file has no URL yet.'
@@ -471,11 +539,13 @@ const Assignments = ({
       Alert.alert('Open Failed', 'Unable to open this file.');
     }
   };
+
   const syncSelectedAssignmentStatus = (status: AssignmentItem['status']) => {
     if (!selectedAssignment) return;
     setSelectedAssignment((prev) => (prev ? { ...prev, status } : prev));
     onUpdateAssignmentStatus?.(selectedAssignment.id, status);
   };
+
   const handleSubmitAssignment = async () => {
     if (!selectedAssignment) return;
     if (isAssignmentSubmitted(selectedAssignment)) {
@@ -485,16 +555,19 @@ const Assignments = ({
       Alert.alert('Missing student', 'Student account information is missing. Please sign in again.');
       return;
     }
+
     const files = assignmentFiles[selectedAssignment.id] || [];
     if (files.length === 0) {
       Alert.alert('No files', 'Please upload at least one file before submitting.');
       return;
     }
+
     const file = files[0];
     if (!file.fileUrl) {
       Alert.alert('Upload still needed', 'Please re-upload the file before submitting.');
       return;
     }
+
     try {
       setIsSubmittingAssignment(true);
       const studentName = `${currentStudent.firstName || ''} ${currentStudent.lastName || ''}`.trim();
@@ -517,10 +590,12 @@ const Assignments = ({
           feedback: null,
         }),
       });
+
       const data = await response.json();
       if (!response.ok) {
         throw new Error(data?.error || 'Failed to submit assignment.');
       }
+
       syncSelectedAssignmentStatus('submitted');
       await onRefreshSubmissions?.();
       Alert.alert('Submitted', 'Your assignment was submitted successfully.');
@@ -530,6 +605,7 @@ const Assignments = ({
       setIsSubmittingAssignment(false);
     }
   };
+
   const handleUnsubmitAssignment = async () => {
     if (!selectedAssignment) return;
     if (selectedAssignment.status === 'graded') {
@@ -540,6 +616,7 @@ const Assignments = ({
       Alert.alert('Missing student', 'Student account information is missing. Please sign in again.');
       return;
     }
+
     try {
       setIsSubmittingAssignment(true);
       const response = await apiFetch(`${API_BASE_URL}/unsubmit-assignment`, {
@@ -552,10 +629,12 @@ const Assignments = ({
           studentUid: currentStudent.authUid || null,
         }),
       });
+
       const data = await response.json();
       if (!response.ok) {
         throw new Error(data?.error || 'Failed to unsubmit assignment.');
       }
+
       syncSelectedAssignmentStatus('pending');
       await onRefreshSubmissions?.();
       Alert.alert('Unsubmitted', 'Your file is still attached. You can edit it and submit again.');
@@ -565,10 +644,12 @@ const Assignments = ({
       setIsSubmittingAssignment(false);
     }
   };
+
   const closeModal = () => {
     setSelectedAssignment(null);
     setNewComment('');
   };
+
   // Fetch game attempts for an assignment
   const fetchGameAttempts = async (assignmentId: string) => {
     if (!currentStudent?.studentId) return;
@@ -590,23 +671,25 @@ const Assignments = ({
       setIsLoadingAttempts((prev) => ({ ...prev, [assignmentId]: false }));
     }
   };
+
   const getRemainingAttempts = (assignment: AssignmentItem) => {
     const attemptsUsed = gameAttempts[assignment.id] || 0;
-    const maxAttempts = assignment.numberOfAttempts === 'unlimited' 
-      ? Infinity 
+    const maxAttempts = assignment.numberOfAttempts === 'unlimited'
+      ? Infinity
       : parseInt(assignment.numberOfAttempts || '1');
     return maxAttempts - attemptsUsed;
   };
+
   const canPlayGame = (assignment: AssignmentItem) => {
     const remaining = getRemainingAttempts(assignment);
     return remaining > 0;
   };
+
   const handlePlayGameWithAttemptCheck = async (assignment: AssignmentItem) => {
     if (!canPlayGame(assignment)) {
-      const remaining = getRemainingAttempts(assignment);
       Alert.alert(
         'No Attempts Remaining',
-        `You have used all your attempts for this game-based assignment.${remaining < 0 ? ` You have ${Math.abs(remaining)} extra attempt(s).` : ''}`
+        'You have used all your attempts for this game-based assignment.'
       );
       return;
     }
@@ -614,10 +697,12 @@ const Assignments = ({
       onPlayGame(assignment);
     }
   };
+
   const renderAssignmentItem = ({ item }: { item: FlattenedAssignment }) => {
     const percent = getScorePercent(item);
     const recommendationLabel = getRecommendationLabel(item);
     const relatedMaterials = getRelatedMaterials(item);
+
     return (
       <TouchableOpacity
         style={styles.assignmentCard}
@@ -694,6 +779,7 @@ const Assignments = ({
       </TouchableOpacity>
     );
   };
+
   return (
     <ScrollView
       style={styles.container}
@@ -720,14 +806,32 @@ const Assignments = ({
           </TouchableOpacity>
         ))}
       </View>
+
+      {/* 👇 STEP 3: USE THE COMBINED FILTERED DATA SOURCE */}
       <FlatList
-        data={filteredAssignments}
+        data={searchedAndFilteredAssignments}
         renderItem={renderAssignmentItem}
         keyExtractor={(item) => item.id}
         scrollEnabled={false}
         ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
-        ListEmptyComponent={<Text style={styles.emptyText}>No assignments found.</Text>}
-      />
+        ListEmptyComponent={
+  <View style={{ alignItems: 'center', justifyContent: 'center', paddingVertical: 40 }}>
+    {/* You might need to import MaterialCommunityIcons if not already imported */}
+    {/* <MaterialCommunityIcons name="magnify" size={48} color="#CCC" /> */}
+    <Text style={[styles.emptyText, { fontSize: 16, fontWeight: '700', color: '#333' }]}>
+      {searchQuery.trim()
+        ? `No assignments start with "${searchQuery}"`
+        : 'No assignments found.'}
+    </Text>
+    <Text style={[styles.emptyText, { fontSize: 14, marginTop: 8 }]}>
+      {searchQuery.trim()
+        ? 'Try typing the beginning of the assignment or class name.'
+        : ''}
+    </Text>
+  </View>
+}
+/>
+      
       <Modal visible={!!selectedAssignment} animationType="slide" transparent onRequestClose={closeModal}>
         <View style={styles.modalOverlay}>
           <View style={[styles.modalWrapper, { width: modalWidth }, !isLargeScreen && styles.modalWrapperMobile]}>
@@ -799,13 +903,14 @@ const Assignments = ({
                             </Text>
                           </View>
                         )}
+                        {/* 🌟 UPDATED: Show Max Attempts in Info Block */}
                         {selectedAssignment.assignmentType === 'game_based' && selectedAssignment.numberOfAttempts && (
                           <View style={styles.infoMetaRow}>
-                            <Text style={styles.infoMetaLabel}>Attempts</Text>
+                            <Text style={styles.infoMetaLabel}>Max Attempts</Text>
                             <Text style={styles.infoMetaValue}>
                               {selectedAssignment.numberOfAttempts === 'unlimited' 
                                 ? 'Unlimited' 
-                                : `${selectedAssignment.numberOfAttempts} max`}
+                                : selectedAssignment.numberOfAttempts}
                             </Text>
                           </View>
                         )}
@@ -838,13 +943,14 @@ const Assignments = ({
                         </View>
                       )}
                     </View>
+
                     <View style={styles.section}>
-                      <Text style={styles.sectionTitle}>📄 Assignment File</Text>
+                      <Text style={styles.sectionTitle}>Assignment File</Text>
                       {getTeacherAssignmentFiles(selectedAssignment).length > 0 ? (
                         <View>
                           {getTeacherAssignmentFiles(selectedAssignment).map((file) => (
                             <View key={file.id} style={[styles.attachmentFileCard, !isLargeScreen && styles.fileCardMobile]}>
-                              <Text style={{ fontSize: 22 }}>📎</Text>
+                              <Text style={{ fontSize: 22 }}>📄</Text>
                               <View style={styles.fileInfo}>
                                 <Text style={styles.fileName}>{file.fileName}</Text>
                                 <Text style={styles.fileDetails}>Uploaded by your teacher for this assignment</Text>
@@ -864,7 +970,8 @@ const Assignments = ({
                         <Text style={styles.emptyText}>No assignment file attached.</Text>
                       )}
                     </View>
-                    {/* 👇 GAME BASED ASSIGNMENT BUTTON WITH ATTEMPT CHECK */}
+                    
+                    {/*  GAME BASED ASSIGNMENT BUTTON WITH SIMPLE ATTEMPT LABEL */}
                     {selectedAssignment.assignmentType === 'game_based' && (
                       <View style={styles.section}>
                         <Text style={styles.sectionTitle}>🎮 Game-Based Assignment</Text>
@@ -880,19 +987,15 @@ const Assignments = ({
                           </View>
                         ) : (
                           <>
+                            {/* 🌟 UPDATED: Simple Label Display */}
                             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-                              <Text style={{ fontSize: 13, color: '#666' }}>
-                                Attempts used: {gameAttempts[selectedAssignment.id] || 0}
-                                {selectedAssignment.numberOfAttempts && selectedAssignment.numberOfAttempts !== 'unlimited' 
-                                  ? ` / ${selectedAssignment.numberOfAttempts}`
-                                  : ''}
+                              <Text style={{ fontSize: 13, fontWeight: '600', color: '#333' }}>
+                                {selectedAssignment.numberOfAttempts === 'unlimited' 
+                                  ? 'Attempt: Unlimited'
+                                  : `Attempt: ${getRemainingAttempts(selectedAssignment)}`}
                               </Text>
-                              {selectedAssignment.numberOfAttempts && selectedAssignment.numberOfAttempts !== 'unlimited' && (
-                                <Text style={{ fontSize: 13, fontWeight: '600', color: canPlayGame(selectedAssignment) ? '#4CAF50' : '#F44336' }}>
-                                  {getRemainingAttempts(selectedAssignment)} remaining
-                                </Text>
-                              )}
                             </View>
+
                             <TouchableOpacity
                               style={[
                                 styles.uploadButton, 
@@ -909,6 +1012,7 @@ const Assignments = ({
                         )}
                       </View>
                     )}
+
                     {getRecommendationType(selectedAssignment) && (
                       <View style={styles.section}>
                         <Text style={styles.sectionTitle}>🎯 Follow-Up Activity</Text>
@@ -941,6 +1045,7 @@ const Assignments = ({
                         </TouchableOpacity>
                       </View>
                     )}
+
                     <View style={styles.section}>
                       <Text style={styles.sectionTitle}>📚 Related Materials</Text>
                       {getRelatedMaterials(selectedAssignment).length > 0 ? (
@@ -959,6 +1064,7 @@ const Assignments = ({
                         <Text style={styles.emptyText}>No linked materials.</Text>
                       )}
                     </View>
+
                     <View style={styles.section}>
                       <Text style={styles.sectionTitle}>📤 Your Uploads</Text>
                       {getSubmittedFiles(selectedAssignment).length > 0 ? (
@@ -1000,6 +1106,7 @@ const Assignments = ({
                         const isSubmitted = isAssignmentSubmitted(selectedAssignment);
                         const isGraded = isAssignmentGraded(selectedAssignment);
                         const canEditFiles = !isSubmitted && !isGraded;
+
                         if (isGraded) {
                           return (
                             <View style={styles.uploadActionsRow}>
@@ -1012,6 +1119,7 @@ const Assignments = ({
                             </View>
                           );
                         }
+
                         if (isSubmitted) {
                           return (
                             <View style={styles.uploadActionsRow}>
@@ -1037,6 +1145,7 @@ const Assignments = ({
                             </View>
                           );
                         }
+
                         return (
                           <View style={styles.uploadActionsRow}>
                             {canEditFiles && (
@@ -1102,6 +1211,7 @@ const Assignments = ({
                         );
                       })()}
                     </View>
+
                     <View style={styles.section}>
                       <Text style={styles.sectionTitle}>💬 Comments</Text>
                       {(assignmentComments[selectedAssignment.id] || []).length > 0 ? (
@@ -1159,6 +1269,7 @@ const Assignments = ({
     </ScrollView>
   );
 };
+
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F5F5F5' },
   detailContainer: { padding: 16, paddingBottom: 40, backgroundColor: '#fff', borderRadius: 30 },
@@ -1246,4 +1357,5 @@ const styles = StyleSheet.create({
   sendButtonDisabled: { backgroundColor: '#CCC' },
   sendButtonText: { color: '#FFF', fontWeight: '700', fontSize: 13 },
 });
+
 export default Assignments;

@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
   Image,
   Keyboard,
   LayoutAnimation,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -41,6 +42,28 @@ type ScreenType =
   | 'generateactivity'
   | 'notification';
 
+// 👇 GLOBAL SEARCH CONFIGURATION
+interface SearchFeature {
+  id: string;
+  title: string;
+  screen: ScreenType;
+  icon: string;
+  keywords: string[];
+}
+
+const GLOBAL_SEARCH_FEATURES: SearchFeature[] = [
+  { id: 'home', title: 'Home Dashboard', screen: 'home', icon: 'view-dashboard-outline', keywords: ['home', 'dash', 'main', 'overview'] },
+  { id: 'classes', title: 'My Classes', screen: 'classes', icon: 'google-classroom', keywords: ['class', 'course', 'subject', 'enrolled'] },
+  { id: 'assignments', title: 'Assignments', screen: 'assignments', icon: 'clipboard-text-clock-outline', keywords: ['assign', 'task', 'homework', 'submission', 'ass'] },
+  { id: 'games', title: 'Game Hub', screen: 'game', icon: 'gamepad-variant-outline', keywords: ['game', 'play', 'fun', 'quiz', 'flip', 'fruit'] },
+  { id: 'videos', title: 'Video Library', screen: 'videos', icon: 'youtube', keywords: ['video', 'watch', 'tutorial', 'lesson'] },
+  { id: 'messenger', title: 'Messenger', screen: 'messenger', icon: 'facebook-messenger', keywords: ['mess', 'chat', 'talk', 'dm', 'pc', 'message'] },
+  { id: 'community', title: 'Community Feed', screen: 'community', icon: 'forum-outline', keywords: ['comm', 'post', 'feed', 'social', 'forum'] },
+  { id: 'analytics', title: 'Analytics & Stats', screen: 'analytics', icon: 'chart-bar', keywords: ['ana', 'stats', 'data', 'progress', 'score'] },
+  { id: 'profile', title: 'My Profile', screen: 'profile', icon: 'account-circle-outline', keywords: ['prof', 'user', 'me', 'settings', 'account'] },
+  { id: 'notifications', title: 'Notifications', screen: 'notification', icon: 'bell-outline', keywords: ['notif', 'alert', 'bell', 'update'] },
+];
+
 interface HeaderProps {
   isLargeScreen: boolean;
   activeScreen?: ScreenType;
@@ -73,6 +96,10 @@ const Header: React.FC<HeaderProps> = ({
   const [isSearchFocused, setIsSearchFocused] = useState(false);
   const [hoveredNav, setHoveredNav] = useState<ScreenType | null>(null);
   const [isBellHovered, setIsBellHovered] = useState(false);
+  
+  // 👇 NEW STATE FOR CONTEXTUAL RESULTS
+  const [searchResults, setSearchResults] = useState<SearchFeature[]>([]);
+  const searchInputRef = useRef<TextInput>(null);
 
   const responsiveSize = (mobile: number, tablet: number, desktopMax: number) => {
     if (isVerySmall) return mobile * 0.9;
@@ -94,6 +121,83 @@ const Header: React.FC<HeaderProps> = ({
       LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     }
     setIsSearchExpanded(expand);
+    if (!expand) {
+      setSearchQuery('');
+      setSearchResults([]);
+      Keyboard.dismiss();
+    } else {
+      setTimeout(() => searchInputRef.current?.focus(), 100);
+    }
+  };
+
+  // 👇 UNIFIED SEARCH HANDLER
+  const handleSearchChange = (text: string) => {
+    setSearchQuery(text);
+    
+    // 1. VIDEOS: Always pass through for existing youtube/search logic
+    if (activeScreen === 'videos') {
+      onSearchChange?.(text);
+      return;
+    }
+
+    // 2. MESSENGER: Pass through for local conversation filtering (e.g. "PC")
+    if (activeScreen === 'messenger') {
+      onSearchChange?.(text);
+      return;
+    }
+
+    // 3. CLASSES: Handled by parent via onSearchChange (filters enrolled courses)
+    if (activeScreen === 'classes') {
+       onSearchChange?.(text);
+       return;
+    }
+
+    if (activeScreen === 'assignments') {
+       onSearchChange?.(text);
+       return;
+    }
+
+    if (activeScreen === 'community') {
+       onSearchChange?.(text);
+       return;
+    }
+
+    // 4. HOME & GAMES: Global Quick Actions Logic
+    const isGlobalSearchScreen = 
+        activeScreen === 'home' || 
+        activeScreen === 'game' || 
+        activeScreen === 'flipit' || 
+        activeScreen === 'fruitmania' || 
+        activeScreen === 'quizmasters' ||
+    
+        activeScreen === 'profile' ||
+        activeScreen === 'myjourney' ||
+        activeScreen === 'analytics';
+            
+
+    if (isGlobalSearchScreen) {
+      if (text.trim().length === 0) {
+        setSearchResults([]);
+        return;
+      }
+      const lowerText = text.toLowerCase();
+      const filtered = GLOBAL_SEARCH_FEATURES.filter((feature) => {
+        return (
+          feature.title.toLowerCase().includes(lowerText) ||
+          feature.keywords.some((k) => k.includes(lowerText))
+        );
+      });
+      setSearchResults(filtered);
+    }
+  };
+
+  // 👇 HANDLE QUICK ACTION CLICK
+  const handleSuggestionPress = (screen: ScreenType) => {
+    setSearchQuery('');
+    setSearchResults([]);
+    setIsSearchExpanded(false);
+    Keyboard.dismiss();
+    onNavigate?.(screen);
   };
 
   const getIconColor = (
@@ -163,15 +267,15 @@ const Header: React.FC<HeaderProps> = ({
       activeScreen === 'fruitmania' ||
       activeScreen === 'quizmasters'
     ) {
-      return 'Search Game';
+      return 'Search features or games...';
     }
 
     if (activeScreen === 'videos') return 'Search Videos';
-    if (activeScreen === 'messenger') return 'Search Messages';
-    if (activeScreen === 'classes') return 'Search Classes';
+    if (activeScreen === 'messenger') return 'Filter conversations (e.g. PC)';
+    if (activeScreen === 'classes') return 'Search enrolled classes';
     if (activeScreen === 'analytics') return 'Search Analytics';
 
-    return 'Search ParseClass';
+    return 'Search ParseClass...';
   };
 
   const getNavLabel = (screen: ScreenType) => {
@@ -316,6 +420,43 @@ const Header: React.FC<HeaderProps> = ({
 
   const displayNotificationCount = notificationCount > 99 ? '99+' : `${notificationCount}`;
 
+  // 👇 RENDER GLOBAL SEARCH RESULTS DROPDOWN
+  const renderSearchResults = () => {
+    // Only show dropdown for Home/Game screens when we have results
+    const isGlobalSearchScreen = 
+        activeScreen === 'home' || 
+        activeScreen === 'game' || 
+        activeScreen === 'flipit' || 
+        activeScreen === 'fruitmania' || 
+        activeScreen === 'quizmasters';
+
+    if (!isGlobalSearchScreen || searchResults.length === 0 || searchQuery.length === 0) return null;
+
+    return (
+      <View style={[styles.searchResultsContainer, isPhone && styles.searchResultsMobile]}>
+        <ScrollView showsVerticalScrollIndicator={false}>
+          {searchResults.map((item) => (
+            <TouchableOpacity
+              key={item.id}
+              style={styles.searchResultItem}
+              onPress={() => handleSuggestionPress(item.screen)}
+              activeOpacity={0.7}
+            >
+              <View style={styles.resultIconBox}>
+                <MaterialCommunityIcons name={item.icon as any} size={20} color="#D32F2F" />
+              </View>
+              <View style={styles.resultContent}>
+                <Text style={styles.resultTitle}>{item.title}</Text>
+                <Text style={styles.resultSubtitle}>Quick Action • Go to {item.title}</Text>
+              </View>
+              <MaterialCommunityIcons name="chevron-right" size={20} color="#CCC" />
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      </View>
+    );
+  };
+
   if (isPhone) {
     return (
       <TouchableWithoutFeedback
@@ -326,7 +467,7 @@ const Header: React.FC<HeaderProps> = ({
           }
         }}
       >
-        <View style={{ backgroundColor: '#FFF', borderBottomWidth: 1, borderBottomColor: '#EEE' }}>
+        <View style={{ backgroundColor: '#FFF', borderBottomWidth: 1, borderBottomColor: '#EEE', zIndex: 100 }}>
           <View
             style={[
               styles.headerContainer,
@@ -383,42 +524,44 @@ const Header: React.FC<HeaderProps> = ({
                 </Text>
               </TouchableOpacity>
             ) : (
-              <TouchableWithoutFeedback onPress={() => {}}>
-                <View
-                  style={[
-                    styles.searchBar,
-                    {
-                      flex: 1,
-                      marginHorizontal: 8,
-                      height: isVerySmall ? 42 : 46,
-                      paddingHorizontal: 16,
-                      borderWidth: 1,
-                      borderBottomWidth: isSearchFocused ? 2 : 1,
-                    },
-                  ]}
-                >
-                  <MaterialCommunityIcons
-                    name="magnify"
-                    size={searchIconSize}
-                    color="#888"
-                    style={{ marginRight: 12 }}
-                  />
-                  <TextInput
-                    autoFocus
-                    placeholder={getSearchPlaceholder()}
-                    placeholderTextColor="#888"
-                    value={searchQuery}
-                    onChangeText={(text) => {
-                      setSearchQuery(text);
-                      onSearchChange?.(text);
-                    }}
-                    onFocus={() => setIsSearchFocused(true)}
-                    onBlur={() => setIsSearchFocused(false)}
-                    style={[styles.searchInput, { fontSize: fontSizeSearch }]}
-                    returnKeyType="search"
-                  />
-                </View>
-              </TouchableWithoutFeedback>
+              <View style={{ flex: 1, position: 'relative' }}>
+                <TouchableWithoutFeedback onPress={() => {}}>
+                  <View
+                    style={[
+                      styles.searchBar,
+                      {
+                        flex: 1,
+                        marginHorizontal: 8,
+                        height: isVerySmall ? 42 : 46,
+                        paddingHorizontal: 16,
+                        borderWidth: 1,
+                        borderBottomWidth: isSearchFocused ? 2 : 1,
+                      },
+                    ]}
+                  >
+                    <MaterialCommunityIcons
+                      name="magnify"
+                      size={searchIconSize}
+                      color="#888"
+                      style={{ marginRight: 12 }}
+                    />
+                    <TextInput
+                      ref={searchInputRef}
+                      autoFocus
+                      placeholder={getSearchPlaceholder()}
+                      placeholderTextColor="#888"
+                      value={searchQuery}
+                      onChangeText={handleSearchChange}
+                      onFocus={() => setIsSearchFocused(true)}
+                      onBlur={() => setIsSearchFocused(false)}
+                      style={[styles.searchInput, { fontSize: fontSizeSearch }]}
+                      returnKeyType="search"
+                    />
+                  </View>
+                </TouchableWithoutFeedback>
+                {/* Mobile Search Results Dropdown */}
+                {renderSearchResults()}
+              </View>
             )}
 
             <TouchableOpacity
@@ -474,9 +617,9 @@ const Header: React.FC<HeaderProps> = ({
 
   return (
     <View
-      style={[styles.headerContainer, { paddingHorizontal, height: isTablet ? 72 : 80 }]}
+      style={[styles.headerContainer, { paddingHorizontal, height: isTablet ? 72 : 80, zIndex: 100 }]}
     >
-      <View style={[styles.leftSection, { flex: isLargeScreenLocal ? 0.3 : 0.4 }]}>
+      <View style={[styles.leftSection, { flex: isLargeScreenLocal ? 0.3 : 0.4, position: 'relative' }]}>
         <Image
           source={require('../../assets/images/logo.png')}
           style={{
@@ -507,19 +650,20 @@ const Header: React.FC<HeaderProps> = ({
             style={{ marginRight: 12 }}
           />
           <TextInput
+            ref={searchInputRef}
             placeholder={getSearchPlaceholder()}
             placeholderTextColor="#888"
             value={searchQuery}
-            onChangeText={(text) => {
-              setSearchQuery(text);
-              onSearchChange?.(text);
-            }}
+            onChangeText={handleSearchChange}
             onFocus={() => setIsSearchFocused(true)}
             onBlur={() => setIsSearchFocused(false)}
             style={[styles.searchInput, { fontSize: fontSizeSearch }]}
             returnKeyType="search"
           />
         </View>
+        
+        {/* Desktop/Tablet Search Results Dropdown */}
+        {renderSearchResults()}
       </View>
 
       <View
@@ -703,6 +847,60 @@ const styles = StyleSheet.create({
     color: '#FFF',
     fontSize: 9,
     fontWeight: 'bold',
+  },
+
+  // 👇 NEW STYLES FOR SEARCH RESULTS
+  searchResultsContainer: {
+    position: 'absolute',
+    top: 54,
+    left: 0,
+    right: 0,
+    backgroundColor: '#FFF',
+    borderRadius: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 10,
+    elevation: 5,
+    borderWidth: 1,
+    borderColor: '#EEE',
+    zIndex: 1000,
+    maxHeight: 320,
+    overflow: 'hidden',
+  },
+  searchResultsMobile: {
+    top: 48,
+    left: 8,
+    right: 8,
+  },
+  searchResultItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F5F5F5',
+  },
+  resultIconBox: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: '#FFF1F1',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 14,
+  },
+  resultContent: {
+    flex: 1,
+  },
+  resultTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#111',
+  },
+  resultSubtitle: {
+    fontSize: 12,
+    color: '#888',
+    marginTop: 2,
   },
 });
 

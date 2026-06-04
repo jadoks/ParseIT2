@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
-    Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, useWindowDimensions, View,
+  Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, useWindowDimensions, View,
 } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 
@@ -16,7 +16,7 @@ interface GameBasedAssignmentProps {
   assignmentTitle: string;
   questions: GameQuestion[];
   gameType: string;
-  timeLimitMinutes?: number | null; // 🌟 Global time limit in MINUTES
+  timeLimitMinutes?: number | null; //  Global time limit in MINUTES
   onBack: () => void;
   onComplete: (score: number, total: number) => void;
 }
@@ -42,13 +42,23 @@ const GameBasedAssignment: React.FC<GameBasedAssignmentProps> = ({
   const [flashcardSubmitted, setFlashcardSubmitted] = useState(false);
   
   // Memory match specific (Two-column matching)
-  const [matchedPairs, setMatchedPairs] = useState<number[]>([]);
   const [selectedTerm, setSelectedTerm] = useState<number | null>(null);
-  const [selectedDef, setSelectedDef] = useState<number | null>(null);
   const [memoryCards, setMemoryCards] = useState<any[]>([]);
-  const [connections, setConnections] = useState<Array<{term: number, def: number}>>([]);
+  const [termAnswers, setTermAnswers] = useState<Record<number, number>>({});
+  const [matchingSubmitted, setMatchingSubmitted] = useState(false);
   
-  // 🌟 GLOBAL TIMER STATE (in seconds)
+  // UPDATED: Added selectedText and correctText to store full sentences
+  const [matchingResults, setMatchingResults] = useState<
+    Record<number, {
+      selectedLetter: string;
+      selectedText: string;   // Full sentence user chose
+      correctLetter: string;
+      correctText: string;    // Full correct sentence
+      isCorrect: boolean;
+    }>
+  >({});
+  
+  // GLOBAL TIMER STATE (in seconds)
   const [globalTimeLeft, setGlobalTimeLeft] = useState<number | null>(null);
   const [isTimeUp, setIsTimeUp] = useState(false);
   const scoreRef = useRef(score);
@@ -72,17 +82,21 @@ const GameBasedAssignment: React.FC<GameBasedAssignmentProps> = ({
   }, [timeLimitMinutes]);
 
   // Handle Time Up Force Submit
+  // 🌟 UPDATED: Immediately finishes game AND submits score
   const handleTimeUp = () => {
     setIsTimeUp(true);
+    
+    // 1. Force switch to Summary screen immediately
+    setGameFinished(true);
+    
+    // 2. Submit current score to parent/backend immediately
+    onComplete(scoreRef.current, questions.length);
+
+    // 3. Show alert over the summary screen
     Alert.alert(
       "Time's Up!",
-      'Your time limit has expired. Your current score will be automatically submitted.',
-      [
-        { 
-          text: 'OK', 
-          onPress: () => onComplete(scoreRef.current, questions.length) 
-        }
-      ]
+      'Your time limit has expired. Your current score has been automatically submitted.',
+      [{ text: 'View Results', onPress: () => {} }] 
     );
   };
 
@@ -121,6 +135,10 @@ const GameBasedAssignment: React.FC<GameBasedAssignmentProps> = ({
       // Shuffle cards within each column independently
       const terms = cards.filter(c => c.type === 'term').sort(() => Math.random() - 0.5);
       const defs = cards.filter(c => c.type === 'def').sort(() => Math.random() - 0.5);
+      setTermAnswers({});
+      setMatchingResults({});
+      setMatchingSubmitted(false);
+      setSelectedTerm(null);
       setMemoryCards([...terms, ...defs]);
     }
   }, [gameType, questions]);
@@ -149,6 +167,7 @@ const GameBasedAssignment: React.FC<GameBasedAssignmentProps> = ({
     setGameFinished(true);
   };
 
+  // This function acts as "Return Home" / Final Submit
   const handleSubmitGame = () => {
     onComplete(score, questions.length);
   };
@@ -186,48 +205,89 @@ const GameBasedAssignment: React.FC<GameBasedAssignmentProps> = ({
   };
 
   const handleMemoryCardPress = (card: any) => {
-    if (matchedPairs.includes(card.pairId)) return;
+    if (matchingSubmitted) return;
 
     if (card.type === 'term') {
-      if (selectedTerm === card.pairId) {
-        setSelectedTerm(null);
-      } else {
-        setSelectedTerm(card.pairId);
-      }
-    } else if (card.type === 'def') {
-      if (selectedDef === card.pairId) {
-        setSelectedDef(null);
-      } else {
-        setSelectedDef(card.pairId);
-      }
+      setSelectedTerm(card.pairId);
+      return;
     }
 
-    // Check if both are selected
-    const activeTerm = card.type === 'term' ? card.pairId : selectedTerm;
-    const activeDef = card.type === 'def' ? card.pairId : selectedDef;
+    if (card.type === 'def' && selectedTerm !== null) {
+      setTermAnswers(prev => ({
+        ...prev,
+        [selectedTerm]: card.pairId,
+      }));
 
-    if (activeTerm !== null && activeDef !== null) {
-      if (activeTerm === activeDef) {
-        // Correct match
-        const newMatched = [...matchedPairs, activeTerm];
-        setMatchedPairs(newMatched);
-        setConnections(prev => [...prev, { term: activeTerm, def: activeDef }]);
-        setScore(prev => prev + 1);
-        setUserAnswers(prev => ({ ...prev, [activeTerm]: { selected: 'Matched', isCorrect: true } }));
-        
-        if (newMatched.length === questions.length) {
-          setTimeout(() => handleFinishGame(), 500);
-        }
-      }
-      // Reset selections after brief delay
-      setTimeout(() => {
-        setSelectedTerm(null);
-        setSelectedDef(null);
-      }, 300);
+      setSelectedTerm(null);
     }
   };
 
-  // 🌟 Unified Header with Global Timer
+  // UPDATED: Capture both Letter AND Full Sentence text
+  const handleSubmitMatching = () => {
+    const defs = memoryCards.filter(c => c.type === 'def');
+
+    let correctCount = 0;
+
+    const reviewResults: any = {};
+    const reviewAnswers: any = {};
+
+    questions.forEach((q, idx) => {
+      const selectedDefId = termAnswers[idx];
+
+      const correct = selectedDefId === idx;
+
+      if (correct) {
+        correctCount++;
+      }
+
+      const selectedIndex = defs.findIndex(
+        d => d.pairId === selectedDefId
+      );
+
+      const correctIndex = defs.findIndex(
+        d => d.pairId === idx
+      );
+
+      const selectedLetter =
+        selectedIndex >= 0
+          ? String.fromCharCode(65 + selectedIndex)
+          : 'No Answer';
+
+      const correctLetter =
+        correctIndex >= 0
+          ? String.fromCharCode(65 + correctIndex)
+          : '';
+
+      // NEW: Get the actual full text strings
+      const selectedText = selectedIndex >= 0 ? defs[selectedIndex].text : 'No Answer';
+      const correctText = correctIndex >= 0 ? defs[correctIndex].text : '';
+
+      reviewResults[idx] = {
+        selectedLetter,
+        selectedText,       // Full sentence user picked
+        correctLetter,
+        correctText,        // Full correct sentence
+        isCorrect: correct,
+      };
+
+      reviewAnswers[idx] = {
+        // Combine letter + text for unified summary display
+        selected: `${selectedLetter}: ${selectedText}`,
+        isCorrect: correct,
+      };
+    });
+
+    setMatchingResults(reviewResults);
+    setUserAnswers(reviewAnswers);
+    setScore(correctCount);
+    setMatchingSubmitted(true);
+
+    setTimeout(() => {
+      handleFinishGame();
+    }, 500);
+  };
+
+  // Unified Header with Global Timer
   const renderHeader = (progressText: string) => (
     <View style={styles.header}>
       <Text style={styles.progressText}>{progressText}</Text>
@@ -273,19 +333,100 @@ const GameBasedAssignment: React.FC<GameBasedAssignmentProps> = ({
           {questions.map((q, idx) => {
             const userAns = userAnswers[idx];
             const isAnsCorrect = userAns?.isCorrect || false;
-            const userAnswerText = userAns?.selected !== null && userAns?.selected !== undefined ? String(userAns.selected) : 'No answer';
-            const correctAnswerText = q.options ? q.options[q.correctIndex!] : q.answer;
+
+            const userAnswerText =
+              userAns?.selected !== null &&
+              userAns?.selected !== undefined
+                ? String(userAns.selected)
+                : 'No answer';
+
+            const correctAnswerText =
+              q.options
+                ? q.options[q.correctIndex!]
+                : q.answer;
 
             return (
-              <View key={idx} style={[styles.reviewItem, isAnsCorrect ? styles.reviewCorrect : styles.reviewWrong]}>
+              <View
+                key={idx}
+                style={[
+                  styles.reviewItem,
+                  isAnsCorrect
+                    ? styles.reviewCorrect
+                    : styles.reviewWrong,
+                ]}
+              >
                 <View style={styles.reviewItemHeader}>
-                  <Ionicons name={isAnsCorrect ? "checkmark-circle" : "close-circle"} size={20} color={isAnsCorrect ? "#4CAF50" : "#F44336"} />
-                  <Text style={styles.reviewQuestionText} numberOfLines={2}>Q{idx + 1}: {q.question}</Text>
+                  <Ionicons
+                    name={
+                      isAnsCorrect
+                        ? 'checkmark-circle'
+                        : 'close-circle'
+                    }
+                    size={20}
+                    color={
+                      isAnsCorrect
+                        ? '#4CAF50'
+                        : '#F44336'
+                    }
+                  />
+
+                  <Text
+                    style={styles.reviewQuestionText}
+                    numberOfLines={2}
+                  >
+                    Q{idx + 1}: {q.question}
+                  </Text>
                 </View>
+
                 <View style={styles.reviewAnswers}>
-                  <Text style={styles.reviewUserAnswer}>Your Answer: {userAnswerText}</Text>
-                  {!isAnsCorrect && (
-                    <Text style={styles.reviewCorrectAnswer}>Correct Answer: {correctAnswerText}</Text>
+                  {gameType === 'memory_match' ? (
+                    <>
+                      {/* UPDATED: Show Letter + Full Sentence */}
+                      <Text style={styles.reviewUserAnswer}>
+                        Your Answer:{'\n'}
+                        {matchingResults[idx]?.selectedLetter || 'No Answer'}: {' '}
+                        {matchingResults[idx]?.selectedText || 'No Answer'}
+                      </Text>
+
+                      {/* Only show correct answer if wrong */}
+                      {!isAnsCorrect && (
+                        <Text style={styles.reviewCorrectAnswer}>
+                          Correct Answer:{'\n'}
+                          {matchingResults[idx]?.correctLetter}: {' '}
+                          {matchingResults[idx]?.correctText}
+                        </Text>
+                      )}
+
+                      <Text
+                        style={{
+                          marginTop: 8,
+                          fontWeight: '700',
+                          color:
+                            matchingResults[idx]?.isCorrect
+                              ? '#4CAF50'
+                              : '#F44336',
+                        }}
+                      >
+                        {matchingResults[idx]?.isCorrect
+                          ? '✓ Correct'
+                          : ' Wrong'}
+                      </Text>
+                    </>
+                  ) : (
+                    <>
+                      <Text style={styles.reviewUserAnswer}>
+                        Your Answer: {userAnswerText}
+                      </Text>
+
+                      {!isAnsCorrect && (
+                        <Text
+                          style={styles.reviewCorrectAnswer}
+                        >
+                          Correct Answer:{' '}
+                          {correctAnswerText}
+                        </Text>
+                      )}
+                    </>
                   )}
                 </View>
               </View>
@@ -293,8 +434,9 @@ const GameBasedAssignment: React.FC<GameBasedAssignmentProps> = ({
           })}
         </ScrollView>
 
+        {/* CHANGED: Button now says "Return Home" as it submits and exits */}
         <TouchableOpacity style={styles.nextButton} onPress={handleSubmitGame}>
-          <Text style={styles.nextButtonText}>Finish & Submit</Text>
+          <Text style={styles.nextButtonText}>Return Home</Text>
         </TouchableOpacity>
       </View>
     );
@@ -451,7 +593,7 @@ const GameBasedAssignment: React.FC<GameBasedAssignmentProps> = ({
       ) : (
         <View style={[styles.feedbackCard, isCorrect ? styles.feedbackCorrect : styles.feedbackWrong]}>
           <Text style={[styles.feedbackText, { color: isCorrect ? '#2E7D32' : '#C62828' }]}>
-            {isCorrect ? 'Correct! 🎉 (+1 pt)' : 'Incorrect ❌'}
+            {isCorrect ? 'Correct! 🎉 (+1 pt)' : 'Incorrect '}
           </Text>
           {!isCorrect && (
             <Text style={styles.feedbackSubtext}>
@@ -471,71 +613,140 @@ const GameBasedAssignment: React.FC<GameBasedAssignmentProps> = ({
   const renderMemoryMatch = () => {
     const terms = memoryCards.filter(c => c.type === 'term');
     const defs = memoryCards.filter(c => c.type === 'def');
-
+    const allAnswered = Object.keys(termAnswers).length === questions.length;
     return (
       <View style={styles.gameContainer}>
         {renderHeader('Match Terms to Definitions')}
 
         <Text style={styles.memoryMatchInstructions}>
-          Click a term in Column A, then click its matching definition in Column B
+          Select a term then select its matching letter.
+        </Text>
+
+        <Text
+          style={{
+            textAlign: 'center',
+            marginBottom: 10,
+            color: '#2196F3',
+            fontWeight: '700',
+          }}
+        >
+          {selectedTerm !== null
+            ? 'Select a letter from Column B'
+            : 'Select a term from Column A'}
         </Text>
 
         <View style={styles.memoryMatchContainer}>
-          {/* Column A - Terms */}
+          {/* COLUMN A */}
           <View style={styles.memoryColumn}>
-            <Text style={styles.memoryColumnHeader}>Column A (Terms)</Text>
-            {terms.map((card) => {
-              const isMatched = matchedPairs.includes(card.pairId);
-              const isSelected = selectedTerm === card.pairId;
-              
+            <Text style={styles.memoryColumnHeader}>
+              Column A (Terms)
+            </Text>
+
+            {terms.map(card => {
+              const selectedDefId =
+                termAnswers[card.pairId];
+
+              const selectedIndex =
+                defs.findIndex(
+                  d => d.pairId === selectedDefId
+                );
+
+              const selectedLetter =
+                selectedIndex >= 0
+                  ? String.fromCharCode(
+                      65 + selectedIndex
+                    )
+                  : '';
+
               return (
                 <TouchableOpacity
                   key={card.id}
                   style={[
                     styles.memoryCard,
-                    isMatched && styles.memoryCardMatched,
-                    isSelected && styles.memoryCardSelected,
+                    selectedTerm === card.pairId &&
+                      styles.memoryCardSelected,
                   ]}
-                  onPress={() => handleMemoryCardPress(card)}
-                  disabled={isMatched}
+                  onPress={() =>
+                    handleMemoryCardPress(card)
+                  }
                 >
-                  <Text style={styles.memoryCardText}>{card.text}</Text>
+                  <View
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                    }}
+                  >
+                    <Text style={styles.memoryCardText}>
+                      {card.text}
+                    </Text>
+
+                    {selectedLetter !== '' && (
+                      <Text
+                        style={{
+                          marginLeft: 8,
+                          color: '#D32F2F',
+                          fontWeight: '900',
+                          fontSize: 16,
+                        }}
+                      >
+                        ({selectedLetter})
+                      </Text>
+                    )}
+                  </View>
                 </TouchableOpacity>
               );
             })}
           </View>
 
-          {/* Connection Lines Container */}
-          <View style={styles.connectionsContainer}>
-            {connections.map((conn, idx) => (
-              <View key={idx} style={styles.connectionLine} />
-            ))}
-          </View>
-
-          {/* Column B - Definitions */}
+          {/* COLUMN B */}
           <View style={styles.memoryColumn}>
-            <Text style={styles.memoryColumnHeader}>Column B (Definitions)</Text>
-            {defs.map((card) => {
-              const isMatched = matchedPairs.includes(card.pairId);
-              const isSelected = selectedDef === card.pairId;
-              
+            <Text style={styles.memoryColumnHeader}>
+              Column B (Choices)
+            </Text>
+
+            {defs.map((card, index) => {
+              const letter =
+                String.fromCharCode(65 + index);
+
               return (
                 <TouchableOpacity
                   key={card.id}
-                  style={[
-                    styles.memoryCard,
-                    isMatched && styles.memoryCardMatched,
-                    isSelected && styles.memoryCardSelected,
-                  ]}
-                  onPress={() => handleMemoryCardPress(card)}
-                  disabled={isMatched}
+                  style={styles.memoryCard}
+                  onPress={() =>
+                    handleMemoryCardPress(card)
+                  }
                 >
-                  <Text style={styles.memoryCardText}>{card.text}</Text>
+                  <Text
+                    style={{
+                      fontWeight: '900',
+                      color: '#D32F2F',
+                      marginBottom: 6,
+                    }}
+                  >
+                    {letter}
+                  </Text>
+
+                  <Text style={styles.memoryCardText}>
+                    {card.text}
+                  </Text>
                 </TouchableOpacity>
               );
             })}
           </View>
         </View>
+
+        <TouchableOpacity
+          style={[
+            styles.nextButton,
+            !allAnswered && styles.nextButtonDisabled,
+          ]}
+          onPress={handleSubmitMatching}
+          disabled={!allAnswered}
+        >
+          <Text style={styles.nextButtonText}>
+            Submit Matching
+          </Text>
+        </TouchableOpacity>
       </View>
     );
   };

@@ -19,6 +19,7 @@ import { AssignmentCourse } from './Assignments';
 
 interface AnalyticsProps {
   courses: AssignmentCourse[];
+  searchQuery?: string;
   studentName: string;
   completedActivityScores?: Record<
     string,
@@ -263,6 +264,7 @@ const FloatingLineLabels = ({
 };
 
 const Analytics: React.FC<AnalyticsProps> = ({
+  searchQuery = '',
   courses,
   studentName,
   completedActivityScores = {},

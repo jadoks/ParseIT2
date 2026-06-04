@@ -1,18 +1,20 @@
-import { Picker } from '@react-native-picker/picker';
 import Constants from 'expo-constants';
 import * as DocumentPicker from 'expo-document-picker';
 import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
+  TouchableOpacity,
   View,
   useWindowDimensions,
 } from 'react-native';
+import Ionicons from 'react-native-vector-icons/Ionicons';
 import QuizMasters, { QuizQuestion } from './games/quiz-masters';
 
 type GameScreen = 'menu' | 'quizmasters';
@@ -59,6 +61,9 @@ const Game = ({ onNavigate, enrolledCourses = [], studentId, onSaveQuizScore }: 
   const [selectedClassId, setSelectedClassId] = useState<string>('');
   const [selectedMaterialIds, setSelectedMaterialIds] = useState<string[]>([]);
   const [availableMaterials, setAvailableMaterials] = useState<{ id: string; title: string }[]>([]);
+  
+  // Professional Dropdown State
+  const [isClassDropdownOpen, setIsClassDropdownOpen] = useState(false);
 
   // When a class is selected, show its materials
   useEffect(() => {
@@ -74,6 +79,7 @@ const Game = ({ onNavigate, enrolledCourses = [], studentId, onSaveQuizScore }: 
 
   const handleClassSelect = (classId: string) => {
     setSelectedClassId(classId);
+    setIsClassDropdownOpen(false);
   };
 
   const toggleMaterial = (materialId: string) => {
@@ -186,6 +192,8 @@ const Game = ({ onNavigate, enrolledCourses = [], studentId, onSaveQuizScore }: 
     );
   }
 
+  const selectedClassName = enrolledCourses.find(c => c.id === selectedClassId)?.name;
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
       <View style={styles.headerRow}>
@@ -203,7 +211,10 @@ const Game = ({ onNavigate, enrolledCourses = [], studentId, onSaveQuizScore }: 
           {isGenerating ? (
             <ActivityIndicator color="#FFF" size="small" />
           ) : (
-            <Text style={styles.uploadButtonText}>+ Upload File</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Ionicons name="cloud-upload-outline" size={18} color="#FFF" />
+              <Text style={styles.uploadButtonText}>Upload File</Text>
+            </View>
           )}
         </Pressable>
       </View>
@@ -212,38 +223,106 @@ const Game = ({ onNavigate, enrolledCourses = [], studentId, onSaveQuizScore }: 
       <View style={styles.selectorCard}>
         <Text style={styles.selectorTitle}>Choose class & materials</Text>
 
-        <View style={styles.pickerWrapper}>
-          <Picker
-            selectedValue={selectedClassId}
-            onValueChange={handleClassSelect}
-            style={styles.picker}
-            dropdownIconColor="#D32F2F"
+        {/* PROFESSIONAL CUSTOM DROPDOWN */}
+        <View style={{ marginBottom: 20 }}>
+          <Text style={styles.inputLabel}>Select Class</Text>
+          <TouchableOpacity 
+            style={styles.dropdownTrigger} 
+            onPress={() => setIsClassDropdownOpen(true)}
+            activeOpacity={0.7}
           >
-            <Picker.Item label="-- Select a class --" value="" />
-            {enrolledCourses.map(course => (
-              <Picker.Item key={course.id} label={course.name} value={course.id} />
-            ))}
-          </Picker>
+            <Text style={[styles.dropdownTriggerText, !selectedClassName && styles.placeholderText]}>
+              {selectedClassName || '-- Select a class --'}
+            </Text>
+            <Ionicons 
+              name={isClassDropdownOpen ? "chevron-up" : "chevron-down"} 
+              size={20} 
+              color="#D32F2F" 
+            />
+          </TouchableOpacity>
         </View>
 
+        {/* Dropdown Modal */}
+        <Modal
+          visible={isClassDropdownOpen}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setIsClassDropdownOpen(false)}
+        >
+          <TouchableOpacity 
+            style={styles.modalOverlay} 
+            activeOpacity={1} 
+            onPress={() => setIsClassDropdownOpen(false)}
+          >
+            <View style={styles.modalContent}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Select a Class</Text>
+                <TouchableOpacity onPress={() => setIsClassDropdownOpen(false)}>
+                  <Ionicons name="close-circle" size={28} color="#999" />
+                </TouchableOpacity>
+              </View>
+              
+              <ScrollView style={styles.modalList} showsVerticalScrollIndicator={false}>
+                {enrolledCourses.length === 0 ? (
+                  <View style={styles.emptyState}>
+                    <Text style={styles.emptyText}>No enrolled classes found.</Text>
+                  </View>
+                ) : (
+                  enrolledCourses.map(course => {
+                    const isSelected = selectedClassId === course.id;
+                    return (
+                      <TouchableOpacity
+                        key={course.id}
+                        style={[styles.dropdownItem, isSelected && styles.dropdownItemSelected]}
+                        onPress={() => handleClassSelect(course.id)}
+                      >
+                        <View style={{ flex: 1 }}>
+                          <Text style={[styles.dropdownItemText, isSelected && styles.dropdownItemTextSelected]}>
+                            {course.name}
+                          </Text>
+                          <Text style={styles.dropdownItemSub}>{course.materials.length} materials available</Text>
+                        </View>
+                        {isSelected && <Ionicons name="checkmark-circle" size={22} color="#D32F2F" />}
+                      </TouchableOpacity>
+                    );
+                  })
+                )}
+              </ScrollView>
+            </View>
+          </TouchableOpacity>
+        </Modal>
+
         {selectedClassId !== '' && (
-          <View style={styles.materialsList}>
-            <Text style={styles.materialsLabel}>Select materials (one or more):</Text>
+          <View style={styles.materialsSection}>
+            <Text style={styles.inputLabel}>Select materials (one or more)</Text>
             {availableMaterials.length === 0 ? (
-              <Text style={styles.noMaterials}>No materials uploaded for this class yet.</Text>
+              <View style={styles.noMaterialsBox}>
+                <Ionicons name="folder-open-outline" size={24} color="#999" />
+                <Text style={styles.noMaterials}>No materials uploaded for this class yet.</Text>
+              </View>
             ) : (
-              availableMaterials.map(mat => (
-                <Pressable
-                  key={mat.id}
-                  style={[
-                    styles.materialItem,
-                    selectedMaterialIds.includes(mat.id) && styles.materialItemSelected,
-                  ]}
-                  onPress={() => toggleMaterial(mat.id)}
-                >
-                  <Text style={styles.materialTitle}>{mat.title}</Text>
-                </Pressable>
-              ))
+              <View style={styles.materialsGrid}>
+                {availableMaterials.map(mat => {
+                  const isSelected = selectedMaterialIds.includes(mat.id);
+                  return (
+                    <Pressable
+                      key={mat.id}
+                      style={[styles.materialChip, isSelected && styles.materialChipSelected]}
+                      onPress={() => toggleMaterial(mat.id)}
+                    >
+                      <Ionicons 
+                        name={isSelected ? "document-text" : "document-text-outline"} 
+                        size={16} 
+                        color={isSelected ? "#FFF" : "#D32F2F"} 
+                        style={{ marginRight: 6 }}
+                      />
+                      <Text style={[styles.materialTitle, isSelected && styles.materialTitleSelected]}>
+                        {mat.title}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
             )}
           </View>
         )}
@@ -260,7 +339,10 @@ const Game = ({ onNavigate, enrolledCourses = [], studentId, onSaveQuizScore }: 
           {isGenerating ? (
             <ActivityIndicator color="#FFF" size="small" />
           ) : (
-            <Text style={styles.generateButtonText}>Generate Quiz from Selected Materials</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <Ionicons name="sparkles-outline" size={20} color="#FFF" />
+              <Text style={styles.generateButtonText}>Generate Quiz</Text>
+            </View>
           )}
         </Pressable>
       </View>
@@ -269,53 +351,146 @@ const Game = ({ onNavigate, enrolledCourses = [], studentId, onSaveQuizScore }: 
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 20 },
-  contentContainer: { paddingBottom: 32 },
+  container: { flex: 1, backgroundColor: '#FAFAFA' },
+  contentContainer: { padding: 24, paddingBottom: 40 },
   headerRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 16,
+    marginBottom: 28,
+  },
+  titleWrap: { flex: 1 },
+  pageTitle: { fontSize: 32, fontWeight: '900', color: '#111', letterSpacing: -0.5 },
+  pageSubtitle: { color: '#666', marginTop: 6, fontSize: 15, lineHeight: 22 },
+  uploadButton: {
+    backgroundColor: '#D32F2F',
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+    borderRadius: 14,
+    minWidth: 140,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#D32F2F',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  uploadButtonDisabled: { opacity: 0.7, shadowOpacity: 0 },
+  uploadButtonText: { color: '#FFF', fontWeight: '800', fontSize: 14, letterSpacing: 0.2 },
+  
+  selectorCard: { 
+    backgroundColor: '#FFF', 
+    borderRadius: 24, 
+    padding: 24, 
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    elevation: 3,
+    borderWidth: 1,
+    borderColor: '#F0F0F0'
+  },
+  selectorTitle: { fontSize: 20, fontWeight: '800', marginBottom: 24, color: '#111' },
+  
+  inputLabel: { fontSize: 13, fontWeight: '700', color: '#444', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 },
+  
+  // Professional Dropdown Styles
+  dropdownTrigger: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 16,
-    marginBottom: 20,
-  },
-  titleWrap: { flex: 1 },
-  pageTitle: { fontSize: 30, fontWeight: 'bold' },
-  pageSubtitle: { color: '#666', marginTop: 4, fontSize: 14 },
-  uploadButton: {
-    backgroundColor: '#D32F2F',
-    paddingHorizontal: 18,
-    paddingVertical: 12,
-    borderRadius: 16,
-    minWidth: 132,
-    alignItems: 'center',
-  },
-  uploadButtonDisabled: { opacity: 0.6 },
-  uploadButtonText: { color: '#FFF', fontWeight: '800', fontSize: 14 },
-  selectorCard: { backgroundColor: '#F8F9FA', borderRadius: 20, padding: 20, marginTop: 16 },
-  selectorTitle: { fontSize: 18, fontWeight: '700', marginBottom: 16 },
-  pickerWrapper: { borderWidth: 1, borderColor: '#DDD', borderRadius: 12, marginBottom: 16, backgroundColor: '#FFF' },
-  picker: { height: 50, width: '100%' },
-  materialsList: { marginBottom: 20 },
-  materialsLabel: { fontWeight: '600', marginBottom: 8 },
-  materialItem: {
     backgroundColor: '#FFF',
-    padding: 12,
-    borderRadius: 10,
-    marginBottom: 8,
-    borderWidth: 1,
-    borderColor: '#DDD',
+    borderWidth: 1.5,
+    borderColor: '#EAEAEA',
+    borderRadius: 14,
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    minHeight: 56,
   },
-  materialItemSelected: { backgroundColor: '#D32F2F10', borderColor: '#D32F2F' },
-  materialTitle: { fontSize: 14 },
-  noMaterials: { color: '#999', fontStyle: 'italic' },
+  dropdownTriggerText: { fontSize: 15, fontWeight: '600', color: '#111', flex: 1 },
+  placeholderText: { color: '#999', fontWeight: '500' },
+  
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  modalContent: {
+    backgroundColor: '#FFF',
+    borderRadius: 24,
+    width: '100%',
+    maxWidth: 480,
+    maxHeight: '70%',
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.25,
+    shadowRadius: 20,
+    elevation: 10,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F0F0F0',
+  },
+  modalTitle: { fontSize: 18, fontWeight: '800', color: '#111' },
+  modalList: { padding: 12 },
+  dropdownItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    borderRadius: 14,
+    marginBottom: 4,
+    backgroundColor: '#FAFAFA',
+  },
+  dropdownItemSelected: { backgroundColor: '#FFF1F1', borderWidth: 1, borderColor: '#FFD7D7' },
+  dropdownItemText: { fontSize: 15, fontWeight: '700', color: '#333' },
+  dropdownItemTextSelected: { color: '#D32F2F' },
+  dropdownItemSub: { fontSize: 12, color: '#888', marginTop: 2, fontWeight: '500' },
+  emptyState: { padding: 30, alignItems: 'center' },
+  emptyText: { color: '#999', fontSize: 14 },
+
+  // Materials Grid
+  materialsSection: { marginBottom: 24 },
+  materialsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  materialChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFF',
+    borderWidth: 1.5,
+    borderColor: '#EAEAEA',
+    borderRadius: 100,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    maxWidth: '100%',
+  },
+  materialChipSelected: { backgroundColor: '#D32F2F', borderColor: '#D32F2F' },
+  materialTitle: { fontSize: 13, fontWeight: '700', color: '#444', flexShrink: 1 },
+  materialTitleSelected: { color: '#FFF' },
+  noMaterialsBox: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 12 },
+  noMaterials: { color: '#999', fontSize: 14, fontStyle: 'italic' },
+
   generateButton: {
     backgroundColor: '#D32F2F',
-    borderRadius: 14,
-    paddingVertical: 14,
+    borderRadius: 16,
+    paddingVertical: 18,
     alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#D32F2F',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.25,
+    shadowRadius: 10,
+    elevation: 6,
   },
-  generateButtonDisabled: { opacity: 0.5 },
-  generateButtonText: { color: '#FFF', fontWeight: '800', fontSize: 16 },
+  generateButtonDisabled: { opacity: 0.5, shadowOpacity: 0 },
+  generateButtonText: { color: '#FFF', fontWeight: '800', fontSize: 16, letterSpacing: 0.3 },
 });
 
 export default Game;

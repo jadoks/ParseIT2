@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   Modal,
   ScrollView,
@@ -11,10 +11,12 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
+import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import CourseCard, { CourseCardCourse } from '../components/CourseCard';
 
 interface ClassesScreenProps {
   courses?: CourseCardCourse[];
+  searchQuery?: string; // 👈 ADDED: Global search query from Header
   onCoursePress?: (course: CourseCardCourse) => void;
   onAssignmentPress?: (course: CourseCardCourse) => void;
   onMaterialsPress?: (course: CourseCardCourse) => void;
@@ -28,198 +30,23 @@ interface ClassesScreenProps {
       completed?: boolean;
       mastered?: boolean;
       status?: string;
-      activityScore?: {
-        percent?: number | null;
-      } | null;
+      activityScore?: { percent?: number | null } | null;
     }
   >;
 }
 
 const DEFAULT_COURSES: CourseCardCourse[] = [
-  {
-    id: '1',
-    name: 'Web Development',
-    code: 'CS-101',
-    instructor: 'Prof. John Smith',
-    semester: '2nd Semester',
-    schoolYear: '2025-2026',
-    section: '3A - Python',
-    description:
-      'Learn the fundamentals of web development including HTML, CSS, JavaScript, and introductory React concepts.',
-    materials: [
-      { id: 'm1', title: 'HTML Basics Tutorial', type: 'video', uploadedDate: '2026-02-01' },
-      { id: 'm2', title: 'CSS Styling Guide', type: 'pdf', uploadedDate: '2026-02-03' },
-      { id: 'm3', title: 'JavaScript Fundamentals', type: 'video', uploadedDate: '2026-02-05' },
-      { id: 'm4', title: 'React Components Introduction', type: 'document', uploadedDate: '2026-02-07' },
-    ],
-    assignments: [
-      {
-        id: 'a1',
-        title: 'React Fundamentals Quiz',
-        dueDate: '2026-02-15',
-        status: 'graded',
-        points: 8,
-        maxPoints: 20,
-        topic: 'React Fundamentals',
-        materialIds: ['m4'],
-      },
-      {
-        id: 'a2',
-        title: 'Build a Simple Website',
-        dueDate: '2026-02-20',
-        status: 'graded',
-        points: 42,
-        maxPoints: 50,
-        topic: 'HTML and CSS Layout',
-        materialIds: ['m1', 'm2'],
-      },
-    ],
-  },
-  {
-    id: '2',
-    name: 'Programming Logic',
-    code: 'CS-102',
-    instructor: 'Prof. Maria Santos',
-    semester: '2nd Semester',
-    schoolYear: '2025-2026',
-    section: '2A - Algorithm',
-    description: 'Understand variables, conditions, loops, and basic program flow.',
-    materials: [
-      { id: 'm5', title: 'Variables and Data Types', type: 'pdf', uploadedDate: '2026-02-02' },
-      { id: 'm6', title: 'Conditional Statements', type: 'video', uploadedDate: '2026-02-04' },
-      { id: 'm7', title: 'Looping Concepts', type: 'document', uploadedDate: '2026-02-06' },
-    ],
-    assignments: [
-      {
-        id: 'a3',
-        title: 'Conditional Statements Quiz',
-        dueDate: '2026-02-16',
-        status: 'graded',
-        points: 14,
-        maxPoints: 20,
-        topic: 'Conditional Statements',
-        materialIds: ['m6'],
-      },
-      {
-        id: 'a4',
-        title: 'Loops Practice Set',
-        dueDate: '2026-02-21',
-        status: 'graded',
-        points: 10,
-        maxPoints: 20,
-        topic: 'Loops',
-        materialIds: ['m7'],
-      },
-    ],
-  },
-  {
-    id: '3',
-    name: 'Computer Fundamentals',
-    code: 'IT-100',
-    instructor: 'Prof. Allan Reyes',
-    semester: '2nd Semester',
-    schoolYear: '2025-2026',
-    section: '1A - Microsoft',
-    description: 'Explore basic computing concepts, hardware, software, and digital systems.',
-    materials: [
-      { id: 'm8', title: 'Hardware Overview', type: 'pdf', uploadedDate: '2026-02-01' },
-      { id: 'm9', title: 'Software Systems', type: 'document', uploadedDate: '2026-02-05' },
-    ],
-    assignments: [
-      {
-        id: 'a5',
-        title: 'Computer Basics Assessment',
-        dueDate: '2026-02-18',
-        status: 'graded',
-        points: 18,
-        maxPoints: 20,
-        topic: 'Computer Architecture',
-        materialIds: ['m8'],
-      },
-    ],
-  },
-  {
-    id: '4',
-    name: 'Discrete Mathematics',
-    code: 'PC-121',
-    instructor: 'Prof. Carla Mendoza',
-    semester: '2nd Semester',
-    schoolYear: '2025-2026',
-    section: '4A - Mathematics',
-    description: 'Study logic, sets, relations, functions, and proof techniques.',
-    materials: [
-      { id: 'm10', title: 'Set Theory Basics', type: 'pdf', uploadedDate: '2026-02-03' },
-      { id: 'm11', title: 'Functions and Relations', type: 'video', uploadedDate: '2026-02-06' },
-    ],
-    assignments: [
-      {
-        id: 'a6',
-        title: 'Functions Quiz',
-        dueDate: '2026-02-17',
-        status: 'graded',
-        points: 12,
-        maxPoints: 20,
-        topic: 'Functions',
-        materialIds: ['m11'],
-      },
-    ],
-  },
-  {
-    id: '5',
-    name: 'Understanding the Self',
-    code: 'GEC-US',
-    instructor: 'Prof. Elena Cruz',
-    semester: '2nd Semester',
-    schoolYear: '2025-2026',
-    section: '5A - Humanities',
-    description: 'Reflect on identity, personal development, and self-awareness.',
-    materials: [
-      { id: 'm12', title: 'Identity and Culture', type: 'document', uploadedDate: '2026-02-07' },
-      { id: 'm13', title: 'The Self in Society', type: 'pdf', uploadedDate: '2026-02-10' },
-    ],
-    assignments: [
-      {
-        id: 'a7',
-        title: 'Reflection Paper',
-        dueDate: '2026-02-22',
-        status: 'submitted',
-        points: 0,
-        maxPoints: 30,
-        topic: 'Identity',
-        materialIds: ['m12', 'm13'],
-      },
-    ],
-  },
-  {
-    id: '6',
-    name: 'Exercise-Based Fitness Activities',
-    code: 'PATHFIT2',
-    instructor: 'Prof. Kevin Lim',
-    semester: '2nd Semester',
-    schoolYear: '2025-2026',
-    section: '6A - Fitness',
-    description: 'Develop fitness habits through guided exercise-based activities.',
-    materials: [
-      { id: 'm14', title: 'Warm-Up Routine', type: 'video', uploadedDate: '2026-02-01' },
-      { id: 'm15', title: 'Training Guidelines', type: 'document', uploadedDate: '2026-02-04' },
-    ],
-    assignments: [
-      {
-        id: 'a8',
-        title: 'Fitness Log Submission',
-        dueDate: '2026-02-25',
-        status: 'pending',
-        points: 0,
-        maxPoints: 25,
-        topic: 'Workout Routine',
-        materialIds: ['m14', 'm15'],
-      },
-    ],
-  },
+  { id: '1', name: 'Web Development', code: 'CS-101', instructor: 'Prof. John Smith', semester: '2nd Semester', schoolYear: '2025-2026', section: '3A - Python', description: 'Learn the fundamentals of web development including HTML, CSS, JavaScript, and introductory React concepts.', materials: [{ id: 'm1', title: 'HTML Basics Tutorial', type: 'video', uploadedDate: '2026-02-01' }, { id: 'm2', title: 'CSS Styling Guide', type: 'pdf', uploadedDate: '2026-02-03' }, { id: 'm3', title: 'JavaScript Fundamentals', type: 'video', uploadedDate: '2026-02-05' }, { id: 'm4', title: 'React Components Introduction', type: 'document', uploadedDate: '2026-02-07' }], assignments: [{ id: 'a1', title: 'React Fundamentals Quiz', dueDate: '2026-02-15', status: 'graded', points: 8, maxPoints: 20, topic: 'React Fundamentals', materialIds: ['m4'] }, { id: 'a2', title: 'Build a Simple Website', dueDate: '2026-02-20', status: 'graded', points: 42, maxPoints: 50, topic: 'HTML and CSS Layout', materialIds: ['m1', 'm2'] }] },
+  { id: '2', name: 'Programming Logic', code: 'CS-102', instructor: 'Prof. Maria Santos', semester: '2nd Semester', schoolYear: '2025-2026', section: '2A - Algorithm', description: 'Understand variables, conditions, loops, and basic program flow.', materials: [{ id: 'm5', title: 'Variables and Data Types', type: 'pdf', uploadedDate: '2026-02-02' }, { id: 'm6', title: 'Conditional Statements', type: 'video', uploadedDate: '2026-02-04' }, { id: 'm7', title: 'Looping Concepts', type: 'document', uploadedDate: '2026-02-06' }], assignments: [{ id: 'a3', title: 'Conditional Statements Quiz', dueDate: '2026-02-16', status: 'graded', points: 14, maxPoints: 20, topic: 'Conditional Statements', materialIds: ['m6'] }, { id: 'a4', title: 'Loops Practice Set', dueDate: '2026-02-21', status: 'graded', points: 10, maxPoints: 20, topic: 'Loops', materialIds: ['m7'] }] },
+  { id: '3', name: 'Computer Fundamentals', code: 'IT-100', instructor: 'Prof. Allan Reyes', semester: '2nd Semester', schoolYear: '2025-2026', section: '1A - Microsoft', description: 'Explore basic computing concepts, hardware, software, and digital systems.', materials: [{ id: 'm8', title: 'Hardware Overview', type: 'pdf', uploadedDate: '2026-02-01' }, { id: 'm9', title: 'Software Systems', type: 'document', uploadedDate: '2026-02-05' }], assignments: [{ id: 'a5', title: 'Computer Basics Assessment', dueDate: '2026-02-18', status: 'graded', points: 18, maxPoints: 20, topic: 'Computer Architecture', materialIds: ['m8'] }] },
+  { id: '4', name: 'Discrete Mathematics', code: 'PC-121', instructor: 'Prof. Carla Mendoza', semester: '2nd Semester', schoolYear: '2025-2026', section: '4A - Mathematics', description: 'Study logic, sets, relations, functions, and proof techniques.', materials: [{ id: 'm10', title: 'Set Theory Basics', type: 'pdf', uploadedDate: '2026-02-03' }, { id: 'm11', title: 'Functions and Relations', type: 'video', uploadedDate: '2026-02-06' }], assignments: [{ id: 'a6', title: 'Functions Quiz', dueDate: '2026-02-17', status: 'graded', points: 12, maxPoints: 20, topic: 'Functions', materialIds: ['m11'] }] },
+  { id: '5', name: 'Understanding the Self', code: 'GEC-US', instructor: 'Prof. Elena Cruz', semester: '2nd Semester', schoolYear: '2025-2026', section: '5A - Humanities', description: 'Reflect on identity, personal development, and self-awareness.', materials: [{ id: 'm12', title: 'Identity and Culture', type: 'document', uploadedDate: '2026-02-07' }, { id: 'm13', title: 'The Self in Society', type: 'pdf', uploadedDate: '2026-02-10' }], assignments: [{ id: 'a7', title: 'Reflection Paper', dueDate: '2026-02-22', status: 'submitted', points: 0, maxPoints: 30, topic: 'Identity', materialIds: ['m12', 'm13'] }] },
+  { id: '6', name: 'Exercise-Based Fitness Activities', code: 'PATHFIT2', instructor: 'Prof. Kevin Lim', semester: '2nd Semester', schoolYear: '2025-2026', section: '6A - Fitness', description: 'Develop fitness habits through guided exercise-based activities.', materials: [{ id: 'm14', title: 'Warm-Up Routine', type: 'video', uploadedDate: '2026-02-01' }, { id: 'm15', title: 'Training Guidelines', type: 'document', uploadedDate: '2026-02-04' }], assignments: [{ id: 'a8', title: 'Fitness Log Submission', dueDate: '2026-02-25', status: 'pending', points: 0, maxPoints: 25, topic: 'Workout Routine', materialIds: ['m14', 'm15'] }] },
 ];
 
 const ClassesScreen = ({
   courses = DEFAULT_COURSES,
+  searchQuery = '', // 👈 ADDED default value
   onCoursePress,
   onAssignmentPress,
   onMaterialsPress,
@@ -230,16 +57,26 @@ const ClassesScreen = ({
   const { width } = useWindowDimensions();
   const [joinModalVisible, setJoinModalVisible] = useState(false);
   const [classCode, setClassCode] = useState('');
-
   const isMobile = width < 768;
   const isTablet = width >= 768 && width < 1200;
   const pagePadding = isMobile ? 14 : isTablet ? 20 : 20;
 
+  // 👇 FILTER COURSES BASED ON SEARCH QUERY
+  const filteredCourses = useMemo(() => {
+    if (!searchQuery.trim()) return courses;
+    const lowerQuery = searchQuery.toLowerCase().trim();
+    return courses.filter((course) => {
+      const nameMatch = course.name?.toLowerCase().includes(lowerQuery);
+      const codeMatch = course.code?.toLowerCase().includes(lowerQuery);
+      const instructorMatch = course.instructor?.toLowerCase().includes(lowerQuery);
+      const sectionMatch = course.section?.toLowerCase().includes(lowerQuery);
+      return nameMatch || codeMatch || instructorMatch || sectionMatch;
+    });
+  }, [courses, searchQuery]);
+
   const handleJoinClass = () => {
     const trimmedCode = classCode.trim();
-
     if (!trimmedCode) return;
-
     onJoinClass?.(trimmedCode);
     setClassCode('');
     setJoinModalVisible(false);
@@ -256,7 +93,6 @@ const ClassesScreen = ({
                 Access all your enrolled courses in one place.
               </Text>
             </View>
-
             <TouchableOpacity
               activeOpacity={0.92}
               style={styles.joinClassButton}
@@ -275,17 +111,35 @@ const ClassesScreen = ({
               !isMobile && !isTablet && styles.gridDesktop,
             ]}
           >
-            {courses.map((course) => (
-              <CourseCard
-                key={course.id}
-                course={course}
-                onPress={(selectedCourse) => onCoursePress?.(selectedCourse)}
-                onAssignmentPress={(selectedCourse) => onAssignmentPress?.(selectedCourse)}
-                onMaterialsPress={(selectedCourse) => onMaterialsPress?.(selectedCourse)}
-                onGeneratePress={(selectedCourse) => onGeneratePress?.(selectedCourse)}
-                completedActivityScores={completedActivityScores}
-              />
-            ))}
+            {/* 👇 USE filteredCourses INSTEAD OF courses */}
+            {filteredCourses.length > 0 ? (
+              filteredCourses.map((course) => (
+                <CourseCard
+                  key={course.id}
+                  course={course}
+                  onPress={(selectedCourse) => onCoursePress?.(selectedCourse)}
+                  onAssignmentPress={(selectedCourse) => onAssignmentPress?.(selectedCourse)}
+                  onMaterialsPress={(selectedCourse) => onMaterialsPress?.(selectedCourse)}
+                  onGeneratePress={(selectedCourse) => onGeneratePress?.(selectedCourse)}
+                  completedActivityScores={completedActivityScores}
+                />
+              ))
+            ) : (
+              /* 👇 EMPTY STATE WHEN NO CLASSES MATCH SEARCH */
+              <View style={styles.emptyState}>
+                <MaterialCommunityIcons name="magnify" size={48} color="#CCC" />
+                <Text style={styles.emptyTitle}>
+                  {searchQuery.trim()
+                    ? `No classes match "${searchQuery}"`
+                    : 'No classes yet'}
+                </Text>
+                <Text style={styles.emptySubtitle}>
+                  {searchQuery.trim()
+                    ? 'Try a different search term or join a new class.'
+                    : 'Join a class using the button above to get started.'}
+                </Text>
+              </View>
+            )}
           </View>
         </View>
       </ScrollView>
@@ -313,7 +167,6 @@ const ClassesScreen = ({
                   <View style={styles.joinDropdownIconWrap}>
                     <Ionicons name="school-outline" size={18} color="#D32F2F" />
                   </View>
-
                   <View style={styles.joinDropdownHeaderText}>
                     <Text style={styles.joinDropdownTitle}>Join Class</Text>
                     <Text style={styles.joinDropdownSubtitle}>
@@ -321,7 +174,6 @@ const ClassesScreen = ({
                     </Text>
                   </View>
                 </View>
-
                 <Text style={styles.inputLabel}>Class Code</Text>
                 <TextInput
                   value={classCode}
@@ -332,23 +184,15 @@ const ClassesScreen = ({
                   autoCorrect={false}
                   style={styles.classCodeInput}
                 />
-
                 <View style={styles.joinDropdownActions}>
                   <TouchableOpacity
                     style={styles.cancelButton}
-                    onPress={() => {
-                      setClassCode('');
-                      setJoinModalVisible(false);
-                    }}
+                    onPress={() => { setClassCode(''); setJoinModalVisible(false); }}
                   >
                     <Text style={styles.cancelButtonText}>Cancel</Text>
                   </TouchableOpacity>
-
                   <TouchableOpacity
-                    style={[
-                      styles.confirmButton,
-                      !classCode.trim() && styles.confirmButtonDisabled,
-                    ]}
+                    style={[styles.confirmButton, !classCode.trim() && styles.confirmButtonDisabled]}
                     onPress={handleJoinClass}
                     disabled={!classCode.trim()}
                   >
@@ -365,189 +209,38 @@ const ClassesScreen = ({
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#fff',
-  },
-
-  contentContainer: {
-    padding: 20,
-    paddingBottom: 30,
-  },
-
-  contentWrap: {
-    width: '100%',
-    maxWidth: 1200,
-    alignSelf: 'center',
-  },
-
-  headerRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    gap: 12,
-    marginBottom: 20,
-  },
-
-  headerTextWrap: {
-    flex: 1,
-  },
-
-  pageTitle: {
-    fontSize: 28,
-    fontWeight: '700',
-    color: '#111',
-    marginBottom: 6,
-  },
-
-  pageSubtitle: {
-    fontSize: 14,
-    color: '#666',
-  },
-
-  joinClassButton: {
-    backgroundColor: '#D32F2F',
-    borderRadius: 14,
-    paddingHorizontal: 14,
-    paddingVertical: 11,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    shadowColor: '#000',
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    elevation: 3,
-  },
-
-  joinClassButtonText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '700',
-  },
-
-  grid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 15,
-  },
-
-  gridMobile: {
-    justifyContent: 'center',
-  },
-
-  gridTablet: {
-    justifyContent: 'center',
-  },
-
-  gridDesktop: {
-    justifyContent: 'flex-start',
-  },
-
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(15, 23, 42, 0.18)',
-  },
-
-  joinDropdownModal: {
-    position: 'absolute',
-    backgroundColor: '#FFFFFF',
-    borderRadius: 20,
-    padding: 18,
-    borderWidth: 1,
-    borderColor: '#ECECEC',
-    shadowColor: '#000',
-    shadowOpacity: 0.14,
-    shadowRadius: 18,
-    elevation: 10,
-  },
-
-  joinDropdownHeader: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 12,
-    marginBottom: 18,
-  },
-
-  joinDropdownHeaderText: {
-    flex: 1,
-  },
-
-  joinDropdownIconWrap: {
-    width: 38,
-    height: 38,
-    borderRadius: 12,
-    backgroundColor: '#FFF1F1',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
-  joinDropdownTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#111827',
-    marginBottom: 3,
-  },
-
-  joinDropdownSubtitle: {
-    fontSize: 13,
-    lineHeight: 18,
-    color: '#6B7280',
-  },
-
-  inputLabel: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#374151',
-    marginBottom: 8,
-  },
-
-  classCodeInput: {
-    height: 48,
-    borderWidth: 1,
-    borderColor: '#DADDE2',
-    borderRadius: 14,
-    paddingHorizontal: 14,
-    fontSize: 14,
-    color: '#111827',
-    backgroundColor: '#FAFAFA',
-    marginBottom: 16,
-  },
-
-  joinDropdownActions: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    gap: 10,
-  },
-
-  cancelButton: {
-    paddingHorizontal: 14,
-    paddingVertical: 11,
-    borderRadius: 12,
-    backgroundColor: '#F3F4F6',
-  },
-
-  cancelButtonText: {
-    color: '#374151',
-    fontWeight: '600',
-    fontSize: 13,
-  },
-
-  confirmButton: {
-    paddingHorizontal: 16,
-    paddingVertical: 11,
-    borderRadius: 12,
-    backgroundColor: '#D32F2F',
-  },
-
-  confirmButtonDisabled: {
-    backgroundColor: '#F0A7A7',
-  },
-
-  confirmButtonText: {
-    color: '#FFFFFF',
-    fontWeight: '700',
-    fontSize: 13,
-  },
+  container: { flex: 1, backgroundColor: '#fff' },
+  contentContainer: { padding: 20, paddingBottom: 30 },
+  contentWrap: { width: '100%', maxWidth: 1200, alignSelf: 'center' },
+  headerRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 20 },
+  headerTextWrap: { flex: 1 },
+  pageTitle: { fontSize: 28, fontWeight: '700', color: '#111', marginBottom: 6 },
+  pageSubtitle: { fontSize: 14, color: '#666' },
+  joinClassButton: { backgroundColor: '#D32F2F', borderRadius: 14, paddingHorizontal: 14, paddingVertical: 11, flexDirection: 'row', alignItems: 'center', gap: 8, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 8, elevation: 3 },
+  joinClassButtonText: { color: '#FFFFFF', fontSize: 14, fontWeight: '700' },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 15 },
+  gridMobile: { justifyContent: 'center' },
+  gridTablet: { justifyContent: 'center' },
+  gridDesktop: { justifyContent: 'flex-start' },
+  // 👇 NEW EMPTY STATE STYLES
+  emptyState: { width: '100%', paddingVertical: 60, alignItems: 'center', justifyContent: 'center' },
+  emptyTitle: { marginTop: 16, fontSize: 18, fontWeight: '700', color: '#333', textAlign: 'center' },
+  emptySubtitle: { marginTop: 8, fontSize: 14, color: '#888', textAlign: 'center', maxWidth: 320, lineHeight: 20 },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(15, 23, 42, 0.18)' },
+  joinDropdownModal: { position: 'absolute', backgroundColor: '#FFFFFF', borderRadius: 20, padding: 18, borderWidth: 1, borderColor: '#ECECEC', shadowColor: '#000', shadowOpacity: 0.14, shadowRadius: 18, elevation: 10 },
+  joinDropdownHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, marginBottom: 18 },
+  joinDropdownHeaderText: { flex: 1 },
+  joinDropdownIconWrap: { width: 38, height: 38, borderRadius: 12, backgroundColor: '#FFF1F1', alignItems: 'center', justifyContent: 'center' },
+  joinDropdownTitle: { fontSize: 16, fontWeight: '700', color: '#111827', marginBottom: 3 },
+  joinDropdownSubtitle: { fontSize: 13, lineHeight: 18, color: '#6B7280' },
+  inputLabel: { fontSize: 13, fontWeight: '600', color: '#374151', marginBottom: 8 },
+  classCodeInput: { height: 48, borderWidth: 1, borderColor: '#DADDE2', borderRadius: 14, paddingHorizontal: 14, fontSize: 14, color: '#111827', backgroundColor: '#FAFAFA', marginBottom: 16 },
+  joinDropdownActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 10 },
+  cancelButton: { paddingHorizontal: 14, paddingVertical: 11, borderRadius: 12, backgroundColor: '#F3F4F6' },
+  cancelButtonText: { color: '#374151', fontWeight: '600', fontSize: 13 },
+  confirmButton: { paddingHorizontal: 16, paddingVertical: 11, borderRadius: 12, backgroundColor: '#D32F2F' },
+  confirmButtonDisabled: { backgroundColor: '#F0A7A7' },
+  confirmButtonText: { color: '#FFFFFF', fontWeight: '700', fontSize: 13 },
 });
 
 export default ClassesScreen;

@@ -10,11 +10,13 @@ import {
 } from 'react-native';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 
+// 👇 UPDATED: Added 'game-assignment' to the type union
 export type NotificationType =
   | 'assignment'
   | 'material'
   | 'community-answer'
-  | 'support-activity';
+  | 'support-activity'
+  | 'game-assignment';
 
 export type NotificationItem = {
   id: string;
@@ -112,6 +114,7 @@ const Notification: React.FC<NotificationScreenProps> = ({
     }
   };
 
+  // 👇 UPDATED: Added case for 'game-assignment'
   const getNotificationIcon = (type: NotificationType, read: boolean) => {
     const color = read ? '#666' : '#D32F2F';
 
@@ -144,6 +147,14 @@ const Notification: React.FC<NotificationScreenProps> = ({
         return (
           <MaterialCommunityIcons
             name="lightbulb-on-outline"
+            size={22}
+            color={color}
+          />
+        );
+      case 'game-assignment':
+        return (
+          <MaterialCommunityIcons
+            name="gamepad-variant-outline"
             size={22}
             color={color}
           />

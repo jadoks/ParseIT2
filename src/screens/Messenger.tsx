@@ -443,13 +443,20 @@ const Messenger = ({
     };
   }, [selected, currentUser, currentUserName]);
 
+    // 👇 UPDATED: Enhanced filtering that checks name, last message, AND members
   const filtered = useMemo(() => {
-    return conversations.filter(
-      (c) =>
-        c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        c.last.toLowerCase().includes(searchQuery.toLowerCase())
-    );
-  }, [conversations, searchQuery]);
+    if (!searchQuery || !searchQuery.trim()) return conversations;
+    const lowerQuery = searchQuery.toLowerCase().trim();
+    return conversations.filter((c) => {
+      const nameMatch = c.name?.toLowerCase().includes(lowerQuery);
+      const lastMessageMatch = c.last?.toLowerCase().includes(lowerQuery);
+      // Also check members for group chats (e.g., typing "PC" matches a member named "PC Gaming Club")
+      const memberMatch = c.members?.some((member) =>
+        member?.toLowerCase().includes(lowerQuery)
+      );
+      return nameMatch || lastMessageMatch || memberMatch;
+    });
+  }, [conversations, searchQuery]); // 👈 ENSURE searchQuery IS IN DEPENDENCY ARRAY
 
   useEffect(() => {
     const timer = setInterval(() => {

@@ -28,6 +28,7 @@ type CropType = 'profile' | 'banner';
 
 interface ProfileProps {
   userPosts: CommunityPost[];
+  searchQuery?: string;
   onCreatePost?: (query: string) => void;
   onAddAnswer?: (postId: string, message: string) => void;
   onEditPost?: (postId: string, content: string) => void;
@@ -95,6 +96,7 @@ const clamp = (value: number, min: number, max: number) =>
 
 const Profile: React.FC<ProfileProps> = ({
   userPosts,
+  searchQuery = '',
   onCreatePost,
   onAddAnswer,
   onEditPost,

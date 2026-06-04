@@ -901,23 +901,50 @@ function parseQuizMastersJsonResponse(rawText = "", providerLabel = "AI") {
   }
 }
 
-function normalizeQuizMastersQuestions(value) {
-  const sourceQuestions = Array.isArray(value?.questions) ? value.questions : [];
+function normalizeQuizMastersQuestions(value, gameType = "") {
+  const sourceQuestions = Array.isArray(value?.questions)
+    ? value.questions
+    : [];
 
-  const normalized = sourceQuestions
+  // MEMORY MATCH
+  if (gameType === "memory_match") {
+    return sourceQuestions
+      .map((item) => {
+        const question = normalizeOptionalText(item?.question);
+        const answer = normalizeOptionalText(item?.answer);
+
+        if (!question || !answer) return null;
+
+        return {
+          question,
+          answer,
+          options: [],
+        };
+      })
+      .filter(Boolean)
+      .slice(0, 10);
+  }
+
+  // QUIZ MASTER
+  return sourceQuestions
     .map((item) => {
       const question = normalizeOptionalText(item?.question);
+
       const options = Array.isArray(item?.options)
         ? item.options
             .map((option) => normalizeOptionalText(option))
             .filter(Boolean)
         : [];
+
       const answer = normalizeOptionalText(item?.answer);
 
-      if (!question || options.length !== 4 || !answer) return null;
+      if (!question || options.length !== 4 || !answer) {
+        return null;
+      }
 
       const matchingAnswer = options.find(
-        (option) => option.toLowerCase() === answer.toLowerCase()
+        (option) =>
+          option.toLowerCase() === answer.toLowerCase()
       );
 
       if (!matchingAnswer) return null;
@@ -928,9 +955,8 @@ function normalizeQuizMastersQuestions(value) {
         answer: matchingAnswer,
       };
     })
-    .filter(Boolean);
-
-  return normalized.slice(0, 10);
+    .filter(Boolean)
+    .slice(0, 10);
 }
 
 function buildQuizMastersPrompt({ extractedText, fileName, gameType }) {
@@ -938,7 +964,29 @@ function buildQuizMastersPrompt({ extractedText, fileName, gameType }) {
   
   switch (gameType) {
     case "memory_match":
-      gameStyleInstruction = "Style: Memory Match. Focus on matching terms to their exact definitions. The options should be closely related terms to make matching challenging.";
+      gameStyleInstruction = `
+        Style: Memory Match.
+
+        Generate exactly 10 term-definition pairs.
+
+        JSON format:
+
+        {
+          "questions": [
+            {
+              "question": "HTML",
+              "answer": "HyperText Markup Language"
+            }
+          ]
+        }
+
+        IMPORTANT:
+        - question = term
+        - answer = definition
+        - DO NOT include options
+        - DO NOT generate multiple choice answers
+        - One term must have exactly one definition
+      `;
       break;
     case "fill_in_blanks":
       gameStyleInstruction = "Style: Fill-in-the-Blanks. Format the question as a sentence with a missing keyword (e.g., 'The process of ___ is defined as...'). The correct answer must be the exact missing word/phrase.";
@@ -954,15 +1002,28 @@ function buildQuizMastersPrompt({ extractedText, fileName, gameType }) {
 
   return `
 You are generating an educational game quiz from an uploaded learning file.
-Create exactly 10 multiple-choice quiz questions.
+${
+  gameType === "memory_match"
+    ? "Create exactly 10 term-definition pairs."
+    : "Create exactly 10 multiple-choice quiz questions."
+}
 
 GAME TYPE INSTRUCTIONS:
 ${gameStyleInstruction}
 
 CRITICAL FORMATTING RULES:
 - Return ONLY valid JSON. No markdown, no explanations, no code fences.
+${
+  gameType === "memory_match"
+    ? `
+- DO NOT include options.
+- Return only question and answer.
+`
+    : `
 - All questions MUST have exactly 4 options.
 - The answer MUST exactly match one of the 4 options.
+`
+}
 
 Uploaded file name:
 ${fileName || "uploaded-file"}
@@ -1003,7 +1064,10 @@ async function generateQuizMastersWithGemini({ extractedText, fileName, gameType
                   type: SchemaType.STRING,
                 },
               },
-              required: ["question", "options", "answer"],
+              required:
+              gameType === "memory_match"
+                ? ["question", "answer"]
+                : ["question", "options", "answer"]
             },
           },
         },
@@ -1011,19 +1075,47 @@ async function generateQuizMastersWithGemini({ extractedText, fileName, gameType
       },
     },
   });
-  const prompt = `
-${buildQuizMastersPrompt({ extractedText, fileName, gameType })}
-Return ONLY valid JSON in this exact format, with exactly 10 questions:
+  const responseTemplate =
+  gameType === "memory_match"
+    ? `
 {
-"questions": [
-{
-"question": "Question text",
-"options": ["Option A", "Option B", "Option C", "Option D"],
-"answer": "Option A"
+  "questions": [
+    {
+      "question": "HTML",
+      "answer": "HyperText Markup Language"
+    }
+  ]
 }
-]
+`
+    : `
+{
+  "questions": [
+    {
+      "question": "Question text",
+      "options": [
+        "Option A",
+        "Option B",
+        "Option C",
+        "Option D"
+      ],
+      "answer": "Option A"
+    }
+  ]
 }
 `;
+
+const prompt = `
+${buildQuizMastersPrompt({
+  extractedText,
+  fileName,
+  gameType,
+})}
+
+Return ONLY valid JSON in this exact format:
+
+${responseTemplate}
+`;
+
   let rawText = "";
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
@@ -1034,7 +1126,10 @@ Return ONLY valid JSON in this exact format, with exactly 10 questions:
         "Gemini"
       );
       const questions =
-        normalizeQuizMastersQuestions(parsed);
+      normalizeQuizMastersQuestions(
+        parsed,
+        gameType
+      );
       if (questions.length >= 10) {
         return questions;
       }
@@ -1057,19 +1152,44 @@ async function generateQuizMastersWithOpenAI({ extractedText, fileName , gameTyp
     throw new Error("OPENAI_API_KEY is missing in your backend .env file.");
   }
 
-  const prompt = `
-${buildQuizMastersPrompt({ extractedText, fileName , gameType})}
-
-Return ONLY valid JSON in this exact format, with exactly 10 questions:
-{
-  "questions": [
+ const responseTemplate =
+      gameType === "memory_match"
+        ? `
     {
-      "question": "Question text",
-      "options": ["Option A", "Option B", "Option C", "Option D"],
-      "answer": "Option A"
+      "questions": [
+        {
+          "question": "HTML",
+          "answer": "HyperText Markup Language"
+        }
+      ]
     }
-  ]
-}
+    `
+        : `
+    {
+      "questions": [
+        {
+          "question": "Question text",
+          "options": [
+            "Option A",
+            "Option B",
+            "Option C",
+            "Option D"
+          ],
+          "answer": "Option A"
+        }
+      ]
+    }
+    `;
+    const prompt = `
+${buildQuizMastersPrompt({
+  extractedText,
+  fileName,
+  gameType,
+})}
+
+Return ONLY valid JSON in this exact format:
+
+${responseTemplate}
 `;
 
   const response = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -1081,10 +1201,12 @@ Return ONLY valid JSON in this exact format, with exactly 10 questions:
     body: JSON.stringify({
       model: OPENAI_GAME_MODEL,
       messages: [
-        {
+                {
           role: "system",
           content:
-            "You generate student-friendly multiple-choice quizzes from provided learning content. Return valid JSON only.",
+            gameType === "memory_match"
+              ? "You generate memory-match term-definition pairs from learning content. Return valid JSON only."
+              : "You generate student-friendly multiple-choice quizzes from learning content. Return valid JSON only.",
         },
         {
           role: "user",
@@ -1105,11 +1227,21 @@ Return ONLY valid JSON in this exact format, with exactly 10 questions:
 
   const rawText = data?.choices?.[0]?.message?.content || "";
   const parsed = parseQuizMastersJsonResponse(rawText, "OpenAI");
-  const questions = normalizeQuizMastersQuestions(parsed);
+  const questions =
+  normalizeQuizMastersQuestions(
+    parsed,
+    gameType
+  );
 
-  if (questions.length < 5) {
-    throw new Error("OpenAI did not generate enough valid quiz questions.");
-  }
+  if (
+  gameType === "memory_match"
+    ? questions.length < 10
+    : questions.length < 5
+) {
+  throw new Error(
+    "OpenAI did not generate enough valid questions."
+  );
+}
 
   return questions;
 }
@@ -1181,11 +1313,64 @@ function rotateQuizMastersOptions(options, offset) {
   return copy.slice(shift).concat(copy.slice(0, shift));
 }
 
-function generateQuizMastersLocally({ extractedText, fileName }) {
+function generateQuizMastersLocally({ extractedText, fileName, gameType }) {
   const sentences = uniqueQuizMastersSentences(
     splitQuizMastersSentences(limitText(extractedText, 16000))
   );
 
+  if (gameType === "memory_match") {
+      const pairs = [];
+
+      for (const sentence of sentences.slice(0, 20)) {
+        const cleanSentence = sentence.trim();
+
+        // Try to detect "Term is Definition"
+        const isMatch = cleanSentence.match(
+          /^([A-Za-z0-9\s\-()]{2,60})\s+(?:is|are|refers to|means|defined as)\s+(.+)$/i
+        );
+
+        if (isMatch) {
+          const term = isMatch[1].trim();
+          const definition = isMatch[2].trim();
+
+          if (term.length > 1 && definition.length > 10) {
+            pairs.push({
+              question: term,
+              answer: definition,
+            });
+          }
+        }
+      }
+
+      // Fallback if pattern matching found too few pairs
+      if (pairs.length < 10) {
+        const fallbackPairs = sentences
+          .slice(0, 10)
+          .map((sentence) => {
+            const words = sentence
+              .replace(/[.,;:!?]/g, "")
+              .split(" ")
+              .filter(Boolean);
+
+            const term = words.slice(0, 3).join(" ");
+
+            return {
+              question: term,
+              answer: sentence,
+            };
+          });
+
+        return normalizeQuizMastersQuestions(
+          { questions: fallbackPairs },
+          "memory_match"
+        );
+      }
+
+      return normalizeQuizMastersQuestions(
+        { questions: pairs.slice(0, 10) },
+        "memory_match"
+      );
+    }
   if (sentences.length < 4) {
     throw new Error(
       "Local quiz fallback could not find enough readable statements in the uploaded file."
@@ -1273,6 +1458,7 @@ async function generateQuizMastersWithFallback({ extractedText, fileName, gameTy
       const questions = generateQuizMastersLocally({
         extractedText,
         fileName,
+        gameType,
       });
       return {
         questions,
@@ -2821,11 +3007,84 @@ app.post("/game-ai/submit-game-assignment", requireAuth, async (req, res) => {
   
   return res.json({ success: true, score: scaledScore, maxPoints, attemptNumber: 1 });
 }
+// In Pasted_Text_1780565987839.txt inside app.post("/game-ai/submit-game-assignment", ...)
+
+// ... [Existing submission grading logic remains unchanged] ...
+
+if (!existingSubmissions.empty) {
+    // ... [Existing update logic for keeping highest score] ...
+} else {
+    // ... [Existing create logic] ...
+}
+
+// === NEW STACKABLE NOTIFICATION LOGIC ===
+const teacherId = normalizeOptionalText(classData.assignedTeacherId);
+if (teacherId) {
+    const assignmentHeader = assignmentData.header || "an assignment";
+    const className = classData.name || "your class";
+    
+    // Check if there is already a pending notification for this assignment in this class
+    const existingNotifSnap = await db.collection("notifications")
+        .where("userId", "==", teacherId)
+        .where("role", "==", "teacher")
+        .where("type", "==", "submitted-assignment")
+        .where("relatedId", "==", assignmentId)
+        .where("classId", "==", classId)
+        .where("read", "==", false)
+        .limit(1)
+        .get();
+
+    if (!existingNotifSnap.empty) {
+        // Merge with existing notification
+        const notifDoc = existingNotifSnap.docs[0];
+        const notifData = notifDoc.data() || {};
+        const currentCount = typeof notifData.submissionCount === 'number' ? notifData.submissionCount : 1;
+        const newCount = currentCount + 1;
+        
+        // Format: "Latest Student + X others submitted..."
+        const latestName = `${profile.data.firstName || ''} ${profile.data.lastName || ''}`.trim() || studentId;
+        const prevActorName = notifData.actorName || "A student";
+        
+        let newMessage = "";
+        if (currentCount === 1) {
+            newMessage = `${prevActorName} and ${latestName} submitted ${assignmentHeader} in ${className}.`;
+        } else {
+            newMessage = `${latestName} + ${currentCount} others submitted ${assignmentHeader} in ${className}.`;
+        }
+
+        await notifDoc.ref.update({
+            message: newMessage,
+            actorId: studentId,
+            actorName: latestName,
+            submissionCount: newCount,
+            updatedAt: FieldValue.serverTimestamp(),
+        });
+    } else {
+        // Create new initial notification
+        await createNotification({
+            userId: teacherId,
+            role: "teacher",
+            type: "submitted-assignment",
+            title: "Game Assignment Submitted",
+            message: `${studentName || "A student"} submitted ${assignmentHeader} in ${className}.`,
+            relatedId: assignmentId, // Using assignmentId as relatedId allows grouping by assignment
+            relatedType: "class-submission",
+            classId,
+            actorId: studentId,
+            actorRole: "student",
+            actorName: studentName || studentId,
+            submissionCount: 1, // Track count explicitly
+        });
+    }
+}
+
+return res.json({ success: true, score: finalScore, maxPoints, attemptNumber: nextAttemptNumber });
   } catch (error) {
     console.error("Submit game assignment error:", error);
     return res.status(500).json({ error: error.message || "Failed to submit game score." });
   }
 });
+
 
 // POST /game-ai/save-game-submission
 app.post("/game-ai/save-game-submission", requireAuth, async (req, res) => {
@@ -3089,6 +3348,64 @@ app.post("/game-ai/save-quiz-score", requireAuth, async (req, res) => {
   } catch (error) {
     console.error("Save quiz score error:", error);
     return res.status(500).json({ error: error.message || "Failed to save quiz score." });
+  }
+});
+
+// Get Quiz Masters scores for a class
+app.get("/class-game-scores/:classId", requireAuth, async (req, res) => {
+  try {
+    const { classId } = req.params;
+
+    const snapshot = await db
+      .collection("studentActivities")
+      .where("classId", "==", classId)
+      .where("type", "==", "quiz-masters")
+      .get();
+
+    const results = [];
+
+    for (const doc of snapshot.docs) {
+      const data = doc.data();
+
+      let studentName = data.studentId;
+
+      try {
+        const studentSnap = await db
+        .collection("students")
+        .where("studentId", "==", data.studentId)
+        .limit(1)
+        .get();
+
+        if (!studentSnap.empty) {
+          const student = studentSnap.docs[0].data();
+
+          studentName = [
+            student.firstName,
+            student.lastName,
+          ]
+            .filter(Boolean)
+            .join(" ")
+            .trim();
+        }
+      } catch {}
+
+      results.push({
+        id: doc.id,
+        studentId: data.studentId,
+        studentName,
+        score: data.score,
+        totalQuestions: data.totalQuestions,
+        percent: data.percent,
+        createdAt: data.createdAt || null,
+      });
+    }
+
+    return res.json(results);
+  } catch (error) {
+    console.error("Get class game scores error:", error);
+    return res.status(500).json({
+      error: error.message || "Failed to load game scores.",
+    });
   }
 });
 

@@ -50,6 +50,7 @@ interface CommunityProps {
   onDeletePost?: (postId: string) => void;
   onEditAnswer?: (postId: string, answerId: string, message: string) => void;
   onDeleteAnswer?: (postId: string, answerId: string) => void;
+  searchQuery?: string; // 👈 Search query prop from Header
 }
 
 type PostDropdownState =
@@ -153,7 +154,27 @@ const Community: React.FC<CommunityProps> = ({
   onDeletePost,
   onEditAnswer,
   onDeleteAnswer,
+  searchQuery = '', // 👈 Default to empty string
 }) => {
+  // 👇 ROBUST LOCAL SEARCH FILTERING
+  const filteredPosts = useMemo(() => {
+    const trimmedQuery = searchQuery.trim().toLowerCase();
+    if (!trimmedQuery) return posts;
+
+    return posts.filter((post) => {
+      const matchesUser = post.userName.toLowerCase().includes(trimmedQuery);
+      const matchesContent = post.content.toLowerCase().includes(trimmedQuery);
+      
+      // Optional: Also search inside answers if needed
+      // const matchesAnswers = post.answers.some(a => 
+      //   a.userName.toLowerCase().includes(trimmedQuery) || 
+      //   a.message.toLowerCase().includes(trimmedQuery)
+      // );
+
+      return matchesUser || matchesContent;
+    });
+  }, [posts, searchQuery]);
+
   const [hiddenPosts, setHiddenPosts] = useState<string[]>([]);
   const [modalVisible, setModalVisible] = useState(false);
 
@@ -233,9 +254,10 @@ const Community: React.FC<CommunityProps> = ({
     };
   }, [posts]);
 
+  // Use filteredPosts instead of raw posts for visibility logic
   const visiblePosts = useMemo(
-    () => posts.filter((post) => !hiddenPosts.includes(post.id)),
-    [posts, hiddenPosts]
+    () => filteredPosts.filter((post) => !hiddenPosts.includes(post.id)),
+    [filteredPosts, hiddenPosts]
   );
 
   const visibleAnswers = useMemo(() => {
@@ -593,13 +615,28 @@ const Community: React.FC<CommunityProps> = ({
               </TouchableOpacity>
             </View>
 
-            <FlatList
-              data={visiblePosts}
-              keyExtractor={(item) => item.id}
-              renderItem={renderPost}
-              scrollEnabled={false}
-              contentContainerStyle={{ paddingBottom: 50 }}
-            />
+            {/* 👇 RENDER FILTERED LIST OR EMPTY STATE */}
+            {visiblePosts.length > 0 ? (
+              <FlatList
+                data={visiblePosts}
+                keyExtractor={(item) => item.id}
+                renderItem={renderPost}
+                scrollEnabled={false}
+                contentContainerStyle={{ paddingBottom: 50 }}
+              />
+            ) : (
+              <View style={styles.emptyState}>
+                <Ionicons name="search-outline" size={48} color="#CCC" />
+                <Text style={styles.emptyTitle}>
+                  {searchQuery.trim() ? 'No matching posts found' : 'No posts yet'}
+                </Text>
+                <Text style={styles.emptySubtitle}>
+                  {searchQuery.trim()
+                    ? `Try searching for "${searchQuery.trim()}" with different keywords.`
+                    : 'Be the first to ask a question or share your thoughts!'}
+                </Text>
+              </View>
+            )}
           </View>
         </ScrollView>
 
@@ -1328,6 +1365,27 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.18,
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 4 },
+  },
+
+  // 👇 NEW STYLES FOR EMPTY STATE
+  emptyState: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 60,
+    paddingHorizontal: 20,
+  },
+  emptyTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#333',
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  emptySubtitle: {
+    fontSize: 14,
+    color: '#777',
+    textAlign: 'center',
+    lineHeight: 20,
   },
 });
 

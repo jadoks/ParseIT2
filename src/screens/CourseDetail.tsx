@@ -137,8 +137,8 @@ export interface CourseAssignment {
   bucketPath?: string | null;
   files?: AssignmentFile[];
   comments?: CourseAssignmentComment[];
-  assignmentType?: 'regular' | 'game_based'; // 👈 ADDED
-  gameType?: string;                         // 👈 ADDED
+  assignmentType?: 'regular' | 'game_based';
+  gameType?: string;
 }
 
 export interface CourseDetailData {
@@ -180,7 +180,7 @@ interface CourseDetailProps {
       completedAt?: string | null;
     }
   >;
-  onPlayGame?: (assignment: AssignmentItem) => void; // 👈 ADDED
+  onPlayGame?: (assignment: AssignmentItem) => void;
 }
 
 const EMPTY_COURSE: AssignmentCourse = {
@@ -213,7 +213,7 @@ const CourseDetail = ({
   currentStudent,
   isGeneratingActivity = false,
   completedActivityScores = {},
-  onPlayGame, // 👈 ADDED
+  onPlayGame,
 }: CourseDetailProps) => {
   const { width } = useWindowDimensions();
   const isSmallPhone = width < 360;
@@ -233,6 +233,10 @@ const CourseDetail = ({
   const [submissionLink, setSubmissionLink] = useState("");
   const [isUploadingFile, setIsUploadingFile] = useState(false);
   const [isSubmittingAssignment, setIsSubmittingAssignment] = useState(false);
+  
+  // 👇 ADDED STATE FOR GAME ATTEMPTS
+  const [gameAttempts, setGameAttempts] = useState<Record<string, number>>({});
+  const [isLoadingAttempts, setIsLoadingAttempts] = useState<Record<string, boolean>>({});
 
   const autoHandledRef = useRef<string | null>(null);
 
@@ -274,6 +278,25 @@ const CourseDetail = ({
     if (recommendation === "review") return "#D32F2F";
     if (recommendation === "practice") return "#F57C00";
     return "#999";
+  };
+
+  // 👇 ADDED STATUS COLOR HELPERS TO MATCH ASSIGNMENTS.TSX
+  const getStatusColor = (status: AssignmentItem['status']) => {
+    switch (status) {
+      case 'pending': return '#FFE082';
+      case 'submitted': return '#BBDEFB';
+      case 'graded': return '#A5D6A7';
+      default: return '#DDD';
+    }
+  };
+
+  const getStatusTextColor = (status: AssignmentItem['status']) => {
+    switch (status) {
+      case 'pending': return '#7A5600';
+      case 'submitted': return '#0D47A1';
+      case 'graded': return '#1B5E20';
+      default: return '#555';
+    }
   };
 
   const getMaterialIconName = (type: string) => {
@@ -700,6 +723,54 @@ const CourseDetail = ({
     }
   };
 
+  // 👇 FETCH GAME ATTEMPTS LOGIC
+  const fetchGameAttempts = async (assignmentId: string) => {
+    if (!currentStudent?.studentId) return;
+    setIsLoadingAttempts((prev) => ({ ...prev, [assignmentId]: true }));
+    try {
+      const response = await apiFetch(`${API_BASE_URL}/student-submissions/${currentStudent.studentId}`);
+      const data = await response.json();
+      if (response.ok && data?.data) {
+        const submissions = Array.isArray(data.data) ? data.data : [];
+        const assignmentSubmissions = submissions.filter(
+          (sub: any) => sub.assignmentId === assignmentId
+        );
+        const attemptCount = assignmentSubmissions.length;
+        setGameAttempts((prev) => ({ ...prev, [assignmentId]: attemptCount }));
+      }
+    } catch (error) {
+      console.error('Error fetching game attempts:', error);
+    } finally {
+      setIsLoadingAttempts((prev) => ({ ...prev, [assignmentId]: false }));
+    }
+  };
+
+  const getRemainingAttempts = (assignment: AssignmentItem) => {
+    const attemptsUsed = gameAttempts[assignment.id] || 0;
+    const maxAttempts = assignment.numberOfAttempts === 'unlimited' 
+      ? Infinity 
+      : parseInt(assignment.numberOfAttempts || '1');
+    return maxAttempts - attemptsUsed;
+  };
+
+  const canPlayGame = (assignment: AssignmentItem) => {
+    const remaining = getRemainingAttempts(assignment);
+    return remaining > 0;
+  };
+
+  const handlePlayGameWithAttemptCheck = (assignment: AssignmentItem) => {
+    if (!canPlayGame(assignment)) {
+      Alert.alert(
+        'No Attempts Remaining',
+        'You have used all your attempts for this game-based assignment.'
+      );
+      return;
+    }
+    if (onPlayGame) {
+      onPlayGame(assignment);
+    }
+  };
+
   const renderMaterialItem = ({
     item,
   }: {
@@ -741,7 +812,13 @@ const CourseDetail = ({
       <TouchableOpacity
         style={styles.assignmentCard}
         activeOpacity={0.85}
-        onPress={() => setSelectedAssignment(item)}
+        onPress={() => {
+          setSelectedAssignment(item);
+          // 👇 FETCH ATTEMPTS IF IT'S A GAME
+          if (item.assignmentType === 'game_based') {
+            fetchGameAttempts(item.id);
+          }
+        }}
       >
         <View style={styles.assignmentHeader}>
           <View style={styles.assignmentInfo}>
@@ -753,8 +830,21 @@ const CourseDetail = ({
             )}
           </View>
 
-          <View style={styles.statusBadge}>
-            <Text style={styles.statusText}>{item.status}</Text>
+          {/* 👇 UPDATED STATUS BADGE TO MATCH ASSIGNMENTS.TSX */}
+          <View
+            style={[
+              styles.statusBadge,
+              { backgroundColor: getStatusColor(item.status) },
+            ]}
+          >
+            <Text
+              style={[
+                styles.statusText,
+                { color: getStatusTextColor(item.status) },
+              ]}
+            >
+              {item.status}
+            </Text>
           </View>
         </View>
 
@@ -1188,6 +1278,18 @@ const CourseDetail = ({
                               </Text>
                             </View>
                           )}
+                          
+                          {/* 🌟 UPDATED: Show Max Attempts in Info Block */}
+                          {selectedAssignment.assignmentType === 'game_based' && selectedAssignment.numberOfAttempts && (
+                            <View style={styles.infoMetaRow}>
+                              <Text style={styles.infoMetaLabel}>Max Attempts</Text>
+                              <Text style={styles.infoMetaValue}>
+                                {selectedAssignment.numberOfAttempts === 'unlimited' 
+                                  ? 'Unlimited' 
+                                  : selectedAssignment.numberOfAttempts}
+                              </Text>
+                            </View>
+                          )}
                         </View>
 
                         <View style={styles.infoInstructionBlock}>
@@ -1282,20 +1384,46 @@ const CourseDetail = ({
                           <Text style={styles.emptyText}>No assignment file attached.</Text>
                         )}
                       </View>
-
-                      {/* 👇 GAME BASED ASSIGNMENT BUTTON */}
+                      
+                      {/*  GAME BASED ASSIGNMENT BUTTON WITH SIMPLE ATTEMPT LABEL */}
                       {selectedAssignment.assignmentType === 'game_based' && (
                         <View style={styles.section}>
                           <Text style={styles.sectionTitle}>🎮 Game-Based Assignment</Text>
                           <Text style={{ color: '#666', marginBottom: 10, fontSize: 13 }}>
                             This is an interactive game assignment. Click below to start playing!
                           </Text>
-                          <TouchableOpacity
-                            style={[styles.uploadButtonWide, { backgroundColor: '#4CAF50' }]}
-                            onPress={() => onPlayGame && onPlayGame(selectedAssignment)}
-                          >
-                            <Text style={styles.uploadButtonText}>Start Game</Text>
-                          </TouchableOpacity>
+                          {isLoadingAttempts[selectedAssignment.id] ? (
+                            <View style={[styles.uploadButtonWide, { backgroundColor: '#CCC' }]}>
+                              <ActivityIndicator size="small" color="#666" />
+                              <Text style={[styles.uploadButtonText, { color: '#666' }]}>
+                                Checking attempts...
+                              </Text>
+                            </View>
+                          ) : (
+                            <>
+                              {/* 🌟 UPDATED: Simple Label Display */}
+                              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                                <Text style={{ fontSize: 13, fontWeight: '600', color: '#333' }}>
+                                  {selectedAssignment.numberOfAttempts === 'unlimited' 
+                                    ? 'Attempt: Unlimited'
+                                    : `Attempt: ${getRemainingAttempts(selectedAssignment)}`}
+                                </Text>
+                              </View>
+
+                              <TouchableOpacity
+                                style={[
+                                  styles.uploadButtonWide, 
+                                  { backgroundColor: canPlayGame(selectedAssignment) ? '#4CAF50' : '#CCC' }
+                                ]}
+                                onPress={() => handlePlayGameWithAttemptCheck(selectedAssignment)}
+                                disabled={!canPlayGame(selectedAssignment)}
+                              >
+                                <Text style={styles.uploadButtonText}>
+                                  {canPlayGame(selectedAssignment) ? 'Start Game' : 'No Attempts Remaining'}
+                                </Text>
+                              </TouchableOpacity>
+                            </>
+                          )}
                         </View>
                       )}
 
@@ -1834,13 +1962,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 5,
     borderRadius: 8,
-    backgroundColor: "#FDECEC",
+    // Background color is now dynamic via inline styles
   },
   statusText: {
     fontWeight: "700",
     textTransform: "capitalize",
     fontSize: 12,
-    color: "#D32F2F",
+    // Color is now dynamic via inline styles
   },
   assignmentFooter: {
     borderTopWidth: 1,
