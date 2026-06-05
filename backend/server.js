@@ -13,6 +13,11 @@ import officeparser from "officeparser";
 import serviceAccount from "./serviceAccountKey.json" with { type: "json" };
 const require = createRequire(import.meta.url);
 const pdf = require("pdf-parse");
+const vision = require("@google-cloud/vision");
+
+const client = new vision.ImageAnnotatorClient({
+  keyFilename: "./serviceAccountKey.json",
+});
 
 dotenv.config();
 
@@ -261,7 +266,7 @@ async function hydrateUserImageUrls(userData = {}) {
 
 
 
-const GEMINI_GAME_MODEL = process.env.GEMINI_GAME_MODEL || "gemini-2.5-flash";
+const GEMINI_GAME_MODEL = process.env.GEMINI_GAME_MODEL || "gemini-2.5-flash-lite";
 const OPENAI_GAME_MODEL =
   process.env.OPENAI_GAME_MODEL || process.env.OPENAI_MODEL || "gpt-4o-mini";
 const geminiGameAI = process.env.GEMINI_API_KEY
@@ -738,7 +743,10 @@ async function uploadAssistantFileToStorage({
 }
 
 function limitText(text, maxChars = 12000) {
-  if (!text) return "";
+  if (typeof text !== "string") {
+    return "";
+  }
+
   return text.length > maxChars
     ? `${text.slice(0, maxChars)}\n...[truncated]`
     : text;
@@ -747,125 +755,284 @@ function limitText(text, maxChars = 12000) {
 async function extractTextFromFile(buffer, mimeType = "", fileName = "") {
   const lowerName = String(fileName || "").toLowerCase();
   const normalizedMimeType = String(mimeType || "").toLowerCase();
-  
-  // Plain text-like files
-  if (
-    normalizedMimeType.includes("text") ||
-    lowerName.endsWith(".txt") ||
-    lowerName.endsWith(".md") ||
-    lowerName.endsWith(".json") ||
-    lowerName.endsWith(".csv")
-  ) {
-    return buffer.toString("utf-8");
-  }
-  
-  // PDF
-  if (
-    normalizedMimeType === "application/pdf" ||
-    lowerName.endsWith(".pdf")
-  ) {
-    try {
-      const parsed = await pdf(buffer);
-      return parsed.text || "";
-    } catch (error) {
-      console.warn("PDF extraction failed:", error?.message || error);
-      return "";
-    }
-  }
-  
-  // DOCX (modern Word document)
-  if (
-    normalizedMimeType ===
-      "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
-    lowerName.endsWith(".docx")
-  ) {
-    try {
-      const result = await mammoth.extractRawText({ buffer });
-      return result.value || "";
-    } catch (error) {
-      console.warn("DOCX extraction failed:", error?.message || error);
-      return "";
-    }
-  }
-  
-  // DOC (legacy Word document) - use word-extractor
-  if (
-    normalizedMimeType === "application/msword" ||
-    lowerName.endsWith(".doc")
-  ) {
-    try {
-      const WordExtractor = require("word-extractor");
-      const extractor = new WordExtractor();
 
-      const extracted = await extractor.extract(buffer);
-      return extracted.getBody() || "";
-    } catch (error) {
-      console.warn("DOC extraction failed:", error?.message || error);
-      return "";
+  const hasExt = (ext) => lowerName.endsWith(ext);
+
+  const isGenericMime =
+    normalizedMimeType.includes("octet-stream") ||
+    normalizedMimeType.includes("unknown") ||
+    !normalizedMimeType;
+
+  try {
+    // =========================
+    // TXT / CSV / JSON / MD
+    // =========================
+    if (
+      (!isGenericMime &&
+        normalizedMimeType.startsWith("text/")) ||
+      hasExt(".txt") ||
+      hasExt(".csv") ||
+      hasExt(".json") ||
+      hasExt(".md")
+    ) {
+      const text = buffer.toString("utf8");
+
+      console.log(
+        `Text file extracted successfully (${text.length} chars)`
+      );
+
+      return text;
     }
-  }
-  
-  // PPTX (modern PowerPoint) - use officeparser
-  if (
-    normalizedMimeType ===
-      "application/vnd.openxmlformats-officedocument.presentationml.presentation" ||
-    lowerName.endsWith(".pptx")
-  ) {
-    try {
-      const text = await officeparser.parseOffice(buffer);
-      return text || "";
-    } catch (error) {
-      console.warn("PPTX extraction failed:", error?.message || error);
-      return "";
+
+   
+// =========================
+// PDF
+// Microsoft PDF
+// WPS PDF
+// =========================
+if (
+  normalizedMimeType === "application/pdf" ||
+  hasExt(".pdf") ||
+  (isGenericMime && hasExt(".pdf"))
+) {
+  try {
+    const parsed = await pdf(buffer);
+
+    const text = parsed?.text?.trim() || "";
+
+    console.log(
+      `PDF extracted successfully (${text.length} chars)`
+    );
+
+    // If PDF already contains enough text,
+    // return it immediately.
+    if (text.length > 500) {
+      return text;
     }
+
+    console.log(
+      "PDF appears to be scanned/image-based. Falling back to Gemini Vision..."
+    );
+
+    return {
+      imagePdf: true,
+      pdfBase64: buffer.toString("base64"),
+      extractedText: text,
+    };
+  } catch (error) {
+    console.warn(
+      "PDF extraction failed:",
+      error?.message || error
+    );
+
+    return {
+      imagePdf: true,
+      pdfBase64: buffer.toString("base64"),
+      extractedText: "",
+    };
   }
-  
-  // PPT (legacy PowerPoint) - use officeparser
-  if (
-    normalizedMimeType === "application/vnd.ms-powerpoint" ||
-    lowerName.endsWith(".ppt")
-  ) {
-    try {
-      const text = await officeparser.parseOffice(buffer);
-      return text || "";
-    } catch (error) {
-      console.warn("PPT extraction failed:", error?.message || error);
-      return "";
-    }
-  }
-  
-  // XLSX (modern Excel) - use officeparser
-  if (
-    normalizedMimeType ===
-      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
-    lowerName.endsWith(".xlsx")
-  ) {
-    try {
-      const text = await officeparser.parseOffice(buffer);
-      return text || "";
-    } catch (error) {
-      console.warn("XLSX extraction failed:", error?.message || error);
-      return "";
-    }
-  }
-  
-  // XLS (legacy Excel) - use officeparser
-  if (
-    normalizedMimeType === "application/vnd.ms-excel" ||
-    lowerName.endsWith(".xls")
-  ) {
-    try {
-      const text = await officeparser.parseOffice(buffer);
-      return text || "";
-    } catch (error) {
-      console.warn("XLS extraction failed:", error?.message || error);
-      return "";
-    }
-  }
-  
-  console.warn(`Unsupported file type: ${normalizedMimeType || lowerName}`);
-  return "";
 }
+
+
+
+      // =========================
+      // DOCX
+      // Word / WPS Writer
+      // =========================
+      if (
+        normalizedMimeType ===
+          "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+        hasExt(".docx") ||
+        (isGenericMime && hasExt(".docx"))
+      ) {
+        try {
+          const result = await mammoth.extractRawText({
+            buffer,
+          });
+
+          const text = result?.value || "";
+
+          console.log(
+            `DOCX extracted successfully (${text.length} chars)`
+          );
+
+          return text;
+        } catch (error) {
+          console.warn(
+            "DOCX extraction failed:",
+            error?.message || error
+          );
+
+          return "";
+        }
+      }
+
+    // =========================
+    // DOC
+    // Legacy Microsoft Word
+    // =========================
+    if (
+      normalizedMimeType === "application/msword" ||
+      hasExt(".doc") ||
+      (isGenericMime && hasExt(".doc"))
+    ) {
+      try {
+        const WordExtractor = require("word-extractor");
+
+        const extractor = new WordExtractor();
+
+        const extracted =
+          await extractor.extract(buffer);
+
+        const text =
+          extracted?.getBody?.() || "";
+
+        console.log(
+          `DOC extracted successfully (${text.length} chars)`
+        );
+
+        return text;
+      } catch (error) {
+        console.warn(
+          "DOC extraction failed:",
+          error?.message || error
+        );
+
+        return "";
+      }
+    }
+
+    // =========================
+// PPT / PPTX / XLS / XLSX
+// Microsoft Office
+// WPS Office
+// =========================
+if (
+  (!isGenericMime &&
+    (
+      normalizedMimeType.includes("presentation") ||
+      normalizedMimeType.includes("spreadsheet")
+    )) ||
+  hasExt(".ppt") ||
+  hasExt(".pptx") ||
+  hasExt(".xls") ||
+  hasExt(".xlsx") ||
+  (
+    isGenericMime &&
+    (
+      hasExt(".ppt") ||
+      hasExt(".pptx") ||
+      hasExt(".xls") ||
+      hasExt(".xlsx")
+    )
+  )
+) {
+  try {
+    const text = await officeparser.parseOffice(buffer);
+
+    console.log(
+      `Office extracted (${text?.length || 0} chars)`
+    );
+
+    // If extraction contains enough content
+    if (text && text.length > 500) {
+      return text;
+    }
+
+    console.log(
+      "Office file has little/no extractable text. Falling back to Gemini document analysis..."
+    );
+
+    return {
+      officeDocument: true,
+      fileBase64: buffer.toString("base64"),
+      extractedText: text || "",
+    };
+  } catch (error) {
+    console.warn(
+      "Office extraction failed. Falling back to Gemini:",
+      error?.message || error
+    );
+
+    return {
+      officeDocument: true,
+      fileBase64: buffer.toString("base64"),
+      extractedText: "",
+    };
+  }
+}
+
+    // =========================
+    // IMAGE OCR
+    // PNG / JPG / JPEG / WEBP
+    // =========================
+    if (
+      (!isGenericMime &&
+        normalizedMimeType.startsWith("image/")) ||
+      hasExt(".png") ||
+      hasExt(".jpg") ||
+      hasExt(".jpeg") ||
+      hasExt(".webp") ||
+      hasExt(".gif") ||
+      hasExt(".bmp") ||
+      (
+        isGenericMime &&
+        (
+          hasExt(".png") ||
+          hasExt(".jpg") ||
+          hasExt(".jpeg") ||
+          hasExt(".webp") ||
+          hasExt(".gif") ||
+          hasExt(".bmp")
+        )
+      )
+    ) {
+      try {
+        const [result] =
+          await client.textDetection({
+            image: {
+              content: buffer.toString("base64"),
+            },
+          });
+
+        const text =
+          result?.fullTextAnnotation?.text ||
+          result?.textAnnotations?.[0]?.description ||
+          "";
+
+        console.log(
+          `Image OCR extracted successfully (${text.length} chars)`
+        );
+
+        return text;
+      } catch (error) {
+        console.error(
+          "Image OCR failed:",
+          error?.message || error
+        );
+
+        return "";
+      }
+    }
+
+    console.warn(
+      `Unsupported file type: ${
+        normalizedMimeType || lowerName
+      }`
+    );
+
+    return "";
+  } catch (error) {
+    console.error(
+      "extractTextFromFile failed:",
+      error?.message || error
+    );
+
+    return "";
+  }
+}
+
+
 
 function parseQuizMastersJsonResponse(rawText = "", providerLabel = "AI") {
   const cleaned = String(rawText || "")
@@ -3193,6 +3360,16 @@ app.post("/game-ai/generate-quiz-masters", requireAuth, gameUpload.single("file"
       req.file.mimetype,
       req.file.originalname
     );
+
+    console.log("=== FILE DEBUG ===");
+    console.log("fileName:", req.file.originalname);
+    console.log("fileType:", req.file.mimetype);
+    console.log("extracted length:", extractedText?.length || 0);
+    console.log(
+      "preview:",
+      extractedText?.substring(0, 300)
+    );
+    console.log("==================");
 
     if (!normalizeOptionalText(extractedText)) {
       return res.status(400).json({
@@ -9814,7 +9991,7 @@ async function callGeminiProvider({
     throw new Error("Gemini API key is not configured.");
   }
 
-  const model = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+  const model = process.env.GEMINI_MODEL || "gemini-2.5-flash-lite";
 
   const response = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
@@ -10140,7 +10317,7 @@ function normalizeProviderName(provider = "") {
 function getProviderModelName(provider = "") {
   const value = String(provider || "").trim().toLowerCase();
 
-  if (value === "gemini") return process.env.GEMINI_MODEL || "gemini-2.5-flash";
+  if (value === "gemini") return process.env.GEMINI_MODEL || "gemini-2.5-flash-lite";
   if (value === "openai") return process.env.OPENAI_MODEL || "gpt-4o-mini";
   if (value === "claude") return process.env.CLAUDE_MODEL || "claude-3-5-haiku-latest";
   if (value === "groq") return process.env.GROQ_MODEL || "llama-3.1-8b-instant";
@@ -10393,16 +10570,24 @@ async function handleAIChat(req, res) {
       courseId = null,
       assignmentId = null,
       topic = null,
+      // ✅ NEW: File upload parameters
+      fileBase64,
+      fileName,
+      fileType,
     } = req.body || {};
 
-    if (!message || typeof message !== "string") {
-      return res.status(400).json({ error: "Message is required." });
+    // Allow empty message if a file is provided (e.g., "Analyze this file")
+    if (!message && !fileBase64) {
+      return res.status(400).json({ error: "Message or file is required." });
     }
 
     const normalizedMode = mode === "tutor" ? "tutor" : "assistant";
     const normalizedHistory = buildGeminiHistory(history);
-    const matchedTraining = await findMatchingChatbotTraining(message, 5);
-    const interpretedMessage = expandKeywordPrompt(message, normalizedMode);
+    
+    // If no message text, use a default prompt for file analysis
+    const rawMessage = message || "Analyze the content of the attached file.";
+    const matchedTraining = await findMatchingChatbotTraining(rawMessage, 5);
+    const interpretedMessage = expandKeywordPrompt(rawMessage, normalizedMode);
     const bestMatch = matchedTraining[0] || null;
 
     // Keep existing keyword + strong trigger logic for Assistant only.
@@ -10411,7 +10596,8 @@ async function handleAIChat(req, res) {
       normalizedMode === "assistant" &&
       bestMatch &&
       bestMatch.score >= 80 &&
-      bestMatch.response
+      bestMatch.response &&
+      !fileBase64 // ❌ Don't use cached training if a new file is uploaded
     ) {
       return res.json({
         reply: bestMatch.response,
@@ -10465,28 +10651,218 @@ ${materialsText || "No readable materials found."}
       }
     }
 
-    let contextualPrompt = `User message: ${interpretedMessage}\nMode: ${normalizedMode}\n`;
+
+    // =========================
+    // FILE PROCESSING
+    // =========================
+
+    let fileContextText = "";
+    let imageFileForVision = null;
+
+    if (fileBase64) {
+      try {
+        const cleanedBase64 = fileBase64.includes(",")
+          ? fileBase64.split(",")[1]
+          : fileBase64;
+
+        const buffer = Buffer.from(cleanedBase64, "base64");
+
+        console.log("=== FILE DEBUG ===");
+        console.log("fileName:", fileName);
+        console.log("fileType:", fileType);
+        console.log("base64 length:", cleanedBase64.length);
+        console.log("==================");
+
+        // =========================
+        // IMAGE FILES
+        // =========================
+        if (fileType?.startsWith("image/")) {
+          imageFileForVision = {
+            mimeType: fileType,
+            data: cleanedBase64,
+          };
+
+          fileContextText = `
+    [Uploaded Image]
+    File Name: ${fileName}
+    File Type: ${fileType}
+
+    The user uploaded an image.
+    Analyze everything visible in the image.
+    Read all text.
+    Describe documents, screenshots, diagrams, forms, tables, charts, certificates, signatures, and visual content.
+    [/Uploaded Image]
+    `;
+        }
+
+        // =========================
+        // DOCUMENT FILES
+        // =========================
+        else {
+          const extractedText = await extractTextFromFile(
+            buffer,
+            fileType,
+            fileName
+          );
+
+          const isVisionDocument =
+            extractedText &&
+            typeof extractedText === "object" &&
+            (
+              extractedText.officeDocument ||
+              extractedText.imagePdf
+            );
+          
+          // PDF made of images/scans
+          if (
+            extractedText &&
+            typeof extractedText === "object" &&
+            extractedText.imagePdf
+          ) {
+            const model = geminiGameAI.getGenerativeModel({
+              model: "gemini-2.5-flash-lite",
+            });
+
+            const result = await model.generateContent([
+              {
+                text: `
+          Analyze this PDF document.
+
+          Read all visible text.
+          Summarize the document.
+          Extract important information.
+          If it contains lessons or educational material,
+          explain the content clearly.
+                `,
+              },
+              {
+                inlineData: {
+                  mimeType: "application/pdf",
+                  data: extractedText.pdfBase64,
+                },
+              },
+            ]);
+
+            const pdfVisionText = result.response.text();
+
+            fileContextText = `
+            [Uploaded PDF Content]
+            File Name: ${fileName}
+            File Type: ${fileType}
+
+            ${limitText(pdfVisionText, 12000)}
+
+            [/Uploaded PDF Content]
+            `;
+          }
+
+
+
+          console.log(
+            "Extracted Length:",
+            extractedText?.length || 0
+          );
+
+          if (
+          typeof extractedText === "string" &&
+          extractedText.trim()
+        ) {
+          fileContextText = `
+        [Uploaded File Content]
+        File Name: ${fileName}
+        File Type: ${fileType}
+
+        ${limitText(extractedText, 12000)}
+
+        [/Uploaded File Content]
+        `;
+        }
+        else if (
+          typeof extractedText === "object" &&
+          (
+            extractedText.officeDocument ||
+            extractedText.imagePdf
+          )
+        ) {
+          fileContextText = `
+        [Uploaded File]
+        File Name: ${fileName}
+        File Type: ${fileType}
+
+        Document attached for Gemini analysis.
+
+        [/Uploaded File]
+        `;
+        }
+        else {
+          fileContextText = `
+        [Uploaded File]
+        ${fileName}
+
+        The file was uploaded successfully but no readable content was extracted.
+
+        [/Uploaded File]
+        `;
+        }
+        }
+      } catch (error) {
+        console.error(
+          "File extraction error:",
+          error
+        );
+
+        fileContextText = `
+    [Uploaded File]
+    ${fileName}
+
+    Failed to process file.
+    [/Uploaded File]
+    `;
+      }
+    }
+
+
+    let contextualPrompt = `User message: ${interpretedMessage}
+    Mode: ${normalizedMode}
+    `;
 
     if (normalizedMode === "tutor") {
       contextualPrompt += `
-The student may be asking because they are having difficulty with a lesson.
-Requested or detected topic: ${topic || "Not specified"}
-${tutorProfileContext}
-${assignmentContextText}
-`;
+    The student may be asking because they are having difficulty with a lesson.
+    Requested or detected topic: ${topic || "Not specified"}
+    ${tutorProfileContext}
+    ${assignmentContextText}
+    `;
+    }
+
+    // ✅ APPEND FILE CONTENT TO PROMPT
+    if (fileContextText) {
+      contextualPrompt += `
+    IMPORTANT: The user has uploaded a file. Analyze its CONTENT thoroughly.
+    ${fileContextText}
+
+    INSTRUCTIONS FOR IMAGE/FILE ANALYSIS:
+    - Focus on describing WHAT IS IN the image/file (objects, text, scenes, people, activities)
+    - Do NOT discuss artistic style, ink, colors, or aesthetic qualities unless specifically asked
+    - If text is present, read and explain it
+    - If objects/scenes are present, describe them clearly
+    - Be specific and detailed about the actual content
+    - Answer the user's question based on what you see in the content
+    `;
     }
 
     if (matchedTraining.length > 0) {
       contextualPrompt += `
-Matched chatbot training exists.
-Use the following training context as reference.
-If the answer is present in the attached extracted document content, use that content.
-If you are in tutor mode, transform the content into a tutoring explanation rather than just copying it.
+      Matched chatbot training exists.
+      Use the following training context as reference.
+      If the answer is present in the attached extracted document content, use that content.
+      If you are in tutor mode, transform the content into a tutoring explanation rather than just copying it.
 
-${trainingText}
+      ${trainingText}
 
-${fileText}
-`;
+      ${fileText}
+      `;
+      
     } else {
       contextualPrompt += `
 No strong stored training matched.
@@ -10509,12 +10885,52 @@ In tutor mode, tutor the student step by step and ask a quick check question whe
 
     const assistantInstruction = `${modeInstruction}\n${baseInstruction}`;
 
-    const aiResult = await callAIWithFallback({
-      assistantInstruction,
-      contextualPrompt,
-      normalizedHistory,
-      history,
-    });
+    
+      let aiResult;
+
+      // =========================
+      // IMAGE ANALYSIS (Gemini Vision)
+      // =========================
+      if (imageFileForVision) {
+        const model = geminiGameAI.getGenerativeModel({
+          model: "gemini-2.5-flash-lite",
+        });
+
+        const result = await model.generateContent([
+          {
+            text: `
+      ${assistantInstruction}
+
+      ${contextualPrompt}
+            `,
+          },
+          {
+            inlineData: {
+              mimeType: imageFileForVision.mimeType,
+              data: imageFileForVision.data,
+            },
+          },
+        ]);
+
+        aiResult = {
+          text: result.response.text(),
+          provider: "gemini-vision",
+        };
+      }
+
+      // =========================
+      // NORMAL DOCUMENT CHAT
+      // =========================
+      else {
+        aiResult = await callAIWithFallback({
+          assistantInstruction,
+          contextualPrompt,
+          normalizedHistory,
+          history,
+        });
+      }
+
+
 
     if (normalizedMode === "tutor" && studentId) {
       await upsertLessonProgress({
@@ -10550,6 +10966,32 @@ In tutor mode, tutor the student step by step and ask a quick check question whe
 }
 
 app.post("/ai/chat", handleAIChat);
+
+function buildFilePrompt({
+  fileName,
+  extractedText,
+  userPrompt,
+}) {
+  return `
+You are ParseIT AI Assistant.
+
+Uploaded File:
+${fileName}
+
+File Content:
+${limitText(extractedText, 15000)}
+
+User Request:
+${userPrompt}
+
+Instructions:
+- Answer based on the uploaded file.
+- If the file contains the answer, prioritize the file.
+- If the user asks for a summary, summarize the file.
+- If the user asks for quiz questions, generate them from the file.
+- If the user asks for explanations, explain using the file content.
+`;
+}
 
 // keep your old frontend working
 app.post("/ai/gemini", handleAIChat);

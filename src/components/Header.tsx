@@ -61,6 +61,7 @@ const GLOBAL_SEARCH_FEATURES: SearchFeature[] = [
   { id: 'community', title: 'Community Feed', screen: 'community', icon: 'forum-outline', keywords: ['comm', 'post', 'feed', 'social', 'forum'] },
   { id: 'analytics', title: 'Analytics & Stats', screen: 'analytics', icon: 'chart-bar', keywords: ['ana', 'stats', 'data', 'progress', 'score'] },
   { id: 'profile', title: 'My Profile', screen: 'profile', icon: 'account-circle-outline', keywords: ['prof', 'user', 'me', 'settings', 'account'] },
+   { id: 'myjourney', title: 'My Journey', screen: 'myjourney', icon: 'map-marker-path', keywords: ['journey', 'grades', 'record', 'academic'] },
   { id: 'notifications', title: 'Notifications', screen: 'notification', icon: 'bell-outline', keywords: ['notif', 'alert', 'bell', 'update'] },
 ];
 
@@ -265,15 +266,19 @@ const Header: React.FC<HeaderProps> = ({
       activeScreen === 'game' ||
       activeScreen === 'flipit' ||
       activeScreen === 'fruitmania' ||
-      activeScreen === 'quizmasters'
+      activeScreen === 'quizmasters' ||
+      activeScreen === 'profile' ||      // ✅ Added
+      activeScreen === 'myjourney' ||    // ✅ Added
+      activeScreen === 'analytics'
     ) {
       return 'Search features or games...';
     }
 
     if (activeScreen === 'videos') return 'Search Videos';
-    if (activeScreen === 'messenger') return 'Filter conversations (e.g. PC)';
-    if (activeScreen === 'classes') return 'Search enrolled classes';
-    if (activeScreen === 'analytics') return 'Search Analytics';
+  if (activeScreen === 'messenger') return 'Filter conversations (e.g. PC)';
+  if (activeScreen === 'classes') return 'Search enrolled classes';
+  if (activeScreen === 'assignments') return 'Search assignments';
+  if (activeScreen === 'community') return 'Search posts';
 
     return 'Search ParseClass...';
   };
@@ -421,41 +426,44 @@ const Header: React.FC<HeaderProps> = ({
   const displayNotificationCount = notificationCount > 99 ? '99+' : `${notificationCount}`;
 
   // 👇 RENDER GLOBAL SEARCH RESULTS DROPDOWN
-  const renderSearchResults = () => {
-    // Only show dropdown for Home/Game screens when we have results
-    const isGlobalSearchScreen = 
-        activeScreen === 'home' || 
-        activeScreen === 'game' || 
-        activeScreen === 'flipit' || 
-        activeScreen === 'fruitmania' || 
-        activeScreen === 'quizmasters';
+const renderSearchResults = () => {
+  // ✅ UPDATED: Include profile, analytics, and myjourney
+  const isGlobalSearchScreen = 
+      activeScreen === 'home' || 
+      activeScreen === 'game' || 
+      activeScreen === 'flipit' || 
+      activeScreen === 'fruitmania' || 
+      activeScreen === 'quizmasters' ||
+      activeScreen === 'profile' ||    // ✅ Added
+      activeScreen === 'analytics' ||  // ✅ Added
+      activeScreen === 'myjourney';    // ✅ Added
 
-    if (!isGlobalSearchScreen || searchResults.length === 0 || searchQuery.length === 0) return null;
+  if (!isGlobalSearchScreen || searchResults.length === 0 || searchQuery.length === 0) return null;
 
-    return (
-      <View style={[styles.searchResultsContainer, isPhone && styles.searchResultsMobile]}>
-        <ScrollView showsVerticalScrollIndicator={false}>
-          {searchResults.map((item) => (
-            <TouchableOpacity
-              key={item.id}
-              style={styles.searchResultItem}
-              onPress={() => handleSuggestionPress(item.screen)}
-              activeOpacity={0.7}
-            >
-              <View style={styles.resultIconBox}>
-                <MaterialCommunityIcons name={item.icon as any} size={20} color="#D32F2F" />
-              </View>
-              <View style={styles.resultContent}>
-                <Text style={styles.resultTitle}>{item.title}</Text>
-                <Text style={styles.resultSubtitle}>Quick Action • Go to {item.title}</Text>
-              </View>
-              <MaterialCommunityIcons name="chevron-right" size={20} color="#CCC" />
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-      </View>
-    );
-  };
+  return (
+    <View style={[styles.searchResultsContainer, isPhone && styles.searchResultsMobile]}>
+      <ScrollView showsVerticalScrollIndicator={false}>
+        {searchResults.map((item) => (
+          <TouchableOpacity
+            key={item.id}
+            style={styles.searchResultItem}
+            onPress={() => handleSuggestionPress(item.screen)}
+            activeOpacity={0.7}
+          >
+            <View style={styles.resultIconBox}>
+              <MaterialCommunityIcons name={item.icon as any} size={20} color="#D32F2F" />
+            </View>
+            <View style={styles.resultContent}>
+              <Text style={styles.resultTitle}>{item.title}</Text>
+              <Text style={styles.resultSubtitle}>Quick Action • Go to {item.title}</Text>
+            </View>
+            <MaterialCommunityIcons name="chevron-right" size={20} color="#CCC" />
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
+    </View>
+  );
+};
 
   if (isPhone) {
     return (
