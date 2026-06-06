@@ -4013,6 +4013,329 @@ app.post("/create-admin", async (req, res) => {
  * EXISTING ROUTES
  */
 
+
+app.post("/upload-student-grade", requireAuth, async (req, res) => {
+  try {
+    const { fileBase64, fileName, fileType } = req.body;
+    if (!fileBase64 || !fileName) {
+      return res.status(400).json({ error: "fileBase64 and fileName are required." });
+    }
+    const profile = await findUserProfileByAuthUid(req.user.uid);
+    if (!profile || profile.role !== "student") {
+      return res.status(403).json({ error: "Only students can upload grades." });
+    }
+    const studentId = profile.data.studentId || profile.id;
+
+    const cleanedBase64 = fileBase64.includes(",") ? fileBase64.split(",")[1] : fileBase64;
+    const safeMimeType = fileType || "application/octet-stream";
+    const extension = getFileExtensionFromMimeType(safeMimeType);
+    const safeFileName = sanitizeFileName(fileName || `grade.${extension}`);
+    const storagePath = `student-grades/${studentId}/${Date.now()}-${safeFileName}`;
+    
+    const file = bucket.file(storagePath);
+    await file.save(Buffer.from(cleanedBase64, "base64"), {
+      metadata: { contentType: safeMimeType, cacheControl: "private,max-age=0,no-transform" },
+      resumable: false,
+    });
+
+    const fileUrl = await createReadSignedUrl(storagePath);
+
+    await db.collection("studentGrades").doc(studentId).set({
+      studentId,
+      fileName: safeFileName,
+      fileUrl,
+      storagePath,
+      fileType: safeMimeType,
+      uploadedAt: FieldValue.serverTimestamp(),
+    }, { merge: true });
+
+    return res.json({ success: true, message: "Grade file uploaded successfully.", data: { fileUrl, fileName } });
+  } catch (error) {
+    console.error("Upload student grade error:", error);
+    return res.status(500).json({ error: error.message || "Failed to upload grade file." });
+  }
+});
+
+
+app.get("/student-grade/parse/:studentId", requireAuth, async (req, res) => {
+  try {
+    const { studentId } = req.params;
+    const { schoolYear, semester } = req.query;
+
+  
+    const profile = await findUserProfileByAuthUid(req.user.uid);
+
+    if (!profile) {
+      return res.status(403).json({ error: "Unauthorized." });
+    }
+
+    if (
+      profile.role === "student" &&
+      profile.data.studentId !== studentId &&
+      profile.id !== studentId
+    ) {
+      return res
+        .status(403)
+        .json({ error: "Unauthorized to view this grade." });
+    }
+
+    const doc = await db
+      .collection("studentGrades")
+      .doc(studentId)
+      .get();
+
+    if (!doc.exists) {
+      return res.json({
+        success: true,
+        data: null,
+        message: "No uploaded grade file found.",
+      });
+    }
+
+    const gradeData = doc.data() || {};
+    const storagePath = gradeData.storagePath;
+
+    if (!storagePath) {
+      return res.json({
+        success: true,
+        data: null,
+        message: "No storage path found.",
+      });
+    }
+
+    // =========================
+    // DOWNLOAD FILE
+    // =========================
+
+    const file = bucket.file(storagePath);
+    const [buffer] = await file.download();
+
+    const mimeType =
+      gradeData.fileType || "application/octet-stream";
+
+    const fileName =
+      gradeData.fileName || "grade-file";
+
+    // =========================
+    // EXTRACT TEXT
+    // =========================
+
+    const extracted = await extractTextFromFile(
+      buffer,
+      mimeType,
+      fileName
+    );
+
+    let textToParse = "";
+    let visionBase64 = null;
+    let visionMimeType = mimeType;
+
+    if (typeof extracted === "string") {
+      textToParse = extracted;
+    } else if (extracted && typeof extracted === "object") {
+      if (extracted.imagePdf) {
+        visionBase64 = extracted.pdfBase64;
+        visionMimeType = "application/pdf";
+        textToParse = extracted.extractedText || "";
+      } else if (extracted.officeDocument) {
+        visionBase64 = extracted.fileBase64;
+        textToParse = extracted.extractedText || "";
+      } else {
+        textToParse = extracted.extractedText || "";
+      }
+    }
+
+    // =========================
+    // GEMINI VISION FALLBACK
+    // =========================
+
+    if (
+      textToParse.trim().length < 100 &&
+      visionBase64 &&
+      geminiGameAI
+    ) {
+      try {
+        console.log(
+          "Using Gemini Vision fallback..."
+        );
+
+        const model =
+          geminiGameAI.getGenerativeModel({
+            model: GEMINI_GAME_MODEL,
+          });
+
+        const result =
+          await model.generateContent([
+            {
+              text:
+                "Extract all visible text from this transcript exactly as shown. Return raw text only.",
+            },
+            {
+              inlineData: {
+                mimeType: visionMimeType,
+                data: visionBase64,
+              },
+            },
+          ]);
+
+        textToParse =
+          result.response.text() || "";
+      } catch (visionErr) {
+        console.warn(
+          "Vision extraction failed:",
+          visionErr
+        );
+      }
+    }
+
+    if (!textToParse || textToParse.trim().length < 10) {
+      return res.status(400).json({
+        error:
+          "Could not extract readable text from the uploaded file.",
+      });
+    }
+
+
+    // =========================
+    // AI PARSER
+    // =========================
+
+    const prompt = `
+You are an academic transcript parser.
+
+IMPORTANT:
+
+1. Extract ONLY subjects belonging to:
+   School Year = ${schoolYear || "Any"}
+   Semester = ${semester || "Any"}
+
+2. Return ONLY grades found in the FINAL GRADE column.
+
+3. Do NOT use MIDTERM GRADE.
+
+4. Do NOT use FINAL TERM.
+
+5. Keep subject codes exactly as written.
+
+6. If a row contains:
+   CS1 ... 1.6
+
+then grade = 1.6
+
+7. Return JSON only.
+
+Format:
+
+[
+  {
+    "subjectCode": "CS1",
+    "subjectTitle": "MULTIMEDIA",
+    "units": 3,
+    "grade": 1.6
+  }
+]
+
+Transcript:
+
+${limitText(textToParse, 12000)}
+`;
+
+    const aiResult = await callAIWithFallback({
+      assistantInstruction:
+        "Return ONLY a JSON array. No markdown. No explanation.",
+      contextualPrompt: prompt,
+      normalizedHistory: [],
+      history: [],
+    });
+
+    let parsedGrades = [];
+
+    try {
+      const cleanedText = aiResult.text
+        .replace(/```json/g, "")
+        .replace(/```/g, "")
+        .trim();
+
+
+      const jsonMatch =
+        cleanedText.match(/\[[\s\S]*\]/);
+
+      if (!jsonMatch) {
+        throw new Error(
+          "No JSON array found in AI response."
+        );
+      }
+
+      parsedGrades = JSON.parse(
+        jsonMatch[0]
+      );
+
+    } catch (e) {
+      console.error(
+        "Failed to parse AI response:",
+        e
+      );
+
+      console.error(
+        "AI RAW RESPONSE:",
+        aiResult.text
+      );
+
+      return res.status(500).json({
+        error:
+          "AI failed to parse the grade file into structured data.",
+      });
+    }
+
+    return res.json({
+      success: true,
+      data: parsedGrades,
+      fileName: gradeData.fileName,
+    });
+  } catch (error) {
+    console.error(
+      "Parse student grade error:",
+      error
+    );
+
+    return res.status(500).json({
+      error:
+        error.message ||
+        "Failed to parse student grade file.",
+    });
+  }
+});
+
+app.get("/student-grade/:studentId", requireAuth, async (req, res) => {
+  try {
+    const { studentId } = req.params;
+    const profile = await findUserProfileByAuthUid(req.user.uid);
+    if (!profile) {
+      return res.status(403).json({ error: "Unauthorized." });
+    }
+    if (profile.role === "student" && profile.data.studentId !== studentId && profile.id !== studentId) {
+       return res.status(403).json({ error: "Unauthorized to view this grade." });
+    }
+
+    const doc = await db.collection("studentGrades").doc(studentId).get();
+    if (!doc.exists) {
+      return res.json({ success: true, data: null });
+    }
+    const data = doc.data();
+    
+    let fileUrl = data.fileUrl;
+    if (data.storagePath) {
+      const freshUrl = await createReadSignedUrlIfExists(data.storagePath);
+      if (freshUrl) fileUrl = freshUrl;
+    }
+
+    return res.json({ success: true, data: { ...data, fileUrl } });
+  } catch (error) {
+    console.error("Fetch student grade error:", error);
+    return res.status(500).json({ error: error.message || "Failed to fetch student grade." });
+  }
+});
+
 app.get("/students", async (req, res) => {
   try {
     const snapshot = await db.collection("students").get();

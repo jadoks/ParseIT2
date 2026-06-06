@@ -1,5 +1,5 @@
 import { Picker } from '@react-native-picker/picker';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
@@ -18,20 +18,6 @@ const apiFetch = (url: string, options: any = {}) =>
     ...options,
   });
 
-type JourneyCourse = {
-  id: string;
-  name: string;
-  code?: string;
-  courseCode?: string;
-  classCode?: string;
-  description?: string;
-  semester?: string;
-  schoolYear?: string;
-  section?: string;
-  units?: number | string | null;
-  assignments?: any[];
-};
-
 type CurrentStudent = {
   studentId: string;
   firstName: string;
@@ -39,90 +25,35 @@ type CurrentStudent = {
   email?: string;
 };
 
-type FinalGradeRecord = {
-  id?: string;
-  classId?: string;
-  studentId?: string;
-  studentName?: string;
-  finalGrade?: string | number;
-  status?: string;
+type ParsedGrade = {
+  subjectCode: string | null;
+  subjectTitle: string | null;
+  units: number | null;
+  grade: string | null;
 };
 
-// 👇 UPDATED: Added searchQuery to fix TS2322 error
 type MyJourneyProps = {
-  courses?: JourneyCourse[];
-  searchQuery?: string; // ✅ ADDED
+  courses?: any[]; // Kept for prop compatibility, but no longer used
+  searchQuery?: string;
   currentStudent: CurrentStudent;
   studentName?: string;
   apiBaseUrl: string;
 };
 
-const SEMS = ['First Semester', 'Second Semester', 'Summer'];
+const SEMS = [
+  '1st Semester',
+  '2nd Semester'
+];
 
-const normalizeSchoolYear = (value?: string | null) => {
-  if (!value) return '';
-  return String(value).replace(/S\.Y\.?/gi, '').replace(/\s+/g, ' ').trim();
-};
-
-const normalizeSemester = (value?: string | null) => {
-  const raw = String(value || '').trim().toLowerCase();
-
-  if (!raw) return '';
-  if (raw.includes('summer')) return 'Summer';
-  if (raw.includes('first') || raw.includes('1st')) return 'First Semester';
-  if (raw.includes('second') || raw.includes('2nd')) return 'Second Semester';
-
-  return String(value || '').trim();
-};
-
-const getDefaultStartYear = (courses: JourneyCourse[]) => {
-  const firstCourseWithSchoolYear = courses.find((course) => course.schoolYear);
-  const match = normalizeSchoolYear(firstCourseWithSchoolYear?.schoolYear).match(/(\d{4})/);
-
-  if (match?.[1]) return match[1];
-
+const getDefaultStartYear = () => {
   const now = new Date();
   const currentYear = now.getFullYear();
   const currentMonth = now.getMonth() + 1;
-
   return String(currentMonth >= 6 ? currentYear : currentYear - 1);
 };
 
-const getCourseCode = (course: JourneyCourse) => {
-  return course.code || course.courseCode || course.classCode || 'N/A';
-};
-
-const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-
-const stripCourseCodePrefix = (value?: string | null, code?: string | null) => {
-  const raw = String(value || '').trim();
-  const rawCode = String(code || '').trim();
-
-  if (!raw) return 'Untitled Class';
-
-  if (rawCode && rawCode !== 'N/A') {
-    const codePrefixRegex = new RegExp(`^${escapeRegExp(rawCode)}\\s*[-–—:]\\s*`, 'i');
-    return raw.replace(codePrefixRegex, '').trim() || raw;
-  }
-
-  return raw.replace(/^[A-Z]{2,}\s*\d{2,}[A-Z]?\s*[-–—:]\s*/i, '').trim() || raw;
-};
-
-const getCourseDescription = (course: JourneyCourse) => {
-  const code = getCourseCode(course);
-  return stripCourseCodePrefix(course.name || course.description, code);
-};
-
-const getCourseUnits = (course: JourneyCourse) => {
-  const directUnits = Number(course.units);
-  if (Number.isFinite(directUnits) && directUnits > 0) return directUnits;
-
-  return 0;
-};
-
 const MyJourney = ({
-  courses = [],
-  searchQuery = '', // ✅ ADDED with default value
+  searchQuery = '',
   currentStudent,
   studentName,
   apiBaseUrl,
@@ -131,86 +62,21 @@ const MyJourney = ({
   const isMobile = width < 768;
   const isTablet = width >= 768 && width < 1100;
 
-  const [startYearInput, setStartYearInput] = useState(() => getDefaultStartYear(courses));
+  const [startYearInput, setStartYearInput] = useState(() => getDefaultStartYear());
   const [sem, setSem] = useState(SEMS[0]);
   const [show, setShow] = useState(false);
-  const [finalGradesByClassId, setFinalGradesByClassId] = useState<Record<string, FinalGradeRecord>>({});
-  const [isLoadingGrades, setIsLoadingGrades] = useState(false);
 
-  useEffect(() => {
-    setStartYearInput((prev) => prev || getDefaultStartYear(courses));
-  }, [courses]);
+  // State for AI-parsed uploaded grades
+  const [uploadedGrades, setUploadedGrades] = useState<ParsedGrade[]>([]);
+  const [isLoadingUploadedGrades, setIsLoadingUploadedGrades] = useState(false);
+  const [uploadedFileName, setUploadedFileName] = useState<string | null>(null);
+  const [hasFetchedGrade, setHasFetchedGrade] = useState(false);
 
   const startYearNumber = Number(startYearInput);
   const hasValidStartYear = Number.isInteger(startYearNumber) && startYearInput.length === 4;
-  const computedSchoolYear = hasValidStartYear
-    ? `${startYearNumber} - ${startYearNumber + 1}`
-    : '';
-  const compactComputedSchoolYear = computedSchoolYear.replace(/\s/g, '');
-
-  const filteredCourses = useMemo(() => {
-    if (!hasValidStartYear) return [];
-
-    return courses.filter((course) => {
-      const courseSchoolYear = normalizeSchoolYear(course.schoolYear).replace(/\s/g, '');
-      const courseSemester = normalizeSemester(course.semester);
-
-      return courseSchoolYear === compactComputedSchoolYear && courseSemester === sem;
-    });
-  }, [compactComputedSchoolYear, courses, hasValidStartYear, sem]);
-
-  useEffect(() => {
-    if (!show || !apiBaseUrl || !currentStudent?.studentId || !filteredCourses.length) {
-      setFinalGradesByClassId({});
-      return;
-    }
-
-    let cancelled = false;
-
-    const loadFinalGrades = async () => {
-      try {
-        setIsLoadingGrades(true);
-
-        const gradePairs = await Promise.all(
-          filteredCourses.map(async (course) => {
-            const response = await apiFetch(`${apiBaseUrl}/final-grades/${course.id}`);
-            const data = await response.json();
-
-            if (!response.ok) return [course.id, null] as const;
-
-            const records: FinalGradeRecord[] = Array.isArray(data) ? data : [];
-            const matchedGrade = records.find(
-              (item) => String(item.studentId || '').trim() === String(currentStudent.studentId).trim()
-            );
-
-            return [course.id, matchedGrade || null] as const;
-          })
-        );
-
-        if (cancelled) return;
-
-        const nextGrades: Record<string, FinalGradeRecord> = {};
-        gradePairs.forEach(([classId, grade]) => {
-          if (grade) nextGrades[classId] = grade;
-        });
-
-        setFinalGradesByClassId(nextGrades);
-      } catch (error) {
-        console.log('LOAD MY JOURNEY GRADES ERROR =>', error);
-        if (!cancelled) setFinalGradesByClassId({});
-      } finally {
-        if (!cancelled) setIsLoadingGrades(false);
-      }
-    };
-
-    loadFinalGrades();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [apiBaseUrl, currentStudent?.studentId, filteredCourses, show]);
-
-  const totalUnits = filteredCourses.reduce((total, course) => total + getCourseUnits(course), 0);
+  const computedSchoolYear = hasValidStartYear ? `${startYearNumber}-${startYearNumber + 1}` : '';
+  
+  const totalUnits = uploadedGrades.reduce((total, g) => total + (Number(g.units) || 0), 0);
   const resolvedStudentName =
     studentName || `${currentStudent?.firstName || ''} ${currentStudent?.lastName || ''}`.trim() || 'Student';
 
@@ -219,6 +85,62 @@ const MyJourney = ({
     setStartYearInput(digitsOnly);
     setShow(false);
   };
+
+  // Fetch and parse uploaded grade file when "Generate Record" is clicked
+  useEffect(() => {
+    if (!show || !apiBaseUrl || !currentStudent?.studentId) {
+      setUploadedGrades([]);
+      setUploadedFileName(null);
+      setHasFetchedGrade(false);
+      return;
+    }
+
+    let cancelled = false;
+
+    
+    const parseUploadedGrade = async () => {
+      try {
+        setIsLoadingUploadedGrades(true);
+        setHasFetchedGrade(false);
+        
+        // Build query parameters for the AI to filter by
+        const params = new URLSearchParams();
+        if (computedSchoolYear) params.append('schoolYear', computedSchoolYear);
+        if (sem) params.append('semester', sem);
+        
+        const response = await apiFetch(`${apiBaseUrl}/student-grade/parse/${currentStudent.studentId}?${params.toString()}`);
+        const data = await response.json();
+
+        console.log(
+          "PARSED GRADE RESPONSE =>",
+          JSON.stringify(data, null, 2)
+        );
+
+        if (!cancelled) {
+          if (response.ok && data.success && Array.isArray(data.data) && data.data.length > 0) {
+            setUploadedGrades(data.data);
+            setUploadedFileName(data.fileName || null);
+          } else {
+            setUploadedGrades([]);
+            setUploadedFileName(null);
+          }
+          setHasFetchedGrade(true);
+        }
+      } catch (error) {
+        console.log('PARSE UPLOADED GRADE ERROR =>', error);
+        if (!cancelled) {
+          setUploadedGrades([]);
+          setUploadedFileName(null);
+          setHasFetchedGrade(true);
+        }
+      } finally {
+        if (!cancelled) setIsLoadingUploadedGrades(false);
+      }
+    };
+
+    parseUploadedGrade();
+    return () => { cancelled = true; };
+  }, [apiBaseUrl, currentStudent?.studentId, show]);
 
   return (
     <ScrollView
@@ -229,14 +151,13 @@ const MyJourney = ({
       ]}
       style={styles.screen}
     >
-      {/* Rest of component remains unchanged */}
       <View style={[styles.pageHeaderCard, isMobile && styles.pageHeaderCardMobile]}>
         <View style={styles.pageHeaderAccent} />
         <View style={styles.pageHeaderContent}>
           <Text style={styles.pageEyebrow}>Academic Record</Text>
           <Text style={styles.pageTitle}>My Journey</Text>
           <Text style={styles.pageSubtitle}>
-            Generate your official joined-class record by semester and school year.
+            Generate your official academic record from your uploaded grade file.
           </Text>
         </View>
       </View>
@@ -247,7 +168,6 @@ const MyJourney = ({
             <Text style={styles.filterTitle}>Record Filters</Text>
             <Text style={styles.filterSubtitle}>Enter the school year start and select a semester.</Text>
           </View>
-
           <View style={styles.schoolYearBadge}>
             <Text style={styles.schoolYearBadgeLabel}>School Year</Text>
             <Text style={styles.schoolYearBadgeValue}>
@@ -272,9 +192,7 @@ const MyJourney = ({
               <Text style={styles.inputSuffix}>+ 1 year</Text>
             </View>
             <Text style={styles.helperText}>
-              {hasValidStartYear
-                ? `Automatically becomes S.Y. ${computedSchoolYear}.`
-                : 'Enter a valid 4-digit start year.'}
+              {hasValidStartYear ? `Automatically becomes S.Y. ${computedSchoolYear}.` : 'Enter a valid 4-digit start year.'}
             </Text>
           </View>
 
@@ -283,18 +201,13 @@ const MyJourney = ({
             <View style={styles.pickerWrapper}>
               <Picker
                 selectedValue={sem}
-                onValueChange={(itemValue) => {
-                  setSem(itemValue);
-                  setShow(false);
-                }}
+                onValueChange={(itemValue) => { setSem(itemValue); setShow(false); }}
                 style={styles.picker}
               >
-                {SEMS.map((s) => (
-                  <Picker.Item key={s} label={s} value={s} />
-                ))}
+                {SEMS.map((s) => (<Picker.Item key={s} label={s} value={s} />))}
               </Picker>
             </View>
-            <Text style={styles.helperText}>Only classes from this semester will be shown.</Text>
+            <Text style={styles.helperText}>Select the semester for your record.</Text>
           </View>
 
           <TouchableOpacity
@@ -310,10 +223,7 @@ const MyJourney = ({
 
       {show && (
         <View style={[styles.paper, isTablet && styles.paperTablet, isMobile && styles.paperMobile]}>
-          <Image
-            source={require('../../assets/images/myjourney-header-template-1.png')}
-            style={styles.headerImage}
-          />
+          <Image source={require('../../assets/images/myjourney-header-template-1.png')} style={styles.headerImage} />
 
           <View style={styles.academicTitleBlock}>
             <Text style={styles.documentTitle}>Certificate of Grades</Text>
@@ -326,19 +236,16 @@ const MyJourney = ({
                 <Text style={styles.infoLabel}>Student ID</Text>
                 <Text style={styles.infoValue}>{currentStudent?.studentId || 'N/A'}</Text>
               </View>
-
               <View style={styles.infoLineItemWide}>
                 <Text style={styles.infoLabel}>Student Name</Text>
                 <Text style={styles.infoValue}>{resolvedStudentName}</Text>
               </View>
             </View>
-
             <View style={[styles.infoLine, isMobile && styles.infoLineMobile]}>
               <View style={styles.infoLineItem}>
                 <Text style={styles.infoLabel}>School Year</Text>
                 <Text style={styles.infoValue}>S.Y. {computedSchoolYear}</Text>
               </View>
-
               <View style={styles.infoLineItemWide}>
                 <Text style={styles.infoLabel}>Semester</Text>
                 <Text style={styles.infoValue}>{sem}</Text>
@@ -346,86 +253,77 @@ const MyJourney = ({
             </View>
           </View>
 
-          {filteredCourses.length === 0 ? (
+          {isLoadingUploadedGrades ? (
+            <View style={styles.loadingRow}>
+              <ActivityIndicator color="#D32F2F" />
+              <Text style={styles.loadingText}>AI is extracting grades from uploaded file...</Text>
+            </View>
+          ) : hasFetchedGrade && uploadedGrades.length > 0 ? (
+            <>
+              <View style={styles.uploadedSourceBadge}>
+                <Text style={styles.uploadedSourceText}>Source: {uploadedFileName || 'Uploaded Grade File'}</Text>
+              </View>
+              {isMobile ? (
+                <View style={styles.mobileCourseList}>
+                  {uploadedGrades.map((item, index) => (
+                    <View key={index} style={styles.mobileCourseCard}>
+                      <View style={styles.mobileCourseHeader}>
+                        <View>
+                          <Text style={styles.mobileCourseIndex}>Subject {index + 1}</Text>
+                          <Text style={styles.mobileCourseCode}>{item.subjectCode || 'N/A'}</Text>
+                        </View>
+                        <View style={styles.mobileGradeBadge}>
+                          <Text style={styles.mobileGradeLabel}>Grade</Text>
+                          <Text style={styles.mobileGradeValue}>{item.grade || 'N/A'}</Text>
+                        </View>
+                      </View>
+                      <Text style={styles.mobileCourseName}>{item.subjectTitle || 'Unknown Subject'}</Text>
+                      <View style={styles.mobileCourseMetaRow}>
+                        <View style={styles.mobileMetaItem}>
+                          <Text style={styles.mobileMetaLabel}>Units</Text>
+                          <Text style={styles.mobileMetaValue}>{item.units || '-'}</Text>
+                        </View>
+                        <View style={styles.mobileMetaItem}>
+                          <Text style={styles.mobileMetaLabel}>Remarks</Text>
+                          <Text style={styles.mobileMetaValue}>{item.grade ? 'Passed' : 'Pending'}</Text>
+                        </View>
+                      </View>
+                    </View>
+                  ))}
+                </View>
+              ) : (
+                <View style={styles.tableWrap}>
+                  <View style={[styles.tableRow, styles.tableHeader]}>
+                    <Text style={[styles.tdSubject, styles.th]}>Subject Code</Text>
+                    <Text style={[styles.tdDescription, styles.th]}>Descriptive Title</Text>
+                    <Text style={[styles.tdSmall, styles.th]}>Units</Text>
+                    <Text style={[styles.tdSmall, styles.th, styles.lastCell]}>Final Grade</Text>
+                  </View>
+                  {uploadedGrades.map((item, index) => (
+                    <View key={index} style={[styles.tableRow, index % 2 === 1 && styles.tableRowAlt]}>
+                      <Text style={styles.tdSubject}>{item.subjectCode || 'N/A'}</Text>
+                      <Text style={styles.tdDescription}>{item.subjectTitle || 'Unknown Subject'}</Text>
+                      <Text style={styles.tdSmall}>{item.units || '-'}</Text>
+                      <Text style={[styles.tdSmall, styles.lastCell]}>{item.grade || 'N/A'}</Text>
+                    </View>
+                  ))}
+                </View>
+              )}
+            </>
+          ) : hasFetchedGrade ? (
             <View style={[styles.emptyState, styles.emptyStateBordered]}>
-              <Text style={styles.emptyTitle}>No academic record found</Text>
+              <Text style={styles.emptyTitle}>No Uploaded Grade Yet</Text>
               <Text style={styles.emptyText}>
-                You have no joined classes for S.Y. {computedSchoolYear} ({sem}).
+                Please upload your grade file from the menu to generate your academic record.
               </Text>
             </View>
-          ) : isMobile ? (
-            <View style={styles.mobileCourseList}>
-              {filteredCourses.map((course, index) => {
-                const grade = finalGradesByClassId[course.id];
+          ) : null}
 
-                return (
-                  <View key={course.id} style={styles.mobileCourseCard}>
-                    <View style={styles.mobileCourseHeader}>
-                      <View>
-                        <Text style={styles.mobileCourseIndex}>Subject {index + 1}</Text>
-                        <Text style={styles.mobileCourseCode}>{getCourseCode(course)}</Text>
-                      </View>
-                      <View style={styles.mobileGradeBadge}>
-                        <Text style={styles.mobileGradeLabel}>Grade</Text>
-                        <Text style={styles.mobileGradeValue}>
-                          {isLoadingGrades ? '...' : grade?.finalGrade || 'N/A'}
-                        </Text>
-                      </View>
-                    </View>
-
-                    <Text style={styles.mobileCourseName}>{getCourseDescription(course)}</Text>
-
-                    <View style={styles.mobileCourseMetaRow}>
-                      <View style={styles.mobileMetaItem}>
-                        <Text style={styles.mobileMetaLabel}>Units</Text>
-                        <Text style={styles.mobileMetaValue}>{getCourseUnits(course) || '-'}</Text>
-                      </View>
-                      <View style={styles.mobileMetaItem}>
-                        <Text style={styles.mobileMetaLabel}>Remarks</Text>
-                        <Text style={styles.mobileMetaValue}>{grade?.finalGrade ? 'Passed' : 'Pending'}</Text>
-                      </View>
-                    </View>
-                  </View>
-                );
-              })}
-            </View>
-          ) : (
-            <View style={styles.tableWrap}>
-              <View style={[styles.tableRow, styles.tableHeader]}>
-                <Text style={[styles.tdSubject, styles.th]}>Subject Code</Text>
-                <Text style={[styles.tdDescription, styles.th]}>Descriptive Title</Text>
-                <Text style={[styles.tdSmall, styles.th]}>Units</Text>
-                <Text style={[styles.tdSmall, styles.th, styles.lastCell]}>Final Grade</Text>
-              </View>
-
-              {filteredCourses.map((course, index) => {
-                const grade = finalGradesByClassId[course.id];
-
-                return (
-                  <View
-                    key={course.id}
-                    style={[
-                      styles.tableRow,
-                      index % 2 === 1 && styles.tableRowAlt,
-                    ]}
-                  >
-                    <Text style={styles.tdSubject}>{getCourseCode(course)}</Text>
-                    <Text style={styles.tdDescription}>{getCourseDescription(course)}</Text>
-                    <Text style={styles.tdSmall}>{getCourseUnits(course) || '-'}</Text>
-                    <Text style={[styles.tdSmall, styles.lastCell]}>
-                      {isLoadingGrades ? '...' : grade?.finalGrade || 'N/A'}
-                    </Text>
-                  </View>
-                );
-              })}
-            </View>
-          )}
-
-          {!!filteredCourses.length && (
+          {hasFetchedGrade && uploadedGrades.length > 0 && (
             <View style={[styles.summaryPanel, isMobile && styles.summaryPanelMobile]}>
               <View style={styles.summaryItem}>
                 <Text style={styles.summaryLabel}>Total Subjects</Text>
-                <Text style={styles.summaryValue}>{filteredCourses.length}</Text>
+                <Text style={styles.summaryValue}>{uploadedGrades.length}</Text>
               </View>
               <View style={[styles.summaryItem, styles.summaryItemLast]}>
                 <Text style={styles.summaryLabel}>Total Units</Text>
@@ -435,23 +333,15 @@ const MyJourney = ({
           )}
 
           <View style={[styles.footerNoteRow, isMobile && styles.footerNoteRowMobile]}>
-            <Text style={styles.footerNote}>Generated from joined class records.</Text>
-            <Text style={styles.footerNote}>Grades shown are based on submitted final grades.</Text>
+            <Text style={styles.footerNote}>Generated from uploaded grade file via AI.</Text>
           </View>
 
-          {isLoadingGrades && (
-            <View style={styles.loadingRow}>
-              <ActivityIndicator color="#D32F2F" />
-              <Text style={styles.loadingText}>Loading final grades...</Text>
-            </View>
-          )}
         </View>
       )}
     </ScrollView>
   );
 };
 
-// Styles remain unchanged...
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: '#F3F4F6' },
   container: { width: '100%', maxWidth: 1280, alignSelf: 'center', padding: 24, paddingBottom: 44 },
@@ -542,6 +432,21 @@ const styles = StyleSheet.create({
   footerNote: { color: '#6B7280', fontSize: 11, fontStyle: 'italic' },
   loadingRow: { flexDirection: 'row', alignItems: 'center', marginTop: 14, justifyContent: 'flex-end' },
   loadingText: { marginLeft: 8, color: '#777', fontSize: 13 },
+  uploadedSourceBadge: { 
+    alignSelf: 'flex-start', 
+    backgroundColor: '#FEF2F2', 
+    borderWidth: 1, 
+    borderColor: '#FECACA', 
+    borderRadius: 8, 
+    paddingHorizontal: 10, 
+    paddingVertical: 6, 
+    marginBottom: 12 
+  },
+  uploadedSourceText: { 
+    fontSize: 12, 
+    fontWeight: '700', 
+    color: '#991B1B' 
+  },
 });
 
 export default MyJourney;

@@ -1,3 +1,5 @@
+import * as DocumentPicker from 'expo-document-picker';
+import * as FileSystem from 'expo-file-system';
 import { EmailAuthProvider, reauthenticateWithCredential, signOut } from 'firebase/auth';
 import React, { useEffect, useState } from 'react';
 import {
@@ -84,7 +86,7 @@ const MenuItem = ({
   const { width } = useWindowDimensions();
   const isMobile = width < 768;
   const isLargeScreen = width >= 1024;
-  const menuItemVerticalMargin = isMobile ? 12 : isLargeScreen ? 18 : 16;
+  const menuItemVerticalMargin = isMobile ? 12 : isLargeScreen ? 14.5 : 16;
   const menuLabelFontSize = isMobile ? 15 : 17;
 
   return (
@@ -162,6 +164,7 @@ const DrawerMenu = ({
   const [isChangePasswordModalVisible, setChangePasswordModalVisible] = useState(false);
   const [savingEmail, setSavingEmail] = useState(false);
   const [savingPassword, setSavingPassword] = useState(false);
+  const [isUploadingGrade, setIsUploadingGrade] = useState(false);
 
   const [email, setEmail] = useState(userEmail || '');
   const [emailPassword, setEmailPassword] = useState('');
@@ -317,6 +320,73 @@ const DrawerMenu = ({
     setIsLoggedIn(false);
   };
 
+  const handleUploadGrade = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: [
+          'application/pdf',
+          'image/*',
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          'application/vnd.ms-excel',
+          'text/csv',
+        ],
+        copyToCacheDirectory: true,
+      });
+
+      if (result.canceled || !result.assets?.length) return;
+
+      const asset = result.assets[0];
+      if (asset.size && asset.size > 10 * 1024 * 1024) {
+        Alert.alert('File Too Large', 'Please select a file smaller than 10MB.');
+        return;
+      }
+
+      setIsUploadingGrade(true);
+      
+      let base64Data = '';
+      if (Platform.OS === 'web') {
+        const response = await fetch(asset.uri);
+        const blob = await response.blob();
+        base64Data = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onloadend = () => {
+            const res = reader.result;
+            if (typeof res !== 'string') { reject(new Error('Failed to read file.')); return; }
+            resolve(res.includes(',') ? res.split(',')[1] : res);
+          };
+          reader.onerror = () => reject(new Error('Failed to convert blob to base64.'));
+          reader.readAsDataURL(blob);
+        });
+      } else {
+        base64Data = await FileSystem.readAsStringAsync(asset.uri, { encoding: 'base64' });
+      }
+
+      if (!base64Data || base64Data.length < 100) {
+        throw new Error('File content is empty or too small.');
+      }
+
+      const response = await apiFetch(`${apiBaseUrl}/upload-student-grade`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fileBase64: base64Data,
+          fileName: asset.name,
+          fileType: asset.mimeType || 'application/octet-stream',
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) throw new Error(data?.error || 'Failed to upload grade file.');
+
+      Alert.alert('Success', 'Your grade file has been uploaded successfully.');
+    } catch (error: any) {
+      console.error('Upload grade error:', error);
+      Alert.alert('Upload Failed', error?.message || 'Unable to upload grade file.');
+    } finally {
+      setIsUploadingGrade(false);
+    }
+  };
+
   return (
     <View style={[styles.drawerContainer, { width: drawerWidth }]}> 
       <Pressable style={styles.profileSection} onPress={onAvatarPress}>
@@ -339,6 +409,12 @@ const DrawerMenu = ({
         <MenuItem iconName="chart-line" label="Analytics" onPress={() => { onNavigate?.('analytics'); if (!isFixed) onClose?.(); }} active={activeScreen === 'analytics'} />
         <MenuItem iconSource={require('../../assets/images/users-solid.png')} label="Community" onPress={() => { onNavigate?.('community'); if (!isFixed) onClose?.(); }} active={activeScreen === 'community'} />
         <MenuItem iconSource={require('../../assets/images/gear-solid.png')} label="Settings" onPress={() => setSettingsModalVisible(true)} />
+        
+        <MenuItem 
+          iconName="file-upload-outline" 
+          label={isUploadingGrade ? "Uploading..." : "Upload Grade"} 
+          onPress={handleUploadGrade} 
+        />
       </ScrollView>
 
       <Pressable style={styles.logoutMenuItem} onPress={() => setLogoutModalVisible(true)}>
