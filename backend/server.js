@@ -4012,34 +4012,34 @@ app.post("/create-admin", async (req, res) => {
 /**
  * EXISTING ROUTES
  */
-
-
 app.post("/upload-student-grade", requireAuth, async (req, res) => {
   try {
     const { fileBase64, fileName, fileType } = req.body;
     if (!fileBase64 || !fileName) {
       return res.status(400).json({ error: "fileBase64 and fileName are required." });
     }
+    
     const profile = await findUserProfileByAuthUid(req.user.uid);
     if (!profile || profile.role !== "student") {
       return res.status(403).json({ error: "Only students can upload grades." });
     }
+    
     const studentId = profile.data.studentId || profile.id;
-
     const cleanedBase64 = fileBase64.includes(",") ? fileBase64.split(",")[1] : fileBase64;
     const safeMimeType = fileType || "application/octet-stream";
     const extension = getFileExtensionFromMimeType(safeMimeType);
     const safeFileName = sanitizeFileName(fileName || `grade.${extension}`);
     const storagePath = `student-grades/${studentId}/${Date.now()}-${safeFileName}`;
-    
     const file = bucket.file(storagePath);
+    
+    // 1. Save to Firebase Storage
     await file.save(Buffer.from(cleanedBase64, "base64"), {
       metadata: { contentType: safeMimeType, cacheControl: "private,max-age=0,no-transform" },
       resumable: false,
     });
-
     const fileUrl = await createReadSignedUrl(storagePath);
-
+    
+    // Save basic metadata first
     await db.collection("studentGrades").doc(studentId).set({
       studentId,
       fileName: safeFileName,
@@ -4049,22 +4049,250 @@ app.post("/upload-student-grade", requireAuth, async (req, res) => {
       uploadedAt: FieldValue.serverTimestamp(),
     }, { merge: true });
 
-    return res.json({ success: true, message: "Grade file uploaded successfully.", data: { fileUrl, fileName } });
+    // 2. Send PDF directly to Gemini to read table structure
+    if (!geminiGameAI) {
+      return res.status(500).json({ error: "AI service not available." });
+    }
+
+    const promptText = `
+You are an academic transcript parser.
+
+IMPORTANT:
+The transcript is a TABLE.
+Columns are:
+CODE | SUBJECT | DESCRIPTION | UNIT | TIME | DAY | ROOM | MIDTERM GRADE | FINAL TERM | FINAL GRADE | COMPLETION
+
+RULES:
+1. Extract ALL subjects.
+2. Each subject belongs to the nearest semester heading:
+   - 1st Semester SY XXXX-XXXX
+   - 2nd Semester SY XXXX-XXXX
+3. CRITICAL GRADE MAPPING
+   The grade MUST come ONLY from the FINAL GRADE column.
+   Example:
+   CODE     DESCRIPTION                     MIDTERM   FINAL TERM   FINAL GRADE
+   CS10     NSTP 2                          1.9       1.7          1.8
+   Correct: grade = 1.8
+   Wrong: grade = 1.9, grade = 1.7
+4. NEVER use: MIDTERM GRADE, FINAL TERM
+5. Match each FINAL GRADE to the SAME ROW as the DESCRIPTION.
+6. SUBJECT CODE: subjectCode = value from CODE column only.
+7. SUBJECT TITLE: subjectTitle = value from DESCRIPTION column only. Do NOT include values from SUBJECT column.
+8. SUBJECT COLUMN VALUES MUST BE IGNORED (e.g., AP 1, CC 111, NSTP 1, PATHFIT 1, GEC-MMW). These are NOT the subjectTitle.
+9. MULTI-LINE DESCRIPTIONS: If a description spans multiple lines, combine them into one string.
+10. If FINAL GRADE is blank: grade = null
+11. Return ONLY valid JSON.
+
+Format:
+[
+  {
+    "subjectCode": "CS1",
+    "subjectTitle": "MULTIMEDIA",
+    "units": 3,
+    "grade": 1.6,
+    "schoolYear": "2023-2024",
+    "semester": "1st Semester"
+  }
+]
+
+Before returning:
+- Verify every grade came from the FINAL GRADE column.
+- Verify every subjectTitle came from the DESCRIPTION column.
+- Verify every subjectCode came from the CODE column.
+`;
+
+    let aiText = "";
+    try {
+      console.log("Sending PDF directly to Gemini for table parsing...");
+      const model = geminiGameAI.getGenerativeModel({ model: GEMINI_GAME_MODEL });
+      
+      // Pass the prompt and the raw PDF buffer directly to Gemini
+      const result = await model.generateContent([
+        { text: promptText },
+        { inlineData: { mimeType: safeMimeType, data: cleanedBase64 } },
+      ]);
+      aiText = result.response.text();
+    } catch (aiErr) {
+      console.error("Gemini PDF parsing failed:", aiErr);
+      return res.json({ 
+        success: true, 
+        message: "Grade file uploaded successfully, but AI failed to read the PDF directly.", 
+        data: { fileUrl, fileName } 
+      });
+    }
+
+    let parsedGrades = [];
+    try {
+      const cleanedText = aiText.replace(/```json/g, "").replace(/```/g, "").trim();
+      const jsonMatch = cleanedText.match(/\[[\s\S]*\]/);
+      if (!jsonMatch) {
+        throw new Error("No JSON array found in AI response.");
+      }
+      parsedGrades = JSON.parse(jsonMatch[0]);
+      
+      // 3. Group subjects by School Year and Semester
+      const groupedGrades = {};
+      for (const item of parsedGrades) {
+        const grade = Number(item.grade);
+        if (isNaN(grade)) continue; // Skip invalid grades
+        
+        const normalizedSY = String(item.schoolYear || "Unknown").trim();
+        const normalizedSem = String(item.semester || "Unknown").trim();
+        const key = `${normalizedSY}|${normalizedSem}`;
+        
+        if (!groupedGrades[key]) {
+          groupedGrades[key] = {
+            schoolYear: normalizedSY,
+            semester: normalizedSem,
+            subjects: [],
+            totalUnits: 0,
+            weightedGradeTotal: 0
+          };
+        }
+        
+        const units = Number(item.units || 0);
+        
+        groupedGrades[key].subjects.push({
+          subjectCode: item.subjectCode || "N/A",
+          subjectTitle: item.subjectTitle || "Unknown Subject",
+          units: units,
+          grade: grade
+        });
+        
+        groupedGrades[key].totalUnits += units;
+        groupedGrades[key].weightedGradeTotal += grade * units;
+      }
+
+      // 4. Determine unique school years in chronological order
+      const uniqueSchoolYears = [...new Set(Object.values(groupedGrades).map(g => g.schoolYear))];
+      
+      const extractStartYear = (sy) => {
+        const match = sy.match(/(\d{4})/);
+        return match ? parseInt(match[1]) : 0;
+      };
+      
+      uniqueSchoolYears.sort((a, b) => extractStartYear(a) - extractStartYear(b));
+      
+      const schoolYearToYearLevel = {};
+      uniqueSchoolYears.forEach((sy, index) => {
+        const yearNumber = index + 1; 
+        const suffixes = ["st", "nd", "rd", "th"];
+        const suffix = yearNumber <= 3 ? suffixes[yearNumber - 1] : "th";
+        schoolYearToYearLevel[sy] = `${yearNumber}${suffix} Year`;
+      });
+
+      const determineSectionLetter = (subjectCode) => {
+        const match = String(subjectCode || "").match(/\d+/);
+        if (!match) return "A"; 
+        
+        const codeNumber = parseInt(match[0]);
+        if (codeNumber >= 1 && codeNumber <= 10) return "A";
+        if (codeNumber >= 11 && codeNumber <= 20) return "B";
+        return "C"; 
+      };
+
+      // 5. Find the FIRST semester record to determine the LOCKED section
+      const firstSY = uniqueSchoolYears[0];
+      const firstSYKeys = Object.keys(groupedGrades).filter(key => groupedGrades[key].schoolYear === firstSY);
+      
+      const firstSemesterKey = firstSYKeys.find(key => {
+        const sem = groupedGrades[key].semester.toLowerCase();
+        return sem.includes("1st") || sem.includes("first");
+      }) || firstSYKeys[0];
+
+      let lockedSectionLetter = "A"; 
+      if (firstSemesterKey && groupedGrades[firstSemesterKey]) {
+        const firstSemesterGroup = groupedGrades[firstSemesterKey];
+        const sectionCounts = { A: 0, B: 0, C: 0 };
+        
+        firstSemesterGroup.subjects.forEach(subject => {
+          const sectionLetter = determineSectionLetter(subject.subjectCode);
+          sectionCounts[sectionLetter]++;
+        });
+        
+        let maxCount = 0;
+        for (const letter in sectionCounts) {
+          if (sectionCounts[letter] > maxCount) {
+            maxCount = sectionCounts[letter];
+            lockedSectionLetter = letter;
+          }
+        }
+      }
+
+      // 6. Mapping from Year Level and Section Letter to Section Name
+      const sectionNameMap = {
+        "1st Year": { "A": "Microsoft", "B": "Google", "C": "Amazon" },
+        "2nd Year": { "A": "Algorithm", "B": "Pseudocode", "C": "Binary" },
+        "3rd Year": { "A": "Python", "B": "Java", "C": "C++" },
+        "4th Year": { "A": "Xamarin", "B": "Laravel", "C": "Flutter" }
+      };
+
+      const studentProfile = profile?.data || {};
+      const studentName = `${studentProfile.firstName || ""} ${studentProfile.lastName || ""}`.trim() || studentId;
+
+      // 7. Calculate GWA and save all groups to Firebase using a batch write
+      const batch = db.batch();
+      for (const key in groupedGrades) {
+        const group = groupedGrades[key];
+        const gwa = group.totalUnits > 0 ? Number((group.weightedGradeTotal / group.totalUnits).toFixed(3)) : null;
+        
+        const yearLevel = schoolYearToYearLevel[group.schoolYear] || "";
+        const sectionName = sectionNameMap[yearLevel]?.[lockedSectionLetter] || `Section ${lockedSectionLetter}`;
+        
+        const safeSY = group.schoolYear.replace(/[^a-zA-Z0-9]/g, "_");
+        const safeSem = group.semester.replace(/[^a-zA-Z0-9]/g, "_");
+        const docId = `${studentId}_${safeSY}_${safeSem}`;
+        const ref = db.collection("studentParsedGrades").doc(docId);
+        
+        batch.set(ref, {
+          studentId,
+          schoolYear: group.schoolYear,
+          semester: group.semester,
+          gwa,
+          totalUnits: group.totalUnits,
+          section: sectionName, 
+          yearLevel: yearLevel,
+          studentName: studentName,
+          subjects: group.subjects,
+          updatedAt: FieldValue.serverTimestamp(),
+        }, { merge: true });
+      }
+      
+      await batch.commit();
+      
+      return res.json({ 
+        success: true, 
+        message: "Grade file uploaded and automatically parsed successfully.", 
+        data: { fileUrl, fileName, parsedGroups: Object.keys(groupedGrades).length, lockedSection: lockedSectionLetter } 
+      });
+
+    } catch (e) {
+      console.error("Failed to parse AI response:", e);
+      console.error("AI RAW RESPONSE:", aiText);
+      return res.json({ 
+        success: true, 
+        message: "Grade file uploaded successfully, but AI failed to parse the grades into structured data. You can still view it in My Journey.", 
+        data: { fileUrl, fileName } 
+      });
+    }
+
   } catch (error) {
     console.error("Upload student grade error:", error);
     return res.status(500).json({ error: error.message || "Failed to upload grade file." });
   }
 });
-
-
 app.get("/student-grade/parse/:studentId", requireAuth, async (req, res) => {
   try {
     const { studentId } = req.params;
     const { schoolYear, semester } = req.query;
 
-  
-    const profile = await findUserProfileByAuthUid(req.user.uid);
+    if (!schoolYear || !semester) {
+      return res.status(400).json({
+        error: "schoolYear and semester are required.",
+      });
+    }
 
+    const profile = await findUserProfileByAuthUid(req.user.uid);
     if (!profile) {
       return res.status(403).json({ error: "Unauthorized." });
     }
@@ -4074,234 +4302,75 @@ app.get("/student-grade/parse/:studentId", requireAuth, async (req, res) => {
       profile.data.studentId !== studentId &&
       profile.id !== studentId
     ) {
-      return res
-        .status(403)
-        .json({ error: "Unauthorized to view this grade." });
+      return res.status(403).json({ error: "Unauthorized to view this grade." });
     }
 
-    const doc = await db
-      .collection("studentGrades")
-      .doc(studentId)
+    // ==========================================
+    // FAST LOOKUP: Fetch already-parsed data
+    // ==========================================
+    const snapshot = await db
+      .collection("studentParsedGrades")
+      .where("studentId", "==", studentId)
       .get();
 
-    if (!doc.exists) {
+    const targetSY = String(schoolYear).trim();
+    const targetSem = String(semester).trim();
+
+    // --- FIXED ROBUST MATCHING LOGIC ---
+    const normalizeSchoolYearKey = (value = "") =>
+      String(value || "").replace(/[^0-9]/g, "");
+
+    const normalizeSemesterKey = (value = "") => {
+      const text = String(value || "").toLowerCase().trim();
+      if (text.includes("first") || text.includes("1st")) return "first";
+      if (text.includes("second") || text.includes("2nd")) return "second";
+      return text;
+    };
+
+    const expectedSchoolYearKey = normalizeSchoolYearKey(targetSY);
+    const expectedSemesterKey = normalizeSemesterKey(targetSem);
+
+    let matchedData = null;
+
+    for (const doc of snapshot.docs) {
+      const data = doc.data();
+      const docSchoolYear = String(data.schoolYear || "").trim();
+      const docSemester = String(data.semester || "").trim();
+
+      if (
+        normalizeSchoolYearKey(docSchoolYear) === expectedSchoolYearKey &&
+        normalizeSemesterKey(docSemester) === expectedSemesterKey
+      ) {
+        matchedData = data;
+        break;
+      }
+    }
+
+    if (!matchedData) {
       return res.json({
         success: true,
-        data: null,
-        message: "No uploaded grade file found.",
+        data: [],
+        message: "No parsed grades found for this school year and semester.",
       });
     }
 
-    const gradeData = doc.data() || {};
-    const storagePath = gradeData.storagePath;
+    // Get the original file name for the frontend display
+    const gradeMetaDoc = await db.collection("studentGrades").doc(studentId).get();
+    const fileName = gradeMetaDoc.exists ? (gradeMetaDoc.data()?.fileName || "Uploaded Grade") : "Uploaded Grade";
 
-    if (!storagePath) {
-      return res.json({
-        success: true,
-        data: null,
-        message: "No storage path found.",
-      });
-    }
-
-    // =========================
-    // DOWNLOAD FILE
-    // =========================
-
-    const file = bucket.file(storagePath);
-    const [buffer] = await file.download();
-
-    const mimeType =
-      gradeData.fileType || "application/octet-stream";
-
-    const fileName =
-      gradeData.fileName || "grade-file";
-
-    // =========================
-    // EXTRACT TEXT
-    // =========================
-
-    const extracted = await extractTextFromFile(
-      buffer,
-      mimeType,
-      fileName
-    );
-
-    let textToParse = "";
-    let visionBase64 = null;
-    let visionMimeType = mimeType;
-
-    if (typeof extracted === "string") {
-      textToParse = extracted;
-    } else if (extracted && typeof extracted === "object") {
-      if (extracted.imagePdf) {
-        visionBase64 = extracted.pdfBase64;
-        visionMimeType = "application/pdf";
-        textToParse = extracted.extractedText || "";
-      } else if (extracted.officeDocument) {
-        visionBase64 = extracted.fileBase64;
-        textToParse = extracted.extractedText || "";
-      } else {
-        textToParse = extracted.extractedText || "";
-      }
-    }
-
-    // =========================
-    // GEMINI VISION FALLBACK
-    // =========================
-
-    if (
-      textToParse.trim().length < 100 &&
-      visionBase64 &&
-      geminiGameAI
-    ) {
-      try {
-        console.log(
-          "Using Gemini Vision fallback..."
-        );
-
-        const model =
-          geminiGameAI.getGenerativeModel({
-            model: GEMINI_GAME_MODEL,
-          });
-
-        const result =
-          await model.generateContent([
-            {
-              text:
-                "Extract all visible text from this transcript exactly as shown. Return raw text only.",
-            },
-            {
-              inlineData: {
-                mimeType: visionMimeType,
-                data: visionBase64,
-              },
-            },
-          ]);
-
-        textToParse =
-          result.response.text() || "";
-      } catch (visionErr) {
-        console.warn(
-          "Vision extraction failed:",
-          visionErr
-        );
-      }
-    }
-
-    if (!textToParse || textToParse.trim().length < 10) {
-      return res.status(400).json({
-        error:
-          "Could not extract readable text from the uploaded file.",
-      });
-    }
-
-
-    // =========================
-    // AI PARSER
-    // =========================
-
-    const prompt = `
-You are an academic transcript parser.
-
-IMPORTANT:
-
-1. Extract ONLY subjects belonging to:
-   School Year = ${schoolYear || "Any"}
-   Semester = ${semester || "Any"}
-
-2. Return ONLY grades found in the FINAL GRADE column.
-
-3. Do NOT use MIDTERM GRADE.
-
-4. Do NOT use FINAL TERM.
-
-5. Keep subject codes exactly as written.
-
-6. If a row contains:
-   CS1 ... 1.6
-
-then grade = 1.6
-
-7. Return JSON only.
-
-Format:
-
-[
-  {
-    "subjectCode": "CS1",
-    "subjectTitle": "MULTIMEDIA",
-    "units": 3,
-    "grade": 1.6
-  }
-]
-
-Transcript:
-
-${limitText(textToParse, 12000)}
-`;
-
-    const aiResult = await callAIWithFallback({
-      assistantInstruction:
-        "Return ONLY a JSON array. No markdown. No explanation.",
-      contextualPrompt: prompt,
-      normalizedHistory: [],
-      history: [],
-    });
-
-    let parsedGrades = [];
-
-    try {
-      const cleanedText = aiResult.text
-        .replace(/```json/g, "")
-        .replace(/```/g, "")
-        .trim();
-
-
-      const jsonMatch =
-        cleanedText.match(/\[[\s\S]*\]/);
-
-      if (!jsonMatch) {
-        throw new Error(
-          "No JSON array found in AI response."
-        );
-      }
-
-      parsedGrades = JSON.parse(
-        jsonMatch[0]
-      );
-
-    } catch (e) {
-      console.error(
-        "Failed to parse AI response:",
-        e
-      );
-
-      console.error(
-        "AI RAW RESPONSE:",
-        aiResult.text
-      );
-
-      return res.status(500).json({
-        error:
-          "AI failed to parse the grade file into structured data.",
-      });
-    }
-
+    // ✅ RETURN THE EXACT FORMAT Grades.tsx EXPECTS
     return res.json({
       success: true,
-      data: parsedGrades,
-      fileName: gradeData.fileName,
+      data: matchedData.subjects || [],
+      gwa: matchedData.gwa || null,
+      totalUnits: matchedData.totalUnits || 0,
+      studentName: matchedData.studentName || null, // Return the student's full name
+      fileName: fileName,
     });
   } catch (error) {
-    console.error(
-      "Parse student grade error:",
-      error
-    );
-
+    console.error("Fetch parsed student grade error:", error);
     return res.status(500).json({
-      error:
-        error.message ||
-        "Failed to parse student grade file.",
+      error: error.message || "Failed to fetch parsed student grades.",
     });
   }
 });
@@ -9705,149 +9774,89 @@ app.get("/youtube/videos", async (req, res) => {
  * - Student must be enrolled in at least 18 units for that school year + semester.
  * - Student must have a submitted final grade for every enrolled class in that term.
  * - Student must NOT have any final grade of 2.6 or above.
+ * 
  */
 app.get("/honor-roll", async (req, res) => {
   try {
-    const rawStartYear = normalizeOptionalText(req.query.startYear);
-    const rawSemester = normalizeOptionalText(req.query.semester);
+    const schoolYear = normalizeOptionalText(req.query.schoolYear);
+    const semester = normalizeOptionalText(req.query.semester);
 
-    if (!rawStartYear || !rawSemester) {
+    if (!schoolYear || !semester) {
       return res.status(400).json({
-        error: "startYear and semester are required.",
+        error: "schoolYear and semester are required.",
       });
     }
 
-    const startYear = Number(String(rawStartYear).replace(/[^0-9]/g, "").slice(0, 4));
+    const startYear = Number(
+      String(schoolYear).replace(/[^0-9]/g, "").slice(0, 4)
+    );
 
     if (!Number.isInteger(startYear) || String(startYear).length !== 4) {
       return res.status(400).json({
-        error: "startYear must be a valid 4-digit year. Example: 2025",
+        error: "schoolYear must contain a valid 4-digit year.",
       });
     }
 
     const endYear = startYear + 1;
-    const schoolYear = `S.Y ${startYear} - ${endYear}`;
+    const formattedSchoolYear = `S.Y ${startYear} - ${endYear}`;
 
     const normalizeSchoolYearKey = (value = "") =>
       String(value || "").replace(/[^0-9]/g, "");
 
     const normalizeSemesterKey = (value = "") => {
       const text = String(value || "").toLowerCase().trim();
-
       if (text.includes("first") || text.includes("1st")) return "first";
       if (text.includes("second") || text.includes("2nd")) return "second";
-
       return text;
     };
 
     const expectedSchoolYearKey = `${startYear}${endYear}`;
-    const expectedSemesterKey = normalizeSemesterKey(rawSemester);
+    const expectedSemesterKey = normalizeSemesterKey(semester);
 
-    const classesSnapshot = await db.collection("classes").get();
-
-    const matchedClasses = classesSnapshot.docs
-      .map((doc) => ({
-        id: doc.id,
-        ...(doc.data() || {}),
-      }))
-      .filter((classData) => {
-        return (
-          normalizeSchoolYearKey(classData.schoolYear) === expectedSchoolYearKey &&
-          normalizeSemesterKey(classData.semester) === expectedSemesterKey &&
-          classData.status !== "archived"
-        );
-      });
-
-    if (!matchedClasses.length) {
-      return res.json({
-        success: true,
-        schoolYear,
-        semester: rawSemester,
-        data: [],
-      });
-    }
-
+    const parsedSnapshot = await db.collection("studentParsedGrades").get();
     const studentsMap = new Map();
 
-    for (const classData of matchedClasses) {
-      const classId = classData.id;
-      const classUnits =
-        typeof classData.units === "number"
-          ? classData.units
-          : Number(classData.units) || 0;
+    for (const doc of parsedSnapshot.docs) {
+      const parsedData = doc.data() || {};
+      const docSchoolYear = normalizeOptionalText(parsedData.schoolYear);
+      const docSemester = normalizeOptionalText(parsedData.semester);
 
-      const gradesSnapshot = await db
-        .collection("finalGrades")
-        .where("classId", "==", classId)
-        .get();
+      if (normalizeSchoolYearKey(docSchoolYear) !== expectedSchoolYearKey) continue;
+      if (normalizeSemesterKey(docSemester) !== expectedSemesterKey) continue;
 
-      for (const gradeDoc of gradesSnapshot.docs) {
-        const gradeData = gradeDoc.data() || {};
-        const studentId = normalizeOptionalText(gradeData.studentId);
+      const studentId = normalizeOptionalText(parsedData.studentId);
+      if (!studentId) continue;
+      if (studentsMap.has(studentId)) continue;
 
-        if (!studentId) continue;
+      const subjects = Array.isArray(parsedData.subjects) ? parsedData.subjects : [];
+      const totalUnits = subjects.reduce(
+        (sum, subject) => sum + Number(subject.units || 0),
+        0
+      );
 
-        const finalGrade =
-          gradeData?.finalGrade !== undefined && gradeData?.finalGrade !== null
-            ? Number(gradeData.finalGrade)
-            : null;
+      // --- OPTIMIZATION: Extract the pre-calculated GWA saved by your upload endpoint ---
+      const savedGwa = Number(parsedData.gwa);
+      const hasValidSavedGwa = 
+        !isNaN(savedGwa) && 
+        parsedData.gwa !== null && 
+        parsedData.gwa !== undefined;
 
-        let studentProfile = null;
-
-        try {
-          const studentSnap = await db.collection("students").doc(studentId).get();
-          if (studentSnap.exists) {
-            studentProfile = studentSnap.data() || null;
-          }
-        } catch (studentLookupError) {
-          console.warn(
-            "Honor roll student lookup warning:",
-            studentLookupError?.message || studentLookupError
-          );
-        }
-
-        const profileName = studentProfile
-          ? `${studentProfile.firstName || ""} ${studentProfile.lastName || ""}`.trim()
-          : "";
-
-        if (!studentsMap.has(studentId)) {
-          studentsMap.set(studentId, {
-            id: studentId,
-            name:
-              normalizeOptionalText(gradeData.studentName) ||
-              normalizeOptionalText(profileName) ||
-              normalizeOptionalText(studentProfile?.name) ||
-              studentId,
-            section:
-              normalizeOptionalText(gradeData.section) ||
-              normalizeOptionalText(studentProfile?.section) ||
-              normalizeOptionalText(classData.section) ||
-              "No Section",
-            yearLevel:
-              normalizeOptionalText(gradeData.yearLevel) ||
-              normalizeOptionalText(studentProfile?.yearLevel) ||
-              normalizeOptionalText(studentProfile?.year) ||
-              normalizeOptionalText(classData.year) ||
-              "No Year Level",
-            totalUnits: 0,
-            courses: [],
-          });
-        }
-
-        const student = studentsMap.get(studentId);
-
-        student.totalUnits += classUnits;
-        student.courses.push({
-          classId,
-          courseCode: normalizeOptionalText(classData.courseCode) || "",
-          courseName: normalizeOptionalText(classData.name) || "Untitled Class",
-          section: normalizeOptionalText(classData.section) || "No Section",
-          yearLevel: normalizeOptionalText(classData.year) || "No Year Level",
-          units: classUnits,
-          grade: finalGrade,
-          hasFinalGrade: Number.isFinite(finalGrade),
-        });
-      }
+      studentsMap.set(studentId, {
+        id: studentId,
+        name: parsedData.studentName || studentId,
+        section: parsedData.section || "No Section",
+        yearLevel: parsedData.yearLevel || "No Year Level",
+        totalUnits,
+        savedGwa: hasValidSavedGwa ? savedGwa : null, // Store it for the qualification loop
+        courses: subjects.map((subject) => ({
+          classId: subject.subjectCode,
+          courseCode: subject.subjectCode,
+          courseName: subject.subjectTitle,
+          units: Number(subject.units || 0),
+          grade: Number(subject.grade),
+          hasFinalGrade: typeof subject.grade === "number" && !isNaN(subject.grade),
+        })),
+      });
     }
 
     const qualifiedStudents = [];
@@ -9856,9 +9865,7 @@ app.get("/honor-roll", async (req, res) => {
       const hasEnoughUnits = student.totalUnits >= 18;
       const hasAtLeastOneCourse = student.courses.length > 0;
       const hasCompleteFinalGrades = student.courses.every((course) => course.hasFinalGrade);
-      const hasNoGrade26Above = student.courses.every(
-        (course) => Number(course.grade) < 2.6
-      );
+      const hasNoGrade26Above = student.courses.every((course) => Number(course.grade) < 2.6);
 
       if (
         !hasEnoughUnits ||
@@ -9869,13 +9876,22 @@ app.get("/honor-roll", async (req, res) => {
         continue;
       }
 
-      const weightedGradeTotal = student.courses.reduce(
-        (sum, course) => sum + Number(course.grade) * Number(course.units || 0),
-        0
-      );
+      // Use the pre-calculated GWA from the database if available, otherwise fallback to calculation
+      let gwa = 0;
+      if (student.savedGwa !== null) {
+        gwa = student.savedGwa;
+      } else {
+        const weightedGradeTotal = student.courses.reduce(
+          (sum, course) => sum + Number(course.grade) * Number(course.units || 0),
+          0
+        );
+        gwa = student.totalUnits > 0 ? weightedGradeTotal / student.totalUnits : 0;
+      }
 
-      const gwa =
-        student.totalUnits > 0 ? weightedGradeTotal / student.totalUnits : 0;
+      // --- ADDED VALIDATION: GWA must not be greater than 1.75 to qualify ---
+      if (gwa > 1.75) {
+        continue;
+      }
 
       qualifiedStudents.push({
         id: student.id,
@@ -9898,7 +9914,6 @@ app.get("/honor-roll", async (req, res) => {
 
     qualifiedStudents.forEach((student) => {
       const key = `${student.yearLevel}-${student.section}`;
-
       if (!groupedMap[key]) {
         groupedMap[key] = {
           yearLevel: student.yearLevel,
@@ -9906,7 +9921,6 @@ app.get("/honor-roll", async (req, res) => {
           students: [],
         };
       }
-
       groupedMap[key].students.push(student);
     });
 
@@ -9919,32 +9933,22 @@ app.get("/honor-roll", async (req, res) => {
     });
 
     const orderedYearLevels = [
-      "First Year",
-      "Second Year",
-      "Third Year",
-      "Fourth Year",
-      "1st Year",
-      "2nd Year",
-      "3rd Year",
-      "4th Year",
+      "First Year", "Second Year", "Third Year", "Fourth Year",
+      "1st Year", "2nd Year", "3rd Year", "4th Year",
     ];
 
     const data = Object.values(groupedMap).sort((a, b) => {
       const aIndex = orderedYearLevels.indexOf(a.yearLevel);
       const bIndex = orderedYearLevels.indexOf(b.yearLevel);
-
-      const yearCompare =
-        (aIndex === -1 ? 999 : aIndex) - (bIndex === -1 ? 999 : bIndex);
-
+      const yearCompare = (aIndex === -1 ? 999 : aIndex) - (bIndex === -1 ? 999 : bIndex);
       if (yearCompare !== 0) return yearCompare;
-
       return String(a.sectionName).localeCompare(String(b.sectionName));
     });
 
     return res.json({
       success: true,
-      schoolYear,
-      semester: rawSemester,
+      schoolYear: formattedSchoolYear,
+      semester,
       data,
     });
   } catch (error) {
@@ -10340,6 +10344,8 @@ async function callGeminiProvider({
   );
 
   const data = await response.json().catch(() => ({}));
+
+  console.log("Honor Roll Response:", data);
 
   if (!response.ok) {
     throw new Error(data?.error?.message || "Gemini request failed.");

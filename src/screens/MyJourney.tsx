@@ -226,8 +226,8 @@ const MyJourney = ({
           <Image source={require('../../assets/images/myjourney-header-template-1.png')} style={styles.headerImage} />
 
           <View style={styles.academicTitleBlock}>
-            <Text style={styles.documentTitle}>Certificate of Grades</Text>
-            <Text style={styles.documentSubtitle}>Academic Journey Record</Text>
+            <Text style={styles.documentTitle}>Academic Journey Record</Text>
+
           </View>
 
           <View style={styles.studentInfoBox}>

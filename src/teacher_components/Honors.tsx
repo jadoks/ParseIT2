@@ -341,11 +341,14 @@ export default function HonorsScreen() {
   const { width } = useWindowDimensions();
   const isMobile = width < 768;
 
-  const semesters = ['First Semester', 'Second Semester'];
+  const semesters = [
+    "1st Semester",
+    "2nd Semester",
+  ];
 
   const [startYear, setStartYear] = useState('2025');
   const schoolYear = buildSchoolYear(startYear);
-  const [semester, setSemester] = useState('First Semester');
+  const [semester, setSemester] = useState('1st Semester');
   const [generatedSections, setGeneratedSections] = useState<GeneratedSection[]>([]);
   const [openDropdown, setOpenDropdown] = useState<DropdownName | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -364,10 +367,24 @@ export default function HonorsScreen() {
     try {
       setIsGenerating(true);
 
+      console.log(
+  `${API_BASE_URL}/honor-roll?startYear=${normalizedStartYear}&semester=${semester}`
+);
+      const schoolYear =`${normalizedStartYear}-${Number(normalizedStartYear) + 1}`;
+
+      const params = new URLSearchParams();
+
+      params.append("schoolYear", schoolYear);
+      params.append("semester", semester);
+
       const response = await fetch(
-        `${API_BASE_URL}/honor-roll?startYear=${encodeURIComponent(
-          normalizedStartYear
-        )}&semester=${encodeURIComponent(semester)}`, { credentials: 'include' });
+      `${API_BASE_URL}/honor-roll?schoolYear=${encodeURIComponent(
+        schoolYear
+      )}&semester=${encodeURIComponent(semester)}`,
+      {
+        credentials: "include",
+      }
+    );
 
       const data = await response.json();
 

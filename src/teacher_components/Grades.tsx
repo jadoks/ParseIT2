@@ -36,45 +36,6 @@ const buildSchoolYear = (startYear: string) => {
   return `S.Y ${parsedStartYear} - ${parsedStartYear + 1}`;
 };
 
-const normalizeSchoolYear = (value?: string | null) => {
-  if (!value) return '';
-
-  const match = String(value).match(/(\d{4})\D+(\d{4})/);
-
-  if (match) {
-    return `${match[1]}-${match[2]}`;
-  }
-
-  return String(value)
-    .replace(/S\.?Y\.?/gi, '')
-    .replace(/\s+/g, '')
-    .trim();
-};
-
-const normalizeSemester = (value?: string | null) => {
-  const text = String(value || '').toLowerCase().replace(/\s+/g, ' ').trim();
-
-  if (
-    text.includes('first') ||
-    text.includes('1st') ||
-    text === '1' ||
-    text.includes('semester 1')
-  ) {
-    return 'first';
-  }
-
-  if (
-    text.includes('second') ||
-    text.includes('2nd') ||
-    text === '2' ||
-    text.includes('semester 2')
-  ) {
-    return 'second';
-  }
-
-  return text;
-};
-
 const formatGrade = (value: number) => {
   if (!Number.isFinite(value)) return '';
   return value.toFixed(3);
@@ -99,23 +60,6 @@ const getExportTimestamp = () => {
   return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}`;
 };
 
-const escapeRegExp = (value: string) => {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-};
-
-const removeCourseCodeFromDetail = (courseDetail: string, courseCode: string) => {
-  const detail = String(courseDetail || '').trim();
-  const code = String(courseCode || '').trim();
-
-  if (!detail || !code || code === 'N/A') {
-    return detail || 'Untitled Course';
-  }
-
-  return detail
-    .replace(new RegExp(`^\\s*${escapeRegExp(code)}\\s*[-–—:]\\s*`, 'i'), '')
-    .trim() || detail;
-};
-
 type GradeItem = {
   code: string;
   desc: string;
@@ -131,27 +75,6 @@ type StudentRecord = {
   grades: GradeItem[];
   totalUnits: number;
   gwa: number;
-};
-
-type JoinedClass = {
-  id: string;
-  name?: string;
-  courseCode?: string;
-  schoolYear?: string;
-  semester?: string;
-  section?: string;
-  year?: string;
-  units?: number | string;
-};
-
-type FinalGradeRecord = {
-  id?: string;
-  classId?: string;
-  studentId?: string;
-  studentName?: string;
-  finalGrade?: string | number;
-  className?: string;
-  courseCode?: string;
 };
 
 type DropdownKey = 'semester' | null;
@@ -313,6 +236,7 @@ const Grades = () => {
     setStartYear(value.replace(/[^0-9]/g, '').slice(0, 4));
   };
 
+  // UPDATED: Fetches directly from the AI-parsed grades endpoint
   const loadStudentGradesFromDatabase = async () => {
     const trimmedId = studentId.trim();
     const normalizedStartYear = startYear.replace(/[^0-9]/g, '').slice(0, 4);
@@ -336,111 +260,53 @@ const Grades = () => {
       setIsLoading(true);
       setOpenDropdown(null);
 
-      const joinedResponse = await fetch(
-        `${API_BASE_URL}/student-joined-classes/${encodeURIComponent(trimmedId)}`, { credentials: 'include' });
+      const targetSchoolYear = `${parsedStartYear}-${parsedStartYear + 1}`;
+      
+      // Build query parameters for the backend to filter by School Year and Semester
+      const params = new URLSearchParams();
+      if (targetSchoolYear) params.append('schoolYear', targetSchoolYear);
+      if (selectedSemester) params.append('semester', selectedSemester);
 
-      const joinedData = await joinedResponse.json();
+      const response = await fetch(
+        `${API_BASE_URL}/student-grade/parse/${encodeURIComponent(trimmedId)}?${params.toString()}`,
+        { credentials: 'include' }
+      );
 
-      if (!joinedResponse.ok) {
-        throw new Error(joinedData?.error || 'Failed to load student classes.');
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data?.error || 'Failed to load parsed grades.');
       }
 
-      const joinedClasses: JoinedClass[] = Array.isArray(joinedData)
-        ? joinedData
-        : Array.isArray(joinedData?.data)
-        ? joinedData.data
-        : [];
-
-      const targetSchoolYear = `${parsedStartYear}-${parsedStartYear + 1}`;
-      const targetSemester = normalizeSemester(selectedSemester);
-
-      const matchingClasses = joinedClasses.filter((item) => {
-        return (
-          normalizeSchoolYear(item.schoolYear) === targetSchoolYear &&
-          normalizeSemester(item.semester) === targetSemester
-        );
-      });
-
-      if (!matchingClasses.length) {
+      // If no parsed data is found for this SY/Sem
+      if (!data.success || !Array.isArray(data.data) || data.data.length === 0) {
         Alert.alert(
           'No Record Found',
-          `No enrolled classes found for ${buildSchoolYear(normalizedStartYear)} - ${selectedSemester}.`
+          `No uploaded/parsed grades found for ${buildSchoolYear(normalizedStartYear)} - ${selectedSemester}.`
         );
         setShowGrades(false);
         setStudentRecord(null);
         return;
       }
 
-      const finalGradeGroups = await Promise.all(
-        matchingClasses.map(async (classItem) => {
-          const response = await fetch(
-            `${API_BASE_URL}/final-grades/${encodeURIComponent(classItem.id)}`, { credentials: 'include' });
+      // Map the AI-parsed subjects to our GradeItem format
+      const gradeItems: GradeItem[] = data.data.map((item: any) => ({
+        code: String(item.subjectCode || 'N/A'),
+        desc: String(item.subjectTitle || 'Unknown Subject'),
+        unit: Number(item.units || 0),
+        grade: Number(item.grade || 0),
+      }));
 
-          const data = await response.json();
-
-          if (!response.ok) {
-            throw new Error(data?.error || `Failed to load grades for ${classItem.name || classItem.courseCode || 'class'}.`);
-          }
-
-          return {
-            classItem,
-            grades: Array.isArray(data) ? data : Array.isArray(data?.data) ? data.data : [],
-          };
-        })
-      );
-
-      const gradeItems: GradeItem[] = [];
-      let resolvedStudentName = '';
-
-      finalGradeGroups.forEach(({ classItem, grades }) => {
-        const matchedGrade = (grades as FinalGradeRecord[]).find(
-          (grade) => String(grade.studentId || '').trim() === trimmedId
-        );
-
-        if (!matchedGrade) return;
-
-        const finalGrade = Number(matchedGrade.finalGrade);
-        const units = Number(classItem.units || 0);
-
-        if (!Number.isFinite(finalGrade)) return;
-
-        if (!resolvedStudentName && matchedGrade.studentName) {
-          resolvedStudentName = String(matchedGrade.studentName);
-        }
-
-        const courseCode = String(classItem.courseCode || matchedGrade.courseCode || 'N/A');
-        const courseDetail = String(classItem.name || matchedGrade.className || 'Untitled Course');
-
-        gradeItems.push({
-          code: courseCode,
-          desc: removeCourseCodeFromDetail(courseDetail, courseCode),
-          unit: Number.isFinite(units) ? units : 0,
-          grade: finalGrade,
-        });
-      });
-
-      if (!gradeItems.length) {
-        Alert.alert(
-          'No Final Grades Found',
-          `No submitted final grades found for this student in ${buildSchoolYear(normalizedStartYear)} - ${selectedSemester}.`
-        );
-        setShowGrades(false);
-        setStudentRecord(null);
-        return;
-      }
-
+      // Sort alphabetically by course code
       gradeItems.sort((a, b) => a.code.localeCompare(b.code));
 
-      const totalUnits = gradeItems.reduce((sum, item) => sum + item.unit, 0);
-      const weightedGradeTotal = gradeItems.reduce(
-        (sum, item) => sum + item.grade * item.unit,
-        0
-      );
-      const gwa = totalUnits > 0 ? weightedGradeTotal / totalUnits : 0;
+      // Use the pre-calculated totalUnits and GWA returned by the backend
+      const totalUnits = data.totalUnits || gradeItems.reduce((sum, item) => sum + item.unit, 0);
+      const gwa = data.gwa || 0;
 
       setStudentRecord({
         studentId: trimmedId,
-        fullName: resolvedStudentName || 'Student Name Not Available',
+        fullName: data.studentName || trimmedId, // 👈 UPDATED: Use the real name from the backend
         schoolYear: buildSchoolYear(normalizedStartYear),
         semester: selectedSemester,
         grades: gradeItems,
@@ -814,14 +680,14 @@ const Grades = () => {
             <View style={[styles.headerBlock, isPhone && styles.headerBlockMobile]}>
               <Text style={[styles.mainTitle, { fontSize: titleSize }]}>Grades</Text>
               <Text style={styles.subTitle}>
-                Generate an official academic grade report from records.
+                Generate an official academic grade report from uploaded records.
               </Text>
             </View>
 
             <View style={[styles.controlsCard, isPhone && styles.controlsCardMobile]}>
               <Text style={styles.controlsTitle}>Academic Record Lookup</Text>
               <Text style={styles.controlsSubtitle}>
-                Enter the student ID, academic start year, and semester to retrieve submitted final grades.
+                Enter the student ID, academic start year, and semester to retrieve AI-parsed grades.
               </Text>
 
               {isStackedLayout ? (
