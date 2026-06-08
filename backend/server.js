@@ -657,7 +657,6 @@ async function uploadGenericFileToStorage({
     bucketPath: `gs://parseit2-4b26d.firebasestorage.app/${storagePath}`,
   };
 }
-
 async function uploadChatbotTrainingFileToStorage({
   fileBase64,
   fileMimeType,
@@ -666,22 +665,18 @@ async function uploadChatbotTrainingFileToStorage({
   if (!fileBase64) {
     throw new Error("File data is required.");
   }
-
   const cleanedBase64 = fileBase64.includes(",")
     ? fileBase64.split(",")[1]
     : fileBase64;
-
   const safeMimeType =
     normalizeOptionalText(fileMimeType) || "application/octet-stream";
-
   const fallbackExtension = getFileExtensionFromMimeType(safeMimeType);
   const safeFileName = sanitizeFileName(
     normalizeOptionalText(fileName) || `file.${fallbackExtension}`
   );
-
   const storagePath = `chatbot-training/${Date.now()}-${safeFileName}`;
   const file = bucket.file(storagePath);
-
+  
   await file.save(Buffer.from(cleanedBase64, "base64"), {
     metadata: {
       contentType: safeMimeType,
@@ -690,9 +685,11 @@ async function uploadChatbotTrainingFileToStorage({
     resumable: false,
   });
 
+  // Generate a signed URL so the file can be accessed by the AI and frontend
+  const fileUrl = await createReadSignedUrl(storagePath);
 
   return {
-    fileUrl: null,
+    fileUrl, // <-- CHANGED: Now returns the actual accessible URL instead of null
     storagePath,
     fileName: safeFileName,
     fileType: safeMimeType,
@@ -10345,7 +10342,6 @@ async function callGeminiProvider({
 
   const data = await response.json().catch(() => ({}));
 
-  console.log("Honor Roll Response:", data);
 
   if (!response.ok) {
     throw new Error(data?.error?.message || "Gemini request failed.");
@@ -12113,6 +12109,106 @@ app.post("/auth/update-user-images", requireAuth, async (req, res) => {
 /**
  * CHATBOT TRAINING ROUTES
  */
+
+async function generateTriggersFromFileContent(extractedText, userResponse = "") {
+  if (!geminiGameAI) return [];
+  try {
+    const model = geminiGameAI.getGenerativeModel({ model: GEMINI_GAME_MODEL });
+    const prompt = `
+You are an AI assistant helping to train a chatbot. 
+Based on the following document content, generate 3 to 5 short, distinct trigger phrases or keywords that a user might say to get this information.
+Return ONLY a valid JSON array of strings. Do not include markdown, code blocks, or explanations.
+
+Document Content:
+${limitText(extractedText, 3000)}
+
+User Response (optional context):
+${userResponse ? limitText(userResponse, 1000) : "N/A"}
+
+Example output:
+["what is the syllabus", "course requirements", "grading policy"]
+`;
+    const result = await model.generateContent(prompt);
+    const text = result.response.text();
+    const cleaned = text.replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```$/i, "").trim();
+    const parsed = JSON.parse(cleaned);
+    if (Array.isArray(parsed)) {
+      return parsed.filter(t => typeof t === "string" && t.trim()).map(t => t.trim());
+    }
+    return [];
+  } catch (error) {
+    console.error("Failed to generate triggers from file:", error);
+    return [];
+  }
+}
+
+async function generateSummaryResponseFromFileContent(extractedText) {
+  if (!geminiGameAI) return "Please refer to the attached file for details.";
+  try {
+    const model = geminiGameAI.getGenerativeModel({ model: GEMINI_GAME_MODEL });
+    const prompt = `
+You are an AI assistant helping to train a chatbot. 
+Provide a concise, helpful chatbot response (2-3 sentences) based on the following document content.
+Return ONLY the response text. Do not include markdown or explanations.
+
+Document Content:
+${limitText(extractedText, 3000)}
+`;
+    const result = await model.generateContent(prompt);
+    return result.response.text().trim() || "Please refer to the attached file for details.";
+  } catch (error) {
+    console.error("Failed to generate response from file:", error);
+    return "Please refer to the attached file for details.";
+  }
+}
+
+// === ADD THIS NEW HELPER FUNCTION ABOVE THE /chatbot-training ROUTES ===
+async function generateSplitTrainingDataFromFileContent(extractedText) {
+  if (!geminiGameAI) return [];
+  try {
+    const model = geminiGameAI.getGenerativeModel({ model: GEMINI_GAME_MODEL });
+    const prompt = `
+You are an expert chatbot training data generator.
+Read the following document content and split it into distinct, logical knowledge chunks.
+For each chunk, create a concise "response" (the fact or information) and 2 to 3 short "triggers" (keywords or questions a user might ask to get this response).
+
+Return ONLY a valid JSON array of objects. Do not include markdown, code blocks, or explanations.
+Format Example:
+[
+  {
+    "response": "CTU as a premier, inclusive, globally recognized research and innovation, smart, community-responsive, and sustainable technological university.",
+    "triggers": ["CTU's vision", "CTU Vision", "What is the vision of CTU"]
+  },
+  {
+    "response": "CTU's mission is to provide leading-edge degree programs, innovative professional and technical instruction, research, extension, and resource generation programs that address regional and national needs within the global knowledge economy and sustainability context.",
+    "triggers": ["CTU's mission", "CTU Mission", "What is the mission of CTU"]
+  }
+]
+
+Document Content:
+${limitText(extractedText, 12000)}
+`;
+    const result = await model.generateContent(prompt);
+    const text = result.response.text();
+    const cleaned = text.replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```$/i, "").trim();
+    const parsed = JSON.parse(cleaned);
+    
+    if (Array.isArray(parsed)) {
+      return parsed.filter(item => 
+        typeof item.response === "string" && item.response.trim() && 
+        Array.isArray(item.triggers) && item.triggers.length > 0
+      ).map(item => ({
+        response: item.response.trim(),
+        triggers: item.triggers.map(t => String(t).trim()).filter(Boolean)
+      }));
+    }
+    return [];
+  } catch (error) {
+    console.error("Failed to split training data from file:", error);
+    return [];
+  }
+}
+
 app.get("/chatbot-training", async (req, res) => {
   try {
     const snapshot = await db
@@ -12143,6 +12239,7 @@ app.get("/chatbot-training", async (req, res) => {
   }
 });
 
+// === REPLACE THE EXISTING app.post("/chatbot-training", ...) WITH THIS ===
 app.post("/chatbot-training", async (req, res) => {
   try {
     const {
@@ -12153,26 +12250,17 @@ app.post("/chatbot-training", async (req, res) => {
       fileType,
       source = "admin-panel",
     } = req.body || {};
-
-    const cleanedResponse = normalizeOptionalText(response);
-
-    if (!cleanedResponse) {
-      return res.status(400).json({ error: "response is required." });
-    }
-
-    if (!Array.isArray(triggers) || triggers.length === 0) {
-      return res.status(400).json({ error: "At least one trigger is required." });
-    }
-
-    const cleanedTriggers = triggers
-      .map((item) => (typeof item === "string" ? item.trim() : ""))
-      .filter(Boolean);
-
-    if (!cleanedTriggers.length) {
-      return res.status(400).json({ error: "At least one valid trigger is required." });
+    
+    let cleanedResponse = normalizeOptionalText(response);
+    let cleanedTriggers = [];
+    if (Array.isArray(triggers)) {
+      cleanedTriggers = triggers
+        .map((item) => (typeof item === "string" ? item.trim() : ""))
+        .filter(Boolean);
     }
 
     let uploadedFile = null;
+    let splitTrainingData = [];
 
     if (fileBase64) {
       uploadedFile = await uploadChatbotTrainingFileToStorage({
@@ -12180,37 +12268,83 @@ app.post("/chatbot-training", async (req, res) => {
         fileMimeType: fileType,
         fileName,
       });
+
+      try {
+        const cleanedBase64 = fileBase64.includes(",")
+          ? fileBase64.split(",")[1]
+          : fileBase64;
+        const buffer = Buffer.from(cleanedBase64, "base64");
+        const extractedText = await extractTextFromFile(buffer, fileType, fileName);
+        
+        if (typeof extractedText === "string" && extractedText.trim()) {
+          // NEW: Ask AI to split the document into multiple logical training entries
+          splitTrainingData = await generateSplitTrainingDataFromFileContent(extractedText);
+        }
+      } catch (extractError) {
+        console.error("File extraction error during training save:", extractError);
+      }
     }
 
-    const ref = await db.collection("chatbotTraining").add({
-      response: cleanedResponse,
-      triggers: cleanedTriggers,
-      file: uploadedFile
-        ? {
-            name: uploadedFile.fileName,
-            url: uploadedFile.fileUrl,
-            storagePath: uploadedFile.storagePath,
-            mimeType: uploadedFile.fileType,
-            bucketPath: uploadedFile.bucketPath,
-          }
-        : null,
-      source: normalizeOptionalText(source) || "admin-panel",
-      createdAt: FieldValue.serverTimestamp(),
-      updatedAt: FieldValue.serverTimestamp(),
-    });
+    // If no file was split, and no manual response/triggers were provided, return error
+    if (splitTrainingData.length === 0 && !cleanedResponse && cleanedTriggers.length === 0) {
+      return res.status(400).json({ error: "Please provide a chatbot response, triggers, or upload a file." });
+    }
 
-    const createdSnap = await ref.get();
-    const createdData = createdSnap.data() || {};
+    const batch = db.batch();
+    let createdCount = 0;
+
+    // 1. Save manually entered data (if any)
+    if (cleanedResponse && cleanedTriggers.length > 0) {
+      const manualRef = db.collection("chatbotTraining").doc();
+      batch.set(manualRef, {
+        response: cleanedResponse,
+        triggers: cleanedTriggers,
+        file: uploadedFile
+          ? {
+              name: uploadedFile.fileName,
+              url: uploadedFile.fileUrl,
+              storagePath: uploadedFile.storagePath,
+              mimeType: uploadedFile.fileType,
+              bucketPath: uploadedFile.bucketPath,
+            }
+          : null,
+        source: normalizeOptionalText(source) || "admin-panel",
+        createdAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+      createdCount++;
+    }
+
+    // 2. Save AI-split data from the file
+    if (splitTrainingData.length > 0) {
+      for (const item of splitTrainingData) {
+        const splitRef = db.collection("chatbotTraining").doc();
+        batch.set(splitRef, {
+          response: item.response,
+          triggers: item.triggers,
+          file: uploadedFile
+            ? {
+                name: uploadedFile.fileName,
+                url: uploadedFile.fileUrl,
+                storagePath: uploadedFile.storagePath,
+                mimeType: uploadedFile.fileType,
+                bucketPath: uploadedFile.bucketPath,
+              }
+            : null,
+          source: "admin-panel-auto-split",
+          createdAt: FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
+        });
+        createdCount++;
+      }
+    }
+
+    await batch.commit();
 
     return res.status(201).json({
       success: true,
-      message: "Chatbot training created successfully.",
-      data: {
-        id: ref.id,
-        ...createdData,
-        createdAt: serializeTimestamp(createdData.createdAt),
-        updatedAt: serializeTimestamp(createdData.updatedAt),
-      },
+      message: `Successfully saved ${createdCount} chatbot training entries.`,
+      data: { createdCount },
     });
   } catch (error) {
     console.error("Create chatbot training error:", error);
@@ -12284,31 +12418,40 @@ app.put("/chatbot-training/:id", async (req, res) => {
     });
   }
 });
-
+// === UPDATE THE PATCH ROUTE (Replace File) ===
 app.patch("/chatbot-training/:id/file", async (req, res) => {
   try {
     const { id } = req.params;
     const { fileBase64, fileName, fileType } = req.body || {};
-
     if (!fileBase64) {
       return res.status(400).json({ error: "fileBase64 is required." });
     }
-
     const ref = db.collection("chatbotTraining").doc(id);
     const snap = await ref.get();
-
     if (!snap.exists) {
       return res.status(404).json({ error: "Chatbot training not found." });
     }
-
     const existingData = snap.data() || {};
     const existingFile = existingData.file || null;
-
+    
     const uploadedFile = await uploadChatbotTrainingFileToStorage({
       fileBase64,
       fileMimeType: fileType,
       fileName,
     });
+
+    let extractedTextPreview = existingData.extractedTextPreview || null;
+
+    try {
+      const cleanedBase64 = fileBase64.includes(",") ? fileBase64.split(",")[1] : fileBase64;
+      const buffer = Buffer.from(cleanedBase64, "base64");
+      const extractedText = await extractTextFromFile(buffer, fileType, fileName);
+      if (typeof extractedText === "string" && extractedText.trim()) {
+        extractedTextPreview = limitText(extractedText.trim(), 2000);
+      }
+    } catch (extractError) {
+      console.error("File extraction error during file replace:", extractError);
+    }
 
     await ref.update({
       file: {
@@ -12318,16 +12461,16 @@ app.patch("/chatbot-training/:id/file", async (req, res) => {
         mimeType: uploadedFile.fileType,
         bucketPath: uploadedFile.bucketPath,
       },
+      extractedTextPreview: extractedTextPreview,
       updatedAt: FieldValue.serverTimestamp(),
     });
 
     if (existingFile?.storagePath) {
       await deleteStorageFileIfExists(existingFile.storagePath);
     }
-
+    
     const updatedSnap = await ref.get();
     const updatedData = updatedSnap.data() || {};
-
     return res.json({
       success: true,
       message: "Chatbot training file replaced successfully.",

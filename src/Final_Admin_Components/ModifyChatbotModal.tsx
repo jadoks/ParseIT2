@@ -46,18 +46,14 @@ function getApiBaseUrl() {
   if (Platform.OS === "web") {
     return "http://localhost:5000";
   }
-
   const possibleHost =
     Constants.expoConfig?.hostUri ||
     Constants.manifest2?.extra?.expoGo?.debuggerHost ||
     "";
-
   const host = possibleHost.split(":")[0];
-
   if (host) {
     return `http://${host}:5000`;
   }
-
   return "http://192.168.1.5:5000";
 }
 
@@ -65,30 +61,25 @@ const API_BASE_URL = getApiBaseUrl();
 
 const apiFetch = (url: string, options: any = {}) =>
   fetch(url, {
-    credentials: 'include',
+    credentials: "include",
     ...options,
   });
 
 function formatDate(value: any) {
   if (!value) return "Unknown date";
-
   if (typeof value?.toDate === "function") {
     return value.toDate().toLocaleString();
   }
-
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return "Unknown date";
-
   return parsed.toLocaleString();
 }
 
 const fileUriToBase64 = async (uri: string): Promise<string> => {
   const response = await fetch(uri);
   const blob = await response.blob();
-
   return await new Promise((resolve, reject) => {
     const reader = new FileReader();
-
     reader.onloadend = () => {
       const result = reader.result;
       if (typeof result === "string") {
@@ -97,7 +88,6 @@ const fileUriToBase64 = async (uri: string): Promise<string> => {
         reject(new Error("Failed to convert file to base64."));
       }
     };
-
     reader.onerror = () => reject(new Error("Failed to read selected file."));
     reader.readAsDataURL(blob);
   });
@@ -119,12 +109,10 @@ export default function ModifyChatbotModal({
   const [editedTriggers, setEditedTriggers] = useState<string[]>([]);
   const [newTriggerText, setNewTriggerText] = useState("");
   const [searchText, setSearchText] = useState("");
-  const [confirmDeleteItem, setConfirmDeleteItem] =
-    useState<ChatbotTrainingItem | null>(null);
+  const [confirmDeleteItem, setConfirmDeleteItem] = useState<ChatbotTrainingItem | null>(null);
 
   const filteredItems = useMemo(() => {
     const keyword = searchText.trim().toLowerCase();
-
     if (!keyword) return items;
 
     return items.filter((item) => {
@@ -133,7 +121,6 @@ export default function ModifyChatbotModal({
         trigger.toLowerCase().includes(keyword)
       );
       const inFileName = (item.file?.name || "").toLowerCase().includes(keyword);
-
       return inResponse || inTriggers || inFileName;
     });
   }, [items, searchText]);
@@ -141,7 +128,6 @@ export default function ModifyChatbotModal({
   const loadTrainingItems = async () => {
     try {
       setLoading(true);
-
       const response = await apiFetch(`${API_BASE_URL}/chatbot-training`);
       const data = await response.json();
 
@@ -183,7 +169,6 @@ export default function ModifyChatbotModal({
 
   const handleAddTrigger = () => {
     const cleaned = newTriggerText.trim();
-
     if (!cleaned) {
       Alert.alert("Required", "Please enter a trigger.");
       return;
@@ -210,10 +195,8 @@ export default function ModifyChatbotModal({
 
   const handleSaveEdit = async (item: ChatbotTrainingItem) => {
     const cleanedResponse = editedResponse.trim();
-    const cleanedTriggers = editedTriggers
-      .map((entry) => entry.trim())
-      .filter(Boolean);
-
+    const cleanedTriggers = editedTriggers.map((entry) => entry.trim()).filter(Boolean);
+    
     if (!cleanedResponse) {
       Alert.alert("Required", "Response cannot be empty.");
       return;
@@ -228,9 +211,9 @@ export default function ModifyChatbotModal({
       setSavingId(item.id);
 
       const response = await apiFetch(`${API_BASE_URL}/chatbot-training/${item.id}`, {
-        method: "PUT",
+        method: "PUT", // FIXED: Removed trailing space
         headers: {
-          "Content-Type": "application/json",
+          "Content-Type": "application/json", // FIXED: Removed trailing spaces
         },
         body: JSON.stringify({
           response: cleanedResponse,
@@ -238,7 +221,7 @@ export default function ModifyChatbotModal({
         }),
       });
 
-      const data = await response.json();
+      const data = await response.json(); // FIXED TYPO: "respon se"
 
       if (!response.ok) {
         throw new Error(data?.error || "Failed to update training data.");
@@ -259,7 +242,7 @@ export default function ModifyChatbotModal({
       Alert.alert("Success", "Training data updated successfully.");
       resetEditState();
     } catch (error: any) {
-      console.error("Failed to update chatbot training:", error);
+      console.error("Failed to update chatbot training: ", error);
       Alert.alert("Error", error?.message || "Failed to update training data.");
     } finally {
       setSavingId(null);
@@ -269,7 +252,6 @@ export default function ModifyChatbotModal({
   const handleReplaceFile = async (item: ChatbotTrainingItem) => {
     try {
       setReplacingFileId(item.id);
-
       const result = await DocumentPicker.getDocumentAsync({
         multiple: false,
         copyToCacheDirectory: true,
@@ -283,19 +265,17 @@ export default function ModifyChatbotModal({
       const file = result.assets[0];
       const fileBase64 = await fileUriToBase64(file.uri);
 
-      const response = await apiFetch(`${API_BASE_URL}/chatbot-training/${item.id}/file`,
-        {
-          method: "PATCH",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            fileBase64,
-            fileName: file.name,
-            fileType: file.mimeType || "application/octet-stream",
-          }),
-        }
-      );
+      const response = await apiFetch(`${API_BASE_URL}/chatbot-training/${item.id}/file`, {
+        method: "PATCH", // FIXED: Removed trailing space
+        headers: {
+          "Content-Type": "application/json", // FIXED: Removed trailing spaces
+        },
+        body: JSON.stringify({
+          fileBase64,
+          fileName: file.name,
+          fileType: file.mimeType || "application/octet-stream",
+        }),
+      });
 
       const data = await response.json();
 
@@ -317,7 +297,7 @@ export default function ModifyChatbotModal({
 
       Alert.alert("Success", "Training file replaced successfully.");
     } catch (error: any) {
-      console.error("Failed to replace training file:", error);
+      console.error("Failed to replace training file: ", error);
       Alert.alert("Error", error?.message || "Failed to replace training file.");
     } finally {
       setReplacingFileId(null);
@@ -327,12 +307,9 @@ export default function ModifyChatbotModal({
   const handleRemoveFile = async (item: ChatbotTrainingItem) => {
     try {
       setRemovingFileId(item.id);
-
-      const response = await apiFetch(`${API_BASE_URL}/chatbot-training/${item.id}/file`,
-        {
-          method: "DELETE",
-        }
-      );
+      const response = await apiFetch(`${API_BASE_URL}/chatbot-training/${item.id}/file`, {
+        method: "DELETE", // FIXED: Removed trailing space
+      });
 
       const data = await response.json();
 
@@ -354,7 +331,7 @@ export default function ModifyChatbotModal({
 
       Alert.alert("Success", "Training file removed successfully.");
     } catch (error: any) {
-      console.error("Failed to remove training file:", error);
+      console.error("Failed to remove training file: ", error);
       Alert.alert("Error", error?.message || "Failed to remove training file.");
     } finally {
       setRemovingFileId(null);
@@ -372,15 +349,12 @@ export default function ModifyChatbotModal({
 
   const performDelete = async () => {
     if (!confirmDeleteItem) return;
-
     try {
       setDeletingId(confirmDeleteItem.id);
 
-      const response = await apiFetch(`${API_BASE_URL}/chatbot-training/${confirmDeleteItem.id}`,
-        {
-          method: "DELETE",
-        }
-      );
+      const response = await apiFetch(`${API_BASE_URL}/chatbot-training/${confirmDeleteItem.id}`, {
+        method: "DELETE", // FIXED: Removed trailing space
+      });
 
       const data = await response.json();
 
@@ -388,14 +362,11 @@ export default function ModifyChatbotModal({
         throw new Error(data?.error || "Delete failed.");
       }
 
-      setItems((prev) =>
-        prev.filter((entry) => entry.id !== confirmDeleteItem.id)
-      );
-
+      setItems((prev) => prev.filter((entry) => entry.id !== confirmDeleteItem.id));
       setConfirmDeleteItem(null);
       Alert.alert("Success", "Training data deleted successfully.");
     } catch (error: any) {
-      console.error("Delete error:", error);
+      console.error("Delete error: ", error);
       Alert.alert("Error", error?.message || "Failed to delete.");
     } finally {
       setDeletingId(null);
@@ -407,18 +378,12 @@ export default function ModifyChatbotModal({
       <Modal visible={visible} animationType="fade" transparent>
         <View style={styles.modalOverlay}>
           <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
-
           <View style={styles.modalCard}>
             <View style={styles.modalHeader}>
               <View style={styles.modalHeaderLeft}>
                 <View style={styles.modalIconBox}>
-                  <MaterialCommunityIcons
-                    name="robot-happy-outline"
-                    size={22}
-                    color="#DC2626"
-                  />
+                  <MaterialCommunityIcons name="robot-happy-outline" size={22} color="#DC2626" />
                 </View>
-
                 <View style={styles.modalHeaderTextWrap}>
                   <Text style={styles.modalTitle}>Modify Chatbot</Text>
                   <Text style={styles.modalSubtitle}>
@@ -426,12 +391,7 @@ export default function ModifyChatbotModal({
                   </Text>
                 </View>
               </View>
-
-              <TouchableOpacity
-                style={styles.modalCloseButton}
-                onPress={onClose}
-                activeOpacity={0.85}
-              >
+              <TouchableOpacity style={styles.modalCloseButton} onPress={onClose} activeOpacity={0.85}>
                 <Ionicons name="close" size={20} color="#7A4A4A" />
               </TouchableOpacity>
             </View>
@@ -449,27 +409,16 @@ export default function ModifyChatbotModal({
               </View>
             </View>
 
-            <ScrollView
-              showsVerticalScrollIndicator={false}
-              contentContainerStyle={styles.modalContent}
-            >
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.modalContent}>
               {loading ? (
                 <View style={styles.centerState}>
                   <ActivityIndicator size="large" color="#DC2626" />
-                  <Text style={styles.centerStateText}>
-                    Loading training data...
-                  </Text>
+                  <Text style={styles.centerStateText}>Loading training data...</Text>
                 </View>
               ) : filteredItems.length === 0 ? (
                 <View style={styles.emptyState}>
-                  <MaterialCommunityIcons
-                    name="database-search-outline"
-                    size={34}
-                    color="#DC2626"
-                  />
-                  <Text style={styles.emptyStateTitle}>
-                    No matching training data
-                  </Text>
+                  <MaterialCommunityIcons name="database-search-outline" size={34} color="#DC2626" />
+                  <Text style={styles.emptyStateTitle}>No matching training data</Text>
                   <Text style={styles.emptyStateSubtitle}>
                     Try a different search or add new chatbot training entries.
                   </Text>
@@ -486,17 +435,16 @@ export default function ModifyChatbotModal({
                     <View key={item.id} style={styles.trainingCard}>
                       <View style={styles.trainingCardHeader}>
                         <View style={styles.trainingCardHeaderLeft}>
-                          <Text style={styles.trainingCardTitle}>
-                            Training Entry
-                          </Text>
-                          <Text style={styles.trainingCardMeta}>
-                            Created: {formatDate(item.createdAt)}
-                          </Text>
+                          <Text style={styles.trainingCardTitle}>Training Entry</Text>
+                          {/* NEW: Show badge if auto-split */}
+                          {item.source === "admin-panel-auto-split" && (
+                            <Text style={styles.autoSplitBadge}>Auto-split from File</Text>
+                          )}
+                          <Text style={styles.trainingCardMeta}>Created: {formatDate(item.createdAt)}</Text>
                           <Text style={styles.trainingCardMeta}>
                             Updated: {formatDate(item.updatedAt || item.createdAt)}
                           </Text>
                         </View>
-
                         {!isEditing && (
                           <View style={styles.trainingActions}>
                             <TouchableOpacity
@@ -504,28 +452,16 @@ export default function ModifyChatbotModal({
                               activeOpacity={0.85}
                               onPress={() => handleStartEdit(item)}
                             >
-                              <Ionicons
-                                name="create-outline"
-                                size={16}
-                                color="#FFFFFF"
-                              />
+                              <Ionicons name="create-outline" size={16} color="#FFFFFF" />
                               <Text style={styles.actionButtonText}>Edit</Text>
                             </TouchableOpacity>
-
                             <TouchableOpacity
-                              style={[
-                                styles.deleteButton,
-                                isDeleting && styles.disabledButton,
-                              ]}
+                              style={[styles.deleteButton, isDeleting && styles.disabledButton]}
                               activeOpacity={0.85}
                               onPress={() => handleDelete(item)}
                               disabled={isDeleting}
                             >
-                              <Ionicons
-                                name="trash-outline"
-                                size={16}
-                                color="#FFFFFF"
-                              />
+                              <Ionicons name="trash-outline" size={16} color="#FFFFFF" />
                               <Text style={styles.actionButtonText}>
                                 {isDeleting ? "Deleting..." : "Delete"}
                               </Text>
@@ -561,33 +497,19 @@ export default function ModifyChatbotModal({
                           <>
                             <View style={styles.tagsWrap}>
                               {editedTriggers.map((trigger, index) => (
-                                <View
-                                  key={`${item.id}-edit-${trigger}-${index}`}
-                                  style={styles.editableTagChip}
-                                >
+                                <View key={`${item.id}-edit-${trigger}-${index}`} style={styles.editableTagChip}>
                                   <Text style={styles.tagText}>{trigger}</Text>
-
                                   <TouchableOpacity
                                     onPress={() => handleRemoveTrigger(trigger)}
                                     style={styles.removeTriggerButton}
                                     activeOpacity={0.8}
                                   >
-                                    <Ionicons
-                                      name="close"
-                                      size={14}
-                                      color="#7A4A4A"
-                                    />
+                                    <Ionicons name="close" size={14} color="#7A4A4A" />
                                   </TouchableOpacity>
                                 </View>
                               ))}
                             </View>
-
-                            <View
-                              style={[
-                                styles.addTriggerRow,
-                                isMobile && styles.addTriggerRowStack,
-                              ]}
-                            >
+                            <View style={[styles.addTriggerRow, isMobile && styles.addTriggerRowStack]}>
                               <View
                                 style={[
                                   styles.inputField,
@@ -605,12 +527,7 @@ export default function ModifyChatbotModal({
                                   returnKeyType="done"
                                 />
                               </View>
-
-                              <TouchableOpacity
-                                style={styles.addTriggerButton}
-                                activeOpacity={0.85}
-                                onPress={handleAddTrigger}
-                              >
+                              <TouchableOpacity style={styles.addTriggerButton} activeOpacity={0.85} onPress={handleAddTrigger}>
                                 <Ionicons name="add" size={18} color="#FFFFFF" />
                                 <Text style={styles.actionButtonText}>Add</Text>
                               </TouchableOpacity>
@@ -619,10 +536,7 @@ export default function ModifyChatbotModal({
                         ) : (
                           <View style={styles.tagsWrap}>
                             {item.triggers.map((trigger, index) => (
-                              <View
-                                key={`${item.id}-${trigger}-${index}`}
-                                style={styles.tagChip}
-                              >
+                              <View key={`${item.id}-${trigger}-${index}`} style={styles.tagChip}>
                                 <Text style={styles.tagText}>{trigger}</Text>
                               </View>
                             ))}
@@ -632,49 +546,29 @@ export default function ModifyChatbotModal({
 
                       <View style={styles.fieldBlock}>
                         <Text style={styles.fieldLabel}>Attached File</Text>
-
                         {item.file ? (
                           <View style={styles.previewBox}>
-                            <Text style={styles.previewText}>
-                              {item.file.name || "Unnamed file"}
-                            </Text>
-                            <Text style={styles.previewSubText}>
-                              {item.file.mimeType || "Unknown type"}
-                            </Text>
-
-                            <View
-                              style={[
-                                styles.fileActionRow,
-                                isMobile && styles.fileActionRowStack,
-                              ]}
-                            >
+                            <Text style={styles.previewText}>{item.file.name || "Unnamed file"}</Text>
+                            <Text style={styles.previewSubText}>{item.file.mimeType || "Unknown type"}</Text>
+                            <View style={[styles.fileActionRow, isMobile && styles.fileActionRowStack]}>
                               <TouchableOpacity
                                 style={styles.replaceFileButton}
                                 activeOpacity={0.85}
                                 onPress={() => handleReplaceFile(item)}
                                 disabled={isReplacing || isSaving}
                               >
-                                <Ionicons
-                                  name="swap-horizontal-outline"
-                                  size={16}
-                                  color="#FFFFFF"
-                                />
+                                <Ionicons name="swap-horizontal-outline" size={16} color="#FFFFFF" />
                                 <Text style={styles.actionButtonText}>
                                   {isReplacing ? "Replacing..." : "Replace File"}
                                 </Text>
                               </TouchableOpacity>
-
                               <TouchableOpacity
                                 style={styles.removeFileButton}
                                 activeOpacity={0.85}
                                 onPress={() => handleRemoveFile(item)}
                                 disabled={isRemovingFile || isSaving}
                               >
-                                <Ionicons
-                                  name="close-circle-outline"
-                                  size={16}
-                                  color="#FFFFFF"
-                                />
+                                <Ionicons name="close-circle-outline" size={16} color="#FFFFFF" />
                                 <Text style={styles.actionButtonText}>
                                   {isRemovingFile ? "Removing..." : "Remove File"}
                                 </Text>
@@ -683,10 +577,7 @@ export default function ModifyChatbotModal({
                           </View>
                         ) : (
                           <View style={styles.previewBox}>
-                            <Text style={styles.previewSubText}>
-                              No file attached.
-                            </Text>
-
+                            <Text style={styles.previewSubText}>No file attached.</Text>
                             <View style={styles.fileActionRow}>
                               <TouchableOpacity
                                 style={styles.replaceFileButton}
@@ -694,11 +585,7 @@ export default function ModifyChatbotModal({
                                 onPress={() => handleReplaceFile(item)}
                                 disabled={isReplacing || isSaving}
                               >
-                                <Ionicons
-                                  name="cloud-upload-outline"
-                                  size={16}
-                                  color="#FFFFFF"
-                                />
+                                <Ionicons name="cloud-upload-outline" size={16} color="#FFFFFF" />
                                 <Text style={styles.actionButtonText}>
                                   {isReplacing ? "Uploading..." : "Upload File"}
                                 </Text>
@@ -709,37 +596,22 @@ export default function ModifyChatbotModal({
                       </View>
 
                       {isEditing && (
-                        <View
-                          style={[
-                            styles.editFooter,
-                            isMobile && styles.editFooterStack,
-                          ]}
-                        >
+                        <View style={[styles.editFooter, isMobile && styles.editFooterStack]}>
                           <TouchableOpacity
-                            style={[
-                              styles.modalSecondaryButton,
-                              isMobile && styles.modalSecondaryButtonStack,
-                            ]}
+                            style={[styles.modalSecondaryButton, isMobile && styles.modalSecondaryButtonStack]}
                             activeOpacity={0.85}
                             onPress={handleCancelEdit}
                             disabled={isSaving}
                           >
-                            <Text style={styles.modalSecondaryButtonText}>
-                              Cancel
-                            </Text>
+                            <Text style={styles.modalSecondaryButtonText}>Cancel</Text>
                           </TouchableOpacity>
-
                           <TouchableOpacity
                             style={styles.modalPrimaryButton}
                             activeOpacity={0.85}
                             onPress={() => handleSaveEdit(item)}
                             disabled={isSaving}
                           >
-                            <Ionicons
-                              name="save-outline"
-                              size={18}
-                              color="#FFFFFF"
-                            />
+                            <Ionicons name="save-outline" size={18} color="#FFFFFF" />
                             <Text style={styles.modalPrimaryButtonText}>
                               {isSaving ? "Saving..." : "Save Changes"}
                             </Text>
@@ -755,30 +627,17 @@ export default function ModifyChatbotModal({
         </View>
       </Modal>
 
-      <Modal
-        visible={!!confirmDeleteItem}
-        animationType="fade"
-        transparent
-        onRequestClose={handleCancelDelete}
-      >
+      <Modal visible={!!confirmDeleteItem} animationType="fade" transparent onRequestClose={handleCancelDelete}>
         <View style={styles.confirmOverlay}>
-          <Pressable
-            style={StyleSheet.absoluteFill}
-            onPress={handleCancelDelete}
-          />
-
+          <Pressable style={StyleSheet.absoluteFill} onPress={handleCancelDelete} />
           <View style={styles.confirmCard}>
             <View style={styles.confirmIconBox}>
               <Ionicons name="trash-outline" size={24} color="#DC2626" />
             </View>
-
             <Text style={styles.confirmTitle}>Delete Training Entry?</Text>
-
             <Text style={styles.confirmMessage}>
-              Are you sure you want to delete this chatbot training data? This
-              action cannot be undone.
+              Are you sure you want to delete this chatbot training data? This action cannot be undone.
             </Text>
-
             {confirmDeleteItem?.response ? (
               <View style={styles.confirmPreviewBox}>
                 <Text style={styles.confirmPreviewLabel}>Response Preview</Text>
@@ -787,30 +646,17 @@ export default function ModifyChatbotModal({
                 </Text>
               </View>
             ) : null}
-
-            <View
-              style={[
-                styles.confirmActions,
-                isMobile && styles.confirmActionsStack,
-              ]}
-            >
+            <View style={[styles.confirmActions, isMobile && styles.confirmActionsStack]}>
               <TouchableOpacity
-                style={[
-                  styles.confirmCancelButton,
-                  isMobile && styles.confirmCancelButtonStack,
-                ]}
+                style={[styles.confirmCancelButton, isMobile && styles.confirmCancelButtonStack]}
                 activeOpacity={0.85}
                 onPress={handleCancelDelete}
                 disabled={!!deletingId}
               >
                 <Text style={styles.confirmCancelButtonText}>Cancel</Text>
               </TouchableOpacity>
-
               <TouchableOpacity
-                style={[
-                  styles.confirmDeleteButton,
-                  deletingId && styles.disabledButton,
-                ]}
+                style={[styles.confirmDeleteButton, deletingId && styles.disabledButton]}
                 activeOpacity={0.85}
                 onPress={performDelete}
                 disabled={!!deletingId}
@@ -836,7 +682,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     padding: 20,
   },
-
   modalCard: {
     width: "100%",
     maxWidth: 980,
@@ -847,7 +692,6 @@ const styles = StyleSheet.create({
     borderColor: "#F3D4D4",
     overflow: "hidden",
   },
-
   modalHeader: {
     paddingHorizontal: 24,
     paddingTop: 22,
@@ -858,17 +702,14 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "flex-start",
   },
-
   modalHeaderLeft: {
     flex: 1,
     flexDirection: "row",
     paddingRight: 16,
   },
-
   modalHeaderTextWrap: {
     flex: 1,
   },
-
   modalIconBox: {
     width: 52,
     height: 52,
@@ -878,20 +719,17 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     marginRight: 14,
   },
-
   modalTitle: {
     fontSize: 22,
     fontWeight: "800",
     color: "#2B1111",
     marginBottom: 4,
   },
-
   modalSubtitle: {
     fontSize: 14,
     lineHeight: 21,
     color: "#8A6F6F",
   },
-
   modalCloseButton: {
     width: 40,
     height: 40,
@@ -900,13 +738,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-
   searchWrap: {
     paddingHorizontal: 24,
     paddingTop: 18,
     paddingBottom: 0,
   },
-
   searchField: {
     minHeight: 54,
     borderRadius: 16,
@@ -917,7 +753,6 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
   },
-
   searchInput: {
     flex: 1,
     marginLeft: 10,
@@ -925,38 +760,32 @@ const styles = StyleSheet.create({
     color: "#2B1111",
     fontWeight: "600",
   },
-
   modalContent: {
     padding: 24,
     paddingBottom: 18,
   },
-
   centerState: {
     paddingVertical: 60,
     alignItems: "center",
     justifyContent: "center",
   },
-
   centerStateText: {
     marginTop: 12,
     fontSize: 14,
     color: "#7A4A4A",
     fontWeight: "600",
   },
-
   emptyState: {
     paddingVertical: 60,
     alignItems: "center",
     justifyContent: "center",
   },
-
   emptyStateTitle: {
     marginTop: 12,
     fontSize: 18,
     fontWeight: "800",
     color: "#2B1111",
   },
-
   emptyStateSubtitle: {
     marginTop: 8,
     fontSize: 14,
@@ -965,7 +794,6 @@ const styles = StyleSheet.create({
     textAlign: "center",
     maxWidth: 420,
   },
-
   trainingCard: {
     borderWidth: 1,
     borderColor: "#F3D4D4",
@@ -974,36 +802,30 @@ const styles = StyleSheet.create({
     padding: 18,
     marginBottom: 16,
   },
-
   trainingCardHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "flex-start",
     marginBottom: 16,
   },
-
   trainingCardHeaderLeft: {
     flex: 1,
     paddingRight: 12,
   },
-
   trainingCardTitle: {
     fontSize: 17,
     fontWeight: "800",
     color: "#2B1111",
     marginBottom: 6,
   },
-
   trainingCardMeta: {
     fontSize: 12,
     color: "#8A6F6F",
     marginBottom: 2,
   },
-
   trainingActions: {
     flexDirection: "row",
   },
-
   editButton: {
     height: 40,
     paddingHorizontal: 14,
@@ -1014,7 +836,6 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     marginRight: 8,
   },
-
   deleteButton: {
     height: 40,
     paddingHorizontal: 14,
@@ -1024,7 +845,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     flexDirection: "row",
   },
-
   replaceFileButton: {
     height: 42,
     paddingHorizontal: 14,
@@ -1036,7 +856,6 @@ const styles = StyleSheet.create({
     marginTop: 10,
     marginRight: 8,
   },
-
   removeFileButton: {
     height: 42,
     paddingHorizontal: 14,
@@ -1047,7 +866,6 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     marginTop: 10,
   },
-
   addTriggerButton: {
     height: 54,
     paddingHorizontal: 16,
@@ -1057,25 +875,21 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     flexDirection: "row",
   },
-
   actionButtonText: {
     fontSize: 13,
     fontWeight: "800",
     color: "#FFFFFF",
     marginLeft: 6,
   },
-
   fieldBlock: {
     marginBottom: 14,
   },
-
   fieldLabel: {
     fontSize: 14,
     fontWeight: "700",
     color: "#5F3B3B",
     marginBottom: 8,
   },
-
   inputField: {
     minHeight: 54,
     borderRadius: 16,
@@ -1085,19 +899,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     justifyContent: "center",
   },
-
   textInput: {
     fontSize: 14,
     color: "#2B1111",
     fontWeight: "600",
   },
-
   textAreaField: {
     minHeight: 130,
     alignItems: "flex-start",
     paddingVertical: 14,
   },
-
   textAreaInput: {
     flex: 1,
     width: "100%",
@@ -1105,7 +916,6 @@ const styles = StyleSheet.create({
     color: "#2B1111",
     fontWeight: "600",
   },
-
   previewBox: {
     borderRadius: 16,
     borderWidth: 1,
@@ -1113,25 +923,21 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFF8F8",
     padding: 14,
   },
-
   previewText: {
     fontSize: 14,
     lineHeight: 22,
     color: "#2B1111",
     fontWeight: "600",
   },
-
   previewSubText: {
     marginTop: 6,
     fontSize: 12,
     color: "#8A6F6F",
   },
-
   tagsWrap: {
     flexDirection: "row",
     flexWrap: "wrap",
   },
-
   tagChip: {
     flexDirection: "row",
     alignItems: "center",
@@ -1144,7 +950,6 @@ const styles = StyleSheet.create({
     marginRight: 10,
     marginBottom: 10,
   },
-
   editableTagChip: {
     flexDirection: "row",
     alignItems: "center",
@@ -1158,13 +963,11 @@ const styles = StyleSheet.create({
     marginRight: 10,
     marginBottom: 10,
   },
-
   tagText: {
     fontSize: 13,
     fontWeight: "700",
     color: "#7A4A4A",
   },
-
   removeTriggerButton: {
     marginLeft: 8,
     width: 22,
@@ -1174,49 +977,40 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-
   addTriggerRow: {
     flexDirection: "row",
     alignItems: "center",
     marginTop: 4,
   },
-
   addTriggerRowStack: {
     flexDirection: "column",
     alignItems: "stretch",
   },
-
   addTriggerInputWrap: {
     flex: 1,
     marginRight: 10,
   },
-
   addTriggerInputWrapStack: {
     marginRight: 0,
     marginBottom: 10,
   },
-
   fileActionRow: {
     flexDirection: "row",
     alignItems: "center",
     flexWrap: "wrap",
   },
-
   fileActionRowStack: {
     flexDirection: "column",
     alignItems: "stretch",
   },
-
   editFooter: {
     marginTop: 4,
     flexDirection: "row",
     justifyContent: "flex-end",
   },
-
   editFooterStack: {
     flexDirection: "column",
   },
-
   modalSecondaryButton: {
     height: 48,
     paddingHorizontal: 18,
@@ -1228,18 +1022,15 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     marginRight: 12,
   },
-
   modalSecondaryButtonStack: {
     marginRight: 0,
     marginBottom: 10,
   },
-
   modalSecondaryButtonText: {
     fontSize: 14,
     fontWeight: "700",
     color: "#7A4A4A",
   },
-
   modalPrimaryButton: {
     height: 48,
     paddingHorizontal: 18,
@@ -1249,14 +1040,12 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     flexDirection: "row",
   },
-
   modalPrimaryButtonText: {
     fontSize: 14,
     fontWeight: "800",
     color: "#FFFFFF",
     marginLeft: 8,
   },
-
   confirmOverlay: {
     flex: 1,
     backgroundColor: "rgba(43, 17, 17, 0.45)",
@@ -1264,7 +1053,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     padding: 20,
   },
-
   confirmCard: {
     width: "100%",
     maxWidth: 420,
@@ -1274,7 +1062,6 @@ const styles = StyleSheet.create({
     borderColor: "#F3D4D4",
     padding: 22,
   },
-
   confirmIconBox: {
     width: 56,
     height: 56,
@@ -1285,7 +1072,6 @@ const styles = StyleSheet.create({
     marginBottom: 14,
     alignSelf: "center",
   },
-
   confirmTitle: {
     fontSize: 20,
     fontWeight: "800",
@@ -1293,7 +1079,6 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginBottom: 10,
   },
-
   confirmMessage: {
     fontSize: 14,
     lineHeight: 22,
@@ -1301,7 +1086,6 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginBottom: 16,
   },
-
   confirmPreviewBox: {
     borderRadius: 16,
     borderWidth: 1,
@@ -1310,7 +1094,6 @@ const styles = StyleSheet.create({
     padding: 14,
     marginBottom: 18,
   },
-
   confirmPreviewLabel: {
     fontSize: 12,
     fontWeight: "700",
@@ -1318,23 +1101,19 @@ const styles = StyleSheet.create({
     marginBottom: 6,
     textTransform: "uppercase",
   },
-
   confirmPreviewText: {
     fontSize: 14,
     lineHeight: 21,
     color: "#2B1111",
     fontWeight: "600",
   },
-
   confirmActions: {
     flexDirection: "row",
     justifyContent: "flex-end",
   },
-
   confirmActionsStack: {
     flexDirection: "column",
   },
-
   confirmCancelButton: {
     height: 46,
     paddingHorizontal: 18,
@@ -1346,18 +1125,15 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     marginRight: 12,
   },
-
   confirmCancelButtonStack: {
     marginRight: 0,
     marginBottom: 10,
   },
-
   confirmCancelButtonText: {
     fontSize: 14,
     fontWeight: "700",
     color: "#7A4A4A",
   },
-
   confirmDeleteButton: {
     height: 46,
     paddingHorizontal: 18,
@@ -1367,15 +1143,27 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     flexDirection: "row",
   },
-
   confirmDeleteButtonText: {
     fontSize: 14,
     fontWeight: "800",
     color: "#FFFFFF",
     marginLeft: 8,
   },
-
   disabledButton: {
     opacity: 0.7,
+  },
+  // NEW STYLE FOR AUTO-SPLIT BADGE
+  autoSplitBadge: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#DC2626",
+    backgroundColor: "#FEE2E2",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    alignSelf: "flex-start",
+    marginTop: 4,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
   },
 });

@@ -1,23 +1,23 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import DateTimePicker, {
-    DateTimePickerEvent,
+  DateTimePickerEvent,
 } from '@react-native-community/datetimepicker';
 import Constants from 'expo-constants';
 import React, { useState } from 'react';
 import {
-    Image,
-    ImageBackground,
-    KeyboardAvoidingView,
-    Modal,
-    Platform,
-    Pressable,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
-    useWindowDimensions,
+  Image,
+  ImageBackground,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+  useWindowDimensions,
 } from 'react-native';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -732,7 +732,7 @@ export default function Register({
               </TouchableOpacity>
 
               <Text style={styles.heading}>Create Account</Text>
-              <Text style={styles.subheading}>Register as Student or Teacher</Text>
+              <Text style={styles.subheading}>Sign up as Student or Teacher</Text>
 
               {isLargeScreen ? (
                 // ── LARGE SCREEN: 3-column layout ─────────────────────────────
@@ -815,7 +815,7 @@ export default function Register({
                     </View>
 
                     <View style={[styles.formColumn, { justifyContent: 'flex-end' }]}>
-                      <Text style={styles.fieldLabel}>User Type</Text>
+                      <Text style={styles.fieldLabel}>Choose Your Role</Text>
                       <View style={styles.typeContainerCompact}>
                         <TouchableOpacity
                           style={[styles.typeButtonCompact, userType === 'student' && styles.activeTypeButton]}
@@ -1028,7 +1028,7 @@ export default function Register({
                 disabled={isLoading}
               >
                 <Text style={styles.registerButtonText}>
-                  {isLoading ? 'Creating Account...' : 'Register'}
+                  {isLoading ? 'Creating Account...' : 'Sign Up'}
                 </Text>
               </TouchableOpacity>
 

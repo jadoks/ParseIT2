@@ -386,6 +386,7 @@ const SignIn = ({ onLogIn, onGoToLanding, onGoToRegister }: SignInProps) => {
     }
   };
 
+  // ✅ UPDATED: Removed success modal, directly proceeds to dashboard
   const handleLogIn = async () => {
     if (!id.trim() || !password.trim()) {
       showFeedback('error', 'Missing Fields', 'Please enter your ID and password.');
@@ -424,15 +425,9 @@ const SignIn = ({ onLogIn, onGoToLanding, onGoToRegister }: SignInProps) => {
         return;
       }
 
-      showFeedback('success', 'Login Successful', 'Welcome back.', () => {
-        setTimeout(async () => {
-          try {
-            await completeLogin(user.id, user.role);
-          } catch (error) {
-            console.log('POST LOGIN ERROR =>', error);
-          }
-        }, 50);
-      });
+      // ✅ DIRECTLY PROCEED TO DASHBOARD (No success modal)
+      await completeLogin(user.id, user.role);
+
     } catch (error: any) {
       console.log('LOGIN ERROR =>', error);
       try {
@@ -596,6 +591,7 @@ const SignIn = ({ onLogIn, onGoToLanding, onGoToRegister }: SignInProps) => {
     }
   };
 
+  // ✅ UPDATED: Removed success modal, directly proceeds to dashboard
   const handleFirstLoginPasswordSetup = async () => {
     if (!pendingUserId || !pendingRole || !pendingEmail) {
       showFeedback('error', 'Missing User', 'Unable to complete setup right now.');
@@ -653,19 +649,11 @@ const SignIn = ({ onLogIn, onGoToLanding, onGoToRegister }: SignInProps) => {
       const role = pendingRole;
       const userId = pendingUserId;
 
-      showFeedback('success', 'Success', 'Your password has been set successfully.', () => {
-        resetFirstLoginState();
+      resetFirstLoginState();
+      
+      // ✅ DIRECTLY PROCEED TO DASHBOARD (No success modal)
+      await completeLogin(userId, role);
 
-        setTimeout(async () => {
-          try {
-            if (role) {
-              await completeLogin(userId, role);
-            }
-          } catch (error) {
-            console.log('POST FIRST LOGIN ERROR =>', error);
-          }
-        }, 50);
-      });
     } catch (error: any) {
       showFeedback(
         'error',
@@ -925,7 +913,7 @@ const SignIn = ({ onLogIn, onGoToLanding, onGoToRegister }: SignInProps) => {
                 disabled={isLoading}
               >
                 <Text style={styles.registerButtonText}>
-                  Don't have an account? Register
+                  Don't have an account? Sign Up
                 </Text>
               </TouchableOpacity>
             </View>
@@ -1558,15 +1546,14 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   registerButton: {
-  marginTop: 16,
-  alignItems: 'center',
-},
-
-registerButtonText: {
-  color: '#D32F2F',
-  fontSize: 14,
-  fontWeight: '700',
-},
+    marginTop: 16,
+    alignItems: 'center',
+  },
+  registerButtonText: {
+    color: '#D32F2F',
+    fontSize: 14,
+    fontWeight: '700',
+  },
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.55)',

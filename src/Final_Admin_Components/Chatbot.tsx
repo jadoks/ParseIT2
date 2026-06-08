@@ -37,18 +37,14 @@ function getApiBaseUrl() {
   if (Platform.OS === "web") {
     return "http://localhost:5000";
   }
-
   const possibleHost =
     Constants.expoConfig?.hostUri ||
     Constants.manifest2?.extra?.expoGo?.debuggerHost ||
     "";
-
   const host = possibleHost.split(":")[0];
-
   if (host) {
     return `http://${host}:5000`;
   }
-
   return "http://192.168.1.5:5000";
 }
 
@@ -56,17 +52,15 @@ const API_BASE_URL = getApiBaseUrl();
 
 const apiFetch = (url: string, options: any = {}) =>
   fetch(url, {
-    credentials: 'include',
+    credentials: "include",
     ...options,
   });
 
 const fileUriToBase64 = async (uri: string): Promise<string> => {
   const response = await fetch(uri);
   const blob = await response.blob();
-
   return await new Promise((resolve, reject) => {
     const reader = new FileReader();
-
     reader.onloadend = () => {
       const result = reader.result;
       if (typeof result === "string") {
@@ -75,7 +69,6 @@ const fileUriToBase64 = async (uri: string): Promise<string> => {
         reject(new Error("Failed to convert file to base64."));
       }
     };
-
     reader.onerror = () => reject(new Error("Failed to read selected file."));
     reader.readAsDataURL(blob);
   });
@@ -107,7 +100,6 @@ export default function Chatbot({
 
   const handleAddTrigger = () => {
     const cleanedValue = triggerInput.trim();
-
     if (!cleanedValue) return;
 
     const exists = triggers.some(
@@ -136,7 +128,6 @@ export default function Chatbot({
   const handlePickTrainingFile = async () => {
     try {
       setUploadingFile(true);
-
       const result = await DocumentPicker.getDocumentAsync({
         multiple: false,
         copyToCacheDirectory: true,
@@ -152,12 +143,12 @@ export default function Chatbot({
       setSelectedFile({
         uri: file.uri,
         name: file.name,
-        mimeType: file.mimeType || "application/octet-stream",
+        mimeType: file.mimeType || "application/octet-stream", // FIXED TYPO
       });
 
       Alert.alert("Success", "Training file selected successfully.");
     } catch (error: any) {
-      console.error("Training file select failed:", error);
+      console.error("Training file select failed: ", error);
       Alert.alert("Error", error?.message || "Failed to select training file.");
     } finally {
       setUploadingFile(false);
@@ -167,20 +158,15 @@ export default function Chatbot({
   const handleAddData = async () => {
     const cleanedResponse = chatbotResponse.trim();
     const triggerValues = triggers.map((item) => item.value.trim()).filter(Boolean);
-
-    if (!cleanedResponse) {
-      Alert.alert("Required", "Please enter a chatbot response.");
-      return;
-    }
-
-    if (triggerValues.length === 0) {
-      Alert.alert("Required", "Please add at least one trigger input.");
+    
+    // UPDATED: Allow submission if a file is provided, even without manual response/triggers
+    if (!cleanedResponse && triggerValues.length === 0 && !selectedFile) {
+      Alert.alert("Required", "Please enter a chatbot response, add triggers, or upload a file.");
       return;
     }
 
     try {
       setSaving(true);
-
       let fileBase64: string | null = null;
 
       if (selectedFile?.uri) {
@@ -188,17 +174,17 @@ export default function Chatbot({
       }
 
       const response = await apiFetch(`${API_BASE_URL}/chatbot-training`, {
-        method: "POST",
+        method: "POST", // FIXED: Removed trailing space
         headers: {
-          "Content-Type": "application/json",
+          "Content-Type": "application/json", // FIXED: Removed trailing spaces
         },
         body: JSON.stringify({
-          response: cleanedResponse,
+          response: cleanedResponse || null,
           triggers: triggerValues,
           fileBase64,
-          fileName: selectedFile?.name || null,
+          fileName: selectedFile?.name || null, // FIXED TYPO: "sel ectedFile"
           fileType: selectedFile?.mimeType || null,
-          source: "admin-panel",
+          source: "admin-panel", // FIXED: Removed trailing space
         }),
       });
 
@@ -208,11 +194,11 @@ export default function Chatbot({
         throw new Error(data?.error || "Failed to save training data.");
       }
 
-      Alert.alert("Success", "Chatbot training data saved successfully.");
+      Alert.alert("Success", data?.message || "Chatbot training data saved successfully. AI has processed and split the file.");
       resetForm();
       onClose();
     } catch (error: any) {
-      console.error("Failed to save chatbot training:", error);
+      console.error("Failed to save chatbot training: ", error);
       Alert.alert("Error", error?.message || "Failed to save training data.");
     } finally {
       setSaving(false);
@@ -223,27 +209,19 @@ export default function Chatbot({
     <Modal visible={visible} animationType="fade" transparent>
       <View style={styles.modalOverlay}>
         <Pressable style={StyleSheet.absoluteFill} onPress={handleClose} />
-
         <View style={styles.modalCard}>
           <View style={styles.modalHeader}>
             <View style={styles.modalHeaderLeft}>
               <View style={styles.modalIconBox}>
-                <MaterialCommunityIcons
-                  name="robot-outline"
-                  size={22}
-                  color="#DC2626"
-                />
+                <MaterialCommunityIcons name="robot-outline" size={22} color="#DC2626" />
               </View>
-
               <View style={styles.modalHeaderTextWrap}>
                 <Text style={styles.modalTitle}>Train Chatbot</Text>
                 <Text style={styles.modalSubtitle}>
-                  Add chatbot response data, trigger phrases, and optional file
-                  context for training.
+                  Upload a file, and AI will automatically split its information into multiple chatbot responses and triggers. You can also add manual entries.
                 </Text>
               </View>
             </View>
-
             <TouchableOpacity
               style={styles.modalCloseButton}
               onPress={handleClose}
@@ -254,17 +232,10 @@ export default function Chatbot({
             </TouchableOpacity>
           </View>
 
-          <ScrollView
-            showsVerticalScrollIndicator={false}
-            contentContainerStyle={styles.modalContent}
-          >
+          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.modalContent}>
             <View style={styles.modalSection}>
               <View style={styles.modalSectionHeaderRow}>
-                <MaterialCommunityIcons
-                  name="message-text-outline"
-                  size={18}
-                  color="#DC2626"
-                />
+                <MaterialCommunityIcons name="message-text-outline" size={18} color="#DC2626" />
                 <Text style={styles.modalSectionTitle}>Training Details</Text>
               </View>
 
@@ -274,7 +245,7 @@ export default function Chatbot({
                   <TextInput
                     value={chatbotResponse}
                     onChangeText={setChatbotResponse}
-                    placeholder="Enter chatbot response"
+                    placeholder="Enter chatbot response (or leave blank for AI to generate from file)"
                     placeholderTextColor="#B79A9A"
                     style={styles.textAreaInput}
                     multiline
@@ -288,11 +259,7 @@ export default function Chatbot({
                 <View style={[styles.modalRow, isMobile && styles.modalRowStack]}>
                   <View style={styles.triggerInputWrap}>
                     <View style={styles.inputField}>
-                      <Ionicons
-                        name="flash-outline"
-                        size={18}
-                        color="#8A6F6F"
-                      />
+                      <Ionicons name="flash-outline" size={18} color="#8A6F6F" />
                       <TextInput
                         value={triggerInput}
                         onChangeText={setTriggerInput}
@@ -304,12 +271,7 @@ export default function Chatbot({
                       />
                     </View>
                   </View>
-
-                  <TouchableOpacity
-                    style={styles.addTriggerButton}
-                    activeOpacity={0.85}
-                    onPress={handleAddTrigger}
-                  >
+                  <TouchableOpacity style={styles.addTriggerButton} activeOpacity={0.85} onPress={handleAddTrigger}>
                     <Ionicons name="add" size={18} color="#FFFFFF" />
                     <Text style={styles.addTriggerButtonText}>Add</Text>
                   </TouchableOpacity>
@@ -341,20 +303,13 @@ export default function Chatbot({
                   onPress={handlePickTrainingFile}
                   disabled={uploadingFile || saving}
                 >
-                  <Ionicons
-                    name="cloud-upload-outline"
-                    size={18}
-                    color="#FFFFFF"
-                  />
+                  <Ionicons name="cloud-upload-outline" size={18} color="#FFFFFF" />
                   <Text style={styles.uploadButtonText}>
                     {uploadingFile ? "Selecting..." : "Upload File"}
                   </Text>
                 </TouchableOpacity>
-
                 {selectedFile && (
-                  <Text style={styles.uploadedFileText}>
-                    Selected: {selectedFile.name}
-                  </Text>
+                  <Text style={styles.uploadedFileText}>Selected: {selectedFile.name}</Text>
                 )}
               </View>
             </View>
@@ -369,18 +324,13 @@ export default function Chatbot({
             >
               <Text style={styles.modalSecondaryButtonText}>Cancel</Text>
             </TouchableOpacity>
-
             <TouchableOpacity
               style={styles.modalPrimaryButton}
               activeOpacity={0.85}
               onPress={handleAddData}
               disabled={saving || uploadingFile}
             >
-              <Ionicons
-                name="add-circle-outline"
-                size={18}
-                color="#FFFFFF"
-              />
+              <Ionicons name="add-circle-outline" size={18} color="#FFFFFF" />
               <Text style={styles.modalPrimaryButtonText}>
                 {saving ? "Saving..." : "Add Data"}
               </Text>
@@ -400,7 +350,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     padding: 20,
   },
-
   modalCard: {
     width: "100%",
     maxWidth: 920,
@@ -411,7 +360,6 @@ const styles = StyleSheet.create({
     borderColor: "#F3D4D4",
     overflow: "hidden",
   },
-
   modalHeader: {
     paddingHorizontal: 24,
     paddingTop: 22,
@@ -422,17 +370,14 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "flex-start",
   },
-
   modalHeaderLeft: {
     flex: 1,
     flexDirection: "row",
     paddingRight: 16,
   },
-
   modalHeaderTextWrap: {
     flex: 1,
   },
-
   modalIconBox: {
     width: 52,
     height: 52,
@@ -442,20 +387,17 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     marginRight: 14,
   },
-
   modalTitle: {
     fontSize: 22,
     fontWeight: "800",
     color: "#2B1111",
     marginBottom: 4,
   },
-
   modalSubtitle: {
     fontSize: 14,
     lineHeight: 21,
     color: "#8A6F6F",
   },
-
   modalCloseButton: {
     width: 40,
     height: 40,
@@ -464,54 +406,44 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-
   modalContent: {
     padding: 24,
     paddingBottom: 12,
   },
-
   modalSection: {
     marginBottom: 22,
   },
-
   modalSectionHeaderRow: {
     flexDirection: "row",
     alignItems: "center",
     marginBottom: 14,
   },
-
   modalSectionTitle: {
     marginLeft: 8,
     fontSize: 16,
     fontWeight: "800",
     color: "#2B1111",
   },
-
   fieldBlock: {
     marginBottom: 18,
   },
-
   fieldLabel: {
     fontSize: 14,
     fontWeight: "700",
     color: "#5F3B3B",
     marginBottom: 10,
   },
-
   modalRow: {
     flexDirection: "row",
     gap: 14,
     zIndex: 20,
   },
-
   modalRowStack: {
     flexDirection: "column",
   },
-
   triggerInputWrap: {
     flex: 1,
   },
-
   inputField: {
     minHeight: 54,
     borderRadius: 16,
@@ -522,7 +454,6 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
   },
-
   textInput: {
     flex: 1,
     marginLeft: 10,
@@ -531,13 +462,11 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     height: "80%",
   },
-
   textAreaField: {
     minHeight: 130,
     alignItems: "flex-start",
     paddingVertical: 14,
   },
-
   textAreaInput: {
     flex: 1,
     height: "100%",
@@ -546,7 +475,6 @@ const styles = StyleSheet.create({
     color: "#2B1111",
     fontWeight: "600",
   },
-
   addTriggerButton: {
     height: 54,
     minWidth: 110,
@@ -557,14 +485,12 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     flexDirection: "row",
   },
-
   addTriggerButtonText: {
     fontSize: 14,
     fontWeight: "800",
     color: "#FFFFFF",
     marginLeft: 8,
   },
-
   uploadButton: {
     height: 52,
     borderRadius: 16,
@@ -573,27 +499,23 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     flexDirection: "row",
   },
-
   uploadButtonText: {
     fontSize: 14,
     fontWeight: "800",
     color: "#FFFFFF",
     marginLeft: 8,
   },
-
   uploadedFileText: {
     marginTop: 10,
     fontSize: 13,
     fontWeight: "600",
     color: "#7A4A4A",
   },
-
   tagsWrap: {
     flexDirection: "row",
     flexWrap: "wrap",
     marginTop: 4,
   },
-
   tagChip: {
     flexDirection: "row",
     alignItems: "center",
@@ -607,14 +529,12 @@ const styles = StyleSheet.create({
     marginRight: 10,
     marginBottom: 10,
   },
-
   tagText: {
     fontSize: 13,
     fontWeight: "700",
     color: "#7A4A4A",
     marginRight: 8,
   },
-
   tagRemoveButton: {
     width: 22,
     height: 22,
@@ -623,7 +543,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-
   modalFooter: {
     paddingHorizontal: 24,
     paddingTop: 16,
@@ -633,7 +552,6 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "flex-end",
   },
-
   modalSecondaryButton: {
     height: 48,
     paddingHorizontal: 18,
@@ -645,13 +563,11 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     marginRight: 12,
   },
-
   modalSecondaryButtonText: {
     fontSize: 14,
     fontWeight: "700",
     color: "#7A4A4A",
   },
-
   modalPrimaryButton: {
     height: 48,
     paddingHorizontal: 18,
@@ -661,7 +577,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     flexDirection: "row",
   },
-
   modalPrimaryButtonText: {
     fontSize: 14,
     fontWeight: "800",

@@ -1206,20 +1206,7 @@ const Messenger = ({
                 </TouchableOpacity>
               )}
 
-              {!selected?.isCreatedRoom && (
-                <TouchableOpacity
-                  style={styles.infoActionCard}
-                  activeOpacity={0.85}
-                  onPress={handleOpenFinalGradeModal}
-                >
-                  <MaterialCommunityIcons
-                    name="clipboard-check-outline"
-                    size={18}
-                    color="#222"
-                  />
-                  <Text style={styles.infoActionCardText}>Submit Final Grade</Text>
-                </TouchableOpacity>
-              )}
+              
             </View>
           </Pressable>
         </Pressable>
