@@ -10,7 +10,6 @@ import {
 } from 'react-native';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 
-// 👇 UPDATED: Added 'game-assignment' to the type union
 export type NotificationType =
   | 'assignment'
   | 'material'
@@ -25,6 +24,9 @@ export type NotificationItem = {
   message: string;
   time: string;
   read: boolean;
+  // 👇 ADDED: IDs to help the parent component navigate to the exact screen
+  targetId?: string; // e.g., assignmentId, materialId, postId, activityId
+  courseId?: string; // e.g., courseId (useful for assignments, materials, activities)
 };
 
 interface NotificationScreenProps {
@@ -34,6 +36,8 @@ interface NotificationScreenProps {
   onClosePopover?: () => void;
   onMarkAsRead?: (id: string) => Promise<void> | void;
   onMarkAllAsRead?: () => Promise<void> | void;
+  // 👇 ADDED: Callback to handle navigation when a notification is pressed
+  onNotificationPress?: (notification: NotificationItem) => void;
 }
 
 const Notification: React.FC<NotificationScreenProps> = ({
@@ -43,6 +47,7 @@ const Notification: React.FC<NotificationScreenProps> = ({
   onClosePopover,
   onMarkAsRead,
   onMarkAllAsRead,
+  onNotificationPress, // 👈 ADDED
 }) => {
   const [notifications, setNotifications] =
     useState<NotificationItem[]>(incomingNotifications);
@@ -114,7 +119,6 @@ const Notification: React.FC<NotificationScreenProps> = ({
     }
   };
 
-  // 👇 UPDATED: Added case for 'game-assignment'
   const getNotificationIcon = (type: NotificationType, read: boolean) => {
     const color = read ? '#666' : '#D32F2F';
 
@@ -174,6 +178,12 @@ const Notification: React.FC<NotificationScreenProps> = ({
     <Pressable
       onPress={() => {
         void markAsRead(item.id);
+        
+        // 👇 ADDED: Trigger navigation and close popover if it's open
+        onNotificationPress?.(item);
+        if (isPopover) {
+          onClosePopover?.();
+        }
       }}
       style={[styles.card, !item.read && styles.unreadCard]}
     >

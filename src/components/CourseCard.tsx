@@ -79,9 +79,6 @@ type DropdownState =
     }
   | null;
 
-
-
-
 function getApiBaseUrl() {
   if (Platform.OS === 'web') {
     return 'http://localhost:5000';
@@ -111,12 +108,6 @@ const apiFetch = (url: string, options: any = {}) =>
 
 const DROPDOWN_WIDTH = 170;
 
-const getBannerRenderUri = (bannerUrl?: string | null) => {
-  if (!bannerUrl) return undefined;
-
-  return bannerUrl;
-};
-
 const CourseCard: React.FC<CourseCardProps> = ({
   course,
   onPress,
@@ -130,7 +121,7 @@ const CourseCard: React.FC<CourseCardProps> = ({
   const [dropdownState, setDropdownState] = useState<DropdownState>(null);
   const [bannerLoadFailed, setBannerLoadFailed] = useState(false);
   const [signedBannerUrl, setSignedBannerUrl] = useState<string | null>(null);
-  const [isRefreshingBanner, setIsRefreshingBanner] = useState(false);
+  // REMOVED: isRefreshingBanner state is no longer needed
 
   const getScorePercent = (assignment: CourseCardAssignment) => {
     if (
@@ -301,8 +292,6 @@ const CourseCard: React.FC<CourseCardProps> = ({
       }
 
       try {
-        setIsRefreshingBanner(true);
-
         const response = await apiFetch(`${API_BASE_URL}/storage/signed-url`, {
           method: 'POST',
           headers: {
@@ -322,14 +311,12 @@ const CourseCard: React.FC<CourseCardProps> = ({
 
         if (isMounted && data?.url) {
           setSignedBannerUrl(data.url);
+          // Reset failed state in case the initial bannerUrl was expired and failed to load
+          setBannerLoadFailed(false); 
         }
       } catch {
         if (isMounted) {
           setBannerLoadFailed(true);
-        }
-      } finally {
-        if (isMounted) {
-          setIsRefreshingBanner(false);
         }
       }
     };
@@ -354,12 +341,15 @@ const CourseCard: React.FC<CourseCardProps> = ({
       'Computer Fundamentals': require('../../assets/parseclass/AP1.jpg'),
     };
 
-    const bannerRenderUri = getBannerRenderUri(signedBannerUrl || course.bannerUrl);
+    // Use the newly signed URL if available, otherwise fallback to the existing bannerUrl
+    const uri = signedBannerUrl || course.bannerUrl;
 
-    if (bannerRenderUri && !bannerLoadFailed && !isRefreshingBanner) {
-      return { uri: bannerRenderUri };
+    // Show the remote image immediately if we have a URI and it hasn't permanently failed
+    if (uri && !bannerLoadFailed) {
+      return { uri };
     }
 
+    // Fallback to local asset
     return imageMap[course.name] || require('../../assets/parseclass/AP1.jpg');
   };
 

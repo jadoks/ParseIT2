@@ -1895,10 +1895,9 @@ async function createClassMessengerConversation({
 /**
  * NOTIFICATION HELPERS
  */
-
+// 👇 FIND THIS FUNCTION IN YOUR BACKEND
 function buildNotificationResponse(doc) {
   const data = doc.data() || {};
-
   return {
     id: doc.id,
     userId: data.userId || "",
@@ -1908,9 +1907,15 @@ function buildNotificationResponse(doc) {
     message: data.message || "",
     time: formatFirestoreDateTime(data.createdAt),
     read: !!data.read,
+    
     relatedId: data.relatedId || null,
     relatedType: data.relatedType || null,
     classId: data.classId || null,
+
+    // 👇 ADD THESE TWO LINES TO MATCH FRONTEND EXPECTATIONS
+    targetId: data.relatedId || null, 
+    courseId: data.classId || null,
+    
     actorId: data.actorId || null,
     actorRole: data.actorRole || null,
     actorName: data.actorName || null,
@@ -2110,6 +2115,31 @@ async function createClassAssignedNotificationForTeacher({
   });
 }
 
+async function notifyAdmins({ type, title, message, relatedId = null, relatedType = null, classId = null, actorId = null, actorRole = null, actorName = null }) {
+  try {
+    const adminsSnapshot = await db.collection("admins").get();
+    for (const adminDoc of adminsSnapshot.docs) {
+      const adminData = adminDoc.data() || {};
+      const adminId = normalizeOptionalText(adminData.adminId) || adminDoc.id;
+      
+      await createNotification({
+        userId: adminId,
+        role: "admin",
+        type,
+        title,
+        message,
+        relatedId,
+        relatedType,
+        classId,
+        actorId,
+        actorRole,
+        actorName,
+      });
+    }
+  } catch (error) {
+    console.error("Error notifying admins:", error);
+  }
+}
 
 async function createNotificationsForClassStudents({
   classId,
@@ -2153,53 +2183,6 @@ async function createNotificationsForClassStudents({
 }
 
 
-app.post("/admin/repair-ai-quota-notifications", async (req, res) => {
-  try {
-    const snapshot = await db
-      .collection("notifications")
-      .where("role", "==", "admin")
-      .where("type", "==", "ai-quota-limit")
-      .get();
-
-    let repairedCount = 0;
-
-    for (const doc of snapshot.docs) {
-      const data = doc.data() || {};
-      const existingProvider = normalizeOptionalText(data.provider);
-      const inferredProvider =
-        existingProvider ||
-        inferProviderFromQuotaMessage(`${data.title || ""} ${data.message || ""} ${data.errorMessage || ""}`);
-
-      if (!inferredProvider) continue;
-
-      const providerLabel = normalizeProviderName(inferredProvider);
-      const model = getProviderModelName(inferredProvider);
-
-      await doc.ref.set(
-        {
-          provider: inferredProvider,
-          providerLabel,
-          model,
-          aiProvider: providerLabel,
-          updatedAt: FieldValue.serverTimestamp(),
-        },
-        { merge: true }
-      );
-
-      repairedCount += 1;
-    }
-
-    return res.json({
-      success: true,
-      repairedCount,
-    });
-  } catch (error) {
-    console.error("Repair AI quota notifications error:", error);
-    return res.status(500).json({
-      error: error.message || "Failed to repair AI quota notifications.",
-    });
-  }
-});
 
 app.post("/auth/register", async (req, res) => {
   try {
@@ -2334,6 +2317,17 @@ app.post("/auth/register", async (req, res) => {
           ...userData,
         });
     }
+    // After the successful response is prepared:
+    await notifyAdmins({
+      type: "new-user",
+      title: `New ${normalizedRole.charAt(0).toUpperCase() + normalizedRole.slice(1)} Registered`,
+      message: `${firstName} ${lastName} has registered as a new ${normalizedRole}.`,
+      relatedId: normalizedId,
+      relatedType: "user",
+      actorId: normalizedId,
+      actorRole: normalizedRole,
+      actorName: `${firstName} ${lastName}`,
+    });
 
     return res.status(201).json({
       success: true,
@@ -2342,6 +2336,9 @@ app.post("/auth/register", async (req, res) => {
       role: normalizedRole,
       id: normalizedId,
     });
+
+    
+
   } catch (error) {
     console.error("Register error:", error);
 
@@ -3794,7 +3791,16 @@ app.post("/create-student", async (req, res) => {
         error: "Student created but email failed to send.",
       });
     }
-
+    await notifyAdmins({
+  type: "new-user",
+  title: `New Student Created`,
+  message: `${firstName} ${lastName} has been added as a new student.`,
+  relatedId: normalizedStudentId, // ✅ Correct variable
+  relatedType: "user",
+  actorId: normalizedStudentId,
+  actorRole: "student", // ✅ Hardcoded role
+  actorName: `${firstName} ${lastName}`,
+});
     res.json({
       success: true,
       message: "Student created and email sent successfully.",
@@ -3895,10 +3901,23 @@ app.post("/create-teacher", async (req, res) => {
       });
     }
 
+    await notifyAdmins({
+  type: "new-user",
+  title: `New Teacher Created`,
+  message: `${firstName} ${lastName} has been added as a new teacher.`,
+  relatedId: normalizedTeacherId, // ✅ Correct variable
+  relatedType: "user",
+  actorId: normalizedTeacherId,
+  actorRole: "teacher", // ✅ Hardcoded role
+  actorName: `${firstName} ${lastName}`,
+});
+
     res.json({
       success: true,
       message: "Teacher created and email sent successfully.",
     });
+
+    
   } catch (error) {
     console.error(error);
 
@@ -3988,6 +4007,17 @@ app.post("/create-admin", async (req, res) => {
         error: "Admin created but email failed to send.",
       });
     }
+
+    await notifyAdmins({
+    type: "new-user",
+    title: `New Admin Created`,
+    message: `${firstName} ${lastName} has been added as a new admin.`,
+    relatedId: normalizedAdminId, // ✅ Correct variable
+    relatedType: "user",
+    actorId: normalizedAdminId,
+    actorRole: "admin", // ✅ Hardcoded role
+    actorName: `${firstName} ${lastName}`,
+  });
 
     res.json({
       success: true,
@@ -5360,9 +5390,11 @@ app.post("/teacher-risk-notifications/:teacherId", async (req, res) => {
   }
 });
 
-
 app.get("/admin-analytics", async (req, res) => {
   try {
+    const filterSchoolYear = normalizeOptionalText(req.query.schoolYear);
+    const filterSemester = normalizeOptionalText(req.query.semester);
+
     const [
       studentsSnapshot,
       teachersSnapshot,
@@ -5379,24 +5411,47 @@ app.get("/admin-analytics", async (req, res) => {
       db.collection("classSubmissions").get(),
     ]);
 
-    const classes = classesSnapshot.docs
+    // 1. Get all active classes
+    const allClassesRaw = classesSnapshot.docs
       .map((doc) => ({ id: doc.id, ...(doc.data() || {}) }))
       .filter((item) => item.status !== "archived");
 
-    const members = membersSnapshot.docs.map((doc) => ({
-      id: doc.id,
-      ...(doc.data() || {}),
-    }));
+    // 2. Extract unique School Years and Semesters for the frontend filters
+    const availableSchoolYears = [...new Set(allClassesRaw.map(c => normalizeOptionalText(c.schoolYear)).filter(Boolean))].sort();
+    const availableSemesters = [...new Set(allClassesRaw.map(c => normalizeOptionalText(c.semester)).filter(Boolean))].sort();
 
-    const assignments = assignmentsSnapshot.docs.map((doc) => ({
-      id: doc.id,
-      ...(doc.data() || {}),
-    }));
+    // 3. Filter classes based on query parameters
+    let classes = allClassesRaw;
+    if (filterSchoolYear || filterSemester) {
+      classes = classes.filter((c) => {
+        const matchSY = !filterSchoolYear || normalizeOptionalText(c.schoolYear) === filterSchoolYear;
+        const matchSem = !filterSemester || normalizeOptionalText(c.semester) === filterSemester;
+        return matchSY && matchSem;
+      });
+    }
 
-    const submissions = submissionsSnapshot.docs.map((doc) => ({
-      id: doc.id,
-      ...(doc.data() || {}),
-    }));
+    const filteredClassIds = new Set(classes.map(c => c.id));
+
+    // 4. Filter members, assignments, and submissions to only include those in the filtered classes
+    const members = membersSnapshot.docs
+      .map((doc) => ({ id: doc.id, ...(doc.data() || {}) }))
+      .filter(m => filteredClassIds.has(m.classId));
+
+    const assignments = assignmentsSnapshot.docs
+      .map((doc) => ({ id: doc.id, ...(doc.data() || {}) }))
+      .filter(a => filteredClassIds.has(a.classId));
+
+    const submissions = submissionsSnapshot.docs
+      .map((doc) => ({ id: doc.id, ...(doc.data() || {}) }))
+      .filter(s => filteredClassIds.has(s.classId));
+
+    // 5. Calculate accurate teacher count for the filtered context
+    const uniqueTeacherIds = new Set();
+    classes.forEach(c => {
+      if (c.assignedTeacherId) uniqueTeacherIds.add(c.assignedTeacherId);
+      if (c.assignedTeacherUid) uniqueTeacherIds.add(c.assignedTeacherUid);
+    });
+    const totalTeachersCount = (filterSchoolYear || filterSemester) ? uniqueTeacherIds.size : teachersSnapshot.size;
 
     const activeStudentIdsFromStudentCollection = new Set(
       studentsSnapshot.docs
@@ -5405,7 +5460,6 @@ app.get("/admin-analytics", async (req, res) => {
     );
 
     const uniqueEnrolledStudentIds = new Set();
-
     const membersByClass = new Map();
     const assignmentsByClass = new Map();
     const submissionsByStudentAssignment = new Map();
@@ -5436,9 +5490,6 @@ app.get("/admin-analytics", async (req, res) => {
     });
 
     const studentRiskMap = new Map();
-
-    // Enrollment-aware comparison maps.
-    // These are based on class membership records, because 1 student can be enrolled in many classes.
     const sectionMap = new Map();
     const yearMap = new Map();
     const classRows = [];
@@ -5461,8 +5512,8 @@ app.get("/admin-analytics", async (req, res) => {
             String(member.status || "").toLowerCase()
           )
       );
-
       const classAssignments = assignmentsByClass.get(classId) || [];
+
       const sectionKey = normalizeOptionalText(classData.section) || "Unassigned";
       const yearKey = normalizeOptionalText(classData.year) || "Unspecified Year";
 
@@ -5493,19 +5544,15 @@ app.get("/admin-analytics", async (req, res) => {
           const submission = submissionsByStudentAssignment.get(
             `${studentId}_${assignmentId}`
           );
-
           const maxPoints = Number(assignment.totalScore || 100) || 100;
 
           if (submission?.status === "graded") {
             const percent = getPercentFromScore(submission.score, maxPoints);
-
             if (percent !== null) {
               studentScoreTotal += percent;
               studentGradedCount += 1;
-
               classScoreTotal += percent;
               classGradedCount += 1;
-
               totalGradedScores += percent;
               totalGradedCount += 1;
 
@@ -5513,7 +5560,6 @@ app.get("/admin-analytics", async (req, res) => {
                 normalizeOptionalText(assignment.header) ||
                 normalizeOptionalText(classData.name) ||
                 "Uncategorized";
-
               const subjectCurrent = subjectMap.get(subjectKey) || {
                 subject: subjectKey,
                 total: 0,
@@ -5532,12 +5578,10 @@ app.get("/admin-analytics", async (req, res) => {
                 submission.submittedAt ||
                 assignment.dueDate ||
                 assignment.createdAt;
-
               const trendLabel = normalizeAnalyticsDateLabel(
                 trendSourceDate,
                 `Activity ${trendMap.size + 1}`
               );
-
               const currentTrend = trendMap.get(trendLabel) || {
                 label: trendLabel,
                 total: 0,
@@ -5546,12 +5590,10 @@ app.get("/admin-analytics", async (req, res) => {
                   resolveDate(trendSourceDate)?.getTime() ||
                   Date.now() + trendMap.size,
               };
-
               currentTrend.total += percent;
               currentTrend.count += 1;
               trendMap.set(trendLabel, currentTrend);
             }
-
             continue;
           }
 
@@ -5563,7 +5605,6 @@ app.get("/admin-analytics", async (req, res) => {
           }
 
           const dueDate = resolveDate(assignment.dueDate);
-
           if (dueDate && dueDate.getTime() < Date.now()) {
             studentMissingCount += 1;
             classMissingCount += 1;
@@ -5573,7 +5614,6 @@ app.get("/admin-analytics", async (req, res) => {
               normalizeOptionalText(assignment.header) ||
               normalizeOptionalText(classData.name) ||
               "Uncategorized";
-
             const subjectCurrent = subjectMap.get(subjectKey) || {
               subject: subjectKey,
               total: 0,
@@ -5594,7 +5634,6 @@ app.get("/admin-analytics", async (req, res) => {
               normalizeOptionalText(assignment.header) ||
               normalizeOptionalText(classData.name) ||
               "Uncategorized";
-
             const subjectCurrent = subjectMap.get(subjectKey) || {
               subject: subjectKey,
               total: 0,
@@ -5650,8 +5689,6 @@ app.get("/admin-analytics", async (req, res) => {
         }
       }
 
-      // Class average is student-weighted:
-      // each enrolled student in this class contributes once, not each assignment point.
       const classAverage =
         classEvaluatedStudents > 0
           ? Math.round(classScoreByStudentTotal / classEvaluatedStudents)
@@ -5682,12 +5719,10 @@ app.get("/admin-analytics", async (req, res) => {
         missing: 0,
         pending: 0,
       };
-
       if (classEvaluatedStudents > 0) {
         sectionCurrent.weightedTotal += classAverage * classEvaluatedStudents;
         sectionCurrent.evaluatedStudents += classEvaluatedStudents;
       }
-
       sectionCurrent.enrollmentCount += classMembers.length;
       sectionCurrent.missing += classMissingCount;
       sectionCurrent.pending += classPendingCount;
@@ -5706,12 +5741,10 @@ app.get("/admin-analytics", async (req, res) => {
         missing: 0,
         pending: 0,
       };
-
       if (classEvaluatedStudents > 0) {
         yearCurrent.weightedTotal += classAverage * classEvaluatedStudents;
         yearCurrent.evaluatedStudents += classEvaluatedStudents;
       }
-
       yearCurrent.enrollmentCount += classMembers.length;
       yearCurrent.missing += classMissingCount;
       yearCurrent.pending += classPendingCount;
@@ -5727,7 +5760,6 @@ app.get("/admin-analytics", async (req, res) => {
         student.averageCount > 0
           ? Math.round(student.averageTotal / student.averageCount)
           : 0;
-
       const riskLevel = getAdminRiskLevel({
         average,
         gradedCount: student.graded,
@@ -5753,14 +5785,11 @@ app.get("/admin-analytics", async (req, res) => {
     const evaluatedStudents = studentRows.filter((student) => student.gradedCount > 0);
     const passingStudents = evaluatedStudents.filter((student) => student.average >= 75);
     const failedStudents = evaluatedStudents.filter((student) => student.average < 75);
-
     const noDataCount = studentRows.filter((student) => student.riskLevel === "No Data").length;
     const highRiskCount = studentRows.filter((student) => student.riskLevel === "High").length;
     const moderateRiskCount = studentRows.filter((student) => student.riskLevel === "Moderate").length;
     const lowRiskCount = studentRows.filter((student) => student.riskLevel === "Low").length;
 
-    // Department average is unique-student weighted:
-    // each student contributes once using their average across classes.
     const departmentAverage =
       evaluatedStudents.length > 0
         ? Math.round(
@@ -5773,7 +5802,6 @@ app.get("/admin-analytics", async (req, res) => {
       evaluatedStudents.length > 0
         ? Math.round((passingStudents.length / evaluatedStudents.length) * 100)
         : 0;
-
     const failRate =
       evaluatedStudents.length > 0
         ? Math.round((failedStudents.length / evaluatedStudents.length) * 100)
@@ -5791,12 +5819,10 @@ app.get("/admin-analytics", async (req, res) => {
             ((totalSubmittedAssignments + totalGradedCount) / activeWorkload) * 100
           )
         : 0;
-
     const assignmentCompletionRate =
       activeWorkload > 0
         ? Math.round((totalGradedCount / activeWorkload) * 100)
         : 0;
-
     const onTimeSubmissionRate =
       totalSubmittedAssignments + totalGradedCount > 0
         ? Math.round(
@@ -5843,7 +5869,6 @@ app.get("/admin-analytics", async (req, res) => {
       .map((subject) => {
         const average =
           subject.count > 0 ? Math.round(subject.total / subject.count) : 0;
-
         return {
           subject: subject.subject,
           average,
@@ -5868,15 +5893,11 @@ app.get("/admin-analytics", async (req, res) => {
           "No Data": 2,
           Stable: 1,
         };
-
         const difficultyDifference =
           (priority[b.difficulty] || 0) - (priority[a.difficulty] || 0);
-
         if (difficultyDifference !== 0) return difficultyDifference;
-
         if (a.average === 0 && b.average > 0) return 1;
         if (b.average === 0 && a.average > 0) return -1;
-
         return a.average - b.average;
       })
       .slice(0, 8);
@@ -5899,12 +5920,10 @@ app.get("/admin-analytics", async (req, res) => {
         const priority = { High: 2, Moderate: 1 };
         const riskDiff =
           (priority[b.riskLevel] || 0) - (priority[a.riskLevel] || 0);
-
         if (riskDiff !== 0) return riskDiff;
         if (b.missingCount !== a.missingCount) {
           return b.missingCount - a.missingCount;
         }
-
         return a.average - b.average;
       })
       .slice(0, 8)
@@ -5922,28 +5941,24 @@ app.get("/admin-analytics", async (req, res) => {
     const hardestSubject = subjectDifficulty[0] || null;
 
     const suggestions = [];
-
     if (weakestSection) {
       suggestions.push({
         title: "Priority Section",
         text: `Focus intervention on ${weakestSection.label}. It has ${weakestSection.students} unique student(s), ${weakestSection.enrollmentCount} class enrollment(s), ${weakestSection.value}% average, and ${weakestSection.missing} missing work item(s).`,
       });
     }
-
     if (hardestSubject) {
       suggestions.push({
         title: "Faculty Recommendation",
         text: `${hardestSubject.subject} is currently marked as ${hardestSubject.difficulty}. It involves ${hardestSubject.students} unique student(s). Consider reinforcement sessions and targeted review materials.`,
       });
     }
-
     if (highRiskCount + moderateRiskCount > 0) {
       suggestions.push({
         title: "System Recommendation",
         text: `There are ${highRiskCount + moderateRiskCount} unique learner(s) requiring monitoring. Coordinate with advisers and teachers for intervention.`,
       });
     }
-
     if (!suggestions.length) {
       suggestions.push({
         title: "System Recommendation",
@@ -5957,7 +5972,7 @@ app.get("/admin-analytics", async (req, res) => {
         generatedAt: new Date().toISOString(),
         totals: {
           totalStudents: activeStudentIdsFromStudentCollection.size,
-          totalTeachers: teachersSnapshot.size,
+          totalTeachers: totalTeachersCount, // Updated to use filtered count
           totalClasses: classes.length,
           monitoredStudents: uniqueEnrolledStudentIds.size,
           evaluatedStudents: evaluatedStudents.length,
@@ -5988,6 +6003,8 @@ app.get("/admin-analytics", async (req, res) => {
         atRiskStudents,
         trend,
         suggestions,
+        availableSchoolYears, // Return available options for frontend
+        availableSemesters,   // Return available options for frontend
       },
     });
   } catch (error) {
@@ -7316,11 +7333,35 @@ app.put("/grade-submission/:id", async (req, res) => {
           actorName: classData.instructorName || "Teacher",
         });
 
+        await notifyAdmins({
+          type: "student-at-risk",
+          title: "Student At Risk Detected",
+          message: `${submissionData.studentName} may need support. Low score detected: ${percent}% in ${assignmentData.header || "an assignment"}.`,
+          relatedId: submissionData.studentId,
+          relatedType: "student-risk",
+          classId: submissionData.classId,
+          actorId: submissionData.studentId,
+          actorRole: "student",
+          actorName: submissionData.studentName,
+        });
+
         await createStudentAtRiskNotificationForTeacher({
           classId: submissionData.classId,
           studentId: submissionData.studentId,
           studentName: submissionData.studentName || submissionData.studentId,
           reason: `Low score detected: ${percent}% in ${assignmentData.header || "an assignment"}.`,
+        });
+
+         await notifyAdmins({
+          type: "student-at-risk",
+          title: "Student At Risk Detected",
+          message: `${submissionData.studentName} may need support. Low score detected: ${percent}% in ${assignmentData.header || "an assignment"}.`,
+          relatedId: submissionData.studentId,
+          relatedType: "student-risk",
+          classId: submissionData.classId,
+          actorId: submissionData.studentId,
+          actorRole: "student",
+          actorName: submissionData.studentName,
         });
       }
     }
@@ -7558,12 +7599,12 @@ app.post("/unsubmit-assignment", async (req, res) => {
     });
   }
 });
-
 app.get("/notifications", async (req, res) => {
   try {
     const userId = normalizeOptionalText(req.query.userId);
     const role = normalizeOptionalText(req.query.role);
-
+    const includeAIQuota = req.query.includeAIQuota === "true"; // NEW: Optional parameter
+    
     if (!userId || !role) {
       return res.status(400).json({
         error: "userId and role are required.",
@@ -7578,12 +7619,15 @@ app.get("/notifications", async (req, res) => {
       .get();
 
     let notifications = snapshot.docs.map(buildNotificationResponse);
+    
+    // NEW: Filter out AI quota limit notifications by default
+    if (!includeAIQuota) {
+      notifications = notifications.filter(
+        (item) => item.type !== "ai-quota-limit"
+      );
+    }
 
-    // Teachers receive only:
-    // 1. submitted-assignment
-    // 2. community-answer
-    // 3. student-at-risk
-    // 4. class-assigned
+    // Teachers receive only allowed notification types
     if (role === "teacher") {
       notifications = notifications.filter((item) =>
         TEACHER_ALLOWED_NOTIFICATION_TYPES.has(item.type)
@@ -7598,6 +7642,48 @@ app.get("/notifications", async (req, res) => {
     console.error("Fetch notifications error:", error);
     return res.status(500).json({
       error: error.message || "Failed to fetch notifications.",
+    });
+  }
+});
+
+// DELETE /notifications/clear-ai-quota-limits
+app.delete("/notifications/clear-ai-quota-limits", async (req, res) => {
+  try {
+    const { userId, role } = req.body;
+    
+    if (!userId || !role) {
+      return res.status(400).json({
+        error: "userId and role are required.",
+      });
+    }
+
+    // Find all AI quota limit notifications for this user
+    const snapshot = await db
+      .collection("notifications")
+      .where("userId", "==", String(userId).trim())
+      .where("role", "==", String(role).trim())
+      .where("type", "==", "ai-quota-limit")
+      .get();
+
+    const batch = db.batch();
+    let deletedCount = 0;
+
+    snapshot.forEach((doc) => {
+      batch.delete(doc.ref);
+      deletedCount += 1;
+    });
+
+    await batch.commit();
+
+    return res.json({
+      success: true,
+      message: "AI quota limit notifications cleared successfully.",
+      deletedCount,
+    });
+  } catch (error) {
+    console.error("Clear AI quota notifications error:", error);
+    return res.status(500).json({
+      error: error.message || "Failed to clear AI quota notifications.",
     });
   }
 });
@@ -10673,83 +10759,6 @@ function inferProviderFromQuotaMessage(message = "") {
 
 
 
-async function createAIQuotaLimitAdminNotifications({ provider, message }) {
-  try {
-    const inferredProvider = inferProviderFromQuotaMessage(message);
-    const normalizedProvider =
-      normalizeOptionalText(provider) ||
-      inferredProvider ||
-      "unknown-ai";
-
-    const providerLabel = normalizeProviderName(normalizedProvider);
-    const model = getProviderModelName(normalizedProvider);
-    const quotaErrorMessage = normalizeQuotaErrorMessage(message);
-
-    console.log("AI QUOTA LIMIT DETECTED =>", {
-      provider: normalizedProvider,
-      providerLabel,
-      model,
-      reason: quotaErrorMessage,
-    });
-
-    const now = Date.now();
-    const cooldownMs = Number(
-      process.env.AI_QUOTA_NOTIFICATION_COOLDOWN_MS || 15 * 60 * 1000
-    );
-
-    const alertRef = db.collection("systemAlerts").doc(`ai-quota-${normalizedProvider}`);
-    const alertSnap = await alertRef.get();
-    const alertData = alertSnap.exists ? alertSnap.data() || {} : {};
-    const lastNotifiedAt = resolveDate(alertData.lastNotifiedAt);
-
-    if (lastNotifiedAt && now - lastNotifiedAt.getTime() < cooldownMs) {
-      return;
-    }
-
-    await alertRef.set(
-      {
-        type: "ai-quota-limit",
-        provider: normalizedProvider,
-        providerLabel,
-        model,
-        message: quotaErrorMessage,
-        lastNotifiedAt: FieldValue.serverTimestamp(),
-        updatedAt: FieldValue.serverTimestamp(),
-      },
-      { merge: true }
-    );
-
-    const adminsSnapshot = await db.collection("admins").get();
-
-    for (const adminDoc of adminsSnapshot.docs) {
-      const adminData = adminDoc.data() || {};
-      const adminId = normalizeOptionalText(adminData.adminId) || adminDoc.id;
-
-      await createNotification({
-        userId: adminId,
-        role: "admin",
-        type: "ai-quota-limit",
-        title: `${providerLabel} AI quota limit reached`,
-        message:
-          `AI Provider: ${providerLabel}${model ? ` (${model})` : ""}. ` +
-          `${providerLabel} reached its quota or rate limit. ` +
-          "The system will try the next available AI provider automatically.",
-        relatedId: normalizedProvider,
-        relatedType: "ai-provider",
-        actorRole: "system",
-        actorName: "ParseIT AI Monitor",
-        provider: normalizedProvider,
-        providerLabel,
-        model,
-        errorMessage: quotaErrorMessage,
-        aiProvider: providerLabel,
-      });
-    }
-  } catch (notifyError) {
-    console.error("AI quota admin notification error:", notifyError);
-  }
-}
-
 async function callProvider(provider, context) {
   if (provider === "gemini") {
     return withTimeout(
@@ -10821,7 +10830,7 @@ async function callAIWithFallback(context) {
 
       if (isQuotaLikeError(message)) {
         markProviderBackoff(provider, 60_000);
-        await createAIQuotaLimitAdminNotifications({ provider, message });
+
       }
 
       errors.push(`${provider}: ${message}`);

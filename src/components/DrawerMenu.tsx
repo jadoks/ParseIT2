@@ -76,12 +76,14 @@ const MenuItem = ({
   label,
   onPress,
   active,
+  highlighted,
 }: {
   iconSource?: any;
   iconName?: string;
   label: string;
   onPress?: () => void;
   active?: boolean;
+  highlighted?: boolean;
 }) => {
   const { width } = useWindowDimensions();
   const isMobile = width < 768;
@@ -95,18 +97,24 @@ const MenuItem = ({
       style={(state) => {
         const base: StyleProp<ViewStyle> = [
           styles.menuItem,
-          { marginVertical: menuItemVerticalMargin },
-          active && {
+          { 
+            marginVertical: menuItemVerticalMargin, 
+            borderRadius: 14, 
+          },
+          highlighted && {
+            backgroundColor: '#D32F2F',
+          },
+          active && !highlighted && {
             backgroundColor: 'rgba(211,47,47,0.08)',
-            borderRadius: 14,
           },
         ];
 
-        if (Platform.OS === 'web' && (state as any).hovered && !active) {
-          base.push({
-            backgroundColor: 'rgba(130,129,129,0.08)',
-            borderRadius: 14,
-          });
+        if (Platform.OS === 'web' && (state as any).hovered) {
+          if (highlighted) {
+            base.push({ backgroundColor: '#B71C1C' }); // Darker red on hover
+          } else if (!active) {
+            base.push({ backgroundColor: 'rgba(130,129,129,0.08)' });
+          }
         }
 
         return base;
@@ -116,13 +124,17 @@ const MenuItem = ({
         <MaterialCommunityIcons
           name={iconName as any}
           size={22}
-          color={active ? '#D32F2F' : '#444'}
+          color={highlighted ? '#FFF' : active ? '#D32F2F' : '#444'}
           style={styles.vectorMenuIcon}
         />
       ) : (
         <Image
           source={iconSource}
-          style={[styles.menuIcon, active && { tintColor: '#D32F2F' }]}
+          style={[
+            styles.menuIcon, 
+            highlighted && { tintColor: '#FFF' },
+            active && !highlighted && { tintColor: '#D32F2F' }
+          ]}
         />
       )}
 
@@ -130,7 +142,8 @@ const MenuItem = ({
         style={[
           styles.menuLabel,
           { fontSize: menuLabelFontSize },
-          active && { color: '#D32F2F', fontWeight: '700' },
+          highlighted && { color: '#FFF', fontWeight: '700' },
+          active && !highlighted && { color: '#D32F2F', fontWeight: '700' },
         ]}
       >
         {label}
@@ -414,6 +427,7 @@ const DrawerMenu = ({
           iconName="file-upload-outline" 
           label={isUploadingGrade ? "Uploading..." : "Upload Grade"} 
           onPress={handleUploadGrade} 
+          highlighted
         />
       </ScrollView>
 

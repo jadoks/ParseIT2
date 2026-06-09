@@ -4,7 +4,9 @@ import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   DimensionValue,
+  Modal,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   useWindowDimensions,
@@ -118,6 +120,8 @@ type AdminAnalyticsPayload = {
     title: string;
     text: string;
   }[];
+  availableSchoolYears?: string[];
+  availableSemesters?: string[];
 };
 
 const emptyAnalytics: AdminAnalyticsPayload = {
@@ -153,6 +157,8 @@ const emptyAnalytics: AdminAnalyticsPayload = {
   atRiskStudents: [],
   trend: [],
   suggestions: [],
+  availableSchoolYears: [],
+  availableSemesters: [],
 };
 
 function SummaryCard({
@@ -320,7 +326,6 @@ function StudentRiskItem({
     </View>
   );
 }
-
 
 function AcademicTrendChart({
   data,
@@ -571,12 +576,92 @@ function AcademicTrendChart({
   );
 }
 
-
 function EmptyState({ text }: { text: string }) {
   return (
     <View style={styles.emptyState}>
       <Ionicons name="analytics-outline" size={26} color="#A07C7C" />
       <Text style={styles.emptyStateText}>{text}</Text>
+    </View>
+  );
+}
+
+// ===== NEW DROPDOWN MODAL COMPONENT =====
+function DropdownModal({
+  label,
+  selectedValue,
+  options,
+  onSelect,
+  isMobile,
+}: {
+  label: string;
+  selectedValue: string;
+  options: string[];
+  onSelect: (value: string) => void;
+  isMobile: boolean;
+}) {
+  const [visible, setVisible] = useState(false);
+  const displayValue = selectedValue || `All ${label}`;
+
+  return (
+    <View style={[styles.filterGroup, isMobile && styles.filterGroupMobile]}>
+      <Text style={styles.filterLabel}>{label}</Text>
+      <Pressable
+        style={styles.dropdownButton}
+        onPress={() => setVisible(true)}
+      >
+        <Text style={styles.dropdownButtonText} numberOfLines={1}>
+          {displayValue}
+        </Text>
+        <Ionicons name="chevron-down" size={18} color="#7A4A4A" />
+      </Pressable>
+
+      <Modal
+        visible={visible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Select {label}</Text>
+            
+            <ScrollView style={styles.modalOptionsContainer} showsVerticalScrollIndicator={false}>
+              <Pressable
+                style={[styles.modalOption, !selectedValue && styles.modalOptionActive]}
+                onPress={() => {
+                  onSelect("");
+                  setVisible(false);
+                }}
+              >
+                <Text style={[styles.modalOptionText, !selectedValue && styles.modalOptionTextActive]}>
+                  All {label}
+                </Text>
+                {!selectedValue && <Ionicons name="checkmark" size={20} color="#DC2626" />}
+              </Pressable>
+
+              {options.map((item) => (
+                <Pressable
+                  key={item}
+                  style={[styles.modalOption, selectedValue === item && styles.modalOptionActive]}
+                  onPress={() => {
+                    onSelect(item);
+                    setVisible(false);
+                  }}
+                >
+                  <Text style={[styles.modalOptionText, selectedValue === item && styles.modalOptionTextActive]} numberOfLines={1}>
+                    {item}
+                  </Text>
+                  {selectedValue === item && <Ionicons name="checkmark" size={20} color="#DC2626" />}
+                </Pressable>
+              ))}
+            </ScrollView>
+
+            <Pressable style={styles.modalCancelButton} onPress={() => setVisible(false)}>
+              <Text style={styles.modalCancelText}>Close</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -591,6 +676,11 @@ export default function Analytics({ width, apiBaseUrl }: AnalyticsProps) {
     useState<AdminAnalyticsPayload>(emptyAnalytics);
   const [isLoading, setIsLoading] = useState(false);
   const [loadError, setLoadError] = useState("");
+
+  const [selectedSchoolYear, setSelectedSchoolYear] = useState<string>("");
+  const [selectedSemester, setSelectedSemester] = useState<string>("");
+  const [availableSchoolYears, setAvailableSchoolYears] = useState<string[]>([]);
+  const [availableSemesters, setAvailableSemesters] = useState<string[]>([]);
 
   const summaryWidth: DimensionValue = isMobile
     ? "100%"
@@ -607,7 +697,12 @@ export default function Analytics({ width, apiBaseUrl }: AnalyticsProps) {
     setLoadError("");
 
     try {
-      const response = await apiFetch(`${resolvedApiBaseUrl}/admin-analytics`);
+      const params = new URLSearchParams();
+      if (selectedSchoolYear) params.append("schoolYear", selectedSchoolYear);
+      if (selectedSemester) params.append("semester", selectedSemester);
+      
+      const queryString = params.toString() ? `?${params.toString()}` : "";
+      const response = await apiFetch(`${resolvedApiBaseUrl}/admin-analytics${queryString}`);
       const data = await response.json();
 
       if (!response.ok) {
@@ -615,6 +710,20 @@ export default function Analytics({ width, apiBaseUrl }: AnalyticsProps) {
       }
 
       setAnalytics(data?.data || emptyAnalytics);
+      
+      if (data?.data?.availableSchoolYears) {
+        
+        const sortedYears = [...data.data.availableSchoolYears].sort((a: string, b: string) => b.localeCompare(a));
+        setAvailableSchoolYears(sortedYears);
+      }
+       if (data?.data?.availableSemesters) {
+       
+        setAvailableSemesters(
+          data.data.availableSemesters.filter(
+            (sem: string) => sem.toLowerCase() !== "summer"
+          )
+        );
+      }
     } catch (error: any) {
       console.log("LOAD ADMIN ANALYTICS ERROR =>", error);
       setLoadError(error?.message || "Failed to load admin analytics.");
@@ -626,7 +735,7 @@ export default function Analytics({ width, apiBaseUrl }: AnalyticsProps) {
 
   useEffect(() => {
     loadAdminAnalytics();
-  }, [apiBaseUrl]);
+  }, [apiBaseUrl, selectedSchoolYear, selectedSemester]);
 
   const topSections = useMemo(
     () => analytics.sectionComparison.slice(0, 8),
@@ -678,6 +787,24 @@ export default function Analytics({ width, apiBaseUrl }: AnalyticsProps) {
             </Text>
           </Pressable>
         </View>
+      </View>
+
+      {/* UPDATED: FILTER ROW WITH DROPDOWN MODALS */}
+      <View style={[styles.filterRow, isMobile && styles.filterRowMobile]}>
+        <DropdownModal
+          label="School Year"
+          selectedValue={selectedSchoolYear}
+          options={availableSchoolYears}
+          onSelect={setSelectedSchoolYear}
+          isMobile={isMobile}
+        />
+        <DropdownModal
+          label="Semester"
+          selectedValue={selectedSemester}
+          options={availableSemesters}
+          onSelect={setSelectedSemester}
+          isMobile={isMobile}
+        />
       </View>
 
       {loadError ? (
@@ -947,654 +1074,203 @@ export default function Analytics({ width, apiBaseUrl }: AnalyticsProps) {
 }
 
 const styles = StyleSheet.create({
-  heroRow: {
-    marginBottom: 20,
-  },
-
+  heroRow: { marginBottom: 20 },
   heroCard: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 24,
-    borderWidth: 1,
-    borderColor: "#F3D4D4",
-    padding: 24,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
+    backgroundColor: "#FFFFFF", borderRadius: 24, borderWidth: 1, borderColor: "#F3D4D4",
+    padding: 24, flexDirection: "row", alignItems: "center", justifyContent: "space-between",
   },
-
-  heroCardMobile: {
-    flexDirection: "column",
-    alignItems: "flex-start",
-  },
-
-  heroTextSection: {
-    flex: 1,
-    marginRight: 20,
-  },
-
-  heroTextMobile: {
-    marginRight: 0,
-    marginBottom: 18,
-  },
-
-  heroEyebrow: {
-    fontSize: 12,
-    fontWeight: "800",
-    letterSpacing: 1.2,
-    color: "#DC2626",
-    marginBottom: 8,
-  },
-
-  heroTitle: {
-    fontSize: 28,
-    fontWeight: "800",
-    color: "#2B1111",
-    marginBottom: 8,
-  },
-
-  heroTitleMobile: {
-    fontSize: 22,
-  },
-
-  heroSubtitle: {
-    fontSize: 14,
-    color: "#8A6F6F",
-    lineHeight: 22,
-  },
-
+  heroCardMobile: { flexDirection: "column", alignItems: "flex-start" },
+  heroTextSection: { flex: 1, marginRight: 20 },
+  heroTextMobile: { marginRight: 0, marginBottom: 18 },
+  heroEyebrow: { fontSize: 12, fontWeight: "800", letterSpacing: 1.2, color: "#DC2626", marginBottom: 8 },
+  heroTitle: { fontSize: 28, fontWeight: "800", color: "#2B1111", marginBottom: 8 },
+  heroTitleMobile: { fontSize: 22 },
+  heroSubtitle: { fontSize: 14, color: "#8A6F6F", lineHeight: 22 },
   refreshButton: {
-    minHeight: 46,
-    paddingHorizontal: 18,
-    borderRadius: 14,
-    backgroundColor: "#DC2626",
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
+    minHeight: 46, paddingHorizontal: 18, borderRadius: 14, backgroundColor: "#DC2626",
+    flexDirection: "row", alignItems: "center", justifyContent: "center",
   },
-
-  refreshButtonText: {
-    color: "#FFFFFF",
-    fontSize: 13,
-    fontWeight: "800",
-    marginLeft: 8,
-  },
-
+  refreshButtonText: { color: "#FFFFFF", fontSize: 13, fontWeight: "800", marginLeft: 8 },
   errorBanner: {
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: "#FCA5A5",
-    backgroundColor: "#FEF2F2",
-    padding: 14,
-    marginBottom: 18,
-    flexDirection: "row",
-    alignItems: "center",
+    borderRadius: 16, borderWidth: 1, borderColor: "#FCA5A5", backgroundColor: "#FEF2F2",
+    padding: 14, marginBottom: 18, flexDirection: "row", alignItems: "center",
   },
-
-  errorText: {
-    flex: 1,
-    marginLeft: 8,
-    color: "#B91C1C",
-    fontWeight: "700",
-  },
-
-  summaryRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    justifyContent: "space-between",
-    marginBottom: 24,
-  },
-
+  errorText: { flex: 1, marginLeft: 8, color: "#B91C1C", fontWeight: "700" },
+  summaryRow: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", marginBottom: 24 },
   summaryCard: {
-    minWidth: 180,
-    backgroundColor: "#FFFFFF",
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: "#F3D4D4",
-    padding: 18,
-    marginBottom: 12,
+    minWidth: 180, backgroundColor: "#FFFFFF", borderRadius: 20, borderWidth: 1,
+    borderColor: "#F3D4D4", padding: 18, marginBottom: 12,
   },
-
-  summaryCardDanger: {
-    backgroundColor: "#FFF7F7",
-    borderColor: "#FCA5A5",
-  },
-
-  summaryCardSuccess: {
-    backgroundColor: "#F0FDF4",
-    borderColor: "#BBF7D0",
-  },
-
-  summaryCardWarning: {
-    backgroundColor: "#FFFBEB",
-    borderColor: "#FDE68A",
-  },
-
-  summaryLabel: {
-    fontSize: 13,
-    color: "#A07C7C",
-    fontWeight: "600",
-    marginBottom: 10,
-  },
-
-  summaryValue: {
-    fontSize: 28,
-    fontWeight: "800",
-    color: "#2B1111",
-    marginBottom: 6,
-  },
-
-  summaryTrend: {
-    fontSize: 13,
-    color: "#DC2626",
-    fontWeight: "600",
-  },
-
-  summaryTrendDanger: {
-    color: "#DC2626",
-  },
-
-  summaryTrendSuccess: {
-    color: "#059669",
-  },
-
-  summaryTrendWarning: {
-    color: "#D97706",
-  },
-
-  sectionHeader: {
-    marginBottom: 16,
-  },
-
-  sectionTitle: {
-    fontSize: 22,
-    fontWeight: "800",
-    color: "#2B1111",
-    marginBottom: 4,
-  },
-
-  sectionSubtitle: {
-    fontSize: 14,
-    color: "#8A6F6F",
-  },
-
-  grid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    justifyContent: "space-between",
-  },
-
+  summaryCardDanger: { backgroundColor: "#FFF7F7", borderColor: "#FCA5A5" },
+  summaryCardSuccess: { backgroundColor: "#F0FDF4", borderColor: "#BBF7D0" },
+  summaryCardWarning: { backgroundColor: "#FFFBEB", borderColor: "#FDE68A" },
+  summaryLabel: { fontSize: 13, color: "#A07C7C", fontWeight: "600", marginBottom: 10 },
+  summaryValue: { fontSize: 28, fontWeight: "800", color: "#2B1111", marginBottom: 6 },
+  summaryTrend: { fontSize: 13, color: "#DC2626", fontWeight: "600" },
+  summaryTrendDanger: { color: "#DC2626" },
+  summaryTrendSuccess: { color: "#059669" },
+  summaryTrendWarning: { color: "#D97706" },
+  sectionHeader: { marginBottom: 16 },
+  sectionTitle: { fontSize: 22, fontWeight: "800", color: "#2B1111", marginBottom: 4 },
+  sectionSubtitle: { fontSize: 14, color: "#8A6F6F" },
+  grid: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between" },
   sectionCard: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 24,
-    borderWidth: 1,
-    borderColor: "#F3D4D4",
-    padding: 20,
-    marginBottom: 18,
-    minWidth: 0,
+    backgroundColor: "#FFFFFF", borderRadius: 24, borderWidth: 1, borderColor: "#F3D4D4",
+    padding: 20, marginBottom: 18, minWidth: 0,
   },
-
-  sectionCardHeader: {
-    marginBottom: 18,
-  },
-
-  sectionCardHeaderLeft: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-
-  sectionCardHeaderLeftWide: {
-    flexWrap: "wrap",
-  },
-
-  sectionCardHeaderTextWrap: {
-    flex: 1,
-  },
-
-  sectionCardTitle: {
-    fontSize: 18,
-    fontWeight: "800",
-    color: "#2B1111",
-    marginBottom: 6,
-  },
-
-  sectionCardSubtitle: {
-    fontSize: 14,
-    color: "#8A6F6F",
-    lineHeight: 20,
-  },
-
+  sectionCardHeader: { marginBottom: 18 },
+  sectionCardHeaderLeft: { flexDirection: "row", alignItems: "center" },
+  sectionCardHeaderLeftWide: { flexWrap: "wrap" },
+  sectionCardHeaderTextWrap: { flex: 1 },
+  sectionCardTitle: { fontSize: 18, fontWeight: "800", color: "#2B1111", marginBottom: 6 },
+  sectionCardSubtitle: { fontSize: 14, color: "#8A6F6F", lineHeight: 20 },
   iconBox: {
-    width: 56,
-    height: 56,
-    borderRadius: 18,
-    backgroundColor: "#FEE2E2",
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: 14,
+    width: 56, height: 56, borderRadius: 18, backgroundColor: "#FEE2E2",
+    alignItems: "center", justifyContent: "center", marginRight: 14,
   },
-
   statRow: {
-    width: "100%",
-    minHeight: 46,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: "#F8E3E3",
-    backgroundColor: "#FFF9F9",
-    paddingHorizontal: 14,
-    marginBottom: 10,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
+    width: "100%", minHeight: 46, borderRadius: 14, borderWidth: 1, borderColor: "#F8E3E3",
+    backgroundColor: "#FFF9F9", paddingHorizontal: 14, marginBottom: 10,
+    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
   },
-
-  statRowLabel: {
-    flex: 1,
-    fontSize: 14,
-    color: "#5F3B3B",
-    fontWeight: "600",
-    paddingRight: 12,
-  },
-
-  statRowValue: {
-    fontSize: 14,
-    color: "#2B1111",
-    fontWeight: "800",
-  },
-
-  statRowValueDanger: {
-    color: "#DC2626",
-  },
-
-  statRowValueSuccess: {
-    color: "#059669",
-  },
-
-  statRowValueWarning: {
-    color: "#D97706",
-  },
-
-  progressBlock: {
-    marginBottom: 14,
-  },
-
-  progressLabelRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginBottom: 8,
-  },
-
-  progressLabel: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: "#5F3B3B",
-    flex: 1,
-    paddingRight: 10,
-  },
-
-  progressValue: {
-    fontSize: 13,
-    fontWeight: "800",
-    color: "#DC2626",
-  },
-
-  progressTrack: {
-    height: 12,
-    borderRadius: 999,
-    backgroundColor: "#FDE8E8",
-    overflow: "hidden",
-  },
-
-  progressFill: {
-    height: "100%",
-    borderRadius: 999,
-    backgroundColor: "#DC2626",
-  },
-
+  statRowLabel: { flex: 1, fontSize: 14, color: "#5F3B3B", fontWeight: "600", paddingRight: 12 },
+  statRowValue: { fontSize: 14, color: "#2B1111", fontWeight: "800" },
+  statRowValueDanger: { color: "#DC2626" },
+  statRowValueSuccess: { color: "#059669" },
+  statRowValueWarning: { color: "#D97706" },
+  progressBlock: { marginBottom: 14 },
+  progressLabelRow: { flexDirection: "row", justifyContent: "space-between", marginBottom: 8 },
+  progressLabel: { fontSize: 14, fontWeight: "700", color: "#5F3B3B", flex: 1, paddingRight: 10 },
+  progressValue: { fontSize: 13, fontWeight: "800", color: "#DC2626" },
+  progressTrack: { height: 12, borderRadius: 999, backgroundColor: "#FDE8E8", overflow: "hidden" },
+  progressFill: { height: "100%", borderRadius: 999, backgroundColor: "#DC2626" },
   suggestionCard: {
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: "#F3D4D4",
-    backgroundColor: "#FFF9F9",
-    padding: 14,
-    marginBottom: 12,
+    borderRadius: 16, borderWidth: 1, borderColor: "#F3D4D4", backgroundColor: "#FFF9F9",
+    padding: 14, marginBottom: 12,
   },
-
-  suggestionTitle: {
-    fontSize: 14,
-    fontWeight: "800",
-    color: "#2B1111",
-    marginBottom: 6,
-  },
-
-  suggestionText: {
-    fontSize: 14,
-    lineHeight: 21,
-    color: "#7A4A4A",
-  },
-
-  riskGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    justifyContent: "space-between",
-    gap: 12,
-  },
-
-  riskGridMobile: {
-    flexDirection: "column",
-    gap: 10,
-  },
-
+  suggestionTitle: { fontSize: 14, fontWeight: "800", color: "#2B1111", marginBottom: 6 },
+  suggestionText: { fontSize: 14, lineHeight: 21, color: "#7A4A4A" },
+  riskGrid: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", gap: 12 },
+  riskGridMobile: { flexDirection: "column", gap: 10 },
   riskCard: {
-    flexGrow: 1,
-    flexBasis: "48%",
-    maxWidth: "49%",
-    minWidth: 280,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: "#F3D4D4",
-    backgroundColor: "#FFFFFF",
-    padding: 16,
-    marginBottom: 0,
+    flexGrow: 1, flexBasis: "48%", maxWidth: "49%", minWidth: 280, borderRadius: 18,
+    borderWidth: 1, borderColor: "#F3D4D4", backgroundColor: "#FFFFFF", padding: 16, marginBottom: 0,
   },
-
-  riskCardMobile: {
-    width: "100%",
-    maxWidth: "100%",
-    minWidth: 0,
-    padding: 14,
-  },
-
-  riskCardHigh: {
-    backgroundColor: "#FFF7F7",
-    borderColor: "#FCA5A5",
-  },
-
+  riskCardMobile: { width: "100%", maxWidth: "100%", minWidth: 0, padding: 14 },
+  riskCardHigh: { backgroundColor: "#FFF7F7", borderColor: "#FCA5A5" },
   riskTopRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    marginBottom: 10,
-    gap: 10,
+    flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start",
+    marginBottom: 10, gap: 10,
   },
-
-  riskTopRowMobile: {
-    flexDirection: "column",
-    alignItems: "stretch",
-  },
-
-  riskTextWrap: {
-    flex: 1,
-    minWidth: 0,
-    paddingRight: 0,
-  },
-
-  riskTextWrapMobile: {
-    width: "100%",
-  },
-
-  riskName: {
-    fontSize: 15,
-    fontWeight: "800",
-    color: "#2B1111",
-    marginBottom: 4,
-  },
-
-  riskSection: {
-    fontSize: 13,
-    color: "#8A6F6F",
-    fontWeight: "600",
-  },
-
-  riskTagContainer: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    marginTop: 6,
-    gap: 6,
-  },
-
+  riskTopRowMobile: { flexDirection: "column", alignItems: "stretch" },
+  riskTextWrap: { flex: 1, minWidth: 0, paddingRight: 0 },
+  riskTextWrapMobile: { width: "100%" },
+  riskName: { fontSize: 15, fontWeight: "800", color: "#2B1111", marginBottom: 4 },
+  riskSection: { fontSize: 13, color: "#8A6F6F", fontWeight: "600" },
+  riskTagContainer: { flexDirection: "row", flexWrap: "wrap", marginTop: 6, gap: 6 },
   riskTag: {
-    backgroundColor: "#FFF1F1",
-    borderWidth: 1,
-    borderColor: "#F3D4D4",
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    maxWidth: "100%",
+    backgroundColor: "#FFF1F1", borderWidth: 1, borderColor: "#F3D4D4", borderRadius: 999,
+    paddingHorizontal: 10, paddingVertical: 5, maxWidth: "100%",
   },
-
-  riskTagText: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: "#7A4A4A",
-    flexShrink: 1,
-  },
-
+  riskTagText: { fontSize: 12, fontWeight: "700", color: "#7A4A4A", flexShrink: 1 },
   riskBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 999,
-    backgroundColor: "#FEF3C7",
+    paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, backgroundColor: "#FEF3C7",
     alignSelf: "flex-start",
   },
-
-  riskBadgeMobile: {
-    alignSelf: "flex-start",
-  },
-
-  riskBadgeHigh: {
-    backgroundColor: "#FEE2E2",
-  },
-
-  riskBadgeText: {
-    fontSize: 12,
-    fontWeight: "800",
-    color: "#DC2626",
-  },
-
-  riskReason: {
-    fontSize: 13,
-    lineHeight: 20,
-    color: "#7A4A4A",
-    marginTop: 4,
-  },
-
+  riskBadgeMobile: { alignSelf: "flex-start" },
+  riskBadgeHigh: { backgroundColor: "#FEE2E2" },
+  riskBadgeText: { fontSize: 12, fontWeight: "800", color: "#DC2626" },
+  riskReason: { fontSize: 13, lineHeight: 20, color: "#7A4A4A", marginTop: 4 },
   emptyState: {
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: "#F3D4D4",
-    backgroundColor: "#FFF9F9",
-    padding: 18,
-    alignItems: "center",
-    justifyContent: "center",
+    borderRadius: 16, borderWidth: 1, borderColor: "#F3D4D4", backgroundColor: "#FFF9F9",
+    padding: 18, alignItems: "center", justifyContent: "center",
   },
-
-  // ===== LAYOUT FIX (your request: separate rows) =====
-fullWidthAnalyticsRow: {
-  width: "100%",
-  marginBottom: 12,
-},
-
-departmentOverviewGrid: {
-  flexDirection: "row",
-  flexWrap: "wrap",
-  justifyContent: "space-between",
-  gap: 10,
-},
-
-departmentOverviewGridMobile: {
-  flexDirection: "column",
-  gap: 0,
-},
-
-departmentOverviewItem: {
-  flexGrow: 1,
-  flexBasis: "31%",
-  minWidth: 180,
-  marginBottom: 0,
-},
-
-departmentOverviewItemMobile: {
-  width: "100%",
-  minWidth: 0,
-  flexBasis: "auto",
-  marginBottom: 0,
-},
-
-// ===== TREND CHART =====
-trendChartShell: {
-  borderRadius: 16,
-  borderWidth: 1,
-  borderColor: "#F3D4D4",
-  backgroundColor: "#FFF9F9",
-  padding: 12,
-  marginBottom: 12,
-},
-
-trendChartHeader: {
-  flexDirection: "row",
-  justifyContent: "space-between",
-  marginBottom: 10,
-},
-
-trendChartTitle: {
-  fontSize: 14,
-  fontWeight: "900",
-  color: "#2B1111",
-},
-
-trendChartSubtitle: {
-  fontSize: 11,
-  color: "#8A6F6F",
-},
-
-trendChartScrollGuard: {
-  alignItems: "center",
-  justifyContent: "center",
-},
-
-// ===== DELTA BADGE =====
-trendDeltaPill: {
-  paddingHorizontal: 10,
-  paddingVertical: 4,
-  borderRadius: 999,
-},
-
-trendDeltaPositive: {
-  backgroundColor: "#DCFCE7",
-},
-
-trendDeltaNegative: {
-  backgroundColor: "#FEE2E2",
-},
-
-trendDeltaText: {
-  fontWeight: "900",
-},
-
-trendDeltaTextPositive: {
-  color: "#047857",
-},
-
-trendDeltaTextNegative: {
-  color: "#DC2626",
-},
-
-trendOneRow: {
-  flexDirection: "row",
-  flexWrap: "wrap",
-  justifyContent: "space-between",
-  alignItems: "stretch",
-  gap: 10,
-},
-
-trendMetricGridInline: {
-  flex: 1.45,
-  minWidth: 360,
-  flexDirection: "row",
-  flexWrap: "wrap",
-  justifyContent: "space-between",
-  gap: 10,
-},
-
-// ===== EMPTY / SINGLE STATES =====
-trendEmptyState: {
-  alignItems: "center",
-  justifyContent: "center",
-  padding: 20,
-},
-
-trendEmptyTitle: {
-  fontSize: 14,
-  fontWeight: "800",
-  color: "#2B1111",
-},
-
-trendEmptyText: {
-  fontSize: 12,
-  color: "#7A4A4A",
-  textAlign: "center",
-},
-
-singleTrendCard: {
-  flex: 1,
-  minWidth: 260,
-  padding: 16,
-  borderRadius: 14,
-  backgroundColor: "#FFF9F9",
-  borderWidth: 1,
-  borderColor: "#F3D4D4",
-},
-
-singleTrendLabel: {
-  fontSize: 12,
-  color: "#8A6F6F",
-},
-
-singleTrendValue: {
-  fontSize: 28,
-  fontWeight: "900",
-  color: "#DC2626",
-},
-
-singleTrendText: {
-  fontSize: 12,
-  color: "#7A4A4A",
-},
-
-// ===== METRICS GRID =====
-trendMetricGrid: {
-  flexDirection: "row",
-  flexWrap: "wrap",
-  justifyContent: "space-between",
-  gap: 10,
-  marginTop: 10,
-},
-
-trendMetricCard: {
-  flex: 1,
-  minWidth: 140,
-  padding: 10,
-  borderRadius: 12,
-  backgroundColor: "#FFFFFF",
-  borderWidth: 1,
-  borderColor: "#F3D4D4",
-},
-
-trendMetricValue: {
-  fontSize: 16,
-  fontWeight: "900",
-  color: "#DC2626",
-},
-
-trendMetricLabel: {
-  fontSize: 11,
-  color: "#7A4A4A",
-},
-
-  emptyStateText: {
-    marginTop: 8,
-    textAlign: "center",
-    color: "#8A6F6F",
-    fontWeight: "700",
+  emptyStateText: { marginTop: 8, textAlign: "center", color: "#8A6F6F", fontWeight: "700" },
+  fullWidthAnalyticsRow: { width: "100%", marginBottom: 12 },
+  departmentOverviewGrid: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", gap: 10 },
+  departmentOverviewGridMobile: { flexDirection: "column", gap: 0 },
+  departmentOverviewItem: { flexGrow: 1, flexBasis: "31%", minWidth: 180, marginBottom: 0 },
+  departmentOverviewItemMobile: { width: "100%", minWidth: 0, flexBasis: "auto", marginBottom: 0 },
+  trendChartShell: {
+    borderRadius: 16, borderWidth: 1, borderColor: "#F3D4D4", backgroundColor: "#FFF9F9",
+    padding: 12, marginBottom: 12,
   },
+  trendChartHeader: { flexDirection: "row", justifyContent: "space-between", marginBottom: 10 },
+  trendChartTitle: { fontSize: 14, fontWeight: "900", color: "#2B1111" },
+  trendChartSubtitle: { fontSize: 11, color: "#8A6F6F" },
+  trendChartScrollGuard: { alignItems: "center", justifyContent: "center" },
+  trendDeltaPill: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999 },
+  trendDeltaPositive: { backgroundColor: "#DCFCE7" },
+  trendDeltaNegative: { backgroundColor: "#FEE2E2" },
+  trendDeltaText: { fontWeight: "900" },
+  trendDeltaTextPositive: { color: "#047857" },
+  trendDeltaTextNegative: { color: "#DC2626" },
+  trendOneRow: {
+    flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between",
+    alignItems: "stretch", gap: 10,
+  },
+  trendMetricGridInline: {
+    flex: 1.45, minWidth: 360, flexDirection: "row", flexWrap: "wrap",
+    justifyContent: "space-between", gap: 10,
+  },
+  trendEmptyState: { alignItems: "center", justifyContent: "center", padding: 20 },
+  trendEmptyTitle: { fontSize: 14, fontWeight: "800", color: "#2B1111" },
+  trendEmptyText: { fontSize: 12, color: "#7A4A4A", textAlign: "center" },
+  singleTrendCard: {
+    flex: 1, minWidth: 260, padding: 16, borderRadius: 14, backgroundColor: "#FFF9F9",
+    borderWidth: 1, borderColor: "#F3D4D4",
+  },
+  singleTrendLabel: { fontSize: 12, color: "#8A6F6F" },
+  singleTrendValue: { fontSize: 28, fontWeight: "900", color: "#DC2626" },
+  singleTrendText: { fontSize: 12, color: "#7A4A4A" },
+  trendMetricGrid: {
+    flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between",
+    gap: 10, marginTop: 10,
+  },
+  trendMetricCard: {
+    flex: 1, minWidth: 140, padding: 10, borderRadius: 12, backgroundColor: "#FFFFFF",
+    borderWidth: 1, borderColor: "#F3D4D4",
+  },
+  trendMetricValue: { fontSize: 16, fontWeight: "900", color: "#DC2626" },
+  trendMetricLabel: { fontSize: 11, color: "#7A4A4A" },
+
+  // ===== DROPDOWN & MODAL STYLES =====
+  filterRow: {
+    flexDirection: "row", flexWrap: "wrap", gap: 16, marginBottom: 20,
+    backgroundColor: "#FFFFFF", borderRadius: 20, borderWidth: 1, borderColor: "#F3D4D4", padding: 16,
+  },
+  filterRowMobile: { flexDirection: "column" },
+  filterGroup: { flex: 1, minWidth: 250 },
+  filterGroupMobile: { width: "100%" },
+  filterLabel: { fontSize: 13, fontWeight: "800", color: "#5F3B3B", marginBottom: 8 },
+  
+  dropdownButton: {
+    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+    paddingHorizontal: 14, paddingVertical: 12, borderRadius: 14,
+    backgroundColor: "#FFF9F9", borderWidth: 1, borderColor: "#F3D4D4",
+  },
+  dropdownButtonText: { fontSize: 14, fontWeight: "700", color: "#5F3B3B", flex: 1, marginRight: 8 },
+  
+  modalOverlay: {
+    flex: 1, backgroundColor: "rgba(0, 0, 0, 0.5)", justifyContent: "center",
+    alignItems: "center", padding: 20,
+  },
+  modalContent: {
+    width: "100%", maxWidth: 400, backgroundColor: "#FFFFFF", borderRadius: 24,
+    padding: 20, borderWidth: 1, borderColor: "#F3D4D4", maxHeight: "80%",
+  },
+  modalTitle: { fontSize: 18, fontWeight: "800", color: "#2B1111", marginBottom: 16, textAlign: "center" },
+  modalOptionsContainer: { maxHeight: 400, marginBottom: 16 },
+  modalOption: {
+    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+    paddingVertical: 12, paddingHorizontal: 16, borderRadius: 12, marginBottom: 8,
+    backgroundColor: "#FFF9F9", borderWidth: 1, borderColor: "#F3D4D4",
+  },
+  modalOptionActive: { backgroundColor: "#FEE2E2", borderColor: "#DC2626" },
+  modalOptionText: { fontSize: 14, fontWeight: "700", color: "#5F3B3B", flex: 1 },
+  modalOptionTextActive: { color: "#DC2626" },
+  modalCancelButton: {
+    paddingVertical: 12, borderRadius: 12, backgroundColor: "#F3D4D4", alignItems: "center",
+  },
+  modalCancelText: { fontSize: 14, fontWeight: "800", color: "#7A4A4A" },
 });

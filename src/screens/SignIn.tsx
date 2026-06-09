@@ -877,6 +877,8 @@ const SignIn = ({ onLogIn, onGoToLanding, onGoToRegister }: SignInProps) => {
                     secureTextEntry={!showPassword}
                     autoCapitalize="none"
                     editable={!isLoading}
+                    returnKeyType="go" 
+                    onSubmitEditing={handleLogIn} 
                   />
 
                   <TouchableOpacity
@@ -973,6 +975,8 @@ const SignIn = ({ onLogIn, onGoToLanding, onGoToRegister }: SignInProps) => {
                       keyboardType="email-address"
                       autoCapitalize="none"
                       editable={!isLoading}
+                       returnKeyType="go"
+                      onSubmitEditing={handleEmailVerification}
                     />
                   </View>
 
@@ -1124,6 +1128,8 @@ const SignIn = ({ onLogIn, onGoToLanding, onGoToRegister }: SignInProps) => {
                       secureTextEntry={!showConfirmNewPassword}
                       autoCapitalize="none"
                       editable={!isLoading}
+                       returnKeyType="done"
+                      onSubmitEditing={handlePasswordReset}
                     />
                     <TouchableOpacity
                       onPress={() => setShowConfirmNewPassword(!showConfirmNewPassword)}
@@ -1318,6 +1324,8 @@ const SignIn = ({ onLogIn, onGoToLanding, onGoToRegister }: SignInProps) => {
                       secureTextEntry={!showConfirmNewPassword}
                       autoCapitalize="none"
                       editable={!isLoading}
+                       returnKeyType="done"
+                      onSubmitEditing={handlePasswordReset}
                     />
                     <TouchableOpacity
                       onPress={() => setShowConfirmNewPassword(!showConfirmNewPassword)}

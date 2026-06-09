@@ -209,20 +209,17 @@ const Dashboard = ({
     return Array.isArray(assignment.materialIds) && assignment.materialIds.length > 0;
   };
 
-  const hasMasteredGeneratedActivity = (assignment: DashboardAssignment) => {
+  // UPDATED: Check strictly if the activity is completed, regardless of score
+  const hasCompletedGeneratedActivity = (assignment: DashboardAssignment) => {
     const activityScore = completedActivityScores[assignment.id];
-    return (
-      !!activityScore?.completed &&
-      activityScore.scorePercent !== null &&
-      activityScore.scorePercent >= 75
-    );
+    return !!activityScore?.completed;
   };
 
   const canGenerateActivity = (assignment: DashboardAssignment) => {
     return (
       getRecommendationType(assignment) !== null &&
       hasRelatedMaterials(assignment) &&
-      !hasMasteredGeneratedActivity(assignment)
+      !hasCompletedGeneratedActivity(assignment) // Hide if already completed
     );
   };
 
@@ -308,7 +305,7 @@ const Dashboard = ({
         nextDueAssignment,
       };
     });
-  }, [courses]);
+  }, [courses, completedActivityScores]); // Added completedActivityScores to dependencies
 
   const visibleCourses = useMemo(() => {
     return showAllCourses ? derivedCourses : derivedCourses.slice(0, 6);
@@ -319,6 +316,8 @@ const Dashboard = ({
   const recommendedAssignments = useMemo(() => {
     return derivedCourses.flatMap((item) =>
       item.weakAssignments
+        // UPDATED: Filter out assignments where the generated activity is already completed
+        .filter((assignment) => canGenerateActivity(assignment))
         .map((assignment) => {
           const recommendation = getRecommendationType(assignment);
           if (!recommendation) return null;
@@ -330,7 +329,7 @@ const Dashboard = ({
             assignment,
             recommendation,
             score: getScorePercent(assignment),
-            canGenerate: canGenerateActivity(assignment),
+            canGenerate: true, // Always true since we filtered by canGenerateActivity
             relatedMaterials,
             materialTitle:
               relatedMaterials.map((material) => material.title).join(", ") ||
@@ -348,7 +347,7 @@ const Dashboard = ({
         materialTitle: string;
       }>
     );
-  }, [derivedCourses]);
+  }, [derivedCourses, completedActivityScores]); // Added completedActivityScores to dependencies
 
   const nextBest = useMemo(() => {
     const actionable = recommendedAssignments.filter((item) => item.canGenerate);
@@ -592,7 +591,7 @@ const Dashboard = ({
                 { fontSize: isMobile ? 13 : 14 },
               ]}
             >
-              Generate Activity is available only for graded assignments below 75% that already have related materials selected by the teacher.
+              Generate Activity is available only for graded assignments below 75% that already have related materials selected by the teacher and have not been completed yet.
             </Text>
 
             <View style={styles.recommendationList}>
@@ -644,46 +643,26 @@ const Dashboard = ({
                         {item.score !== null ? ` • Score: ${item.score}%` : ''}
                       </Text>
 
-                      {!item.canGenerate && (
-                        <Text style={styles.materialHintText}>
-                          Related material is required before Generate Activity becomes available.
-                        </Text>
-                      )}
-
                       <View style={styles.actionRow}>
-                        {item.canGenerate ? (
-                          <TouchableOpacity
-                            style={[
-                              styles.smallActionBtn,
-                              { backgroundColor: '#D32F2F' },
-                            ]}
-                            disabled={isGeneratingActivity}
-                            onPress={() => {
-                              if (isGeneratingActivity) return;
-                              onOpenGeneratedActivity?.(item.course, item.assignment);
-                            }}
-                          >
-                            {isGeneratingActivity ? (
-                              <ActivityIndicator size="small" color="#FFFFFF" />
-                            ) : (
-                              <Text style={styles.smallActionBtnText}>
-                                Generate Activity
-                              </Text>
-                            )}
-                          </TouchableOpacity>
-                        ) : (
-                          <TouchableOpacity
-                            style={[
-                              styles.smallActionBtn,
-                              styles.disabledActionBtn,
-                            ]}
-                            activeOpacity={1}
-                          >
+                        <TouchableOpacity
+                          style={[
+                            styles.smallActionBtn,
+                            { backgroundColor: '#D32F2F' },
+                          ]}
+                          disabled={isGeneratingActivity}
+                          onPress={() => {
+                            if (isGeneratingActivity) return;
+                            onOpenGeneratedActivity?.(item.course, item.assignment);
+                          }}
+                        >
+                          {isGeneratingActivity ? (
+                            <ActivityIndicator size="small" color="#FFFFFF" />
+                          ) : (
                             <Text style={styles.smallActionBtnText}>
-                              Waiting / Completed
+                              Generate Activity
                             </Text>
-                          </TouchableOpacity>
-                        )}
+                          )}
+                        </TouchableOpacity>
 
                         <TouchableOpacity
                           style={[

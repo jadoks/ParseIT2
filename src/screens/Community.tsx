@@ -50,7 +50,8 @@ interface CommunityProps {
   onDeletePost?: (postId: string) => void;
   onEditAnswer?: (postId: string, answerId: string, message: string) => void;
   onDeleteAnswer?: (postId: string, answerId: string) => void;
-  searchQuery?: string; // 👈 Search query prop from Header
+  searchQuery?: string;
+  initialPostId?: string | null; // 👈 ADDED: To open a specific post modal from notification
 }
 
 type PostDropdownState =
@@ -154,7 +155,8 @@ const Community: React.FC<CommunityProps> = ({
   onDeletePost,
   onEditAnswer,
   onDeleteAnswer,
-  searchQuery = '', // 👈 Default to empty string
+  searchQuery = '',
+  initialPostId, // 👈 ADDED
 }) => {
   // 👇 ROBUST LOCAL SEARCH FILTERING
   const filteredPosts = useMemo(() => {
@@ -164,13 +166,6 @@ const Community: React.FC<CommunityProps> = ({
     return posts.filter((post) => {
       const matchesUser = post.userName.toLowerCase().includes(trimmedQuery);
       const matchesContent = post.content.toLowerCase().includes(trimmedQuery);
-      
-      // Optional: Also search inside answers if needed
-      // const matchesAnswers = post.answers.some(a => 
-      //   a.userName.toLowerCase().includes(trimmedQuery) || 
-      //   a.message.toLowerCase().includes(trimmedQuery)
-      // );
-
       return matchesUser || matchesContent;
     });
   }, [posts, searchQuery]);
@@ -253,6 +248,18 @@ const Community: React.FC<CommunityProps> = ({
       isMounted = false;
     };
   }, [posts]);
+
+  // 👇 ADDED: Automatically open the answers modal if a specific post ID is passed via notification
+  useEffect(() => {
+    if (initialPostId) {
+      const post = posts.find((p) => p.id === initialPostId);
+      if (post) {
+        setSelectedPostId(post.id);
+        setAnswerText('');
+        setAnswersModalVisible(true);
+      }
+    }
+  }, [initialPostId, posts]);
 
   // Use filteredPosts instead of raw posts for visibility logic
   const visiblePosts = useMemo(
@@ -980,41 +987,34 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#ffffff',
   },
-
   contentContainer: {
     paddingHorizontal: 16,
     paddingVertical: 30,
   },
-
   largeScreenContentContainer: {
     paddingHorizontal: 150,
   },
-
   innerWrapper: {
     width: '100%',
     maxWidth: 900,
     alignSelf: 'center',
   },
-
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: 20,
   },
-
   title: {
     fontSize: 20,
     fontWeight: '700',
     color: '#222',
   },
-
   inputRow: {
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 20,
   },
-
   inputAvatar: {
     width: 40,
     height: 40,
@@ -1023,7 +1023,6 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     aspectRatio: 1,
   },
-
   inputField: {
     flex: 1,
     height: 45,
@@ -1036,7 +1035,6 @@ const styles = StyleSheet.create({
     maxWidth: 400,
     width: '100%',
   },
-
   postContainer: {
     backgroundColor: '#ffffff',
     padding: 18,
@@ -1047,19 +1045,16 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderRightWidth: 1,
   },
-
   postHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-
   userRow: {
     flexDirection: 'row',
     alignItems: 'center',
     flex: 1,
   },
-
   postAvatar: {
     width: 36,
     height: 36,
@@ -1067,32 +1062,26 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     aspectRatio: 1,
   },
-
   postUserName: {
     fontWeight: '700',
     color: '#222',
   },
-
   postDateTime: {
     fontSize: 12,
     color: '#666',
   },
-
   postContent: {
     color: '#333',
     marginVertical: 8,
   },
-
   showAnswersBtn: {
     color: '#1976d2',
     fontWeight: '400',
   },
-
   dropdownOverlay: {
     flex: 1,
     backgroundColor: 'transparent',
   },
-
   dropdownMenuModal: {
     position: 'absolute',
     backgroundColor: '#fff',
@@ -1104,14 +1093,12 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 4 },
   },
-
   menuItem: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 12,
     paddingVertical: 9,
   },
-
   actionIconCircle: {
     width: 20,
     height: 20,
@@ -1120,7 +1107,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-
   deleteIconCircle: {
     width: 20,
     height: 20,
@@ -1129,7 +1115,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-
   hideIconCircle: {
     width: 20,
     height: 20,
@@ -1138,13 +1123,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-
   menuText: {
     marginLeft: 8,
     fontSize: 14,
     color: '#333',
   },
-
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.35)',
@@ -1152,7 +1135,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 20,
   },
-
   answersModalCard: {
     width: '100%',
     maxWidth: 520,
@@ -1161,7 +1143,6 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     padding: 18,
   },
-
   editPostModalCard: {
     width: '100%',
     maxWidth: 520,
@@ -1169,7 +1150,6 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     padding: 18,
   },
-
   confirmModalCard: {
     width: '100%',
     maxWidth: 380,
@@ -1177,42 +1157,35 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     padding: 20,
   },
-
   answerModalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 16,
   },
-
   answerModalTitle: {
     fontSize: 18,
     fontWeight: '700',
     color: '#222',
   },
-
   selectedPostText: {
     fontSize: 15,
     color: '#333',
     lineHeight: 22,
     marginBottom: 16,
   },
-
   answersListWrapper: {
     flex: 1,
     minHeight: 160,
     marginBottom: 8,
   },
-
   answersScroll: {
     flex: 1,
   },
-
   modalAnswersContainer: {
     paddingRight: 8,
     paddingBottom: 8,
   },
-
   answerCard: {
     backgroundColor: '#F8F8F8',
     borderRadius: 12,
@@ -1221,11 +1194,9 @@ const styles = StyleSheet.create({
     borderColor: '#E8E8E8',
     marginBottom: 10,
   },
-
   answerPreviewHeader: {
     marginBottom: 6,
   },
-
   answerAvatar: {
     width: 30,
     height: 30,
@@ -1233,45 +1204,38 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     aspectRatio: 1,
   },
-
   answerUserName: {
     fontSize: 14,
     fontWeight: '700',
     color: '#222',
   },
-
   answerDate: {
     fontSize: 12,
     color: '#777',
   },
-
   answerPreviewText: {
     fontSize: 14,
     color: '#555',
     lineHeight: 20,
   },
-
   noAnswersText: {
     fontSize: 14,
     color: '#777',
     textAlign: 'center',
     paddingVertical: 12,
   },
-
   answerInputSection: {
     borderTopWidth: 1,
     borderTopColor: '#EEE',
     paddingTop: 14,
     marginTop: 4,
   },
-
   answerInputLabel: {
     fontSize: 14,
     fontWeight: '600',
     color: '#222',
     marginBottom: 8,
   },
-
   answerInput: {
     minHeight: 90,
     borderWidth: 1,
@@ -1283,7 +1247,6 @@ const styles = StyleSheet.create({
     color: '#222',
     backgroundColor: '#FFF',
   },
-
   postAnswerButton: {
     alignSelf: 'flex-start',
     marginTop: 12,
@@ -1292,57 +1255,48 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderRadius: 8,
   },
-
   postAnswerButtonText: {
     color: '#FFF',
     fontWeight: '600',
     fontSize: 14,
   },
-
   confirmTitle: {
     fontSize: 18,
     fontWeight: '700',
     color: '#222',
     marginBottom: 10,
   },
-
   confirmMessage: {
     fontSize: 14,
     color: '#555',
     lineHeight: 20,
     marginBottom: 18,
   },
-
   confirmActions: {
     flexDirection: 'row',
     justifyContent: 'flex-end',
     gap: 10,
   },
-
   cancelButton: {
     paddingHorizontal: 16,
     paddingVertical: 10,
     borderRadius: 8,
     backgroundColor: '#E0E0E0',
   },
-
   cancelButtonText: {
     color: '#333',
     fontWeight: '600',
   },
-
   deleteButton: {
     paddingHorizontal: 16,
     paddingVertical: 10,
     borderRadius: 8,
     backgroundColor: '#D32F2F',
   },
-
   deleteButtonText: {
     color: '#FFF',
     fontWeight: '600',
   },
-
   answerDropdownOverlay: {
     position: 'absolute',
     top: 0,
@@ -1352,7 +1306,6 @@ const styles = StyleSheet.create({
     zIndex: 99998,
     elevation: 99998,
   },
-
   answerDropdownFloating: {
     position: 'absolute',
     width: ANSWER_DROPDOWN_WIDTH,
@@ -1366,8 +1319,6 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 4 },
   },
-
-  // 👇 NEW STYLES FOR EMPTY STATE
   emptyState: {
     alignItems: 'center',
     justifyContent: 'center',

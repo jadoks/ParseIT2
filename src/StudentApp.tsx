@@ -236,53 +236,6 @@ const ANNOUNCEMENT_BANNERS: Record<number, any> = {
   4: require('../assets/images/Banner4.png'),
 };
 
-const COURSES: CourseDetailData[] = [
-  {
-    id: '1', name: 'Web Development', code: 'CS-101', instructor: 'Prof. John Smith',
-    description: 'Learn the fundamentals of web development including HTML, CSS, JavaScript, and introductory React concepts.',
-    semester: '2nd Semester', schoolYear: '2025-2026', section: '3A - Python',
-    materials: [
-      { id: 'm1', title: 'HTML Basics Tutorial', type: 'video', uploadedDate: '2026-02-01' },
-      { id: 'm2', title: 'CSS Styling Guide', type: 'pdf', uploadedDate: '2026-02-03' },
-      { id: 'm3', title: 'JavaScript Fundamentals', type: 'video', uploadedDate: '2026-02-05' },
-      { id: 'm4', title: 'React Components Introduction', type: 'document', uploadedDate: '2026-02-07' },
-      { id: 'm5', title: 'Project Guidelines', type: 'document', uploadedDate: '2026-02-10' },
-    ],
-    assignments: [
-      { id: 'a1', title: 'React Fundamentals Quiz', dueDate: '2026-02-15', status: 'graded', points: 8, maxPoints: 20, topic: 'React Fundamentals', materialIds: ['m4'], files: [{ id: 'f-a1-1', name: 'React_Fundamentals_Quiz_submission.pdf', uploadedAt: '2026-02-15 08:30 AM' }], comments: [{ id: 'c-a1-1', author: 'Prof. John Smith', content: 'Please review the related materials before attempting the next activity.', timestamp: '2026-02-15 09:00 AM', isInstructor: true }] },
-      { id: 'a2', title: 'Build a Simple Website', dueDate: '2026-02-20', status: 'graded', points: 42, maxPoints: 50, topic: 'HTML and CSS Layout', materialIds: ['m1', 'm2', 'm5'], files: [{ id: 'f-a2-1', name: 'Simple_Website_Project.zip', uploadedAt: '2026-02-20 09:10 AM' }, { id: 'f-a2-2', name: 'Project_Screenshots.pdf', uploadedAt: '2026-02-20 09:12 AM' }], comments: [{ id: 'c-a2-1', author: 'Prof. John Smith', content: 'Good work. Continue practicing to strengthen your understanding.', timestamp: '2026-02-20 09:30 AM', isInstructor: true }] },
-      { id: 'a3', title: 'JavaScript Basics Checkpoint', dueDate: '2026-02-24', status: 'submitted', points: 0, maxPoints: 25, topic: 'JavaScript Fundamentals', materialIds: ['m3'], files: [{ id: 'f-a3-1', name: 'JS_Basics_Checkpoint.docx', uploadedAt: '2026-02-24 07:50 AM' }], comments: [] },
-      { id: 'a4', title: 'Responsive Design Exercise', dueDate: '2026-02-28', status: 'pending', points: 0, maxPoints: 30, topic: 'Responsive Design', materialIds: ['m2', 'm5'], files: [], comments: [] },
-    ],
-  },
-  {
-    id: '2', name: 'Programming Logic', code: 'CS-102', instructor: 'Prof. Maria Santos',
-    description: 'Understand variables, conditions, loops, and basic program flow.',
-    semester: '2nd Semester', schoolYear: '2025-2026', section: '2A - Algorithm',
-    materials: [
-      { id: 'm6', title: 'Variables and Data Types', type: 'pdf', uploadedDate: '2026-02-02' },
-      { id: 'm7', title: 'Conditional Statements', type: 'video', uploadedDate: '2026-02-04' },
-      { id: 'm8', title: 'Looping Concepts', type: 'document', uploadedDate: '2026-02-06' },
-    ],
-    assignments: [
-      { id: 'a5', title: 'Conditional Statements Quiz', dueDate: '2026-02-16', status: 'graded', points: 14, maxPoints: 20, topic: 'Conditional Statements', materialIds: ['m7'], files: [{ id: 'f-a5-1', name: 'Conditional_Statements_Quiz.pdf', uploadedAt: '2026-02-16 08:05 AM' }], comments: [{ id: 'c-a5-1', author: 'Prof. Maria Santos', content: 'Good work. Continue practicing to strengthen your understanding.', timestamp: '2026-02-16 08:40 AM', isInstructor: true }] },
-      { id: 'a6', title: 'Loops Practice Set', dueDate: '2026-02-21', status: 'graded', points: 10, maxPoints: 20, topic: 'Loops', materialIds: ['m8'], files: [{ id: 'f-a6-1', name: 'Loops_Practice_Set.docx', uploadedAt: '2026-02-21 07:55 AM' }], comments: [{ id: 'c-a6-1', author: 'Prof. Maria Santos', content: 'Please review the related materials before attempting the next activity.', timestamp: '2026-02-21 08:15 AM', isInstructor: true }] },
-    ],
-  },
-  {
-    id: '3', name: 'Computer Fundamentals', code: 'IT-100', instructor: 'Prof. Allan Reyes',
-    description: 'Explore basic computing concepts, hardware, software, and digital systems.',
-    semester: '2nd Semester', schoolYear: '2025-2026', section: '1A - Microsoft',
-    materials: [
-      { id: 'm9', title: 'Hardware Overview', type: 'pdf', uploadedDate: '2026-02-01' },
-      { id: 'm10', title: 'Software Systems', type: 'document', uploadedDate: '2026-02-05' },
-    ],
-    assignments: [
-      { id: 'a7', title: 'Computer Basics Assessment', dueDate: '2026-02-18', status: 'graded', points: 18, maxPoints: 20, topic: 'Computer Architecture', materialIds: ['m9'], files: [{ id: 'f-a7-1', name: 'Computer_Basics_Assessment.pdf', uploadedAt: '2026-02-18 08:20 AM' }], comments: [{ id: 'c-a7-1', author: 'Prof. Allan Reyes', content: 'Good work. Continue practicing to strengthen your understanding.', timestamp: '2026-02-18 08:45 AM', isInstructor: true }] },
-    ],
-  },
-];
-
 const mapCourseCommentsToAssignmentComments = (comments?: CourseAssignmentComment[]): AssignmentComment[] =>
   (comments || []).map((comment) => ({ id: comment.id, author: comment.author, content: comment.content, timestamp: comment.timestamp, isInstructor: comment.isInstructor }));
 
@@ -362,7 +315,8 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
 
   const [activeScreen, setActiveScreen] = useState<ScreenType>('home');
   const [lastScreen, setLastScreen] = useState<ScreenType>('home');
-  const [selectedCourse, setSelectedCourse] = useState<CourseDetailData>(COURSES[0]);
+  
+  const [selectedCourse, setSelectedCourse] = useState<CourseDetailData | null>(null);
   const [selectedCourseIdForAssignments, setSelectedCourseIdForAssignments] = useState<string | null>(null);
   const [generatedActivity, setGeneratedActivity] = useState<GenerateActivityData | null>(null);
   const [generatedQuizMastersData, setGeneratedQuizMastersData] = useState<any[] | null>(null);
@@ -384,7 +338,6 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
   const [communityPosts, setCommunityPosts] = useState<CommunityPost[]>([]);
   const [studentNotifications, setStudentNotifications] = useState<NotificationItem[]>([]);
   
-  // 👇 RENAMED: Unified global search state for Classes, Messenger, Videos, Home, Games
   const [globalSearchQuery, setGlobalSearchQuery] = useState('');
   
   const [isFetchingGame, setIsFetchingGame] = useState(false);
@@ -392,6 +345,9 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
     assignmentId: string; assignmentTitle: string; gameType: string; questions: any[];
     timeLimit?: string | null; customTimeLimit?: string | null; numberOfAttempts?: string;
   } | null>(null);
+
+  const [autoOpenAssignmentId, setAutoOpenAssignmentId] = useState<string | null>(null);
+  const [communityInitialPostId, setCommunityInitialPostId] = useState<string | null>(null);
 
   const isFullscreenScreen = activeScreen === 'flipit' || activeScreen === 'fruitmania' || activeScreen === 'quizmasters' || activeScreen === 'gamebasedassignment';
   const isMobileFullscreenScreen = isSmallScreen && (activeScreen === 'messenger' || activeScreen === 'notification' || activeScreen === 'coursedetail' || activeScreen === 'generateactivity');
@@ -451,6 +407,12 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
   useEffect(() => { if (isMobileFullscreenScreen && isMobileDrawerOpen) setMobileDrawerOpen(false); }, [isMobileFullscreenScreen, isMobileDrawerOpen]);
   useEffect(() => { if (!isLargeScreen) setIsNotificationOpen(false); }, [isLargeScreen]);
   useEffect(() => { if (activeScreen === 'notification' || isMobileFullscreenScreen) setIsNotificationOpen(false); }, [activeScreen, isMobileFullscreenScreen]);
+
+  useEffect(() => {
+    if (activeScreen !== 'community') {
+      setCommunityInitialPostId(null);
+    }
+  }, [activeScreen]);
 
   const getBase64FromUri = async (uri: string) => {
     if (Platform.OS === 'web') {
@@ -560,18 +522,58 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
 
   const hydratedCommunityPosts = useMemo<CommunityPost[]>(() => communityPosts.map((post) => { const isCurrentUsersPost = post.userEmail ? post.userEmail === currentUserEmail : post.userName === currentUserName; return { ...post, avatar: isCurrentUsersPost ? currentUserAvatar : post.avatar, answers: post.answers.map((answer) => ({ ...answer, avatar: answer.userName === currentUserName ? currentUserAvatar : answer.avatar })) }; }), [communityPosts, currentUserAvatar, currentUserEmail, currentUserName]);
 
-  const sharedCourses = useMemo(() => mapCoursesToAssignmentCourses(COURSES), []);
-  const [sharedAssignmentComments, setSharedAssignmentComments] = useState<Record<string, AssignmentComment[]>>(() => Object.fromEntries(sharedCourses.flatMap((course) => course.assignments.map((assignment) => [assignment.id, assignment.comments || []]))));
-  const [sharedAssignmentFiles, setSharedAssignmentFiles] = useState<Record<string, AssignmentFileUpload[]>>(() => Object.fromEntries(sharedCourses.flatMap((course) => course.assignments.map((assignment) => [assignment.id, []]))));
+  const [sharedAssignmentComments, setSharedAssignmentComments] = useState<Record<string, AssignmentComment[]>>({});
+  const [sharedAssignmentFiles, setSharedAssignmentFiles] = useState<Record<string, AssignmentFileUpload[]>>({});
   const [sharedAssignmentStatuses, setSharedAssignmentStatuses] = useState<Record<string, AssignmentItem['status']>>({});
   const [sharedAssignmentScores, setSharedAssignmentScores] = useState<Record<string, StoredAssignmentScore>>({});
   const [hasLoadedAssignmentState, setHasLoadedAssignmentState] = useState(false);
 
-  const hydratedSharedCourses = useMemo<AssignmentCourse[]>(() => sharedCourses.map((course) => ({ ...course, assignments: course.assignments.map((assignment) => { const scoreState = sharedAssignmentScores[assignment.id]; return { ...assignment, status: sharedAssignmentStatuses[assignment.id] || assignment.status, points: scoreState?.points !== undefined ? scoreState.points : assignment.points, maxPoints: scoreState?.maxPoints !== undefined ? scoreState.maxPoints : assignment.maxPoints, comments: sharedAssignmentComments[assignment.id] || [], files: assignment.files || [], gameScore: scoreState?.gameScore !== undefined ? scoreState.gameScore : (assignment as any).gameScore, gameTotalQuestions: scoreState?.gameTotalQuestions !== undefined ? scoreState.gameTotalQuestions : (assignment as any).gameTotalQuestions, attemptNumber: scoreState?.attemptNumber !== undefined ? scoreState.attemptNumber : (assignment as any).attemptNumber }; }) })), [sharedCourses, sharedAssignmentComments, sharedAssignmentFiles, sharedAssignmentScores, sharedAssignmentStatuses]);
+  useEffect(() => {
+    if (joinedCourses.length > 0) {
+      setSharedAssignmentComments(prev => {
+        const next = { ...prev };
+        joinedCourses.forEach(course => {
+          course.assignments.forEach(assignment => {
+            if (!next[assignment.id] && assignment.comments) {
+              next[assignment.id] = mapCourseCommentsToAssignmentComments(assignment.comments);
+            }
+          });
+        });
+        return next;
+      });
+      setSharedAssignmentFiles(prev => {
+        const next = { ...prev };
+        joinedCourses.forEach(course => {
+          course.assignments.forEach(assignment => {
+            if (!next[assignment.id] && assignment.files) {
+              next[assignment.id] = mapCourseFilesToAssignmentFiles(assignment.files);
+            }
+          });
+        });
+        return next;
+      });
+    }
+  }, [joinedCourses]);
 
-  const joinedAssignmentCourses = useMemo<AssignmentCourse[]>(() => mapCoursesToAssignmentCourses(joinedCourses).map((course) => ({ ...course, assignments: course.assignments.map((assignment) => { const scoreState = sharedAssignmentScores[assignment.id]; return { ...assignment, status: sharedAssignmentStatuses[assignment.id] || assignment.status, points: scoreState?.points !== undefined ? scoreState.points : assignment.points, maxPoints: scoreState?.maxPoints !== undefined ? scoreState.maxPoints : assignment.maxPoints, files: assignment.files || [], gameScore: scoreState?.gameScore !== undefined ? scoreState.gameScore : (assignment as any).gameScore, gameTotalQuestions: scoreState?.gameTotalQuestions !== undefined ? scoreState.gameTotalQuestions : (assignment as any).gameTotalQuestions, attemptNumber: scoreState?.attemptNumber !== undefined ? scoreState.attemptNumber : (assignment as any).attemptNumber }; }) })), [joinedCourses, sharedAssignmentFiles, sharedAssignmentScores, sharedAssignmentStatuses]);
+  const joinedAssignmentCourses = useMemo<AssignmentCourse[]>(() => mapCoursesToAssignmentCourses(joinedCourses).map((course) => ({ ...course, assignments: course.assignments.map((assignment) => { 
+    const scoreState = sharedAssignmentScores[assignment.id]; 
+    return { 
+      ...assignment, 
+      status: sharedAssignmentStatuses[assignment.id] || assignment.status, 
+      points: scoreState?.points !== undefined ? scoreState.points : assignment.points, 
+      maxPoints: scoreState?.maxPoints !== undefined ? scoreState.maxPoints : assignment.maxPoints, 
+      comments: sharedAssignmentComments[assignment.id] || assignment.comments || [], 
+      files: sharedAssignmentFiles[assignment.id] || assignment.files || [], 
+      gameScore: scoreState?.gameScore !== undefined ? scoreState.gameScore : (assignment as any).gameScore, 
+      gameTotalQuestions: scoreState?.gameTotalQuestions !== undefined ? scoreState.gameTotalQuestions : (assignment as any).gameTotalQuestions, 
+      attemptNumber: scoreState?.attemptNumber !== undefined ? scoreState.attemptNumber : (assignment as any).attemptNumber 
+    }; 
+  }) })), [joinedCourses, sharedAssignmentComments, sharedAssignmentFiles, sharedAssignmentScores, sharedAssignmentStatuses]);
 
-  const selectedAssignmentCourse = useMemo(() => joinedAssignmentCourses.find((course) => course.id === selectedCourse.id) || hydratedSharedCourses.find((course) => course.id === selectedCourse.id) || hydratedSharedCourses[0], [joinedAssignmentCourses, hydratedSharedCourses, selectedCourse.id]);
+  const selectedAssignmentCourse = useMemo(() => {
+    if (!selectedCourse) return joinedAssignmentCourses[0] || null;
+    return joinedAssignmentCourses.find((course) => course.id === selectedCourse.id) || joinedAssignmentCourses[0] || null;
+  }, [joinedAssignmentCourses, selectedCourse?.id]);
 
   const applySavedAssignmentState = (state: StoredAssignmentState) => {
     setSharedAssignmentFiles((prev) => ({ ...prev, ...state.files }));
@@ -653,7 +655,20 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
   const handleMarkNotificationAsRead = async (notificationId: string) => { const response = await apiFetch(`${API_BASE_URL}/notifications/${notificationId}/read`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' } }); const data = await response.json(); if (!response.ok) throw new Error(data?.error || 'Failed to mark notification as read.'); setStudentNotifications((prev) => prev.map((item) => item.id === notificationId ? { ...item, read: true } : item)); };
   const handleMarkAllNotificationsAsRead = async () => { const response = await apiFetch(`${API_BASE_URL}/notifications/read-all`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: currentStudent.studentId, role: 'student' }) }); const data = await response.json(); if (!response.ok) throw new Error(data?.error || 'Failed to mark all notifications as read.'); setStudentNotifications((prev) => prev.map((item) => ({ ...item, read: true }))); };
   const handleGeneratedActivityCompleted = async (activity: GenerateActivityData) => { await Promise.all([loadStudentNotifications(), loadCompletedActivityScores()]); Alert.alert('Activity Completed', `${activity.assignmentTitle} has been marked as done.`); };
-  const unreadNotificationCount = useMemo(() => studentNotifications.filter((item) => !item.read).length, [studentNotifications]);
+
+  const visibleStudentNotifications = useMemo(() => {
+    return studentNotifications.filter((notif) => {
+      if (notif.type === 'support-activity' && notif.targetId) {
+        const activityScore = completedActivityScores[notif.targetId];
+        if (activityScore?.completed) {
+          return false;
+        }
+      }
+      return true;
+    });
+  }, [studentNotifications, completedActivityScores]);
+
+  const unreadNotificationCount = useMemo(() => visibleStudentNotifications.filter((item) => !item.read).length, [visibleStudentNotifications]);
 
   const cleanVideoSearchText = (value = '') => String(value || '').replace(/\//g, ' ').replace(/[^a-zA-Z0-9\s+#.()-]/g, ' ').replace(/\s+/g, ' ').trim();
   const getRotatingIndex = (length: number, salt = 0) => { if (length <= 0) return 0; const today = new Date(); const daySeed = Math.floor(new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime() / 86400000); return Math.abs(daySeed + salt) % length; };
@@ -676,10 +691,7 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
     if (screen !== 'generateactivity') setGeneratedActivity(null);
     setIsNotificationOpen(false); setIsChatOpen(false); setMobileDrawerOpen(false); setActiveScreen(screen);
     
-    // 👇 UPDATED: Clear search when navigating away from searchable screens
-    const searchableScreens: ScreenType[] = ['home', 'classes', 'game', 'videos', 'messenger', 'flipit', 'fruitmania', 'quizmasters', 'profile',      // ✅ Added
-    'analytics',    // ✅ Added
-    'myjourney', ];
+    const searchableScreens: ScreenType[] = ['home', 'classes', 'game', 'videos', 'messenger', 'flipit', 'fruitmania', 'quizmasters', 'profile', 'analytics', 'myjourney'];
     if (!searchableScreens.includes(screen)) {
       setGlobalSearchQuery('');
     }
@@ -687,6 +699,76 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
 
   const exitFullscreenGameToGames = () => { setLastScreen('game'); setIsNotificationOpen(false); setIsChatOpen(false); setIsConversationActive(false); setIsVideoActive(false); setMobileDrawerOpen(false); setActiveScreen('game'); setGlobalSearchQuery(''); };
   const handleNotificationPress = () => { if (isLargeScreen) setIsNotificationOpen((prev) => !prev); else { setLastScreen(activeScreen); setActiveScreen('notification'); } };
+
+  const handleNotificationItemClick = (notification: NotificationItem) => {
+    setIsNotificationOpen(false);
+    
+    let previousScreen = activeScreen;
+    if (activeScreen === 'notification') {
+      previousScreen = lastScreen;
+    }
+
+    const targetId = notification.targetId;
+    const courseId = notification.courseId;
+
+    setAutoOpenAssignmentId(null);
+
+    switch (notification.type) {
+      case 'assignment':
+      case 'game-assignment': {
+        const course = joinedAssignmentCourses.find(c => c.id === courseId);
+        if (course) {
+          setSelectedCourse(course as unknown as CourseDetailData);
+          setSelectedCourseIdForAssignments(course.id);
+          setLastScreen(previousScreen);
+          setActiveScreen('coursedetail');
+          setActiveCourseTab('assignments');
+          
+          if (targetId) {
+            setAutoOpenAssignmentId(targetId);
+          }
+        }
+        break;
+      }
+      case 'material': {
+        const course = joinedAssignmentCourses.find(c => c.id === courseId);
+        if (course) {
+          setSelectedCourse(course as unknown as CourseDetailData);
+          setLastScreen(previousScreen);
+          setActiveScreen('coursedetail');
+          setActiveCourseTab('materials');
+        }
+        break;
+      }
+      case 'community-answer': {
+        setLastScreen(previousScreen);
+        setActiveScreen('community');
+        setCommunityInitialPostId(targetId || null);
+        break;
+      }
+      case 'support-activity': {
+        // 👇 ADDED: Check if activity is already completed before navigating
+        if (targetId && completedActivityScores[targetId]?.completed) {
+          Alert.alert(
+            'Already Completed',
+            'You have already completed this support activity.',
+            [{ text: 'OK' }]
+          );
+          return;
+        }
+
+        const course = joinedAssignmentCourses.find(c => c.id === courseId);
+        const assignment = course?.assignments.find(a => a.id === targetId);
+        if (course && assignment) {
+          setLastScreen(previousScreen);
+          openGeneratedActivity(course as unknown as CourseDetailData, assignment);
+        }
+        break;
+      }
+      default:
+        break;
+    }
+  };
 
   const normalizeCourseForActivity = (course: any): CourseWithBannerFields => ({ id: String(course?.id || ''), name: course?.name || 'Untitled Class', code: course?.code || course?.courseCode || course?.classCode || '', instructor: course?.instructor || course?.instructorName || 'Unknown Instructor', description: course?.description || '', semester: course?.semester || '', schoolYear: course?.schoolYear || '', section: course?.section || '', bannerUrl: course?.bannerUrl || null, bannerStoragePath: course?.bannerStoragePath || null, bannerFileName: course?.bannerFileName || null, bannerMimeType: course?.bannerMimeType || null, materials: Array.isArray(course?.materials) ? course.materials : [], assignments: Array.isArray(course?.assignments) ? course.assignments : [] });
   const findFreshCourseForActivity = (course: any): CourseDetailData => { const courseId = String(course?.id || ''); const fromJoined = joinedCourses.find((item) => item.id === courseId); if (fromJoined) return normalizeCourseForActivity(fromJoined); const fromAssignmentCourses = joinedAssignmentCourses.find((item) => item.id === courseId); if (fromAssignmentCourses) return normalizeCourseForActivity(fromAssignmentCourses); const fromSelected = selectedAssignmentCourse?.id === courseId ? selectedAssignmentCourse : null; if (fromSelected) return normalizeCourseForActivity(fromSelected); return normalizeCourseForActivity(course); };
@@ -711,7 +793,9 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
     const relatedMaterials = (normalizedCourse.materials || []).filter((material) => materialIds.includes(material.id));
     if (!relatedMaterials.length) { Alert.alert('Related materials required', 'The teacher must select related materials first. AI follow-up activities are generated from those materials, not from the assignment title.'); return; }
     try {
-      setIsGeneratingActivity(true); setSelectedCourse(normalizedCourse); setSelectedCourseIdForAssignments(normalizedCourse.id); setLastScreen(activeScreen); setIsNotificationOpen(false);
+      setIsGeneratingActivity(true); setSelectedCourse(normalizedCourse); setSelectedCourseIdForAssignments(normalizedCourse.id); 
+      setLastScreen(activeScreen === 'notification' ? lastScreen : activeScreen); 
+      setIsNotificationOpen(false);
       const response = await apiFetch(`${API_BASE_URL}/student-activities/generate`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ studentId: currentStudent.studentId, courseId: normalizedCourse.id, classId: normalizedCourse.id, courseName: normalizedCourse.name, courseCode: normalizedCourse.code, assignmentId: assignment.id, assignmentTitle: assignment.title, topic: relatedMaterials.map((material) => material.title).join(', ') || assignment.topic || assignment.title, score, materialIds, relatedMaterials: relatedMaterials.map((material) => ({ id: material.id, title: material.title, type: material.type, content: material.content || null, fileName: material.fileName || null, fileUrl: material.fileUrl || material.fileUri || null, fileUri: material.fileUri || material.fileUrl || null, fileType: material.fileType || null })) }) });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data?.error || data?.message || 'Failed to generate follow-up activity.');
@@ -741,7 +825,6 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
       case 'profile': return <Profile searchQuery={globalSearchQuery} userPosts={currentUserPosts} onCreatePost={handleCreateCommunityPost} onAddAnswer={handleAddCommunityAnswer} onEditPost={handleEditCommunityPost} onDeletePost={handleDeleteCommunityPost} onEditAnswer={handleEditCommunityAnswer} onDeleteAnswer={handleDeleteCommunityAnswer} userName={currentUserName} userEmail={currentUserEmail} profileImage={currentUserAvatar} bannerImage={currentUserBanner} onChangeProfileImage={handleChangeProfileImage} onChangeBannerImage={handleChangeBannerImage} />;
       case 'home': return <Dashboard announcements={studentAnnouncements} courses={dashboardCourses} onOpenCourse={(course) => { setSelectedCourse(course as unknown as CourseDetailData); setGeneratedActivity(null); setLastScreen(activeScreen); setIsNotificationOpen(false); setActiveScreen('coursedetail'); setActiveCourseTab('materials'); }} onOpenAssignments={(course) => { setSelectedCourse(course as unknown as CourseDetailData); setSelectedCourseIdForAssignments(course.id); setGeneratedActivity(null); setLastScreen(activeScreen); setIsNotificationOpen(false); setActiveScreen('coursedetail'); setActiveCourseTab('assignments'); }} onOpenMaterials={(course) => { setSelectedCourse(course as unknown as CourseDetailData); setGeneratedActivity(null); setLastScreen(activeScreen); setIsNotificationOpen(false); setActiveScreen('coursedetail'); setActiveCourseTab('materials'); }} onOpenGeneratedActivity={(course, assignment) => openGeneratedActivity(course as unknown as CourseDetailData, assignment)} onJoinClass={handleJoinClass} isGeneratingActivity={isGeneratingActivity} completedActivityScores={completedActivityScores} />;
       
-      // 👇 UPDATED: Pass globalSearchQuery to ClassesScreen
       case 'classes': return <ClassesScreen courses={classesScreenCourses} searchQuery={globalSearchQuery} completedActivityScores={completedActivityScores} onCoursePress={(course) => { setSelectedCourse(course as unknown as CourseDetailData); setGeneratedActivity(null); setLastScreen('classes'); setIsNotificationOpen(false); setActiveScreen('coursedetail'); setActiveCourseTab('materials'); }} onAssignmentPress={(course) => { setSelectedCourse(course as unknown as CourseDetailData); setSelectedCourseIdForAssignments(course.id); setGeneratedActivity(null); setLastScreen('classes'); setIsNotificationOpen(false); setActiveScreen('coursedetail'); setActiveCourseTab('assignments'); }} onMaterialsPress={(course) => { setSelectedCourse(course as unknown as CourseDetailData); setGeneratedActivity(null); setLastScreen('classes'); setIsNotificationOpen(false); setActiveScreen('coursedetail'); setActiveCourseTab('materials'); }} onJoinClass={handleJoinClass} />;
       
       case 'game': return <Game enrolledCourses={joinedCourses.map(course => ({ id: course.id, name: course.name, materials: course.materials.map(m => ({ id: m.id, title: m.title, type: m.type })) }))} studentId={currentStudent.studentId} onSaveQuizScore={async ({ classId, materialIds, score, totalQuestions, answers }) => { try { const response = await apiFetch(`${API_BASE_URL}/game-ai/save-quiz-score`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ classId, materialIds, score, totalQuestions, answers }) }); if (!response.ok) throw new Error('Failed to save score'); await loadCompletedActivityScores(); } catch (err) { console.error('Save quiz score error', err); Alert.alert('Error', 'Could not save your quiz score.'); } }} />;
@@ -750,19 +833,39 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
       case 'quizmasters': return <QuizMasters onBack={exitFullscreenGameToGames} generatedQuestions={generatedQuizMastersData} />;
       case 'gamebasedassignment': return <GameBasedAssignment assignmentTitle={gameAssignmentData?.assignmentTitle || 'Game'} questions={gameAssignmentData?.questions || []} gameType={gameAssignmentData?.gameType || 'quiz_master'} timeLimitMinutes={gameAssignmentData?.timeLimit === 'unlimited' ? null : gameAssignmentData?.timeLimit === 'custom' ? Number(gameAssignmentData?.customTimeLimit) || null : Number(gameAssignmentData?.timeLimit) || null} onBack={() => setActiveScreen(lastScreen)} onComplete={async (score, totalQuestions) => { try { const response = await apiFetch(`${API_BASE_URL}/game-ai/submit-game-assignment`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ assignmentId: gameAssignmentData?.assignmentId, score, totalQuestions, studentName: `${currentStudent.firstName || ''} ${currentStudent.lastName || ''}`.trim() }) }); if (response.ok) { const data = await response.json(); const attemptMsg = data.attemptNumber > 1 ? ` (Attempt ${data.attemptNumber} - Best score kept!)` : ''; Alert.alert('Game Completed', `You scored ${score} out of ${totalQuestions}! Your assignment has been automatically graded.${attemptMsg}`); } else { Alert.alert('Game Completed', `You scored ${score} out of ${totalQuestions}!`); const data = await response.json(); console.warn('Game submission warning:', data?.error); } } catch (e: any) { Alert.alert('Game Completed', `You scored ${score} out of ${totalQuestions}!`); console.error('Game submission error:', e); } await loadStudentSubmissionState(); setActiveScreen(lastScreen); }} />;
       
-      // 👇 UPDATED: Pass globalSearchQuery to Videos
       case 'videos': return <Videos onVideoActiveChange={setIsVideoActive} currentUserName={currentUserName} currentUserAvatar={currentUserAvatar} currentUserId={currentStudent.studentId} currentUserRole="student" apiBaseUrl={API_BASE_URL} searchQuery={globalSearchQuery} adaptiveQuery={adaptiveVideoRecommendation.query} adaptiveReason={adaptiveVideoRecommendation.reason} queryRotationKey={adaptiveVideoRecommendation.rotationKey} />;
       
       case 'myjourney': return <MyJourney  searchQuery={globalSearchQuery} courses={joinedCourses} currentStudent={currentStudent} studentName={currentUserName} apiBaseUrl={API_BASE_URL} />;
       case 'analytics': return <Analytics searchQuery={globalSearchQuery} courses={joinedAssignmentCourses} studentName={currentUserName} completedActivityScores={completedActivityScores} />;
       case 'assignments': return <Assignments searchQuery={globalSearchQuery} courses={joinedAssignmentCourses} selectedCourseId={selectedCourseIdForAssignments} assignmentComments={sharedAssignmentComments} assignmentFiles={sharedAssignmentFiles} onAddComment={handleAddAssignmentComment} onAddFile={handleAddAssignmentFile} onRemoveFile={handleRemoveAssignmentFile} onUpdateAssignmentStatus={handleUpdateAssignmentStatus} onRefreshSubmissions={loadStudentSubmissionState} currentStudent={currentStudent} isGeneratingActivity={isGeneratingActivity} completedActivityScores={completedActivityScores} onOpenGeneratedActivity={(course, assignment) => openGeneratedActivity(course as unknown as CourseDetailData, assignment)} onPlayGame={handlePlayGame} />;
-      case 'community': return <Community searchQuery={globalSearchQuery} posts={hydratedCommunityPosts} userName={currentUserName} userEmail={currentUserEmail} userAvatar={currentUserAvatar} onCreatePost={handleCreateCommunityPost} onAddAnswer={handleAddCommunityAnswer} onEditPost={handleEditCommunityPost} onDeletePost={handleDeleteCommunityPost} onEditAnswer={handleEditCommunityAnswer} onDeleteAnswer={handleDeleteCommunityAnswer} />;
       
-      // 👇 UPDATED: Pass globalSearchQuery to Messenger
+      case 'community': return <Community searchQuery={globalSearchQuery} posts={hydratedCommunityPosts} userName={currentUserName} userEmail={currentUserEmail} userAvatar={currentUserAvatar} onCreatePost={handleCreateCommunityPost} onAddAnswer={handleAddCommunityAnswer} onEditPost={handleEditCommunityPost} onDeletePost={handleDeleteCommunityPost} onEditAnswer={handleEditCommunityAnswer} onDeleteAnswer={handleDeleteCommunityAnswer} initialPostId={communityInitialPostId} />;
+      
       case 'messenger': return <Messenger searchQuery={globalSearchQuery} onConversationActiveChange={setIsConversationActive} onBack={() => setActiveScreen(lastScreen)} currentUser={currentStudent.studentId} currentUserName={currentUserName} courses={messengerCourses} />;
       
-      case 'notification': return <Notification mode="screen" onBack={() => setActiveScreen(lastScreen)} notifications={studentNotifications} onMarkAsRead={handleMarkNotificationAsRead} onMarkAllAsRead={handleMarkAllNotificationsAsRead} />;
-      case 'coursedetail': return <CourseDetail course={selectedAssignmentCourse} initialTab={activeCourseTab} onBack={() => setActiveScreen(lastScreen)} assignmentComments={sharedAssignmentComments} assignmentFiles={sharedAssignmentFiles} onAddComment={handleAddAssignmentComment} onAddFile={handleAddAssignmentFile} onRemoveFile={handleRemoveAssignmentFile} onUpdateAssignmentStatus={handleUpdateAssignmentStatus} onRefreshSubmissions={loadStudentSubmissionState} currentStudent={currentStudent} isGeneratingActivity={isGeneratingActivity} completedActivityScores={completedActivityScores} onGenerateActivity={(assignment) => openGeneratedActivity(selectedAssignmentCourse as unknown as CourseDetailData, assignment)} onPlayGame={handlePlayGame} />;
+      case 'notification': return <Notification mode="screen" onBack={() => setActiveScreen(lastScreen)} notifications={visibleStudentNotifications} onMarkAsRead={handleMarkNotificationAsRead} onMarkAllAsRead={handleMarkAllNotificationsAsRead} onNotificationPress={handleNotificationItemClick} />;
+      
+      case 'coursedetail': 
+        if (!selectedAssignmentCourse) return <Text style={{ textAlign: 'center', marginTop: 50 }}>No course selected.</Text>;
+        return <CourseDetail 
+          course={selectedAssignmentCourse} 
+          initialTab={activeCourseTab} 
+          autoOpenAssignmentId={autoOpenAssignmentId}
+          onConsumedAutoOpenAssignment={() => setAutoOpenAssignmentId(null)}
+          onBack={() => setActiveScreen(lastScreen)} 
+          assignmentComments={sharedAssignmentComments} 
+          assignmentFiles={sharedAssignmentFiles} 
+          onAddComment={handleAddAssignmentComment} 
+          onAddFile={handleAddAssignmentFile} 
+          onRemoveFile={handleRemoveAssignmentFile} 
+          onUpdateAssignmentStatus={handleUpdateAssignmentStatus} 
+          onRefreshSubmissions={loadStudentSubmissionState} 
+          currentStudent={currentStudent} 
+          isGeneratingActivity={isGeneratingActivity} 
+          completedActivityScores={completedActivityScores} 
+          onGenerateActivity={(assignment) => openGeneratedActivity(selectedAssignmentCourse as unknown as CourseDetailData, assignment)} 
+          onPlayGame={handlePlayGame} 
+        />;
       case 'generateactivity': return <GenerateActivity activity={generatedActivity} onBack={() => setActiveScreen(lastScreen)} currentStudentId={currentStudent.studentId} apiBaseUrl={API_BASE_URL} onCompleted={handleGeneratedActivityCompleted} />;
       default: return <Text style={{ textAlign: 'center', marginTop: 50 }}>Screen not found: {activeScreen}</Text>;
     }
@@ -778,7 +881,6 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
               isLargeScreen={isLargeScreen}
               activeScreen={activeScreen}
               onNavigate={handleNavigate}
-              // 👇 UPDATED: Single unified search handler for ALL screens
               onSearchChange={(query) => setGlobalSearchQuery(query)}
               notificationCount={unreadNotificationCount}
               onNotificationPress={handleNotificationPress}
@@ -786,7 +888,10 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
             />
           </View>
         )}
-        {isLargeScreen && isNotificationOpen && (<> <Pressable style={styles.notificationBackdrop} onPress={() => setIsNotificationOpen(false)} /> <View style={styles.notificationPopover}><Notification mode="popover" notifications={studentNotifications} onMarkAsRead={handleMarkNotificationAsRead} onMarkAllAsRead={handleMarkAllNotificationsAsRead} onClosePopover={() => setIsNotificationOpen(false)} onBack={() => { setIsNotificationOpen(false); setLastScreen(activeScreen); setActiveScreen('notification'); }} /></View> </>)}
+        {isLargeScreen && isNotificationOpen && (<> <Pressable style={styles.notificationBackdrop} onPress={() => setIsNotificationOpen(false)} /> 
+        <View style={styles.notificationPopover}>
+          <Notification mode="popover" notifications={visibleStudentNotifications} onMarkAsRead={handleMarkNotificationAsRead} onMarkAllAsRead={handleMarkAllNotificationsAsRead} onClosePopover={() => setIsNotificationOpen(false)} onBack={() => { setIsNotificationOpen(false); setLastScreen(activeScreen); setActiveScreen('notification'); }} onNotificationPress={handleNotificationItemClick} />
+        </View> </>)}
         <View style={[styles.contentLayer, isFullscreenScreen && styles.contentLayerFullscreen, isMobileFullscreenScreen && styles.contentLayerMobileFullscreen]}>
           {shouldShowDesktopDrawer && <DrawerMenu isFixed={true} activeScreen={activeScreen} onNavigate={handleNavigate} userName={currentUserName} userEmail={currentUserEmail} userAvatar={currentUserAvatar} userId={currentStudent.studentId} userRole="student" apiBaseUrl={API_BASE_URL} onEmailUpdated={handleDrawerEmailUpdated} onAvatarPress={() => handleNavigate('profile')} setIsLoggedIn={() => onLogout()} />}
           <View style={{ flex: 1 }}>{renderScreen()}</View>

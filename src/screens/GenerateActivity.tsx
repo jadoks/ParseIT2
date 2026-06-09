@@ -939,9 +939,13 @@ const GenerateActivity = ({
             )}
           </TouchableOpacity>
         ) : (
-          <View style={styles.completedBtn}>
-            <Text style={styles.submitText}>Activity Completed 🎉</Text>
-          </View>
+          <TouchableOpacity
+            style={styles.completedBtn}
+            onPress={() => onBack?.()}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.submitText}>Return to Dashboard 🎉</Text>
+          </TouchableOpacity>
         )}
       </View>
     </ScrollView>
