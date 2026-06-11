@@ -13,9 +13,7 @@ import {
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import AnnouncementModal2, {
-  Announcement,
-} from './teacher_components/TeacherAnnouncementModal';
+import { Announcement } from './teacher_components/TeacherAnnouncementModal';
 import TeacherDrawerMenu from './teacher_components/TeacherDrawerMenu';
 import TeacherHeader from './teacher_components/TeacherHeader';
 
@@ -158,7 +156,6 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
 
   const [activeScreen, setActiveScreen] = useState<AppScreenType>('home');
   const [lastScreen, setLastScreen] = useState<AppScreenType>('home');
-  const [showAnnouncement, setShowAnnouncement] = useState(true);
   const [isMobileDrawerOpen, setMobileDrawerOpen] = useState(false);
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
 
@@ -172,6 +169,10 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
   const [teacherProfile, setTeacherProfile] = useState<SignedInTeacher | null>(null);
   const [teacherNotifications, setTeacherNotifications] = useState<NotificationItem[]>([]);
   const [teacherAnnouncements, setTeacherAnnouncements] = useState<TeacherClassAnnouncement[]>([]);
+
+  // ADDED: Loading states to prevent the initial empty-state flash on the dashboard
+  const [isLoadingClasses, setIsLoadingClasses] = useState(true);
+  const [isLoadingAnnouncements, setIsLoadingAnnouncements] = useState(true);
 
   const currentTeacherData: SignedInTeacher = teacherProfile || currentTeacher;
 
@@ -334,14 +335,15 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
   };
 
   const isAnnouncementActive = (value?: any) => {
-  if (!value) return true;
-  const expiry =
-    typeof value?.toDate === 'function' ? value.toDate() : new Date(value);
+    if (!value) return true;
+    const expiry =
+      typeof value?.toDate === 'function' ? value.toDate() : new Date(value);
 
-  if (Number.isNaN(expiry.getTime())) return true;
-  return expiry.getTime() > Date.now();
-};
+    if (Number.isNaN(expiry.getTime())) return true;
+    return expiry.getTime() > Date.now();
+  };
 
+  // UPDATED: Added finally block to set isLoadingClasses to false
   const loadTeacherClasses = useCallback(async () => {
     try {
       const response = await apiFetch(`${API_BASE_URL}/classes`);
@@ -365,6 +367,8 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
     } catch (error) {
       console.log('LOAD TEACHER CLASSES ERROR =>', error);
       setTeacherClasses([]);
+    } finally {
+      setIsLoadingClasses(false);
     }
   }, [
     currentTeacherData?.teacherId,
@@ -408,68 +412,71 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
     currentTeacherData?.email,
   ]);
 
+  // UPDATED: Added finally block to set isLoadingAnnouncements to false
   const loadTeacherAnnouncements = useCallback(async () => {
-  try {
-    const classIds = effectiveCourses.map((item) => item.id).filter(Boolean);
+    try {
+      const classIds = effectiveCourses.map((item) => item.id).filter(Boolean);
 
-    if (!classIds.length) {
-      setTeacherAnnouncements([]);
-      return;
-    }
-
-    const groupedAnnouncements = await Promise.all(
-      classIds.map(async (classId) => {
-        const response = await apiFetch(`${API_BASE_URL}/class-announcements/${classId}`);
-        const data = await response.json();
-
-        if (!response.ok) {
-          throw new Error(data?.error || 'Failed to load announcements.');
-        }
-
-        return Array.isArray(data) ? data : [];
-      })
-    );
-
-    const rawAnnouncements = groupedAnnouncements.flat();
-
-    const active = rawAnnouncements.filter((item: any) =>
-      isAnnouncementActive(item?.expiresAt)
-    );
-
-    const uniqueMap = new Map<string, any>();
-
-    active.forEach((item: any) => {
-      const key = `${item.title}-${item.message}-${item.expiresAt}-${item.bannerKey}`;
-      if (!uniqueMap.has(key)) {
-        uniqueMap.set(key, item);
+      if (!classIds.length) {
+        setTeacherAnnouncements([]);
+        return;
       }
-    });
 
-    const mappedAnnouncements: TeacherClassAnnouncement[] = Array.from(
-      uniqueMap.values()
-    )
-      .map((item: any) => ({
-        id: item.id,
-        classIds: Array.isArray(item.classIds) ? item.classIds : [],
-        title: item.title || '',
-        message: item.message || '',
-        bannerKey: typeof item.bannerKey === 'number' ? item.bannerKey : 4,
-        bannerImage:
-          ANNOUNCEMENT_BANNERS[
-            typeof item.bannerKey === 'number' ? item.bannerKey : 4
-          ],
-        expiresAt: item.expiresAt || null,
-        createdAt: item.createdAt || null,
-        updatedAt: item.updatedAt || null,
-      }))
-      .sort((a, b) => toMillis(b.createdAt) - toMillis(a.createdAt));
+      const groupedAnnouncements = await Promise.all(
+        classIds.map(async (classId) => {
+          const response = await apiFetch(`${API_BASE_URL}/class-announcements/${classId}`);
+          const data = await response.json();
 
-    setTeacherAnnouncements(mappedAnnouncements);
-  } catch (error) {
-    console.log('LOAD TEACHER ANNOUNCEMENTS ERROR =>', error);
-    setTeacherAnnouncements([]);
-  }
-}, [effectiveCourses]);
+          if (!response.ok) {
+            throw new Error(data?.error || 'Failed to load announcements.');
+          }
+
+          return Array.isArray(data) ? data : [];
+        })
+      );
+
+      const rawAnnouncements = groupedAnnouncements.flat();
+
+      const active = rawAnnouncements.filter((item: any) =>
+        isAnnouncementActive(item?.expiresAt)
+      );
+
+      const uniqueMap = new Map<string, any>();
+
+      active.forEach((item: any) => {
+        const key = `${item.title}-${item.message}-${item.expiresAt}-${item.bannerKey}`;
+        if (!uniqueMap.has(key)) {
+          uniqueMap.set(key, item);
+        }
+      });
+
+      const mappedAnnouncements: TeacherClassAnnouncement[] = Array.from(
+        uniqueMap.values()
+      )
+        .map((item: any) => ({
+          id: item.id,
+          classIds: Array.isArray(item.classIds) ? item.classIds : [],
+          title: item.title || '',
+          message: item.message || '',
+          bannerKey: typeof item.bannerKey === 'number' ? item.bannerKey : 4,
+          bannerImage:
+            ANNOUNCEMENT_BANNERS[
+              typeof item.bannerKey === 'number' ? item.bannerKey : 4
+            ],
+          expiresAt: item.expiresAt || null,
+          createdAt: item.createdAt || null,
+          updatedAt: item.updatedAt || null,
+        }))
+        .sort((a, b) => toMillis(b.createdAt) - toMillis(a.createdAt));
+
+      setTeacherAnnouncements(mappedAnnouncements);
+    } catch (error) {
+      console.log('LOAD TEACHER ANNOUNCEMENTS ERROR =>', error);
+      setTeacherAnnouncements([]);
+    } finally {
+      setIsLoadingAnnouncements(false);
+    }
+  }, [effectiveCourses]);
 
   const hydratedCommunityPosts = useMemo<CommunityPost[]>(() => {
     return communityPosts.map((post) => ({
@@ -1082,6 +1089,7 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
               onCreateClass={(course: CourseDetailData) => handleCreateClass(course)}
               onDeleteCourse={handleDeleteCourse}
               currentTeacher={currentTeacherData}
+              isLoading={isLoadingClasses || isLoadingAnnouncements} // ADDED: Pass loading state to Dashboard
             />
           ) : activeScreen === 'honors' ? (
             <Honors />
@@ -1103,7 +1111,6 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
               onShared={async () => {
                 await loadTeacherAnnouncements();
                 await loadTeacherNotifications();
-                setShowAnnouncement(true);
                 setActiveScreen('home');
               }}
             />
@@ -1201,16 +1208,6 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
           </View>
         </View>
       )}
-
-      <AnnouncementModal2
-        visible={
-          activeScreen === 'home' &&
-          showAnnouncement &&
-          teacherAnnouncements.length > 0
-        }
-        onClose={() => setShowAnnouncement(false)}
-        announcements={teacherAnnouncements}
-      />
     </SafeAreaView>
   );
 }

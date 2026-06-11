@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  ActivityIndicator,
   GestureResponderEvent,
   ImageBackground,
   StyleSheet,
@@ -13,10 +14,12 @@ import {
   heightPercentageToDP as hp,
   widthPercentageToDP as wp,
 } from 'react-native-responsive-screen';
+import Ionicons from 'react-native-vector-icons/Ionicons';
 import { Announcement } from './TeacherAnnouncementModal';
 
 interface AnnouncementBannerProps {
   announcements: Announcement[];
+  isLoading?: boolean; // Added to handle initial data fetching gracefully
 }
 
 const AUTO_SLIDE_MS = 5000;
@@ -32,7 +35,10 @@ const isAnnouncementActive = (value?: any) => {
   return expiry.getTime() > Date.now();
 };
 
-const AnnouncementBanner = ({ announcements }: AnnouncementBannerProps) => {
+const AnnouncementBanner = ({ 
+  announcements = [], // Safe default to prevent undefined errors
+  isLoading = false 
+}: AnnouncementBannerProps) => {
   const { width, height } = useWindowDimensions();
 
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -117,6 +123,18 @@ const AnnouncementBanner = ({ announcements }: AnnouncementBannerProps) => {
     }
   };
 
+  // 1. Show a stable loading state while data is being fetched
+  // This prevents the "No announcements yet" flash on initial load
+  if (isLoading) {
+    return (
+      <View style={[styles.bannerContainer, styles.loadingBanner, { height: bannerHeight }]}>
+        <ActivityIndicator size="large" color="#D32F2F" />
+        <Text style={styles.loadingText}>Loading announcements...</Text>
+      </View>
+    );
+  }
+
+  // 2. Only show "No announcements" if we are DONE loading and there truly are none
   if (!hasAnnouncements) {
     return (
       <View style={[styles.bannerContainer, styles.emptyBanner, { height: bannerHeight }]}>
@@ -173,7 +191,7 @@ const AnnouncementBanner = ({ announcements }: AnnouncementBannerProps) => {
                 activeOpacity={0.8}
                 hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
               >
-                <Text style={styles.arrowText}>‹</Text>
+                <Ionicons name="chevron-back" size={30} color="#FFFFFF" />
               </TouchableOpacity>
             ) : (
               <View style={styles.arrowSpacer} />
@@ -206,7 +224,7 @@ const AnnouncementBanner = ({ announcements }: AnnouncementBannerProps) => {
                 activeOpacity={0.8}
                 hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
               >
-                <Text style={styles.arrowText}>›</Text>
+                <Ionicons name="chevron-forward" size={30} color="#FFFFFF" />
               </TouchableOpacity>
             ) : (
               <View style={styles.arrowSpacer} />
@@ -254,6 +272,17 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.12,
     shadowRadius: 12,
     elevation: 4,
+  },
+  loadingBanner: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#FAFAFA',
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 14,
+    color: '#666',
+    fontWeight: '600',
   },
   touchLayer: {
     flex: 1,
@@ -316,13 +345,6 @@ const styles = StyleSheet.create({
   arrowSpacer: {
     width: 52,
     height: 52,
-  },
-  arrowText: {
-    fontSize: 50,
-    color: '#FFF',
-    fontWeight: '400',
-    lineHeight: 36,
-    marginTop: -10,
   },
   contentText: {
     flex: 1,

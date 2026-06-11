@@ -6,6 +6,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  KeyboardAvoidingView,
   Modal,
   NativeScrollEvent,
   NativeSyntheticEvent,
@@ -93,7 +94,6 @@ const getRealMimeType = async (uri: string, fallbackType: string) => {
   
   try {
     const fileInfo = await FileSystem.getInfoAsync(uri);
-    // Only override if the picker gave us a generic binary type
     if (fileInfo.exists && fallbackType === 'application/octet-stream') {
       const name = uri.split('/').pop()?.toLowerCase() || '';
       if (name.endsWith('.pdf')) return 'application/pdf';
@@ -117,6 +117,74 @@ const getRealMimeType = async (uri: string, fallbackType: string) => {
   return fallbackType;
 };
 
+// ✅ HELPER: Parse basic markdown (bold, italic) into styled React Native Text elements
+const renderFormattedText = (text: string, baseStyle: any) => {
+  if (!text) return null;
+
+  const regex = /(\*{1,3}[^*\n]+?\*{1,3}|_{1,3}[^_\n]+?_{1,3}|[^*\n\s][^*\n]*?\*{1,2}(?=\s|$))/g;
+  const parts = text.split(regex);
+
+  return parts.map((part, index) => {
+    if (!part) return null;
+
+    const getMarkerCounts = (str: string, marker: string) => {
+      let startCount = 0;
+      let endCount = 0;
+      for (let i = 0; i < str.length; i++) {
+        if (str[i] === marker) startCount++;
+        else break;
+      }
+      for (let i = str.length - 1; i >= 0; i--) {
+        if (str[i] === marker) endCount++;
+        else break;
+      }
+      return { startCount, endCount };
+    };
+
+    if (part.includes('*')) {
+      const { startCount, endCount } = getMarkerCounts(part, '*');
+      
+      if (startCount > 0 && endCount > 0) {
+        if (startCount === endCount) {
+          if (startCount === 3) return <Text key={index} style={[baseStyle, { fontWeight: 'bold', fontStyle: 'italic' }]}>{part.slice(3, -3)}</Text>;
+          if (startCount === 2) return <Text key={index} style={[baseStyle, { fontWeight: 'bold' }]}>{part.slice(2, -2)}</Text>;
+          if (startCount === 1) return <Text key={index} style={[baseStyle, { fontStyle: 'italic' }]}>{part.slice(1, -1)}</Text>;
+        } else {
+          const cleanText = part.slice(startCount, part.length - endCount);
+          return <Text key={index} style={[baseStyle, { fontWeight: 'bold' }]}>{cleanText}</Text>;
+        }
+      }
+      
+      if (startCount === 0 && endCount > 0) {
+        const cleanText = part.slice(0, part.length - endCount);
+        if (cleanText.trim()) return <Text key={index} style={[baseStyle, { fontWeight: 'bold' }]}>{cleanText}</Text>;
+      }
+    }
+
+    if (part.includes('_')) {
+      const { startCount, endCount } = getMarkerCounts(part, '_');
+      
+      if (startCount > 0 && endCount > 0) {
+        if (startCount === endCount) {
+          if (startCount === 3) return <Text key={index} style={[baseStyle, { fontWeight: 'bold', fontStyle: 'italic' }]}>{part.slice(3, -3)}</Text>;
+          if (startCount === 2) return <Text key={index} style={[baseStyle, { fontWeight: 'bold' }]}>{part.slice(2, -2)}</Text>;
+          if (startCount === 1) return <Text key={index} style={[baseStyle, { fontStyle: 'italic' }]}>{part.slice(1, -1)}</Text>;
+        } else {
+          const cleanText = part.slice(startCount, part.length - endCount);
+          return <Text key={index} style={[baseStyle, { fontWeight: 'bold' }]}>{cleanText}</Text>;
+        }
+      }
+      
+      if (startCount === 0 && endCount > 0) {
+        const cleanText = part.slice(0, part.length - endCount);
+        if (cleanText.trim()) return <Text key={index} style={[baseStyle, { fontWeight: 'bold' }]}>{cleanText}</Text>;
+      }
+    }
+
+    return <Text key={index} style={baseStyle}>{part}</Text>;
+  });
+};
+
 export default function GeminiFloatingModal({
   visible,
   onClose,
@@ -128,6 +196,10 @@ export default function GeminiFloatingModal({
   const scrollViewRef = useRef<ScrollView | null>(null);
   const shouldScrollToBottomRef = useRef(true);
 
+  // ✅ NEW: Refs and state for dynamic input height
+  const singleLineHeightRef = useRef(0);
+  const [inputHeight, setInputHeight] = useState(42);
+
   const [mode, setMode] = useState<ChatMode>("assistant");
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -135,7 +207,9 @@ export default function GeminiFloatingModal({
   const [tutorSuggestions, setTutorSuggestions] = useState<TutorSuggestion[]>([]);
   const [loadingTutorSuggestions, setLoadingTutorSuggestions] = useState(false);
   
-  // ✅ STATE FOR FILE UPLOAD
+  // ✅ Track if user is at the bottom of the chat
+  const [isAtBottom, setIsAtBottom] = useState(true);
+
   const [isUploading, setIsUploading] = useState(false);
   const [selectedFile, setSelectedFile] = useState<{ name: string; type: string; uri: string } | null>(null);
 
@@ -160,6 +234,7 @@ export default function GeminiFloatingModal({
   );
 
   const scrollToBottom = (animated = true) => {
+    setIsAtBottom(true); // ✅ Ensure button hides immediately when triggered
     requestAnimationFrame(() => {
       scrollViewRef.current?.scrollToEnd({ animated });
     });
@@ -171,40 +246,83 @@ export default function GeminiFloatingModal({
     setVisibleCount((prev) => Math.min(prev + PAGE_SIZE, messages.length));
   };
 
+  // ✅ Calculate if user is at the bottom during scroll
   const handleMessagesScroll = (
     event: NativeSyntheticEvent<NativeScrollEvent>
   ) => {
-    const offsetY = event.nativeEvent.contentOffset.y;
+    const { layoutMeasurement, contentOffset, contentSize } = event.nativeEvent;
+    const isAtBottomNow = layoutMeasurement.height + contentOffset.y >= contentSize.height - 50; // 50px threshold
+    setIsAtBottom(isAtBottomNow);
+
+    const offsetY = contentOffset.y;
     if (offsetY <= 20) {
       loadOlderMessages();
     }
   };
 
+  // ✅ UPDATED: Handle dynamic height changes for the TextInput
+  const handleContentSizeChange = (event: any) => {
+    const contentHeight = event.nativeEvent.contentSize.height;
+    
+    // Capture the height of a single line of text on the first render
+    if (singleLineHeightRef.current === 0 && contentHeight > 0) {
+      singleLineHeightRef.current = contentHeight;
+    }
+    
+    const singleLineHeight = singleLineHeightRef.current || contentHeight;
+    const lines = Math.max(1, Math.round(contentHeight / singleLineHeight));
+    const clampedLines = Math.min(lines, 4); // Stop increasing at 4 rows
+    
+    const newHeight = 42 + (clampedLines - 1) * 25;
+    
+    if (newHeight !== inputHeight) {
+      setInputHeight(newHeight);
+    }
+  };
+
+  // ✅ NEW: Reset input height when text is cleared
+  useEffect(() => {
+    if (!input) {
+      setInputHeight(42);
+    }
+  }, [input]);
+
+  // ✅ UPDATED: Load chat history from Firebase API instead of just AsyncStorage
   useEffect(() => {
     const loadSavedChat = async () => {
       try {
+        // We still use AsyncStorage to remember the last used mode locally for instant UI loading
         const savedMode = await AsyncStorage.getItem(CHAT_MODE_KEY);
         const restoredMode: ChatMode =
           savedMode === "assistant" || savedMode === "tutor"
             ? savedMode
             : "assistant";
         setMode(restoredMode);
-        const savedMessages = await AsyncStorage.getItem(
-          getChatStorageKey(restoredMode)
-        );
-        if (savedMessages) {
-          const parsedMessages = JSON.parse(savedMessages);
-          if (Array.isArray(parsedMessages) && parsedMessages.length > 0) {
-            setMessages(parsedMessages);
+
+        // ✅ Fetch messages from Firebase via API
+        const response = await apiFetch(`${API_BASE_URL}/ai/chat-history/${restoredMode}`);
+        const data = await response.json();
+        
+        if (response.ok && Array.isArray(data?.data) && data.data.length > 0) {
+          setMessages(data.data);
+        } else {
+          // Fallback to local cache or default if API fails or returns empty
+          const savedMessages = await AsyncStorage.getItem(getChatStorageKey(restoredMode));
+          if (savedMessages) {
+            const parsedMessages = JSON.parse(savedMessages);
+            if (Array.isArray(parsedMessages) && parsedMessages.length > 0) {
+              setMessages(parsedMessages);
+            } else {
+              setMessages(getDefaultMessages(restoredMode));
+            }
           } else {
             setMessages(getDefaultMessages(restoredMode));
           }
-        } else {
-          setMessages(getDefaultMessages(restoredMode));
         }
         setVisibleCount(PAGE_SIZE);
       } catch (error) {
         console.warn("Failed to load saved AI chat:", error);
+        setMessages(getDefaultMessages("assistant"));
       } finally {
         setHydrated(true);
       }
@@ -212,6 +330,7 @@ export default function GeminiFloatingModal({
     loadSavedChat();
   }, []);
 
+  // ✅ UPDATED: Save mode preference locally
   useEffect(() => {
     if (!hydrated) return;
     AsyncStorage.setItem(CHAT_MODE_KEY, mode).catch((error) => {
@@ -219,13 +338,35 @@ export default function GeminiFloatingModal({
     });
   }, [mode, hydrated]);
 
+  // ✅ UPDATED: Save chat history to Firebase API and keep local cache
   useEffect(() => {
     if (!hydrated) return;
+    
+    // Optional: Keep a local cache as a fallback
     AsyncStorage.setItem(getChatStorageKey(mode), JSON.stringify(messages)).catch(
       (error) => {
-        console.warn("Failed to save AI chat:", error);
+        console.warn("Failed to save AI chat locally:", error);
       }
     );
+
+    // ✅ Save to Firebase via API
+    const saveChatToFirebase = async () => {
+      try {
+        const response = await apiFetch(`${API_BASE_URL}/ai/chat-history/save`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ mode, messages }),
+        });
+        
+        if (response.status === 401) {
+          console.warn("User not authenticated. Chat history not saved to Firebase.");
+        }
+      } catch (error) {
+        console.warn("Failed to save AI chat to Firebase:", error);
+      }
+    };
+    
+    saveChatToFirebase();
   }, [messages, mode, hydrated]);
 
   useEffect(() => {
@@ -303,84 +444,51 @@ export default function GeminiFloatingModal({
     }
   };
 
-  // ✅ UPDATED: Handle File Picking with Validation
-const handlePickFile = async () => {
-  try {
-    const result = await DocumentPicker.getDocumentAsync({
-      type: [
-  'image/*',
-  'application/pdf',
-  'text/plain',
-  'text/csv',
-  'application/json',
-  'application/msword',
-  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-  'application/vnd.ms-powerpoint',
-  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-  'application/vnd.ms-excel',
-  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-],
+  const handlePickFile = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: [
+          'image/*', 'application/pdf', 'text/plain', 'text/csv', 'application/json',
+          'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          'application/vnd.ms-powerpoint', 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+          'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        ],
+        copyToCacheDirectory: true,
+      });
       
-      copyToCacheDirectory: true, // Important for Android
-    });
-    
-    if (result.canceled || !result.assets?.length) return;
-    
-    const asset = result.assets[0];
-    
-    // Validate size (e.g., max 10MB for AI processing)
-    if (asset.size && asset.size > 10 * 1024 * 1024) {
-      Alert.alert(
-        'File Too Large',
-        'Please select a file smaller than 10MB.'
-      );
-      return;
+      if (result.canceled || !result.assets?.length) return;
+      const asset = result.assets[0];
+      
+      if (asset.size && asset.size > 10 * 1024 * 1024) {
+        Alert.alert('File Too Large', 'Please select a file smaller than 10MB.');
+        return;
+      }
+
+      if (asset.mimeType?.startsWith('video/') || /\.(mp4|mov|avi)$/i.test(asset.name)) {
+        Alert.alert('Unsupported File', 'Video uploads are not supported for AI analysis.');
+        return;
+      }
+
+      let realType = await getRealMimeType(asset.uri, asset.mimeType || 'application/octet-stream');
+      const lowerName = asset.name.toLowerCase();
+      if (lowerName.endsWith('.png')) realType = 'image/png';
+      else if (lowerName.endsWith('.jpg') || lowerName.endsWith('.jpeg')) realType = 'image/jpeg';
+      else if (lowerName.endsWith('.webp')) realType = 'image/webp';
+      else if (lowerName.endsWith('.gif')) realType = 'image/gif';
+      else if (lowerName.endsWith('.bmp')) realType = 'image/bmp';
+      else if (lowerName.endsWith('.pdf')) realType = 'application/pdf';
+      else if (lowerName.endsWith('.ppt')) realType = 'application/vnd.ms-powerpoint';
+      else if (lowerName.endsWith('.pptx')) realType = 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
+      else if (lowerName.endsWith('.xls')) realType = 'application/vnd.ms-excel';
+      else if (lowerName.endsWith('.xlsx')) realType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+
+      setSelectedFile({ name: asset.name, type: realType, uri: asset.uri });
+    } catch (err) {
+      console.error('Error picking document:', err);
+      Alert.alert('Error', 'Failed to pick file.');
     }
+  };
 
-    // Check if it's a video
-    if (asset.mimeType?.startsWith('video/') || /\.(mp4|mov|avi)$/i.test(asset.name)) {
-      Alert.alert('Unsupported File', 'Video uploads are not supported for AI analysis.');
-      return;
-    }
-
-    // ✅ FORCE CORRECT MIME TYPE FOR IMAGES
-    let realType = await getRealMimeType(
-        asset.uri,
-        asset.mimeType || 'application/octet-stream'
-      );
-    const lowerName = asset.name.toLowerCase();
-    if (lowerName.endsWith('.png')) realType = 'image/png';
-    else if (lowerName.endsWith('.jpg') || lowerName.endsWith('.jpeg')) realType = 'image/jpeg';
-    else if (lowerName.endsWith('.webp')) realType = 'image/webp';
-    else if (lowerName.endsWith('.gif')) realType = 'image/gif';
-    else if (lowerName.endsWith('.bmp')) realType = 'image/bmp';
-    else if (lowerName.endsWith('.pdf')) realType = 'application/pdf';
-    else if (lowerName.endsWith('.ppt'))
-      realType = 'application/vnd.ms-powerpoint';
-
-    else if (lowerName.endsWith('.pptx'))
-      realType =
-        'application/vnd.openxmlformats-officedocument.presentationml.presentation';
-
-    else if (lowerName.endsWith('.xls'))
-      realType = 'application/vnd.ms-excel';
-
-    else if (lowerName.endsWith('.xlsx'))
-      realType =
-        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
-
-    setSelectedFile({
-      name: asset.name,
-      type: realType,
-      uri: asset.uri,
-    });
-  } catch (err) {
-    console.error('Error picking document:', err);
-    Alert.alert('Error', 'Failed to pick file.');
-  }
-};
-
-  // ✅ Convert URI to Base64
   const getBase64FromUri = async (uri: string) => {
     if (Platform.OS === 'web') {
       const response = await fetch(uri);
@@ -389,125 +497,109 @@ const handlePickFile = async () => {
         const reader = new FileReader();
         reader.onloadend = () => {
           const result = reader.result;
-          if (typeof result !== 'string') {
-            reject(new Error('Failed to read file as base64.'));
-            return;
-          }
-          resolve(result.includes(',') ? result.split(',')[1] : result);
+          if (typeof result !== 'string') reject(new Error('Failed to read file as base64.'));
+          else resolve(result.includes(',') ? result.split(',')[1] : result);
         };
         reader.onerror = () => reject(new Error('Failed to convert blob to base64.'));
         reader.readAsDataURL(blob);
       });
     }
-    
-    // For native platforms, use expo-file-system
     return await FileSystem.readAsStringAsync(uri, { encoding: 'base64' });
   };
 
   const sendMessage = async () => {
-  const trimmed = input.trim();
-  if ((!trimmed && !selectedFile) || loading) return;
+    const trimmed = input.trim();
+    if ((!trimmed && !selectedFile) || loading) return;
 
-  shouldScrollToBottomRef.current = true;
+    shouldScrollToBottomRef.current = true;
+    let fileBase64 = '';
+    let fileName = '';
+    let fileType = '';
 
-  let fileBase64 = '';
-  let fileName = '';
-  let fileType = '';
-
-  if (selectedFile) {
-    setIsUploading(true);
-    try {
-      // ✅ ADD VALIDATION STEP
-      const base64Data = await getBase64FromUri(selectedFile.uri);
-      
-      if (!base64Data || base64Data.length < 100) {
-        throw new Error('File content is empty or too small to be valid.');
+    if (selectedFile) {
+      setIsUploading(true);
+      try {
+        const base64Data = await getBase64FromUri(selectedFile.uri);
+        if (!base64Data || base64Data.length < 100) throw new Error('File content is empty or too small.');
+        fileBase64 = base64Data;
+        fileName = selectedFile.name;
+        fileType = selectedFile.type;
+      } catch (error: any) {
+        Alert.alert('Upload Failed', error.message || 'Could not process the selected file.');
+        setIsUploading(false);
+        return;
       }
-
-      fileBase64 = base64Data;
-      fileName = selectedFile.name;
-      fileType = selectedFile.type;
-      
-      console.log(`✅ File ready: ${fileName} (${fileType}), Size: ${base64Data.length} chars`);
-    } catch (error: any) {
-      console.error('File conversion error:', error);
-      Alert.alert('Upload Failed', error.message || 'Could not process the selected file. Try a different image.');
       setIsUploading(false);
-      return;
-    }
-    setIsUploading(false);
-  }
-
-  
-  
-  const userMessage: Message = {
-  role: "user",
-  text: trimmed,
-  fileName: selectedFile?.name,
-};
-  const historyForRequest = [...messages, userMessage];
-
-  setMessages(historyForRequest);
-  setVisibleCount(PAGE_SIZE);
-  setInput("");
-  setSelectedFile(null);
-  setLoading(true);
-
-  try {
-    const response = await apiFetch(`${API_BASE_URL}/ai/gemini`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        message: trimmed || `Analyze the uploaded file "${fileName}" and provide a detailed summary.`,
-        mode,
-        studentId: currentStudentId || null,
-        history: historyForRequest.slice(-10),
-        fileBase64: fileBase64 || undefined,
-        fileName: fileName || undefined,
-        fileType: fileType || undefined,
-      }),
-    });
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      throw new Error(data?.error || "Failed to get AI response.");
     }
 
-    setMessages((prev) => [
-      ...prev,
-      { role: "model", text: data.reply || "No response returned." },
-    ]);
+    const userMessage: Message = { role: "user", text: trimmed, fileName: selectedFile?.name };
+    const historyForRequest = [...messages, userMessage];
+
+    setMessages(historyForRequest);
     setVisibleCount(PAGE_SIZE);
-  } catch (error: any) {
-    setMessages((prev) => [
-      ...prev,
-      { role: "model", text: `Error: ${error?.message || "Something went wrong."}` },
-    ]);
-  } finally {
-    setLoading(false);
-  }
-};
+    setInput("");
+    setSelectedFile(null);
+    setLoading(true);
 
+    try {
+      const response = await apiFetch(`${API_BASE_URL}/ai/gemini`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: trimmed || `Analyze the uploaded file "${fileName}" and provide a detailed summary.`,
+          mode,
+          studentId: currentStudentId || null,
+          history: historyForRequest.slice(-10),
+          fileBase64: fileBase64 || undefined,
+          fileName: fileName || undefined,
+          fileType: fileType || undefined,
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) throw new Error(data?.error || "Failed to get AI response.");
+
+      setMessages((prev) => [...prev, { role: "model", text: data.reply || "No response returned." }]);
+      setVisibleCount(PAGE_SIZE);
+    } catch (error: any) {
+      setMessages((prev) => [...prev, { role: "model", text: `Error: ${error?.message || "Something went wrong."}` }]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ✅ UPDATED: Fetch new mode's history from Firebase API when switching
   const resetForMode = async (nextMode: ChatMode) => {
     if (nextMode === mode || loading) return;
     try {
       shouldScrollToBottomRef.current = true;
+      // Save current mode's messages to local cache before switching
       await AsyncStorage.setItem(getChatStorageKey(mode), JSON.stringify(messages));
+      await AsyncStorage.setItem(CHAT_MODE_KEY, nextMode); // Save mode preference locally
+      
       setMode(nextMode);
       setInput("");
       setVisibleCount(PAGE_SIZE);
-      const savedMessages = await AsyncStorage.getItem(getChatStorageKey(nextMode));
-      if (savedMessages) {
-        const parsedMessages = JSON.parse(savedMessages);
-        if (Array.isArray(parsedMessages) && parsedMessages.length > 0) {
-          setMessages(parsedMessages);
-          return;
+      
+      // ✅ Fetch messages for the new mode from Firebase API
+      const response = await apiFetch(`${API_BASE_URL}/ai/chat-history/${nextMode}`);
+      const data = await response.json();
+      
+      if (response.ok && Array.isArray(data?.data) && data.data.length > 0) {
+        setMessages(data.data);
+      } else {
+        // Fallback to local cache or default
+        const savedMessages = await AsyncStorage.getItem(getChatStorageKey(nextMode));
+        if (savedMessages) {
+          const parsedMessages = JSON.parse(savedMessages);
+          if (Array.isArray(parsedMessages) && parsedMessages.length > 0) {
+            setMessages(parsedMessages);
+            return;
+          }
         }
+        setMessages(getDefaultMessages(nextMode));
       }
-      setMessages(getDefaultMessages(nextMode));
     } catch (error) {
-      console.warn("Failed to switch AI chat mode:", error);
       setMode(nextMode);
       setInput("");
       setVisibleCount(PAGE_SIZE);
@@ -522,234 +614,358 @@ const handlePickFile = async () => {
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={handleClose}>
-      <View style={styles.backdrop}>
+      <KeyboardAvoidingView 
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined} 
+        style={styles.backdrop}
+      >
         <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={handleClose} />
-        <SafeAreaView
-          style={[
-            styles.modalContainer,
-            {
-              width: isMobile ? width * 0.95 : 460,
-              height: isMobile ? height * 0.78 : 690,
-              right: isMobile ? width * 0.025 : 24,
-              bottom: isMobile ? 18 : 24,
-            },
-          ]}
-        >
-          <View style={styles.header}>
-            <Text style={styles.title}>ParseIT Assistant</Text>
-            <Text style={styles.subtitle}>{subtitle}</Text>
-          </View>
-
-          <View style={styles.modeSwitchWrap}>
-            <TouchableOpacity
-              style={[styles.modeButton, isAssistant && styles.modeButtonActive]}
-              onPress={() => resetForMode("assistant")}
-              disabled={loading}
-            >
-              <Text style={[styles.modeButtonText, isAssistant && styles.modeButtonTextActive]}>Assistant</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.modeButton, !isAssistant && styles.modeButtonActive]}
-              onPress={() => resetForMode("tutor")}
-              disabled={loading}
-            >
-              <Text style={[styles.modeButtonText, !isAssistant && styles.modeButtonTextActive]}>AI Tutor</Text>
-            </TouchableOpacity>
-          </View>
-
-          {!isAssistant && (
-            <View style={styles.tutorSuggestionWrap}>
-              <View style={styles.tutorSuggestionHeader}>
-                <Text style={styles.tutorSuggestionTitle}>Need help with these lessons?</Text>
-                {loadingTutorSuggestions && <ActivityIndicator size="small" color="#D32F2F" />}
+        <SafeAreaView style={styles.safeAreaWrapper}>
+          <View
+            style={[
+              styles.modalContainer,
+              {
+                width: isMobile ? width * 0.95 : 460,
+                height: isMobile ? height * 0.78 : 690,
+                right: isMobile ? width * 0.025 : 24,
+                bottom: isMobile ? 18 : 24,
+              },
+            ]}
+          >
+            {/* ✅ UPDATED HEADER WITH CLOSE BUTTON */}
+            <View style={styles.header}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.title}>ParseIT Assistant</Text>
+                <Text style={styles.subtitle}>{subtitle}</Text>
               </View>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tutorSuggestionList}>
-                {tutorSuggestions.length > 0 ? (
-                  tutorSuggestions.map((suggestion) => (
-                    <TouchableOpacity
-                      key={suggestion.id}
-                      style={styles.tutorSuggestionBubble}
-                      onPress={() => sendTutorSuggestion(suggestion)}
-                      disabled={loading}
-                      activeOpacity={0.85}
-                    >
-                      <Text style={styles.tutorSuggestionBubbleText} numberOfLines={2}>{suggestion.topic}</Text>
-                      {suggestion.lastScore !== null && suggestion.lastScore !== undefined && (
-                        <Text style={styles.tutorSuggestionScore}>Last score: {suggestion.lastScore}%</Text>
+              <TouchableOpacity 
+                style={styles.closeBtn} 
+                onPress={handleClose} 
+                disabled={loading}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              >
+                <MaterialCommunityIcons name="close" size={22} color="#6B7280" />
+              </TouchableOpacity>
+            </View>
+
+            {/* Mode Switch */}
+            <View style={styles.modeSwitchWrap}>
+              <TouchableOpacity
+                style={[styles.modeButton, isAssistant && styles.modeButtonActive]}
+                onPress={() => resetForMode("assistant")}
+                disabled={loading}
+              >
+                <Text style={[styles.modeButtonText, isAssistant && styles.modeButtonTextActive]}>Assistant</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modeButton, !isAssistant && styles.modeButtonActive]}
+                onPress={() => resetForMode("tutor")}
+                disabled={loading}
+              >
+                <Text style={[styles.modeButtonText, !isAssistant && styles.modeButtonTextActive]}>AI Tutor</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Tutor Suggestions */}
+            {!isAssistant && (
+              <View style={styles.tutorSuggestionWrap}>
+                <View style={styles.tutorSuggestionHeader}>
+                  <Text style={styles.tutorSuggestionTitle}>Need help with these lessons?</Text>
+                  {loadingTutorSuggestions && <ActivityIndicator size="small" color="#D32F2F" />}
+                </View>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tutorSuggestionList}>
+                  {tutorSuggestions.length > 0 ? (
+                    tutorSuggestions.map((suggestion) => (
+                      <TouchableOpacity
+                        key={suggestion.id}
+                        style={styles.tutorSuggestionBubble}
+                        onPress={() => sendTutorSuggestion(suggestion)}
+                        disabled={loading}
+                        activeOpacity={0.85}
+                      >
+                        <Text style={styles.tutorSuggestionBubbleText} numberOfLines={2}>{suggestion.topic}</Text>
+                        {suggestion.lastScore !== null && suggestion.lastScore !== undefined && (
+                          <Text style={styles.tutorSuggestionScore}>Last score: {suggestion.lastScore}%</Text>
+                        )}
+                      </TouchableOpacity>
+                    ))
+                  ) : (
+                    <Text style={styles.tutorSuggestionEmpty}>No weak lesson suggestions yet.</Text>
+                  )}
+                </ScrollView>
+              </View>
+            )}
+
+            {/* ✅ Messages Wrapper (Added to hold the floating button) */}
+            <View style={{ flex: 1 }}>
+              <ScrollView
+                ref={scrollViewRef}
+                contentContainerStyle={styles.messages}
+                showsVerticalScrollIndicator={true}
+                onScroll={handleMessagesScroll}
+                scrollEventThrottle={16}
+                keyboardShouldPersistTaps="handled"
+                onContentSizeChange={() => {
+                  if (shouldScrollToBottomRef.current) scrollToBottom(false);
+                }}
+              >
+                {visibleCount < messages.length && (
+                  <View style={styles.loadOlderWrap}>
+                    <Text style={styles.loadOlderText}>Scroll up to load older messages</Text>
+                  </View>
+                )}
+                {visibleMessages.map((message, index) => {
+                  const isUser = message.role === "user";
+                  const actualIndex = messages.length - visibleMessages.length + index;
+                  return (
+                    <View key={`${message.role}-${actualIndex}`} style={[styles.messageRow, isUser ? styles.userRow : styles.botRow]}>
+                      {!isUser && (
+                        <View style={styles.botLabelContainer}>
+                          <MaterialCommunityIcons name="robot-outline" size={14} color="#D32F2F" />
+                          <Text style={styles.botLabel}>{mode === "assistant" ? "ParseIT Assistant" : "AI Tutor"}</Text>
+                        </View>
                       )}
-                    </TouchableOpacity>
-                  ))
-                ) : (
-                  <Text style={styles.tutorSuggestionEmpty}>No weak lesson suggestions yet.</Text>
+                      <View style={[styles.messageBubble, isUser ? styles.userBubble : styles.botBubble]}>
+                        {message.fileName && (
+                          <View style={[styles.fileAttachment, isUser ? styles.fileAttachmentUser : styles.fileAttachmentBot]}>
+                            <MaterialCommunityIcons name="file-document-outline" size={16} color={isUser ? "#FFF" : "#D32F2F"} />
+                            <Text style={[styles.fileAttachmentText, isUser && { color: "#FFF" }]} numberOfLines={1}>
+                              {message.fileName}
+                            </Text>
+                          </View>
+                        )}
+                        {!!message.text && (
+                          <Text style={isUser ? styles.userText : styles.botText}>
+                            {renderFormattedText(message.text, isUser ? styles.userText : styles.botText)}
+                          </Text>
+                        )}
+                      </View>
+                    </View>
+                  );
+                })}
+                {loading && (
+                  <View style={[styles.messageRow, styles.botRow]}>
+                    <View style={styles.botLabelContainer}>
+                      <MaterialCommunityIcons name="robot-outline" size={14} color="#D32F2F" />
+                      <Text style={styles.botLabel}>{mode === "assistant" ? "ParseIT Assistant" : "AI Tutor"}</Text>
+                    </View>
+                    <View style={[styles.messageBubble, styles.botBubble]}>
+                      <ActivityIndicator color="#D32F2F" />
+                    </View>
+                  </View>
                 )}
               </ScrollView>
+
+              {/* ✅ Scroll to Bottom Floating Button */}
+              {!isAtBottom && (
+                <TouchableOpacity 
+                  style={styles.scrollToBottomBtn} 
+                  onPress={() => scrollToBottom(true)}
+                  activeOpacity={0.8}
+                >
+                  <MaterialCommunityIcons name="chevron-down" size={24} color="#D32F2F" />
+                </TouchableOpacity>
+              )}
             </View>
-          )}
 
-          <ScrollView
-            ref={scrollViewRef}
-            contentContainerStyle={styles.messages}
-            showsVerticalScrollIndicator={true}
-            onScroll={handleMessagesScroll}
-            scrollEventThrottle={16}
-            onContentSizeChange={() => {
-              if (shouldScrollToBottomRef.current) {
-                scrollToBottom(false);
-              }
-            }}
-          >
-            {visibleCount < messages.length && (
-              <View style={styles.loadOlderWrap}>
-                <Text style={styles.loadOlderText}>Scroll up to load older messages</Text>
-              </View>
-            )}
-            {visibleMessages.map((message, index) => {
-              const isUser = message.role === "user";
-              const actualIndex = messages.length - visibleMessages.length + index;
-              return (
-                <View key={`${message.role}-${actualIndex}`} style={[styles.messageRow, isUser ? styles.userRow : styles.botRow]}>
-                  {!isUser && (
-                    <Text style={styles.botLabel}>{mode === "assistant" ? "ParseIT Assistant" : "AI Tutor"}</Text>
+            {/* Input Area */}
+            <View style={styles.inputArea}>
+              {selectedFile && (
+                <View style={styles.selectedFileBadge}>
+                  <MaterialCommunityIcons name="file-document-outline" size={16} color="#D32F2F" />
+                  <Text style={styles.selectedFileText} numberOfLines={1} ellipsizeMode="middle">
+                    {selectedFile.name}
+                  </Text>
+                  <TouchableOpacity onPress={() => setSelectedFile(null)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                    <MaterialCommunityIcons name="close-circle" size={18} color="#9CA3AF" />
+                  </TouchableOpacity>
+                </View>
+              )}
+              <View style={styles.inputRow}>
+                <TouchableOpacity 
+                  style={styles.uploadBtn} 
+                  onPress={handlePickFile}
+                  disabled={loading || isUploading}
+                >
+                  <MaterialCommunityIcons 
+                    name={selectedFile ? "file-check-outline" : "paperclip"} 
+                    size={22} 
+                    color={selectedFile ? "#16A34A" : "#6B7280"} 
+                  />
+                </TouchableOpacity>
+
+                <TextInput
+                  style={[styles.input, { height: inputHeight, borderRadius: Math.min(inputHeight / 2, 21) }]}
+                  placeholder={mode === "tutor" ? "Ask about a difficult lesson..." : "Type your question..."}
+                  placeholderTextColor="#9CA3AF"
+                  value={input}
+                  onChangeText={setInput}
+                  editable={!loading && !isUploading}
+                  returnKeyType="send"
+                  multiline
+                  textAlignVertical="top"
+                  onContentSizeChange={handleContentSizeChange}
+                  // ✅ NEW: Handle Enter to send, Shift+Enter for newline (Web/Desktop)
+                  onKeyPress={(e) => {
+                    if (e.nativeEvent.key === 'Enter') {
+                      if (Platform.OS === 'web') {
+                        const nativeEvent = e.nativeEvent as any;
+                        if (!nativeEvent.shiftKey) {
+                          e.preventDefault?.();
+                          sendMessage();
+                        }
+                      }
+                    }
+                  }}
+                />
+
+                <TouchableOpacity
+                  style={[styles.sendBtn, (loading || isUploading) && styles.sendBtnDisabled]}
+                  onPress={sendMessage}
+                  disabled={loading || isUploading}
+                >
+                  {loading || isUploading ? (
+                    <ActivityIndicator size="small" color="#FFF" />
+                  ) : (
+                    <MaterialCommunityIcons name="send" size={18} color="#FFF" />
                   )}
-                  <View style={[styles.messageBubble, isUser ? styles.userBubble : styles.botBubble]}>
-                    <View>
-  {message.fileName && (
-    <View
-      style={{
-        backgroundColor: isUser ? "rgba(255,255,255,0.2)" : "#F3F4F6",
-        padding: 8,
-        borderRadius: 8,
-        marginBottom: message.text ? 8 : 0,
-      }}
-    >
-      <Text
-        style={{
-          color: isUser ? "#FFF" : "#111827",
-          fontWeight: "600",
-        }}
-      >
-        📎 {message.fileName}
-      </Text>
-    </View>
-  )}
-
-  {!!message.text && (
-    <Text style={isUser ? styles.userText : styles.botText}>
-      {message.text}
-    </Text>
-  )}
-</View>
-                  </View>
-                </View>
-              );
-            })}
-            {loading && (
-              <View style={[styles.messageRow, styles.botRow]}>
-                <Text style={styles.botLabel}>{mode === "assistant" ? "ParseIT Assistant" : "AI Tutor"}</Text>
-                <View style={[styles.messageBubble, styles.botBubble]}>
-                  <ActivityIndicator />
-                </View>
-              </View>
-            )}
-          </ScrollView>
-
-          {/* ✅ INPUT WRAPPER WITH FILE UPLOAD */}
-          <View style={styles.inputWrapper}>
-            {/* File Upload Button */}
-            <TouchableOpacity 
-              style={styles.uploadBtn} 
-              onPress={handlePickFile}
-              disabled={loading || isUploading}
-            >
-              <MaterialCommunityIcons 
-                name={selectedFile ? "file-check-outline" : "paperclip"} 
-                size={24} 
-                color={selectedFile ? "#16A34A" : "#666"} 
-              />
-            </TouchableOpacity>
-
-            <TextInput
-              style={[styles.input, selectedFile && styles.inputWithFile]}
-              placeholder={mode === "tutor" ? "Ask about a difficult lesson..." : "Type your question..."}
-              placeholderTextColor="#999"
-              value={input}
-              onChangeText={setInput}
-              editable={!loading}
-              onSubmitEditing={sendMessage}
-              returnKeyType="send"
-            />
-
-            {/* Selected File Badge */}
-            {selectedFile && (
-              <View style={styles.selectedFileBadge}>
-                <Text style={styles.selectedFileText} numberOfLines={1}>{selectedFile.name}</Text>
-                <TouchableOpacity onPress={() => setSelectedFile(null)}>
-                  <MaterialCommunityIcons name="close" size={16} color="#666" />
                 </TouchableOpacity>
               </View>
-            )}
-
-            <TouchableOpacity
-              style={[styles.sendBtn, (loading || isUploading) && styles.sendBtnDisabled]}
-              onPress={sendMessage}
-              disabled={loading || isUploading}
-            >
-              <Text style={styles.sendText}>{loading || isUploading ? "Sending..." : "Send"}</Text>
-            </TouchableOpacity>
+            </View>
           </View>
         </SafeAreaView>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
 
 const styles = StyleSheet.create({
-  backdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.08)" },
+  backdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.15)" },
+  safeAreaWrapper: { flex: 1, justifyContent: 'flex-end', alignItems: 'flex-end' },
   modalContainer: {
-    position: "absolute", backgroundColor: "#FFFFFF", borderRadius: 20, overflow: "hidden",
-    shadowColor: "#000", shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.18, shadowRadius: 18, elevation: 14, marginBottom: 48,
+    backgroundColor: "#FFFFFF", borderRadius: 24, overflow: "hidden",
+    shadowColor: "#000", shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.15, shadowRadius: 20, elevation: 15,
+    marginBottom: 20,
   },
-  header: { paddingHorizontal: 18, paddingTop: 16, paddingBottom: 14, borderBottomWidth: 1, borderBottomColor: "#E9E9E9", backgroundColor: "#FFFFFF" },
-  title: { fontSize: 18, fontWeight: "700", color: "#D32F2F" },
-  subtitle: { marginTop: 4, fontSize: 12, color: "#667085" },
-  modeSwitchWrap: { flexDirection: "row", marginHorizontal: 14, marginTop: 14, marginBottom: 4, backgroundColor: "#F4F4F4", borderRadius: 999, padding: 4 },
-  modeButton: { flex: 1, height: 40, borderRadius: 999, alignItems: "center", justifyContent: "center" },
-  modeButtonActive: { backgroundColor: "#D32F2F" },
-  modeButtonText: { fontSize: 14, fontWeight: "600", color: "#666" },
+  // ✅ UPDATED HEADER STYLE TO SUPPORT CLOSE BUTTON
+  header: { 
+    flexDirection: 'row', 
+    justifyContent: 'space-between', 
+    alignItems: 'center', 
+    paddingHorizontal: 20, 
+    paddingTop: 18, 
+    paddingBottom: 14, 
+    borderBottomWidth: 1, 
+    borderBottomColor: "#F3F4F6", 
+    backgroundColor: "#FFFFFF" 
+  },
+  title: { fontSize: 18, fontWeight: "800", color: "#D32F2F" },
+  subtitle: { marginTop: 4, fontSize: 12, color: "#6B7280", fontWeight: "500" },
+  
+  // ✅ NEW CLOSE BUTTON STYLE
+  closeBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#F3F4F6',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginLeft: 10,
+  },
+
+  modeSwitchWrap: { flexDirection: "row", marginHorizontal: 16, marginTop: 12, marginBottom: 4, backgroundColor: "#F3F4F6", borderRadius: 999, padding: 4 },
+  modeButton: { flex: 1, height: 38, borderRadius: 999, alignItems: "center", justifyContent: "center" },
+  modeButtonActive: { backgroundColor: "#D32F2F", shadowColor: "#D32F2F", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 4, elevation: 3 },
+  modeButtonText: { fontSize: 13, fontWeight: "700", color: "#6B7280" },
   modeButtonTextActive: { color: "#FFF" },
-  messages: { padding: 14, paddingBottom: 20 },
-  loadOlderWrap: { alignItems: "center", marginBottom: 12 },
-  loadOlderText: { fontSize: 12, color: "#667085" },
-  messageRow: { marginBottom: 12, maxWidth: "88%" },
+  
+  messages: { padding: 16, paddingBottom: 20, flexGrow: 1 },
+  loadOlderWrap: { alignItems: "center", marginBottom: 16 },
+  loadOlderText: { fontSize: 12, color: "#9CA3AF", fontWeight: "500" },
+  
+  messageRow: { marginBottom: 16, maxWidth: "85%" },
   userRow: { alignSelf: "flex-end", alignItems: "flex-end" },
   botRow: { alignSelf: "flex-start", alignItems: "flex-start" },
-  botLabel: { fontSize: 12, fontWeight: "600", color: "#667085", marginBottom: 6, marginLeft: 4 },
-  messageBubble: { paddingHorizontal: 14, paddingVertical: 12, borderRadius: 16 },
-  botBubble: { alignSelf: "flex-start", backgroundColor: "#FFFFFF", borderWidth: 1, borderColor: "#E4E7EC", borderRadius: 14, borderTopLeftRadius: 6, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 6, elevation: 2 },
-  userBubble: { alignSelf: "flex-end", backgroundColor: "#D32F2F", borderRadius: 14, borderTopRightRadius: 6 },
-  botText: { color: "#1F2937", fontSize: 14, lineHeight: 22 },
-  userText: { color: "#FFFFFF", fontSize: 14, lineHeight: 22 },
   
-  // ✅ STYLES FOR INPUT AREA
-  inputWrapper: { flexDirection: "row", alignItems: "center", padding: 12, borderTopWidth: 1, borderTopColor: "#E9E9E9", backgroundColor: "#FFFFFF", position: 'relative' },
-  uploadBtn: { marginRight: 8, padding: 8, justifyContent: 'center', alignItems: 'center' },
-  input: { flex: 1, height: 46, borderWidth: 1.5, borderColor: "#D32F2F", borderRadius: 999, paddingHorizontal: 14, color: "#000", backgroundColor: "#FFFFFF" },
-  inputWithFile: { borderBottomLeftRadius: 0, borderTopLeftRadius: 0 },
-  selectedFileBadge: {
-    position: 'absolute', top: -30, left: 50, backgroundColor: '#F3F4F6',
-    paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12, flexDirection: 'row',
-    alignItems: 'center', gap: 6, maxWidth: '60%', zIndex: 10,
+  botLabelContainer: { flexDirection: 'row', alignItems: 'center', marginBottom: 6, marginLeft: 4, gap: 4 },
+  botLabel: { fontSize: 12, fontWeight: "700", color: "#D32F2F" },
+  
+  messageBubble: { paddingHorizontal: 14, paddingVertical: 12, borderRadius: 18, maxWidth: '100%' },
+  botBubble: { 
+    alignSelf: "flex-start", backgroundColor: "#FFFFFF", borderWidth: 1, borderColor: "#E5E7EB", 
+    borderRadius: 18, borderTopLeftRadius: 4, 
+    shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 2 
   },
-  selectedFileText: { fontSize: 12, color: '#374151', fontWeight: '500' },
-  sendBtn: { marginLeft: 10, height: 46, paddingHorizontal: 16, borderRadius: 999, backgroundColor: "#D32F2F", alignItems: "center", justifyContent: "center" },
-  sendBtnDisabled: { opacity: 0.7 },
-  sendText: { color: "#FFFFFF", fontWeight: "700", fontSize: 14 },
-  tutorSuggestionWrap: { paddingHorizontal: 14, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: "#F3D4D4", backgroundColor: "#FFFDFD" },
-  tutorSuggestionHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8 },
-  tutorSuggestionTitle: { fontSize: 12, fontWeight: "800", color: "#7A1F1F" },
+  userBubble: { alignSelf: "flex-end", backgroundColor: "#D32F2F", borderRadius: 18, borderTopRightRadius: 4 },
+  
+  botText: { color: "#1F2937", fontSize: 14, lineHeight: 22, fontWeight: "400" },
+  userText: { color: "#FFFFFF", fontSize: 14, lineHeight: 22, fontWeight: "400" },
+  
+  fileAttachment: {
+    flexDirection: 'row', alignItems: 'center', paddingVertical: 6, paddingHorizontal: 10, 
+    borderRadius: 10, marginBottom: 8, gap: 6,
+  },
+  fileAttachmentBot: { backgroundColor: '#FEF2F2', borderWidth: 1, borderColor: '#FECACA' },
+  fileAttachmentUser: { backgroundColor: 'rgba(255,255,255,0.2)' },
+  fileAttachmentText: { fontSize: 13, fontWeight: '600', color: '#991B1B', flex: 1 },
+
+  // Input Area Styles
+  inputArea: {
+    paddingHorizontal: 14, paddingTop: 10, paddingBottom: 14,
+    borderTopWidth: 1, borderTopColor: "#F3F4F6", backgroundColor: "#FFFFFF",
+  },
+  selectedFileBadge: {
+    flexDirection: 'row', alignItems: 'center', backgroundColor: '#FEF2F2',
+    borderWidth: 1, borderColor: '#FECACA', paddingHorizontal: 12, paddingVertical: 8,
+    borderRadius: 14, marginBottom: 10, gap: 8,
+  },
+  selectedFileText: { flex: 1, fontSize: 13, color: '#991B1B', fontWeight: '600' },
+  
+  // ✅ UPDATED: Bottom aligned for growing input
+  inputRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 10 },
+  uploadBtn: {
+    width: 42, height: 42, borderRadius: 21, backgroundColor: '#F3F4F6',
+    justifyContent: 'center', alignItems: 'center',
+  },
+  // ✅ UPDATED: Removed fixed height and border radius (handled dynamically)
+  input: {
+    flex: 1,
+    borderWidth: 1.5, borderColor: "#E5E7EB",
+    paddingHorizontal: 16, paddingVertical: 10,
+    color: "#111827", backgroundColor: "#F9FAFB", fontSize: 14, fontWeight: "500",
+  },
+  sendBtn: {
+    width: 42, height: 42, borderRadius: 21, backgroundColor: "#D32F2F",
+    alignItems: "center", justifyContent: "center",
+    shadowColor: "#D32F2F", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 6, elevation: 4,
+  },
+  sendBtnDisabled: { backgroundColor: "#F87171", shadowOpacity: 0 },
+  
+  tutorSuggestionWrap: { paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: "#F3F4F6", backgroundColor: "#FAFAFA" },
+  tutorSuggestionHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 10 },
+  tutorSuggestionTitle: { fontSize: 12, fontWeight: "800", color: "#7A1F1F", textTransform: "uppercase", letterSpacing: 0.5 },
   tutorSuggestionList: { paddingRight: 10 },
-  tutorSuggestionBubble: { maxWidth: 210, backgroundColor: "#FFF5F5", borderWidth: 1, borderColor: "#F3B4B4", borderRadius: 16, paddingHorizontal: 12, paddingVertical: 9, marginRight: 8 },
-  tutorSuggestionBubbleText: { color: "#2B1111", fontWeight: "800", fontSize: 12, lineHeight: 16 },
+  tutorSuggestionBubble: { maxWidth: 200, backgroundColor: "#FFF", borderWidth: 1, borderColor: "#FECACA", borderRadius: 16, paddingHorizontal: 12, paddingVertical: 10, marginRight: 10, shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 2, elevation: 1 },
+  tutorSuggestionBubbleText: { color: "#111827", fontWeight: "700", fontSize: 13, lineHeight: 18 },
   tutorSuggestionScore: { color: "#D32F2F", fontWeight: "700", fontSize: 11, marginTop: 4 },
-  tutorSuggestionEmpty: { color: "#8A6F6F", fontSize: 12, paddingVertical: 8 },
+  tutorSuggestionEmpty: { color: "#9CA3AF", fontSize: 13, paddingVertical: 8, fontStyle: "italic" },
+
+  // ✅ Scroll to Bottom Button Style
+  scrollToBottomBtn: {
+    position: 'absolute',
+    bottom: 16,
+    right: 16,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#FFFFFF',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 4,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
 });

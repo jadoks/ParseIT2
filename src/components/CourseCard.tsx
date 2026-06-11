@@ -1,8 +1,8 @@
 import Constants from 'expo-constants';
+import { Image } from 'expo-image'; // <--- IMPORTED expo-image for instant caching
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
-  Image,
   Modal,
   Platform,
   StyleSheet,
@@ -121,7 +121,6 @@ const CourseCard: React.FC<CourseCardProps> = ({
   const [dropdownState, setDropdownState] = useState<DropdownState>(null);
   const [bannerLoadFailed, setBannerLoadFailed] = useState(false);
   const [signedBannerUrl, setSignedBannerUrl] = useState<string | null>(null);
-  // REMOVED: isRefreshingBanner state is no longer needed
 
   const getScorePercent = (assignment: CourseCardAssignment) => {
     if (
@@ -311,7 +310,6 @@ const CourseCard: React.FC<CourseCardProps> = ({
 
         if (isMounted && data?.url) {
           setSignedBannerUrl(data.url);
-          // Reset failed state in case the initial bannerUrl was expired and failed to load
           setBannerLoadFailed(false); 
         }
       } catch {
@@ -341,15 +339,12 @@ const CourseCard: React.FC<CourseCardProps> = ({
       'Computer Fundamentals': require('../../assets/parseclass/AP1.jpg'),
     };
 
-    // Use the newly signed URL if available, otherwise fallback to the existing bannerUrl
     const uri = signedBannerUrl || course.bannerUrl;
 
-    // Show the remote image immediately if we have a URI and it hasn't permanently failed
     if (uri && !bannerLoadFailed) {
       return { uri };
     }
 
-    // Fallback to local asset
     return imageMap[course.name] || require('../../assets/parseclass/AP1.jpg');
   };
 
@@ -389,10 +384,12 @@ const CourseCard: React.FC<CourseCardProps> = ({
         }}
       >
         <View style={{ height: bannerHeight }}>
+          {/* UPDATED: Using expo-image for instant native caching and smooth fade-in */}
           <Image
             source={getCourseImage()}
             style={styles.bannerImage}
-            resizeMode="cover"
+            contentFit="cover" // Replaces resizeMode="cover"
+            transition={200}   // Adds a smooth 200ms fade-in effect
             onError={() => setBannerLoadFailed(true)}
           />
           <View style={styles.overlay} />

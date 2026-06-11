@@ -58,6 +58,7 @@ interface DrawerMenuProps {
   apiBaseUrl: string;
   onAvatarPress?: () => void;
   onEmailUpdated?: (email: string) => void;
+  onFilePickerOpen?: () => void; // <--- ADDED PROP
   setIsLoggedIn: React.Dispatch<React.SetStateAction<boolean>>;
 }
 
@@ -111,7 +112,7 @@ const MenuItem = ({
 
         if (Platform.OS === 'web' && (state as any).hovered) {
           if (highlighted) {
-            base.push({ backgroundColor: '#B71C1C' }); // Darker red on hover
+            base.push({ backgroundColor: '#B71C1C' });
           } else if (!active) {
             base.push({ backgroundColor: 'rgba(130,129,129,0.08)' });
           }
@@ -165,6 +166,7 @@ const DrawerMenu = ({
   apiBaseUrl,
   onAvatarPress,
   onEmailUpdated,
+  onFilePickerOpen, // <--- DESTRUCTURED PROP
   setIsLoggedIn,
 }: DrawerMenuProps) => {
   const { width } = useWindowDimensions();
@@ -335,6 +337,8 @@ const DrawerMenu = ({
 
   const handleUploadGrade = async () => {
     try {
+      onFilePickerOpen?.(); // <--- TRIGGER MARGIN FIX BEFORE OPENING PICKER
+      
       const result = await DocumentPicker.getDocumentAsync({
         type: [
           'application/pdf',

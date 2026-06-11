@@ -68,6 +68,7 @@ interface DashboardProps {
       mastered: boolean;
     }
   >;
+  isLoading?: boolean;
 }
 
 type RecommendationType = 'review' | 'practice';
@@ -82,6 +83,7 @@ const Dashboard = ({
   onJoinClass,
   isGeneratingActivity = false,
   completedActivityScores = {},
+  isLoading = false,
 }: DashboardProps) => {
   const { width } = useWindowDimensions();
   const [joinModalVisible, setJoinModalVisible] = useState(false);
@@ -209,7 +211,6 @@ const Dashboard = ({
     return Array.isArray(assignment.materialIds) && assignment.materialIds.length > 0;
   };
 
-  // UPDATED: Check strictly if the activity is completed, regardless of score
   const hasCompletedGeneratedActivity = (assignment: DashboardAssignment) => {
     const activityScore = completedActivityScores[assignment.id];
     return !!activityScore?.completed;
@@ -219,7 +220,7 @@ const Dashboard = ({
     return (
       getRecommendationType(assignment) !== null &&
       hasRelatedMaterials(assignment) &&
-      !hasCompletedGeneratedActivity(assignment) // Hide if already completed
+      !hasCompletedGeneratedActivity(assignment)
     );
   };
 
@@ -264,6 +265,10 @@ const Dashboard = ({
     }
   };
 
+  // ==========================================
+  // ALL HOOKS MUST BE CALLED BEFORE ANY EARLY RETURNS
+  // ==========================================
+
   const studentAnalytics = useMemo(() => {
     return buildStudentAnalytics(courses);
   }, [courses]);
@@ -305,7 +310,7 @@ const Dashboard = ({
         nextDueAssignment,
       };
     });
-  }, [courses, completedActivityScores]); // Added completedActivityScores to dependencies
+  }, [courses, completedActivityScores]);
 
   const visibleCourses = useMemo(() => {
     return showAllCourses ? derivedCourses : derivedCourses.slice(0, 6);
@@ -316,7 +321,6 @@ const Dashboard = ({
   const recommendedAssignments = useMemo(() => {
     return derivedCourses.flatMap((item) =>
       item.weakAssignments
-        // UPDATED: Filter out assignments where the generated activity is already completed
         .filter((assignment) => canGenerateActivity(assignment))
         .map((assignment) => {
           const recommendation = getRecommendationType(assignment);
@@ -329,7 +333,7 @@ const Dashboard = ({
             assignment,
             recommendation,
             score: getScorePercent(assignment),
-            canGenerate: true, // Always true since we filtered by canGenerateActivity
+            canGenerate: true,
             relatedMaterials,
             materialTitle:
               relatedMaterials.map((material) => material.title).join(", ") ||
@@ -347,7 +351,7 @@ const Dashboard = ({
         materialTitle: string;
       }>
     );
-  }, [derivedCourses, completedActivityScores]); // Added completedActivityScores to dependencies
+  }, [derivedCourses, completedActivityScores]);
 
   const nextBest = useMemo(() => {
     const actionable = recommendedAssignments.filter((item) => item.canGenerate);
@@ -356,6 +360,20 @@ const Dashboard = ({
       (a, b) => (a.score ?? 100) - (b.score ?? 100)
     )[0];
   }, [recommendedAssignments]);
+
+  // ==========================================
+  // NOW IT IS SAFE TO RETURN EARLY
+  // ==========================================
+  const isInitialLoad = isLoading && courses.length === 0 && announcements.length === 0;
+
+  if (isInitialLoad) {
+    return (
+      <View style={styles.fullPageLoader}>
+        <ActivityIndicator size="large" color="#D32F2F" />
+        <Text style={styles.fullPageLoaderText}>Loading your dashboard...</Text>
+      </View>
+    );
+  }
 
   return (
     <>
@@ -397,7 +415,9 @@ const Dashboard = ({
             </TouchableOpacity>
           </View>
 
-          {announcements.length > 0 ? (
+          {isLoading ? (
+            <AnnouncementBanner announcements={[]} isLoading={true} />
+          ) : announcements.length > 0 ? (
             <AnnouncementBanner announcements={announcements} />
           ) : (
             <View style={[styles.banner, { height: bannerHeight }]}>
@@ -1420,6 +1440,19 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontWeight: '700',
     fontSize: 13,
+  },
+
+  fullPageLoader: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+  },
+  fullPageLoaderText: {
+    marginTop: 12,
+    fontSize: 16,
+    color: '#666',
+    fontWeight: '600',
   },
 });
 

@@ -9792,7 +9792,7 @@ app.get("/youtube/videos", async (req, res) => {
     if (ids.length) {
       const videoParams = new URLSearchParams({
         key: process.env.YOUTUBE_API_KEY,
-        part: "statistics,contentDetails",
+        part: "statistics,contentDetails,status", 
         id: ids.join(","),
       });
 
@@ -9806,30 +9806,38 @@ app.get("/youtube/videos", async (req, res) => {
       }
     }
 
-    const videos = (searchData?.items || []).map((item) => {
-      const videoId = item?.id?.videoId;
-      const snippet = item?.snippet || {};
-      const stats = statsById[videoId] || {};
-      const thumbnail =
-        snippet?.thumbnails?.high?.url ||
-        snippet?.thumbnails?.medium?.url ||
-        snippet?.thumbnails?.default?.url ||
-        `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`;
+    const videos = (searchData?.items || [])
+  .map((item) => {
+    const videoId = item?.id?.videoId;
+    const snippet = item?.snippet || {};
+    const stats = statsById[videoId] || {};
 
-      return {
-        id: videoId,
-        title: snippet?.title || "Untitled video",
-        description: snippet?.description || "",
-        channel: snippet?.channelTitle || "YouTube",
-        publishedAt: snippet?.publishedAt || null,
-        uploadedAt: mapYouTubePublishedLabel(snippet?.publishedAt),
-        thumbnail,
-        watchUrl: `https://www.youtube.com/watch?v=${videoId}`,
-        embedUrl: `https://www.youtube.com/embed/${videoId}`,
-        views: formatYouTubeViewCount(stats?.statistics?.viewCount),
-        viewCount: Number(stats?.statistics?.viewCount || 0),
-      };
-    });
+    // 🚨 CRITICAL FIX: Filter out videos that block embedding (Prevents Error 153)
+    if (stats?.status?.embeddable === false) {
+      return null; 
+    }
+
+    const thumbnail =
+      snippet?.thumbnails?.high?.url ||
+      snippet?.thumbnails?.medium?.url ||
+      snippet?.thumbnails?.default?.url ||
+      `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`;
+
+    return {
+      id: videoId,
+      title: snippet?.title || "Untitled video",
+      description: snippet?.description || "",
+      channel: snippet?.channelTitle || "YouTube",
+      publishedAt: snippet?.publishedAt || null,
+      uploadedAt: mapYouTubePublishedLabel(snippet?.publishedAt),
+      thumbnail,
+      watchUrl: `https://www.youtube.com/watch?v=${videoId}`,
+      embedUrl: `https://www.youtube.com/embed/${videoId}?enablejsapi=1&origin=https://www.youtube.com`,
+      views: formatYouTubeViewCount(stats?.statistics?.viewCount),
+      viewCount: Number(stats?.statistics?.viewCount || 0),
+    };
+  })
+  .filter(Boolean); // <--- ADD THIS to remove the nulls
 
     return res.json({
       success: true,
@@ -10924,23 +10932,7 @@ async function handleAIChat(req, res) {
     const interpretedMessage = expandKeywordPrompt(rawMessage, normalizedMode);
     const bestMatch = matchedTraining[0] || null;
 
-    // Keep existing keyword + strong trigger logic for Assistant only.
-    // Tutor mode should still teach, guide, and adapt instead of returning a canned answer directly.
-    if (
-      normalizedMode === "assistant" &&
-      bestMatch &&
-      bestMatch.score >= 80 &&
-      bestMatch.response &&
-      !fileBase64 // ❌ Don't use cached training if a new file is uploaded
-    ) {
-      return res.json({
-        reply: bestMatch.response,
-        matchedTrainingCount: matchedTraining.length,
-        matchedTrainingIds: matchedTraining.map((item) => item.id),
-        interpretedMessage,
-        source: "stored-training-direct",
-      });
-    }
+    // ✅ REMOVED EARLY RETURN: We now always call the AI to generate the "General/Global Search" part.
 
     const { trainingText, fileText } = await buildAIContextFromTraining(
       matchedTraining
@@ -11090,8 +11082,6 @@ ${materialsText || "No readable materials found."}
             `;
           }
 
-
-
           console.log(
             "Extracted Length:",
             extractedText?.length || 0
@@ -11185,11 +11175,14 @@ ${materialsText || "No readable materials found."}
     `;
     }
 
+    // ✅ UPDATED PROMPT LOGIC FOR STORED DATA + GENERAL SEARCH
     if (matchedTraining.length > 0) {
       contextualPrompt += `
       Matched chatbot training exists.
-      Use the following training context as reference.
-      If the answer is present in the attached extracted document content, use that content.
+      The system will automatically provide the direct "Stored Data" answer as the first paragraph.
+      YOUR TASK: Only provide the "General/Global Search" part. Provide a broader explanation, additional context, related facts, or global information about the topic. 
+      Do NOT repeat the direct stored data answer.
+      If the answer is present in the attached extracted document content, use that content for your broader explanation.
       If you are in tutor mode, transform the content into a tutoring explanation rather than just copying it.
 
       ${trainingText}
@@ -11278,8 +11271,16 @@ In tutor mode, tutor the student step by step and ask a quick check question whe
       });
     }
 
+    // ✅ CONSTRUCT FINAL REPLY: Stored Data (First Paragraph) + General Search (Second Paragraph+)
+    let finalReply = aiResult.text;
+
+    // If in assistant mode and we have stored data, prepend it as the first paragraph
+    if (normalizedMode === "assistant" && bestMatch && bestMatch.response) {
+      finalReply = `${bestMatch.response}\n\n${aiResult.text}`;
+    }
+
     return res.json({
-      reply: aiResult.text,
+      reply: finalReply,
       matchedTrainingCount: matchedTraining.length,
       matchedTrainingIds: matchedTraining.map((item) => item.id),
       interpretedMessage,
@@ -11298,6 +11299,70 @@ In tutor mode, tutor the student step by step and ask a quick check question whe
     });
   }
 }
+
+// ====================== AI CHAT HISTORY ROUTES ======================
+
+// Save chat history to Firestore
+app.post("/ai/chat-history/save", requireAuth, async (req, res) => {
+  try {
+    const { mode, messages } = req.body;
+    if (!["assistant", "tutor"].includes(mode)) {
+      return res.status(400).json({ error: "Invalid mode." });
+    }
+    
+    const profile = await findUserProfileByAuthUid(req.user.uid);
+    if (!profile) return res.status(403).json({ error: "User profile not found." });
+    
+    // Use the user's unique ID (studentId, teacherId, or adminId)
+    const userId = profile.data.studentId || profile.data.teacherId || profile.data.adminId || profile.id;
+    const docId = `${userId}_${mode}`;
+    
+    // Limit to the last 100 messages to prevent exceeding Firestore's 1MB document limit
+    const limitedMessages = Array.isArray(messages) ? messages.slice(-100) : [];
+    
+    await db.collection("aiChatHistory").doc(docId).set({
+      userId,
+      role: profile.role,
+      mode,
+      messages: limitedMessages,
+      updatedAt: FieldValue.serverTimestamp(),
+    }, { merge: true });
+    
+    return res.json({ success: true });
+  } catch (error) {
+    console.error("Save chat history error:", error);
+    return res.status(500).json({ error: error.message || "Failed to save chat history." });
+  }
+});
+
+// Fetch chat history from Firestore
+app.get("/ai/chat-history/:mode", requireAuth, async (req, res) => {
+  try {
+    const { mode } = req.params;
+    if (!["assistant", "tutor"].includes(mode)) {
+      return res.status(400).json({ error: "Invalid mode." });
+    }
+    
+    const profile = await findUserProfileByAuthUid(req.user.uid);
+    if (!profile) return res.status(403).json({ error: "User profile not found." });
+    
+    const userId = profile.data.studentId || profile.data.teacherId || profile.data.adminId || profile.id;
+    const docId = `${userId}_${mode}`;
+    
+    const doc = await db.collection("aiChatHistory").doc(docId).get();
+    if (!doc.exists) {
+      return res.json({ success: true, data: [] });
+    }
+    
+    const data = doc.data();
+    return res.json({ success: true, data: data.messages || [] });
+  } catch (error) {
+    console.error("Fetch chat history error:", error);
+    return res.status(500).json({ error: error.message || "Failed to fetch chat history." });
+  }
+});
+
+// ====================== END AI CHAT HISTORY ROUTES ======================
 
 app.post("/ai/chat", handleAIChat);
 

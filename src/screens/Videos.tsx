@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
+  Linking,
   Platform,
   ScrollView,
   StyleSheet,
@@ -11,7 +12,7 @@ import {
   View,
   useWindowDimensions,
 } from 'react-native';
-import { WebView } from 'react-native-webview';
+import YoutubePlayer from "react-native-youtube-iframe";
 
 const apiFetch = (url: string, options: any = {}) =>
   fetch(url, {
@@ -103,6 +104,10 @@ const Videos = ({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [activeQuery, setActiveQuery] = useState(DEFAULT_TECH_QUERY);
+  
+  // 🚨 NEW: State to handle playback errors gracefully
+  const [playbackError, setPlaybackError] = useState(false);
+  
   const debounceRef = useRef<any>(null);
 
   const normalizedCurrentUserAvatar = useMemo(
@@ -137,24 +142,16 @@ const Videos = ({
     return 'Recommended videos for your courses';
   }, [searchQuery, adaptiveReason]);
 
-
   const loadFavorites = async () => {
     if (!currentUserId?.trim()) return;
-
     try {
       setFavoritesLoading(true);
-
       const url = new URL(`${apiBaseUrl}/video-favorites`);
       url.searchParams.set('userId', currentUserId.trim());
       url.searchParams.set('role', currentUserRole);
-
       const response = await apiFetch(url.toString());
       const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data?.error || 'Failed to load favorites.');
-      }
-
+      if (!response.ok) throw new Error(data?.error || 'Failed to load favorites.');
       const items = Array.isArray(data?.data) ? data.data : [];
       setFavoriteItems(items);
       setSaved(items.map((item: VideoItem) => item.id));
@@ -169,20 +166,14 @@ const Videos = ({
     try {
       setLoading(true);
       setError('');
-
       const trimmed = query.trim();
       const url = new URL(`${apiBaseUrl}/youtube/videos`);
-      if (trimmed) {
-        url.searchParams.set('q', trimmed);
-      }
+      if (trimmed) url.searchParams.set('q', trimmed);
       url.searchParams.set('maxResults', '12');
 
       const response = await apiFetch(url.toString());
       const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data?.error || 'Failed to load videos.');
-      }
+      if (!response.ok) throw new Error(data?.error || 'Failed to load videos.');
 
       const items = Array.isArray(data?.data) ? data.data : [];
       setVideos(items);
@@ -207,18 +198,12 @@ const Videos = ({
   }, [currentUserId, currentUserRole]);
 
   useEffect(() => {
-    if (debounceRef.current) {
-      clearTimeout(debounceRef.current);
-    }
-
+    if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
       fetchVideos(effectiveQuery);
     }, 450);
-
     return () => {
-      if (debounceRef.current) {
-        clearTimeout(debounceRef.current);
-      }
+      if (debounceRef.current) clearTimeout(debounceRef.current);
     };
   }, [effectiveQuery, queryRotationKey]);
 
@@ -226,8 +211,7 @@ const Videos = ({
     return filterFav ? favoriteItems : videos;
   }, [filterFav, favoriteItems, videos]);
 
-  const selectedVid =
-    selected !== null ? videos.find((x) => x.id === selected) ?? null : null;
+  const selectedVid = selected !== null ? videos.find((x) => x.id === selected) ?? null : null;
 
   const relatedVideos = useMemo(() => {
     const sourceList = filterFav ? favoriteItems : videos;
@@ -237,36 +221,23 @@ const Videos = ({
 
   const toggleSave = async (video: VideoItem) => {
     if (!currentUserId?.trim() || savingVideoId) return;
-
     const videoId = video.id;
     const wasSaved = saved.includes(videoId);
 
     setSavingVideoId(videoId);
-    setSaved((prev) =>
-      wasSaved ? prev.filter((item) => item !== videoId) : [...prev, videoId]
-    );
+    setSaved((prev) => (wasSaved ? prev.filter((item) => item !== videoId) : [...prev, videoId]));
     setFavoriteItems((prev) =>
-      wasSaved
-        ? prev.filter((item) => item.id !== videoId)
-        : [video, ...prev.filter((item) => item.id !== videoId)]
+      wasSaved ? prev.filter((item) => item.id !== videoId) : [video, ...prev.filter((item) => item.id !== videoId)]
     );
 
     try {
       const response = await apiFetch(`${apiBaseUrl}/video-favorites/toggle`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          userId: currentUserId.trim(),
-          role: currentUserRole,
-          video,
-        }),
+        body: JSON.stringify({ userId: currentUserId.trim(), role: currentUserRole, video }),
       });
-
       const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data?.error || 'Failed to update favorite.');
-      }
+      if (!response.ok) throw new Error(data?.error || 'Failed to update favorite.');
 
       if (data?.saved === false) {
         setSaved((prev) => prev.filter((item) => item !== videoId));
@@ -277,13 +248,9 @@ const Videos = ({
         setFavoriteItems((prev) => [savedVideo, ...prev.filter((item) => item.id !== videoId)]);
       }
     } catch (err: any) {
-      setSaved((prev) =>
-        wasSaved ? [...prev, videoId] : prev.filter((item) => item !== videoId)
-      );
+      setSaved((prev) => (wasSaved ? [...prev, videoId] : prev.filter((item) => item !== videoId)));
       setFavoriteItems((prev) =>
-        wasSaved
-          ? [video, ...prev.filter((item) => item.id !== videoId)]
-          : prev.filter((item) => item.id !== videoId)
+        wasSaved ? [video, ...prev.filter((item) => item.id !== videoId)] : prev.filter((item) => item.id !== videoId)
       );
       setError(err?.message || 'Failed to update favorite.');
     } finally {
@@ -294,32 +261,25 @@ const Videos = ({
   const addComment = (id: string) => {
     const text = inputText[id]?.trim();
     if (!text) return;
-
     const newComment: VideoComment = {
       userName: currentUserName,
       avatar: normalizedCurrentUserAvatar,
       message: text,
       commentedAt: new Date().toLocaleString(),
     };
-
-    setComments((prev) => ({
-      ...prev,
-      [id]: [...(prev[id] || []), newComment],
-    }));
-
-    setInputText((prev) => ({
-      ...prev,
-      [id]: '',
-    }));
+    setComments((prev) => ({ ...prev, [id]: [...(prev[id] || []), newComment] }));
+    setInputText((prev) => ({ ...prev, [id]: '' }));
   };
 
   const openVideo = (id: string) => {
     setSelected(id);
+    setPlaybackError(false); // 🚨 Reset error state when opening a new video
     onVideoActiveChange?.(true);
   };
 
   const closeVideo = () => {
     setSelected(null);
+    setPlaybackError(false);
     onVideoActiveChange?.(false);
   };
 
@@ -343,8 +303,30 @@ const Videos = ({
                 allowFullScreen
                 title={selectedVid.title}
               />
+            ) : playbackError ? (
+              // 🚨 BEAUTIFUL FALLBACK UI IF VIDEO IS BLOCKED
+              <View style={styles.errorFallback}>
+                <Text style={styles.errorFallbackTitle}>Video Unavailable</Text>
+                <Text style={styles.errorFallbackText}>
+                  The creator has restricted this video from playing in external apps.
+                </Text>
+                <TouchableOpacity 
+                  style={styles.watchOnYoutubeBtn}
+                  onPress={() => Linking.openURL(selectedVid.watchUrl)}
+                >
+                  <Text style={styles.watchOnYoutubeText}>Watch on YouTube</Text>
+                </TouchableOpacity>
+              </View>
             ) : (
-              <WebView source={{ uri: selectedVid.embedUrl }} style={{ flex: 1 }} />
+              <YoutubePlayer
+                height={500}
+                play={true}
+                videoId={selectedVid.id}
+                onError={(e: any) => {
+                  console.warn("YouTube Player Error:", e);
+                  setPlaybackError(true);
+                }}
+              />
             )}
           </View>
 
@@ -357,9 +339,7 @@ const Videos = ({
             <View style={styles.channelRow}>
               <View style={styles.channelLeft}>
                 <View style={styles.channelAvatar}>
-                  <Text style={styles.channelAvatarText}>
-                    {selectedVid.channel.charAt(0)}
-                  </Text>
+                  <Text style={styles.channelAvatarText}>{selectedVid.channel.charAt(0)}</Text>
                 </View>
                 <View>
                   <Text style={styles.channelName}>{selectedVid.channel}</Text>
@@ -370,18 +350,10 @@ const Videos = ({
 
             <View style={styles.actionRow}>
               <TouchableOpacity
-                style={[
-                  styles.actionPill,
-                  saved.includes(selectedVid.id) && styles.actionPillActive,
-                ]}
+                style={[styles.actionPill, saved.includes(selectedVid.id) && styles.actionPillActive]}
                 onPress={() => toggleSave(selectedVid)}
               >
-                <Text
-                  style={[
-                    styles.actionPillText,
-                    saved.includes(selectedVid.id) && styles.actionPillTextActive,
-                  ]}
-                >
+                <Text style={[styles.actionPillText, saved.includes(selectedVid.id) && styles.actionPillTextActive]}>
                   📁 {saved.includes(selectedVid.id) ? 'Saved' : 'Save'}
                 </Text>
               </TouchableOpacity>
@@ -395,21 +367,15 @@ const Videos = ({
 
         <View style={styles.commentsSection}>
           <Text style={styles.sectionTitle}>Comments ({currentComments.length})</Text>
-
           <View style={styles.commentComposer}>
             <TextInput
               placeholder="Add a comment..."
               value={inputText[selectedVid.id] || ''}
-              onChangeText={(t) =>
-                setInputText((prev) => ({ ...prev, [selectedVid.id]: t }))
-              }
+              onChangeText={(t) => setInputText((prev) => ({ ...prev, [selectedVid.id]: t }))}
               style={styles.commentInput}
               placeholderTextColor="#888"
             />
-            <TouchableOpacity
-              onPress={() => addComment(selectedVid.id)}
-              style={styles.commentPostBtn}
-            >
+            <TouchableOpacity onPress={() => addComment(selectedVid.id)} style={styles.commentPostBtn}>
               <Text style={styles.commentPostBtnText}>Post</Text>
             </TouchableOpacity>
           </View>
@@ -419,10 +385,7 @@ const Videos = ({
           ) : (
             currentComments.map((comment, idx) => (
               <View key={idx} style={styles.commentCard}>
-                <Image
-                  source={normalizeImageSource(comment.avatar)}
-                  style={styles.commentAvatarImage}
-                />
+                <Image source={normalizeImageSource(comment.avatar)} style={styles.commentAvatarImage} />
                 <View style={styles.commentBody}>
                   <Text style={styles.commentUser}>{comment.userName}</Text>
                   <Text style={styles.commentDate}>{comment.commentedAt}</Text>
@@ -435,23 +398,13 @@ const Videos = ({
 
         <View style={styles.relatedSection}>
           <Text style={styles.sectionTitle}>Up next</Text>
-
           {relatedVideos.map((v) => (
-            <TouchableOpacity
-              key={v.id}
-              style={styles.relatedCard}
-              activeOpacity={0.9}
-              onPress={() => openVideo(v.id)}
-            >
+            <TouchableOpacity key={v.id} style={styles.relatedCard} activeOpacity={0.9} onPress={() => openVideo(v.id)}>
               <Image source={{ uri: v.thumbnail }} style={styles.relatedThumb} />
               <View style={styles.relatedInfo}>
-                <Text numberOfLines={2} style={styles.relatedTitle}>
-                  {v.title}
-                </Text>
+                <Text numberOfLines={2} style={styles.relatedTitle}>{v.title}</Text>
                 <Text style={styles.relatedChannel}>{v.channel}</Text>
-                <Text style={styles.relatedMeta}>
-                  {v.views} • {v.uploadedAt}
-                </Text>
+                <Text style={styles.relatedMeta}>{v.views} • {v.uploadedAt}</Text>
               </View>
             </TouchableOpacity>
           ))}
@@ -466,19 +419,11 @@ const Videos = ({
         <View style={styles.homeHeaderTextBlock}>
           <Text style={styles.logoText}>Videos</Text>
           <Text style={styles.searchSummary} numberOfLines={2}>
-            {loading
-              ? 'Loading adaptive learning videos...'
-              : `${searchSourceLabel}: ${displayQuery}`}
+            {loading ? 'Loading adaptive learning videos...' : `${searchSourceLabel}: ${displayQuery}`}
           </Text>
         </View>
-
-        <TouchableOpacity
-          style={styles.filterBtn}
-          onPress={() => setFilterFav((f) => !f)}
-        >
-          <Text style={styles.filterBtnText}>
-            {filterFav ? 'Favorites Only' : 'My Favorite'}
-          </Text>
+        <TouchableOpacity style={styles.filterBtn} onPress={() => setFilterFav((f) => !f)}>
+          <Text style={styles.filterBtnText}>{filterFav ? 'Favorites Only' : 'My Favorite'}</Text>
         </TouchableOpacity>
       </View>
 
@@ -494,79 +439,33 @@ const Videos = ({
       ) : list.length === 0 ? (
         <View style={styles.stateWrap}>
           <Text style={styles.stateText}>
-            {filterFav
-              ? favoritesLoading
-                ? 'Loading favorite videos...'
-                : 'No favorite videos saved yet.'
-              : 'No videos found for this search.'}
+            {filterFav ? (favoritesLoading ? 'Loading favorite videos...' : 'No favorite videos saved yet.') : 'No videos found for this search.'}
           </Text>
         </View>
       ) : (
-        <View
-          style={[
-            styles.feedGrid,
-            {
-              gap,
-            },
-          ]}
-        >
+        <View style={[styles.feedGrid, { gap }]}>
           {list.map((v) => (
             <TouchableOpacity
               key={v.id}
-              style={[
-                styles.feedCard,
-                {
-                  width: cardWidth,
-                },
-              ]}
+              style={[styles.feedCard, { width: cardWidth }]}
               activeOpacity={0.95}
               onPress={() => openVideo(v.id)}
             >
-              <Image
-                source={{ uri: v.thumbnail }}
-                style={[
-                  styles.feedThumbnail,
-                  {
-                    height: columns === 1 ? 320 : 220,
-                  },
-                ]}
-              />
-
+              <Image source={{ uri: v.thumbnail }} style={[styles.feedThumbnail, { height: columns === 1 ? 320 : 220 }]} />
               <View style={styles.feedInfoRow}>
                 <View style={styles.feedAvatar}>
                   <Text style={styles.feedAvatarText}>{v.channel.charAt(0)}</Text>
                 </View>
-
                 <View style={styles.feedTextBlock}>
-                  <Text style={styles.feedTitle} numberOfLines={2}>
-                    {v.title}
-                  </Text>
+                  <Text style={styles.feedTitle} numberOfLines={2}>{v.title}</Text>
                   <Text style={styles.feedMeta}>{v.channel}</Text>
-                  <Text style={styles.feedMeta}>
-                    {v.views} • {v.uploadedAt}
-                  </Text>
+                  <Text style={styles.feedMeta}>{v.views} • {v.uploadedAt}</Text>
                 </View>
-
                 <TouchableOpacity
                   onPress={() => toggleSave(v)}
-                  style={[
-                    styles.smallSaveBtn,
-                    {
-                      paddingHorizontal: heartPaddingHorizontal,
-                      paddingVertical: heartPaddingVertical,
-                    },
-                  ]}
+                  style={[styles.smallSaveBtn, { paddingHorizontal: heartPaddingHorizontal, paddingVertical: heartPaddingVertical }]}
                 >
-                  <Text
-                    style={[
-                      styles.smallSaveBtnText,
-                      {
-                        fontSize: heartSize,
-                      },
-                    ]}
-                  >
-                    {saved.includes(v.id) ? '♥' : '♡'}
-                  </Text>
+                  <Text style={[styles.smallSaveBtnText, { fontSize: heartSize }]}>{saved.includes(v.id) ? '♥' : '♡'}</Text>
                 </TouchableOpacity>
               </View>
             </TouchableOpacity>
@@ -578,412 +477,79 @@ const Videos = ({
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#fff',
-    padding: 20,
-  },
-
-  homeContent: {
-    paddingBottom: 24,
-  },
-
-  homeHeader: {
-    paddingHorizontal: 16,
-    paddingTop: 14,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: '#fff',
-    gap: 12,
-  },
-
-  homeHeaderTextBlock: {
-    flex: 1,
-  },
-
-  logoText: {
-    marginTop: -10,
-    marginLeft: -12,
-    fontSize: 30,
-    fontWeight: 'bold',
-    paddingBottom: 10,
-    textAlign: 'left',
-    marginBottom: 6,
-  },
-
-  searchSummary: {
-    marginLeft: -12,
-    color: '#606060',
-    fontSize: 13,
-    lineHeight: 18,
-    marginBottom: 12,
-  },
-
-  filterBtn: {
-    backgroundColor: '#f2f2f2',
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 18,
-  },
-
-  filterBtnText: {
-    fontWeight: '600',
-    color: '#111',
-    fontSize: 13,
-  },
-
-  stateWrap: {
-    paddingVertical: 48,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
-  stateText: {
-    marginTop: 12,
-    color: '#606060',
-    fontSize: 15,
-  },
-
-  errorText: {
-    color: '#D32F2F',
-    fontSize: 15,
-    textAlign: 'center',
-  },
-
-  feedGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'center',
-    alignItems: 'flex-start',
-    marginTop: 18,
-  },
-
-  feedCard: {
-    marginBottom: 18,
-    backgroundColor: '#fff',
-  },
-
-  feedThumbnail: {
-    width: '100%',
-    resizeMode: 'cover',
-    backgroundColor: '#ddd',
-    borderRadius: 12,
-  },
-
-  feedInfoRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    paddingHorizontal: 12,
-    paddingTop: 10,
-  },
-
-  feedAvatar: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: '#111',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 10,
-  },
-
-  feedAvatarText: {
-    color: '#fff',
-    fontWeight: '700',
-  },
-
-  feedTextBlock: {
-    flex: 1,
-  },
-
-  feedTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#111',
-    lineHeight: 22,
-  },
-
-  feedMeta: {
-    marginTop: 2,
-    color: '#606060',
-    fontSize: 13,
-  },
-
-  smallSaveBtn: {
-    marginLeft: 8,
-    backgroundColor: '#e60a0a0b',
-    borderRadius: 50,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-
-  smallSaveBtnText: {
-    color: '#e60a0a',
-  },
-
-  watchPage: {
-    flex: 1,
-    backgroundColor: '#fff',
-  },
-
-  watchContent: {
-    paddingBottom: 40,
-  },
-
-  topBar: {
-    paddingHorizontal: 12,
-    paddingTop: 12,
-    paddingBottom: 10,
-    flexDirection: 'row',
-    justifyContent: 'flex-start',
-    alignItems: 'center',
-  },
-
-  backBtn: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 18,
-    backgroundColor: '#f2f2f2',
-  },
-
-  backBtnText: {
-    fontWeight: '700',
-    color: '#111',
-  },
-
-  playerCard: {
-    backgroundColor: '#fff',
-  },
-
-  playerWrapper: {
-    width: '100%',
-    height: 500,
-    backgroundColor: '#000',
-  },
-
-  videoMetaSection: {
-    paddingHorizontal: 14,
-    paddingTop: 14,
-  },
-
-  watchTitle: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: '#111',
-    lineHeight: 28,
-  },
-
-  watchSubMeta: {
-    marginTop: 6,
-    fontSize: 13,
-    color: '#606060',
-  },
-
-  channelRow: {
-    marginTop: 16,
-    marginBottom: 14,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-
-  channelLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-  },
-
-  channelAvatar: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    backgroundColor: '#111',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 10,
-  },
-
-  channelAvatarText: {
-    color: '#fff',
-    fontWeight: '700',
-  },
-
-  channelName: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#111',
-  },
-
-  channelSubs: {
-    fontSize: 12,
-    color: '#606060',
-    marginTop: 2,
-  },
-
-  actionRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-    marginBottom: 14,
-  },
-
-  actionPill: {
-    backgroundColor: '#f2f2f2',
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 22,
-  },
-
-  actionPillActive: {
-    backgroundColor: '#111',
-  },
-
-  actionPillText: {
-    fontWeight: '600',
-    color: '#111',
-  },
-
-  actionPillTextActive: {
-    color: '#fff',
-  },
-
-  descriptionCard: {
-    backgroundColor: '#f7f7f7',
-    borderRadius: 14,
-    padding: 12,
-  },
-
-  descriptionText: {
-    color: '#222',
-    fontSize: 14,
-    lineHeight: 20,
-  },
-
-  commentsSection: {
-    marginTop: 18,
-    paddingHorizontal: 14,
-  },
-
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: '#111',
-    marginBottom: 12,
-  },
-
-  commentComposer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 14,
-  },
-
-  commentInput: {
-    flex: 1,
-    borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 22,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    marginRight: 10,
-    color: '#111',
-    backgroundColor: '#fff',
-  },
-
-  commentPostBtn: {
-    backgroundColor: '#DA1318',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 20,
-  },
-
-  commentPostBtnText: {
-    color: '#fff',
-    fontWeight: '700',
-  },
-
-  noComments: {
-    color: '#707070',
-    fontStyle: 'italic',
-    marginTop: 4,
-  },
-
-  commentCard: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    marginBottom: 14,
-  },
-
-  commentAvatarImage: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    marginRight: 12,
-  },
-
-  commentBody: {
-    flex: 1,
-  },
-
-  commentUser: {
-    fontWeight: '700',
-    color: '#111',
-    marginBottom: 2,
-  },
-
-  commentDate: {
-    color: '#888',
-    fontSize: 12,
-    marginBottom: 4,
-  },
-
-  commentText: {
-    color: '#222',
-    fontSize: 14,
-    lineHeight: 20,
-  },
-
-  relatedSection: {
-    marginTop: 20,
-    paddingHorizontal: 14,
-  },
-
-  relatedCard: {
-    flexDirection: 'row',
-    marginBottom: 14,
-  },
-
-  relatedThumb: {
-    width: 180,
-    height: 100,
-    borderRadius: 10,
-    backgroundColor: '#ddd',
-    marginRight: 12,
-  },
-
-  relatedInfo: {
-    flex: 1,
-    justifyContent: 'center',
-  },
-
-  relatedTitle: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#111',
-    lineHeight: 21,
-  },
-
-  relatedChannel: {
-    marginTop: 6,
-    color: '#606060',
-    fontSize: 13,
-  },
-
-  relatedMeta: {
-    marginTop: 4,
-    color: '#606060',
-    fontSize: 12,
-  },
+  container: { flex: 1, backgroundColor: '#fff', padding: 20 },
+  homeContent: { paddingBottom: 24 },
+  homeHeader: { paddingHorizontal: 16, paddingTop: 14, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#fff', gap: 12 },
+  homeHeaderTextBlock: { flex: 1 },
+  logoText: { marginTop: -10, marginLeft: -12, fontSize: 30, fontWeight: 'bold', paddingBottom: 10, textAlign: 'left', marginBottom: 6 },
+  searchSummary: { marginLeft: -12, color: '#606060', fontSize: 13, lineHeight: 18, marginBottom: 12 },
+  filterBtn: { backgroundColor: '#f2f2f2', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 18 },
+  filterBtnText: { fontWeight: '600', color: '#111', fontSize: 13 },
+  stateWrap: { paddingVertical: 48, alignItems: 'center', justifyContent: 'center' },
+  stateText: { marginTop: 12, color: '#606060', fontSize: 15 },
+  errorText: { color: '#D32F2F', fontSize: 15, textAlign: 'center' },
+  feedGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', alignItems: 'flex-start', marginTop: 18 },
+  feedCard: { marginBottom: 18, backgroundColor: '#fff' },
+  feedThumbnail: { width: '100%', resizeMode: 'cover', backgroundColor: '#ddd', borderRadius: 12 },
+  feedInfoRow: { flexDirection: 'row', alignItems: 'flex-start', paddingHorizontal: 12, paddingTop: 10 },
+  feedAvatar: { width: 38, height: 38, borderRadius: 19, backgroundColor: '#111', justifyContent: 'center', alignItems: 'center', marginRight: 10 },
+  feedAvatarText: { color: '#fff', fontWeight: '700' },
+  feedTextBlock: { flex: 1 },
+  feedTitle: { fontSize: 16, fontWeight: '700', color: '#111', lineHeight: 22 },
+  feedMeta: { marginTop: 2, color: '#606060', fontSize: 13 },
+  smallSaveBtn: { marginLeft: 8, backgroundColor: '#e60a0a0b', borderRadius: 50, justifyContent: 'center', alignItems: 'center' },
+  smallSaveBtnText: { color: '#e60a0a' },
+  watchPage: { flex: 1, backgroundColor: '#fff' },
+  watchContent: { paddingBottom: 40 },
+  topBar: { paddingHorizontal: 12, paddingTop: 12, paddingBottom: 10, flexDirection: 'row', justifyContent: 'flex-start', alignItems: 'center' },
+  backBtn: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 18, backgroundColor: '#f2f2f2' },
+  backBtnText: { fontWeight: '700', color: '#111' },
+  playerCard: { backgroundColor: '#fff' },
+  playerWrapper: { width: '100%', height: 500, backgroundColor: '#000', overflow: 'hidden' },
+  
+  // 🚨 NEW STYLES FOR ERROR FALLBACK
+  errorFallback: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#111', padding: 20 },
+  errorFallbackTitle: { color: '#fff', fontSize: 18, fontWeight: 'bold', marginBottom: 8, textAlign: 'center' },
+  errorFallbackText: { color: '#aaa', fontSize: 14, textAlign: 'center', marginBottom: 20, lineHeight: 20 },
+  watchOnYoutubeBtn: { backgroundColor: '#DA1318', paddingHorizontal: 24, paddingVertical: 12, borderRadius: 24 },
+  watchOnYoutubeText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
+
+  videoMetaSection: { paddingHorizontal: 14, paddingTop: 14 },
+  watchTitle: { fontSize: 20, fontWeight: '800', color: '#111', lineHeight: 28 },
+  watchSubMeta: { marginTop: 6, fontSize: 13, color: '#606060' },
+  channelRow: { marginTop: 16, marginBottom: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  channelLeft: { flexDirection: 'row', alignItems: 'center', flex: 1 },
+  channelAvatar: { width: 42, height: 42, borderRadius: 21, backgroundColor: '#111', justifyContent: 'center', alignItems: 'center', marginRight: 10 },
+  channelAvatarText: { color: '#fff', fontWeight: '700' },
+  channelName: { fontSize: 15, fontWeight: '700', color: '#111' },
+  channelSubs: { fontSize: 12, color: '#606060', marginTop: 2 },
+  actionRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 14 },
+  actionPill: { backgroundColor: '#f2f2f2', paddingHorizontal: 14, paddingVertical: 10, borderRadius: 22 },
+  actionPillActive: { backgroundColor: '#111' },
+  actionPillText: { fontWeight: '600', color: '#111' },
+  actionPillTextActive: { color: '#fff' },
+  descriptionCard: { backgroundColor: '#f7f7f7', borderRadius: 14, padding: 12 },
+  descriptionText: { color: '#222', fontSize: 14, lineHeight: 20 },
+  commentsSection: { marginTop: 18, paddingHorizontal: 14 },
+  sectionTitle: { fontSize: 18, fontWeight: '800', color: '#111', marginBottom: 12 },
+  commentComposer: { flexDirection: 'row', alignItems: 'center', marginBottom: 14 },
+  commentInput: { flex: 1, borderWidth: 1, borderColor: '#ddd', borderRadius: 22, paddingHorizontal: 14, paddingVertical: 10, marginRight: 10, color: '#111', backgroundColor: '#fff' },
+  commentPostBtn: { backgroundColor: '#DA1318', paddingHorizontal: 16, paddingVertical: 10, borderRadius: 20 },
+  commentPostBtnText: { color: '#fff', fontWeight: '700' },
+  noComments: { color: '#707070', fontStyle: 'italic', marginTop: 4 },
+  commentCard: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 14 },
+  commentAvatarImage: { width: 42, height: 42, borderRadius: 21, marginRight: 12 },
+  commentBody: { flex: 1 },
+  commentUser: { fontWeight: '700', color: '#111', marginBottom: 2 },
+  commentDate: { color: '#888', fontSize: 12, marginBottom: 4 },
+  commentText: { color: '#222', fontSize: 14, lineHeight: 20 },
+  relatedSection: { marginTop: 20, paddingHorizontal: 14 },
+  relatedCard: { flexDirection: 'row', marginBottom: 14 },
+  relatedThumb: { width: 180, height: 100, borderRadius: 10, backgroundColor: '#ddd', marginRight: 12 },
+  relatedInfo: { flex: 1, justifyContent: 'center' },
+  relatedTitle: { fontSize: 15, fontWeight: '700', color: '#111', lineHeight: 21 },
+  relatedChannel: { marginTop: 6, color: '#606060', fontSize: 13 },
+  relatedMeta: { marginTop: 4, color: '#606060', fontSize: 12 },
 });
 
 export default Videos;
