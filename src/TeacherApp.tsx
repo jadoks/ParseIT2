@@ -1092,9 +1092,9 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
               isLoading={isLoadingClasses || isLoadingAnnouncements} // ADDED: Pass loading state to Dashboard
             />
           ) : activeScreen === 'honors' ? (
-            <Honors />
+            <Honors apiBaseUrl={API_BASE_URL} /> 
           ) : activeScreen === 'grades' ? (
-            <Grades />
+            <Grades apiBaseUrl={API_BASE_URL} />
           ) : activeScreen === 'announcement' ? (
             <ShareAnnouncement
               apiBaseUrl={API_BASE_URL}

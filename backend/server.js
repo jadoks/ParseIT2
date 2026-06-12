@@ -12638,6 +12638,117 @@ app.delete("/chatbot-training/:id/file", async (req, res) => {
   }
 });
 
+
+// 1. Handle File Upload in Messenger
+app.post("/messenger-upload-file", requireAuth, async (req, res) => {
+  try {
+    const { conversationId, fileBase64, fileName, fileType, senderId, senderName, senderUid, senderRole } = req.body;
+    if (!conversationId || !fileBase64 || !fileName) {
+      return res.status(400).json({ error: "conversationId, fileBase64, and fileName are required." });
+    }
+
+    // Block video files
+    if (fileType && fileType.startsWith("video/")) {
+      return res.status(400).json({ error: "Video files are not allowed." });
+    }
+
+    const conversationRef = db.collection("messengerConversations").doc(conversationId);
+    const conversationSnap = await conversationRef.get();
+    if (!conversationSnap.exists) {
+      return res.status(404).json({ error: "Conversation not found." });
+    }
+
+    const cleanedBase64 = fileBase64.includes(",") ? fileBase64.split(",")[1] : fileBase64;
+    const safeMimeType = fileType || "application/octet-stream";
+    const extension = getFileExtensionFromMimeType(safeMimeType);
+    const safeFileName = sanitizeFileName(fileName || `file.${extension}`);
+    const storagePath = `messenger-files/${conversationId}/${Date.now()}-${safeFileName}`;
+    
+    const file = bucket.file(storagePath);
+    await file.save(Buffer.from(cleanedBase64, "base64"), {
+      metadata: { contentType: safeMimeType, cacheControl: "private,max-age=0,no-transform" },
+      resumable: false,
+    });
+
+    const fileUrl = await createReadSignedUrl(storagePath);
+
+    // Save the file message to the conversation
+    const messageRef = await conversationRef.collection("messages").add({
+      type: "file",
+      fileName: safeFileName,
+      fileType: safeMimeType,
+      fileUrl,
+      storagePath,
+      senderName: normalizeOptionalText(senderName),
+      senderId: normalizeOptionalText(senderId),
+      senderUid: normalizeOptionalText(senderUid),
+      senderRole: normalizeOptionalText(senderRole),
+      createdAt: FieldValue.serverTimestamp(),
+    });
+
+    // Update conversation last message preview
+    await conversationRef.update({
+      lastMessage: `Sent a file: ${safeFileName}`,
+      lastMessageSender: normalizeOptionalText(senderName),
+      lastMessageAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+
+    return res.json({
+      success: true,
+      message: "File sent successfully.",
+      data: {
+        id: messageRef.id,
+        fileName: safeFileName,
+        fileUrl,
+        storagePath,
+        fileType: safeMimeType,
+      },
+    });
+  } catch (error) {
+    console.error("Messenger upload file error:", error);
+    return res.status(500).json({ error: error.message || "Failed to send file." });
+  }
+});
+
+// 2. Refresh Signed URL for Downloading/Previewing (Prevents expired link errors)
+app.post("/messenger-file-url", requireAuth, async (req, res) => {
+  try {
+    const { storagePath, conversationId } = req.body;
+    if (!storagePath || !conversationId) {
+      return res.status(400).json({ error: "storagePath and conversationId are required." });
+    }
+    if (!storagePath.startsWith(`messenger-files/${conversationId}/`)) {
+      return res.status(400).json({ error: "Invalid storage path." });
+    }
+    
+    const conversationSnap = await db.collection("messengerConversations").doc(conversationId).get();
+    if (!conversationSnap.exists) return res.status(404).json({ error: "Conversation not found." });
+    
+    const convData = conversationSnap.data();
+    const profile = await findUserProfileByAuthUid(req.user.uid);
+    const userId = profile?.data?.studentId || profile?.data?.teacherId || profile?.data?.adminId || profile?.id;
+    
+    // Verify user has access to this conversation
+    const isParticipant = Array.isArray(convData.participants) && convData.participants.some(p => p.userId === userId || p.userUid === req.user.uid);
+    const isTeacher = convData.classId && (convData.assignedTeacherUid === req.user.uid || convData.assignedTeacherId === userId);
+    const isAdmin = profile?.role === "admin";
+
+    if (!isParticipant && !isTeacher && !isAdmin) {
+      return res.status(403).json({ error: "You do not have access to this file." });
+    }
+
+    const [exists] = await bucket.file(storagePath).exists();
+    if (!exists) return res.status(404).json({ error: "File not found." });
+
+    const url = await createReadSignedUrl(storagePath);
+    return res.json({ success: true, url });
+  } catch (error) {
+    console.error("Messenger file URL error:", error);
+    return res.status(500).json({ error: error.message || "Failed to get file URL." });
+  }
+});
+
 const PORT = process.env.PORT || 5000;
 
 app.listen(PORT, "0.0.0.0", () => {

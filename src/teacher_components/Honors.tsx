@@ -21,8 +21,7 @@ import * as XLSX from 'xlsx';
 
 const headerImage = require('../../assets/images/myjourney-header-template-1.png');
 
-const API_BASE_URL =
-  Platform.OS === 'web' ? 'http://localhost:5000' : 'http://192.168.1.5:5000';
+// REMOVED: const API_BASE_URL = Platform.OS === 'web' ? 'http://localhost:5000' : 'http://192.168.1.5:5000';
 
 const buildSchoolYear = (startYear: string) => {
   const cleanStartYear = startYear.replace(/[^0-9]/g, '').slice(0, 4);
@@ -50,7 +49,6 @@ const sanitizeFileName = (value: string) => {
     .replace(/-+/g, '-')
     .replace(/^-|-$/g, '') || 'file';
 };
-
 
 const getExportTimestamp = () => {
   const now = new Date();
@@ -249,12 +247,12 @@ function HonorRollPreviewModal({
                   ]}
                 >
                   <Image
-  source={headerImage}
-  style={[
-    styles.previewHeaderImage,
-    { height: isMobile ? 90 : 140 }
-  ]}
-/>
+                    source={headerImage}
+                    style={[
+                      styles.previewHeaderImage,
+                      { height: isMobile ? 90 : 140 }
+                    ]}
+                  />
 
                   <ScrollView
                     showsVerticalScrollIndicator={false}
@@ -337,7 +335,8 @@ function HonorRollPreviewModal({
   );
 }
 
-export default function HonorsScreen() {
+// UPDATED: Accept apiBaseUrl as a prop
+export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
   const { width } = useWindowDimensions();
   const isMobile = width < 768;
 
@@ -367,24 +366,19 @@ export default function HonorsScreen() {
     try {
       setIsGenerating(true);
 
-      console.log(
-  `${API_BASE_URL}/honor-roll?startYear=${normalizedStartYear}&semester=${semester}`
-);
-      const schoolYear =`${normalizedStartYear}-${Number(normalizedStartYear) + 1}`;
+      // FIXED: Correctly format the school year and log the exact URL being fetched
+      const computedSchoolYear = `${normalizedStartYear}-${Number(normalizedStartYear) + 1}`;
+      console.log(`Fetching Honor Roll: ${apiBaseUrl}/honor-roll?schoolYear=${computedSchoolYear}&semester=${semester}`);
 
-      const params = new URLSearchParams();
-
-      params.append("schoolYear", schoolYear);
-      params.append("semester", semester);
-
+      // UPDATED: Use the dynamic apiBaseUrl prop instead of the hardcoded IP
       const response = await fetch(
-      `${API_BASE_URL}/honor-roll?schoolYear=${encodeURIComponent(
-        schoolYear
-      )}&semester=${encodeURIComponent(semester)}`,
-      {
-        credentials: "include",
-      }
-    );
+        `${apiBaseUrl}/honor-roll?schoolYear=${encodeURIComponent(
+          computedSchoolYear
+        )}&semester=${encodeURIComponent(semester)}`,
+        {
+          credentials: "include",
+        }
+      );
 
       const data = await response.json();
 
@@ -906,7 +900,6 @@ export default function HonorsScreen() {
     }
   };
 
-
   const downloadHonorExcel = async () => {
     if (generatedSections.length === 0) {
       Alert.alert('No Honor List', 'Please generate the honor list first.');
@@ -965,7 +958,7 @@ export default function HonorsScreen() {
         'Year Level': section.yearLevel,
         'Academic Year': schoolYear || 'S.Y ---- - ----',
         Semester: semester,
-        }))
+      }))
     );
 
     const honorSheet = XLSX.utils.json_to_sheet(honorRows);
@@ -1419,7 +1412,6 @@ const styles = StyleSheet.create({
     flex: 1,
   },
 
-
   academicInputGroup: {
     width: 190,
   },
@@ -1863,11 +1855,11 @@ const styles = StyleSheet.create({
   },
 
   previewHeaderImage: {
-  width: '100%',
-  height: 140,
-  resizeMode: 'cover',
-  marginTop: 20,
-},
+    width: '100%',
+    height: 140,
+    resizeMode: 'cover',
+    marginTop: 20,
+  },
 
   previewBody: {
     paddingHorizontal: 18,
@@ -2145,5 +2137,4 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     textAlign: 'center',
   },
- 
 });

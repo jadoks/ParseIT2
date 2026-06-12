@@ -79,6 +79,10 @@ const Videos = ({
 
   const isLargeScreen = width >= 1200;
   const isTablet = width >= 768 && width < 1200;
+  const isMobile = width < 768;
+
+  // 🎯 Calculate responsive player height (16:9 aspect ratio for mobile)
+  const playerHeight = isLargeScreen ? 500 : isTablet ? 350 : width * 0.5625;
 
   const columns = isLargeScreen ? 3 : isTablet ? 2 : 1;
   const gap = 18;
@@ -295,7 +299,7 @@ const Videos = ({
         </View>
 
         <View style={styles.playerCard}>
-          <View style={styles.playerWrapper}>
+          <View style={[styles.playerWrapper, { height: playerHeight }]}>
             {Platform.OS === 'web' ? (
               <iframe
                 src={selectedVid.embedUrl}
@@ -305,7 +309,7 @@ const Videos = ({
               />
             ) : playbackError ? (
               // 🚨 BEAUTIFUL FALLBACK UI IF VIDEO IS BLOCKED
-              <View style={styles.errorFallback}>
+              <View style={[styles.errorFallback, { height: playerHeight }]}>
                 <Text style={styles.errorFallbackTitle}>Video Unavailable</Text>
                 <Text style={styles.errorFallbackText}>
                   The creator has restricted this video from playing in external apps.
@@ -319,7 +323,7 @@ const Videos = ({
               </View>
             ) : (
               <YoutubePlayer
-                height={500}
+                height={playerHeight}
                 play={true}
                 videoId={selectedVid.id}
                 onError={(e: any) => {
@@ -505,10 +509,10 @@ const styles = StyleSheet.create({
   backBtn: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 18, backgroundColor: '#f2f2f2' },
   backBtnText: { fontWeight: '700', color: '#111' },
   playerCard: { backgroundColor: '#fff' },
-  playerWrapper: { width: '100%', height: 500, backgroundColor: '#000', overflow: 'hidden' },
+  playerWrapper: { width: '100%', backgroundColor: '#000', overflow: 'hidden' },
   
   // 🚨 NEW STYLES FOR ERROR FALLBACK
-  errorFallback: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#111', padding: 20 },
+  errorFallback: { justifyContent: 'center', alignItems: 'center', backgroundColor: '#111', padding: 20 },
   errorFallbackTitle: { color: '#fff', fontSize: 18, fontWeight: 'bold', marginBottom: 8, textAlign: 'center' },
   errorFallbackText: { color: '#aaa', fontSize: 14, textAlign: 'center', marginBottom: 20, lineHeight: 20 },
   watchOnYoutubeBtn: { backgroundColor: '#DA1318', paddingHorizontal: 24, paddingVertical: 12, borderRadius: 24 },

@@ -20,9 +20,6 @@ import * as XLSX from 'xlsx';
 const JourneyHeader = require('../../assets/images/myjourney-header-template-1.png');
 const FooterImage = require('../../assets/images/footer.png');
 
-const API_BASE_URL =
-  Platform.OS === 'web' ? 'http://localhost:5000' : 'http://192.168.1.5:5000';
-
 const semesters = ['First Semester', 'Second Semester'];
 
 const buildSchoolYear = (startYear: string) => {
@@ -201,7 +198,11 @@ const TableCell = ({
   );
 };
 
-const Grades = () => {
+type GradesProps = {
+  apiBaseUrl: string;
+};
+
+const Grades = ({ apiBaseUrl }: GradesProps) => {
   const { width } = useWindowDimensions();
 
   const isPhone = width < 768;
@@ -236,7 +237,6 @@ const Grades = () => {
     setStartYear(value.replace(/[^0-9]/g, '').slice(0, 4));
   };
 
-  // UPDATED: Fetches directly from the AI-parsed grades endpoint
   const loadStudentGradesFromDatabase = async () => {
     const trimmedId = studentId.trim();
     const normalizedStartYear = startYear.replace(/[^0-9]/g, '').slice(0, 4);
@@ -262,13 +262,12 @@ const Grades = () => {
 
       const targetSchoolYear = `${parsedStartYear}-${parsedStartYear + 1}`;
       
-      // Build query parameters for the backend to filter by School Year and Semester
       const params = new URLSearchParams();
       if (targetSchoolYear) params.append('schoolYear', targetSchoolYear);
       if (selectedSemester) params.append('semester', selectedSemester);
 
       const response = await fetch(
-        `${API_BASE_URL}/student-grade/parse/${encodeURIComponent(trimmedId)}?${params.toString()}`,
+        `${apiBaseUrl}/student-grade/parse/${encodeURIComponent(trimmedId)}?${params.toString()}`,
         { credentials: 'include' }
       );
 
@@ -278,7 +277,6 @@ const Grades = () => {
         throw new Error(data?.error || 'Failed to load parsed grades.');
       }
 
-      // If no parsed data is found for this SY/Sem
       if (!data.success || !Array.isArray(data.data) || data.data.length === 0) {
         Alert.alert(
           'No Record Found',
@@ -289,7 +287,6 @@ const Grades = () => {
         return;
       }
 
-      // Map the AI-parsed subjects to our GradeItem format
       const gradeItems: GradeItem[] = data.data.map((item: any) => ({
         code: String(item.subjectCode || 'N/A'),
         desc: String(item.subjectTitle || 'Unknown Subject'),
@@ -297,16 +294,14 @@ const Grades = () => {
         grade: Number(item.grade || 0),
       }));
 
-      // Sort alphabetically by course code
       gradeItems.sort((a, b) => a.code.localeCompare(b.code));
 
-      // Use the pre-calculated totalUnits and GWA returned by the backend
       const totalUnits = data.totalUnits || gradeItems.reduce((sum, item) => sum + item.unit, 0);
       const gwa = data.gwa || 0;
 
       setStudentRecord({
         studentId: trimmedId,
-        fullName: data.studentName || trimmedId, // 👈 UPDATED: Use the real name from the backend
+        fullName: data.studentName || trimmedId,
         schoolYear: buildSchoolYear(normalizedStartYear),
         semester: selectedSemester,
         grades: gradeItems,
@@ -346,6 +341,7 @@ const Grades = () => {
       <html>
         <head>
           <meta charset="utf-8" />
+          <meta name="viewport" content="width=device-width, initial-scale=1.0" />
           <style>
             @page {
               size: A4;
@@ -373,26 +369,10 @@ const Grades = () => {
               line-height: 1.25;
             }
 
-            .republic {
-              font-size: 12px;
-              margin-bottom: 2px;
-            }
-
-            .school-name {
-              font-size: 16px;
-              font-weight: 800;
-              letter-spacing: 0.4px;
-            }
-
-            .campus {
-              font-size: 13px;
-              font-weight: 700;
-            }
-
-            .address,
-            .contact {
-              font-size: 9px;
-            }
+            .republic { font-size: 12px; margin-bottom: 2px; }
+            .school-name { font-size: 16px; font-weight: 800; letter-spacing: 0.4px; }
+            .campus { font-size: 13px; font-weight: 700; }
+            .address, .contact { font-size: 9px; }
 
             .title {
               text-align: center;
@@ -449,9 +429,7 @@ const Grades = () => {
               padding-right: 24px;
             }
 
-            .gwa {
-              color: #b71c1c;
-            }
+            .gwa { color: #b71c1c; }
 
             table.grades {
               width: 100%;
@@ -473,9 +451,7 @@ const Grades = () => {
               font-weight: 900;
             }
 
-            .grades th:last-child {
-              border-right: 0;
-            }
+            .grades th:last-child { border-right: 0; }
 
             .grades td {
               border-top: 1px solid #d9d9d9;
@@ -484,32 +460,43 @@ const Grades = () => {
               vertical-align: middle;
             }
 
-            .grades td:last-child {
-              border-right: 0;
-            }
+            .grades td:last-child { border-right: 0; }
 
-            .code {
-              width: 13%;
-            }
+            .code { width: 13%; }
+            .detail { width: 67%; }
+            .units { width: 10%; }
+            .grade { width: 10%; }
 
-            .detail {
-              width: 67%;
-            }
+            .center { text-align: center; }
+            .bold { font-weight: 900; }
 
-            .units {
-              width: 10%;
-            }
-
-            .grade {
-              width: 10%;
-            }
-
-            .center {
-              text-align: center;
-            }
-
-            .bold {
-              font-weight: 900;
+            /* RESPONSIVE HTML FOR MOBILE BROWSERS */
+            @media screen and (max-width: 600px) {
+              .student-grid tr {
+                display: block;
+                margin-bottom: 10px;
+              }
+              .student-grid td {
+                display: block;
+                width: 100% !important;
+                text-align: left !important;
+                padding: 2px 0 !important;
+              }
+              .student-grid td.label {
+                font-size: 10px;
+                font-weight: 700;
+              }
+              .student-grid td.value {
+                font-size: 13px;
+                font-weight: 800;
+              }
+              
+              table.grades {
+                font-size: 10px;
+              }
+              .grades th, .grades td {
+                padding: 6px 4px;
+              }
             }
           </style>
         </head>
@@ -881,6 +868,7 @@ const Grades = () => {
                   </Text>
                 </View>
 
+                {/* RESPONSIVE STUDENT INFO CONTAINER */}
                 <View
                   style={[
                     styles.studentInfoPanel,
@@ -888,26 +876,59 @@ const Grades = () => {
                     isLargeScreen && styles.studentInfoPanelLarge,
                   ]}
                 >
-                  <View style={[styles.studentInfoRow, isLargeScreen && styles.studentInfoRowLarge]}>
+                  <View style={[
+                    styles.studentInfoRow, 
+                    isPhone && styles.studentInfoRowMobile,
+                    isLargeScreen && styles.studentInfoRowLarge
+                  ]}>
                     <Text style={styles.studentInfoLabel}>Student ID</Text>
-                    <Text style={styles.studentInfoValue}>{studentRecord.studentId}</Text>
+                    <Text style={[
+                      styles.studentInfoValue, 
+                      isPhone && styles.studentInfoValueMobile
+                    ]}>
+                      {studentRecord.studentId}
+                    </Text>
                   </View>
 
-                  <View style={[styles.studentInfoRow, isLargeScreen && styles.studentInfoRowLarge]}>
+                  <View style={[
+                    styles.studentInfoRow, 
+                    isPhone && styles.studentInfoRowMobile,
+                    isLargeScreen && styles.studentInfoRowLarge
+                  ]}>
                     <Text style={styles.studentInfoLabel}>Student Name</Text>
-                    <Text style={styles.studentInfoValue}>{studentRecord.fullName}</Text>
+                    <Text style={[
+                      styles.studentInfoValue, 
+                      isPhone && styles.studentInfoValueMobile
+                    ]}>
+                      {studentRecord.fullName}
+                    </Text>
                   </View>
 
-                  <View style={[styles.studentInfoRow, isLargeScreen && styles.studentInfoRowLarge]}>
+                  <View style={[
+                    styles.studentInfoRow, 
+                    isPhone && styles.studentInfoRowMobile,
+                    isLargeScreen && styles.studentInfoRowLarge
+                  ]}>
                     <Text style={styles.studentInfoLabel}>Total Units</Text>
-                    <Text style={styles.studentInfoValue}>
+                    <Text style={[
+                      styles.studentInfoValue, 
+                      isPhone && styles.studentInfoValueMobile
+                    ]}>
                       {studentRecord.totalUnits.toFixed(1)}
                     </Text>
                   </View>
 
-                  <View style={[styles.studentInfoRow, isLargeScreen && styles.studentInfoRowLarge]}>
+                  <View style={[
+                    styles.studentInfoRow, 
+                    isPhone && styles.studentInfoRowMobile,
+                    isLargeScreen && styles.studentInfoRowLarge
+                  ]}>
                     <Text style={styles.studentInfoLabel}>GWA</Text>
-                    <Text style={[styles.studentInfoValue, styles.gwaValue]}>
+                    <Text style={[
+                      styles.studentInfoValue, 
+                      styles.gwaValue,
+                      isPhone && styles.studentInfoValueMobile
+                    ]}>
                       {formatGrade(studentRecord.gwa)}
                     </Text>
                   </View>
@@ -1429,8 +1450,10 @@ const styles = StyleSheet.create({
     fontFamily,
   },
 
+  // UPDATED: Responsive Student Info Panel Styles
   studentInfoPanel: {
     alignSelf: 'center',
+    width: '100%', // Ensures it stretches to full width on mobile
     borderWidth: 1,
     borderColor: '#E8E1DA',
     borderRadius: 12,
@@ -1450,7 +1473,17 @@ const styles = StyleSheet.create({
   studentInfoRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    alignItems: 'center',
     gap: 12,
+    width: '100%', // Ensures each row stretches to full width
+  },
+
+  // NEW: Mobile-specific layout (Stacks label and value vertically)
+  studentInfoRowMobile: {
+    flexDirection: 'column',
+    alignItems: 'flex-start',
+    justifyContent: 'flex-start',
+    gap: 2,
   },
 
   studentInfoRowLarge: {
@@ -1472,6 +1505,14 @@ const styles = StyleSheet.create({
     textAlign: 'right',
     flex: 1,
     fontFamily,
+  },
+
+  // NEW: Mobile-specific value styling (Left-aligned for vertical stack)
+  studentInfoValueMobile: {
+    textAlign: 'left',
+    fontSize: 14,
+    width: '100%',
+    flex: 0, // Prevents vertical stretching in column layout
   },
 
   gwaValue: {
@@ -1627,7 +1668,6 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     fontFamily,
   },
-
 });
 
 export default Grades;

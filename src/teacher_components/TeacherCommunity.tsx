@@ -1,7 +1,6 @@
 import Constants from 'expo-constants';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
-  FlatList,
   GestureResponderEvent,
   Image,
   Keyboard,
@@ -546,30 +545,31 @@ const Community: React.FC<CommunityProps> = ({
   };
 
   return (
-    <TouchableWithoutFeedback
-      onPress={() => {
-        if (
-          !modalVisible &&
-          !answersModalVisible &&
-          !editPostModalVisible &&
-          !editAnswerModalVisible &&
-          !deletePostConfirmVisible &&
-          !deleteAnswerConfirmVisible &&
-          !postDropdownState &&
-          !answerDropdownState
-        ) {
-          Keyboard.dismiss();
-        }
-      }}
-    >
-      <View style={{ flex: 1 }}>
-        <ScrollView
-          style={styles.container}
-          contentContainerStyle={[
-            styles.contentContainer,
-            isLargeScreen && styles.largeScreenContentContainer,
-          ]}
-          keyboardShouldPersistTaps="handled"
+    // 1. Moved TouchableWithoutFeedback INSIDE the ScrollView
+    <View style={{ flex: 1 }}>
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={[
+          styles.contentContainer,
+          isLargeScreen && styles.largeScreenContentContainer,
+        ]}
+        keyboardShouldPersistTaps="handled"
+      >
+        <TouchableWithoutFeedback
+          onPress={() => {
+            if (
+              !modalVisible &&
+              !answersModalVisible &&
+              !editPostModalVisible &&
+              !editAnswerModalVisible &&
+              !deletePostConfirmVisible &&
+              !deleteAnswerConfirmVisible &&
+              !postDropdownState &&
+              !answerDropdownState
+            ) {
+              Keyboard.dismiss();
+            }
+          }}
         >
           <View style={styles.innerWrapper}>
             <View style={styles.header}>
@@ -592,348 +592,351 @@ const Community: React.FC<CommunityProps> = ({
               </TouchableOpacity>
             </View>
 
-            <FlatList
-              data={visiblePosts}
-              keyExtractor={(item) => item.id}
-              renderItem={renderPost}
-              scrollEnabled={false}
-              contentContainerStyle={{ paddingBottom: 50 }}
-            />
-          </View>
-        </ScrollView>
-
-        <PostQueryModal
-          visible={modalVisible}
-          onClose={() => setModalVisible(false)}
-          onPost={onCreatePost}
-        />
-
-        <Modal
-          visible={!!postDropdownState}
-          transparent
-          animationType="fade"
-          onRequestClose={closePostDropdown}
-        >
-          <TouchableWithoutFeedback onPress={closePostDropdown}>
-            <View style={styles.dropdownOverlay}>
-              <TouchableWithoutFeedback onPress={() => {}}>
-                <View>{renderPostDropdownContent()}</View>
-              </TouchableWithoutFeedback>
-            </View>
-          </TouchableWithoutFeedback>
-        </Modal>
-
-        <Modal
-          visible={editPostModalVisible}
-          transparent
-          animationType="fade"
-          onRequestClose={handleCloseEditPostModal}
-        >
-          <TouchableWithoutFeedback onPress={handleCloseEditPostModal}>
-            <View style={styles.modalOverlay}>
-              <TouchableWithoutFeedback onPress={() => {}}>
-                <View style={styles.editPostModalCard}>
-                  <View style={styles.answerModalHeader}>
-                    <Text style={styles.answerModalTitle}>Edit Post</Text>
-                    <TouchableOpacity onPress={handleCloseEditPostModal}>
-                      <Ionicons name="close" size={22} color="#333" />
-                    </TouchableOpacity>
-                  </View>
-
-                  <TextInput
-                    style={styles.answerInput}
-                    placeholder="Edit your post"
-                    placeholderTextColor="#999"
-                    multiline
-                    value={editPostText}
-                    onChangeText={setEditPostText}
-                    textAlignVertical="top"
-                  />
-
-                  <TouchableOpacity
-                    style={styles.postAnswerButton}
-                    onPress={handleSaveEditedPost}
-                  >
-                    <Text style={styles.postAnswerButtonText}>Save Changes</Text>
-                  </TouchableOpacity>
-                </View>
-              </TouchableWithoutFeedback>
-            </View>
-          </TouchableWithoutFeedback>
-        </Modal>
-
-        <Modal
-          visible={editAnswerModalVisible}
-          transparent
-          animationType="fade"
-          onRequestClose={handleCloseEditAnswerModal}
-        >
-          <TouchableWithoutFeedback onPress={handleCloseEditAnswerModal}>
-            <View style={styles.modalOverlay}>
-              <TouchableWithoutFeedback onPress={() => {}}>
-                <View style={styles.editPostModalCard}>
-                  <View style={styles.answerModalHeader}>
-                    <Text style={styles.answerModalTitle}>Edit Answer</Text>
-                    <TouchableOpacity onPress={handleCloseEditAnswerModal}>
-                      <Ionicons name="close" size={22} color="#333" />
-                    </TouchableOpacity>
-                  </View>
-
-                  <TextInput
-                    style={styles.answerInput}
-                    placeholder="Edit your answer"
-                    placeholderTextColor="#999"
-                    multiline
-                    value={editAnswerText}
-                    onChangeText={setEditAnswerText}
-                    textAlignVertical="top"
-                  />
-
-                  <TouchableOpacity
-                    style={styles.postAnswerButton}
-                    onPress={handleSaveEditedAnswer}
-                  >
-                    <Text style={styles.postAnswerButtonText}>Save Changes</Text>
-                  </TouchableOpacity>
-                </View>
-              </TouchableWithoutFeedback>
-            </View>
-          </TouchableWithoutFeedback>
-        </Modal>
-
-        <Modal
-          visible={deletePostConfirmVisible}
-          transparent
-          animationType="fade"
-          onRequestClose={cancelDeletePost}
-        >
-          <TouchableWithoutFeedback onPress={cancelDeletePost}>
-            <View style={styles.modalOverlay}>
-              <TouchableWithoutFeedback onPress={() => {}}>
-                <View style={styles.confirmModalCard}>
-                  <Text style={styles.confirmTitle}>Delete Post</Text>
-                  <Text style={styles.confirmMessage}>
-                    Are you sure you want to delete this post?
-                  </Text>
-
-                  <View style={styles.confirmActions}>
-                    <TouchableOpacity
-                      style={styles.cancelButton}
-                      onPress={cancelDeletePost}
-                    >
-                      <Text style={styles.cancelButtonText}>Cancel</Text>
-                    </TouchableOpacity>
-
-                    <TouchableOpacity
-                      style={styles.deleteButton}
-                      onPress={confirmDeletePost}
-                    >
-                      <Text style={styles.deleteButtonText}>Delete</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              </TouchableWithoutFeedback>
-            </View>
-          </TouchableWithoutFeedback>
-        </Modal>
-
-        <Modal
-          visible={deleteAnswerConfirmVisible}
-          transparent
-          animationType="fade"
-          onRequestClose={cancelDeleteAnswer}
-        >
-          <TouchableWithoutFeedback onPress={cancelDeleteAnswer}>
-            <View style={styles.modalOverlay}>
-              <TouchableWithoutFeedback onPress={() => {}}>
-                <View style={styles.confirmModalCard}>
-                  <Text style={styles.confirmTitle}>Delete Answer</Text>
-                  <Text style={styles.confirmMessage}>
-                    Are you sure you want to delete this answer?
-                  </Text>
-
-                  <View style={styles.confirmActions}>
-                    <TouchableOpacity
-                      style={styles.cancelButton}
-                      onPress={cancelDeleteAnswer}
-                    >
-                      <Text style={styles.cancelButtonText}>Cancel</Text>
-                    </TouchableOpacity>
-
-                    <TouchableOpacity
-                      style={styles.deleteButton}
-                      onPress={confirmDeleteAnswer}
-                    >
-                      <Text style={styles.deleteButtonText}>Delete</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              </TouchableWithoutFeedback>
-            </View>
-          </TouchableWithoutFeedback>
-        </Modal>
-
-        <Modal
-          visible={answersModalVisible}
-          transparent
-          animationType="fade"
-          onRequestClose={closeAnswersModal}
-        >
-          <View style={styles.modalOverlay}>
-            <TouchableOpacity
-              activeOpacity={1}
-              style={StyleSheet.absoluteFill}
-              onPress={() => {
-                closeAnswerDropdown();
-                closeAnswersModal();
-              }}
-            />
-
-            <View style={styles.answersModalCard}>
-              <View style={styles.answerModalHeader}>
-                <Text style={styles.answerModalTitle}>Answers</Text>
-                <TouchableOpacity onPress={closeAnswersModal}>
-                  <Ionicons name="close" size={22} color="#333" />
-                </TouchableOpacity>
+            {/* 👇 2. Replaced FlatList with .map() to prevent nested virtualization conflicts */}
+            {visiblePosts.length > 0 && (
+              <View style={{ paddingBottom: 50 }}>
+                {visiblePosts.map((item) => (
+                  <React.Fragment key={item.id}>
+                    {renderPost({ item })}
+                  </React.Fragment>
+                ))}
               </View>
-
-              {selectedPost && (
-                <>
-                  <Text style={styles.selectedPostText}>{selectedPost.content}</Text>
-
-                  <View style={styles.answersListWrapper}>
-                    <ScrollView
-                      style={styles.answersScroll}
-                      contentContainerStyle={styles.modalAnswersContainer}
-                      showsVerticalScrollIndicator={true}
-                      persistentScrollbar={Platform.OS === 'android'}
-                      nestedScrollEnabled={true}
-                      keyboardShouldPersistTaps="handled"
-                      scrollEventThrottle={16}
-                    >
-                      {visibleAnswers.length > 0 ? (
-                        visibleAnswers.map((answer) => (
-                          <View key={answer.id} style={styles.answerCard}>
-                            <View style={styles.answerPreviewHeader}>
-                              <View style={styles.userRow}>
-                                <Image
-                                  source={normalizeImageSource(refreshedAnswerAvatars[answer.id] || answer.avatar)}
-                                  style={styles.answerAvatar}
-                                  resizeMode="cover"
-                                />
-                                <View style={{ marginLeft: 8, flex: 1 }}>
-                                  <Text style={styles.answerUserName}>{answer.userName}</Text>
-                                  <Text style={styles.answerDate}>{answer.answeredAt}</Text>
-                                </View>
-
-                                <TouchableOpacity
-                                  onPress={(event) => openAnswerDropdown(event, answer)}
-                                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                                >
-                                  <Ionicons
-                                    name="ellipsis-vertical"
-                                    size={18}
-                                    color="#555"
-                                  />
-                                </TouchableOpacity>
-                              </View>
-                            </View>
-
-                            <Text style={styles.answerPreviewText}>
-                              {answer.message}
-                            </Text>
-                          </View>
-                        ))
-                      ) : (
-                        <Text style={styles.noAnswersText}>No answers yet.</Text>
-                      )}
-                    </ScrollView>
-                  </View>
-
-                  <View style={styles.answerInputSection}>
-                    <Text style={styles.answerInputLabel}>Write an answer</Text>
-                    <TextInput
-                      style={styles.answerInput}
-                      placeholder="Type your answer here"
-                      placeholderTextColor="#999"
-                      multiline
-                      value={answerText}
-                      onChangeText={setAnswerText}
-                      textAlignVertical="top"
-                    />
-                    <TouchableOpacity
-                      style={styles.postAnswerButton}
-                      onPress={handlePostAnswer}
-                    >
-                      <Text style={styles.postAnswerButtonText}>Post Answer</Text>
-                    </TouchableOpacity>
-                  </View>
-                </>
-              )}
-            </View>
-
-            {answerDropdownState && (
-              <TouchableWithoutFeedback onPress={closeAnswerDropdown}>
-                <View style={styles.answerDropdownOverlay}>
-                  <TouchableWithoutFeedback onPress={() => {}}>
-                    <View
-                      style={[
-                        styles.answerDropdownFloating,
-                        {
-                          top: answerDropdownState.y,
-                          left: answerDropdownState.x,
-                        },
-                      ]}
-                    >
-                      {answerDropdownState.answer.userName === userName ? (
-                        <>
-                          <TouchableOpacity
-                            style={styles.menuItem}
-                            onPress={() => {
-                              const latestAnswer = selectedPost?.answers.find(
-                                (item) => item.id === answerDropdownState.answer.id
-                              );
-                              if (latestAnswer) {
-                                handleEditAnswer(latestAnswer);
-                              }
-                            }}
-                          >
-                            <View style={styles.actionIconCircle}>
-                              <Ionicons name="create-outline" size={13} color="#fff" />
-                            </View>
-                            <Text style={styles.menuText}>Edit Answer</Text>
-                          </TouchableOpacity>
-
-                          <TouchableOpacity
-                            style={styles.menuItem}
-                            onPress={() => requestDeleteAnswer(answerDropdownState.answer.id)}
-                          >
-                            <View style={styles.deleteIconCircle}>
-                              <Ionicons name="trash-outline" size={13} color="#fff" />
-                            </View>
-                            <Text style={styles.menuText}>Delete Answer</Text>
-                          </TouchableOpacity>
-                        </>
-                      ) : (
-                        <TouchableOpacity
-                          style={styles.menuItem}
-                          onPress={() => handleHideAnswer(answerDropdownState.answer.id)}
-                        >
-                          <View style={styles.hideIconCircle}>
-                            <Ionicons name="eye-off" size={13} color="#fff" />
-                          </View>
-                          <Text style={styles.menuText}>Hide</Text>
-                        </TouchableOpacity>
-                      )}
-                    </View>
-                  </TouchableWithoutFeedback>
-                </View>
-              </TouchableWithoutFeedback>
             )}
           </View>
-        </Modal>
-      </View>
-    </TouchableWithoutFeedback>
+        </TouchableWithoutFeedback>
+      </ScrollView>
+
+      <PostQueryModal
+        visible={modalVisible}
+        onClose={() => setModalVisible(false)}
+        onPost={onCreatePost}
+      />
+
+      <Modal
+        visible={!!postDropdownState}
+        transparent
+        animationType="fade"
+        onRequestClose={closePostDropdown}
+      >
+        <TouchableWithoutFeedback onPress={closePostDropdown}>
+          <View style={styles.dropdownOverlay}>
+            <TouchableWithoutFeedback onPress={() => {}}>
+              <View>{renderPostDropdownContent()}</View>
+            </TouchableWithoutFeedback>
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
+
+      <Modal
+        visible={editPostModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={handleCloseEditPostModal}
+      >
+        <TouchableWithoutFeedback onPress={handleCloseEditPostModal}>
+          <View style={styles.modalOverlay}>
+            <TouchableWithoutFeedback onPress={() => {}}>
+              <View style={styles.editPostModalCard}>
+                <View style={styles.answerModalHeader}>
+                  <Text style={styles.answerModalTitle}>Edit Post</Text>
+                  <TouchableOpacity onPress={handleCloseEditPostModal}>
+                    <Ionicons name="close" size={22} color="#333" />
+                  </TouchableOpacity>
+                </View>
+
+                <TextInput
+                  style={styles.answerInput}
+                  placeholder="Edit your post"
+                  placeholderTextColor="#999"
+                  multiline
+                  value={editPostText}
+                  onChangeText={setEditPostText}
+                  textAlignVertical="top"
+                />
+
+                <TouchableOpacity
+                  style={styles.postAnswerButton}
+                  onPress={handleSaveEditedPost}
+                >
+                  <Text style={styles.postAnswerButtonText}>Save Changes</Text>
+                </TouchableOpacity>
+              </View>
+            </TouchableWithoutFeedback>
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
+
+      <Modal
+        visible={editAnswerModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={handleCloseEditAnswerModal}
+      >
+        <TouchableWithoutFeedback onPress={handleCloseEditAnswerModal}>
+          <View style={styles.modalOverlay}>
+            <TouchableWithoutFeedback onPress={() => {}}>
+              <View style={styles.editPostModalCard}>
+                <View style={styles.answerModalHeader}>
+                  <Text style={styles.answerModalTitle}>Edit Answer</Text>
+                  <TouchableOpacity onPress={handleCloseEditAnswerModal}>
+                    <Ionicons name="close" size={22} color="#333" />
+                  </TouchableOpacity>
+                </View>
+
+                <TextInput
+                  style={styles.answerInput}
+                  placeholder="Edit your answer"
+                  placeholderTextColor="#999"
+                  multiline
+                  value={editAnswerText}
+                  onChangeText={setEditAnswerText}
+                  textAlignVertical="top"
+                />
+
+                <TouchableOpacity
+                  style={styles.postAnswerButton}
+                  onPress={handleSaveEditedAnswer}
+                >
+                  <Text style={styles.postAnswerButtonText}>Save Changes</Text>
+                </TouchableOpacity>
+              </View>
+            </TouchableWithoutFeedback>
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
+
+      <Modal
+        visible={deletePostConfirmVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={cancelDeletePost}
+      >
+        <TouchableWithoutFeedback onPress={cancelDeletePost}>
+          <View style={styles.modalOverlay}>
+            <TouchableWithoutFeedback onPress={() => {}}>
+              <View style={styles.confirmModalCard}>
+                <Text style={styles.confirmTitle}>Delete Post</Text>
+                <Text style={styles.confirmMessage}>
+                  Are you sure you want to delete this post?
+                </Text>
+
+                <View style={styles.confirmActions}>
+                  <TouchableOpacity
+                    style={styles.cancelButton}
+                    onPress={cancelDeletePost}
+                  >
+                    <Text style={styles.cancelButtonText}>Cancel</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={styles.deleteButton}
+                    onPress={confirmDeletePost}
+                  >
+                    <Text style={styles.deleteButtonText}>Delete</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </TouchableWithoutFeedback>
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
+
+      <Modal
+        visible={deleteAnswerConfirmVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={cancelDeleteAnswer}
+      >
+        <TouchableWithoutFeedback onPress={cancelDeleteAnswer}>
+          <View style={styles.modalOverlay}>
+            <TouchableWithoutFeedback onPress={() => {}}>
+              <View style={styles.confirmModalCard}>
+                <Text style={styles.confirmTitle}>Delete Answer</Text>
+                <Text style={styles.confirmMessage}>
+                  Are you sure you want to delete this answer?
+                </Text>
+
+                <View style={styles.confirmActions}>
+                  <TouchableOpacity
+                    style={styles.cancelButton}
+                    onPress={cancelDeleteAnswer}
+                  >
+                    <Text style={styles.cancelButtonText}>Cancel</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={styles.deleteButton}
+                    onPress={confirmDeleteAnswer}
+                  >
+                    <Text style={styles.deleteButtonText}>Delete</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </TouchableWithoutFeedback>
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
+
+      <Modal
+        visible={answersModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={closeAnswersModal}
+      >
+        <View style={styles.modalOverlay}>
+          <TouchableOpacity
+            activeOpacity={1}
+            style={StyleSheet.absoluteFill}
+            onPress={() => {
+              closeAnswerDropdown();
+              closeAnswersModal();
+            }}
+          />
+
+          <View style={styles.answersModalCard}>
+            <View style={styles.answerModalHeader}>
+              <Text style={styles.answerModalTitle}>Answers</Text>
+              <TouchableOpacity onPress={closeAnswersModal}>
+                <Ionicons name="close" size={22} color="#333" />
+              </TouchableOpacity>
+            </View>
+
+            {selectedPost && (
+              <>
+                <Text style={styles.selectedPostText}>{selectedPost.content}</Text>
+
+                <View style={styles.answersListWrapper}>
+                  <ScrollView
+                    style={styles.answersScroll}
+                    contentContainerStyle={styles.modalAnswersContainer}
+                    showsVerticalScrollIndicator={true}
+                    persistentScrollbar={Platform.OS === 'android'}
+                    nestedScrollEnabled={true}
+                    keyboardShouldPersistTaps="handled"
+                    scrollEventThrottle={16}
+                  >
+                    {visibleAnswers.length > 0 ? (
+                      visibleAnswers.map((answer) => (
+                        <View key={answer.id} style={styles.answerCard}>
+                          <View style={styles.answerPreviewHeader}>
+                            <View style={styles.userRow}>
+                              <Image
+                                source={normalizeImageSource(refreshedAnswerAvatars[answer.id] || answer.avatar)}
+                                style={styles.answerAvatar}
+                                resizeMode="cover"
+                              />
+                              <View style={{ marginLeft: 8, flex: 1 }}>
+                                <Text style={styles.answerUserName}>{answer.userName}</Text>
+                                <Text style={styles.answerDate}>{answer.answeredAt}</Text>
+                              </View>
+
+                              <TouchableOpacity
+                                onPress={(event) => openAnswerDropdown(event, answer)}
+                                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                              >
+                                <Ionicons
+                                  name="ellipsis-vertical"
+                                  size={18}
+                                  color="#555"
+                                />
+                              </TouchableOpacity>
+                            </View>
+                          </View>
+
+                          <Text style={styles.answerPreviewText}>
+                            {answer.message}
+                          </Text>
+                        </View>
+                      ))
+                    ) : (
+                      <Text style={styles.noAnswersText}>No answers yet.</Text>
+                    )}
+                  </ScrollView>
+                </View>
+
+                <View style={styles.answerInputSection}>
+                  <Text style={styles.answerInputLabel}>Write an answer</Text>
+                  <TextInput
+                    style={styles.answerInput}
+                    placeholder="Type your answer here"
+                    placeholderTextColor="#999"
+                    multiline
+                    value={answerText}
+                    onChangeText={setAnswerText}
+                    textAlignVertical="top"
+                  />
+                  <TouchableOpacity
+                    style={styles.postAnswerButton}
+                    onPress={handlePostAnswer}
+                  >
+                    <Text style={styles.postAnswerButtonText}>Post Answer</Text>
+                  </TouchableOpacity>
+                </View>
+              </>
+            )}
+          </View>
+
+          {answerDropdownState && (
+            <TouchableWithoutFeedback onPress={closeAnswerDropdown}>
+              <View style={styles.answerDropdownOverlay}>
+                <TouchableWithoutFeedback onPress={() => {}}>
+                  <View
+                    style={[
+                      styles.answerDropdownFloating,
+                      {
+                        top: answerDropdownState.y,
+                        left: answerDropdownState.x,
+                      },
+                    ]}
+                  >
+                    {answerDropdownState.answer.userName === userName ? (
+                      <>
+                        <TouchableOpacity
+                          style={styles.menuItem}
+                          onPress={() => {
+                            const latestAnswer = selectedPost?.answers.find(
+                              (item) => item.id === answerDropdownState.answer.id
+                            );
+                            if (latestAnswer) {
+                              handleEditAnswer(latestAnswer);
+                            }
+                          }}
+                        >
+                          <View style={styles.actionIconCircle}>
+                            <Ionicons name="create-outline" size={13} color="#fff" />
+                          </View>
+                          <Text style={styles.menuText}>Edit Answer</Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                          style={styles.menuItem}
+                          onPress={() => requestDeleteAnswer(answerDropdownState.answer.id)}
+                        >
+                          <View style={styles.deleteIconCircle}>
+                            <Ionicons name="trash-outline" size={13} color="#fff" />
+                          </View>
+                          <Text style={styles.menuText}>Delete Answer</Text>
+                        </TouchableOpacity>
+                      </>
+                    ) : (
+                      <TouchableOpacity
+                        style={styles.menuItem}
+                        onPress={() => handleHideAnswer(answerDropdownState.answer.id)}
+                      >
+                        <View style={styles.hideIconCircle}>
+                          <Ionicons name="eye-off" size={13} color="#fff" />
+                        </View>
+                        <Text style={styles.menuText}>Hide</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                </TouchableWithoutFeedback>
+              </View>
+            </TouchableWithoutFeedback>
+          )}
+        </View>
+      </Modal>
+    </View>
   );
 };
 

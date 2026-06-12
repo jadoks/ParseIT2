@@ -807,12 +807,33 @@ const Dashboard2 = ({
             <Text style={styles.classesTitle}>My Classes</Text>
             <View style={styles.classesHeaderActions}>
               {hiddenCourseCount > 0 ? (
-                <TouchableOpacity style={styles.seeAllButton} onPress={() => setShowAllClasses((prev) => !prev)} activeOpacity={0.85}>
-                  <Text style={styles.seeAllButtonText}>{showAllClasses ? 'Show Less' : `See All (${processedCourses.length})`}</Text>
+                <TouchableOpacity 
+                  style={[styles.seeAllButton, isMobile && styles.iconOnlyButton]} 
+                  onPress={() => setShowAllClasses((prev) => !prev)} 
+                  activeOpacity={0.85}
+                >
+                  <MaterialCommunityIcons 
+                    name={showAllClasses ? "unfold-less-horizontal" : "unfold-more-horizontal"} 
+                    size={isMobile ? 20 : 18} 
+                    color="#D32F2F" 
+                  />
+                  {!isMobile && (
+                    <Text style={styles.seeAllButtonText}>
+                      {showAllClasses ? 'Show Less' : `See All (${processedCourses.length})`}
+                    </Text>
+                  )}
                 </TouchableOpacity>
               ) : null}
-              <TouchableOpacity style={styles.createBtn} onPress={() => setCreateModalVisible(true)}>
-                <Text style={styles.createBtnText}>+ Create Class</Text>
+              <TouchableOpacity 
+                style={[styles.createBtn, isMobile && styles.iconOnlyButton]} 
+                onPress={() => setCreateModalVisible(true)}
+              >
+                <MaterialCommunityIcons 
+                  name="plus" 
+                  size={isMobile ? 22 : 18} 
+                  color="#FFF" 
+                />
+                {!isMobile && <Text style={styles.createBtnText}>Create Class</Text>}
               </TouchableOpacity>
             </View>
           </View>
@@ -896,11 +917,43 @@ const styles = StyleSheet.create({
   sectionHeader: { fontSize: 24, fontWeight: '700', color: '#111' },
   classesHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 20, marginBottom: 16, gap: 12 },
   classesHeaderActions: { flexDirection: 'row', alignItems: 'center', gap: 10, flexWrap: 'wrap', justifyContent: 'flex-end' },
-  seeAllButton: { backgroundColor: '#FFF1F1', borderWidth: 1, borderColor: '#F3C6C6', paddingHorizontal: 14, paddingVertical: 10, borderRadius: 14 },
+  seeAllButton: { 
+    backgroundColor: '#FFF1F1', 
+    borderWidth: 1, 
+    borderColor: '#F3C6C6', 
+    paddingHorizontal: 14, 
+    paddingVertical: 10, 
+    borderRadius: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   seeAllButtonText: { color: '#D32F2F', fontWeight: '800', fontSize: 14 },
   classesTitle: { fontSize: 26, fontWeight: '700', color: '#111' },
-  createBtn: { backgroundColor: '#D32F2F', paddingHorizontal: 16, paddingVertical: 11, borderRadius: 14, elevation: 2, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 6, shadowOffset: { width: 0, height: 2 } },
+  createBtn: { 
+    backgroundColor: '#D32F2F', 
+    paddingHorizontal: 16, 
+    paddingVertical: 11, 
+    borderRadius: 14, 
+    elevation: 2, 
+    shadowColor: '#000', 
+    shadowOpacity: 0.08, 
+    shadowRadius: 6, 
+    shadowOffset: { width: 0, height: 2 },
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   createBtnText: { color: '#FFF', fontWeight: '700', fontSize: 14 },
+  
+  // ✅ NEW: Icon-only button style for mobile
+  iconOnlyButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    minWidth: 44,
+    justifyContent: 'center',
+  },
+  
   courseGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'flex-start', gap: 21, width: '100%' },
   card: { backgroundColor: '#fff', borderRadius: 18, borderWidth: 1, borderColor: '#ECECEC', shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 4, shadowOffset: { width: 0, height: 2 }, elevation: 2, overflow: 'hidden', marginBottom: 8 },
   bannerWrapper: { height: 140, width: '100%', overflow: 'hidden' }, // Added overflow: hidden to clip the absolute image

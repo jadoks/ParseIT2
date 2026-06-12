@@ -1,5 +1,5 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
   Image,
   Keyboard,
@@ -64,6 +64,7 @@ const TeacherHeader: React.FC<HeaderProps> = ({
   const [isSearchFocused, setIsSearchFocused] = useState(false);
   const [hoveredNav, setHoveredNav] = useState<ScreenType | null>(null);
   const [isBellHovered, setIsBellHovered] = useState(false);
+  const searchInputRef = useRef<TextInput>(null);
 
   const responsiveSize = (mobile: number, tablet: number, desktopMax: number) => {
     if (isVerySmall) return mobile * 0.9;
@@ -88,6 +89,12 @@ const TeacherHeader: React.FC<HeaderProps> = ({
       LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     }
     setIsSearchExpanded(expand);
+    if (!expand) {
+      setSearchQuery('');
+      Keyboard.dismiss();
+    } else {
+      setTimeout(() => searchInputRef.current?.focus(), 100);
+    }
   };
 
   const getIconColor = (screen: ScreenType) =>
@@ -256,75 +263,118 @@ const TeacherHeader: React.FC<HeaderProps> = ({
             </View>
 
             {!isSearchExpanded ? (
+              // Search Icon Button (Not Expanded - Image 1)
               <TouchableOpacity
                 style={[
-                  styles.searchIconOnly,
-                  {
-                    padding: isVerySmall ? 8 : 10,
-                    flex: 1,
-                    marginHorizontal: 8,
-                    flexDirection: 'row',
-                    paddingHorizontal: 12,
-                    gap: 8,
-                    alignItems: 'center',
-                  },
+                  styles.navBtn,
+                  { padding: 8, marginLeft: 'auto', marginRight: 4 },
                 ]}
                 onPress={() => toggleSearch(true)}
                 activeOpacity={0.7}
               >
                 <MaterialCommunityIcons
                   name="magnify"
-                  size={searchIconSize}
-                  color="#888"
+                  size={navIconSize}
+                  color="#000"
                 />
-                <Text
-                  style={{
-                    color: '#888',
-                    fontSize: isVerySmall ? 12 : 14,
-                    flex: 1,
-                    fontWeight: '400',
-                  }}
-                >
-                  {getSearchPlaceholder()}
-                </Text>
               </TouchableOpacity>
             ) : (
-              <TouchableWithoutFeedback onPress={() => {}}>
+              // Expanded Search Bar (Image 2)
+              <View
+                style={[
+                  styles.expandedSearchContainer,
+                  {
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    backgroundColor: '#FFF',
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    paddingHorizontal: 8,
+                    zIndex: 1000,
+                  },
+                ]}
+              >
+                {/* Back Arrow */}
+                <TouchableOpacity
+                  style={{ padding: 8, marginRight: 8 }}
+                  onPress={() => toggleSearch(false)}
+                  activeOpacity={0.7}
+                >
+                  <MaterialCommunityIcons
+                    name="arrow-left"
+                    size={24}
+                    color="#000"
+                  />
+                </TouchableOpacity>
+
+                {/* Search Input */}
                 <View
                   style={[
-                    styles.searchBar,
+                    styles.expandedSearchInput,
                     {
                       flex: 1,
-                      marginHorizontal: 8,
-                      height: isVerySmall ? 42 : 46,
-                      paddingHorizontal: 16,
-                      borderWidth: 1,
-                      borderBottomWidth: isSearchFocused ? 2 : 1,
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      backgroundColor: '#F1F1F1',
+                      borderRadius: 8,
+                      paddingHorizontal: 12,
+                      height: 40,
+                      marginRight: 8,
                     },
                   ]}
                 >
-                  <MaterialCommunityIcons
-                    name="magnify"
-                    size={searchIconSize}
-                    color="#888"
-                    style={{ marginRight: 12 }}
-                  />
                   <TextInput
+                    ref={searchInputRef}
                     autoFocus
-                    placeholder={getSearchPlaceholder()}
+                    placeholder="Search"
                     placeholderTextColor="#888"
                     value={searchQuery}
                     onChangeText={(text) => {
                       setSearchQuery(text);
                       onSearchChange?.(text);
                     }}
-                    onFocus={() => setIsSearchFocused(true)}
-                    onBlur={() => setIsSearchFocused(false)}
-                    style={[styles.searchInput, { fontSize: fontSizeSearch }]}
+                    style={{
+                      flex: 1,
+                      fontSize: 16,
+                      color: '#000',
+                      paddingVertical: 8,
+                    }}
                     returnKeyType="search"
                   />
+                  {searchQuery.length > 0 && (
+                    <TouchableOpacity
+                      onPress={() => {
+                        setSearchQuery('');
+                        onSearchChange?.('');
+                        searchInputRef.current?.focus();
+                      }}
+                      style={{ padding: 4 }}
+                    >
+                      <MaterialCommunityIcons name="close-circle" size={20} color="#888" />
+                    </TouchableOpacity>
+                  )}
                 </View>
-              </TouchableWithoutFeedback>
+
+                {/* Search Button */}
+                <TouchableOpacity
+                  style={{ padding: 8 }}
+                  onPress={() => {
+                    if (searchQuery.trim()) {
+                      Keyboard.dismiss();
+                    }
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <MaterialCommunityIcons
+                    name="magnify"
+                    size={24}
+                    color={searchQuery.trim() ? '#D32F2F' : '#888'}
+                  />
+                </TouchableOpacity>
+              </View>
             )}
 
             <TouchableOpacity
@@ -641,6 +691,15 @@ const styles = StyleSheet.create({
     color: '#FFF',
     fontSize: 9,
     fontWeight: 'bold',
+  },
+
+  // 👇 STYLES FOR EXPANDED MOBILE SEARCH
+  expandedSearchContainer: {
+    // Defined inline in component
+  },
+
+  expandedSearchInput: {
+    // Defined inline in component
   },
 });
 
