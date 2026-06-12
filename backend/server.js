@@ -78,7 +78,7 @@ async function requireAuth(req, res, next) {
     if (sessionCookie) {
       decoded = await admin.auth().verifySessionCookie(sessionCookie, true);
     } else if (bearerToken) {
-      decoded = await admin.auth().verifyIdToken(bearerToken, true);
+      decoded = await admin.auth().verifyIdToken(bearerToken, false);
     }
 
     if (!decoded?.uid) {

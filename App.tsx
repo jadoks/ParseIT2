@@ -62,7 +62,10 @@ export default function App() {
       if (firebaseUser) {
         try {
           // 1. Get the secure Firebase ID token
-          const idToken = await firebaseUser.getIdToken();
+          // ⚠️ CRITICAL FIX: Pass `true` to force a network refresh.
+          // This guarantees that if the app was closed overnight, we don't 
+          // accidentally send a stale/cached 1-hour expired token to your backend.
+          const idToken = await firebaseUser.getIdToken(true);
           
           // 2. Verify with backend and fetch full profile
           const response = await fetch(`${API_BASE_URL}/auth/session-me`, {
