@@ -61,25 +61,44 @@ export default function App() {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
         try {
-          // 1. Get the secure Firebase ID token
-          // ⚠️ CRITICAL FIX: Pass `true` to force a network refresh.
-          // This guarantees that if the app was closed overnight, we don't 
-          // accidentally send a stale/cached 1-hour expired token to your backend.
+          // 1. Get the secure Firebase ID token (force refresh)
           const idToken = await firebaseUser.getIdToken(true);
           
-          // 2. Verify with backend and fetch full profile
-          const response = await fetch(`${API_BASE_URL}/auth/session-me`, {
-            method: 'GET',
+          // 2. 🔥 NEW: Establish session cookie with backend
+          // This tells the backend to set a long-lasting HttpOnly cookie
+          const sessionResponse = await fetch(`${API_BASE_URL}/auth/session-login`, {
+            method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              'Authorization': `Bearer ${idToken}`,
+            },
+            credentials: 'include', // 🔥 CRITICAL: Tells the app to accept and store the cookie
+            body: JSON.stringify({ 
+              idToken,
+              deviceId: Platform.OS 
+            }),
+          });
+
+          if (!sessionResponse.ok) {
+            // Session establishment failed
+            setIsLoggedIn(false);
+            setShowLanding(true);
+            setIsCheckingAuth(false);
+            return;
+          }
+
+          // 3. Verify with backend and fetch full profile using the newly set cookie
+          const response = await fetch(`${API_BASE_URL}/auth/session-me`, {
+            method: 'GET',
+            credentials: 'include', // 🔥 CRITICAL: Automatically sends the stored cookie
+            headers: {
+              'Content-Type': 'application/json',
             },
           });
 
           if (response.ok) {
             const data = await response.json();
             if (data.success && data.profile) {
-              // 3. Map backend data to our frontend SignedInUser type
+              // 4. Map backend data to our frontend SignedInUser type
               const user: SignedInUser = {
                 role: data.role,
                 id: data.id,
@@ -134,11 +153,17 @@ export default function App() {
   };
 
   const handleLogout = async () => {
-    // Sign out from Firebase so the app truly forgets them
     try {
+      // 🔥 Clear the backend session cookie before signing out of Firebase
+      await fetch(`${API_BASE_URL}/auth/session-logout`, {
+        method: 'POST',
+        credentials: 'include',
+      });
+      
+      // Sign out from Firebase so the app truly forgets them
       await signOut(auth);
     } catch (error) {
-      console.error("Firebase sign out error:", error);
+      console.error("Sign out error:", error);
     }
     
     setCurrentUser(null);

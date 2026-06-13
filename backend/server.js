@@ -12748,6 +12748,44 @@ app.post("/messenger-file-url", requireAuth, async (req, res) => {
     return res.status(500).json({ error: error.message || "Failed to get file URL." });
   }
 });
+app.get("/messenger-download/:conversationId/{*storagePath}", requireAuth, async (req, res) => {
+  try {
+    const { conversationId, storagePath } = req.params;
+    
+    // Decode the storage path (handles %2F slashes from URL encoding)
+    let decodedPath = decodeURIComponent(storagePath);
+    
+    // Security check: Ensure path belongs to this conversation
+    if (!decodedPath.startsWith(`messenger-files/${conversationId}/`)) {
+      return res.status(403).json({ error: "Invalid file path." });
+    }
+
+    // Check if file exists in Firebase Storage
+    const [exists] = await bucket.file(decodedPath).exists();
+    if (!exists) {
+      console.error(`File not found in storage: ${decodedPath}`);
+      return res.status(404).json({ error: "File not found in storage." });
+    }
+
+    // Get metadata to set correct filename and type
+    const [metadata] = await bucket.file(decodedPath).getMetadata();
+    const contentType = metadata.contentType || 'application/octet-stream';
+    const fileName = metadata.name.split('/').pop() || 'download';
+
+    // Set headers to force browser download with correct name
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(fileName)}"`);
+    res.setHeader('Cache-Control', 'no-cache');
+    
+    // Stream the file directly from Firebase Storage to the client
+    const stream = bucket.file(decodedPath).createReadStream();
+    stream.pipe(res);
+    
+  } catch (error) {
+    console.error("Download proxy error:", error);
+    res.status(500).json({ error: "Failed to download file." });
+  }
+});
 
 const PORT = process.env.PORT || 5000;
 

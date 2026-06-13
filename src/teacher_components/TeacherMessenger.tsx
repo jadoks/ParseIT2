@@ -1,6 +1,7 @@
 import Constants from 'expo-constants';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
+import * as MediaLibrary from 'expo-media-library';
 import * as Sharing from 'expo-sharing';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { DimensionValue } from 'react-native';
@@ -169,6 +170,10 @@ const Messenger = ({
   // Image Preview States
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
   const [imagePreviewName, setImagePreviewName] = useState<string>('');
+  const [imagePreviewStoragePath, setImagePreviewStoragePath] = useState<string | null>(null);
+  
+  // Track which images are currently being refreshed to prevent loops
+  const [refreshingImages, setRefreshingImages] = useState<Set<string>>(new Set());
 
   // ✅ NEW: Pending File State (Facebook Messenger Style)
   const [pendingFile, setPendingFile] = useState<{
@@ -229,6 +234,7 @@ const Messenger = ({
     const hour = 60 * minute;
     const day = 24 * hour;
     const week = 7 * day;
+    
     if (diff < 0) return new Date(time).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
     if (diff < minute) return 'Now';
     if (diff < hour) return `${Math.floor(diff / minute)}m ago`;
@@ -348,7 +354,29 @@ const Messenger = ({
         if (cancelled) return;
         
         const backendRows = Array.isArray(data) ? data : [];
-        const backendMessages = normalizeMessages(backendRows);
+        
+        // ✅ PRE-FETCH IMAGE URLs for Past Messages
+        const backendMessages = await Promise.all(
+          normalizeMessages(backendRows).map(async msg => {
+             if (
+                msg.type === 'file' &&
+                msg.fileType?.startsWith('image/') &&
+                msg.storagePath
+              ) {
+              const freshUrl = await refreshFileUrl(
+                msg.storagePath,
+                selected.id
+              );
+
+              return {
+                ...msg,
+                fileUrl: freshUrl || msg.fileUrl,
+              };
+            }
+            return msg;
+          })
+        );
+
         const nextMessages = backendMessages.length ? backendMessages : [{
           id: `seed-${selected.id}`,
           fromMe: false,
@@ -379,7 +407,7 @@ const Messenger = ({
       }
     };
     loadMessages();
-    const interval = setInterval(loadMessages, 3000);
+    const interval = setInterval(loadMessages, 60000);
     return () => {
       cancelled = true;
       clearInterval(interval);
@@ -719,6 +747,7 @@ const Messenger = ({
   const openImagePreview = async (item: Message) => {
     if (!selected) return;
     let url = item.fileUrl;
+    let path = item.storagePath;
 
     if (item.storagePath) {
       const freshUrl = await refreshFileUrl(item.storagePath, selected.id);
@@ -733,50 +762,99 @@ const Messenger = ({
 
     setImagePreviewUrl(url || null);
     setImagePreviewName(item.fileName || 'Image');
+    setImagePreviewStoragePath(path || null); // ✅ SAVE PATH HERE FOR PROXY DOWNLOAD
   };
 
   const closeImagePreview = () => {
     setImagePreviewUrl(null);
     setImagePreviewName('');
+    setImagePreviewStoragePath(null);
   };
 
+    // ✅ UPDATED: Cross-platform Download Logic (Proxy + Gallery/Downloads)
   const handleDownloadImage = async () => {
-    if (!imagePreviewUrl) return;
-    if (imagePreviewUrl.startsWith('file://') || imagePreviewUrl.startsWith('blob:')) {
-      alert('Image is already on your device.');
-      return;
-    }
+    if (!imagePreviewUrl || !selected) return;
+    
+    let fileName = imagePreviewName;
+    if (!fileName.includes('.')) fileName += '.jpg';
+
     try {
       if (Platform.OS === 'web') {
+        // WEB: Use Backend Proxy to avoid CORS and force download
+        if (!imagePreviewStoragePath) {
+          alert("Cannot download: File path missing.");
+          return;
+        }
+        
+        // Construct URL: /messenger-download/{convId}/{encodedStoragePath}
+        const downloadUrl = `${API_BASE_URL}/messenger-download/${selected.id}/${encodeURIComponent(imagePreviewStoragePath)}`;
+        
+        console.log("Downloading via proxy:", downloadUrl); // Debug log
+        
+        const response = await fetch(downloadUrl, { credentials: 'include' });
+        if (!response.ok) {
+           // Try to read error text if available
+           const errorText = await response.text();
+           throw new Error(`Download failed: ${response.status} - ${errorText}`);
+        }
+        
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        
         const link = document.createElement('a');
-        link.href = imagePreviewUrl;
-        link.download = imagePreviewName;
+        link.href = url;
+        link.download = fileName;
         document.body.appendChild(link);
         link.click();
+        
         document.body.removeChild(link);
+        window.URL.revokeObjectURL(url);
+        
       } else {
-        const { uri } = await FileSystem.downloadAsync(imagePreviewUrl, FileSystem.documentDirectory + imagePreviewName);
-        if (await Sharing.isAvailableAsync()) {
-          await Sharing.shareAsync(uri);
-        } else {
-          alert('Downloaded to: ' + uri);
+        // MOBILE: Request Permission -> Download via Proxy -> Save to Gallery
+        const permission = await MediaLibrary.requestPermissionsAsync();
+        if (!permission.granted) {
+          alert('Gallery permission is required to save images.');
+          return;
         }
+
+        if (!imagePreviewStoragePath) {
+          alert("Cannot download: File path missing.");
+          return;
+        }
+
+        const downloadUrl = `${API_BASE_URL}/messenger-download/${selected.id}/${encodeURIComponent(imagePreviewStoragePath)}`;
+        const localUri = FileSystem.documentDirectory + fileName;
+
+        // Download via proxy (handles auth/CORS internally)
+        const downloadedFile = await FileSystem.downloadAsync(downloadUrl, localUri);
+        
+        // Create Asset in Media Library
+        const asset = await MediaLibrary.createAssetAsync(downloadedFile.uri);
+        
+        // Save to specific album
+        await MediaLibrary.createAlbumAsync('ParseIT', asset, false);
+        
+        alert('Image saved to Gallery!');
       }
     } catch (error) {
       console.error('Download image error:', error);
-      alert('Failed to download image.');
+
     }
   };
 
-  // ✅ FIXED: Always refresh URL if storagePath exists
+  // ✅ UPDATED: Robust Download for File Messages (Web & Mobile)
   const handleFileDownload = async (item: Message) => {
     if (!selected) return;
     let url = item.fileUrl;
+    let path = item.storagePath;
 
+    // Refresh URL if needed
     if (item.storagePath) {
       const freshUrl = await refreshFileUrl(item.storagePath, selected.id);
       if (freshUrl) {
         url = freshUrl;
+        // Update local state so next click is faster
         setMessagesByConversation((prev) => ({
           ...prev,
           [selected.id]: prev[selected.id].map(msg => msg.id === item.id ? { ...msg, fileUrl: freshUrl } : msg),
@@ -787,30 +865,51 @@ const Messenger = ({
       }
     }
 
-    if (!url) return;
-    if (url.startsWith('file://') || url.startsWith('blob:')) {
-      alert('File is already on your device.');
-      return;
+    if (!url || !path) return;
+    
+    let fileName = item.fileName || 'file';
+    if (!fileName.includes('.')) {
+       fileName += '.pdf'; // Default fallback
     }
+
     try {
       if (Platform.OS === 'web') {
+        // WEB: Use Backend Proxy
+        // In handleDownloadImage and handleFileDownload (Web section)
+      const downloadUrl = `${API_BASE_URL}/messenger-download/${selected.id}/${encodeURIComponent(path)}`;
+        
+        const response = await fetch(downloadUrl, { credentials: 'include' });
+        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+        
+        const blob = await response.blob();
+        const blobUrl = window.URL.createObjectURL(blob);
+        
         const link = document.createElement('a');
-        link.href = url;
-        link.download = item.fileName || 'file';
+        link.href = blobUrl;
+        link.download = fileName;
         document.body.appendChild(link);
         link.click();
+        
         document.body.removeChild(link);
+        window.URL.revokeObjectURL(blobUrl);
+        
       } else {
-        const { uri } = await FileSystem.downloadAsync(url, FileSystem.documentDirectory + (item.fileName || 'file'));
+        // MOBILE: Download via Proxy then Share/Save
+        const downloadUrl = `${API_BASE_URL}/messenger-download/${selected.id}/${encodeURIComponent(path)}`;
+        const { uri } = await FileSystem.downloadAsync(
+          downloadUrl, 
+          FileSystem.documentDirectory + fileName
+        );
+        
         if (await Sharing.isAvailableAsync()) {
           await Sharing.shareAsync(uri);
         } else {
-          alert('Downloaded to: ' + uri);
+          alert('File saved to: ' + uri);
         }
       }
     } catch (error) {
       console.error('Download file error:', error);
-      alert('Failed to download file.');
+      alert('Failed to download file. Please check your connection.');
     }
   };
 
@@ -1131,12 +1230,21 @@ const Messenger = ({
           <View style={styles.systemBubble}>
             <Text style={styles.systemBubbleText}>{item.text}</Text>
           </View>
+          {item.createdAt && (
+            <Text style={styles.messageTimestampSystem}>
+              {formatConversationTime(item.createdAt)}
+            </Text>
+          )}
         </View>
       );
     }
 
+    const timestampText = item.createdAt ? formatConversationTime(item.createdAt) : '';
+
     if (item.type === 'file') {
       const isImage = item.fileType?.startsWith('image/');
+      const hasUrl = !!item.fileUrl;
+      
       return (
         <View
           style={[
@@ -1168,18 +1276,74 @@ const Messenger = ({
               ]}
             >
               {isImage ? (
-                <Pressable onPress={() => item.fileUrl ? openImagePreview(item) : null}>
-                  {item.fileUrl ? (
-                    <Image source={{ uri: item.fileUrl }} style={{ width: 200, height: 200, borderRadius: 12 }} resizeMode="cover" />
+                <Pressable 
+                  onPress={() => openImagePreview(item)}
+                  style={{ width: 200, height: 200 }}
+                >
+                  {hasUrl ? (
+                    <>
+                      <Image
+                        source={{ uri: item.fileUrl }}
+                        style={{
+                          width: 200,
+                          height: 200,
+                          borderRadius: 12,
+                        }}
+                        onError={async () => {
+                          if (!item.storagePath || !selected) return;
+
+                          // Prevent infinite refresh loop
+                          if (refreshingImages.has(item.id)) return;
+
+                          setRefreshingImages(prev => {
+                            const next = new Set(prev);
+                            next.add(item.id);
+                            return next;
+                          });
+
+                          try {
+                            const freshUrl = await refreshFileUrl(
+                              item.storagePath,
+                              selected.id
+                            );
+
+                            // Only update if URL actually changed
+                            if (
+                              freshUrl &&
+                              freshUrl !== item.fileUrl
+                            ) {
+                              setMessagesByConversation(prev => ({
+                                ...prev,
+                                [selected.id]: prev[selected.id].map(msg =>
+                                  msg.id === item.id
+                                    ? {
+                                        ...msg,
+                                        fileUrl: freshUrl,
+                                      }
+                                    : msg
+                                ),
+                              }));
+                            }
+                          } catch (error) {
+                            console.error(
+                              'Failed to refresh image URL:',
+                              error
+                            );
+                          }
+                        }}
+                      />
+                      <View style={styles.fileImageOverlay}>
+                        <MaterialCommunityIcons name="file-image-outline" size={16} color="#fff" />
+                        <Text style={styles.fileImageName} numberOfLines={1}>{item.fileName}</Text>
+                      </View>
+                    </>
                   ) : (
-                    <View style={{ width: 200, height: 200, borderRadius: 12, backgroundColor: '#e0e0e0', alignItems: 'center', justifyContent: 'center' }}>
-                      <MaterialCommunityIcons name="loading" size={32} color="#999" />
+                    // ✅ FIX: Show "Tap to load" placeholder instead of blank space
+                    <View style={{ width: 200, height: 200, borderRadius: 12, backgroundColor: 'rgba(0,0,0,0.1)', alignItems: 'center', justifyContent: 'center' }}>
+                      <MaterialCommunityIcons name="image-off-outline" size={32} color={item.fromMe ? '#fff' : '#666'} />
+                      <Text style={{ color: item.fromMe ? '#fff' : '#666', marginTop: 8, fontSize: 12, fontWeight: '600' }}>Tap to load</Text>
                     </View>
                   )}
-                  <View style={styles.fileImageOverlay}>
-                    <MaterialCommunityIcons name="file-image-outline" size={16} color="#fff" />
-                    <Text style={styles.fileImageName} numberOfLines={1}>{item.fileName}</Text>
-                  </View>
                 </Pressable>
               ) : (
                 <Pressable onPress={() => handleFileDownload(item)} style={styles.fileBubbleContent}>
@@ -1195,11 +1359,19 @@ const Messenger = ({
                 </Pressable>
               )}
             </View>
+            
+            {/* Timestamp below file bubble */}
+            {timestampText ? (
+              <Text style={[styles.messageTimestamp, item.fromMe ? styles.messageTimestampMe : styles.messageTimestampThem]}>
+                {timestampText}
+              </Text>
+            ) : null}
           </Pressable>
         </View>
       );
     }
 
+    // Regular text message
     return (
       <View
         style={[
@@ -1234,6 +1406,13 @@ const Messenger = ({
               {item.text}
             </Text>
           </View>
+          
+          {/* Timestamp below text bubble */}
+          {timestampText ? (
+            <Text style={[styles.messageTimestamp, item.fromMe ? styles.messageTimestampMe : styles.messageTimestampThem]}>
+              {timestampText}
+            </Text>
+          ) : null}
         </Pressable>
       </View>
     );
@@ -1694,6 +1873,27 @@ const styles = StyleSheet.create({
   systemRow: { alignItems: 'center', marginBottom: 18 },
   systemBubble: { backgroundColor: '#d9928d', borderRadius: 20, paddingHorizontal: 14, paddingVertical: 10, maxWidth: '78%' },
   systemBubbleText: { color: '#fff', fontWeight: '700', textAlign: 'center', fontSize: 13 },
+  
+  // Timestamp Styles
+  messageTimestamp: { 
+    fontSize: 10, 
+    color: '#888', 
+    marginTop: 4, 
+    textAlign: 'right',
+    paddingHorizontal: 4,
+  },
+  messageTimestampMe: { 
+    textAlign: 'right', 
+  },
+  messageTimestampThem: { 
+    textAlign: 'left', 
+  },
+  messageTimestampSystem: {
+    fontSize: 10,
+    color: 'rgba(255,255,255,0.7)',
+    marginTop: 4,
+  },
+
   timeTooltip: { position: 'absolute', backgroundColor: 'rgba(17,17,17,0.94)', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, zIndex: 50, width: 150, alignItems: 'center' },
   timeTooltipText: { color: '#fff', fontSize: 11, fontWeight: '600' },
   inputArea: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', borderTopWidth: 1, borderTopColor: '#ececec' },
