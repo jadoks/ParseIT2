@@ -2411,21 +2411,15 @@ app.post("/auth/session-login", async (req, res) => {
 
 app.post("/auth/session-logout", async (req, res) => {
   try {
-    const sessionCookie = req.cookies?.[SESSION_COOKIE_NAME];
-
-    if (sessionCookie) {
-      try {
-        const decoded = await admin.auth().verifySessionCookie(sessionCookie);
-        await admin.auth().revokeRefreshTokens(decoded.sub || decoded.uid);
-      } catch (error) {
-        console.warn("Session revoke skipped:", error?.message || error);
-      }
-    }
-
+    // Normal logout only clears the session cookie
     res.clearCookie(SESSION_COOKIE_NAME, COOKIE_OPTIONS);
-    return res.json({ success: true });
+
+    return res.json({
+      success: true,
+    });
   } catch (error) {
     console.error("Session logout error:", error);
+
     return res.status(500).json({
       error: error.message || "Failed to clear login session.",
     });
@@ -6609,7 +6603,50 @@ app.get("/messenger-conversations", async (req, res) => {
       );
     }
 
-    res.json(conversations);
+    conversations = conversations.map((conversation) => {
+  const participants = Array.isArray(conversation.participants)
+    ? conversation.participants
+    : [];
+
+  const participant = participants.find(
+    (p) =>
+      (userId && p.userId === userId) ||
+      (userUid && p.userUid === userUid)
+  );
+
+  const lastMessageAt =
+    conversation.lastMessageAt?.toDate?.() ||
+    (conversation.lastMessageAt
+      ? new Date(conversation.lastMessageAt)
+      : null);
+
+  const lastReadAt =
+    participant?.lastReadAt?.toDate?.() ||
+    (participant?.lastReadAt
+      ? new Date(participant.lastReadAt)
+      : null);
+
+  const isLastMessageMine =
+  conversation.lastMessageSenderId === userId ||
+  conversation.lastMessageSenderUid === userUid;
+
+  let unreadCount = 0;
+
+  if (!isLastMessageMine && lastMessageAt) {
+    if (!lastReadAt) {
+      unreadCount = 1;
+    } else if (lastMessageAt.getTime() > lastReadAt.getTime()) {
+      unreadCount = 1;
+    }
+  }
+
+  return {
+    ...conversation,
+    unreadCount,
+  };
+});
+
+res.json(conversations);
   } catch (error) {
     console.error("Fetch messenger conversations error:", error);
     res.status(500).json({
@@ -6689,6 +6726,10 @@ app.post("/messenger-send-message", async (req, res) => {
     await conversationRef.update({
       lastMessage: trimmedText,
       lastMessageSender: normalizeOptionalText(senderName),
+
+      lastMessageSenderId: normalizeOptionalText(senderId),
+      lastMessageSenderUid: normalizeOptionalText(senderUid),
+
       lastMessageAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
     });
@@ -12688,11 +12729,15 @@ app.post("/messenger-upload-file", requireAuth, async (req, res) => {
 
     // Update conversation last message preview
     await conversationRef.update({
-      lastMessage: `Sent a file: ${safeFileName}`,
-      lastMessageSender: normalizeOptionalText(senderName),
-      lastMessageAt: FieldValue.serverTimestamp(),
-      updatedAt: FieldValue.serverTimestamp(),
-    });
+  lastMessage: `Sent a file: ${safeFileName}`,
+  lastMessageSender: normalizeOptionalText(senderName),
+
+  lastMessageSenderId: normalizeOptionalText(senderId),
+  lastMessageSenderUid: normalizeOptionalText(senderUid),
+
+  lastMessageAt: FieldValue.serverTimestamp(),
+  updatedAt: FieldValue.serverTimestamp(),
+});
 
     return res.json({
       success: true,
@@ -12786,6 +12831,178 @@ app.get("/messenger-download/:conversationId/{*storagePath}", requireAuth, async
     res.status(500).json({ error: "Failed to download file." });
   }
 });
+
+
+
+app.get("/messenger-unread-count", async (req, res) => {
+  try {
+    const userId = normalizeOptionalText(req.query.userId);
+    const userUid = normalizeOptionalText(req.query.userUid);
+
+    if (!userId && !userUid) {
+      return res.status(400).json({
+        error: "userId or userUid is required.",
+      });
+    }
+
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+    const snapshot = await db
+      .collection("messengerConversations")
+      .where(
+        "updatedAt",
+        ">",
+        admin.firestore.Timestamp.fromDate(sevenDaysAgo)
+      )
+      .get();
+
+    let totalUnread = 0;
+
+    for (const doc of snapshot.docs) {
+      const data = doc.data();
+
+      const participants = Array.isArray(data.participants)
+        ? data.participants
+        : [];
+
+      const participant = participants.find(
+        (p) =>
+          (userId && p.userId === userId) ||
+          (userUid && p.userUid === userUid)
+      );
+
+      if (!participant) {
+        continue;
+      }
+
+      const lastMessageAt =
+        data.lastMessageAt?.toDate?.() ||
+        (data.lastMessageAt
+          ? new Date(data.lastMessageAt)
+          : null);
+
+      if (!lastMessageAt) {
+        continue;
+      }
+
+      const lastReadAt =
+        participant.lastReadAt?.toDate?.() ||
+        (participant.lastReadAt
+          ? new Date(participant.lastReadAt)
+          : null);
+
+      // FIX: Don't count messages sent by the current user
+      const isLastMessageMine =
+        (data.lastMessageSenderId &&
+          data.lastMessageSenderId === userId) ||
+        (data.lastMessageSenderUid &&
+          data.lastMessageSenderUid === userUid);
+
+      if (isLastMessageMine) {
+        continue;
+      }
+
+      // Never read before
+      if (!lastReadAt) {
+        totalUnread++;
+        continue;
+      }
+
+      // New message after last read
+      if (lastMessageAt.getTime() > lastReadAt.getTime()) {
+        totalUnread++;
+      }
+    }
+
+    return res.json({
+      success: true,
+      count: totalUnread,
+    });
+  } catch (error) {
+    console.error(
+      "Fetch messenger unread count error:",
+      error
+    );
+
+    return res.status(500).json({
+      error:
+        error.message ||
+        "Failed to fetch unread count.",
+    });
+  }
+});
+
+/**
+ * MARK CONVERSATION AS READ
+ */
+app.post("/messenger-mark-read", async (req, res) => {
+  try {
+    const conversationId = normalizeOptionalText(req.body.conversationId);
+    const userId = normalizeOptionalText(req.body.userId);
+    const userUid = normalizeOptionalText(req.body.userUid);
+
+    if (!conversationId) {
+      return res.status(400).json({
+        error: "conversationId is required.",
+      });
+    }
+
+    if (!userId && !userUid) {
+      return res.status(400).json({
+        error: "userId or userUid is required.",
+      });
+    }
+
+    const conversationRef = db
+      .collection("messengerConversations")
+      .doc(conversationId);
+
+    const conversationSnap = await conversationRef.get();
+
+    if (!conversationSnap.exists) {
+      return res.status(404).json({
+        error: "Conversation not found.",
+      });
+    }
+
+    const conversationData = conversationSnap.data() || {};
+
+    const participants = Array.isArray(conversationData.participants)
+      ? conversationData.participants
+      : [];
+
+    const updatedParticipants = participants.map((participant) => {
+      const matches =
+        (userId && participant.userId === userId) ||
+        (userUid && participant.userUid === userUid);
+
+      if (!matches) {
+        return participant;
+      }
+
+      return {
+        ...participant,
+        lastReadAt: admin.firestore.Timestamp.now(),
+      };
+    });
+
+    await conversationRef.update({
+      participants: updatedParticipants,
+    });
+
+    return res.json({
+      success: true,
+    });
+  } catch (error) {
+    console.error("Mark conversation read error:", error);
+
+    return res.status(500).json({
+      error: error.message || "Failed to mark conversation as read.",
+    });
+  }
+});
+
 
 const PORT = process.env.PORT || 5000;
 

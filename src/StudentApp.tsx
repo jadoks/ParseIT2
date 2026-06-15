@@ -332,6 +332,8 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
   const [currentUserAvatar, setCurrentUserAvatar] = useState<any>(initialAvatar);
   const [currentUserBanner, setCurrentUserBanner] = useState<any>(initialBanner);
   const [hasImageChanged, setHasImageChanged] = useState(false);
+
+  
   
   const [joinedCourses, setJoinedCourses] = useState<CourseDetailData[]>([]);
   const [isLoadingJoinedCourses, setIsLoadingJoinedCourses] = useState(false);
@@ -340,6 +342,11 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
   const [communityPosts, setCommunityPosts] = useState<CommunityPost[]>([]);
   const [studentNotifications, setStudentNotifications] = useState<NotificationItem[]>([]);
   
+  // 👇 NEW STATE FOR MESSENGER UNREAD COUNT
+  const [messengerUnreadCount, setMessengerUnreadCount] = useState(0);
+
+
+
   const [globalSearchQuery, setGlobalSearchQuery] = useState('');
   const [isFetchingGame, setIsFetchingGame] = useState(false);
   const [gameAssignmentData, setGameAssignmentData] = useState<{
@@ -404,6 +411,8 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
   };
 
   useEffect(() => { loadCurrentStudentProfile(); }, [currentStudent?.studentId]);
+
+ 
   
   useEffect(() => {
     if (!remoteStudentProfile?.profileImage && currentStudent.profileImage) setCurrentUserAvatar({ uri: currentStudent.profileImage });
@@ -968,6 +977,35 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
 
   const unreadNotificationCount = useMemo(() => visibleStudentNotifications.filter((item) => !item.read).length, [visibleStudentNotifications]);
 
+  // 👇 NEW: Load Messenger Unread Count
+  const loadMessengerUnreadCount = useCallback(async () => {
+    if (!currentStudent?.studentId) return;
+    try {
+      const response = await apiFetch(
+  `${API_BASE_URL}/messenger-unread-count?userId=${encodeURIComponent(
+    currentStudent.studentId
+  )}&userUid=${encodeURIComponent(
+    currentStudent.authUid || ''
+  )}&role=student`
+);
+      const data = await response.json();
+      if (response.ok && data.success) {
+        setMessengerUnreadCount(data.count || 0);
+      }
+    } catch (error) {
+      console.log('LOAD MESSENGER UNREAD COUNT ERROR =>', error);
+    }
+  }, [currentStudent?.studentId]);
+
+  // Poll for unread messages every 10 seconds
+  useEffect(() => {
+    loadMessengerUnreadCount();
+    const interval = setInterval(loadMessengerUnreadCount, 10000);
+    return () => clearInterval(interval);
+  }, [loadMessengerUnreadCount]);
+
+
+
   const cleanVideoSearchText = (value = '') => String(value || '').replace(/_/g, ' ').replace(/[^a-zA-Z0-9\s+#.()-]/g, ' ').replace(/\s+/g, ' ').trim();
   const getRotatingIndex = (length: number, salt = 0) => { if (length <= 0) return 0; const today = new Date(); const daySeed = Math.floor(new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime() / 86400000); return Math.abs(daySeed + salt) % length; };
 
@@ -1492,6 +1530,7 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
           currentUser={currentStudent.studentId} 
           currentUserName={currentUserName} 
           courses={messengerCourses} 
+           onUnreadCountChanged={loadMessengerUnreadCount}
         />;
         
       case 'notification': 
@@ -1564,6 +1603,7 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
               onNavigate={handleNavigate}
               onSearchChange={(query) => setGlobalSearchQuery(query)}
               notificationCount={unreadNotificationCount}
+              messengerUnreadCount={messengerUnreadCount} // 👇 PASSED HERE
               onNotificationPress={handleNotificationPress}
               onMenuPress={() => setMobileDrawerOpen((prev) => !prev)}
             />

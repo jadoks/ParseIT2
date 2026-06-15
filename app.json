@@ -7,6 +7,9 @@
     "web": {
       "favicon": "./assets/images/logo.png"
     },
+    "android": {
+      "softwareKeyboardLayoutMode": "pan"
+    },
     "plugins": [
       "@react-native-community/datetimepicker",
       "expo-asset",

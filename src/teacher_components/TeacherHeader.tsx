@@ -6,6 +6,7 @@ import {
   LayoutAnimation,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -32,6 +33,27 @@ export type ScreenType =
   | 'notification'
   | 'analytics';
 
+// 👇 GLOBAL SEARCH CONFIGURATION FOR TEACHERS
+interface SearchFeature {
+  id: string;
+  title: string;
+  screen: ScreenType;
+  icon: string;
+  keywords: string[];
+}
+
+const GLOBAL_SEARCH_FEATURES: SearchFeature[] = [
+  { id: 'home', title: 'Teacher Dashboard', screen: 'home', icon: 'view-dashboard-outline', keywords: ['home', 'dash', 'main', 'overview'] },
+  { id: 'honors', title: 'Student Honors', screen: 'honors', icon: 'medal', keywords: ['honor', 'award', 'achievement', 'star'] },
+  { id: 'grades', title: 'Gradebook', screen: 'grades', icon: 'school', keywords: ['grade', 'score', 'mark', 'result', 'exam'] },
+  { id: 'announcement', title: 'Share Announcement', screen: 'announcement', icon: 'bullhorn', keywords: ['announce', 'post', 'news', 'alert', 'share'] },
+  { id: 'community', title: 'Teacher Community', screen: 'community', icon: 'forum-outline', keywords: ['comm', 'post', 'feed', 'social', 'forum'] },
+  { id: 'messenger', title: 'Messenger', screen: 'messenger', icon: 'facebook-messenger', keywords: ['mess', 'chat', 'talk', 'dm', 'pc', 'message'] },
+  { id: 'analytics', title: 'Class Analytics', screen: 'analytics', icon: 'chart-bar', keywords: ['ana', 'stats', 'data', 'progress', 'performance'] },
+  { id: 'profile', title: 'My Profile', screen: 'profile', icon: 'account-circle-outline', keywords: ['prof', 'user', 'me', 'settings', 'account'] },
+  { id: 'notifications', title: 'Notifications', screen: 'notification', icon: 'bell-outline', keywords: ['notif', 'alert', 'bell', 'update'] },
+];
+
 interface HeaderProps {
   isLargeScreen: boolean;
   activeScreen?: ScreenType;
@@ -40,6 +62,8 @@ interface HeaderProps {
   onMenuPress?: () => void;
   notificationCount?: number;
   onNotificationPress?: () => void;
+  // ✅ NEW PROP: Unread conversation count
+  messengerUnreadCount?: number;
 }
 
 const TeacherHeader: React.FC<HeaderProps> = ({
@@ -50,9 +74,9 @@ const TeacherHeader: React.FC<HeaderProps> = ({
   onMenuPress,
   notificationCount = 0,
   onNotificationPress,
+  messengerUnreadCount = 0,
 }) => {
   const { width } = useWindowDimensions();
-
   const isVerySmall = width < 360;
   const isSmallPhone = width < 420;
   const isPhone = width < 768;
@@ -64,6 +88,10 @@ const TeacherHeader: React.FC<HeaderProps> = ({
   const [isSearchFocused, setIsSearchFocused] = useState(false);
   const [hoveredNav, setHoveredNav] = useState<ScreenType | null>(null);
   const [isBellHovered, setIsBellHovered] = useState(false);
+  
+  // 👇 NEW STATE FOR CONTEXTUAL RESULTS
+  const [searchResults, setSearchResults] = useState<SearchFeature[]>([]);
+
   const searchInputRef = useRef<TextInput>(null);
 
   const responsiveSize = (mobile: number, tablet: number, desktopMax: number) => {
@@ -91,10 +119,62 @@ const TeacherHeader: React.FC<HeaderProps> = ({
     setIsSearchExpanded(expand);
     if (!expand) {
       setSearchQuery('');
+      setSearchResults([]);
       Keyboard.dismiss();
     } else {
       setTimeout(() => searchInputRef.current?.focus(), 100);
     }
+  };
+
+  // 👇 UNIFIED SEARCH HANDLER
+  const handleSearchChange = (text: string) => {
+    setSearchQuery(text);
+    
+    // 1. MESSENGER: Pass through for local conversation filtering
+    if (activeScreen === 'messenger') {
+      onSearchChange?.(text);
+      return;
+    }
+
+     // Community search
+    if (activeScreen === 'community') {
+      onSearchChange?.(text);
+      return;
+    }
+
+    // 2. GLOBAL SEARCH LOGIC (Home, Honors, Grades, etc.)
+    const isGlobalSearchScreen = 
+        activeScreen === 'home' || 
+        activeScreen === 'honors' || 
+        activeScreen === 'grades' || 
+        activeScreen === 'announcement' ||
+        activeScreen === 'profile' ||
+        activeScreen === 'analytics' 
+     
+
+    if (isGlobalSearchScreen) {
+      if (text.trim().length === 0) {
+        setSearchResults([]);
+        return;
+      }
+      const lowerText = text.toLowerCase();
+      const filtered = GLOBAL_SEARCH_FEATURES.filter((feature) => {
+        return (
+          feature.title.toLowerCase().includes(lowerText) ||
+          feature.keywords.some((k) => k.includes(lowerText))
+        );
+      });
+      setSearchResults(filtered);
+    }
+  };
+
+  // 👇 HANDLE QUICK ACTION CLICK
+  const handleSuggestionPress = (screen: ScreenType) => {
+    setSearchQuery('');
+    setSearchResults([]);
+    setIsSearchExpanded(false);
+    Keyboard.dismiss();
+    onNavigate?.(screen);
   };
 
   const getIconColor = (screen: ScreenType) =>
@@ -134,18 +214,26 @@ const TeacherHeader: React.FC<HeaderProps> = ({
 
   const getSearchPlaceholder = () => {
     if (isPhone) return 'Search';
-
-    if (activeScreen === 'messenger') return 'Search Messages';
-    if (activeScreen === 'grades') return 'Search Grades';
-    if (activeScreen === 'announcement') return 'Search Announcements';
-    if (activeScreen === 'honors') return 'Search Achievements';
+    if (activeScreen === 'messenger') return 'Filter conversations...';
+    if (activeScreen === 'community') return 'Filter posts...';
+    
+    // Global Search Placeholder
+    if (
+      activeScreen === 'home' ||
+      activeScreen === 'honors' ||
+      activeScreen === 'grades' ||
+      activeScreen === 'announcement' ||
+      activeScreen === 'profile' ||
+      activeScreen === 'analytics' 
+    ) {
+      return 'Search features...';
+    }
 
     return 'Search ParseClass';
   };
 
   const renderNavIcon = (screen: ScreenType, size: number) => {
     const color = getIconColor(screen);
-
     switch (screen) {
       case 'home':
         return (
@@ -159,16 +247,12 @@ const TeacherHeader: React.FC<HeaderProps> = ({
             }}
           />
         );
-
       case 'honors':
         return <MaterialCommunityIcons name="medal" size={size} color={color} />;
-
       case 'grades':
         return <MaterialCommunityIcons name="school" size={size} color={color} />;
-
       case 'announcement':
         return <MaterialCommunityIcons name="bullhorn" size={size} color={color} />;
-
       case 'messenger':
         return (
           <MaterialCommunityIcons
@@ -177,7 +261,6 @@ const TeacherHeader: React.FC<HeaderProps> = ({
             color={color}
           />
         );
-
       default:
         return <MaterialCommunityIcons name="circle" size={size} color={color} />;
     }
@@ -208,9 +291,18 @@ const TeacherHeader: React.FC<HeaderProps> = ({
           if (Platform.OS === 'web') setHoveredNav(null);
         }}
       >
-        {renderNavIcon(screen, size)}
+        {/* ✅ Render Badge for Messenger Icon */}
+        <View>
+          {renderNavIcon(screen, size)}
+          {screen === 'messenger' && messengerUnreadCount > 0 && (
+            <View style={styles.badge}>
+              <Text style={styles.badgeText}>
+                {messengerUnreadCount > 99 ? '99+' : messengerUnreadCount}
+              </Text>
+            </View>
+          )}
+        </View>
       </Pressable>
-
       {Platform.OS === 'web' && hoveredNav === screen && (
         <View style={styles.tooltip}>
           <Text style={styles.tooltipText}>{getNavLabel(screen)}</Text>
@@ -221,6 +313,44 @@ const TeacherHeader: React.FC<HeaderProps> = ({
 
   const displayNotificationCount =
     notificationCount > 99 ? '99+' : `${notificationCount}`;
+
+  // 👇 RENDER GLOBAL SEARCH RESULTS DROPDOWN
+  const renderSearchResults = () => {
+    const isGlobalSearchScreen =
+      activeScreen === 'home' ||
+      activeScreen === 'honors' ||
+      activeScreen === 'grades' ||
+      activeScreen === 'announcement' ||
+      activeScreen === 'profile' ||
+      activeScreen === 'analytics' ||
+      activeScreen === 'community';
+
+    if (!isGlobalSearchScreen || searchResults.length === 0 || searchQuery.length === 0) return null;
+
+    return (
+      <View style={[styles.searchResultsContainer, isPhone && styles.searchResultsMobile]}>
+        <ScrollView showsVerticalScrollIndicator={false}>
+          {searchResults.map((item) => (
+            <TouchableOpacity
+              key={item.id}
+              style={styles.searchResultItem}
+              onPress={() => handleSuggestionPress(item.screen)}
+              activeOpacity={0.7}
+            >
+              <View style={styles.resultIconBox}>
+                <MaterialCommunityIcons name={item.icon as any} size={20} color="#D32F2F" />
+              </View>
+              <View style={styles.resultContent}>
+                <Text style={styles.resultTitle}>{item.title}</Text>
+                <Text style={styles.resultSubtitle}>Quick Action • Go to {item.title}</Text>
+              </View>
+              <MaterialCommunityIcons name="chevron-right" size={20} color="#CCC" />
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      </View>
+    );
+  };
 
   if (isPhone) {
     return (
@@ -250,7 +380,6 @@ const TeacherHeader: React.FC<HeaderProps> = ({
               >
                 <MaterialCommunityIcons name="menu" size={24} color="#000" />
               </TouchableOpacity>
-
               <Image
                 source={require('../../assets/images/logo.png')}
                 style={{
@@ -263,7 +392,7 @@ const TeacherHeader: React.FC<HeaderProps> = ({
             </View>
 
             {!isSearchExpanded ? (
-              // Search Icon Button (Not Expanded - Image 1)
+              // Search Icon Button (Not Expanded)
               <TouchableOpacity
                 style={[
                   styles.navBtn,
@@ -279,7 +408,7 @@ const TeacherHeader: React.FC<HeaderProps> = ({
                 />
               </TouchableOpacity>
             ) : (
-              // Expanded Search Bar (Image 2)
+              // Expanded Search Bar
               <View
                 style={[
                   styles.expandedSearchContainer,
@@ -332,10 +461,7 @@ const TeacherHeader: React.FC<HeaderProps> = ({
                     placeholder="Search"
                     placeholderTextColor="#888"
                     value={searchQuery}
-                    onChangeText={(text) => {
-                      setSearchQuery(text);
-                      onSearchChange?.(text);
-                    }}
+                    onChangeText={handleSearchChange}
                     style={{
                       flex: 1,
                       fontSize: 16,
@@ -348,7 +474,7 @@ const TeacherHeader: React.FC<HeaderProps> = ({
                     <TouchableOpacity
                       onPress={() => {
                         setSearchQuery('');
-                        onSearchChange?.('');
+                        setSearchResults([]);
                         searchInputRef.current?.focus();
                       }}
                       style={{ padding: 4 }}
@@ -377,6 +503,7 @@ const TeacherHeader: React.FC<HeaderProps> = ({
               </View>
             )}
 
+            {/* ✅ MESSENGER ICON WITH BADGE (MOBILE) */}
             <TouchableOpacity
               style={styles.navBtn}
               onPress={() => {
@@ -384,11 +511,20 @@ const TeacherHeader: React.FC<HeaderProps> = ({
                 onNavigate?.('messenger');
               }}
             >
-              <MaterialCommunityIcons
-                name="facebook-messenger"
-                size={navIconSize}
-                color={getIconColor('messenger')}
-              />
+              <View>
+                <MaterialCommunityIcons
+                  name="facebook-messenger"
+                  size={navIconSize}
+                  color={getIconColor('messenger')}
+                />
+                {messengerUnreadCount > 0 && (
+                  <View style={styles.badge}>
+                    <Text style={styles.badgeText}>
+                      {messengerUnreadCount > 99 ? '99+' : messengerUnreadCount}
+                    </Text>
+                  </View>
+                )}
+              </View>
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -412,6 +548,9 @@ const TeacherHeader: React.FC<HeaderProps> = ({
               </View>
             </TouchableOpacity>
           </View>
+
+          {/* Mobile Search Results Dropdown */}
+          {isSearchExpanded && renderSearchResults()}
 
           <View style={[styles.mobileNavRow, { paddingHorizontal }]}>
             {mobileNavScreens.map((screen) => {
@@ -443,7 +582,7 @@ const TeacherHeader: React.FC<HeaderProps> = ({
         { paddingHorizontal, height: isTablet ? 72 : 80 },
       ]}
     >
-      <View style={[styles.leftSection, { flex: isLargeScreenLocal ? 0.3 : 0.4 }]}>
+      <View style={[styles.leftSection, { flex: isLargeScreenLocal ? 0.3 : 0.4, position: 'relative' }]}>
         <Image
           source={require('../../assets/images/logo.png')}
           style={{
@@ -453,7 +592,6 @@ const TeacherHeader: React.FC<HeaderProps> = ({
             marginRight: isTablet ? 14 : 18,
           }}
         />
-
         <View
           style={[
             styles.searchBar,
@@ -474,19 +612,19 @@ const TeacherHeader: React.FC<HeaderProps> = ({
             style={{ marginRight: 12 }}
           />
           <TextInput
+            ref={searchInputRef}
             placeholder={getSearchPlaceholder()}
             placeholderTextColor="#888"
             value={searchQuery}
-            onChangeText={(text) => {
-              setSearchQuery(text);
-              onSearchChange?.(text);
-            }}
+            onChangeText={handleSearchChange}
             onFocus={() => setIsSearchFocused(true)}
             onBlur={() => setIsSearchFocused(false)}
             style={[styles.searchInput, { fontSize: fontSizeSearch }]}
             returnKeyType="search"
           />
         </View>
+        {/* Desktop/Tablet Search Results Dropdown */}
+        {renderSearchResults()}
       </View>
 
       <View
@@ -553,7 +691,6 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#EEE',
   },
-
   headerContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -561,17 +698,14 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#EEE',
   },
-
   leftSection: {
     flexDirection: 'row',
     alignItems: 'center',
   },
-
   mobileLeftSection: {
     flexDirection: 'row',
     alignItems: 'center',
   },
-
   menuBtn: {
     marginRight: 10,
     padding: 4,
@@ -579,7 +713,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-
   searchIconOnly: {
     borderWidth: 1,
     borderColor: '#D32F2F',
@@ -587,7 +720,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-
   searchBar: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -596,7 +728,6 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     backgroundColor: '#FFF',
   },
-
   searchInput: {
     flex: 1,
     color: '#000',
@@ -604,31 +735,25 @@ const styles = StyleSheet.create({
     borderWidth: 0,
     backgroundColor: 'transparent',
   },
-
   centerSection: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
   },
-
   navItemWrapper: {
     position: 'relative',
     alignItems: 'center',
   },
-
   navBtn: {
     padding: 8,
     borderRadius: 12,
   },
-
   navBtnActive: {
     backgroundColor: 'rgba(211,47,47,0.08)',
   },
-
   navBtnHover: {
     backgroundColor: 'rgba(0,0,0,0.05)',
   },
-
   tooltip: {
     position: 'absolute',
     top: '100%',
@@ -642,13 +767,11 @@ const styles = StyleSheet.create({
     minWidth: 70,
     alignItems: 'center',
   },
-
   tooltipText: {
     color: '#FFF',
     fontSize: 12,
     fontWeight: '500',
   },
-
   mobileNavRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -659,7 +782,6 @@ const styles = StyleSheet.create({
     borderTopColor: '#EEE',
     backgroundColor: '#FFF',
   },
-
   mobileNavItem: {
     width: 54,
     height: 54,
@@ -669,11 +791,9 @@ const styles = StyleSheet.create({
     position: 'relative',
     overflow: 'visible',
   },
-
   mobileNavItemActive: {
     backgroundColor: 'rgba(211,47,47,0.10)',
   },
-
   badge: {
     position: 'absolute',
     top: -6,
@@ -686,20 +806,70 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 4,
   },
-
   badgeText: {
     color: '#FFF',
     fontSize: 9,
     fontWeight: 'bold',
   },
-
   // 👇 STYLES FOR EXPANDED MOBILE SEARCH
   expandedSearchContainer: {
     // Defined inline in component
   },
-
   expandedSearchInput: {
     // Defined inline in component
+  },
+  // 👇 NEW STYLES FOR SEARCH RESULTS
+  searchResultsContainer: {
+    position: 'absolute',
+    top: 54,
+    left: 0,
+    right: 0,
+    backgroundColor: '#FFF',
+    borderRadius: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 10,
+    elevation: 5,
+    borderWidth: 1,
+    borderColor: '#EEE',
+    zIndex: 1000,
+    maxHeight: 320,
+    overflow: 'hidden',
+  },
+  searchResultsMobile: {
+    top: 48,
+    left: 8,
+    right: 8,
+  },
+  searchResultItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F5F5F5',
+  },
+  resultIconBox: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: '#FFF1F1',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 14,
+  },
+  resultContent: {
+    flex: 1,
+  },
+  resultTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#111',
+  },
+  resultSubtitle: {
+    fontSize: 12,
+    color: '#888',
+    marginTop: 2,
   },
 });
 

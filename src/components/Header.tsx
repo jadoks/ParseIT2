@@ -73,6 +73,7 @@ interface HeaderProps {
   notificationCount?: number;
   onMenuPress?: () => void;
   onNotificationPress?: () => void;
+  messengerUnreadCount?: number; 
 }
 
 const Header: React.FC<HeaderProps> = ({
@@ -81,6 +82,7 @@ const Header: React.FC<HeaderProps> = ({
   onNavigate,
   onSearchChange,
   notificationCount = 0,
+  messengerUnreadCount = 0, 
   onMenuPress,
   onNotificationPress,
 }) => {
@@ -320,11 +322,21 @@ const Header: React.FC<HeaderProps> = ({
 
     if (screen === 'messenger') {
       return (
-        <MaterialCommunityIcons
-          name="facebook-messenger"
-          size={size}
-          color={getIconColor(screen)}
-        />
+        <View>
+          <MaterialCommunityIcons
+            name="facebook-messenger"
+            size={size}
+            color={getIconColor(screen)}
+          />
+          {/* 👇 UPDATED: Show badge if messengerUnreadCount > 0 */}
+          {messengerUnreadCount > 0 && (
+            <View style={styles.badge}>
+              <Text style={styles.badgeText}>
+                {messengerUnreadCount > 99 ? '99+' : `${messengerUnreadCount}`}
+              </Text>
+            </View>
+          )}
+        </View>
       );
     }
 
@@ -614,6 +626,7 @@ const renderSearchResults = () => {
               </View>
             )}
 
+            {/* 👇 UPDATED: Mobile Messenger Icon with Badge */}
             <TouchableOpacity
               style={styles.navBtn}
               onPress={() => {
@@ -621,11 +634,20 @@ const renderSearchResults = () => {
                 onNavigate?.('messenger');
               }}
             >
-              <MaterialCommunityIcons
-                name="facebook-messenger"
-                size={navIconSize}
-                color={getIconColor('messenger')}
-              />
+              <View>
+                <MaterialCommunityIcons
+                  name="facebook-messenger"
+                  size={navIconSize}
+                  color={getIconColor('messenger')}
+                />
+                {messengerUnreadCount > 0 && (
+                  <View style={styles.badge}>
+                    <Text style={styles.badgeText}>
+                      {messengerUnreadCount > 99 ? '99+' : `${messengerUnreadCount}`}
+                    </Text>
+                  </View>
+                )}
+              </View>
             </TouchableOpacity>
 
             <TouchableOpacity

@@ -12,26 +12,23 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-
-import { Announcement } from './teacher_components/TeacherAnnouncementModal';
-import TeacherDrawerMenu from './teacher_components/TeacherDrawerMenu';
-import TeacherHeader from './teacher_components/TeacherHeader';
-
 import Grades from './teacher_components/Grades';
 import Honors from './teacher_components/Honors';
+import TeacherAnalytics from './teacher_components/TeacherAnalytics';
+import { Announcement } from './teacher_components/TeacherAnnouncementModal';
+import Community2, { CommunityPost } from './teacher_components/TeacherCommunity';
 import Coursedetail2, {
   CourseDetailData,
 } from './teacher_components/TeacherCourseDetail2';
-import Profile2 from './teacher_components/TeacherProfile';
-import ShareAnnouncement from './teacher_components/TeacherShareAnnouncement';
-
-import TeacherAnalytics from './teacher_components/TeacherAnalytics';
-import Community2, { CommunityPost } from './teacher_components/TeacherCommunity';
 import Dashboard2 from './teacher_components/TeacherDashboard';
+import TeacherDrawerMenu from './teacher_components/TeacherDrawerMenu';
+import TeacherHeader from './teacher_components/TeacherHeader';
 import TeacherMessenger from './teacher_components/TeacherMessenger';
 import TeacherNotification, {
   NotificationItem,
 } from './teacher_components/TeacherNotification';
+import Profile2 from './teacher_components/TeacherProfile';
+import ShareAnnouncement from './teacher_components/TeacherShareAnnouncement';
 
 interface SignedInTeacher {
   teacherId?: string;
@@ -118,23 +115,18 @@ function getApiBaseUrl() {
   if (Platform.OS === 'web') {
     return 'http://localhost:5000';
   }
-
   const possibleHost =
     Constants.expoConfig?.hostUri ||
     Constants.manifest2?.extra?.expoGo?.debuggerHost ||
     '';
-
   const host = possibleHost.split(':')[0];
-
   if (host) {
     return `http://${host}:5000`;
   }
-
   return 'http://192.168.1.5:5000';
 }
 
 const API_BASE_URL = getApiBaseUrl();
-
 const apiFetch = (url: string, options: any = {}) =>
   fetch(url, {
     credentials: 'include',
@@ -158,24 +150,28 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
   const [lastScreen, setLastScreen] = useState<AppScreenType>('home');
   const [isMobileDrawerOpen, setMobileDrawerOpen] = useState(false);
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
-
+  
+  // 👇 NEW STATE FOR GLOBAL SEARCH
+  const [globalSearchQuery, setGlobalSearchQuery] = useState('');
+  
   const [courses, setCourses] = useState<CourseWithIcon[]>([]);
   const [teacherClasses, setTeacherClasses] = useState<CourseWithIcon[]>([]);
   const [selectedCourse, setSelectedCourse] = useState<CourseWithIcon | null>(null);
-
   const [selectedAnalyticsClass, setSelectedAnalyticsClass] = useState<string>('All');
   const [analyticsStudents, setAnalyticsStudents] = useState<any[]>([]);
-
   const [teacherProfile, setTeacherProfile] = useState<SignedInTeacher | null>(null);
   const [teacherNotifications, setTeacherNotifications] = useState<NotificationItem[]>([]);
   const [teacherAnnouncements, setTeacherAnnouncements] = useState<TeacherClassAnnouncement[]>([]);
-
+  
   // ADDED: Loading states to prevent the initial empty-state flash on the dashboard
   const [isLoadingClasses, setIsLoadingClasses] = useState(true);
   const [isLoadingAnnouncements, setIsLoadingAnnouncements] = useState(true);
 
-  const currentTeacherData: SignedInTeacher = teacherProfile || currentTeacher;
+  // 👇 MESSENGER UNREAD COUNT STATE
+  const [messengerUnreadCount, setMessengerUnreadCount] = useState(0);
 
+  const currentTeacherData: SignedInTeacher = teacherProfile || currentTeacher;
+  
   const teacherFullName = useMemo(() => {
     const first = normalizeText(currentTeacherData?.firstName);
     const last = normalizeText(currentTeacherData?.lastName);
@@ -198,14 +194,12 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
   const initialAvatar = currentTeacherData?.profileImage
     ? { uri: currentTeacherData.profileImage }
     : null;
-
   const initialBanner = currentTeacherData?.bannerImage
     ? { uri: currentTeacherData.bannerImage }
     : null;
 
   const [currentUserAvatar, setCurrentUserAvatar] = useState<any>(initialAvatar);
   const [currentUserBanner, setCurrentUserBanner] = useState<any>(initialBanner);
-
   const [communityPosts, setCommunityPosts] = useState<CommunityPost[]>([]);
 
   const isProfileScreen = activeScreen === 'profile';
@@ -218,7 +212,6 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
   const effectiveCourses = useMemo<CourseWithIcon[]>(() => {
     const merged = [...teacherClasses, ...courses];
     const seen = new Set<string>();
-
     return merged.filter((course) => {
       if (!course?.id) return false;
       if (seen.has(course.id)) return false;
@@ -256,9 +249,7 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
       currentTeacher.teacherId ||
       currentTeacher.authUid ||
       currentTeacher.email;
-
     if (!teacherId) return;
-
     try {
       const response = await apiFetch(`${API_BASE_URL}/auth/user-profile`, {
         method: 'POST',
@@ -295,12 +286,10 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
     const teacherId =
       normalizeText(currentTeacherData?.teacherId) ||
       normalizeText(currentTeacher?.teacherId);
-
     if (!teacherId) {
       setTeacherNotifications([]);
       return;
     }
-
     try {
       const response = await apiFetch(
         `${API_BASE_URL}/notifications?userId=${encodeURIComponent(
@@ -338,7 +327,6 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
     if (!value) return true;
     const expiry =
       typeof value?.toDate === 'function' ? value.toDate() : new Date(value);
-
     if (Number.isNaN(expiry.getTime())) return true;
     return expiry.getTime() > Date.now();
   };
@@ -348,11 +336,9 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
     try {
       const response = await apiFetch(`${API_BASE_URL}/classes`);
       const data = await response.json();
-
       if (!response.ok) {
         throw new Error(data?.error || 'Failed to load classes.');
       }
-
       const allClasses = Array.isArray(data) ? data : [];
 
       const filteredClasses = allClasses.filter((item: any) => {
@@ -382,12 +368,10 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
       normalizeText(currentTeacher?.teacherId) ||
       normalizeText(currentTeacherData?.authUid || '') ||
       normalizeText(currentTeacherData?.email);
-
     if (!teacherId) {
       setAnalyticsStudents([]);
       return;
     }
-
     try {
       const response = await apiFetch(
         `${API_BASE_URL}/teacher-analytics/${encodeURIComponent(teacherId)}`
@@ -416,12 +400,10 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
   const loadTeacherAnnouncements = useCallback(async () => {
     try {
       const classIds = effectiveCourses.map((item) => item.id).filter(Boolean);
-
       if (!classIds.length) {
         setTeacherAnnouncements([]);
         return;
       }
-
       const groupedAnnouncements = await Promise.all(
         classIds.map(async (classId) => {
           const response = await apiFetch(`${API_BASE_URL}/class-announcements/${classId}`);
@@ -518,21 +500,17 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
 
   const shouldHideMobileHeader =
     isMobile &&
-    (
-      activeScreen === 'coursedetail' ||
+    (activeScreen === 'coursedetail' ||
       activeScreen === 'messenger' ||
-      activeScreen === 'notification'
-    );
+      activeScreen === 'notification');
 
   const navigateTo = (screen: AppScreenType) => {
     setLastScreen(activeScreen);
     setActiveScreen(screen);
     setIsNotificationOpen(false);
-
     if (screen === 'analytics') {
       setSelectedAnalyticsClass('All');
     }
-
     if (!isLargeScreen) {
       setMobileDrawerOpen(false);
     }
@@ -570,11 +548,9 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
     try {
       const response = await apiFetch(`${API_BASE_URL}/community-posts`);
       const data = await response.json();
-
       if (!response.ok) {
         throw new Error(data?.error || 'Failed to load community posts.');
       }
-
       setCommunityPosts(Array.isArray(data?.data) ? data.data : []);
     } catch (error) {
       console.log('LOAD TEACHER COMMUNITY POSTS ERROR =>', error);
@@ -609,16 +585,17 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
     loadTeacherAnnouncements();
   }, [loadTeacherAnnouncements]);
 
-  const handleSearchChange = (_query: string) => {};
+  // 👇 UPDATED: Store search query in state
+  const handleSearchChange = (query: string) => {
+    setGlobalSearchQuery(query);
+  };
 
   const getBase64FromUri = async (uri: string) => {
     if (Platform.OS === 'web') {
       const response = await fetch(uri);
       const blob = await response.blob();
-
       return await new Promise<string>((resolve, reject) => {
         const reader = new FileReader();
-
         reader.onloadend = () => {
           const result = reader.result;
 
@@ -657,11 +634,9 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
     bannerImage?: any;
   }) => {
     const userId = resolveCurrentUserDocId();
-
     if (!userId) {
       throw new Error('Teacher ID is missing.');
     }
-
     const body: any = {};
 
     if (profileImage?.uri) {
@@ -693,10 +668,8 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
 
   const handleChangeProfileImage = async (image: any) => {
     const previousAvatar = currentUserAvatar;
-
     try {
       setCurrentUserAvatar(image);
-
       if (!image?.uri) return;
 
       const savedData = await saveUserImagesToFirestore({
@@ -729,10 +702,8 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
 
   const handleChangeBannerImage = async (image: any) => {
     const previousBanner = currentUserBanner;
-
     try {
       setCurrentUserBanner(image);
-
       if (!image?.uri) return;
 
       const savedData = await saveUserImagesToFirestore({
@@ -766,7 +737,6 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
   const handleCreateCommunityPost = async (query: string) => {
     const trimmedQuery = query.trim();
     if (!trimmedQuery) return;
-
     try {
       const response = await apiFetch(`${API_BASE_URL}/community-posts`, {
         method: 'POST',
@@ -781,7 +751,6 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
           avatar: normalizeCommunityAvatar(currentUserAvatar),
         }),
       });
-
       const data = await response.json();
 
       if (!response.ok) {
@@ -798,7 +767,6 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
   const handleAddCommunityAnswer = async (postId: string, message: string) => {
     const trimmedMessage = message.trim();
     if (!trimmedMessage) return;
-
     try {
       const response = await apiFetch(`${API_BASE_URL}/community-posts/${postId}/answers`, {
         method: 'POST',
@@ -812,7 +780,6 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
           avatar: normalizeCommunityAvatar(currentUserAvatar),
         }),
       });
-
       const data = await response.json();
 
       if (!response.ok) {
@@ -829,14 +796,12 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
   const handleEditCommunityPost = async (postId: string, content: string) => {
     const trimmedContent = content.trim();
     if (!trimmedContent) return;
-
     try {
       const response = await apiFetch(`${API_BASE_URL}/community-posts/${postId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ content: trimmedContent }),
       });
-
       const data = await response.json();
 
       if (!response.ok) {
@@ -855,9 +820,7 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
       const response = await apiFetch(`${API_BASE_URL}/community-posts/${postId}`, {
         method: 'DELETE',
       });
-
       const data = await response.json();
-
       if (!response.ok) {
         throw new Error(data?.error || 'Failed to delete post.');
       }
@@ -876,7 +839,6 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
   ) => {
     const trimmedMessage = message.trim();
     if (!trimmedMessage) return;
-
     try {
       const response = await apiFetch(
         `${API_BASE_URL}/community-posts/${postId}/answers/${answerId}`,
@@ -886,7 +848,6 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
           body: JSON.stringify({ message: trimmedMessage }),
         }
       );
-
       const data = await response.json();
 
       if (!response.ok) {
@@ -908,9 +869,7 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
           method: 'DELETE',
         }
       );
-
       const data = await response.json();
-
       if (!response.ok) {
         throw new Error(data?.error || 'Failed to delete answer.');
       }
@@ -947,7 +906,6 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
   const handleCreateClass = (newCourse: CourseDetailData) => {
     const getCourseIcon = (courseName: string) => {
       const normalized = courseName.toLowerCase();
-
       if (normalized.includes('web')) return 'web';
       if (normalized.includes('program')) return 'code-tags';
       if (normalized.includes('computer')) return 'desktop-classic';
@@ -956,7 +914,6 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
       if (normalized.includes('design')) return 'palette';
       if (normalized.includes('math')) return 'calculator';
       if (normalized.includes('science')) return 'flask-outline';
-
       return 'book-education';
     };
 
@@ -983,7 +940,6 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
     setCourses((prev) => prev.filter((course) => course.id !== id));
     setTeacherClasses((prev) => prev.filter((course) => course.id !== id));
     setSelectedCourse((prev) => (prev?.id === id ? null : prev));
-
     setTimeout(() => {
       loadTeacherNotifications();
       loadTeacherClasses();
@@ -991,6 +947,37 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
       loadTeacherAnnouncements();
     }, 500);
   };
+
+  
+
+  const loadMessengerUnreadCount = useCallback(async () => {
+  try {
+    const response = await apiFetch(
+      `${API_BASE_URL}/messenger-unread-count?role=teacher&userId=${encodeURIComponent(
+        currentTeacherData?.teacherId || ''
+      )}&userUid=${encodeURIComponent(
+        currentTeacherData?.authUid || ''
+      )}`
+    );
+
+    const data = await response.json();
+
+    if (response.ok) {
+      setMessengerUnreadCount(Number(data?.count || 0));
+    }
+  } catch (error) {
+    console.log('LOAD MESSENGER UNREAD ERROR =>', error);
+  }
+}, [
+  currentTeacherData?.teacherId,
+  currentTeacherData?.authUid,
+]);
+
+  useEffect(() => {
+  loadMessengerUnreadCount();
+  const interval = setInterval(loadMessengerUnreadCount, 10000); // poll every 10 seconds
+  return () => clearInterval(interval);
+}, [loadMessengerUnreadCount]);
 
   return (
     <SafeAreaView
@@ -1009,11 +996,10 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
             onNavigate={handleHeaderNavigate}
             onSearchChange={handleSearchChange}
             onMenuPress={() => {
-              if (!isProfileScreen) {
-                setMobileDrawerOpen((prev) => !prev);
-              }
+              setMobileDrawerOpen((prev) => !prev);
             }}
             notificationCount={unreadNotificationCount}
+            messengerUnreadCount={messengerUnreadCount}
             onNotificationPress={handleNotificationPress}
           />
         </View>
@@ -1089,7 +1075,7 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
               onCreateClass={(course: CourseDetailData) => handleCreateClass(course)}
               onDeleteCourse={handleDeleteCourse}
               currentTeacher={currentTeacherData}
-              isLoading={isLoadingClasses || isLoadingAnnouncements} // ADDED: Pass loading state to Dashboard
+              isLoading={isLoadingClasses || isLoadingAnnouncements}
             />
           ) : activeScreen === 'honors' ? (
             <Honors apiBaseUrl={API_BASE_URL} /> 
@@ -1116,6 +1102,7 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
             />
           ) : activeScreen === 'community' ? (
             <Community2
+              searchQuery={globalSearchQuery}
               posts={hydratedCommunityPosts}
               userName={teacherFullName}
               userEmail={teacherEmail}
@@ -1128,14 +1115,16 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
               onDeleteAnswer={handleDeleteCommunityAnswer}
             />
           ) : activeScreen === 'messenger' ? (
+            // 👇 PASS THE GLOBAL SEARCH QUERY HERE AND UNREAD CALLBACK
             <TeacherMessenger
-              searchQuery=""
-              onConversationActiveChange={() => {}}
-              currentUser={teacherIdentity}
-              currentUserName={teacherFullName}
-              courses={messengerCourses}
-              onBack={() => setActiveScreen(lastScreen)}
-            />
+            onBack={() => setActiveScreen(lastScreen)}
+            searchQuery={globalSearchQuery}
+            currentUser={currentTeacherData?.teacherId || ''}
+            currentUserUid={currentTeacherData?.authUid || ''}
+            currentUserName={teacherFullName}
+            courses={messengerCourses}
+            onUnreadCountChanged={loadMessengerUnreadCount}
+          />
           ) : activeScreen === 'coursedetail' ? (
             <Coursedetail2
               onBack={() => setActiveScreen(lastScreen)}
@@ -1170,7 +1159,7 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
         </View>
       </View>
 
-      {!isLargeScreen && isMobileDrawerOpen && !isProfileScreen && (
+      {!isLargeScreen && isMobileDrawerOpen &&  (
         <View style={styles.mobileDrawerLayer} pointerEvents="box-none">
           <TouchableOpacity
             style={styles.mobileBackdrop}
@@ -1217,36 +1206,30 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#fff',
   },
-
   headerWrapper: {
     zIndex: 20,
     backgroundColor: '#fff',
   },
-
   contentWrapper: {
     flex: 1,
     flexDirection: 'row',
   },
-
   desktopDrawer: {
     width: 280,
     borderRightWidth: 1,
     borderRightColor: '#EEE',
     backgroundColor: '#FFF',
   },
-
   screenContainer: {
     flex: 1,
     minWidth: 0,
     backgroundColor: '#FFF',
   },
-
   notificationBackdrop: {
     ...StyleSheet.absoluteFillObject,
     zIndex: 3999,
     elevation: 3999,
   },
-
   notificationPopover: {
     position: 'absolute',
     top: 72,
@@ -1254,17 +1237,14 @@ const styles = StyleSheet.create({
     zIndex: 4000,
     elevation: 4000,
   },
-
   mobileDrawerLayer: {
     ...StyleSheet.absoluteFillObject,
     zIndex: 9999,
   },
-
   mobileBackdrop: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(0,0,0,0.28)',
   },
-
   mobileOverlay: {
     position: 'absolute',
     top: 0,
@@ -1279,13 +1259,11 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 3, height: 0 },
     elevation: 14,
   },
-
   emptyState: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
   },
-
   emptyStateText: {
     fontSize: 16,
     color: '#555',

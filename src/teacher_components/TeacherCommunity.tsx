@@ -16,7 +16,7 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
-import PostQueryModal from './TeacherPostQueryModal';
+import PostQueryModal from './TeacherPostQueryModal'; // Ensure this path is correct for your project structure
 
 export interface CommunityAnswer {
   id: string;
@@ -49,6 +49,8 @@ interface CommunityProps {
   onDeletePost?: (postId: string) => void;
   onEditAnswer?: (postId: string, answerId: string, message: string) => void;
   onDeleteAnswer?: (postId: string, answerId: string) => void;
+  searchQuery?: string; // 👈 ADDED: To receive global search query
+  initialPostId?: string | null; // 👈 ADDED: To open specific post from notification
 }
 
 type PostDropdownState =
@@ -151,7 +153,21 @@ const Community: React.FC<CommunityProps> = ({
   onDeletePost,
   onEditAnswer,
   onDeleteAnswer,
+  searchQuery = '', // 👈 Default empty string
+  initialPostId, // 👈 ADDED
 }) => {
+  // 👇 ROBUST LOCAL SEARCH FILTERING (Same as Student Community)
+  const filteredPosts = useMemo(() => {
+    const trimmedQuery = searchQuery.trim().toLowerCase();
+    if (!trimmedQuery) return posts;
+    
+    return posts.filter((post) => {
+      const matchesUser = post.userName.toLowerCase().includes(trimmedQuery);
+      const matchesContent = post.content.toLowerCase().includes(trimmedQuery);
+      return matchesUser || matchesContent;
+    });
+  }, [posts, searchQuery]);
+
   const [hiddenPosts, setHiddenPosts] = useState<string[]>([]);
   const [modalVisible, setModalVisible] = useState(false);
 
@@ -231,9 +247,22 @@ const Community: React.FC<CommunityProps> = ({
     };
   }, [posts]);
 
+  // 👇 ADDED: Automatically open the answers modal if a specific post ID is passed via notification
+  useEffect(() => {
+    if (initialPostId) {
+      const post = posts.find((p) => p.id === initialPostId);
+      if (post) {
+        setSelectedPostId(post.id);
+        setAnswerText('');
+        setAnswersModalVisible(true);
+      }
+    }
+  }, [initialPostId, posts]);
+
+  // Use filteredPosts instead of raw posts for visibility logic
   const visiblePosts = useMemo(
-    () => posts.filter((post) => !hiddenPosts.includes(post.id)),
-    [posts, hiddenPosts]
+    () => filteredPosts.filter((post) => !hiddenPosts.includes(post.id)),
+    [filteredPosts, hiddenPosts]
   );
 
   const visibleAnswers = useMemo(() => {
@@ -593,13 +622,25 @@ const Community: React.FC<CommunityProps> = ({
             </View>
 
             {/* 👇 2. Replaced FlatList with .map() to prevent nested virtualization conflicts */}
-            {visiblePosts.length > 0 && (
+            {visiblePosts.length > 0 ? (
               <View style={{ paddingBottom: 50 }}>
                 {visiblePosts.map((item) => (
                   <React.Fragment key={item.id}>
                     {renderPost({ item })}
                   </React.Fragment>
                 ))}
+              </View>
+            ) : (
+              <View style={styles.emptyState}>
+                <Ionicons name="search-outline" size={48} color="#CCC" />
+                <Text style={styles.emptyTitle}>
+                  {searchQuery.trim() ? 'No matching posts found' : 'No posts yet'}
+                </Text>
+                <Text style={styles.emptySubtitle}>
+                  {searchQuery.trim()
+                    ? `Try searching for "${searchQuery.trim()}" with different keywords.`
+                    : 'Be the first to ask a question or share your thoughts!'}
+                </Text>
               </View>
             )}
           </View>
@@ -1330,6 +1371,27 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.18,
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 4 },
+  },
+  
+  // 👇 NEW STYLES FOR EMPTY STATE
+  emptyState: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 60,
+    paddingHorizontal: 20,
+  },
+  emptyTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#333',
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  emptySubtitle: {
+    fontSize: 14,
+    color: '#777',
+    textAlign: 'center',
+    lineHeight: 20,
   },
 });
 
