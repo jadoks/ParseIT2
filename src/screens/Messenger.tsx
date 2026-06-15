@@ -11,7 +11,6 @@ import {
   Modal,
   Platform,
   Pressable,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
@@ -20,6 +19,11 @@ import {
   View,
   useWindowDimensions,
 } from 'react-native';
+
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from 'react-native-safe-area-context';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 
 const DEFAULT_AVATAR = require('../../assets/images/default_profile.png');
@@ -254,6 +258,8 @@ const Messenger = ({
   currentUser: string;
   currentUserName: string;
 }) => {
+  // 2. GET SAFE AREA INSETS
+  const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
   const flatListRef = useRef<FlatList<Message>>(null);
   const infoButtonRef = useRef<View>(null);
@@ -303,6 +309,9 @@ const Messenger = ({
     mimeType: string;
     base64: string;
   } | null>(null);
+
+  // 3. STATE TO TRACK FILE INTERACTION (Like hasImageChanged in Profile)
+  const [hasFileInteraction, setHasFileInteraction] = useState(false);
 
   // Keep a stable ref to selected so polling callbacks never stale-close over it
   const selectedRef = useRef<Conversation | null>(null);
@@ -812,6 +821,8 @@ const Messenger = ({
 
   const handlePickFile = async () => {
     if (!selected) return;
+    // 4. SET FLAG WHEN PICKING FILE
+    setHasFileInteraction(true);
     try {
       const result = await DocumentPicker.getDocumentAsync({
         type: ['*/*'],
@@ -1028,126 +1039,230 @@ const Messenger = ({
     setImagePreviewStoragePath(null);
   }, []);
 
-  const handleDownloadImage = async () => {
-    if (!imagePreviewUrl || !selected) return;
-    let fileName = imagePreviewName;
-    if (!fileName.includes('.')) fileName += '.jpg';
+// ─────────────────────────────────────────────────────────────────────────────
+// handleDownloadImage  &  handleFileDownload
+// Drop these into Messenger.tsx — replace the existing two functions.
+//
+// Mobile behavior:
+//  Android  → asks user to pick a folder (SAF), then saves there directly.
+//             Images also land in the chosen folder (visible in Files/Downloads).
+//  iOS      → images: saves to Camera Roll (Photos app).
+//             docs  : falls back to Sharing sheet → "Save to Files" option.
+//  Web      → unchanged backend-proxy blob download.
+//
+// Required imports (already in your file):
+//   import * as FileSystem from 'expo-file-system/legacy';
+//   import * as Sharing from 'expo-sharing';
+//
+// Add this import at the top of Messenger.tsx if not already present:
+//   import * as MediaLibrary from 'expo-media-library';
+// ─────────────────────────────────────────────────────────────────────────────
 
-    try {
-      if (Platform.OS === 'web') {
-        if (!imagePreviewStoragePath) {
-          alert('Cannot download: File path missing.');
-          return;
-        }
-        const downloadUrl = `${API_BASE_URL}/messenger-download/${
-          selected.id
-        }/${encodeURIComponent(imagePreviewStoragePath)}`;
-        const response = await fetch(downloadUrl, { credentials: 'include' });
-        if (!response.ok) {
-          const errorText = await response.text();
-          throw new Error(
-            `Download failed: ${response.status} - ${errorText}`
-          );
-        }
-        const blob = await response.blob();
-        const url = window.URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = fileName;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        window.URL.revokeObjectURL(url);
-      } else {
-        const permission = await MediaLibrary.requestPermissionsAsync();
-        if (!permission.granted) {
-          alert('Gallery permission is required to save images.');
-          return;
-        }
-        if (!imagePreviewStoragePath) {
-          alert('Cannot download: File path missing.');
-          return;
-        }
-        const downloadUrl = `${API_BASE_URL}/messenger-download/${
-          selected.id
-        }/${encodeURIComponent(imagePreviewStoragePath)}`;
-        const localUri = FileSystem.documentDirectory + fileName;
-        const downloadedFile = await FileSystem.downloadAsync(
-          downloadUrl,
-          localUri
-        );
-        const asset = await MediaLibrary.createAssetAsync(
-          downloadedFile.uri
-        );
-        await MediaLibrary.createAlbumAsync('ParseIT', asset, false);
-        alert('Image saved to Gallery!');
-      }
-    } catch (error) {
-      console.error('Download image error:', error);
-      alert('Failed to download image.');
-    }
-  };
+const handleDownloadImage = async () => {
+  if (!imagePreviewUrl || !selected) return;
 
-  const handleFileDownload = async (item: Message) => {
-    if (!selected) return;
-    let url = item.fileUrl;
-    let path = item.storagePath;
-    if (item.storagePath) {
-      const freshUrl = await refreshFileUrl(item.storagePath, selected.id);
-      if (freshUrl) {
-        url = freshUrl;
-        setMessagesByConversation((prev) => ({
-          ...prev,
-          [selected.id]: prev[selected.id].map((msg) =>
-            msg.id === item.id ? { ...msg, fileUrl: freshUrl } : msg
-          ),
-        }));
-      } else {
-        alert('Failed to get file URL. It may have expired.');
+  // Make sure the filename has an extension
+  let fileName = imagePreviewName || 'image';
+  if (!fileName.includes('.')) fileName += '.jpg';
+
+  try {
+    if (Platform.OS === 'web') {
+      // ── Web: backend proxy ────────────────────────────────────────────────
+      if (!imagePreviewStoragePath) {
+        alert('Cannot download: file path missing.');
         return;
       }
+      const proxyUrl = `${API_BASE_URL}/messenger-download/${selected.id}/${encodeURIComponent(imagePreviewStoragePath)}`;
+      const res = await fetch(proxyUrl, { credentials: 'include' });
+      if (!res.ok) throw new Error(`Download failed: ${res.status}`);
+      const blob = await res.blob();
+      const objUrl = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = objUrl;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(objUrl);
+      return;
     }
 
-    if (!url || !path) return;
-    let fileName = item.fileName || 'file';
-    if (!fileName.includes('.')) fileName += '.pdf';
+    // ── Mobile: get a fresh signed URL ────────────────────────────────────
+    let downloadUrl = imagePreviewUrl;
+    if (imagePreviewStoragePath) {
+      const fresh = await refreshFileUrl(imagePreviewStoragePath, selected.id);
+      if (fresh) downloadUrl = fresh;
+    }
+    if (!downloadUrl) { alert('Cannot download: URL missing.'); return; }
 
-    try {
-      if (Platform.OS === 'web') {
-        const downloadUrl = `${API_BASE_URL}/messenger-download/${
-          selected.id
-        }/${encodeURIComponent(path)}`;
-        const response = await fetch(downloadUrl, { credentials: 'include' });
-        if (!response.ok)
-          throw new Error(`HTTP error! status: ${response.status}`);
-        const blob = await response.blob();
-        const blobUrl = window.URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = blobUrl;
-        link.download = fileName;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        window.URL.revokeObjectURL(blobUrl);
-      } else {
-        const downloadUrl = `${API_BASE_URL}/messenger-download/${
-          selected.id
-        }/${encodeURIComponent(path)}`;
-        const { uri } = await FileSystem.downloadAsync(
-          downloadUrl,
-          FileSystem.documentDirectory + fileName
-        );
-        if (await Sharing.isAvailableAsync()) {
-          await Sharing.shareAsync(uri);
+    // Download to app cache first (works in Expo Go)
+    const cacheUri = FileSystem.cacheDirectory + fileName;
+    const { uri: localUri, status } = await FileSystem.downloadAsync(downloadUrl, cacheUri);
+    if (status !== 200) throw new Error(`Download HTTP status ${status}`);
+
+    if (Platform.OS === 'ios') {
+      // ── iOS: save image to Camera Roll ───────────────────────────────────
+      const perm = await MediaLibrary.requestPermissionsAsync();
+
+      if (!perm.granted) {
+        const canShare = await Sharing.isAvailableAsync();
+        if (canShare) {
+          await Sharing.shareAsync(localUri, { mimeType: 'image/jpeg', UTI: 'public.image', dialogTitle: `Save ${fileName}` });
         } else {
-          alert('File saved to: ' + uri);
+          alert('Permission denied and sharing is unavailable.');
         }
+        return;
       }
-    } catch (error) {
-      console.error('Download file error:', error);
-      alert('Failed to download file.');
+      await MediaLibrary.saveToLibraryAsync(localUri);
+      alert('Image saved to your Photos!');
+
+    } else {
+      // ── Android: save directly to Downloads via SAF ───────────────────────
+      // Detect mime type from extension
+      const ext = fileName.split('.').pop()?.toLowerCase() || 'jpg';
+      const mimeMap: Record<string, string> = {
+        jpg: 'image/jpeg', jpeg: 'image/jpeg',
+        png: 'image/png', gif: 'image/gif',
+        webp: 'image/webp', bmp: 'image/bmp',
+      };
+      const mimeType = mimeMap[ext] || 'image/jpeg';
+
+      // Ask user to pick a folder (Android SAF)
+      const perms = await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync();
+      if (!perms.granted) {
+        // User cancelled — fall back to share sheet
+        const canShare = await Sharing.isAvailableAsync();
+        if (canShare) {
+          await Sharing.shareAsync(localUri, { mimeType, dialogTitle: `Save ${fileName}` });
+        }
+        return;
+      }
+
+      // Create the file in the chosen folder
+      const destUri = await FileSystem.StorageAccessFramework.createFileAsync(
+        perms.directoryUri,
+        fileName,
+        mimeType,
+      );
+
+      // Read the cached file as base64 and write it to the destination
+      const base64 = await FileSystem.readAsStringAsync(localUri, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+      await FileSystem.writeAsStringAsync(destUri, base64, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+
+      alert(`Image saved to your selected folder!`);
     }
-  };
+  } catch (err: any) {
+    console.error('Download image error:', err);
+    alert('Failed to download image. Please try again.');
+  }
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+
+const handleFileDownload = async (item: Message) => {
+  if (!selected) return;
+
+  // Refresh signed URL
+  let url = item.fileUrl;
+  if (item.storagePath) {
+    const fresh = await refreshFileUrl(item.storagePath, selected.id);
+    if (fresh) {
+      url = fresh;
+      setMessagesByConversation((prev) => ({
+        ...prev,
+        [selected.id]: prev[selected.id].map((msg) =>
+          msg.id === item.id ? { ...msg, fileUrl: fresh } : msg
+        ),
+      }));
+    } else {
+      alert('Failed to get file URL. It may have expired.');
+      return;
+    }
+  }
+  if (!url) return;
+
+  // Ensure extension
+  let fileName = item.fileName || 'file';
+  if (!fileName.includes('.')) {
+    const ext = item.fileType?.split('/').pop()?.split(';')[0] || 'bin';
+    fileName += `.${ext}`;
+  }
+
+  const mimeType = item.fileType || 'application/octet-stream';
+
+  try {
+    if (Platform.OS === 'web') {
+      // ── Web: backend proxy ────────────────────────────────────────────────
+      if (!item.storagePath) { alert('Cannot download: file path missing.'); return; }
+      const proxyUrl = `${API_BASE_URL}/messenger-download/${selected.id}/${encodeURIComponent(item.storagePath)}`;
+      const res = await fetch(proxyUrl, { credentials: 'include' });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const blob = await res.blob();
+      const objUrl = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = objUrl;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(objUrl);
+      return;
+    }
+
+    // ── Mobile: download to cache ─────────────────────────────────────────
+    const cacheUri = FileSystem.cacheDirectory + fileName;
+    const { uri: localUri, status } = await FileSystem.downloadAsync(url, cacheUri);
+    if (status !== 200) throw new Error(`Download HTTP status ${status}`);
+
+    if (Platform.OS === 'ios') {
+      // ── iOS: share sheet → "Save to Files" ───────────────────────────────
+      const canShare = await Sharing.isAvailableAsync();
+      if (canShare) {
+        await Sharing.shareAsync(localUri, {
+          mimeType,
+          UTI: mimeType,
+          dialogTitle: `Save ${fileName}`,
+        });
+      } else {
+        alert(`File cached at:\n${localUri}`);
+      }
+
+    } else {
+      // ── Android: SAF → save directly to user-chosen folder ───────────────
+      const perms = await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync();
+      if (!perms.granted) {
+        // Cancelled → share sheet fallback
+        const canShare = await Sharing.isAvailableAsync();
+        if (canShare) {
+          await Sharing.shareAsync(localUri, { mimeType, dialogTitle: `Save ${fileName}` });
+        }
+        return;
+      }
+
+      const destUri = await FileSystem.StorageAccessFramework.createFileAsync(
+        perms.directoryUri,
+        fileName,
+        mimeType,
+      );
+
+      const base64 = await FileSystem.readAsStringAsync(localUri, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+      await FileSystem.writeAsStringAsync(destUri, base64, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+
+      alert(`File saved to your selected folder!`);
+    }
+  } catch (err: any) {
+    console.error('Download file error:', err);
+    alert('Failed to download file. Please try again.');
+  }
+};
 
   // ---------------------------------------------------------------------------
   // Room / member helpers
@@ -2338,23 +2453,33 @@ const Messenger = ({
   // ---------------------------------------------------------------------------
   // Root render
   // ---------------------------------------------------------------------------
+  
+  // 5. DETERMINE SAFE AREA EDGES BASED ON INTERACTION
+  // If user has interacted with files, we apply full safe area padding to prevent UI shift
+  const safeAreaEdges = hasFileInteraction 
+    ? (['top', 'right', 'bottom', 'left'] as const) 
+    : (['right', 'left'] as const);
+
   if (isMobile) {
     if (selected) {
       return (
-        <SafeAreaView style={styles.mobileScreen}>
+        // 6. APPLY EDGES PROP
+        <SafeAreaView style={styles.mobileScreen} edges={safeAreaEdges}>
           <View style={styles.mobileContent}>{renderChatPane()}</View>
         </SafeAreaView>
       );
     }
     return (
-      <SafeAreaView style={styles.mobileScreen}>
+      // 6. APPLY EDGES PROP
+      <SafeAreaView style={styles.mobileScreen} edges={safeAreaEdges}>
         <View style={styles.mobileContent}>{renderConversationList()}</View>
       </SafeAreaView>
     );
   }
 
   return (
-    <SafeAreaView style={styles.desktopScreen}>
+    // 6. APPLY EDGES PROP
+    <SafeAreaView style={styles.desktopScreen} edges={safeAreaEdges}>
       <View style={styles.splitLayout}>
         {renderConversationList()}
         {renderChatPane()}

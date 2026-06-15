@@ -146,6 +146,8 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
   const isLargeScreen = width >= 768;
   const isMobile = width < 768;
 
+  const safeAreaEdges = ['top', 'right', 'bottom', 'left'] as const;
+
   const [activeScreen, setActiveScreen] = useState<AppScreenType>('home');
   const [lastScreen, setLastScreen] = useState<AppScreenType>('home');
   const [isMobileDrawerOpen, setMobileDrawerOpen] = useState(false);
@@ -981,13 +983,9 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
 
   return (
     <SafeAreaView
-      style={styles.mainContainer}
-      edges={
-        shouldHideMobileHeader
-          ? ['left', 'right', 'bottom']
-          : ['top', 'left', 'right', 'bottom']
-      }
-    >
+        style={styles.mainContainer}
+        edges={safeAreaEdges}
+      >
       {!shouldHideMobileHeader && (
         <View style={styles.headerWrapper}>
           <TeacherHeader

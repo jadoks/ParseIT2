@@ -363,7 +363,9 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
   const shouldShowHeader = !isFullscreenScreen && !isMobileFullscreenScreen;
   const shouldShowDesktopDrawer = !isFullscreenScreen && !isMobileFullscreenScreen && isLargeScreen && activeScreen !== 'profile' && activeScreen !== 'notification';
   
-  const safeAreaEdges = isFullscreenScreen ? [] : hasImageChanged ? (['top', 'right', 'bottom', 'left'] as const) : (['right', 'left'] as const);
+ const safeAreaEdges = isFullscreenScreen
+  ? []
+  : (['top', 'right', 'bottom', 'left'] as const);
 
   const toMillis = (value: any) => {
     if (!value) return 0;
