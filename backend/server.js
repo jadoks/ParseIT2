@@ -5,12 +5,15 @@ import cors from "cors";
 import dotenv from "dotenv";
 import express from "express";
 import admin from "firebase-admin";
+import libre from 'libreoffice-convert';
 import mammoth from "mammoth";
 import { createRequire } from "module";
 import multer from "multer";
 import nodemailer from "nodemailer";
 import officeparser from "officeparser";
+import { promisify } from 'util';
 import serviceAccount from "./serviceAccountKey.json" with { type: "json" };
+const convertAsync = promisify(libre.convert);
 const require = createRequire(import.meta.url);
 const pdf = require("pdf-parse");
 const vision = require("@google-cloud/vision");
@@ -608,7 +611,6 @@ async function uploadBannerToStorage({
     bannerMimeType: safeMimeType,
   };
 }
-
 async function uploadGenericFileToStorage({
   fileBase64,
   fileMimeType,
@@ -619,7 +621,6 @@ async function uploadGenericFileToStorage({
   if (!fileBase64) {
     throw new Error("File data is required.");
   }
-
   if (!classId) {
     throw new Error("Class ID is required.");
   }
@@ -627,19 +628,18 @@ async function uploadGenericFileToStorage({
   const cleanedBase64 = fileBase64.includes(",")
     ? fileBase64.split(",")[1]
     : fileBase64;
-
-  const safeMimeType =
-    normalizeOptionalText(fileMimeType) || "application/octet-stream";
-
+  
+  const safeMimeType = normalizeOptionalText(fileMimeType) || "application/octet-stream";
   const fallbackExtension = getFileExtensionFromMimeType(safeMimeType);
   const safeFileName = sanitizeFileName(
     normalizeOptionalText(fileName) || `file.${fallbackExtension}`
   );
+  
   const uniqueFileName = `${Date.now()}-${safeFileName}`;
   const storagePath = `${folder}/${classId}/${uniqueFileName}`;
-
+  
+  // 1. Upload Original File
   const file = bucket.file(storagePath);
-
   await file.save(Buffer.from(cleanedBase64, "base64"), {
     metadata: {
       contentType: safeMimeType,
@@ -648,15 +648,60 @@ async function uploadGenericFileToStorage({
     resumable: false,
   });
 
+  let pdfStoragePath = null;
+  let pdfUrl = null;
+
+  // 2. Check if it's a PowerPoint file and convert to PDF
+  const isPpt = safeMimeType.includes('presentation') || 
+                safeFileName.toLowerCase().endsWith('.ppt') || 
+                safeFileName.toLowerCase().endsWith('.pptx');
+
+  if (isPpt) {
+    try {
+      console.log(`Converting ${safeFileName} to PDF...`);
+      const buffer = Buffer.from(cleanedBase64, "base64");
+      
+      // Convert to PDF using LibreOffice
+      const pdfBuffer = await convertAsync(buffer, '.pdf', undefined);
+      
+      // Generate PDF filename
+      const pdfFileName = safeFileName.replace(/\.(ppt|pptx)$/i, '.pdf');
+      const pdfUniqueFileName = `${Date.now()}-preview-${pdfFileName}`;
+      pdfStoragePath = `${folder}/${classId}/previews/${pdfUniqueFileName}`;
+      
+      // Upload PDF to Storage
+      const pdfFile = bucket.file(pdfStoragePath);
+      await pdfFile.save(pdfBuffer, {
+        metadata: {
+          contentType: 'application/pdf',
+          cacheControl: "public,max-age=3600", // Cache PDFs longer as they don't change
+        },
+        resumable: false,
+      });
+
+      // Get Signed URL for the PDF
+      pdfUrl = await createReadSignedUrl(pdfStoragePath);
+      console.log(`Successfully converted and uploaded PDF preview for ${safeFileName}`);
+
+    } catch (error) {
+      console.error("Failed to convert PPT to PDF:", error);
+      // We do not throw here, we just fail the preview generation but keep the original file
+    }
+  }
 
   return {
-    fileUrl: null,
+    fileUrl: null, // Original file usually doesn't have a direct public URL in this flow
     storagePath,
     fileName: safeFileName,
     fileType: safeMimeType,
     bucketPath: `gs://parseit2-4b26d.firebasestorage.app/${storagePath}`,
+    
+    // NEW FIELDS FOR PDF PREVIEW
+    pdfStoragePath, 
+    pdfUrl, 
   };
 }
+
 async function uploadChatbotTrainingFileToStorage({
   fileBase64,
   fileMimeType,
@@ -6367,39 +6412,45 @@ app.get("/student-joined-classes/:studentId", async (req, res) => {
           .orderBy("createdAt", "desc")
           .get();
 
-        const materials = materialsSnapshot.docs.map((doc) => {
-          const material = doc.data() || {};
+        // In your student-joined-classes route, replace the materials mapping:
+const materials = await Promise.all(materialsSnapshot.docs.map(async (doc) => {
+  const material = doc.data() || {};
 
-          let materialType = "document";
-          const rawType = String(material.fileType || "").toLowerCase();
-          const fileUrl = material.fileUrl || material.fileUri || null;
+  let materialType = "document";
+  const rawType = String(material.fileType || "").toLowerCase();
+  
+  // Generate a fresh signed URL from storagePath if fileUrl is missing
+  let fileUrl = material.fileUrl || material.fileUri || null;
+  if (!fileUrl && material.storagePath) {
+    fileUrl = await createReadSignedUrlIfExists(material.storagePath);
+  }
 
-          if (rawType.includes("pdf")) {
-            materialType = "pdf";
-          } else if (rawType.includes("video")) {
-            materialType = "video";
-          } else if (!fileUrl) {
-            materialType = "link";
-          }
+  if (rawType.includes("pdf")) {
+    materialType = "pdf";
+  } else if (rawType.includes("video")) {
+    materialType = "video";
+  } else if (!fileUrl) {
+    materialType = "link";
+  }
 
-          return {
-            id: doc.id,
-            title: material.title || "Untitled Material",
-            type: materialType,
-            uploadedDate: formatFirestoreDateTime(material.createdAt) || "Unknown date",
-            content: material.content || "",
-            fileName: material.fileName || null,
-            fileUrl,
-            fileUri: fileUrl,
-            fileType: material.fileType || null,
-            storagePath: material.storagePath || null,
-            bucketPath: material.bucketPath || null,
-            week: material.week || null,
-            postedByName: material.postedByName || null,
-            createdAt: material.createdAt || null,
-            updatedAt: material.updatedAt || null,
-          };
-        });
+  return {
+    id: doc.id,
+    title: material.title || "Untitled Material",
+    type: materialType,
+    uploadedDate: formatFirestoreDateTime(material.createdAt) || "Unknown date",
+    content: material.content || "",
+    fileName: material.fileName || null,
+    fileUrl,           // ← now has a real signed URL
+    fileUri: fileUrl,  // ← same
+    fileType: material.fileType || null,
+    storagePath: material.storagePath || null,
+    bucketPath: material.bucketPath || null,
+    week: material.week || null,
+    postedByName: material.postedByName || null,
+    createdAt: material.createdAt || null,
+    updatedAt: material.updatedAt || null,
+  };
+}));
 
         const assignments = assignmentsSnapshot.docs.map((doc) => {
         const assignment = doc.data() || {};
@@ -6772,7 +6823,6 @@ app.get("/class-materials/:classId", async (req, res) => {
     });
   }
 });
-
 app.post("/create-class-material", async (req, res) => {
   try {
     const {
@@ -6781,12 +6831,15 @@ app.post("/create-class-material", async (req, res) => {
       week,
       content,
       fileName,
-      fileUrl,
+      fileUrl, // This might be null now if we rely on signed URLs later, but keeping for compatibility
       fileType,
       storagePath,
       bucketPath,
       postedByUid,
       postedByName,
+      // NEW FIELDS FROM UPLOAD RESPONSE
+      pdfStoragePath,
+      pdfUrl,
     } = req.body;
 
     if (!classId || !title || !week) {
@@ -6810,12 +6863,16 @@ app.post("/create-class-material", async (req, res) => {
       fileType: normalizeOptionalText(fileType),
       storagePath: normalizeOptionalText(storagePath),
       bucketPath: normalizeOptionalText(bucketPath),
+      
+      // SAVE PDF PREVIEW DATA
+      pdfStoragePath: normalizeOptionalText(pdfStoragePath),
+      pdfUrl: normalizeOptionalText(pdfUrl), 
+      
       postedByUid: normalizeOptionalText(postedByUid),
       postedByName: normalizeOptionalText(postedByName),
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
     });
-
 
     await createNotificationsForClassStudents({
       classId,
@@ -11341,6 +11398,8 @@ In tutor mode, tutor the student step by step and ask a quick check question whe
   }
 }
 
+
+
 // ====================== AI CHAT HISTORY ROUTES ======================
 
 // Save chat history to Firestore
@@ -13001,6 +13060,63 @@ app.post("/messenger-mark-read", async (req, res) => {
       error: error.message || "Failed to mark conversation as read.",
     });
   }
+});
+
+
+app.get("/course-material-download/:classId", requireAuth, async (req, res) => {
+    try {
+        const { classId } = req.params;
+        const storagePath = decodeURIComponent(req.query.storagePath || "");
+
+        if (!storagePath) {
+            return res.status(400).json({
+                error: "storagePath is required."
+            });
+        }
+
+        await requireClassAccess({
+            authUid: req.user.uid,
+            classId,
+            allowedRoles: ["student", "teacher"],
+        });
+
+        if (!isStoragePathAllowedForClass(storagePath, classId)) {
+            return res.status(403).json({
+                error: "Invalid storage path."
+            });
+        }
+
+        const file = bucket.file(storagePath);
+
+        const [exists] = await file.exists();
+
+        if (!exists) {
+            return res.status(404).json({
+                error: "File not found."
+            });
+        }
+
+        const [metadata] = await file.getMetadata();
+
+        res.setHeader(
+            "Content-Type",
+            metadata.contentType || "application/octet-stream"
+        );
+
+        res.setHeader(
+            "Content-Disposition",
+            `attachment; filename="${storagePath.split("/").pop()}"`
+        );
+
+        file.createReadStream().pipe(res);
+
+    } catch (error) {
+        console.error(error);
+
+        res.status(error.statusCode || 500).json({
+            error: error.message || "Download failed."
+        });
+    }
 });
 
 

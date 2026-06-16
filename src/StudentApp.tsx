@@ -1,3 +1,4 @@
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import Constants from 'expo-constants';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as NavigationBar from 'expo-navigation-bar';
@@ -1717,13 +1718,14 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
                 styles.floatingChatBtn,
                 !isLargeScreen && styles.floatingChatBtnSmall,
                 {
-                  bottom: hasImageChanged ? insets.bottom + 12 : 12,
-                  right: hasImageChanged ? insets.right + 20 : 20,
+                  bottom: insets.bottom + 12,
+                  right: insets.right + 20,
                 },
               ]}
               onPress={() => setIsChatOpen((prev) => !prev)}
             >
               {isChatOpen ? (
+              isLargeScreen ? (
                 <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                   <Image
                     source={require('../assets/images/AI.png')}
@@ -1734,6 +1736,13 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
                   </Text>
                 </View>
               ) : (
+                <MaterialCommunityIcons
+                  name="progress-clock"
+                  size={24}
+                  color="#fff"
+                />
+              )
+            ) : (
                 <>
                   <Image
                     source={require('../assets/images/AI.png')}

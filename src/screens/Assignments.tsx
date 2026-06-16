@@ -54,6 +54,10 @@ export interface AssignmentMaterial {
   fileUrl?: string;
   fileUri?: string;
   fileType?: string;
+  storagePath?: string | null;
+  bucketPath?: string | null;
+  pdfUrl?: string | null;       // For previewing converted PDFs
+  pdfStoragePath?: string | null; 
 }
 
 export interface AssignmentItem {

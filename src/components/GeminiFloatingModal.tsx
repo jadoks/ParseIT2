@@ -1,4 +1,3 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import Constants from "expo-constants";
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system';
@@ -47,11 +46,7 @@ type TutorSuggestion = {
   lastScore?: number | null;
 };
 
-const CHAT_MODE_KEY = "parseit-ai-chat-mode";
 const PAGE_SIZE = 30;
-
-const getChatStorageKey = (mode: ChatMode) =>
-  `parseit-ai-chat-history-${mode}`;
 
 function getDefaultMessages(mode: ChatMode): Message[] {
   return [
@@ -196,7 +191,6 @@ export default function GeminiFloatingModal({
   const scrollViewRef = useRef<ScrollView | null>(null);
   const shouldScrollToBottomRef = useRef(true);
 
-  // ✅ NEW: Refs and state for dynamic input height
   const singleLineHeightRef = useRef(0);
   const [inputHeight, setInputHeight] = useState(42);
 
@@ -207,7 +201,6 @@ export default function GeminiFloatingModal({
   const [tutorSuggestions, setTutorSuggestions] = useState<TutorSuggestion[]>([]);
   const [loadingTutorSuggestions, setLoadingTutorSuggestions] = useState(false);
   
-  // ✅ Track if user is at the bottom of the chat
   const [isAtBottom, setIsAtBottom] = useState(true);
 
   const [isUploading, setIsUploading] = useState(false);
@@ -234,7 +227,7 @@ export default function GeminiFloatingModal({
   );
 
   const scrollToBottom = (animated = true) => {
-    setIsAtBottom(true); // ✅ Ensure button hides immediately when triggered
+    setIsAtBottom(true);
     requestAnimationFrame(() => {
       scrollViewRef.current?.scrollToEnd({ animated });
     });
@@ -246,12 +239,11 @@ export default function GeminiFloatingModal({
     setVisibleCount((prev) => Math.min(prev + PAGE_SIZE, messages.length));
   };
 
-  // ✅ Calculate if user is at the bottom during scroll
   const handleMessagesScroll = (
     event: NativeSyntheticEvent<NativeScrollEvent>
   ) => {
     const { layoutMeasurement, contentOffset, contentSize } = event.nativeEvent;
-    const isAtBottomNow = layoutMeasurement.height + contentOffset.y >= contentSize.height - 50; // 50px threshold
+    const isAtBottomNow = layoutMeasurement.height + contentOffset.y >= contentSize.height - 50;
     setIsAtBottom(isAtBottomNow);
 
     const offsetY = contentOffset.y;
@@ -260,18 +252,16 @@ export default function GeminiFloatingModal({
     }
   };
 
-  // ✅ UPDATED: Handle dynamic height changes for the TextInput
   const handleContentSizeChange = (event: any) => {
     const contentHeight = event.nativeEvent.contentSize.height;
     
-    // Capture the height of a single line of text on the first render
     if (singleLineHeightRef.current === 0 && contentHeight > 0) {
       singleLineHeightRef.current = contentHeight;
     }
     
     const singleLineHeight = singleLineHeightRef.current || contentHeight;
     const lines = Math.max(1, Math.round(contentHeight / singleLineHeight));
-    const clampedLines = Math.min(lines, 4); // Stop increasing at 4 rows
+    const clampedLines = Math.min(lines, 4);
     
     const newHeight = 42 + (clampedLines - 1) * 25;
     
@@ -280,48 +270,34 @@ export default function GeminiFloatingModal({
     }
   };
 
-  // ✅ NEW: Reset input height when text is cleared
   useEffect(() => {
     if (!input) {
       setInputHeight(42);
     }
   }, [input]);
 
-  // ✅ UPDATED: Load chat history from Firebase API instead of just AsyncStorage
+  // Load chat history FROM FIREBASE ONLY
   useEffect(() => {
     const loadSavedChat = async () => {
       try {
-        // We still use AsyncStorage to remember the last used mode locally for instant UI loading
-        const savedMode = await AsyncStorage.getItem(CHAT_MODE_KEY);
-        const restoredMode: ChatMode =
-          savedMode === "assistant" || savedMode === "tutor"
-            ? savedMode
-            : "assistant";
+        // Default to assistant mode since we are not storing mode locally anymore
+        const restoredMode: ChatMode = "assistant";
         setMode(restoredMode);
 
-        // ✅ Fetch messages from Firebase via API
+        // Fetch from Firebase
         const response = await apiFetch(`${API_BASE_URL}/ai/chat-history/${restoredMode}`);
         const data = await response.json();
         
         if (response.ok && Array.isArray(data?.data) && data.data.length > 0) {
           setMessages(data.data);
         } else {
-          // Fallback to local cache or default if API fails or returns empty
-          const savedMessages = await AsyncStorage.getItem(getChatStorageKey(restoredMode));
-          if (savedMessages) {
-            const parsedMessages = JSON.parse(savedMessages);
-            if (Array.isArray(parsedMessages) && parsedMessages.length > 0) {
-              setMessages(parsedMessages);
-            } else {
-              setMessages(getDefaultMessages(restoredMode));
-            }
-          } else {
-            setMessages(getDefaultMessages(restoredMode));
-          }
+          // If Firebase has no history, start fresh with default greeting
+          setMessages(getDefaultMessages(restoredMode));
         }
         setVisibleCount(PAGE_SIZE);
       } catch (error) {
-        console.warn("Failed to load saved AI chat:", error);
+        console.warn("Failed to load AI chat from Firebase:", error);
+        // Fallback to default if network fails completely
         setMessages(getDefaultMessages("assistant"));
       } finally {
         setHydrated(true);
@@ -330,43 +306,26 @@ export default function GeminiFloatingModal({
     loadSavedChat();
   }, []);
 
-  // ✅ UPDATED: Save mode preference locally
+  // Save messages TO FIREBASE ONLY
   useEffect(() => {
     if (!hydrated) return;
-    AsyncStorage.setItem(CHAT_MODE_KEY, mode).catch((error) => {
-      console.warn("Failed to save AI chat mode:", error);
-    });
-  }, [mode, hydrated]);
 
-  // ✅ UPDATED: Save chat history to Firebase API and keep local cache
-  useEffect(() => {
-    if (!hydrated) return;
-    
-    // Optional: Keep a local cache as a fallback
-    AsyncStorage.setItem(getChatStorageKey(mode), JSON.stringify(messages)).catch(
-      (error) => {
-        console.warn("Failed to save AI chat locally:", error);
-      }
-    );
-
-    // ✅ Save to Firebase via API
     const saveChatToFirebase = async () => {
       try {
-        const response = await apiFetch(`${API_BASE_URL}/ai/chat-history/save`, {
+        await apiFetch(`${API_BASE_URL}/ai/chat-history/save`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ mode, messages }),
         });
-        
-        if (response.status === 401) {
-          console.warn("User not authenticated. Chat history not saved to Firebase.");
-        }
-      } catch (error) {
-        console.warn("Failed to save AI chat to Firebase:", error);
+      } catch (err) {
+        console.warn("Failed to sync chat to Firebase:", err);
       }
     };
-    
-    saveChatToFirebase();
+
+    // Debounce save to avoid excessive writes
+    const timeoutId = setTimeout(saveChatToFirebase, 1000);
+    return () => clearTimeout(timeoutId);
+
   }, [messages, mode, hydrated]);
 
   useEffect(() => {
@@ -568,42 +527,34 @@ export default function GeminiFloatingModal({
     }
   };
 
-  // ✅ UPDATED: Fetch new mode's history from Firebase API when switching
+  // Fetch new mode's history from Firebase API when switching
   const resetForMode = async (nextMode: ChatMode) => {
     if (nextMode === mode || loading) return;
     try {
       shouldScrollToBottomRef.current = true;
-      // Save current mode's messages to local cache before switching
-      await AsyncStorage.setItem(getChatStorageKey(mode), JSON.stringify(messages));
-      await AsyncStorage.setItem(CHAT_MODE_KEY, nextMode); // Save mode preference locally
       
       setMode(nextMode);
       setInput("");
       setVisibleCount(PAGE_SIZE);
+      setLoading(true); // Optional: show loading while fetching history
       
-      // ✅ Fetch messages for the new mode from Firebase API
       const response = await apiFetch(`${API_BASE_URL}/ai/chat-history/${nextMode}`);
       const data = await response.json();
       
       if (response.ok && Array.isArray(data?.data) && data.data.length > 0) {
         setMessages(data.data);
       } else {
-        // Fallback to local cache or default
-        const savedMessages = await AsyncStorage.getItem(getChatStorageKey(nextMode));
-        if (savedMessages) {
-          const parsedMessages = JSON.parse(savedMessages);
-          if (Array.isArray(parsedMessages) && parsedMessages.length > 0) {
-            setMessages(parsedMessages);
-            return;
-          }
-        }
+        // Start fresh if no history in Firebase
         setMessages(getDefaultMessages(nextMode));
       }
     } catch (error) {
+      console.warn("Error switching mode:", error);
       setMode(nextMode);
       setInput("");
       setVisibleCount(PAGE_SIZE);
       setMessages(getDefaultMessages(nextMode));
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -631,12 +582,13 @@ export default function GeminiFloatingModal({
               },
             ]}
           >
-            {/* ✅ UPDATED HEADER WITH CLOSE BUTTON */}
+            {/* HEADER */}
             <View style={styles.header}>
               <View style={{ flex: 1 }}>
                 <Text style={styles.title}>ParseIT Assistant</Text>
                 <Text style={styles.subtitle}>{subtitle}</Text>
               </View>
+
               <TouchableOpacity 
                 style={styles.closeBtn} 
                 onPress={handleClose} 
@@ -665,37 +617,8 @@ export default function GeminiFloatingModal({
               </TouchableOpacity>
             </View>
 
-            {/* Tutor Suggestions */}
-            {!isAssistant && (
-              <View style={styles.tutorSuggestionWrap}>
-                <View style={styles.tutorSuggestionHeader}>
-                  <Text style={styles.tutorSuggestionTitle}>Need help with these lessons?</Text>
-                  {loadingTutorSuggestions && <ActivityIndicator size="small" color="#D32F2F" />}
-                </View>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tutorSuggestionList}>
-                  {tutorSuggestions.length > 0 ? (
-                    tutorSuggestions.map((suggestion) => (
-                      <TouchableOpacity
-                        key={suggestion.id}
-                        style={styles.tutorSuggestionBubble}
-                        onPress={() => sendTutorSuggestion(suggestion)}
-                        disabled={loading}
-                        activeOpacity={0.85}
-                      >
-                        <Text style={styles.tutorSuggestionBubbleText} numberOfLines={2}>{suggestion.topic}</Text>
-                        {suggestion.lastScore !== null && suggestion.lastScore !== undefined && (
-                          <Text style={styles.tutorSuggestionScore}>Last score: {suggestion.lastScore}%</Text>
-                        )}
-                      </TouchableOpacity>
-                    ))
-                  ) : (
-                    <Text style={styles.tutorSuggestionEmpty}>No weak lesson suggestions yet.</Text>
-                  )}
-                </ScrollView>
-              </View>
-            )}
-
-            {/* ✅ Messages Wrapper (Added to hold the floating button) */}
+            
+            {/* Messages Wrapper */}
             <View style={{ flex: 1 }}>
               <ScrollView
                 ref={scrollViewRef}
@@ -755,7 +678,7 @@ export default function GeminiFloatingModal({
                 )}
               </ScrollView>
 
-              {/* ✅ Scroll to Bottom Floating Button */}
+              {/* Scroll to Bottom Floating Button */}
               {!isAtBottom && (
                 <TouchableOpacity 
                   style={styles.scrollToBottomBtn} 
@@ -804,7 +727,6 @@ export default function GeminiFloatingModal({
                   multiline
                   textAlignVertical="top"
                   onContentSizeChange={handleContentSizeChange}
-                  // ✅ NEW: Handle Enter to send, Shift+Enter for newline (Web/Desktop)
                   onKeyPress={(e) => {
                     if (e.nativeEvent.key === 'Enter') {
                       if (Platform.OS === 'web') {
@@ -846,7 +768,6 @@ const styles = StyleSheet.create({
     shadowColor: "#000", shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.15, shadowRadius: 20, elevation: 15,
     marginBottom: 20,
   },
-  // ✅ UPDATED HEADER STYLE TO SUPPORT CLOSE BUTTON
   header: { 
     flexDirection: 'row', 
     justifyContent: 'space-between', 
@@ -861,7 +782,6 @@ const styles = StyleSheet.create({
   title: { fontSize: 18, fontWeight: "800", color: "#D32F2F" },
   subtitle: { marginTop: 4, fontSize: 12, color: "#6B7280", fontWeight: "500" },
   
-  // ✅ NEW CLOSE BUTTON STYLE
   closeBtn: {
     width: 36,
     height: 36,
@@ -869,7 +789,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#F3F4F6',
     justifyContent: 'center',
     alignItems: 'center',
-    marginLeft: 10,
   },
 
   modeSwitchWrap: { flexDirection: "row", marginHorizontal: 16, marginTop: 12, marginBottom: 4, backgroundColor: "#F3F4F6", borderRadius: 999, padding: 4 },
@@ -908,7 +827,6 @@ const styles = StyleSheet.create({
   fileAttachmentUser: { backgroundColor: 'rgba(255,255,255,0.2)' },
   fileAttachmentText: { fontSize: 13, fontWeight: '600', color: '#991B1B', flex: 1 },
 
-  // Input Area Styles
   inputArea: {
     paddingHorizontal: 14, paddingTop: 10, paddingBottom: 14,
     borderTopWidth: 1, borderTopColor: "#F3F4F6", backgroundColor: "#FFFFFF",
@@ -920,13 +838,11 @@ const styles = StyleSheet.create({
   },
   selectedFileText: { flex: 1, fontSize: 13, color: '#991B1B', fontWeight: '600' },
   
-  // ✅ UPDATED: Bottom aligned for growing input
   inputRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 10 },
   uploadBtn: {
     width: 42, height: 42, borderRadius: 21, backgroundColor: '#F3F4F6',
     justifyContent: 'center', alignItems: 'center',
   },
-  // ✅ UPDATED: Removed fixed height and border radius (handled dynamically)
   input: {
     flex: 1,
     borderWidth: 1.5, borderColor: "#E5E7EB",
@@ -949,7 +865,6 @@ const styles = StyleSheet.create({
   tutorSuggestionScore: { color: "#D32F2F", fontWeight: "700", fontSize: 11, marginTop: 4 },
   tutorSuggestionEmpty: { color: "#9CA3AF", fontSize: 13, paddingVertical: 8, fontStyle: "italic" },
 
-  // ✅ Scroll to Bottom Button Style
   scrollToBottomBtn: {
     position: 'absolute',
     bottom: 16,

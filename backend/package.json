@@ -9,6 +9,7 @@
     "expo-document-picker": "~14.0.8",
     "expo-file-system": "~19.0.23",
     "expo-sharing": "~14.0.8",
+    "libreoffice-convert": "^1.8.1",
     "multer": "^2.1.1"
   }
 }
