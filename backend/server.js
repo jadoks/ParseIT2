@@ -4045,12 +4045,12 @@ app.post("/create-admin", async (req, res) => {
   }
 });
 
-/**
- * EXISTING ROUTES
- */
+
 app.post("/upload-student-grade", requireAuth, async (req, res) => {
   try {
-    const { fileBase64, fileName, fileType } = req.body;
+    // 1. Accept studentId from frontend for verification
+    const { fileBase64, fileName, fileType, studentId: frontendStudentId } = req.body;
+    
     if (!fileBase64 || !fileName) {
       return res.status(400).json({ error: "fileBase64 and fileName are required." });
     }
@@ -4060,15 +4060,17 @@ app.post("/upload-student-grade", requireAuth, async (req, res) => {
       return res.status(403).json({ error: "Only students can upload grades." });
     }
     
-    const studentId = profile.data.studentId || profile.id;
+    // Use the ID sent from frontend, fallback to profile ID if missing
+    const currentStudentId = frontendStudentId || profile.data.studentId || profile.id;
+
     const cleanedBase64 = fileBase64.includes(",") ? fileBase64.split(",")[1] : fileBase64;
     const safeMimeType = fileType || "application/octet-stream";
     const extension = getFileExtensionFromMimeType(safeMimeType);
     const safeFileName = sanitizeFileName(fileName || `grade.${extension}`);
-    const storagePath = `student-grades/${studentId}/${Date.now()}-${safeFileName}`;
+    const storagePath = `student-grades/${currentStudentId}/${Date.now()}-${safeFileName}`;
     const file = bucket.file(storagePath);
     
-    // 1. Save to Firebase Storage
+    // 1. Save to Firebase Storage first (so we have a record even if AI fails later)
     await file.save(Buffer.from(cleanedBase64, "base64"), {
       metadata: { contentType: safeMimeType, cacheControl: "private,max-age=0,no-transform" },
       resumable: false,
@@ -4076,8 +4078,8 @@ app.post("/upload-student-grade", requireAuth, async (req, res) => {
     const fileUrl = await createReadSignedUrl(storagePath);
     
     // Save basic metadata first
-    await db.collection("studentGrades").doc(studentId).set({
-      studentId,
+    await db.collection("studentGrades").doc(currentStudentId).set({
+      studentId: currentStudentId,
       fileName: safeFileName,
       fileUrl,
       storagePath,
@@ -4085,231 +4087,292 @@ app.post("/upload-student-grade", requireAuth, async (req, res) => {
       uploadedAt: FieldValue.serverTimestamp(),
     }, { merge: true });
 
-    // 2. Send PDF directly to Gemini to read table structure
+     // 2. VERIFY STUDENT IDENTITY WITH GEMINI
     if (!geminiGameAI) {
-      return res.status(500).json({ error: "AI service not available." });
+      return res.status(500).json({ error: "AI service not available for verification." });
     }
 
-    const promptText = `
-You are an academic transcript parser.
+    const verificationPrompt = `
+You are a strict document verifier.
+I will provide you with a transcript/grade sheet and a specific Student ID Number: "${currentStudentId}".
 
-IMPORTANT:
-The transcript is a TABLE.
-Columns are:
-CODE | SUBJECT | DESCRIPTION | UNIT | TIME | DAY | ROOM | MIDTERM GRADE | FINAL TERM | FINAL GRADE | COMPLETION
+TASK:
+1. Locate the "Student Name" section in the document.
+2. Look immediately to the left or right of the Student Name for an ID Number, Student Number, or Control Number.
+3. Check if the provided ID "${currentStudentId}" matches the ID found in the document.
 
 RULES:
-1. Extract ALL subjects.
-2. Each subject belongs to the nearest semester heading:
-   - 1st Semester SY XXXX-XXXX
-   - 2nd Semester SY XXXX-XXXX
-3. CRITICAL GRADE MAPPING
-   The grade MUST come ONLY from the FINAL GRADE column.
-   Example:
-   CODE     DESCRIPTION                     MIDTERM   FINAL TERM   FINAL GRADE
-   CS10     NSTP 2                          1.9       1.7          1.8
-   Correct: grade = 1.8
-   Wrong: grade = 1.9, grade = 1.7
-4. NEVER use: MIDTERM GRADE, FINAL TERM
-5. Match each FINAL GRADE to the SAME ROW as the DESCRIPTION.
-6. SUBJECT CODE: subjectCode = value from CODE column only.
-7. SUBJECT TITLE: subjectTitle = value from DESCRIPTION column only. Do NOT include values from SUBJECT column.
-8. SUBJECT COLUMN VALUES MUST BE IGNORED (e.g., AP 1, CC 111, NSTP 1, PATHFIT 1, GEC-MMW). These are NOT the subjectTitle.
-9. MULTI-LINE DESCRIPTIONS: If a description spans multiple lines, combine them into one string.
-10. If FINAL GRADE is blank: grade = null
-11. Return ONLY valid JSON.
+- If the ID matches exactly, return JSON: { "verified": true, "foundId": "the_id_found" }
+- If the ID does NOT match, return JSON: { "verified": false, "foundId": "the_id_found_or_null", "reason": "ID mismatch" }
+- If you cannot find any ID number near the student name, return JSON: { "verified": false, "foundId": null, "reason": "No ID found near name" }
 
-Format:
-[
-  {
+Return ONLY valid JSON. No markdown.
+`;
+
+    let aiVerificationText = "";
+    let isIdentityVerified = false;
+    let maxRetries = 3;
+    let retryCount = 0;
+    let lastError = null;
+
+    while (retryCount < maxRetries) {
+      try {
+        console.log(`Verifying Student Identity via Gemini... (Attempt ${retryCount + 1})`);
+        const model = geminiGameAI.getGenerativeModel({ model: GEMINI_GAME_MODEL });
+        
+        const result = await model.generateContent([
+          { text: verificationPrompt },
+          { inlineData: { mimeType: safeMimeType, data: cleanedBase64 } },
+        ]);
+        
+        aiVerificationText = result.response.text();
+        const cleanJson = aiVerificationText.replace(/```json/g, "").replace(/```/g, "").trim();
+        const verificationResult = JSON.parse(cleanJson);
+
+        if (verificationResult.verified === true) {
+          isIdentityVerified = true;
+          console.log("Identity Verified:", verificationResult.foundId);
+          break; // Success, exit loop
+        } else {
+          console.warn("Identity Verification Failed:", verificationResult.reason);
+          return res.status(403).json({ 
+            error: `Security Check Failed: The ID in your account (${currentStudentId}) does not match the ID found in the uploaded file (${verificationResult.foundId || 'None'}). Please upload the correct transcript.` 
+          });
+        }
+
+      } catch (aiErr) {
+        lastError = aiErr;
+        console.error(`Gemini Verification failed (Attempt ${retryCount + 1}):`, aiErr.message);
+        
+        // If it's a 503 error, wait before retrying
+        if (aiErr.status === 503) {
+          retryCount++;
+          if (retryCount < maxRetries) {
+            const delay = 2000 * retryCount; // Wait 2s, then 4s, then 6s
+            console.log(`Waiting ${delay}ms before retry...`);
+            await new Promise(resolve => setTimeout(resolve, delay));
+          }
+        } else {
+          // If it's NOT a 503 error (e.g., bad API key), stop retrying
+          break;
+        }
+      }
+    }
+
+    if (!isIdentityVerified && lastError) {
+       // If all retries failed
+       console.error("All Gemini verification attempts failed.");
+       // Option A: Block the upload strictly
+       // return res.status(503).json({ error: "AI Verification service is currently busy. Please try again in a few minutes." });
+       
+       // Option B: Allow upload but warn user (Recommended for better UX during outages)
+       console.warn("Proceeding with upload despite verification failure due to AI outage.");
+    }
+
+    // 3. Proceed with Grade Parsing (Only if verified)
+    if (isIdentityVerified) {
+        const promptText = `
+    You are an academic transcript parser.
+    IMPORTANT:
+    The transcript is a TABLE.
+    Columns are:
+    CODE | SUBJECT | DESCRIPTION | UNIT | TIME | DAY | ROOM | MIDTERM GRADE | FINAL TERM | FINAL GRADE | COMPLETION
+    RULES:
+    1. Extract ALL subjects.
+    2. Each subject belongs to the nearest semester heading:
+    - 1st Semester SY XXXX-XXXX
+    - 2nd Semester SY XXXX-XXXX
+    3. CRITICAL GRADE MAPPING
+    The grade MUST come ONLY from the FINAL GRADE column.
+    Example:
+    CODE     DESCRIPTION                     MIDTERM   FINAL TERM   FINAL GRADE
+    CS10     NSTP 2                          1.9       1.7          1.8
+    Correct: grade = 1.8
+    Wrong: grade = 1.9, grade = 1.7
+    4. NEVER use: MIDTERM GRADE, FINAL TERM
+    5. Match each FINAL GRADE to the SAME ROW as the DESCRIPTION.
+    6. SUBJECT CODE: subjectCode = value from CODE column only.
+    7. SUBJECT TITLE: subjectTitle = value from DESCRIPTION column only. Do NOT include values from SUBJECT column.
+    8. SUBJECT COLUMN VALUES MUST BE IGNORED (e.g., AP 1, CC 111, NSTP 1, PATHFIT 1, GEC-MMW). These are NOT the subjectTitle.
+    9. MULTI-LINE DESCRIPTIONS: If a description spans multiple lines, combine them into one string.
+    10. If FINAL GRADE is blank: grade = null
+    11. Return ONLY valid JSON.
+    Format:
+    [
+    {
     "subjectCode": "CS1",
     "subjectTitle": "MULTIMEDIA",
     "units": 3,
     "grade": 1.6,
     "schoolYear": "2023-2024",
     "semester": "1st Semester"
-  }
-]
-
-Before returning:
-- Verify every grade came from the FINAL GRADE column.
-- Verify every subjectTitle came from the DESCRIPTION column.
-- Verify every subjectCode came from the CODE column.
-`;
-
-    let aiText = "";
-    try {
-      console.log("Sending PDF directly to Gemini for table parsing...");
-      const model = geminiGameAI.getGenerativeModel({ model: GEMINI_GAME_MODEL });
-      
-      // Pass the prompt and the raw PDF buffer directly to Gemini
-      const result = await model.generateContent([
-        { text: promptText },
-        { inlineData: { mimeType: safeMimeType, data: cleanedBase64 } },
-      ]);
-      aiText = result.response.text();
-    } catch (aiErr) {
-      console.error("Gemini PDF parsing failed:", aiErr);
-      return res.json({ 
-        success: true, 
-        message: "Grade file uploaded successfully, but AI failed to read the PDF directly.", 
-        data: { fileUrl, fileName } 
-      });
     }
+    ]
+    Before returning:
+    - Verify every grade came from the FINAL GRADE column.
+    - Verify every subjectTitle came from the DESCRIPTION column.
+    - Verify every subjectCode came from the CODE column.
+    `;
 
-    let parsedGrades = [];
-    try {
-      const cleanedText = aiText.replace(/```json/g, "").replace(/```/g, "").trim();
-      const jsonMatch = cleanedText.match(/\[[\s\S]*\]/);
-      if (!jsonMatch) {
-        throw new Error("No JSON array found in AI response.");
-      }
-      parsedGrades = JSON.parse(jsonMatch[0]);
-      
-      // 3. Group subjects by School Year and Semester
-      const groupedGrades = {};
-      for (const item of parsedGrades) {
-        const grade = Number(item.grade);
-        if (isNaN(grade)) continue; // Skip invalid grades
-        
-        const normalizedSY = String(item.schoolYear || "Unknown").trim();
-        const normalizedSem = String(item.semester || "Unknown").trim();
-        const key = `${normalizedSY}|${normalizedSem}`;
-        
-        if (!groupedGrades[key]) {
-          groupedGrades[key] = {
-            schoolYear: normalizedSY,
-            semester: normalizedSem,
-            subjects: [],
-            totalUnits: 0,
-            weightedGradeTotal: 0
-          };
+        let aiText = "";
+        try {
+            console.log("Sending PDF directly to Gemini for table parsing...");
+            const model = geminiGameAI.getGenerativeModel({ model: GEMINI_GAME_MODEL });
+            const result = await model.generateContent([
+                { text: promptText },
+                { inlineData: { mimeType: safeMimeType, data: cleanedBase64 } },
+            ]);
+            aiText = result.response.text();
+        } catch (parseErr) {
+            console.error("Gemini PDF parsing failed:", parseErr);
+            return res.json({
+                success: true,
+                message: "Grade file uploaded successfully, but AI failed to read the PDF directly.",
+                data: { fileUrl, fileName }
+            });
         }
-        
-        const units = Number(item.units || 0);
-        
-        groupedGrades[key].subjects.push({
-          subjectCode: item.subjectCode || "N/A",
-          subjectTitle: item.subjectTitle || "Unknown Subject",
-          units: units,
-          grade: grade
-        });
-        
-        groupedGrades[key].totalUnits += units;
-        groupedGrades[key].weightedGradeTotal += grade * units;
-      }
 
-      // 4. Determine unique school years in chronological order
-      const uniqueSchoolYears = [...new Set(Object.values(groupedGrades).map(g => g.schoolYear))];
-      
-      const extractStartYear = (sy) => {
-        const match = sy.match(/(\d{4})/);
-        return match ? parseInt(match[1]) : 0;
-      };
-      
-      uniqueSchoolYears.sort((a, b) => extractStartYear(a) - extractStartYear(b));
-      
-      const schoolYearToYearLevel = {};
-      uniqueSchoolYears.forEach((sy, index) => {
-        const yearNumber = index + 1; 
-        const suffixes = ["st", "nd", "rd", "th"];
-        const suffix = yearNumber <= 3 ? suffixes[yearNumber - 1] : "th";
-        schoolYearToYearLevel[sy] = `${yearNumber}${suffix} Year`;
-      });
+        let parsedGrades = [];
+        try {
+            const cleanedText = aiText.replace(/```json/g, "").replace(/```/g, "").trim();
+            const jsonMatch = cleanedText.match(/\[[\s\S]*\]/);
+            if (!jsonMatch) {
+                throw new Error("No JSON array found in AI response.");
+            }
+            parsedGrades = JSON.parse(jsonMatch[0]);
 
-      const determineSectionLetter = (subjectCode) => {
-        const match = String(subjectCode || "").match(/\d+/);
-        if (!match) return "A"; 
-        
-        const codeNumber = parseInt(match[0]);
-        if (codeNumber >= 1 && codeNumber <= 10) return "A";
-        if (codeNumber >= 11 && codeNumber <= 20) return "B";
-        return "C"; 
-      };
+            // ... [Existing Grouping and Saving Logic remains exactly the same] ...
+            const groupedGrades = {};
+            for (const item of parsedGrades) {
+                const grade = Number(item.grade);
+                if (isNaN(grade)) continue; 
+                const normalizedSY = String(item.schoolYear || "Unknown").trim();
+                const normalizedSem = String(item.semester || "Unknown").trim();
+                const key = `${normalizedSY}|${normalizedSem}`;
+                if (!groupedGrades[key]) {
+                    groupedGrades[key] = {
+                        schoolYear: normalizedSY,
+                        semester: normalizedSem,
+                        subjects: [],
+                        totalUnits: 0,
+                        weightedGradeTotal: 0
+                    };
+                }
+                const units = Number(item.units || 0);
+                groupedGrades[key].subjects.push({
+                    subjectCode: item.subjectCode || "N/A",
+                    subjectTitle: item.subjectTitle || "Unknown Subject",
+                    units: units,
+                    grade: grade
+                });
+                groupedGrades[key].totalUnits += units;
+                groupedGrades[key].weightedGradeTotal += grade * units;
+            }
 
-      // 5. Find the FIRST semester record to determine the LOCKED section
-      const firstSY = uniqueSchoolYears[0];
-      const firstSYKeys = Object.keys(groupedGrades).filter(key => groupedGrades[key].schoolYear === firstSY);
-      
-      const firstSemesterKey = firstSYKeys.find(key => {
-        const sem = groupedGrades[key].semester.toLowerCase();
-        return sem.includes("1st") || sem.includes("first");
-      }) || firstSYKeys[0];
+            const uniqueSchoolYears = [...new Set(Object.values(groupedGrades).map(g => g.schoolYear))];
+            const extractStartYear = (sy) => {
+                const match = sy.match(/(\d{4})/);
+                return match ? parseInt(match[1]) : 0;
+            };
+            uniqueSchoolYears.sort((a, b) => extractStartYear(a) - extractStartYear(b));
+            const schoolYearToYearLevel = {};
+            uniqueSchoolYears.forEach((sy, index) => {
+                const yearNumber = index + 1;
+                const suffixes = ["st", "nd", "rd", "th"];
+                const suffix = yearNumber <= 3 ? suffixes[yearNumber - 1] : "th";
+                schoolYearToYearLevel[sy] = `${yearNumber}${suffix} Year`;
+            });
 
-      let lockedSectionLetter = "A"; 
-      if (firstSemesterKey && groupedGrades[firstSemesterKey]) {
-        const firstSemesterGroup = groupedGrades[firstSemesterKey];
-        const sectionCounts = { A: 0, B: 0, C: 0 };
-        
-        firstSemesterGroup.subjects.forEach(subject => {
-          const sectionLetter = determineSectionLetter(subject.subjectCode);
-          sectionCounts[sectionLetter]++;
-        });
-        
-        let maxCount = 0;
-        for (const letter in sectionCounts) {
-          if (sectionCounts[letter] > maxCount) {
-            maxCount = sectionCounts[letter];
-            lockedSectionLetter = letter;
-          }
+            const determineSectionLetter = (subjectCode) => {
+                const match = String(subjectCode || "").match(/\d+/);
+                if (!match) return "A";
+                const codeNumber = parseInt(match[0]);
+                if (codeNumber >= 1 && codeNumber <= 10) return "A";
+                if (codeNumber >= 11 && codeNumber <= 20) return "B";
+                return "C";
+            };
+
+            const firstSY = uniqueSchoolYears[0];
+            const firstSYKeys = Object.keys(groupedGrades).filter(key => groupedGrades[key].schoolYear === firstSY);
+            const firstSemesterKey = firstSYKeys.find(key => {
+                const sem = groupedGrades[key].semester.toLowerCase();
+                return sem.includes("1st") || sem.includes("first");
+            }) || firstSYKeys[0];
+
+            let lockedSectionLetter = "A";
+            if (firstSemesterKey && groupedGrades[firstSemesterKey]) {
+                const firstSemesterGroup = groupedGrades[firstSemesterKey];
+                const sectionCounts = { A: 0, B: 0, C: 0 };
+                firstSemesterGroup.subjects.forEach(subject => {
+                    const sectionLetter = determineSectionLetter(subject.subjectCode);
+                    sectionCounts[sectionLetter]++;
+                });
+                let maxCount = 0;
+                for (const letter in sectionCounts) {
+                    if (sectionCounts[letter] > maxCount) {
+                        maxCount = sectionCounts[letter];
+                        lockedSectionLetter = letter;
+                    }
+                }
+            }
+
+            const sectionNameMap = {
+                "1st Year": { "A": "Microsoft", "B": "Google", "C": "Amazon" },
+                "2nd Year": { "A": "Algorithm", "B": "Pseudocode", "C": "Binary" },
+                "3rd Year": { "A": "Python", "B": "Java", "C": "C++" },
+                "4th Year": { "A": "Xamarin", "B": "Laravel", "C": "Flutter" }
+            };
+
+            const studentProfile = profile?.data || {};
+            const studentName = `${studentProfile.firstName || ""} ${studentProfile.lastName || ""}`.trim() || currentStudentId;
+
+            const batch = db.batch();
+            for (const key in groupedGrades) {
+                const group = groupedGrades[key];
+                const gwa = group.totalUnits > 0 ? Number((group.weightedGradeTotal / group.totalUnits).toFixed(3)) : null;
+                const yearLevel = schoolYearToYearLevel[group.schoolYear] || "";
+                const sectionName = sectionNameMap[yearLevel]?.[lockedSectionLetter] || `Section ${lockedSectionLetter}`;
+                const safeSY = group.schoolYear.replace(/[^a-zA-Z0-9]/g, "_");
+                const safeSem = group.semester.replace(/[^a-zA-Z0-9]/g, "_");
+                const docId = `${currentStudentId}_${safeSY}_${safeSem}`;
+                const ref = db.collection("studentParsedGrades").doc(docId);
+                batch.set(ref, {
+                    studentId: currentStudentId,
+                    schoolYear: group.schoolYear,
+                    semester: group.semester,
+                    gwa,
+                    totalUnits: group.totalUnits,
+                    section: sectionName,
+                    yearLevel: yearLevel,
+                    studentName: studentName,
+                    subjects: group.subjects,
+                    updatedAt: FieldValue.serverTimestamp(),
+                }, { merge: true });
+            }
+            await batch.commit();
+
+            return res.json({
+                success: true,
+                message: "Grade file uploaded and automatically parsed successfully.",
+                data: { fileUrl, fileName, parsedGroups: Object.keys(groupedGrades).length, lockedSection: lockedSectionLetter }
+            });
+
+        } catch (e) {
+            console.error("Failed to parse AI response:", e);
+            console.error("AI RAW RESPONSE:", aiText);
+            return res.json({
+                success: true,
+                message: "Grade file uploaded successfully, but AI failed to parse the grades into structured data. You can still view it in My Journey.",
+                data: { fileUrl, fileName }
+            });
         }
-      }
-
-      // 6. Mapping from Year Level and Section Letter to Section Name
-      const sectionNameMap = {
-        "1st Year": { "A": "Microsoft", "B": "Google", "C": "Amazon" },
-        "2nd Year": { "A": "Algorithm", "B": "Pseudocode", "C": "Binary" },
-        "3rd Year": { "A": "Python", "B": "Java", "C": "C++" },
-        "4th Year": { "A": "Xamarin", "B": "Laravel", "C": "Flutter" }
-      };
-
-      const studentProfile = profile?.data || {};
-      const studentName = `${studentProfile.firstName || ""} ${studentProfile.lastName || ""}`.trim() || studentId;
-
-      // 7. Calculate GWA and save all groups to Firebase using a batch write
-      const batch = db.batch();
-      for (const key in groupedGrades) {
-        const group = groupedGrades[key];
-        const gwa = group.totalUnits > 0 ? Number((group.weightedGradeTotal / group.totalUnits).toFixed(3)) : null;
-        
-        const yearLevel = schoolYearToYearLevel[group.schoolYear] || "";
-        const sectionName = sectionNameMap[yearLevel]?.[lockedSectionLetter] || `Section ${lockedSectionLetter}`;
-        
-        const safeSY = group.schoolYear.replace(/[^a-zA-Z0-9]/g, "_");
-        const safeSem = group.semester.replace(/[^a-zA-Z0-9]/g, "_");
-        const docId = `${studentId}_${safeSY}_${safeSem}`;
-        const ref = db.collection("studentParsedGrades").doc(docId);
-        
-        batch.set(ref, {
-          studentId,
-          schoolYear: group.schoolYear,
-          semester: group.semester,
-          gwa,
-          totalUnits: group.totalUnits,
-          section: sectionName, 
-          yearLevel: yearLevel,
-          studentName: studentName,
-          subjects: group.subjects,
-          updatedAt: FieldValue.serverTimestamp(),
-        }, { merge: true });
-      }
-      
-      await batch.commit();
-      
-      return res.json({ 
-        success: true, 
-        message: "Grade file uploaded and automatically parsed successfully.", 
-        data: { fileUrl, fileName, parsedGroups: Object.keys(groupedGrades).length, lockedSection: lockedSectionLetter } 
-      });
-
-    } catch (e) {
-      console.error("Failed to parse AI response:", e);
-      console.error("AI RAW RESPONSE:", aiText);
-      return res.json({ 
-        success: true, 
-        message: "Grade file uploaded successfully, but AI failed to parse the grades into structured data. You can still view it in My Journey.", 
-        data: { fileUrl, fileName } 
-      });
+    } else {
+        // This block is reached if verification was skipped due to AI error but we didn't hard-fail
+        return res.json({
+            success: true,
+            message: "Grade file uploaded. Note: Identity verification could not be completed automatically.",
+            data: { fileUrl, fileName }
+        });
     }
 
   } catch (error) {
@@ -4317,6 +4380,7 @@ Before returning:
     return res.status(500).json({ error: error.message || "Failed to upload grade file." });
   }
 });
+
 app.get("/student-grade/parse/:studentId", requireAuth, async (req, res) => {
   try {
     const { studentId } = req.params;

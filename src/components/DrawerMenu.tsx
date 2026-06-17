@@ -1,5 +1,6 @@
 import * as DocumentPicker from 'expo-document-picker';
-import * as FileSystem from 'expo-file-system';
+// UPDATED: Import legacy API to fix deprecation error in newer Expo versions
+import * as FileSystem from 'expo-file-system/legacy';
 import { EmailAuthProvider, reauthenticateWithCredential, signOut } from 'firebase/auth';
 import React, { useEffect, useState } from 'react';
 import {
@@ -58,7 +59,9 @@ interface DrawerMenuProps {
   apiBaseUrl: string;
   onAvatarPress?: () => void;
   onEmailUpdated?: (email: string) => void;
-  onFilePickerOpen?: () => void; // <--- ADDED PROP
+  onFilePickerOpen?: () => void;
+  // NEW PROP: Callback for verification failures
+  onVerificationFailed?: (errorMessage: string) => void;
   setIsLoggedIn: React.Dispatch<React.SetStateAction<boolean>>;
 }
 
@@ -166,7 +169,8 @@ const DrawerMenu = ({
   apiBaseUrl,
   onAvatarPress,
   onEmailUpdated,
-  onFilePickerOpen, // <--- DESTRUCTURED PROP
+  onFilePickerOpen,
+  onVerificationFailed, // DESTRUCTURED
   setIsLoggedIn,
 }: DrawerMenuProps) => {
   const { width } = useWindowDimensions();
@@ -177,6 +181,9 @@ const DrawerMenu = ({
   const [isLogoutModalVisible, setLogoutModalVisible] = useState(false);
   const [isChangeEmailModalVisible, setChangeEmailModalVisible] = useState(false);
   const [isChangePasswordModalVisible, setChangePasswordModalVisible] = useState(false);
+  
+  // REMOVED: Verification Error Modal State (Handled by Parent)
+
   const [savingEmail, setSavingEmail] = useState(false);
   const [savingPassword, setSavingPassword] = useState(false);
   const [isUploadingGrade, setIsUploadingGrade] = useState(false);
@@ -337,7 +344,7 @@ const DrawerMenu = ({
 
   const handleUploadGrade = async () => {
     try {
-      onFilePickerOpen?.(); // <--- TRIGGER MARGIN FIX BEFORE OPENING PICKER
+      onFilePickerOpen?.(); 
       
       const result = await DocumentPicker.getDocumentAsync({
         type: [
@@ -375,6 +382,7 @@ const DrawerMenu = ({
           reader.readAsDataURL(blob);
         });
       } else {
+        // Using legacy import to avoid deprecation error in Expo Go / Mobile
         base64Data = await FileSystem.readAsStringAsync(asset.uri, { encoding: 'base64' });
       }
 
@@ -389,11 +397,22 @@ const DrawerMenu = ({
           fileBase64: base64Data,
           fileName: asset.name,
           fileType: asset.mimeType || 'application/octet-stream',
+          studentId: userId,
         }),
       });
 
       const data = await response.json();
-      if (!response.ok) throw new Error(data?.error || 'Failed to upload grade file.');
+      
+      // CHECK FOR VERIFICATION FAILURE (403 Status)
+      if (!response.ok) {
+        if (response.status === 403) {
+          // Call the parent handler to show the modal in StudentApp
+          onVerificationFailed?.(data?.error || 'Identity verification failed.');
+        } else {
+          throw new Error(data?.error || 'Failed to upload grade file.');
+        }
+        return;
+      }
 
       Alert.alert('Success', 'Your grade file has been uploaded successfully.');
     } catch (error: any) {
@@ -439,6 +458,8 @@ const DrawerMenu = ({
         <MaterialCommunityIcons name="logout" size={28} color="#D32F2F" style={{ marginRight: 20 }} />
         <Text style={styles.logoutLabel}>Logout</Text>
       </Pressable>
+
+      {/* REMOVED: Verification Error Modal */}
 
       <Modal animationType="fade" transparent visible={isSettingsModalVisible} onRequestClose={() => setSettingsModalVisible(false)}>
         <View style={styles.modalOverlay}>
