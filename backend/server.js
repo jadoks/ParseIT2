@@ -5,15 +5,14 @@ import cors from "cors";
 import dotenv from "dotenv";
 import express from "express";
 import admin from "firebase-admin";
-import libre from 'libreoffice-convert';
+
 import mammoth from "mammoth";
 import { createRequire } from "module";
 import multer from "multer";
 import nodemailer from "nodemailer";
 import officeparser from "officeparser";
-import { promisify } from 'util';
 import serviceAccount from "./serviceAccountKey.json" with { type: "json" };
-const convertAsync = promisify(libre.convert);
+
 const require = createRequire(import.meta.url);
 const pdf = require("pdf-parse");
 const vision = require("@google-cloud/vision");
@@ -637,7 +636,7 @@ async function uploadGenericFileToStorage({
   
   const uniqueFileName = `${Date.now()}-${safeFileName}`;
   const storagePath = `${folder}/${classId}/${uniqueFileName}`;
-  
+
   // 1. Upload Original File
   const file = bucket.file(storagePath);
   await file.save(Buffer.from(cleanedBase64, "base64"), {
@@ -648,57 +647,16 @@ async function uploadGenericFileToStorage({
     resumable: false,
   });
 
-  let pdfStoragePath = null;
-  let pdfUrl = null;
-
-  // 2. Check if it's a PowerPoint file and convert to PDF
-  const isPpt = safeMimeType.includes('presentation') || 
-                safeFileName.toLowerCase().endsWith('.ppt') || 
-                safeFileName.toLowerCase().endsWith('.pptx');
-
-  if (isPpt) {
-    try {
-      console.log(`Converting ${safeFileName} to PDF...`);
-      const buffer = Buffer.from(cleanedBase64, "base64");
-      
-      // Convert to PDF using LibreOffice
-      const pdfBuffer = await convertAsync(buffer, '.pdf', undefined);
-      
-      // Generate PDF filename
-      const pdfFileName = safeFileName.replace(/\.(ppt|pptx)$/i, '.pdf');
-      const pdfUniqueFileName = `${Date.now()}-preview-${pdfFileName}`;
-      pdfStoragePath = `${folder}/${classId}/previews/${pdfUniqueFileName}`;
-      
-      // Upload PDF to Storage
-      const pdfFile = bucket.file(pdfStoragePath);
-      await pdfFile.save(pdfBuffer, {
-        metadata: {
-          contentType: 'application/pdf',
-          cacheControl: "public,max-age=3600", // Cache PDFs longer as they don't change
-        },
-        resumable: false,
-      });
-
-      // Get Signed URL for the PDF
-      pdfUrl = await createReadSignedUrl(pdfStoragePath);
-      console.log(`Successfully converted and uploaded PDF preview for ${safeFileName}`);
-
-    } catch (error) {
-      console.error("Failed to convert PPT to PDF:", error);
-      // We do not throw here, we just fail the preview generation but keep the original file
-    }
-  }
-
+  // Return basic file info without PDF conversion fields
   return {
     fileUrl: null, // Original file usually doesn't have a direct public URL in this flow
     storagePath,
     fileName: safeFileName,
     fileType: safeMimeType,
     bucketPath: `gs://parseit2-4b26d.firebasestorage.app/${storagePath}`,
-    
-    // NEW FIELDS FOR PDF PREVIEW
-    pdfStoragePath, 
-    pdfUrl, 
+    // PDF fields are now always null since conversion is removed
+    pdfStoragePath: null,
+    pdfUrl: null,
   };
 }
 
@@ -3671,7 +3629,6 @@ app.get("/game-ai/get-game-questions/:assignmentId", requireAuth, async (req, re
 /**
  * FILE UPLOAD ROUTE
  */
-
 app.post("/upload-class-file", requireAuth, async (req, res) => {
   try {
     const {
@@ -3717,10 +3674,24 @@ app.post("/upload-class-file", requireAuth, async (req, res) => {
       classId,
     });
 
+    // GENERATE SIGNED URL FOR THE ORIGINAL FILE
+    // This fixes the issue where fileUrl was null in the database
+    let signedFileUrl = null;
+    if (uploadedFile.storagePath) {
+      try {
+        signedFileUrl = await createReadSignedUrl(uploadedFile.storagePath);
+      } catch (urlError) {
+        console.warn("Failed to generate signed URL for upload:", urlError);
+      }
+    }
+
     return res.json({
       success: true,
       message: "File uploaded successfully.",
-      data: uploadedFile,
+      data: {
+        ...uploadedFile,
+        fileUrl: signedFileUrl, // <--- ADD THIS LINE
+      },
     });
   } catch (error) {
     console.error("Upload class file error:", error);
@@ -3729,7 +3700,6 @@ app.post("/upload-class-file", requireAuth, async (req, res) => {
     });
   }
 });
-
 /**
  * ACCOUNT CREATION ROUTES
  */
@@ -6899,11 +6869,13 @@ app.post("/create-class-material", async (req, res) => {
   }
 });
 
+
 app.put("/update-class-material/:id", async (req, res) => {
   try {
     const { id } = req.params;
-    const { title, week, content, fileName, fileUrl, fileType } = req.body;
-
+    // Destructure pdfUrl and pdfStoragePath from the body
+    const { title, week, content, fileName, fileUrl, fileType, storagePath, bucketPath, pdfUrl, pdfStoragePath } = req.body;
+    
     await db.collection("classMaterials").doc(id).update({
       ...(title ? { title } : {}),
       ...(week ? { week } : {}),
@@ -6911,9 +6883,14 @@ app.put("/update-class-material/:id", async (req, res) => {
       ...(typeof fileName === "string" || fileName === null ? { fileName } : {}),
       ...(typeof fileUrl === "string" || fileUrl === null ? { fileUrl } : {}),
       ...(typeof fileType === "string" || fileType === null ? { fileType } : {}),
+      ...(typeof storagePath === "string" || storagePath === null ? { storagePath } : {}),
+      ...(typeof bucketPath === "string" || bucketPath === null ? { bucketPath } : {}),
+      // ADD THESE TWO LINES
+      ...(typeof pdfUrl === "string" || pdfUrl === null ? { pdfUrl } : {}),
+      ...(typeof pdfStoragePath === "string" || pdfStoragePath === null ? { pdfStoragePath } : {}),
+      
       updatedAt: FieldValue.serverTimestamp(),
     });
-
     res.json({
       success: true,
       message: "Class material updated successfully.",
@@ -13117,6 +13094,41 @@ app.get("/course-material-download/:classId", requireAuth, async (req, res) => {
             error: error.message || "Download failed."
         });
     }
+});
+
+// Add this to your backend index.js
+app.post("/storage/delete-file", requireAuth, async (req, res) => {
+  try {
+    const { storagePath } = req.body;
+    if (!storagePath) {
+      return res.status(400).json({ error: "storagePath is required." });
+    }
+    
+    // Security check: Ensure the path belongs to a class the user has access to
+    // This is a simplified check. In production, you might want to verify the classId from the path.
+    const classIdMatch = storagePath.match(/class-(materials|assignments|files)\/([^/]+)/);
+    if (classIdMatch) {
+      const classId = classIdMatch[2];
+      await requireClassAccess({
+        authUid: req.user.uid,
+        classId,
+        allowedRoles: ["teacher"],
+      });
+    } else {
+       // Allow admins or restrict further based on your needs
+       const profile = await findUserProfileByAuthUid(req.user.uid);
+       if (profile?.role !== "admin") {
+         return res.status(403).json({ error: "Unauthorized to delete this file." });
+       }
+    }
+
+    await deleteStorageFileIfExists(storagePath);
+    
+    return res.json({ success: true, message: "File deleted from storage." });
+  } catch (error) {
+    console.error("Delete storage file error:", error);
+    return res.status(500).json({ error: error.message || "Failed to delete file." });
+  }
 });
 
 
