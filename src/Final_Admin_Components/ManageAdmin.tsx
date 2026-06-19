@@ -336,10 +336,12 @@ export default function ManageAdmin({ width }: ManageAdminProps) {
       <View style={styles.tableCard}>
         <ScrollView
           horizontal
+          nestedScrollEnabled
           showsHorizontalScrollIndicator={true}
           contentContainerStyle={styles.tableHorizontalContent}
         >
           <ScrollView
+            nestedScrollEnabled
             showsVerticalScrollIndicator={true}
             style={styles.tableVerticalScroll}
             contentContainerStyle={styles.tableVerticalContent}
@@ -632,6 +634,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#F3D4D4",
     overflow: "hidden",
+    flex: 1,
+    minHeight: 0,
   },
 
   tableHorizontalContent: {

@@ -5,7 +5,6 @@ import {
   Modal,
   Platform,
   Pressable,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
@@ -13,6 +12,10 @@ import {
   useWindowDimensions,
   View,
 } from "react-native";
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 import AdminDashboard from "./Final_Admin_Components/AdminDashboard";
 import Analytics from "./Final_Admin_Components/Analytics";
 import Header from "./Final_Admin_Components/Header";
@@ -65,6 +68,10 @@ type Props = {
 
 export default function AdminApp({ onLogout, currentAdmin }: Props) {
   const { width } = useWindowDimensions();
+
+  const insets = useSafeAreaInsets();
+
+  const safeAreaEdges = ['top', 'right', 'bottom', 'left'] as const;
 
   const isMobile = width < 768;
   const isTablet = width >= 768 && width < 1100;
@@ -197,7 +204,10 @@ export default function AdminApp({ onLogout, currentAdmin }: Props) {
   };
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView
+        style={styles.safeArea}
+        edges={safeAreaEdges}
+          >
       <Header
         activeItem={activeTopNav}
         onChange={handleTopNavChange}

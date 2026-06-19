@@ -341,17 +341,25 @@ function AcademicTrendChart({
   departmentAverage: number;
 }) {
   const isSmall = width < 768;
-  const chartWidth = Math.max(
-    300,
-    Math.min(isSmall ? width - 70 : width - 140, isSmall ? 620 : 980)
-  );
+  const isVerySmall = width < 480;
+
+  // Calculate available width considering parent paddings
+  // SectionCard padding: 20 * 2 = 40
+  // trendChartShell padding: 12 * 2 = 24
+  // Total horizontal padding = 64
+  const availableWidth = Math.max(250, width - 64);
+  const chartWidth = availableWidth;
+  
   const chartHeight = isSmall ? 250 : 280;
-  const paddingLeft = 42;
-  const paddingRight = 20;
+  
+  // Adjust paddings dynamically for very small screens to maximize graph space
+  const paddingLeft = isVerySmall ? 28 : isSmall ? 36 : 42;
+  const paddingRight = isVerySmall ? 8 : isSmall ? 12 : 20;
   const paddingTop = 26;
-  const paddingBottom = 54;
-  const graphWidth = chartWidth - paddingLeft - paddingRight;
-  const graphHeight = chartHeight - paddingTop - paddingBottom;
+  const paddingBottom = isSmall ? 40 : 54;
+  
+  const graphWidth = Math.max(0, chartWidth - paddingLeft - paddingRight);
+  const graphHeight = Math.max(0, chartHeight - paddingTop - paddingBottom);
 
   const validData = data.filter(
     (item) => Number.isFinite(item.average) && item.count > 0
@@ -361,9 +369,9 @@ function AcademicTrendChart({
     return (
       <View style={styles.trendEmptyState}>
         <Ionicons name="analytics-outline" size={30} color="#A07C7C" />
-        <Text style={styles.trendEmptyTitle}>No academic trend yet</Text>
+        <Text style={styles.trendEmptyTitle}>No assignment trend yet</Text>
         <Text style={styles.trendEmptyText}>
-          The line chart will appear after graded submissions are available.
+          The line chart will appear after graded assignments are available.
         </Text>
       </View>
     );
@@ -376,7 +384,7 @@ function AcademicTrendChart({
           <Text style={styles.singleTrendLabel}>{validData[0].label}</Text>
           <Text style={styles.singleTrendValue}>{validData[0].average}%</Text>
           <Text style={styles.singleTrendText}>
-            Only one graded academic point is available. More graded submissions
+            Only one graded assignment point is available. More graded assignments
             are needed to form a trend line.
           </Text>
         </View>
@@ -396,7 +404,7 @@ function AcademicTrendChart({
 
           <View style={styles.trendMetricCard}>
             <Text style={styles.trendMetricValue}>{departmentAverage}%</Text>
-            <Text style={styles.trendMetricLabel}>Department Average</Text>
+            <Text style={styles.trendMetricLabel}>Institution Average</Text>
           </View>
         </View>
       </View>
@@ -437,10 +445,11 @@ function AcademicTrendChart({
   return (
     <View style={styles.trendChartShell}>
       <View style={styles.trendChartHeader}>
-        <View>
-          <Text style={styles.trendChartTitle}>Academic Performance Line</Text>
+        {/* Wrapped in a flex view to prevent title from pushing the delta pill off-screen */}
+        <View style={styles.trendChartHeaderLeft}>
+          <Text style={styles.trendChartTitle}>Assignment Performance Line</Text>
           <Text style={styles.trendChartSubtitle}>
-            Based on graded submissions grouped by academic date
+            Average assignment grades across graded submissions over time
           </Text>
         </View>
 
@@ -529,7 +538,10 @@ function AcademicTrendChart({
           />
 
           {points.map((point, index) => {
-            const showLabel = isSmall
+            // Show fewer labels on very small screens to prevent text overlap
+            const showLabel = isVerySmall
+              ? index === 0 || index === points.length - 1
+              : isSmall
               ? index === 0 ||
                 index === points.length - 1 ||
                 index % Math.ceil(points.length / 3) === 0
@@ -668,9 +680,15 @@ function DropdownModal({
 
 export default function Analytics({ width, apiBaseUrl }: AnalyticsProps) {
   const windowSize = useWindowDimensions();
-  const responsiveWidth = windowSize.width || width;
-  const isMobile = width < 768;
-  const isTablet = width >= 768 && width < 1100;
+  const [containerWidth, setContainerWidth] = useState(0);
+  
+  // Prioritize exact container width from onLayout, then prop, then window width
+  const responsiveWidth = containerWidth > 0 
+    ? containerWidth 
+    : (width && width > 0 ? width : windowSize.width);
+    
+  const isMobile = responsiveWidth < 768;
+  const isTablet = responsiveWidth >= 768 && responsiveWidth < 1100;
 
   const [analytics, setAnalytics] =
     useState<AdminAnalyticsPayload>(emptyAnalytics);
@@ -712,12 +730,10 @@ export default function Analytics({ width, apiBaseUrl }: AnalyticsProps) {
       setAnalytics(data?.data || emptyAnalytics);
       
       if (data?.data?.availableSchoolYears) {
-        
         const sortedYears = [...data.data.availableSchoolYears].sort((a: string, b: string) => b.localeCompare(a));
         setAvailableSchoolYears(sortedYears);
       }
        if (data?.data?.availableSemesters) {
-       
         setAvailableSemesters(
           data.data.availableSemesters.filter(
             (sem: string) => sem.toLowerCase() !== "summer"
@@ -753,22 +769,21 @@ export default function Analytics({ width, apiBaseUrl }: AnalyticsProps) {
     latestTrend && firstTrend ? latestTrend.average - firstTrend.average : 0;
 
   return (
-    <View>
+    // Added onLayout to capture the exact width of the container
+    <View onLayout={(e) => setContainerWidth(e.nativeEvent.layout.width)}>
       <View style={styles.heroRow}>
         <View style={[styles.heroCard, isMobile && styles.heroCardMobile]}>
           <View
             style={[styles.heroTextSection, isMobile && styles.heroTextMobile]}
           >
-            <Text style={styles.heroEyebrow}>DEPARTMENT ANALYTICS</Text>
+            <Text style={styles.heroEyebrow}>ASSIGNMENT ANALYTICS</Text>
             <Text
               style={[styles.heroTitle, isMobile && styles.heroTitleMobile]}
             >
               Administrative Performance Dashboard
             </Text>
             <Text style={styles.heroSubtitle}>
-              Real-time Firebase analytics for student risk, section
-              performance, subject difficulty, workload backlog, and
-              semester-wide academic progress.
+              Real-time assignment analytics across all classes, providing insights into student performance, assignment completion, subject difficulty, and institution-wide learning trends.
             </Text>
           </View>
 
@@ -848,7 +863,7 @@ export default function Analytics({ width, apiBaseUrl }: AnalyticsProps) {
         <View>
           <Text style={styles.sectionTitle}>Performance Insights</Text>
           <Text style={styles.sectionSubtitle}>
-            Department-level academic monitoring from Firebase data
+            Institution-wide insights generated from student assignment grades and assignment completion records.
           </Text>
         </View>
       </View>
@@ -858,7 +873,7 @@ export default function Analytics({ width, apiBaseUrl }: AnalyticsProps) {
         <SectionCard
           widthValue="100%"
           title="Department Overview"
-          subtitle="High-level academic status"
+          subtitle="Institution-wide assignment performance summary"
           icon={
             <Ionicons name="analytics-outline" size={24} color="#DC2626" />
           }
@@ -949,7 +964,7 @@ export default function Analytics({ width, apiBaseUrl }: AnalyticsProps) {
                 <Text style={styles.trendMetricValue}>
                   {analytics.summary.departmentAverage}%
                 </Text>
-                <Text style={styles.trendMetricLabel}>Department Average</Text>
+                <Text style={styles.trendMetricLabel}>Institution Average</Text>
               </View>
             </View>
           ) : null}
@@ -959,7 +974,7 @@ export default function Analytics({ width, apiBaseUrl }: AnalyticsProps) {
         <SectionCard
           widthValue={halfWidth}
           title="Section Comparison"
-          subtitle="Relative section performance from class averages"
+          subtitle="Compare average assignment grades across sections"
           icon={
             <MaterialCommunityIcons
               name="google-classroom"
@@ -984,7 +999,7 @@ export default function Analytics({ width, apiBaseUrl }: AnalyticsProps) {
         <SectionCard
           widthValue={halfWidth}
           title="Year-Level Comparison"
-          subtitle="Performance by academic year"
+          subtitle="Compare assignment performance across year levels"
           icon={
             <Ionicons name="school-outline" size={24} color="#DC2626" />
           }
@@ -1005,7 +1020,7 @@ export default function Analytics({ width, apiBaseUrl }: AnalyticsProps) {
         <SectionCard
           widthValue={halfWidth}
           title="Subject Difficulty Trend"
-          subtitle="Subjects with low averages, missing work, or pending load"
+          subtitle="Subjects identified through low assignment grades, missing submissions, and pending assignments"
           icon={<Ionicons name="book-outline" size={24} color="#DC2626" />}
         >
           {analytics.subjectDifficulty.length ? (
@@ -1031,7 +1046,7 @@ export default function Analytics({ width, apiBaseUrl }: AnalyticsProps) {
         <SectionCard
           widthValue={halfWidth}
           title="Intervention Suggestions"
-          subtitle="Recommended admin and faculty actions"
+          subtitle="AI-generated recommendations based on institution-wide assignment performance"
           icon={<Ionicons name="medkit-outline" size={24} color="#DC2626" />}
         >
           {analytics.suggestions.map((item) => (
@@ -1045,7 +1060,7 @@ export default function Analytics({ width, apiBaseUrl }: AnalyticsProps) {
         <SectionCard
           widthValue="100%"
           title="At-Risk Population"
-          subtitle="Students requiring early academic intervention"
+          subtitle="Students identified through low assignment grades, missing assignments, and incomplete coursework"
           icon={<Ionicons name="warning-outline" size={24} color="#DC2626" />}
         >
           {analytics.atRiskStudents.length ? (
@@ -1195,11 +1210,12 @@ const styles = StyleSheet.create({
     borderRadius: 16, borderWidth: 1, borderColor: "#F3D4D4", backgroundColor: "#FFF9F9",
     padding: 12, marginBottom: 12,
   },
-  trendChartHeader: { flexDirection: "row", justifyContent: "space-between", marginBottom: 10 },
+  trendChartHeader: { flexDirection: "row", justifyContent: "space-between", marginBottom: 10, alignItems: "flex-start" },
+  trendChartHeaderLeft: { flex: 1, marginRight: 10, flexShrink: 1 }, // Added to prevent title overlap
   trendChartTitle: { fontSize: 14, fontWeight: "900", color: "#2B1111" },
   trendChartSubtitle: { fontSize: 11, color: "#8A6F6F" },
   trendChartScrollGuard: { alignItems: "center", justifyContent: "center" },
-  trendDeltaPill: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999 },
+  trendDeltaPill: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999, flexShrink: 0 }, // Prevents pill from squishing
   trendDeltaPositive: { backgroundColor: "#DCFCE7" },
   trendDeltaNegative: { backgroundColor: "#FEE2E2" },
   trendDeltaText: { fontWeight: "900" },
@@ -1210,14 +1226,14 @@ const styles = StyleSheet.create({
     alignItems: "stretch", gap: 10,
   },
   trendMetricGridInline: {
-    flex: 1.45, minWidth: 360, flexDirection: "row", flexWrap: "wrap",
+    flex: 1, minWidth: 0, flexDirection: "row", flexWrap: "wrap", // Removed minWidth: 360 to allow wrapping
     justifyContent: "space-between", gap: 10,
   },
   trendEmptyState: { alignItems: "center", justifyContent: "center", padding: 20 },
   trendEmptyTitle: { fontSize: 14, fontWeight: "800", color: "#2B1111" },
   trendEmptyText: { fontSize: 12, color: "#7A4A4A", textAlign: "center" },
   singleTrendCard: {
-    flex: 1, minWidth: 260, padding: 16, borderRadius: 14, backgroundColor: "#FFF9F9",
+    flex: 1, minWidth: 200, padding: 16, borderRadius: 14, backgroundColor: "#FFF9F9", // Reduced minWidth from 260
     borderWidth: 1, borderColor: "#F3D4D4",
   },
   singleTrendLabel: { fontSize: 12, color: "#8A6F6F" },
@@ -1228,7 +1244,7 @@ const styles = StyleSheet.create({
     gap: 10, marginTop: 10,
   },
   trendMetricCard: {
-    flex: 1, minWidth: 140, padding: 10, borderRadius: 12, backgroundColor: "#FFFFFF",
+    flex: 1, minWidth: 120, padding: 10, borderRadius: 12, backgroundColor: "#FFFFFF", // Reduced minWidth from 140
     borderWidth: 1, borderColor: "#F3D4D4",
   },
   trendMetricValue: { fontSize: 16, fontWeight: "900", color: "#DC2626" },

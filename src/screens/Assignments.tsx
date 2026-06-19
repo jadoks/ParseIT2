@@ -860,65 +860,120 @@ const searchedAndFilteredAssignments = useMemo(() => {
                       >
                         {selectedAssignment.title}
                       </Text>
-                      <View style={styles.infoMetaBlock}>
-                        <View style={styles.infoMetaRow}>
-                          <Text style={styles.infoMetaLabel}>Class</Text>
-                          <Text style={styles.infoMetaValue} numberOfLines={3}>
-                            {selectedAssignment.courseName}
-                          </Text>
-                        </View>
-                        <View style={styles.infoMetaRow}>
-                          <Text style={styles.infoMetaLabel}>Semester</Text>
-                          <Text style={styles.infoMetaValue}>
-                            {selectedAssignment.semester}
-                          </Text>
-                        </View>
-                        <View style={styles.infoMetaRow}>
-                          <Text style={styles.infoMetaLabel}>School Year</Text>
-                          <Text style={styles.infoMetaValue}>
-                            {selectedAssignment.schoolYear}
-                          </Text>
-                        </View>
-                        <View style={styles.infoMetaRow}>
-                          <Text style={styles.infoMetaLabel}>Instructor</Text>
-                          <Text style={styles.infoMetaValue} numberOfLines={3}>
-                            {selectedAssignment.instructor}
-                          </Text>
-                        </View>
-                        <View style={styles.infoMetaRow}>
-                          <Text style={styles.infoMetaLabel}>Due</Text>
-                          <Text style={[styles.infoMetaValue, styles.infoMetaValueDue]}>
-                            {selectedAssignment.dueDate}
-                          </Text>
-                        </View>
-                        {selectedAssignment.maxPoints !== undefined && (
-                          <View style={styles.infoMetaRow}>
-                            <Text style={styles.infoMetaLabel}>Points</Text>
-                            <Text style={styles.infoMetaValue}>
-                              {selectedAssignment.points}/{selectedAssignment.maxPoints}
+                      
+                      {isLargeScreen ? (
+                        <View style={styles.infoMetaGrid}>
+                          <View style={styles.infoMetaCard}>
+                            <Text style={styles.infoMetaCardLabel}>Class</Text>
+                            <Text style={styles.infoMetaCardValue}>{selectedAssignment.courseName}</Text>
+                          </View>
+                          <View style={styles.infoMetaCard}>
+                            <Text style={styles.infoMetaCardLabel}>Semester</Text>
+                            <Text style={styles.infoMetaCardValue}>{selectedAssignment.semester}</Text>
+                          </View>
+                          <View style={styles.infoMetaCard}>
+                            <Text style={styles.infoMetaCardLabel}>School Year</Text>
+                            <Text style={styles.infoMetaCardValue}>{selectedAssignment.schoolYear}</Text>
+                          </View>
+                          <View style={styles.infoMetaCard}>
+                            <Text style={styles.infoMetaCardLabel}>Instructor</Text>
+                            <Text style={styles.infoMetaCardValue}>{selectedAssignment.instructor}</Text>
+                          </View>
+                          <View style={styles.infoMetaCard}>
+                            <Text style={styles.infoMetaCardLabel}>Due</Text>
+                            <Text style={[styles.infoMetaCardValue, { color: '#D32F2F' }]}>
+                              {selectedAssignment.dueDate}
                             </Text>
                           </View>
-                        )}
-                        {getScorePercent(selectedAssignment) !== null && (
+                          {selectedAssignment.maxPoints !== undefined && (
+                            <View style={styles.infoMetaCard}>
+                              <Text style={styles.infoMetaCardLabel}>Points</Text>
+                              <Text style={styles.infoMetaCardValue}>
+                                {selectedAssignment.points}/{selectedAssignment.maxPoints}
+                              </Text>
+                            </View>
+                          )}
+                          {getScorePercent(selectedAssignment) !== null && (
+                            <View style={styles.infoMetaCard}>
+                              <Text style={styles.infoMetaCardLabel}>Score</Text>
+                              <Text style={[styles.infoMetaCardValue, { color: '#1B5E20' }]}>
+                                {getScorePercent(selectedAssignment)}%
+                              </Text>
+                            </View>
+                          )}
+                          {selectedAssignment.assignmentType === 'game_based' && selectedAssignment.numberOfAttempts && (
+                            <View style={styles.infoMetaCard}>
+                              <Text style={styles.infoMetaCardLabel}>Max Attempts</Text>
+                              <Text style={styles.infoMetaCardValue}>
+                                {selectedAssignment.numberOfAttempts === 'unlimited' 
+                                  ? 'Unlimited' 
+                                  : selectedAssignment.numberOfAttempts}
+                              </Text>
+                            </View>
+                          )}
+                        </View>
+                      ) : (
+                        <View style={styles.infoMetaBlock}>
                           <View style={styles.infoMetaRow}>
-                            <Text style={styles.infoMetaLabel}>Score</Text>
-                            <Text style={styles.infoMetaValue}>
-                              {getScorePercent(selectedAssignment)}%
+                            <Text style={styles.infoMetaLabel}>Class</Text>
+                            <Text style={styles.infoMetaValue} numberOfLines={3}>
+                              {selectedAssignment.courseName}
                             </Text>
                           </View>
-                        )}
-                        {/* 🌟 UPDATED: Show Max Attempts in Info Block */}
-                        {selectedAssignment.assignmentType === 'game_based' && selectedAssignment.numberOfAttempts && (
                           <View style={styles.infoMetaRow}>
-                            <Text style={styles.infoMetaLabel}>Max Attempts</Text>
+                            <Text style={styles.infoMetaLabel}>Semester</Text>
                             <Text style={styles.infoMetaValue}>
-                              {selectedAssignment.numberOfAttempts === 'unlimited' 
-                                ? 'Unlimited' 
-                                : selectedAssignment.numberOfAttempts}
+                              {selectedAssignment.semester}
                             </Text>
                           </View>
-                        )}
-                      </View>
+                          <View style={styles.infoMetaRow}>
+                            <Text style={styles.infoMetaLabel}>School Year</Text>
+                            <Text style={styles.infoMetaValue}>
+                              {selectedAssignment.schoolYear}
+                            </Text>
+                          </View>
+                          <View style={styles.infoMetaRow}>
+                            <Text style={styles.infoMetaLabel}>Instructor</Text>
+                            <Text style={styles.infoMetaValue} numberOfLines={3}>
+                              {selectedAssignment.instructor}
+                            </Text>
+                          </View>
+                          <View style={styles.infoMetaRow}>
+                            <Text style={styles.infoMetaLabel}>Due</Text>
+                            <Text style={[styles.infoMetaValue, styles.infoMetaValueDue]}>
+                              {selectedAssignment.dueDate}
+                            </Text>
+                          </View>
+                          {selectedAssignment.maxPoints !== undefined && (
+                            <View style={styles.infoMetaRow}>
+                              <Text style={styles.infoMetaLabel}>Points</Text>
+                              <Text style={styles.infoMetaValue}>
+                                {selectedAssignment.points}/{selectedAssignment.maxPoints}
+                              </Text>
+                            </View>
+                          )}
+                          {getScorePercent(selectedAssignment) !== null && (
+                            <View style={styles.infoMetaRow}>
+                              <Text style={styles.infoMetaLabel}>Score</Text>
+                              <Text style={styles.infoMetaValue}>
+                                {getScorePercent(selectedAssignment)}%
+                              </Text>
+                            </View>
+                          )}
+                          {/* 🌟 UPDATED: Show Max Attempts in Info Block */}
+                          {selectedAssignment.assignmentType === 'game_based' && selectedAssignment.numberOfAttempts && (
+                            <View style={styles.infoMetaRow}>
+                              <Text style={styles.infoMetaLabel}>Max Attempts</Text>
+                              <Text style={styles.infoMetaValue}>
+                                {selectedAssignment.numberOfAttempts === 'unlimited' 
+                                  ? 'Unlimited' 
+                                  : selectedAssignment.numberOfAttempts}
+                              </Text>
+                            </View>
+                          )}
+                        </View>
+                      )}
+
                       <View style={styles.infoInstructionBlock}>
                         <Text style={styles.infoMetaLabel}>Instruction</Text>
                         <Text style={styles.infoInstructionText}>
@@ -1308,6 +1363,40 @@ const styles = StyleSheet.create({
   infoCardMobile: { padding: 16, paddingTop: 28 },
   assignmentModalTitle: { fontSize: 18, fontWeight: '700', color: '#000', textAlign: 'center', marginBottom: 16, paddingLeft: 24, paddingRight: 8 },
   assignmentModalTitleMobile: { fontSize: 16, lineHeight: 24, marginBottom: 14, paddingLeft: 24, paddingRight: 4 },
+  infoMetaGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#EBEBEB',
+    paddingTop: 16,
+    marginTop: 4,
+    marginBottom: 4,
+  },
+  infoMetaCard: {
+    width: '31.5%',
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E5E5E5',
+    borderRadius: 12,
+    padding: 18,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  infoMetaCardLabel: {
+    fontSize: 12,
+    color: '#777',
+    fontWeight: '600',
+    marginBottom: 6,
+  },
+  infoMetaCardValue: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#222',
+  },
   infoMetaBlock: { borderTopWidth: 1, borderTopColor: '#EBEBEB', paddingTop: 12, marginBottom: 4, gap: 8 },
   infoMetaRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
   infoMetaLabel: { width: 90, flexShrink: 0, fontSize: 13, fontWeight: '700', color: '#000', lineHeight: 20 },

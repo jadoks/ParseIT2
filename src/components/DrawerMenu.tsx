@@ -1,5 +1,4 @@
 import * as DocumentPicker from 'expo-document-picker';
-// UPDATED: Import legacy API to fix deprecation error in newer Expo versions
 import * as FileSystem from 'expo-file-system/legacy';
 import { EmailAuthProvider, reauthenticateWithCredential, signOut } from 'firebase/auth';
 import React, { useEffect, useState } from 'react';
@@ -60,8 +59,9 @@ interface DrawerMenuProps {
   onAvatarPress?: () => void;
   onEmailUpdated?: (email: string) => void;
   onFilePickerOpen?: () => void;
-  // NEW PROP: Callback for verification failures
   onVerificationFailed?: (errorMessage: string) => void;
+  // NEW PROP for success handling
+  onUploadSuccess?: () => void; 
   setIsLoggedIn: React.Dispatch<React.SetStateAction<boolean>>;
 }
 
@@ -170,7 +170,8 @@ const DrawerMenu = ({
   onAvatarPress,
   onEmailUpdated,
   onFilePickerOpen,
-  onVerificationFailed, // DESTRUCTURED
+  onVerificationFailed,
+  onUploadSuccess, // DESTRUCTURED
   setIsLoggedIn,
 }: DrawerMenuProps) => {
   const { width } = useWindowDimensions();
@@ -182,8 +183,6 @@ const DrawerMenu = ({
   const [isChangeEmailModalVisible, setChangeEmailModalVisible] = useState(false);
   const [isChangePasswordModalVisible, setChangePasswordModalVisible] = useState(false);
   
-  // REMOVED: Verification Error Modal State (Handled by Parent)
-
   const [savingEmail, setSavingEmail] = useState(false);
   const [savingPassword, setSavingPassword] = useState(false);
   const [isUploadingGrade, setIsUploadingGrade] = useState(false);
@@ -382,7 +381,6 @@ const DrawerMenu = ({
           reader.readAsDataURL(blob);
         });
       } else {
-        // Using legacy import to avoid deprecation error in Expo Go / Mobile
         base64Data = await FileSystem.readAsStringAsync(asset.uri, { encoding: 'base64' });
       }
 
@@ -406,7 +404,6 @@ const DrawerMenu = ({
       // CHECK FOR VERIFICATION FAILURE (403 Status)
       if (!response.ok) {
         if (response.status === 403) {
-          // Call the parent handler to show the modal in StudentApp
           onVerificationFailed?.(data?.error || 'Identity verification failed.');
         } else {
           throw new Error(data?.error || 'Failed to upload grade file.');
@@ -414,7 +411,9 @@ const DrawerMenu = ({
         return;
       }
 
-      Alert.alert('Success', 'Your grade file has been uploaded successfully.');
+      // SUCCESS: Call parent handler instead of Alert
+      onUploadSuccess?.();
+
     } catch (error: any) {
       console.error('Upload grade error:', error);
       Alert.alert('Upload Failed', error?.message || 'Unable to upload grade file.');
@@ -458,8 +457,6 @@ const DrawerMenu = ({
         <MaterialCommunityIcons name="logout" size={28} color="#D32F2F" style={{ marginRight: 20 }} />
         <Text style={styles.logoutLabel}>Logout</Text>
       </Pressable>
-
-      {/* REMOVED: Verification Error Modal */}
 
       <Modal animationType="fade" transparent visible={isSettingsModalVisible} onRequestClose={() => setSettingsModalVisible(false)}>
         <View style={styles.modalOverlay}>

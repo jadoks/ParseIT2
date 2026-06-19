@@ -343,15 +343,15 @@ const insightReason = ({
   trend: number;
   graded: number;
 }) => {
-  if (graded === 0) return "No graded submissions yet. Risk cannot be evaluated.";
+  if (graded === 0) return "No graded assignments yet. Risk cannot be evaluated.";
   if (average < 75 && pending >= 2 && trend < 0)
-    return "Low average, multiple missing tasks, and declining trend";
+    return "Low assignment average, multiple missing assignments, and declining trend";
   if (average < 75 && pending >= 2)
-    return "Low average and repeated missing tasks";
-  if (average < 75) return "Average is below passing threshold";
+    return "Low assignment average and repeated missing assignments";
+  if (average < 75) return "Assignment average is below passing threshold";
   if (pending >= 2) return "Several missing assignments need completion";
-  if (trend < 0) return "Recent performance trend is declining";
-  return "Monitor for consistency and maintain current progress";
+  if (trend < 0) return "Recent assignment performance trend is declining";
+  return "Monitor assignment consistency and maintain current progress";
 };
 
 const insightIntervention = ({
@@ -366,21 +366,21 @@ const insightIntervention = ({
   graded: number;
 }) => {
   if (graded === 0)
-    return "Wait for graded submissions before assigning academic intervention.";
+    return "Wait for graded assignments before assigning intervention.";
   if (average < 75 && pending >= 2)
-    return "Schedule 1:1 remediation and set a submission recovery plan.";
+    return "Schedule 1:1 remediation and set an assignment submission recovery plan.";
   if (average < 75)
-    return "Provide targeted tutoring and reassessment support.";
+    return "Provide targeted tutoring and assignment reassessment support.";
   if (pending >= 2)
-    return "Follow up on missing tasks and set short-term deadlines.";
+    return "Follow up on missing assignments and set short-term deadlines.";
   if (trend < 0)
-    return "Check recent learning barriers and monitor next assessment.";
-  return "Sustain progress with light-touch monitoring.";
+    return "Check recent learning barriers and monitor the next assignment.";
+  return "Sustain assignment progress with light-touch monitoring.";
 };
 
 export default function TeacherAnalytics({
   teacherName = "Teacher",
-  selectedCourseName = "Academic Analytics",
+  selectedCourseName = "Assignment Analytics",
   selectedClass = "All",
   onChangeSelectedClass,
   availableCourses = [],
@@ -883,8 +883,8 @@ export default function TeacherAnalytics({
     if (!hasGraded) {
       return [
         {
-          title: "No graded submissions yet",
-          body: "Students may have pending or submitted work, but no graded records are available yet. Risk indicators will activate after grading or when assignments become missing.",
+          title: "No graded assignments yet",
+          body: "Students may have pending or submitted work, but no graded assignment records are available yet. Risk indicators will activate after grading or when assignments become missing.",
           tone: "info",
           icon: "database-search-outline",
         },
@@ -893,22 +893,22 @@ export default function TeacherAnalytics({
 
     if (trendDelta >= 5) {
       insights.push({
-        title: "Positive performance trajectory",
-        body: `The class trend increased by ${trendDelta} percentage points across recent graded activities, indicating improving mastery.`,
+        title: "Positive assignment performance trajectory",
+        body: `The class trend increased by ${trendDelta} percentage points across recent graded assignments, indicating improving assignment mastery.`,
         tone: "success",
         icon: "chart-line-variant",
       });
     } else if (trendDelta <= -5) {
       insights.push({
-        title: "Declining performance trend",
-        body: `The class trend dropped by ${Math.abs(trendDelta)} percentage points. Review recent assessment difficulty and provide targeted reinforcement.`,
+        title: "Declining assignment performance trend",
+        body: `The class trend dropped by ${Math.abs(trendDelta)} percentage points. Review recent assignment difficulty and provide targeted reinforcement.`,
         tone: "danger",
         icon: "chart-line-variant",
       });
     } else {
       insights.push({
-        title: "Stable class performance",
-        body: "Recent graded activities show a stable trend. Continue monitoring students near the passing threshold.",
+        title: "Stable assignment performance",
+        body: "Recent graded assignments show a stable trend. Continue monitoring students near the assignment passing threshold.",
         tone: "info",
         icon: "chart-timeline-variant",
       });
@@ -916,14 +916,14 @@ export default function TeacherAnalytics({
 
     if (attentionIndex >= 40) {
       insights.push({
-        title: "High intervention load",
-        body: `${attentionIndex}% attention index suggests a heavy support requirement. Prioritize high-risk learners and missing submissions first.`,
+        title: "High assignment intervention load",
+        body: `${attentionIndex}% attention index suggests a heavy support requirement. Prioritize high-risk learners and missing assignments first.`,
         tone: "warning",
         icon: "account-alert-outline",
       });
     } else {
       insights.push({
-        title: "Manageable intervention load",
+        title: "Manageable assignment intervention load",
         body: `${attentionIndex}% attention index indicates the class is within a manageable monitoring range.`,
         tone: "success",
         icon: "shield-check-outline",
@@ -932,8 +932,8 @@ export default function TeacherAnalytics({
 
     if (weakestTopic && weakestTopic.gradedCount > 0) {
       insights.push({
-        title: "Lowest mastery topic",
-        body: `${weakestTopic.topic} has the lowest recorded average at ${weakestTopic.average}%. Consider remediation, examples, or a short formative quiz.`,
+        title: "Lowest performing assignment topic",
+        body: `${weakestTopic.topic} has the lowest recorded average at ${weakestTopic.average}%. Consider remediation, examples, or a short formative assignment.`,
         tone: weakestTopic.average < 75 ? "danger" : "warning",
         icon: "book-alert-outline",
       });
@@ -941,8 +941,8 @@ export default function TeacherAnalytics({
 
     if (mostCritical) {
       insights.push({
-        title: "Priority learner for follow-up",
-        body: `${mostCritical.studentName} is ranked as ${mostCritical.riskLevel.toLowerCase()} priority with ${mostCritical.totalPendingAssignments} pending task(s) and ${mostCritical.overallAverage}% average.`,
+        title: "Priority student for assignment follow-up",
+        body: `${mostCritical.studentName} is ranked as ${mostCritical.riskLevel.toLowerCase()} priority with ${mostCritical.totalPendingAssignments} pending assignment(s) and ${mostCritical.overallAverage}% assignment average.`,
         tone: mostCritical.riskLevel === "High" ? "danger" : "warning",
         icon: "account-heart-outline",
       });
@@ -982,7 +982,6 @@ export default function TeacherAnalytics({
         onRequestClose={() => setShowClassDropdown(false)}
       >
         <Pressable
-         
           style={styles.dropdownOverlay}
           onPress={() => setShowClassDropdown(false)}
         >
@@ -1037,7 +1036,7 @@ export default function TeacherAnalytics({
                   color={palette.primary}
                 />
                 <Text style={styles.heroEyebrow}>
-                  Academic Analytics Report
+                  Assignment Analytics Report
                 </Text>
               </View>
 
@@ -1060,12 +1059,10 @@ export default function TeacherAnalytics({
             </View>
 
             <Text style={styles.heroTitle}>
-              Teacher Academic Performance Analytics
+              Teacher Assignment Performance Analytics
             </Text>
             <Text style={styles.heroDescription}>
-              Academic-format monitoring for class performance trends,
-              percentile ranking, learning gaps, risk profile, and AI-generated
-              instructional recommendations.
+              Monitor assignment grades, completion rates, learning gaps, and student progress through assignment-based analytics and AI-generated instructional insights.
             </Text>
           </View>
 
@@ -1074,21 +1071,21 @@ export default function TeacherAnalytics({
           >
             <CircularMiniStat
               value={classHealth === "No Data" ? "No Data" : `${summary.classAverage}%`}
-              label="Class Mean"
+              label="Class Assignment Mean"
               accent={palette.primary}
               softBg={palette.primarySoft}
               icon="chart-line"
             />
             <CircularMiniStat
               value={`${passingRate}%`}
-              label="Passing Rate"
+              label="Assignment Passing Rate"
               accent={palette.green}
               softBg={palette.greenSoft}
               icon="school-outline"
             />
             <CircularMiniStat
               value={classHealth}
-              label="Academic Status"
+              label="Assignment Status"
               accent={palette.blue}
               softBg={palette.blueSoft}
               icon="shield-check-outline"
@@ -1100,15 +1097,15 @@ export default function TeacherAnalytics({
           <MetricCard
             title="Total Students"
             value={summary.totalStudents}
-            helper="Learners included in current analytics scope"
+            helper="Learners included in current assignment analytics scope"
             icon="account-group-outline"
             accent={palette.blue}
             softBg={palette.blueSoft}
           />
           <MetricCard
-            title="Completion Rate"
+            title="Assignment Completion Rate"
             value={`${completionRate}%`}
-            helper="Submitted work against total active workload"
+            helper="Graded assignments against total assigned workload"
             icon="check-decagram-outline"
             accent={palette.green}
             softBg={palette.greenSoft}
@@ -1116,7 +1113,7 @@ export default function TeacherAnalytics({
           <MetricCard
             title="At-Risk Students"
             value={summary.highRiskCount + summary.moderateRiskCount}
-            helper="Learners requiring academic support"
+            helper="Learners requiring assignment intervention"
             icon="alert-circle-outline"
             accent={palette.orange}
             softBg={palette.orangeSoft}
@@ -1124,7 +1121,7 @@ export default function TeacherAnalytics({
           <MetricCard
             title="Attention Index"
             value={`${attentionIndex}%`}
-            helper="Weighted intervention pressure indicator"
+            helper="Weighted assignment intervention pressure indicator"
             icon="radar"
             accent={palette.primary}
             softBg={palette.primarySoft}
@@ -1133,33 +1130,33 @@ export default function TeacherAnalytics({
 
         <View style={responsiveMetricStyle}>
           <MetricCard
-            title="Highest Score"
+            title="Highest Assignment Score"
             value={classHighestScore}
-            helper="Highest graded percentage recorded"
+            helper="Highest assignment score recorded"
             icon="arrow-up-bold-circle-outline"
             accent={palette.green}
             softBg={palette.greenSoft}
           />
           <MetricCard
-            title="Lowest Score"
+            title="Lowest Assignment Score"
             value={classLowestScore}
-            helper="Lowest graded percentage recorded"
+            helper="Lowest assignment score recorded"
             icon="arrow-down-bold-circle-outline"
             accent={palette.red}
             softBg={palette.redSoft}
           />
           <MetricCard
-            title="Pending Tasks"
+            title="Pending Assignments"
             value={totalPending}
-            helper="Unfinished work affecting progress"
+            helper="Unfinished assignments affecting progress"
             icon="clipboard-text-clock-outline"
             accent={palette.purple}
             softBg={palette.purpleSoft}
           />
           <MetricCard
-            title="Submitted Tasks"
+            title="Submitted Assignments"
             value={totalSubmitted}
-            helper="Completed submissions counted in monitoring"
+            helper="Completed assignment submissions counted in monitoring"
             icon="file-check-outline"
             accent="#0891B2"
             softBg="#E0F7FF"
@@ -1168,7 +1165,7 @@ export default function TeacherAnalytics({
 
         <SectionCard
           title="Performance Trend Line Graph"
-          subtitle="Class average across recent graded activities"
+          subtitle="Average Assignment Scores Across Recent Graded Assignments"
           rightNode={
             <Text
               style={[
@@ -1212,8 +1209,8 @@ export default function TeacherAnalytics({
         </SectionCard>
 
         <SectionCard
-          title="AI-Generated Academic Insights"
-          subtitle="Rule-based instructional insights generated from the current analytics data"
+          title="AI-Generated Assignment Insights"
+          subtitle="AI-generated insights based on student assignment grades, completion status, and learning progress."
         >
           <View style={styles.aiGrid}>
             {academicInsights.map((insight) => {
@@ -1245,7 +1242,7 @@ export default function TeacherAnalytics({
           <SectionCard
             style={responsiveSectionStyle}
             title="Class Overview"
-            subtitle="Risk profile and grade distribution"
+            subtitle="Assignment grade distribution and student risk based on assignment performance."
           >
             {riskBuckets.map((item) => (
               <HorizontalBar
@@ -1272,12 +1269,12 @@ export default function TeacherAnalytics({
 
           <SectionCard
             style={responsiveSectionStyle}
-            title="Submission Monitoring"
-            subtitle="Students with the heaviest unfinished workload"
+            title="Pending Assignment Monitoring"
+            subtitle="Students with the heaviest unfinished assignment workload"
           >
             {mostPendingStudents.length === 0 ? (
               <Text style={styles.emptyText}>
-                No pending submissions detected.
+                No pending assignments detected.
               </Text>
             ) : null}
             {mostPendingStudents.map((student) => (
@@ -1298,11 +1295,11 @@ export default function TeacherAnalytics({
         >
           <SectionCard
             style={responsiveSectionStyle}
-            title="Topic Mastery"
-            subtitle="Weak topics by class performance average"
+            title="Lowest Performing Assignment Topics"
+            subtitle="Topics with the lowest average assignment scores"
           >
             {weakTopics.length === 0 ? (
-              <Text style={styles.emptyText}>No topic data available yet.</Text>
+              <Text style={styles.emptyText}>No assignment topic data available yet.</Text>
             ) : (
               weakTopics.map((topic) => (
                 <View key={topic.topic} style={styles.topicRow}>
@@ -1324,10 +1321,10 @@ export default function TeacherAnalytics({
           <SectionCard
             style={responsiveSectionStyle}
             title="Top Performing Students"
-            subtitle="Highest-performing learners by average"
+            subtitle="Highest-performing learners by assignment average"
           >
             {topStudents.length === 0 ? (
-              <Text style={styles.emptyText}>No graded records yet.</Text>
+              <Text style={styles.emptyText}>No graded assignment records yet.</Text>
             ) : (
               topStudents.map((student) => (
                 <HorizontalBar
@@ -1344,12 +1341,12 @@ export default function TeacherAnalytics({
         </View>
 
         <SectionCard
-          title="Student Percentile Ranking"
-          subtitle="Academic standing based on overall average within the selected scope"
+          title="Student Assignment Percentile Ranking"
+          subtitle="Assignment standing based on overall assignment average within the selected scope"
         >
           {percentileRows.length === 0 ? (
             <Text style={styles.emptyText}>
-              No student ranking data available yet.
+              No student assignment ranking data available yet.
             </Text>
           ) : (
             <ScrollView
@@ -1375,7 +1372,7 @@ export default function TeacherAnalytics({
                         {student.studentName}
                       </Text>
                       <Text style={styles.rankingMeta}>
-                        {student.classLabel} • Average{" "}
+                        {student.classLabel} • Assignment Average{" "}
                         {student.totalGradedAssignments === 0
                           ? "No Data"
                           : `${student.overallAverage}%`}
@@ -1418,7 +1415,7 @@ export default function TeacherAnalytics({
 
         <SectionCard
           title="At-Risk Students"
-          subtitle="Students requiring immediate academic attention"
+          subtitle="Students identified through low assignment grades, missing assignments, and declining performance trends."
           rightNode={
             <View style={styles.sectionBadge}>
               <Text style={styles.sectionBadgeText}>
@@ -1429,7 +1426,7 @@ export default function TeacherAnalytics({
         >
           {atRiskStudents.length === 0 ? (
             <Text style={styles.emptyText}>
-              No students are currently flagged for intervention.
+              No students are currently flagged for assignment intervention.
             </Text>
           ) : (
             <ScrollView
@@ -1497,7 +1494,7 @@ export default function TeacherAnalytics({
                         </View>
 
                         <Text style={styles.interventionMeta}>
-                          {student.classLabel} • Average{" "}
+                          {student.classLabel} • Assignment Average{" "}
                           {student.totalGradedAssignments === 0
                             ? "No Data"
                             : `${student.overallAverage}%`}{" "}

@@ -9,6 +9,7 @@ import {
   Clipboard,
   FlatList,
   Image,
+  Keyboard,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -221,6 +222,7 @@ const getFileIcon = (fileType?: string) => {
 
 const messagesEqual = (a: Message[], b: Message[]): boolean => {
   if (a.length !== b.length) return false;
+
   for (let i = 0; i < a.length; i++) {
     if (
       a[i].id !== b[i].id ||
@@ -233,6 +235,7 @@ const messagesEqual = (a: Message[], b: Message[]): boolean => {
       return false;
     }
   }
+
   return true;
 };
 
@@ -246,7 +249,6 @@ const conversationChanged = (a: Conversation, b: Conversation): boolean => {
 };
 
 // ---------------------------------------------------------------------------
-
 const Messenger = ({
   searchQuery = '',
   onConversationActiveChange,
@@ -288,21 +290,17 @@ const Messenger = ({
   const [messageText, setMessageText] = useState('');
   const [messagesByConversation, setMessagesByConversation] =
     useState<Record<string, Message[]>>({});
-
-
-
   const [unreadIds, setUnreadIds] = useState<Set<string>>(new Set());
-
   const [copiedId, setCopiedId] = useState<string | null>(null);
-
+  
   const handleCopyStudentId = (studentId: string) => {
-  Clipboard.setString(studentId);
-  setCopiedId(studentId);
-  if (Platform.OS === 'android') {
-    ToastAndroid.show('User ID copied!', ToastAndroid.SHORT);
-  }
-  setTimeout(() => setCopiedId(null), 2000);
-};
+    Clipboard.setString(studentId);
+    setCopiedId(studentId);
+    if (Platform.OS === 'android') {
+      ToastAndroid.show('User ID copied!', ToastAndroid.SHORT);
+    }
+    setTimeout(() => setCopiedId(null), 2000);
+  };
 
   const [showCreateRoomModal, setShowCreateRoomModal] = useState(false);
   const [showMembersModal, setShowMembersModal] = useState(false);
@@ -331,6 +329,21 @@ const Messenger = ({
     mimeType: string;
     base64: string;
   } | null>(null);
+
+  // 👇 NEW STATES FOR MOBILE SEARCH
+  const [isMobileSearchExpanded, setIsMobileSearchExpanded] = useState(false);
+  const [localSearchQuery, setLocalSearchQuery] = useState('');
+  const searchInputRef = useRef<TextInput>(null);
+
+  const toggleMobileSearch = (expand: boolean) => {
+    setIsMobileSearchExpanded(expand);
+    if (!expand) {
+      setLocalSearchQuery('');
+      Keyboard.dismiss();
+    } else {
+      setTimeout(() => searchInputRef.current?.focus(), 100);
+    }
+  };
 
   const selectedRef = useRef<Conversation | null>(null);
   useEffect(() => {
@@ -451,14 +464,14 @@ const Messenger = ({
             item.className ||
             'Teacher',
           members: Array.isArray(item.participants)
-  ? item.participants.map((p: any) => p?.name).filter(Boolean)
-  : [],
-memberDetails: Array.isArray(item.participants)
-  ? item.participants.map((p: any) => ({
-      name: p?.name || '',
-      studentId: p?.studentId || p?.id || p?.userId || '',
-    })).filter((p: { name: string }) => p.name)
-  : [],
+            ? item.participants.map((p: any) => p?.name).filter(Boolean)
+            : [],
+          memberDetails: Array.isArray(item.participants)
+            ? item.participants.map((p: any) => ({
+                name: p?.name || '',
+                studentId: p?.studentId || p?.id || p?.userId || '',
+              })).filter((p: { name: string }) => p.name)
+            : [],
           section: item.section,
         }));
 
@@ -677,8 +690,9 @@ memberDetails: Array.isArray(item.participants)
   // Filtered conversation list
   // ---------------------------------------------------------------------------
   const filtered = useMemo(() => {
-    if (!searchQuery || !searchQuery.trim()) return conversations;
-    const lowerQuery = searchQuery.toLowerCase().trim();
+    const queryToUse = isMobileSearchExpanded ? localSearchQuery : searchQuery;
+    if (!queryToUse || !queryToUse.trim()) return conversations;
+    const lowerQuery = queryToUse.toLowerCase().trim();
     return conversations.filter((c) => {
       const nameMatch = c.name?.toLowerCase().includes(lowerQuery);
       const lastMessageMatch = c.last?.toLowerCase().includes(lowerQuery);
@@ -687,7 +701,7 @@ memberDetails: Array.isArray(item.participants)
       );
       return nameMatch || lastMessageMatch || memberMatch;
     });
-  }, [conversations, searchQuery]);
+  }, [conversations, searchQuery, localSearchQuery, isMobileSearchExpanded]);
 
   const currentMessages = selected
     ? messagesByConversation[selected.id] || []
@@ -715,7 +729,6 @@ memberDetails: Array.isArray(item.participants)
   // Mark as read when conversation selected
   useEffect(() => {
     if (!selected) return;
-
     setUnreadIds((prev) => {
       if (!prev.has(selected.id)) return prev;
       const next = new Set(prev);
@@ -1065,193 +1078,192 @@ memberDetails: Array.isArray(item.participants)
     setImagePreviewName('');
     setImagePreviewStoragePath(null);
   }, []);
-const handleDownloadImage = async () => {
-  if (!imagePreviewUrl || !selected) return;
 
-  let fileName = imagePreviewName || 'image';
-  if (!fileName.includes('.')) fileName += '.jpg';
+  const handleDownloadImage = async () => {
+    if (!imagePreviewUrl || !selected) return;
 
-  try {
-    if (Platform.OS === 'web') {
-      if (!imagePreviewStoragePath) {
-        alert('Cannot download: file path missing.');
+    let fileName = imagePreviewName || 'image';
+    if (!fileName.includes('.')) fileName += '.jpg';
+
+    try {
+      if (Platform.OS === 'web') {
+        if (!imagePreviewStoragePath) {
+          alert('Cannot download: file path missing.');
+          return;
+        }
+        const proxyUrl = `${API_BASE_URL}/messenger-download/${selected.id}/${encodeURIComponent(imagePreviewStoragePath)}`;
+        const res = await fetch(proxyUrl, { credentials: 'include' });
+        if (!res.ok) throw new Error(`Download failed: ${res.status}`);
+        const blob = await res.blob();
+        const objUrl = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = objUrl;
+        a.download = fileName;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(objUrl);
         return;
       }
-      const proxyUrl = `${API_BASE_URL}/messenger-download/${selected.id}/${encodeURIComponent(imagePreviewStoragePath)}`;
-      const res = await fetch(proxyUrl, { credentials: 'include' });
-      if (!res.ok) throw new Error(`Download failed: ${res.status}`);
-      const blob = await res.blob();
-      const objUrl = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = objUrl;
-      a.download = fileName;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      window.URL.revokeObjectURL(objUrl);
-      return;
+
+      // Mobile: get a fresh signed URL
+      let downloadUrl = imagePreviewUrl;
+      if (imagePreviewStoragePath) {
+        const fresh = await refreshFileUrl(imagePreviewStoragePath, selected.id);
+        if (fresh) downloadUrl = fresh;
+      }
+      if (!downloadUrl) { alert('Cannot download: URL missing.'); return; }
+
+      const cacheUri = FileSystem.cacheDirectory + fileName;
+      const { uri: localUri, status } = await FileSystem.downloadAsync(downloadUrl, cacheUri);
+      if (status !== 200) throw new Error(`Download HTTP status ${status}`);
+
+      if (Platform.OS === 'ios') {
+        const perm = await MediaLibrary.requestPermissionsAsync();
+        if (!perm.granted) {
+          const canShare = await Sharing.isAvailableAsync();
+          if (canShare) {
+            await Sharing.shareAsync(localUri, {
+              mimeType: 'image/jpeg',
+              UTI: 'public.image',
+              dialogTitle: `Save ${fileName}`,
+            });
+          } else {
+            alert('Permission denied and sharing is unavailable.');
+          }
+          return;
+        }
+        await MediaLibrary.saveToLibraryAsync(localUri);
+        alert('Image saved to your Photos!');
+      } else {
+        // Android: SAF folder picker
+        const ext = fileName.split('.').pop()?.toLowerCase() || 'jpg';
+        const mimeMap: Record<string, string> = {
+          jpg: 'image/jpeg', jpeg: 'image/jpeg',
+          png: 'image/png', gif: 'image/gif',
+          webp: 'image/webp', bmp: 'image/bmp',
+        };
+        const mimeType = mimeMap[ext] || 'image/jpeg';
+
+        const perms = await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync();
+        if (!perms.granted) {
+          const canShare = await Sharing.isAvailableAsync();
+          if (canShare) {
+            await Sharing.shareAsync(localUri, { mimeType, dialogTitle: `Save ${fileName}` });
+          }
+          return;
+        }
+
+        const destUri = await FileSystem.StorageAccessFramework.createFileAsync(
+          perms.directoryUri,
+          fileName,
+          mimeType,
+        );
+        const base64 = await FileSystem.readAsStringAsync(localUri, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+        await FileSystem.writeAsStringAsync(destUri, base64, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+        alert('Image saved to your selected folder!');
+      }
+    } catch (err: any) {
+      console.error('Download image error:', err);
+      alert('Failed to download image. Please try again.');
+    }
+  };
+
+  const handleFileDownload = async (item: Message) => {
+    if (!selected) return;
+
+    let url = item.fileUrl;
+    if (item.storagePath) {
+      const fresh = await refreshFileUrl(item.storagePath, selected.id);
+      if (fresh) {
+        url = fresh;
+        setMessagesByConversation((prev) => ({
+          ...prev,
+          [selected.id]: prev[selected.id].map((msg) =>
+            msg.id === item.id ? { ...msg, fileUrl: fresh } : msg
+          ),
+        }));
+      } else {
+        alert('Failed to get file URL. It may have expired.');
+        return;
+      }
+    }
+    if (!url) return;
+
+    let fileName = item.fileName || 'file';
+    if (!fileName.includes('.')) {
+      const ext = item.fileType?.split('/').pop()?.split(';')[0] || 'bin';
+      fileName += `.${ext}`;
     }
 
-    // Mobile: get a fresh signed URL
-    let downloadUrl = imagePreviewUrl;
-    if (imagePreviewStoragePath) {
-      const fresh = await refreshFileUrl(imagePreviewStoragePath, selected.id);
-      if (fresh) downloadUrl = fresh;
-    }
-    if (!downloadUrl) { alert('Cannot download: URL missing.'); return; }
+    const mimeType = item.fileType || 'application/octet-stream';
 
-    const cacheUri = FileSystem.cacheDirectory + fileName;
-    const { uri: localUri, status } = await FileSystem.downloadAsync(downloadUrl, cacheUri);
-    if (status !== 200) throw new Error(`Download HTTP status ${status}`);
+    try {
+      if (Platform.OS === 'web') {
+        if (!item.storagePath) { alert('Cannot download: file path missing.'); return; }
+        const proxyUrl = `${API_BASE_URL}/messenger-download/${selected.id}/${encodeURIComponent(item.storagePath)}`;
+        const res = await fetch(proxyUrl, { credentials: 'include' });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const blob = await res.blob();
+        const objUrl = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = objUrl;
+        a.download = fileName;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(objUrl);
+        return;
+      }
 
-    if (Platform.OS === 'ios') {
-      const perm = await MediaLibrary.requestPermissionsAsync();
-      if (!perm.granted) {
+      const cacheUri = FileSystem.cacheDirectory + fileName;
+      const { uri: localUri, status } = await FileSystem.downloadAsync(url, cacheUri);
+      if (status !== 200) throw new Error(`Download HTTP status ${status}`);
+
+      if (Platform.OS === 'ios') {
         const canShare = await Sharing.isAvailableAsync();
         if (canShare) {
           await Sharing.shareAsync(localUri, {
-            mimeType: 'image/jpeg',
-            UTI: 'public.image',
+            mimeType,
+            UTI: mimeType,
             dialogTitle: `Save ${fileName}`,
           });
         } else {
-          alert('Permission denied and sharing is unavailable.');
+          alert(`File cached at:\n${localUri}`);
         }
-        return;
-      }
-      await MediaLibrary.saveToLibraryAsync(localUri);
-      alert('Image saved to your Photos!');
-
-    } else {
-      // Android: SAF folder picker
-      const ext = fileName.split('.').pop()?.toLowerCase() || 'jpg';
-      const mimeMap: Record<string, string> = {
-        jpg: 'image/jpeg', jpeg: 'image/jpeg',
-        png: 'image/png', gif: 'image/gif',
-        webp: 'image/webp', bmp: 'image/bmp',
-      };
-      const mimeType = mimeMap[ext] || 'image/jpeg';
-
-      const perms = await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync();
-      if (!perms.granted) {
-        const canShare = await Sharing.isAvailableAsync();
-        if (canShare) {
-          await Sharing.shareAsync(localUri, { mimeType, dialogTitle: `Save ${fileName}` });
-        }
-        return;
-      }
-
-      const destUri = await FileSystem.StorageAccessFramework.createFileAsync(
-        perms.directoryUri,
-        fileName,
-        mimeType,
-      );
-      const base64 = await FileSystem.readAsStringAsync(localUri, {
-        encoding: FileSystem.EncodingType.Base64,
-      });
-      await FileSystem.writeAsStringAsync(destUri, base64, {
-        encoding: FileSystem.EncodingType.Base64,
-      });
-      alert('Image saved to your selected folder!');
-    }
-  } catch (err: any) {
-    console.error('Download image error:', err);
-    alert('Failed to download image. Please try again.');
-  }
-};
-
-const handleFileDownload = async (item: Message) => {
-  if (!selected) return;
-
-  let url = item.fileUrl;
-  if (item.storagePath) {
-    const fresh = await refreshFileUrl(item.storagePath, selected.id);
-    if (fresh) {
-      url = fresh;
-      setMessagesByConversation((prev) => ({
-        ...prev,
-        [selected.id]: prev[selected.id].map((msg) =>
-          msg.id === item.id ? { ...msg, fileUrl: fresh } : msg
-        ),
-      }));
-    } else {
-      alert('Failed to get file URL. It may have expired.');
-      return;
-    }
-  }
-  if (!url) return;
-
-  let fileName = item.fileName || 'file';
-  if (!fileName.includes('.')) {
-    const ext = item.fileType?.split('/').pop()?.split(';')[0] || 'bin';
-    fileName += `.${ext}`;
-  }
-
-  const mimeType = item.fileType || 'application/octet-stream';
-
-  try {
-    if (Platform.OS === 'web') {
-      if (!item.storagePath) { alert('Cannot download: file path missing.'); return; }
-      const proxyUrl = `${API_BASE_URL}/messenger-download/${selected.id}/${encodeURIComponent(item.storagePath)}`;
-      const res = await fetch(proxyUrl, { credentials: 'include' });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const blob = await res.blob();
-      const objUrl = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = objUrl;
-      a.download = fileName;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      window.URL.revokeObjectURL(objUrl);
-      return;
-    }
-
-    const cacheUri = FileSystem.cacheDirectory + fileName;
-    const { uri: localUri, status } = await FileSystem.downloadAsync(url, cacheUri);
-    if (status !== 200) throw new Error(`Download HTTP status ${status}`);
-
-    if (Platform.OS === 'ios') {
-      const canShare = await Sharing.isAvailableAsync();
-      if (canShare) {
-        await Sharing.shareAsync(localUri, {
-          mimeType,
-          UTI: mimeType,
-          dialogTitle: `Save ${fileName}`,
-        });
       } else {
-        alert(`File cached at:\n${localUri}`);
-      }
-
-    } else {
-      // Android: SAF folder picker
-      const perms = await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync();
-      if (!perms.granted) {
-        const canShare = await Sharing.isAvailableAsync();
-        if (canShare) {
-          await Sharing.shareAsync(localUri, { mimeType, dialogTitle: `Save ${fileName}` });
+        // Android: SAF folder picker
+        const perms = await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync();
+        if (!perms.granted) {
+          const canShare = await Sharing.isAvailableAsync();
+          if (canShare) {
+            await Sharing.shareAsync(localUri, { mimeType, dialogTitle: `Save ${fileName}` });
+          }
+          return;
         }
-        return;
-      }
 
-      const destUri = await FileSystem.StorageAccessFramework.createFileAsync(
-        perms.directoryUri,
-        fileName,
-        mimeType,
-      );
-      const base64 = await FileSystem.readAsStringAsync(localUri, {
-        encoding: FileSystem.EncodingType.Base64,
-      });
-      await FileSystem.writeAsStringAsync(destUri, base64, {
-        encoding: FileSystem.EncodingType.Base64,
-      });
-      alert('File saved to your selected folder!');
+        const destUri = await FileSystem.StorageAccessFramework.createFileAsync(
+          perms.directoryUri,
+          fileName,
+          mimeType,
+        );
+        const base64 = await FileSystem.readAsStringAsync(localUri, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+        await FileSystem.writeAsStringAsync(destUri, base64, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+        alert('File saved to your selected folder!');
+      }
+    } catch (err: any) {
+      console.error('Download file error:', err);
+      alert('Failed to download file. Please try again.');
     }
-  } catch (err: any) {
-    console.error('Download file error:', err);
-    alert('Failed to download file. Please try again.');
-  }
-};
+  };
 
   // ---------------------------------------------------------------------------
   // Room / member helpers
@@ -1378,108 +1390,256 @@ const handleFileDownload = async (item: Message) => {
   // ---------------------------------------------------------------------------
   // Render helpers
   // ---------------------------------------------------------------------------
-  const renderConversationList = () => (
-    <View
-      style={[
-        styles.sidebar,
-        isMobile && styles.sidebarMobile,
-        isSplitView && { width: sizes.sidebarWidth },
-      ]}
-    >
-      {isMobile && (
-        <TouchableOpacity
-          onPress={onBack}
-          style={styles.screenBackButton}
-          activeOpacity={0.8}
-        >
-          <MaterialCommunityIcons name="chevron-left" size={22} color="#111" />
-          <Text style={styles.screenBackText}>Back</Text>
-        </TouchableOpacity>
-      )}
-      <Text style={[styles.pageTitle, { fontSize: sizes.pageTitle }]}>
-        Messages
-      </Text>
-      <FlatList
-        data={filtered}
-        keyExtractor={(item) => item.id}
-        style={styles.sidebarList}
-        contentContainerStyle={styles.sidebarListContent}
-        showsVerticalScrollIndicator={true}
-        indicatorStyle="black"
-        nestedScrollEnabled={true}
-        keyboardShouldPersistTaps="handled"
-        renderItem={({ item }) => {
-          const active = selected?.id === item.id;
-          return (
+  const renderConversationList = () => {
+    // If search is expanded on mobile, render full-screen search
+    if (isMobile && isMobileSearchExpanded) {
+      return (
+        <View style={styles.fullScreenSearchContainer}>
+          <View style={styles.fullScreenSearchHeader}>
             <TouchableOpacity
-              style={[
-                styles.convCard,
-                {
-                  paddingHorizontal: sizes.horizontalPadding,
-                  paddingVertical: sizes.listRowVertical,
-                },
-                active && styles.convCardActive,
-              ]}
-              onPress={() => handleSelectConversation(item)}
-              activeOpacity={0.88}
+              style={styles.backButton}
+              onPress={() => toggleMobileSearch(false)}
+              activeOpacity={0.7}
             >
-              <Image
-                source={item.avatar}
-                style={{
-                  width: sizes.listAvatar,
-                  height: sizes.listAvatar,
-                  borderRadius: sizes.listAvatar / 2,
-                  marginRight: isTinyPhone ? 8 : 12,
-                }}
-              />
-              <View style={styles.convContent}>
-  {/* Row 1: Subject name + time */}
-  <View style={styles.convTopRow}>
-    <Text
-      style={[styles.convName, { fontSize: sizes.listName }]}
-      numberOfLines={1}
-    >
-      {item.name.split(' - ')[0]}
-    </Text>
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, flexShrink: 0 }}>
-      {item.unreadCount > 0 && (
-        <View style={styles.unreadBadge}>
-          <Text style={styles.unreadBadgeText}>
-            {item.unreadCount > 99 ? '99+' : item.unreadCount}
-          </Text>
-        </View>
-      )}
-      <Text
-        style={[styles.convTime, { fontSize: sizes.listTime }]}
-        numberOfLines={1}
-      >
-        {item.time}
-      </Text>
-    </View>
-  </View>
-  {/* Row 2: Semester/year info */}
-  {item.name.includes(' - ') && (
-    <Text
-      style={[styles.convSemester, { fontSize: sizes.listTime }]}
-      numberOfLines={1}
-    >
-      {item.name.split(' - ').slice(1).join(' - ')}
-    </Text>
-  )}
-  {/* Row 3: Last message */}
-  <Text
-    style={[styles.convLast, { fontSize: sizes.listLast }]}
-    numberOfLines={1}
-  >
-    {item.last}
-  </Text>
-</View>
+              <MaterialCommunityIcons name="arrow-left" size={24} color="#000" />
             </TouchableOpacity>
-          );
-        }}
-      />
-    </View>
-  );
+            
+            <View style={styles.fullScreenSearchInputContainer}>
+              <TextInput
+                ref={searchInputRef}
+                autoFocus
+                placeholder="Search"
+                placeholderTextColor="#888"
+                value={localSearchQuery}
+                onChangeText={setLocalSearchQuery}
+                style={styles.fullScreenSearchInput}
+                returnKeyType="search"
+              />
+              {localSearchQuery.length > 0 && (
+                <TouchableOpacity
+                  onPress={() => {
+                    setLocalSearchQuery('');
+                    searchInputRef.current?.focus();
+                  }}
+                  style={{ padding: 4 }}
+                >
+                  <MaterialCommunityIcons name="close-circle" size={20} color="#888" />
+                </TouchableOpacity>
+              )}
+            </View>
+            
+            <TouchableOpacity
+              style={styles.searchIconButton}
+              onPress={() => {
+                if (localSearchQuery.trim()) {
+                  Keyboard.dismiss();
+                }
+              }}
+              activeOpacity={0.7}
+            >
+              <MaterialCommunityIcons
+                name="magnify"
+                size={24}
+                color={localSearchQuery.trim() ? '#D32F2F' : '#888'}
+              />
+            </TouchableOpacity>
+          </View>
+          
+          <FlatList
+            data={filtered}
+            keyExtractor={(item) => item.id}
+            style={styles.sidebarList}
+            contentContainerStyle={styles.sidebarListContent}
+            showsVerticalScrollIndicator={true}
+            indicatorStyle="black"
+            nestedScrollEnabled={true}
+            keyboardShouldPersistTaps="handled"
+            renderItem={({ item }) => {
+              const active = selected?.id === item.id;
+              return (
+                <TouchableOpacity
+                  style={[
+                    styles.convCard,
+                    {
+                      paddingHorizontal: sizes.horizontalPadding,
+                      paddingVertical: sizes.listRowVertical,
+                    },
+                    active && styles.convCardActive,
+                  ]}
+                  onPress={() => {
+                    handleSelectConversation(item);
+                    toggleMobileSearch(false);
+                  }}
+                  activeOpacity={0.88}
+                >
+                  <Image
+                    source={item.avatar}
+                    style={{
+                      width: sizes.listAvatar,
+                      height: sizes.listAvatar,
+                      borderRadius: sizes.listAvatar / 2,
+                      marginRight: isTinyPhone ? 8 : 12,
+                    }}
+                  />
+                  <View style={styles.convContent}>
+                    <View style={styles.convTopRow}>
+                      <Text
+                        style={[styles.convName, { fontSize: sizes.listName }]}
+                        numberOfLines={1}
+                      >
+                        {item.name.split(' - ')[0]}
+                      </Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+                        {item.unreadCount > 0 && (
+                          <View style={styles.unreadBadge}>
+                            <Text style={styles.unreadBadgeText}>
+                              {item.unreadCount > 99 ? '99+' : item.unreadCount}
+                            </Text>
+                          </View>
+                        )}
+                        <Text
+                          style={[styles.convTime, { fontSize: sizes.listTime }]}
+                          numberOfLines={1}
+                        >
+                          {item.time}
+                        </Text>
+                      </View>
+                    </View>
+                    {item.name.includes(' - ') && (
+                      <Text
+                        style={[styles.convSemester, { fontSize: sizes.listTime }]}
+                        numberOfLines={1}
+                      >
+                        {item.name.split(' - ').slice(1).join(' - ')}
+                      </Text>
+                    )}
+                    <Text
+                      style={[styles.convLast, { fontSize: sizes.listLast }]}
+                      numberOfLines={1}
+                    >
+                      {item.last}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              );
+            }}
+          />
+        </View>
+      );
+    }
+
+    // Normal conversation list view
+    return (
+      <View
+        style={[
+          styles.sidebar,
+          isMobile && styles.sidebarMobile,
+          isSplitView && { width: sizes.sidebarWidth },
+        ]}
+      >
+        <View style={{ position: 'relative' }}>
+          {isMobile && (
+            <TouchableOpacity
+              onPress={onBack}
+              style={styles.screenBackButton}
+              activeOpacity={0.8}
+            >
+              <MaterialCommunityIcons name="chevron-left" size={22} color="#111" />
+              <Text style={styles.screenBackText}>Back</Text>
+            </TouchableOpacity>
+          )}
+          <Text style={[styles.pageTitle, { fontSize: sizes.pageTitle }]}>
+            Messages
+          </Text>
+          {isMobile && (
+            <TouchableOpacity
+                style={styles.headerActionButton}
+                onPress={() => toggleMobileSearch(true)}
+              >
+              <MaterialCommunityIcons name="magnify" size={24} color="#000" />
+            </TouchableOpacity>
+          )}
+        </View>
+
+        <FlatList
+          data={filtered}
+          keyExtractor={(item) => item.id}
+          style={styles.sidebarList}
+          contentContainerStyle={styles.sidebarListContent}
+          showsVerticalScrollIndicator={true}
+          indicatorStyle="black"
+          nestedScrollEnabled={true}
+          keyboardShouldPersistTaps="handled"
+          renderItem={({ item }) => {
+            const active = selected?.id === item.id;
+            return (
+              <TouchableOpacity
+                style={[
+                  styles.convCard,
+                  {
+                    paddingHorizontal: sizes.horizontalPadding,
+                    paddingVertical: sizes.listRowVertical,
+                  },
+                  active && styles.convCardActive,
+                ]}
+                onPress={() => handleSelectConversation(item)}
+                activeOpacity={0.88}
+              >
+                <Image
+                  source={item.avatar}
+                  style={{
+                    width: sizes.listAvatar,
+                    height: sizes.listAvatar,
+                    borderRadius: sizes.listAvatar / 2,
+                    marginRight: isTinyPhone ? 8 : 12,
+                  }}
+                />
+                <View style={styles.convContent}>
+                  <View style={styles.convTopRow}>
+                    <Text
+                      style={[styles.convName, { fontSize: sizes.listName }]}
+                      numberOfLines={1}
+                    >
+                      {item.name.split(' - ')[0]}
+                    </Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+                      {item.unreadCount > 0 && (
+                        <View style={styles.unreadBadge}>
+                          <Text style={styles.unreadBadgeText}>
+                            {item.unreadCount > 99 ? '99+' : item.unreadCount}
+                          </Text>
+                        </View>
+                      )}
+                      <Text
+                        style={[styles.convTime, { fontSize: sizes.listTime }]}
+                        numberOfLines={1}
+                      >
+                        {item.time}
+                      </Text>
+                    </View>
+                  </View>
+                  {item.name.includes(' - ') && (
+                    <Text
+                      style={[styles.convSemester, { fontSize: sizes.listTime }]}
+                      numberOfLines={1}
+                    >
+                      {item.name.split(' - ').slice(1).join(' - ')}
+                    </Text>
+                  )}
+                  <Text
+                    style={[styles.convLast, { fontSize: sizes.listLast }]}
+                    numberOfLines={1}
+                  >
+                    {item.last}
+                  </Text>
+                </View>
+              </TouchableOpacity>
+            );
+          }}
+        />
+      </View>
+    );
+  };
 
   const renderChatHeader = () => (
     <View style={[styles.chatHeader, { height: sizes.headerHeight }]}>
@@ -2275,46 +2435,55 @@ const handleFileDownload = async (item: Message) => {
               )}
               <View style={styles.professionalMemberList}>
                 {selectedConversationMembers.map((member, index) => {
-                const isAdmin = member === selected?.admin;
-                const isCurrentUser = member === currentUserName;
-                const detail = selected?.memberDetails?.find((d) => d.name === member);
-                const studentId = detail?.studentId;
-                return (
-                  <View key={`${member}-${index}`} style={styles.professionalMemberRowStatic}>
-                    <View style={styles.professionalMemberInfo}>
-                      <View style={styles.professionalMemberAvatar}>
-                        <MaterialCommunityIcons name="account" size={16} color="#666" />
+                  const isAdmin = member === selected?.admin;
+                  const isCurrentUser = member === currentUserName;
+                  const detail = selected?.memberDetails?.find((d) => d.name === member);
+                  const studentId = detail?.studentId;
+                  return (
+                    <View
+                      key={`${member}-${index}`}
+                      style={styles.professionalMemberRowStatic}
+                    >
+                      <View style={styles.professionalMemberInfo}>
+                        <View style={styles.professionalMemberAvatar}>
+                          <MaterialCommunityIcons
+                            name="account"
+                            size={16}
+                            color="#666"
+                          />
+                        </View>
+                        <View style={styles.professionalMemberTextWrap}>
+                          <Text style={styles.professionalMemberName}>
+                            {member}
+                          </Text>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 }}>
+                            <Text style={styles.professionalMemberMeta}>
+                              {isAdmin ? 'Admin' : isCurrentUser ? 'Member (You)' : 'Member'}
+                            </Text>
+                            {studentId ? (
+                              <>
+                                <Text style={styles.professionalMemberMeta}>·</Text>
+                                <Text style={[styles.professionalMemberMeta, { color: '#444', fontWeight: '600' }]}>
+                                  {studentId}
+                                </Text>
+                                <TouchableOpacity
+                                  onPress={() => handleCopyStudentId(studentId)}
+                                  hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                                >
+                                  <MaterialCommunityIcons
+                                    name={copiedId === studentId ? 'check' : 'content-copy'}
+                                    size={13}
+                                    color={copiedId === studentId ? '#22a355' : '#999'}
+                                  />
+                                </TouchableOpacity>
+                              </>
+                            ) : null}
+                          </View>
+                        </View>
                       </View>
-                      <View style={styles.professionalMemberTextWrap}>
-  <Text style={styles.professionalMemberName}>{member}</Text>
-  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 }}>
-    <Text style={styles.professionalMemberMeta}>
-      {isAdmin ? 'Admin' : isCurrentUser ? 'Member (You)' : 'Member'}
-    </Text>
-    {studentId ? (
-      <>
-        <Text style={styles.professionalMemberMeta}>·</Text>
-        <Text style={[styles.professionalMemberMeta, { color: '#444', fontWeight: '600' }]}>
-          {studentId}
-        </Text>
-        <TouchableOpacity
-          onPress={() => handleCopyStudentId(studentId)}
-          hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-        >
-          <MaterialCommunityIcons
-            name={copiedId === studentId ? 'check' : 'content-copy'}
-            size={13}
-            color={copiedId === studentId ? '#22a355' : '#999'}
-          />
-        </TouchableOpacity>
-      </>
-    ) : null}
-  </View>
-</View>
                     </View>
-                  </View>
-                );
-              })}
+                  );
+                })}
               </View>
             </ScrollView>
           </Pressable>
@@ -2426,7 +2595,7 @@ const handleFileDownload = async (item: Message) => {
               styles.sendBtn,
               {
                 height: sizes.sendHeight,
-                width: sizes.sendHeight,
+                width: sizes.sendWidth,
                 paddingHorizontal: isDesktop ? 18 : isTablet ? 14 : 10,
                 borderRadius: sizes.sendHeight / 2,
                 opacity: !messageText.trim() && !pendingFile ? 0.5 : 1,
@@ -2451,26 +2620,27 @@ const handleFileDownload = async (item: Message) => {
   // ---------------------------------------------------------------------------
   // Root render
   // ---------------------------------------------------------------------------
+  
   if (isMobile) {
-  if (selected) {
+    if (selected) {
+      return (
+        <View style={[styles.mobileScreen]}>
+          <KeyboardAvoidingView
+            style={styles.mobileContent}
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : StatusBar.currentHeight ?? 0}
+          >
+            {renderChatPane()}
+          </KeyboardAvoidingView>
+        </View>
+      );
+    }
     return (
       <View style={[styles.mobileScreen]}>
-        <KeyboardAvoidingView
-          style={styles.mobileContent}
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : StatusBar.currentHeight ?? 0}
-        >
-          {renderChatPane()}
-        </KeyboardAvoidingView>
+        <View style={styles.mobileContent}>{renderConversationList()}</View>
       </View>
     );
   }
-  return (
-    <View style={[styles.mobileScreen]}>
-      <View style={styles.mobileContent}>{renderConversationList()}</View>
-    </View>
-  );
-}
 
   return (
     <SafeAreaView style={styles.desktopScreen}>
@@ -2483,13 +2653,13 @@ const handleFileDownload = async (item: Message) => {
 };
 
 // ---------------------------------------------------------------------------
-// Styles — identical to StudentMessenger (unreadBadge is a numeric red pill)
+// Styles
 // ---------------------------------------------------------------------------
 const styles = StyleSheet.create({
   mobileScreen: {
-  flex: 1,
-  backgroundColor: '#f7f8fa',
-},
+    flex: 1,
+    backgroundColor: '#f7f8fa',
+  },
   mobileContent: { flex: 1, minHeight: 0 },
   desktopScreen: { flex: 1, backgroundColor: '#eef1f5' },
   splitLayout: {
@@ -2521,6 +2691,15 @@ const styles = StyleSheet.create({
     paddingTop: 14,
     paddingBottom: 4,
   },
+  headerActionButton: {
+  position: 'absolute',
+  paddingTop: 14,
+  right: 12,
+  justifyContent: 'center',
+  alignItems: 'center',
+  width: 40,
+  height: 40,
+},
   screenBackText: { fontSize: 14, fontWeight: '600', color: '#111', marginLeft: 2 },
   pageTitle: {
     fontWeight: 'bold',
@@ -2565,11 +2744,43 @@ const styles = StyleSheet.create({
   convTime: { color: '#888', flexShrink: 0 },
   convLast: { color: '#666', marginTop: 4 },
   convSemester: {
-  color: '#0c0c0c',
-  fontSize: 11,
-  marginTop: 1,
-  marginBottom: 2,
-},
+    color: '#0c0c0c',
+    fontSize: 11,
+    marginTop: 1,
+    marginBottom: 2,
+  },
+  fullScreenSearchContainer: {
+    flex: 1,
+    backgroundColor: '#fff',
+  },
+  fullScreenSearchHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#EEE',
+    backgroundColor: '#fff',
+    gap: 8,
+  },
+  fullScreenSearchInputContainer: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F1F1F1',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    height: 44,
+  },
+  fullScreenSearchInput: {
+    flex: 1,
+    fontSize: 16,
+    color: '#000',
+    paddingVertical: 8,
+  },
+  searchIconButton: {
+    padding: 8,
+  },
   chatPane: {
     flex: 1,
     minHeight: 0,

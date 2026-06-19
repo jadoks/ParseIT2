@@ -22,6 +22,7 @@ interface ClassesScreenProps {
   onMaterialsPress?: (course: CourseCardCourse) => void;
   onGeneratePress?: (course: CourseCardCourse) => void;
   onJoinClass?: (classCode: string) => void;
+  onLeaveCourse?: (course: CourseCardCourse) => void;
   completedActivityScores?: Record<
     string,
     {
@@ -49,6 +50,7 @@ const ClassesScreen = ({
   searchQuery = '', // 👈 ADDED default value
   onCoursePress,
   onAssignmentPress,
+  onLeaveCourse,
   onMaterialsPress,
   onGeneratePress,
   onJoinClass,
@@ -121,6 +123,7 @@ const ClassesScreen = ({
                   onAssignmentPress={(selectedCourse) => onAssignmentPress?.(selectedCourse)}
                   onMaterialsPress={(selectedCourse) => onMaterialsPress?.(selectedCourse)}
                   onGeneratePress={(selectedCourse) => onGeneratePress?.(selectedCourse)}
+                  onLeaveCourse={onLeaveCourse}
                   completedActivityScores={completedActivityScores}
                 />
               ))

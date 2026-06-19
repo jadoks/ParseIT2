@@ -338,12 +338,22 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
   const [communityPosts, setCommunityPosts] = useState<CommunityPost[]>([]);
   const [studentNotifications, setStudentNotifications] = useState<NotificationItem[]>([]);
   
-  // 👇 NEW STATE FOR MESSENGER UNREAD COUNT
   const [messengerUnreadCount, setMessengerUnreadCount] = useState(0);
   
-  // 👇 NEW STATE FOR VERIFICATION ERROR MODAL
   const [isVerificationErrorModalVisible, setVerificationErrorModalVisible] = useState(false);
   const [verificationErrorMessage, setVerificationErrorMessage] = useState('');
+
+  const [isUploadSuccessModalVisible, setUploadSuccessModalVisible] = useState(false);
+
+  // 👇 STATES FOR LEAVE COURSE CONFIRMATION & LOADING
+  const [isLeaveConfirmModalVisible, setLeaveConfirmModalVisible] = useState(false);
+  const [courseToLeave, setCourseToLeave] = useState<any>(null);
+  const [isLeavingCourse, setIsLeavingCourse] = useState(false);
+
+  // 👇 STATES FOR LEAVE COURSE SUCCESS/ERROR MODALS
+  const [isLeaveSuccessModalVisible, setLeaveSuccessModalVisible] = useState(false);
+  const [isLeaveErrorModalVisible, setLeaveErrorModalVisible] = useState(false);
+  const [leaveErrorMessage, setLeaveErrorMessage] = useState('');
 
   const [globalSearchQuery, setGlobalSearchQuery] = useState('');
   const [isFetchingGame, setIsFetchingGame] = useState(false);
@@ -358,16 +368,15 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
   const isMobileFullscreenScreen = isSmallScreen && (activeScreen === 'messenger' || activeScreen === 'notification' || activeScreen === 'coursedetail' || activeScreen === 'generateactivity');
   const shouldShowHeader = !isFullscreenScreen && !isMobileFullscreenScreen;
   const shouldShowDesktopDrawer = !isFullscreenScreen && !isMobileFullscreenScreen && isLargeScreen && activeScreen !== 'profile' && activeScreen !== 'notification';
-  const safeAreaEdges = isFullscreenScreen
-    ? []
-    : (['top', 'right', 'bottom', 'left'] as const);
+  const safeAreaEdges = isFullscreenScreen ? [] : (['top', 'right', 'bottom', 'left'] as const);
 
+  // 👇 FIX 1: FIXED TYPESCRIPT ERROR IN toMillis
   const toMillis = (value: any) => {
     if (!value) return 0;
     if (typeof value?.toDate === 'function') return value.toDate().getTime();
     if (typeof value?._seconds === 'number') return value._seconds * 1000;
-    const parsed = new Date(value).getTime();
-    return Number.isNaN(parsed) ? 0 : parsed;
+    const parsed = new Date(value); // Store the Date object
+    return Number.isNaN(parsed.getTime()) ? 0 : parsed.getTime(); // Call getTime() on the Date object
   };
 
   const isAnnouncementActive = (value?: any) => {
@@ -964,12 +973,11 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
 
   const unreadNotificationCount = useMemo(() => visibleStudentNotifications.filter((item) => !item.read).length, [visibleStudentNotifications]);
 
-  // 👇 NEW: Load Messenger Unread Count
   const loadMessengerUnreadCount = useCallback(async () => {
     if (!currentStudent?.studentId) return;
     try {
       const response = await apiFetch(
-        `${API_BASE_URL}/messenger-unread-count?userId=${encodeURIComponent( currentStudent.studentId )}&userUid=${encodeURIComponent( currentStudent.authUid || '' )}&role=student`
+        `${API_BASE_URL}/messenger-unread-count?userId=${encodeURIComponent(currentStudent.studentId)}&userUid=${encodeURIComponent(currentStudent.authUid || '')}&role=student`
       );
       const data = await response.json();
       if (response.ok && data.success) {
@@ -980,7 +988,6 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
     }
   }, [currentStudent?.studentId]);
 
-  // Poll for unread messages every 10 seconds
   useEffect(() => {
     loadMessengerUnreadCount();
     const interval = setInterval(loadMessengerUnreadCount, 10000);
@@ -995,10 +1002,10 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
       const score = getScorePercent(assignment);
       if (score === null || score >= 75) return null;
       const completedSupportActivity = completedActivityScores[assignment.id];
-     if (
-    completedSupportActivity?.completed &&
-    completedSupportActivity.scorePercent !== null &&
-    completedSupportActivity.scorePercent >= 75
+      if (
+        completedSupportActivity?.completed &&
+        completedSupportActivity.scorePercent !== null &&
+        completedSupportActivity.scorePercent >= 75
       ) {
           return null;
       }
@@ -1284,11 +1291,110 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
     }
   };
 
-  // 👇 NEW HANDLER FOR VERIFICATION ERROR FROM DRAWER
   const handleVerificationFailed = (errorMessage: string) => {
     setVerificationErrorMessage(errorMessage);
     setVerificationErrorModalVisible(true);
   };
+
+  const handleUploadSuccess = () => {
+    setUploadSuccessModalVisible(true);
+  };
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // 👇 FIX 3: UPDATED LEAVE COURSE HANDLER (Opens Modal & Uses New Endpoints)
+  // ─────────────────────────────────────────────────────────────────────────────
+  const handleLeaveCourse = useCallback((course: any) => {
+    setCourseToLeave(course);
+    setLeaveConfirmModalVisible(true);
+  }, []);
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // 👇 FIX 3 (CONT): CONFIRM LEAVE COURSE (Executes API calls & Loading State)
+  // ─────────────────────────────────────────────────────────────────────────────
+  const confirmLeaveCourse = useCallback(async () => {
+    if (!courseToLeave || isLeavingCourse) return; // Prevent double-clicking
+    
+    setIsLeavingCourse(true); // <--- START LOADING
+
+    try {
+      // STEP 1: Find the class member document ID
+      const findResponse = await apiFetch(`${API_BASE_URL}/class-members/find`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          classId: courseToLeave.id,
+          studentId: currentStudent.studentId,
+          userUid: currentStudent.authUid || null,
+        }),
+      });
+
+      const findData = await findResponse.json();
+      if (!findResponse.ok) {
+        throw new Error(findData?.error || 'Membership not found.');
+      }
+
+      const memberId = findData.memberId;
+      if (!memberId) {
+        throw new Error('Could not find your membership record.');
+      }
+
+      // STEP 2: Delete the class member document
+      const deleteResponse = await apiFetch(`${API_BASE_URL}/class-members/${memberId}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ classId: courseToLeave.id }),
+      });
+
+      const deleteData = await deleteResponse.json();
+      if (!deleteResponse.ok) {
+        throw new Error(deleteData?.error || 'Unable to leave the course.');
+      }
+
+      // Refresh all relevant student data immediately
+      await Promise.all([
+        loadJoinedClasses(),
+        loadStudentSubmissionState(),
+        loadCommunityPosts(),
+        loadStudentNotifications(),
+        loadMessengerUnreadCount(),
+      ]);
+
+      // Navigate away if student is inside the left course's screens
+      if (
+        selectedCourse?.id === courseToLeave.id ||
+        activeScreen === 'coursedetail' ||
+        activeScreen === 'messenger' ||
+        activeScreen === 'assignments'
+      ) {
+        setActiveScreen('classes');
+        setSelectedCourse(null);
+        setSelectedCourseIdForAssignments(null);
+      }
+
+      // Show success modal
+      setLeaveSuccessModalVisible(true);
+    } catch (error: any) {
+      setLeaveErrorMessage(
+        error?.message || 'Unable to leave the course.\nPlease try again later.'
+      );
+      setLeaveErrorModalVisible(true);
+    } finally {
+      setIsLeavingCourse(false); // <--- STOP LOADING
+      setCourseToLeave(null);
+      setLeaveConfirmModalVisible(false); // Close the confirmation modal now that it's done
+    }
+  }, [
+    courseToLeave,
+    isLeavingCourse, 
+    currentStudent,
+    selectedCourse,
+    activeScreen,
+    loadJoinedClasses,
+    loadStudentSubmissionState,
+    loadCommunityPosts,
+    loadStudentNotifications,
+    loadMessengerUnreadCount,
+  ]);
 
   const renderScreen = () => {
     switch (activeScreen) {
@@ -1349,6 +1455,7 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
         return <ClassesScreen 
           courses={classesScreenCourses} 
           searchQuery={globalSearchQuery} 
+          onLeaveCourse={handleLeaveCourse}
           completedActivityScores={completedActivityScores} 
           onCoursePress={(course) => { 
             setSelectedCourse(course as unknown as CourseDetailData); 
@@ -1644,7 +1751,8 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
               onAvatarPress={() => handleNavigate('profile')}
               setIsLoggedIn={() => onLogout()}
               onFilePickerOpen={() => setHasImageChanged(true)}
-              onVerificationFailed={handleVerificationFailed} // 👇 PASSED HERE
+              onVerificationFailed={handleVerificationFailed}
+              onUploadSuccess={handleUploadSuccess}
             />
           )}
           <View style={{ flex: 1 }}>{renderScreen()}</View>
@@ -1688,7 +1796,8 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
                   }}
                   setIsLoggedIn={() => onLogout()}
                   onFilePickerOpen={() => setHasImageChanged(true)}
-                  onVerificationFailed={handleVerificationFailed} // 👇 PASSED HERE
+                  onVerificationFailed={handleVerificationFailed}
+                  onUploadSuccess={handleUploadSuccess}
                 />
               </View>
             </View>
@@ -1764,7 +1873,7 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
           </View>
         )}
 
-        {/* 👇 MOVED INSIDE SafeAreaView TO FIX WEB RENDERING ISSUE */}
+        {/* 👇 VERIFICATION ERROR MODAL */}
         <Modal 
           animationType="fade" 
           transparent 
@@ -1784,6 +1893,150 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
                 <Pressable 
                   style={[styles.logoutConfirmBtn, { backgroundColor: '#555' }]} 
                   onPress={() => setVerificationErrorModalVisible(false)}
+                >
+                  <Text style={styles.logoutConfirmText}>Close</Text>
+                </Pressable>
+              </View>
+            </View>
+          </View>
+        </Modal>
+
+        {/* 👇 NEW: UPLOAD SUCCESS MODAL */}
+        <Modal 
+          animationType="fade" 
+          transparent 
+          visible={isUploadSuccessModalVisible} 
+          onRequestClose={() => setUploadSuccessModalVisible(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.logoutModalContainer}>
+              <View style={{ alignItems: 'center', marginBottom: 15 }}>
+                <MaterialCommunityIcons name="check-circle-outline" size={48} color="#2E7D32" />
+              </View>
+              <Text style={[styles.logoutModalTitle, { color: '#2E7D32' }]}>Upload Successful</Text>
+              <Text style={[styles.logoutModalSubtitle, { textAlign: 'center', marginTop: 10 }]}>
+                Your grade file has been uploaded successfully and is now being processed.
+              </Text>
+              <View style={styles.logoutButtonsRow}>
+                <Pressable 
+                  style={[styles.logoutConfirmBtn, { backgroundColor: '#2E7D32' }]} 
+                  onPress={() => setUploadSuccessModalVisible(false)}
+                >
+                  <Text style={styles.logoutConfirmText}>Done</Text>
+                </Pressable>
+              </View>
+            </View>
+          </View>
+        </Modal>
+
+        {/* 👇 FIX 4: LEAVE COURSE — CONFIRMATION MODAL (WITH LOADING STATE) */}
+        <Modal
+          animationType="fade"
+          transparent
+          visible={isLeaveConfirmModalVisible}
+          onRequestClose={() => {
+            if (!isLeavingCourse) { // Prevent closing while loading
+              setLeaveConfirmModalVisible(false);
+              setCourseToLeave(null);
+            }
+          }}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.logoutModalContainer}>
+              <View style={{ alignItems: 'center', marginBottom: 15 }}>
+                <MaterialCommunityIcons name="exit-to-app" size={48} color="#D32F2F" />
+              </View>
+              <Text style={[styles.logoutModalTitle, { color: '#D32F2F' }]}>Leave Course</Text>
+              <Text style={[styles.logoutModalSubtitle, { textAlign: 'left', marginTop: 10 }]}>
+                Are you sure you want to leave this class?{'\n\n'}
+                You will permanently lose access to:{'\n'}
+                • Course Materials{'\n'}
+                • Assignments{'\n'}
+                • Announcements{'\n'}
+                • Class Conversation / Messenger{'\n\n'}
+                You can only regain access if the teacher adds you back or you rejoin using the class code.
+              </Text>
+              <View style={[styles.logoutButtonsRow, { justifyContent: 'space-between', gap: 10, alignItems: 'center', alignContent: 'center' }]}>
+                <Pressable
+                  style={[
+                    styles.logoutConfirmBtn, 
+                    { backgroundColor: '#555', flex: 1, opacity: isLeavingCourse ? 0.5 : 1 } // Dim when loading
+                  ]}
+                  disabled={isLeavingCourse} // Disable when loading
+                  onPress={() => {
+                    setLeaveConfirmModalVisible(false);
+                    setCourseToLeave(null);
+                  }}
+                >
+                  <Text style={styles.logoutConfirmText}>Cancel</Text>
+                </Pressable>
+                <Pressable
+                  style={[
+                    styles.logoutConfirmBtn, 
+                    { backgroundColor: '#D32F2F', flex: 1, opacity: isLeavingCourse ? 0.8 : 1 } // Dim when loading
+                  ]}
+                  disabled={isLeavingCourse} // Disable when loading
+                  onPress={confirmLeaveCourse}
+                >
+                  {isLeavingCourse ? (
+                    <ActivityIndicator size="small" color="#FFF" /> // Show spinner
+                  ) : (
+                    <Text style={styles.logoutConfirmText}>Leave Course</Text>
+                  )}
+                </Pressable>
+              </View>
+            </View>
+          </View>
+        </Modal>
+
+        {/* LEAVE COURSE — SUCCESS MODAL */}
+        <Modal
+          animationType="fade"
+          transparent
+          visible={isLeaveSuccessModalVisible}
+          onRequestClose={() => setLeaveSuccessModalVisible(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.logoutModalContainer}>
+              <View style={{ alignItems: 'center', marginBottom: 15 }}>
+                <MaterialCommunityIcons name="check-circle-outline" size={48} color="#2E7D32" />
+              </View>
+              <Text style={[styles.logoutModalTitle, { color: '#2E7D32' }]}>Success</Text>
+              <Text style={[styles.logoutModalSubtitle, { textAlign: 'center', marginTop: 10 }]}>
+                You have successfully left this course.{'\n'}Your access to the class, including its conversations and discussion rooms, has been removed.
+              </Text>
+              <View style={styles.logoutButtonsRow}>
+                <Pressable
+                  style={[styles.logoutConfirmBtn, { backgroundColor: '#2E7D32' }]}
+                  onPress={() => setLeaveSuccessModalVisible(false)}
+                >
+                  <Text style={styles.logoutConfirmText}>Done</Text>
+                </Pressable>
+              </View>
+            </View>
+          </View>
+        </Modal>
+
+        {/* LEAVE COURSE — ERROR MODAL */}
+        <Modal
+          animationType="fade"
+          transparent
+          visible={isLeaveErrorModalVisible}
+          onRequestClose={() => setLeaveErrorModalVisible(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.logoutModalContainer}>
+              <View style={{ alignItems: 'center', marginBottom: 15 }}>
+                <MaterialCommunityIcons name="alert-circle-outline" size={48} color="#D32F2F" />
+              </View>
+              <Text style={[styles.logoutModalTitle, { color: '#D32F2F' }]}>Unable to Leave Course</Text>
+              <Text style={[styles.logoutModalSubtitle, { textAlign: 'center', marginTop: 10 }]}>
+                {leaveErrorMessage || 'Unable to leave the course.\nPlease try again later.'}
+              </Text>
+              <View style={styles.logoutButtonsRow}>
+                <Pressable
+                  style={[styles.logoutConfirmBtn, { backgroundColor: '#555' }]}
+                  onPress={() => setLeaveErrorModalVisible(false)}
                 >
                   <Text style={styles.logoutConfirmText}>Close</Text>
                 </Pressable>
@@ -1819,12 +2072,23 @@ const styles = StyleSheet.create({
   generatingCard: { width: '100%', maxWidth: 360, backgroundColor: '#FFFFFF', borderRadius: 20, padding: 24, alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.18, shadowRadius: 18, elevation: 16 },
   generatingTitle: { marginTop: 14, fontSize: 18, fontWeight: '800', color: '#111', textAlign: 'center' },
   generatingText: { marginTop: 8, fontSize: 14, color: '#555', lineHeight: 20, textAlign: 'center' },
-  // Reusing existing modal styles for the new verification modal
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center' },
   logoutModalContainer: { backgroundColor: '#FFF', borderRadius: 18, padding: 20, width: '88%', maxWidth: 360 },
   logoutModalTitle: { fontSize: 20, fontWeight: '700', color: '#222', textAlign: 'center' },
   logoutModalSubtitle: { fontSize: 14, color: '#777', textAlign: 'center', marginTop: 8 },
   logoutButtonsRow: { flexDirection: 'row', justifyContent: 'center', marginTop: 20 },
-  logoutConfirmBtn: { paddingVertical: 12, paddingHorizontal: 16, borderRadius: 10, backgroundColor: '#D32F2F' },
-  logoutConfirmText: { color: '#FFF', fontWeight: '700' },
+  logoutConfirmBtn: {
+  paddingVertical: 12,
+  paddingHorizontal: 16,
+  borderRadius: 10,
+  backgroundColor: '#D32F2F',
+
+  justifyContent: 'center',
+  alignItems: 'center',
+},
+  logoutConfirmText: {
+  color: '#FFF',
+  fontWeight: '700',
+  textAlign: 'center',
+},
 });

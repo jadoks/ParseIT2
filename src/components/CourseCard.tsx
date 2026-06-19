@@ -2,7 +2,6 @@ import Constants from 'expo-constants';
 import { Image } from 'expo-image'; // <--- IMPORTED expo-image for instant caching
 import React, { useEffect, useMemo, useState } from 'react';
 import {
-  Alert,
   Modal,
   Platform,
   StyleSheet,
@@ -10,7 +9,7 @@ import {
   TouchableOpacity,
   TouchableWithoutFeedback,
   View,
-  useWindowDimensions,
+  useWindowDimensions
 } from 'react-native';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 
@@ -54,6 +53,14 @@ interface CourseCardProps {
   onPress?: (course: CourseCardCourse) => void;
   onAssignmentPress?: (course: CourseCardCourse) => void;
   onMaterialsPress?: (course: CourseCardCourse) => void;
+  // Single source of truth for leaving a course. CourseCard does NOT touch
+  // Firestore directly anymore — it just asks the parent (StudentApp) to
+  // run its existing backend-API leave flow (/class-members/find + DELETE),
+  // which already handles memberCount decrement and messenger cleanup.
+  // The parent owns its own confirmation Alert, the API calls, and the
+  // joinedCourses refresh that actually makes this card disappear.
+  onLeaveCourse?: (course: CourseCardCourse) => void;
+  isLeaving?: boolean;
   onGeneratePress?: (course: CourseCardCourse, assignment: CourseCardAssignment) => void;
   completedActivityScores?: Record<
     string,
@@ -112,6 +119,8 @@ const CourseCard: React.FC<CourseCardProps> = ({
   course,
   onPress,
   completedActivityScores = {},
+    onLeaveCourse,
+    isLeaving = false,
 }) => {
   const { width, height } = useWindowDimensions();
   const isSmallScreen = width < 380;
@@ -350,7 +359,10 @@ const CourseCard: React.FC<CourseCardProps> = ({
 
   const handleLeave = () => {
     closeDropdown();
-    Alert.alert('Leave course', `You clicked leave for ${course.name}.`);
+    // Delegate entirely to the parent. StudentApp.handleLeaveCourse owns the
+    // confirmation Alert, the /class-members/find + DELETE calls, and the
+    // loadJoinedClasses() refresh that removes this course from the list.
+    onLeaveCourse?.(course);
   };
 
   const openDropdown = (event: any) => {
@@ -376,8 +388,9 @@ const CourseCard: React.FC<CourseCardProps> = ({
   return (
     <>
       <TouchableOpacity
-        style={[styles.card, { width: cardWidth, borderBottomColor: topColor }]}
+        style={[styles.card, { width: cardWidth, borderBottomColor: topColor }, isLeaving && styles.cardLeaving]}
         activeOpacity={0.92}
+        disabled={isLeaving}
         onPress={() => {
           closeDropdown();
           onPress?.(course);
@@ -468,13 +481,14 @@ const CourseCard: React.FC<CourseCardProps> = ({
           <TouchableOpacity
             style={styles.iconButton}
             onPress={openDropdown}
+            disabled={isLeaving}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           >
-            <MaterialCommunityIcons
-              name="dots-vertical"
-              size={22}
-              color="#5f6368"
-            />
+            {isLeaving ? (
+              <MaterialCommunityIcons name="dots-horizontal" size={22} color="#bbb" />
+            ) : (
+              <MaterialCommunityIcons name="dots-vertical" size={22} color="#5f6368" />
+            )}
           </TouchableOpacity>
         </View>
       </TouchableOpacity>
@@ -504,6 +518,7 @@ const CourseCard: React.FC<CourseCardProps> = ({
                       style={styles.dropdownMenuItem}
                       activeOpacity={0.8}
                       onPress={handleLeave}
+                      disabled={isLeaving}
                     >
                       <View style={styles.dropdownIconRed}>
                         <MaterialCommunityIcons
@@ -513,7 +528,7 @@ const CourseCard: React.FC<CourseCardProps> = ({
                         />
                       </View>
                       <Text style={[styles.dropdownMenuText, styles.dropdownDangerText]}>
-                        Leave Course
+                        {isLeaving ? 'Leaving…' : 'Leave Course'}
                       </Text>
                     </TouchableOpacity>
                   </View>
@@ -539,6 +554,9 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     shadowOffset: { width: 0, height: 3 },
     borderBottomWidth: 4,
+  },
+  cardLeaving: {
+    opacity: 0.5,
   },
   bannerImage: {
     width: '100%',

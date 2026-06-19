@@ -72,6 +72,7 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
   const scrollY = useRef(new Animated.Value(0)).current;
   const [showBackToTop, setShowBackToTop] = useState(false);
   const showBackToTopRef = useRef(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const sectionPositions = useRef<Record<SectionKey, number>>({
     features: 0,
     how: 0,
@@ -82,9 +83,10 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
   });
 
   const isDesktop = width >= 1100;
-  const isTablet = width >= 768;
+  const isTablet = width >= 768 && width < 1100;
   const isMobile = width < 768;
   const isSmall = width < 430;
+  const isTiny = width < 360;
 
   const goToSignIn = () => {
     if (typeof onGetStarted === "function") onGetStarted();
@@ -95,6 +97,7 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
   };
 
   const scrollToSection = (section: SectionKey) => {
+    setMenuOpen(false); // Close menu when navigating
     scrollRef.current?.scrollTo({
       y: Math.max(0, sectionPositions.current[section] - (isMobile ? 10 : 24)),
       animated: true,
@@ -128,44 +131,44 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
   const features: FeatureCard[] = [
     {
       icon: <MaterialCommunityIcons name="account-school-outline" size={30} color="#fff" />,
-      title: "Adaptive Learning Support",
+      title: "AI Tutor",
       description:
-        "Personalized academic guidance that helps students access learning materials, receive intelligent recommendations, and strengthen weak topics through AI-supported assistance.",
+        "Receive personalized programming assistance, instant explanations, coding guidance, and AI-generated follow-up activities tailored to your learning progress.",
       color: ["#ff3b30", "#ff7a00"],
     },
     {
       icon: <Feather name="bar-chart-2" size={30} color="#fff" />,
-      title: "Predictive Analytics Dashboard",
+      title: "Assignment Analytics Dashboard",
       description:
-        "Track student performance, detect at-risk learners, and gain actionable insights through data-driven analytics and visualizations.",
+        "Track assignment grades, monitor academic progress, identify learning gaps, and gain actionable insights through interactive performance visualizations.",
       color: ["#ff2d7a", "#ff3b72"],
     },
     {
       icon: <Feather name="activity" size={30} color="#fff" />,
-      title: "AI-Driven Academic Support System",
+      title: "Academic Progress Tracking",
       description:
-        "ParseIT Hub delivers adaptive learning, real-time assistance, and predictive analytics to support both students and educators in improving academic performance and decision-making.",
+        "Monitor your learning journey with real-time progress tracking, assignment completion, grade trends, and performance summaries across subjects.",
       color: ["#ff8a00", "#ffb000"],
     },
     {
       icon: <Feather name="users" size={30} color="#fff" />,
-      title: "Academic Monitoring System",
+      title: "Learning Materials",
       description:
-        "Comprehensive monitoring for teachers and admins. Track class progress, individual performance, and institutional metrics.",
+        "Access organized learning resources, lecture materials, programming exercises, and downloadable files to support classroom and self-paced learning.",
       color: ["#ff003d", "#ff245d"],
     },
     {
       icon: <Ionicons name="chatbox-outline" size={30} color="#fff" />,
       title: "Collaboration Tools",
       description:
-        "Built-in messaging and collaboration features. Connect students, teachers, and administrators seamlessly.",
+        "Communicate seamlessly with teachers and classmates through built-in messaging, announcements, and collaborative discussions for a connected learning experience.",
       color: ["#ff8a00", "#ff4d00"],
     },
     {
       icon: <Ionicons name="phone-portrait-outline" size={30} color="#fff" />,
       title: "Cross-Platform Access",
       description:
-        "Access ParseIT Hub on any device. Fully responsive web app and native mobile experience built with React Native (Expo).",
+        "Use ParseIT Hub anytime, anywhere through a fully responsive web application and native mobile experience with synchronized access across devices.",
       color: ["#ff2d7a", "#ff4385"],
     },
   ];
@@ -175,7 +178,7 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
       icon: <Ionicons name="school-outline" size={30} color="#fff" />,
       title: "Student Dashboard",
       description:
-        "Performance tracking, assignment submissions, AI tutor access, and personalized learning recommendations.",
+        "Assignment grade tracking, performance analytics, AI tutor access, and personalized learning recommendations.",
       bullets: ["Performance Metrics", "Assignment Tracker", "AI Assistance", "Progress Reports"],
       color: ["#ff003d", "#ff5a1f"],
     },
@@ -183,7 +186,7 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
       icon: <Feather name="users" size={30} color="#fff" />,
       title: "Teacher Dashboard",
       description:
-        "Class monitoring, student analytics, assignment management, and performance reports for effective teaching.",
+        "Assignment analytics, grade monitoring, class performance, and student progress reports.",
       bullets: ["Class Analytics", "Student Monitoring", "Grade Management", "Reports & Insights"],
       color: ["#ff8a00", "#ff5a00"],
     },
@@ -191,32 +194,32 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
       icon: <Feather name="shield" size={30} color="#fff" />,
       title: "Admin Dashboard",
       description:
-        "System-wide analytics, user management, institutional insights, and platform configuration.",
-      bullets: ["System Analytics", "User Management", "Institutional Reports", "Platform Config"],
+        "System-wide analytics, user management, and institutional insights",
+      bullets: ["System Analytics", "User Management", "Institutional Reports"],
       color: ["#ff2d7a", "#ff4c98"],
     },
     {
       icon: <Ionicons name="chatbox-outline" size={30} color="#fff" />,
       title: "Messaging & Collaboration",
       description:
-        "Real-time communication between students, teachers, and administrators for seamless collaboration.",
-      bullets: ["Direct Messaging", "Group Chats", "Announcements", "Notifications"],
+        "Real-time communication between students and teachers for seamless collaboration.",
+      bullets: ["Group Chats", "Announcements", "Notifications"],
       color: ["#bd6f00", "#2e241d"],
     },
     {
       icon: <Ionicons name="book-outline" size={30} color="#fff" />,
       title: "Learning Materials",
       description:
-        "Comprehensive resource library with video tutorials, coding challenges, and interactive lessons.",
-      bullets: ["Video Tutorials", "Code Examples", "Documentation", "Practice Problems"],
+        "Access organized course materials, lecture resources, and downloadable documents to support classroom learning and independent study.",
+      bullets: ["Lecture Notes", "PDF & Presentation Files", "Downloadable Resources", "Inline Document Viewer"],
       color: ["#ff193f", "#f50732"],
     },
     {
       icon: <Ionicons name="game-controller-outline" size={30} color="#fff" />,
-      title: "Gamified Learning",
+      title: "AI Learning Games",
       description:
-        "Interactive games and challenges that make programming education engaging and fun.",
-      bullets: ["Coding Games", "Leaderboards", "Achievements", "Challenges"],
+        "Generate interactive learning games from lesson materials to reinforce programming concepts through AI-powered quizzes, flashcards, matching activities, and fill-in-the-blank challenges.",
+      bullets: ["AI-Generated Quiz Games", "Flashcards", "Matching Cards", "Trivia & Fill-in-the-Blank"],
       color: ["#ff7a00", "#ff4b00"],
     },
   ];
@@ -225,45 +228,45 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
     {
       icon: <Ionicons name="school-outline" size={34} color="#fff" />,
       eyebrow: "FOR STUDENTS",
-      title: "Learn Programming with AI Tutor",
+      title: "Learn Anytime, Anywhere",
       description:
-        "Get personalized assistance while learning to code, receive instant feedback on your work, and track your progress in real-time.",
+        "Access learning materials, explore educational video tutorials, submit assignments, participate in AI-powered learning activities, communicate with instructors, and monitor your academic progress—all within one intelligent learning platform.",
       bullets: [
-        "24/7 AI tutoring ",
-        "Instant debugging and code feedback",
-        "Personalized learning recommendations",
-        "Track your performance and progress",
-        "Access to comprehensive learning resources",
+        "Access Learning Materials",
+        "Search Educational Videos",
+        "AI Assistant Mode",
+        "AI Tutor Mode",
+        "Submit Assignments",
+        "Track Assignment Grades",
       ],
       color: ["#ff3b30", "#ff6b00"],
     },
     {
       icon: <Feather name="users" size={34} color="#fff" />,
       eyebrow: "FOR TEACHERS",
-      title: "Monitor Class Performance with Analytics",
+      title: "Manage Classes with Ease",
       description:
-        "Gain deep insights into student performance, identify struggling learners early, and make data-driven decisions for your classroom.",
+        "Create and manage classes, distribute learning materials, monitor student progress, evaluate assignments, and gain valuable insights through assignment analytics.",
       bullets: [
-        "Real-time class performance dashboard",
-        "Identify at-risk students proactively",
-        "Track individual and group progress",
-        "Generate comprehensive reports",
-        "Manage assignments and assessments",
+        "Upload learning materials",
+        "Create and manage assignments",
+        "Monitor class performance",
+        "Generate AI learning activities",
+        "Communicate with students",
       ],
       color: ["#ff8a00", "#ff6d00"],
     },
     {
       icon: <Feather name="shield" size={34} color="#fff" />,
       eyebrow: "FOR ADMINISTRATORS",
-      title: "Manage System & Analyze Institutional Data",
+      title: "Oversee the Learning Platform",
       description:
-        "Access system-wide analytics, manage users and resources, and derive institutional insights for strategic decision-making.",
+        "Manage users, oversee academic activities, monitor institutional performance, and maintain a secure, organized, and efficient learning environment.",
       bullets: [
-        "Institutional performance analytics",
-        "User and resource management",
-        "System configuration and oversight",
-        "Department-level insights",
-        "Data export and reporting tools",
+        "User management",
+        "Institution-wide analytics",
+        "Academic monitoring",
+        "Reports and insights",
       ],
       color: ["#ff2d7a", "#ff4c98"],
     },
@@ -290,6 +293,8 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
             useNativeDriver: true,
             listener: (event: any) => {
               handleScrollPosition(event.nativeEvent.contentOffset.y);
+              // Close menu when scrolling
+              if (menuOpen) setMenuOpen(false);
             },
           }
         )}
@@ -299,7 +304,15 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
           <View style={styles.bgGlowTwo} />
 
           <View style={[styles.container, isSmall && styles.containerSmall]}>
-            <Header isMobile={isMobile} isSmall={isSmall} navItems={navItems} scrollToSection={scrollToSection} onGetStarted={goToSignIn} />
+            <Header 
+              isMobile={isMobile} 
+              isSmall={isSmall} 
+              navItems={navItems} 
+              scrollToSection={scrollToSection} 
+              onGetStarted={goToSignIn}
+              menuOpen={menuOpen}
+              setMenuOpen={setMenuOpen}
+            />
 
             <View style={[styles.hero, isDesktop ? styles.heroDesktop : styles.heroStack]}>
               <View style={[styles.heroLeft, isDesktop && styles.heroLeftDesktop]}>
@@ -310,7 +323,7 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
                 </GradientTextLike>
 
                 <Text style={[styles.heroDescription, isTablet && styles.heroDescriptionTablet, isSmall && styles.heroDescriptionSmall]}>
-                  ParseIT Hub combines an intelligent AI tutor with predictive analytics to transform programming education. Get personalized learning assistance, track student performance, and gain actionable academic insights—all in one platform.
+                 ParseIT Hub is an AI-powered Learning Management System that combines classroom management, AI tutoring, educational video resources, assignment analytics, interactive learning games, and collaboration tools to create a smarter teaching and learning experience.
                 </Text>
 
                 <View style={[styles.heroButtons, isSmall && styles.heroButtonsSmall]}>
@@ -326,9 +339,9 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
                 </View>
 
                 <View style={[styles.heroStats, isSmall && styles.heroStatsSmall]}>
-                  <StatMini value="AI-Powered" label="ChatGPT-Style Tutor" accent="pink" />
-                  <StatMini value="Real-Time" label="Analytics Dashboard" accent="orange" />
-                  <StatMini value="Cross-Platform" label="Web & Mobile" accent="pink" />
+                  <StatMini value="AI-Powered" label="Gemini-Style Tutor" accent="pink" isSmall={isSmall} />
+                  <StatMini value="Real-Time" label="Analytics Dashboard" accent="orange" isSmall={isSmall} />
+                  <StatMini value="Cross-Platform" label="Web & Mobile" accent="pink" isSmall={isSmall} />
                 </View>
               </View>
 
@@ -339,7 +352,7 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
           </View>
 
           <SectionWrapper scrollY={scrollY} onLayout={onSectionLayout("features")}>
-            <SectionHeader scrollY={scrollY} title="Complete Academic Ecosystem" subtitle="More than just a chatbot—ParseIT Hub is a comprehensive platform combining AI tutoring with powerful analytics for next-generation learning." />
+            <SectionHeader scrollY={scrollY} isMobile={isMobile} isSmall={isSmall} title="Complete Academic Ecosystem" subtitle="More than just a chatbot—ParseIT Hub is a comprehensive platform combining AI tutoring with powerful analytics for next-generation learning." />
             <ResponsiveGrid>
               {features.map((feature, index) => (
                 <FeatureTile key={feature.title} feature={feature} index={index} />
@@ -348,18 +361,18 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
           </SectionWrapper>
 
           <SectionWrapper scrollY={scrollY} onLayout={onSectionLayout("how")}>
-            <SectionHeader scrollY={scrollY} title="How It Works" subtitle="A seamless learning experience powered by AI and data analytics" />
+            <SectionHeader scrollY={scrollY} isMobile={isMobile} isSmall={isSmall} title="How It Works" subtitle="A seamless learning experience powered by AI and data analytics" />
             <View style={[styles.stepsGrid, isMobile && styles.stepsGridMobile]}>
-              <StepCard revealDirection="left" index={1} title="Student Interacts" description="Students engage with the platform by asking questions, submitting assignments, and completing practice challenges, while the system generates follow-up activities based on their performance." icon={<Feather name="user" size={30} color="#ff6b78" />} />
+              <StepCard revealDirection="left" index={1} title="Student Interacts" description="Students engage with the platform by asking questions, submitting assignments, and completing practice challenges, while the system generates follow-up activities based on their performance." icon={<Feather name="user" size={30} color="#ff6b78" />} isSmall={isSmall} />
               <StepArrow hidden={isMobile} />
-              <StepCard revealDirection="up" index={2} title="AI Processes & Guides" description="The AI assistant analyzes inputs, provides intelligent feedback, and offers personalized tutoring in real-time." icon={<MaterialCommunityIcons name="brain" size={34} color="#ff9700" />} />
+              <StepCard revealDirection="up" index={2} title="AI Processes & Guides" description="The AI assistant analyzes inputs, provides intelligent feedback, and offers personalized tutoring in real-time." icon={<MaterialCommunityIcons name="brain" size={34} color="#ff9700" />} isSmall={isSmall} />
               <StepArrow hidden={isMobile} />
-              <StepCard revealDirection="right" index={3} title="Analytics Track & Improve" description="Predictive analytics monitor performance, identify learning gaps, and suggest targeted improvements for each student." icon={<Feather name="trending-up" size={34} color="#ff5d82" />} />
+              <StepCard revealDirection="right" index={3} title="Analytics Track & Improve" description="Analytics Dashboard monitor performance, identify learning gaps, and suggest targeted improvements for each student." icon={<Feather name="trending-up" size={34} color="#ff5d82" />} isSmall={isSmall} />
             </View>
           </SectionWrapper>
 
           <SectionWrapper scrollY={scrollY} onLayout={onSectionLayout("modules")}>
-            <SectionHeader scrollY={scrollY} title="Comprehensive Module Suite" subtitle="Everything you need for modern programming education—from dashboards to collaboration tools" />
+            <SectionHeader scrollY={scrollY} isMobile={isMobile} isSmall={isSmall} title="Comprehensive Module Suite" subtitle="Everything you need for modern programming education—from dashboards to collaboration tools" />
             <ResponsiveGrid>
               {moduleCards.map((module, index) => (
                 <ModuleTile key={module.title} module={module} index={index} />
@@ -368,28 +381,28 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
           </SectionWrapper>
 
           <SectionWrapper scrollY={scrollY} onLayout={onSectionLayout("users")}>
-            <SectionHeader scrollY={scrollY} title="Built for Every User" subtitle="Tailored experiences for students, teachers, and administrators" />
-            <View style={[styles.userGrid, isMobile && styles.userGridMobile]}>
+            <SectionHeader scrollY={scrollY} isMobile={isMobile} isSmall={isSmall} title="Built for Modern Education" subtitle="Tailored experiences for students, teachers, and administrators" />
+            <View style={[styles.userGrid, isMobile && styles.userGridMobile, isSmall && styles.userGridSmall]}>
               {userCards.map((card, index) => (
-                <UserTile key={card.eyebrow} card={card} index={index} />
+                <UserTile key={card.eyebrow} card={card} index={index} isSmall={isSmall} />
               ))}
             </View>
           </SectionWrapper>
 
           <SectionWrapper scrollY={scrollY} onLayout={onSectionLayout("analytics")}>
-            <SectionHeader scrollY={scrollY} title="AI + Analytics = Smart Learning" subtitle="Combining artificial intelligence with predictive analytics for unprecedented educational insights" />
-            <View style={[styles.analyticsTopGrid, isMobile && styles.analyticsTopGridMobile]}>
+            <SectionHeader scrollY={scrollY} isMobile={isMobile} isSmall={isSmall} title="AI + Assignment Analytics = Smarter Learning" subtitle="Combining AI tutoring with assignment performance analytics to support personalized learning and informed teaching." />
+            <View style={[styles.analyticsTopGrid, isMobile && styles.analyticsTopGridMobile, isSmall && styles.analyticsTopGridSmall]}>
               <AnalyticsMini index={0} icon={<MaterialCommunityIcons name="brain" size={36} color="#ff6b78" />} title="Real-time AI Assistance" text="Intelligent tutoring that adapts to each student's learning pace and style." />
-              <AnalyticsMini index={1} icon={<Feather name="bar-chart-2" size={36} color="#ff6b78" />} title="Data-Driven Insights" text="Comprehensive analytics to track progress and identify improvement areas." />
-              <AnalyticsMini index={2} icon={<Feather name="target" size={36} color="#ff6b78" />} title="Personalized Learning" text="Customized recommendations based on individual performance and goals." />
+              <AnalyticsMini index={1} icon={<Feather name="bar-chart-2" size={36} color="#ff6b78" />} title="Data-Driven Insights" text="Analyze assignment grades, monitor academic progress, and identify learning gaps through interactive dashboards." />
+              <AnalyticsMini index={2} icon={<Feather name="target" size={36} color="#ff6b78" />} title="Personalized Learning" text="Receive AI-generated recommendations based on assignment performance and learning progress." />
             </View>
 
             <View style={[styles.chartGrid, isMobile && styles.chartGridMobile]}>
-              <PerformanceChart revealDirection="left" />
-              <SkillsRadar revealDirection="right" />
+              <PerformanceChart revealDirection="left" isSmall={isSmall} />
+              <SkillsRadar revealDirection="right" isSmall={isSmall} />
             </View>
 
-            <View style={[styles.metricStrip, isMobile && styles.metricStripMobile]}>
+            <View style={[styles.metricStrip, isMobile && styles.metricStripMobile, isSmall && styles.metricStripSmall]}>
               <MetricBig index={0} value="95%" label="AI Accuracy" />
               <MetricBig index={1} value="10K+" label="Questions Answered" orange />
               <MetricBig index={2} value="85%" label="Student Satisfaction" />
@@ -399,18 +412,18 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
 
           
 
-          <View style={styles.ctaOuter}>
-            <ScrollReveal scrollY={scrollY} direction="left" distance={32} style={styles.ctaCard}>
+          <View style={[styles.ctaOuter, isSmall && styles.ctaOuterSmall]}>
+            <ScrollReveal scrollY={scrollY} direction="left" distance={32} style={[styles.ctaCard, isMobile && styles.ctaCardMobile, isSmall && styles.ctaCardSmall]}>
               <Pill icon={<Feather name="zap" size={17} color="#ff9aa5" />} text="Transform Learning with AI" centered />
-              <Text style={[styles.ctaTitle, isSmall && styles.ctaTitleSmall]}>Ready to Revolutionize Education?</Text>
-              <Text style={styles.ctaText}>
-               Join ParseIT Hub 2.0 and experience the future of AI-powered education. Empower students with intelligent tutoring, equip teachers with advanced analytics, and transform your institution.
+              <Text style={[styles.ctaTitle, isMobile && styles.ctaTitleMobile, isSmall && styles.ctaTitleSmall]}>Ready to Revolutionize Education?</Text>
+              <Text style={[styles.ctaText, isMobile && styles.ctaTextMobile, isSmall && styles.ctaTextSmall]}>
+               Join ParseIT Hub and experience the future of AI-powered education. Empower students with AI tutoring, help teachers monitor assignment performance, and make informed academic decisions through interactive analytics.
               </Text>
               <View style={[styles.ctaActions, isSmall && styles.ctaActionsSmall]}>
                 <TouchableOpacity activeOpacity={0.9} onPress={goToSignIn} style={[styles.ctaPrimary, isSmall && styles.buttonFull]}>
-                  <LinearGradient colors={["#ff0019", "#ff4f00"]} style={styles.ctaPrimaryGradient}>
-                    <Text style={styles.ctaPrimaryText}>Start Using ParseIT Hub Today</Text>
-                    <Feather name="arrow-right" size={22} color="#fff" />
+                  <LinearGradient colors={["#ff0019", "#ff4f00"]} style={[styles.ctaPrimaryGradient, isSmall && styles.ctaPrimaryGradientSmall]}>
+                    <Text style={[styles.ctaPrimaryText, isSmall && styles.ctaPrimaryTextSmall]}>Start Using ParseIT Hub Today</Text>
+                    <Feather name="arrow-right" size={isSmall ? 19 : 22} color="#fff" />
                   </LinearGradient>
                 </TouchableOpacity>
               </View>
@@ -497,7 +510,23 @@ function ScrollReveal({
   );
 }
 
-function Header({ isMobile, isSmall, navItems, scrollToSection, onGetStarted }: { isMobile: boolean; isSmall: boolean; navItems: { label: string; section: SectionKey }[]; scrollToSection: (section: SectionKey) => void; onGetStarted: () => void; }) {
+function Header({ 
+  isMobile, 
+  isSmall, 
+  navItems, 
+  scrollToSection, 
+  onGetStarted,
+  menuOpen,
+  setMenuOpen
+}: { 
+  isMobile: boolean; 
+  isSmall: boolean; 
+  navItems: { label: string; section: SectionKey }[]; 
+  scrollToSection: (section: SectionKey) => void; 
+  onGetStarted: () => void;
+  menuOpen: boolean;
+  setMenuOpen: (open: boolean) => void;
+}) {
   return (
     <View style={[styles.header, isMobile && styles.headerMobile]}>
       <View style={styles.brandRow}>
@@ -514,16 +543,55 @@ function Header({ isMobile, isSmall, navItems, scrollToSection, onGetStarted }: 
         </View>
       </View>
 
-      <View style={[styles.navRow, isMobile && styles.navRowMobile]}>
-        {navItems.map((item) => (
-          <TouchableOpacity key={item.label} onPress={() => scrollToSection(item.section)} style={styles.navItem}>
-            <Text style={styles.navText}>{item.label}</Text>
+      {/* Desktop/Tablet Navigation */}
+      {!isMobile && (
+        <View style={[styles.navRow, isMobile && styles.navRowMobile]}>
+          {navItems.map((item) => (
+            <TouchableOpacity key={item.label} onPress={() => scrollToSection(item.section)} style={styles.navItem}>
+              <Text style={styles.navText}>{item.label}</Text>
+            </TouchableOpacity>
+          ))}
+          <TouchableOpacity onPress={onGetStarted} style={styles.signInButton}>
+            <Text style={styles.signInText}>Sign In</Text>
           </TouchableOpacity>
-        ))}
-        <TouchableOpacity onPress={onGetStarted} style={styles.signInButton}>
-          <Text style={styles.signInText}>Sign In</Text>
-        </TouchableOpacity>
-      </View>
+        </View>
+      )}
+
+      {/* Mobile Hamburger Menu Button */}
+      {isMobile && (
+        <View style={styles.mobileHeaderRight}>
+          <TouchableOpacity onPress={onGetStarted} style={styles.signInButtonMobile}>
+            <Text style={styles.signInText}>Sign In</Text>
+          </TouchableOpacity>
+          <TouchableOpacity 
+            onPress={() => setMenuOpen(!menuOpen)} 
+            style={styles.hamburgerButton}
+            accessibilityRole="button"
+            accessibilityLabel={menuOpen ? "Close menu" : "Open menu"}
+          >
+            <Feather 
+              name={menuOpen ? "x" : "menu"} 
+              size={28} 
+              color="#fff" 
+            />
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {/* Mobile Menu Dropdown */}
+      {isMobile && menuOpen && (
+        <View style={styles.mobileMenu}>
+          {navItems.map((item) => (
+            <TouchableOpacity 
+              key={item.label} 
+              onPress={() => scrollToSection(item.section)} 
+              style={styles.mobileMenuItem}
+            >
+              <Text style={styles.mobileMenuText}>{item.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
     </View>
   );
 }
@@ -545,10 +613,10 @@ function GradientTextLike({ children, isDesktop, isTablet, isSmall }: { children
   );
 }
 
-function StatMini({ value, label, accent }: { value: string; label: string; accent: "pink" | "orange" }) {
+function StatMini({ value, label, accent, isSmall }: { value: string; label: string; accent: "pink" | "orange"; isSmall?: boolean }) {
   return (
-    <View style={styles.statMini}>
-      <Text style={[styles.statMiniValue, accent === "orange" && styles.orangeText]}>{value}</Text>
+    <View style={[styles.statMini, isSmall && styles.statMiniSmall]}>
+      <Text style={[styles.statMiniValue, accent === "orange" && styles.orangeText, isSmall && styles.statMiniValueSmall]}>{value}</Text>
       <Text style={styles.statMiniLabel}>{label}</Text>
     </View>
   );
@@ -556,6 +624,8 @@ function StatMini({ value, label, accent }: { value: string; label: string; acce
 
 function HeroMockup({ compact }: { compact: boolean }) {
   const sparkBounce = useRef(new Animated.Value(0)).current;
+  const { width } = useWindowDimensions();
+  const isSmall = width < 430;
 
   useEffect(() => {
     const animation = Animated.loop(
@@ -581,13 +651,13 @@ function HeroMockup({ compact }: { compact: boolean }) {
 
   return (
     <View style={[styles.mockupWrap, compact && styles.mockupWrapCompact]}>
-      <Animated.View style={[styles.sparkFloat, { transform: [{ translateY: sparkBounce }] }]}>
-        <Ionicons name="sparkles-outline" size={30} color="#fff" />
+      <Animated.View style={[styles.sparkFloat, isSmall && styles.sparkFloatSmall, { transform: [{ translateY: sparkBounce }] }]}>
+        <Ionicons name="sparkles-outline" size={isSmall ? 22 : 30} color="#fff" />
       </Animated.View>
-      <View style={styles.mockupCard}>
+      <View style={[styles.mockupCard, isSmall && styles.mockupCardSmall]}>
         <View style={styles.mockupHeader}>
           <View style={styles.mockupBrandRow}>
-            <View style={styles.mockupIcon}>
+            <View style={[styles.mockupIcon, isSmall && styles.mockupIconSmall]}>
               <Image
                 source={require("../../assets/images/logo.png")}
                 style={styles.mockupLogoImage}
@@ -595,7 +665,7 @@ function HeroMockup({ compact }: { compact: boolean }) {
               />
             </View>
             <View>
-              <Text style={styles.mockupTitle}>ParseIT Hub</Text>
+              <Text style={[styles.mockupTitle, isSmall && styles.mockupTitleSmall]}>ParseIT Hub</Text>
               <Text style={styles.mockupSubtitle}>Student Dashboard</Text>
             </View>
           </View>
@@ -606,16 +676,16 @@ function HeroMockup({ compact }: { compact: boolean }) {
           </View>
         </View>
         <View style={[styles.mockupStats, compact && styles.mockupStatsCompact]}>
-          <View style={styles.mockupStatCard}>
-            <Text style={styles.mockupStatValue}>92%</Text>
+          <View style={[styles.mockupStatCard, isSmall && styles.mockupStatCardSmall]}>
+            <Text style={[styles.mockupStatValue, isSmall && styles.mockupStatValueSmall]}>92%</Text>
             <Text style={styles.mockupStatLabel}>Overall Performance</Text>
           </View>
-          <View style={styles.mockupStatCardOrange}>
-            <Text style={styles.orangeStatValue}>24</Text>
+          <View style={[styles.mockupStatCardOrange, isSmall && styles.mockupStatCardSmall]}>
+            <Text style={[styles.orangeStatValue, isSmall && styles.mockupStatValueSmall]}>24</Text>
             <Text style={styles.mockupStatLabel}>Tasks Completed</Text>
           </View>
         </View>
-        <View style={styles.aiBox}>
+        <View style={[styles.aiBox, isSmall && styles.aiBoxSmall]}>
           <View style={styles.aiBoxHeader}>
             <MaterialCommunityIcons name="brain" size={20} color="#ff6676" />
             <Text style={styles.aiBoxTitle}>AI Assistant</Text>
@@ -642,7 +712,8 @@ function SectionWrapper({
   onLayout?: (event: LayoutChangeEvent) => void;
   scrollY: Animated.Value;
 }) {
-  const { height } = useWindowDimensions();
+  const { height, width } = useWindowDimensions();
+  const isSmall = width < 430;
   const [sectionY, setSectionY] = React.useState(0);
 
   const start = Math.max(0, sectionY - height * 0.96);
@@ -660,7 +731,7 @@ function SectionWrapper({
         setSectionY(event.nativeEvent.layout.y);
         onLayout?.(event);
       }}
-      style={styles.sectionOuter}
+      style={[styles.sectionOuter, isSmall && styles.sectionOuterSmall]}
     >
       <RevealSectionContext.Provider value={{ scrollY, sectionY }}>
         <Animated.View style={[styles.container, { opacity: sectionOpacity }]}>{children}</Animated.View>
@@ -719,14 +790,14 @@ function ContainerReveal({
   );
 }
 
-function SectionHeader({ title, subtitle, scrollY }: { title: string; subtitle: string; scrollY: Animated.Value }) {
+function SectionHeader({ title, subtitle, scrollY, isMobile, isSmall }: { title: string; subtitle: string; scrollY: Animated.Value; isMobile?: boolean; isSmall?: boolean }) {
   return (
-    <View style={styles.sectionHeader}>
+    <View style={[styles.sectionHeader, isSmall && styles.sectionHeaderSmall]}>
       <ContainerReveal direction="left" distance={24}>
-        <Text style={styles.sectionTitle}>{title}</Text>
+        <Text style={[styles.sectionTitle, isMobile && styles.sectionTitleMobile, isSmall && styles.sectionTitleSmall]}>{title}</Text>
       </ContainerReveal>
       <ContainerReveal direction="right" distance={24}>
-        <Text style={styles.sectionSubtitle}>{subtitle}</Text>
+        <Text style={[styles.sectionSubtitle, isMobile && styles.sectionSubtitleMobile, isSmall && styles.sectionSubtitleSmall]}>{subtitle}</Text>
       </ContainerReveal>
     </View>
   );
@@ -734,33 +805,46 @@ function SectionHeader({ title, subtitle, scrollY }: { title: string; subtitle: 
 
 function ResponsiveGrid({ children }: { children: React.ReactNode }) {
   const { width } = useWindowDimensions();
-  const isDesktop = width >= 1000;
-  const isTablet = width >= 690 && width < 1000;
-  return <View style={[styles.grid, isDesktop ? styles.gridDesktop : isTablet ? styles.gridTablet : styles.gridMobile]}>{children}</View>;
+  const isDesktop = width >= 1100;
+  const isTablet = width >= 768 && width < 1100;
+  const isMobile = width < 768;
+  const isSmall = width < 430;
+
+  return (
+    <View style={[
+      styles.grid,
+      isDesktop ? styles.gridDesktop : isTablet ? styles.gridTablet : styles.gridMobile,
+      isSmall && styles.gridSmall,
+    ]}>
+      {children}
+    </View>
+  );
 }
 
 function FeatureTile({ feature, index }: { feature: FeatureCard; index: number }) {
+  const { width } = useWindowDimensions();
+  const isSmall = width < 430;
   const direction: RevealDirection = index % 2 === 0 ? "left" : "right";
   return (
-    <ContainerReveal direction={direction} distance={32} style={styles.cardBase}>
-      <LinearGradient colors={feature.color} style={styles.tileIcon}>
+    <ContainerReveal direction={direction} distance={32} style={[styles.cardBase, isSmall && styles.cardBaseSmall]}>
+      <LinearGradient colors={feature.color} style={[styles.tileIcon, isSmall && styles.tileIconSmall]}>
         {feature.icon}
       </LinearGradient>
-      <Text style={styles.tileTitle}>{feature.title}</Text>
-      <Text style={styles.tileDescription}>{feature.description}</Text>
+      <Text style={[styles.tileTitle, isSmall && styles.tileTitleSmall]}>{feature.title}</Text>
+      <Text style={[styles.tileDescription, isSmall && styles.tileDescriptionSmall]}>{feature.description}</Text>
     </ContainerReveal>
   );
 }
 
-function StepCard({ index, title, description, icon, revealDirection = "up" }: { index: number; title: string; description: string; icon: React.ReactNode; revealDirection?: RevealDirection }) {
+function StepCard({ index, title, description, icon, revealDirection = "up", isSmall }: { index: number; title: string; description: string; icon: React.ReactNode; revealDirection?: RevealDirection; isSmall?: boolean }) {
   return (
-    <ContainerReveal direction={revealDirection} distance={32} style={styles.stepCard}>
+    <ContainerReveal direction={revealDirection} distance={32} style={[styles.stepCard, isSmall && styles.stepCardSmall]}>
       <LinearGradient colors={index === 2 ? ["#ff7a00", "#ff4d00"] : index === 3 ? ["#ff0062", "#ff2f75"] : ["#ff0019", "#ff2848"]} style={styles.stepNumber}>
         <Text style={styles.stepNumberText}>{index}</Text>
       </LinearGradient>
       <View style={styles.stepIconBox}>{icon}</View>
-      <Text style={styles.stepTitle}>{title}</Text>
-      <Text style={styles.stepText}>{description}</Text>
+      <Text style={[styles.stepTitle, isSmall && styles.stepTitleSmall]}>{title}</Text>
+      <Text style={[styles.stepText, isSmall && styles.stepTextSmall]}>{description}</Text>
     </ContainerReveal>
   );
 }
@@ -776,38 +860,40 @@ function StepArrow({ hidden }: { hidden: boolean }) {
 }
 
 function ModuleTile({ module, index }: { module: ModuleCard; index: number }) {
+  const { width } = useWindowDimensions();
+  const isSmall = width < 430;
   const direction: RevealDirection = index % 2 === 0 ? "left" : "right";
   return (
-    <ContainerReveal direction={direction} distance={32} style={styles.cardBase}>
-      <LinearGradient colors={module.color} style={styles.moduleIcon}>
+    <ContainerReveal direction={direction} distance={32} style={[styles.cardBase, isSmall && styles.cardBaseSmall]}>
+      <LinearGradient colors={module.color} style={[styles.moduleIcon, isSmall && styles.moduleIconSmall]}>
         {module.icon}
       </LinearGradient>
-      <Text style={styles.tileTitle}>{module.title}</Text>
-      <Text style={styles.tileDescription}>{module.description}</Text>
-      <View style={styles.bulletStack}>
+      <Text style={[styles.tileTitle, isSmall && styles.tileTitleSmall]}>{module.title}</Text>
+      <Text style={[styles.tileDescription, isSmall && styles.tileDescriptionSmall]}>{module.description}</Text>
+      <View style={[styles.bulletStack, isSmall && styles.bulletStackSmall]}>
         {module.bullets.map((bullet) => (
-          <Text key={bullet} style={styles.moduleBullet}>{bullet}</Text>
+          <Text key={bullet} style={[styles.moduleBullet, isSmall && styles.moduleBulletSmall]}>{bullet}</Text>
         ))}
       </View>
     </ContainerReveal>
   );
 }
 
-function UserTile({ card, index }: { card: UserCard; index: number }) {
+function UserTile({ card, index, isSmall }: { card: UserCard; index: number; isSmall?: boolean }) {
   const direction: RevealDirection = index % 2 === 0 ? "left" : "right";
   return (
-    <ContainerReveal direction={direction} distance={34} style={styles.userCard}>
-      <LinearGradient colors={card.color} style={styles.userIcon}>
+    <ContainerReveal direction={direction} distance={34} style={[styles.userCard, isSmall && styles.userCardSmall]}>
+      <LinearGradient colors={card.color} style={[styles.userIcon, isSmall && styles.userIconSmall]}>
         {card.icon}
       </LinearGradient>
-      <Text style={styles.userEyebrow}>{card.eyebrow}</Text>
-      <Text style={styles.userTitle}>{card.title}</Text>
-      <Text style={styles.userDescription}>{card.description}</Text>
-      <View style={styles.checkStack}>
+      <Text style={[styles.userEyebrow, isSmall && styles.userEyebrowSmall]}>{card.eyebrow}</Text>
+      <Text style={[styles.userTitle, isSmall && styles.userTitleSmall]}>{card.title}</Text>
+      <Text style={[styles.userDescription, isSmall && styles.userDescriptionSmall]}>{card.description}</Text>
+      <View style={[styles.checkStack, isSmall && styles.checkStackSmall]}>
         {card.bullets.map((bullet) => (
-          <View key={bullet} style={styles.checkRow}>
-            <Feather name="check-circle" size={22} color="#00f58a" />
-            <Text style={styles.checkText}>{bullet}</Text>
+          <View key={bullet} style={[styles.checkRow, isSmall && styles.checkRowSmall]}>
+            <Feather name="check-circle" size={isSmall ? 16 : 22} color="#00f58a" />
+            <Text style={[styles.checkText, isSmall && styles.checkTextSmall]}>{bullet}</Text>
           </View>
         ))}
       </View>
@@ -816,17 +902,19 @@ function UserTile({ card, index }: { card: UserCard; index: number }) {
 }
 
 function AnalyticsMini({ icon, title, text, index }: { icon: React.ReactNode; title: string; text: string; index: number }) {
+  const { width } = useWindowDimensions();
+  const isSmall = width < 430;
   const direction: RevealDirection = index % 2 === 0 ? "left" : "right";
   return (
-    <ContainerReveal direction={direction} distance={30} style={styles.analyticsMini}>
+    <ContainerReveal direction={direction} distance={30} style={[styles.analyticsMini, isSmall && styles.analyticsMiniSmall]}>
       {icon}
-      <Text style={styles.analyticsMiniTitle}>{title}</Text>
-      <Text style={styles.analyticsMiniText}>{text}</Text>
+      <Text style={[styles.analyticsMiniTitle, isSmall && styles.analyticsMiniTitleSmall]}>{title}</Text>
+      <Text style={[styles.analyticsMiniText, isSmall && styles.analyticsMiniTextSmall]}>{text}</Text>
     </ContainerReveal>
   );
 }
 
-function PerformanceChart({ revealDirection = "left" }: { revealDirection?: RevealDirection }) {
+function PerformanceChart({ revealDirection = "left", isSmall }: { revealDirection?: RevealDirection; isSmall?: boolean }) {
   const performanceData = [
     { month: "Jan", score: 65, engagement: 70 },
     { month: "Feb", score: 72, engagement: 75 },
@@ -891,14 +979,15 @@ function PerformanceChart({ revealDirection = "left" }: { revealDirection?: Reve
   const tooltipY = activePoint ? (activePoint.y < 80 ? activePoint.y + 12 : activePoint.y - 64) : 0;
 
   return (
-    <ContainerReveal direction={revealDirection} distance={34} style={styles.chartCard}>
+    <ContainerReveal direction={revealDirection} distance={34} style={[styles.chartCard, isSmall && styles.chartCardSmall]}>
       <View style={styles.chartHeader}>
         <LinearGradient colors={["#ff3b30", "#ff7a00"]} style={styles.chartIconSmall}>
           <Feather name="trending-up" size={22} color="#fff" />
         </LinearGradient>
-        <View>
-          <Text style={styles.chartTitle}>Performance Trends</Text>
-          <Text style={styles.chartSubtitle}>Student progress over time</Text>
+        {/* FIX: Added flex: 1 and flexShrink: 1 to prevent text overflow on small screens */}
+        <View style={{ flex: 1, flexShrink: 1 }}>
+          <Text style={[styles.chartTitle, isSmall && styles.chartTitleSmall]}>Assignment Score Trend</Text>
+          <Text style={[styles.chartSubtitle, isSmall && styles.chartSubtitleSmall]}>Assignment scores over time</Text>
         </View>
       </View>
 
@@ -1001,7 +1090,7 @@ function PerformanceChart({ revealDirection = "left" }: { revealDirection?: Reve
         </Svg>
       </View>
 
-      <View style={styles.legendRow}>
+      <View style={[styles.legendRow, isSmall && styles.legendRowSmall]}>
         <View style={[styles.legendDot, { backgroundColor: "#ff3344" }]} />
         <Text style={styles.legendText}>Score</Text>
         <View style={[styles.legendDot, { backgroundColor: "#ff7a00" }]} />
@@ -1011,16 +1100,17 @@ function PerformanceChart({ revealDirection = "left" }: { revealDirection?: Reve
   );
 }
 
-function SkillsRadar({ revealDirection = "right" }: { revealDirection?: RevealDirection }) {
+function SkillsRadar({ revealDirection = "right", isSmall }: { revealDirection?: RevealDirection; isSmall?: boolean }) {
   return (
-    <ContainerReveal direction={revealDirection} distance={34} style={styles.chartCard}>
+    <ContainerReveal direction={revealDirection} distance={34} style={[styles.chartCard, isSmall && styles.chartCardSmall]}>
       <View style={styles.chartHeader}>
         <LinearGradient colors={["#ff3b30", "#ff2d7a"]} style={styles.chartIconSmall}>
           <Feather name="bar-chart-2" size={22} color="#fff" />
         </LinearGradient>
-        <View>
-          <Text style={styles.chartTitle}>Skills Analysis</Text>
-          <Text style={styles.chartSubtitle}>Competency across subjects</Text>
+        {/* FIX: Added flex: 1 and flexShrink: 1 to prevent text overflow on small screens */}
+        <View style={{ flex: 1, flexShrink: 1 }}>
+          <Text style={[styles.chartTitle, isSmall && styles.chartTitleSmall]}>Subject Grade Comparison</Text>
+          <Text style={[styles.chartSubtitle, isSmall && styles.chartSubtitleSmall]}>Average assignment grades by subject</Text>
         </View>
       </View>
 
@@ -1057,10 +1147,10 @@ function SkillsRadar({ revealDirection = "right" }: { revealDirection?: RevealDi
             strokeWidth="2"
           />
 
-          <SvgText x="195" y="27" fill="#a8b4cc" fontSize="20" textAnchor="middle">Python</SvgText>
-          <SvgText x="298" y="105" fill="#a8b4cc" fontSize="20" textAnchor="start">JavaScript</SvgText>
+          <SvgText x="195" y="27" fill="#a8b4cc" fontSize="20" textAnchor="middle">Functional English</SvgText>
+          <SvgText x="298" y="105" fill="#a8b4cc" fontSize="20" textAnchor="start">Discrete Mathematics</SvgText>
           <SvgText x="250" y="224" fill="#a8b4cc" fontSize="20" textAnchor="middle">Data Structures</SvgText>
-          <SvgText x="135" y="224" fill="#a8b4cc" fontSize="20" textAnchor="middle">Algorithms</SvgText>
+          <SvgText x="135" y="224" fill="#a8b4cc" fontSize="20" textAnchor="middle">Networking</SvgText>
           <SvgText x="92" y="105" fill="#a8b4cc" fontSize="20" textAnchor="end">Web Dev</SvgText>
 
           <SvgText x="203" y="151" fill="#a8b4cc" fontSize="18">0</SvgText>
@@ -1093,7 +1183,7 @@ function ArchitectureFlow() {
     { icon: <Feather name="users" size={26} color="#fff" />, title: "Users", text: "Students, teachers, and admins access the platform from web and mobile devices." },
     { icon: <Ionicons name="phone-portrait-outline" size={26} color="#fff" />, title: "Frontend", text: "React Native with Expo delivers responsive interfaces across screen sizes." },
     { icon: <Feather name="server" size={26} color="#fff" />, title: "Backend", text: "Firebase services handle authentication, storage, and real-time data operations." },
-    { icon: <MaterialCommunityIcons name="brain" size={26} color="#fff" />, title: "AI + Analytics", text: "AI tutor and predictive analytics provide guidance and learning insights." },
+    { icon: <MaterialCommunityIcons name="brain" size={26} color="#fff" />, title: "AI + Analytics", text: "AI tutor and analytics dashboard provide guidance and learning insights." },
     { icon: <Feather name="database" size={26} color="#fff" />, title: "Database", text: "Firestore stores academic records, content, messages, and system activity." },
   ];
   return (
@@ -1120,9 +1210,12 @@ function SmallTag({ text, orange }: { text: string; orange?: boolean }) {
 }
 
 function Footer() {
+  const { width } = useWindowDimensions();
+  const isMobile = width < 768;
+  const isSmall = width < 430;
   return (
-    <View style={styles.footerOuter}>
-      <View style={styles.footerGrid}>
+    <View style={[styles.footerOuter, isMobile && styles.footerOuterMobile]}>
+      <View style={[styles.footerGrid, isMobile && styles.footerGridMobile]}>
         <View style={styles.footerMain}>
           <View style={styles.footerBrandRow}>
             <View style={styles.footerLogo}>
@@ -1137,50 +1230,25 @@ function Footer() {
               <Text style={styles.footerBrandSub}>AI-Powered Learning Platform</Text>
             </View>
           </View>
-          <Text style={styles.footerDescription}>
-           An intelligent academic platform designed for BSIT students and faculty at Cebu Technological University, combining AI-powered tutoring with predictive analytics for next-generation education.
+          <Text style={[styles.footerDescription, isSmall && styles.footerDescriptionSmall]}>
+           An intelligent academic platform designed for BSIT students and faculty at Cebu Technological University,combining AI-powered tutoring with assignment performance analytics for smarter teaching and learning.
           </Text>
-          <View style={styles.universityRow}>
-            <LinearGradient colors={["#2563eb", "#1d4ed8"]} style={styles.universityIcon}>
-              <Ionicons name="school-outline" size={27} color="#fff" />
-            </LinearGradient>
-            <View>
-              <Text style={styles.universityTitle}>Cebu Technological University - Argao Campus</Text>
-              <Text style={styles.universitySub}>College of Technology and Engineering</Text>
-            </View>
+        </View>
+        
+        {/* University section moved to its own column */}
+        <View style={styles.universityColumn}>
+          <LinearGradient colors={["#2563eb", "#1d4ed8"]} style={styles.universityIcon}>
+            <Ionicons name="school-outline" size={27} color="#fff" />
+          </LinearGradient>
+          <View style={styles.universityTextWrap}>
+            <Text style={styles.universityTitle}>Cebu Technological University - Argao Campus</Text>
+            <Text style={styles.universitySub}>College of Technology and Engineering</Text>
           </View>
         </View>
-        <View style={styles.footerColumn}>
-          <Text style={styles.footerColumnTitle}>Platform</Text>
-          {[
-            ["book-open", "Features"],
-            ["cpu", "AI Assistant"],
-            ["file-text", "Analytics"],
-            ["external-link", "Documentation"],
-          ].map(([icon, label]) => (
-            <View key={label} style={styles.footerLinkRow}>
-              <Feather name={icon as keyof typeof Feather.glyphMap} size={19} color="#93a4bd" />
-              <Text style={styles.footerLinkText}>{label}</Text>
-            </View>
-          ))}
-        </View>
-        <View style={styles.footerColumn}>
-          <Text style={styles.footerColumnTitle}>Resources</Text>
-          {[
-            ["github", "GitHub Repository"],
-            ["file-text", "API Documentation"],
-            ["book-open", "User Guide"],
-            ["mail", "Contact Support"],
-          ].map(([icon, label]) => (
-            <View key={label} style={styles.footerLinkRow}>
-              <Feather name={icon as keyof typeof Feather.glyphMap} size={19} color="#93a4bd" />
-              <Text style={styles.footerLinkText}>{label}</Text>
-            </View>
-          ))}
-        </View>
+
       </View>
       <View style={styles.footerBottom}>
-        <Text style={styles.copyright}>© 2026 ParseIT Hub 2.0 - Cebu Technological University. All rights reserved.</Text>
+        <Text style={styles.copyright}>© 2026 ParseIT Hub  - Cebu Technological University. All rights reserved.</Text>
       </View>
     </View>
   );
@@ -1193,10 +1261,10 @@ const styles = StyleSheet.create({
   bgGlowOne: { position: "absolute", top: -90, right: -90, width: 340, height: 340, borderRadius: 999, backgroundColor: "rgba(255,0,40,0.18)" },
   bgGlowTwo: { position: "absolute", top: 440, left: -120, width: 360, height: 360, borderRadius: 999, backgroundColor: "rgba(255,116,0,0.1)" },
   container: { width: "100%", maxWidth: MAX_WIDTH, alignSelf: "center", paddingHorizontal: 38 },
-  containerSmall: { paddingHorizontal: 18 },
+  containerSmall: { paddingHorizontal: 16 },
 
   header: { paddingVertical: 22, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 20 },
-  headerMobile: { flexDirection: "column", alignItems: "stretch" },
+  headerMobile: { flexDirection: "column", alignItems: "stretch", gap: 12 },
   brandRow: { flexDirection: "row", alignItems: "center", gap: 14, flexShrink: 1 },
   brandIcon: { width: 60, height: 60, borderRadius: 18, alignItems: "center", justifyContent: "center", overflow: "hidden", backgroundColor: "#fff" },
   brandIconSmall: { width: 48, height: 48, borderRadius: 15 },
@@ -1211,6 +1279,27 @@ const styles = StyleSheet.create({
   navText: { color: "#ccd4e4", fontSize: 15, fontWeight: "700" },
   signInButton: { paddingHorizontal: 18, paddingVertical: 12, borderRadius: 16, borderWidth: 1, borderColor: "rgba(255,255,255,0.15)", backgroundColor: "rgba(255,255,255,0.07)" },
   signInText: { color: "#fff", fontWeight: "800" },
+  
+  // Mobile header styles
+  mobileHeaderRight: { flexDirection: "row", alignItems: "center", gap: 12 },
+  signInButtonMobile: { paddingHorizontal: 14, paddingVertical: 10, borderRadius: 14, borderWidth: 1, borderColor: "rgba(255,255,255,0.15)", backgroundColor: "rgba(255,255,255,0.07)" },
+  hamburgerButton: { padding: 8, borderRadius: 10, backgroundColor: "rgba(255,255,255,0.08)", borderWidth: 1, borderColor: "rgba(255,255,255,0.12)" },
+  mobileMenu: { 
+    marginTop: 12, 
+    paddingVertical: 12, 
+    paddingHorizontal: 16, 
+    borderRadius: 16, 
+    backgroundColor: "rgba(26,30,48,0.95)", 
+    borderWidth: 1, 
+    borderColor: "rgba(255,255,255,0.12)",
+    shadowColor: "#000",
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 8,
+  },
+  mobileMenuItem: { paddingVertical: 14, paddingHorizontal: 12, borderBottomWidth: 1, borderBottomColor: "rgba(255,255,255,0.08)" },
+  mobileMenuText: { color: "#ccd4e4", fontSize: 16, fontWeight: "700" },
 
   hero: { paddingTop: 78, paddingBottom: 110, gap: 42 },
   heroDesktop: { flexDirection: "row", alignItems: "center", minHeight: 720 },
@@ -1238,21 +1327,27 @@ const styles = StyleSheet.create({
   secondaryButtonText: { color: "#fff", fontSize: 18, fontWeight: "900" },
   buttonFull: { width: "100%" },
   heroStats: { marginTop: 66, flexDirection: "row", gap: 52, flexWrap: "wrap" },
-  heroStatsSmall: { gap: 20 },
+  heroStatsSmall: { marginTop: 40, gap: 24 },
   statMini: { minWidth: 180 },
+  statMiniSmall: { minWidth: 130 },
   statMiniValue: { color: "#ff6688", fontSize: 36, lineHeight: 44, fontWeight: "900" },
+  statMiniValueSmall: { fontSize: 26, lineHeight: 32 },
   orangeText: { color: "#ff9900" },
   statMiniLabel: { color: "#aeb8ce", fontSize: 16, marginTop: 7 },
 
   mockupWrap: { position: "relative", width: "100%", maxWidth: 650, alignSelf: "center" },
   mockupWrapCompact: { maxWidth: 760 },
   sparkFloat: { position: "absolute", top: -26, right: -20, width: 60, height: 60, borderRadius: 12, alignItems: "center", justifyContent: "center", backgroundColor: "#ff1028", zIndex: 5, shadowColor: "#ff1028", shadowOpacity: 0.35, shadowRadius: 18, shadowOffset: { width: 0, height: 10 }, elevation: 10 },
+  sparkFloatSmall: { top: -16, right: -12, width: 44, height: 44, borderRadius: 10 },
   mockupCard: { borderRadius: 22, padding: 30, backgroundColor: "rgba(26,26,44,0.82)", borderWidth: 1, borderColor: "rgba(255,255,255,0.12)", shadowColor: "#000", shadowOpacity: 0.3, shadowRadius: 24, shadowOffset: { width: 0, height: 16 }, elevation: 12 },
+  mockupCardSmall: { padding: 18, borderRadius: 18 },
   mockupHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 14 },
   mockupBrandRow: { flexDirection: "row", alignItems: "center", gap: 16, flexShrink: 1 },
   mockupIcon: { width: 50, height: 50, borderRadius: 13, alignItems: "center", justifyContent: "center", overflow: "hidden", backgroundColor: "#fff" },
+  mockupIconSmall: { width: 38, height: 38, borderRadius: 10 },
   mockupLogoImage: { width: "78%", height: "78%" },
   mockupTitle: { color: "#fff", fontSize: 18, fontWeight: "900" },
+  mockupTitleSmall: { fontSize: 15 },
   mockupSubtitle: { color: "#aeb8ce", fontSize: 14, marginTop: 4 },
   dotsRow: { flexDirection: "row", gap: 10 },
   dot: { width: 15, height: 15, borderRadius: 999 },
@@ -1260,10 +1355,13 @@ const styles = StyleSheet.create({
   mockupStatsCompact: { flexDirection: "column" },
   mockupStatCard: { flex: 1, borderRadius: 12, padding: 20, borderWidth: 1, borderColor: "rgba(255,51,68,0.25)", backgroundColor: "rgba(255,40,70,0.15)" },
   mockupStatCardOrange: { flex: 1, borderRadius: 12, padding: 20, borderWidth: 1, borderColor: "rgba(255,122,0,0.25)", backgroundColor: "rgba(255,122,0,0.14)" },
+  mockupStatCardSmall: { padding: 14, borderRadius: 10 },
   mockupStatValue: { color: "#ff6676", fontSize: 31, fontWeight: "900" },
+  mockupStatValueSmall: { fontSize: 24 },
   orangeStatValue: { color: "#ff9800", fontSize: 31, fontWeight: "900" },
   mockupStatLabel: { color: "#aeb8ce", fontSize: 14, marginTop: 6 },
   aiBox: { marginTop: 20, borderRadius: 12, padding: 20, backgroundColor: "rgba(17,22,40,0.82)", borderWidth: 1, borderColor: "rgba(255,255,255,0.06)" },
+  aiBoxSmall: { marginTop: 14, padding: 14, borderRadius: 10 },
   aiBoxHeader: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 16 },
   aiBoxTitle: { color: "#fff", fontSize: 17, fontWeight: "900", flex: 1 },
   onlineDot: { width: 10, height: 10, borderRadius: 999, backgroundColor: "#1ecb6b" },
@@ -1273,56 +1371,115 @@ const styles = StyleSheet.create({
   answerText: { color: "#cbd5e1", fontSize: 14 },
 
   sectionOuter: { paddingVertical: 86 },
+  sectionOuterSmall: { paddingVertical: 40 },
   sectionHeader: { alignItems: "center", marginBottom: 72 },
+  sectionHeaderSmall: { marginBottom: 32 },
   sectionTitle: { color: "#fff", textAlign: "center", fontSize: 58, lineHeight: 68, fontWeight: "900", letterSpacing: -1.2 },
+  sectionTitleMobile: { fontSize: 42, lineHeight: 52 },
+  sectionTitleSmall: { fontSize: 28, lineHeight: 36 },
   sectionSubtitle: { color: "#a9b5cb", textAlign: "center", marginTop: 16, fontSize: 25, lineHeight: 34, maxWidth: 960 },
-  grid: { flexDirection: "row", flexWrap: "wrap", gap: 30 },
+  sectionSubtitleMobile: { fontSize: 18, lineHeight: 28 },
+  sectionSubtitleSmall: { fontSize: 15, lineHeight: 24 },
+  
+  // UPDATED GRID STYLES FOR RESPONSIVE LAYOUT
+  grid: { 
+    flexDirection: "row", 
+    flexWrap: "wrap", 
+    gap: 30,
+    justifyContent: "center" 
+  },
   gridDesktop: {},
   gridTablet: {},
-  gridMobile: { flexDirection: "column" },
-  cardBase: { flexGrow: 1, flexBasis: Platform.OS === "web" ? "30%" : 0, minWidth: 280, borderRadius: 16, padding: 30, minHeight: 320, backgroundColor: "rgba(24,27,45,0.72)", borderWidth: 1, borderColor: "rgba(255,255,255,0.12)" },
+  gridMobile: { 
+    flexDirection: "column",
+    alignItems: "stretch"
+  },
+  gridSmall: { gap: 16 },
+  
+  // UPDATED CARD BASE FOR BETTER MOBILE RESPONSIVENESS
+  cardBase: { 
+    flexGrow: 1, 
+    flexBasis: Platform.OS === "web" ? "30%" : undefined,
+    minWidth: 280, 
+    maxWidth: "100%",
+    borderRadius: 16, 
+    padding: 30, 
+    minHeight: 320, 
+    backgroundColor: "rgba(24,27,45,0.72)", 
+    borderWidth: 1, 
+    borderColor: "rgba(255,255,255,0.12)" 
+  },
+  cardBaseSmall: { padding: 16, minHeight: undefined, minWidth: "100%", flexBasis: "auto" },
+  
   tileIcon: { width: 61, height: 61, borderRadius: 12, alignItems: "center", justifyContent: "center", marginBottom: 25 },
+  tileIconSmall: { width: 48, height: 48, borderRadius: 10, marginBottom: 16 },
   moduleIcon: { width: 70, height: 70, borderRadius: 16, alignItems: "center", justifyContent: "center", marginBottom: 26 },
+  moduleIconSmall: { width: 54, height: 54, borderRadius: 12, marginBottom: 18 },
   tileTitle: { color: "#fff", fontSize: 25, lineHeight: 34, fontWeight: "900" },
+  tileTitleSmall: { fontSize: 20, lineHeight: 28 },
   tileDescription: { color: "#a8b4cc", fontSize: 20, lineHeight: 33, marginTop: 15 },
+  tileDescriptionSmall: { fontSize: 15, lineHeight: 24, marginTop: 10 },
   bulletStack: { marginTop: 24, gap: 15 },
+  bulletStackSmall: { marginTop: 16, gap: 10 },
   moduleBullet: { color: "#e5e7eb", fontSize: 17, paddingLeft: 17 },
+  moduleBulletSmall: { fontSize: 14, lineHeight: 20 },
 
   stepsGrid: { flexDirection: "row", alignItems: "center", gap: 0 },
   stepsGridMobile: { flexDirection: "column", gap: 22 },
   stepCard: { flex: 1, minHeight: 300, borderRadius: 16, padding: 38, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(26,30,48,0.82)", borderWidth: 1, borderColor: "rgba(255,255,255,0.12)" },
+  stepCardSmall: { padding: 24, minHeight: undefined },
   stepNumber: { position: "absolute", top: -19, left: -19, width: 50, height: 50, borderRadius: 999, alignItems: "center", justifyContent: "center" },
   stepNumberText: { color: "#fff", fontSize: 20, fontWeight: "900" },
   stepIconBox: { width: 80, height: 80, borderRadius: 18, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "rgba(255,80,100,0.25)", backgroundColor: "rgba(255,255,255,0.03)", marginBottom: 32 },
   stepTitle: { color: "#fff", textAlign: "center", fontSize: 29, lineHeight: 39, fontWeight: "900" },
+  stepTitleSmall: { fontSize: 22, lineHeight: 30 },
   stepText: { color: "#a8b4cc", textAlign: "center", fontSize: 19, lineHeight: 32, marginTop: 18 },
+  stepTextSmall: { fontSize: 15, lineHeight: 24 },
   stepArrow: { width: 40, alignItems: "center", justifyContent: "center", zIndex: 3 },
   arrowLine: { position: "absolute", height: 3, width: 40, backgroundColor: "#ff5b00" },
 
   userGrid: { flexDirection: "row", gap: 40 },
   userGridMobile: { flexDirection: "column" },
+  userGridSmall: { gap: 16 },
   userCard: { flex: 1, borderRadius: 16, padding: 40, backgroundColor: "rgba(26,30,48,0.82)", borderWidth: 1, borderColor: "rgba(255,255,255,0.12)" },
+  userCardSmall: { padding: 16 },
   userIcon: { width: 80, height: 80, borderRadius: 17, alignItems: "center", justifyContent: "center", marginBottom: 36 },
+  userIconSmall: { width: 52, height: 52, borderRadius: 12, marginBottom: 16 },
   userEyebrow: { color: "#95a3bb", fontSize: 16, fontWeight: "900", letterSpacing: 1.2, marginBottom: 17 },
+  userEyebrowSmall: { fontSize: 12, letterSpacing: 0.8, marginBottom: 8 },
   userTitle: { color: "#fff", fontSize: 29, lineHeight: 41, fontWeight: "900" },
+  userTitleSmall: { fontSize: 18, lineHeight: 24 },
   userDescription: { color: "#a8b4cc", fontSize: 20, lineHeight: 34, marginTop: 22 },
+  userDescriptionSmall: { fontSize: 14, lineHeight: 22, marginTop: 12 },
   checkStack: { gap: 18, marginTop: 34 },
+  checkStackSmall: { gap: 10, marginTop: 16 },
   checkRow: { flexDirection: "row", gap: 16, alignItems: "flex-start" },
+  checkRowSmall: { gap: 10 },
   checkText: { color: "#d9deea", fontSize: 17, lineHeight: 24, flex: 1 },
+  checkTextSmall: { fontSize: 13, lineHeight: 18 },
 
   analyticsTopGrid: { flexDirection: "row", gap: 30, marginBottom: 80 },
   analyticsTopGridMobile: { flexDirection: "column" },
+  analyticsTopGridSmall: { gap: 20, marginBottom: 60 },
   analyticsMini: { flex: 1, borderRadius: 16, padding: 31, minHeight: 220, justifyContent: "center", backgroundColor: "rgba(112,20,16,0.58)", borderWidth: 1, borderColor: "rgba(255,80,80,0.18)" },
+  analyticsMiniSmall: { padding: 20, minHeight: undefined },
   analyticsMiniTitle: { color: "#fff", fontSize: 23, fontWeight: "900", marginTop: 23 },
+  analyticsMiniTitleSmall: { fontSize: 19, marginTop: 16 },
   analyticsMiniText: { color: "#cbd5e1", fontSize: 17, lineHeight: 25, marginTop: 16 },
+  analyticsMiniTextSmall: { fontSize: 15, lineHeight: 22 },
   chartGrid: { flexDirection: "row", gap: 40 },
   chartGridMobile: { flexDirection: "column" },
   chartCard: { flex: 1, borderRadius: 16, padding: 30, backgroundColor: "rgba(26,30,48,0.82)", borderWidth: 1, borderColor: "rgba(255,255,255,0.12)", minHeight: 460 },
+  chartCardSmall: { padding: 20, minHeight: 380 },
   chartHeader: { flexDirection: "row", alignItems: "center", gap: 15, marginBottom: 30 },
   chartIconSmall: { width: 48, height: 48, borderRadius: 11, alignItems: "center", justifyContent: "center" },
   chartTitle: { color: "#fff", fontSize: 22, fontWeight: "900" },
+  chartTitleSmall: { fontSize: 18 },
   chartSubtitle: { color: "#a8b4cc", fontSize: 16, marginTop: 5 },
-  lineChartArea: { height: 285, marginHorizontal: 0, marginTop: 4, position: "relative" },
+  chartSubtitleSmall: { fontSize: 14 },
+  
+  // FIX: Changed fixed height to aspectRatio so the chart scales proportionally on small screens
+  lineChartArea: { width: "100%", aspectRatio: 560 / 285, marginTop: 4, position: "relative" },
   chartSvg: { overflow: "visible" },
   gridLine: { position: "absolute", left: 0, right: 0, borderTopWidth: 1, borderStyle: "dashed", borderColor: "rgba(148,163,184,0.28)" },
   verticalGridLine: { position: "absolute", top: 0, bottom: 0, borderLeftWidth: 1, borderStyle: "dashed", borderColor: "rgba(148,163,184,0.24)" },
@@ -1331,10 +1488,15 @@ const styles = StyleSheet.create({
   yLabels: { position: "absolute", left: -42, top: -11, bottom: -13, justifyContent: "space-between" },
   xLabels: { position: "absolute", left: -10, right: -10, bottom: -34, flexDirection: "row", justifyContent: "space-between" },
   axisLabel: { color: "#9ca8bf", fontSize: 20 },
-  legendRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 9, marginTop: 56 },
+  
+  // FIX: Added flexWrap: "wrap" so legend items stack nicely if they run out of horizontal space
+  legendRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 9, marginTop: 56, flexWrap: "wrap" },
+  legendRowSmall: { marginTop: 20 },
   legendDot: { width: 15, height: 15, borderRadius: 999, marginLeft: 18 },
   legendText: { color: "#a8b4cc", fontSize: 16 },
-  radarBox: { height: 275, alignItems: "center", justifyContent: "center", position: "relative" },
+  
+  // FIX: Changed fixed height to aspectRatio so the radar chart scales proportionally on small screens
+  radarBox: { width: "100%", aspectRatio: 390 / 270, alignItems: "center", justifyContent: "center", position: "relative" },
   radarSvg: { overflow: "visible" },
   radarDiamondBig: { position: "absolute", width: 180, height: 180, borderWidth: 1, borderColor: "#94a3b8", transform: [{ rotate: "45deg" }] },
   radarDiamondMid: { position: "absolute", width: 124, height: 124, borderWidth: 1, borderColor: "rgba(148,163,184,0.45)", transform: [{ rotate: "45deg" }] },
@@ -1350,6 +1512,7 @@ const styles = StyleSheet.create({
   averageValue: { color: "#ff9800", fontWeight: "900", fontSize: 23 },
   metricStrip: { marginTop: 40, flexDirection: "row", alignItems: "center", justifyContent: "space-around", borderRadius: 16, paddingVertical: 34, paddingHorizontal: 20, backgroundColor: "rgba(112,20,16,0.58)", borderWidth: 1, borderColor: "rgba(255,80,80,0.18)" },
   metricStripMobile: { flexDirection: "column", gap: 26 },
+  metricStripSmall: { paddingVertical: 24, paddingHorizontal: 16 },
   metricBig: { alignItems: "center", minWidth: 150 },
   metricBigValue: { color: "#ff6688", fontSize: 36, fontWeight: "900" },
   metricBigLabel: { color: "#a8b4cc", fontSize: 16, marginTop: 8 },
@@ -1362,36 +1525,58 @@ const styles = StyleSheet.create({
   archText: { color: "#a8b4cc", fontSize: 15, lineHeight: 23, marginTop: 12 },
 
   ctaOuter: { paddingVertical: 90, paddingHorizontal: 38 },
+  ctaOuterSmall: { paddingVertical: 60, paddingHorizontal: 16 },
   ctaCard: { width: "100%", maxWidth: 1280, alignSelf: "center", borderRadius: 28, paddingVertical: 56, paddingHorizontal: 34, alignItems: "center", backgroundColor: "rgba(70,32,40,0.68)", borderWidth: 1, borderColor: "rgba(255,255,255,0.16)" },
+  ctaCardMobile: { paddingVertical: 40, paddingHorizontal: 24 },
+  ctaCardSmall: { paddingVertical: 30, paddingHorizontal: 16, borderRadius: 20 },
   ctaTitle: { marginTop: 38, color: "#ff7a4a", textAlign: "center", fontSize: 72, lineHeight: 78, fontWeight: "900", letterSpacing: -1.8, maxWidth: 840 },
-  ctaTitleSmall: { fontSize: 40, lineHeight: 47 },
+  ctaTitleMobile: { fontSize: 48, lineHeight: 56 },
+  ctaTitleSmall: { fontSize: 36, lineHeight: 44 },
   ctaText: { color: "#e2e8f0", textAlign: "center", fontSize: 26, lineHeight: 42, maxWidth: 980, marginTop: 32 },
+  ctaTextMobile: { fontSize: 19, lineHeight: 32 },
+  ctaTextSmall: { fontSize: 16, lineHeight: 26 },
   ctaActions: { flexDirection: "row", gap: 20, marginTop: 52, alignItems: "center" },
-  ctaActionsSmall: { flexDirection: "column", alignItems: "stretch", width: "100%" },
+  ctaActionsSmall: { flexDirection: "column", alignItems: "stretch", width: "100%", marginTop: 32 },
   ctaPrimary: { borderRadius: 14, overflow: "hidden" },
   ctaPrimaryGradient: { minHeight: 86, paddingHorizontal: 50, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 16 },
+  ctaPrimaryGradientSmall: { minHeight: 56, paddingHorizontal: 20 },
   ctaPrimaryText: { color: "#fff", fontSize: 22, fontWeight: "900" },
+  ctaPrimaryTextSmall: { fontSize: 16 },
   ctaSecondary: { minHeight: 86, paddingHorizontal: 50, borderRadius: 14, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "rgba(255,255,255,0.2)", backgroundColor: "rgba(255,255,255,0.12)" },
   ctaSecondaryText: { color: "#fff", fontSize: 22, fontWeight: "900" },
   ctaTags: { flexDirection: "row", gap: 14, flexWrap: "wrap", justifyContent: "center", marginTop: 60 },
-  ctaTagsSmall: { marginTop: 34 },
+  ctaTagsSmall: { marginTop: 24, gap: 10 },
   smallTag: { flexDirection: "row", alignItems: "center", gap: 8, borderRadius: 999, paddingVertical: 11, paddingHorizontal: 18, backgroundColor: "rgba(255,40,70,0.16)", borderWidth: 1, borderColor: "rgba(255,80,120,0.25)" },
   smallTagOrange: { backgroundColor: "rgba(255,122,0,0.13)", borderColor: "rgba(255,122,0,0.25)" },
   smallTagText: { color: "#fff", fontSize: 16, fontWeight: "800" },
 
   footerOuter: { paddingHorizontal: 40, paddingTop: 82, paddingBottom: 38, backgroundColor: "rgba(12,18,37,0.78)" },
+  footerOuterMobile: { paddingHorizontal: 20, paddingTop: 60, paddingBottom: 30 },
   footerGrid: { maxWidth: MAX_WIDTH, alignSelf: "center", width: "100%", flexDirection: "row", gap: 70, flexWrap: "wrap" },
-  footerMain: { flex: 1.4, minWidth: 310 },
+  footerGridMobile: { flexDirection: "column", gap: 40 },
+  footerMain: { flex: 1.2, minWidth: 280 },
+  universityColumn: { 
+  minWidth: 280, 
+  flexDirection: "row", 
+  gap: 16,
+  paddingHorizontal: 20,
+  borderLeftWidth: 1,
+  borderLeftColor: "rgba(255,255,255,0.1)",
+  marginLeft: 20,
+},
   footerBrandRow: { flexDirection: "row", alignItems: "center", gap: 16 },
   footerLogo: { width: 60, height: 60, borderRadius: 18, alignItems: "center", justifyContent: "center", overflow: "hidden", backgroundColor: "rgb(255, 255, 255)" },
   footerLogoImage: { width: "78%", height: "78%" },
   footerBrandTitle: { color: "#fff", fontSize: 25, fontWeight: "900" },
   footerBrandSub: { color: "#a8b4cc", fontSize: 16, marginTop: 4 },
   footerDescription: { color: "#a8b4cc", fontSize: 19, lineHeight: 32, marginTop: 24, maxWidth: 610 },
-  universityRow: { flexDirection: "row", alignItems: "center", gap: 16, marginTop: 30 },
+  footerDescriptionSmall: { fontSize: 16, lineHeight: 26 },
+ universityRow: { flexDirection: "row", alignItems: "center", gap: 16 },
+  universityRowSmall: { flexDirection: "column", alignItems: "flex-start", gap: 12 },
   universityIcon: { width: 50, height: 50, borderRadius: 12, alignItems: "center", justifyContent: "center" },
   universityTitle: { color: "#fff", fontSize: 18, fontWeight: "900" },
   universitySub: { color: "#a8b4cc", fontSize: 16, marginTop: 4 },
+  universityTextWrap: { flex: 1 },
   footerColumn: { minWidth: 230, gap: 22 },
   footerColumnTitle: { color: "#fff", fontSize: 18, fontWeight: "900", marginBottom: 8 },
   footerLinkRow: { flexDirection: "row", alignItems: "center", gap: 12 },

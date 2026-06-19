@@ -6141,6 +6141,274 @@ app.get("/class-members/:classId", async (req, res) => {
   }
 });
 
+// FIND class member endpoint
+app.post("/class-members/find", requireAuth, async (req, res) => {
+  try {
+    const { classId, studentId, userUid } = req.body;
+
+    if (!classId || (!studentId && !userUid)) {
+      return res.status(400).json({
+        error: "classId and either studentId or userUid are required",
+      });
+    }
+
+    let query = db.collection("classMembers")
+      .where("classId", "==", classId)
+      .where("status", "==", "active")
+      .limit(1);
+
+    if (studentId) {
+      query = query.where("userId", "==", studentId);
+    } else if (userUid) {
+      query = query.where("userUid", "==", userUid);
+    }
+
+    const snapshot = await query.get();
+
+    if (snapshot.empty) {
+      return res.status(404).json({
+        error: "Membership not found",
+        memberId: null,
+      });
+    }
+
+    const doc = snapshot.docs[0];
+    res.json({
+      memberId: doc.id,
+      ...doc.data(),
+    });
+  } catch (error) {
+    console.error("Find class member error:", error);
+    res.status(500).json({
+      error: error.message || "Failed to find class membership",
+    });
+  }
+});
+
+app.delete("/class-members/:memberId", requireAuth, async (req, res) => {
+  try {
+    const { memberId } = req.params;
+    const { classId } = req.body; // Frontend now sends this
+
+    const memberRef = db.collection("classMembers").doc(memberId);
+    const memberDoc = await memberRef.get();
+
+    if (!memberDoc.exists) {
+      return res.status(404).json({ error: "Membership not found." });
+    }
+
+    const memberData = memberDoc.data() || {};
+    const targetClassId = classId || memberData.classId;
+
+    // 1. Delete the member document
+    await memberRef.delete();
+
+    // 2. Decrement class memberCount & Clean up Messenger
+    if (targetClassId) {
+      const classRef = db.collection("classes").doc(targetClassId);
+      const classDoc = await classRef.get();
+      
+      if (classDoc.exists) {
+        await classRef.update({
+          memberCount: FieldValue.increment(-1),
+          updatedAt: FieldValue.serverTimestamp(),
+        });
+      }
+
+      // Remove student from ALL messenger conversations for this class
+      const conversationsSnapshot = await db
+        .collection("messengerConversations")
+        .where("classId", "==", targetClassId)
+        .get();
+
+      if (!conversationsSnapshot.empty) {
+        const BATCH_LIMIT = 490;
+        let batch = db.batch();
+        let opCount = 0;
+
+        for (const doc of conversationsSnapshot.docs) {
+          const convData = doc.data();
+          const participants = Array.isArray(convData.participants) ? convData.participants : [];
+          
+          const updatedParticipants = participants.filter(
+            (p) => p.userId !== memberData.userId && p.userUid !== memberData.userUid
+          );
+
+          if (updatedParticipants.length !== participants.length) {
+            batch.update(doc.ref, {
+              participants: updatedParticipants,
+              updatedAt: FieldValue.serverTimestamp(),
+            });
+            opCount++;
+            
+            if (opCount >= BATCH_LIMIT) {
+              await batch.commit();
+              batch = db.batch();
+              opCount = 0;
+            }
+          }
+        }
+        if (opCount > 0) await batch.commit();
+      }
+    }
+
+    res.json({
+      success: true,
+      message: "Successfully left the course",
+    });
+  } catch (error) {
+    console.error("Delete class member error:", error);
+    res.status(500).json({
+      error: error.message || "Failed to leave course",
+    });
+  }
+});
+ 
+app.post("/leave-class", requireAuth, async (req, res) => {
+  try {
+    const { classId, studentId } = req.body;
+    const authUid = req.user?.uid;
+ 
+    // ── Validate input ────────────────────────────────────────────────────────
+    if (!classId || !studentId) {
+      return res.status(400).json({ error: "classId and studentId are required." });
+    }
+ 
+    // ── Authorisation check ───────────────────────────────────────────────────
+    // Allow the call if the authenticated user's UID matches what we stored
+    // OR if the studentId itself is the authUid (some setups use that).
+    const profile = await findUserProfileByAuthUid(authUid).catch(() => null);
+    const profileStudentId = profile?.data?.studentId || profile?.data?.id;
+ 
+    const isAuthorised =
+      profile?.role === "student" &&
+      (profileStudentId === studentId ||      // stored student-doc ID matches
+        authUid === studentId);               // UID is used as studentId
+ 
+    if (!isAuthorised) {
+      return res.status(403).json({ error: "Unauthorized to leave this class." });
+    }
+ 
+    // ── 1. Find and update class membership ──────────────────────────────────
+    // Support both "classMembers" sub-collection style and a top-level query.
+    const memberQuery = await db
+      .collection("classMembers")
+      .where("classId", "==", classId)
+      .where("userId", "==", studentId)
+      .where("status", "==", "active")
+      .limit(1)
+      .get();
+ 
+    if (memberQuery.empty) {
+      // Try matching by authUid as a fallback
+      const uidQuery = await db
+        .collection("classMembers")
+        .where("classId", "==", classId)
+        .where("userUid", "==", authUid)
+        .where("status", "==", "active")
+        .limit(1)
+        .get();
+ 
+      if (uidQuery.empty) {
+        return res.status(404).json({ error: "Active membership not found." });
+      }
+ 
+      await uidQuery.docs[0].ref.update({
+        status: "left",
+        leftAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+    } else {
+      await memberQuery.docs[0].ref.update({
+        status: "left",
+        leftAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+    }
+ 
+    // ── 2. Decrement class memberCount ───────────────────────────────────────
+    const classRef = db.collection("classes").doc(classId);
+    const classDoc = await classRef.get();
+    if (classDoc.exists) {
+      await classRef.update({
+        memberCount: FieldValue.increment(-1),
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+    }
+ 
+    // ── 3. Remove student from ALL messenger conversations for this class ─────
+    // This covers the main class conversation AND every discussion room.
+    const conversationsSnapshot = await db
+      .collection("messengerConversations")
+      .where("classId", "==", classId)
+      .get();
+ 
+    if (!conversationsSnapshot.empty) {
+      // Firestore batches are capped at 500 writes; chunk if necessary.
+      const BATCH_LIMIT = 490;
+      let batch = db.batch();
+      let opCount = 0;
+ 
+      for (const doc of conversationsSnapshot.docs) {
+        const convData = doc.data();
+        const participants = Array.isArray(convData.participants)
+          ? convData.participants
+          : [];
+ 
+        // Remove the student whether they're stored by userId or userUid.
+        const updatedParticipants = participants.filter(
+          (p) => p.userId !== studentId && p.userUid !== authUid
+        );
+ 
+        if (updatedParticipants.length !== participants.length) {
+          batch.update(doc.ref, {
+            participants: updatedParticipants,
+            updatedAt: FieldValue.serverTimestamp(),
+          });
+          opCount++;
+ 
+          if (opCount >= BATCH_LIMIT) {
+            await batch.commit();
+            batch = db.batch();
+            opCount = 0;
+          }
+        }
+      }
+ 
+      if (opCount > 0) {
+        await batch.commit();
+      }
+    }
+ 
+    // ── 4. Optional: revoke any cached session tokens / active listeners ──────
+    // If your app uses custom Firestore security rules that check membership,
+    // the change above is enough. If you cache membership in a separate
+    // "activeSessions" collection, clean it up here.
+    // Example (uncomment if needed):
+    //
+    // await db
+    //   .collection("activeSessions")
+    //   .where("classId", "==", classId)
+    //   .where("studentId", "==", studentId)
+    //   .get()
+    //   .then((snap) => {
+    //     const batch = db.batch();
+    //     snap.forEach((d) => batch.delete(d.ref));
+    //     return batch.commit();
+    //   });
+ 
+    return res.json({
+      success: true,
+      message: "Successfully left the course.",
+    });
+  } catch (error) {
+    console.error("Leave class error:", error);
+    return res.status(500).json({
+      error: error?.message || "Failed to leave course.",
+    });
+  }
+});
+
 app.post("/join-class", async (req, res) => {
   try {
     const { classCode, studentId } = req.body;

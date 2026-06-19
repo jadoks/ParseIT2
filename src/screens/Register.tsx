@@ -715,7 +715,7 @@ export default function Register({
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
         >
-          <View style={[styles.pageWrapper, { maxWidth: isLargeScreen ? 900 : 420 }]}>
+          <View style={[styles.pageWrapper, { maxWidth: isLargeScreen ? 700 : 420 }]}>
             <View style={styles.card}>
               <TouchableOpacity
                 style={styles.brandBlock}
@@ -734,10 +734,90 @@ export default function Register({
               <Text style={styles.heading}>Create Account</Text>
               <Text style={styles.subheading}>Sign up as Student or Teacher</Text>
 
+              {/* ── ROW 1: Role Selection (Pill Container) ── */}
+              <View style={[
+                styles.roleSelectionRow,
+                isLargeScreen && styles.roleSelectionRowLarge
+              ]}>
+                <View style={[
+                  styles.roleSelectionContainer,
+                  isLargeScreen && styles.roleSelectionContainerLarge
+                ]}>
+                  <Text style={styles.roleSelectionLabel}>Choose Your Role</Text>
+                  
+                  {/* Outer Pill Container */}
+                  <View style={[
+                    styles.rolePillContainer,
+                    isLargeScreen && styles.rolePillContainerLarge
+                  ]}>
+                    {/* Student Button */}
+                    <TouchableOpacity
+                      style={[
+                        styles.rolePillButton,
+                        userType === 'student' && styles.activeRolePillButton,
+                        isLargeScreen && styles.rolePillButtonLarge,
+                      ]}
+                      onPress={() => setUserType('student')}
+                      disabled={isLoading}
+                      activeOpacity={0.85}
+                    >
+                      <View style={styles.rolePillContent}>
+                        <Ionicons 
+                          name="school-outline" 
+                          size={isLargeScreen ? 18 : 20} 
+                          color={userType === 'student' ? '#FFFFFF' : '#6B7280'} 
+                        />
+                        <Text 
+                          style={[
+                            styles.rolePillButtonText, 
+                            userType === 'student' && styles.activeRolePillButtonText,
+                            isLargeScreen && styles.rolePillButtonTextLarge,
+                          ]}
+                        >
+                          Student
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+
+                    {/* Divider */}
+                    <View style={styles.rolePillDivider} />
+
+                    {/* Teacher Button */}
+                    <TouchableOpacity
+                      style={[
+                        styles.rolePillButton,
+                        userType === 'teacher' && styles.activeRolePillButton,
+                        isLargeScreen && styles.rolePillButtonLarge,
+                      ]}
+                      onPress={() => setUserType('teacher')}
+                      disabled={isLoading}
+                      activeOpacity={0.85}
+                    >
+                      <View style={styles.rolePillContent}>
+                        <Ionicons 
+                          name="book-outline" 
+                          size={isLargeScreen ? 18 : 20} 
+                          color={userType === 'teacher' ? '#FFFFFF' : '#6B7280'} 
+                        />
+                        <Text 
+                          style={[
+                            styles.rolePillButtonText, 
+                            userType === 'teacher' && styles.activeRolePillButtonText,
+                            isLargeScreen && styles.rolePillButtonTextLarge,
+                          ]}
+                        >
+                          Teacher
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </View>
+
               {isLargeScreen ? (
-                // ── LARGE SCREEN: 3-column layout ─────────────────────────────
+                // ── LARGE SCREEN: 2-column layout ─────────────────────────────
                 <>
-                  {/* Row 1: User ID · First Name · Last Name */}
+                  {/* Row 2: User ID · First Name */}
                   <View style={styles.formRow}>
                     <View style={styles.formColumn}>
                       <Text style={styles.fieldLabel}>User ID</Text>
@@ -769,7 +849,10 @@ export default function Register({
                         />
                       </View>
                     </View>
+                  </View>
 
+                  {/* Row 3: Last Name · Email */}
+                  <View style={styles.formRow}>
                     <View style={styles.formColumn}>
                       <Text style={styles.fieldLabel}>Last Name</Text>
                       <View style={styles.inputWrapper}>
@@ -784,10 +867,7 @@ export default function Register({
                         />
                       </View>
                     </View>
-                  </View>
 
-                  {/* Row 2: Email · Birthday · User Type */}
-                  <View style={styles.formRow}>
                     <View style={styles.formColumn}>
                       <Text style={styles.fieldLabel}>Email</Text>
                       <View style={styles.inputWrapper}>
@@ -804,43 +884,20 @@ export default function Register({
                         />
                       </View>
                     </View>
+                  </View>
 
-                    {/* ── Birthday picker ── */}
-                    <View style={styles.formColumn}>
+                  {/* Row 4: Birthday (full width) */}
+                  <View style={styles.formRow}>
+                    <View style={[styles.formColumn, { flex: 2 }]}>
                       <BirthdayField
                         value={birthday}
                         onChange={setBirthday}
                         isMobile={isMobile}
                       />
                     </View>
-
-                    <View style={[styles.formColumn, { justifyContent: 'flex-end' }]}>
-                      <Text style={styles.fieldLabel}>Choose Your Role</Text>
-                      <View style={styles.typeContainerCompact}>
-                        <TouchableOpacity
-                          style={[styles.typeButtonCompact, userType === 'student' && styles.activeTypeButton]}
-                          onPress={() => setUserType('student')}
-                          disabled={isLoading}
-                        >
-                          <Text style={[styles.typeTextCompact, userType === 'student' && styles.activeTypeText]}>
-                            Student
-                          </Text>
-                        </TouchableOpacity>
-
-                        <TouchableOpacity
-                          style={[styles.typeButtonCompact, userType === 'teacher' && styles.activeTypeButton]}
-                          onPress={() => setUserType('teacher')}
-                          disabled={isLoading}
-                        >
-                          <Text style={[styles.typeTextCompact, userType === 'teacher' && styles.activeTypeText]}>
-                            Teacher
-                          </Text>
-                        </TouchableOpacity>
-                      </View>
-                    </View>
                   </View>
 
-                  {/* Row 3: Password · Confirm Password */}
+                  {/* Row 5: Password · Confirm Password */}
                   <View style={styles.formRow}>
                     <View style={[styles.formColumn, { flex: 1 }]}>
                       <Text style={styles.fieldLabel}>Password</Text>
@@ -959,27 +1016,6 @@ export default function Register({
                   </View>
 
                   <View style={styles.formGroup}>
-                    <Text style={styles.fieldLabel}>User Type</Text>
-                    <View style={styles.typeContainer}>
-                      <TouchableOpacity
-                        style={[styles.typeButton, userType === 'student' && styles.activeTypeButton]}
-                        onPress={() => setUserType('student')}
-                        disabled={isLoading}
-                      >
-                        <Text style={[styles.typeText, userType === 'student' && styles.activeTypeText]}>Student</Text>
-                      </TouchableOpacity>
-
-                      <TouchableOpacity
-                        style={[styles.typeButton, userType === 'teacher' && styles.activeTypeButton]}
-                        onPress={() => setUserType('teacher')}
-                        disabled={isLoading}
-                      >
-                        <Text style={[styles.typeText, userType === 'teacher' && styles.activeTypeText]}>Teacher</Text>
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-
-                  <View style={styles.formGroup}>
                     <Text style={styles.fieldLabel}>Password</Text>
                     <View style={styles.passwordContainer}>
                       <Ionicons name="lock-closed-outline" size={18} color="#7A7A7A" style={styles.inputIcon} />
@@ -1059,7 +1095,7 @@ export default function Register({
   );
 }
 
-// ─── Register styles (unchanged from original) ────────────────────────────────
+// ─── Register styles (updated with pill container role selection) ─────────────
 
 const styles = StyleSheet.create({
   backgroundImage: { flex: 1, width: '100%', height: '100%' },
@@ -1100,6 +1136,91 @@ const styles = StyleSheet.create({
   logoImage: { width: 72, height: 72 },
   heading: { fontSize: 28, fontWeight: '800', color: '#111827', textAlign: 'center', marginBottom: 10 },
   subheading: { fontSize: 14, color: '#6B7280', textAlign: 'center', lineHeight: 22, marginBottom: 26 },
+  
+  // ── Role Selection Styles (Pill Container) ──
+  roleSelectionRow: {
+    marginBottom: 24,
+  },
+  roleSelectionRowLarge: {
+    alignItems: 'center',
+  },
+  roleSelectionContainer: {
+    width: '100%',
+  },
+  roleSelectionContainerLarge: {
+    width: '50%',
+    maxWidth: 320,
+  },
+  roleSelectionLabel: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#111827',
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  
+  // Outer Pill Container
+  rolePillContainer: {
+    flexDirection: 'row',
+    backgroundColor: '#F3F4F6',
+    borderRadius: 16,
+    padding: 4,
+    borderWidth: 2,
+    borderColor: '#E5E7EB',
+  },
+  rolePillContainerLarge: {
+    borderRadius: 14,
+    padding: 3,
+  },
+  
+  // Individual Role Buttons
+  rolePillButton: {
+    flex: 1,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  rolePillButtonLarge: {
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+  },
+  activeRolePillButton: {
+    backgroundColor: '#D32F2F',
+    shadowColor: '#D32F2F',
+    shadowOpacity: 0.25,
+    shadowOffset: { width: 0, height: 4 },
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  
+  // Divider between buttons
+  rolePillDivider: {
+    width: 2,
+    backgroundColor: '#E5E7EB',
+    marginHorizontal: 2,
+  },
+  
+  // Button Content
+  rolePillContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  rolePillButtonText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#6B7280',
+  },
+  rolePillButtonTextLarge: {
+    fontSize: 13,
+  },
+  activeRolePillButtonText: {
+    color: '#FFFFFF',
+  },
+  
   formGroup: { marginBottom: 16 },
   formRow: { flexDirection: 'row', gap: 12, marginBottom: 16 },
   formColumn: { flex: 1 },

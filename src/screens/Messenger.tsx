@@ -8,6 +8,7 @@ import type { DimensionValue } from 'react-native';
 import {
   FlatList,
   Image,
+  Keyboard,
   Modal,
   Platform,
   Pressable,
@@ -312,6 +313,21 @@ const Messenger = ({
 
   // 3. STATE TO TRACK FILE INTERACTION (Like hasImageChanged in Profile)
   const [hasFileInteraction, setHasFileInteraction] = useState(false);
+
+  // 👇 NEW STATES FOR MOBILE SEARCH
+  const [isMobileSearchExpanded, setIsMobileSearchExpanded] = useState(false);
+  const [localSearchQuery, setLocalSearchQuery] = useState('');
+  const searchInputRef = useRef<TextInput>(null);
+
+  const toggleMobileSearch = (expand: boolean) => {
+    setIsMobileSearchExpanded(expand);
+    if (!expand) {
+      setLocalSearchQuery('');
+      Keyboard.dismiss();
+    } else {
+      setTimeout(() => searchInputRef.current?.focus(), 100);
+    }
+  };
 
   // Keep a stable ref to selected so polling callbacks never stale-close over it
   const selectedRef = useRef<Conversation | null>(null);
@@ -663,8 +679,9 @@ const Messenger = ({
   // Filtered conversation list
   // ---------------------------------------------------------------------------
   const filtered = useMemo(() => {
-    if (!searchQuery || !searchQuery.trim()) return conversations;
-    const lowerQuery = searchQuery.toLowerCase().trim();
+    const queryToUse = isMobileSearchExpanded ? localSearchQuery : searchQuery;
+    if (!queryToUse || !queryToUse.trim()) return conversations;
+    const lowerQuery = queryToUse.toLowerCase().trim();
     return conversations.filter((c) => {
       const nameMatch = c.name?.toLowerCase().includes(lowerQuery);
       const lastMessageMatch = c.last?.toLowerCase().includes(lowerQuery);
@@ -673,7 +690,7 @@ const Messenger = ({
       );
       return nameMatch || lastMessageMatch || memberMatch;
     });
-  }, [conversations, searchQuery]);
+  }, [conversations, searchQuery, localSearchQuery, isMobileSearchExpanded]);
 
   const currentMessages = selected
     ? messagesByConversation[selected.id] || []
@@ -1389,7 +1406,146 @@ const handleFileDownload = async (item: Message) => {
   // ---------------------------------------------------------------------------
   // Render helpers
   // ---------------------------------------------------------------------------
-  const renderConversationList = () => (
+  const renderConversationList = () => {
+  // If search is expanded on mobile, render full-screen search
+  if (isMobile && isMobileSearchExpanded) {
+    return (
+      <View style={styles.fullScreenSearchContainer}>
+        <View style={styles.fullScreenSearchHeader}>
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => toggleMobileSearch(false)}
+            activeOpacity={0.7}
+          >
+            <MaterialCommunityIcons name="arrow-left" size={24} color="#000" />
+          </TouchableOpacity>
+          
+          <View style={styles.fullScreenSearchInputContainer}>
+            <TextInput
+              ref={searchInputRef}
+              autoFocus
+              placeholder="Search"
+              placeholderTextColor="#888"
+              value={localSearchQuery}
+              onChangeText={setLocalSearchQuery}
+              style={styles.fullScreenSearchInput}
+              returnKeyType="search"
+            />
+            {localSearchQuery.length > 0 && (
+              <TouchableOpacity
+                onPress={() => {
+                  setLocalSearchQuery('');
+                  searchInputRef.current?.focus();
+                }}
+                style={{ padding: 4 }}
+              >
+                <MaterialCommunityIcons name="close-circle" size={20} color="#888" />
+              </TouchableOpacity>
+            )}
+          </View>
+          
+          <TouchableOpacity
+            style={styles.searchIconButton}
+            onPress={() => {
+              if (localSearchQuery.trim()) {
+                Keyboard.dismiss();
+              }
+            }}
+            activeOpacity={0.7}
+          >
+            <MaterialCommunityIcons
+              name="magnify"
+              size={24}
+              color={localSearchQuery.trim() ? '#D32F2F' : '#888'}
+            />
+          </TouchableOpacity>
+        </View>
+        
+        <FlatList
+          data={filtered}
+          keyExtractor={(item) => item.id}
+          style={styles.sidebarList}
+          contentContainerStyle={styles.sidebarListContent}
+          showsVerticalScrollIndicator={true}
+          indicatorStyle="black"
+          nestedScrollEnabled={true}
+          keyboardShouldPersistTaps="handled"
+          renderItem={({ item }) => {
+            const active = selected?.id === item.id;
+            return (
+              <TouchableOpacity
+                style={[
+                  styles.convCard,
+                  {
+                    paddingHorizontal: sizes.horizontalPadding,
+                    paddingVertical: sizes.listRowVertical,
+                  },
+                  active && styles.convCardActive,
+                ]}
+                onPress={() => {
+                  handleSelectConversation(item);
+                  toggleMobileSearch(false);
+                }}
+                activeOpacity={0.88}
+              >
+                <Image
+                  source={item.avatar}
+                  style={{
+                    width: sizes.listAvatar,
+                    height: sizes.listAvatar,
+                    borderRadius: sizes.listAvatar / 2,
+                    marginRight: isTinyPhone ? 8 : 12,
+                  }}
+                />
+                <View style={styles.convContent}>
+                  <View style={styles.convTopRow}>
+                    <Text
+                      style={[styles.convName, { fontSize: sizes.listName }]}
+                      numberOfLines={1}
+                    >
+                      {item.name.split(' - ')[0]}
+                    </Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+                      {item.unreadCount > 0 && (
+                        <View style={styles.unreadBadge}>
+                          <Text style={styles.unreadBadgeText}>
+                            {item.unreadCount > 99 ? '99+' : item.unreadCount}
+                          </Text>
+                        </View>
+                      )}
+                      <Text
+                        style={[styles.convTime, { fontSize: sizes.listTime }]}
+                        numberOfLines={1}
+                      >
+                        {item.time}
+                      </Text>
+                    </View>
+                  </View>
+                  {item.name.includes(' - ') && (
+                    <Text
+                      style={[styles.convSemester, { fontSize: sizes.listTime }]}
+                      numberOfLines={1}
+                    >
+                      {item.name.split(' - ').slice(1).join(' - ')}
+                    </Text>
+                  )}
+                  <Text
+                    style={[styles.convLast, { fontSize: sizes.listLast }]}
+                    numberOfLines={1}
+                  >
+                    {item.last}
+                  </Text>
+                </View>
+              </TouchableOpacity>
+            );
+          }}
+        />
+      </View>
+    );
+  }
+
+  // Normal conversation list view
+  return (
     <View
       style={[
         styles.sidebar,
@@ -1397,19 +1553,31 @@ const handleFileDownload = async (item: Message) => {
         isSplitView && { width: sizes.sidebarWidth },
       ]}
     >
-      {isMobile && (
-        <TouchableOpacity
-          onPress={onBack}
-          style={styles.screenBackButton}
-          activeOpacity={0.8}
-        >
-          <MaterialCommunityIcons name="chevron-left" size={22} color="#111" />
-          <Text style={styles.screenBackText}>Back</Text>
-        </TouchableOpacity>
-      )}
-      <Text style={[styles.pageTitle, { fontSize: sizes.pageTitle }]}>
-        Messages
-      </Text>
+      <View style={{ position: 'relative' }}>
+        {isMobile && (
+          <TouchableOpacity
+            onPress={onBack}
+            style={styles.screenBackButton}
+            activeOpacity={0.8}
+          >
+            <MaterialCommunityIcons name="chevron-left" size={22} color="#111" />
+            <Text style={styles.screenBackText}>Back</Text>
+          </TouchableOpacity>
+        )}
+        <Text style={[styles.pageTitle, { fontSize: sizes.pageTitle }]}>
+          Messages
+        </Text>
+        {isMobile && (
+          <TouchableOpacity
+            style={{ position: 'absolute', right: 16, top: 24, padding: 8 }}
+            onPress={() => toggleMobileSearch(true)}
+            activeOpacity={0.7}
+          >
+            <MaterialCommunityIcons name="magnify" size={24} color="#000" />
+          </TouchableOpacity>
+        )}
+      </View>
+
       <FlatList
         data={filtered}
         keyExtractor={(item) => item.id}
@@ -1444,53 +1612,51 @@ const handleFileDownload = async (item: Message) => {
                 }}
               />
               <View style={styles.convContent}>
-  {/* Row 1: Subject name + time */}
-  <View style={styles.convTopRow}>
-    <Text
-      style={[styles.convName, { fontSize: sizes.listName }]}
-      numberOfLines={1}
-    >
-      {item.name.split(' - ')[0]}
-    </Text>
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, flexShrink: 0 }}>
-      {item.unreadCount > 0 && (
-        <View style={styles.unreadBadge}>
-          <Text style={styles.unreadBadgeText}>
-            {item.unreadCount > 99 ? '99+' : item.unreadCount}
-          </Text>
-        </View>
-      )}
-      <Text
-        style={[styles.convTime, { fontSize: sizes.listTime }]}
-        numberOfLines={1}
-      >
-        {item.time}
-      </Text>
-    </View>
-  </View>
-  {/* Row 2: Semester/year info */}
-  {item.name.includes(' - ') && (
-    <Text
-      style={[styles.convSemester, { fontSize: sizes.listTime }]}
-      numberOfLines={1}
-    >
-      {item.name.split(' - ').slice(1).join(' - ')}
-    </Text>
-  )}
-  {/* Row 3: Last message */}
-  <Text
-    style={[styles.convLast, { fontSize: sizes.listLast }]}
-    numberOfLines={1}
-  >
-    {item.last}
-  </Text>
-</View>
+                <View style={styles.convTopRow}>
+                  <Text
+                    style={[styles.convName, { fontSize: sizes.listName }]}
+                    numberOfLines={1}
+                  >
+                    {item.name.split(' - ')[0]}
+                  </Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+                    {item.unreadCount > 0 && (
+                      <View style={styles.unreadBadge}>
+                        <Text style={styles.unreadBadgeText}>
+                          {item.unreadCount > 99 ? '99+' : item.unreadCount}
+                        </Text>
+                      </View>
+                    )}
+                    <Text
+                      style={[styles.convTime, { fontSize: sizes.listTime }]}
+                      numberOfLines={1}
+                    >
+                      {item.time}
+                    </Text>
+                  </View>
+                </View>
+                {item.name.includes(' - ') && (
+                  <Text
+                    style={[styles.convSemester, { fontSize: sizes.listTime }]}
+                    numberOfLines={1}
+                  >
+                    {item.name.split(' - ').slice(1).join(' - ')}
+                  </Text>
+                )}
+                <Text
+                  style={[styles.convLast, { fontSize: sizes.listLast }]}
+                  numberOfLines={1}
+                >
+                  {item.last}
+                </Text>
+              </View>
             </TouchableOpacity>
           );
         }}
       />
     </View>
   );
+};
 
   const renderChatHeader = () => (
     <View style={[styles.chatHeader, { height: sizes.headerHeight }]}>
@@ -2574,6 +2740,38 @@ const styles = StyleSheet.create({
   unreadBadgeText: { color: '#fff', fontSize: 10, fontWeight: '700' },
   convTime: { color: '#888', flexShrink: 0 },
   convLast: { color: '#666', marginTop: 4 },
+  fullScreenSearchContainer: {
+    flex: 1,
+    backgroundColor: '#fff',
+  },
+  fullScreenSearchHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#EEE',
+    backgroundColor: '#fff',
+    gap: 8,
+  },
+  fullScreenSearchInputContainer: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F1F1F1',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    height: 44,
+  },
+  fullScreenSearchInput: {
+    flex: 1,
+    fontSize: 16,
+    color: '#000',
+    paddingVertical: 8,
+  },
+  searchIconButton: {
+    padding: 8,
+  },
   chatPane: {
     flex: 1,
     minHeight: 0,

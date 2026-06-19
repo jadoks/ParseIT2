@@ -35,9 +35,7 @@ const getStrongestSubject = (
   const subjectsWithData = subjectSummaries.filter(
     (summary) => summary.gradedCount > 0
   );
-
   if (!subjectsWithData.length) return 'N/A';
-
   return [...subjectsWithData].sort((a, b) => b.average - a.average)[0]
     .courseName;
 };
@@ -48,9 +46,7 @@ const getWeakestSubject = (
   const subjectsWithData = subjectSummaries.filter(
     (summary) => summary.gradedCount > 0
   );
-
   if (!subjectsWithData.length) return 'N/A';
-
   return [...subjectsWithData].sort((a, b) => a.average - b.average)[0]
     .courseName;
 };
@@ -63,13 +59,13 @@ export const buildSubjectAnalyticsSummary = (
     course.assignments || [],
     currentDate
   );
-
+  
   const averageScore = getAssignmentAverage(normalizedAssignments);
   const gradedCount = getGradedCount(normalizedAssignments);
   const submittedCount = getSubmittedCount(normalizedAssignments);
   const pendingCount = getPendingCount(normalizedAssignments);
   const missingCount = getMissingCount(normalizedAssignments);
-
+  
   const predictedGrade = getPredictedGrade(
     averageScore,
     pendingCount,
@@ -77,18 +73,26 @@ export const buildSubjectAnalyticsSummary = (
     missingCount,
     gradedCount
   );
-
+  
   const scoreSeries = getAssignmentScoreSeries(normalizedAssignments);
   const trend = getTrendValue(scoreSeries);
   const trendDirection = getTrendDirection(trend);
   const trendSymbol = getTrendSymbol(trend);
-
+  
   const riskLevel = getRiskLevel(
     averageScore,
     pendingCount,
     missingCount,
     gradedCount
   );
+
+  // --- NEW CALCULATIONS FOR HIGHEST/LOWEST GRADES ---
+  const gradedAssignments = normalizedAssignments.filter(
+    (a) => a.status === 'graded' && a.points != null && a.maxPoints && a.maxPoints > 0
+  );
+  const scores = gradedAssignments.map((a) => (a.points! / a.maxPoints!) * 100);
+  const highestGrade = scores.length ? Math.max(...scores) : 0;
+  const lowestGrade = scores.length ? Math.min(...scores) : 0;
 
   return {
     courseId: course.id,
@@ -106,6 +110,8 @@ export const buildSubjectAnalyticsSummary = (
     trend,
     trendDirection,
     trendSymbol,
+    highestGrade,
+    lowestGrade,
   };
 };
 
@@ -123,6 +129,11 @@ export const buildStudentAnalytics = (
 
   const totalGradedAssignments = subjectSummaries.reduce(
     (sum, summary) => sum + summary.gradedCount,
+    0
+  );
+
+  const totalAssignmentsCount = subjectSummaries.reduce(
+    (sum, summary) => sum + summary.totalAssignments,
     0
   );
 
@@ -181,6 +192,58 @@ export const buildStudentAnalytics = (
 
   const missingAssignments = getMissingAssignments(allAssignments);
 
+  // --- NEW CALCULATIONS FOR REDESIGNED DASHBOARD ---
+  
+  // Map assignments with their course names for easier tracking
+  const assignmentsWithCourse = courses.flatMap((course) =>
+    normalizeAssignments(course.assignments || [], currentDate).map((a) => ({
+      ...a,
+      courseName: course.name,
+    }))
+  );
+
+  const allGradedAssignments = assignmentsWithCourse.filter(
+    (a) => a.status === 'graded' && a.points != null && a.maxPoints && a.maxPoints > 0
+  );
+
+  const allScores = allGradedAssignments.map((a) => (a.points! / a.maxPoints!) * 100);
+  const highestAssignmentGrade = allScores.length ? Math.max(...allScores) : 0;
+
+  // Recent Graded Assignments (Latest 5)
+  const recentGradedAssignments = allGradedAssignments
+    .map((a) => ({
+      id: a.id,
+      title: a.title,
+      courseName: a.courseName,
+      score: (a.points! / a.maxPoints!) * 100,
+      gradedAt: a.gradedAt || a.submittedAt,
+      status: a.status,
+    }))
+    .sort((a, b) => new Date(b.gradedAt || 0).getTime() - new Date(a.gradedAt || 0).getTime())
+    .slice(0, 5);
+
+  // Assignment Score Trend (Chronological)
+  const assignmentScoreTrend = allGradedAssignments
+    .map((a) => ({
+      title: a.title,
+      score: (a.points! / a.maxPoints!) * 100,
+      date: a.gradedAt || a.submittedAt,
+    }))
+    .sort((a, b) => new Date(a.date || 0).getTime() - new Date(b.date || 0).getTime());
+
+  // Grade Distribution Buckets
+  const gradeDistribution = { excellent: 0, good: 0, average: 0, needsImprovement: 0 };
+  allScores.forEach((score) => {
+    if (score >= 90) gradeDistribution.excellent++;
+    else if (score >= 80) gradeDistribution.good++;
+    else if (score >= 70) gradeDistribution.average++;
+    else gradeDistribution.needsImprovement++;
+  });
+
+  // Most Improved Subject
+  const improvedSubjects = subjectSummaries.filter((s) => s.trend > 0).sort((a, b) => b.trend - a.trend);
+  const mostImprovedSubject = improvedSubjects.length > 0 ? improvedSubjects[0].courseName : 'N/A';
+
   return {
     overallAverage,
     predictedFinalGrade,
@@ -188,6 +251,7 @@ export const buildStudentAnalytics = (
     totalMissingAssignments,
     totalSubmittedAssignments,
     totalGradedAssignments,
+    totalAssignmentsCount,
     weakestSubject,
     strongestSubject,
     overallRisk,
@@ -195,6 +259,11 @@ export const buildStudentAnalytics = (
     subjectSummaries,
     overallTrend,
     missingAssignments,
+    highestAssignmentGrade,
+    recentGradedAssignments,
+    assignmentScoreTrend,
+    gradeDistribution,
+    mostImprovedSubject,
   };
 };
 
@@ -205,7 +274,6 @@ export const buildTeacherStudentRow = (
   currentDate: Date = new Date()
 ): TeacherStudentRow => {
   const studentSummary = buildStudentAnalytics(courses, currentDate);
-
   return {
     studentId,
     studentName,
@@ -243,19 +311,15 @@ export const buildTeacherAnalyticsSummary = (
   );
 
   const totalStudents = studentRows.length;
-
   const noDataCount = studentRows.filter(
     (student) => student.riskLevel === 'No Data'
   ).length;
-
   const highRiskCount = studentRows.filter(
     (student) => student.riskLevel === 'High'
   ).length;
-
   const moderateRiskCount = studentRows.filter(
     (student) => student.riskLevel === 'Moderate'
   ).length;
-
   const lowRiskCount = studentRows.filter(
     (student) => student.riskLevel === 'Low'
   ).length;
@@ -304,15 +368,12 @@ export const buildAdminCourseRow = (
   const noDataCount = matchingCourseSummaries.filter(
     (summary) => summary.riskLevel === 'No Data'
   ).length;
-
   const highRiskCount = matchingCourseSummaries.filter(
     (summary) => summary.riskLevel === 'High'
   ).length;
-
   const moderateRiskCount = matchingCourseSummaries.filter(
     (summary) => summary.riskLevel === 'Moderate'
   ).length;
-
   const lowRiskCount = matchingCourseSummaries.filter(
     (summary) => summary.riskLevel === 'Low'
   ).length;

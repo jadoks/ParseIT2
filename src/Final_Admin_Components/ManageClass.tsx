@@ -135,6 +135,15 @@ export default function ManageClass({ width, currentAdmin }: ManageClassProps) {
   const [newMemberStudentId, setNewMemberStudentId] = useState("");
   const [isAddingMember, setIsAddingMember] = useState(false);
 
+  // 👇 NEW STATES FOR REMOVE MEMBER MODALS & LOADING
+  const [isRemoveMemberConfirmModalVisible, setIsRemoveMemberConfirmModalVisible] = useState(false);
+  const [memberToRemove, setMemberToRemove] = useState<{ id: string; name: string } | null>(null);
+  const [isRemovingMember, setIsRemovingMember] = useState(false);
+  
+  const [isRemoveMemberSuccessModalVisible, setIsRemoveMemberSuccessModalVisible] = useState(false);
+  const [isRemoveMemberErrorModalVisible, setIsRemoveMemberErrorModalVisible] = useState(false);
+  const [removeMemberErrorMessage, setRemoveMemberErrorMessage] = useState('');
+
   const isMobile = width < 768;
   const isTablet = width >= 768 && width < 1100;
   const tableMinWidth = isMobile ? 1100 : isTablet ? 1200 : 1300; 
@@ -387,37 +396,37 @@ export default function ManageClass({ width, currentAdmin }: ManageClassProps) {
     }
   };
 
-  const handleRemoveMember = async (memberId: string, memberName: string) => {
-    Alert.alert(
-      "Remove Member",
-      `Are you sure you want to remove ${memberName || "this member"} from the class?`,
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Remove",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              const response = await apiFetch(`${API_BASE_URL}/remove-class-member/${memberId}`, {
-                method: "DELETE",
-                headers: { "Content-Type": "application/json" },
-              });
-              const data = await response.json();
-              if (!response.ok) throw new Error(data.error || "Failed to remove member");
-              
-              Alert.alert("Success", "Member removed successfully.");
-              if (selectedClassForMembers) {
-                await fetchClassMembers(selectedClassForMembers.id);
-                await loadClasses();
-              }
-            } catch (error: any) {
-              console.error("Error removing member:", error);
-              Alert.alert("Error", error.message || "Failed to remove member.");
-            }
-          },
-        },
-      ]
-    );
+  // 👇 UPDATED: Opens Custom Confirmation Modal instead of Alert.alert
+  const handleRemoveMember = (memberId: string, memberName: string) => {
+    setMemberToRemove({ id: memberId, name: memberName });
+    setIsRemoveMemberConfirmModalVisible(true);
+  };
+
+  // 👇 NEW: Executes the API call with Loading State
+  const confirmRemoveMember = async () => {
+    if (!memberToRemove || !selectedClassForMembers) return;
+    
+    setIsRemovingMember(true);
+    try {
+      const response = await apiFetch(`${API_BASE_URL}/remove-class-member/${memberToRemove.id}`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Failed to remove member");
+      
+      setIsRemoveMemberConfirmModalVisible(false);
+      await fetchClassMembers(selectedClassForMembers.id);
+      await loadClasses();
+      setIsRemoveMemberSuccessModalVisible(true);
+    } catch (error: any) {
+      setIsRemoveMemberConfirmModalVisible(false);
+      setRemoveMemberErrorMessage(error.message || "Failed to remove member.");
+      setIsRemoveMemberErrorModalVisible(true);
+    } finally {
+      setIsRemovingMember(false);
+      setMemberToRemove(null);
+    }
   };
 
   return (
@@ -466,10 +475,12 @@ export default function ManageClass({ width, currentAdmin }: ManageClassProps) {
       <View style={styles.tableCard}>
         <ScrollView
           horizontal
+          nestedScrollEnabled
           showsHorizontalScrollIndicator={true}
           contentContainerStyle={styles.tableHorizontalContent}
         >
           <ScrollView
+          nestedScrollEnabled
             showsVerticalScrollIndicator={true}
             style={styles.tableVerticalScroll}
             contentContainerStyle={styles.tableVerticalContent}
@@ -754,6 +765,110 @@ export default function ManageClass({ width, currentAdmin }: ManageClassProps) {
           </View>
         </View>
       </Modal>
+
+      {/* 👇 REMOVE MEMBER CONFIRMATION MODAL */}
+      <Modal 
+        visible={isRemoveMemberConfirmModalVisible} 
+        transparent 
+        animationType="fade" 
+        onRequestClose={() => !isRemovingMember && setIsRemoveMemberConfirmModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => !isRemovingMember && setIsRemoveMemberConfirmModalVisible(false)} />
+          <View style={styles.confirmModalCard}>
+            <View style={styles.confirmIconWrap}>
+              <Ionicons name="person-remove-outline" size={28} color="#DC2626" />
+            </View>
+            <Text style={styles.confirmTitle}>Remove Member</Text>
+            <Text style={styles.confirmSubtitle}>
+              Are you sure you want to remove <Text style={styles.confirmHighlight}>{memberToRemove?.name || "this member"}</Text> from the class?
+            </Text>
+            <View style={styles.confirmActions}>
+              <TouchableOpacity 
+                style={styles.confirmCancelButton} 
+                activeOpacity={0.85} 
+                onPress={() => setIsRemoveMemberConfirmModalVisible(false)}
+                disabled={isRemovingMember}
+              >
+                <Text style={styles.confirmCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={[styles.confirmDeleteButton, { opacity: isRemovingMember ? 0.7 : 1 }]} 
+                activeOpacity={0.85} 
+                onPress={confirmRemoveMember}
+                disabled={isRemovingMember}
+              >
+                {isRemovingMember ? (
+                  <Ionicons name="sync-outline" size={16} color="#FFFFFF" />
+                ) : (
+                  <Ionicons name="trash-outline" size={16} color="#FFFFFF" />
+                )}
+                <Text style={styles.confirmDeleteText}>{isRemovingMember ? "Removing..." : "Remove"}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* 👇 REMOVE MEMBER SUCCESS MODAL */}
+      <Modal 
+        visible={isRemoveMemberSuccessModalVisible} 
+        transparent 
+        animationType="fade" 
+        onRequestClose={() => setIsRemoveMemberSuccessModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setIsRemoveMemberSuccessModalVisible(false)} />
+          <View style={styles.confirmModalCard}>
+            <View style={[styles.confirmIconWrap, { backgroundColor: "#D1FAE5" }]}>
+              <Ionicons name="checkmark-circle-outline" size={28} color="#059669" />
+            </View>
+            <Text style={styles.confirmTitle}>Success</Text>
+            <Text style={styles.confirmSubtitle}>
+              Member has been successfully removed from the class.
+            </Text>
+            <View style={styles.confirmActions}>
+              <TouchableOpacity 
+                style={[styles.confirmDeleteButton, { backgroundColor: "#059669" }]} 
+                activeOpacity={0.85} 
+                onPress={() => setIsRemoveMemberSuccessModalVisible(false)}
+              >
+                <Text style={styles.confirmDeleteText}>Done</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* 👇 REMOVE MEMBER ERROR MODAL */}
+      <Modal 
+        visible={isRemoveMemberErrorModalVisible} 
+        transparent 
+        animationType="fade" 
+        onRequestClose={() => setIsRemoveMemberErrorModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setIsRemoveMemberErrorModalVisible(false)} />
+          <View style={styles.confirmModalCard}>
+            <View style={styles.confirmIconWrap}>
+              <Ionicons name="alert-circle-outline" size={28} color="#DC2626" />
+            </View>
+            <Text style={styles.confirmTitle}>Unable to Remove Member</Text>
+            <Text style={styles.confirmSubtitle}>
+              {removeMemberErrorMessage || "An error occurred while trying to remove the member."}
+            </Text>
+            <View style={styles.confirmActions}>
+              <TouchableOpacity 
+                style={[styles.confirmDeleteButton, { backgroundColor: "#7A4A4A" }]} 
+                activeOpacity={0.85} 
+                onPress={() => setIsRemoveMemberErrorModalVisible(false)}
+              >
+                <Text style={styles.confirmDeleteText}>Close</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -785,7 +900,8 @@ const styles = StyleSheet.create({
   },
   fullWidthButton: { width: "100%" },
   primaryActionButtonText: { fontSize: 14, fontWeight: "800", color: "#FFFFFF", marginLeft: 8 },
-  tableCard: { backgroundColor: "#FFFFFF", borderRadius: 24, borderWidth: 1, borderColor: "#F3D4D4", overflow: "hidden" },
+  tableCard: {flex: 1,
+    minHeight: 0, backgroundColor: "#FFFFFF", borderRadius: 24, borderWidth: 1, borderColor: "#F3D4D4", overflow: "hidden" },
   tableHorizontalContent: { flexGrow: 1 },
   tableVerticalScroll: { maxHeight: 520 },
   tableVerticalContent: { flexGrow: 1 },
