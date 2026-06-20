@@ -1,16 +1,19 @@
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
   Linking,
+  Modal,
   Platform,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
   View,
-  useWindowDimensions,
+  useWindowDimensions
 } from 'react-native';
 import YoutubePlayer from "react-native-youtube-iframe";
 
@@ -34,10 +37,14 @@ interface VideoItem {
 }
 
 interface VideoComment {
+  id: string;
+  videoId: string;
+  userId: string;
   userName: string;
-  avatar: any;
-  message: string;
-  commentedAt: string;
+  userRole: 'student' | 'teacher' | 'admin' | string;
+  content: string;
+  createdAt: string;
+  updatedAt?: string;
 }
 
 interface VideosProps {
@@ -81,7 +88,6 @@ const Videos = ({
   const isTablet = width >= 768 && width < 1200;
   const isMobile = width < 768;
 
-  // 🎯 Calculate responsive player height (16:9 aspect ratio for mobile)
   const playerHeight = isLargeScreen ? 500 : isTablet ? 350 : width * 0.5625;
 
   const columns = isLargeScreen ? 3 : isTablet ? 2 : 1;
@@ -101,7 +107,18 @@ const Videos = ({
   const [favoriteItems, setFavoriteItems] = useState<VideoItem[]>([]);
   const [favoritesLoading, setFavoritesLoading] = useState(false);
   const [savingVideoId, setSavingVideoId] = useState<string | null>(null);
-  const [comments, setComments] = useState<Record<string, VideoComment[]>>({});
+
+  const [videoComments, setVideoComments] = useState<VideoComment[]>([]);
+  const [commentsLoading, setCommentsLoading] = useState(false);
+  const [postingComment, setPostingComment] = useState(false);
+  const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
+  const [editText, setEditText] = useState('');
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [openMenuCommentId, setOpenMenuCommentId] = useState<string | null>(null);
+  
+  const [menuPosition, setMenuPosition] = useState<{ x: number; y: number } | null>(null);
+  const buttonRefs = useRef<{ [key: string]: any }>({});
+
   const [inputText, setInputText] = useState<Record<string, string>>({});
   const [selected, setSelected] = useState<string | null>(null);
   const [filterFav, setFilterFav] = useState(false);
@@ -109,7 +126,6 @@ const Videos = ({
   const [error, setError] = useState('');
   const [activeQuery, setActiveQuery] = useState(DEFAULT_TECH_QUERY);
   
-  // 🚨 NEW: State to handle playback errors gracefully
   const [playbackError, setPlaybackError] = useState(false);
   
   const debounceRef = useRef<any>(null);
@@ -197,6 +213,22 @@ const Videos = ({
     }
   };
 
+  const fetchComments = async (videoId: string) => {
+    if (!videoId) return;
+    try {
+      setCommentsLoading(true);
+      const response = await apiFetch(`${apiBaseUrl}/video-comments/${videoId}`);
+      const data = await response.json();
+      if (!response.ok) throw new Error(data?.error || 'Failed to load comments.');
+      setVideoComments(Array.isArray(data?.data) ? data.data : []);
+    } catch (err: any) {
+      console.log('LOAD VIDEO COMMENTS ERROR =>', err);
+      setVideoComments([]);
+    } finally {
+      setCommentsLoading(false);
+    }
+  };
+
   useEffect(() => {
     loadFavorites();
   }, [currentUserId, currentUserRole]);
@@ -262,158 +294,379 @@ const Videos = ({
     }
   };
 
-  const addComment = (id: string) => {
-    const text = inputText[id]?.trim();
-    if (!text) return;
-    const newComment: VideoComment = {
-      userName: currentUserName,
-      avatar: normalizedCurrentUserAvatar,
-      message: text,
-      commentedAt: new Date().toLocaleString(),
-    };
-    setComments((prev) => ({ ...prev, [id]: [...(prev[id] || []), newComment] }));
-    setInputText((prev) => ({ ...prev, [id]: '' }));
+  const postComment = async (videoId: string) => {
+    const text = inputText[videoId]?.trim();
+    if (!text || postingComment) return;
+    try {
+      setPostingComment(true);
+      const response = await apiFetch(`${apiBaseUrl}/video-comments`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ videoId, content: text }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data?.error || 'Failed to post comment.');
+      setInputText((prev) => ({ ...prev, [videoId]: '' }));
+      await fetchComments(videoId);
+    } catch (err: any) {
+      setError(err?.message || 'Failed to post comment.');
+    } finally {
+      setPostingComment(false);
+    }
+  };
+
+  const saveEditComment = async (commentId: string, videoId: string) => {
+    const text = editText.trim();
+    if (!text || savingEdit) return;
+    try {
+      setSavingEdit(true);
+      const response = await apiFetch(`${apiBaseUrl}/video-comments/${commentId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: text }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data?.error || 'Failed to update comment.');
+      setEditingCommentId(null);
+      setEditText('');
+      await fetchComments(videoId);
+    } catch (err: any) {
+      setError(err?.message || 'Failed to update comment.');
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
+  const deleteComment = async (commentId: string, videoId: string) => {
+    try {
+      const response = await apiFetch(`${apiBaseUrl}/video-comments/${commentId}`, {
+        method: 'DELETE',
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data?.error || 'Failed to delete comment.');
+      await fetchComments(videoId);
+    } catch (err: any) {
+      setError(err?.message || 'Failed to delete comment.');
+    }
   };
 
   const openVideo = (id: string) => {
     setSelected(id);
-    setPlaybackError(false); // 🚨 Reset error state when opening a new video
+    setPlaybackError(false);
+    setEditingCommentId(null);
+    setEditText('');
+    setOpenMenuCommentId(null);
+    setMenuPosition(null);
+    fetchComments(id);
     onVideoActiveChange?.(true);
   };
 
   const closeVideo = () => {
     setSelected(null);
     setPlaybackError(false);
+    setVideoComments([]);
+    setEditingCommentId(null);
+    setEditText('');
+    setOpenMenuCommentId(null);
+    setMenuPosition(null);
     onVideoActiveChange?.(false);
   };
 
+  // 👇 ROBUST CROSS-PLATFORM POSITIONING LOGIC
+  const handleMenuPress = (commentId: string) => {
+    if (openMenuCommentId === commentId) {
+      closeMenu();
+      return;
+    }
+
+    const buttonRef = buttonRefs.current[commentId];
+    if (buttonRef) {
+      // measureInWindow gets exact screen coordinates on iOS, Android, and Web
+      buttonRef.measureInWindow((x: number, y: number, btnWidth: number, btnHeight: number) => {
+        const menuWidth = 160;
+        
+        // Fallback if measurement fails (e.g., component not mounted yet)
+        if (btnWidth === 0 || btnHeight === 0) {
+          setMenuPosition({ x: width / 2 - menuWidth / 2, y: 100 });
+          setOpenMenuCommentId(commentId);
+          return;
+        }
+
+        const menuTop = y + btnHeight + 8; // 8px gap below button
+        
+        // Align right edge of menu with right edge of button
+        let menuLeft = x + btnWidth - menuWidth;
+        
+        // Ensure it stays within screen bounds (never goes off-screen)
+        if (menuLeft < 10) menuLeft = 10;
+        if (menuLeft + menuWidth > width - 10) menuLeft = width - menuWidth - 10;
+
+        setMenuPosition({ x: menuLeft, y: menuTop });
+        setOpenMenuCommentId(commentId);
+      });
+    } else {
+      // Fallback if ref is not available
+      setOpenMenuCommentId(commentId);
+      setMenuPosition({ x: width / 2 - 80, y: 100 });
+    }
+  };
+
+  const closeMenu = () => {
+    setOpenMenuCommentId(null);
+    setMenuPosition(null);
+  };
+
   if (selectedVid) {
-    const currentComments = comments[selectedVid.id] || [];
+    const currentComments = videoComments;
+    const activeMenuComment = currentComments.find((c) => c.id === openMenuCommentId) || null;
 
     return (
-      <ScrollView style={styles.watchPage} contentContainerStyle={styles.watchContent}>
-        <View style={styles.topBar}>
-          <TouchableOpacity onPress={closeVideo} style={styles.backBtn}>
-            <Text style={styles.backBtnText}>Back</Text>
-          </TouchableOpacity>
-        </View>
-
-        <View style={styles.playerCard}>
-          <View style={[styles.playerWrapper, { height: playerHeight }]}>
-            {Platform.OS === 'web' ? (
-              <iframe
-                src={selectedVid.embedUrl}
-                style={{ width: '100%', height: '100%', border: 'none' }}
-                allowFullScreen
-                title={selectedVid.title}
-              />
-            ) : playbackError ? (
-              // 🚨 BEAUTIFUL FALLBACK UI IF VIDEO IS BLOCKED
-              <View style={[styles.errorFallback, { height: playerHeight }]}>
-                <Text style={styles.errorFallbackTitle}>Video Unavailable</Text>
-                <Text style={styles.errorFallbackText}>
-                  The creator has restricted this video from playing in external apps.
-                </Text>
-                <TouchableOpacity 
-                  style={styles.watchOnYoutubeBtn}
-                  onPress={() => Linking.openURL(selectedVid.watchUrl)}
-                >
-                  <Text style={styles.watchOnYoutubeText}>Watch on YouTube</Text>
-                </TouchableOpacity>
-              </View>
-            ) : (
-              <YoutubePlayer
-                height={playerHeight}
-                play={true}
-                videoId={selectedVid.id}
-                onError={(e: any) => {
-                  console.warn("YouTube Player Error:", e);
-                  setPlaybackError(true);
-                }}
-              />
-            )}
+      <View style={{ flex: 1 }}>
+        <ScrollView style={styles.watchPage} contentContainerStyle={styles.watchContent}>
+          <View style={styles.topBar}>
+            <TouchableOpacity onPress={closeVideo} style={styles.backBtn}>
+              <Text style={styles.backBtnText}>Back</Text>
+            </TouchableOpacity>
           </View>
 
-          <View style={styles.videoMetaSection}>
-            <Text style={styles.watchTitle}>{selectedVid.title}</Text>
-            <Text style={styles.watchSubMeta}>
-              {selectedVid.views} • {selectedVid.uploadedAt}
-            </Text>
-
-            <View style={styles.channelRow}>
-              <View style={styles.channelLeft}>
-                <View style={styles.channelAvatar}>
-                  <Text style={styles.channelAvatarText}>{selectedVid.channel.charAt(0)}</Text>
+          <View style={styles.playerCard}>
+            <View style={[styles.playerWrapper, { height: playerHeight }]}>
+              {Platform.OS === 'web' ? (
+                <iframe
+                  src={selectedVid.embedUrl}
+                  style={{ width: '100%', height: '100%', border: 'none' }}
+                  allowFullScreen
+                  title={selectedVid.title}
+                />
+              ) : playbackError ? (
+                <View style={[styles.errorFallback, { height: playerHeight }]}>
+                  <Text style={styles.errorFallbackTitle}>Video Unavailable</Text>
+                  <Text style={styles.errorFallbackText}>
+                    The creator has restricted this video from playing in external apps.
+                  </Text>
+                  <TouchableOpacity 
+                    style={styles.watchOnYoutubeBtn}
+                    onPress={() => Linking.openURL(selectedVid.watchUrl)}
+                  >
+                    <Text style={styles.watchOnYoutubeText}>Watch on YouTube</Text>
+                  </TouchableOpacity>
                 </View>
-                <View>
-                  <Text style={styles.channelName}>{selectedVid.channel}</Text>
-                  <Text style={styles.channelSubs}>YouTube channel</Text>
-                </View>
-              </View>
+              ) : (
+                <YoutubePlayer
+                  height={playerHeight}
+                  play={true}
+                  videoId={selectedVid.id}
+                  onError={(e: any) => {
+                    console.warn("YouTube Player Error:", e);
+                    setPlaybackError(true);
+                  }}
+                />
+              )}
             </View>
 
-            <View style={styles.actionRow}>
+            <View style={styles.videoMetaSection}>
+              <Text style={styles.watchTitle}>{selectedVid.title}</Text>
+              <Text style={styles.watchSubMeta}>
+                {selectedVid.views} • {selectedVid.uploadedAt}
+              </Text>
+
+              <View style={styles.channelRow}>
+                <View style={styles.channelLeft}>
+                  <View style={styles.channelAvatar}>
+                    <Text style={styles.channelAvatarText}>{selectedVid.channel.charAt(0)}</Text>
+                  </View>
+                  <View>
+                    <Text style={styles.channelName}>{selectedVid.channel}</Text>
+                    <Text style={styles.channelSubs}>YouTube channel</Text>
+                  </View>
+                </View>
+              </View>
+
+              <View style={styles.actionRow}>
+                <TouchableOpacity
+                  style={[styles.actionPill, saved.includes(selectedVid.id) && styles.actionPillActive]}
+                  onPress={() => toggleSave(selectedVid)}
+                >
+                  <Text style={[styles.actionPillText, saved.includes(selectedVid.id) && styles.actionPillTextActive]}>
+                    📁 {saved.includes(selectedVid.id) ? 'Saved' : 'Save'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.descriptionCard}>
+                <Text style={styles.descriptionText}>{selectedVid.description || 'No description available.'}</Text>
+              </View>
+            </View>
+          </View>
+
+          <View style={styles.commentsSection}>
+            <Text style={styles.sectionTitle}>Comments ({currentComments.length})</Text>
+            <View style={styles.commentComposer}>
+              <TextInput
+                placeholder="Add a comment..."
+                value={inputText[selectedVid.id] || ''}
+                onChangeText={(t) => setInputText((prev) => ({ ...prev, [selectedVid.id]: t }))}
+                style={styles.commentInput}
+                placeholderTextColor="#888"
+              />
               <TouchableOpacity
-                style={[styles.actionPill, saved.includes(selectedVid.id) && styles.actionPillActive]}
-                onPress={() => toggleSave(selectedVid)}
+                onPress={() => postComment(selectedVid.id)}
+                style={[styles.commentPostBtn, postingComment && styles.commentPostBtnDisabled]}
+                disabled={postingComment}
               >
-                <Text style={[styles.actionPillText, saved.includes(selectedVid.id) && styles.actionPillTextActive]}>
-                  📁 {saved.includes(selectedVid.id) ? 'Saved' : 'Save'}
-                </Text>
+                <Text style={styles.commentPostBtnText}>{postingComment ? 'Posting...' : 'Post'}</Text>
               </TouchableOpacity>
             </View>
 
-            <View style={styles.descriptionCard}>
-              <Text style={styles.descriptionText}>{selectedVid.description || 'No description available.'}</Text>
-            </View>
-          </View>
-        </View>
+            {commentsLoading ? (
+              <View style={styles.commentsLoadingWrap}>
+                <ActivityIndicator size="small" color="#D32F2F" />
+              </View>
+            ) : currentComments.length === 0 ? (
+              <Text style={styles.noComments}>No comments yet.</Text>
+            ) : (
+              currentComments.map((comment) => {
+                const isOwner = comment.userId === currentUserId;
+                const canManage = isOwner || currentUserRole === 'admin';
+                const isEditing = editingCommentId === comment.id;
+                const wasEdited = !!comment.updatedAt && comment.updatedAt !== comment.createdAt;
 
-        <View style={styles.commentsSection}>
-          <Text style={styles.sectionTitle}>Comments ({currentComments.length})</Text>
-          <View style={styles.commentComposer}>
-            <TextInput
-              placeholder="Add a comment..."
-              value={inputText[selectedVid.id] || ''}
-              onChangeText={(t) => setInputText((prev) => ({ ...prev, [selectedVid.id]: t }))}
-              style={styles.commentInput}
-              placeholderTextColor="#888"
-            />
-            <TouchableOpacity onPress={() => addComment(selectedVid.id)} style={styles.commentPostBtn}>
-              <Text style={styles.commentPostBtnText}>Post</Text>
-            </TouchableOpacity>
+                return (
+                  <View key={comment.id} style={styles.commentCard}>
+                    <Image
+                      source={isOwner ? normalizedCurrentUserAvatar : DEFAULT_USER_AVATAR}
+                      style={styles.commentAvatarImage}
+                    />
+                    <View style={styles.commentBody}>
+                      <View style={styles.commentHeaderRow}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.commentUser}>{comment.userName}</Text>
+                          <Text style={styles.commentDate}>
+                            {comment.createdAt}{wasEdited ? ' (edited)' : ''}
+                          </Text>
+                        </View>
+                        {canManage && (
+                          // 👇 CRUCIAL: Wrapping in View with collapsable={false} for Android measurement
+                          <View
+                            ref={(ref) => { if (ref) buttonRefs.current[comment.id] = ref; }}
+                            collapsable={false} 
+                          >
+                            <TouchableOpacity
+                              onPress={() => handleMenuPress(comment.id)}
+                              style={styles.commentMenuBtn}
+                            >
+                              <MaterialCommunityIcons name="dots-vertical" size={20} color="#606060" />
+                            </TouchableOpacity>
+                          </View>
+                        )}
+                      </View>
+
+                      {isEditing ? (
+                        <View style={styles.editRow}>
+                          <TextInput
+                            value={editText}
+                            onChangeText={setEditText}
+                            style={styles.editInput}
+                            placeholderTextColor="#888"
+                            autoFocus
+                            multiline
+                          />
+                          <View style={styles.editActionsRow}>
+                            <TouchableOpacity
+                              onPress={() => { setEditingCommentId(null); setEditText(''); }}
+                              style={styles.editCancelBtn}
+                            >
+                              <Text style={styles.editCancelText}>Cancel</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                              onPress={() => saveEditComment(comment.id, selectedVid.id)}
+                              style={[styles.editSaveBtn, savingEdit && styles.commentPostBtnDisabled]}
+                              disabled={savingEdit}
+                            >
+                              <Text style={styles.editSaveText}>{savingEdit ? 'Saving...' : 'Save'}</Text>
+                            </TouchableOpacity>
+                          </View>
+                        </View>
+                      ) : (
+                        <Text style={styles.commentText}>{comment.content}</Text>
+                      )}
+                    </View>
+                  </View>
+                );
+              })
+            )}
           </View>
 
-          {currentComments.length === 0 ? (
-            <Text style={styles.noComments}>No comments yet.</Text>
-          ) : (
-            currentComments.map((comment, idx) => (
-              <View key={idx} style={styles.commentCard}>
-                <Image source={normalizeImageSource(comment.avatar)} style={styles.commentAvatarImage} />
-                <View style={styles.commentBody}>
-                  <Text style={styles.commentUser}>{comment.userName}</Text>
-                  <Text style={styles.commentDate}>{comment.commentedAt}</Text>
-                  <Text style={styles.commentText}>{comment.message}</Text>
+          <View style={styles.relatedSection}>
+            <Text style={styles.sectionTitle}>Up next</Text>
+            {relatedVideos.map((v) => (
+              <TouchableOpacity key={v.id} style={styles.relatedCard} activeOpacity={0.9} onPress={() => openVideo(v.id)}>
+                <Image source={{ uri: v.thumbnail }} style={styles.relatedThumb} />
+                <View style={styles.relatedInfo}>
+                  <Text numberOfLines={2} style={styles.relatedTitle}>{v.title}</Text>
+                  <Text style={styles.relatedChannel}>{v.channel}</Text>
+                  <Text style={styles.relatedMeta}>{v.views} • {v.uploadedAt}</Text>
                 </View>
-              </View>
-            ))
-          )}
-        </View>
+              </TouchableOpacity>
+            ))}
+          </View>
 
-        <View style={styles.relatedSection}>
-          <Text style={styles.sectionTitle}>Up next</Text>
-          {relatedVideos.map((v) => (
-            <TouchableOpacity key={v.id} style={styles.relatedCard} activeOpacity={0.9} onPress={() => openVideo(v.id)}>
-              <Image source={{ uri: v.thumbnail }} style={styles.relatedThumb} />
-              <View style={styles.relatedInfo}>
-                <Text numberOfLines={2} style={styles.relatedTitle}>{v.title}</Text>
-                <Text style={styles.relatedChannel}>{v.channel}</Text>
-                <Text style={styles.relatedMeta}>{v.views} • {v.uploadedAt}</Text>
+        </ScrollView>
+
+        {/* 👇 CROSS-PLATFORM DROPDOWN: Rendered OUTSIDE ScrollView using a transparent Modal */}
+        <Modal
+          transparent
+          visible={!!openMenuCommentId}
+          animationType="fade"
+          onRequestClose={closeMenu}
+          statusBarTranslucent={Platform.OS === 'android'}
+        >
+          <View style={styles.menuModalContainer}>
+            {/* Invisible backdrop that closes menu when tapped */}
+            <Pressable style={StyleSheet.absoluteFill} onPress={closeMenu} />
+            
+            {/* Actual Dropdown Menu */}
+            {menuPosition && (
+              <View
+                style={[
+                  styles.dropdownMenu,
+                  {
+                    left: menuPosition.x,
+                    top: menuPosition.y,
+                  }
+                ]}
+              >
+                {activeMenuComment && activeMenuComment.userId === currentUserId && (
+                  <TouchableOpacity
+                    style={styles.dropdownOption}
+                    onPress={() => {
+                      setEditingCommentId(activeMenuComment.id);
+                      setEditText(activeMenuComment.content);
+                      closeMenu();
+                    }}
+                  >
+                    <MaterialCommunityIcons name="pencil-outline" size={18} color="#111" />
+                    <Text style={styles.dropdownOptionText}>Edit</Text>
+                  </TouchableOpacity>
+                )}
+                {activeMenuComment && (
+                  <TouchableOpacity
+                    style={styles.dropdownOption}
+                    onPress={() => {
+                      const commentId = activeMenuComment.id;
+                      closeMenu();
+                      deleteComment(commentId, selectedVid.id);
+                    }}
+                  >
+                    <MaterialCommunityIcons name="trash-can-outline" size={18} color="#D32F2F" />
+                    <Text style={[styles.dropdownOptionText, styles.dropdownOptionDangerText]}>Delete</Text>
+                  </TouchableOpacity>
+                )}
               </View>
-            </TouchableOpacity>
-          ))}
-        </View>
-      </ScrollView>
+            )}
+          </View>
+        </Modal>
+      </View>
     );
   }
 
@@ -511,7 +764,6 @@ const styles = StyleSheet.create({
   playerCard: { backgroundColor: '#fff' },
   playerWrapper: { width: '100%', backgroundColor: '#000', overflow: 'hidden' },
   
-  // 🚨 NEW STYLES FOR ERROR FALLBACK
   errorFallback: { justifyContent: 'center', alignItems: 'center', backgroundColor: '#111', padding: 20 },
   errorFallbackTitle: { color: '#fff', fontSize: 18, fontWeight: 'bold', marginBottom: 8, textAlign: 'center' },
   errorFallbackText: { color: '#aaa', fontSize: 14, textAlign: 'center', marginBottom: 20, lineHeight: 20 },
@@ -539,14 +791,63 @@ const styles = StyleSheet.create({
   commentComposer: { flexDirection: 'row', alignItems: 'center', marginBottom: 14 },
   commentInput: { flex: 1, borderWidth: 1, borderColor: '#ddd', borderRadius: 22, paddingHorizontal: 14, paddingVertical: 10, marginRight: 10, color: '#111', backgroundColor: '#fff' },
   commentPostBtn: { backgroundColor: '#DA1318', paddingHorizontal: 16, paddingVertical: 10, borderRadius: 20 },
+  commentPostBtnDisabled: { opacity: 0.6 },
   commentPostBtnText: { color: '#fff', fontWeight: '700' },
+  commentsLoadingWrap: { paddingVertical: 20, alignItems: 'center', justifyContent: 'center' },
   noComments: { color: '#707070', fontStyle: 'italic', marginTop: 4 },
   commentCard: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 14 },
   commentAvatarImage: { width: 42, height: 42, borderRadius: 21, marginRight: 12 },
   commentBody: { flex: 1 },
+  commentHeaderRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
+  commentMenuBtn: { padding: 4, marginLeft: 8 },
   commentUser: { fontWeight: '700', color: '#111', marginBottom: 2 },
   commentDate: { color: '#888', fontSize: 12, marginBottom: 4 },
   commentText: { color: '#222', fontSize: 14, lineHeight: 20 },
+  editRow: { marginTop: 4 },
+  editInput: { borderWidth: 1, borderColor: '#ddd', borderRadius: 14, paddingHorizontal: 12, paddingVertical: 8, color: '#111', backgroundColor: '#fff', fontSize: 14, lineHeight: 20 },
+  editActionsRow: { flexDirection: 'row', justifyContent: 'flex-end', gap: 10, marginTop: 8 },
+  editCancelBtn: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 18, backgroundColor: '#f2f2f2' },
+  editCancelText: { fontWeight: '600', color: '#111', fontSize: 13 },
+  editSaveBtn: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 18, backgroundColor: '#DA1318' },
+  editSaveText: { fontWeight: '700', color: '#fff', fontSize: 13 },
+  
+  // 👇 UPDATED CROSS-PLATFORM STYLES
+  menuModalContainer: {
+    flex: 1,
+    // Transparent background so we can see the content behind
+  },
+  dropdownMenu: {
+    position: 'absolute',
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    paddingVertical: 6,
+    width: 160, // Fixed width for consistent positioning across devices
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 8,
+    zIndex: 1000, // Ensure it's above the backdrop
+    borderWidth: Platform.OS === 'web' ? 1 : 0, // Border for web visibility
+    borderColor: '#e5e5e5',
+  },
+  dropdownOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  dropdownOptionText: { 
+    fontSize: 14, 
+    fontWeight: '600', 
+    color: '#111',
+    flex: 1,
+  },
+  dropdownOptionDangerText: { 
+    color: '#D32F2F',
+  },
+  
   relatedSection: { marginTop: 20, paddingHorizontal: 14 },
   relatedCard: { flexDirection: 'row', marginBottom: 14 },
   relatedThumb: { width: 180, height: 100, borderRadius: 10, backgroundColor: '#ddd', marginRight: 12 },

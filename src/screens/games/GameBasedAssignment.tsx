@@ -1,7 +1,16 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, useWindowDimensions, View,
+  Alert,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  useWindowDimensions,
+  View,
 } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 
 export interface GameQuestion {
@@ -21,6 +30,131 @@ interface GameBasedAssignmentProps {
   onComplete: (score: number, total: number) => void;
 }
 
+// ============================================================
+// RESPONSIVE DESIGN SYSTEM
+// ============================================================
+// Centralizes every breakpoint, scale, and spacing decision so
+// no component below ever reaches for a hardcoded pixel value.
+// ============================================================
+
+const BREAKPOINTS = {
+  smallPhone: 400,
+  mobile: 600,
+  tablet: 900,
+};
+
+interface ResponsiveInfo {
+  width: number;
+  height: number;
+  isSmallPhone: boolean;
+  isMobile: boolean;
+  isTablet: boolean;
+  isDesktop: boolean;
+  isLandscape: boolean;
+  isWeb: boolean;
+  contentWidth: number;
+  horizontalPadding: number;
+  cardPadding: number;
+  spacing: { xs: number; sm: number; md: number; lg: number; xl: number };
+  font: {
+    heading: number;
+    subheading: number;
+    body: number;
+    question: number;
+    caption: number;
+    button: number;
+  };
+  flashcardWidth: number;
+  flashcardHeight: number;
+  memoryColumns: 1 | 2;
+  touchTarget: number;
+}
+
+const useResponsive = (): ResponsiveInfo => {
+  const { width, height } = useWindowDimensions();
+
+  return useMemo(() => {
+    const isSmallPhone = width < BREAKPOINTS.smallPhone;
+    const isMobile = width >= BREAKPOINTS.smallPhone && width < BREAKPOINTS.mobile;
+    const isTablet = width >= BREAKPOINTS.mobile && width < BREAKPOINTS.tablet;
+    const isDesktop = width >= BREAKPOINTS.tablet;
+    const isLandscape = width > height;
+    const isWeb = Platform.OS === 'web';
+
+    // Centered content container max width, scales by device class.
+    let contentWidth: number;
+    if (isDesktop) {
+      contentWidth = Math.min(width * 0.9, 1100);
+      contentWidth = Math.max(contentWidth, 900 > width ? width * 0.94 : 900);
+      contentWidth = Math.min(contentWidth, width - 32);
+    } else if (isTablet) {
+      contentWidth = Math.min(width * 0.92, 800);
+      contentWidth = Math.max(Math.min(contentWidth, width - 24), 700 > width ? width - 24 : 700);
+    } else {
+      contentWidth = width; // small phone / mobile: full width with internal padding
+    }
+
+    const horizontalPadding = isSmallPhone ? 12 : isMobile ? 16 : isTablet ? 24 : 32;
+    const cardPadding = isSmallPhone ? 16 : isMobile ? 20 : isTablet ? 24 : 28;
+
+    const spacing = {
+      xs: isSmallPhone ? 4 : 6,
+      sm: isSmallPhone ? 8 : isMobile ? 10 : 12,
+      md: isSmallPhone ? 12 : isMobile ? 16 : isTablet ? 20 : 24,
+      lg: isSmallPhone ? 16 : isMobile ? 20 : isTablet ? 28 : 32,
+      xl: isSmallPhone ? 20 : isMobile ? 28 : isTablet ? 36 : 44,
+    };
+
+    const font = {
+      heading: isSmallPhone ? 18 : isMobile ? 20 : isTablet ? 25 : 30,
+      subheading: isSmallPhone ? 15 : isMobile ? 16 : isTablet ? 18 : 20,
+      body: isSmallPhone ? 14 : isMobile ? 15 : isTablet ? 16 : 18,
+      question: isSmallPhone ? 18 : isMobile ? 19 : isTablet ? 23 : 26,
+      caption: isSmallPhone ? 12 : isMobile ? 13 : 14,
+      button: isSmallPhone ? 15 : isMobile ? 16 : isTablet ? 17 : 18,
+    };
+
+    // Flashcards: scale width with screen, keep a comfortable aspect ratio.
+    const flashcardWidth = isDesktop
+      ? Math.min(contentWidth * 0.7, 560)
+      : isTablet
+      ? contentWidth * 0.8
+      : width - horizontalPadding * 2;
+    const flashcardHeight = isSmallPhone
+      ? 200
+      : isMobile
+      ? 230
+      : isTablet
+      ? 280
+      : 320;
+
+    // Memory match: stack on phones, two columns side-by-side on tablet/desktop.
+    const memoryColumns: 1 | 2 = isTablet || isDesktop ? 2 : 1;
+
+    const touchTarget = 48;
+
+    return {
+      width,
+      height,
+      isSmallPhone,
+      isMobile,
+      isTablet,
+      isDesktop,
+      isLandscape,
+      isWeb,
+      contentWidth,
+      horizontalPadding,
+      cardPadding,
+      spacing,
+      font,
+      flashcardWidth,
+      flashcardHeight,
+      memoryColumns,
+      touchTarget,
+    };
+  }, [width, height]);
+};
+
 const GameBasedAssignment: React.FC<GameBasedAssignmentProps> = ({
   assignmentTitle,
   questions,
@@ -29,24 +163,27 @@ const GameBasedAssignment: React.FC<GameBasedAssignmentProps> = ({
   onBack,
   onComplete,
 }) => {
-  const { width } = useWindowDimensions();
+  const r = useResponsive();
+  const insets = useSafeAreaInsets();
+  const styles = useMemo(() => createStyles(r), [r]);
+
   const [currentIndex, setCurrentIndex] = useState(0);
   const [score, setScore] = useState(0);
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
   const [hasAnswered, setHasAnswered] = useState(false);
   const [isCorrect, setIsCorrect] = useState<boolean | null>(null);
-  
+
   // Flashcard specific
   const [flashcardAnswer, setFlashcardAnswer] = useState('');
   const [isFlipped, setIsFlipped] = useState(false);
   const [flashcardSubmitted, setFlashcardSubmitted] = useState(false);
-  
+
   // Memory match specific (Two-column matching)
   const [selectedTerm, setSelectedTerm] = useState<number | null>(null);
   const [memoryCards, setMemoryCards] = useState<any[]>([]);
   const [termAnswers, setTermAnswers] = useState<Record<number, number>>({});
   const [matchingSubmitted, setMatchingSubmitted] = useState(false);
-  
+
   // UPDATED: Added selectedText and correctText to store full sentences
   const [matchingResults, setMatchingResults] = useState<
     Record<number, {
@@ -57,7 +194,7 @@ const GameBasedAssignment: React.FC<GameBasedAssignmentProps> = ({
       isCorrect: boolean;
     }>
   >({});
-  
+
   // GLOBAL TIMER STATE (in seconds)
   const [globalTimeLeft, setGlobalTimeLeft] = useState<number | null>(null);
   const [isTimeUp, setIsTimeUp] = useState(false);
@@ -85,10 +222,10 @@ const GameBasedAssignment: React.FC<GameBasedAssignmentProps> = ({
   // 🌟 UPDATED: Immediately finishes game AND submits score
   const handleTimeUp = () => {
     setIsTimeUp(true);
-    
+
     // 1. Force switch to Summary screen immediately
     setGameFinished(true);
-    
+
     // 2. Submit current score to parent/backend immediately
     onComplete(scoreRef.current, questions.length);
 
@@ -96,7 +233,7 @@ const GameBasedAssignment: React.FC<GameBasedAssignmentProps> = ({
     Alert.alert(
       "Time's Up!",
       'Your time limit has expired. Your current score has been automatically submitted.',
-      [{ text: 'View Results', onPress: () => {} }] 
+      [{ text: 'View Results', onPress: () => {} }]
     );
   };
 
@@ -290,23 +427,27 @@ const GameBasedAssignment: React.FC<GameBasedAssignmentProps> = ({
   // Unified Header with Global Timer
   const renderHeader = (progressText: string) => (
     <View style={styles.header}>
-      <Text style={styles.progressText}>{progressText}</Text>
-      
+      <Text style={styles.progressText} numberOfLines={1}>
+        {progressText}
+      </Text>
+
       {/* Global Timer Badge */}
       {globalTimeLeft !== null && (
         <View style={[styles.timerBadge, globalTimeLeft <= 60 && styles.timerBadgeUrgent]}>
-          <Ionicons 
-            name="time-outline" 
-            size={16} 
-            color={globalTimeLeft <= 60 ? '#D32F2F' : '#FFF'} 
+          <Ionicons
+            name="time-outline"
+            size={r.isSmallPhone ? 14 : 16}
+            color={globalTimeLeft <= 60 ? '#D32F2F' : '#FFF'}
           />
-          <Text style={[styles.timerText, globalTimeLeft <= 60 && styles.timerTextUrgent]}>
+          <Text style={[styles.timerText, globalTimeLeft <= 60 && styles.timerTextUrgent]} numberOfLines={1}>
             {gameType === 'quiz_master' ? 'Time Limit ' : ''}{formatTime(globalTimeLeft)}
           </Text>
         </View>
       )}
 
-      <Text style={styles.scoreText}>Score: {score}/{questions.length}</Text>
+      <Text style={styles.scoreText} numberOfLines={1}>
+        Score: {score}/{questions.length}
+      </Text>
     </View>
   );
 
@@ -319,7 +460,11 @@ const GameBasedAssignment: React.FC<GameBasedAssignmentProps> = ({
     return (
       <View style={styles.gameContainer}>
         <View style={styles.summaryHeader}>
-          <Ionicons name={percentage >= 75 ? "trophy" : "school"} size={60} color={percentage >= 75 ? "#FFC107" : "#2196F3"} />
+          <Ionicons
+            name={percentage >= 75 ? 'trophy' : 'school'}
+            size={r.isDesktop ? 80 : r.isTablet ? 70 : r.isSmallPhone ? 48 : 60}
+            color={percentage >= 75 ? '#FFC107' : '#2196F3'}
+          />
           <Text style={styles.summaryTitle}>Game Completed!</Text>
           <Text style={styles.summaryScore}>{score} / {totalQuestions}</Text>
           <Text style={styles.summaryPercentage}>{percentage}% Accuracy</Text>
@@ -399,7 +544,7 @@ const GameBasedAssignment: React.FC<GameBasedAssignmentProps> = ({
 
                       <Text
                         style={{
-                          marginTop: 8,
+                          marginTop: r.spacing.xs + 4,
                           fontWeight: '700',
                           color:
                             matchingResults[idx]?.isCorrect
@@ -507,18 +652,20 @@ const GameBasedAssignment: React.FC<GameBasedAssignmentProps> = ({
     <View style={styles.gameContainer}>
       {renderHeader(`Card ${currentIndex + 1} / ${questions.length}`)}
 
-      <View style={[styles.flashcardContainer, isFlipped && styles.flashcardFlipped]}>
-        {!isFlipped ? (
-          <View style={styles.flashcardFront}>
-            <Ionicons name="help-circle-outline" size={40} color="#D32F2F" />
-            <Text style={styles.flashcardQuestion}>{currentQuestion.question}</Text>
-          </View>
-        ) : (
-          <View style={styles.flashcardBack}>
-            <Ionicons name="checkmark-circle-outline" size={40} color="#4CAF50" />
-            <Text style={styles.flashcardAnswerText}>{currentQuestion.answer}</Text>
-          </View>
-        )}
+      <View style={styles.flashcardOuter}>
+        <View style={[styles.flashcardContainer, isFlipped && styles.flashcardFlipped]}>
+          {!isFlipped ? (
+            <View style={styles.flashcardFront}>
+              <Ionicons name="help-circle-outline" size={r.isSmallPhone ? 32 : 40} color="#D32F2F" />
+              <Text style={styles.flashcardQuestion}>{currentQuestion.question}</Text>
+            </View>
+          ) : (
+            <View style={styles.flashcardBack}>
+              <Ionicons name="checkmark-circle-outline" size={r.isSmallPhone ? 32 : 40} color="#4CAF50" />
+              <Text style={styles.flashcardAnswerText}>{currentQuestion.answer}</Text>
+            </View>
+          )}
+        </View>
       </View>
 
       {!flashcardSubmitted ? (
@@ -622,14 +769,7 @@ const GameBasedAssignment: React.FC<GameBasedAssignmentProps> = ({
           Select a term then select its matching letter.
         </Text>
 
-        <Text
-          style={{
-            textAlign: 'center',
-            marginBottom: 10,
-            color: '#2196F3',
-            fontWeight: '700',
-          }}
-        >
+        <Text style={styles.memoryMatchPrompt}>
           {selectedTerm !== null
             ? 'Select a letter from Column B'
             : 'Select a term from Column A'}
@@ -670,25 +810,13 @@ const GameBasedAssignment: React.FC<GameBasedAssignmentProps> = ({
                     handleMemoryCardPress(card)
                   }
                 >
-                  <View
-                    style={{
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                    }}
-                  >
+                  <View style={styles.memoryCardRow}>
                     <Text style={styles.memoryCardText}>
                       {card.text}
                     </Text>
 
                     {selectedLetter !== '' && (
-                      <Text
-                        style={{
-                          marginLeft: 8,
-                          color: '#D32F2F',
-                          fontWeight: '900',
-                          fontSize: 16,
-                        }}
-                      >
+                      <Text style={styles.memoryCardSelectedLetter}>
                         ({selectedLetter})
                       </Text>
                     )}
@@ -716,13 +844,7 @@ const GameBasedAssignment: React.FC<GameBasedAssignmentProps> = ({
                     handleMemoryCardPress(card)
                   }
                 >
-                  <Text
-                    style={{
-                      fontWeight: '900',
-                      color: '#D32F2F',
-                      marginBottom: 6,
-                    }}
-                  >
+                  <Text style={styles.memoryCardLetter}>
                     {letter}
                   </Text>
 
@@ -763,145 +885,411 @@ const GameBasedAssignment: React.FC<GameBasedAssignmentProps> = ({
   };
 
   return (
-    <View style={styles.container}>
-      <View style={styles.topBar}>
-        <TouchableOpacity onPress={onBack} style={styles.backBtn}>
-          <Ionicons name="arrow-back" size={24} color="#FFF" />
+    <SafeAreaView style={styles.container} edges={['left', 'right', 'bottom']}>
+      <View style={[styles.topBar, { paddingTop: styles.topBar.paddingVertical + insets.top }]}>
+        <TouchableOpacity onPress={onBack} style={styles.backBtn} accessibilityRole="button" accessibilityLabel="Go back">
+          <Ionicons name="arrow-back" size={r.isSmallPhone ? 20 : 24} color="#FFF" />
         </TouchableOpacity>
-        <Text style={styles.topBarTitle} numberOfLines={1}>{assignmentTitle}</Text>
-        <View style={{ width: 40 }} />
+        <Text style={styles.topBarTitle} numberOfLines={1} ellipsizeMode="tail">
+          {assignmentTitle}
+        </Text>
+        <View style={styles.topBarSpacer} />
       </View>
-      <ScrollView contentContainerStyle={styles.scrollContent}>
-        {renderGame()}
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
+        <View style={styles.centeredContent}>{renderGame()}</View>
       </ScrollView>
-    </View>
+    </SafeAreaView>
   );
 };
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F5F7FA' },
-  topBar: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    backgroundColor: '#D32F2F', paddingHorizontal: 16, paddingVertical: 14,
-    paddingTop: 50,
-  },
-  backBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center' },
-  topBarTitle: { color: '#FFF', fontSize: 18, fontWeight: '800', flex: 1, textAlign: 'center' },
-  scrollContent: { padding: 16, paddingBottom: 40 },
-  gameContainer: { flex: 1 },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
-  progressText: { fontSize: 16, fontWeight: '700', color: '#555' },
-  scoreText: { fontSize: 16, fontWeight: '700', color: '#D32F2F' },
-  timerBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#2196F3', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 20 },
-  timerBadgeUrgent: { backgroundColor: '#FFEBEE' },
-  timerText: { color: '#FFF', fontWeight: '800', fontSize: 14 },
-  timerTextUrgent: { color: '#D32F2F' },
-  questionCard: { backgroundColor: '#FFF', padding: 24, borderRadius: 16, marginBottom: 24, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 10, elevation: 4 },
-  questionText: { fontSize: 18, fontWeight: '700', color: '#222', lineHeight: 26 },
-  optionsContainer: { gap: 12 },
-  optionButton: { backgroundColor: '#FFF', borderWidth: 2, borderColor: '#DDD', borderRadius: 12, padding: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  optionText: { fontSize: 15, fontWeight: '600', flex: 1 },
-  feedbackCard: { marginTop: 24, padding: 20, borderRadius: 16, alignItems: 'center' },
-  feedbackCorrect: { backgroundColor: '#E8F5E9' },
-  feedbackWrong: { backgroundColor: '#FFEBEE' },
-  feedbackText: { fontSize: 20, fontWeight: '800', marginBottom: 8 },
-  feedbackSubtext: { fontSize: 14, color: '#555', marginBottom: 16, textAlign: 'center' },
-  nextButton: { backgroundColor: '#D32F2F', paddingVertical: 14, paddingHorizontal: 32, borderRadius: 12, marginTop: 16, alignItems: 'center' },
-  nextButtonDisabled: { backgroundColor: '#CCC' },
-  nextButtonText: { color: '#FFF', fontSize: 16, fontWeight: '800' },
-  // Flashcard
-  flashcardContainer: { height: 250, backgroundColor: '#FFF', borderRadius: 20, marginBottom: 24, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 15, elevation: 6, justifyContent: 'center', alignItems: 'center', padding: 24 },
-  flashcardFlipped: { backgroundColor: '#E8F5E9' },
-  flashcardFront: { alignItems: 'center', justifyContent: 'center', flex: 1 },
-  flashcardBack: { alignItems: 'center', justifyContent: 'center', flex: 1 },
-  flashcardQuestion: { fontSize: 20, fontWeight: '700', color: '#222', textAlign: 'center', marginTop: 16 },
-  flashcardAnswerText: { fontSize: 22, fontWeight: '800', color: '#2E7D32', textAlign: 'center', marginTop: 16 },
-  flashcardInputContainer: { gap: 12 },
-  flashcardInput: { backgroundColor: '#FFF', borderWidth: 1, borderColor: '#DDD', borderRadius: 12, padding: 16, fontSize: 16, minHeight: 60, textAlignVertical: 'top' },
-  // Memory Match - Two Column Layout
-  memoryMatchInstructions: {
-    fontSize: 14,
-    color: '#666',
-    textAlign: 'center',
-    marginBottom: 20,
-    fontWeight: '600',
-  },
-  memoryMatchContainer: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    paddingHorizontal: 10,
-  },
-  memoryColumn: {
-    flex: 1,
-    paddingHorizontal: 10,
-  },
-  memoryColumnHeader: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: '#222',
-    textAlign: 'center',
-    marginBottom: 16,
-    paddingBottom: 8,
-    borderBottomWidth: 2,
-    borderBottomColor: '#D32F2F',
-  },
-  memoryCard: {
-    backgroundColor: '#FFF',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
-    minHeight: 80,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 2,
-    borderColor: '#DDD',
-    shadowColor: '#000',
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  memoryCardMatched: {
-    backgroundColor: '#E8F5E9',
-    borderColor: '#4CAF50',
-  },
-  memoryCardSelected: {
-    backgroundColor: '#E3F2FD',
-    borderColor: '#2196F3',
-  },
-  memoryCardText: {
-    color: '#222',
-    fontSize: 14,
-    fontWeight: '600',
-    textAlign: 'center',
-  },
-  connectionsContainer: {
-    width: 60,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  connectionLine: {
-    width: 40,
-    height: 2,
-    backgroundColor: '#4CAF50',
-    marginVertical: 40,
-  },
-  // Summary & Review Styles
-  summaryHeader: { alignItems: 'center', marginBottom: 24, padding: 20 },
-  summaryTitle: { fontSize: 24, fontWeight: '800', color: '#222', marginTop: 12 },
-  summaryScore: { fontSize: 28, fontWeight: '900', color: '#D32F2F', marginTop: 8 },
-  summaryPercentage: { fontSize: 18, fontWeight: '700', color: '#555', marginTop: 4 },
-  summarySubtext: { fontSize: 14, color: '#777', marginTop: 8 },
-  reviewTitle: { fontSize: 18, fontWeight: '800', color: '#222', marginBottom: 12, paddingHorizontal: 16 },
-  reviewList: { paddingHorizontal: 16, marginBottom: 16 },
-  reviewItem: { backgroundColor: '#FFF', borderRadius: 12, padding: 16, marginBottom: 12, borderLeftWidth: 4 },
-  reviewCorrect: { borderLeftColor: '#4CAF50' },
-  reviewWrong: { borderLeftColor: '#F44336' },
-  reviewItemHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
-  reviewQuestionText: { fontSize: 14, fontWeight: '700', color: '#222', flex: 1 },
-  reviewAnswers: { marginLeft: 28 },
-  reviewUserAnswer: { fontSize: 13, color: '#555', marginBottom: 4 },
-  reviewCorrectAnswer: { fontSize: 13, color: '#4CAF50', fontWeight: '600' },
-});
+// ============================================================
+// STYLE FACTORY — derives every value from the responsive token
+// set above. No hardcoded pixel widths/paddings/fonts here.
+// ============================================================
+const createStyles = (r: ResponsiveInfo) => {
+  const isRowMemory = r.memoryColumns === 2;
+
+  return StyleSheet.create({
+    container: { flex: 1, backgroundColor: '#F5F7FA' },
+    topBar: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      backgroundColor: '#D32F2F',
+      paddingHorizontal: r.horizontalPadding,
+      paddingVertical: r.isSmallPhone ? 10 : r.isDesktop ? 18 : 14,
+      width: '100%',
+    },
+    backBtn: {
+      width: r.touchTarget,
+      height: r.touchTarget,
+      borderRadius: r.touchTarget / 2,
+      backgroundColor: 'rgba(255,255,255,0.2)',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    topBarTitle: {
+      color: '#FFF',
+      fontSize: r.font.subheading,
+      fontWeight: '800',
+      flex: 1,
+      textAlign: 'center',
+      marginHorizontal: r.spacing.sm,
+    },
+    topBarSpacer: { width: r.touchTarget },
+    scrollContent: {
+      paddingHorizontal: r.horizontalPadding,
+      paddingTop: r.spacing.md,
+      paddingBottom: r.spacing.xl + 16,
+      alignItems: 'center',
+      width: '100%',
+    },
+    centeredContent: {
+      width: '100%',
+      maxWidth: r.contentWidth,
+      alignSelf: 'center',
+    },
+    gameContainer: { flex: 1, width: '100%' },
+    header: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: r.spacing.lg,
+      gap: r.spacing.sm,
+    },
+    progressText: {
+      fontSize: r.font.body,
+      fontWeight: '700',
+      color: '#555',
+      flexShrink: 1,
+    },
+    scoreText: {
+      fontSize: r.font.body,
+      fontWeight: '700',
+      color: '#D32F2F',
+      flexShrink: 0,
+    },
+    timerBadge: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      backgroundColor: '#2196F3',
+      paddingHorizontal: r.isSmallPhone ? 8 : 10,
+      paddingVertical: r.isSmallPhone ? 5 : 6,
+      borderRadius: 20,
+      flexShrink: 1,
+      maxWidth: '100%',
+    },
+    timerBadgeUrgent: { backgroundColor: '#FFEBEE' },
+    timerText: { color: '#FFF', fontWeight: '800', fontSize: r.font.caption },
+    timerTextUrgent: { color: '#D32F2F' },
+    questionCard: {
+      backgroundColor: '#FFF',
+      padding: r.cardPadding,
+      borderRadius: 16,
+      marginBottom: r.spacing.lg,
+      shadowColor: '#000',
+      shadowOpacity: 0.05,
+      shadowRadius: 10,
+      elevation: 4,
+      width: '100%',
+    },
+    questionText: {
+      fontSize: r.font.question,
+      fontWeight: '700',
+      color: '#222',
+      lineHeight: r.font.question * 1.4,
+      flexWrap: 'wrap',
+    },
+    optionsContainer: { gap: r.spacing.sm, width: '100%' },
+    optionButton: {
+      backgroundColor: '#FFF',
+      borderWidth: 2,
+      borderColor: '#DDD',
+      borderRadius: 12,
+      padding: r.isSmallPhone ? 14 : 16,
+      minHeight: r.touchTarget,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      width: '100%',
+    },
+    optionText: {
+      fontSize: r.font.body,
+      fontWeight: '600',
+      flex: 1,
+      flexShrink: 1,
+      flexWrap: 'wrap',
+      marginRight: r.spacing.sm,
+    },
+    feedbackCard: {
+      marginTop: r.spacing.lg,
+      padding: r.cardPadding,
+      borderRadius: 16,
+      alignItems: 'center',
+      width: '100%',
+    },
+    feedbackCorrect: { backgroundColor: '#E8F5E9' },
+    feedbackWrong: { backgroundColor: '#FFEBEE' },
+    feedbackText: {
+      fontSize: r.font.subheading + 4,
+      fontWeight: '800',
+      marginBottom: r.spacing.sm,
+      textAlign: 'center',
+    },
+    feedbackSubtext: {
+      fontSize: r.font.body,
+      color: '#555',
+      marginBottom: r.spacing.md,
+      textAlign: 'center',
+    },
+    nextButton: {
+      backgroundColor: '#D32F2F',
+      paddingVertical: r.isSmallPhone ? 12 : 14,
+      paddingHorizontal: r.isDesktop ? 48 : 32,
+      borderRadius: 12,
+      marginTop: r.spacing.md,
+      alignItems: 'center',
+      justifyContent: 'center',
+      minHeight: r.touchTarget,
+      alignSelf: r.isDesktop ? 'center' : 'stretch',
+      minWidth: r.isDesktop ? 240 : undefined,
+      ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+    },
+    nextButtonDisabled: { backgroundColor: '#CCC' },
+    nextButtonText: { color: '#FFF', fontSize: r.font.button, fontWeight: '800' },
+    // Flashcard
+    flashcardOuter: {
+      width: '100%',
+      alignItems: 'center',
+    },
+    flashcardContainer: {
+      width: r.flashcardWidth,
+      height: r.flashcardHeight,
+      backgroundColor: '#FFF',
+      borderRadius: 20,
+      marginBottom: r.spacing.lg,
+      shadowColor: '#000',
+      shadowOpacity: 0.08,
+      shadowRadius: 15,
+      elevation: 6,
+      justifyContent: 'center',
+      alignItems: 'center',
+      padding: r.cardPadding,
+    },
+    flashcardFlipped: { backgroundColor: '#E8F5E9' },
+    flashcardFront: { alignItems: 'center', justifyContent: 'center', flex: 1 },
+    flashcardBack: { alignItems: 'center', justifyContent: 'center', flex: 1 },
+    flashcardQuestion: {
+      fontSize: r.font.subheading + 4,
+      fontWeight: '700',
+      color: '#222',
+      textAlign: 'center',
+      marginTop: r.spacing.md,
+      flexWrap: 'wrap',
+    },
+    flashcardAnswerText: {
+      fontSize: r.font.subheading + 6,
+      fontWeight: '800',
+      color: '#2E7D32',
+      textAlign: 'center',
+      marginTop: r.spacing.md,
+      flexWrap: 'wrap',
+    },
+    flashcardInputContainer: { gap: r.spacing.sm, width: '100%' },
+    flashcardInput: {
+      backgroundColor: '#FFF',
+      borderWidth: 1,
+      borderColor: '#DDD',
+      borderRadius: 12,
+      padding: r.isSmallPhone ? 14 : 16,
+      fontSize: r.font.body,
+      minHeight: 60,
+      textAlignVertical: 'top',
+      width: '100%',
+    },
+    // Memory Match — responsive two-column layout
+    memoryMatchInstructions: {
+      fontSize: r.font.caption,
+      color: '#666',
+      textAlign: 'center',
+      marginBottom: r.spacing.md,
+      fontWeight: '600',
+    },
+    memoryMatchPrompt: {
+      textAlign: 'center',
+      marginBottom: r.spacing.sm + 2,
+      color: '#2196F3',
+      fontWeight: '700',
+      fontSize: r.font.body,
+    },
+    memoryMatchContainer: {
+      flexDirection: isRowMemory ? 'row' : 'column',
+      alignItems: 'flex-start',
+      justifyContent: 'space-between',
+      width: '100%',
+      gap: isRowMemory ? r.spacing.md : 0,
+    },
+    memoryColumn: {
+      flex: isRowMemory ? 1 : undefined,
+      width: isRowMemory ? undefined : '100%',
+      marginBottom: isRowMemory ? 0 : r.spacing.lg,
+    },
+    memoryColumnHeader: {
+      fontSize: r.font.subheading,
+      fontWeight: '800',
+      color: '#222',
+      textAlign: 'center',
+      marginBottom: r.spacing.md,
+      paddingBottom: r.spacing.xs + 4,
+      borderBottomWidth: 2,
+      borderBottomColor: '#D32F2F',
+    },
+    memoryCard: {
+      backgroundColor: '#FFF',
+      borderRadius: 12,
+      padding: r.isSmallPhone ? 12 : 16,
+      marginBottom: r.spacing.sm,
+      minHeight: Math.max(r.touchTarget + 16, 80),
+      justifyContent: 'center',
+      alignItems: 'center',
+      borderWidth: 2,
+      borderColor: '#DDD',
+      shadowColor: '#000',
+      shadowOpacity: 0.05,
+      shadowRadius: 4,
+      elevation: 2,
+      width: '100%',
+    },
+    memoryCardMatched: {
+      backgroundColor: '#E8F5E9',
+      borderColor: '#4CAF50',
+    },
+    memoryCardSelected: {
+      backgroundColor: '#E3F2FD',
+      borderColor: '#2196F3',
+    },
+    memoryCardRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      flexWrap: 'wrap',
+      justifyContent: 'center',
+    },
+    memoryCardSelectedLetter: {
+      marginLeft: r.spacing.xs + 4,
+      color: '#D32F2F',
+      fontWeight: '900',
+      fontSize: r.font.body,
+    },
+    memoryCardLetter: {
+      fontWeight: '900',
+      color: '#D32F2F',
+      marginBottom: r.spacing.xs + 2,
+      fontSize: r.font.body,
+    },
+    memoryCardText: {
+      color: '#222',
+      fontSize: r.font.caption + 1,
+      fontWeight: '600',
+      textAlign: 'center',
+      flexWrap: 'wrap',
+      flexShrink: 1,
+    },
+    connectionsContainer: {
+      width: 60,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    connectionLine: {
+      width: 40,
+      height: 2,
+      backgroundColor: '#4CAF50',
+      marginVertical: 40,
+    },
+    // Summary & Review Styles
+    summaryHeader: {
+      alignItems: 'center',
+      marginBottom: r.spacing.lg,
+      padding: r.spacing.lg,
+      width: '100%',
+    },
+    summaryTitle: {
+      fontSize: r.font.heading,
+      fontWeight: '800',
+      color: '#222',
+      marginTop: r.spacing.sm,
+      textAlign: 'center',
+    },
+    summaryScore: {
+      fontSize: r.font.heading + (r.isDesktop ? 6 : 4),
+      fontWeight: '900',
+      color: '#D32F2F',
+      marginTop: r.spacing.xs + 4,
+      textAlign: 'center',
+    },
+    summaryPercentage: {
+      fontSize: r.font.subheading,
+      fontWeight: '700',
+      color: '#555',
+      marginTop: r.spacing.xs,
+      textAlign: 'center',
+    },
+    summarySubtext: {
+      fontSize: r.font.caption + 1,
+      color: '#777',
+      marginTop: r.spacing.xs + 4,
+      textAlign: 'center',
+    },
+    reviewTitle: {
+      fontSize: r.font.subheading,
+      fontWeight: '800',
+      color: '#222',
+      marginBottom: r.spacing.sm + 4,
+      width: '100%',
+    },
+    reviewList: { width: '100%', marginBottom: r.spacing.md },
+    reviewItem: {
+      backgroundColor: '#FFF',
+      borderRadius: 12,
+      padding: r.isSmallPhone ? 14 : 16,
+      marginBottom: r.spacing.sm + 4,
+      borderLeftWidth: 4,
+      width: '100%',
+    },
+    reviewCorrect: { borderLeftColor: '#4CAF50' },
+    reviewWrong: { borderLeftColor: '#F44336' },
+    reviewItemHeader: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      gap: r.spacing.sm,
+      marginBottom: r.spacing.sm,
+    },
+    reviewQuestionText: {
+      fontSize: r.font.caption + 1,
+      fontWeight: '700',
+      color: '#222',
+      flex: 1,
+      flexWrap: 'wrap',
+    },
+    reviewAnswers: { marginLeft: 28, flexShrink: 1 },
+    reviewUserAnswer: {
+      fontSize: r.font.caption,
+      color: '#555',
+      marginBottom: r.spacing.xs,
+      flexWrap: 'wrap',
+    },
+    reviewCorrectAnswer: {
+      fontSize: r.font.caption,
+      color: '#4CAF50',
+      fontWeight: '600',
+      flexWrap: 'wrap',
+    },
+  });
+};
 
 export default GameBasedAssignment;

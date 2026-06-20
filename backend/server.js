@@ -1068,370 +1068,7 @@ function parseQuizMastersJsonResponse(rawText = "", providerLabel = "AI") {
   }
 }
 
-function normalizeQuizMastersQuestions(value, gameType = "") {
-  const sourceQuestions = Array.isArray(value?.questions)
-    ? value.questions
-    : [];
 
-  // MEMORY MATCH
-  if (gameType === "memory_match") {
-    return sourceQuestions
-      .map((item) => {
-        const question = normalizeOptionalText(item?.question);
-        const answer = normalizeOptionalText(item?.answer);
-
-        if (!question || !answer) return null;
-
-        return {
-          question,
-          answer,
-          options: [],
-        };
-      })
-      .filter(Boolean)
-      .slice(0, 10);
-  }
-
-  // QUIZ MASTER
-  return sourceQuestions
-    .map((item) => {
-      const question = normalizeOptionalText(item?.question);
-
-      const options = Array.isArray(item?.options)
-        ? item.options
-            .map((option) => normalizeOptionalText(option))
-            .filter(Boolean)
-        : [];
-
-      const answer = normalizeOptionalText(item?.answer);
-
-      if (!question || options.length !== 4 || !answer) {
-        return null;
-      }
-
-      const matchingAnswer = options.find(
-        (option) =>
-          option.toLowerCase() === answer.toLowerCase()
-      );
-
-      if (!matchingAnswer) return null;
-
-      return {
-        question,
-        options,
-        answer: matchingAnswer,
-      };
-    })
-    .filter(Boolean)
-    .slice(0, 10);
-}
-
-function buildQuizMastersPrompt({ extractedText, fileName, gameType }) {
-  let gameStyleInstruction = "";
-  
-  switch (gameType) {
-    case "memory_match":
-      gameStyleInstruction = `
-        Style: Memory Match.
-
-        Generate exactly 10 term-definition pairs.
-
-        JSON format:
-
-        {
-          "questions": [
-            {
-              "question": "HTML",
-              "answer": "HyperText Markup Language"
-            }
-          ]
-        }
-
-        IMPORTANT:
-        - question = term
-        - answer = definition
-        - DO NOT include options
-        - DO NOT generate multiple choice answers
-        - One term must have exactly one definition
-      `;
-      break;
-    case "fill_in_blanks":
-      gameStyleInstruction = "Style: Fill-in-the-Blanks. Format the question as a sentence with a missing keyword (e.g., 'The process of ___ is defined as...'). The correct answer must be the exact missing word/phrase.";
-      break;
-    case "flashcard":
-      gameStyleInstruction = "Style: Flashcard Challenge. Generate concise, direct questions with clear, short answers. Focus on key facts and core definitions.";
-      break;
-    case "quiz_master":
-    default:
-      gameStyleInstruction = "Style: Quiz Master. Generate standard, well-balanced timed multiple-choice questions testing overall comprehension of the material.";
-      break;
-  }
-
-  return `
-You are generating an educational game quiz from an uploaded learning file.
-${
-  gameType === "memory_match"
-    ? "Create exactly 10 term-definition pairs."
-    : "Create exactly 10 multiple-choice quiz questions."
-}
-
-GAME TYPE INSTRUCTIONS:
-${gameStyleInstruction}
-
-CRITICAL FORMATTING RULES:
-- Return ONLY valid JSON. No markdown, no explanations, no code fences.
-${
-  gameType === "memory_match"
-    ? `
-- DO NOT include options.
-- Return only question and answer.
-`
-    : `
-- All questions MUST have exactly 4 options.
-- The answer MUST exactly match one of the 4 options.
-`
-}
-
-Uploaded file name:
-${fileName || "uploaded-file"}
-
-Learning content:
-${limitText(extractedText, 12000)}
-`;
-}
-
-async function generateQuizMastersWithGemini({ extractedText, fileName, gameType }) {
-  if (!geminiGameAI) {
-    throw new Error("GEMINI_API_KEY is missing in your backend .env file.");
-  }
-  const model = geminiGameAI.getGenerativeModel({
-    model: GEMINI_GAME_MODEL,
-    generationConfig: {
-      temperature: 0.2,
-      maxOutputTokens: 4096,
-      responseMimeType: "application/json",
-      responseSchema: {
-        type: SchemaType.OBJECT,
-        properties: {
-          questions: {
-            type: SchemaType.ARRAY,
-            items: {
-              type: SchemaType.OBJECT,
-              properties: {
-                question: {
-                  type: SchemaType.STRING,
-                },
-                options: {
-                  type: SchemaType.ARRAY,
-                  items: {
-                    type: SchemaType.STRING,
-                  },
-                },
-                answer: {
-                  type: SchemaType.STRING,
-                },
-              },
-              required:
-              gameType === "memory_match"
-                ? ["question", "answer"]
-                : ["question", "options", "answer"]
-            },
-          },
-        },
-        required: ["questions"],
-      },
-    },
-  });
-  const responseTemplate =
-  gameType === "memory_match"
-    ? `
-{
-  "questions": [
-    {
-      "question": "HTML",
-      "answer": "HyperText Markup Language"
-    }
-  ]
-}
-`
-    : `
-{
-  "questions": [
-    {
-      "question": "Question text",
-      "options": [
-        "Option A",
-        "Option B",
-        "Option C",
-        "Option D"
-      ],
-      "answer": "Option A"
-    }
-  ]
-}
-`;
-
-const prompt = `
-${buildQuizMastersPrompt({
-  extractedText,
-  fileName,
-  gameType,
-})}
-
-Return ONLY valid JSON in this exact format:
-
-${responseTemplate}
-`;
-
-  let rawText = "";
-  for (let attempt = 1; attempt <= 3; attempt++) {
-    try {
-      const result = await model.generateContent(prompt);
-      rawText = result.response.text();
-      const parsed = parseQuizMastersJsonResponse(
-        rawText,
-        "Gemini"
-      );
-      const questions =
-      normalizeQuizMastersQuestions(
-        parsed,
-        gameType
-      );
-      if (questions.length >= 10) {
-        return questions;
-      }
-    } catch (error) {
-      console.log(
-        `Gemini attempt ${attempt} failed`,
-        error.message
-      );
-    }
-  }
-  throw new Error(
-    "Gemini failed after 3 attempts."
-  );
-}
-
-
-
-async function generateQuizMastersWithOpenAI({ extractedText, fileName , gameType}) {
-  if (!process.env.OPENAI_API_KEY) {
-    throw new Error("OPENAI_API_KEY is missing in your backend .env file.");
-  }
-
- const responseTemplate =
-      gameType === "memory_match"
-        ? `
-    {
-      "questions": [
-        {
-          "question": "HTML",
-          "answer": "HyperText Markup Language"
-        }
-      ]
-    }
-    `
-        : `
-    {
-      "questions": [
-        {
-          "question": "Question text",
-          "options": [
-            "Option A",
-            "Option B",
-            "Option C",
-            "Option D"
-          ],
-          "answer": "Option A"
-        }
-      ]
-    }
-    `;
-    const prompt = `
-${buildQuizMastersPrompt({
-  extractedText,
-  fileName,
-  gameType,
-})}
-
-Return ONLY valid JSON in this exact format:
-
-${responseTemplate}
-`;
-
-  const response = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-    },
-    body: JSON.stringify({
-      model: OPENAI_GAME_MODEL,
-      messages: [
-                {
-          role: "system",
-          content:
-            gameType === "memory_match"
-              ? "You generate memory-match term-definition pairs from learning content. Return valid JSON only."
-              : "You generate student-friendly multiple-choice quizzes from learning content. Return valid JSON only.",
-        },
-        {
-          role: "user",
-          content: prompt,
-        },
-      ],
-      temperature: 0.4,
-      max_tokens: 1200,
-      response_format: { type: "json_object" },
-    }),
-  });
-
-  const data = await response.json().catch(() => ({}));
-
-  if (!response.ok) {
-    throw new Error(data?.error?.message || "OpenAI request failed.");
-  }
-
-  const rawText = data?.choices?.[0]?.message?.content || "";
-  const parsed = parseQuizMastersJsonResponse(rawText, "OpenAI");
-  const questions =
-  normalizeQuizMastersQuestions(
-    parsed,
-    gameType
-  );
-
-  if (
-  gameType === "memory_match"
-    ? questions.length < 10
-    : questions.length < 5
-) {
-  throw new Error(
-    "OpenAI did not generate enough valid questions."
-  );
-}
-
-  return questions;
-}
-
-function getGeminiFallbackReason(error) {
-  const message = String(error?.message || "Gemini generation failed.");
-
-  if (isGeminiQuotaError(error)) {
-    return "Gemini quota exceeded or credits depleted.";
-  }
-
-  if (
-    message.toLowerCase().includes("invalid") ||
-    message.toLowerCase().includes("incomplete json") ||
-    message.toLowerCase().includes("empty response") ||
-    message.toLowerCase().includes("not generate enough") ||
-    message.toLowerCase().includes("unexpected end of json")
-  ) {
-    return "Gemini returned invalid, incomplete, or insufficient JSON.";
-  }
-
-  return `Gemini failed: ${message}`;
-}
 
 function cleanQuizMastersSentence(value = "") {
   return String(value || "")
@@ -1480,162 +1117,238 @@ function rotateQuizMastersOptions(options, offset) {
   return copy.slice(shift).concat(copy.slice(0, shift));
 }
 
-function generateQuizMastersLocally({ extractedText, fileName, gameType }) {
-  const sentences = uniqueQuizMastersSentences(
-    splitQuizMastersSentences(limitText(extractedText, 16000))
-  );
+// ==========================================
+// SHARED EDUCATIONAL GAME GENERATION PIPELINE
+// ==========================================
 
-  if (gameType === "memory_match") {
-      const pairs = [];
+/**
+ * 1. Gemini Schema Builder (Dynamic per game type)
+ */
+function getGeminiSchemaForGame(gameType) {
+    let itemProperties = {};
+    let requiredFields = [];
 
-      for (const sentence of sentences.slice(0, 20)) {
-        const cleanSentence = sentence.trim();
-
-        // Try to detect "Term is Definition"
-        const isMatch = cleanSentence.match(
-          /^([A-Za-z0-9\s\-()]{2,60})\s+(?:is|are|refers to|means|defined as)\s+(.+)$/i
-        );
-
-        if (isMatch) {
-          const term = isMatch[1].trim();
-          const definition = isMatch[2].trim();
-
-          if (term.length > 1 && definition.length > 10) {
-            pairs.push({
-              question: term,
-              answer: definition,
-            });
-          }
-        }
-      }
-
-      // Fallback if pattern matching found too few pairs
-      if (pairs.length < 10) {
-        const fallbackPairs = sentences
-          .slice(0, 10)
-          .map((sentence) => {
-            const words = sentence
-              .replace(/[.,;:!?]/g, "")
-              .split(" ")
-              .filter(Boolean);
-
-            const term = words.slice(0, 3).join(" ");
-
-            return {
-              question: term,
-              answer: sentence,
+    switch (gameType) {
+        case "memory_match":
+            itemProperties = { term: { type: SchemaType.STRING }, definition: { type: SchemaType.STRING } };
+            requiredFields = ["term", "definition"];
+            break;
+        case "flashcard":
+            itemProperties = { front: { type: SchemaType.STRING }, back: { type: SchemaType.STRING } };
+            requiredFields = ["front", "back"];
+            break;
+        case "fill_in_blanks":
+            itemProperties = { sentence: { type: SchemaType.STRING }, answer: { type: SchemaType.STRING }, hint: { type: SchemaType.STRING } };
+            requiredFields = ["sentence", "answer", "hint"];
+            break;
+        case "quiz_master":
+        default:
+            itemProperties = {
+                question: { type: SchemaType.STRING },
+                options: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
+                answer: { type: SchemaType.STRING },
+                explanation: { type: SchemaType.STRING }
             };
-          });
-
-        return normalizeQuizMastersQuestions(
-          { questions: fallbackPairs },
-          "memory_match"
-        );
-      }
-
-      return normalizeQuizMastersQuestions(
-        { questions: pairs.slice(0, 10) },
-        "memory_match"
-      );
-    }
-  if (sentences.length < 4) {
-    throw new Error(
-      "Local quiz fallback could not find enough readable statements in the uploaded file."
-    );
-  }
-
-  const questions = [];
-  const questionTemplates = [
-    "Which statement is supported by the uploaded learning file?",
-    "According to the uploaded file, which statement is correct?",
-    "Which option best matches the uploaded learning content?",
-    "What does the uploaded file say?",
-    "Which statement comes from the uploaded material?",
-  ];
-
-  const maxQuestions = Math.min(10, sentences.length);
-
-  for (let i = 0; i < maxQuestions; i++) {
-    const answer = sentences[i];
-    const distractors = [];
-
-    for (let step = 1; distractors.length < 3 && step < sentences.length + 4; step++) {
-      const candidate = sentences[(i + step * 2 + 1) % sentences.length];
-      if (candidate && candidate !== answer && !distractors.includes(candidate)) {
-        distractors.push(candidate);
-      }
+            requiredFields = ["question", "options", "answer", "explanation"];
+            break;
     }
 
-    if (distractors.length < 3) continue;
-
-    const options = rotateQuizMastersOptions([answer, ...distractors], i + 1);
-
-    questions.push({
-      question: `${questionTemplates[i % questionTemplates.length]} (${fileName || "uploaded file"})`,
-      options,
-      answer,
-    });
-  }
-
-  if (questions.length < 5) {
-    throw new Error(
-      "Local quiz fallback did not generate enough valid quiz questions."
-    );
-  }
-
-  return normalizeQuizMastersQuestions({ questions });
-}
-async function generateQuizMastersWithFallback({ extractedText, fileName, gameType }) {
-  try {
-    const questions = await generateQuizMastersWithGemini({
-      extractedText,
-      fileName,
-      gameType,
-    });
     return {
-      questions,
-      provider: "gemini",
-      model: GEMINI_GAME_MODEL,
-      fallbackUsed: false,
+        type: SchemaType.OBJECT,
+        properties: {
+            questions: {
+                type: SchemaType.ARRAY,
+                items: { type: SchemaType.OBJECT, properties: itemProperties, required: requiredFields }
+            }
+        },
+        required: ["questions"]
     };
-  } catch (geminiError) {
-    const fallbackReason = getGeminiFallbackReason(geminiError);
-    console.warn(
-      "Gemini failed for Quiz Masters. Falling back to OpenAI:",
-      geminiError?.message || geminiError
-    );
+}
+
+/**
+ * 2. Dynamic Prompt Builder
+ */
+function buildGamePrompt({ extractedText, fileName, gameType, hasInlineData, numberOfQuestions = 10 }) {
+  // Clamp between 1 and 50 to prevent excessive token usage
+  const count = Math.max(1, Math.min(50, parseInt(numberOfQuestions, 10) || 10));
+  
+  let instructions = "";
+  let formatExample = "";
+  switch (gameType) {
+    case "memory_match":
+      instructions = `Style: Memory Match. Generate exactly ${count} unique term-definition pairs to provide a large pool for the game. Rules for Term: Must be one concept, keyword, technology, or vocabulary word. Rules for Definition: Must fully explain the term (20-80 words). Must not simply repeat the term. Must be educational.`;
+      formatExample = `{"questions": [{"term": "HTML", "definition": "HTML stands for HyperText Markup Language. It is the standard markup language used to create and structure web pages by defining elements such as headings, paragraphs, images, and links."}]}`;
+      break;
+    case "flashcard":
+      instructions = `Style: Flashcard Challenge. Generate exactly ${count} flashcards. Front: A clear question, concept, or term. Back: A concise, direct answer or definition.`;
+      formatExample = `{"questions": [{"front": "What is HTML?", "back": "HTML stands for HyperText Markup Language and is the standard markup language used to create web pages."}]}`;
+      break;
+    case "fill_in_blanks":
+      instructions = `Style: Fill-in-the-Blanks. Generate exactly ${count} sentences with a missing keyword. Rules: The sentence must provide context. The answer must be the exact missing word. Provide a helpful hint.`;
+      formatExample = `{"questions": [{"sentence": "_____ stands for HyperText Markup Language.", "answer": "HTML", "hint": "It is the foundational language for web pages."}]}`;
+      break;
+    case "quiz_master":
+    default:
+      instructions = `Style: Quiz Master. Generate exactly ${count} scenario-based, analytical multiple-choice questions. Rules: Avoid copying textbook sentences directly. Provide exactly 4 plausible options. Exactly one must be correct. Provide a brief explanation.`;
+      formatExample = `{"questions": [{"question": "Why is HTML considered the foundation of web development?", "options": ["It styles the page", "It structures content", "It adds interactivity", "It manages databases"], "answer": "It structures content", "explanation": "HTML provides the basic structure of sites, enhanced by CSS and JS."}]}`;
+      break;
+  }
+
+  return `
+You are generating an educational game from an uploaded learning file.
+Game Type: ${gameType}
+${instructions}
+CRITICAL FORMATTING RULES:
+- Return ONLY valid JSON. No markdown, no explanations, no code fences.
+- Return exactly ${count} items in the "questions" array.
+Uploaded file name: ${fileName || "uploaded-file"}
+Learning content:
+${hasInlineData ? "(Please read and analyze the attached file directly to generate the questions.)" : limitText(extractedText, 12000)}
+Return ONLY valid JSON in this exact format:
+${formatExample}
+`;
+}
+
+// ==========================================
+// 2. DYNAMIC RESPONSE NORMALIZER
+// ==========================================
+function normalizeGameQuestions(value, gameType = "quiz_master", numberOfQuestions = 10) {
+  const count = Math.max(1, Math.min(50, parseInt(numberOfQuestions, 10) || 10));
+  const sourceQuestions = Array.isArray(value?.questions) ? value.questions : [];
+  
+  switch (gameType) {
+    case "memory_match":
+      return sourceQuestions.map(item => {
+        const term = normalizeOptionalText(item?.term || item?.question);
+        const definition = normalizeOptionalText(item?.definition || item?.answer);
+        return (term && definition) ? { term, definition } : null;
+      }).filter(Boolean).slice(0, count);
+    case "flashcard":
+      return sourceQuestions.map(item => {
+        const front = normalizeOptionalText(item?.front || item?.question);
+        const back = normalizeOptionalText(item?.back || item?.answer);
+        return (front && back) ? { front, back } : null;
+      }).filter(Boolean).slice(0, count);
+    case "fill_in_blanks":
+      return sourceQuestions.map(item => {
+        const sentence = normalizeOptionalText(item?.sentence || item?.question);
+        const answer = normalizeOptionalText(item?.answer);
+        const hint = normalizeOptionalText(item?.hint) || "";
+        return (sentence && answer) ? { sentence, answer, hint } : null;
+      }).filter(Boolean).slice(0, count);
+    case "quiz_master":
+    default:
+      return sourceQuestions.map(item => {
+        const question = normalizeOptionalText(item?.question);
+        const options = Array.isArray(item?.options) ? item.options.map(opt => normalizeOptionalText(opt)).filter(Boolean) : [];
+        const answer = normalizeOptionalText(item?.answer);
+        const explanation = normalizeOptionalText(item?.explanation) || "";
+        if (!question || options.length !== 4 || !answer) return null;
+        const matchingAnswer = options.find(opt => opt.toLowerCase() === answer.toLowerCase());
+        return matchingAnswer ? { question, options, answer: matchingAnswer, explanation } : null;
+      }).filter(Boolean).slice(0, count);
+  }
+}
+
+// ==========================================
+// 3. AI PROVIDERS (UPDATED THRESHOLDS)
+// ==========================================
+async function generateGameWithGemini({ extractedText, fileName, gameType, inlineData, numberOfQuestions }) {
+  if (!geminiGameAI) throw new Error("GEMINI_API_KEY is missing.");
+  const model = geminiGameAI.getGenerativeModel({
+    model: GEMINI_GAME_MODEL,
+    generationConfig: {
+      temperature: 0.3, maxOutputTokens: 4096,
+      responseMimeType: "application/json",
+      responseSchema: getGeminiSchemaForGame(gameType)
+    }
+  });
+  const prompt = buildGamePrompt({ extractedText, fileName, gameType, hasInlineData: !!inlineData, numberOfQuestions });
+  
+  for (let attempt = 1; attempt <= 3; attempt++) {
     try {
-      const questions = await generateQuizMastersWithOpenAI({
-        extractedText,
-        fileName,
-        gameType,
-      });
-      return {
-        questions,
-        provider: "openai",
-        model: OPENAI_GAME_MODEL,
-        fallbackUsed: true,
-        fallbackReason,
-      };
+      const result = inlineData
+        ? await model.generateContent([{ text: prompt }, { inlineData: { mimeType: inlineData.mimeType, data: inlineData.data } }])
+        : await model.generateContent(prompt);
+      const parsed = parseQuizMastersJsonResponse(result.response.text(), "Gemini");
+      const questions = normalizeGameQuestions(parsed, gameType, numberOfQuestions);
+      // 🌟 RELAXED THRESHOLD: Changed from >= 5 to >= 1 so small requests don't fail
+      if (questions.length >= 1) return questions; 
+    } catch (error) { console.log(`Gemini attempt ${attempt} failed for ${gameType}:`, error.message); }
+  }
+  throw new Error("Gemini failed after 3 attempts.");
+}
+
+async function generateGameWithOpenAI({ extractedText, fileName, gameType, inlineData, numberOfQuestions }) {
+  if (!process.env.OPENAI_API_KEY) throw new Error("OPENAI_API_KEY is missing.");
+  const prompt = buildGamePrompt({ extractedText, fileName, gameType, hasInlineData: !!inlineData, numberOfQuestions });
+  const messages = [{ role: "system", content: "You generate educational game content. Return valid JSON only." }];
+  if (inlineData) {
+    messages.push({ role: "user", content: [{ type: "text", text: prompt }, { type: "image_url", image_url: { url: `data:${inlineData.mimeType};base64,${inlineData.data}` } }] });
+  } else {
+    messages.push({ role: "user", content: prompt });
+  }
+  const response = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
+    body: JSON.stringify({ model: OPENAI_GAME_MODEL, messages, temperature: 0.4, max_tokens: 2000, response_format: { type: "json_object" } }),
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data?.error?.message || "OpenAI failed.");
+  const parsed = parseQuizMastersJsonResponse(data?.choices?.[0]?.message?.content || "", "OpenAI");
+  const questions = normalizeGameQuestions(parsed, gameType, numberOfQuestions);
+  // 🌟 RELAXED THRESHOLD: Changed from < 5 to < 1
+  if (questions.length < 1) throw new Error("OpenAI generated too few questions.");
+  return questions;
+}
+
+// ==========================================
+// 4. LOCAL FALLBACK
+// ==========================================
+function generateGameLocally({ extractedText, fileName, gameType, numberOfQuestions }) {
+  const count = Math.max(1, Math.min(50, parseInt(numberOfQuestions, 10) || 10));
+  if (gameType !== "quiz_master" && gameType !== "memory_match") {
+    throw new Error(`Local fallback does not support ${gameType}. AI is required.`);
+  }
+  const sentences = uniqueQuizMastersSentences(splitQuizMastersSentences(limitText(extractedText, 16000)));
+  
+  if (gameType === "memory_match") {
+    const pairs = sentences.slice(0, count).map(s => {
+      const match = s.trim().match(/^([A-Za-z0-9\s\-()]{2,60})\s+(?:is|are|refers to|means|defined as)\s+(.+)$/i);
+      return match ? { term: match[1].trim(), definition: match[2].trim() } : null;
+    }).filter(Boolean);
+    // 🌟 RELAXED THRESHOLD
+    if (pairs.length < 1) throw new Error("Local fallback found too few pairs.");
+    return normalizeGameQuestions({ questions: pairs.slice(0, count) }, "memory_match", numberOfQuestions);
+  }
+  
+  // 🌟 RELAXED THRESHOLD
+  if (sentences.length < 1) throw new Error("Local fallback found too few sentences.");
+  const questions = sentences.slice(0, count).map((ans, i) => ({
+    question: `According to the file, which is correct? (${fileName})`,
+    options: [ans, ...sentences.filter(s => s !== ans).slice(0, 3)],
+    answer: ans,
+    explanation: "Directly supported by the provided learning material."
+  }));
+  return normalizeGameQuestions({ questions }, "quiz_master", numberOfQuestions);
+}
+
+// ==========================================
+// 5. MAIN SHARED ENTRY POINT
+// ==========================================
+async function generateEducationalGame({ extractedText, fileName, gameType, inlineData, numberOfQuestions }) {
+  try {
+    const questions = await generateGameWithGemini({ extractedText, fileName, gameType, inlineData, numberOfQuestions });
+    return { questions, provider: "gemini", model: GEMINI_GAME_MODEL, fallbackUsed: false };
+  } catch (geminiError) {
+    console.warn(`Gemini failed for ${gameType}. Falling back to OpenAI...`);
+    try {
+      const questions = await generateGameWithOpenAI({ extractedText, fileName, gameType, inlineData, numberOfQuestions });
+      return { questions, provider: "openai", model: OPENAI_GAME_MODEL, fallbackUsed: true };
     } catch (openAIError) {
-      console.warn(
-        "OpenAI fallback failed for Quiz Masters. Using local fallback:",
-        openAIError?.message || openAIError
-      );
-      const questions = generateQuizMastersLocally({
-        extractedText,
-        fileName,
-        gameType,
-      });
-      return {
-        questions,
-        provider: "local",
-        model: "extractive-local-fallback",
-        fallbackUsed: true,
-        fallbackReason: `${fallbackReason} OpenAI fallback also failed: ${
-          openAIError?.message || openAIError
-        }. Used local non-AI fallback.`,
-      };
+      console.warn(`OpenAI failed for ${gameType}. Using local fallback...`);
+      const questions = generateGameLocally({ extractedText, fileName, gameType, numberOfQuestions });
+      return { questions, provider: "local", model: "local-fallback", fallbackUsed: true };
     }
   }
 }
@@ -1689,6 +1402,177 @@ async function findTeacherByIdentifier(identifier) {
 
   return null;
 }
+
+
+  // ==========================================
+// GAME UPLOAD & PROCESSING ROUTES (NEW ARCHITECTURE)
+// ==========================================
+
+/**
+ * STEP 1: Upload file to Firebase Storage and save metadata
+ */
+app.post("/game/upload", requireAuth, gameUpload.single("file"), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: "File is required. Make sure you are sending FormData correctly." });
+    }
+
+    const profile = await findUserProfileByAuthUid(req.user.uid);
+    if (!profile) return res.status(403).json({ error: "User profile not found." });
+    const studentId = profile.data.studentId || profile.id;
+
+    const timestamp = Date.now();
+    const safeFileName = sanitizeFileName(req.file.originalname);
+    const storagePath = `game-files/${timestamp}-${safeFileName}`;
+    
+    // Upload original file to Firebase Storage
+    const file = bucket.file(storagePath);
+    await file.save(req.file.buffer, {
+      metadata: { contentType: req.file.mimetype },
+      resumable: false,
+    });
+
+    // Save metadata to Firestore
+    const uploadRef = await db.collection("gameUploads").add({
+      studentId,
+      fileName: req.file.originalname,
+      mimeType: req.file.mimetype,
+      fileSize: req.file.size,
+      storagePath,
+      bucketPath: `gs://${bucket.name}/${storagePath}`,
+      uploadedAt: FieldValue.serverTimestamp(),
+      status: "uploaded",
+      gameType: req.body.gameType || "quiz_master",
+    });
+
+    return res.json({
+      success: true,
+      uploadId: uploadRef.id,
+      storagePath,
+      fileName: req.file.originalname,
+    });
+  } catch (error) {
+    console.error("Game upload error:", error);
+    return res.status(500).json({ error: error.message || "Failed to upload file." });
+  }
+});
+
+/**
+ * STEP 2: Process file (Download, Extract, Generate Quiz, Save)
+ */
+/**
+ * STEP 2: Process file (Download, Extract, Generate Quiz, Save)
+ */
+app.post("/game/process", requireAuth, async (req, res) => {
+  try {
+    const { uploadId, gameType, numberOfQuestions } = req.body; // 🌟 Extract numberOfQuestions
+    if (!uploadId) return res.status(400).json({ error: "uploadId is required." });
+    
+    const uploadDoc = await db.collection("gameUploads").doc(uploadId).get();
+    if (!uploadDoc.exists) return res.status(404).json({ error: "Upload not found." });
+    const uploadData = uploadDoc.data();
+
+    if (uploadData.status === "completed" && uploadData.generatedGameId) {
+      const gameDoc = await db.collection("generatedGames").doc(uploadData.generatedGameId).get();
+      if (gameDoc.exists) {
+        const gameData = gameDoc.data();
+        return res.json({
+          success: true, uploadId, gameId: gameDoc.id,
+          provider: gameData.provider, model: gameData.model,
+          gameType: gameData.gameType, questions: gameData.questions,
+        });
+      }
+    }
+
+    await uploadDoc.ref.update({ status: "processing" });
+    const file = bucket.file(uploadData.storagePath);
+    const [buffer] = await file.download();
+    const mimeType = uploadData.mimeType || "";
+    const fileName = uploadData.fileName || "file";
+    const isImage = mimeType.startsWith("image/");
+    let extractedText = "";
+    let inlineData = null;
+
+    if (isImage) {
+      inlineData = { mimeType: mimeType, data: buffer.toString("base64") };
+    } else {
+      const extracted = await extractTextFromFile(buffer, mimeType, fileName);
+      if (typeof extracted === "string") {
+        if (!normalizeOptionalText(extracted)) throw new Error("No readable text found in file.");
+        extractedText = extracted;
+      } else if (typeof extracted === "object") {
+        if (extracted.imagePdf && extracted.pdfBase64) {
+          inlineData = { mimeType: "application/pdf", data: extracted.pdfBase64 };
+          extractedText = extracted.extractedText || "";
+        } else if (extracted.officeDocument && extracted.fileBase64) {
+          inlineData = { mimeType: mimeType, data: extracted.fileBase64 };
+          extractedText = extracted.extractedText || "";
+        } else {
+          throw new Error("Could not extract content from the file.");
+        }
+      }
+    }
+
+    const resolvedGameType = gameType || uploadData.gameType || "quiz_master";
+
+    const generated = await generateEducationalGame({
+      extractedText, fileName, gameType: resolvedGameType, inlineData, numberOfQuestions // 🌟 PASS COUNT
+    });
+
+    const gameRef = await db.collection("generatedGames").add({
+      uploadId, studentId: uploadData.studentId, classId: uploadData.classId || null,
+      provider: generated.provider, model: generated.model, gameType: resolvedGameType,
+      questions: generated.questions, createdAt: FieldValue.serverTimestamp(), generatedFrom: "firebase-storage",
+    });
+
+    await uploadDoc.ref.update({ status: "completed", generatedGameId: gameRef.id });
+
+    return res.json({
+      success: true, uploadId, gameId: gameRef.id,
+      provider: generated.provider, model: generated.model,
+      gameType: resolvedGameType, questions: generated.questions,
+    });
+  } catch (error) {
+    console.error("Game process error:", error);
+    if (req.body.uploadId) {
+      try { await db.collection("gameUploads").doc(req.body.uploadId).update({ status: "failed", errorMessage: error.message || "Processing failed" }); } catch (e) {}
+    }
+    return res.status(500).json({ error: error.message || "Failed to process file." });
+  }
+});
+
+
+/**
+ * STEP 3: Retrieve previously generated questions
+ */
+app.get("/game/questions/:uploadId", requireAuth, async (req, res) => {
+  try {
+    const { uploadId } = req.params;
+    
+    const snapshot = await db.collection("generatedGames")
+      .where("uploadId", "==", uploadId)
+      .limit(1)
+      .get();
+      
+    if (snapshot.empty) {
+      return res.status(404).json({ error: "Generated questions not found for this upload." });
+    }
+    
+    const doc = snapshot.docs[0];
+    const data = doc.data();
+    
+    return res.json({
+      success: true,
+      gameId: doc.id,
+      uploadId: data.uploadId,
+      questions: data.questions,
+      gameType: data.gameType,
+    });
+  } catch (error) {
+    console.error("Get game questions error:", error);
+    return res.status(500).json({ error: error.message || "Failed to fetch questions." });
+  }
+});
 
 async function findStudentById(studentId) {
   const doc = await db.collection("students").doc(studentId).get();
@@ -3338,128 +3222,93 @@ app.post("/game-ai/save-game-submission", requireAuth, async (req, res) => {
   }
 });
 
+
 app.post("/game-ai/generate-quiz-masters", requireAuth, gameUpload.single("file"), async (req, res) => {
   try {
-    if (!req.file) {
-      return res.status(400).json({
-        error: "File is required.",
-      });
+    if (!req.file) return res.status(400).json({ error: "File is required." });
+    
+    const mimeType = String(req.file.mimetype || "").toLowerCase();
+    const isImage = mimeType.startsWith("image/");
+    let extractedText = "";
+    let inlineData = null;
+    const numberOfQuestions = req.body.numberOfQuestions; // 🌟 Extract numberOfQuestions
+
+    if (isImage) {
+      inlineData = { mimeType: mimeType, data: req.file.buffer.toString("base64") };
+    } else {
+      const extracted = await extractTextFromFile(req.file.buffer, req.file.mimetype, req.file.originalname);
+      if (typeof extracted === "string") {
+        if (!normalizeOptionalText(extracted)) return res.status(400).json({ error: "No readable text found." });
+        extractedText = extracted;
+      } else if (typeof extracted === "object") {
+        if (extracted.imagePdf && extracted.pdfBase64) {
+          inlineData = { mimeType: "application/pdf", data: extracted.pdfBase64 };
+          extractedText = extracted.extractedText || "";
+        } else if (extracted.officeDocument && extracted.fileBase64) {
+          inlineData = { mimeType: mimeType, data: extracted.fileBase64 };
+          extractedText = extracted.extractedText || "";
+        } else {
+          return res.status(400).json({ error: "Could not extract content from the file." });
+        }
+      }
     }
 
-    const extractedText = await extractTextFromFile(
-      req.file.buffer,
-      req.file.mimetype,
-      req.file.originalname
-    );
-
-    console.log("=== FILE DEBUG ===");
-    console.log("fileName:", req.file.originalname);
-    console.log("fileType:", req.file.mimetype);
-    console.log("extracted length:", extractedText?.length || 0);
-    console.log(
-      "preview:",
-      extractedText?.substring(0, 300)
-    );
-    console.log("==================");
-
-    if (!normalizeOptionalText(extractedText)) {
-      return res.status(400).json({
-        error: "No readable text found. Please upload a PDF, DOCX, TXT, MD, JSON, or CSV file.",
-      });
-    }
-
-    const generated = await generateQuizMastersWithFallback({
+    // 🌟 FIXED: Replaced undefined generateQuizMastersWithFallback with generateEducationalGame
+    const generated = await generateEducationalGame({
       extractedText,
       fileName: req.file.originalname,
+      gameType: req.body.gameType || 'quiz_master',
+      inlineData, 
+      numberOfQuestions, // 🌟 PASS COUNT
     });
 
     return res.json({
-      success: true,
-      game: "quizmasters",
-      provider: generated.provider,
-      model: generated.model,
-      fallbackUsed: generated.fallbackUsed,
-      fallbackReason: generated.fallbackReason || null,
-      fileName: req.file.originalname,
-      questions: generated.questions,
+      success: true, game: "quizmasters", provider: generated.provider, model: generated.model,
+      fallbackUsed: generated.fallbackUsed, fallbackReason: generated.fallbackReason || null,
+      fileName: req.file.originalname, questions: generated.questions,
     });
   } catch (error) {
     console.error("Quiz Masters AI generation error:", error);
-    return res.status(500).json({
-      error: error.message || "Failed to generate Quiz Masters game.",
-    });
+    return res.status(500).json({ error: error.message || "Failed to generate Quiz Masters game." });
   }
 });
 
-// === NEW: Generate quiz from selected class materials ===
+// === Generate quiz from selected class materials ===
 app.post("/game-ai/generate-quiz-materials", requireAuth, async (req, res) => {
   try {
-    const { classId, materialIds, gameType, authUid  } = req.body;
+    const { classId, materialIds, gameType, authUid, numberOfQuestions } = req.body; // 🌟 Extract numberOfQuestions
     if (!classId || !Array.isArray(materialIds) || materialIds.length === 0) {
       return res.status(400).json({ error: "classId and at least one materialId are required." });
     }
-    // Use req.user.uid if cookie auth worked, otherwise fallback to authUid sent from frontend
+
     const userAuthUid = req.user.uid;
-    if (!userAuthUid) {
-      return res.status(401).json({ error: "Authentication required. Please log in again." });
-    }
-    // Check user belongs to the class (updated to allow teachers too)
+    if (!userAuthUid) return res.status(401).json({ error: "Authentication required. Please log in again." });
     await requireClassAccess({ authUid: userAuthUid, classId, allowedRoles: ["student", "teacher"] });
-    // Fetch materials and extract file content from Firebase Storage
+
     const materials = [];
-    const extractionSummary = [];
     for (const materialId of materialIds) {
       const materialSnap = await db.collection("classMaterials").doc(materialId).get();
       if (!materialSnap.exists) continue;
       const material = materialSnap.data() || {};
-      console.log(`
-[QUIZ GEN] 📄 Processing material: "${material.title || materialId}"`);
-      console.log(`[QUIZ GEN] 📁 Storage path: ${material.storagePath || 'none'}`);
-      console.log(`[QUIZ GEN] 📋 File type: ${material.fileType || 'unknown'}`);
-      console.log(`[QUIZ GEN] 📝 Description: ${(material.content || '').substring(0, 100)}...`);
-      // This downloads the actual file from Firebase Storage and extracts text
       const extracted = await extractReadableTextFromMaterial(material);
-      console.log(`[QUIZ GEN] ✅ Extraction status: ${extracted.extractionStatus}`);
-      console.log(`[QUIZ GEN] 📊 Extracted text length: ${extracted.readableText.length} characters`);
-      if (extracted.readableText.length > 0) {
-        console.log(`[QUIZ GEN] 📖 First 200 chars of extracted content: "${extracted.readableText.substring(0, 200)}..."`);
-      }
-      extractionSummary.push({
-        title: material.title || "Untitled",
-        fileType: material.fileType || "unknown",
-        status: extracted.extractionStatus,
-        charsExtracted: extracted.readableText.length,
-      });
-      materials.push({
-        id: materialSnap.id,
-        title: material.title || "Untitled",
-        extractedText: extracted.readableText,
-      });
+      materials.push({ id: materialSnap.id, title: material.title || "Untitled", extractedText: extracted.readableText });
     }
-    console.log(`
-[QUIZ GEN] 📊 EXTRACTION SUMMARY:`, extractionSummary);
+
     if (materials.length === 0 || materials.every(m => m.extractedText.length === 0)) {
-      return res.status(400).json({
-        error: "No readable material content found. Please upload PDF, DOCX, TXT, MD, JSON, or CSV files.",
-        extractionSummary
-      });
+      return res.status(400).json({ error: "No readable material content found." });
     }
-    // Combine all extracted text
-    const combinedText = materials.map(m => `File: ${m.title}
-${m.extractedText}`).join("---");
+
+    const combinedText = materials.map(m => `File: ${m.title}\n${m.extractedText}`).join("---");
     const fileName = `class-${classId}-materials`;
-    const generated = await generateQuizMastersWithFallback({
-      extractedText: combinedText,
-      fileName,
-      gameType, // 👈 PASS gameType HERE
+    const resolvedGameType = gameType || "quiz_master";
+
+    const generated = await generateEducationalGame({
+      extractedText: combinedText, fileName, gameType: resolvedGameType, numberOfQuestions // 🌟 PASS COUNT
     });
+
     return res.json({
-      success: true,
-      questions: generated.questions,
-      provider: generated.provider,
-      model: generated.model,
-      classId,
-      materialIds,
+      success: true, questions: generated.questions, provider: generated.provider,
+      model: generated.model, gameType: resolvedGameType, classId, materialIds,
     });
   } catch (error) {
     console.error("Generate quiz from materials error:", error);
@@ -6660,6 +6509,356 @@ app.post("/submit-final-grades", async (req, res) => {
   }
 });
 
+// ==========================================
+// GET ASSIGNMENT COMMENTS
+// ==========================================
+app.get("/assignment-comments/:assignmentId", requireAuth, async (req, res) => {
+  try {
+    const { assignmentId } = req.params;
+    if (!assignmentId) {
+      return res.status(400).json({ error: "assignmentId is required." });
+    }
+    
+    const snapshot = await db
+      .collection("assignmentComments")
+      .where("assignmentId", "==", assignmentId)
+      .orderBy("createdAt", "asc")
+      .get();
+      
+    const comments = snapshot.docs.map((doc) => {
+      const data = doc.data();
+      return {
+        id: doc.id,
+        assignmentId: data.assignmentId,
+        classId: data.classId,
+        studentId: data.studentId || null, // 👇 RETURN studentId so frontend can filter
+        authorId: data.authorId,
+        authorName: data.authorName,
+        authorRole: data.authorRole,
+        content: data.content,
+        isInstructor: !!data.isInstructor,
+        timestamp: formatFirestoreDateTime(data.createdAt),
+        createdAt: data.createdAt || null,
+        updatedAt: data.updatedAt || null,
+      };
+    });
+    
+    return res.json({ success: true, data: comments });
+  } catch (error) {
+    console.error("Fetch assignment comments error:", error);
+    return res.status(500).json({ 
+      error: error.message || "Failed to fetch comments." 
+    });
+  }
+});
+// ==========================================
+// POST ASSIGNMENT COMMENTS
+// ==========================================
+app.post("/assignment-comments", requireAuth, async (req, res) => {
+  try {
+    // 👇 ADD studentId to destructuring
+    const { assignmentId, classId, content, studentId } = req.body; 
+    
+    if (!assignmentId || !classId || !content?.trim()) {
+      return res.status(400).json({ 
+        error: "assignmentId, classId, and content are required." 
+      });
+    }
+    
+    const profile = await findUserProfileByAuthUid(req.user.uid);
+    if (!profile) return res.status(403).json({ error: "User profile not found." });
+    
+    const authorId = profile.id;
+    const authorRole = profile.role;
+    const authorName = `${profile.data.firstName || ''} ${profile.data.lastName || ''}`.trim() || authorId;
+    const isInstructor = authorRole === 'teacher' || authorRole === 'admin';
+    
+    const commentRef = await db.collection("assignmentComments").add({
+      assignmentId,
+      classId,
+      studentId: studentId || null, // 👇 SAVE studentId to Firestore
+      authorId,
+      authorRole,
+      authorName,
+      content: content.trim(),
+      isInstructor,
+      createdAt: FieldValue.serverTimestamp(),
+    });
+    
+    return res.json({
+      success: true,
+      message: "Comment added successfully.",
+      data: {
+        id: commentRef.id,
+        assignmentId,
+        studentId: studentId || null, // 👇 RETURN studentId to frontend
+        authorId,
+        authorName,
+        content: content.trim(),
+        isInstructor,
+        timestamp: new Date().toLocaleString(),
+      }
+    });
+  } catch (error) {
+    console.error("Add assignment comment error:", error);
+    return res.status(500).json({ 
+      error: error.message || "Failed to add comment." 
+    });
+  }
+});
+// ==========================================
+// ASSIGNMENT COMMENTS - EDIT & DELETE
+// ==========================================
+
+// PUT - Edit an assignment comment (owner or instructor only)
+app.put("/assignment-comments/:commentId", requireAuth, async (req, res) => {
+  try {
+    const { commentId } = req.params;
+    const { content } = req.body;
+    
+    if (!content?.trim()) {
+      return res.status(400).json({ error: "Content is required." });
+    }
+
+    const profile = await findUserProfileByAuthUid(req.user.uid);
+    if (!profile) {
+      return res.status(403).json({ error: "User profile not found." });
+    }
+
+    const commentRef = db.collection("assignmentComments").doc(commentId);
+    const commentSnap = await commentRef.get();
+    
+    if (!commentSnap.exists) {
+      return res.status(404).json({ error: "Comment not found." });
+    }
+
+    const commentData = commentSnap.data() || {};
+    const userId = profile.data.studentId || profile.data.teacherId || profile.id;
+
+    // Only allow the comment owner or an instructor to edit
+    if (commentData.authorId !== userId && profile.role !== "teacher" && profile.role !== "admin") {
+      return res.status(403).json({ error: "Unauthorized to edit this comment." });
+    }
+
+    const updatedFields = {
+      content: content.trim(),
+      updatedAt: FieldValue.serverTimestamp(),
+    };
+
+    await commentRef.update(updatedFields);
+    
+    const updatedSnap = await commentRef.get();
+    const updatedData = updatedSnap.data() || {};
+
+    res.json({
+      success: true,
+      message: "Comment updated successfully.",
+      data: {
+        id: updatedSnap.id,
+        assignmentId: updatedData.assignmentId,
+        authorId: updatedData.authorId,
+        authorName: updatedData.authorName,
+        content: updatedData.content,
+        isInstructor: updatedData.isInstructor,
+        timestamp: formatFirestoreDateTime(updatedData.updatedAt || updatedData.createdAt),
+      },
+    });
+  } catch (error) {
+    console.error("Update assignment comment error:", error);
+    res.status(500).json({ error: error.message || "Failed to update comment." });
+  }
+});
+
+// DELETE - Delete an assignment comment
+app.delete("/assignment-comments/:commentId", requireAuth, async (req, res) => {
+  try {
+    const { commentId } = req.params;
+
+    const profile = await findUserProfileByAuthUid(req.user.uid);
+    if (!profile) {
+      return res.status(403).json({ error: "User profile not found." });
+    }
+
+    const commentRef = db.collection("assignmentComments").doc(commentId);
+    const commentSnap = await commentRef.get();
+    
+    if (!commentSnap.exists) {
+      return res.status(404).json({ error: "Comment not found." });
+    }
+
+    const commentData = commentSnap.data() || {};
+    const userId = profile.data.studentId || profile.data.teacherId || profile.id;
+
+    // Only allow comment owner, instructor, or admin to delete
+    if (
+      commentData.authorId !== userId && 
+      profile.role !== "teacher" && 
+      profile.role !== "admin"
+    ) {
+      return res.status(403).json({ error: "Unauthorized to delete this comment." });
+    }
+
+    await commentRef.delete();
+    
+    res.json({ 
+      success: true, 
+      message: "Comment deleted successfully." 
+    });
+  } catch (error) {
+    console.error("Delete assignment comment error:", error);
+    res.status(500).json({ error: error.message || "Failed to delete comment." });
+  }
+});
+
+// GET video comments
+app.get("/video-comments/:videoId", async (req, res) => {
+  try {
+    const { videoId } = req.params;
+    const snapshot = await db
+      .collection("videoComments")
+      .where("videoId", "==", videoId)
+      .orderBy("createdAt", "desc")
+      .get();
+    
+    const comments = snapshot.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data(),
+      createdAt: formatFirestoreDateTime(doc.data().createdAt),
+    }));
+    
+    res.json({ success: true, data: comments });
+  } catch (error) {
+    console.error("Fetch video comments error:", error);
+    res.status(500).json({ error: error.message || "Failed to fetch comments" });
+  }
+});
+
+// POST new video comment
+app.post("/video-comments", requireAuth, async (req, res) => {
+  try {
+    const { videoId, content } = req.body;
+    const profile = await findUserProfileByAuthUid(req.user.uid);
+    
+    if (!profile) {
+      return res.status(403).json({ error: "User profile not found." });
+    }
+    
+    if (!videoId || !content?.trim()) {
+      return res.status(400).json({ error: "videoId and content are required." });
+    }
+    
+    const commentData = {
+      videoId,
+      userId: profile.data.studentId || profile.data.teacherId || profile.id,
+      userName: `${profile.data.firstName || ""} ${profile.data.lastName || ""}`.trim(),
+      userRole: profile.role,
+      content: content.trim(),
+      createdAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    };
+    
+    const ref = await db.collection("videoComments").add(commentData);
+    
+    res.json({ 
+      success: true, 
+      message: "Comment posted successfully.",
+      data: { id: ref.id, ...commentData }
+    });
+  } catch (error) {
+    console.error("Create video comment error:", error);
+    res.status(500).json({ error: error.message || "Failed to post comment" });
+  }
+});
+
+// PUT - edit a video comment (owner or admin only)
+app.put("/video-comments/:commentId", requireAuth, async (req, res) => {
+  try {
+    const { commentId } = req.params;
+    const { content } = req.body;
+
+    if (!content?.trim()) {
+      return res.status(400).json({ error: "content is required." });
+    }
+
+    const profile = await findUserProfileByAuthUid(req.user.uid);
+    if (!profile) {
+      return res.status(403).json({ error: "User profile not found." });
+    }
+
+    const commentRef = db.collection("videoComments").doc(commentId);
+    const commentSnap = await commentRef.get();
+
+    if (!commentSnap.exists) {
+      return res.status(404).json({ error: "Comment not found." });
+    }
+
+    const commentData = commentSnap.data() || {};
+    const userId = profile.data.studentId || profile.data.teacherId || profile.id;
+
+    // Only allow the comment owner or an admin to edit
+    if (commentData.userId !== userId && profile.role !== "admin") {
+      return res.status(403).json({ error: "Unauthorized to edit this comment." });
+    }
+
+    const updatedFields = {
+      content: content.trim(),
+      updatedAt: FieldValue.serverTimestamp(),
+    };
+
+    await commentRef.update(updatedFields);
+    const updatedSnap = await commentRef.get();
+    const updatedData = updatedSnap.data() || {};
+
+    res.json({
+      success: true,
+      message: "Comment updated successfully.",
+      data: {
+        id: updatedSnap.id,
+        ...updatedData,
+        createdAt: formatFirestoreDateTime(updatedData.createdAt),
+        updatedAt: formatFirestoreDateTime(updatedData.updatedAt),
+      },
+    });
+  } catch (error) {
+    console.error("Update video comment error:", error);
+    res.status(500).json({ error: error.message || "Failed to update comment" });
+  }
+});
+
+// DELETE video comment
+app.delete("/video-comments/:commentId", requireAuth, async (req, res) => {
+  try {
+    const { commentId } = req.params;
+    const profile = await findUserProfileByAuthUid(req.user.uid);
+    
+    if (!profile) {
+      return res.status(403).json({ error: "User profile not found." });
+    }
+    
+    const commentRef = db.collection("videoComments").doc(commentId);
+    const commentSnap = await commentRef.get();
+    
+    if (!commentSnap.exists) {
+      return res.status(404).json({ error: "Comment not found." });
+    }
+    
+    const commentData = commentSnap.data() || {};
+    const userId = profile.data.studentId || profile.data.teacherId || profile.id;
+    
+    // Only allow comment owner or admin to delete
+    if (commentData.userId !== userId && profile.role !== "admin") {
+      return res.status(403).json({ error: "Unauthorized to delete this comment." });
+    }
+    
+    await commentRef.delete();
+    
+    res.json({ success: true, message: "Comment deleted successfully." });
+  } catch (error) {
+    console.error("Delete video comment error:", error);
+    res.status(500).json({ error: error.message || "Failed to delete comment" });
+  }
+});
+
 app.get("/student-joined-classes/:studentId", async (req, res) => {
   try {
     const { studentId } = req.params;
@@ -6714,6 +6913,35 @@ app.get("/student-joined-classes/:studentId", async (req, res) => {
           .orderBy("createdAt", "desc")
           .get();
 
+          const commentsSnapshot = await db
+  .collection("assignmentComments")
+  .where("classId", "==", classId)
+  .orderBy("createdAt", "asc")
+  .get();
+
+// Group comments by assignmentId in memory for fast lookup
+const commentsByAssignment = {};
+commentsSnapshot.docs.forEach(doc => {
+  const comment = doc.data();
+  const aId = comment.assignmentId;
+  
+  // 🔒 PRIVACY FILTER: Only return comments authored by THIS student OR by an instructor FOR THIS STUDENT
+    const isByCurrentStudent = comment.authorId === normalizedStudentId;
+    const isInstructorComment = comment.isInstructor === true;
+    const isInstructorCommentForThisStudent = isInstructorComment && comment.studentId === normalizedStudentId;
+
+    if (isByCurrentStudent || isInstructorCommentForThisStudent) {
+      if (!commentsByAssignment[aId]) commentsByAssignment[aId] = [];
+      commentsByAssignment[aId].push({
+        id: doc.id,
+        author: comment.authorName || comment.authorId,
+        authorId: comment.authorId || null,
+        content: comment.content,
+        timestamp: formatFirestoreDateTime(comment.createdAt),
+        isInstructor: !!comment.isInstructor,
+      });
+    }
+});
         // In your student-joined-classes route, replace the materials mapping:
 const materials = await Promise.all(materialsSnapshot.docs.map(async (doc) => {
   const material = doc.data() || {};
@@ -6766,9 +6994,13 @@ const materials = await Promise.all(materialsSnapshot.docs.map(async (doc) => {
           topic: assignment.header || "",
           materialIds: Array.isArray(assignment.materialIds) ? assignment.materialIds : [],
           
-          // 👇 ADD THESE TWO LINES SO THE FRONTEND KNOWS IT'S A GAME
+          // 👇 GAME-BASED ASSIGNMENT FLAGS
           assignmentType: assignment.assignmentType || "regular",
           gameType: assignment.gameType || null,
+          numberOfAttempts: assignment.numberOfAttempts || null,
+          customAttempts: assignment.customAttempts || null,
+          timeLimit: assignment.timeLimit || null,
+          customTimeLimit: assignment.customTimeLimit || null,
           
           files:
             assignment.fileName || assignment.fileUrl
@@ -6781,7 +7013,10 @@ const materials = await Promise.all(materialsSnapshot.docs.map(async (doc) => {
                   },
                 ]
               : [],
-          comments: [],
+              
+          // 👇 ATTACH THE FETCHED COMMENTS HERE (Falls back to empty array if none exist)
+          comments: commentsByAssignment[doc.id] || [],
+          
           instruction: assignment.instruction || "",
           pointsOnTime:
             typeof assignment.pointsOnTime === "number"

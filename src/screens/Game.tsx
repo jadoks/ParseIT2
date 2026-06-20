@@ -10,12 +10,13 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
   useWindowDimensions,
 } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
-import QuizMasters, { QuizQuestion } from './games/quiz-masters';
+import { QuizQuestion } from './games/quiz-masters';
 
 type GameScreen = 'menu' | 'quizmasters';
 
@@ -53,9 +54,18 @@ const Game = ({ onNavigate, enrolledCourses = [], studentId, onSaveQuizScore }: 
   const { width } = useWindowDimensions();
   const isSmallScreen = width < 768;
 
+  const [uploadStage, setUploadStage] = useState<string>('');
+
   const [mode, setMode] = useState<GameScreen>('menu');
   const [generatedQuestions, setGeneratedQuestions] = useState<QuizQuestion[] | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
+
+  // 🌟 GLOBAL STATE: Number of questions (Applies to both File Upload & Materials)
+  const [numberOfQuestions, setNumberOfQuestions] = useState('10');
+
+  // 🌟 VALIDATION: Check if count is within 1-100 range
+  const parsedCount = parseInt(numberOfQuestions, 10) || 0;
+  const isInvalidCount = parsedCount > 100 || parsedCount < 1;
 
   // Class & material selection state
   const [selectedClassId, setSelectedClassId] = useState<string>('');
@@ -65,7 +75,6 @@ const Game = ({ onNavigate, enrolledCourses = [], studentId, onSaveQuizScore }: 
   // Professional Dropdown State
   const [isClassDropdownOpen, setIsClassDropdownOpen] = useState(false);
 
-  // When a class is selected, show its materials
   useEffect(() => {
     if (!selectedClassId) {
       setAvailableMaterials([]);
@@ -107,6 +116,7 @@ const Game = ({ onNavigate, enrolledCourses = [], studentId, onSaveQuizScore }: 
           classId: selectedClassId,
           materialIds: selectedMaterialIds,
           studentId,
+          numberOfQuestions: parsedCount, // 🌟 PASS VALIDATED COUNT
         }),
       });
       const data = await response.json();
@@ -124,37 +134,85 @@ const Game = ({ onNavigate, enrolledCourses = [], studentId, onSaveQuizScore }: 
   };
 
   const handleFileUpload = async () => {
+    setUploadStage('Selecting file...');
     setIsGenerating(true);
     try {
       const result = await DocumentPicker.getDocumentAsync({
         type: [
           'application/pdf',
           'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          'application/msword',
           'text/plain',
+          'image/jpeg',
+          'image/png',
+          'image/webp',
         ],
         copyToCacheDirectory: true,
       });
-      if (result.canceled || !result.assets?.length) return;
+      
+      if (result.canceled || !result.assets?.length) {
+        setUploadStage('');
+        setIsGenerating(false);
+        return;
+      }
+
       const asset = result.assets[0];
       const formData = new FormData();
-      formData.append('file', {
-        uri: asset.uri,
-        name: asset.name,
-        type: asset.mimeType,
-      } as any);
 
-      const response = await apiFetch(`${API_BASE_URL}/game-ai/generate-quiz-masters`, {
+      if (Platform.OS === 'web') {
+        const fileResponse = await fetch(asset.uri);
+        const blob = await fileResponse.blob();
+        formData.append('file', blob, asset.name || 'upload');
+      } else {
+        formData.append('file', {
+          uri: asset.uri,
+          name: asset.name || 'upload',
+          type: asset.mimeType || 'application/octet-stream',
+        } as any);
+      }
+
+      setUploadStage('Uploading...');
+      
+      const uploadResponse = await apiFetch(`${API_BASE_URL}/game/upload`, {
         method: 'POST',
+        credentials: "include",
         body: formData,
       });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error);
-      setGeneratedQuestions(data.questions);
+      
+      const uploadData = await uploadResponse.json();
+      if (!uploadResponse.ok) {
+        console.error('Upload Error Response:', uploadData);
+        throw new Error(uploadData.error || 'Upload failed');
+      }
+      
+      const { uploadId } = uploadData;
+
+      setUploadStage('Processing...');
+      const processResponse = await apiFetch(`${API_BASE_URL}/game/process`, {
+        method: 'POST',
+        credentials: "include",
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          uploadId, 
+          gameType: 'quiz_master', 
+          numberOfQuestions: parsedCount // 🌟 PASS VALIDATED COUNT
+        }),
+      });
+
+      setUploadStage('Generating Quiz...');
+      const processData = await processResponse.json();
+      if (!processResponse.ok) throw new Error(processData.error || 'Processing failed');
+
+      setUploadStage('Complete');
+      setGeneratedQuestions(processData.questions);
       setMode('quizmasters');
-      if (onNavigate) onNavigate('quizmasters', data.questions);
+      if (onNavigate) onNavigate('quizmasters', processData.questions);
+      
     } catch (error: any) {
+      console.error('Upload/Process Exception:', error);
       Alert.alert('Upload failed', error.message);
     } finally {
+      setUploadStage('');
       setIsGenerating(false);
     }
   };
@@ -182,16 +240,6 @@ const Game = ({ onNavigate, enrolledCourses = [], studentId, onSaveQuizScore }: 
     setGeneratedQuestions(null);
   };
 
-  if (mode === 'quizmasters' && generatedQuestions) {
-    return (
-      <QuizMasters
-        onBack={() => setMode('menu')}
-        generatedQuestions={generatedQuestions}
-        onComplete={handleQuizComplete}
-      />
-    );
-  }
-
   const selectedClassName = enrolledCourses.find(c => c.id === selectedClassId)?.name;
 
   return (
@@ -203,13 +251,18 @@ const Game = ({ onNavigate, enrolledCourses = [], studentId, onSaveQuizScore }: 
             Upload a file or select class materials to generate a quiz.
           </Text>
         </View>
+        
+        {/* 🌟 UPDATED: Upload File Button disabled if isInvalidCount */}
         <Pressable
-          style={[styles.uploadButton, isGenerating && styles.uploadButtonDisabled]}
+          style={[styles.uploadButton, (isGenerating || isInvalidCount) && styles.uploadButtonDisabled]}
           onPress={handleFileUpload}
-          disabled={isGenerating}
+          disabled={isGenerating || isInvalidCount}
         >
           {isGenerating ? (
-            <ActivityIndicator color="#FFF" size="small" />
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <ActivityIndicator color="#FFF" size="small" />
+              <Text style={styles.uploadButtonText}>{uploadStage || 'Uploading...'}</Text>
+            </View>
           ) : (
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
               <Ionicons name="cloud-upload-outline" size={18} color="#FFF" />
@@ -217,6 +270,35 @@ const Game = ({ onNavigate, enrolledCourses = [], studentId, onSaveQuizScore }: 
             </View>
           )}
         </Pressable>
+      </View>
+
+      {/* 🌟 GLOBAL QUIZ SETTINGS CARD */}
+      <View style={styles.settingsCard}>
+        <View style={styles.settingsHeader}>
+          <Ionicons name="settings-outline" size={22} color="#D32F2F" />
+          <Text style={styles.settingsTitle}>Quiz Settings</Text>
+        </View>
+        <Text style={styles.settingsSubtitle}>
+          This configuration applies to both <Text style={{fontWeight: '700'}}>File Uploads</Text> and <Text style={{fontWeight: '700'}}>Class Materials</Text>.
+        </Text>
+        
+        <View>
+          <Text style={styles.inputLabel}>Number of Questions / Items (Max 100)</Text>
+          <TextInput
+            style={[styles.questionsInput, isInvalidCount && styles.questionsInputError]}
+            placeholder="e.g., 10"
+            placeholderTextColor="#999"
+            value={numberOfQuestions}
+            onChangeText={(text) => setNumberOfQuestions(text.replace(/[^0-9]/g, ''))}
+            keyboardType="numeric"
+          />
+          {/* 🌟 Error Message UI */}
+          {isInvalidCount && (
+            <Text style={styles.errorText}>
+              {parsedCount > 100 ? 'Maximum limit is 100 items.' : 'Please enter at least 1 item.'}
+            </Text>
+          )}
+        </View>
       </View>
 
       {/* Class + Materials selector */}
@@ -327,14 +409,15 @@ const Game = ({ onNavigate, enrolledCourses = [], studentId, onSaveQuizScore }: 
           </View>
         )}
 
+        {/* 🌟 UPDATED: Generate Quiz Button disabled if isInvalidCount */}
         <Pressable
           style={[
             styles.generateButton,
-            (!selectedClassId || selectedMaterialIds.length === 0 || isGenerating) &&
+            (!selectedClassId || selectedMaterialIds.length === 0 || isGenerating || isInvalidCount) &&
               styles.generateButtonDisabled,
           ]}
           onPress={generateFromMaterials}
-          disabled={!selectedClassId || selectedMaterialIds.length === 0 || isGenerating}
+          disabled={!selectedClassId || selectedMaterialIds.length === 0 || isGenerating || isInvalidCount}
         >
           {isGenerating ? (
             <ActivityIndicator color="#FFF" size="small" />
@@ -358,7 +441,7 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     justifyContent: 'space-between',
     gap: 16,
-    marginBottom: 28,
+    marginBottom: 24,
   },
   titleWrap: { flex: 1 },
   pageTitle: { fontSize: 32, fontWeight: '900', color: '#111', letterSpacing: -0.5 },
@@ -377,9 +460,40 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 4,
   },
-  uploadButtonDisabled: { opacity: 0.7, shadowOpacity: 0 },
+  uploadButtonDisabled: { opacity: 0.5, shadowOpacity: 0 },
   uploadButtonText: { color: '#FFF', fontWeight: '800', fontSize: 14, letterSpacing: 0.2 },
   
+  settingsCard: {
+    backgroundColor: '#FFF',
+    borderRadius: 24,
+    padding: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    elevation: 3,
+    borderWidth: 1,
+    borderColor: '#F0F0F0',
+    marginBottom: 24,
+  },
+  settingsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 8,
+  },
+  settingsTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#111',
+  },
+  settingsSubtitle: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 16,
+    lineHeight: 20,
+  },
+
   selectorCard: { 
     backgroundColor: '#FFF', 
     borderRadius: 24, 
@@ -396,7 +510,6 @@ const styles = StyleSheet.create({
   
   inputLabel: { fontSize: 13, fontWeight: '700', color: '#444', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 },
   
-  // Professional Dropdown Styles
   dropdownTrigger: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -412,6 +525,31 @@ const styles = StyleSheet.create({
   dropdownTriggerText: { fontSize: 15, fontWeight: '600', color: '#111', flex: 1 },
   placeholderText: { color: '#999', fontWeight: '500' },
   
+  questionsInput: {
+    backgroundColor: '#FAFAFA',
+    borderWidth: 1.5,
+    borderColor: '#EAEAEA',
+    borderRadius: 14,
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#111',
+    minHeight: 56,
+  },
+  // 🌟 NEW: Error state style for Input
+  questionsInputError: {
+    borderColor: '#F44336',
+    backgroundColor: '#FFF5F5',
+  },
+  // 🌟 NEW: Error message text style
+  errorText: {
+    color: '#F44336',
+    fontSize: 12,
+    fontWeight: '600',
+    marginTop: 6,
+  },
+
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.4)',
@@ -457,7 +595,6 @@ const styles = StyleSheet.create({
   emptyState: { padding: 30, alignItems: 'center' },
   emptyText: { color: '#999', fontSize: 14 },
 
-  // Materials Grid
   materialsSection: { marginBottom: 24 },
   materialsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   materialChip: {

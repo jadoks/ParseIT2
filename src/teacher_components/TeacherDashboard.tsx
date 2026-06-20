@@ -176,6 +176,8 @@ const Dashboard2 = ({
   const [isCreateModalVisible, setCreateModalVisible] = useState(false);
   const [isEditModalVisible, setEditModalVisible] = useState(false);
   const [isCreatingClass, setIsCreatingClass] = useState(false);
+  const [isSavingEdit, setIsSavingEdit] = useState(false); // <-- NEW: Loading state for Edit
+  const [isDeletingClass, setIsDeletingClass] = useState(false); // <-- NEW: Loading state for Delete
   const [toastVisible, setToastVisible] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
   const [toastType, setToastType] = useState<'success' | 'error'>('success');
@@ -423,7 +425,7 @@ const Dashboard2 = ({
   };
 
   const handleSaveEdit = async () => {
-    if (!editingCourse) return;
+    if (!editingCourse || isSavingEdit) return; // <-- Check isSavingEdit
     const activeEditYear = editSelectedYear; const activeEditSemester = editSelectedSemester;
     if (!activeEditYear) { showToast('Please select a year.', 'error'); return; }
     if (!activeEditSemester) { showToast('Please select a semester.', 'error'); return; }
@@ -436,6 +438,8 @@ const Dashboard2 = ({
     const yearLabel = YEAR_OPTIONS.find((year) => year.id === activeEditYear)?.label || '';
     const sectionLabel = SECTION_OPTIONS[activeEditYear]?.find((section: SectionOption) => section.id === editSelectedSection)?.label || '';
     const courseCode = editCourseCodeInput.trim(); const courseLabel = editCourseNameInput.trim(); const units = parseFloat(editCourseUnitsInput) || 0;
+
+    setIsSavingEdit(true); // <-- Set loading state
 
     try {
       let bannerBase64: string | null | undefined = undefined;
@@ -478,6 +482,8 @@ const Dashboard2 = ({
     } catch (error) {
       console.error('Error updating class:', error);
       showToast('Failed to update class.', 'error');
+    } finally { 
+      setIsSavingEdit(false); // <-- Reset loading state
     }
   };
 
@@ -485,7 +491,9 @@ const Dashboard2 = ({
   const handleDeleteCourse = () => { if (!menuCourse) return; setCourseToDelete(menuCourse); setDeleteConfirmVisible(true); closeMenu(); };
 
   const confirmDeleteCourse = async () => {
-    if (!courseToDelete) return;
+    if (!courseToDelete || isDeletingClass) return; // <-- Check isDeletingClass
+    setIsDeletingClass(true); // <-- Set loading state
+    
     try {
       const response = await fetch(`${API_BASE_URL}/delete-class/${courseToDelete.id}`, { credentials: 'include', method: 'DELETE', headers: { 'Content-Type': 'application/json' } });
       const data = await response.json();
@@ -496,10 +504,16 @@ const Dashboard2 = ({
     } catch (error) {
       console.error('Error deleting class:', error);
       showToast('Failed to delete class.', 'error');
+    } finally {
+      setIsDeletingClass(false); // <-- Reset loading state
     }
   };
 
-  const cancelDeleteCourse = () => { setDeleteConfirmVisible(false); setCourseToDelete(null); };
+  const cancelDeleteCourse = () => { 
+    if (isDeletingClass) return; // <-- Prevent closing while deleting
+    setDeleteConfirmVisible(false); 
+    setCourseToDelete(null); 
+  };
 
   const renderCheckboxRow = (label: string, isChecked: boolean, onPress: () => void, activeStyle: any) => (
     <TouchableOpacity style={[styles.checkRow, isChecked && activeStyle]} activeOpacity={0.85} onPress={onPress}>
@@ -647,12 +661,21 @@ const Dashboard2 = ({
       {/* Edit Modal */}
       <Modal visible={isEditModalVisible} transparent animationType="fade" onRequestClose={() => setEditModalVisible(false)}>
         <View style={styles.modalOverlay}>
-          <Pressable style={StyleSheet.absoluteFill} onPress={() => { resetEditForm(); setEditModalVisible(false); }} />
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => { if (isSavingEdit) return; resetEditForm(); setEditModalVisible(false); }} />
           <View style={styles.createModalContainerWide}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Edit Class</Text>
-              <TouchableOpacity onPress={() => { resetEditForm(); setEditModalVisible(false); }}><MaterialCommunityIcons name="close" size={24} color="#202124" /></TouchableOpacity>
+              <TouchableOpacity disabled={isSavingEdit} onPress={() => { if (isSavingEdit) return; resetEditForm(); setEditModalVisible(false); }}>
+                <MaterialCommunityIcons name="close" size={24} color="#202124" />
+              </TouchableOpacity>
             </View>
+            {isSavingEdit && (
+              <View style={styles.creatingOverlay}>
+                <ActivityIndicator size="large" color="#D32F2F" />
+                <Text style={styles.creatingTitle}>Saving changes...</Text>
+                <Text style={styles.creatingSubtitle}>Please wait while the class is being updated</Text>
+              </View>
+            )}
             <ScrollView style={styles.transparentScroll} contentContainerStyle={styles.modalInnerContent} showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false}>
               <View style={styles.modalSection}>
                 <View style={styles.modalSectionHeaderRow}>
@@ -751,8 +774,27 @@ const Dashboard2 = ({
               ) : null}
 
               <View style={styles.modalButtonRow}>
-                <TouchableOpacity style={styles.cancelBtn} onPress={() => { resetEditForm(); setEditModalVisible(false); }}><Text style={styles.cancelBtnText}>Cancel</Text></TouchableOpacity>
-                <TouchableOpacity style={styles.saveBtn} onPress={handleSaveEdit}><Text style={styles.saveBtnText}>Save Changes</Text></TouchableOpacity>
+                <TouchableOpacity 
+                  style={[styles.cancelBtn, isSavingEdit && styles.disabledBtn]} 
+                  disabled={isSavingEdit} 
+                  onPress={() => { if (isSavingEdit) return; resetEditForm(); setEditModalVisible(false); }}
+                >
+                  <Text style={styles.cancelBtnText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity 
+                  style={[styles.saveBtn, isSavingEdit && styles.disabledBtn]} 
+                  disabled={isSavingEdit} 
+                  onPress={handleSaveEdit}
+                >
+                  {isSavingEdit ? (
+                    <View style={styles.loadingButtonContent}>
+                      <ActivityIndicator size="small" color="#FFFFFF" />
+                      <Text style={styles.saveBtnText}>Saving...</Text>
+                    </View>
+                  ) : (
+                    <Text style={styles.saveBtnText}>Save Changes</Text>
+                  )}
+                </TouchableOpacity>
               </View>
             </ScrollView>
           </View>
@@ -766,9 +808,35 @@ const Dashboard2 = ({
             <Text style={styles.deleteConfirmTitle}>Delete Class</Text>
             <Text style={styles.deleteConfirmText}>Are you sure you want to delete "{courseToDelete?.name}"?</Text>
             <View style={styles.deleteConfirmActions}>
-              <TouchableOpacity style={styles.cancelBtn} onPress={cancelDeleteCourse}><Text style={styles.cancelBtnText}>Cancel</Text></TouchableOpacity>
-              <TouchableOpacity style={styles.deleteConfirmBtn} onPress={confirmDeleteCourse}><Text style={styles.deleteConfirmBtnText}>Delete</Text></TouchableOpacity>
+              <TouchableOpacity 
+                style={[styles.cancelBtn, isDeletingClass && styles.disabledBtn]} 
+                disabled={isDeletingClass} 
+                onPress={cancelDeleteCourse}
+              >
+                <Text style={styles.cancelBtnText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={[styles.deleteConfirmBtn, isDeletingClass && styles.disabledBtn]} 
+                disabled={isDeletingClass} 
+                onPress={confirmDeleteCourse}
+              >
+                {isDeletingClass ? (
+                  <View style={styles.loadingButtonContent}>
+                    <ActivityIndicator size="small" color="#FFFFFF" />
+                    <Text style={styles.deleteConfirmBtnText}>Deleting...</Text>
+                  </View>
+                ) : (
+                  <Text style={styles.deleteConfirmBtnText}>Delete</Text>
+                )}
+              </TouchableOpacity>
             </View>
+            {isDeletingClass && (
+              <View style={styles.deletingOverlay}>
+                <ActivityIndicator size="large" color="#D32F2F" />
+                <Text style={styles.creatingTitle}>Deleting class...</Text>
+                <Text style={styles.creatingSubtitle}>Please wait while the class is being deleted</Text>
+              </View>
+            )}
           </View>
         </View>
       </Modal>
@@ -1035,12 +1103,13 @@ const styles = StyleSheet.create({
   toastSuccess: { backgroundColor: '#2E7D32' },
   toastError: { backgroundColor: '#D32F2F' },
   toastText: { flex: 1, color: '#FFFFFF', fontSize: 13, fontWeight: '800', lineHeight: 18 },
-  deleteConfirmBox: { width: '100%', maxWidth: 360, backgroundColor: '#fff', borderRadius: 22, paddingHorizontal: 22, paddingVertical: 22 },
+  deleteConfirmBox: { width: '100%', maxWidth: 360, backgroundColor: '#fff', borderRadius: 22, paddingHorizontal: 22, paddingVertical: 22, overflow: 'hidden' }, // Added overflow: hidden for the overlay
   deleteConfirmTitle: { fontSize: 20, fontWeight: '800', color: '#202124', marginBottom: 10 },
   deleteConfirmText: { fontSize: 14, color: '#5F6368', lineHeight: 22 },
   deleteConfirmActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 12, marginTop: 18 },
   deleteConfirmBtn: { minWidth: 110, minHeight: 46, borderRadius: 14, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 16, backgroundColor: '#D32F2F' },
   deleteConfirmBtnText: { color: '#fff', fontWeight: '800', fontSize: 14 },
+  deletingOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(255, 255, 255, 0.88)', zIndex: 100, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24 }, // <-- NEW: Overlay style for delete
   fullPageLoader: {
     flex: 1,
     justifyContent: 'center',

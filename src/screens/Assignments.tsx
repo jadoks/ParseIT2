@@ -1,3 +1,4 @@
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import Constants from 'expo-constants';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
@@ -9,6 +10,7 @@ import {
   Linking,
   Modal,
   Platform,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -24,6 +26,7 @@ import {
 export interface AssignmentComment {
   id: string;
   author: string;
+  authorId?: string; 
   content: string;
   timestamp: string;
   isInstructor: boolean;
@@ -56,7 +59,7 @@ export interface AssignmentMaterial {
   fileType?: string;
   storagePath?: string | null;
   bucketPath?: string | null;
-  pdfUrl?: string | null;       // For previewing converted PDFs
+  pdfUrl?: string | null;
   pdfStoragePath?: string | null; 
 }
 
@@ -171,11 +174,10 @@ interface FlattenedAssignment extends AssignmentItem {
   materials: AssignmentMaterial[];
 }
 
-// 👇 UPDATED INTERFACE TO INCLUDE SEARCH QUERY
 interface AssignmentsProps {
   courses: AssignmentCourse[];
   selectedCourseId?: string | null;
-  searchQuery?: string; // 👈 ADDED
+  searchQuery?: string;
   assignmentComments: Record<string, AssignmentComment[]>;
   assignmentFiles: Record<string, AssignmentFileUpload[]>;
   onAddComment: (assignmentId: string, content: string) => void;
@@ -195,6 +197,8 @@ interface AssignmentsProps {
     }
   >;
   onPlayGame?: (assignment: AssignmentItem) => void;
+  onEditComment?: (assignmentId: string, commentId: string, newContent: string) => Promise<void>;
+  onDeleteComment?: (assignmentId: string, commentId: string) => Promise<void>;
 }
 
 type FilterType = 'all' | 'pending' | 'submitted' | 'graded';
@@ -204,7 +208,7 @@ const Assignments = ({
   selectedCourseId = null,
   assignmentComments,
   assignmentFiles,
-  searchQuery = '', // 👈 DEFAULT VALUE
+  searchQuery = '',
   onAddComment,
   onAddFile,
   onRemoveFile,
@@ -215,6 +219,8 @@ const Assignments = ({
   isGeneratingActivity = false,
   completedActivityScores = {},
   onPlayGame,
+  onEditComment,
+  onDeleteComment,
 }: AssignmentsProps) => {
   const { width } = useWindowDimensions();
   const isLargeScreen = width >= 768;
@@ -227,8 +233,20 @@ const Assignments = ({
   const [submissionLink, setSubmissionLink] = useState('');
   const [isUploadingFile, setIsUploadingFile] = useState(false);
   const [isSubmittingAssignment, setIsSubmittingAssignment] = useState(false);
+  
+  // 👇 NEW: Comment edit and delete states
+  const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
+  const [editText, setEditText] = useState('');
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [openMenuCommentId, setOpenMenuCommentId] = useState<string | null>(null);
+  const [menuPosition, setMenuPosition] = useState<{ x: number; y: number } | null>(null);
+  const buttonRefs = useState<{ [key: string]: any }>({});
 
-  // Game Attempt States
+  // 👇 NEW: Delete confirmation modal states
+  const [deleteModalVisible, setDeleteModalVisible] = useState(false);
+  const [commentToDeleteId, setCommentToDeleteId] = useState<string | null>(null);
+  const [isDeletingComment, setIsDeletingComment] = useState(false);
+
   const [gameAttempts, setGameAttempts] = useState<Record<string, number>>({});
   const [isLoadingAttempts, setIsLoadingAttempts] = useState<Record<string, boolean>>({});
 
@@ -254,27 +272,25 @@ const Assignments = ({
     );
   }, [sourceCourses]);
 
-  // 👇 STEP 1: FILTER BY STATUS TAB FIRST
   const statusFilteredAssignments = useMemo(() => {
     return filter === 'all'
       ? allAssignments
       : allAssignments.filter((a) => a.status === filter);
   }, [filter, allAssignments]);
 
-  // 👇 STEP 2: APPLY TEXT SEARCH ON TOP OF STATUS FILTER
-const searchedAndFilteredAssignments = useMemo(() => {
-  const trimmedQuery = searchQuery.trim();
-  if (!trimmedQuery) return statusFilteredAssignments;
-  
-  const lowerQuery = trimmedQuery.toLowerCase();
+  const searchedAndFilteredAssignments = useMemo(() => {
+    const trimmedQuery = searchQuery.trim();
+    if (!trimmedQuery) return statusFilteredAssignments;
+    
+    const lowerQuery = trimmedQuery.toLowerCase();
 
-  return statusFilteredAssignments.filter((a) => 
-    a.title.toLowerCase().startsWith(lowerQuery) ||
-    a.courseName.toLowerCase().startsWith(lowerQuery) ||
-    a.instructor.toLowerCase().startsWith(lowerQuery) ||
-    (a.description && a.description.toLowerCase().startsWith(lowerQuery))
-  );
-}, [searchQuery, statusFilteredAssignments]);
+    return statusFilteredAssignments.filter((a) => 
+      a.title.toLowerCase().startsWith(lowerQuery) ||
+      a.courseName.toLowerCase().startsWith(lowerQuery) ||
+      a.instructor.toLowerCase().startsWith(lowerQuery) ||
+      (a.description && a.description.toLowerCase().startsWith(lowerQuery))
+    );
+  }, [searchQuery, statusFilteredAssignments]);
 
   const getScorePercent = (assignment: AssignmentItem) => {
     if (
@@ -356,7 +372,7 @@ const searchedAndFilteredAssignments = useMemo(() => {
     if (!relatedMaterials.length) {
       Alert.alert(
         'Related materials required',
-        'The teacher must select related materials first. The AI follow-up activity is generated from those materials, not from the assignment title.'
+        'The teacher must select related materials first. The AI follow-up activity is generated from those related materials, not from the assignment title.'
       );
       return;
     }
@@ -374,6 +390,83 @@ const searchedAndFilteredAssignments = useMemo(() => {
     if (!selectedAssignment || !newComment.trim()) return;
     onAddComment(selectedAssignment.id, newComment);
     setNewComment('');
+  };
+
+  // 👇 NEW: Handle comment edit
+  const handleEditComment = async (commentId: string) => {
+    if (!selectedAssignment || !editText.trim() || savingEdit) return;
+    if (!onEditComment) {
+      Alert.alert('Not Available', 'Edit functionality is not available.');
+      return;
+    }
+    
+    try {
+      setSavingEdit(true);
+      await onEditComment(selectedAssignment.id, commentId, editText);
+      setEditingCommentId(null);
+      setEditText('');
+    } catch (error: any) {
+      Alert.alert('Edit Failed', error?.message || 'Unable to update comment.');
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
+  // 👇 NEW: Handle comment delete
+  const handleDeleteComment = (commentId: string) => {
+    if (!selectedAssignment) return;
+    if (!onDeleteComment) {
+      Alert.alert('Not Available', 'Delete functionality is not available.');
+      return;
+    }
+
+    setCommentToDeleteId(commentId);
+    setDeleteModalVisible(true);
+    closeMenu();
+  };
+
+  const confirmDeleteComment = async () => {
+    if (!selectedAssignment || !commentToDeleteId || !onDeleteComment) return;
+    try {
+      setIsDeletingComment(true);
+      await onDeleteComment(selectedAssignment.id, commentToDeleteId);
+    } catch (error: any) {
+      Alert.alert('Delete Failed', error?.message || 'Unable to delete comment.');
+    } finally {
+      setIsDeletingComment(false);
+      setDeleteModalVisible(false);
+      setCommentToDeleteId(null);
+    }
+  };
+
+  // 👇 NEW: Handle menu press with positioning
+  const handleMenuPress = (commentId: string, event: any) => {
+    event.persist?.();
+    
+    if (openMenuCommentId === commentId) {
+      setOpenMenuCommentId(null);
+      setMenuPosition(null);
+      return;
+    }
+
+    if (event.nativeEvent?.layout) {
+      const { x, y, width: btnWidth, height: btnHeight } = event.nativeEvent.layout;
+      setMenuPosition({ x: x + btnWidth, y: y + btnHeight });
+    } else {
+      const buttonRef = buttonRefs[0]?.[commentId];
+      if (buttonRef) {
+        buttonRef.measureInWindow((x: number, y: number, btnWidth: number, btnHeight: number) => {
+          setMenuPosition({ x: x + btnWidth, y: y + btnHeight });
+        });
+      }
+    }
+    
+    setOpenMenuCommentId(commentId);
+  };
+
+  const closeMenu = () => {
+    setOpenMenuCommentId(null);
+    setMenuPosition(null);
   };
 
   const handleFileUpload = async () => {
@@ -652,9 +745,15 @@ const searchedAndFilteredAssignments = useMemo(() => {
   const closeModal = () => {
     setSelectedAssignment(null);
     setNewComment('');
+    setEditingCommentId(null);
+    setEditText('');
+    setOpenMenuCommentId(null);
+    setMenuPosition(null);
+    setDeleteModalVisible(false);
+    setCommentToDeleteId(null);
+    setIsDeletingComment(false);
   };
 
-  // Fetch game attempts for an assignment
   const fetchGameAttempts = async (assignmentId: string) => {
     if (!currentStudent?.studentId) return;
     setIsLoadingAttempts((prev) => ({ ...prev, [assignmentId]: true }));
@@ -700,6 +799,13 @@ const searchedAndFilteredAssignments = useMemo(() => {
     if (onPlayGame) {
       onPlayGame(assignment);
     }
+  };
+
+  // 👇 Check if current user can manage a comment
+  const canManageComment = (comment: AssignmentComment) => {
+    if (!currentStudent) return false;
+    const studentName = `${currentStudent.firstName || ''} ${currentStudent.lastName || ''}`.trim();
+    return comment.author === studentName || comment.author === currentStudent.email;
   };
 
   const renderAssignmentItem = ({ item }: { item: FlattenedAssignment }) => {
@@ -811,7 +917,6 @@ const searchedAndFilteredAssignments = useMemo(() => {
         ))}
       </View>
 
-      {/* 👇 STEP 3: USE THE COMBINED FILTERED DATA SOURCE */}
       <FlatList
         data={searchedAndFilteredAssignments}
         renderItem={renderAssignmentItem}
@@ -819,22 +924,20 @@ const searchedAndFilteredAssignments = useMemo(() => {
         scrollEnabled={false}
         ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
         ListEmptyComponent={
-  <View style={{ alignItems: 'center', justifyContent: 'center', paddingVertical: 40 }}>
-    {/* You might need to import MaterialCommunityIcons if not already imported */}
-    {/* <MaterialCommunityIcons name="magnify" size={48} color="#CCC" /> */}
-    <Text style={[styles.emptyText, { fontSize: 16, fontWeight: '700', color: '#333' }]}>
-      {searchQuery.trim()
-        ? `No assignments start with "${searchQuery}"`
-        : 'No assignments found.'}
-    </Text>
-    <Text style={[styles.emptyText, { fontSize: 14, marginTop: 8 }]}>
-      {searchQuery.trim()
-        ? 'Try typing the beginning of the assignment or class name.'
-        : ''}
-    </Text>
-  </View>
-}
-/>
+          <View style={{ alignItems: 'center', justifyContent: 'center', paddingVertical: 40 }}>
+            <Text style={[styles.emptyText, { fontSize: 16, fontWeight: '700', color: '#333' }]}>
+              {searchQuery.trim()
+                ? `No assignments start with "${searchQuery}"`
+                : 'No assignments found.'}
+            </Text>
+            <Text style={[styles.emptyText, { fontSize: 14, marginTop: 8 }]}>
+              {searchQuery.trim()
+                ? 'Try typing the beginning of the assignment or class name.'
+                : ''}
+            </Text>
+          </View>
+        }
+      />
       
       <Modal visible={!!selectedAssignment} animationType="slide" transparent onRequestClose={closeModal}>
         <View style={styles.modalOverlay}>
@@ -960,7 +1063,6 @@ const searchedAndFilteredAssignments = useMemo(() => {
                               </Text>
                             </View>
                           )}
-                          {/* 🌟 UPDATED: Show Max Attempts in Info Block */}
                           {selectedAssignment.assignmentType === 'game_based' && selectedAssignment.numberOfAttempts && (
                             <View style={styles.infoMetaRow}>
                               <Text style={styles.infoMetaLabel}>Max Attempts</Text>
@@ -1030,7 +1132,6 @@ const searchedAndFilteredAssignments = useMemo(() => {
                       )}
                     </View>
                     
-                    {/*  GAME BASED ASSIGNMENT BUTTON WITH SIMPLE ATTEMPT LABEL */}
                     {selectedAssignment.assignmentType === 'game_based' && (
                       <View style={styles.section}>
                         <Text style={styles.sectionTitle}>🎮 Game-Based Assignment</Text>
@@ -1046,9 +1147,11 @@ const searchedAndFilteredAssignments = useMemo(() => {
                           </View>
                         ) : (
                           <>
-                            {/* 🌟 UPDATED: Simple Label Display */}
+                          
                             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                              
                               <Text style={{ fontSize: 13, fontWeight: '600', color: '#333' }}>
+                                
                                 {selectedAssignment.numberOfAttempts === 'unlimited' 
                                   ? 'Attempt: Unlimited'
                                   : `Attempt: ${getRemainingAttempts(selectedAssignment)}`}
@@ -1275,24 +1378,74 @@ const searchedAndFilteredAssignments = useMemo(() => {
                       <Text style={styles.sectionTitle}>💬 Comments</Text>
                       {(assignmentComments[selectedAssignment.id] || []).length > 0 ? (
                         <View>
-                          {(assignmentComments[selectedAssignment.id] || []).map((comment) => (
-                            <View
-                              key={comment.id}
-                              style={[
-                                styles.commentItem,
-                                comment.isInstructor && styles.instructorComment,
-                              ]}
-                            >
-                              <View style={styles.commentHeader}>
-                                <Text style={styles.commentAuthor}>{comment.author}</Text>
-                                {comment.isInstructor && (
-                                  <Text style={styles.teacherBadge}>Teacher</Text>
+                          {(assignmentComments[selectedAssignment.id] || []).map((comment) => {
+                            const isEditing = editingCommentId === comment.id;
+                            const canManage = canManageComment(comment);
+
+                            return (
+                              <View
+                                key={comment.id}
+                                style={[
+                                  styles.commentItem,
+                                  comment.isInstructor && styles.instructorComment,
+                                ]}
+                              >
+                                <View style={styles.commentHeader}>
+                                  <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, justifyContent: 'space-between' }}>
+                                    <Text style={styles.commentAuthor}>{comment.author}</Text>
+                                    {comment.isInstructor && (
+                                      <Text style={styles.teacherBadge}>Instructor</Text>
+                                    )}
+                                  </View>
+                                  {canManage && (
+                                    <View
+                                      ref={(ref: any) => {
+                                        if (ref) buttonRefs[0] = { ...buttonRefs[0], [comment.id]: ref };
+                                      }}
+                                    >
+                                      <TouchableOpacity
+                                        onPress={(e) => handleMenuPress(comment.id, e)}
+                                        style={styles.commentMenuBtn}
+                                      >
+                                        <MaterialCommunityIcons name="dots-vertical" size={20} color="#606060" />
+                                      </TouchableOpacity>
+                                    </View>
+                                  )}
+                                </View>
+
+                                {isEditing ? (
+                                  <View style={styles.editRow}>
+                                    <TextInput
+                                      value={editText}
+                                      onChangeText={setEditText}
+                                      style={styles.editInput}
+                                      placeholderTextColor="#888"
+                                      autoFocus
+                                      multiline
+                                    />
+                                    <View style={styles.editActionsRow}>
+                                      <TouchableOpacity
+                                        onPress={() => { setEditingCommentId(null); setEditText(''); }}
+                                        style={styles.editCancelBtn}
+                                      >
+                                        <Text style={styles.editCancelText}>Cancel</Text>
+                                      </TouchableOpacity>
+                                      <TouchableOpacity
+                                        onPress={() => handleEditComment(comment.id)}
+                                        style={[styles.editSaveBtn, savingEdit && styles.commentPostBtnDisabled]}
+                                        disabled={savingEdit}
+                                      >
+                                        <Text style={styles.editSaveText}>{savingEdit ? 'Saving...' : 'Save'}</Text>
+                                      </TouchableOpacity>
+                                    </View>
+                                  </View>
+                                ) : (
+                                  <Text style={styles.commentContent}>{comment.content}</Text>
                                 )}
+                                <Text style={styles.commentTime}>{comment.timestamp}</Text>
                               </View>
-                              <Text style={styles.commentContent}>{comment.content}</Text>
-                              <Text style={styles.commentTime}>{comment.timestamp}</Text>
-                            </View>
-                          ))}
+                            );
+                          })}
                         </View>
                       ) : (
                         <Text style={styles.emptyText}>No comments yet</Text>
@@ -1322,6 +1475,91 @@ const searchedAndFilteredAssignments = useMemo(() => {
                 </>
               )}
             </ScrollView>
+          </View>
+        </View>
+
+        {/* 👇 DROPDOWN MENU FOR COMMENT ACTIONS */}
+        {openMenuCommentId && menuPosition && (
+          <>
+            <Pressable 
+              style={styles.menuBackdrop} 
+              onPress={closeMenu}
+            />
+            <View 
+              style={[
+                styles.dropdownMenu,
+                {
+                  left: Math.min(menuPosition.x - 140, width - 160),
+                  top: menuPosition.y,
+                }
+              ]}
+            >
+              <TouchableOpacity
+                style={styles.dropdownOption}
+                onPress={() => {
+                  const comment = (assignmentComments[selectedAssignment?.id || ''] || []).find(c => c.id === openMenuCommentId);
+                  if (comment) {
+                    setEditingCommentId(comment.id);
+                    setEditText(comment.content);
+                    closeMenu();
+                  }
+                }}
+              >
+                <MaterialCommunityIcons name="pencil-outline" size={18} color="#111" />
+                <Text style={styles.dropdownOptionText}>Edit</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.dropdownOption}
+                onPress={() => handleDeleteComment(openMenuCommentId)}
+              >
+                <MaterialCommunityIcons name="trash-can-outline" size={18} color="#D32F2F" />
+                <Text style={[styles.dropdownOptionText, styles.dropdownOptionDangerText]}>Delete</Text>
+              </TouchableOpacity>
+            </View>
+          </>
+        )}
+      </Modal>
+
+      {/* 👇 DELETE CONFIRMATION MODAL */}
+      <Modal
+        visible={deleteModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          if (!isDeletingComment) {
+            setDeleteModalVisible(false);
+          }
+        }}
+      >
+        <View style={styles.deleteModalOverlay}>
+          <View style={styles.deleteModalContent}>
+            <View style={styles.deleteModalIconContainer}>
+              <MaterialCommunityIcons name="trash-can-outline" size={48} color="#D32F2F" />
+            </View>
+            <Text style={styles.deleteModalTitle}>Delete Comment</Text>
+            <Text style={styles.deleteModalMessage}>
+              Are you sure you want to delete this comment? This action cannot be undone.
+            </Text>
+            <View style={styles.deleteModalActions}>
+              <TouchableOpacity
+                style={styles.deleteModalCancelBtn}
+                onPress={() => setDeleteModalVisible(false)}
+                disabled={isDeletingComment}
+              >
+                <Text style={styles.deleteModalCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.deleteModalConfirmBtn, isDeletingComment && { opacity: 0.7 }]}
+                onPress={confirmDeleteComment}
+                disabled={isDeletingComment}
+              >
+                {isDeletingComment ? (
+                  <ActivityIndicator size="small" color="#FFF" />
+                ) : (
+                  <Text style={styles.deleteModalConfirmText}>Delete</Text>
+                )}
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </Modal>
@@ -1441,7 +1679,16 @@ const styles = StyleSheet.create({
   instructorComment: { backgroundColor: '#FFF9C4', borderLeftColor: '#FBC02D' },
   commentHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
   commentAuthor: { fontWeight: '700', color: '#000', fontSize: 13 },
-  teacherBadge: { fontWeight: '600', color: '#1f1f1f', backgroundColor: '#fbc12d99', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, fontSize: 11 },
+  teacherBadge: { 
+  fontWeight: '800', 
+  color: '#251c0099', 
+  backgroundColor: '#fbc12d99', 
+  paddingHorizontal: 8, 
+  paddingVertical: 4, 
+  borderRadius: 4, 
+  fontSize: 11,
+  marginLeft: 8,
+},
   commentContent: { fontSize: 13, color: '#333', lineHeight: 18, marginBottom: 6 },
   commentTime: { fontSize: 11, color: '#888', fontWeight: '500' },
   commentInputContainer: { marginTop: 12, borderTopWidth: 1, borderTopColor: '#E0E0E0', paddingTop: 12 },
@@ -1449,6 +1696,132 @@ const styles = StyleSheet.create({
   sendButton: { backgroundColor: '#D32F2F', borderRadius: 8, paddingVertical: 10, alignItems: 'center' },
   sendButtonDisabled: { backgroundColor: '#CCC' },
   sendButtonText: { color: '#FFF', fontWeight: '700', fontSize: 13 },
+  commentMenuBtn: { padding: 4, marginLeft: 8 },
+  editRow: { marginTop: 4 },
+  editInput: { borderWidth: 1, borderColor: '#ddd', borderRadius: 14, paddingHorizontal: 12, paddingVertical: 8, color: '#111', backgroundColor: '#fff', fontSize: 14, lineHeight: 20 },
+  editActionsRow: { flexDirection: 'row', justifyContent: 'flex-end', gap: 10, marginTop: 8 },
+  editCancelBtn: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 18, backgroundColor: '#f2f2f2' },
+  editCancelText: { fontWeight: '600', color: '#111', fontSize: 13 },
+  editSaveBtn: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 18, backgroundColor: '#DA1318' },
+  editSaveText: { fontWeight: '700', color: '#fff', fontSize: 13 },
+  commentPostBtnDisabled: { opacity: 0.6 },
+  
+  // 👇 NEW STYLES FOR DROPDOWN MENU
+  menuBackdrop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'transparent',
+    zIndex: 100,
+  },
+  dropdownMenu: {
+    position: 'absolute',
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    paddingVertical: 6,
+    minWidth: 140,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 8,
+    zIndex: 101,
+    borderWidth: Platform.OS === 'web' ? 1 : 0,
+    borderColor: '#e5e5e5',
+  },
+  dropdownOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  dropdownOptionText: { 
+    fontSize: 14, 
+    fontWeight: '600', 
+    color: '#111',
+    flex: 1,
+  },
+  dropdownOptionDangerText: { 
+    color: '#D32F2F',
+  },
+
+  // 👇 NEW STYLES FOR DELETE CONFIRMATION MODAL
+  deleteModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  deleteModalContent: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 24,
+    width: '100%',
+    maxWidth: 360,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 10,
+  },
+  deleteModalIconContainer: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: '#FFEBEE',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  deleteModalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#000',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  deleteModalMessage: {
+    fontSize: 14,
+    color: '#666',
+    textAlign: 'center',
+    marginBottom: 24,
+    lineHeight: 20,
+  },
+  deleteModalActions: {
+    flexDirection: 'row',
+    gap: 12,
+    width: '100%',
+  },
+  deleteModalCancelBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 8,
+    backgroundColor: '#F5F5F5',
+    alignItems: 'center',
+  },
+  deleteModalCancelText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#444',
+  },
+  deleteModalConfirmBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 8,
+    backgroundColor: '#D32F2F',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  deleteModalConfirmText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#FFF',
+  },
 });
 
 export default Assignments;

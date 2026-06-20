@@ -2193,6 +2193,8 @@ const viewerHasFile = !!viewerFileUrl;
           onBack={() => setShowSubmissions(false)}
           onOpenUpdate={() => openUpdateModal(selectedAssignment)}
           onGradeSubmission={handleGradeSubmission}
+          classId={course?.id} 
+          currentTeacher={currentTeacher}
         />
         <Modal visible={showUpdateModal} transparent animationType="fade">
           <View style={styles.modalOverlayCenter}>

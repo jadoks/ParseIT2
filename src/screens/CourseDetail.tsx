@@ -1,3 +1,4 @@
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import Constants from "expo-constants";
 import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system/legacy";
@@ -11,6 +12,7 @@ import {
   Linking,
   Modal,
   Platform,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -137,10 +139,6 @@ function isPresentationFile(
   );
 }
 
-function isExpoGo(): boolean {
-  return Constants.appOwnership === "expo";
-}
-
 async function downloadFileToDevice(
   fileUrl: string,
   fileName: string,
@@ -244,41 +242,19 @@ function getMicrosoftOfficeViewerUrl(fileUrl: string) {
   return `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(fileUrl)}`;
 }
 
-/**
- * Returns the best viewer URL for the given material.
- * 
- * Strategy for Mobile/Expo Go Compatibility:
- * 1. PPT/PPTX: Use Microsoft Office Viewer (better slide rendering than Google).
- * 2. PDF: Use Google Docs Viewer. 
- *    - Why? Raw PDFs often fail to scale correctly in React Native WebViews on small screens.
- *    - Google Viewer provides a responsive web wrapper that works on all devices.
- * 3. Others: Google Docs Viewer.
- */
 function getViewerUrl(
   fileUrl: string,
   fileName?: string | null,
   fileType?: string | null,
   pdfUrl?: string | null
 ): string {
-
-  // 1. Handle Presentations (PPT/PPTX)
   if (isPresentationFile(fileName, fileType)) {
-    // If a server-generated PDF preview exists, use it directly. 
-    // PDFs are lighter and render faster on mobile than full PPT viewers.
-    if (pdfUrl) {
-        return pdfUrl; 
-    }
-    // Fallback to Microsoft Viewer for native PPT experience
+    if (pdfUrl) return pdfUrl;
     return getMicrosoftOfficeViewerUrl(fileUrl);
   }
-
-  // 2. Handle PDFs
   if (fileType === "application/pdf") {
-    // Use Google Docs Viewer for consistent mobile rendering
     return getGoogleDocsViewerUrl(fileUrl);
   }
-
-  // 3. Handle Other Documents (DOCX, XLSX, etc.)
   return getGoogleDocsViewerUrl(fileUrl);
 }
 
@@ -323,8 +299,7 @@ function InlineMaterialViewer({
         allowsFullscreenVideo={true}
         mediaPlaybackRequiresUserAction={false}
         originWhitelist={["*"]}
-        // Mixed content allowed for Android to load http resources if needed
-        mixedContentMode="always" 
+        mixedContentMode="always"
       />
     );
   }
@@ -367,9 +342,7 @@ export interface Material {
   fileType?: string;
   storagePath?: string | null;
   bucketPath?: string | null;
-  /** Server-generated PDF preview URL (for PPT/PPTX) */
   pdfUrl?: string | null;
-  /** Storage path of the server-generated PDF preview */
   pdfStoragePath?: string | null;
 }
 
@@ -452,6 +425,8 @@ interface CourseDetailProps {
     }
   >;
   onPlayGame?: (assignment: AssignmentItem) => void;
+  onEditComment?: (assignmentId: string, commentId: string, newContent: string) => Promise<void>;
+  onDeleteComment?: (assignmentId: string, commentId: string) => Promise<void>;
 }
 
 const EMPTY_COURSE: AssignmentCourse = {
@@ -485,6 +460,8 @@ const CourseDetail = ({
   isGeneratingActivity = false,
   completedActivityScores = {},
   onPlayGame,
+  onEditComment,
+  onDeleteComment,
 }: CourseDetailProps) => {
   const { width, height: windowHeight } = useWindowDimensions();
   const isSmallPhone = width < 360;
@@ -503,6 +480,19 @@ const CourseDetail = ({
   const [isUploadingFile, setIsUploadingFile] = useState(false);
   const [isSubmittingAssignment, setIsSubmittingAssignment] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
+
+  // ── Comment edit / delete state (matches Assignments.tsx) ──
+  const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
+  const [editText, setEditText] = useState("");
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [openMenuCommentId, setOpenMenuCommentId] = useState<string | null>(null);
+  const [menuPosition, setMenuPosition] = useState<{ x: number; y: number } | null>(null);
+  const buttonRefs = useState<{ [key: string]: any }>({});
+
+  // 👇 NEW: Delete confirmation modal states
+  const [deleteModalVisible, setDeleteModalVisible] = useState(false);
+  const [commentToDeleteId, setCommentToDeleteId] = useState<string | null>(null);
+  const [isDeletingComment, setIsDeletingComment] = useState(false);
 
   const [gameAttempts, setGameAttempts] = useState<Record<string, number>>({});
   const [isLoadingAttempts, setIsLoadingAttempts] = useState<Record<string, boolean>>({});
@@ -604,6 +594,47 @@ const CourseDetail = ({
   };
 
   // ─────────────────────────────────────────────────────────────────────────
+  // COMMENT PERMISSION HELPER (matches Assignments.tsx canManageComment)
+  // ─────────────────────────────────────────────────────────────────────────
+  const canManageComment = (comment: AssignmentComment) => {
+    if (!currentStudent) return false;
+    const studentName = `${currentStudent.firstName || ''} ${currentStudent.lastName || ''}`.trim();
+    return comment.author === studentName || comment.author === currentStudent.email;
+  };
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // COMMENT MENU (matches Assignments.tsx handleMenuPress / closeMenu)
+  // ─────────────────────────────────────────────────────────────────────────
+  const handleMenuPress = (commentId: string, event: any) => {
+    event.persist?.();
+
+    if (openMenuCommentId === commentId) {
+      setOpenMenuCommentId(null);
+      setMenuPosition(null);
+      return;
+    }
+
+    if (event.nativeEvent?.layout) {
+      const { x, y, width: btnWidth, height: btnHeight } = event.nativeEvent.layout;
+      setMenuPosition({ x: x + btnWidth, y: y + btnHeight });
+    } else {
+      const buttonRef = buttonRefs[0]?.[commentId];
+      if (buttonRef) {
+        buttonRef.measureInWindow((x: number, y: number, btnWidth: number, btnHeight: number) => {
+          setMenuPosition({ x: x + btnWidth, y: y + btnHeight });
+        });
+      }
+    }
+
+    setOpenMenuCommentId(commentId);
+  };
+
+  const closeMenu = () => {
+    setOpenMenuCommentId(null);
+    setMenuPosition(null);
+  };
+
+  // ─────────────────────────────────────────────────────────────────────────
   // MATERIAL URL HELPERS
   // ─────────────────────────────────────────────────────────────────────────
 
@@ -616,10 +647,6 @@ const CourseDetail = ({
     return raw.trim() || null;
   };
 
-  /**
-   * Returns the PDF preview URL if the material is a presentation and one was
-   * generated server-side. Falls back to null so callers can decide.
-   */
   const getMaterialPdfPreviewUrl = (
     material: AssignmentCourse["materials"][number] | null
   ): string | null => {
@@ -675,11 +702,6 @@ const CourseDetail = ({
     }
   };
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // DOWNLOAD MATERIAL
-  // Downloads the ORIGINAL file (PPT/PPTX or whatever was uploaded),
-  // NOT the PDF preview. The PDF preview is only used for the viewer.
-  // ─────────────────────────────────────────────────────────────────────────
   const handleDownloadMaterial = async () => {
     const storagePath = (selectedMaterial as any)?.storagePath;
     const firebaseUrl = getMaterialUrl(selectedMaterial);
@@ -705,7 +727,6 @@ const CourseDetail = ({
       return;
     }
 
-    // Always use the original file name / mime — never the PDF preview name
     const fileName = selectedMaterial?.fileName || selectedMaterial?.title || "material";
     const mimeType = (selectedMaterial as any)?.fileType || getMimeFromFileName(fileName);
 
@@ -797,6 +818,52 @@ const CourseDetail = ({
     setNewComment("");
   };
 
+  // ── Edit comment (matches Assignments.tsx) ──
+  const handleEditComment = async (commentId: string) => {
+    if (!selectedAssignment || !editText.trim() || savingEdit) return;
+    if (!onEditComment) {
+      Alert.alert('Not Available', 'Edit functionality is not available.');
+      return;
+    }
+    try {
+      setSavingEdit(true);
+      await onEditComment(selectedAssignment.id, commentId, editText);
+      setEditingCommentId(null);
+      setEditText('');
+    } catch (error: any) {
+      Alert.alert('Edit Failed', error?.message || 'Unable to update comment.');
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
+  // ── Delete comment (matches Assignments.tsx) ──
+  const handleDeleteComment = (commentId: string) => {
+    if (!selectedAssignment) return;
+    if (!onDeleteComment) {
+      Alert.alert('Not Available', 'Delete functionality is not available.');
+      return;
+    }
+
+    setCommentToDeleteId(commentId);
+    setDeleteModalVisible(true);
+    closeMenu();
+  };
+
+  const confirmDeleteComment = async () => {
+    if (!selectedAssignment || !commentToDeleteId || !onDeleteComment) return;
+    try {
+      setIsDeletingComment(true);
+      await onDeleteComment(selectedAssignment.id, commentToDeleteId);
+    } catch (error: any) {
+      Alert.alert('Delete Failed', error?.message || 'Unable to delete comment.');
+    } finally {
+      setIsDeletingComment(false);
+      setDeleteModalVisible(false);
+      setCommentToDeleteId(null);
+    }
+  };
+
   const handleFileUpload = async () => {
     if (!selectedAssignment) return;
     if (!course?.id) {
@@ -881,6 +948,13 @@ const CourseDetail = ({
     setSelectedAssignment(null);
     setNewComment("");
     setSubmissionLink("");
+    setEditingCommentId(null);
+    setEditText("");
+    setOpenMenuCommentId(null);
+    setMenuPosition(null);
+    setDeleteModalVisible(false);
+    setCommentToDeleteId(null);
+    setIsDeletingComment(false);
   };
 
   const isAssignmentSubmitted = (assignment?: AssignmentItem | null) =>
@@ -1080,7 +1154,6 @@ const CourseDetail = ({
             {item.fileName}
           </Text>
         )}
-        {/* Badge when a PDF preview is available for a presentation */}
         {isPresentationFile(item.fileName, (item as any).fileType) &&
           !!(item as any).pdfUrl && (
             <View style={styles.pdfPreviewBadge}>
@@ -1171,16 +1244,6 @@ const CourseDetail = ({
   const courseCode = safeCourse.code || (safeCourse as any).courseCode || "";
   const classCode = (safeCourse as any).classCode || (safeCourse as any).joinCode || courseCode || "No Code";
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // VIEWER RESOLUTION
-  //
-  // • previewUrl  → what we feed to the Google Docs viewer iframe / WebView.
-  //   For PPT/PPTX: use the server-generated PDF (pdfUrl) if available,
-  //                 otherwise fall back to the Google Docs viewer on the
-  //                 original file (works for .pptx, though less reliable).
-  // • The download button always uses the original storagePath / firebaseUrl,
-  //   so the user always gets the real PPT/PPTX file, not the PDF preview.
-  // ─────────────────────────────────────────────────────────────────────────
   const selectedMaterialUrl = getMaterialUrl(selectedMaterial);
   const selectedMaterialPdfUrl = getMaterialPdfPreviewUrl(selectedMaterial);
   const useInlineViewer = shouldUseInlineViewer(selectedMaterial);
@@ -1195,12 +1258,10 @@ const CourseDetail = ({
           selectedMaterialUrl,
           selectedMaterial?.fileName,
           (selectedMaterial as any)?.fileType,
-          selectedMaterialPdfUrl  // ← PDF preview passed in
+          selectedMaterialPdfUrl
         )
       : null;
 
-  // Show a small badge in the top bar when we are rendering a PDF preview
-  // instead of the original file (so the user understands what they see).
   const isShowingPdfPreview = isPresentation && !!selectedMaterialPdfUrl;
 
   if (!course) {
@@ -1405,7 +1466,6 @@ const CourseDetail = ({
                 </Text>
 
                 <View style={styles.viewerTypeBadgeRow}>
-                  {/* File type badge */}
                   <View style={styles.viewerTypeBadge}>
                     <Ionicons
                       name={
@@ -1423,7 +1483,6 @@ const CourseDetail = ({
                     </Text>
                   </View>
 
-                  {/* "PDF Preview" badge — only shown when viewing a PDF proxy of a PPT */}
                   {isShowingPdfPreview && (
                     <View style={styles.viewerPdfPreviewBadge}>
                       <Ionicons name="document-text-outline" size={11} color="#1565C0" />
@@ -1433,7 +1492,6 @@ const CourseDetail = ({
                 </View>
               </View>
 
-              {/* Download button — always downloads the ORIGINAL file */}
               {!!selectedMaterialUrl && selectedMaterial?.type !== "video" && (
                 <TouchableOpacity
                   onPress={handleDownloadMaterial}
@@ -1984,29 +2042,82 @@ const CourseDetail = ({
                         })()}
                       </View>
 
-                      {/* Comments */}
+                      {/* ═══════════════════════════════════════════════════════
+                          COMMENTS — matches Assignments.tsx logic/layout/style
+                      ═══════════════════════════════════════════════════════ */}
                       <View style={styles.section}>
                         <Text style={styles.sectionTitle}>💬 Comments</Text>
+
                         {(assignmentComments[selectedAssignment.id] || []).length > 0 ? (
                           <View>
-                            {(assignmentComments[selectedAssignment.id] || []).map((comment) => (
-                              <View
-                                key={comment.id}
-                                style={[
-                                  styles.commentItem,
-                                  comment.isInstructor && styles.instructorComment,
-                                ]}
-                              >
-                                <View style={styles.commentHeader}>
-                                  <Text style={styles.commentAuthor}>{comment.author}</Text>
-                                  {comment.isInstructor && (
-                                    <Text style={styles.teacherBadge}>Teacher</Text>
+                            {(assignmentComments[selectedAssignment.id] || []).map((comment) => {
+                              const isEditing = editingCommentId === comment.id;
+                              const canManage = canManageComment(comment);
+
+                              return (
+                                <View
+                                  key={comment.id}
+                                  style={[
+                                    styles.commentItem,
+                                    comment.isInstructor && styles.instructorComment,
+                                  ]}
+                                >
+                                  <View style={styles.commentHeader}>
+                                  <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, justifyContent: 'space-between' }}>
+                                    <Text style={styles.commentAuthor}>{comment.author}</Text>
+                                    {comment.isInstructor && (
+                                      <Text style={styles.teacherBadge}>Instructor</Text>
+                                    )}
+                                  </View>
+                                  {canManage && (
+                                    <View
+                                      ref={(ref: any) => {
+                                        if (ref) buttonRefs[0] = { ...buttonRefs[0], [comment.id]: ref };
+                                      }}
+                                    >
+                                      <TouchableOpacity
+                                        onPress={(e) => handleMenuPress(comment.id, e)}
+                                        style={styles.commentMenuBtn}
+                                      >
+                                        <MaterialCommunityIcons name="dots-vertical" size={20} color="#606060" />
+                                      </TouchableOpacity>
+                                    </View>
                                   )}
                                 </View>
-                                <Text style={styles.commentContent}>{comment.content}</Text>
-                                <Text style={styles.commentTime}>{comment.timestamp}</Text>
-                              </View>
-                            ))}
+
+                                  {isEditing ? (
+                                    <View style={styles.editRow}>
+                                      <TextInput
+                                        value={editText}
+                                        onChangeText={setEditText}
+                                        style={styles.editInput}
+                                        placeholderTextColor="#888"
+                                        autoFocus
+                                        multiline
+                                      />
+                                      <View style={styles.editActionsRow}>
+                                        <TouchableOpacity
+                                          onPress={() => { setEditingCommentId(null); setEditText(''); }}
+                                          style={styles.editCancelBtn}
+                                        >
+                                          <Text style={styles.editCancelText}>Cancel</Text>
+                                        </TouchableOpacity>
+                                        <TouchableOpacity
+                                          onPress={() => handleEditComment(comment.id)}
+                                          style={[styles.editSaveBtn, savingEdit && styles.commentPostBtnDisabled]}
+                                          disabled={savingEdit}
+                                        >
+                                          <Text style={styles.editSaveText}>{savingEdit ? 'Saving...' : 'Save'}</Text>
+                                        </TouchableOpacity>
+                                      </View>
+                                    </View>
+                                  ) : (
+                                    <Text style={styles.commentContent}>{comment.content}</Text>
+                                  )}
+                                  <Text style={styles.commentTime}>{comment.timestamp}</Text>
+                                </View>
+                              );
+                            })}
                           </View>
                         ) : (
                           <Text style={styles.emptyText}>No comments yet</Text>
@@ -2037,6 +2148,93 @@ const CourseDetail = ({
                   </>
                 )}
               </ScrollView>
+            </View>
+          </View>
+
+          {/* ── Floating dropdown menu (outside ScrollView, inside Modal) ── */}
+          {openMenuCommentId && menuPosition && (
+            <>
+              <Pressable
+                style={styles.menuBackdrop}
+                onPress={closeMenu}
+              />
+              <View
+                style={[
+                  styles.dropdownMenu,
+                  {
+                    left: Math.min(menuPosition.x - 140, width - 160),
+                    top: menuPosition.y,
+                  },
+                ]}
+              >
+                <TouchableOpacity
+                  style={styles.dropdownOption}
+                  onPress={() => {
+                    const comment = (assignmentComments[selectedAssignment?.id || ''] || []).find(
+                      (c) => c.id === openMenuCommentId
+                    );
+                    if (comment) {
+                      setEditingCommentId(comment.id);
+                      setEditText(comment.content);
+                      closeMenu();
+                    }
+                  }}
+                >
+                  <MaterialCommunityIcons name="pencil-outline" size={18} color="#111" />
+                  <Text style={styles.dropdownOptionText}>Edit</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.dropdownOption}
+                  onPress={() => handleDeleteComment(openMenuCommentId)}
+                >
+                  <MaterialCommunityIcons name="trash-can-outline" size={18} color="#D32F2F" />
+                  <Text style={[styles.dropdownOptionText, styles.dropdownOptionDangerText]}>Delete</Text>
+                </TouchableOpacity>
+              </View>
+            </>
+          )}
+        </Modal>
+
+        {/* 👇 DELETE CONFIRMATION MODAL */}
+        <Modal
+          visible={deleteModalVisible}
+          transparent
+          animationType="fade"
+          onRequestClose={() => {
+            if (!isDeletingComment) {
+              setDeleteModalVisible(false);
+            }
+          }}
+        >
+          <View style={styles.deleteModalOverlay}>
+            <View style={styles.deleteModalContent}>
+              <View style={styles.deleteModalIconContainer}>
+                <MaterialCommunityIcons name="trash-can-outline" size={48} color="#D32F2F" />
+              </View>
+              <Text style={styles.deleteModalTitle}>Delete Comment</Text>
+              <Text style={styles.deleteModalMessage}>
+                Are you sure you want to delete this comment? This action cannot be undone.
+              </Text>
+              <View style={styles.deleteModalActions}>
+                <TouchableOpacity
+                  style={styles.deleteModalCancelBtn}
+                  onPress={() => setDeleteModalVisible(false)}
+                  disabled={isDeletingComment}
+                >
+                  <Text style={styles.deleteModalCancelText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.deleteModalConfirmBtn, isDeletingComment && { opacity: 0.7 }]}
+                  onPress={confirmDeleteComment}
+                  disabled={isDeletingComment}
+                >
+                  {isDeletingComment ? (
+                    <ActivityIndicator size="small" color="#FFF" />
+                  ) : (
+                    <Text style={styles.deleteModalConfirmText}>Delete</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
             </View>
           </View>
         </Modal>
@@ -2212,8 +2410,6 @@ const styles = StyleSheet.create({
   materialTitle: { fontSize: 14, fontWeight: "700", color: "#000", marginBottom: 4 },
   materialType: { fontSize: 12, color: "#999" },
   materialFileName: { fontSize: 12, color: "#D32F2F", marginTop: 4, fontWeight: "600" },
-
-  // ── NEW: PDF preview badge on material card ──
   pdfPreviewBadge: {
     flexDirection: "row",
     alignItems: "center",
@@ -2226,7 +2422,6 @@ const styles = StyleSheet.create({
     paddingVertical: 3,
   },
   pdfPreviewBadgeText: { fontSize: 10, fontWeight: "700", color: "#1565C0" },
-
   assignmentCard: {
     borderWidth: 1,
     borderColor: "#E6E6E6",
@@ -2289,8 +2484,6 @@ const styles = StyleSheet.create({
   },
   recommendationText: { fontSize: 12, fontWeight: "700" },
   emptyText: { textAlign: "center", color: "#777", marginTop: 20, fontSize: 14 },
-
-  // ─── Fullscreen viewer modal ──────────────────────────────────────────────
   viewerModal: { flex: 1, backgroundColor: "#3c3c3c87" },
   viewerTopBar: {
     height: 62,
@@ -2316,8 +2509,6 @@ const styles = StyleSheet.create({
   },
   viewerTitleBlock: { flex: 1, gap: 3 },
   viewerTitle: { color: "#FFF", fontSize: 15, fontWeight: "700", letterSpacing: 0.1 },
-
-  // ── NEW: row that holds type badge + optional PDF preview badge ──
   viewerTypeBadgeRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -2335,8 +2526,6 @@ const styles = StyleSheet.create({
     alignSelf: "flex-start",
   },
   viewerTypeText: { color: "#D32F2F", fontSize: 10, fontWeight: "800", letterSpacing: 0.5 },
-
-  // ── NEW: "PDF Preview" badge in viewer top bar ──
   viewerPdfPreviewBadge: {
     flexDirection: "row",
     alignItems: "center",
@@ -2348,7 +2537,6 @@ const styles = StyleSheet.create({
     alignSelf: "flex-start",
   },
   viewerPdfPreviewText: { color: "#1565C0", fontSize: 10, fontWeight: "800", letterSpacing: 0.4 },
-
   viewerOpenExtBtn: {
     width: 36,
     height: 36,
@@ -2378,7 +2566,6 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
   },
   viewerExternalButtonText: { color: "#FFF", fontWeight: "700", fontSize: 14 },
-
   modalOverlay: { flex: 1, backgroundColor: "rgba(15, 23, 42, 0.18)" },
   modalOverlayBottom: {
     flex: 1,
@@ -2614,6 +2801,8 @@ const styles = StyleSheet.create({
   },
   lockedSubmissionTitle: { color: "#111", fontWeight: "700", fontSize: 13, marginBottom: 3 },
   lockedSubmissionText: { color: "#666", fontSize: 12, lineHeight: 18 },
+
+  // ── Comments ──
   commentItem: {
     backgroundColor: "#F9F9F9",
     borderRadius: 8,
@@ -2630,15 +2819,16 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   commentAuthor: { fontWeight: "700", color: "#000", fontSize: 13 },
-  teacherBadge: {
-    fontWeight: "600",
-    color: "#1f1f1f",
-    backgroundColor: "#fbc12d99",
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-    fontSize: 11,
-  },
+  teacherBadge: { 
+  fontWeight: '800', 
+  color: '#251c0099', 
+  backgroundColor: '#fbc12d99', 
+  paddingHorizontal: 8, 
+  paddingVertical: 4, 
+  borderRadius: 4, 
+  fontSize: 11,
+  marginLeft: 8,
+},
   commentContent: { fontSize: 13, color: "#333", lineHeight: 18, marginBottom: 6 },
   commentTime: { fontSize: 11, color: "#888", fontWeight: "500" },
   commentInputContainer: {
@@ -2683,4 +2873,144 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   uploadButtonText: { color: "#FFF", fontWeight: "700", fontSize: 14 },
+
+  // ── Comment menu button ──
+  commentMenuBtn: { padding: 4, marginLeft: 8 },
+
+  // ── Inline edit ──
+  editRow: { marginTop: 4 },
+  editInput: {
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    color: '#111',
+    backgroundColor: '#fff',
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  editActionsRow: { flexDirection: 'row', justifyContent: 'flex-end', gap: 10, marginTop: 8 },
+  editCancelBtn: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 18, backgroundColor: '#f2f2f2' },
+  editCancelText: { fontWeight: '600', color: '#111', fontSize: 13 },
+  editSaveBtn: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 18, backgroundColor: '#DA1318' },
+  editSaveText: { fontWeight: '700', color: '#fff', fontSize: 13 },
+  commentPostBtnDisabled: { opacity: 0.6 },
+
+  // ── Floating dropdown menu ──
+  menuBackdrop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'transparent',
+    zIndex: 100,
+  },
+  dropdownMenu: {
+    position: 'absolute',
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    paddingVertical: 6,
+    minWidth: 140,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 8,
+    zIndex: 101,
+    borderWidth: Platform.OS === 'web' ? 1 : 0,
+    borderColor: '#e5e5e5',
+  },
+  dropdownOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  dropdownOptionText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#111',
+    flex: 1,
+  },
+  dropdownOptionDangerText: {
+    color: '#D32F2F',
+  },
+
+  // 👇 NEW STYLES FOR DELETE CONFIRMATION MODAL
+  deleteModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  deleteModalContent: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 24,
+    width: '100%',
+    maxWidth: 360,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 10,
+  },
+  deleteModalIconContainer: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: '#FFEBEE',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  deleteModalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#000',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  deleteModalMessage: {
+    fontSize: 14,
+    color: '#666',
+    textAlign: 'center',
+    marginBottom: 24,
+    lineHeight: 20,
+  },
+  deleteModalActions: {
+    flexDirection: 'row',
+    gap: 12,
+    width: '100%',
+  },
+  deleteModalCancelBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 8,
+    backgroundColor: '#F5F5F5',
+    alignItems: 'center',
+  },
+  deleteModalCancelText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#444',
+  },
+  deleteModalConfirmBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 8,
+    backgroundColor: '#D32F2F',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  deleteModalConfirmText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#FFF',
+  },
 });

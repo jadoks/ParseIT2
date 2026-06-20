@@ -239,7 +239,14 @@ const ANNOUNCEMENT_BANNERS: Record<number, any> = {
 };
 
 const mapCourseCommentsToAssignmentComments = (comments?: CourseAssignmentComment[]): AssignmentComment[] =>
-  (comments || []).map((comment) => ({ id: comment.id, author: comment.author, content: comment.content, timestamp: comment.timestamp, isInstructor: comment.isInstructor }));
+  (comments || []).map((comment) => ({ 
+    id: comment.id, 
+    author: comment.author, 
+    authorId: (comment as any).authorId,   // ← add this
+    content: comment.content, 
+    timestamp: comment.timestamp, 
+    isInstructor: comment.isInstructor 
+  }));
 
 const mapCourseFilesToAssignmentFiles = (files?: CourseAssignment['files']): AssignmentFileUpload[] =>
   (files || []).map((file) => ({ id: file.id, fileName: file.name, fileSize: (file as any).fileSize || '1.2 MB', uploadedDate: file.uploadedAt, fileUrl: file.uri || (file as any).fileUrl, fileType: (file as any).fileType, source: 'teacher' }));
@@ -306,6 +313,8 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
   const isLargeScreen = width >= 768;
   const isSmallScreen = width < 768;
 
+  
+
   const [remoteStudentProfile, setRemoteStudentProfile] = useState<RemoteStudentProfile | null>(null);
   const currentUserFirstName = remoteStudentProfile?.firstName || currentStudent.firstName || '';
   const currentUserLastName = remoteStudentProfile?.lastName || currentStudent.lastName || '';
@@ -345,12 +354,10 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
 
   const [isUploadSuccessModalVisible, setUploadSuccessModalVisible] = useState(false);
 
-  // 👇 STATES FOR LEAVE COURSE CONFIRMATION & LOADING
   const [isLeaveConfirmModalVisible, setLeaveConfirmModalVisible] = useState(false);
   const [courseToLeave, setCourseToLeave] = useState<any>(null);
   const [isLeavingCourse, setIsLeavingCourse] = useState(false);
 
-  // 👇 STATES FOR LEAVE COURSE SUCCESS/ERROR MODALS
   const [isLeaveSuccessModalVisible, setLeaveSuccessModalVisible] = useState(false);
   const [isLeaveErrorModalVisible, setLeaveErrorModalVisible] = useState(false);
   const [leaveErrorMessage, setLeaveErrorMessage] = useState('');
@@ -370,13 +377,12 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
   const shouldShowDesktopDrawer = !isFullscreenScreen && !isMobileFullscreenScreen && isLargeScreen && activeScreen !== 'profile' && activeScreen !== 'notification';
   const safeAreaEdges = isFullscreenScreen ? [] : (['top', 'right', 'bottom', 'left'] as const);
 
-  // 👇 FIX 1: FIXED TYPESCRIPT ERROR IN toMillis
   const toMillis = (value: any) => {
     if (!value) return 0;
     if (typeof value?.toDate === 'function') return value.toDate().getTime();
     if (typeof value?._seconds === 'number') return value._seconds * 1000;
-    const parsed = new Date(value); // Store the Date object
-    return Number.isNaN(parsed.getTime()) ? 0 : parsed.getTime(); // Call getTime() on the Date object
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? 0 : parsed.getTime();
   };
 
   const isAnnouncementActive = (value?: any) => {
@@ -743,9 +749,132 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
 
   const currentUserPosts = useMemo(() => hydratedCommunityPosts.filter((post) => post.userName === currentUserName || post.userEmail === currentUserEmail), [hydratedCommunityPosts, currentUserEmail, currentUserName]);
 
-  const handleAddAssignmentComment = (assignmentId: string, content: string) => {
-    if (!content.trim()) return;
-    setSharedAssignmentComments((prev) => ({ ...prev, [assignmentId]: [...(prev[assignmentId] || []), { id: `c${Date.now()}`, author: currentUserName, content, timestamp: new Date().toLocaleString(), isInstructor: false }] }));
+const handleAddAssignmentComment = async (assignmentId: string, content: string, studentId?: string) => {
+  if (!content.trim()) return;
+  const tempId = `c${Date.now()}`;
+  const newComment = {
+    id: tempId,
+    author: currentUserName,
+    authorId: currentStudent.studentId,
+    content,
+    timestamp: new Date().toLocaleString(),
+    isInstructor: false
+  };
+  setSharedAssignmentComments((prev) => ({
+    ...prev,
+    [assignmentId]: [...(prev[assignmentId] || []), newComment]
+  }));
+  try {
+    const course = joinedAssignmentCourses.find(c => c.assignments.some(a => a.id === assignmentId));
+    const classId = course?.id;
+    if (!classId) throw new Error('Class not found for this assignment.');
+    const response = await apiFetch(`${API_BASE_URL}/assignment-comments`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ 
+        assignmentId, 
+        classId, 
+        studentId: studentId || currentStudent.studentId, // ✅ ADD THIS
+        content 
+      }),
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data?.error || 'Failed to post comment.');
+    // ✅ Replace tempId with the real Firestore comment ID
+    setSharedAssignmentComments((prev) => ({
+      ...prev,
+      [assignmentId]: (prev[assignmentId] || []).map((c) =>
+        c.id === tempId
+          ? { ...c, id: data.data.id, authorId: currentStudent.studentId }
+          : c
+      ),
+    }));
+  } catch (error: any) {
+    console.error('POST COMMENT ERROR =>', error);
+    setSharedAssignmentComments((prev) => ({
+      ...prev,
+      [assignmentId]: (prev[assignmentId] || []).filter(c => c.id !== tempId)
+    }));
+    Alert.alert('Comment Failed', error?.message || 'Unable to post comment.');
+  }
+};
+
+  // 👇 NEW: Handle assignment comment edit
+    const handleEditAssignmentComment = async (assignmentId: string, commentId: string, newContent: string) => {
+    try {
+      const response = await apiFetch(`${API_BASE_URL}/assignment-comments/${commentId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: newContent }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data?.error || 'Failed to update comment.');
+      
+      // 👇 FIX: Update local state directly to trigger instant UI re-render
+      setSharedAssignmentComments((prev) => {
+        const currentComments = prev[assignmentId] || [];
+        const updatedComments = currentComments.map((c) =>
+          c.id === commentId ? { ...c, content: newContent } : c
+        );
+        return { ...prev, [assignmentId]: updatedComments };
+      });
+
+      // Keep joinedCourses in sync so data doesn't revert if re-mapped
+      setJoinedCourses((prev) =>
+        prev.map((course) => ({
+          ...course,
+          assignments: course.assignments.map((a) =>
+            a.id === assignmentId
+              ? {
+                  ...a,
+                  comments: (a.comments || []).map((c) =>
+                    c.id === commentId ? { ...c, content: newContent } : c
+                  ),
+                }
+              : a
+          ),
+        }))
+      );
+
+    } catch (error: any) {
+      Alert.alert('Update Failed', error?.message || 'Unable to update comment.');
+    }
+  };
+
+  // 👇 NEW: Handle assignment comment delete
+    const handleDeleteAssignmentComment = async (assignmentId: string, commentId: string) => {
+    try {
+      const response = await apiFetch(`${API_BASE_URL}/assignment-comments/${commentId}`, {
+        method: 'DELETE',
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data?.error || 'Failed to delete comment.');
+      
+      // 👇 FIX: Remove from local state directly
+      setSharedAssignmentComments((prev) => {
+        const currentComments = prev[assignmentId] || [];
+        const updatedComments = currentComments.filter((c) => c.id !== commentId);
+        return { ...prev, [assignmentId]: updatedComments };
+      });
+
+      // Keep joinedCourses in sync
+      setJoinedCourses((prev) =>
+        prev.map((course) => ({
+          ...course,
+          assignments: course.assignments.map((a) =>
+            a.id === assignmentId
+              ? {
+                  ...a,
+                  comments: (a.comments || []).filter((c) => c.id !== commentId),
+                }
+              : a
+          ),
+        }))
+      );
+
+    } catch (error: any) {
+      Alert.alert('Delete Failed', error?.message || 'Unable to delete comment.');
+    }
   };
 
   const handleAddAssignmentFile = (assignmentId: string, file: AssignmentFileUpload) => {
@@ -763,6 +892,33 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
       return next;
     });
     setJoinedCourses((prev) => prev.map((course) => ({ ...course, assignments: course.assignments.map((assignment) => assignment.id === assignmentId ? { ...assignment, status } : assignment) })));
+  };
+
+  // 👇 HANDLERS FOR VIDEO COMMENTS
+  const handleEditVideoComment = async (videoId: string, commentId: string, newContent: string) => {
+    try {
+      const response = await apiFetch(`${API_BASE_URL}/video-comments/${commentId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: newContent }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data?.error || 'Failed to update comment.');
+    } catch (error: any) {
+      Alert.alert('Update Failed', error?.message || 'Unable to update comment.');
+    }
+  };
+
+  const handleDeleteVideoComment = async (videoId: string, commentId: string) => {
+    try {
+      const response = await apiFetch(`${API_BASE_URL}/video-comments/${commentId}`, {
+        method: 'DELETE',
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data?.error || 'Failed to delete comment.');
+    } catch (error: any) {
+      Alert.alert('Delete Failed', error?.message || 'Unable to delete comment.');
+    }
   };
 
   const normalizeCommunityAvatar = (avatar: any) => { if (!avatar) return null; if (typeof avatar === 'string') return avatar; if (avatar?.uri) return avatar.uri; return null; };
@@ -1300,24 +1456,17 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
     setUploadSuccessModalVisible(true);
   };
 
-  // ─────────────────────────────────────────────────────────────────────────────
-  // 👇 FIX 3: UPDATED LEAVE COURSE HANDLER (Opens Modal & Uses New Endpoints)
-  // ─────────────────────────────────────────────────────────────────────────────
   const handleLeaveCourse = useCallback((course: any) => {
     setCourseToLeave(course);
     setLeaveConfirmModalVisible(true);
   }, []);
 
-  // ─────────────────────────────────────────────────────────────────────────────
-  // 👇 FIX 3 (CONT): CONFIRM LEAVE COURSE (Executes API calls & Loading State)
-  // ─────────────────────────────────────────────────────────────────────────────
   const confirmLeaveCourse = useCallback(async () => {
-    if (!courseToLeave || isLeavingCourse) return; // Prevent double-clicking
+    if (!courseToLeave || isLeavingCourse) return;
     
-    setIsLeavingCourse(true); // <--- START LOADING
+    setIsLeavingCourse(true);
 
     try {
-      // STEP 1: Find the class member document ID
       const findResponse = await apiFetch(`${API_BASE_URL}/class-members/find`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1338,7 +1487,6 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
         throw new Error('Could not find your membership record.');
       }
 
-      // STEP 2: Delete the class member document
       const deleteResponse = await apiFetch(`${API_BASE_URL}/class-members/${memberId}`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
@@ -1350,7 +1498,6 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
         throw new Error(deleteData?.error || 'Unable to leave the course.');
       }
 
-      // Refresh all relevant student data immediately
       await Promise.all([
         loadJoinedClasses(),
         loadStudentSubmissionState(),
@@ -1359,7 +1506,6 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
         loadMessengerUnreadCount(),
       ]);
 
-      // Navigate away if student is inside the left course's screens
       if (
         selectedCourse?.id === courseToLeave.id ||
         activeScreen === 'coursedetail' ||
@@ -1371,7 +1517,6 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
         setSelectedCourseIdForAssignments(null);
       }
 
-      // Show success modal
       setLeaveSuccessModalVisible(true);
     } catch (error: any) {
       setLeaveErrorMessage(
@@ -1379,9 +1524,9 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
       );
       setLeaveErrorModalVisible(true);
     } finally {
-      setIsLeavingCourse(false); // <--- STOP LOADING
+      setIsLeavingCourse(false);
       setCourseToLeave(null);
-      setLeaveConfirmModalVisible(false); // Close the confirmation modal now that it's done
+      setLeaveConfirmModalVisible(false);
     }
   }, [
     courseToLeave,
@@ -1489,6 +1634,13 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
         return <Game 
           enrolledCourses={joinedCourses.map(course => ({ id: course.id, name: course.name, materials: course.materials.map(m => ({ id: m.id, title: m.title, type: m.type })) }))} 
           studentId={currentStudent.studentId} 
+          onNavigate={(screen, generatedQuiz) => {
+            if (screen === 'quizmasters') {
+              setGeneratedQuizMastersData(generatedQuiz || null);
+              setLastScreen('game');
+              setActiveScreen('quizmasters');
+            }
+          }}
           onSaveQuizScore={async ({ classId, materialIds, score, totalQuestions, answers }) => { 
             try { 
               const response = await apiFetch(`${API_BASE_URL}/game-ai/save-quiz-score`, { 
@@ -1562,7 +1714,7 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
           searchQuery={globalSearchQuery} 
           adaptiveQuery={adaptiveVideoRecommendation.query} 
           adaptiveReason={adaptiveVideoRecommendation.reason} 
-          queryRotationKey={adaptiveVideoRecommendation.rotationKey} 
+          queryRotationKey={adaptiveVideoRecommendation.rotationKey}
         />;
         
       case 'myjourney': 
@@ -1589,7 +1741,9 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
           selectedCourseId={selectedCourseIdForAssignments} 
           assignmentComments={sharedAssignmentComments} 
           assignmentFiles={sharedAssignmentFiles} 
-          onAddComment={handleAddAssignmentComment} 
+          onAddComment={handleAddAssignmentComment}
+          onEditComment={handleEditAssignmentComment}
+          onDeleteComment={handleDeleteAssignmentComment}
           onAddFile={handleAddAssignmentFile} 
           onRemoveFile={handleRemoveAssignmentFile} 
           onUpdateAssignmentStatus={handleUpdateAssignmentStatus} 
@@ -1648,7 +1802,9 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
           onBack={() => setActiveScreen(lastScreen)} 
           assignmentComments={sharedAssignmentComments} 
           assignmentFiles={sharedAssignmentFiles} 
-          onAddComment={handleAddAssignmentComment}  
+          onAddComment={handleAddAssignmentComment}
+          onEditComment={handleEditAssignmentComment}
+          onDeleteComment={handleDeleteAssignmentComment} 
           onAddFile={handleAddAssignmentFile} 
           onRemoveFile={handleRemoveAssignmentFile} 
           onUpdateAssignmentStatus={handleUpdateAssignmentStatus} 
@@ -1873,7 +2029,6 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
           </View>
         )}
 
-        {/* 👇 VERIFICATION ERROR MODAL */}
         <Modal 
           animationType="fade" 
           transparent 
@@ -1901,7 +2056,6 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
           </View>
         </Modal>
 
-        {/* 👇 NEW: UPLOAD SUCCESS MODAL */}
         <Modal 
           animationType="fade" 
           transparent 
@@ -1929,13 +2083,12 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
           </View>
         </Modal>
 
-        {/* 👇 FIX 4: LEAVE COURSE — CONFIRMATION MODAL (WITH LOADING STATE) */}
         <Modal
           animationType="fade"
           transparent
           visible={isLeaveConfirmModalVisible}
           onRequestClose={() => {
-            if (!isLeavingCourse) { // Prevent closing while loading
+            if (!isLeavingCourse) {
               setLeaveConfirmModalVisible(false);
               setCourseToLeave(null);
             }
@@ -1960,9 +2113,9 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
                 <Pressable
                   style={[
                     styles.logoutConfirmBtn, 
-                    { backgroundColor: '#555', flex: 1, opacity: isLeavingCourse ? 0.5 : 1 } // Dim when loading
+                    { backgroundColor: '#555', flex: 1, opacity: isLeavingCourse ? 0.5 : 1 }
                   ]}
-                  disabled={isLeavingCourse} // Disable when loading
+                  disabled={isLeavingCourse}
                   onPress={() => {
                     setLeaveConfirmModalVisible(false);
                     setCourseToLeave(null);
@@ -1973,13 +2126,13 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
                 <Pressable
                   style={[
                     styles.logoutConfirmBtn, 
-                    { backgroundColor: '#D32F2F', flex: 1, opacity: isLeavingCourse ? 0.8 : 1 } // Dim when loading
+                    { backgroundColor: '#D32F2F', flex: 1, opacity: isLeavingCourse ? 0.8 : 1 }
                   ]}
-                  disabled={isLeavingCourse} // Disable when loading
+                  disabled={isLeavingCourse}
                   onPress={confirmLeaveCourse}
                 >
                   {isLeavingCourse ? (
-                    <ActivityIndicator size="small" color="#FFF" /> // Show spinner
+                    <ActivityIndicator size="small" color="#FFF" />
                   ) : (
                     <Text style={styles.logoutConfirmText}>Leave Course</Text>
                   )}
@@ -1989,7 +2142,6 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
           </View>
         </Modal>
 
-        {/* LEAVE COURSE — SUCCESS MODAL */}
         <Modal
           animationType="fade"
           transparent
@@ -2017,7 +2169,6 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
           </View>
         </Modal>
 
-        {/* LEAVE COURSE — ERROR MODAL */}
         <Modal
           animationType="fade"
           transparent
