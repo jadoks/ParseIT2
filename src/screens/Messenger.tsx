@@ -76,6 +76,8 @@ type Conversation = {
   lastMessageAt?: any;
   updatedAt?: any;
   createdAt?: any;
+  avatarUrl?: string | null;         // 👈 ADD THIS
+  avatarStoragePath?: string | null; 
 };
 
 type Message = {
@@ -230,13 +232,13 @@ const messagesEqual = (a: Message[], b: Message[]): boolean => {
   return true;
 };
 
-// Shallow conversation equality (fields that matter for UI)
 const conversationChanged = (a: Conversation, b: Conversation): boolean => {
   return (
     a.name !== b.name ||
     a.last !== b.last ||
     a.unreadCount !== b.unreadCount ||
-    toMillis(a.lastMessageAt) !== toMillis(b.lastMessageAt)
+    toMillis(a.lastMessageAt) !== toMillis(b.lastMessageAt) ||
+    a.avatarStoragePath !== b.avatarStoragePath  // 👈 ADD THIS
   );
 };
 
@@ -265,6 +267,7 @@ const Messenger = ({
   const flatListRef = useRef<FlatList<Message>>(null);
   const infoButtonRef = useRef<View>(null);
   const messageRefs = useRef<Record<string, View | null>>({});
+  const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const isTinyPhone = width < 360;
   const isMobile = width < 768;
@@ -292,6 +295,26 @@ const Messenger = ({
   const [hoveredMessageId, setHoveredMessageId] = useState<string | null>(null);
   const [hoveredMessageTime, setHoveredMessageTime] = useState('');
   const [tooltipPosition, setTooltipPosition] = useState({ x: 0, y: 0 });
+
+  const [avatarCacheBuster, setAvatarCacheBuster] = useState(() => Date.now());
+
+  // Toast State
+  const [toast, setToast] = useState<{ visible: boolean; message: string; type: 'success' | 'error' }>({
+    visible: false,
+    message: '',
+    type: 'success',
+  });
+
+  const showToast = (message: string, type: 'success' | 'error' = 'success') => {
+    if (toastTimeoutRef.current) {
+      clearTimeout(toastTimeoutRef.current);
+    }
+    setToast({ visible: true, message, type });
+    toastTimeoutRef.current = setTimeout(() => {
+      setToast((prev) => ({ ...prev, visible: false }));
+      toastTimeoutRef.current = null;
+    }, 3000);
+  };
 
   // Image Preview States
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
@@ -430,7 +453,9 @@ const Messenger = ({
           classId: item.classId,
           name: formatConversationName(item),
           last: item.lastMessage || 'Conversation created.',
-          avatar: DEFAULT_AVATAR,
+          avatar: item.avatarUrl ? { uri: item.avatarUrl } : DEFAULT_AVATAR, // 👈 UPDATED
+          avatarUrl: item.avatarUrl || null,         // 👈 ADDED
+          avatarStoragePath: item.avatarStoragePath || null,
           // time will be recalculated from lastMessageAt below
           time: formatConversationTime(
             item.lastMessageAt || item.updatedAt || item.createdAt
@@ -561,16 +586,6 @@ const Messenger = ({
           return;
         }
 
-        console.log(
-  backendRows
-    .filter(m => m.type === 'file')
-    .map(m => ({
-      id: m.id,
-      fileUrl: m.fileUrl,
-      storagePath: m.storagePath,
-    }))
-);
-
         const allNormalized = normalizeMessages(backendRows);
 
         // Update conversation list last-message preview
@@ -617,12 +632,15 @@ const Messenger = ({
     
 
     loadMessages();
-    const interval = setInterval(loadMessages, 15000);
-    return () => {
-      cancelled = true;
-      clearInterval(interval);
-    };
-  }, [selected?.id, normalizeMessages]);
+  const interval = setInterval(() => {
+    loadMessages();
+    if (!cancelled) setAvatarCacheBuster(Date.now()); // 👈 ADD THIS ONE LINE
+  }, 15000);
+  return () => {
+    cancelled = true;
+    clearInterval(interval);
+  };
+}, [selected?.id, normalizeMessages]);
   // Note: depend on selected.id (primitive) not the whole object
 
   // ---------------------------------------------------------------------------
@@ -852,7 +870,7 @@ const Messenger = ({
       const asset = result.assets[0];
 
       if (asset.mimeType && asset.mimeType.startsWith('video/')) {
-        alert('Video files are not allowed.');
+        showToast('Video files are not allowed.', 'error');
         return;
       }
 
@@ -862,7 +880,7 @@ const Messenger = ({
       );
 
       if (realType.startsWith('video/')) {
-        alert('Video files are not allowed.');
+        showToast('Video files are not allowed.', 'error');
         return;
       }
 
@@ -876,7 +894,130 @@ const Messenger = ({
       });
     } catch (error) {
       console.error('Pick file error:', error);
-      alert('Failed to select file. Please try again.');
+      showToast('Failed to select file. Please try again.', 'error');
+    }
+  };
+
+  // ---------------------------------------------------------------------------
+  // CHANGE CONVERSATION PICTURE (mirrors TeacherMessenger behavior)
+  // ---------------------------------------------------------------------------
+  const handleChangePicture = async () => {
+    if (!selected) return;
+    setShowInfoMenu(false);
+
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ['image/*'],
+        copyToCacheDirectory: true,
+        multiple: false,
+      });
+
+      if (result.canceled || !result.assets || result.assets.length === 0) return;
+      const asset = result.assets[0];
+
+      // Convert to Base64
+      let base64 = '';
+      if (Platform.OS === 'web') {
+        const response = await fetch(asset.uri);
+        const blob = await response.blob();
+        base64 = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onloadend = () => {
+            const res = reader.result;
+            if (typeof res === 'string') resolve(res.includes(',') ? res.split(',')[1] : res);
+            else reject(new Error('Failed to read file.'));
+          };
+          reader.onerror = () => reject(new Error('Failed to convert blob.'));
+          reader.readAsDataURL(blob);
+        });
+      } else {
+        base64 = await FileSystem.readAsStringAsync(asset.uri, { encoding: 'base64' });
+      }
+
+      const imageBase64 = `data:${asset.mimeType};base64,${base64}`;
+      const changerName = currentUserName || 'Someone';
+      const changeMessage = `${changerName} changed the conversation picture.`;
+      const now = Date.now();
+
+      // 1. Optimistic UI Update - Update avatar immediately
+      const tempUri = asset.uri;
+      setConversations((prev) => prev.map((c) =>
+        c.id === selected.id
+          ? {
+              ...c,
+              avatar: { uri: tempUri },
+              last: changeMessage,  // Show in sidebar
+              time: formatConversationTime(now),
+              lastMessageAt: now,
+              unreadCount: 0, // 🔥 FIX: Prevent unread badge flicker
+            }
+          : c
+      ));
+      setSelected((prev) => prev ? {
+        ...prev,
+        avatar: { uri: tempUri },
+      } : prev);
+
+      // 2. Upload to Backend
+      const response = await apiFetch(`${API_BASE_URL}/messenger-conversation-avatar`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          conversationId: selected.id,
+          imageBase64,
+          fileName: asset.name,
+          fileType: asset.mimeType,
+          senderName: currentUserName,
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) throw new Error(data?.error || 'Failed to update picture.');
+
+      // 🔥 FIX: Mark conversation as read so the current user doesn't get an unread badge
+      markConversationAsRead(selected.id);
+
+      // 3. Update with real URL from backend
+      const newUrl = data.data.avatarUrl;
+      setConversations((prev) => prev.map((c) =>
+        c.id === selected.id
+          ? {
+              ...c,
+              avatar: { uri: newUrl },
+              avatarUrl: newUrl,
+              avatarStoragePath: data.data.avatarStoragePath,
+              last: changeMessage,  // Keep showing in sidebar
+              time: formatConversationTime(now),
+              lastMessageAt: now,
+              unreadCount: 0, // 🔥 FIX: Ensure unread badge stays at 0
+            }
+          : c
+      ));
+      setSelected((prev) => prev ? {
+        ...prev,
+        avatar: { uri: newUrl },
+        avatarUrl: newUrl,
+        avatarStoragePath: data.data.avatarStoragePath,
+      } : prev);
+
+      // 4. Add PERMANENT system message to chat thread
+      const systemMsg: Message = {
+        id: `system-avatar-${now}`,
+        fromMe: true, // 🔥 FIX: Set to true so UI knows the current user triggered this
+        sender: 'System',
+        text: changeMessage,
+        createdAt: now,
+        type: 'system',
+      };
+      setMessagesByConversation((prev) => ({
+        ...prev,
+        [selected.id]: [...(prev[selected.id] || []), systemMsg],
+      }));
+
+      showToast('Conversation picture updated!', 'success');
+    } catch (error: any) {
+      console.error('Change picture error:', error);
+      showToast(error?.message || 'Failed to change picture.', 'error');
     }
   };
 
@@ -964,7 +1105,7 @@ const Messenger = ({
         }));
       } catch (error) {
         console.error('File upload error:', error);
-        alert('Failed to send file. Please try again.');
+        showToast('Failed to send file. Please try again.', 'error');
       }
     }
 
@@ -1056,230 +1197,206 @@ const Messenger = ({
     setImagePreviewStoragePath(null);
   }, []);
 
-// ─────────────────────────────────────────────────────────────────────────────
-// handleDownloadImage  &  handleFileDownload
-// Drop these into Messenger.tsx — replace the existing two functions.
-//
-// Mobile behavior:
-//  Android  → asks user to pick a folder (SAF), then saves there directly.
-//             Images also land in the chosen folder (visible in Files/Downloads).
-//  iOS      → images: saves to Camera Roll (Photos app).
-//             docs  : falls back to Sharing sheet → "Save to Files" option.
-//  Web      → unchanged backend-proxy blob download.
-//
-// Required imports (already in your file):
-//   import * as FileSystem from 'expo-file-system/legacy';
-//   import * as Sharing from 'expo-sharing';
-//
-// Add this import at the top of Messenger.tsx if not already present:
-//   import * as MediaLibrary from 'expo-media-library';
-// ─────────────────────────────────────────────────────────────────────────────
+  const handleDownloadImage = async () => {
+    if (!imagePreviewUrl || !selected) return;
 
-const handleDownloadImage = async () => {
-  if (!imagePreviewUrl || !selected) return;
+    // Make sure the filename has an extension
+    let fileName = imagePreviewName || 'image';
+    if (!fileName.includes('.')) fileName += '.jpg';
 
-  // Make sure the filename has an extension
-  let fileName = imagePreviewName || 'image';
-  if (!fileName.includes('.')) fileName += '.jpg';
-
-  try {
-    if (Platform.OS === 'web') {
-      // ── Web: backend proxy ────────────────────────────────────────────────
-      if (!imagePreviewStoragePath) {
-        alert('Cannot download: file path missing.');
-        return;
-      }
-      const proxyUrl = `${API_BASE_URL}/messenger-download/${selected.id}/${encodeURIComponent(imagePreviewStoragePath)}`;
-      const res = await fetch(proxyUrl, { credentials: 'include' });
-      if (!res.ok) throw new Error(`Download failed: ${res.status}`);
-      const blob = await res.blob();
-      const objUrl = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = objUrl;
-      a.download = fileName;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      window.URL.revokeObjectURL(objUrl);
-      return;
-    }
-
-    // ── Mobile: get a fresh signed URL ────────────────────────────────────
-    let downloadUrl = imagePreviewUrl;
-    if (imagePreviewStoragePath) {
-      const fresh = await refreshFileUrl(imagePreviewStoragePath, selected.id);
-      if (fresh) downloadUrl = fresh;
-    }
-    if (!downloadUrl) { alert('Cannot download: URL missing.'); return; }
-
-    // Download to app cache first (works in Expo Go)
-    const cacheUri = FileSystem.cacheDirectory + fileName;
-    const { uri: localUri, status } = await FileSystem.downloadAsync(downloadUrl, cacheUri);
-    if (status !== 200) throw new Error(`Download HTTP status ${status}`);
-
-    if (Platform.OS === 'ios') {
-      // ── iOS: save image to Camera Roll ───────────────────────────────────
-      const perm = await MediaLibrary.requestPermissionsAsync();
-
-      if (!perm.granted) {
-        const canShare = await Sharing.isAvailableAsync();
-        if (canShare) {
-          await Sharing.shareAsync(localUri, { mimeType: 'image/jpeg', UTI: 'public.image', dialogTitle: `Save ${fileName}` });
-        } else {
-          alert('Permission denied and sharing is unavailable.');
+    try {
+      if (Platform.OS === 'web') {
+        // ── Web: backend proxy ────────────────────────────────────────────────
+        if (!imagePreviewStoragePath) {
+          showToast('Cannot download: file path missing.', 'error');
+          return;
         }
+        const proxyUrl = `${API_BASE_URL}/messenger-download/${selected.id}/${encodeURIComponent(imagePreviewStoragePath)}`;
+        const res = await fetch(proxyUrl, { credentials: 'include' });
+        if (!res.ok) throw new Error(`Download failed: ${res.status}`);
+        const blob = await res.blob();
+        const objUrl = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = objUrl;
+        a.download = fileName;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(objUrl);
         return;
       }
-      await MediaLibrary.saveToLibraryAsync(localUri);
-      alert('Image saved to your Photos!');
 
-    } else {
-      // ── Android: save directly to Downloads via SAF ───────────────────────
-      // Detect mime type from extension
-      const ext = fileName.split('.').pop()?.toLowerCase() || 'jpg';
-      const mimeMap: Record<string, string> = {
-        jpg: 'image/jpeg', jpeg: 'image/jpeg',
-        png: 'image/png', gif: 'image/gif',
-        webp: 'image/webp', bmp: 'image/bmp',
-      };
-      const mimeType = mimeMap[ext] || 'image/jpeg';
+      // ── Mobile: get a fresh signed URL ────────────────────────────────────
+      let downloadUrl = imagePreviewUrl;
+      if (imagePreviewStoragePath) {
+        const fresh = await refreshFileUrl(imagePreviewStoragePath, selected.id);
+        if (fresh) downloadUrl = fresh;
+      }
+      if (!downloadUrl) {
+        showToast('Cannot download: URL missing.', 'error');
+        return;
+      }
 
-      // Ask user to pick a folder (Android SAF)
-      const perms = await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync();
-      if (!perms.granted) {
-        // User cancelled — fall back to share sheet
-        const canShare = await Sharing.isAvailableAsync();
-        if (canShare) {
-          await Sharing.shareAsync(localUri, { mimeType, dialogTitle: `Save ${fileName}` });
+      // Download to app cache first (works in Expo Go)
+      const cacheUri = FileSystem.cacheDirectory + fileName;
+      const { uri: localUri, status } = await FileSystem.downloadAsync(downloadUrl, cacheUri);
+      if (status !== 200) throw new Error(`Download HTTP status ${status}`);
+
+      if (Platform.OS === 'ios') {
+        // ── iOS: save image to Camera Roll ───────────────────────────────────
+        const perm = await MediaLibrary.requestPermissionsAsync();
+
+        if (!perm.granted) {
+          const canShare = await Sharing.isAvailableAsync();
+          if (canShare) {
+            await Sharing.shareAsync(localUri, { mimeType: 'image/jpeg', UTI: 'public.image', dialogTitle: `Save ${fileName}` });
+          } else {
+            showToast('Permission denied and sharing is unavailable.', 'error');
+          }
+          return;
         }
-        return;
-      }
+        await MediaLibrary.saveToLibraryAsync(localUri);
+        showToast('Image saved to your Photos!', 'success');
 
-      // Create the file in the chosen folder
-      const destUri = await FileSystem.StorageAccessFramework.createFileAsync(
-        perms.directoryUri,
-        fileName,
-        mimeType,
-      );
-
-      // Read the cached file as base64 and write it to the destination
-      const base64 = await FileSystem.readAsStringAsync(localUri, {
-        encoding: FileSystem.EncodingType.Base64,
-      });
-      await FileSystem.writeAsStringAsync(destUri, base64, {
-        encoding: FileSystem.EncodingType.Base64,
-      });
-
-      alert(`Image saved to your selected folder!`);
-    }
-  } catch (err: any) {
-    console.error('Download image error:', err);
-    alert('Failed to download image. Please try again.');
-  }
-};
-
-// ─────────────────────────────────────────────────────────────────────────────
-
-const handleFileDownload = async (item: Message) => {
-  if (!selected) return;
-
-  // Refresh signed URL
-  let url = item.fileUrl;
-  if (item.storagePath) {
-    const fresh = await refreshFileUrl(item.storagePath, selected.id);
-    if (fresh) {
-      url = fresh;
-      setMessagesByConversation((prev) => ({
-        ...prev,
-        [selected.id]: prev[selected.id].map((msg) =>
-          msg.id === item.id ? { ...msg, fileUrl: fresh } : msg
-        ),
-      }));
-    } else {
-      alert('Failed to get file URL. It may have expired.');
-      return;
-    }
-  }
-  if (!url) return;
-
-  // Ensure extension
-  let fileName = item.fileName || 'file';
-  if (!fileName.includes('.')) {
-    const ext = item.fileType?.split('/').pop()?.split(';')[0] || 'bin';
-    fileName += `.${ext}`;
-  }
-
-  const mimeType = item.fileType || 'application/octet-stream';
-
-  try {
-    if (Platform.OS === 'web') {
-      // ── Web: backend proxy ────────────────────────────────────────────────
-      if (!item.storagePath) { alert('Cannot download: file path missing.'); return; }
-      const proxyUrl = `${API_BASE_URL}/messenger-download/${selected.id}/${encodeURIComponent(item.storagePath)}`;
-      const res = await fetch(proxyUrl, { credentials: 'include' });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const blob = await res.blob();
-      const objUrl = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = objUrl;
-      a.download = fileName;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      window.URL.revokeObjectURL(objUrl);
-      return;
-    }
-
-    // ── Mobile: download to cache ─────────────────────────────────────────
-    const cacheUri = FileSystem.cacheDirectory + fileName;
-    const { uri: localUri, status } = await FileSystem.downloadAsync(url, cacheUri);
-    if (status !== 200) throw new Error(`Download HTTP status ${status}`);
-
-    if (Platform.OS === 'ios') {
-      // ── iOS: share sheet → "Save to Files" ───────────────────────────────
-      const canShare = await Sharing.isAvailableAsync();
-      if (canShare) {
-        await Sharing.shareAsync(localUri, {
-          mimeType,
-          UTI: mimeType,
-          dialogTitle: `Save ${fileName}`,
-        });
       } else {
-        alert(`File cached at:\n${localUri}`);
-      }
+        // ── Android: save directly to a user-chosen folder via SAF ───────────
+        const ext = fileName.split('.').pop()?.toLowerCase() || 'jpg';
+        const mimeMap: Record<string, string> = {
+          jpg: 'image/jpeg', jpeg: 'image/jpeg',
+          png: 'image/png', gif: 'image/gif',
+          webp: 'image/webp', bmp: 'image/bmp',
+        };
+        const mimeType = mimeMap[ext] || 'image/jpeg';
 
-    } else {
-      // ── Android: SAF → save directly to user-chosen folder ───────────────
-      const perms = await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync();
-      if (!perms.granted) {
-        // Cancelled → share sheet fallback
-        const canShare = await Sharing.isAvailableAsync();
-        if (canShare) {
-          await Sharing.shareAsync(localUri, { mimeType, dialogTitle: `Save ${fileName}` });
+        const perms = await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync();
+        if (!perms.granted) {
+          const canShare = await Sharing.isAvailableAsync();
+          if (canShare) {
+            await Sharing.shareAsync(localUri, { mimeType, dialogTitle: `Save ${fileName}` });
+          }
+          return;
         }
+
+        const destUri = await FileSystem.StorageAccessFramework.createFileAsync(
+          perms.directoryUri,
+          fileName,
+          mimeType,
+        );
+        const base64 = await FileSystem.readAsStringAsync(localUri, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+        await FileSystem.writeAsStringAsync(destUri, base64, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+
+        showToast('Image saved to your selected folder!', 'success');
+      }
+    } catch (err: any) {
+      console.error('Download image error:', err);
+      showToast('Failed to download image. Please try again.', 'error');
+    }
+  };
+
+  const handleFileDownload = async (item: Message) => {
+    if (!selected) return;
+
+    // Refresh signed URL
+    let url = item.fileUrl;
+    if (item.storagePath) {
+      const fresh = await refreshFileUrl(item.storagePath, selected.id);
+      if (fresh) {
+        url = fresh;
+        setMessagesByConversation((prev) => ({
+          ...prev,
+          [selected.id]: prev[selected.id].map((msg) =>
+            msg.id === item.id ? { ...msg, fileUrl: fresh } : msg
+          ),
+        }));
+      } else {
+        showToast('Failed to get file URL. It may have expired.', 'error');
+        return;
+      }
+    }
+    if (!url) return;
+
+    // Ensure extension
+    let fileName = item.fileName || 'file';
+    if (!fileName.includes('.')) {
+      const ext = item.fileType?.split('/').pop()?.split(';')[0] || 'bin';
+      fileName += `.${ext}`;
+    }
+
+    const mimeType = item.fileType || 'application/octet-stream';
+
+    try {
+      if (Platform.OS === 'web') {
+        // ── Web: backend proxy ────────────────────────────────────────────────
+        if (!item.storagePath) { showToast('Cannot download: file path missing.', 'error'); return; }
+        const proxyUrl = `${API_BASE_URL}/messenger-download/${selected.id}/${encodeURIComponent(item.storagePath)}`;
+        const res = await fetch(proxyUrl, { credentials: 'include' });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const blob = await res.blob();
+        const objUrl = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = objUrl;
+        a.download = fileName;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(objUrl);
         return;
       }
 
-      const destUri = await FileSystem.StorageAccessFramework.createFileAsync(
-        perms.directoryUri,
-        fileName,
-        mimeType,
-      );
+      // ── Mobile: download to cache ─────────────────────────────────────────
+      const cacheUri = FileSystem.cacheDirectory + fileName;
+      const { uri: localUri, status } = await FileSystem.downloadAsync(url, cacheUri);
+      if (status !== 200) throw new Error(`Download HTTP status ${status}`);
 
-      const base64 = await FileSystem.readAsStringAsync(localUri, {
-        encoding: FileSystem.EncodingType.Base64,
-      });
-      await FileSystem.writeAsStringAsync(destUri, base64, {
-        encoding: FileSystem.EncodingType.Base64,
-      });
+      if (Platform.OS === 'ios') {
+        // ── iOS: share sheet → "Save to Files" ───────────────────────────────
+        const canShare = await Sharing.isAvailableAsync();
+        if (canShare) {
+          await Sharing.shareAsync(localUri, {
+            mimeType,
+            UTI: mimeType,
+            dialogTitle: `Save ${fileName}`,
+          });
+        } else {
+          showToast(`File cached at: ${localUri}`, 'success');
+        }
 
-      alert(`File saved to your selected folder!`);
+      } else {
+        // ── Android: SAF → save directly to user-chosen folder ───────────────
+        const perms = await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync();
+        if (!perms.granted) {
+          // Cancelled → share sheet fallback
+          const canShare = await Sharing.isAvailableAsync();
+          if (canShare) {
+            await Sharing.shareAsync(localUri, { mimeType, dialogTitle: `Save ${fileName}` });
+          }
+          return;
+        }
+
+        const destUri = await FileSystem.StorageAccessFramework.createFileAsync(
+          perms.directoryUri,
+          fileName,
+          mimeType,
+        );
+
+        const base64 = await FileSystem.readAsStringAsync(localUri, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+        await FileSystem.writeAsStringAsync(destUri, base64, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+
+        showToast('File saved to your selected folder!', 'success');
+      }
+    } catch (err: any) {
+      console.error('Download file error:', err);
+      showToast('Failed to download file. Please try again.', 'error');
     }
-  } catch (err: any) {
-    console.error('Download file error:', err);
-    alert('Failed to download file. Please try again.');
-  }
-};
+  };
 
   // ---------------------------------------------------------------------------
   // Room / member helpers
@@ -1404,6 +1521,32 @@ const handleFileDownload = async (item: Message) => {
   }, []);
 
   // ---------------------------------------------------------------------------
+  // Toast Render
+  // ---------------------------------------------------------------------------
+  const renderToast = () => {
+    if (!toast.visible) return null;
+    return (
+      <View style={styles.toastContainer} pointerEvents="none">
+        <View
+          style={[
+            styles.toastBox,
+            toast.type === 'success' ? styles.toastSuccess : styles.toastError,
+          ]}
+        >
+          <MaterialCommunityIcons
+            name={toast.type === 'success' ? 'check-circle' : 'alert-circle'}
+            size={20}
+            color="#fff"
+          />
+          <Text style={styles.toastText} numberOfLines={2}>
+            {toast.message}
+          </Text>
+        </View>
+      </View>
+    );
+  };
+
+  // ---------------------------------------------------------------------------
   // Render helpers
   // ---------------------------------------------------------------------------
   const renderConversationList = () => {
@@ -1489,7 +1632,11 @@ const handleFileDownload = async (item: Message) => {
                 activeOpacity={0.88}
               >
                 <Image
-                  source={item.avatar}
+                  source={
+                      item.avatarUrl
+                        ? { uri: `${item.avatarUrl}&_cb=${avatarCacheBuster}` }
+                        : item.avatar
+                    }
                   style={{
                     width: sizes.listAvatar,
                     height: sizes.listAvatar,
@@ -1603,7 +1750,11 @@ const handleFileDownload = async (item: Message) => {
               activeOpacity={0.88}
             >
               <Image
-                source={item.avatar}
+                source={
+                  item.avatarUrl
+                    ? { uri: `${item.avatarUrl}&_cb=${avatarCacheBuster}` }
+                    : item.avatar
+                }
                 style={{
                   width: sizes.listAvatar,
                   height: sizes.listAvatar,
@@ -2172,6 +2323,15 @@ const handleFileDownload = async (item: Message) => {
               </TouchableOpacity>
             </View>
             <View style={styles.professionalModalScrollContent}>
+
+              <TouchableOpacity
+                style={styles.infoActionCard}
+                activeOpacity={0.85}
+                onPress={handleChangePicture}
+              >
+                <MaterialCommunityIcons name="camera-outline" size={18} color="#222" />
+                <Text style={styles.infoActionCardText}>Change Picture</Text>
+              </TouchableOpacity>
               <TouchableOpacity
                 style={styles.infoActionCard}
                 activeOpacity={0.85}
@@ -2632,6 +2792,7 @@ const handleFileDownload = async (item: Message) => {
         // 6. APPLY EDGES PROP
         <SafeAreaView style={styles.mobileScreen} edges={safeAreaEdges}>
           <View style={styles.mobileContent}>{renderChatPane()}</View>
+          {renderToast()}
         </SafeAreaView>
       );
     }
@@ -2639,6 +2800,7 @@ const handleFileDownload = async (item: Message) => {
       // 6. APPLY EDGES PROP
       <SafeAreaView style={styles.mobileScreen} edges={safeAreaEdges}>
         <View style={styles.mobileContent}>{renderConversationList()}</View>
+        {renderToast()}
       </SafeAreaView>
     );
   }
@@ -2650,12 +2812,13 @@ const handleFileDownload = async (item: Message) => {
         {renderConversationList()}
         {renderChatPane()}
       </View>
+      {renderToast()}
     </SafeAreaView>
   );
 };
 
 // ---------------------------------------------------------------------------
-// Styles (unchanged from original)
+// Styles (unchanged from original, plus toast styles)
 // ---------------------------------------------------------------------------
 const styles = StyleSheet.create({
   mobileScreen: { flex: 1, backgroundColor: '#f7f8fa' },
@@ -3222,6 +3385,43 @@ const styles = StyleSheet.create({
   },
   pendingFileSize: { fontSize: 11, color: '#666' },
   removeFileButton: { padding: 4 },
+
+  // Toast Styles
+  toastContainer: {
+    position: 'absolute',
+    top: 50,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    zIndex: 9999,
+    paddingHorizontal: 20,
+  },
+  toastBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.15,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 6,
+    maxWidth: '90%',
+    gap: 10,
+  },
+  toastSuccess: {
+    backgroundColor: '#22a355',
+  },
+  toastError: {
+    backgroundColor: '#d32f2f',
+  },
+  toastText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+    flex: 1,
+  },
 });
 
 export default Messenger;

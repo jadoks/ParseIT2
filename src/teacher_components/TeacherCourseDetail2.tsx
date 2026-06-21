@@ -2236,13 +2236,13 @@ const viewerHasFile = !!viewerFileUrl;
 
   // ─── Main render ─────────────────────────────────────────────────────────
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={styles.container}>
       <ScrollView
         style={styles.screenScroll}
         contentContainerStyle={styles.screenScrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {isMobile ? <View style={{ height: insets.top + 10 }} /> : null}
+       
 
         {/* ── Course Header ── */}
         <View
@@ -3256,7 +3256,7 @@ const viewerHasFile = !!viewerFileUrl;
           </View>
         </View>
       )}
-    </SafeAreaView>
+    </View>
   );
 };
 

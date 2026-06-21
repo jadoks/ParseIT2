@@ -85,6 +85,8 @@ type Conversation = {
   lastMessageAt?: any;
   updatedAt?: any;
   createdAt?: any;
+   avatarUrl?: string | null;         // 👈 ADD THIS
+  avatarStoragePath?: string | null;
 };
 
 type Message = {
@@ -244,7 +246,8 @@ const conversationChanged = (a: Conversation, b: Conversation): boolean => {
     a.name !== b.name ||
     a.last !== b.last ||
     a.unreadCount !== b.unreadCount ||
-    toMillis(a.lastMessageAt) !== toMillis(b.lastMessageAt)
+    toMillis(a.lastMessageAt) !== toMillis(b.lastMessageAt) ||
+    a.avatarStoragePath !== b.avatarStoragePath  // 👈 ADD THIS
   );
 };
 
@@ -272,6 +275,7 @@ const Messenger = ({
   const flatListRef = useRef<FlatList<Message>>(null);
   const infoButtonRef = useRef<View>(null);
   const messageRefs = useRef<Record<string, View | null>>({});
+  const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const isTinyPhone = width < 360;
   const isMobile = width < 768;
@@ -292,7 +296,27 @@ const Messenger = ({
     useState<Record<string, Message[]>>({});
   const [unreadIds, setUnreadIds] = useState<Set<string>>(new Set());
   const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  const [avatarCacheBuster, setAvatarCacheBuster] = useState(() => Date.now());
   
+  // Toast State
+  const [toast, setToast] = useState<{ visible: boolean; message: string; type: 'success' | 'error' }>({
+    visible: false,
+    message: '',
+    type: 'success',
+  });
+
+  const showToast = (message: string, type: 'success' | 'error' = 'success') => {
+    if (toastTimeoutRef.current) {
+      clearTimeout(toastTimeoutRef.current);
+    }
+    setToast({ visible: true, message, type });
+    toastTimeoutRef.current = setTimeout(() => {
+      setToast((prev) => ({ ...prev, visible: false }));
+      toastTimeoutRef.current = null;
+    }, 3000);
+  };
+
   const handleCopyStudentId = (studentId: string) => {
     Clipboard.setString(studentId);
     setCopiedId(studentId);
@@ -448,7 +472,9 @@ const Messenger = ({
           classId: item.classId,
           name: formatConversationName(item),
           last: item.lastMessage || 'Conversation created.',
-          avatar: DEFAULT_AVATAR,
+          avatar: item.avatarUrl ? { uri: item.avatarUrl } : DEFAULT_AVATAR, // 👈 UPDATED
+          avatarUrl: item.avatarUrl || null,         // 👈 ADDED
+          avatarStoragePath: item.avatarStoragePath || null,
           time: formatConversationTime(
             item.lastMessageAt || item.updatedAt || item.createdAt
           ),
@@ -595,8 +621,7 @@ const Messenger = ({
 
         const allNormalized = normalizeMessages(backendRows);
 
-        const textMessages = allNormalized.filter((m) => m.type !== 'system');
-        const lastMessage = textMessages[textMessages.length - 1];
+         const lastMessage = allNormalized.length > 0 ? allNormalized[allNormalized.length - 1] : null;
         if (lastMessage) {
           setConversations((prev) =>
             prev.map((c) => {
@@ -634,12 +659,15 @@ const Messenger = ({
     };
 
     loadMessages();
-    const interval = setInterval(loadMessages, 15000);
-    return () => {
-      cancelled = true;
-      clearInterval(interval);
-    };
-  }, [selected?.id, normalizeMessages]);
+  const interval = setInterval(() => {
+    loadMessages();
+    if (!cancelled) setAvatarCacheBuster(Date.now()); // 👈 ADD THIS ONE LINE
+  }, 15000);
+  return () => {
+    cancelled = true;
+    clearInterval(interval);
+  };
+}, [selected?.id, normalizeMessages]);
 
   // ---------------------------------------------------------------------------
   // FILE URL REFRESH
@@ -861,6 +889,126 @@ const Messenger = ({
     return fallbackType;
   };
 
+   const handleChangePicture = async () => {
+    if (!selected) return;
+    setShowInfoMenu(false);
+    
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ['image/*'],
+        copyToCacheDirectory: true,
+        multiple: false,
+      });
+
+      if (result.canceled || !result.assets || result.assets.length === 0) return;
+      const asset = result.assets[0];
+
+      // Convert to Base64
+      let base64 = '';
+      if (Platform.OS === 'web') {
+        const response = await fetch(asset.uri);
+        const blob = await response.blob();
+        base64 = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onloadend = () => {
+            const res = reader.result;
+            if (typeof res === 'string') resolve(res.includes(',') ? res.split(',')[1] : res);
+            else reject(new Error('Failed to read file.'));
+          };
+          reader.onerror = () => reject(new Error('Failed to convert blob.'));
+          reader.readAsDataURL(blob);
+        });
+      } else {
+        base64 = await FileSystem.readAsStringAsync(asset.uri, { encoding: 'base64' });
+      }
+
+      const imageBase64 = `data:${asset.mimeType};base64,${base64}`;
+      const changerName = currentUserName || 'Someone';
+      const changeMessage = `${changerName} changed the conversation picture.`;
+      const now = Date.now();
+
+      // 1. Optimistic UI Update - Update avatar immediately
+      const tempUri = asset.uri;
+      setConversations((prev) => prev.map((c) => 
+        c.id === selected.id 
+          ? { 
+              ...c, 
+              avatar: { uri: tempUri },
+              last: changeMessage,  // Show in sidebar
+              time: formatConversationTime(now),
+              lastMessageAt: now,
+              unreadCount: 0, // 🔥 FIX: Prevent unread badge flicker
+            } 
+          : c
+      ));
+      setSelected((prev) => prev ? { 
+        ...prev, 
+        avatar: { uri: tempUri },
+      } : prev);
+
+      // 2. Upload to Backend
+      const response = await apiFetch(`${API_BASE_URL}/messenger-conversation-avatar`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          conversationId: selected.id,
+          imageBase64,
+          fileName: asset.name,
+          fileType: asset.mimeType,
+          senderName: currentUserName,
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) throw new Error(data?.error || 'Failed to update picture.');
+
+      // 🔥 FIX: Mark conversation as read so the current user doesn't get an unread badge
+      markConversationAsRead(selected.id);
+
+      // 3. Update with real URL from backend
+      const newUrl = data.data.avatarUrl;
+      setConversations((prev) => prev.map((c) => 
+        c.id === selected.id 
+          ? { 
+              ...c, 
+              avatar: { uri: newUrl }, 
+              avatarUrl: newUrl, 
+              avatarStoragePath: data.data.avatarStoragePath,
+              last: changeMessage,  // Keep showing in sidebar
+              time: formatConversationTime(now),
+              lastMessageAt: now,
+              unreadCount: 0, // 🔥 FIX: Ensure unread badge stays at 0
+            } 
+          : c
+      ));
+      setSelected((prev) => prev ? { 
+        ...prev, 
+        avatar: { uri: newUrl }, 
+        avatarUrl: newUrl, 
+        avatarStoragePath: data.data.avatarStoragePath,
+      } : prev);
+
+      // 4. Add PERMANENT system message to chat thread
+      const systemMsg: Message = {
+        id: `system-avatar-${now}`,
+        fromMe: true, // 🔥 FIX: Set to true so UI knows the current user triggered this
+        sender: 'System',
+        text: changeMessage,
+        createdAt: now,
+        type: 'system',
+      };
+      setMessagesByConversation((prev) => ({
+        ...prev,
+        [selected.id]: [...(prev[selected.id] || []), systemMsg],
+      }));
+
+      showToast('Conversation picture updated!', 'success');
+    } catch (error: any) {
+      console.error('Change picture error:', error);
+      showToast(error?.message || 'Failed to change picture.', 'error');
+    }
+  };
+
   const handlePickFile = async () => {
     if (!selected) return;
     try {
@@ -875,7 +1023,7 @@ const Messenger = ({
       const asset = result.assets[0];
 
       if (asset.mimeType && asset.mimeType.startsWith('video/')) {
-        alert('Video files are not allowed.');
+        showToast('Video files are not allowed.', 'error');
         return;
       }
 
@@ -885,7 +1033,7 @@ const Messenger = ({
       );
 
       if (realType.startsWith('video/')) {
-        alert('Video files are not allowed.');
+        showToast('Video files are not allowed.', 'error');
         return;
       }
 
@@ -899,7 +1047,7 @@ const Messenger = ({
       });
     } catch (error) {
       console.error('Pick file error:', error);
-      alert('Failed to select file. Please try again.');
+      showToast('Failed to select file. Please try again.', 'error');
     }
   };
 
@@ -987,7 +1135,7 @@ const Messenger = ({
         }));
       } catch (error) {
         console.error('File upload error:', error);
-        alert('Failed to send file. Please try again.');
+        showToast('Failed to send file. Please try again.', 'error');
       }
     }
 
@@ -1088,7 +1236,7 @@ const Messenger = ({
     try {
       if (Platform.OS === 'web') {
         if (!imagePreviewStoragePath) {
-          alert('Cannot download: file path missing.');
+          showToast('Cannot download: file path missing.', 'error');
           return;
         }
         const proxyUrl = `${API_BASE_URL}/messenger-download/${selected.id}/${encodeURIComponent(imagePreviewStoragePath)}`;
@@ -1112,7 +1260,10 @@ const Messenger = ({
         const fresh = await refreshFileUrl(imagePreviewStoragePath, selected.id);
         if (fresh) downloadUrl = fresh;
       }
-      if (!downloadUrl) { alert('Cannot download: URL missing.'); return; }
+      if (!downloadUrl) { 
+        showToast('Cannot download: URL missing.', 'error'); 
+        return; 
+      }
 
       const cacheUri = FileSystem.cacheDirectory + fileName;
       const { uri: localUri, status } = await FileSystem.downloadAsync(downloadUrl, cacheUri);
@@ -1129,12 +1280,12 @@ const Messenger = ({
               dialogTitle: `Save ${fileName}`,
             });
           } else {
-            alert('Permission denied and sharing is unavailable.');
+            showToast('Permission denied and sharing is unavailable.', 'error');
           }
           return;
         }
         await MediaLibrary.saveToLibraryAsync(localUri);
-        alert('Image saved to your Photos!');
+        showToast('Image saved to your Photos!', 'success');
       } else {
         // Android: SAF folder picker
         const ext = fileName.split('.').pop()?.toLowerCase() || 'jpg';
@@ -1165,11 +1316,11 @@ const Messenger = ({
         await FileSystem.writeAsStringAsync(destUri, base64, {
           encoding: FileSystem.EncodingType.Base64,
         });
-        alert('Image saved to your selected folder!');
+        showToast('Image saved to your selected folder!', 'success');
       }
     } catch (err: any) {
       console.error('Download image error:', err);
-      alert('Failed to download image. Please try again.');
+      showToast('Failed to download image. Please try again.', 'error');
     }
   };
 
@@ -1188,7 +1339,7 @@ const Messenger = ({
           ),
         }));
       } else {
-        alert('Failed to get file URL. It may have expired.');
+        showToast('Failed to get file URL. It may have expired.', 'error');
         return;
       }
     }
@@ -1204,7 +1355,10 @@ const Messenger = ({
 
     try {
       if (Platform.OS === 'web') {
-        if (!item.storagePath) { alert('Cannot download: file path missing.'); return; }
+        if (!item.storagePath) { 
+          showToast('Cannot download: file path missing.', 'error'); 
+          return; 
+        }
         const proxyUrl = `${API_BASE_URL}/messenger-download/${selected.id}/${encodeURIComponent(item.storagePath)}`;
         const res = await fetch(proxyUrl, { credentials: 'include' });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -1233,7 +1387,7 @@ const Messenger = ({
             dialogTitle: `Save ${fileName}`,
           });
         } else {
-          alert(`File cached at:\n${localUri}`);
+          showToast(`File cached at: ${localUri}`, 'success');
         }
       } else {
         // Android: SAF folder picker
@@ -1257,11 +1411,11 @@ const Messenger = ({
         await FileSystem.writeAsStringAsync(destUri, base64, {
           encoding: FileSystem.EncodingType.Base64,
         });
-        alert('File saved to your selected folder!');
+        showToast('File saved to your selected folder!', 'success');
       }
     } catch (err: any) {
       console.error('Download file error:', err);
-      alert('Failed to download file. Please try again.');
+      showToast('Failed to download file. Please try again.', 'error');
     }
   };
 
@@ -1388,6 +1542,32 @@ const Messenger = ({
   }, []);
 
   // ---------------------------------------------------------------------------
+  // Toast Render
+  // ---------------------------------------------------------------------------
+  const renderToast = () => {
+    if (!toast.visible) return null;
+    return (
+      <View style={styles.toastContainer} pointerEvents="none">
+        <View
+          style={[
+            styles.toastBox,
+            toast.type === 'success' ? styles.toastSuccess : styles.toastError,
+          ]}
+        >
+          <MaterialCommunityIcons
+            name={toast.type === 'success' ? 'check-circle' : 'alert-circle'}
+            size={20}
+            color="#fff"
+          />
+          <Text style={styles.toastText} numberOfLines={2}>
+            {toast.message}
+          </Text>
+        </View>
+      </View>
+    );
+  };
+
+  // ---------------------------------------------------------------------------
   // Render helpers
   // ---------------------------------------------------------------------------
   const renderConversationList = () => {
@@ -1473,7 +1653,11 @@ const Messenger = ({
                   activeOpacity={0.88}
                 >
                   <Image
-                    source={item.avatar}
+                    source={
+                    item.avatarUrl
+                      ? { uri: `${item.avatarUrl}&_cb=${avatarCacheBuster}` }
+                      : item.avatar
+                  }
                     style={{
                       width: sizes.listAvatar,
                       height: sizes.listAvatar,
@@ -1586,7 +1770,11 @@ const Messenger = ({
                 activeOpacity={0.88}
               >
                 <Image
-                  source={item.avatar}
+                  source={
+                    item.avatarUrl
+                      ? { uri: `${item.avatarUrl}&_cb=${avatarCacheBuster}` }
+                      : item.avatar
+                  }
                   style={{
                     width: sizes.listAvatar,
                     height: sizes.listAvatar,
@@ -2155,6 +2343,15 @@ const Messenger = ({
               </TouchableOpacity>
             </View>
             <View style={styles.professionalModalScrollContent}>
+
+              <TouchableOpacity
+            style={styles.infoActionCard}
+            activeOpacity={0.85}
+            onPress={handleChangePicture}
+          >
+            <MaterialCommunityIcons name="camera-outline" size={18} color="#222" />
+            <Text style={styles.infoActionCardText}>Change Picture</Text>
+          </TouchableOpacity>
               <TouchableOpacity
                 style={styles.infoActionCard}
                 activeOpacity={0.85}
@@ -2632,12 +2829,14 @@ const Messenger = ({
           >
             {renderChatPane()}
           </KeyboardAvoidingView>
+          {renderToast()}
         </View>
       );
     }
     return (
       <View style={[styles.mobileScreen]}>
         <View style={styles.mobileContent}>{renderConversationList()}</View>
+        {renderToast()}
       </View>
     );
   }
@@ -2648,6 +2847,7 @@ const Messenger = ({
         {renderConversationList()}
         {renderChatPane()}
       </View>
+      {renderToast()}
     </SafeAreaView>
   );
 };
@@ -3231,6 +3431,43 @@ const styles = StyleSheet.create({
   },
   pendingFileSize: { fontSize: 11, color: '#666' },
   removeFileButton: { padding: 4 },
+  
+  // Toast Styles
+  toastContainer: {
+    position: 'absolute',
+    top: 50,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    zIndex: 9999,
+    paddingHorizontal: 20,
+  },
+  toastBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.15,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 6,
+    maxWidth: '90%',
+    gap: 10,
+  },
+  toastSuccess: {
+    backgroundColor: '#22a355',
+  },
+  toastError: {
+    backgroundColor: '#d32f2f',
+  },
+  toastText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+    flex: 1,
+  },
 });
 
 export default Messenger;

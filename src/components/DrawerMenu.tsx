@@ -18,6 +18,7 @@ import {
   View,
   ViewStyle,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context'; // ✅ IMPORT ADDED
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { auth } from '../../firebaseConfig';
 
@@ -60,7 +61,6 @@ interface DrawerMenuProps {
   onEmailUpdated?: (email: string) => void;
   onFilePickerOpen?: () => void;
   onVerificationFailed?: (errorMessage: string) => void;
-  // NEW PROP for success handling
   onUploadSuccess?: () => void; 
   setIsLoggedIn: React.Dispatch<React.SetStateAction<boolean>>;
 }
@@ -171,10 +171,11 @@ const DrawerMenu = ({
   onEmailUpdated,
   onFilePickerOpen,
   onVerificationFailed,
-  onUploadSuccess, // DESTRUCTURED
+  onUploadSuccess, 
   setIsLoggedIn,
 }: DrawerMenuProps) => {
   const { width } = useWindowDimensions();
+  const insets = useSafeAreaInsets(); // ✅ GET SAFE AREA INSETS
 
   const [contentHeight, setContentHeight] = useState(0);
   const [scrollViewHeight, setScrollViewHeight] = useState(0);
@@ -401,7 +402,6 @@ const DrawerMenu = ({
 
       const data = await response.json();
       
-      // CHECK FOR VERIFICATION FAILURE (403 Status)
       if (!response.ok) {
         if (response.status === 403) {
           onVerificationFailed?.(data?.error || 'Identity verification failed.');
@@ -411,7 +411,6 @@ const DrawerMenu = ({
         return;
       }
 
-      // SUCCESS: Call parent handler instead of Alert
       onUploadSuccess?.();
 
     } catch (error: any) {
@@ -423,7 +422,19 @@ const DrawerMenu = ({
   };
 
   return (
-    <View style={[styles.drawerContainer, { width: drawerWidth }]}> 
+    <View 
+      style={[
+        styles.drawerContainer, 
+        { width: drawerWidth },
+        // ✅ APPLY SAFE AREA INSETS + EXISTING PADDING (25) ON SMALL SCREENS
+        isMobile && {
+          paddingTop: insets.top + 25,
+          paddingBottom: insets.bottom + 25,
+          paddingLeft: insets.left + 25,
+          paddingRight: insets.right + 25,
+        }
+      ]}
+    > 
       <Pressable style={styles.profileSection} onPress={onAvatarPress}>
         <Image source={normalizeImageSource(userAvatar)} style={styles.avatar} resizeMode="cover" />
         <View style={{ flex: 1 }}>
@@ -458,6 +469,7 @@ const DrawerMenu = ({
         <Text style={styles.logoutLabel}>Logout</Text>
       </Pressable>
 
+      {/* Modals remain unchanged */}
       <Modal animationType="fade" transparent visible={isSettingsModalVisible} onRequestClose={() => setSettingsModalVisible(false)}>
         <View style={styles.modalOverlay}>
           <View style={styles.settingsModalContainer}>

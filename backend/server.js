@@ -213,23 +213,18 @@ async function createReadSignedUrl(storagePath) {
 
 
 async function createReadSignedUrlIfExists(storagePath) {
-  const normalizedPath = normalizeOptionalText(storagePath);
-
-  if (!normalizedPath) {
-    return null;
-  }
-
+  if (!storagePath) return null;
   try {
-    const file = bucket.file(normalizedPath);
+    const file = bucket.file(storagePath);
     const [exists] = await file.exists();
-
-    if (!exists) {
-      return null;
-    }
-
-    return await createReadSignedUrl(normalizedPath);
-  } catch (error) {
-    console.warn("Signed URL refresh skipped:", error?.message || error);
+    if (!exists) return null;
+    const [url] = await file.getSignedUrl({
+      action: 'read',
+      expires: Date.now() + 60 * 60 * 1000, // 1 hour
+    });
+    return url;
+  } catch (e) {
+    console.warn('createReadSignedUrlIfExists error:', e?.message);
     return null;
   }
 }
@@ -7132,15 +7127,9 @@ app.delete("/remove-class-member/:id", async (req, res) => {
  // Student and teacher messenger screens use these timestamps for relative time labels.
 app.get("/messenger-conversations", async (req, res) => {
   try {
-    const {
-      userId,
-      userUid,
-      role,
-      classId,
-    } = req.query;
+    const { userId, userUid, role, classId } = req.query;
 
     let snapshot;
-
     if (classId) {
       snapshot = await db
         .collection("messengerConversations")
@@ -7191,50 +7180,64 @@ app.get("/messenger-conversations", async (req, res) => {
       );
     }
 
-    conversations = conversations.map((conversation) => {
-  const participants = Array.isArray(conversation.participants)
-    ? conversation.participants
-    : [];
+    // 🌟 UPDATED: Hydrate avatar URLs and calculate unread counts asynchronously
+    conversations = await Promise.all(
+      conversations.map(async (conversation) => {
+        const participants = Array.isArray(conversation.participants)
+          ? conversation.participants
+          : [];
 
-  const participant = participants.find(
-    (p) =>
-      (userId && p.userId === userId) ||
-      (userUid && p.userUid === userUid)
-  );
+        const participant = participants.find(
+          (p) =>
+            (userId && p.userId === userId) ||
+            (userUid && p.userUid === userUid)
+        );
 
-  const lastMessageAt =
-    conversation.lastMessageAt?.toDate?.() ||
-    (conversation.lastMessageAt
-      ? new Date(conversation.lastMessageAt)
-      : null);
+        const lastMessageAt =
+          conversation.lastMessageAt?.toDate?.() ||
+          (conversation.lastMessageAt
+            ? new Date(conversation.lastMessageAt)
+            : null);
 
-  const lastReadAt =
-    participant?.lastReadAt?.toDate?.() ||
-    (participant?.lastReadAt
-      ? new Date(participant.lastReadAt)
-      : null);
+        const lastReadAt =
+          participant?.lastReadAt?.toDate?.() ||
+          (participant?.lastReadAt
+            ? new Date(participant.lastReadAt)
+            : null);
 
-  const isLastMessageMine =
-  conversation.lastMessageSenderId === userId ||
-  conversation.lastMessageSenderUid === userUid;
+        const isLastMessageMine =
+          conversation.lastMessageSenderId === userId ||
+          conversation.lastMessageSenderUid === userUid;
 
-  let unreadCount = 0;
+        let unreadCount = 0;
+        if (!isLastMessageMine && lastMessageAt) {
+          if (!lastReadAt) {
+            unreadCount = 1;
+          } else if (lastMessageAt.getTime() > lastReadAt.getTime()) {
+            unreadCount = 1;
+          }
+        }
 
-  if (!isLastMessageMine && lastMessageAt) {
-    if (!lastReadAt) {
-      unreadCount = 1;
-    } else if (lastMessageAt.getTime() > lastReadAt.getTime()) {
-      unreadCount = 1;
-    }
-  }
+        // 🌟 Hydrate custom avatar URL if it exists
+        let hydratedAvatarUrl = conversation.avatarUrl || null;
+        if (conversation.avatarStoragePath) {
+          try {
+            const freshUrl = await createReadSignedUrlIfExists(conversation.avatarStoragePath);
+            if (freshUrl) hydratedAvatarUrl = freshUrl;
+          } catch (e) {
+            console.warn("Failed to hydrate conversation avatar:", e?.message);
+          }
+        }
 
-  return {
-    ...conversation,
-    unreadCount,
-  };
-});
+        return {
+          ...conversation,
+          avatarUrl: hydratedAvatarUrl,
+          unreadCount,
+        };
+      })
+    );
 
-res.json(conversations);
+    res.json(conversations);
   } catch (error) {
     console.error("Fetch messenger conversations error:", error);
     res.status(500).json({
@@ -13695,6 +13698,88 @@ app.post("/storage/delete-file", requireAuth, async (req, res) => {
   } catch (error) {
     console.error("Delete storage file error:", error);
     return res.status(500).json({ error: error.message || "Failed to delete file." });
+  }
+});
+
+app.post("/messenger-conversation-avatar", requireAuth, async (req, res) => {
+  try {
+    const { conversationId, imageBase64, fileName, fileType, senderName } = req.body; 
+    if (!conversationId || !imageBase64) {
+      return res.status(400).json({ error: "conversationId and imageBase64 are required." });
+    }
+
+    const profile = await findUserProfileByAuthUid(req.user.uid);
+    if (!profile) return res.status(403).json({ error: "User profile not found." });
+    const userId = profile.data.studentId || profile.data.teacherId || profile.data.adminId || profile.id;
+
+    const convRef = db.collection("messengerConversations").doc(conversationId);
+    const convSnap = await convRef.get();
+    if (!convSnap.exists) return res.status(404).json({ error: "Conversation not found." });
+
+    const convData = convSnap.data();
+    
+    // Authorization: Check if user is participant, teacher of the class, or admin
+    const isParticipant = Array.isArray(convData.participants) && convData.participants.some(p => p.userId === userId || p.userUid === req.user.uid);
+    const isTeacher = convData.classId && (convData.assignedTeacherUid === req.user.uid || convData.assignedTeacherId === userId);
+    const isAdmin = profile.role === "admin";
+
+    if (!isParticipant && !isTeacher && !isAdmin) {
+      return res.status(403).json({ error: "You do not have permission to change this conversation's picture." });
+    }
+
+    const cleanedBase64 = imageBase64.includes(",") ? imageBase64.split(",")[1] : imageBase64;
+    const safeMimeType = fileType || "image/jpeg";
+    const ext = getFileExtensionFromMimeType(safeMimeType);
+    const safeFileName = sanitizeFileName(fileName || `avatar.${ext}`);
+    const storagePath = `conversation-avatars/${conversationId}/${Date.now()}-${safeFileName}`;
+
+    const file = bucket.file(storagePath);
+    await file.save(Buffer.from(cleanedBase64, "base64"), {
+      metadata: { contentType: safeMimeType, cacheControl: "private,max-age=0,no-transform" },
+      resumable: false,
+    });
+
+    // Delete old avatar from storage if it exists to save space
+    if (convData.avatarStoragePath) {
+      await deleteStorageFileIfExists(convData.avatarStoragePath);
+    }
+
+    // 👇 FIX: Create avatarUrl BEFORE using it in the update
+    const avatarUrl = await createReadSignedUrl(storagePath);
+
+    // 👇 NEW: Define the system message text
+    const changerName = senderName || 'Someone';
+    const changeMessage = `${changerName} changed the conversation picture.`;
+
+    // 👇 NEW: Save the system message permanently to the chat thread
+    await convRef.collection("messages").add({
+      type: "system",
+      text: changeMessage,
+      createdAt: FieldValue.serverTimestamp(),
+      createdByRole: "system",
+      senderUid: req.user.uid,     // 🔥 ADD THIS: Identifies who triggered the change
+      senderId: userId,            // 🔥 ADD THIS
+      senderName: changerName,
+    });
+
+    // 👇 UPDATED: Update the conversation document to include lastMessage fields
+    await convRef.update({
+      avatarStoragePath: storagePath,
+      
+      lastMessage: changeMessage,
+      lastMessageSender: "system",
+      lastMessageAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+
+    return res.json({
+      success: true,
+      message: "Conversation picture updated successfully.",
+      data: { avatarUrl, avatarStoragePath: storagePath },
+    });
+  } catch (error) {
+    console.error("Update conversation avatar error:", error);
+    return res.status(500).json({ error: error.message || "Failed to update conversation picture." });
   }
 });
 
