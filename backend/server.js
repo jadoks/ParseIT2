@@ -6,6 +6,11 @@ import dotenv from "dotenv";
 import express from "express";
 import admin from "firebase-admin";
 
+import { GoogleAIFileManager } from "@google/generative-ai/server";
+import fs from "fs";
+import os from "os";
+import path from "path";
+
 import mammoth from "mammoth";
 import { createRequire } from "module";
 import multer from "multer";
@@ -69,6 +74,53 @@ function getAuthBearerToken(req) {
   const authHeader = req.headers.authorization || "";
   if (!authHeader.startsWith("Bearer ")) return null;
   return authHeader.slice(7).trim() || null;
+}
+
+
+
+// MIME types Gemini's inlineData actually supports natively.
+const GEMINI_INLINE_SUPPORTED = /^(application\/pdf|image\/|audio\/|video\/|text\/plain)/;
+
+/**
+ * Uploads a file to Gemini's File API and returns a { fileUri, mimeType } reference,
+ * for file types inlineData can't handle (.pptx, .xlsx, .doc, etc).
+ * Cleans up the local temp file automatically. Caller is responsible for deleting
+ * the Gemini-side file afterward via fileManager.deleteFile(geminiFileName).
+ */
+async function uploadBufferToGeminiFileAPI(buffer, mimeType, fileName) {
+  if (!process.env.GEMINI_API_KEY) {
+    throw new Error("GEMINI_API_KEY is missing.");
+  }
+
+  const fileManager = new GoogleAIFileManager(process.env.GEMINI_API_KEY);
+  const tempFilePath = path.join(os.tmpdir(), `gemini-upload-${Date.now()}-${sanitizeFileName(fileName)}`);
+  fs.writeFileSync(tempFilePath, buffer);
+
+  try {
+    const uploadResult = await fileManager.uploadFile(tempFilePath, {
+      mimeType,
+      displayName: fileName,
+    });
+
+    let uploadedFile = uploadResult.file;
+    while (uploadedFile.state.name === "PROCESSING") {
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      uploadedFile = await fileManager.getFile(uploadedFile.name);
+    }
+
+    if (uploadedFile.state.name === "FAILED") {
+      throw new Error("Gemini file processing failed.");
+    }
+
+    return {
+      fileUri: uploadedFile.uri,
+      mimeType: uploadedFile.mimeType,
+      geminiFileName: uploadedFile.name, // needed to delete it afterward
+      fileManager,
+    };
+  } finally {
+    if (fs.existsSync(tempFilePath)) fs.unlinkSync(tempFilePath);
+  }
 }
 
 async function requireAuth(req, res, next) {
@@ -1248,7 +1300,7 @@ function normalizeGameQuestions(value, gameType = "quiz_master", numberOfQuestio
 // ==========================================
 // 3. AI PROVIDERS (UPDATED THRESHOLDS)
 // ==========================================
-async function generateGameWithGemini({ extractedText, fileName, gameType, inlineData, numberOfQuestions }) {
+async function generateGameWithGemini({ extractedText, fileName, gameType, inlineData, fileData, numberOfQuestions }) {
   if (!geminiGameAI) throw new Error("GEMINI_API_KEY is missing.");
   const model = geminiGameAI.getGenerativeModel({
     model: GEMINI_GAME_MODEL,
@@ -1258,12 +1310,21 @@ async function generateGameWithGemini({ extractedText, fileName, gameType, inlin
       responseSchema: getGeminiSchemaForGame(gameType)
     }
   });
-  const prompt = buildGamePrompt({ extractedText, fileName, gameType, hasInlineData: !!inlineData, numberOfQuestions });
-  
+
+  const hasFile = !!inlineData || !!fileData;
+  const prompt = buildGamePrompt({ extractedText, fileName, gameType, hasInlineData: hasFile, numberOfQuestions });
+
+  let filePart = null;
+  if (inlineData) {
+    filePart = { inlineData: { mimeType: inlineData.mimeType, data: inlineData.data } };
+  } else if (fileData) {
+    filePart = { fileData: { mimeType: fileData.mimeType, fileUri: fileData.fileUri } };
+  }
+
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
-      const result = inlineData
-        ? await model.generateContent([{ text: prompt }, { inlineData: { mimeType: inlineData.mimeType, data: inlineData.data } }])
+      const result = filePart
+        ? await model.generateContent([{ text: prompt }, filePart])
         : await model.generateContent(prompt);
       const parsed = parseQuizMastersJsonResponse(result.response.text(), "Gemini");
       const questions = normalizeGameQuestions(parsed, gameType, numberOfQuestions);
@@ -1331,13 +1392,16 @@ function generateGameLocally({ extractedText, fileName, gameType, numberOfQuesti
 // ==========================================
 // 5. MAIN SHARED ENTRY POINT
 // ==========================================
-async function generateEducationalGame({ extractedText, fileName, gameType, inlineData, numberOfQuestions }) {
+async function generateEducationalGame({ extractedText, fileName, gameType, inlineData, fileData, numberOfQuestions }) {
   try {
-    const questions = await generateGameWithGemini({ extractedText, fileName, gameType, inlineData, numberOfQuestions });
+    const questions = await generateGameWithGemini({ extractedText, fileName, gameType, inlineData, fileData, numberOfQuestions });
     return { questions, provider: "gemini", model: GEMINI_GAME_MODEL, fallbackUsed: false };
   } catch (geminiError) {
     console.warn(`Gemini failed for ${gameType}. Falling back to OpenAI...`);
     try {
+      // Note: OpenAI's API has no equivalent of Gemini's File API for office docs —
+      // it only accepts inline base64 images. If fileData was the only file reference
+      // and Gemini failed, OpenAI will simply generate from extractedText alone (if any).
       const questions = await generateGameWithOpenAI({ extractedText, fileName, gameType, inlineData, numberOfQuestions });
       return { questions, provider: "openai", model: OPENAI_GAME_MODEL, fallbackUsed: true };
     } catch (openAIError) {
@@ -1455,18 +1519,18 @@ app.post("/game/upload", requireAuth, gameUpload.single("file"), async (req, res
 /**
  * STEP 2: Process file (Download, Extract, Generate Quiz, Save)
  */
-/**
- * STEP 2: Process file (Download, Extract, Generate Quiz, Save)
- */
+// === UPDATED: Game Process ===
 app.post("/game/process", requireAuth, async (req, res) => {
   try {
-    const { uploadId, gameType, numberOfQuestions } = req.body; // 🌟 Extract numberOfQuestions
+    const { uploadId, gameType, numberOfQuestions } = req.body;
     if (!uploadId) return res.status(400).json({ error: "uploadId is required." });
     
     const uploadDoc = await db.collection("gameUploads").doc(uploadId).get();
     if (!uploadDoc.exists) return res.status(404).json({ error: "Upload not found." });
+    
     const uploadData = uploadDoc.data();
-
+    
+    // Return cached result if already completed
     if (uploadData.status === "completed" && uploadData.generatedGameId) {
       const gameDoc = await db.collection("generatedGames").doc(uploadData.generatedGameId).get();
       if (gameDoc.exists) {
@@ -1478,40 +1542,44 @@ app.post("/game/process", requireAuth, async (req, res) => {
         });
       }
     }
-
+    
     await uploadDoc.ref.update({ status: "processing" });
+    
+    // Download file from Firebase Storage
     const file = bucket.file(uploadData.storagePath);
-    const [buffer] = await file.download();
-    const mimeType = uploadData.mimeType || "";
+    let [buffer] = await file.download();
+    let mimeType = uploadData.mimeType || "";
     const fileName = uploadData.fileName || "file";
-    const isImage = mimeType.startsWith("image/");
-    let extractedText = "";
-    let inlineData = null;
-
-    if (isImage) {
-      inlineData = { mimeType: mimeType, data: buffer.toString("base64") };
-    } else {
-      const extracted = await extractTextFromFile(buffer, mimeType, fileName);
-      if (typeof extracted === "string") {
-        if (!normalizeOptionalText(extracted)) throw new Error("No readable text found in file.");
-        extractedText = extracted;
-      } else if (typeof extracted === "object") {
-        if (extracted.imagePdf && extracted.pdfBase64) {
-          inlineData = { mimeType: "application/pdf", data: extracted.pdfBase64 };
-          extractedText = extracted.extractedText || "";
-        } else if (extracted.officeDocument && extracted.fileBase64) {
-          inlineData = { mimeType: mimeType, data: extracted.fileBase64 };
-          extractedText = extracted.extractedText || "";
-        } else {
-          throw new Error("Could not extract content from the file.");
-        }
+    
+    // Check if file is PowerPoint and needs conversion
+    const isPowerPoint = fileName.toLowerCase().endsWith('.pptx') || 
+                         fileName.toLowerCase().endsWith('.ppt') ||
+                         mimeType.includes('presentationml');
+    
+    if (isPowerPoint) {
+      try {
+        console.log("Converting PowerPoint to PDF...");
+        buffer = await convertPPTXtoPDFViaCloudConverter(buffer, fileName);
+        mimeType = "application/pdf";
+        console.log("PowerPoint converted successfully");
+      } catch (convertError) {
+        console.error("PowerPoint conversion failed, attempting direct processing:", convertError.message);
+        // Continue with original file if conversion fails
       }
     }
 
-    const resolvedGameType = gameType || uploadData.gameType || "quiz_master";
+    // Convert to base64 for Gemini
+    const cleanedBase64 = buffer.toString("base64");
+    const inlineData = { mimeType: mimeType, data: cleanedBase64 };
 
+    const resolvedGameType = gameType || uploadData.gameType || "quiz_master";
     const generated = await generateEducationalGame({
-      extractedText, fileName, gameType: resolvedGameType, inlineData, numberOfQuestions // 🌟 PASS COUNT
+      extractedText: "",
+      fileName,
+      gameType: resolvedGameType,
+      inlineData,
+      fileData: null,
+      numberOfQuestions
     });
 
     const gameRef = await db.collection("generatedGames").add({
@@ -1519,9 +1587,9 @@ app.post("/game/process", requireAuth, async (req, res) => {
       provider: generated.provider, model: generated.model, gameType: resolvedGameType,
       questions: generated.questions, createdAt: FieldValue.serverTimestamp(), generatedFrom: "firebase-storage",
     });
-
+    
     await uploadDoc.ref.update({ status: "completed", generatedGameId: gameRef.id });
-
+    
     return res.json({
       success: true, uploadId, gameId: gameRef.id,
       provider: generated.provider, model: generated.model,
@@ -1535,8 +1603,6 @@ app.post("/game/process", requireAuth, async (req, res) => {
     return res.status(500).json({ error: error.message || "Failed to process file." });
   }
 });
-
-
 /**
  * STEP 3: Retrieve previously generated questions
  */
@@ -2386,59 +2452,106 @@ app.post("/storage/user-image-signed-url", requireAuth, async (req, res) => {
   }
 });
 
+// In your backend, update the storage signed URL route
 app.post("/storage/signed-url", requireAuth, async (req, res) => {
   try {
     const { storagePath, classId } = req.body;
-
+    
     if (!storagePath || typeof storagePath !== "string") {
       return res.status(400).json({ error: "storagePath is required." });
     }
-
+    
+    // Security validation
     if (storagePath.includes("..") || storagePath.startsWith("/")) {
       return res.status(400).json({ error: "Invalid storagePath." });
     }
-
-    if (classId) {
-      await requireClassAccess({
-        authUid: req.user.uid,
-        classId,
-        allowedRoles: ["student", "teacher"],
-      });
-
-      if (!isStoragePathAllowedForClass(storagePath, classId)) {
-        return res.status(403).json({
-          error: "This file path is not allowed for the requested class.",
-        });
-      }
-    } else if (!storagePath.startsWith("defaults/")) {
-      const profile = await findUserProfileByAuthUid(req.user.uid);
-      if (profile?.role !== "admin") {
-        return res.status(403).json({
-          error: "classId is required for private class files.",
-        });
-      }
-    }
-
-    const [exists] = await bucket.file(storagePath).exists();
+    
+    // Check if file exists first
+    const file = bucket.file(storagePath);
+    const [exists] = await file.exists();
+    
     if (!exists) {
-      return res.status(404).json({ error: "File not found." });
+      console.error(`File not found in storage: ${storagePath}`);
+      return res.status(404).json({ 
+        error: "File not found in storage.",
+        storagePath 
+      });
     }
-
-    const url = await createReadSignedUrl(storagePath);
-
+    
+    // Generate signed URL with longer expiry
+    const [url] = await file.getSignedUrl({
+      action: 'read',
+      expires: Date.now() + (60 * 60 * 1000), // 1 hour
+    });
+    
     return res.json({
       success: true,
       url,
-      expiresIn: SIGNED_URL_EXPIRES_IN_MS,
+      expiresIn: 60 * 60 * 1000,
     });
   } catch (error) {
     console.error("Signed URL error:", error);
-    return res.status(error.statusCode || 500).json({
+    return res.status(500).json({
       error: error.message || "Failed to generate signed URL.",
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
     });
   }
 });
 
+// Add this route to serve files directly
+app.get("/course-materials/download/:classId/:materialId", requireAuth, async (req, res) => {
+  try {
+    const { classId, materialId } = req.params;
+    
+    // Verify class access
+    await requireClassAccess({
+      authUid: req.user.uid,
+      classId,
+      allowedRoles: ["student", "teacher"],
+    });
+    
+    // Fetch material from Firestore
+    const materialSnap = await db.collection("classMaterials").doc(materialId).get();
+    
+    if (!materialSnap.exists) {
+      return res.status(404).json({ error: "Material not found." });
+    }
+    
+    const materialData = materialSnap.data();
+    const storagePath = materialData.storagePath;
+    
+    if (!storagePath) {
+      return res.status(400).json({ error: "No storage path found for this material." });
+    }
+    
+    // Verify storage path belongs to this class
+    if (!isStoragePathAllowedForClass(storagePath, classId)) {
+      return res.status(403).json({ error: "Invalid storage path." });
+    }
+    
+    const file = bucket.file(storagePath);
+    const [exists] = await file.exists();
+    
+    if (!exists) {
+      return res.status(404).json({ error: "File not found in storage." });
+    }
+    
+    // Get file metadata
+    const [metadata] = await file.getMetadata();
+    
+    // Set headers for download
+    res.setHeader('Content-Type', metadata.contentType || 'application/octet-stream');
+    res.setHeader('Content-Disposition', `attachment; filename="${materialData.fileName || 'download'}"`);
+    
+    // Stream the file
+    const stream = file.createReadStream();
+    stream.pipe(res);
+    
+  } catch (error) {
+    console.error("Download error:", error);
+    res.status(500).json({ error: error.message || "Failed to download file." });
+  }
+});
 
 app.post("/auth/lookup-user", async (req, res) => {
   try {
@@ -3217,50 +3330,257 @@ app.post("/game-ai/save-game-submission", requireAuth, async (req, res) => {
   }
 });
 
+// ============================================
+// CloudConvert PPT/PPTX -> PDF
+// ============================================
+async function convertPPTXtoPDFViaCloudConverter(fileBuffer, fileName) {
+  if (!process.env.CLOUDCONVERTER_API_KEY) {
+    throw new Error("CLOUDCONVERTER_API_KEY is not configured.");
+  }
 
+  try {
+    console.log(`Converting "${fileName}" to PDF via CloudConvert...`);
+
+    // --------------------------------------------------
+    // STEP 1 - Create Job
+    // --------------------------------------------------
+
+    const createJobResponse = await fetch(
+      "https://api.cloudconvert.com/v2/jobs",
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${process.env.CLOUDCONVERTER_API_KEY}`,
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({
+          tasks: {
+            "import-my-file": {
+              operation: "import/upload",
+            },
+            "convert-my-file": {
+              operation: "convert",
+              input: "import-my-file",
+              output_format: "pdf",
+            },
+            "export-my-file": {
+              operation: "export/url",
+              input: "convert-my-file",
+              inline: false,
+              filename: fileName.replace(/\.(ppt|pptx)$/i, ".pdf"),
+            },
+          },
+        }),
+      }
+    );
+
+    if (!createJobResponse.ok) {
+      const errorText = await createJobResponse.text();
+
+      console.error("CloudConvert Create Job Error:");
+      console.error(errorText);
+
+      throw new Error(
+        `CloudConvert Job Creation Failed (${createJobResponse.status})`
+      );
+    }
+
+    const job = await createJobResponse.json();
+
+    const importTask = job.data.tasks.find(
+      (t) => t.name === "import-my-file"
+    );
+
+    if (!importTask) {
+      throw new Error("Import task not found.");
+    }
+
+    // --------------------------------------------------
+    // STEP 2 - Upload File
+    // --------------------------------------------------
+
+    const uploadForm = new FormData();
+
+    const params =
+      importTask.result?.form?.parameters ||
+      importTask.result?.form?.params ||
+      {};
+
+    for (const [key, value] of Object.entries(params)) {
+      uploadForm.append(key, value);
+    }
+
+    uploadForm.append(
+      "file",
+      new Blob([fileBuffer]),
+      fileName
+    );
+
+    const uploadResponse = await fetch(
+      importTask.result.form.url,
+      {
+        method: "POST",
+        body: uploadForm,
+      }
+    );
+
+    if (!uploadResponse.ok) {
+      const uploadError = await uploadResponse.text();
+
+      console.error("Upload Error:");
+      console.error(uploadError);
+
+      throw new Error("CloudConvert upload failed.");
+    }
+
+    console.log("Upload complete.");
+
+    // --------------------------------------------------
+    // STEP 3 - Wait for Conversion
+    // --------------------------------------------------
+
+    const jobId = job.data.id;
+
+    let pdfUrl = null;
+
+    for (let i = 0; i < 60; i++) {
+      await new Promise((r) => setTimeout(r, 2000));
+
+      const statusResponse = await fetch(
+        `https://api.cloudconvert.com/v2/jobs/${jobId}`,
+        {
+          headers: {
+            Authorization: `Bearer ${process.env.CLOUDCONVERTER_API_KEY}`,
+            Accept: "application/json",
+          },
+        }
+      );
+
+      if (!statusResponse.ok) {
+        throw new Error("Unable to check CloudConvert status.");
+      }
+
+      const statusJob = await statusResponse.json();
+
+      console.log(
+        "CloudConvert Status:",
+        statusJob.data.status
+      );
+
+      if (statusJob.data.status === "error") {
+        console.error(
+          JSON.stringify(statusJob, null, 2)
+        );
+
+        throw new Error("CloudConvert conversion failed.");
+      }
+
+      if (statusJob.data.status === "finished") {
+        const exportTask = statusJob.data.tasks.find(
+          (t) => t.name === "export-my-file"
+        );
+
+        if (
+          exportTask &&
+          exportTask.result &&
+          exportTask.result.files &&
+          exportTask.result.files.length
+        ) {
+          pdfUrl = exportTask.result.files[0].url;
+          break;
+        }
+      }
+    }
+
+    if (!pdfUrl) {
+      throw new Error(
+        "CloudConvert conversion timed out."
+      );
+    }
+
+    // --------------------------------------------------
+    // STEP 4 - Download PDF
+    // --------------------------------------------------
+
+    console.log("Downloading converted PDF...");
+
+    const pdfResponse = await fetch(pdfUrl);
+
+    if (!pdfResponse.ok) {
+      throw new Error(
+        "Failed to download converted PDF."
+      );
+    }
+
+    const pdfBuffer = Buffer.from(
+      await pdfResponse.arrayBuffer()
+    );
+
+    console.log(
+      `PowerPoint converted successfully (${pdfBuffer.length} bytes)`
+    );
+
+    return pdfBuffer;
+  } catch (error) {
+    console.error("CloudConvert conversion failed:");
+    console.error(error);
+
+    throw error;
+  }
+}
+
+// === UPDATED: Generate Quiz Masters ===
 app.post("/game-ai/generate-quiz-masters", requireAuth, gameUpload.single("file"), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: "File is required." });
     
     const mimeType = String(req.file.mimetype || "").toLowerCase();
-    const isImage = mimeType.startsWith("image/");
-    let extractedText = "";
-    let inlineData = null;
-    const numberOfQuestions = req.body.numberOfQuestions; // 🌟 Extract numberOfQuestions
-
-    if (isImage) {
-      inlineData = { mimeType: mimeType, data: req.file.buffer.toString("base64") };
-    } else {
-      const extracted = await extractTextFromFile(req.file.buffer, req.file.mimetype, req.file.originalname);
-      if (typeof extracted === "string") {
-        if (!normalizeOptionalText(extracted)) return res.status(400).json({ error: "No readable text found." });
-        extractedText = extracted;
-      } else if (typeof extracted === "object") {
-        if (extracted.imagePdf && extracted.pdfBase64) {
-          inlineData = { mimeType: "application/pdf", data: extracted.pdfBase64 };
-          extractedText = extracted.extractedText || "";
-        } else if (extracted.officeDocument && extracted.fileBase64) {
-          inlineData = { mimeType: mimeType, data: extracted.fileBase64 };
-          extractedText = extracted.extractedText || "";
-        } else {
-          return res.status(400).json({ error: "Could not extract content from the file." });
-        }
+    const fileName = req.file.originalname;
+    const numberOfQuestions = req.body.numberOfQuestions;
+    
+    let fileBuffer = req.file.buffer;
+    let processedMimeType = mimeType;
+    
+    // Check if file is PowerPoint and needs conversion
+    const isPowerPoint = fileName.toLowerCase().endsWith('.pptx') || 
+                         fileName.toLowerCase().endsWith('.ppt') ||
+                         mimeType.includes('presentationml');
+    
+    if (isPowerPoint) {
+      try {
+        console.log("Converting PowerPoint to PDF...");
+        fileBuffer = await convertPPTXtoPDFViaCloudConverter(fileBuffer, fileName);
+        processedMimeType = "application/pdf";
+        console.log("PowerPoint converted successfully");
+      } catch (convertError) {
+        console.error("PowerPoint conversion failed, attempting direct processing:", convertError.message);
+        // Continue with original file if conversion fails
       }
     }
+    
+    // Convert to base64 for Gemini
+    const cleanedBase64 = fileBuffer.toString("base64");
+    const inlineData = { mimeType: processedMimeType, data: cleanedBase64 };
 
-    // 🌟 FIXED: Replaced undefined generateQuizMastersWithFallback with generateEducationalGame
     const generated = await generateEducationalGame({
-      extractedText,
-      fileName: req.file.originalname,
+      extractedText: "",
+      fileName: fileName,
       gameType: req.body.gameType || 'quiz_master',
-      inlineData, 
-      numberOfQuestions, // 🌟 PASS COUNT
+      inlineData,
+      fileData: null,
+      numberOfQuestions,
     });
 
     return res.json({
-      success: true, game: "quizmasters", provider: generated.provider, model: generated.model,
-      fallbackUsed: generated.fallbackUsed, fallbackReason: generated.fallbackReason || null,
-      fileName: req.file.originalname, questions: generated.questions,
+      success: true, 
+      game: "quizmasters", 
+      provider: generated.provider, 
+      model: generated.model,
+      fallbackUsed: generated.fallbackUsed, 
+      fallbackReason: generated.fallbackReason || null,
+      fileName: fileName, 
+      questions: generated.questions,
     });
   } catch (error) {
     console.error("Quiz Masters AI generation error:", error);
@@ -3268,48 +3588,187 @@ app.post("/game-ai/generate-quiz-masters", requireAuth, gameUpload.single("file"
   }
 });
 
-// === Generate quiz from selected class materials ===
+// === Generate quiz from selected class materials (FIXED) ===
 app.post("/game-ai/generate-quiz-materials", requireAuth, async (req, res) => {
   try {
-    const { classId, materialIds, gameType, authUid, numberOfQuestions } = req.body; // 🌟 Extract numberOfQuestions
-    if (!classId || !Array.isArray(materialIds) || materialIds.length === 0) {
-      return res.status(400).json({ error: "classId and at least one materialId are required." });
+    const { classId, materialIds, gameType, authUid, numberOfQuestions } = req.body;
+    if (!classId || !materialIds || !Array.isArray(materialIds) || materialIds.length === 0) {
+      return res.status(400).json({ error: "classId and materialIds are required." });
     }
+    if (!gameType) return res.status(400).json({ error: "gameType is required." });
 
-    const userAuthUid = req.user.uid;
-    if (!userAuthUid) return res.status(401).json({ error: "Authentication required. Please log in again." });
-    await requireClassAccess({ authUid: userAuthUid, classId, allowedRoles: ["student", "teacher"] });
-
-    const materials = [];
+    // Fetch materials from database
+    const materialsData = [];
     for (const materialId of materialIds) {
       const materialSnap = await db.collection("classMaterials").doc(materialId).get();
-      if (!materialSnap.exists) continue;
-      const material = materialSnap.data() || {};
-      const extracted = await extractReadableTextFromMaterial(material);
-      materials.push({ id: materialSnap.id, title: material.title || "Untitled", extractedText: extracted.readableText });
+      if (materialSnap.exists) {
+        materialsData.push({ id: materialSnap.id, ...materialSnap.data() });
+      }
     }
 
-    if (materials.length === 0 || materials.every(m => m.extractedText.length === 0)) {
-      return res.status(400).json({ error: "No readable material content found." });
+    if (materialsData.length === 0) {
+      return res.status(404).json({ error: "No materials found." });
     }
 
-    const combinedText = materials.map(m => `File: ${m.title}\n${m.extractedText}`).join("---");
-    const fileName = `class-${classId}-materials`;
-    const resolvedGameType = gameType || "quiz_master";
+    const resolvedGameType = gameType === "quiz_master" ? "quiz_master" : gameType;
+    const fileName = materialsData.map(m => m.fileName || m.title || "material").join(", ");
 
-    const generated = await generateEducationalGame({
-      extractedText: combinedText, fileName, gameType: resolvedGameType, numberOfQuestions // 🌟 PASS COUNT
+    // MIME types Gemini's inlineData actually supports natively.
+    const GEMINI_INLINE_SUPPORTED = /^(application\/pdf|image\/|audio\/|video\/|text\/plain)/;
+
+    // Prepare files for Gemini
+    const geminiContents = [];
+    let combinedExtractedText = "";
+
+    for (const material of materialsData) {
+      const storagePath = material.storagePath || material.fileStoragePath;
+      const fileUrl = material.fileUrl || material.fileUri || material.downloadUrl;
+      let mimeType = material.fileType || material.mimeType || "application/octet-stream";
+      const matFileName = material.fileName || material.title || "material";
+
+      let buffer = null;
+      try {
+        if (storagePath) {
+          const file = bucket.file(storagePath);
+          [buffer] = await file.download();
+        } else if (fileUrl) {
+          const response = await fetch(fileUrl);
+          buffer = Buffer.from(await response.arrayBuffer());
+        }
+      } catch (downloadError) {
+        console.warn(`Failed to download material "${matFileName}":`, downloadError.message);
+        continue;
+      }
+
+      if (!buffer) continue;
+
+      // Check if file is PowerPoint and needs conversion
+      const isPowerPoint = matFileName.toLowerCase().endsWith('.pptx') || 
+                           matFileName.toLowerCase().endsWith('.ppt') ||
+                           mimeType.includes('presentationml');
+      
+      if (isPowerPoint) {
+        try {
+          console.log(`Converting PowerPoint "${matFileName}" to PDF...`);
+          buffer = await convertPPTXtoPDFViaCloudConverter(buffer, matFileName);
+          mimeType = "application/pdf";
+          console.log(`PowerPoint "${matFileName}" converted successfully`);
+        } catch (convertError) {
+          console.error(`PowerPoint conversion failed for "${matFileName}":`, convertError.message);
+          // Continue with original file if conversion fails
+        }
+      }
+
+      // Check if Gemini can handle this MIME type directly
+      if (GEMINI_INLINE_SUPPORTED.test(mimeType)) {
+        // Gemini can read this natively (PDF, image, audio, video, plain text)
+        geminiContents.push({
+          inlineData: {
+            mimeType,
+            data: buffer.toString("base64"),
+          },
+        });
+      } else {
+        // Unsupported types - extract text first
+        try {
+          const extracted = await extractTextFromFile(buffer, mimeType, matFileName);
+          
+          if (typeof extracted === "string" && extracted.trim()) {
+            combinedExtractedText += `\n[${matFileName}]\n${extracted}`;
+          } else if (extracted && typeof extracted === "object") {
+            if (extracted.imagePdf && extracted.pdfBase64) {
+              geminiContents.push({
+                inlineData: { mimeType: "application/pdf", data: extracted.pdfBase64 },
+              });
+            }
+            
+            if (extracted.extractedText) {
+              combinedExtractedText += `\n[${matFileName}]\n${extracted.extractedText}`;
+            }
+          }
+        } catch (extractError) {
+          console.warn(`Text extraction failed for "${matFileName}":`, extractError.message);
+        }
+      }
+    }
+
+    if (geminiContents.length === 0 && !combinedExtractedText.trim()) {
+      return res.status(400).json({
+        error: "No readable files found in materials. Please ensure materials have uploaded files in supported formats (PDF, TXT, or extractable Office documents)."
+      });
+    }
+
+    const promptText = buildGamePrompt({
+      extractedText: combinedExtractedText,
+      fileName,
+      gameType: resolvedGameType,
+      hasInlineData: geminiContents.length > 0,
+      numberOfQuestions: numberOfQuestions || 10
+    });
+
+    // Call Gemini with files directly
+    const generated = await generateGameWithGeminiDirect({
+      prompt: promptText,
+      files: geminiContents,
+      gameType: resolvedGameType,
+      numberOfQuestions: numberOfQuestions || 10
     });
 
     return res.json({
-      success: true, questions: generated.questions, provider: generated.provider,
-      model: generated.model, gameType: resolvedGameType, classId, materialIds,
+      success: true,
+      questions: generated.questions,
+      provider: "gemini-direct",
+      model: GEMINI_GAME_MODEL,
+      gameType: resolvedGameType,
+      classId,
+      materialIds,
+      filesProcessed: geminiContents.length,
     });
   } catch (error) {
-    console.error("Generate quiz from materials error:", error);
-    return res.status(500).json({ error: error.message || "Failed to generate quiz from materials." });
+    console.error("Generate quiz from materials (direct) error:", error);
+    return res.status(500).json({
+      error: error.message || "Failed to generate quiz from materials."
+    });
   }
 });
+// New function to generate game with Gemini using direct file access
+async function generateGameWithGeminiDirect({ prompt, files, gameType, numberOfQuestions }) {
+  if (!geminiGameAI) throw new Error("GEMINI_API_KEY is missing.");
+  
+  const model = geminiGameAI.getGenerativeModel({
+    model: GEMINI_GAME_MODEL,
+    generationConfig: {
+      temperature: 0.3,
+      maxOutputTokens: 8192,
+      responseMimeType: "application/json",
+      responseSchema: getGeminiSchemaForGame(gameType)
+    }
+  });
+
+  // files is already an array of parts — either { inlineData: {...} } or { fileData: {...} }
+  const contents = [{ text: prompt }, ...files];
+
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      const result = await model.generateContent(contents);
+      const parsed = parseQuizMastersJsonResponse(result.response.text(), "Gemini");
+      const questions = normalizeGameQuestions(parsed, gameType, numberOfQuestions);
+      
+      if (questions.length >= 1) {
+        return { 
+          questions, 
+          provider: "gemini-direct", 
+          model: GEMINI_GAME_MODEL, 
+          fallbackUsed: false 
+        };
+      }
+    } catch (error) {
+      console.log(`Gemini direct attempt ${attempt} failed for ${gameType}:`, error.message);
+    }
+  }
+  
+  throw new Error("Gemini direct file processing failed after 3 attempts.");
+}
 
 // === NEW: Save quiz score for a class activity ===
 app.post("/game-ai/save-quiz-score", requireAuth, async (req, res) => {
@@ -6940,16 +7399,24 @@ commentsSnapshot.docs.forEach(doc => {
         // In your student-joined-classes route, replace the materials mapping:
 const materials = await Promise.all(materialsSnapshot.docs.map(async (doc) => {
   const material = doc.data() || {};
-
   let materialType = "document";
   const rawType = String(material.fileType || "").toLowerCase();
   
-  // Generate a fresh signed URL from storagePath if fileUrl is missing
-  let fileUrl = material.fileUrl || material.fileUri || null;
-  if (!fileUrl && material.storagePath) {
-    fileUrl = await createReadSignedUrlIfExists(material.storagePath);
+  // ALWAYS generate fresh signed URL from storagePath
+  let fileUrl = null;
+  if (material.storagePath) {
+    try {
+      fileUrl = await createReadSignedUrlIfExists(material.storagePath);
+    } catch (e) {
+      console.warn(`Failed to refresh material URL:`, e?.message);
+    }
   }
-
+  
+  // Fallback to stored fileUrl if refresh failed
+  if (!fileUrl) {
+    fileUrl = material.fileUrl || material.fileUri || null;
+  }
+  
   if (rawType.includes("pdf")) {
     materialType = "pdf";
   } else if (rawType.includes("video")) {
@@ -6957,7 +7424,7 @@ const materials = await Promise.all(materialsSnapshot.docs.map(async (doc) => {
   } else if (!fileUrl) {
     materialType = "link";
   }
-
+  
   return {
     id: doc.id,
     title: material.title || "Untitled Material",
@@ -6965,8 +7432,8 @@ const materials = await Promise.all(materialsSnapshot.docs.map(async (doc) => {
     uploadedDate: formatFirestoreDateTime(material.createdAt) || "Unknown date",
     content: material.content || "",
     fileName: material.fileName || null,
-    fileUrl,           // ← now has a real signed URL
-    fileUri: fileUrl,  // ← same
+    fileUrl,
+    fileUri: fileUrl,
     fileType: material.fileType || null,
     storagePath: material.storagePath || null,
     bucketPath: material.bucketPath || null,
@@ -7340,21 +7807,47 @@ app.post("/messenger-send-message", async (req, res) => {
   }
 });
 
-app.get("/class-materials/:classId", async (req, res) => {
-  try {
+// Update your /class-materials/:classId route
+app.get("/class-materials/:classId", requireAuth, async (req, res) => {
+   try {
     const { classId } = req.params;
-
     const snapshot = await db
       .collection("classMaterials")
       .where("classId", "==", classId)
       .orderBy("createdAt", "desc")
       .get();
-
-    const materials = snapshot.docs.map((doc) => ({
-      id: doc.id,
-      ...doc.data(),
-    }));
-
+    
+    const materials = await Promise.all(
+      snapshot.docs.map(async (doc) => {
+        const materialData = doc.data() || {};
+        let freshFileUrl = null;
+        let freshPdfUrl = null;
+        
+        if (materialData.storagePath) {
+          try {
+            freshFileUrl = await createReadSignedUrlIfExists(materialData.storagePath);
+          } catch (e) {
+            console.warn(`Failed to refresh URL for material ${doc.id}:`, e?.message);
+          }
+        }
+        
+        if (materialData.pdfStoragePath) {
+          try {
+            freshPdfUrl = await createReadSignedUrlIfExists(materialData.pdfStoragePath);
+          } catch (e) {
+            console.warn(`Failed to refresh PDF URL for material ${doc.id}:`, e?.message);
+          }
+        }
+        
+        return {
+          id: doc.id,
+          ...materialData,
+          fileUrl: freshFileUrl || materialData.fileUrl || null,
+          pdfUrl: freshPdfUrl || materialData.pdfUrl || null,
+        };
+      })
+    );
+    
     res.json(materials);
   } catch (error) {
     console.error("Fetch class materials error:", error);
@@ -7363,6 +7856,63 @@ app.get("/class-materials/:classId", async (req, res) => {
     });
   }
 });
+
+// Add this route to stream files directly
+app.get("/stream-file/:classId/:materialId", requireAuth, async (req, res) => {
+  try {
+    const { classId, materialId } = req.params;
+    
+    // Verify class access
+    await requireClassAccess({
+      authUid: req.user.uid,
+      classId,
+      allowedRoles: ["student", "teacher"],
+    });
+    
+    // Fetch material from Firestore
+    const materialSnap = await db.collection("classMaterials").doc(materialId).get();
+    
+    if (!materialSnap.exists) {
+      return res.status(404).json({ error: "Material not found." });
+    }
+    
+    const materialData = materialSnap.data();
+    const storagePath = materialData.storagePath;
+    
+    if (!storagePath) {
+      return res.status(400).json({ error: "No storage path found for this material." });
+    }
+    
+    // Verify storage path belongs to this class
+    if (!isStoragePathAllowedForClass(storagePath, classId)) {
+      return res.status(403).json({ error: "Invalid storage path." });
+    }
+    
+    const file = bucket.file(storagePath);
+    const [exists] = await file.exists();
+    
+    if (!exists) {
+      return res.status(404).json({ error: "File not found in storage." });
+    }
+    
+    // Get file metadata
+    const [metadata] = await file.getMetadata();
+    
+    // Set headers for streaming
+    res.setHeader('Content-Type', metadata.contentType || 'application/octet-stream');
+    res.setHeader('Content-Disposition', `inline; filename="${materialData.fileName || 'file'}"`);
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    
+    // Stream the file directly from Firebase Storage
+    const stream = file.createReadStream();
+    stream.pipe(res);
+    
+  } catch (error) {
+    console.error("Stream file error:", error);
+    res.status(500).json({ error: error.message || "Failed to stream file." });
+  }
+});
+
 app.post("/create-class-material", async (req, res) => {
   try {
     const {
@@ -7503,18 +8053,35 @@ app.delete("/delete-class-material/:id", async (req, res) => {
 app.get("/class-assignments/:classId", async (req, res) => {
   try {
     const { classId } = req.params;
-
     const snapshot = await db
       .collection("classAssignments")
       .where("classId", "==", classId)
       .orderBy("createdAt", "desc")
       .get();
-
-    const assignments = snapshot.docs.map((doc) => ({
-      id: doc.id,
-      ...doc.data(),
-    }));
-
+    
+    // Hydrate fresh signed URLs for all assignments
+    const assignments = await Promise.all(
+      snapshot.docs.map(async (doc) => {
+        const assignmentData = doc.data() || {};
+        let freshFileUrl = null;
+        
+        // Always refresh file URL if storagePath exists
+        if (assignmentData.storagePath) {
+          try {
+            freshFileUrl = await createReadSignedUrlIfExists(assignmentData.storagePath);
+          } catch (e) {
+            console.warn(`Failed to refresh URL for assignment ${doc.id}:`, e?.message);
+          }
+        }
+        
+        return {
+          id: doc.id,
+          ...assignmentData,
+          fileUrl: freshFileUrl || assignmentData.fileUrl || null,
+        };
+      })
+    );
+    
     res.json(assignments);
   } catch (error) {
     console.error("Fetch class assignments error:", error);
@@ -13783,6 +14350,466 @@ app.post("/messenger-conversation-avatar", requireAuth, async (req, res) => {
   }
 });
 
+// ─── MODULE AI TOOL HELPER ────────────────────────────────────────────────────
+async function callGeminiForModuleTool(prompt) {
+  if (!geminiGameAI) throw new Error("Gemini API key is missing.");
+  const model = geminiGameAI.getGenerativeModel({
+    model: GEMINI_GAME_MODEL,
+    generationConfig: {
+      temperature: 0.4,
+      maxOutputTokens: 4096,
+      responseMimeType: "application/json",
+    }
+  });
+  const result = await model.generateContent(prompt);
+  const text = result.response.text();
+  return parseQuizMastersJsonResponse(text, "Gemini");
+}
+
+// ─── MODULE FETCH & SAVE ──────────────────────────────────────────────────────
+app.get("/course-modules/:courseId", async (req, res) => {
+  try {
+    const { courseId } = req.params;
+    const snapshot = await db.collection("courseModules").where("courseId", "==", courseId).orderBy("moduleNumber", "asc").get();
+    const modules = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    res.json(modules);
+  } catch (error) {
+    res.status(500).json({ error: error.message || "Failed to fetch modules." });
+  }
+});
+
+app.post("/course-modules/save", requireAuth, async (req, res) => {
+  try {
+    const { moduleData } = req.body;
+    if (!moduleData?.courseId) return res.status(400).json({ error: "courseId is required." });
+    
+    const ref = moduleData.id ? db.collection("courseModules").doc(moduleData.id) : db.collection("courseModules").doc();
+    await ref.set({
+      ...moduleData,
+      updatedAt: FieldValue.serverTimestamp(),
+      createdAt: moduleData.id ? undefined : FieldValue.serverTimestamp()
+    }, { merge: true });
+    
+    res.json({ success: true, id: ref.id });
+  } catch (error) {
+    res.status(500).json({ error: error.message || "Failed to save module." });
+  }
+});
+
+// ─── 1. REGENERATE MODULE ─────────────────────────────────────────────────────
+app.post("/ai/module-tools/regenerate", requireAuth, async (req, res) => {
+  try {
+    const { moduleData } = req.body;
+    const prompt = `
+      You are an expert curriculum designer. Regenerate the following course module.
+      Current Module: ${JSON.stringify(moduleData)}
+      Return a JSON object with: title, description, learningOutcomes (array of strings), bloomsObjectives (array of {level, objectives}), summary, lessons (array of {id, title, description}).
+      Ensure the content is educational, follows Bloom's Taxonomy, and maintains chronological order.
+      Return ONLY valid JSON.
+    `;
+    const generated = await callGeminiForModuleTool(prompt);
+    res.json({ success: true, data: generated });
+  } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+// ─── 2. GENERATE MORE LESSONS ─────────────────────────────────────────────────
+app.post("/ai/module-tools/generate-lessons", requireAuth, async (req, res) => {
+  try {
+    const { moduleData, count = 3 } = req.body;
+    const existingLessons = (moduleData.lessons || []).map(l => l.title).join(", ");
+    const prompt = `
+      You are an expert curriculum designer. Generate ${count} NEW lessons for the module: "${moduleData.title}".
+      Existing lessons to avoid duplicating: ${existingLessons}.
+      Return a JSON object with: lessons (array of {id, title, description}).
+      Ensure lessons continue naturally from existing ones and match the module topic.
+      Return ONLY valid JSON.
+    `;
+    const generated = await callGeminiForModuleTool(prompt);
+    res.json({ success: true, data: generated });
+  } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+// ─── 3. IMPROVE LEARNING OUTCOMES ─────────────────────────────────────────────
+app.post("/ai/module-tools/improve-outcomes", requireAuth, async (req, res) => {
+  try {
+    const { moduleData } = req.body;
+    const prompt = `
+      You are an expert curriculum designer. Improve the learning outcomes for the module: "${moduleData.title}".
+      Current outcomes: ${JSON.stringify(moduleData.learningOutcomes || [])}.
+      Rewrite them using measurable action verbs (e.g., Explain, Create, Differentiate). Avoid vague statements like "Understand".
+      Return a JSON object with: learningOutcomes (array of strings).
+      Return ONLY valid JSON.
+    `;
+    const generated = await callGeminiForModuleTool(prompt);
+    res.json({ success: true, data: generated });
+  } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+// ─── 4. GENERATE BLOOM'S TAXONOMY OBJECTIVES ──────────────────────────────────
+app.post("/ai/module-tools/generate-blooms", requireAuth, async (req, res) => {
+  try {
+    const { moduleData } = req.body;
+    const prompt = `
+      You are an expert curriculum designer. Generate Bloom's Taxonomy objectives for the module: "${moduleData.title}".
+      Distribute objectives across cognitive levels: Remember, Understand, Apply, Analyze, Evaluate, Create.
+      Return a JSON object with: bloomsObjectives (array of {level: string, objectives: string[]}).
+      Return ONLY valid JSON.
+    `;
+    const generated = await callGeminiForModuleTool(prompt);
+    res.json({ success: true, data: generated });
+  } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+// ─── 5. GENERATE MODULE SUMMARY ───────────────────────────────────────────────
+app.post("/ai/module-tools/generate-summary", requireAuth, async (req, res) => {
+  try {
+    const { moduleData } = req.body;
+    const prompt = `
+      You are an expert curriculum designer. Generate a concise, student-friendly summary for the module: "${moduleData.title}".
+      The summary should introduce the module, explain its importance, highlight key concepts, and prepare students for upcoming lessons.
+      Maximum length: 300 words.
+      Return a JSON object with: summary (string).
+      Return ONLY valid JSON.
+    `;
+    const generated = await callGeminiForModuleTool(prompt);
+    res.json({ success: true, data: generated });
+  } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+// ─── COURSE SYLLABUS ROUTES ───────────────────────────────────────────────────
+const SYLLABUS_MAX_SIZE = 20 * 1024 * 1024; // 20MB
+
+// Fetch the current active syllabus for a class
+app.get("/course-syllabus/:classId", requireAuth, async (req, res) => {
+  try {
+    const { classId } = req.params;
+    const snapshot = await db.collection("courseSyllabi")
+      .where("classId", "==", classId)
+      .where("isCurrent", "==", true)
+      .limit(1)
+      .get();
+    
+    if (snapshot.empty) return res.json(null);
+    
+    const doc = snapshot.docs[0];
+    res.json({ id: doc.id, ...doc.data() });
+  } catch (error) {
+    res.status(500).json({ error: error.message || "Failed to fetch syllabus." });
+  }
+});
+
+// Generate a signed URL to view/download the syllabus
+app.get("/course-syllabus/view/:syllabusId", requireAuth, async (req, res) => {
+  try {
+    const { syllabusId } = req.params;
+    const doc = await db.collection("courseSyllabi").doc(syllabusId).get();
+    if (!doc.exists) return res.status(404).json({ error: "Syllabus not found." });
+    
+    const data = doc.data();
+    const url = await createReadSignedUrl(data.storagePath);
+    res.json({ url });
+  } catch (error) {
+    res.status(500).json({ error: error.message || "Failed to generate view URL." });
+  }
+});
+
+// Upload a new syllabus (Handles Versioning)
+// ─── UPDATE EXISTING: POST /course-syllabus/upload ───────────────────────────
+// Replace your existing /course-syllabus/upload route with this to ensure 
+// downloadUrl, bucketPath, and status are saved correctly.
+app.post("/course-syllabus/upload", requireAuth, async (req, res) => {
+  try {
+    const { classId, fileBase64, fileName, fileType, fileSize } = req.body;
+    if (!classId || !fileBase64 || !fileName) {
+      return res.status(400).json({ error: "Missing required fields." });
+    }
+    if (fileSize && fileSize > SYLLABUS_MAX_SIZE) {
+      return res.status(400).json({ error: "File exceeds maximum size of 20 MB." });
+    }
+    
+    const cleanedBase64 = fileBase64.includes(",") ? fileBase64.split(",")[1] : fileBase64;
+    const storagePath = `course-syllabi/${classId}/${Date.now()}-${sanitizeFileName(fileName)}`;
+    const file = bucket.file(storagePath);
+    
+    await file.save(Buffer.from(cleanedBase64, "base64"), {
+      metadata: { contentType: fileType || "application/octet-stream" },
+      resumable: false,
+    });
+
+    const signedUrl = await createReadSignedUrl(storagePath);
+
+    const prevSyllabi = await db.collection("courseSyllabi")
+      .where("classId", "==", classId).orderBy("version", "desc").limit(1).get();
+    let nextVersion = 1;
+    if (!prevSyllabi.empty) nextVersion = (prevSyllabi.docs[0].data().version || 0) + 1;
+
+    const batch = db.batch();
+    const currentDocs = await db.collection("courseSyllabi")
+      .where("classId", "==", classId).where("isCurrent", "==", true).get();
+    currentDocs.docs.forEach(doc => batch.update(doc.ref, { isCurrent: false }));
+
+    const newSyllabusRef = db.collection("courseSyllabi").doc();
+    const syllabusData = {
+      classId,
+      teacherId: req.user.uid,
+      fileName,
+      fileType: fileType || "application/octet-stream",
+      storagePath,
+      bucketPath: `gs://${bucket.name}/${storagePath}`,
+      downloadUrl: signedUrl,
+      fileSize: fileSize || 0,
+      uploadedAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+      status: "uploaded",
+      version: nextVersion,
+      isCurrent: true,
+    };
+    batch.set(newSyllabusRef, syllabusData);
+    await batch.commit();
+
+    res.json({ success: true, message: "Syllabus uploaded successfully.", syllabus: { id: newSyllabusRef.id, ...syllabusData } });
+  } catch (error) {
+    console.error("Syllabus upload error:", error);
+    res.status(500).json({ error: error.message || "Failed to upload syllabus." });
+  }
+});
+
+// ─── NEW: POST /course-syllabus/generate ─────────────────────────────────────
+app.post("/course-syllabus/generate", requireAuth, async (req, res) => {
+  try {
+    const { classId } = req.body;
+    if (!classId) return res.status(400).json({ error: "classId is required." });
+
+    const syllabusSnap = await db.collection("courseSyllabi")
+      .where("classId", "==", classId)
+      .where("isCurrent", "==", true)
+      .limit(1)
+      .get();
+
+    if (syllabusSnap.empty) return res.status(404).json({ error: "No syllabus found." });
+
+    const syllabusDoc = syllabusSnap.docs[0];
+    const syllabusData = syllabusDoc.data();
+    await syllabusDoc.ref.update({ status: "generating", updatedAt: FieldValue.serverTimestamp() });
+
+    // 1. Download original file from Firebase Storage
+    const file = bucket.file(syllabusData.storagePath);
+    const [buffer] = await file.download();
+    const mimeType = syllabusData.fileType || "application/octet-stream";
+    const fileName = syllabusData.fileName || "syllabus";
+
+    const prompt = `You are an expert curriculum designer. Analyze the attached course syllabus document and extract a structured course curriculum.
+Return ONLY valid JSON in this exact format:
+{
+  "courseInformation": { "title": "string", "description": "string", "code": "string" },
+  "learningOutcomes": ["string"],
+  "modules": [
+    {
+      "moduleNumber": 1,
+      "title": "string",
+      "description": "string",
+      "weeklySchedule": "string",
+      "lessons": [
+        {
+          "id": "unique-id",
+          "title": "string",
+          "description": "string",
+          "activities": ["string"],
+          "assessments": ["string"]
+        }
+      ]
+    }
+  ]
+}`;
+
+    const model = geminiGameAI.getGenerativeModel({
+      model: GEMINI_GAME_MODEL,
+      generationConfig: { responseMimeType: "application/json" }
+    });
+
+    let result;
+
+    // 2. Check if MIME type is supported by Gemini's inlineData (PDF, Images, Audio, Video, Text)
+    const isInlineSupported = /^(application\/pdf|audio\/|image\/|text\/plain|video\/)/.test(mimeType);
+
+    if (isInlineSupported) {
+      // For supported types like PDF, pass directly as inlineData (Fastest)
+      const fileBase64 = buffer.toString("base64");
+      result = await model.generateContent([
+        { text: prompt },
+        { inlineData: { mimeType: mimeType, data: fileBase64 } }
+      ]);
+    } else {
+      // For unsupported types like .docx/.pptx, use the Gemini File API
+      const fileManager = new GoogleAIFileManager(process.env.GEMINI_API_KEY);
+      
+      // Save buffer to a temporary local file
+      const tempDir = os.tmpdir();
+      const tempFileName = `syllabus-${Date.now()}-${sanitizeFileName(fileName)}`;
+      const tempFilePath = path.join(tempDir, tempFileName);
+      fs.writeFileSync(tempFilePath, buffer);
+
+      try {
+        // Upload the original file directly to Gemini's servers
+        const uploadResult = await fileManager.uploadFile(tempFilePath, {
+          mimeType: mimeType,
+          displayName: "Course Syllabus",
+        });
+
+        // Wait for Gemini to finish processing the uploaded file
+        let uploadedFile = uploadResult.file;
+        while (uploadedFile.state.name === "PROCESSING") {
+          await new Promise((resolve) => setTimeout(resolve, 500));
+          uploadedFile = await fileManager.getFile(uploadedFile.name);
+        }
+
+        if (uploadedFile.state.name === "FAILED") {
+          throw new Error("Gemini file processing failed.");
+        }
+
+        // Generate content using the uploaded file URI
+        result = await model.generateContent([
+          { text: prompt },
+          {
+            fileData: {
+              mimeType: uploadedFile.mimeType,
+              fileUri: uploadedFile.uri,
+            },
+          },
+        ]);
+
+        // Clean up the file from Gemini servers to save quota/storage
+        await fileManager.deleteFile(uploadedFile.name);
+      } finally {
+        // Clean up the local temporary file
+        if (fs.existsSync(tempFilePath)) {
+          fs.unlinkSync(tempFilePath);
+        }
+      }
+    }
+
+    // 3. Parse and save the generated structure
+    const generated = JSON.parse(result.response.text());
+    await syllabusDoc.ref.update({ status: "generated", updatedAt: FieldValue.serverTimestamp() });
+
+    res.json({ success: true, data: generated });
+  } catch (error) {
+    console.error("Generate course structure error:", error);
+    res.status(500).json({ error: error.message || "Failed to generate course structure." });
+  }
+});
+
+// ─── NEW: POST /course-syllabus/approve ──────────────────────────────────────
+// Saves the approved structure to Firestore using batch writes
+app.post("/course-syllabus/approve", requireAuth, async (req, res) => {
+  try {
+    const { classId, curriculum } = req.body;
+    if (!classId || !curriculum) return res.status(400).json({ error: "classId and curriculum are required." });
+
+    const batch = db.batch();
+
+    // 1. Save courseStructure
+    const structureRef = db.collection("courseStructures").doc();
+    batch.set(structureRef, {
+      classId,
+      courseInformation: curriculum.courseInformation,
+      learningOutcomes: curriculum.learningOutcomes,
+      createdAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp()
+    });
+
+    // 2. Save modules and lessons
+    for (const mod of curriculum.modules) {
+      const moduleRef = db.collection("courseModules").doc();
+      batch.set(moduleRef, {
+        classId,
+        structureId: structureRef.id,
+        moduleNumber: mod.moduleNumber,
+        title: mod.title,
+        description: mod.description,
+        weeklySchedule: mod.weeklySchedule,
+        createdAt: FieldValue.serverTimestamp()
+      });
+
+      for (const lesson of mod.lessons) {
+        const lessonRef = db.collection("courseLessons").doc();
+        batch.set(lessonRef, {
+          classId,
+          moduleId: moduleRef.id,
+          structureId: structureRef.id,
+          title: lesson.title,
+          description: lesson.description,
+          activities: lesson.activities || [],
+          assessments: lesson.assessments || [],
+          materialIds: lesson.materialIds || [], // Material association
+          createdAt: FieldValue.serverTimestamp()
+        });
+      }
+    }
+
+    // 3. Update syllabus status to approved
+    const syllabusSnap = await db.collection("courseSyllabi")
+      .where("classId", "==", classId).where("isCurrent", "==", true).limit(1).get();
+    
+    if (!syllabusSnap.empty) {
+      batch.update(syllabusSnap.docs[0].ref, { status: "approved", updatedAt: FieldValue.serverTimestamp() });
+    }
+
+    await batch.commit();
+    res.json({ success: true, message: "Course structure approved and saved." });
+  } catch (error) {
+    console.error("Approve course structure error:", error);
+    res.status(500).json({ error: error.message || "Failed to approve course structure." });
+  }
+});
+
+// ─── NEW: GET /student-course-structure/:classId ─────────────────────────────
+// For the Student View requirement
+app.get("/student-course-structure/:classId", requireAuth, async (req, res) => {
+  try {
+    const { classId } = req.params;
+    
+    const structureSnap = await db.collection("courseStructures").where("classId", "==", classId).limit(1).get();
+    if (structureSnap.empty) return res.json({ success: true, data: null });
+    
+    const structure = { id: structureSnap.docs[0].id, ...structureSnap.docs[0].data() };
+    
+    const modulesSnap = await db.collection("courseModules").where("classId", "==", classId).orderBy("moduleNumber", "asc").get();
+    const modules = await Promise.all(modulesSnap.docs.map(async (doc) => {
+      const mod = { id: doc.id, ...doc.data() };
+      const lessonsSnap = await db.collection("courseLessons").where("moduleId", "==", doc.id).get();
+      mod.lessons = lessonsSnap.docs.map(l => ({ id: l.id, ...l.data() }));
+      return mod;
+    }));
+
+    res.json({ success: true, data: { ...structure, modules } });
+  } catch (error) {
+    res.status(500).json({ error: error.message || "Failed to fetch course structure." });
+  }
+});
+
+// Delete a syllabus
+app.delete("/course-syllabus/:syllabusId", requireAuth, async (req, res) => {
+  try {
+    const { syllabusId } = req.params;
+    const doc = await db.collection("courseSyllabi").doc(syllabusId).get();
+    if (!doc.exists) return res.status(404).json({ error: "Syllabus not found." });
+    
+    const data = doc.data();
+    
+    // Delete from Firebase Storage
+    if (data.storagePath) {
+      await deleteStorageFileIfExists(data.storagePath);
+    }
+    
+    // Delete from Firestore
+    await doc.ref.delete();
+    
+    res.json({ success: true, message: "Syllabus deleted successfully." });
+  } catch (error) {
+    res.status(500).json({ error: error.message || "Failed to delete syllabus." });
+  }
+});
 
 const PORT = process.env.PORT || 5000;
 

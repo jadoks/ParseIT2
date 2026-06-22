@@ -21,7 +21,8 @@ import { QuizQuestion } from './games/quiz-masters';
 type GameScreen = 'menu' | 'quizmasters';
 
 interface Props {
-  onNavigate?: (screen: GameScreen, generatedQuiz?: QuizQuestion[] | null) => void;
+  // 🌟 UPDATED: Added gameType to the onNavigate callback
+  onNavigate?: (screen: GameScreen, generatedQuiz?: QuizQuestion[] | null, gameType?: string) => void;
   enrolledCourses?: Array<{
     id: string;
     name: string;
@@ -46,33 +47,31 @@ function getGameAiBaseUrl() {
 }
 
 const API_BASE_URL = getGameAiBaseUrl();
+const apiFetch = (url: string, options: any = {}) => fetch(url, { credentials: 'include', ...options });
 
-const apiFetch = (url: string, options: any = {}) =>
-  fetch(url, { credentials: 'include', ...options });
+// 🌟 FIXED: Game options now match exactly what the backend supports
+const gameOptions = [
+  { value: 'quiz_master', label: 'Multiple Choice', icon: 'list-outline' },
+  { value: 'memory_match', label: 'Matching Type', icon: 'swap-horizontal-outline' },
+  { value: 'flashcard', label: 'Flashcards', icon: 'albums-outline' },
+  { value: 'fill_in_blanks', label: 'Fill in the Blanks', icon: 'create-outline' },
+];
 
 const Game = ({ onNavigate, enrolledCourses = [], studentId, onSaveQuizScore }: Props) => {
   const { width } = useWindowDimensions();
-  const isSmallScreen = width < 768;
-
   const [uploadStage, setUploadStage] = useState<string>('');
-
   const [mode, setMode] = useState<GameScreen>('menu');
   const [generatedQuestions, setGeneratedQuestions] = useState<QuizQuestion[] | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
-
-  // 🌟 GLOBAL STATE: Number of questions (Applies to both File Upload & Materials)
   const [numberOfQuestions, setNumberOfQuestions] = useState('10');
-
-  // 🌟 VALIDATION: Check if count is within 1-100 range
+  const [gameType, setGameType] = useState<string>('');
+  
   const parsedCount = parseInt(numberOfQuestions, 10) || 0;
   const isInvalidCount = parsedCount > 100 || parsedCount < 1;
 
-  // Class & material selection state
   const [selectedClassId, setSelectedClassId] = useState<string>('');
   const [selectedMaterialIds, setSelectedMaterialIds] = useState<string[]>([]);
   const [availableMaterials, setAvailableMaterials] = useState<{ id: string; title: string }[]>([]);
-  
-  // Professional Dropdown State
   const [isClassDropdownOpen, setIsClassDropdownOpen] = useState(false);
 
   useEffect(() => {
@@ -98,14 +97,9 @@ const Game = ({ onNavigate, enrolledCourses = [], studentId, onSaveQuizScore }: 
   };
 
   const generateFromMaterials = async () => {
-    if (!selectedClassId || selectedMaterialIds.length === 0) {
-      Alert.alert('Selection required', 'Please select a class and at least one material.');
-      return;
-    }
-    if (!studentId) {
-      Alert.alert('Not logged in', 'Student ID missing.');
-      return;
-    }
+    if (!gameType) return Alert.alert('Selection required', 'Please select a game type first.');
+    if (!selectedClassId || selectedMaterialIds.length === 0) return Alert.alert('Selection required', 'Please select a class and at least one material.');
+    if (!studentId) return Alert.alert('Not logged in', 'Student ID missing.');
 
     setIsGenerating(true);
     try {
@@ -116,7 +110,8 @@ const Game = ({ onNavigate, enrolledCourses = [], studentId, onSaveQuizScore }: 
           classId: selectedClassId,
           materialIds: selectedMaterialIds,
           studentId,
-          numberOfQuestions: parsedCount, // 🌟 PASS VALIDATED COUNT
+          gameType: gameType, 
+          numberOfQuestions: parsedCount, 
         }),
       });
       const data = await response.json();
@@ -125,7 +120,8 @@ const Game = ({ onNavigate, enrolledCourses = [], studentId, onSaveQuizScore }: 
 
       setGeneratedQuestions(data.questions);
       setMode('quizmasters');
-      if (onNavigate) onNavigate('quizmasters', data.questions);
+      // 🌟 PASS gameType to the navigator
+      if (onNavigate) onNavigate('quizmasters', data.questions, gameType);
     } catch (error: any) {
       Alert.alert('Generation failed', error.message);
     } finally {
@@ -134,19 +130,13 @@ const Game = ({ onNavigate, enrolledCourses = [], studentId, onSaveQuizScore }: 
   };
 
   const handleFileUpload = async () => {
+    if (!gameType) return Alert.alert('Selection required', 'Please select a game type first.');
+    
     setUploadStage('Selecting file...');
     setIsGenerating(true);
     try {
       const result = await DocumentPicker.getDocumentAsync({
-        type: [
-          'application/pdf',
-          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-          'application/msword',
-          'text/plain',
-          'image/jpeg',
-          'image/png',
-          'image/webp',
-        ],
+        type: ['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/msword', 'text/plain', 'image/jpeg', 'image/png', 'image/webp'],
         copyToCacheDirectory: true,
       });
       
@@ -172,7 +162,6 @@ const Game = ({ onNavigate, enrolledCourses = [], studentId, onSaveQuizScore }: 
       }
 
       setUploadStage('Uploading...');
-      
       const uploadResponse = await apiFetch(`${API_BASE_URL}/game/upload`, {
         method: 'POST',
         credentials: "include",
@@ -180,11 +169,7 @@ const Game = ({ onNavigate, enrolledCourses = [], studentId, onSaveQuizScore }: 
       });
       
       const uploadData = await uploadResponse.json();
-      if (!uploadResponse.ok) {
-        console.error('Upload Error Response:', uploadData);
-        throw new Error(uploadData.error || 'Upload failed');
-      }
-      
+      if (!uploadResponse.ok) throw new Error(uploadData.error || 'Upload failed');
       const { uploadId } = uploadData;
 
       setUploadStage('Processing...');
@@ -192,10 +177,11 @@ const Game = ({ onNavigate, enrolledCourses = [], studentId, onSaveQuizScore }: 
         method: 'POST',
         credentials: "include",
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          uploadId, 
-          gameType: 'quiz_master', 
-          numberOfQuestions: parsedCount // 🌟 PASS VALIDATED COUNT
+        body: JSON.stringify({
+          uploadId,
+          studentId,
+          gameType: gameType, 
+          numberOfQuestions: parsedCount, 
         }),
       });
 
@@ -206,38 +192,15 @@ const Game = ({ onNavigate, enrolledCourses = [], studentId, onSaveQuizScore }: 
       setUploadStage('Complete');
       setGeneratedQuestions(processData.questions);
       setMode('quizmasters');
-      if (onNavigate) onNavigate('quizmasters', processData.questions);
+      // 🌟 PASS gameType to the navigator
+      if (onNavigate) onNavigate('quizmasters', processData.questions, gameType);
       
     } catch (error: any) {
-      console.error('Upload/Process Exception:', error);
       Alert.alert('Upload failed', error.message);
     } finally {
       setUploadStage('');
       setIsGenerating(false);
     }
-  };
-
-  const handleQuizComplete = async (score: number, total: number, answers: any[]) => {
-    if (selectedClassId && selectedMaterialIds.length > 0 && onSaveQuizScore) {
-      try {
-        await onSaveQuizScore({
-          classId: selectedClassId,
-          materialIds: selectedMaterialIds,
-          score,
-          totalQuestions: total,
-          answers,
-        });
-        Alert.alert(
-          'Score saved',
-          `You scored ${score}/${total} (${Math.round((score / total) * 100)}%) for this class activity.`
-        );
-      } catch (err) {
-        console.error('Save score error', err);
-        Alert.alert('Error', 'Could not save score.');
-      }
-    }
-    setMode('menu');
-    setGeneratedQuestions(null);
   };
 
   const selectedClassName = enrolledCourses.find(c => c.id === selectedClassId)?.name;
@@ -247,21 +210,23 @@ const Game = ({ onNavigate, enrolledCourses = [], studentId, onSaveQuizScore }: 
       <View style={styles.headerRow}>
         <View style={styles.titleWrap}>
           <Text style={styles.pageTitle}>Games</Text>
-          <Text style={styles.pageSubtitle}>
-            Upload a file or select class materials to generate a quiz.
-          </Text>
+          <Text style={styles.pageSubtitle}>Upload a file or select class materials to generate a quiz.</Text>
         </View>
         
-        {/* 🌟 UPDATED: Upload File Button disabled if isInvalidCount */}
         <Pressable
-          style={[styles.uploadButton, (isGenerating || isInvalidCount) && styles.uploadButtonDisabled]}
+          style={[styles.uploadButton, (isGenerating || isInvalidCount || !gameType) && styles.uploadButtonDisabled]}
           onPress={handleFileUpload}
-          disabled={isGenerating || isInvalidCount}
+          disabled={isGenerating || isInvalidCount || !gameType}
         >
           {isGenerating ? (
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
               <ActivityIndicator color="#FFF" size="small" />
               <Text style={styles.uploadButtonText}>{uploadStage || 'Uploading...'}</Text>
+            </View>
+          ) : !gameType ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Ionicons name="alert-circle-outline" size={18} color="#FFF" />
+              <Text style={styles.uploadButtonText}>Select Game Type</Text>
             </View>
           ) : (
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
@@ -272,7 +237,6 @@ const Game = ({ onNavigate, enrolledCourses = [], studentId, onSaveQuizScore }: 
         </Pressable>
       </View>
 
-      {/* 🌟 GLOBAL QUIZ SETTINGS CARD */}
       <View style={styles.settingsCard}>
         <View style={styles.settingsHeader}>
           <Ionicons name="settings-outline" size={22} color="#D32F2F" />
@@ -292,50 +256,48 @@ const Game = ({ onNavigate, enrolledCourses = [], studentId, onSaveQuizScore }: 
             onChangeText={(text) => setNumberOfQuestions(text.replace(/[^0-9]/g, ''))}
             keyboardType="numeric"
           />
-          {/* 🌟 Error Message UI */}
           {isInvalidCount && (
             <Text style={styles.errorText}>
               {parsedCount > 100 ? 'Maximum limit is 100 items.' : 'Please enter at least 1 item.'}
             </Text>
           )}
         </View>
+
+        <View style={{ marginTop: 20 }}>
+          <Text style={styles.inputLabel}>Game Type</Text>
+          <View style={styles.gameTypeGrid}>
+            {gameOptions.map((opt) => {
+              const isSelected = gameType === opt.value;
+              return (
+                <Pressable
+                  key={opt.value}
+                  style={[styles.gameTypeChip, isSelected && styles.gameTypeChipSelected]}
+                  onPress={() => setGameType(opt.value)}
+                >
+                  <Ionicons name={opt.icon} size={16} color={isSelected ? "#FFF" : "#D32F2F"} style={{ marginRight: 6 }} />
+                  <Text style={[styles.gameTypeText, isSelected && styles.gameTypeTextSelected]}>{opt.label}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+          {!gameType && <Text style={[styles.errorText, { marginTop: 8 }]}>Please select a game type to continue.</Text>}
+        </View>
       </View>
 
-      {/* Class + Materials selector */}
       <View style={styles.selectorCard}>
         <Text style={styles.selectorTitle}>Choose class & materials</Text>
-
-        {/* PROFESSIONAL CUSTOM DROPDOWN */}
         <View style={{ marginBottom: 20 }}>
           <Text style={styles.inputLabel}>Select Class</Text>
-          <TouchableOpacity 
-            style={styles.dropdownTrigger} 
-            onPress={() => setIsClassDropdownOpen(true)}
-            activeOpacity={0.7}
-          >
+          <TouchableOpacity style={styles.dropdownTrigger} onPress={() => setIsClassDropdownOpen(true)} activeOpacity={0.7}>
             <Text style={[styles.dropdownTriggerText, !selectedClassName && styles.placeholderText]}>
               {selectedClassName || '-- Select a class --'}
             </Text>
-            <Ionicons 
-              name={isClassDropdownOpen ? "chevron-up" : "chevron-down"} 
-              size={20} 
-              color="#D32F2F" 
-            />
+            <Ionicons name={isClassDropdownOpen ? "chevron-up" : "chevron-down"} size={20} color="#D32F2F" />
           </TouchableOpacity>
         </View>
 
-        {/* Dropdown Modal */}
-        <Modal
-          visible={isClassDropdownOpen}
-          transparent
-          animationType="fade"
-          onRequestClose={() => setIsClassDropdownOpen(false)}
-        >
-          <TouchableOpacity 
-            style={styles.modalOverlay} 
-            activeOpacity={1} 
-            onPress={() => setIsClassDropdownOpen(false)}
-          >
+        <Modal visible={isClassDropdownOpen} transparent animationType="fade" onRequestClose={() => setIsClassDropdownOpen(false)}>
+          <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setIsClassDropdownOpen(false)}>
             <View style={styles.modalContent}>
               <View style={styles.modalHeader}>
                 <Text style={styles.modalTitle}>Select a Class</Text>
@@ -343,25 +305,16 @@ const Game = ({ onNavigate, enrolledCourses = [], studentId, onSaveQuizScore }: 
                   <Ionicons name="close-circle" size={28} color="#999" />
                 </TouchableOpacity>
               </View>
-              
               <ScrollView style={styles.modalList} showsVerticalScrollIndicator={false}>
                 {enrolledCourses.length === 0 ? (
-                  <View style={styles.emptyState}>
-                    <Text style={styles.emptyText}>No enrolled classes found.</Text>
-                  </View>
+                  <View style={styles.emptyState}><Text style={styles.emptyText}>No enrolled classes found.</Text></View>
                 ) : (
                   enrolledCourses.map(course => {
                     const isSelected = selectedClassId === course.id;
                     return (
-                      <TouchableOpacity
-                        key={course.id}
-                        style={[styles.dropdownItem, isSelected && styles.dropdownItemSelected]}
-                        onPress={() => handleClassSelect(course.id)}
-                      >
+                      <TouchableOpacity key={course.id} style={[styles.dropdownItem, isSelected && styles.dropdownItemSelected]} onPress={() => handleClassSelect(course.id)}>
                         <View style={{ flex: 1 }}>
-                          <Text style={[styles.dropdownItemText, isSelected && styles.dropdownItemTextSelected]}>
-                            {course.name}
-                          </Text>
+                          <Text style={[styles.dropdownItemText, isSelected && styles.dropdownItemTextSelected]}>{course.name}</Text>
                           <Text style={styles.dropdownItemSub}>{course.materials.length} materials available</Text>
                         </View>
                         {isSelected && <Ionicons name="checkmark-circle" size={22} color="#D32F2F" />}
@@ -387,20 +340,9 @@ const Game = ({ onNavigate, enrolledCourses = [], studentId, onSaveQuizScore }: 
                 {availableMaterials.map(mat => {
                   const isSelected = selectedMaterialIds.includes(mat.id);
                   return (
-                    <Pressable
-                      key={mat.id}
-                      style={[styles.materialChip, isSelected && styles.materialChipSelected]}
-                      onPress={() => toggleMaterial(mat.id)}
-                    >
-                      <Ionicons 
-                        name={isSelected ? "document-text" : "document-text-outline"} 
-                        size={16} 
-                        color={isSelected ? "#FFF" : "#D32F2F"} 
-                        style={{ marginRight: 6 }}
-                      />
-                      <Text style={[styles.materialTitle, isSelected && styles.materialTitleSelected]}>
-                        {mat.title}
-                      </Text>
+                    <Pressable key={mat.id} style={[styles.materialChip, isSelected && styles.materialChipSelected]} onPress={() => toggleMaterial(mat.id)}>
+                      <Ionicons name={isSelected ? "document-text" : "document-text-outline"} size={16} color={isSelected ? "#FFF" : "#D32F2F"} style={{ marginRight: 6 }} />
+                      <Text style={[styles.materialTitle, isSelected && styles.materialTitleSelected]}>{mat.title}</Text>
                     </Pressable>
                   );
                 })}
@@ -409,22 +351,22 @@ const Game = ({ onNavigate, enrolledCourses = [], studentId, onSaveQuizScore }: 
           </View>
         )}
 
-        {/* 🌟 UPDATED: Generate Quiz Button disabled if isInvalidCount */}
         <Pressable
-          style={[
-            styles.generateButton,
-            (!selectedClassId || selectedMaterialIds.length === 0 || isGenerating || isInvalidCount) &&
-              styles.generateButtonDisabled,
-          ]}
+          style={[styles.generateButton, (!selectedClassId || selectedMaterialIds.length === 0 || isGenerating || isInvalidCount || !gameType) && styles.generateButtonDisabled]}
           onPress={generateFromMaterials}
-          disabled={!selectedClassId || selectedMaterialIds.length === 0 || isGenerating || isInvalidCount}
+          disabled={!selectedClassId || selectedMaterialIds.length === 0 || isGenerating || isInvalidCount || !gameType}
         >
           {isGenerating ? (
             <ActivityIndicator color="#FFF" size="small" />
+          ) : !gameType ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <Ionicons name="alert-circle-outline" size={20} color="#FFF" />
+              <Text style={styles.generateButtonText}>Select a Game Type</Text>
+            </View>
           ) : (
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
               <Ionicons name="sparkles-outline" size={20} color="#FFF" />
-              <Text style={styles.generateButtonText}>Generate Quiz</Text>
+              <Text style={styles.generateButtonText}>Generate {gameOptions.find((g) => g.value === gameType)?.label || 'Quiz'}</Text>
             </View>
           )}
         </Pressable>
@@ -432,6 +374,7 @@ const Game = ({ onNavigate, enrolledCourses = [], studentId, onSaveQuizScore }: 
     </ScrollView>
   );
 };
+
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#FAFAFA' },
@@ -537,17 +480,44 @@ const styles = StyleSheet.create({
     color: '#111',
     minHeight: 56,
   },
-  // 🌟 NEW: Error state style for Input
   questionsInputError: {
     borderColor: '#F44336',
     backgroundColor: '#FFF5F5',
   },
-  // 🌟 NEW: Error message text style
   errorText: {
     color: '#F44336',
     fontSize: 12,
     fontWeight: '600',
     marginTop: 6,
+  },
+
+  // 🌟 Game Type Grid Styles
+  gameTypeGrid: { 
+    flexDirection: 'row', 
+    flexWrap: 'wrap', 
+    gap: 10 
+  },
+  gameTypeChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFF',
+    borderWidth: 1.5,
+    borderColor: '#EAEAEA',
+    borderRadius: 100,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+  },
+  gameTypeChipSelected: { 
+    backgroundColor: '#D32F2F', 
+    borderColor: '#D32F2F' 
+  },
+  gameTypeText: { 
+    fontSize: 13, 
+    fontWeight: '700', 
+    color: '#444' 
+  },
+  gameTypeTextSelected: { 
+    color: '#FFF' 
   },
 
   modalOverlay: {

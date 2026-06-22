@@ -238,23 +238,22 @@ function getGoogleDocsViewerUrl(fileUrl: string) {
   return `https://docs.google.com/gview?embedded=true&url=${encodeURIComponent(fileUrl)}`;
 }
 
-function getMicrosoftOfficeViewerUrl(fileUrl: string) {
-  return `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(fileUrl)}`;
-}
-
+// ✅ UPDATED: Use Google Docs viewer for ALL file types (more reliable than Microsoft Office Online)
 function getViewerUrl(
   fileUrl: string,
   fileName?: string | null,
   fileType?: string | null,
   pdfUrl?: string | null
 ): string {
-  if (isPresentationFile(fileName, fileType)) {
-    if (pdfUrl) return pdfUrl;
-    return getMicrosoftOfficeViewerUrl(fileUrl);
+  // ✅ FIX: Use Google Docs Viewer for ALL file types including PowerPoint.
+  // Microsoft Office Viewer fails with Firebase Storage signed URLs due to CORS/WOPI restrictions.
+  
+  // If it's a presentation and we have a converted PDF version, use that (best experience)
+  if (isPresentationFile(fileName, fileType) && pdfUrl) {
+    return getGoogleDocsViewerUrl(pdfUrl);
   }
-  if (fileType === "application/pdf") {
-    return getGoogleDocsViewerUrl(fileUrl);
-  }
+  
+  // For everything else (PowerPoint without PDF, PDF, Word, Excel, etc.)
   return getGoogleDocsViewerUrl(fileUrl);
 }
 
@@ -401,7 +400,7 @@ export interface CourseDetailData {
 interface CourseDetailProps {
   course?: AssignmentCourse | null;
   onBack?: () => void;
-  initialTab?: "materials" | "assignments";
+  initialTab?: "materials" | "assignments" | "modules"; // 👈 UPDATED
   autoOpenAssignmentId?: string | null;
   onConsumedAutoOpenAssignment?: () => void;
   onGenerateActivity?: (assignment: AssignmentItem) => void;
@@ -469,7 +468,7 @@ const CourseDetail = ({
 
   const safeCourse = course ?? EMPTY_COURSE;
 
-  const [activeTab, setActiveTab] = useState<"materials" | "assignments">(initialTab);
+  const [activeTab, setActiveTab] = useState<"materials" | "assignments" | "modules">(initialTab); // 👈 UPDATED
   const [selectedAssignment, setSelectedAssignment] = useState<AssignmentItem | null>(null);
   const [selectedMaterial, setSelectedMaterial] = useState<
     AssignmentCourse["materials"][number] | null
@@ -497,12 +496,42 @@ const CourseDetail = ({
   const [gameAttempts, setGameAttempts] = useState<Record<string, number>>({});
   const [isLoadingAttempts, setIsLoadingAttempts] = useState<Record<string, boolean>>({});
 
+  // 👇 NEW: Modules state
+  const [modules, setModules] = useState<any[]>([]);
+  const [isLoadingModules, setIsLoadingModules] = useState(false);
+
   const insets = useSafeAreaInsets();
   const autoHandledRef = useRef<string | null>(null);
 
   useEffect(() => {
     setActiveTab(initialTab);
   }, [initialTab]);
+
+  // 👇 NEW: Fetch Modules
+  useEffect(() => {
+    if (!course?.id) {
+      setModules([]);
+      return;
+    }
+    const fetchModules = async () => {
+      setIsLoadingModules(true);
+      try {
+        const response = await apiFetch(`${API_BASE_URL}/course-modules/${course.id}`);
+        const data = await response.json();
+        if (response.ok && Array.isArray(data)) {
+          setModules(data);
+        } else {
+          setModules([]);
+        }
+      } catch (error) {
+        console.error("Error fetching modules:", error);
+        setModules([]);
+      } finally {
+        setIsLoadingModules(false);
+      }
+    };
+    fetchModules();
+  }, [course?.id]);
 
   const getScorePercent = (assignment: AssignmentItem) => {
     if (
@@ -1406,6 +1435,23 @@ const CourseDetail = ({
             </Text>
           </View>
         </TouchableOpacity>
+
+        {/* 👇 NEW MODULES TAB */}
+        <TouchableOpacity
+          onPress={() => setActiveTab("modules")}
+          style={[styles.tab, activeTab === "modules" && styles.tabActive]}
+        >
+          <View style={styles.tabContent}>
+            <Ionicons
+              name="layers-outline"
+              size={16}
+              color={activeTab === "modules" ? "#D32F2F" : "#999"}
+            />
+            <Text style={[styles.tabText, activeTab === "modules" && styles.tabTextActive]}>
+              Modules ({modules.length})
+            </Text>
+          </View>
+        </TouchableOpacity>
       </View>
 
       {/* ── Content ── */}
@@ -1427,17 +1473,79 @@ const CourseDetail = ({
           ) : (
             <Text style={styles.emptyText}>No materials available yet</Text>
           )
-        ) : safeCourse.assignments.length > 0 ? (
-          <FlatList
-            data={safeCourse.assignments as any[]}
-            renderItem={renderAssignmentItem}
-            keyExtractor={(item) => item.id}
-            scrollEnabled={false}
-            ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
-          />
-        ) : (
-          <Text style={styles.emptyText}>No assignments yet</Text>
-        )}
+        ) : activeTab === "assignments" ? (
+          safeCourse.assignments.length > 0 ? (
+            <FlatList
+              data={safeCourse.assignments as any[]}
+              renderItem={renderAssignmentItem}
+              keyExtractor={(item) => item.id}
+              scrollEnabled={false}
+              ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
+            />
+          ) : (
+            <Text style={styles.emptyText}>No assignments yet</Text>
+          )
+        ) : activeTab === "modules" ? (
+          isLoadingModules ? (
+            <View style={{ padding: 40, alignItems: 'center' }}>
+              <ActivityIndicator size="large" color="#D32F2F" />
+              <Text style={{ marginTop: 12, color: '#666', fontSize: 14 }}>Loading modules...</Text>
+            </View>
+          ) : modules.length > 0 ? (
+            <View>
+              {modules.map((mod) => (
+                <View key={mod.id} style={styles.moduleCard}>
+                  <Text style={styles.moduleTitle}>Module {mod.moduleNumber}: {mod.title}</Text>
+                  <Text style={styles.moduleDescription}>{mod.description}</Text>
+                  
+                  {mod.summary ? (
+                    <View style={styles.moduleSection}>
+                      <Text style={styles.moduleSectionTitle}>📝 Summary</Text>
+                      <Text style={styles.moduleSectionText}>{mod.summary}</Text>
+                    </View>
+                  ) : null}
+
+                  {mod.learningOutcomes?.length > 0 ? (
+                    <View style={styles.moduleSection}>
+                      <Text style={styles.moduleSectionTitle}>✨ Learning Outcomes</Text>
+                      {mod.learningOutcomes.map((outcome: string, i: number) => (
+                        <Text key={i} style={styles.moduleBulletText}>• {outcome}</Text>
+                      ))}
+                    </View>
+                  ) : null}
+
+                  {mod.bloomsObjectives?.length > 0 ? (
+                    <View style={styles.moduleSection}>
+                      <Text style={styles.moduleSectionTitle}>🎯 Bloom's Taxonomy Objectives</Text>
+                      {mod.bloomsObjectives.map((obj: any, i: number) => (
+                        <View key={i} style={{ marginBottom: 8 }}>
+                          <Text style={styles.moduleSubTitle}>{obj.level}</Text>
+                          {obj.objectives?.map((o: string, j: number) => (
+                            <Text key={j} style={styles.moduleBulletText}>• {o}</Text>
+                          ))}
+                        </View>
+                      ))}
+                    </View>
+                  ) : null}
+
+                  {mod.lessons?.length > 0 ? (
+                    <View style={styles.moduleSection}>
+                      <Text style={styles.moduleSectionTitle}>📚 Lessons</Text>
+                      {mod.lessons.map((lesson: any, i: number) => (
+                        <View key={lesson.id || i} style={styles.lessonItem}>
+                          <Text style={styles.lessonTitle}>Lesson {i + 1}: {lesson.title}</Text>
+                          <Text style={styles.lessonDescription}>{lesson.description}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  ) : null}
+                </View>
+              ))}
+            </View>
+          ) : (
+            <Text style={styles.emptyText}>No modules available yet.</Text>
+          )
+        ) : null}
 
         {/* ══════════════════════════════════════════════════════════════════
             FULLSCREEN INLINE MATERIAL VIEWER MODAL
@@ -2939,7 +3047,7 @@ const styles = StyleSheet.create({
     color: '#D32F2F',
   },
 
-  // 👇 NEW STYLES FOR DELETE CONFIRMATION MODAL
+  // 👇 DELETE CONFIRMATION MODAL
   deleteModalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.5)',
@@ -3012,5 +3120,82 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
     color: '#FFF',
+  },
+
+  // ── Modules ──
+  moduleCard: {
+    backgroundColor: '#FFF',
+    borderRadius: 14,
+    padding: 16,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#E6E6E6',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  moduleTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#111',
+    marginBottom: 8,
+  },
+  moduleDescription: {
+    fontSize: 13,
+    color: '#555',
+    lineHeight: 20,
+    marginBottom: 12,
+  },
+  moduleSection: {
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#F0F0F0',
+  },
+  moduleSectionTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#D32F2F',
+    marginBottom: 8,
+  },
+  moduleSectionText: {
+    fontSize: 13,
+    color: '#444',
+    lineHeight: 20,
+  },
+  moduleBulletText: {
+    fontSize: 13,
+    color: '#444',
+    lineHeight: 20,
+    marginBottom: 4,
+    paddingLeft: 8,
+  },
+  moduleSubTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#333',
+    marginBottom: 4,
+    marginTop: 4,
+  },
+  lessonItem: {
+    backgroundColor: '#FFF5F5',
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: '#F0B9B9',
+  },
+  lessonTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#D32F2F',
+    marginBottom: 4,
+  },
+  lessonDescription: {
+    fontSize: 12,
+    color: '#555',
+    lineHeight: 18,
   },
 });

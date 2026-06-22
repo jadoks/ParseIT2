@@ -11,7 +11,6 @@ import {
   Modal,
   Platform,
   Pressable,
-
   ScrollView,
   StyleSheet,
   Text,
@@ -151,8 +150,8 @@ function getApiBaseUrl() {
 
 const API_BASE_URL = getApiBaseUrl();
 const WEEKDAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-
 const pad = (value: number) => String(value).padStart(2, '0');
+
 const formatDateTime = (value?: any) => {
   if (!value) return '';
   if (typeof value === 'string') return value;
@@ -160,18 +159,22 @@ const formatDateTime = (value?: any) => {
   if (value?.seconds) return new Date(value.seconds * 1000).toLocaleString();
   return '';
 };
+
 const formatDateOnly = (value?: Date | null) => {
   if (!value) return '';
   return `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(value.getDate())}`;
 };
+
 const formatTimeOnly = (value?: Date | null) => {
   if (!value) return '';
   return `${pad(value.getHours())}:${pad(value.getMinutes())}`;
 };
+
 const formatDueDateTime = (value?: Date | null) => {
   if (!value) return '';
   return `${formatDateOnly(value)} ${formatTimeOnly(value)}`;
 };
+
 const parseDueDateTime = (value?: string) => {
   if (!value?.trim()) return new Date();
   const normalized = value.trim().replace(' ', 'T');
@@ -188,6 +191,7 @@ const parseDueDateTime = (value?: string) => {
     );
   return new Date();
 };
+
 const isSameDate = (a?: Date | null, b?: Date | null) => {
   if (!a || !b) return false;
   return (
@@ -196,10 +200,12 @@ const isSameDate = (a?: Date | null, b?: Date | null) => {
     a.getDate() === b.getDate()
   );
 };
+
 const startOfToday = () => {
   const now = new Date();
   return new Date(now.getFullYear(), now.getMonth(), now.getDate());
 };
+
 const isPastDay = (date: Date) => date.getTime() < startOfToday().getTime();
 
 const getCalendarDays = (visibleMonth: Date) => {
@@ -225,16 +231,15 @@ const getCalendarDays = (visibleMonth: Date) => {
   }
   return days;
 };
+
 const monthLabel = (value: Date) =>
   value.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
 
 const mapMaterial = (item: any): Material => {
   const fileName = item.fileName || undefined;
-  // Infer fileType from fileName when the backend doesn't send it
   const fileType =
     item.fileType ||
     (fileName ? getMimeFromFileName(fileName) : undefined);
-
   return {
     id: item.id,
     title: item.title || '',
@@ -243,7 +248,7 @@ const mapMaterial = (item: any): Material => {
     content: item.content || '',
     fileName,
     fileUri: item.fileUrl || item.fileUri || undefined,
-    fileType,                          // ← now always set when fileName exists
+    fileType,
     storagePath: item.storagePath || null,
     bucketPath: item.bucketPath || null,
     pdfUrl: item.pdfUrl || null,
@@ -303,7 +308,7 @@ const mapSubmission = (item: any): Submission => ({
   feedback: item.feedback || '',
 });
 
-// ─── Viewer URL helpers (mirrors CourseDetail.tsx) ────────────────────────────
+// ── Viewer URL helpers (UPDATED) ───────────────────────────────────────────
 function getMimeFromFileName(fileName: string): string {
   const ext = fileName.split('.').pop()?.toLowerCase() || '';
   const map: Record<string, string> = {
@@ -334,17 +339,12 @@ function isPresentationFile(fileName?: string | null, fileType?: string | null):
     ext === 'ppt' ||
     ext === 'pptx' ||
     mime === 'application/vnd.ms-powerpoint' ||
-    mime ===
-      'application/vnd.openxmlformats-officedocument.presentationml.presentation'
+    mime === 'application/vnd.openxmlformats-officedocument.presentationml.presentation'
   );
 }
 
 function getGoogleDocsViewerUrl(fileUrl: string) {
   return `https://docs.google.com/gview?embedded=true&url=${encodeURIComponent(fileUrl)}`;
-}
-
-function getMicrosoftOfficeViewerUrl(fileUrl: string) {
-  return `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(fileUrl)}`;
 }
 
 function getViewerUrl(
@@ -353,20 +353,15 @@ function getViewerUrl(
   fileType?: string | null,
   pdfUrl?: string | null
 ): string {
-  // 1. Presentations (PPT/PPTX)
-  if (isPresentationFile(fileName, fileType)) {
-    // Prefer the server-generated PDF preview — lighter and renders faster on mobile
-    if (pdfUrl) return pdfUrl;
-    // Fallback: Microsoft Office viewer for native PPT rendering
-    return getMicrosoftOfficeViewerUrl(fileUrl);
+  // ✅ FIX: Use Google Docs Viewer for ALL file types including PowerPoint.
+  // Microsoft Office Viewer fails with Firebase Storage signed URLs.
+  
+  // If it's a presentation and we have a converted PDF version, use that (best experience)
+  if (isPresentationFile(fileName, fileType) && pdfUrl) {
+    return getGoogleDocsViewerUrl(pdfUrl);
   }
-
-  // 2. PDFs — wrap in Google Docs viewer for consistent mobile rendering
-  if (fileType === 'application/pdf') {
-    return getGoogleDocsViewerUrl(fileUrl);
-  }
-
-  // 3. Everything else (DOCX, XLSX, etc.) — Google Docs viewer
+  
+  // For everything else (PowerPoint without PDF, PDF, Word, Excel, etc.)
   return getGoogleDocsViewerUrl(fileUrl);
 }
 
@@ -477,7 +472,7 @@ const TeacherCourseDetail2 = ({
   );
 
   // ── Tab / display state
-  const [activeTab, setActiveTab] = useState<'Materials' | 'Assignments'>('Materials');
+  const [activeTab, setActiveTab] = useState<'Materials' | 'Assignments' | 'Modules'>('Materials');
   const [showSubmissions, setShowSubmissions] = useState(false);
 
   // ── Data
@@ -486,11 +481,24 @@ const TeacherCourseDetail2 = ({
   const [members, setMembers] = useState<Member[]>([]);
   const [submissions, setSubmissions] = useState<Submission[]>([]);
 
-  // ── Material viewer state (new)
+  // ── Module AI Tools State
+  const [modules, setModules] = useState<any[]>([]);
+  const [selectedModule, setSelectedModule] = useState<any>(null);
+  const [aiPreviewData, setAiPreviewData] = useState<any>(null);
+  const [aiPreviewType, setAiPreviewType] = useState<string>('');
+  const [isAiLoading, setIsAiLoading] = useState(false);
+  const [aiLoadingType, setAiLoadingType] = useState<string>('');
+
+  // ── Syllabus Upload State
+  const [currentSyllabus, setCurrentSyllabus] = useState<any>(null);
+  const [isUploadingSyllabus, setIsUploadingSyllabus] = useState(false);
+  const [syllabusViewerUrl, setSyllabusViewerUrl] = useState<string | null>(null);
+
+  // ── Material viewer state
   const [viewerMaterial, setViewerMaterial] = useState<Material | null>(null);
   const [isDownloading, setIsDownloading] = useState(false);
 
-  // ── Edit material state (new)
+  // ── Edit material state
   const [showEditMaterialModal, setShowEditMaterialModal] = useState(false);
   const [editingMaterial, setEditingMaterial] = useState<Material | null>(null);
   const [editMatTitle, setEditMatTitle] = useState('');
@@ -499,6 +507,14 @@ const TeacherCourseDetail2 = ({
   const [editMatPickedFile, setEditMatPickedFile] = useState<PickedUploadFile>(null);
   const [isSavingMaterial, setIsSavingMaterial] = useState(false);
   const [isDeletingMaterial, setIsDeletingMaterial] = useState(false);
+  
+  // ── Delete Confirmation Modal State
+  const [showDeleteConfirmModal, setShowDeleteConfirmModal] = useState(false);
+
+  // ── Course Structure Generation State (NEW)
+  const [generatedStructure, setGeneratedStructure] = useState<any>(null);
+  const [showStructurePreviewModal, setShowStructurePreviewModal] = useState(false);
+  const [isGeneratingStructure, setIsGeneratingStructure] = useState(false);
 
   // ── Create / update assignment state
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -507,7 +523,6 @@ const TeacherCourseDetail2 = ({
   const [selectedMaterialPreview, setSelectedMaterialPreview] = useState<Material | null>(null);
   const [showDateTimeModal, setShowDateTimeModal] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-
   const [formTitle, setFormTitle] = useState('');
   const [formDesc, setFormDesc] = useState('');
   const [formPoints, setFormPoints] = useState('');
@@ -527,7 +542,6 @@ const TeacherCourseDetail2 = ({
   const [resultModalMessage, setResultModalMessage] = useState('');
   const [errors, setErrors] = useState<FormErrors>({});
   const [isSaving, setIsSaving] = useState(false);
-
   const [assignmentType, setAssignmentType] = useState<'regular' | 'game_based'>('regular');
   const [gameType, setGameType] = useState<
     'quiz_master' | 'memory_match' | 'fill_in_blanks' | 'flashcard' | 'boss_battle' | ''
@@ -550,6 +564,8 @@ const TeacherCourseDetail2 = ({
     { value: 'flashcard', label: 'Flashcard Challenge', desc: 'Review flashcards & answer questions' },
   ];
 
+  
+
   const showResultModal = (type: 'success' | 'error', title: string, message: string) => {
     setResultModalType(type);
     setResultModalTitle(title);
@@ -563,21 +579,29 @@ const TeacherCourseDetail2 = ({
       setMaterials([]);
       setMembers([]);
       setSubmissions([]);
+      setModules([]);
+      setCurrentSyllabus(null);
       return;
     }
     try {
-      const [materialsRes, assignmentsRes, membersRes, submissionsRes] = await Promise.all([
+      const [modulesRes, syllabusRes, materialsRes, assignmentsRes, membersRes, submissionsRes] = await Promise.all([
+        fetch(`${API_BASE_URL}/course-modules/${course.id}`, { credentials: 'include' }),
+        fetch(`${API_BASE_URL}/course-syllabus/${course.id}`, { credentials: 'include' }),
         fetch(`${API_BASE_URL}/class-materials/${course.id}`, { credentials: 'include' }),
         fetch(`${API_BASE_URL}/class-assignments/${course.id}`, { credentials: 'include' }),
         fetch(`${API_BASE_URL}/class-members/${course.id}`, { credentials: 'include' }),
         fetch(`${API_BASE_URL}/class-submissions/${course.id}`, { credentials: 'include' }),
       ]);
-      const [materialsData, assignmentsData, membersData, submissionsData] = await Promise.all([
+      const [modulesData, syllabusData, materialsData, assignmentsData, membersData, submissionsData] = await Promise.all([
+        modulesRes.json(),
+        syllabusRes.json(),
         materialsRes.json(),
         assignmentsRes.json(),
         membersRes.json(),
         submissionsRes.json(),
       ]);
+      setModules(modulesRes.ok && Array.isArray(modulesData) ? modulesData : []);
+      setCurrentSyllabus(syllabusRes.ok ? syllabusData : null);
       setMaterials(
         materialsRes.ok && Array.isArray(materialsData) ? materialsData.map(mapMaterial) : []
       );
@@ -602,12 +626,255 @@ const TeacherCourseDetail2 = ({
       setMaterials([]);
       setMembers([]);
       setSubmissions([]);
+      setModules([]);
+      setCurrentSyllabus(null);
     }
   };
 
   useEffect(() => {
     loadCourseContent();
   }, [course?.id]);
+
+  // ─── Module AI Tool Handlers ──────────────────────────────────────────────
+  const handleAiTool = async (tool: string, module: any, extraParams?: any) => {
+    setIsAiLoading(true);
+    setAiLoadingType(tool);
+    try {
+      const response = await fetch(`${API_BASE_URL}/ai/module-tools/${tool}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ courseId: course?.id, moduleData: module, ...extraParams })
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'AI generation failed');
+      setAiPreviewData(data.data);
+      setAiPreviewType(tool);
+      setSelectedModule(module);
+    } catch (error: any) {
+      showResultModal('error', 'AI Error', error?.message || 'Failed to generate AI content.');
+    } finally {
+      setIsAiLoading(false);
+      setAiLoadingType('');
+    }
+  };
+
+  const handleSaveAiPreview = async () => {
+    if (!selectedModule || !aiPreviewData) return;
+    let updatedModule = { ...selectedModule };
+    if (aiPreviewType === 'regenerate') updatedModule = { ...updatedModule, ...aiPreviewData };
+    else if (aiPreviewType === 'generate-lessons') updatedModule.lessons = [...(updatedModule.lessons || []), ...(aiPreviewData.lessons || [])];
+    else if (aiPreviewType === 'improve-outcomes') updatedModule.learningOutcomes = aiPreviewData.learningOutcomes;
+    else if (aiPreviewType === 'generate-blooms') updatedModule.bloomsObjectives = aiPreviewData.bloomsObjectives;
+    else if (aiPreviewType === 'generate-summary') updatedModule.summary = aiPreviewData.summary;
+    try {
+      const response = await fetch(`${API_BASE_URL}/course-modules/save`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+        body: JSON.stringify({ moduleData: { ...updatedModule, courseId: course?.id } })
+      });
+      if (!response.ok) throw new Error('Failed to save');
+      const modulesRes = await fetch(`${API_BASE_URL}/course-modules/${course?.id}`, { credentials: 'include' });
+      setModules(await modulesRes.json());
+      setAiPreviewData(null); setAiPreviewType(''); setSelectedModule(null);
+      showResultModal('success', 'Saved', 'Module updated successfully.');
+    } catch (error: any) {
+      showResultModal('error', 'Save Failed', error?.message || 'Failed to save module.');
+    }
+  };
+
+  // ─── Syllabus Upload Handlers ─────────────────────────────────────────────
+  const handleUploadSyllabus = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: [
+          'application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          'application/vnd.ms-powerpoint', 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+          'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          'text/plain', 'text/csv', 'image/png', 'image/jpeg', 'image/webp'
+        ],
+        copyToCacheDirectory: true,
+        base64: Platform.OS === 'web',
+      });
+      if (result.canceled || !result.assets?.[0]) return;
+      const asset = result.assets[0];
+      if (asset.size && asset.size > 20 * 1024 * 1024) {
+        showResultModal('error', 'File Too Large', 'File exceeds maximum size of 20 MB.');
+        return;
+      }
+      const ext = asset.name?.split('.').pop()?.toLowerCase();
+      const allowedExts = ['pdf', 'doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx', 'txt', 'csv', 'png', 'jpg', 'jpeg', 'webp'];
+      if (!ext || !allowedExts.includes(ext)) {
+        showResultModal('error', 'Unsupported File', 'Please upload a supported file type.');
+        return;
+      }
+      setIsUploadingSyllabus(true);
+      let fileBase64 = '';
+      if (Platform.OS === 'web') {
+        if (asset.base64) fileBase64 = asset.base64;
+        else if (asset.file) {
+          fileBase64 = await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => {
+              const res = reader.result;
+              if (typeof res === 'string') resolve(res.includes(',') ? res.split(',')[1] : res);
+              else reject(new Error('Failed to read file.'));
+            };
+            reader.onerror = () => reject(new Error('Failed to read file.'));
+            reader.readAsDataURL(asset.file as File);
+          });
+        }
+      } else if (asset.uri) {
+        fileBase64 = await FileSystem.readAsStringAsync(asset.uri, { encoding: 'base64' });
+      }
+      const response = await fetch(`${API_BASE_URL}/course-syllabus/upload`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          classId: course?.id,
+          fileBase64,
+          fileName: asset.name,
+          fileType: asset.mimeType,
+          fileSize: asset.size,
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Upload failed.');
+      setCurrentSyllabus(data.syllabus);
+      showResultModal('success', 'Success', 'Syllabus uploaded successfully.');
+    } catch (error: any) {
+      showResultModal('error', 'Upload Failed', error?.message || 'Failed to upload syllabus.');
+    } finally {
+      setIsUploadingSyllabus(false);
+    }
+  };
+
+  const handleReplaceSyllabus = () => {
+    Alert.alert(
+      'Replace Syllabus',
+      'Replace existing syllabus? This will NOT delete your approved modules.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Replace', onPress: handleUploadSyllabus },
+      ]
+    );
+  };
+
+  const handleDeleteSyllabus = () => {
+    if (!currentSyllabus?.id) return;
+    Alert.alert(
+      'Delete Syllabus',
+      'Delete syllabus only? The generated course structure will remain until you generate a new one.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const res = await fetch(`${API_BASE_URL}/course-syllabus/${currentSyllabus.id}`, {
+                method: 'DELETE',
+                credentials: 'include',
+              });
+              if (!res.ok) throw new Error('Delete failed');
+              setCurrentSyllabus(null);
+              showResultModal('success', 'Deleted', 'Syllabus deleted successfully.');
+            } catch (e: any) {
+              showResultModal('error', 'Error', e?.message || 'Failed to delete syllabus.');
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  const handleViewSyllabus = async () => {
+    if (!currentSyllabus?.id) return;
+    try {
+      const res = await fetch(`${API_BASE_URL}/course-syllabus/view/${currentSyllabus.id}`, { credentials: 'include' });
+      const data = await res.json();
+      if (res.ok && data.url) {
+        setSyllabusViewerUrl(data.url);
+      }
+    } catch (e) {
+      showResultModal('error', 'Error', 'Failed to load syllabus preview.');
+    }
+  };
+
+  // ─── Course Structure Handlers (NEW) ──────────────────────────────────────
+  const updateStructureField = (path: string, value: any) => {
+    setGeneratedStructure((prev: any) => {
+      const next = JSON.parse(JSON.stringify(prev));
+      const keys = path.split('.');
+      let current = next;
+      for (let i = 0; i < keys.length - 1; i++) {
+        const key = keys[i];
+        if (current[key] === undefined) current[key] = {};
+        current = current[key];
+      }
+      current[keys[keys.length - 1]] = value;
+      return next;
+    });
+  };
+
+  const toggleLessonMaterial = (moduleIndex: number, lessonIndex: number, materialId: string) => {
+    setGeneratedStructure((prev: any) => {
+      const next = JSON.parse(JSON.stringify(prev));
+      const lesson = next.modules[moduleIndex].lessons[lessonIndex];
+      const currentMaterials = lesson.materialIds || [];
+      const newMaterials = currentMaterials.includes(materialId)
+        ? currentMaterials.filter((id: string) => id !== materialId)
+        : [...currentMaterials, materialId];
+      
+      next.modules[moduleIndex].lessons[lessonIndex].materialIds = newMaterials;
+      return next;
+    });
+  };
+
+  const handleGenerateStructure = async () => {
+    if (!course?.id) return;
+    setIsGeneratingStructure(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/course-syllabus/generate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ classId: course.id })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Generation failed');
+      setGeneratedStructure(data.data);
+      setShowStructurePreviewModal(true);
+      showResultModal('success', 'Generated', 'Course structure generated. You can now edit and approve it.');
+    } catch (error: any) {
+      showResultModal('error', 'Error', error?.message || 'Failed to generate course structure.');
+    } finally {
+      setIsGeneratingStructure(false);
+    }
+  };
+
+  const handleApproveStructure = async () => {
+    if (!course?.id || !generatedStructure) return;
+    setIsGeneratingStructure(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/course-syllabus/approve`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ classId: course.id, curriculum: generatedStructure })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Approval failed');
+      showResultModal('success', 'Approved', 'Course structure saved successfully.');
+      setShowStructurePreviewModal(false);
+      setGeneratedStructure(null);
+      await loadCourseContent();
+    } catch (error: any) {
+      showResultModal('error', 'Error', error?.message || 'Failed to approve course structure.');
+    } finally {
+      setIsGeneratingStructure(false);
+    }
+  };
 
   // ─── Material viewer helpers ──────────────────────────────────────────────
   const getMaterialFileUrl = (material: Material | null) => {
@@ -630,7 +897,7 @@ const TeacherCourseDetail2 = ({
     setViewerMaterial(null);
   };
 
-  // ─── Edit material handlers (new) ─────────────────────────────────────────
+  // ─── Edit material handlers ───────────────────────────────────────────────
   const openEditMaterialModal = (material: Material) => {
     setEditingMaterial(material);
     setEditMatTitle(material.title || '');
@@ -662,243 +929,178 @@ const TeacherCourseDetail2 = ({
   };
 
   const handleSaveEditMaterial = async () => {
-  if (!editingMaterial || !editMatTitle.trim() || !editMatWeek.trim()) {
-    showResultModal('error', 'Required', 'Title and Week are required.');
-    return;
-  }
-  
-  setIsSavingMaterial(true);
-  try {
-    let uploadedFile: any = null;
-    const hasNewFile = !!(editMatPickedFile && (editMatPickedFile.uri || editMatPickedFile.base64 || editMatPickedFile.file));
-    
-    // 1. If a new file was picked, upload it first
-    if (hasNewFile && course?.id) {
-      let fileBase64: string | null = null;
-      
-      // Handle Web File
-      if (Platform.OS === 'web') {
-        if (editMatPickedFile.base64) {
-          fileBase64 = editMatPickedFile.base64;
-        } else if (editMatPickedFile.file) {
-          fileBase64 = await new Promise<string>((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onload = () => {
-              const result = reader.result;
-              if (typeof result === 'string')
-                resolve(result.includes(',') ? result.split(',')[1] : result);
-              else reject(new Error('Failed to read file.'));
-            };
-            reader.onerror = () => reject(new Error('Failed to read file.'));
-            reader.readAsDataURL(editMatPickedFile.file as File);
+    if (!editingMaterial || !editMatTitle.trim() || !editMatWeek.trim()) {
+      showResultModal('error', 'Required', 'Title and Week are required.');
+      return;
+    }
+    setIsSavingMaterial(true);
+    try {
+      let uploadedFile: any = null;
+      const hasNewFile = !!(editMatPickedFile && (editMatPickedFile.uri || editMatPickedFile.base64 || editMatPickedFile.file));
+      if (hasNewFile && course?.id) {
+        let fileBase64: string | null = null;
+        if (Platform.OS === 'web') {
+          if (editMatPickedFile.base64) {
+            fileBase64 = editMatPickedFile.base64;
+          } else if (editMatPickedFile.file) {
+            fileBase64 = await new Promise<string>((resolve, reject) => {
+              const reader = new FileReader();
+              reader.onload = () => {
+                const result = reader.result;
+                if (typeof result === 'string')
+                  resolve(result.includes(',') ? result.split(',')[1] : result);
+                else reject(new Error('Failed to read file.'));
+              };
+              reader.onerror = () => reject(new Error('Failed to read file.'));
+              reader.readAsDataURL(editMatPickedFile.file as File);
+            });
+          }
+        } else if (editMatPickedFile.uri) {
+          fileBase64 = await FileSystem.readAsStringAsync(editMatPickedFile.uri, {
+            encoding: 'base64' as any,
           });
         }
-      } 
-      // Handle Mobile File
-      else if (editMatPickedFile.uri) {
-        fileBase64 = await FileSystem.readAsStringAsync(editMatPickedFile.uri, {
-          encoding: 'base64' as any,
-        });
+        if (fileBase64) {
+          const uploadRes = await fetch(`${API_BASE_URL}/upload-class-file`, {
+            credentials: 'include',
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              classId: course.id,
+              fileBase64,
+              fileName: editMatPickedFile.name ?? 'file',
+              fileType: editMatPickedFile.type ?? 'application/octet-stream',
+              kind: 'material',
+            }),
+          });
+          const uploadData = await uploadRes.json();
+          if (!uploadRes.ok) throw new Error(uploadData.error || 'Failed to upload file.');
+          uploadedFile = uploadData.data;
+        }
       }
-
-      if (fileBase64) {
-        const uploadRes = await fetch(`${API_BASE_URL}/upload-class-file`, {
+      const updateBody: any = {
+        title: editMatTitle.trim(),
+        week: editMatWeek.trim(),
+        content: editMatContent.trim() || undefined,
+      };
+      if (uploadedFile) {
+        updateBody.fileName = uploadedFile.fileName ?? null;
+        updateBody.fileUrl = uploadedFile.fileUrl ?? null;
+        updateBody.fileType = uploadedFile.fileType ?? null;
+        updateBody.storagePath = uploadedFile.storagePath ?? null;
+        updateBody.bucketPath = uploadedFile.bucketPath ?? null;
+        updateBody.pdfUrl = uploadedFile.pdfUrl ?? null;
+        updateBody.pdfStoragePath = uploadedFile.pdfStoragePath ?? null;
+      }
+      const response = await fetch(
+        `${API_BASE_URL}/update-class-material/${editingMaterial.id}`,
+        {
           credentials: 'include',
-          method: 'POST',
+          method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            classId: course.id,
-            fileBase64,
-            fileName: editMatPickedFile.name ?? 'file',
-            fileType: editMatPickedFile.type ?? 'application/octet-stream',
-            kind: 'material',
-          }),
-        });
-        const uploadData = await uploadRes.json();
-        if (!uploadRes.ok) throw new Error(uploadData.error || 'Failed to upload file.');
-        
-        uploadedFile = uploadData.data;
-      }
+          body: JSON.stringify(updateBody),
+        }
+      );
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Failed to update material.');
+      await loadCourseContent();
+      setShowEditMaterialModal(false);
+      setViewerMaterial(null);
+      showResultModal('success', 'Updated', 'Material updated successfully.');
+    } catch (error: any) {
+      showResultModal('error', 'Update Failed', error?.message || 'Failed to update material.');
+    } finally {
+      setIsSavingMaterial(false);
     }
-
-    // 2. Prepare update payload
-    const updateBody: any = {
-      title: editMatTitle.trim(),
-      week: editMatWeek.trim(),
-      content: editMatContent.trim() || undefined,
-    };
-
-    // If a new file was uploaded, update file references
-    if (uploadedFile) {
-      updateBody.fileName = uploadedFile.fileName ?? null;
-      updateBody.fileUrl = uploadedFile.fileUrl ?? null;
-      updateBody.fileType = uploadedFile.fileType ?? null;
-      updateBody.storagePath = uploadedFile.storagePath ?? null;
-      updateBody.bucketPath = uploadedFile.bucketPath ?? null;
-      updateBody.pdfUrl = uploadedFile.pdfUrl ?? null;
-      updateBody.pdfStoragePath = uploadedFile.pdfStoragePath ?? null;
-    }
-
-    // 3. Update Firestore
-    const response = await fetch(
-      `${API_BASE_URL}/update-class-material/${editingMaterial.id}`,
-      {
-        credentials: 'include',
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updateBody),
-      }
-    );
-    
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.error || 'Failed to update material.');
-
-    // 4. CLEANUP: If a new file was uploaded, delete the OLD file from Storage
-    if (uploadedFile && editingMaterial.storagePath) {
-      // We use the DELETE endpoint which handles storage deletion internally
-      // Note: We don't delete the Firestore doc, just the storage file associated with the old path
-      // Since there is no direct "delete storage file" endpoint, we can rely on the fact that 
-      // the old path is now orphaned. However, to be thorough, we can call a custom cleanup 
-      // or just accept that the old file remains until manual cleanup. 
-      
-      // BETTER APPROACH: Since we can't easily delete just the file without a specific endpoint,
-      // and we've already updated the DB to point to the new file, the old file is effectively "deleted" 
-      // from the user's perspective. 
-      
-      // IF YOU WANT TO FORCE DELETE THE OLD FILE FROM STORAGE:
-      // You would need to add a backend endpoint like POST /storage/delete-file { storagePath }
-      // For now, we will leave it as is because the reference is gone.
-    }
-
-    await loadCourseContent();
-    setShowEditMaterialModal(false);
-    setViewerMaterial(null);
-    showResultModal('success', 'Updated', 'Material updated successfully.');
-  } catch (error: any) {
-    showResultModal('error', 'Update Failed', error?.message || 'Failed to update material.');
-  } finally {
-    setIsSavingMaterial(false);
-  }
-};
+  };
 
   const handleDeleteMaterial = () => {
-  if (!editingMaterial) return;
-  
-  Alert.alert(
-    'Delete Material',
-    `Are you sure you want to delete "${editingMaterial.title}"? This will remove the file from storage and cannot be undone.`,
-    [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: async () => {
-          setIsDeletingMaterial(true);
-          try {
-            // 1. Delete from Firestore (The backend route /delete-class-material/:id already handles Storage deletion)
-            // Looking at your backend code:
-            // app.delete("/delete-class-material/:id", ...) calls deleteStorageFileIfExists(materialData?.storagePath)
-            
-            const response = await fetch(
-              `${API_BASE_URL}/delete-class-material/${editingMaterial.id}`,
-              { credentials: 'include', method: 'DELETE' }
-            );
-            
-            const data = await response.json();
-            if (!response.ok) throw new Error(data.error || 'Failed to delete material.');
-            
-            // 2. Refresh List
-            await loadCourseContent();
-            
-            // 3. Close Modals
-            setShowEditMaterialModal(false);
-            setViewerMaterial(null);
-            
-            showResultModal('success', 'Deleted', 'Material deleted successfully.');
-          } catch (error: any) {
-            showResultModal(
-              'error',
-              'Delete Failed',
-              error?.message || 'Failed to delete material.'
-            );
-          } finally {
-            setIsDeletingMaterial(false);
-          }
-        },
-      },
-    ]
-  );
-};
+    if (!editingMaterial) return;
+    setShowDeleteConfirmModal(true);
+  };
+
+  const confirmDeleteMaterial = async () => {
+    if (!editingMaterial) return;
+    setIsDeletingMaterial(true);
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/delete-class-material/${editingMaterial.id}`,
+        { credentials: 'include', method: 'DELETE' }
+      );
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Failed to delete material.');
+      await loadCourseContent();
+      setShowEditMaterialModal(false);
+      setViewerMaterial(null);
+      setShowDeleteConfirmModal(false);
+      showResultModal('success', 'Deleted', 'Material deleted successfully.');
+    } catch (error: any) {
+      showResultModal('error', 'Delete Failed', error?.message || 'Failed to delete material.');
+    } finally {
+      setIsDeletingMaterial(false);
+    }
+  };
 
   const handleDownloadMaterial = async () => {
-  if (!viewerMaterial) {
-    showResultModal('error', 'No File', 'This material has no downloadable file.');
-    return;
-  }
-
-  const storagePath = viewerMaterial.storagePath;
-  const firebaseUrl = getMaterialFileUrl(viewerMaterial);
-
-  if (!storagePath && !firebaseUrl) {
-    showResultModal('error', 'No File', 'This material has no file to download.');
-    return;
-  }
-
-  const fileName = viewerMaterial.fileName || viewerMaterial.title || 'material';
-  const mimeType = viewerMaterial.fileType || getMimeFromFileName(fileName);
-
-  setIsDownloading(true);
-  try {
-    let downloadUrl: string;
-
-    if (Platform.OS === 'web') {
-      // Web: use backend authenticated endpoint (requires storagePath)
-      if (storagePath && course?.id) {
-        downloadUrl = `${API_BASE_URL}/course-material-download/${course.id}?storagePath=${encodeURIComponent(storagePath)}`;
-      } else {
-        showResultModal('error', 'Download Unavailable', 'This file cannot be downloaded directly.');
-        return;
-      }
-    } else {
-      // Mobile: use Firebase public URL directly (same as student side)
-      if (!firebaseUrl) {
-        showResultModal('error', 'No File', 'This material has no file to download.');
-        return;
-      }
-      downloadUrl = firebaseUrl;
+    if (!viewerMaterial) {
+      showResultModal('error', 'No File', 'This material has no downloadable file.');
+      return;
     }
-
-    // Web download
-    if (Platform.OS === 'web') {
-      const response = await fetch(downloadUrl, { credentials: 'include' });
-      if (!response.ok) throw new Error(`Download failed (${response.status})`);
-      const blob = await response.blob();
-      const objectUrl = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = objectUrl;
-      link.download = fileName;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      setTimeout(() => URL.revokeObjectURL(objectUrl), 10000);
-    } else {
-      // Mobile download
-      const localUri = `${FileSystem.cacheDirectory}${fileName}`;
-      const result = await FileSystem.downloadAsync(downloadUrl, localUri);
-      if (result.status !== 200) throw new Error(`Download failed (${result.status})`);
-      const canShare = await Sharing.isAvailableAsync();
-      if (canShare) {
-        await Sharing.shareAsync(result.uri, { mimeType, dialogTitle: `Save ${fileName}` });
-      } else {
-        Alert.alert('Saved', `File downloaded to:\n${result.uri}`);
-      }
+    const storagePath = viewerMaterial.storagePath;
+    const firebaseUrl = getMaterialFileUrl(viewerMaterial);
+    if (!storagePath && !firebaseUrl) {
+      showResultModal('error', 'No File', 'This material has no file to download.');
+      return;
     }
-  } catch (error: any) {
-    showResultModal('error', 'Download Failed', error?.message || 'Unable to download file.');
-  } finally {
-    setIsDownloading(false);
-  }
-};
+    const fileName = viewerMaterial.fileName || viewerMaterial.title || 'material';
+    const mimeType = viewerMaterial.fileType || getMimeFromFileName(fileName);
+    setIsDownloading(true);
+    try {
+      let downloadUrl: string;
+      if (Platform.OS === 'web') {
+        if (storagePath && course?.id) {
+          downloadUrl = `${API_BASE_URL}/course-material-download/${course.id}?storagePath=${encodeURIComponent(storagePath)}`;
+        } else {
+          showResultModal('error', 'Download Unavailable', 'This file cannot be downloaded directly.');
+          return;
+        }
+      } else {
+        if (!firebaseUrl) {
+          showResultModal('error', 'No File', 'This material has no file to download.');
+          return;
+        }
+        downloadUrl = firebaseUrl;
+      }
+      if (Platform.OS === 'web') {
+        const response = await fetch(downloadUrl, { credentials: 'include' });
+        if (!response.ok) throw new Error(`Download failed (${response.status})`);
+        const blob = await response.blob();
+        const objectUrl = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = objectUrl;
+        link.download = fileName;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        setTimeout(() => URL.revokeObjectURL(objectUrl), 10000);
+      } else {
+        const localUri = `${FileSystem.cacheDirectory}${fileName}`;
+        const result = await FileSystem.downloadAsync(downloadUrl, localUri);
+        if (result.status !== 200) throw new Error(`Download failed (${result.status})`);
+        const canShare = await Sharing.isAvailableAsync();
+        if (canShare) {
+          await Sharing.shareAsync(result.uri, { mimeType, dialogTitle: `Save ${fileName}` });
+        } else {
+          Alert.alert('Saved', `File downloaded to:\n${result.uri}`);
+        }
+      }
+    } catch (error: any) {
+      showResultModal('error', 'Download Failed', error?.message || 'Unable to download file.');
+    } finally {
+      setIsDownloading(false);
+    }
+  };
+
   // ─── Create / update form helpers ─────────────────────────────────────────
   const resetCreateForm = () => {
     setFormTitle('');
@@ -953,7 +1155,6 @@ const TeacherCourseDetail2 = ({
     setCustomAttempts(String((item as any).customAttempts || ''));
     setTimeLimit(String((item as any).timeLimit || ''));
     setCustomTimeLimit(String((item as any).customTimeLimit || ''));
-
     const existingQuestions = (item as any).questions || [];
     const mappedQuestions = existingQuestions.map((q: any, index: number) => {
       if ((item as any).gameType === 'memory_match') {
@@ -1140,7 +1341,6 @@ const TeacherCourseDetail2 = ({
       });
       const gameScores = gameResponse.ok ? await gameResponse.json() : [];
       const workbook = XLSX.utils.book_new();
-
       const gradeRows = members.map((member) => {
         const studentSubmissions = submissions.filter((s) => s.studentId === member.id);
         const scores = assignments.map((assignment) => {
@@ -1157,7 +1357,6 @@ const TeacherCourseDetail2 = ({
         XLSX.utils.json_to_sheet(gradeRows),
         'Assignment Grades'
       );
-
       const gameRows = gameScores.map((game: any, index: number) => ({
         No: index + 1,
         'Student ID': game.studentId,
@@ -1171,7 +1370,6 @@ const TeacherCourseDetail2 = ({
         XLSX.utils.json_to_sheet(gameRows),
         'Quiz Masters Scores'
       );
-
       const wbout = XLSX.write(workbook, { type: 'array', bookType: 'xlsx' });
       if (Platform.OS === 'web') {
         const blob = new Blob([wbout], {
@@ -1260,11 +1458,17 @@ const TeacherCourseDetail2 = ({
       const questionsArray = Array.isArray(data.questions) ? data.questions : [];
       if (questionsArray.length === 0)
         throw new Error('AI did not return any valid questions. Please try again.');
-
       const editableQuestions = questionsArray.map((q: any, index: number) => {
         if (gameType === 'memory_match') {
-          return { id: `gen-${Date.now()}-${index}`, question: q.question || '', answer: q.answer || '' };
+          return { id: `gen-${Date.now()}-${index}`, question: q.term || q.question || '', answer: q.definition || q.answer || '' };
         }
+        if (gameType === 'fill_in_blanks') {
+          return { id: `gen-${Date.now()}-${index}`, question: q.sentence || q.question || '', answer: q.answer || '' };
+        }
+        if (gameType === 'flashcard') {
+          return { id: `gen-${Date.now()}-${index}`, question: q.front || q.question || '', answer: q.back || q.answer || '' };
+        }
+        // quiz_master / boss_battle fall through here
         const options = q.options && q.options.length === 4 ? q.options : ['', '', '', ''];
         const answer = q.answer || options[0] || '';
         const correctIndex = options.indexOf(answer);
@@ -1303,10 +1507,9 @@ const TeacherCourseDetail2 = ({
       const questionsArray = Array.isArray(data.questions) ? data.questions : [];
       if (questionsArray.length === 0)
         throw new Error('AI did not return any valid questions. Please try again.');
-
       const newQuestions = questionsArray.map((q: any, index: number) => {
         if (gameType === 'memory_match') {
-          return { id: `gen-${Date.now()}-${index}`, question: q.question || '', answer: q.answer || '' };
+          return { id: `gen-${Date.now()}-${index}`, question: q.term || q.question || '', answer: q.definition || q.answer || '' };
         }
         const options = q.options && q.options.length === 4 ? q.options : ['', '', '', ''];
         const answer = q.answer || options[0] || '';
@@ -1360,7 +1563,6 @@ const TeacherCourseDetail2 = ({
       showResultModal('error', 'Error', 'No class selected.');
       return;
     }
-
     if (activeTab === 'Materials') {
       if (!formTitle.trim() || !formPointsOnTime.trim()) {
         showResultModal('error', 'Required', 'Please enter the title and week.');
@@ -1376,26 +1578,21 @@ const TeacherCourseDetail2 = ({
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-          classId: course.id,
-          title: formTitle.trim(),
-          week: formPointsOnTime.trim(),
-          content:
-            formDesc.trim() || `${formPointsOnTime.trim()} material: ${formTitle.trim()}`,
-
-          fileName: uploadedFile?.fileName ?? null,
-          fileUrl: uploadedFile?.fileUrl ?? null,
-          fileType: uploadedFile?.fileType ?? null,
-
-          storagePath: uploadedFile?.storagePath ?? null,
-          bucketPath: uploadedFile?.bucketPath ?? null,
-
-          // ADD THESE
-          pdfUrl: uploadedFile?.pdfUrl ?? null,
-          pdfStoragePath: uploadedFile?.pdfStoragePath ?? null,
-
-          postedByUid: teacherIdentity,
-          postedByName: teacherFullName,
-        }),
+            classId: course.id,
+            title: formTitle.trim(),
+            week: formPointsOnTime.trim(),
+            content:
+              formDesc.trim() || `${formPointsOnTime.trim()} material: ${formTitle.trim()}`,
+            fileName: uploadedFile?.fileName ?? null,
+            fileUrl: uploadedFile?.fileUrl ?? null,
+            fileType: uploadedFile?.fileType ?? null,
+            storagePath: uploadedFile?.storagePath ?? null,
+            bucketPath: uploadedFile?.bucketPath ?? null,
+            pdfUrl: uploadedFile?.pdfUrl ?? null,
+            pdfStoragePath: uploadedFile?.pdfStoragePath ?? null,
+            postedByUid: teacherIdentity,
+            postedByName: teacherFullName,
+          }),
         });
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || 'Failed to create material');
@@ -1410,14 +1607,12 @@ const TeacherCourseDetail2 = ({
       }
       return;
     }
-
     if (!validateAssignmentForm()) return;
     setIsSaving(true);
     try {
       let uploadedFile = null;
       if (pickedAssignmentFile?.uri || pickedAssignmentFile?.base64 || pickedAssignmentFile?.file)
         uploadedFile = await uploadPickedFile(pickedAssignmentFile, 'assignment');
-
       const response = await fetch(`${API_BASE_URL}/create-class-assignment`, {
         credentials: 'include',
         method: 'POST',
@@ -1541,35 +1736,29 @@ const TeacherCourseDetail2 = ({
     }
   };
 
-// ─── Viewer-related computed values ───────────────────────────────────────
-const viewerFileUrl = getMaterialFileUrl(viewerMaterial);
-const viewerPdfUrl = getMaterialPdfUrl(viewerMaterial);
-const viewerIsPresentation = isPresentationFile(
-  viewerMaterial?.fileName,
-  viewerMaterial?.fileType
-);
-const viewerIsShowingPdfPreview = viewerIsPresentation && !!viewerPdfUrl;
-
-const viewerIsVideo =
-  (viewerMaterial?.fileType || '').startsWith('video/') ||
-  ['mp4', 'mov', 'avi', 'webm', 'mkv'].includes(
-    (viewerMaterial?.fileName || '').split('.').pop()?.toLowerCase() || ''
+  // ─── Viewer-related computed values ───────────────────────────────────────
+  const viewerFileUrl = getMaterialFileUrl(viewerMaterial);
+  const viewerPdfUrl = getMaterialPdfUrl(viewerMaterial);
+  const viewerIsPresentation = isPresentationFile(
+    viewerMaterial?.fileName,
+    viewerMaterial?.fileType
   );
-
-// Mirror student: inline viewer is used for anything non-video that has a URL
-const viewerShouldUseInline = !viewerIsVideo && !!viewerFileUrl;
-
-const viewerUrl = viewerFileUrl
-  ? getViewerUrl(
-      viewerFileUrl,
-      viewerMaterial?.fileName,
-      viewerMaterial?.fileType,
-      viewerPdfUrl
-    )
-  : null;
-
-const viewerHasFile = !!viewerFileUrl;
-
+  const viewerIsShowingPdfPreview = viewerIsPresentation && !!viewerPdfUrl;
+  const viewerIsVideo =
+    (viewerMaterial?.fileType || '').startsWith('video/') ||
+    ['mp4', 'mov', 'avi', 'webm', 'mkv'].includes(
+      (viewerMaterial?.fileName || '').split('.').pop()?.toLowerCase() || ''
+    );
+  const viewerShouldUseInline = !viewerIsVideo && !!viewerFileUrl;
+  const viewerUrl = viewerFileUrl
+    ? getViewerUrl(
+        viewerFileUrl,
+        viewerMaterial?.fileName,
+        viewerMaterial?.fileType,
+        viewerPdfUrl
+      )
+    : null;
+  const viewerHasFile = !!viewerFileUrl;
   const selectedAssignment = assignments.find((a) => a.id === selectedId);
   const courseName = course?.name || 'Untitled Course';
   const courseYear = course?.year || '';
@@ -1825,9 +2014,7 @@ const viewerHasFile = !!viewerFileUrl;
           </TouchableOpacity>
         </View>
       </View>
-
       {assignmentType === 'game_based' && renderGameAndClassRow()}
-
       <View style={[styles.formColumnLeft, !isMobile && styles.formColumnLeftDesktop]}>
         <Text style={styles.sectionLabel}>Header</Text>
         <TextInput
@@ -1842,7 +2029,6 @@ const viewerHasFile = !!viewerFileUrl;
           editable={!isSaving}
         />
         {renderInputError(errors.title)}
-
         <Text style={styles.sectionLabel}>Instruction</Text>
         <TextInput
           style={[styles.textAreaBox, errors.instruction ? styles.errorBorder : null]}
@@ -1857,11 +2043,9 @@ const viewerHasFile = !!viewerFileUrl;
           editable={!isSaving}
         />
         {renderInputError(errors.instruction)}
-
         {assignmentType === 'game_based' && renderAttemptsSelector()}
         {assignmentType === 'game_based' && renderTimeLimitSelector()}
       </View>
-
       <View style={[styles.formColumnRight, !isMobile && styles.formColumnRightDesktop]}>
         {renderDateTimeField()}
         <View style={styles.scoreStackDesktop}>
@@ -1913,10 +2097,8 @@ const viewerHasFile = !!viewerFileUrl;
           )}
         </View>
       </View>
-
       <View style={styles.fullWidthSection}>
         {renderRelatedMaterialsSelector()}
-
         {assignmentType === 'game_based' && selectedMaterialIds.length > 0 && gameType && (
           <TouchableOpacity
             style={[styles.generateButton, isGenerating ? styles.disabledButton : null]}
@@ -1935,14 +2117,12 @@ const viewerHasFile = !!viewerFileUrl;
             </Text>
           </TouchableOpacity>
         )}
-
         {assignmentType === 'game_based' && selectedMaterialIds.length > 0 && !gameType && (
           <View style={[styles.generateButton, { backgroundColor: '#9E9E9E' }]}>
             <Ionicons name="alert-circle-outline" size={18} color="#FFF" />
             <Text style={styles.generateButtonText}>Select a Game Type to Generate Questions</Text>
           </View>
         )}
-
         {assignmentType === 'regular' && (
           <>
             <Text style={styles.sectionLabel}>Attachment</Text>
@@ -1964,7 +2144,6 @@ const viewerHasFile = !!viewerFileUrl;
             )}
           </>
         )}
-
         <View style={styles.checkboxRow}>
           <TouchableOpacity
             style={[
@@ -2054,7 +2233,6 @@ const viewerHasFile = !!viewerFileUrl;
         </TouchableOpacity>
       </View>
     );
-
     const renderOptionWithDropdown = (opt: string, oIndex: number, placeholderPrefix: string) => {
       const isCorrect = q.correctIndex === oIndex;
       return (
@@ -2093,7 +2271,6 @@ const viewerHasFile = !!viewerFileUrl;
         </View>
       );
     };
-
     switch (gameType) {
       case 'memory_match':
         return (
@@ -2182,6 +2359,144 @@ const viewerHasFile = !!viewerFileUrl;
     }
   };
 
+  // ─── Course Structure Preview Modal Renderer (NEW) ────────────────────────
+  const renderStructurePreviewModal = () => {
+    if (!showStructurePreviewModal || !generatedStructure) return null;
+
+    return (
+      <Modal visible transparent animationType="fade">
+        <View style={styles.modalOverlayCenter}>
+          <View style={[styles.modalCardElevated, { width: isMobile ? width - 28 : 900, maxHeight: height * 0.9 }]}>
+            <View style={styles.createHeaderRow}>
+              <View style={styles.modalHeaderTextWrap}>
+                <Text style={styles.createTitle}>Preview & Edit Course Structure</Text>
+                <Text style={styles.modalSubtitle}>Review the generated curriculum, edit details, and assign materials to lessons.</Text>
+              </View>
+              <TouchableOpacity onPress={() => setShowStructurePreviewModal(false)} disabled={isGeneratingStructure}>
+                <Ionicons name="close" size={24} color="#111" />
+              </TouchableOpacity>
+            </View>
+            
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 100 }}>
+              <View style={{ marginBottom: 20 }}>
+                <Text style={styles.sectionLabel}>Course Title</Text>
+                <TextInput style={styles.inputBox} value={generatedStructure.courseInformation?.title || ''} onChangeText={(val) => updateStructureField('courseInformation.title', val)} />
+                <Text style={styles.sectionLabel}>Course Description</Text>
+                <TextInput style={styles.textAreaBox} value={generatedStructure.courseInformation?.description || ''} onChangeText={(val) => updateStructureField('courseInformation.description', val)} multiline />
+                <Text style={styles.sectionLabel}>Learning Outcomes</Text>
+                {generatedStructure.learningOutcomes?.map((outcome: string, i: number) => (
+                  <View key={i} style={{ flexDirection: 'row', gap: 8, marginBottom: 8, alignItems: 'center' }}>
+                    <TextInput style={[styles.inputBox, { flex: 1, marginBottom: 0 }]} value={outcome} onChangeText={(val) => {
+                      const newOutcomes = [...generatedStructure.learningOutcomes];
+                      newOutcomes[i] = val;
+                      updateStructureField('learningOutcomes', newOutcomes);
+                    }} />
+                    <TouchableOpacity onPress={() => updateStructureField('learningOutcomes', generatedStructure.learningOutcomes.filter((_: any, idx: number) => idx !== i))}>
+                      <Ionicons name="trash-outline" size={20} color="#D32F2F" />
+                    </TouchableOpacity>
+                  </View>
+                ))}
+                <TouchableOpacity onPress={() => updateStructureField('learningOutcomes', [...(generatedStructure.learningOutcomes || []), ''])} style={{ marginTop: 8 }}>
+                  <Text style={{ color: '#D32F2F', fontWeight: '700' }}>+ Add Outcome</Text>
+                </TouchableOpacity>
+              </View>
+
+              {generatedStructure.modules?.map((mod: any, mIndex: number) => (
+                <View key={mIndex} style={{ backgroundColor: '#F9F9F9', borderRadius: 12, padding: 16, marginBottom: 16, borderWidth: 1, borderColor: '#EEE' }}>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                    <Text style={{ fontSize: 16, fontWeight: '800', color: '#111' }}>Module {mod.moduleNumber}</Text>
+                    <TouchableOpacity onPress={() => updateStructureField('modules', generatedStructure.modules.filter((_: any, idx: number) => idx !== mIndex))}>
+                      <Ionicons name="trash-outline" size={20} color="#D32F2F" />
+                    </TouchableOpacity>
+                  </View>
+                  
+                  <Text style={styles.sectionLabel}>Module Title</Text>
+                  <TextInput style={styles.inputBox} value={mod.title} onChangeText={(val) => updateStructureField(`modules.${mIndex}.title`, val)} />
+                  <Text style={styles.sectionLabel}>Weekly Schedule</Text>
+                  <TextInput style={styles.inputBox} value={mod.weeklySchedule} onChangeText={(val) => updateStructureField(`modules.${mIndex}.weeklySchedule`, val)} />
+                  
+                  <Text style={{ fontSize: 14, fontWeight: '700', marginTop: 16, marginBottom: 8 }}>Lessons</Text>
+                  {mod.lessons?.map((lesson: any, lIndex: number) => (
+                    <View key={lIndex} style={{ backgroundColor: '#FFF', borderRadius: 8, padding: 12, marginBottom: 12, borderWidth: 1, borderColor: '#DDD' }}>
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                        <Text style={{ fontWeight: '700' }}>Lesson {lIndex + 1}</Text>
+                        <TouchableOpacity onPress={() => {
+                          const newLessons = mod.lessons.filter((_: any, idx: number) => idx !== lIndex);
+                          updateStructureField(`modules.${mIndex}.lessons`, newLessons);
+                        }}>
+                          <Ionicons name="close-circle" size={20} color="#999" />
+                        </TouchableOpacity>
+                      </View>
+                      <TextInput style={styles.inputBox} placeholder="Lesson Title" value={lesson.title} onChangeText={(val) => updateStructureField(`modules.${mIndex}.lessons.${lIndex}.title`, val)} />
+                      <TextInput style={styles.textAreaBox} placeholder="Description" value={lesson.description} onChangeText={(val) => updateStructureField(`modules.${mIndex}.lessons.${lIndex}.description`, val)} multiline />
+                      
+                      <Text style={styles.sectionLabel}>Assign Materials</Text>
+                      {materials.length === 0 ? (
+                        <Text style={{ fontSize: 12, color: '#999' }}>No materials available.</Text>
+                      ) : (
+                        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                          {materials.map((mat) => {
+                            const isSelected = lesson.materialIds?.includes(mat.id);
+                            return (
+                              <TouchableOpacity
+                                key={mat.id}
+                                onPress={() => toggleLessonMaterial(mIndex, lIndex, mat.id)}
+                                style={{
+                                  flexDirection: 'row', alignItems: 'center', gap: 6,
+                                  paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8,
+                                  backgroundColor: isSelected ? '#D32F2F' : '#FFF',
+                                  borderWidth: 1, borderColor: isSelected ? '#D32F2F' : '#DDD'
+                                }}
+                              >
+                                <Ionicons name={isSelected ? 'checkmark-circle' : 'ellipse-outline'} size={14} color={isSelected ? '#FFF' : '#D32F2F'} />
+                                <Text style={{ color: isSelected ? '#FFF' : '#333', fontSize: 12, fontWeight: '600' }}>{mat.title}</Text>
+                              </TouchableOpacity>
+                            );
+                          })}
+                        </View>
+                      )}
+                    </View>
+                  ))}
+                  <TouchableOpacity
+                    onPress={() => {
+                      const newLesson = { id: `lesson-${Date.now()}`, title: '', description: '', activities: [], assessments: [], materialIds: [] };
+                      updateStructureField(`modules.${mIndex}.lessons`, [...(mod.lessons || []), newLesson]);
+                    }}
+                    style={{ marginTop: 8, padding: 10, backgroundColor: '#FFF', borderRadius: 8, borderWidth: 1, borderColor: '#D32F2F', alignItems: 'center' }}
+                  >
+                    <Text style={{ color: '#D32F2F', fontWeight: '700' }}>+ Add Lesson</Text>
+                  </TouchableOpacity>
+                </View>
+              ))}
+              <TouchableOpacity
+                onPress={() => {
+                  const newModule = { moduleNumber: (generatedStructure.modules?.length || 0) + 1, title: '', description: '', weeklySchedule: '', lessons: [] };
+                  updateStructureField('modules', [...(generatedStructure.modules || []), newModule]);
+                }}
+                style={{ padding: 12, backgroundColor: '#FFF', borderRadius: 8, borderWidth: 1, borderColor: '#D32F2F', alignItems: 'center', marginBottom: 20 }}
+              >
+                <Text style={{ color: '#D32F2F', fontWeight: '800' }}>+ Add Module</Text>
+              </TouchableOpacity>
+            </ScrollView>
+
+            <View style={styles.buttonRow}>
+              <TouchableOpacity style={styles.secondaryButton} onPress={() => setShowStructurePreviewModal(false)} disabled={isGeneratingStructure}>
+                <Text style={styles.secondaryButtonText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.primaryButton} onPress={handleApproveStructure} disabled={isGeneratingStructure}>
+                {isGeneratingStructure ? (
+                  <ActivityIndicator size="small" color="#FFF" />
+                ) : (
+                  <Text style={styles.primaryButtonText}>Approve & Save</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+    );
+  };
+
   // ─── Submissions sub-view ─────────────────────────────────────────────────
   if (showSubmissions) {
     return (
@@ -2193,7 +2508,7 @@ const viewerHasFile = !!viewerFileUrl;
           onBack={() => setShowSubmissions(false)}
           onOpenUpdate={() => openUpdateModal(selectedAssignment)}
           onGradeSubmission={handleGradeSubmission}
-          classId={course?.id} 
+          classId={course?.id}
           currentTeacher={currentTeacher}
         />
         <Modal visible={showUpdateModal} transparent animationType="fade">
@@ -2242,8 +2557,6 @@ const viewerHasFile = !!viewerFileUrl;
         contentContainerStyle={styles.screenScrollContent}
         showsVerticalScrollIndicator={false}
       >
-       
-
         {/* ── Course Header ── */}
         <View
           style={[
@@ -2398,6 +2711,16 @@ const viewerHasFile = !!viewerFileUrl;
               Assignments ({assignments.length})
             </Text>
           </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => setActiveTab('Modules')}
+            style={[styles.tab, activeTab === 'Modules' && styles.tabActive]}
+          >
+            <Text
+              style={[styles.tabText, activeTab === 'Modules' && styles.tabTextActive]}
+            >
+              Modules ({modules.length})
+            </Text>
+          </TouchableOpacity>
         </View>
 
         {activeTab === 'Materials' ? (
@@ -2406,7 +2729,7 @@ const viewerHasFile = !!viewerFileUrl;
             onCreate={openCreateModal}
             onOpenMaterial={openMaterialViewer}
           />
-        ) : (
+        ) : activeTab === 'Assignments' ? (
           <TeacherAssignmentSection
             assignments={assignments}
             onCreate={openCreateModal}
@@ -2415,12 +2738,95 @@ const viewerHasFile = !!viewerFileUrl;
               setShowSubmissions(true);
             }}
           />
+        ) : (
+          <View style={{ padding: 16 }}>
+            {/* AI Course Builder / Syllabus Section */}
+            <View style={{ backgroundColor: '#FFF', borderRadius: 12, padding: 16, marginBottom: 16, borderWidth: 1, borderColor: '#EEE' }}>
+              <Text style={{ fontSize: 16, fontWeight: '800', color: '#111', marginBottom: 12 }}>AI Course Builder</Text>
+              {!currentSyllabus ? (
+                <View style={{ alignItems: 'center', paddingVertical: 20 }}>
+                  <Text style={{ color: '#888', marginBottom: 12 }}>No syllabus uploaded.</Text>
+                  <TouchableOpacity
+                    onPress={handleUploadSyllabus}
+                    disabled={isUploadingSyllabus}
+                    style={{ backgroundColor: '#D32F2F', paddingHorizontal: 20, paddingVertical: 10, borderRadius: 8, flexDirection: 'row', alignItems: 'center', gap: 8 }}
+                  >
+                    {isUploadingSyllabus ? <ActivityIndicator color="#FFF" size="small" /> : <Ionicons name="cloud-upload-outline" size={18} color="#FFF" />}
+                    <Text style={{ color: '#FFF', fontWeight: '700' }}>Upload Course Syllabus</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <View style={{ backgroundColor: '#F9F9F9', borderRadius: 12, padding: 16, borderWidth: 1, borderColor: '#EEE' }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+                    <Ionicons name="document-text-outline" size={24} color="#D32F2F" />
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontSize: 14, fontWeight: '700', color: '#111' }} numberOfLines={1}>{currentSyllabus.fileName}</Text>
+                      <Text style={{ fontSize: 12, color: '#666' }}>
+                        Uploaded {currentSyllabus.uploadedAt ? new Date(currentSyllabus.uploadedAt.seconds * 1000 || currentSyllabus.uploadedAt).toLocaleDateString() : 'Recently'}
+                      </Text>
+                    </View>
+                  </View>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 12 }}>
+                    <TouchableOpacity onPress={handleViewSyllabus} style={{ backgroundColor: '#E3F2FD', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8 }}>
+                      <Text style={{ color: '#1565C0', fontWeight: '700', fontSize: 12 }}>View</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={handleReplaceSyllabus} style={{ backgroundColor: '#FFF3E0', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8 }}>
+                      <Text style={{ color: '#E65100', fontWeight: '700', fontSize: 12 }}>Replace</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={handleDeleteSyllabus} style={{ backgroundColor: '#FFEBEE', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8 }}>
+                      <Text style={{ color: '#C62828', fontWeight: '700', fontSize: 12 }}>Delete</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={handleGenerateStructure}
+                      disabled={isGeneratingStructure}
+                      style={{ backgroundColor: '#D32F2F', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, marginLeft: 'auto', opacity: isGeneratingStructure ? 0.7 : 1, flexDirection: 'row', alignItems: 'center', gap: 6 }}
+                    >
+                      {isGeneratingStructure ? (
+                        <ActivityIndicator size="small" color="#FFF" />
+                      ) : (
+                        <Text style={{ color: '#FFF', fontWeight: '700', fontSize: 12 }}>Generate Course Structure</Text>
+                      )}
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              )}
+            </View>
+
+            {/* Existing Modules List */}
+            {modules.length === 0 ? (
+              <Text style={{ textAlign: 'center', color: '#888', marginTop: 40 }}>No modules generated yet.</Text>
+            ) : (
+              modules.map((mod) => (
+                <View key={mod.id} style={{ backgroundColor: '#FFF', borderRadius: 12, padding: 16, marginBottom: 16, borderWidth: 1, borderColor: '#EEE' }}>
+                  <Text style={{ fontSize: 18, fontWeight: '800', color: '#111' }}>Module {mod.moduleNumber}: {mod.title}</Text>
+                  <Text style={{ fontSize: 13, color: '#666', marginTop: 8 }}>{mod.description}</Text>
+                  <View style={{ marginTop: 16, flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                    {['regenerate', 'generate-lessons', 'improve-outcomes', 'generate-blooms', 'generate-summary'].map((tool) => (
+                      <TouchableOpacity
+                        key={tool}
+                        onPress={() => handleAiTool(tool, mod, { count: 3 })}
+                        disabled={isAiLoading}
+                        style={{ backgroundColor: '#FFF5F5', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, borderWidth: 1, borderColor: '#F0B9B9' }}
+                      >
+                        <Text style={{ color: '#D32F2F', fontWeight: '700', fontSize: 12 }}>
+                          {tool === 'regenerate' ? '🔄 Regenerate' :
+                           tool === 'generate-lessons' ? '➕ More Lessons' :
+                           tool === 'improve-outcomes' ? '✨ Outcomes' :
+                           tool === 'generate-blooms' ? '🎯 Bloom\'s' : '📝 Summary'}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+              ))
+            )}
+          </View>
         )}
       </ScrollView>
 
       {/* ══════════════════════════════════════════════════════════════════════
-          FULLSCREEN MATERIAL VIEWER MODAL (Teacher Side — mirrors student)
-      ═══════════════════════════════════════════════════════════════════════ */}
+      FULLSCREEN MATERIAL VIEWER MODAL (Teacher Side — mirrors student)
+      ════════════════════════════════════════════════════════════════════════ */}
       <Modal
         visible={!!viewerMaterial}
         transparent={false}
@@ -2438,13 +2844,11 @@ const viewerHasFile = !!viewerFileUrl;
             >
               <Ionicons name="arrow-back" size={22} color="#FFF" />
             </TouchableOpacity>
-
             <View style={styles.viewerTitleBlock}>
               <Text style={styles.viewerTitle} numberOfLines={1}>
                 {viewerMaterial?.title ?? ''}
               </Text>
               <View style={styles.viewerBadgeRow}>
-                {/* File type badge */}
                 <View style={styles.viewerTypeBadge}>
                   <Ionicons
                     name={viewerIsPresentation ? 'easel-outline' : 'document-text-outline'}
@@ -2457,14 +2861,12 @@ const viewerHasFile = !!viewerFileUrl;
                       : (viewerMaterial?.fileType || 'FILE').toUpperCase().slice(0, 12)}
                   </Text>
                 </View>
-                {/* PDF preview badge */}
                 {viewerIsShowingPdfPreview && (
                   <View style={styles.viewerPdfBadge}>
                     <Ionicons name="document-text-outline" size={11} color="#1565C0" />
                     <Text style={styles.viewerPdfBadgeText}>PDF Preview</Text>
                   </View>
                 )}
-                {/* Week badge */}
                 {!!viewerMaterial?.week && (
                   <View style={styles.viewerWeekBadge}>
                     <Text style={styles.viewerWeekText}>{viewerMaterial.week}</Text>
@@ -2472,10 +2874,7 @@ const viewerHasFile = !!viewerFileUrl;
                 )}
               </View>
             </View>
-
-            {/* Action buttons: Edit + Download */}
             <View style={styles.viewerActions}>
-              {/* Edit button */}
               <TouchableOpacity
                 onPress={() => {
                   if (viewerMaterial) openEditMaterialModal(viewerMaterial);
@@ -2485,78 +2884,84 @@ const viewerHasFile = !!viewerFileUrl;
               >
                 <Ionicons name="create-outline" size={20} color="#FFF" />
               </TouchableOpacity>
-
-              {/* Download button — only show when there's a non-video file (mirrors student) */}
-{!!viewerFileUrl && !viewerIsVideo && (
-  <TouchableOpacity
-    onPress={handleDownloadMaterial}
-    disabled={isDownloading}
-    style={[styles.viewerActionBtn, isDownloading && { opacity: 0.55 }]}
-    hitSlop={{ top: 10, bottom: 10, left: 6, right: 6 }}
-  >
-    {isDownloading ? (
-      <ActivityIndicator size="small" color="#FFF" />
-    ) : (
-      <Ionicons name="download-outline" size={20} color="#FFF" />
-    )}
-  </TouchableOpacity>
-)}
+              <TouchableOpacity
+                onPress={() => {
+                  if (viewerMaterial) {
+                    setEditingMaterial(viewerMaterial);
+                    setShowDeleteConfirmModal(true);
+                  }
+                }}
+                style={styles.viewerActionBtn}
+                hitSlop={{ top: 10, bottom: 10, left: 6, right: 6 }}
+              >
+                <Ionicons name="trash-outline" size={20} color="#FFF" />
+              </TouchableOpacity>
+              {!!viewerFileUrl && !viewerIsVideo && (
+                <TouchableOpacity
+                  onPress={handleDownloadMaterial}
+                  disabled={isDownloading}
+                  style={[styles.viewerActionBtn, isDownloading && { opacity: 0.55 }]}
+                  hitSlop={{ top: 10, bottom: 10, left: 6, right: 6 }}
+                >
+                  {isDownloading ? (
+                    <ActivityIndicator size="small" color="#FFF" />
+                  ) : (
+                    <Ionicons name="download-outline" size={20} color="#FFF" />
+                  )}
+                </TouchableOpacity>
+              )}
             </View>
           </View>
 
-          {/* Viewer body — mirrors CourseDetail student exactly */}
-{viewerShouldUseInline && viewerUrl ? (
-  <InlineMaterialViewer viewerUrl={viewerUrl} height={height - 62} />
-
-) : viewerIsVideo && viewerFileUrl ? (
-  <View style={styles.viewerExternalPrompt}>
-    <Ionicons name="videocam-outline" size={56} color="#D32F2F" />
-    <Text style={styles.viewerExternalTitle}>Video Material</Text>
-    <Text style={styles.viewerExternalText}>
-      Videos open in your device's media player or browser.
-    </Text>
-    <TouchableOpacity
-      style={styles.viewerExternalButton}
-      onPress={() => handleOpenUploadedFile(viewerFileUrl)}
-    >
-      <Ionicons name="play-circle-outline" size={18} color="#FFF" />
-      <Text style={styles.viewerExternalButtonText}>Play Video</Text>
-    </TouchableOpacity>
-  </View>
-
-) : viewerMaterial?.content ? (
-  <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.viewerTextContent}>
-    <Text style={styles.viewerTextTitle}>{viewerMaterial.title}</Text>
-    {!!viewerMaterial.week && (
-      <Text style={styles.viewerTextMeta}>{viewerMaterial.week}</Text>
-    )}
-    <Text style={styles.viewerTextBody}>{viewerMaterial.content}</Text>
-  </ScrollView>
-
-) : (
-  <View style={styles.viewerExternalPrompt}>
-    <Ionicons name="document-outline" size={56} color="#CCC" />
-    <Text style={styles.viewerExternalTitle}>No File Attached</Text>
-    <Text style={styles.viewerExternalText}>
-      This material has no uploaded file yet.
-    </Text>
-    <TouchableOpacity
-      style={styles.viewerExternalButton}
-      onPress={() => {
-        if (viewerMaterial) openEditMaterialModal(viewerMaterial);
-      }}
-    >
-      <Ionicons name="create-outline" size={18} color="#FFF" />
-      <Text style={styles.viewerExternalButtonText}>Edit Material</Text>
-    </TouchableOpacity>
-  </View>
-)}
+          {viewerShouldUseInline && viewerUrl ? (
+            <InlineMaterialViewer viewerUrl={viewerUrl} height={height - 62} />
+          ) : viewerIsVideo && viewerFileUrl ? (
+            <View style={styles.viewerExternalPrompt}>
+              <Ionicons name="videocam-outline" size={56} color="#D32F2F" />
+              <Text style={styles.viewerExternalTitle}>Video Material</Text>
+              <Text style={styles.viewerExternalText}>
+                Videos open in your device's media player or browser.
+              </Text>
+              <TouchableOpacity
+                style={styles.viewerExternalButton}
+                onPress={() => handleOpenUploadedFile(viewerFileUrl)}
+              >
+                <Ionicons name="play-circle-outline" size={18} color="#FFF" />
+                <Text style={styles.viewerExternalButtonText}>Play Video</Text>
+              </TouchableOpacity>
+            </View>
+          ) : viewerMaterial?.content ? (
+            <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.viewerTextContent}>
+              <Text style={styles.viewerTextTitle}>{viewerMaterial.title}</Text>
+              {!!viewerMaterial.week && (
+                <Text style={styles.viewerTextMeta}>{viewerMaterial.week}</Text>
+              )}
+              <Text style={styles.viewerTextBody}>{viewerMaterial.content}</Text>
+            </ScrollView>
+          ) : (
+            <View style={styles.viewerExternalPrompt}>
+              <Ionicons name="document-outline" size={56} color="#CCC" />
+              <Text style={styles.viewerExternalTitle}>No File Attached</Text>
+              <Text style={styles.viewerExternalText}>
+                This material has no uploaded file yet.
+              </Text>
+              <TouchableOpacity
+                style={styles.viewerExternalButton}
+                onPress={() => {
+                  if (viewerMaterial) openEditMaterialModal(viewerMaterial);
+                }}
+              >
+                <Ionicons name="create-outline" size={18} color="#FFF" />
+                <Text style={styles.viewerExternalButtonText}>Edit Material</Text>
+              </TouchableOpacity>
+            </View>
+          )}
         </SafeAreaView>
       </Modal>
 
       {/* ══════════════════════════════════════════════════════════════════════
-          EDIT MATERIAL MODAL
-      ═══════════════════════════════════════════════════════════════════════ */}
+      EDIT MATERIAL MODAL
+      ════════════════════════════════════════════════════════════════════════ */}
       <Modal
         visible={showEditMaterialModal}
         transparent
@@ -2570,7 +2975,6 @@ const viewerHasFile = !!viewerFileUrl;
               { width: isMobile ? Math.min(width - 28, 380) : 540, maxHeight: height * 0.88 },
             ]}
           >
-            {/* Header */}
             <View style={styles.createHeaderRow}>
               <View style={styles.modalHeaderTextWrap}>
                 <Text style={styles.createTitle}>Edit Material</Text>
@@ -2587,12 +2991,10 @@ const viewerHasFile = !!viewerFileUrl;
                 <Ionicons name="close" size={24} color="#111" />
               </TouchableOpacity>
             </View>
-
             <ScrollView
               showsVerticalScrollIndicator={false}
               contentContainerStyle={[styles.modalScrollContent, { paddingBottom: 24 }]}
             >
-              {/* Title */}
               <Text style={styles.sectionLabel}>Title *</Text>
               <TextInput
                 style={styles.inputBox}
@@ -2602,8 +3004,6 @@ const viewerHasFile = !!viewerFileUrl;
                 placeholderTextColor="#999"
                 editable={!isSavingMaterial}
               />
-
-              {/* Week */}
               <Text style={styles.sectionLabel}>Week *</Text>
               <TextInput
                 style={styles.inputBox}
@@ -2613,8 +3013,6 @@ const viewerHasFile = !!viewerFileUrl;
                 placeholderTextColor="#999"
                 editable={!isSavingMaterial}
               />
-
-              {/* Description */}
               <Text style={styles.sectionLabel}>Description</Text>
               <TextInput
                 style={[styles.textAreaBox, { minHeight: 80 }]}
@@ -2625,8 +3023,6 @@ const viewerHasFile = !!viewerFileUrl;
                 multiline
                 editable={!isSavingMaterial}
               />
-
-              {/* Current file info */}
               {!!editingMaterial?.fileName && (
                 <View style={styles.currentFileBox}>
                   <Ionicons name="document-text-outline" size={20} color="#D32F2F" />
@@ -2638,8 +3034,6 @@ const viewerHasFile = !!viewerFileUrl;
                   </View>
                 </View>
               )}
-
-              {/* Replace file */}
               <Text style={styles.sectionLabel}>
                 {editingMaterial?.fileName ? 'Replace File (optional)' : 'Upload File (optional)'}
               </Text>
@@ -2666,10 +3060,7 @@ const viewerHasFile = !!viewerFileUrl;
                 </View>
               )}
             </ScrollView>
-
-            {/* Action buttons */}
             <View style={styles.editMaterialActions}>
-              {/* Delete */}
               <TouchableOpacity
                 style={[styles.deleteMaterialBtn, (isSavingMaterial || isDeletingMaterial) && styles.disabledButton]}
                 onPress={handleDeleteMaterial}
@@ -2684,8 +3075,6 @@ const viewerHasFile = !!viewerFileUrl;
                   {isDeletingMaterial ? 'Deleting...' : 'Delete'}
                 </Text>
               </TouchableOpacity>
-
-              {/* Save */}
               <TouchableOpacity
                 style={[
                   styles.primaryButton,
@@ -2710,8 +3099,61 @@ const viewerHasFile = !!viewerFileUrl;
       </Modal>
 
       {/* ══════════════════════════════════════════════════════════════════════
-          CREATE MODAL
-      ═══════════════════════════════════════════════════════════════════════ */}
+      DELETE CONFIRMATION MODAL
+      ════════════════════════════════════════════════════════════════════════ */}
+      <Modal
+        visible={showDeleteConfirmModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => !isDeletingMaterial && setShowDeleteConfirmModal(false)}
+      >
+        <View style={styles.modalOverlayCenter}>
+          <View
+            style={[
+              styles.modalCardElevated,
+              { width: isMobile ? Math.min(width - 28, 340) : 400, padding: 24 },
+            ]}
+          >
+            <View style={{ alignItems: 'center', marginBottom: 16 }}>
+              <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: '#FFEBEE', alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
+                <Ionicons name="trash-outline" size={32} color="#D32F2F" />
+              </View>
+              <Text style={{ fontSize: 18, fontWeight: '800', color: '#111', textAlign: 'center' }}>Delete Material?</Text>
+              <Text style={{ fontSize: 14, color: '#666', textAlign: 'center', marginTop: 8, lineHeight: 20 }}>
+                Are you sure you want to delete "{editingMaterial?.title}"? This will remove the file from storage and cannot be undone.
+              </Text>
+            </View>
+            <View style={{ flexDirection: 'row', gap: 12, marginTop: 8 }}>
+              <TouchableOpacity
+                style={[styles.secondaryButton, { flex: 1 }]}
+                onPress={() => setShowDeleteConfirmModal(false)}
+                disabled={isDeletingMaterial}
+              >
+                <Text style={styles.secondaryButtonText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.primaryButton,
+                  { flex: 1, backgroundColor: '#D32F2F' },
+                  isDeletingMaterial && styles.disabledButton
+                ]}
+                onPress={confirmDeleteMaterial}
+                disabled={isDeletingMaterial}
+              >
+                {isDeletingMaterial ? (
+                  <ActivityIndicator size="small" color="#FFF" />
+                ) : (
+                  <Text style={styles.primaryButtonText}>Delete</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ══════════════════════════════════════════════════════════════════════
+      CREATE MODAL
+      ════════════════════════════════════════════════════════════════════════ */}
       <Modal visible={showCreateModal} transparent animationType="fade">
         <View style={styles.modalOverlayCenter}>
           <View
@@ -2793,8 +3235,8 @@ const viewerHasFile = !!viewerFileUrl;
       </Modal>
 
       {/* ══════════════════════════════════════════════════════════════════════
-          DATE TIME MODAL
-      ═══════════════════════════════════════════════════════════════════════ */}
+      DATE TIME MODAL
+      ════════════════════════════════════════════════════════════════════════ */}
       <Modal
         visible={showDateTimeModal}
         transparent
@@ -2966,8 +3408,8 @@ const viewerHasFile = !!viewerFileUrl;
       </Modal>
 
       {/* ══════════════════════════════════════════════════════════════════════
-          GAME TYPE MODAL
-      ═══════════════════════════════════════════════════════════════════════ */}
+      GAME TYPE MODAL
+      ════════════════════════════════════════════════════════════════════════ */}
       <Modal
         visible={showGameTypeModal}
         transparent
@@ -3040,8 +3482,8 @@ const viewerHasFile = !!viewerFileUrl;
       </Modal>
 
       {/* ══════════════════════════════════════════════════════════════════════
-          CLASS MODAL
-      ═══════════════════════════════════════════════════════════════════════ */}
+      CLASS MODAL
+      ════════════════════════════════════════════════════════════════════════ */}
       <Modal
         visible={showClassModal}
         transparent
@@ -3101,8 +3543,8 @@ const viewerHasFile = !!viewerFileUrl;
       </Modal>
 
       {/* ══════════════════════════════════════════════════════════════════════
-          GENERATED QUESTIONS PREVIEW MODAL
-      ═══════════════════════════════════════════════════════════════════════ */}
+      GENERATED QUESTIONS PREVIEW MODAL
+      ════════════════════════════════════════════════════════════════════════ */}
       <Modal
         visible={showGeneratedPreview}
         transparent
@@ -3208,8 +3650,65 @@ const viewerHasFile = !!viewerFileUrl;
       </Modal>
 
       {/* ══════════════════════════════════════════════════════════════════════
-          RESULT MODAL
-      ═══════════════════════════════════════════════════════════════════════ */}
+      AI PREVIEW & APPROVAL MODAL
+      ════════════════════════════════════════════════════════════════════════ */}
+      <Modal visible={!!aiPreviewData} transparent animationType="fade">
+        <View style={styles.modalOverlayCenter}>
+          <View style={[styles.modalCardElevated, { width: isMobile ? Math.min(width - 28, 400) : 600, maxHeight: height * 0.85 }]}>
+            <View style={styles.createHeaderRow}>
+              <View style={styles.modalHeaderTextWrap}>
+                <Text style={styles.createTitle}>Review AI Changes</Text>
+                <Text style={styles.modalSubtitle}>Edit the generated content before saving.</Text>
+              </View>
+              <TouchableOpacity onPress={() => { setAiPreviewData(null); setAiPreviewType(''); }}>
+                <Ionicons name="close" size={24} color="#111" />
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={{ flex: 1, marginTop: 12 }} nestedScrollEnabled>
+              <TextInput
+                style={[styles.textAreaBox, { minHeight: 300 }]}
+                value={JSON.stringify(aiPreviewData, null, 2)}
+                onChangeText={(text) => { try { setAiPreviewData(JSON.parse(text)); } catch(e){} }}
+                multiline
+              />
+            </ScrollView>
+            <View style={styles.buttonRow}>
+              <TouchableOpacity style={styles.secondaryButton} onPress={() => { setAiPreviewData(null); setAiPreviewType(''); }}>
+                <Text style={styles.secondaryButtonText}>Discard</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.primaryButton} onPress={handleSaveAiPreview}>
+                <Text style={styles.primaryButtonText}>Approve & Save</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ══════════════════════════════════════════════════════════════════════
+      SYLLABUS VIEWER MODAL
+      ════════════════════════════════════════════════════════════════════════ */}
+      <Modal visible={!!syllabusViewerUrl} transparent={false} animationType="slide" onRequestClose={() => setSyllabusViewerUrl(null)}>
+        <SafeAreaView style={styles.viewerModal} edges={['top', 'bottom'] as any}>
+          <View style={styles.viewerTopBar}>
+            <TouchableOpacity onPress={() => setSyllabusViewerUrl(null)} style={styles.viewerBackBtn}>
+              <Ionicons name="arrow-back" size={22} color="#FFF" />
+            </TouchableOpacity>
+            <View style={styles.viewerTitleBlock}>
+              <Text style={styles.viewerTitle} numberOfLines={1}>{currentSyllabus?.fileName || 'Syllabus'}</Text>
+            </View>
+          </View>
+          {syllabusViewerUrl && <InlineMaterialViewer viewerUrl={syllabusViewerUrl} height={height - 62} />}
+        </SafeAreaView>
+      </Modal>
+
+      {/* ══════════════════════════════════════════════════════════════════════
+      COURSE STRUCTURE PREVIEW & APPROVAL MODAL
+      ════════════════════════════════════════════════════════════════════════ */}
+      {renderStructurePreviewModal()}
+
+      {/* ══════════════════════════════════════════════════════════════════════
+      RESULT MODAL
+      ════════════════════════════════════════════════════════════════════════ */}
       <Modal
         visible={resultModalVisible}
         transparent
@@ -3267,8 +3766,6 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#ffffff' },
   screenScroll: { flex: 1, backgroundColor: '#ffffff' },
   screenScrollContent: { paddingBottom: 40 },
-
-  // ── Course header ──
   courseHeader: {
     backgroundColor: '#D32F2F',
     shadowColor: '#000',
@@ -3381,8 +3878,6 @@ const styles = StyleSheet.create({
     letterSpacing: 0.25,
     textTransform: 'uppercase',
   },
-
-  // ── Tabs ──
   tabContainer: {
     flexDirection: 'row',
     backgroundColor: '#FFF',
@@ -3399,8 +3894,6 @@ const styles = StyleSheet.create({
   tabActive: { borderBottomColor: '#D32F2F' },
   tabText: { color: '#888', fontWeight: '700' },
   tabTextActive: { color: '#D32F2F' },
-
-  // ── Fullscreen viewer ──
   viewerModal: { flex: 1, backgroundColor: '#1e1e1e' },
   viewerTopBar: {
     height: 62,
@@ -3531,8 +4024,6 @@ const styles = StyleSheet.create({
     color: '#333',
     lineHeight: 26,
   },
-
-  // ── Edit material modal ──
   editMaterialActions: {
     flexDirection: 'row',
     gap: 10,
@@ -3580,8 +4071,6 @@ const styles = StyleSheet.create({
     color: '#333',
     fontWeight: '600',
   },
-
-  // ── Modals ──
   modalOverlayCenter: {
     flex: 1,
     justifyContent: 'center',
@@ -3607,8 +4096,6 @@ const styles = StyleSheet.create({
   createTitle: { fontSize: 18, fontWeight: '800', color: '#111' },
   modalSubtitle: { fontSize: 13, color: '#666', lineHeight: 19, marginTop: 4 },
   modalBottomActions: { flexDirection: 'row', gap: 10, marginTop: 14 },
-
-  // ── Form ──
   formGrid: { gap: 16 },
   formGridDesktop: {
     flexDirection: 'row',
@@ -3733,8 +4220,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFF',
   },
   checkboxBoxChecked: { backgroundColor: '#D32F2F' },
-
-  // ── Buttons ──
   buttonRow: { flexDirection: 'row', gap: 10, marginTop: 16 },
   primaryButton: {
     flex: 1,
@@ -3777,8 +4262,6 @@ const styles = StyleSheet.create({
   floatingSaveButtonText: { color: '#FFF', fontWeight: '800', fontSize: 14 },
   disabledButton: { opacity: 0.65 },
   disabledInput: { opacity: 0.65, backgroundColor: '#F8F8F8' },
-
-  // ── Saving overlay ──
   savingOverlay: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(0,0,0,0.38)',
@@ -3816,11 +4299,7 @@ const styles = StyleSheet.create({
     color: '#666',
     textAlign: 'center',
   },
-
-  // ── Preview ──
   previewContent: { fontSize: 14, color: '#444', lineHeight: 22, marginTop: 10 },
-
-  // ── Calendar / DateTime ──
   dateTimeLayout: { gap: 16 },
   dateTimeLayoutDesktop: { flexDirection: 'row', alignItems: 'flex-start' },
   calendarPanel: {},
@@ -3890,8 +4369,6 @@ const styles = StyleSheet.create({
   },
   datePreviewLabel: { fontSize: 12, fontWeight: '700', color: '#777', marginBottom: 4 },
   datePreviewValue: { fontSize: 14, fontWeight: '800', color: '#D32F2F' },
-
-  // ── Assignment type / game chips ──
   typeChip: {
     flex: 1,
     paddingVertical: 12,

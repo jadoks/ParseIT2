@@ -329,6 +329,7 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
   const [selectedCourseIdForAssignments, setSelectedCourseIdForAssignments] = useState<string | null>(null);
   const [generatedActivity, setGeneratedActivity] = useState<GenerateActivityData | null>(null);
   const [generatedQuizMastersData, setGeneratedQuizMastersData] = useState<any[] | null>(null);
+  const [currentGameType, setCurrentGameType] = useState<string>('quiz_master');
   const [isGeneratingActivity, setIsGeneratingActivity] = useState(false);
   const [completedActivityScores, setCompletedActivityScores] = useState<Record<string, CompletedActivityScore>>({});
   const [isMobileDrawerOpen, setMobileDrawerOpen] = useState(false);
@@ -336,7 +337,7 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
   const [isConversationActive, setIsConversationActive] = useState(false);
   const [isVideoActive, setIsVideoActive] = useState(false);
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
-  const [activeCourseTab, setActiveCourseTab] = useState<'materials' | 'assignments'>('materials');
+  const [activeCourseTab, setActiveCourseTab] = useState<'materials' | 'assignments' | 'modules'>('materials');
   const [currentUserAvatar, setCurrentUserAvatar] = useState<any>(initialAvatar);
   const [currentUserBanner, setCurrentUserBanner] = useState<any>(initialBanner);
   const [hasImageChanged, setHasImageChanged] = useState(false);
@@ -1634,9 +1635,10 @@ const handleAddAssignmentComment = async (assignmentId: string, content: string,
         return <Game 
           enrolledCourses={joinedCourses.map(course => ({ id: course.id, name: course.name, materials: course.materials.map(m => ({ id: m.id, title: m.title, type: m.type })) }))} 
           studentId={currentStudent.studentId} 
-          onNavigate={(screen, generatedQuiz) => {
+          onNavigate={(screen, generatedQuiz, gameType) => { // 🌟 Added gameType parameter
             if (screen === 'quizmasters') {
               setGeneratedQuizMastersData(generatedQuiz || null);
+              setCurrentGameType(gameType || 'quiz_master'); // 🌟 Capture the selected game type
               setLastScreen('game');
               setActiveScreen('quizmasters');
             }
@@ -1663,8 +1665,12 @@ const handleAddAssignmentComment = async (assignmentId: string, content: string,
       case 'fruitmania': 
         return <FruitMania onBack={exitFullscreenGameToGames} />;
         
-      case 'quizmasters': 
-        return <QuizMasters onBack={exitFullscreenGameToGames} generatedQuestions={generatedQuizMastersData} />;
+       case 'quizmasters': 
+        return <QuizMasters 
+          onBack={exitFullscreenGameToGames} 
+          generatedQuestions={generatedQuizMastersData} 
+          gameType={currentGameType} // 🌟 Pass the captured gameType down to QuizMasters
+        />;
         
       case 'gamebasedassignment': 
         return <GameBasedAssignment 
