@@ -22,6 +22,7 @@ const require = createRequire(import.meta.url);
 const pdf = require("pdf-parse");
 const vision = require("@google-cloud/vision");
 
+
 const client = new vision.ImageAnnotatorClient({
   keyFilename: "./serviceAccountKey.json",
 });
@@ -44,6 +45,10 @@ admin.initializeApp({
 });
 
 const db = admin.firestore();
+// Enable ignoreUndefinedProperties globally
+db.settings({
+  ignoreUndefinedProperties: true,
+});
 const bucket = admin.storage().bucket();
 const FieldValue = admin.firestore.FieldValue;
 
@@ -315,7 +320,7 @@ async function hydrateUserImageUrls(userData = {}) {
 
 
 
-const GEMINI_GAME_MODEL = process.env.GEMINI_GAME_MODEL || "gemini-2.5-flash-lite";
+const GEMINI_GAME_MODEL = process.env.GEMINI_GAME_MODEL || "gemini-2.5-flash";
 const OPENAI_GAME_MODEL =
   process.env.OPENAI_GAME_MODEL || process.env.OPENAI_MODEL || "gpt-4o-mini";
 const geminiGameAI = process.env.GEMINI_API_KEY
@@ -11621,7 +11626,7 @@ async function callGeminiProvider({
     throw new Error("Gemini API key is not configured.");
   }
 
-  const model = process.env.GEMINI_MODEL || "gemini-2.5-flash-lite";
+  const model = process.env.GEMINI_MODEL || "gemini-2.5-flash";
 
   const response = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
@@ -11948,7 +11953,7 @@ function normalizeProviderName(provider = "") {
 function getProviderModelName(provider = "") {
   const value = String(provider || "").trim().toLowerCase();
 
-  if (value === "gemini") return process.env.GEMINI_MODEL || "gemini-2.5-flash-lite";
+  if (value === "gemini") return process.env.GEMINI_MODEL || "gemini-2.5-flash";
   if (value === "openai") return process.env.OPENAI_MODEL || "gpt-4o-mini";
   if (value === "claude") return process.env.CLAUDE_MODEL || "claude-3-5-haiku-latest";
   if (value === "groq") return process.env.GROQ_MODEL || "llama-3.1-8b-instant";
@@ -12258,7 +12263,7 @@ ${materialsText || "No readable materials found."}
             extractedText.imagePdf
           ) {
             const model = geminiGameAI.getGenerativeModel({
-              model: "gemini-2.5-flash-lite",
+              model: "gemini-2.5-flash",
             });
 
             const result = await model.generateContent([
@@ -12432,7 +12437,7 @@ In tutor mode, tutor the student step by step and ask a quick check question whe
       // =========================
       if (imageFileForVision) {
         const model = geminiGameAI.getGenerativeModel({
-          model: "gemini-2.5-flash-lite",
+          model: "gemini-2.5-flash",
         });
 
         const result = await model.generateContent([
@@ -14367,14 +14372,70 @@ async function callGeminiForModuleTool(prompt) {
 }
 
 // ─── MODULE FETCH & SAVE ──────────────────────────────────────────────────────
-app.get("/course-modules/:courseId", async (req, res) => {
+app.get("/course-modules/:classId", async (req, res) => {
+    try {
+        const { classId } = req.params;
+        
+        // 1. Get Modules
+        const modulesSnap = await db.collection("courseModules")
+            .where("classId", "==", classId)
+            .orderBy("moduleNumber", "asc")
+            .get();
+        
+        const modules = [];
+        
+        for (const doc of modulesSnap.docs) {
+            const moduleData = { id: doc.id, ...doc.data() };
+            
+            // 2. Get Lessons for this specific Module
+            const lessonsSnap = await db.collection("courseLessons")
+                .where("moduleId", "==", doc.id)
+                .get();
+                
+            moduleData.lessons = lessonsSnap.docs.map(lDoc => ({
+                id: lDoc.id,
+                ...lDoc.data()
+            }));
+            
+            modules.push(moduleData);
+        }
+        
+        res.json(modules);
+    } catch (error) {
+        console.error("Fetch modules error:", error);
+        res.status(500).json({ error: error.message || "Failed to fetch modules." });
+    }
+});
+
+// Add this route to your backend index.js, preferably near other course-module routes
+
+app.get("/course-lessons/:lessonId", requireAuth, async (req, res) => {
   try {
-    const { courseId } = req.params;
-    const snapshot = await db.collection("courseModules").where("courseId", "==", courseId).orderBy("moduleNumber", "asc").get();
-    const modules = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-    res.json(modules);
+    const { lessonId } = req.params;
+    
+    // Fetch the lesson document
+    const lessonDoc = await db.collection("courseLessons").doc(lessonId).get();
+    
+    if (!lessonDoc.exists) {
+      return res.status(404).json({ error: "Lesson not found." });
+    }
+
+    const lessonData = lessonDoc.data();
+    
+    // Optional: If you store assessments/activities in subcollections, fetch them here.
+    // For now, we assume they are stored directly in the lesson document as per your 'approve' logic.
+    
+    res.json({
+      success: true,
+      data: {
+        id: lessonDoc.id,
+        ...lessonData
+      }
+    });
+
   } catch (error) {
-    res.status(500).json({ error: error.message || "Failed to fetch modules." });
+    console.error("Fetch lesson error:", error);
+    res.status(500).json({ error: error.message || "Failed to fetch lesson details." });
   }
 });
 
@@ -14476,10 +14537,178 @@ app.post("/ai/module-tools/generate-summary", requireAuth, async (req, res) => {
   } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
+
+// --- HELPER: Parse Syllabus to Structure (No Save) ---
+app.post("/course-syllabus/parse", requireAuth, async (req, res) => {
+  try {
+    const { fileBase64, fileName, fileType } = req.body;
+    if (!fileBase64) return res.status(400).json({ error: "File data required." });
+
+    const buffer = Buffer.from(fileBase64.split(',')[1], 'base64');
+    
+    // Use existing conversion logic if needed (PPTX -> PDF)
+    let processBuffer = buffer;
+    let processMimeType = fileType;
+    if (needsConversion(fileType, fileName)) {
+       try {
+         processBuffer = await convertPPTXtoPDFViaCloudConverter(buffer, fileName);
+         processMimeType = "application/pdf";
+       } catch (e) { console.warn("Conversion failed, using original", e); }
+    }
+
+    // Call Gemini to extract structure
+    const model = geminiGameAI.getGenerativeModel({
+      model: GEMINI_GAME_MODEL || "gemini-2.5-flash",
+      generationConfig: { responseMimeType: "application/json", temperature: 0.1 }
+    });
+
+    const prompt = `
+You are an expert Academic Syllabus Parser.
+Extract the structural hierarchy from this syllabus.
+Return ONLY valid JSON in this format:
+{
+  "courseInformation": {
+    "title": "String",
+    "description": "String",
+    "learningApproach": "String"
+  },
+  "learningOutcomes": ["String"],
+  "modules": [
+    {
+      "moduleNumber": 1,
+      "title": "Module Title",
+      "weeklySchedule": "Week 1",
+      "description": "Brief description",
+      "lessons": [
+        {
+          "title": "Lesson Title",
+          "description": "Lesson description",
+          "topics": [
+            { "title": "Topic 1" },
+            { "title": "Topic 2" }
+          ]
+        }
+      ]
+    }
+  ]
+}
+Do not generate content for discussions or activities yet. Just the structure.
+`;
+
+    const result = await model.generateContent([
+      { text: prompt },
+      { inlineData: { mimeType: processMimeType, data: processBuffer.toString("base64") } }
+    ]);
+
+    const rawText = result.response.text().replace(/^```json\s*/i, "").replace(/```$/i, "").trim();
+    const parsedStructure = JSON.parse(rawText);
+
+    res.json({ success: true, structure: parsedStructure });
+
+  } catch (error) {
+    console.error("Parse syllabus error:", error);
+    res.status(500).json({ error: error.message || "Failed to parse syllabus." });
+  }
+});
+// UPDATED ROUTE: Upload Syllabus with Conversion Logic
+app.post("/course-syllabus/upload", requireAuth, async (req, res) => {
+  try {
+    const { classId, fileBase64, fileName, fileType } = req.body;
+    if (!classId || !fileBase64) return res.status(400).json({ error: "Missing data." });
+
+    const bucket = admin.storage().bucket();
+    const cleanedBase64 = fileBase64.includes(",") ? fileBase64.split(",")[1] : fileBase64;
+    const buffer = Buffer.from(cleanedBase64, 'base64');
+    
+    // 1. Upload Original File
+    const originalPath = `syllabi/${classId}/original/${Date.now()}_${fileName}`;
+    const originalFile = bucket.file(originalPath);
+    await originalFile.save(buffer, {
+      metadata: { contentType: fileType },
+      public: false,
+    });
+
+    let processBuffer = buffer;
+    let processMimeType = fileType;
+    let convertedPath = null;
+
+    // 2. Check if Conversion is Needed
+    if (needsConversion(fileType, fileName)) {
+      console.log(`Converting ${fileName} to PDF via CloudConvert...`);
+      try {
+        processBuffer = await convertPPTXtoPDFViaCloudConverter(buffer, fileName);
+        processMimeType = "application/pdf";
+        
+        // Optional: Save converted PDF to storage if you want to keep it
+        convertedPath = `syllabi/${classId}/converted/${Date.now()}_${fileName.replace(/\.\w+$/, '.pdf')}`;
+        const convertedFile = bucket.file(convertedPath);
+        await convertedFile.save(processBuffer, {
+          metadata: { contentType: "application/pdf" },
+          public: false,
+        });
+      } catch (convertError) {
+        console.warn("Conversion failed, falling back to original file:", convertError.message);
+        // Fallback: Use original buffer if conversion fails
+      }
+    }
+
+    // 3. Parse Structure using Gemini
+    console.log("Parsing syllabus structure with Gemini...");
+    let parsedData = {};
+    try {
+      parsedData = await extractSyllabusStructure(processBuffer, processMimeType, fileName);
+    } catch (parseError) {
+      console.warn("Auto-parse failed:", parseError.message);
+      // Continue saving metadata even if parsing fails
+    }
+
+    // 4. Save Metadata and Structure to Firestore
+    const syllabusRef = await db.collection("courseSyllabi").add({
+      classId,
+      fileName,
+      originalStoragePath: originalPath,
+      convertedStoragePath: convertedPath,
+      fileType,
+      fileSize: buffer.length,
+      uploadedAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+      isCurrent: true,
+      status: parsedData.structure ? "completed" : "uploaded",
+      metadata: parsedData.courseInformation || {},
+      structure: parsedData.structure || { weeks: [] }, // Store the hierarchical structure
+    });
+
+    // Mark other syllabi as not current
+    await db.collection("courseSyllabi")
+      .where("classId", "==", classId)
+      .where("id", "!=", syllabusRef.id)
+      .get()
+      .then(snapshot => {
+        const batch = db.batch();
+        snapshot.forEach(doc => batch.update(doc.ref, { isCurrent: false }));
+        return batch.commit();
+      });
+
+    res.json({
+      success: true,
+      syllabus: { 
+        id: syllabusRef.id, 
+        fileName, 
+        status: parsedData.structure ? "completed" : "uploaded",
+        structure: parsedData.structure || null
+      }
+    });
+
+  } catch (error) {
+    console.error("Upload error:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // ─── COURSE SYLLABUS ROUTES ───────────────────────────────────────────────────
 const SYLLABUS_MAX_SIZE = 20 * 1024 * 1024; // 20MB
 
-// Fetch the current active syllabus for a class
+// UPDATED ROUTE: Fetch Syllabus Structure
 app.get("/course-syllabus/:classId", requireAuth, async (req, res) => {
   try {
     const { classId } = req.params;
@@ -14488,11 +14717,19 @@ app.get("/course-syllabus/:classId", requireAuth, async (req, res) => {
       .where("isCurrent", "==", true)
       .limit(1)
       .get();
-    
+      
     if (snapshot.empty) return res.json(null);
     
     const doc = snapshot.docs[0];
-    res.json({ id: doc.id, ...doc.data() });
+    const data = doc.data();
+    
+    // Return full structure including weeks/modules/topics
+    res.json({ 
+      id: doc.id, 
+      ...data,
+      // Ensure structure is included in the response
+      structure: data.structure || { weeks: [] } 
+    });
   } catch (error) {
     res.status(500).json({ error: error.message || "Failed to fetch syllabus." });
   }
@@ -14513,255 +14750,812 @@ app.get("/course-syllabus/view/:syllabusId", requireAuth, async (req, res) => {
   }
 });
 
-// Upload a new syllabus (Handles Versioning)
-// ─── UPDATE EXISTING: POST /course-syllabus/upload ───────────────────────────
-// Replace your existing /course-syllabus/upload route with this to ensure 
-// downloadUrl, bucketPath, and status are saved correctly.
-app.post("/course-syllabus/upload", requireAuth, async (req, res) => {
-  try {
-    const { classId, fileBase64, fileName, fileType, fileSize } = req.body;
-    if (!classId || !fileBase64 || !fileName) {
-      return res.status(400).json({ error: "Missing required fields." });
+// Helper: Check if file needs conversion
+function needsConversion(mimeType, fileName) {
+  const lowerName = (fileName || '').toLowerCase();
+  const officeTypes = [
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document', // docx
+    'application/vnd.openxmlformats-officedocument.presentationml.presentation', // pptx
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', // xlsx
+    'application/msword', // doc
+    'application/vnd.ms-powerpoint', // ppt
+    'application/vnd.ms-excel' // xls
+  ];
+  
+  return officeTypes.includes(mimeType) || 
+         lowerName.endsWith('.docx') || 
+         lowerName.endsWith('.pptx') || 
+         lowerName.endsWith('.xlsx') ||
+         lowerName.endsWith('.doc') || 
+         lowerName.endsWith('.ppt') || 
+         lowerName.endsWith('.xls');
+}
+
+
+// REPLACE the existing extractSyllabusStructure function with this:
+
+async function extractSyllabusStructure(buffer, mimeType, fileName) {
+  if (!geminiGameAI) throw new Error("GEMINI_API_KEY is missing.");
+  
+  const model = geminiGameAI.getGenerativeModel({
+    model: GEMINI_GAME_MODEL,
+    generationConfig: {
+      responseMimeType: "application/json",
+      temperature: 0.1
     }
-    if (fileSize && fileSize > SYLLABUS_MAX_SIZE) {
-      return res.status(400).json({ error: "File exceeds maximum size of 20 MB." });
-    }
-    
-    const cleanedBase64 = fileBase64.includes(",") ? fileBase64.split(",")[1] : fileBase64;
-    const storagePath = `course-syllabi/${classId}/${Date.now()}-${sanitizeFileName(fileName)}`;
-    const file = bucket.file(storagePath);
-    
-    await file.save(Buffer.from(cleanedBase64, "base64"), {
-      metadata: { contentType: fileType || "application/octet-stream" },
-      resumable: false,
-    });
+  });
 
-    const signedUrl = await createReadSignedUrl(storagePath);
+  const prompt = `
+  You are an expert Academic Syllabus Parser.
+  Your task is to extract ONLY the structural hierarchy from the uploaded syllabus file.
 
-    const prevSyllabi = await db.collection("courseSyllabi")
-      .where("classId", "==", classId).orderBy("version", "desc").limit(1).get();
-    let nextVersion = 1;
-    if (!prevSyllabi.empty) nextVersion = (prevSyllabi.docs[0].data().version || 0) + 1;
+  CRITICAL RULES:
+  1. EXTRACT: Course Title, Module Titles, Weekly Schedule (e.g., "Week 1-2", "Wk 3"), Topics, and Subtopics.
+  2. The "weeklySchedule" field must contain the EXACT text representing the week range from the syllabus (e.g., "Week 1-2", "Weeks 3-4"). Do NOT generate "Week 1" if the syllabus says "Weeks 1-2".
+  3. IGNORE: Discussions, Activities, Assessments, Quizzes, Reflections, Summaries, Faculty Info, Policies.
+  4. DO NOT generate any lesson content.
 
-    const batch = db.batch();
-    const currentDocs = await db.collection("courseSyllabi")
-      .where("classId", "==", classId).where("isCurrent", "==", true).get();
-    currentDocs.docs.forEach(doc => batch.update(doc.ref, { isCurrent: false }));
-
-    const newSyllabusRef = db.collection("courseSyllabi").doc();
-    const syllabusData = {
-      classId,
-      teacherId: req.user.uid,
-      fileName,
-      fileType: fileType || "application/octet-stream",
-      storagePath,
-      bucketPath: `gs://${bucket.name}/${storagePath}`,
-      downloadUrl: signedUrl,
-      fileSize: fileSize || 0,
-      uploadedAt: FieldValue.serverTimestamp(),
-      updatedAt: FieldValue.serverTimestamp(),
-      status: "uploaded",
-      version: nextVersion,
-      isCurrent: true,
-    };
-    batch.set(newSyllabusRef, syllabusData);
-    await batch.commit();
-
-    res.json({ success: true, message: "Syllabus uploaded successfully.", syllabus: { id: newSyllabusRef.id, ...syllabusData } });
-  } catch (error) {
-    console.error("Syllabus upload error:", error);
-    res.status(500).json({ error: error.message || "Failed to upload syllabus." });
+  Return ONLY valid JSON in this exact format:
+  {
+  "courseInformation": {
+  "title": "String",
+  "code": "String",
+  "units": Number,
+  "semester": "String",
+  "totalHours": Number
+  },
+  "structure": {
+  "modules": [
+  {
+  "moduleNumber": 1,
+  "moduleTitle": "Module Title from File",
+  "weeklySchedule": "Exact Week Range from File", 
+  "topics": [
+  {
+  "title": "Topic Title",
+  "subtopics": ["Subtopic 1", "Subtopic 2"]
   }
-});
+  ]
+  }
+  ]
+  }
+  }
+  `;
 
-// ─── NEW: POST /course-syllabus/generate ─────────────────────────────────────
-app.post("/course-syllabus/generate", requireAuth, async (req, res) => {
+  const fileBase64 = buffer.toString("base64");
+  let result;
+  
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      result = await model.generateContent([
+        { text: prompt },
+        { inlineData: { mimeType, data: fileBase64 } }
+      ]);
+      break;
+    } catch (error) {
+      if (error.status === 503 && attempt < 3) {
+        await new Promise(r => setTimeout(r, Math.pow(2, attempt) * 1000));
+      } else {
+        throw error;
+      }
+    }
+  }
+
+  if (!result) throw new Error("Failed to parse syllabus structure.");
+  
+  const rawText = result.response.text().replace(/^```json\s*/i, "").replace(/```$/i, "").trim();
+  const parsed = JSON.parse(rawText);
+  
+  if (!parsed.structure || !parsed.structure.modules) {
+    throw new Error("AI failed to extract valid module structure from syllabus.");
+  }
+  
+  return parsed;
+}
+
+// Replace the existing /course-syllabus/generate-next-lessons route with this updated version
+app.post("/course-syllabus/generate-next-lessons", requireAuth, async (req, res) => {
   try {
-    const { classId } = req.body;
-    if (!classId) return res.status(400).json({ error: "classId is required." });
+    const { classId, moduleNumber, topicTitles } = req.body;
+    
+    if (!classId || !moduleNumber || !Array.isArray(topicTitles) || topicTitles.length === 0) {
+      return res.status(400).json({ error: "classId, moduleNumber, and topicTitles are required." });
+    }
 
+    // ✅ FIX: Fetch the SYLLABUS STRUCTURE to get the correct topics list
+    // Saved modules in 'courseModules' collection do NOT store the full topics array
+    let syllabusModules = [];
     const syllabusSnap = await db.collection("courseSyllabi")
       .where("classId", "==", classId)
       .where("isCurrent", "==", true)
       .limit(1)
       .get();
-
-    if (syllabusSnap.empty) return res.status(404).json({ error: "No syllabus found." });
-
-    const syllabusDoc = syllabusSnap.docs[0];
-    const syllabusData = syllabusDoc.data();
-    await syllabusDoc.ref.update({ status: "generating", updatedAt: FieldValue.serverTimestamp() });
-
-    // 1. Download original file from Firebase Storage
-    const file = bucket.file(syllabusData.storagePath);
-    const [buffer] = await file.download();
-    const mimeType = syllabusData.fileType || "application/octet-stream";
-    const fileName = syllabusData.fileName || "syllabus";
-
-    const prompt = `You are an expert curriculum designer. Analyze the attached course syllabus document and extract a structured course curriculum.
-Return ONLY valid JSON in this exact format:
-{
-  "courseInformation": { "title": "string", "description": "string", "code": "string" },
-  "learningOutcomes": ["string"],
-  "modules": [
-    {
-      "moduleNumber": 1,
-      "title": "string",
-      "description": "string",
-      "weeklySchedule": "string",
-      "lessons": [
-        {
-          "id": "unique-id",
-          "title": "string",
-          "description": "string",
-          "activities": ["string"],
-          "assessments": ["string"]
-        }
-      ]
-    }
-  ]
-}`;
-
-    const model = geminiGameAI.getGenerativeModel({
-      model: GEMINI_GAME_MODEL,
-      generationConfig: { responseMimeType: "application/json" }
-    });
-
-    let result;
-
-    // 2. Check if MIME type is supported by Gemini's inlineData (PDF, Images, Audio, Video, Text)
-    const isInlineSupported = /^(application\/pdf|audio\/|image\/|text\/plain|video\/)/.test(mimeType);
-
-    if (isInlineSupported) {
-      // For supported types like PDF, pass directly as inlineData (Fastest)
-      const fileBase64 = buffer.toString("base64");
-      result = await model.generateContent([
-        { text: prompt },
-        { inlineData: { mimeType: mimeType, data: fileBase64 } }
-      ]);
-    } else {
-      // For unsupported types like .docx/.pptx, use the Gemini File API
-      const fileManager = new GoogleAIFileManager(process.env.GEMINI_API_KEY);
       
-      // Save buffer to a temporary local file
-      const tempDir = os.tmpdir();
-      const tempFileName = `syllabus-${Date.now()}-${sanitizeFileName(fileName)}`;
-      const tempFilePath = path.join(tempDir, tempFileName);
-      fs.writeFileSync(tempFilePath, buffer);
+    if (syllabusSnap.empty) return res.status(404).json({ error: "No current syllabus found." });
+    
+    const syllabusData = syllabusSnap.docs[0].data();
+    syllabusModules = syllabusData.structure?.modules || [];
+    
+    const targetModule = syllabusModules.find(m => m.moduleNumber === moduleNumber);
+    
+    if (!targetModule) return res.status(404).json({ error: "Module not found in syllabus structure." });
 
+    // Generate content for EACH selected topic sequentially
+    const generatedLessons = [];
+    
+    for (const topicTitle of topicTitles) {
       try {
-        // Upload the original file directly to Gemini's servers
-        const uploadResult = await fileManager.uploadFile(tempFilePath, {
-          mimeType: mimeType,
-          displayName: "Course Syllabus",
-        });
-
-        // Wait for Gemini to finish processing the uploaded file
-        let uploadedFile = uploadResult.file;
-        while (uploadedFile.state.name === "PROCESSING") {
-          await new Promise((resolve) => setTimeout(resolve, 500));
-          uploadedFile = await fileManager.getFile(uploadedFile.name);
+        console.log(`Generating next lesson for Module ${moduleNumber}, Topic: "${topicTitle}"...`);
+        
+        // Use your existing generateTopicContent helper which expects the syllabus module object
+        const content = await generateTopicContent(targetModule, moduleNumber, topicTitle);
+        
+        // Extract lessons from the generated response
+        if (content.modules && content.modules.length > 0 && content.modules[0].lessons) {
+          generatedLessons.push(...content.modules[0].lessons);
         }
-
-        if (uploadedFile.state.name === "FAILED") {
-          throw new Error("Gemini file processing failed.");
-        }
-
-        // Generate content using the uploaded file URI
-        result = await model.generateContent([
-          { text: prompt },
-          {
-            fileData: {
-              mimeType: uploadedFile.mimeType,
-              fileUri: uploadedFile.uri,
-            },
-          },
-        ]);
-
-        // Clean up the file from Gemini servers to save quota/storage
-        await fileManager.deleteFile(uploadedFile.name);
-      } finally {
-        // Clean up the local temporary file
-        if (fs.existsSync(tempFilePath)) {
-          fs.unlinkSync(tempFilePath);
-        }
+      } catch (err) {
+        console.error(`Failed to generate topic "${topicTitle}":`, err.message);
+        // Continue to next topic instead of failing entire batch
       }
     }
 
-    // 3. Parse and save the generated structure
-    const generated = JSON.parse(result.response.text());
-    await syllabusDoc.ref.update({ status: "generated", updatedAt: FieldValue.serverTimestamp() });
-
-    res.json({ success: true, data: generated });
+    res.json({
+      success: true,
+      data: {
+        moduleId: null, // Frontend will match by moduleNumber
+        moduleNumber: moduleNumber,
+        lessons: generatedLessons
+      }
+    });
   } catch (error) {
-    console.error("Generate course structure error:", error);
-    res.status(500).json({ error: error.message || "Failed to generate course structure." });
+    console.error("Generate next lessons error:", error);
+    res.status(500).json({ error: error.message || "Failed to generate lessons." });
   }
 });
 
-// ─── NEW: POST /course-syllabus/approve ──────────────────────────────────────
-// Saves the approved structure to Firestore using batch writes
-app.post("/course-syllabus/approve", requireAuth, async (req, res) => {
+app.post("/ai/generate-lesson-content", requireAuth, async (req, res) => {
   try {
-    const { classId, curriculum } = req.body;
-    if (!classId || !curriculum) return res.status(400).json({ error: "classId and curriculum are required." });
-
-    const batch = db.batch();
-
-    // 1. Save courseStructure
-    const structureRef = db.collection("courseStructures").doc();
-    batch.set(structureRef, {
+    const {
       classId,
-      courseInformation: curriculum.courseInformation,
-      learningOutcomes: curriculum.learningOutcomes,
+      moduleId,
+      topicTitle,
+      subtopicTitle, // Optional
+      generateDiscussion,
+      generateActivity,
+      generateAssessment,
+      generateSummary
+    } = req.body;
+
+    if (!classId || !moduleId || !topicTitle) {
+      return res.status(400).json({ error: "Missing required fields." });
+    }
+
+    // Fetch Class Context
+    const classSnap = await db.collection("classes").doc(classId).get();
+    const classData = classSnap.exists ? classSnap.data() : {};
+    const courseName = classData.name || "Programming Course";
+
+    // Build Dynamic Prompt
+    let instructions = [];
+    
+    // --- UPDATED INSTRUCTIONS FOR PLAIN TEXT FORMAT ---
+    if (generateDiscussion) {
+      instructions.push(`- Generate a 'discussion' section. 
+        RULES: 
+        1. Use ONLY plain text. NO HTML, NO Markdown headers (#), NO code blocks.
+        2. Use numbered headings for sections (e.g., "1. Introduction", "2. Core Concepts").
+        3. Use **text** for bolding key terms.
+        4. Use * or - at the start of lines for bullet points.
+        5. Separate paragraphs with blank lines.`);
+    }
+    
+    if (generateActivity) {
+      instructions.push(`- Generate an 'activity' section.
+        RULES:
+        1. Use ONLY plain text.
+        2. Provide clear, numbered steps (1., 2., 3.).
+        3. Use **bold** for important instructions.`);
+    }
+
+    if (generateAssessment) {
+      instructions.push("- Generate 3-5 'assessment' items (Multiple Choice or True/False) with correct answers and explanations.");
+    }
+
+    if (generateSummary) {
+      instructions.push("- Generate a concise 'summary' of the key takeaways using plain text.");
+    }
+
+    const prompt = `
+You are an expert University Instructor for "${courseName}".
+Generate lesson content for the following specific topic.
+
+CONTEXT:
+- Module: ${moduleId}
+- Topic: ${topicTitle}
+${subtopicTitle ? `- Subtopic: ${subtopicTitle}` : ''}
+
+INSTRUCTIONS:
+${instructions.join('\n')}
+
+CRITICAL OUTPUT FORMAT RULES:
+- Return VALID JSON only.
+- The values for "discussion", "activity", and "summary" must be PLAIN TEXT strings.
+- Do NOT use HTML tags (<p>, <b>, <ul>).
+- Do NOT use Markdown headers (#, ##).
+- Use **word** for bolding.
+- Use * or - for list items.
+- Use blank lines to separate paragraphs.
+
+RETURN VALID JSON ONLY:
+{
+  "discussion": "${generateDiscussion ? "1. Introduction\n\nThis is a sample paragraph with **bold text**.\n\n* Key point 1\n* Key point 2" : ""}",
+  "activity": "${generateActivity ? "1. Step one\n2. Step two\n\n**Note:** Be careful here." : ""}",
+  "assessment": {
+    "items": [
+      ${generateAssessment ? `{
+        "type": "multiple_choice",
+        "question": "Question?",
+        "options": ["A", "B", "C", "D"],
+        "correctAnswer": 0,
+        "explanation": "Why A is correct."
+      }` : ''}
+    ]
+  },
+  "summary": "${generateSummary ? "Key takeaways..." : ""}"
+}
+`;
+
+    const model = geminiGameAI.getGenerativeModel({
+      model: GEMINI_GAME_MODEL,
+      generationConfig: {
+        responseMimeType: "application/json",
+        temperature: 0.7
+      }
+    });
+
+    const result = await model.generateContent([{ text: prompt }]);
+    
+    // Clean up the response text to ensure it's valid JSON
+    const rawText = result.response.text().replace(/^```json\s*/i, "").replace(/```$/i, "").trim();
+    const generatedContent = JSON.parse(rawText);
+
+    // Save to 'generatedLessons' collection
+    const lessonRef = await db.collection("generatedLessons").add({
+      classId,
+      moduleId,
+      topicTitle,
+      subtopicTitle: subtopicTitle || null,
+      ...generatedContent,
+      generatedAt: FieldValue.serverTimestamp(),
+      createdBy: req.user.uid
+    });
+
+    res.json({
+      success: true,
+      lessonId: lessonRef.id,
+      data: generatedContent
+    });
+  } catch (error) {
+    console.error("Generate lesson content error:", error);
+    res.status(500).json({ error: error.message || "Failed to generate lesson content." });
+  }
+});
+
+/// ─── HELPER: Generate Deep Content for ONE SPECIFIC TOPIC ─────────────────────
+async function generateTopicContent(syllabusModule, targetModuleNum, specificTopic) {
+  if (!geminiGameAI) throw new Error("GEMINI_API_KEY is missing.");
+
+  let modelName = GEMINI_GAME_MODEL || "gemini-2.5-flash";
+  
+  const model = geminiGameAI.getGenerativeModel({
+    model: modelName,
+    generationConfig: { 
+      responseMimeType: "application/json",
+      temperature: 0.7,
+      maxOutputTokens: 8192 // Optimized for single-topic depth
+    }
+  });
+
+  // ✅ FIX: Use moduleTitle instead of title to prevent "undefined"
+  const moduleName = syllabusModule.moduleTitle || syllabusModule.title || "Untitled Module";
+  const topicList = syllabusModule.topics 
+    ? syllabusModule.topics.map(t => t.title || t).join(", ") 
+    : moduleName;
+
+  // Prompt focuses strictly on the specificTopic within the context of the module
+  const prompt = `You are an expert curriculum designer and university instructor from Cebu Technological University (CTU). 
+Generate course content for ONE SPECIFIC LESSON/TOPIC ONLY.
+
+MODULE CONTEXT:
+- Week/Module: ${syllabusModule.weeklySchedule || ""} (${moduleName})
+- All Topics in this Week: ${topicList}
+
+CURRENT LESSON TO GENERATE:
+- Topic: "${specificTopic}"
+
+INSTRUCTIONS:
+Create a comprehensive lesson specifically for "${specificTopic}". Do NOT cover other topics in this week unless necessary for context. 
+
+LESSON STRUCTURE:
+1. Introduction & Learning Objectives (Specific to ${specificTopic})
+2. Core Concepts with Real-World Examples
+3. Key Terminology 
+4. Practical Applications
+5. Common Mistakes
+6. Best Practices
+
+ACTIVITY: Hands-on exercise specific to "${specificTopic}" (2-3 steps)
+ASSESSMENT: 3-4 items (MUST include 1 Multiple Choice AND 1 True/False) related to "${specificTopic}"
+
+CRITICAL FORMATTING RULES FOR DISCUSSION AND ACTIVITY:
+- Return VALID JSON only.
+- The values for "discussion" and "activity" must be PLAIN TEXT strings.
+- Do NOT use HTML tags (<p>, <b>, <ul>).
+- Do NOT use Markdown headers (#, ##).
+- Use **word** for bolding key terms.
+- Use * or - at the start of lines for bullet points.
+- Use numbered lists (1., 2.) for steps.
+- Separate paragraphs with blank lines.
+
+RETURN VALID JSON ONLY (no markdown, no code blocks):
+{
+"modules": [
+{
+"moduleNumber": ${targetModuleNum},
+"title": "${moduleName}",
+"description": "Brief summary of ${moduleName}.",
+"weeklySchedule": "${syllabusModule.weeklySchedule || ""}",
+"estimatedHours": 3,
+"lessons": [
+{
+"id": "lesson-${targetModuleNum}-${sanitizeId(specificTopic)}",
+"title": "${specificTopic}",
+"description": "Detailed coverage of ${specificTopic}.",
+"discussion": "1. Introduction\\n\\nThis is a sample paragraph with **bold text**.\\n\\n* Key point 1\\n* Key point 2",
+"activity": "1. Step one\\n2. Step two\\n\\n**Note:** Be careful here.",
+"assessment": { 
+  "items": [
+    {
+      "type": "multiple_choice",
+      "question": "Sample Question?",
+      "options": ["A", "B", "C", "D"],
+      "correctAnswer": 0,
+      "explanation": "Why A is correct."
+    },
+    {
+      "type": "true_false",
+      "question": "Sample T/F Question?",
+      "correctAnswer": true,
+      "explanation": "Why it is true."
+    }
+  ] 
+}
+}
+]
+}
+]
+}`;
+
+  let result;
+  const maxRetries = 4;
+  
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      console.log(`Attempt ${attempt}/${maxRetries} generating content for Topic: ${specificTopic}...`);
+      result = await model.generateContent([{ text: prompt }]);
+      
+      if (result && result.response && result.response.text()) {
+        break;
+      } else {
+        throw new Error("Empty response from AI");
+      }
+    } catch (error) {
+      console.warn(`Attempt ${attempt} failed:`, error.message);
+      
+      if ((error.status === 503 || error.message.includes("Service Unavailable")) && attempt < maxRetries) {
+        const delay = Math.pow(2, attempt) * 1000;
+        console.warn(`Server busy. Retrying in ${delay}ms...`);
+        await new Promise(r => setTimeout(r, delay));
+      } else if (error.message.includes("quota") || error.message.includes("rate limit")) {
+        throw new Error("AI Quota exceeded. Please try again later.");
+      } else if (attempt < maxRetries) {
+        await new Promise(r => setTimeout(r, 2000));
+      } else {
+        throw error;
+      }
+    }
+  }
+
+  if (!result) throw new Error("Failed to generate topic content after multiple retries.");
+  
+  // ═══════════════════════════════════════════════════════════════════
+  // IMPROVED JSON RECOVERY LOGIC
+  // ═══════════════════════════════════════════════════════════════════
+  let rawText = result.response.text().trim();
+  const originalLength = rawText.length;
+  
+  console.log(`Raw response length: ${originalLength}`);
+  
+  // Step 1: Remove markdown code blocks
+  rawText = rawText
+    .replace(/^```(?:json)?\s*\n?/gi, '')
+    .replace(/\n?```\s*$/gi, '')
+    .trim();
+  
+  console.log(`After removing markdown: ${rawText.length}`);
+  
+  // Step 2: Extract JSON boundaries
+  const jsonStart = rawText.indexOf('{');
+  const jsonEnd = rawText.lastIndexOf('}');
+  
+  if (jsonStart === -1 || jsonEnd === -1 || jsonEnd <= jsonStart) {
+    throw new Error("No valid JSON object found in response");
+  }
+  
+  rawText = rawText.substring(jsonStart, jsonEnd + 1);
+  console.log(`After extracting boundaries: ${rawText.length}`);
+  
+  // Step 3: Check for truncation and repair if needed
+  let isTruncated = false;
+  
+  // Look for common truncation patterns
+  if (rawText.endsWith('\\') || // Ends with escape char
+      rawText.endsWith('"') === false || // Doesn't end with quote
+      rawText.match(/[,:]\s*}$/) || // Ends with comma before closing brace
+      rawText.match(/[,:]\s*\]$/) || // Ends with comma before closing bracket
+      (rawText.match(/"/g) || []).length % 2 !== 0) { // Odd number of quotes
+    isTruncated = true;
+  }
+  
+  if (isTruncated) {
+    console.warn("⚠️ Response appears truncated. Attempting repair...");
+    
+    // Find the last unclosed string and close it properly
+    rawText = repairTruncatedJSON(rawText);
+  }
+  
+  // Step 4: Try to parse
+  try {
+    const parsed = JSON.parse(rawText);
+    console.log("✅ Successfully parsed JSON");
+    return parsed;
+  } catch (parseError) {
+    console.error("JSON Parse Error:", parseError.message);
+    console.error("Error position:", parseError.message.match(/position (\d+)/) ? parseError.message.match(/position (\d+)/)[1] : "unknown");
+    
+    // Show context
+    const errorPos = parseInt(parseError.message.match(/position (\d+)/)?.[1] || rawText.length);
+    const start = Math.max(0, errorPos - 120);
+    const end = Math.min(rawText.length, errorPos + 120);
+    console.error(`\nContext around error (${start}-${end}):`);
+    console.error(rawText.substring(start, end));
+    console.error('\n---');
+    
+    // Step 5: Apply aggressive fixes
+    console.log("Attempting aggressive JSON repair...");
+    const fixedText = aggressiveJSONRepair(rawText);
+    
+    try {
+      const parsed = JSON.parse(fixedText);
+      console.log("✅ Successfully parsed after aggressive repair");
+      return parsed;
+    } catch (finalError) {
+      console.error("Final parse attempt failed:", finalError.message);
+      throw new Error(`Cannot parse AI response: ${finalError.message}`);
+    }
+  }
+}
+
+// Simple helper to make topic names safe for IDs
+function sanitizeId(str) {
+  return str.toLowerCase().replace(/[^a-z0-9]/g, '-').substring(0, 20);
+}
+
+// ─── HELPER: Repair truncated JSON ─────────────────────────────────────────
+function repairTruncatedJSON(text) {
+  let repaired = text;
+  
+  // If ends with incomplete escape sequence, remove it
+  if (repaired.endsWith('\\')) {
+    repaired = repaired.slice(0, -1);
+  }
+  
+  // Count quotes - if odd, we need to close the string
+  const quoteCount = (repaired.match(/(?<!\\)"/g) || []).length;
+  
+  if (quoteCount % 2 === 1) {
+    // Find last unclosed string and close it
+    const lastQuoteIndex = repaired.lastIndexOf('"');
+    const textAfterLastQuote = repaired.substring(lastQuoteIndex + 1);
+    
+    // Remove any dangling content after the last quote
+    repaired = repaired.substring(0, lastQuoteIndex + 1);
+    
+    // Ensure we end with a proper structure
+    // Work backwards from the end, closing any open brackets
+    const openBraces = (repaired.match(/{/g) || []).length - (repaired.match(/}/g) || []).length;
+    const openBrackets = (repaired.match(/\[/g) || []).length - (repaired.match(/\]/g) || []).length;
+    
+    // Add closing brackets/braces
+    for (let i = 0; i < openBrackets; i++) repaired += ']';
+    for (let i = 0; i < openBraces; i++) repaired += '}';
+  }
+  
+  return repaired;
+}
+
+// ─── HELPER: Aggressive JSON repair ─────────────────────────────────────────
+function aggressiveJSONRepair(text) {
+  let fixed = text;
+  
+  // 1. Replace actual newlines with escaped newlines in strings
+  fixed = fixed.replace(/[\r\n]+/g, ' ');
+  
+  // 2. Fix multiple spaces
+  fixed = fixed.replace(/\s+/g, ' ');
+  
+  // 3. Remove trailing commas before closing braces/brackets
+  fixed = fixed.replace(/,\s*}/g, '}');
+  fixed = fixed.replace(/,\s*]/g, ']');
+  
+  // 4. Fix unescaped quotes within strings
+  fixed = fixed.replace(/: "([^"]*)"/g, (match, content) => {
+    // Escape any unescaped quotes in the content
+    const escaped = content
+      .replace(/(?<!\\)"/g, '\\"')
+      .replace(/\\\\"/g, '\\"'); // Handle double-escaped quotes
+    return `: "${escaped}"`;
+  });
+  
+  // 5. Remove invalid escape sequences
+  fixed = fixed.replace(/\\([^"\\\/bfnrtu])/g, '$1');
+  
+  // 6. Fix incomplete strings at the end
+  if (!fixed.trim().endsWith('}') && !fixed.trim().endsWith(']')) {
+    const openBraces = (fixed.match(/{/g) || []).length;
+    const closeBraces = (fixed.match(/}/g) || []).length;
+    const openBrackets = (fixed.match(/\[/g) || []).length;
+    const closeBrackets = (fixed.match(/]/g) || []).length;
+    
+    // Close any open structures
+    for (let i = 0; i < closeBrackets - openBrackets; i++) fixed += ']';
+    for (let i = 0; i < closeBraces - openBraces; i++) fixed += '}';
+  }
+  
+  return fixed;
+}
+
+
+app.post("/course-syllabus/generate", requireAuth, async (req, res) => {
+  try {
+    const { classId, moduleNumber, cachedModules } = req.body;
+    if (!classId) return res.status(400).json({ error: "classId is required." });
+
+    let syllabusModules = [];
+
+    // ✅ FIX: Check for cachedModules first, then fallback to Firestore 'structure' field
+    if (cachedModules && Array.isArray(cachedModules)) {
+      syllabusModules = cachedModules;
+    } else {
+      const syllabusSnap = await db.collection("courseSyllabi")
+        .where("classId", "==", classId)
+        .where("isCurrent", "==", true)
+        .limit(1)
+        .get();
+
+      if (syllabusSnap.empty) return res.status(404).json({ error: "No syllabus found." });
+      
+      const syllabusData = syllabusSnap.docs[0].data();
+      // ✅ FIX: Access 'structure.modules' instead of 'parsedModules'
+      syllabusModules = syllabusData.structure?.modules || [];
+    }
+
+    if (syllabusModules.length === 0) {
+      return res.status(400).json({ error: "Syllabus structure not available. Please re-upload." });
+    }
+
+    // Determine Target Module & Topic
+    let targetModuleNum = moduleNumber || 1;
+    let syllabusModule = syllabusModules.find(m => m.moduleNumber === targetModuleNum);
+    
+    if (!syllabusModule) {
+      syllabusModule = syllabusModules[0];
+      targetModuleNum = syllabusModule.moduleNumber;
+    }
+
+    // Get topics from the structured syllabus
+    const topics = syllabusModule.topics || [syllabusModule.moduleTitle];
+    const specificTopic = topics[0]?.title || syllabusModule.moduleTitle;
+
+    console.log(`Generating content for Module ${targetModuleNum}, Topic: "${specificTopic}"`);
+
+    // Generate Content for SINGLE TOPIC using your existing helper
+    const generatedContent = await generateTopicContent(syllabusModule, targetModuleNum, specificTopic);
+
+    res.json({
+      success: true,
+      data: generatedContent,
+      meta: {
+        moduleNumber: targetModuleNum,
+        topic: specificTopic,
+        source: "cached_syllabus"
+      }
+    });
+
+  } catch (error) {
+    console.error("Generate error:", error);
+    res.status(error.status || 500).json({ error: error.message || "Failed to generate." });
+  }
+});
+
+// ─── NEW: POST /course-modules/create-manual ──────────────────────────────────
+app.post("/course-modules/create-manual", requireAuth, async (req, res) => {
+  try {
+    const { classId, moduleNumber, title, description, weeklySchedule } = req.body;
+    if (!classId || !title) return res.status(400).json({ error: "Missing fields." });
+
+    const moduleRef = await db.collection("courseModules").add({
+      classId,
+      moduleNumber: Number(moduleNumber) || 0,
+      title,
+      description: description || "",
+      weeklySchedule: weeklySchedule || "",
+      type: "manual",
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp()
     });
 
-    // 2. Save modules and lessons
-    for (const mod of curriculum.modules) {
-      const moduleRef = db.collection("courseModules").doc();
-      batch.set(moduleRef, {
-        classId,
-        structureId: structureRef.id,
-        moduleNumber: mod.moduleNumber,
-        title: mod.title,
-        description: mod.description,
-        weeklySchedule: mod.weeklySchedule,
-        createdAt: FieldValue.serverTimestamp()
-      });
+    res.json({ success: true, moduleId: moduleRef.id });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
 
-      for (const lesson of mod.lessons) {
-        const lessonRef = db.collection("courseLessons").doc();
-        batch.set(lessonRef, {
+// ─── NEW: POST /course-lessons/create-manual ──────────────────────────────────
+app.post("/course-lessons/create-manual", requireAuth, async (req, res) => {
+  try {
+    const { moduleId, classId, title, description, discussion, activity, assessment, fileData } = req.body;
+    
+    if (!moduleId || !classId || !title) {
+      return res.status(400).json({ error: "Missing required fields." });
+    }
+
+    let fileUrl = null;
+    let fileName = null;
+    let fileType = null;
+    let storagePath = null;
+
+    // Handle File Upload if present
+    if (fileData && fileData.base64) {
+      const bucket = admin.storage().bucket();
+      const filePath = `lessons/${classId}/${moduleId}/${Date.now()}_${fileData.name}`;
+      const file = bucket.file(filePath);
+      const buffer = Buffer.from(fileData.base64.split(',')[1], 'base64');
+      
+      await file.save(buffer, { metadata: { contentType: fileData.type } });
+      storagePath = filePath;
+      fileName = fileData.name;
+      fileType = fileData.type;
+      
+      // Generate signed URL for immediate viewing
+      const [url] = await file.getSignedUrl({
+        action: 'read',
+        expires: Date.now() + 60 * 60 * 1000,
+      });
+      fileUrl = url;
+    }
+
+    const lessonRef = await db.collection("courseLessons").add({
+      classId,
+      moduleId,
+      title,
+      description: description || "",
+      discussion: discussion || "",
+      activity: activity || "",
+      assessment: assessment || { items: [] },
+      type: fileUrl ? "manual_file" : "manual_text",
+      fileName,
+      fileUrl,
+      fileType,
+      storagePath,
+      createdAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp()
+    });
+
+    res.json({ success: true, lessonId: lessonRef.id });
+  } catch (error) {
+    console.error("Create manual lesson error:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post("/course-syllabus/approve", requireAuth, async (req, res) => {
+  try {
+    const { classId, curriculum } = req.body;
+    if (!classId || !curriculum) return res.status(400).json({ error: "Missing data." });
+
+    const batch = db.batch();
+
+    // 1. Save Course Structure Metadata (for reference/history)
+    const structureRef = db.collection("courseStructures").doc();
+    batch.set(structureRef, {
+      classId,
+      curriculum: curriculum,
+      courseInformation: curriculum.courseInformation || {},
+      learningOutcomes: curriculum.learningOutcomes || [],
+      createdAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp()
+    });
+
+    // 2. Update Syllabus Status
+    const syllabusSnap = await db.collection("courseSyllabi")
+      .where("classId", "==", classId)
+      .where("isCurrent", "==", true)
+      .limit(1)
+      .get();
+    
+    if (!syllabusSnap.empty) {
+      batch.update(syllabusSnap.docs[0].ref, {
+        status: "approved",
+        structureId: structureRef.id,
+        updatedAt: FieldValue.serverTimestamp()
+      });
+    }
+
+    // 3. ✅ NEW: Create Actual Module and Lesson Documents
+    // This ensures they appear when loadCourseContent fetches from 'courseModules'
+    if (curriculum.modules && Array.isArray(curriculum.modules)) {
+      for (const mod of curriculum.modules) {
+        // Create Module Document
+        const moduleRef = db.collection("courseModules").doc();
+        batch.set(moduleRef, {
           classId,
-          moduleId: moduleRef.id,
-          structureId: structureRef.id,
-          title: lesson.title,
-          description: lesson.description,
-          activities: lesson.activities || [],
-          assessments: lesson.assessments || [],
-          materialIds: lesson.materialIds || [], // Material association
-          createdAt: FieldValue.serverTimestamp()
+          moduleNumber: mod.moduleNumber,
+          title: mod.title,
+          description: mod.description || "",
+          weeklySchedule: mod.weeklySchedule || "",
+          estimatedHours: mod.estimatedHours || 0,
+          type: "ai_generated", // Tag it so you know it came from AI
+          createdAt: FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp()
         });
+
+        // Create Lesson Documents linked to this Module
+        if (mod.lessons && Array.isArray(mod.lessons)) {
+          for (const lesson of mod.lessons) {
+            const lessonRef = db.collection("courseLessons").doc();
+            batch.set(lessonRef, {
+              classId,
+              moduleId: moduleRef.id, // Link lesson to the new module ID
+              title: lesson.title,
+              description: lesson.description || "",
+              discussion: lesson.discussion || "",
+              activity: lesson.activity || "",
+              assessment: lesson.assessment || { items: [] },
+              estimatedHours: lesson.estimatedHours || 0,
+              type: "ai_generated",
+              createdAt: FieldValue.serverTimestamp(),
+              updatedAt: FieldValue.serverTimestamp()
+            });
+          }
+        }
       }
     }
 
-    // 3. Update syllabus status to approved
-    const syllabusSnap = await db.collection("courseSyllabi")
-      .where("classId", "==", classId).where("isCurrent", "==", true).limit(1).get();
-    
-    if (!syllabusSnap.empty) {
-      batch.update(syllabusSnap.docs[0].ref, { status: "approved", updatedAt: FieldValue.serverTimestamp() });
-    }
-
     await batch.commit();
-    res.json({ success: true, message: "Course structure approved and saved." });
+
+    res.json({
+      success: true,
+      message: "Course structure approved and modules created.",
+      structureId: structureRef.id
+    });
   } catch (error) {
-    console.error("Approve course structure error:", error);
-    res.status(500).json({ error: error.message || "Failed to approve course structure." });
+    console.error("Approve structure error:", error);
+    res.status(500).json({ error: error.message || "Failed to save structure." });
   }
 });
+
 
 // ─── NEW: GET /student-course-structure/:classId ─────────────────────────────
 // For the Student View requirement

@@ -224,6 +224,8 @@ const Grades = ({ apiBaseUrl }: GradesProps) => {
   const [showGrades, setShowGrades] = useState(false);
   const [studentRecord, setStudentRecord] = useState<StudentRecord | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [notFound, setNotFound] = useState(false);
+  const [notFoundMessage, setNotFoundMessage] = useState('');
 
   const schoolYear = useMemo(() => buildSchoolYear(startYear), [startYear]);
 
@@ -246,6 +248,7 @@ const Grades = ({ apiBaseUrl }: GradesProps) => {
       Alert.alert('Missing Student ID', 'Please enter a student ID.');
       setShowGrades(false);
       setStudentRecord(null);
+      setNotFound(false);
       return;
     }
 
@@ -253,15 +256,17 @@ const Grades = ({ apiBaseUrl }: GradesProps) => {
       Alert.alert('Invalid Start Year', 'Please enter a valid 4-digit academic start year. Example: 2025');
       setShowGrades(false);
       setStudentRecord(null);
+      setNotFound(false);
       return;
     }
 
     try {
       setIsLoading(true);
       setOpenDropdown(null);
+      setNotFound(false);
 
       const targetSchoolYear = `${parsedStartYear}-${parsedStartYear + 1}`;
-      
+
       const params = new URLSearchParams();
       if (targetSchoolYear) params.append('schoolYear', targetSchoolYear);
       if (selectedSemester) params.append('semester', selectedSemester);
@@ -278,12 +283,12 @@ const Grades = ({ apiBaseUrl }: GradesProps) => {
       }
 
       if (!data.success || !Array.isArray(data.data) || data.data.length === 0) {
-        Alert.alert(
-          'No Record Found',
-          `No uploaded/parsed grades found for ${buildSchoolYear(normalizedStartYear)} - ${selectedSemester}.`
-        );
         setShowGrades(false);
         setStudentRecord(null);
+        setNotFoundMessage(
+          `No uploaded/parsed grades found for ${buildSchoolYear(normalizedStartYear)} - ${selectedSemester}.`
+        );
+        setNotFound(true);
         return;
       }
 
@@ -308,11 +313,13 @@ const Grades = ({ apiBaseUrl }: GradesProps) => {
         totalUnits,
         gwa,
       });
+      setNotFound(false);
       setShowGrades(true);
     } catch (error: any) {
       Alert.alert('Load Failed', error?.message || 'Unable to load student grades.');
       setShowGrades(false);
       setStudentRecord(null);
+      setNotFound(false);
     } finally {
       setIsLoading(false);
     }
@@ -490,7 +497,7 @@ const Grades = ({ apiBaseUrl }: GradesProps) => {
                 font-size: 13px;
                 font-weight: 800;
               }
-              
+
               table.grades {
                 font-size: 10px;
               }
@@ -702,7 +709,7 @@ const Grades = ({ apiBaseUrl }: GradesProps) => {
                       keyboardType="numeric"
                       maxLength={4}
                     />
-                  </View> 
+                  </View>
 
                   <View style={[styles.schoolYearBadge, styles.schoolYearBadgeMobile]}>
                     <Text style={styles.schoolYearBadgeLabel}>School Year</Text>
@@ -830,6 +837,29 @@ const Grades = ({ apiBaseUrl }: GradesProps) => {
             </View>
           </View>
 
+          {notFound && (
+            <View
+              style={[
+                styles.centeredResultWrapper,
+                { paddingHorizontal: isPhone ? 16 : 20 },
+              ]}
+            >
+              <View
+                style={[
+                  styles.noGradeCard,
+                  isPhone ? { width: mobileReportWidth } : styles.noGradeCardWeb,
+                ]}
+              >
+                <Ionicons name="document-text-outline" size={36} color="#B0A89E" />
+                <Text style={styles.noGradeTitle}>No Grade Found</Text>
+                <Text style={styles.noGradeMessage}>
+                  {notFoundMessage ||
+                    'No grades were found for the selected school year and semester.'}
+                </Text>
+              </View>
+            </View>
+          )}
+
           {showGrades && studentRecord && (
             <View
               style={[
@@ -877,13 +907,13 @@ const Grades = ({ apiBaseUrl }: GradesProps) => {
                   ]}
                 >
                   <View style={[
-                    styles.studentInfoRow, 
+                    styles.studentInfoRow,
                     isPhone && styles.studentInfoRowMobile,
                     isLargeScreen && styles.studentInfoRowLarge
                   ]}>
                     <Text style={styles.studentInfoLabel}>Student ID</Text>
                     <Text style={[
-                      styles.studentInfoValue, 
+                      styles.studentInfoValue,
                       isPhone && styles.studentInfoValueMobile
                     ]}>
                       {studentRecord.studentId}
@@ -891,13 +921,13 @@ const Grades = ({ apiBaseUrl }: GradesProps) => {
                   </View>
 
                   <View style={[
-                    styles.studentInfoRow, 
+                    styles.studentInfoRow,
                     isPhone && styles.studentInfoRowMobile,
                     isLargeScreen && styles.studentInfoRowLarge
                   ]}>
                     <Text style={styles.studentInfoLabel}>Student Name</Text>
                     <Text style={[
-                      styles.studentInfoValue, 
+                      styles.studentInfoValue,
                       isPhone && styles.studentInfoValueMobile
                     ]}>
                       {studentRecord.fullName}
@@ -905,13 +935,13 @@ const Grades = ({ apiBaseUrl }: GradesProps) => {
                   </View>
 
                   <View style={[
-                    styles.studentInfoRow, 
+                    styles.studentInfoRow,
                     isPhone && styles.studentInfoRowMobile,
                     isLargeScreen && styles.studentInfoRowLarge
                   ]}>
                     <Text style={styles.studentInfoLabel}>Total Units</Text>
                     <Text style={[
-                      styles.studentInfoValue, 
+                      styles.studentInfoValue,
                       isPhone && styles.studentInfoValueMobile
                     ]}>
                       {studentRecord.totalUnits.toFixed(1)}
@@ -919,13 +949,13 @@ const Grades = ({ apiBaseUrl }: GradesProps) => {
                   </View>
 
                   <View style={[
-                    styles.studentInfoRow, 
+                    styles.studentInfoRow,
                     isPhone && styles.studentInfoRowMobile,
                     isLargeScreen && styles.studentInfoRowLarge
                   ]}>
                     <Text style={styles.studentInfoLabel}>GWA</Text>
                     <Text style={[
-                      styles.studentInfoValue, 
+                      styles.studentInfoValue,
                       styles.gwaValue,
                       isPhone && styles.studentInfoValueMobile
                     ]}>
@@ -1368,6 +1398,43 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     zIndex: 1,
     elevation: 0,
+  },
+
+  noGradeCard: {
+    backgroundColor: '#FFFDF9',
+    borderWidth: 1,
+    borderColor: '#E6E1DC',
+    borderRadius: 16,
+    paddingVertical: 36,
+    paddingHorizontal: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 20,
+  },
+
+  noGradeCardWeb: {
+    maxWidth: 640,
+    width: '100%',
+  },
+
+  noGradeTitle: {
+    color: '#3B332E',
+    fontSize: 17,
+    fontWeight: '900',
+    letterSpacing: 0.3,
+    textTransform: 'uppercase',
+    marginTop: 12,
+    marginBottom: 6,
+    fontFamily,
+  },
+
+  noGradeMessage: {
+    color: '#7A6E66',
+    fontSize: 13,
+    lineHeight: 19,
+    textAlign: 'center',
+    maxWidth: 420,
+    fontFamily,
   },
 
   reportCard: {
