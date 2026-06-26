@@ -14773,7 +14773,6 @@ function needsConversion(mimeType, fileName) {
 
 
 // REPLACE the existing extractSyllabusStructure function with this:
-
 async function extractSyllabusStructure(buffer, mimeType, fileName) {
   if (!geminiGameAI) throw new Error("GEMINI_API_KEY is missing.");
   
@@ -14786,62 +14785,75 @@ async function extractSyllabusStructure(buffer, mimeType, fileName) {
   });
 
   const prompt = `
-  You are an expert Academic Syllabus Parser.
-  Your task is to extract ONLY the structural hierarchy from the uploaded syllabus file.
-
-  CRITICAL RULES:
-  1. EXTRACT: Course Title, Module Titles, Weekly Schedule (e.g., "Week 1-2", "Wk 3"), Topics, and Subtopics.
-  2. The "weeklySchedule" field must contain the EXACT text representing the week range from the syllabus (e.g., "Week 1-2", "Weeks 3-4"). Do NOT generate "Week 1" if the syllabus says "Weeks 1-2".
-  3. IGNORE: Discussions, Activities, Assessments, Quizzes, Reflections, Summaries, Faculty Info, Policies.
-  4. DO NOT generate any lesson content.
-
-  Return ONLY valid JSON in this exact format:
-  {
+You are an expert Academic Syllabus Parser.
+Your task is to extract ONLY the structural hierarchy from the uploaded syllabus file.
+CRITICAL RULES:
+1. EXTRACT: Course Title, Module Titles, Weekly Schedule (e.g., "Week 1-2", "Wk 3"), Topics, and Subtopics.
+2. The "weeklySchedule" field must contain the EXACT text representing the week range from the syllabus (e.g., "Week 1-2", "Weeks 3-4"). Do NOT generate "Week 1" if the syllabus says "Weeks 1-2".
+3. IGNORE: Discussions, Activities, Assessments, Quizzes, Reflections, Summaries, Faculty Info, Policies.
+4. DO NOT generate any lesson content.
+Return ONLY valid JSON in this exact format:
+{
   "courseInformation": {
-  "title": "String",
-  "code": "String",
-  "units": Number,
-  "semester": "String",
-  "totalHours": Number
+    "title": "String",
+    "code": "String",
+    "units": Number,
+    "semester": "String",
+    "totalHours": Number
   },
   "structure": {
-  "modules": [
-  {
-  "moduleNumber": 1,
-  "moduleTitle": "Module Title from File",
-  "weeklySchedule": "Exact Week Range from File", 
-  "topics": [
-  {
-  "title": "Topic Title",
-  "subtopics": ["Subtopic 1", "Subtopic 2"]
+    "modules": [
+      {
+        "moduleNumber": 1,
+        "moduleTitle": "Module Title from File",
+        "weeklySchedule": "Exact Week Range from File",
+        "topics": [
+          {
+            "title": "Topic Title",
+            "subtopics": ["Subtopic 1", "Subtopic 2"]
+          }
+        ]
+      }
+    ]
   }
-  ]
-  }
-  ]
-  }
-  }
-  `;
+}
+`;
 
   const fileBase64 = buffer.toString("base64");
   let result;
   
-  for (let attempt = 1; attempt <= 3; attempt++) {
+  // RETRY LOGIC START
+  const maxRetries = 3;
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
+      console.log(`Attempting to parse syllabus (Attempt ${attempt}/${maxRetries})...`);
       result = await model.generateContent([
         { text: prompt },
         { inlineData: { mimeType, data: fileBase64 } }
       ]);
-      break;
+      break; // If successful, exit the loop
     } catch (error) {
-      if (error.status === 503 && attempt < 3) {
-        await new Promise(r => setTimeout(r, Math.pow(2, attempt) * 1000));
+      console.warn(`Attempt ${attempt} failed:`, error.message);
+      
+      // Check if it's a 503 Service Unavailable error
+      if ((error.status === 503 || error.message.includes("Service Unavailable")) && attempt < maxRetries) {
+        const delay = Math.pow(2, attempt) * 1000; // Exponential backoff: 2s, 4s, 8s
+        console.warn(`Server busy. Retrying in ${delay}ms...`);
+        await new Promise(r => setTimeout(r, delay));
+      } else if (error.message.includes("quota") || error.message.includes("rate limit")) {
+         throw new Error("AI Quota exceeded. Please try again later.");
+      } else if (attempt < maxRetries) {
+        // For other errors, wait 2 seconds before retrying
+        await new Promise(r => setTimeout(r, 2000));
       } else {
+        // If all retries failed, throw the error
         throw error;
       }
     }
   }
+  // RETRY LOGIC END
 
-  if (!result) throw new Error("Failed to parse syllabus structure.");
+  if (!result) throw new Error("Failed to parse syllabus structure after multiple retries.");
   
   const rawText = result.response.text().replace(/^```json\s*/i, "").replace(/```$/i, "").trim();
   const parsed = JSON.parse(rawText);
@@ -14857,13 +14869,27 @@ async function extractSyllabusStructure(buffer, mimeType, fileName) {
 app.post("/course-syllabus/generate-next-lessons", requireAuth, async (req, res) => {
   try {
     const { classId, moduleNumber, topicTitles } = req.body;
-    
     if (!classId || !moduleNumber || !Array.isArray(topicTitles) || topicTitles.length === 0) {
       return res.status(400).json({ error: "classId, moduleNumber, and topicTitles are required." });
     }
 
-    // ✅ FIX: Fetch the SYLLABUS STRUCTURE to get the correct topics list
-    // Saved modules in 'courseModules' collection do NOT store the full topics array
+    // 1. Fetch the Module Document ID from courseModules
+    const moduleSnap = await db.collection("courseModules")
+      .where("classId", "==", classId)
+      .where("moduleNumber", "==", moduleNumber)
+      .limit(1)
+      .get();
+
+    if (moduleSnap.empty) {
+      return res.status(404).json({ error: "Module not found in courseModules." });
+    }
+    
+    const moduleDoc = moduleSnap.docs[0];
+    const moduleId = moduleDoc.id;
+    const currentModuleData = moduleDoc.data();
+    const currentLessons = currentModuleData.lessons || [];
+
+    // 2. Fetch Syllabus Structure to get Topic Details
     let syllabusModules = [];
     const syllabusSnap = await db.collection("courseSyllabi")
       .where("classId", "==", classId)
@@ -14875,39 +14901,91 @@ app.post("/course-syllabus/generate-next-lessons", requireAuth, async (req, res)
     
     const syllabusData = syllabusSnap.docs[0].data();
     syllabusModules = syllabusData.structure?.modules || [];
+    const targetSyllabusModule = syllabusModules.find(m => m.moduleNumber === moduleNumber);
     
-    const targetModule = syllabusModules.find(m => m.moduleNumber === moduleNumber);
-    
-    if (!targetModule) return res.status(404).json({ error: "Module not found in syllabus structure." });
+    if (!targetSyllabusModule) return res.status(404).json({ error: "Module not found in syllabus structure." });
 
-    // Generate content for EACH selected topic sequentially
-    const generatedLessons = [];
+    // 3. Generate content for EACH selected topic
+    const newLessonObjectsForModule = []; // For updating the module's lessons array
+    const newLessonDocsForCollection = []; // For creating individual docs in courseLessons
     
     for (const topicTitle of topicTitles) {
+      // Check if lesson already exists locally to avoid duplicates
+      const alreadyExists = currentLessons.some(l => l.title.toLowerCase().trim() === topicTitle.toLowerCase().trim());
+      if (alreadyExists) continue;
+
       try {
         console.log(`Generating next lesson for Module ${moduleNumber}, Topic: "${topicTitle}"...`);
         
-        // Use your existing generateTopicContent helper which expects the syllabus module object
-        const content = await generateTopicContent(targetModule, moduleNumber, topicTitle);
+        // Use your existing helper
+        const content = await generateTopicContent(targetSyllabusModule, moduleNumber, topicTitle);
         
-        // Extract lessons from the generated response
         if (content.modules && content.modules.length > 0 && content.modules[0].lessons) {
-          generatedLessons.push(...content.modules[0].lessons);
+          const generatedLesson = content.modules[0].lessons[0]; // Assuming 1 lesson per topic generation
+          
+          if (generatedLesson) {
+            // Create a unique ID for this lesson
+            const lessonId = `lesson-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+            
+            // A. Prepare object for 'courseLessons' collection (Uses FieldValue for DB accuracy)
+            const lessonDocData = {
+              ...generatedLesson,
+              id: lessonId,
+              classId,
+              moduleId,
+              createdAt: admin.firestore.FieldValue.serverTimestamp(),
+              updatedAt: admin.firestore.FieldValue.serverTimestamp()
+            };
+            newLessonDocsForCollection.push({ id: lessonId, data: lessonDocData });
+
+            // B. Prepare object for 'courseModules' lessons array (Uses JS Date to avoid Firestore error)
+            const lessonArrayData = {
+              ...generatedLesson,
+              id: lessonId,
+              classId,
+              moduleId,
+              createdAt: new Date(), // ✅ FIX: Use standard JS Date instead of FieldValue
+              updatedAt: new Date()   // ✅ FIX: Use standard JS Date instead of FieldValue
+            };
+            newLessonObjectsForModule.push(lessonArrayData);
+          }
         }
       } catch (err) {
         console.error(`Failed to generate topic "${topicTitle}":`, err.message);
-        // Continue to next topic instead of failing entire batch
       }
     }
+
+    if (newLessonObjectsForModule.length === 0) {
+      return res.status(200).json({ success: true, message: "No new lessons generated or all already exist.", data: { lessons: [] } });
+    }
+
+    // 4. Save to Firestore using a Batch
+    const batch = db.batch();
+
+    // A. Create individual documents in 'courseLessons' collection
+    newLessonDocsForCollection.forEach(item => {
+      const lessonRef = db.collection("courseLessons").doc(item.id);
+      batch.set(lessonRef, item.data);
+    });
+
+    // B. Update the 'courseModules' document to include these new lessons in its array
+    const updatedLessonsArray = [...currentLessons, ...newLessonObjectsForModule];
+    batch.update(moduleDoc.ref, {
+      lessons: updatedLessonsArray,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    });
+
+    await batch.commit();
 
     res.json({
       success: true,
       data: {
-        moduleId: null, // Frontend will match by moduleNumber
+        moduleId: moduleId,
         moduleNumber: moduleNumber,
-        lessons: generatedLessons
+        lessons: newLessonObjectsForModule
       }
     });
+
   } catch (error) {
     console.error("Generate next lessons error:", error);
     res.status(500).json({ error: error.message || "Failed to generate lessons." });
