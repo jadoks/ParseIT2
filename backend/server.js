@@ -14736,6 +14736,7 @@ app.get("/course-syllabus/:classId", requireAuth, async (req, res) => {
 });
 
 // Generate a signed URL to view/download the syllabus
+// Generate a signed URL to view/download the syllabus
 app.get("/course-syllabus/view/:syllabusId", requireAuth, async (req, res) => {
   try {
     const { syllabusId } = req.params;
@@ -14743,9 +14744,18 @@ app.get("/course-syllabus/view/:syllabusId", requireAuth, async (req, res) => {
     if (!doc.exists) return res.status(404).json({ error: "Syllabus not found." });
     
     const data = doc.data();
-    const url = await createReadSignedUrl(data.storagePath);
+    
+    // ✅ FIX: Use 'originalStoragePath' instead of 'storagePath'
+    const pathToView = data.originalStoragePath || data.storagePath; 
+    
+    if (!pathToView) {
+      return res.status(404).json({ error: "No storage path found for this syllabus." });
+    }
+
+    const url = await createReadSignedUrl(pathToView);
     res.json({ url });
   } catch (error) {
+    console.error("View syllabus error:", error); // Add logging to help debug future issues
     res.status(500).json({ error: error.message || "Failed to generate view URL." });
   }
 });
@@ -15467,25 +15477,52 @@ app.post("/course-syllabus/generate", requireAuth, async (req, res) => {
   }
 });
 
-// ─── NEW: POST /course-modules/create-manual ──────────────────────────────────
 app.post("/course-modules/create-manual", requireAuth, async (req, res) => {
   try {
     const { classId, moduleNumber, title, description, weeklySchedule } = req.body;
-    if (!classId || !title) return res.status(400).json({ error: "Missing fields." });
+    
+    if (!classId || !title) {
+      return res.status(400).json({ error: "Missing required fields." });
+    }
+    
+    // ✅ Ensure moduleNumber is a number
+    const moduleNum = Number(moduleNumber);
+    if (isNaN(moduleNum) || moduleNum < 1 || !Number.isInteger(moduleNum)) {
+      return res.status(400).json({ error: "Invalid module number." });
+    }
+    
+    // Backend duplicate check
+    const existing = await db.collection("courseModules")
+      .where("classId", "==", classId)
+      .where("moduleNumber", "==", moduleNum) // Stored as number
+      .limit(1)
+      .get();
+      
+    if (!existing.empty) {
+      return res.status(409).json({ 
+        error: `Module ${moduleNum} already exists.` 
+      });
+    }
 
     const moduleRef = await db.collection("courseModules").add({
       classId,
-      moduleNumber: Number(moduleNumber) || 0,
-      title,
-      description: description || "",
-      weeklySchedule: weeklySchedule || "",
+      moduleNumber: moduleNum, // ✅ Store as NUMBER
+      title: title.trim(),
+      description: description?.trim() || "",
+      weeklySchedule: weeklySchedule?.trim() || "",
       type: "manual",
-      createdAt: FieldValue.serverTimestamp(),
-      updatedAt: FieldValue.serverTimestamp()
+      lessons: [],
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
     });
-
-    res.json({ success: true, moduleId: moduleRef.id });
+    
+    res.json({ 
+      success: true, 
+      moduleId: moduleRef.id,
+      message: `Module ${moduleNum} created successfully`
+    });
   } catch (error) {
+    console.error("Create module error:", error);
     res.status(500).json({ error: error.message });
   }
 });

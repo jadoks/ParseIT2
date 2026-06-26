@@ -149,6 +149,7 @@ function getApiBaseUrl() {
 }
 
 const API_BASE_URL = getApiBaseUrl();
+
 const WEEKDAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const pad = (value: number) => String(value).padStart(2, '0');
 
@@ -162,23 +163,19 @@ const formatDateTime = (value?: any) => {
 
 const formatSyllabusDate = (value: any): string => {
   if (!value) return 'Recently';
-  
   // If it's already a valid date string
   if (typeof value === 'string') {
     const d = new Date(value);
     return Number.isNaN(d.getTime()) ? 'Recently' : d.toLocaleDateString();
   }
-
   // If it's a Firebase Timestamp object (Client SDK)
   if (typeof value?.toDate === 'function') {
     return value.toDate().toLocaleDateString();
   }
-
   // If it's a Firebase Timestamp object (Raw JSON from REST API)
   if (value?._seconds) {
     return new Date(value._seconds * 1000).toLocaleDateString();
   }
-  
   // If it's a plain object with seconds (common in some serializations)
   if (value?.seconds) {
     // Check if it's milliseconds (large number) or seconds (smaller number)
@@ -186,12 +183,10 @@ const formatSyllabusDate = (value: any): string => {
     const multiplier = value.seconds > 10000000000 ? 1 : 1000;
     return new Date(value.seconds * multiplier).toLocaleDateString();
   }
-
   // If it's a Unix timestamp in milliseconds (number)
   if (typeof value === 'number') {
     return new Date(value).toLocaleDateString();
   }
-
   return 'Recently';
 };
 
@@ -267,6 +262,7 @@ const getCalendarDays = (visibleMonth: Date) => {
     days.push({ key: `next-${date.toISOString()}`, date, inCurrentMonth: false });
     nextDay += 1;
   }
+
   return days;
 };
 
@@ -378,7 +374,7 @@ function isPresentationFile(fileName?: string | null, fileType?: string | null):
     ext === 'pptx' ||
     mime === 'application/vnd.ms-powerpoint' ||
     mime ===
-      'application/vnd.openxmlformats-officedocument.presentationml.presentation'
+    'application/vnd.openxmlformats-officedocument.presentationml.presentation'
   );
 }
 
@@ -418,17 +414,20 @@ const renderFormattedText = (text: string, baseStyle: any) => {
       fontSize: 14,
     },
   ];
+
   return lines.map((line, lineIndex) => {
     const trimmedLine = line.trim();
     // Empty line spacing
     if (!trimmedLine) {
       return <View key={lineIndex} style={{ height: 8 }} />;
     }
+
     // Detect bullets
     const isBullet =
       trimmedLine.startsWith("* ") ||
       trimmedLine.startsWith("- ") ||
       trimmedLine.startsWith("• ");
+
     let contentToParse = trimmedLine;
     if (trimmedLine.startsWith("* ")) {
       contentToParse = trimmedLine.substring(2).trim();
@@ -437,14 +436,17 @@ const renderFormattedText = (text: string, baseStyle: any) => {
     } else if (trimmedLine.startsWith("• ")) {
       contentToParse = trimmedLine.substring(2).trim();
     }
+
     // Count markdown bold markers
     const boldMarkers = contentToParse.match(/\*\*/g) || [];
     const boldCount = boldMarkers.length;
+
     // Detect malformed markdown
     const hasInvalidBold =
       boldCount % 2 !== 0 ||
       /^\*+\s*\*/.test(contentToParse) ||
       /\*\*\*$/.test(contentToParse);
+
     // Fallback: render as plain text
     if (hasInvalidBold) {
       const cleanedText = contentToParse.replace(/\*/g, "");
@@ -475,9 +477,11 @@ const renderFormattedText = (text: string, baseStyle: any) => {
         </View>
       );
     }
+
     // Parse valid **bold**
     const boldRegex = /(\*\*[^*]+\*\*)/g;
     const parts = contentToParse.split(boldRegex);
+
     return (
       <View
         key={lineIndex}
@@ -546,6 +550,7 @@ function InlineMaterialViewer({
       </View>
     );
   }
+
   if (WebView) {
     return (
       <WebView
@@ -567,6 +572,7 @@ function InlineMaterialViewer({
       />
     );
   }
+
   return (
     <View style={inlineStyles.noWebViewFallback}>
       <Ionicons name="document-text-outline" size={48} color="#CCC" />
@@ -642,11 +648,11 @@ const TeacherCourseDetail2 = ({
   const [showSubmissions, setShowSubmissions] = useState(false);
 
   const cleanModuleTitle = (title: string, moduleNumber: number) => {
-  // Remove common prefixes the AI might add
-  let cleaned = title.replace(/^Module\s+\d+[:.\s]*/i, '').trim();
-  // If empty after cleaning, fallback to a generic title
-  return cleaned || `Module ${moduleNumber}`;
-};
+    // Remove common prefixes the AI might add
+    let cleaned = title.replace(/^Module\s+\d+[:.\s]*/i, '').trim();
+    // If empty after cleaning, fallback to a generic title
+    return cleaned || `Module ${moduleNumber}`;
+  };
 
   // ── Data
   const [assignments, setAssignments] = useState<Assignment[]>([]);
@@ -659,6 +665,7 @@ const TeacherCourseDetail2 = ({
   const [selectedGenModule, setSelectedGenModule] = useState<any>(null);
   const [selectedGenTopic, setSelectedGenTopic] = useState<any>(null);
   const [selectedGenSubtopic, setSelectedGenSubtopic] = useState<string | null>(null);
+
   // Checkboxes state
   const [genDiscussion, setGenDiscussion] = useState(true);
   const [genActivity, setGenActivity] = useState(true);
@@ -678,6 +685,16 @@ const TeacherCourseDetail2 = ({
   const [currentSyllabus, setCurrentSyllabus] = useState<any>(null);
   const [isUploadingSyllabus, setIsUploadingSyllabus] = useState(false);
   const [syllabusViewerUrl, setSyllabusViewerUrl] = useState<string | null>(null);
+  
+  // ✅ NEW: State for pending syllabus file before confirmation
+  const [pendingSyllabusFile, setPendingSyllabusFile] = useState<{
+    name?: string;
+    uri?: string;
+    mimeType?: string;
+    size?: number;
+    base64?: string;
+    file?: File;
+  } | null>(null);
 
   // ── Course Structure Generation State
   const [generatedStructure, setGeneratedStructure] = useState<any>(null);
@@ -778,6 +795,15 @@ const TeacherCourseDetail2 = ({
     setResultModalVisible(true);
   };
 
+  const mapModule = (item: any): any => {
+    return {
+      ...item,
+      moduleNumber: Number(item.moduleNumber) || 0, // ✅ ENSURE NUMBER TYPE
+      lessons: Array.isArray(item.lessons) ? item.lessons : []
+    };
+  };
+
+  // ─── UPDATE loadCourseContent ────────────────────────────────────────────────
   const loadCourseContent = async () => {
     if (!course?.id) {
       setAssignments([]);
@@ -789,26 +815,34 @@ const TeacherCourseDetail2 = ({
       setGeneratedStructure(null);
       return;
     }
+
     try {
-      const [modulesRes, syllabusRes, materialsRes, assignmentsRes, membersRes, submissionsRes] = await Promise.all([
-        fetch(`${API_BASE_URL}/course-modules/${course.id}`, { credentials: 'include' }),
-        fetch(`${API_BASE_URL}/course-syllabus/${course.id}`, { credentials: 'include' }),
-        fetch(`${API_BASE_URL}/class-materials/${course.id}`, { credentials: 'include' }),
-        fetch(`${API_BASE_URL}/class-assignments/${course.id}`, { credentials: 'include' }),
-        fetch(`${API_BASE_URL}/class-members/${course.id}`, { credentials: 'include' }),
-        fetch(`${API_BASE_URL}/class-submissions/${course.id}`, { credentials: 'include' }),
-      ]);
+      const [modulesRes, syllabusRes, materialsRes, assignmentsRes, membersRes, submissionsRes] =
+        await Promise.all([
+          fetch(`${API_BASE_URL}/course-modules/${course.id}`, { credentials: 'include' }),
+          fetch(`${API_BASE_URL}/course-syllabus/${course.id}`, { credentials: 'include' }),
+          fetch(`${API_BASE_URL}/class-materials/${course.id}`, { credentials: 'include' }),
+          fetch(`${API_BASE_URL}/class-assignments/${course.id}`, { credentials: 'include' }),
+          fetch(`${API_BASE_URL}/class-members/${course.id}`, { credentials: 'include' }),
+          fetch(`${API_BASE_URL}/class-submissions/${course.id}`, { credentials: 'include' }),
+        ]);
 
-      const [modulesData, syllabusData, materialsData, assignmentsData, membersData, submissionsData] = await Promise.all([
-        modulesRes.json(),
-        syllabusRes.json(),
-        materialsRes.json(),
-        assignmentsRes.json(),
-        membersRes.json(),
-        submissionsRes.json(),
-      ]);
+      const [modulesData, syllabusData, materialsData, assignmentsData, membersData, submissionsData] =
+        await Promise.all([
+          modulesRes.json(),
+          syllabusRes.json(),
+          materialsRes.json(),
+          assignmentsRes.json(),
+          membersRes.json(),
+          submissionsRes.json(),
+        ]);
 
-      setModules(modulesRes.ok && Array.isArray(modulesData) ? modulesData : []);
+      // ✅ ENSURE MODULES ARE MAPPED WITH CORRECT TYPES
+      setModules(
+        modulesRes.ok && Array.isArray(modulesData)
+          ? modulesData.map(mapModule)
+          : []
+      );
       setCurrentSyllabus(syllabusRes.ok ? syllabusData : null);
       setMaterials(
         materialsRes.ok && Array.isArray(materialsData) ? materialsData.map(mapMaterial) : []
@@ -852,6 +886,7 @@ const TeacherCourseDetail2 = ({
       showResultModal('error', 'Error', 'Please select at least one content type to generate.');
       return;
     }
+
     setIsGeneratingContent(true);
     try {
       const response = await fetch(`${API_BASE_URL}/ai/generate-lesson-content`, {
@@ -871,6 +906,7 @@ const TeacherCourseDetail2 = ({
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error);
+
       showResultModal('success', 'Generated!', 'Lesson content generated successfully.');
       setShowGenerateModal(false);
       // Reset selections
@@ -885,29 +921,28 @@ const TeacherCourseDetail2 = ({
   };
 
   const saveModuleLessonsToBackend = async (moduleId: string, lessons: any[]) => {
-  try {
-    // We use the existing save endpoint. It merges the moduleData.
-    // By passing the updated lessons array, we persist them.
-    const response = await fetch(`${API_BASE_URL}/course-modules/save`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({
-        moduleData: {
-          id: moduleId,
-          courseId: course?.id,
-          lessons: lessons // This overwrites/updates the lessons in DB
-        }
-      })
-    });
-    
-    if (!response.ok) {
-      console.error('Failed to save generated lessons to backend');
+    try {
+      // We use the existing save endpoint. It merges the moduleData.
+      // By passing the updated lessons array, we persist them.
+      const response = await fetch(`${API_BASE_URL}/course-modules/save`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          moduleData: {
+            id: moduleId,
+            courseId: course?.id,
+            lessons: lessons // This overwrites/updates the lessons in DB
+          }
+        })
+      });
+      if (!response.ok) {
+        console.error('Failed to save generated lessons to backend');
+      }
+    } catch (error) {
+      console.error('Error saving lessons:', error);
     }
-  } catch (error) {
-    console.error('Error saving lessons:', error);
-  }
-};
+  };
 
   // ─── Lesson Detail Handler (NEW)
   const handleOpenLessonDetail = async (lesson: any) => {
@@ -931,34 +966,32 @@ const TeacherCourseDetail2 = ({
   };
 
   const handleOpenNextLessonModal = (savedModule: any) => {
-  // ✅ FIX: Find the matching module in the CURRENT SYLLABUS structure
-  const syllabusMod = currentSyllabus?.structure?.modules?.find(
-    (m: any) => m.moduleNumber === savedModule.moduleNumber
-  );
-  
-  if (!syllabusMod) {
-    showResultModal('error', 'Error', 'Syllabus structure not found for this module.');
-    return;
-  }
+    // ✅ FIX: Find the matching module in the CURRENT SYLLABUS structure
+    const syllabusMod = currentSyllabus?.structure?.modules?.find(
+      (m: any) => m.moduleNumber === savedModule.moduleNumber
+    );
+    if (!syllabusMod) {
+      showResultModal('error', 'Error', 'Syllabus structure not found for this module.');
+      return;
+    }
 
-  // ✅ NEW: Get existing lesson titles for this specific module
-  const existingLessonTitles = new Set(
-    (savedModule.lessons || []).map((l: any) => l.title.toLowerCase().trim())
-  );
+    // ✅ NEW: Get existing lesson titles for this specific module
+    const existingLessonTitles = new Set(
+      (savedModule.lessons || []).map((l: any) => l.title.toLowerCase().trim())
+    );
 
-  // ✅ NEW: Filter out topics that are already generated as lessons
-  const availableTopics = (syllabusMod.topics || []).filter(
-    (topic: any) => !existingLessonTitles.has(topic.title.toLowerCase().trim())
-  );
+    // ✅ NEW: Filter out topics that are already generated as lessons
+    const availableTopics = (syllabusMod.topics || []).filter(
+      (topic: any) => !existingLessonTitles.has(topic.title.toLowerCase().trim())
+    );
 
-  setTargetModuleForGen({
-    ...savedModule,
-    topics: availableTopics // Pass only the filtered topics
-  });
-  
-  setSelectedTopicsForGen([]);
-  setShowNextLessonModal(true);
-};
+    setTargetModuleForGen({
+      ...savedModule,
+      topics: availableTopics // Pass only the filtered topics
+    });
+    setSelectedTopicsForGen([]);
+    setShowNextLessonModal(true);
+  };
 
   const toggleTopicSelection = (topicTitle: string) => {
     setSelectedTopicsForGen(prev =>
@@ -969,93 +1002,118 @@ const TeacherCourseDetail2 = ({
   };
 
   const handleGenerateNextLessons = async () => {
-  if (!targetModuleForGen || selectedTopicsForGen.length === 0 || !course?.id) {
-    showResultModal('error', 'Error', 'Please select at least one topic.');
-    return;
-  }
-  
-  setIsGeneratingNextLessons(true);
-  try {
-    const response = await fetch(`${API_BASE_URL}/course-syllabus/generate-next-lessons`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({
-        classId: course.id,
-        moduleNumber: targetModuleForGen.moduleNumber,
-        topicTitles: selectedTopicsForGen
-      })
-    });
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.error);
+    if (!targetModuleForGen || selectedTopicsForGen.length === 0 || !course?.id) {
+      showResultModal('error', 'Error', 'Please select at least one topic.');
+      return;
+    }
 
-    // 1. Update Local State (Immediate UI feedback)
-    setModules(prevModules =>
-      prevModules.map(mod => {
-        if (mod.moduleNumber === targetModuleForGen.moduleNumber) {
-          const existingIds = new Set((mod.lessons || []).map((l: any) => l.title));
-          const newLessons = (data.data.lessons || []).filter((l: any) => !existingIds.has(l.title));
-          const updatedLessons = [...(mod.lessons || []), ...newLessons];
-          
-          // 2. ✅ SAVE TO BACKEND HERE
-          // We do this asynchronously so it doesn't block the UI update
-          saveModuleLessonsToBackend(mod.id, updatedLessons);
-          
-          return { ...mod, lessons: updatedLessons };
+    setIsGeneratingNextLessons(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/course-syllabus/generate-next-lessons`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          classId: course.id,
+          moduleNumber: targetModuleForGen.moduleNumber,
+          topicTitles: selectedTopicsForGen
+        })
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error);
+
+      // 1. Update Local State (Immediate UI feedback)
+      setModules(prevModules =>
+        prevModules.map(mod => {
+          if (mod.moduleNumber === targetModuleForGen.moduleNumber) {
+            const existingIds = new Set((mod.lessons || []).map((l: any) => l.title));
+            const newLessons = (data.data.lessons || []).filter((l: any) => !existingIds.has(l.title));
+            const updatedLessons = [...(mod.lessons || []), ...newLessons];
+            
+            // 2. ✅ SAVE TO BACKEND HERE
+            // We do this asynchronously so it doesn't block the UI update
+            saveModuleLessonsToBackend(mod.id, updatedLessons);
+            
+            return { ...mod, lessons: updatedLessons };
+          }
+          return mod;
+        })
+      );
+
+      setShowNextLessonModal(false);
+      showResultModal('success', 'Success', `${selectedTopicsForGen.length} lesson(s) generated and saved!`);
+    } catch (error: any) {
+      showResultModal('error', 'Generation Failed', error?.message || 'Unable to generate lessons.');
+    } finally {
+      setIsGeneratingNextLessons(false);
+    }
+  };
+
+  // ─── UPDATE handleCreateManualModule ─────────────────────────────────────────
+  const handleCreateManualModule = async () => {
+    // 1. Basic Validation
+    const num = Number(newModuleNum);
+    if (!newModuleTitle.trim() || !course?.id) {
+      showResultModal('error', 'Error', 'Please enter a title and ensure course is loaded.');
+      return;
+    }
+    // Ensure module number is a valid positive integer
+    if (isNaN(num) || num < 1 || !Number.isInteger(num)) {
+      showResultModal('error', 'Invalid Number', 'Module number must be a positive whole number (e.g., 1, 2, 3).');
+      return;
+    }
+
+    // 2. Check Local State for Duplicates (with consistent number comparison)
+    // ✅ Convert all to numbers for comparison
+    const existingModule = modules.find(m => Number(m.moduleNumber) === num);
+    if (existingModule) {
+      showResultModal('error', 'Duplicate Module', `Module ${num} already exists. Please choose a different number.`);
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/course-modules/create-manual`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          classId: course.id,
+          moduleNumber: num, // Send as Number
+          title: newModuleTitle,
+          description: newModuleDesc,
+          weeklySchedule: newModuleWeek
+        })
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        if (data.error && data.error.includes('already exists')) {
+          throw new Error(`Module ${num} already exists in the database.`);
         }
-        return mod;
-      })
-    );
+        throw new Error(data.error || 'Failed to create module.');
+      }
 
-    setShowNextLessonModal(false);
-    showResultModal('success', 'Success', `${selectedTopicsForGen.length} lesson(s) generated and saved!`);
-  } catch (error: any) {
-    showResultModal('error', 'Generation Failed', error?.message || 'Unable to generate lessons.');
-  } finally {
-    setIsGeneratingNextLessons(false);
-  }
-};
-
-  // Find this function in your code
-const handleCreateManualModule = async () => {
-  // ✅ ADD THIS VALIDATION CHECK
-  const num = Number(newModuleNum);
-  if (!newModuleTitle.trim() || !course?.id) return;
-  
-  // Check if module number already exists
-  const existingModule = modules.find(m => m.moduleNumber === num);
-  if (existingModule) {
-    showResultModal('error', 'Duplicate Module', `Module ${num} already exists. Please choose a different number.`);
-    return;
-  }
-
-  try {
-    const response = await fetch(`${API_BASE_URL}/course-modules/create-manual`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({
-        classId: course.id,
-        moduleNumber: num || 0,
-        title: newModuleTitle,
-        description: newModuleDesc,
-        weeklySchedule: newModuleWeek
-      })
-    });
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.error);
-    
-    setShowManualModuleModal(false);
-    setNewModuleNum(''); setNewModuleTitle(''); setNewModuleDesc(''); setNewModuleWeek('');
-    await loadCourseContent(); 
-    showResultModal('success', 'Success', 'Module created manually.');
-  } catch (e: any) {
-    showResultModal('error', 'Error', e.message);
-  }
-};
+      // 3. Success: Reset Form
+      setShowManualModuleModal(false);
+      setNewModuleNum('');
+      setNewModuleTitle('');
+      setNewModuleDesc('');
+      setNewModuleWeek('');
+      
+      // ✅ RELOAD CONTENT to sync state
+      await loadCourseContent();
+      showResultModal('success', 'Success', `Module ${num} created successfully!`);
+    } catch (e: any) {
+      console.error("Create Manual Module Error:", e);
+      showResultModal('error', 'Error', e.message);
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   const handleCreateManualLesson = async () => {
     if (!newLessonTitle.trim() || !selectedModuleForLesson || !course?.id) return;
+
     // Validate: If text mode, need discussion/activity. If file mode, need file.
     if (lessonMode === 'text' && !newLessonDiscussion.trim()) {
       showResultModal('error', 'Required', 'Discussion content is required for text-based lessons.');
@@ -1065,6 +1123,7 @@ const handleCreateManualModule = async () => {
       showResultModal('error', 'Required', 'Please upload a file.');
       return;
     }
+
     try {
       let fileData = null;
       if (lessonMode === 'file' && newLessonFile) {
@@ -1089,6 +1148,7 @@ const handleCreateManualModule = async () => {
           base64: base64.includes(',') ? base64.split(',')[1] : base64
         };
       }
+
       const response = await fetch(`${API_BASE_URL}/course-lessons/create-manual`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1106,6 +1166,7 @@ const handleCreateManualModule = async () => {
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error);
+
       setShowManualLessonModal(false);
       resetLessonForm();
       await loadCourseContent();
@@ -1137,6 +1198,7 @@ const handleCreateManualModule = async () => {
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'AI generation failed');
+
       setAiPreviewData(data.data);
       setAiPreviewType(tool);
       setSelectedModule(module);
@@ -1151,17 +1213,20 @@ const handleCreateManualModule = async () => {
   const handleSaveAiPreview = async () => {
     if (!selectedModule || !aiPreviewData) return;
     let updatedModule = { ...selectedModule };
+
     if (aiPreviewType === 'regenerate') updatedModule = { ...updatedModule, ...aiPreviewData };
     else if (aiPreviewType === 'generate-lessons') updatedModule.lessons = [...(updatedModule.lessons || []), ...(aiPreviewData.lessons || [])];
     else if (aiPreviewType === 'improve-outcomes') updatedModule.learningOutcomes = aiPreviewData.learningOutcomes;
     else if (aiPreviewType === 'generate-blooms') updatedModule.bloomsObjectives = aiPreviewData.bloomsObjectives;
     else if (aiPreviewType === 'generate-summary') updatedModule.summary = aiPreviewData.summary;
+
     try {
       const response = await fetch(`${API_BASE_URL}/course-modules/save`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
         body: JSON.stringify({ moduleData: { ...updatedModule, courseId: course?.id } })
       });
       if (!response.ok) throw new Error('Failed to save');
+
       const modulesRes = await fetch(`${API_BASE_URL}/course-modules/${course?.id}`, { credentials: 'include' });
       setModules(await modulesRes.json());
       setAiPreviewData(null); setAiPreviewType(''); setSelectedModule(null);
@@ -1171,7 +1236,9 @@ const handleCreateManualModule = async () => {
     }
   };
 
-  const handleUploadSyllabus = async () => {
+  // ─── UPDATE handleUploadSyllabus (Split into Pick and Confirm) ─────────────────────────────────────────────
+  // This function now only picks the file and shows the confirmation modal
+  const handlePickSyllabus = async () => {
     try {
       const result = await DocumentPicker.getDocumentAsync({
         type: [
@@ -1184,12 +1251,15 @@ const handleCreateManualModule = async () => {
         base64: Platform.OS === 'web',
       });
       if (result.canceled || !result.assets?.[0]) return;
+      
       const asset = result.assets[0];
+
       // Validate file size (20MB limit)
       if (asset.size && asset.size > 20 * 1024 * 1024) {
         showResultModal('error', 'File Too Large', 'File exceeds maximum size of 20 MB.');
         return;
       }
+
       // Validate extension
       const ext = asset.name?.split('.').pop()?.toLowerCase();
       const allowedExts = ['pdf', 'doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx', 'txt', 'csv', 'png', 'jpg', 'jpeg', 'webp'];
@@ -1197,13 +1267,37 @@ const handleCreateManualModule = async () => {
         showResultModal('error', 'Unsupported File', 'Please upload a supported file type (PDF, DOCX, PPTX, etc.).');
         return;
       }
-      setIsUploadingSyllabus(true);
+
+      // Store file details in state to show in modal
+      setPendingSyllabusFile({
+        name: asset.name,
+        uri: asset.uri,
+        mimeType: asset.mimeType,
+        size: asset.size,
+        base64: (asset as any).base64,
+        file: (asset as any).file,
+      });
+
+    } catch (error: any) {
+      console.error('Syllabus pick error:', error);
+      showResultModal('error', 'Error', 'Failed to pick file.');
+    }
+  };
+
+  // ✅ NEW: This function performs the actual upload after confirmation
+  const confirmAndUploadSyllabus = async () => {
+    if (!pendingSyllabusFile || !course?.id) return;
+
+    setIsUploadingSyllabus(true);
+    setPendingSyllabusFile(null); // Clear pending file
+
+    try {
       // Convert file to Base64
       let fileBase64 = '';
       if (Platform.OS === 'web') {
-        if (asset.base64) {
-          fileBase64 = asset.base64;
-        } else if (asset.file) {
+        if (pendingSyllabusFile.base64) {
+          fileBase64 = pendingSyllabusFile.base64;
+        } else if (pendingSyllabusFile.file) {
           fileBase64 = await new Promise<string>((resolve, reject) => {
             const reader = new FileReader();
             reader.onload = () => {
@@ -1212,12 +1306,13 @@ const handleCreateManualModule = async () => {
               else reject(new Error('Failed to read file.'));
             };
             reader.onerror = () => reject(new Error('Failed to read file.'));
-            reader.readAsDataURL(asset.file as File);
+            reader.readAsDataURL(pendingSyllabusFile.file as File);
           });
         }
-      } else if (asset.uri) {
-        fileBase64 = await FileSystem.readAsStringAsync(asset.uri, { encoding: 'base64' });
+      } else if (pendingSyllabusFile.uri) {
+        fileBase64 = await FileSystem.readAsStringAsync(pendingSyllabusFile.uri, { encoding: 'base64' });
       }
+
       // Upload to Backend (Backend handles Storage + CloudConvert + Gemini Parsing)
       const response = await fetch(`${API_BASE_URL}/course-syllabus/upload`, {
         method: 'POST',
@@ -1226,22 +1321,24 @@ const handleCreateManualModule = async () => {
         body: JSON.stringify({
           classId: course?.id,
           fileBase64,
-          fileName: asset.name,
-          fileType: asset.mimeType,
-          fileSize: asset.size,
+          fileName: pendingSyllabusFile.name,
+          fileType: pendingSyllabusFile.mimeType,
+          fileSize: pendingSyllabusFile.size,
         }),
       });
+
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Upload failed.');
+
       // Update Syllabus State
       setCurrentSyllabus(data.syllabus);
-      // ✅ UPDATED: No longer auto-opens preview or sets generatedStructure.
-      // The user must manually click "Generate Module 1" to start creating content.
+
       if (data.syllabus?.structure && data.syllabus.structure.modules) {
         showResultModal('success', 'Syllabus Uploaded', 'Syllabus parsed successfully! Click "Generate Module 1" to create course content.');
       } else {
-        showResultModal('info', 'Upload Complete', 'Syllabus uploaded. Auto-parsing could not extract structure. You can generate modules manually or try replacing the file.');
+        showResultModal('info', 'Upload Complete', 'Syllabus uploaded. Auto-parsing could not extract structure. You can generate modules manually or try uploading a different file.');
       }
+
     } catch (error: any) {
       console.error('Syllabus upload error:', error);
       showResultModal('error', 'Upload Failed', error?.message || 'Failed to upload syllabus.');
@@ -1250,44 +1347,8 @@ const handleCreateManualModule = async () => {
     }
   };
 
-  const handleReplaceSyllabus = () => {
-    Alert.alert(
-      'Replace Syllabus',
-      'Replace existing syllabus? This will NOT delete your approved modules.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Replace', onPress: handleUploadSyllabus },
-      ]
-    );
-  };
-
-  const handleDeleteSyllabus = () => {
-    if (!currentSyllabus?.id) return;
-    Alert.alert(
-      'Delete Syllabus',
-      'Delete syllabus only? The generated course structure will remain until you generate a new one.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              const res = await fetch(`${API_BASE_URL}/course-syllabus/${currentSyllabus.id}`, {
-                method: 'DELETE',
-                credentials: 'include',
-              });
-              if (!res.ok) throw new Error('Delete failed');
-              setCurrentSyllabus(null);
-              showResultModal('success', 'Deleted', 'Syllabus deleted successfully.');
-            } catch (e: any) {
-              showResultModal('error', 'Error', e?.message || 'Failed to delete syllabus.');
-            }
-          }
-        }
-      ]
-    );
-  };
+  // ❌ REMOVED: handleReplaceSyllabus
+  // ❌ REMOVED: handleDeleteSyllabus
 
   const handleViewSyllabus = async () => {
     if (!currentSyllabus?.id) return;
@@ -1329,6 +1390,7 @@ const handleCreateManualModule = async () => {
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Generation failed');
+
       setGeneratedStructure(data.data);
       setShowStructurePreviewModal(true);
     } catch (error: any) {
@@ -1354,6 +1416,7 @@ const handleCreateManualModule = async () => {
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Generation failed');
+
       setGeneratedStructure(data.data);
       setShowStructurePreviewModal(true);
     } catch (error: any) {
@@ -1368,6 +1431,7 @@ const handleCreateManualModule = async () => {
     const keys = path.split('.');
     const newStructure = JSON.parse(JSON.stringify(generatedStructure)); // Deep clone
     let current: any = newStructure;
+
     // Navigate to parent and create missing intermediate objects
     for (let i = 0; i < keys.length - 1; i++) {
       const key = keys[i];
@@ -1392,6 +1456,7 @@ const handleCreateManualModule = async () => {
         current = current[key];
       }
     }
+
     // Set the final value
     const lastKey = keys[keys.length - 1];
     const lastIndexMatch = lastKey.match(/^(\w+)\[(\d+)\]$/);
@@ -1405,6 +1470,7 @@ const handleCreateManualModule = async () => {
     } else {
       current[lastKey] = value;
     }
+
     setGeneratedStructure(newStructure);
   };
 
@@ -1423,6 +1489,7 @@ const handleCreateManualModule = async () => {
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Approval failed');
+
       setShowStructurePreviewModal(false);
       setGeneratedStructure(null);
       await loadCourseContent(); // Refresh to show newly saved modules
@@ -1495,6 +1562,7 @@ const handleCreateManualModule = async () => {
     try {
       let uploadedFile: any = null;
       const hasNewFile = !!(editMatPickedFile && (editMatPickedFile.uri || editMatPickedFile.base64 || editMatPickedFile.file));
+
       if (hasNewFile && course?.id) {
         let fileBase64: string | null = null;
         if (Platform.OS === 'web') {
@@ -1518,6 +1586,7 @@ const handleCreateManualModule = async () => {
             encoding: 'base64' as any,
           });
         }
+
         if (fileBase64) {
           const uploadRes = await fetch(`${API_BASE_URL}/upload-class-file`, {
             credentials: 'include',
@@ -1536,11 +1605,13 @@ const handleCreateManualModule = async () => {
           uploadedFile = uploadData.data;
         }
       }
+
       const updateBody: any = {
         title: editMatTitle.trim(),
         week: editMatWeek.trim(),
         content: editMatContent.trim() || undefined,
       };
+
       if (uploadedFile) {
         updateBody.fileName = uploadedFile.fileName ?? null;
         updateBody.fileUrl = uploadedFile.fileUrl ?? null;
@@ -1550,6 +1621,7 @@ const handleCreateManualModule = async () => {
         updateBody.pdfUrl = uploadedFile.pdfUrl ?? null;
         updateBody.pdfStoragePath = uploadedFile.pdfStoragePath ?? null;
       }
+
       const response = await fetch(
         `${API_BASE_URL}/update-class-material/${editingMaterial.id}`,
         {
@@ -1561,6 +1633,7 @@ const handleCreateManualModule = async () => {
       );
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Failed to update material.');
+
       await loadCourseContent();
       setShowEditMaterialModal(false);
       setViewerMaterial(null);
@@ -1611,14 +1684,17 @@ const handleCreateManualModule = async () => {
       showResultModal('error', 'No File', 'This material has no downloadable file.');
       return;
     }
+
     const storagePath = viewerMaterial.storagePath;
     const firebaseUrl = getMaterialFileUrl(viewerMaterial);
     if (!storagePath && !firebaseUrl) {
       showResultModal('error', 'No File', 'This material has no file to download.');
       return;
     }
+
     const fileName = viewerMaterial.fileName || viewerMaterial.title || 'material';
     const mimeType = viewerMaterial.fileType || getMimeFromFileName(fileName);
+
     setIsDownloading(true);
     try {
       let downloadUrl: string;
@@ -1636,6 +1712,7 @@ const handleCreateManualModule = async () => {
         }
         downloadUrl = firebaseUrl;
       }
+
       if (Platform.OS === 'web') {
         const response = await fetch(downloadUrl, { credentials: 'include' });
         if (!response.ok) throw new Error(`Download failed (${response.status})`);
@@ -1720,6 +1797,7 @@ const handleCreateManualModule = async () => {
     setCustomAttempts(String((item as any).customAttempts || ''));
     setTimeLimit(String((item as any).timeLimit || ''));
     setCustomTimeLimit(String((item as any).customTimeLimit || ''));
+
     const existingQuestions = (item as any).questions || [];
     const mappedQuestions = existingQuestions.map((q: any, index: number) => {
       if ((item as any).gameType === 'memory_match') {
@@ -1837,6 +1915,7 @@ const handleCreateManualModule = async () => {
     } else if (picked.uri) {
       fileBase64 = await FileSystem.readAsStringAsync(picked.uri, { encoding: 'base64' as any });
     }
+
     const response = await fetch(`${API_BASE_URL}/upload-class-file`, {
       credentials: 'include',
       method: 'POST',
@@ -1905,6 +1984,7 @@ const handleCreateManualModule = async () => {
         credentials: 'include',
       });
       const gameScores = gameResponse.ok ? await gameResponse.json() : [];
+
       const workbook = XLSX.utils.book_new();
       const gradeRows = members.map((member) => {
         const studentSubmissions = submissions.filter((s) => s.studentId === member.id);
@@ -1922,6 +2002,7 @@ const handleCreateManualModule = async () => {
         XLSX.utils.json_to_sheet(gradeRows),
         'Assignment Grades'
       );
+
       const gameRows = gameScores.map((game: any, index: number) => ({
         No: index + 1,
         'Student ID': game.studentId,
@@ -1935,6 +2016,7 @@ const handleCreateManualModule = async () => {
         XLSX.utils.json_to_sheet(gameRows),
         'Quiz Masters Scores'
       );
+
       const wbout = XLSX.write(workbook, { type: 'array', bookType: 'xlsx' });
       if (Platform.OS === 'web') {
         const blob = new Blob([wbout], {
@@ -1974,6 +2056,7 @@ const handleCreateManualModule = async () => {
     if (!formDue.trim()) nextErrors.dueDate = 'Due date and time is required.';
     if (selectedMaterialIds.length === 0)
       nextErrors.materials = 'Select at least one related material.';
+
     if (assignmentType === 'game_based') {
       if (!gameType) nextErrors.gameType = 'Please select a game type.';
       if (availableCourses.length > 1 && !selectedClassId)
@@ -1988,6 +2071,7 @@ const handleCreateManualModule = async () => {
       if (timeLimit === 'custom' && !customTimeLimit.trim())
         nextErrors.customTimeLimit = 'Please enter custom time limit.';
     }
+
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length > 0) {
       showResultModal('error', 'Required', 'Please complete the highlighted assignment fields.');
@@ -2020,9 +2104,11 @@ const handleCreateManualModule = async () => {
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Failed to generate questions.');
+
       const questionsArray = Array.isArray(data.questions) ? data.questions : [];
       if (questionsArray.length === 0)
         throw new Error('AI did not return any valid questions. Please try again.');
+
       const editableQuestions = questionsArray.map((q: any, index: number) => {
         if (gameType === 'memory_match') {
           return { id: `gen-${Date.now()}-${index}`, question: q.question || '', answer: q.answer || '' };
@@ -2062,9 +2148,11 @@ const handleCreateManualModule = async () => {
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Failed to generate questions.');
+
       const questionsArray = Array.isArray(data.questions) ? data.questions : [];
       if (questionsArray.length === 0)
         throw new Error('AI did not return any valid questions. Please try again.');
+
       const newQuestions = questionsArray.map((q: any, index: number) => {
         if (gameType === 'memory_match') {
           return { id: `gen-${Date.now()}-${index}`, question: q.question || '', answer: q.answer || '' };
@@ -2121,6 +2209,7 @@ const handleCreateManualModule = async () => {
       showResultModal('error', 'Error', 'No class selected.');
       return;
     }
+
     if (activeTab === 'Materials') {
       if (!formTitle.trim() || !formPointsOnTime.trim()) {
         showResultModal('error', 'Required', 'Please enter the title and week.');
@@ -2131,6 +2220,7 @@ const handleCreateManualModule = async () => {
         let uploadedFile = null;
         if (pickedFile?.uri || pickedFile?.base64 || pickedFile?.file)
           uploadedFile = await uploadPickedFile(pickedFile, 'material');
+
         const response = await fetch(`${API_BASE_URL}/create-class-material`, {
           credentials: 'include',
           method: 'POST',
@@ -2154,6 +2244,7 @@ const handleCreateManualModule = async () => {
         });
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || 'Failed to create material');
+
         await loadCourseContent();
         setShowCreateModal(false);
         resetCreateForm();
@@ -2165,12 +2256,14 @@ const handleCreateManualModule = async () => {
       }
       return;
     }
+
     if (!validateAssignmentForm()) return;
     setIsSaving(true);
     try {
       let uploadedFile = null;
       if (pickedAssignmentFile?.uri || pickedAssignmentFile?.base64 || pickedAssignmentFile?.file)
         uploadedFile = await uploadPickedFile(pickedAssignmentFile, 'assignment');
+
       const response = await fetch(`${API_BASE_URL}/create-class-assignment`, {
         credentials: 'include',
         method: 'POST',
@@ -2218,6 +2311,7 @@ const handleCreateManualModule = async () => {
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Failed to create assignment');
+
       await loadCourseContent();
       setShowCreateModal(false);
       resetCreateForm();
@@ -2268,6 +2362,7 @@ const handleCreateManualModule = async () => {
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Failed to update assignment');
+
       await loadCourseContent();
       setShowUpdateModal(false);
       showResultModal('success', 'Success', 'Assignment updated.');
@@ -2285,6 +2380,7 @@ const handleCreateManualModule = async () => {
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Failed to delete assignment');
+
       await loadCourseContent();
       setShowUpdateModal(false);
       setShowSubmissions(false);
@@ -2310,14 +2406,16 @@ const handleCreateManualModule = async () => {
   const viewerShouldUseInline = !viewerIsVideo && !!viewerFileUrl;
   const viewerUrl = viewerFileUrl
     ? getViewerUrl(
-        viewerFileUrl,
-        viewerMaterial?.fileName,
-        viewerMaterial?.fileType,
-        viewerPdfUrl
-      )
+      viewerFileUrl,
+      viewerMaterial?.fileName,
+      viewerMaterial?.fileType,
+      viewerPdfUrl
+    )
     : null;
   const viewerHasFile = !!viewerFileUrl;
+
   const selectedAssignment = assignments.find((a) => a.id === selectedId);
+
   const courseName = course?.name || 'Untitled Course';
   const courseYear = course?.year || '';
   const courseSection = course?.section || '';
@@ -2325,6 +2423,7 @@ const handleCreateManualModule = async () => {
   const classCode = course?.classCode || 'No Class Code';
   const courseSemester = course?.semester || '';
   const schoolYear = course?.schoolYear || '';
+
   const calendarDays = getCalendarDays(visibleCalendarMonth);
 
   const renderInputError = (message?: string) =>
@@ -2572,7 +2671,9 @@ const handleCreateManualModule = async () => {
           </TouchableOpacity>
         </View>
       </View>
+
       {assignmentType === 'game_based' && renderGameAndClassRow()}
+
       <View style={[styles.formColumnLeft, !isMobile && styles.formColumnLeftDesktop]}>
         <Text style={styles.sectionLabel}>Header</Text>
         <TextInput
@@ -2587,6 +2688,7 @@ const handleCreateManualModule = async () => {
           editable={!isSaving}
         />
         {renderInputError(errors.title)}
+
         <Text style={styles.sectionLabel}>Instruction</Text>
         <TextInput
           style={[styles.textAreaBox, errors.instruction ? styles.errorBorder : null]}
@@ -2601,11 +2703,14 @@ const handleCreateManualModule = async () => {
           editable={!isSaving}
         />
         {renderInputError(errors.instruction)}
+
         {assignmentType === 'game_based' && renderAttemptsSelector()}
         {assignmentType === 'game_based' && renderTimeLimitSelector()}
       </View>
+
       <View style={[styles.formColumnRight, !isMobile && styles.formColumnRightDesktop]}>
         {renderDateTimeField()}
+
         <View style={styles.scoreStackDesktop}>
           <View style={styles.scoreFieldFull}>
             <Text style={styles.sectionLabel}>Total Score</Text>
@@ -2655,8 +2760,10 @@ const handleCreateManualModule = async () => {
           )}
         </View>
       </View>
+
       <View style={styles.fullWidthSection}>
         {renderRelatedMaterialsSelector()}
+
         {assignmentType === 'game_based' && selectedMaterialIds.length > 0 && gameType && (
           <TouchableOpacity
             style={[styles.generateButton, isGenerating ? styles.disabledButton : null]}
@@ -2681,6 +2788,7 @@ const handleCreateManualModule = async () => {
             <Text style={styles.generateButtonText}>Select a Game Type to Generate Questions</Text>
           </View>
         )}
+
         {assignmentType === 'regular' && (
           <>
             <Text style={styles.sectionLabel}>Attachment</Text>
@@ -2702,6 +2810,7 @@ const handleCreateManualModule = async () => {
             )}
           </>
         )}
+
         <View style={styles.checkboxRow}>
           <TouchableOpacity
             style={[
@@ -2791,6 +2900,7 @@ const handleCreateManualModule = async () => {
         </TouchableOpacity>
       </View>
     );
+
     const renderOptionWithDropdown = (opt: string, oIndex: number, placeholderPrefix: string) => {
       const isCorrect = q.correctIndex === oIndex;
       return (
@@ -2829,6 +2939,7 @@ const handleCreateManualModule = async () => {
         </View>
       );
     };
+
     switch (gameType) {
       case 'memory_match':
         return (
@@ -2951,7 +3062,7 @@ const handleCreateManualModule = async () => {
                     <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}><Text style={{ fontSize: 18, fontWeight: '800', color: '#FFF' }}>
                       Module {mod.moduleNumber}: {cleanModuleTitle(mod.title, mod.moduleNumber)}
                     </Text>
-                    <TouchableOpacity onPress={() => updateStructureField('modules', generatedStructure.modules.filter((_: any, idx: number) => idx !== mi))}><Ionicons name="trash-outline" size={24} color="#FFF" /></TouchableOpacity></View>
+                      <TouchableOpacity onPress={() => updateStructureField('modules', generatedStructure.modules.filter((_: any, idx: number) => idx !== mi))}><Ionicons name="trash-outline" size={24} color="#FFF" /></TouchableOpacity></View>
                     <Text style={{ color: '#FFE0E0', marginTop: 4 }}>{mod.weeklySchedule}</Text>
                   </View>
                   <View style={{ paddingLeft: 16, marginBottom: 16 }}><Text style={styles.sectionLabel}>Description</Text><TextInput style={styles.textAreaBox} value={mod.description} onChangeText={v => updateStructureField(`modules.${mi}.description`, v)} multiline /></View>
@@ -3243,7 +3354,7 @@ const handleCreateManualModule = async () => {
                 <View style={{ alignItems: 'center', paddingVertical: 20 }}>
                   <Text style={{ color: '#888', marginBottom: 12 }}>No syllabus uploaded.</Text>
                   <TouchableOpacity
-                    onPress={handleUploadSyllabus}
+                    onPress={handlePickSyllabus} // ✅ Changed to handlePickSyllabus
                     disabled={isUploadingSyllabus}
                     style={{ backgroundColor: '#D32F2F', paddingHorizontal: 20, paddingVertical: 10, borderRadius: 8, flexDirection: 'row', alignItems: 'center', gap: 8 }}
                   >
@@ -3258,10 +3369,11 @@ const handleCreateManualModule = async () => {
                     <View style={{ flex: 1 }}>
                       <Text style={{ fontSize: 14, fontWeight: '700', color: '#111' }} numberOfLines={1}>{currentSyllabus.fileName}</Text>
                       <Text style={{ fontSize: 12, color: '#666' }}>
-                      Uploaded {formatSyllabusDate(currentSyllabus?.uploadedAt)}
-                    </Text>
+                        Uploaded {formatSyllabusDate(currentSyllabus?.uploadedAt)}
+                      </Text>
                     </View>
                   </View>
+                  
                   {/* Generating State Indicator */}
                   {currentSyllabus.status === 'generating' && (
                     <View style={{ marginTop: 12, padding: 12, backgroundColor: '#FFF8E1', borderRadius: 8, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
@@ -3269,133 +3381,122 @@ const handleCreateManualModule = async () => {
                       <Text style={{ color: '#F57C00', fontWeight: '600', fontSize: 13 }}>AI is analyzing your syllabus...</Text>
                     </View>
                   )}
-                  
-                  {/* A. REMOVED THE TOP "GENERATE MODULE 1" BUTTON FROM HERE */}
+
                   <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 12 }}>
                     <TouchableOpacity onPress={handleViewSyllabus} style={{ backgroundColor: '#E3F2FD', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8 }}>
                       <Text style={{ color: '#1565C0', fontWeight: '700', fontSize: 12 }}>View</Text>
                     </TouchableOpacity>
-                    <TouchableOpacity onPress={handleReplaceSyllabus} style={{ backgroundColor: '#FFF3E0', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8 }}>
-                      <Text style={{ color: '#E65100', fontWeight: '700', fontSize: 12 }}>Replace</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity onPress={handleDeleteSyllabus} style={{ backgroundColor: '#FFEBEE', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8 }}>
-                      <Text style={{ color: '#C62828', fontWeight: '700', fontSize: 12 }}>Delete</Text>
-                    </TouchableOpacity>
+                    {/* ❌ REMOVED: Replace Button */}
+                    {/* ❌ REMOVED: Delete Button */}
                   </View>
                 </View>
               )}
             </View>
 
             {/* ACCORDION MODULES LIST */}
-{modules.length === 0 ? (
-  <Text style={{ textAlign: 'center', color: '#888', marginTop: 40 }}>No modules generated yet.</Text>
-) : (
-  <>
-    {modules.map((mod: any) => {
-      const isExpanded = expandedModules[mod.moduleNumber] || false;
-      const totalHours = mod.estimatedHours ||
-        (mod.lessons?.reduce((sum: number, l: any) => sum + (l.estimatedHours || 0), 0) || 0);
-      return (
-        <View key={mod.id} style={{ backgroundColor: '#FFF', borderRadius: 12, marginBottom: 16, borderWidth: 1, borderColor: '#EEE', overflow: 'hidden' }}>
-          <TouchableOpacity
-            onPress={() => setExpandedModules(p => ({ ...p, [mod.moduleNumber]: !isExpanded }))}
-            style={{ padding: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: isExpanded ? '#FFF5F5' : '#FFF' }}
-          >
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 }}>
-              <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: '#D32F2F', alignItems: 'center', justifyContent: 'center' }}>
-                <Ionicons name="layers-outline" size={20} color="#FFF" />
-              </View>
-              <View style={{ flex: 1 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                  <Text style={{ fontSize: 16, fontWeight: '800', color: '#111' }}>
-                    Module {mod.moduleNumber}: {cleanModuleTitle(mod.title, mod.moduleNumber)}
-                  </Text>
-                  
-                </View>
-                <Text style={{ fontSize: 12, color: '#666', marginTop: 2 }}>{mod.description?.substring(0, 60)}...</Text>
-              </View>
-            </View>
-            <Ionicons name={isExpanded ? 'chevron-up' : 'chevron-down'} size={24} color="#D32F2F" />
-          </TouchableOpacity>
-          
-          {isExpanded && (
-            <View style={{ padding: 16, borderTopWidth: 1, borderTopColor: '#EEE', backgroundColor: '#FAFAFA' }}>
-              {mod.lessons && mod.lessons.length > 0 ? (
-                mod.lessons.map((lesson: any, li: number) => (
-                  <TouchableOpacity
-                    key={lesson.id || li}
-                    onPress={() => handleOpenLessonDetail(lesson)}
-                    style={{ backgroundColor: '#FFF', borderRadius: 8, padding: 12, marginBottom: 8, borderWidth: 1, borderColor: '#DDD', borderLeftWidth: 3, borderLeftColor: '#1976D2' }}
-                  >
-                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <Text style={{ fontSize: 14, fontWeight: '700', color: '#1976D2', marginBottom: 4 }}>
-                        Lesson {li + 1}: {lesson.title}
-                      </Text>
-                      <Ionicons name="chevron-forward" size={16} color="#999" />
+            {modules.length === 0 ? (
+              <Text style={{ textAlign: 'center', color: '#888', marginTop: 40 }}>No modules generated yet.</Text>
+            ) : (
+              <>
+                {modules.map((mod: any) => {
+                  const isExpanded = expandedModules[mod.moduleNumber] || false;
+                  const totalHours = mod.estimatedHours ||
+                    (mod.lessons?.reduce((sum: number, l: any) => sum + (l.estimatedHours || 0), 0) || 0);
+                  return (
+                    <View key={mod.id} style={{ backgroundColor: '#FFF', borderRadius: 12, marginBottom: 16, borderWidth: 1, borderColor: '#EEE', overflow: 'hidden' }}>
+                      <TouchableOpacity
+                        onPress={() => setExpandedModules(p => ({ ...p, [mod.moduleNumber]: !isExpanded }))}
+                        style={{ padding: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: isExpanded ? '#FFF5F5' : '#FFF' }}
+                      >
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 }}>
+                          <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: '#D32F2F', alignItems: 'center', justifyContent: 'center' }}>
+                            <Ionicons name="layers-outline" size={20} color="#FFF" />
+                          </View>
+                          <View style={{ flex: 1 }}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                              <Text style={{ fontSize: 16, fontWeight: '800', color: '#111' }}>
+                                Module {mod.moduleNumber}: {cleanModuleTitle(mod.title, mod.moduleNumber)}
+                              </Text>
+                            </View>
+                            <Text style={{ fontSize: 12, color: '#666', marginTop: 2 }}>{mod.description?.substring(0, 60)}...</Text>
+                          </View>
+                        </View>
+                        <Ionicons name={isExpanded ? 'chevron-up' : 'chevron-down'} size={24} color="#D32F2F" />
+                      </TouchableOpacity>
+                      {isExpanded && (
+                        <View style={{ padding: 16, borderTopWidth: 1, borderTopColor: '#EEE', backgroundColor: '#FAFAFA' }}>
+                          {mod.lessons && mod.lessons.length > 0 ? (
+                            mod.lessons.map((lesson: any, li: number) => (
+                              <TouchableOpacity
+                                key={lesson.id || li}
+                                onPress={() => handleOpenLessonDetail(lesson)}
+                                style={{ backgroundColor: '#FFF', borderRadius: 8, padding: 12, marginBottom: 8, borderWidth: 1, borderColor: '#DDD', borderLeftWidth: 3, borderLeftColor: '#1976D2' }}
+                              >
+                                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                                  <Text style={{ fontSize: 14, fontWeight: '700', color: '#1976D2', marginBottom: 4 }}>
+                                    Lesson {li + 1}: {lesson.title}
+                                  </Text>
+                                  <Ionicons name="chevron-forward" size={16} color="#999" />
+                                </View>
+                                <Text style={{ fontSize: 12, color: '#555', lineHeight: 18 }}>{lesson.description}</Text>
+                              </TouchableOpacity>
+                            ))
+                          ) : (
+                            <Text style={{ textAlign: 'center', color: '#999', padding: 12 }}>No lessons added yet.</Text>
+                          )}
+                          <TouchableOpacity
+                            onPress={() => { setSelectedModuleForLesson(mod); setShowManualLessonModal(true); }}
+                            style={{ marginTop: 8, padding: 10, backgroundColor: '#FFF', borderRadius: 8, borderWidth: 1, borderColor: '#1976D2', alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 6 }}
+                          >
+                            <Ionicons name="add-circle-outline" size={16} color="#1976D2" />
+                            <Text style={{ color: '#1976D2', fontWeight: '700', fontSize: 12 }}>Add Lesson (Manual)</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            onPress={() => handleOpenNextLessonModal(mod)}
+                            style={{ marginTop: 8, padding: 16, backgroundColor: '#E3F2FD', borderRadius: 12, borderWidth: 1, borderColor: '#1976D2', alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8 }}
+                          >
+                            <Ionicons name="sparkles-outline" size={24} color="#1976D2" />
+                            <Text style={{ color: '#1976D2', fontWeight: '800', fontSize: 16 }}>Generate Next Lesson</Text>
+                          </TouchableOpacity>
+                        </View>
+                      )}
                     </View>
-                    <Text style={{ fontSize: 12, color: '#555', lineHeight: 18 }}>{lesson.description}</Text>
-                  </TouchableOpacity>
-                ))
-              ) : (
-                <Text style={{ textAlign: 'center', color: '#999', padding: 12 }}>No lessons added yet.</Text>
-              )}
-              
-              <TouchableOpacity
-                onPress={() => { setSelectedModuleForLesson(mod); setShowManualLessonModal(true); }}
-                style={{ marginTop: 8, padding: 10, backgroundColor: '#FFF', borderRadius: 8, borderWidth: 1, borderColor: '#1976D2', alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 6 }}
-              >
-                <Ionicons name="add-circle-outline" size={16} color="#1976D2" />
-                <Text style={{ color: '#1976D2', fontWeight: '700', fontSize: 12 }}>Add Lesson (Manual)</Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity
-                onPress={() => handleOpenNextLessonModal(mod)}
-                style={{ marginTop: 8, padding: 16, backgroundColor: '#E3F2FD', borderRadius: 12, borderWidth: 1, borderColor: '#1976D2', alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8 }}
-              >
-                <Ionicons name="sparkles-outline" size={24} color="#1976D2" />
-                <Text style={{ color: '#1976D2', fontWeight: '800', fontSize: 16 }}>Generate Next Lesson</Text>
-              </TouchableOpacity>
-            </View>
-          )}
-        </View>
-      );
-    })}
-  </>
-)}
+                  );
+                })}
+              </>
+            )}
 
-{/* ✅ MOVED OUTSIDE THE TERNARY: Always visible when syllabus exists */}
-{currentSyllabus && (
-  <>
-    {modules.length === 0 ? (
-      <TouchableOpacity
-        onPress={handleGenerateStructure}
-        disabled={isGeneratingStructure}
-        style={{ marginTop: 8, padding: 16, backgroundColor: '#FFF', borderRadius: 12, borderWidth: 2, borderColor: '#D32F2F', borderStyle: 'dashed', alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8 }}
-      >
-        {isGeneratingStructure ? <ActivityIndicator size="small" color="#D32F2F" /> : <Ionicons name="add-circle-outline" size={24} color="#D32F2F" />}
-        <Text style={{ color: '#D32F2F', fontWeight: '800', fontSize: 16 }}>Generate Module 1</Text>
-      </TouchableOpacity>
-    ) : (
-      <TouchableOpacity
-        onPress={handleGenerateAnotherModule}
-        disabled={isGeneratingStructure}
-        style={{ marginTop: 8, padding: 16, backgroundColor: '#FFF', borderRadius: 12, borderWidth: 2, borderColor: '#D32F2F', borderStyle: 'dashed', alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8 }}
-      >
-        {isGeneratingStructure ? <ActivityIndicator size="small" color="#D32F2F" /> : <Ionicons name="add-circle-outline" size={24} color="#D32F2F" />}
-        <Text style={{ color: '#D32F2F', fontWeight: '800', fontSize: 16 }}>Generate Another Module</Text>
-      </TouchableOpacity>
-    )}
-    
-    <TouchableOpacity 
-      onPress={() => setShowManualModuleModal(true)} 
-      style={{ marginTop: 16, padding: 16, backgroundColor: '#FFF', borderRadius: 12, borderWidth: 1, borderColor: '#D32F2F', alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8 }}
-    >
-      <Ionicons name="create-outline" size={24} color="#D32F2F" />
-      <Text style={{ color: '#D32F2F', fontWeight: '800', fontSize: 16 }}>Create Module (Manual)</Text>
-    </TouchableOpacity>
-  </>
-)}
-              
+            {/* ✅ MOVED OUTSIDE THE TERNARY: Always visible when syllabus exists */}
+            {currentSyllabus && (
+              <>
+                {modules.length === 0 ? (
+                  <TouchableOpacity
+                    onPress={handleGenerateStructure}
+                    disabled={isGeneratingStructure}
+                    style={{ marginTop: 8, padding: 16, backgroundColor: '#FFF', borderRadius: 12, borderWidth: 2, borderColor: '#D32F2F', borderStyle: 'dashed', alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8 }}
+                  >
+                    {isGeneratingStructure ? <ActivityIndicator size="small" color="#D32F2F" /> : <Ionicons name="add-circle-outline" size={24} color="#D32F2F" />}
+                    <Text style={{ color: '#D32F2F', fontWeight: '800', fontSize: 16 }}>Generate Module 1</Text>
+                  </TouchableOpacity>
+                ) : (
+                  <TouchableOpacity
+                    onPress={handleGenerateAnotherModule}
+                    disabled={isGeneratingStructure}
+                    style={{ marginTop: 8, padding: 16, backgroundColor: '#FFF', borderRadius: 12, borderWidth: 2, borderColor: '#D32F2F', borderStyle: 'dashed', alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8 }}
+                  >
+                    {isGeneratingStructure ? <ActivityIndicator size="small" color="#D32F2F" /> : <Ionicons name="add-circle-outline" size={24} color="#D32F2F" />}
+                    <Text style={{ color: '#D32F2F', fontWeight: '800', fontSize: 16 }}>Generate Another Module</Text>
+                  </TouchableOpacity>
+                )}
+                <TouchableOpacity
+                  onPress={() => setShowManualModuleModal(true)}
+                  style={{ marginTop: 16, padding: 16, backgroundColor: '#FFF', borderRadius: 12, borderWidth: 1, borderColor: '#D32F2F', alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8 }}
+                >
+                  <Ionicons name="create-outline" size={24} color="#D32F2F" />
+                  <Text style={{ color: '#D32F2F', fontWeight: '800', fontSize: 16 }}>Create Module (Manual)</Text>
+                </TouchableOpacity>
+              </>
+            )}
           </View>
         )}
       </ScrollView>
@@ -3476,6 +3577,7 @@ FULLSCREEN MATERIAL VIEWER MODAL (Teacher Side — mirrors student)
               )}
             </View>
           </View>
+
           {viewerShouldUseInline && viewerUrl ? (
             <InlineMaterialViewer viewerUrl={viewerUrl} height={height - 62} />
           ) : viewerIsVideo && viewerFileUrl ? (
@@ -3886,7 +3988,7 @@ DATE TIME MODAL
                             style={[
                               styles.timeOptionText,
                               draftDueDateTime.getMinutes() === minute &&
-                                styles.timeOptionTextActive,
+                              styles.timeOptionTextActive,
                             ]}
                           >
                             {pad(minute)}
@@ -4315,78 +4417,72 @@ LESSON DETAIL MODAL (NEW)
           </View>
         </View>
       </Modal>
-{/* ══════════════════════════════════════════════════════════════════════
-    MANUAL MODULE CREATION MODAL
-    ═════════════════════════════════════════════════════════════════════════ */}
-<Modal visible={showManualModuleModal} transparent animationType="fade">
-  <View style={styles.modalOverlayCenter}>
-    <View style={[styles.modalCardElevated, { width: isMobile ? Math.min(width - 28, 360) : 500 }]}>
-      <View style={styles.createHeaderRow}>
-        <Text style={styles.createTitle}>Create Module Manually</Text>
-        <TouchableOpacity onPress={() => setShowManualModuleModal(false)}><Ionicons name="close" size={24} color="#111" /></TouchableOpacity>
-      </View>
-      <ScrollView contentContainerStyle={{ paddingBottom: 20 }}>
-        
-        {/* --- UPDATED MODULE NUMBER INPUT WITH VALIDATION --- */}
-        <Text style={styles.sectionLabel}>Module Number</Text>
-        <TextInput 
-          style={[
-            styles.inputBox, 
-            // Add red border if duplicate is detected
-            modules.some(m => m.moduleNumber === Number(newModuleNum)) && newModuleNum !== '' 
-              ? styles.errorBorder 
-              : null
-          ]} 
-          keyboardType="numeric" 
-          value={newModuleNum} 
-          onChangeText={(text) => {
-             // Only allow numbers
-             const cleaned = text.replace(/[^0-9]/g, '');
-             setNewModuleNum(cleaned);
-          }} 
-          placeholder="e.g. 1" 
-        />
-        
-        {/* ✅ DISPLAY ERROR MESSAGE IF DUPLICATE */}
-        {modules.some(m => m.moduleNumber === Number(newModuleNum)) && newModuleNum !== '' && (
-          <Text style={[styles.errorText, { marginTop: -4, marginBottom: 8 }]}>
-            Already created Module {newModuleNum}
-          </Text>
-        )}
 
-        {/* --- REST OF THE FORM --- */}
-        <Text style={styles.sectionLabel}>Title</Text>
-        <TextInput style={styles.inputBox} value={newModuleTitle} onChangeText={setNewModuleTitle} placeholder="Module Title" />
-        <Text style={styles.sectionLabel}>Weekly Schedule</Text>
-        <TextInput style={styles.inputBox} value={newModuleWeek} onChangeText={setNewModuleWeek} placeholder="e.g. Week 1-2" />
-        <Text style={styles.sectionLabel}>Description</Text>
-        <TextInput style={[styles.textAreaBox, { minHeight: 80 }]} value={newModuleDesc} onChangeText={setNewModuleDesc} multiline placeholder="Brief description..." />
-      </ScrollView>
-      
-      <View style={styles.buttonRow}>
-        <TouchableOpacity style={styles.secondaryButton} onPress={() => setShowManualModuleModal(false)}>
-          <Text style={styles.secondaryButtonText}>Cancel</Text>
-        </TouchableOpacity>
-        
-        {/* ✅ DISABLE BUTTON IF DUPLICATE OR EMPTY TITLE */}
-        <TouchableOpacity 
-          style={[
-            styles.primaryButton, 
-            // Disable style if module number exists or title is empty
-            (modules.some(m => m.moduleNumber === Number(newModuleNum)) || !newModuleTitle.trim()) 
-              ? styles.disabledButton 
-              : null
-          ]} 
-          onPress={handleCreateManualModule}
-          // Prevent press if disabled
-          disabled={modules.some(m => m.moduleNumber === Number(newModuleNum)) || !newModuleTitle.trim()}
-        >
-          <Text style={styles.primaryButtonText}>Create</Text>
-        </TouchableOpacity>
-      </View>
-    </View>
-  </View>
-</Modal>
+      {/* ══════════════════════════════════════════════════════════════════════
+MANUAL MODULE CREATION MODAL
+═════════════════════════════════════════════════════════════════════════ */}
+      <Modal visible={showManualModuleModal} transparent animationType="fade">
+        <View style={styles.modalOverlayCenter}>
+          <View style={[styles.modalCardElevated, { width: isMobile ? Math.min(width - 28, 360) : 500 }]}>
+            <View style={styles.createHeaderRow}>
+              <Text style={styles.createTitle}>Create Module Manually</Text>
+              <TouchableOpacity onPress={() => setShowManualModuleModal(false)}><Ionicons name="close" size={24} color="#111" /></TouchableOpacity>
+            </View>
+            <ScrollView contentContainerStyle={{ paddingBottom: 20 }}>
+              {/* --- UPDATED MODULE NUMBER INPUT WITH VALIDATION --- */}
+              <Text style={styles.sectionLabel}>Module Number</Text>
+              <TextInput
+                style={[
+                  styles.inputBox,
+                  // Add red border if duplicate is detected
+                  modules.some(m => m.moduleNumber === Number(newModuleNum)) && newModuleNum !== ''
+                    ? styles.errorBorder
+                    : null
+                ]}
+                keyboardType="numeric"
+                value={newModuleNum}
+                onChangeText={(text) => {
+                  // Only allow numbers
+                  const cleaned = text.replace(/[^0-9]/g, '');
+                  setNewModuleNum(cleaned);
+                }}
+                placeholder="e.g. 1"  placeholderTextColor="#999"
+              />
+              {/* ✅ DISPLAY ERROR MESSAGE IF DUPLICATE */}
+              {modules.some(m => Number(m.moduleNumber) === Number(newModuleNum)) && newModuleNum !== '' && (
+                <Text style={[styles.errorText, { marginTop: -4, marginBottom: 8 }]}>
+                  Already created Module {newModuleNum}
+                </Text>
+              )}
+              {/* --- REST OF THE FORM --- */}
+              <Text style={styles.sectionLabel}>Title</Text>
+              <TextInput style={styles.inputBox} value={newModuleTitle} onChangeText={setNewModuleTitle} placeholder="Module Title" placeholderTextColor="#999"/>
+              <Text style={styles.sectionLabel}>Weekly Schedule</Text>
+              <TextInput style={styles.inputBox} value={newModuleWeek} onChangeText={setNewModuleWeek} placeholder="e.g. Week 1-2" placeholderTextColor="#999"/>
+              <Text style={styles.sectionLabel}>Description</Text>
+              <TextInput style={[styles.textAreaBox, { minHeight: 80 }]} value={newModuleDesc} onChangeText={setNewModuleDesc} multiline placeholder="Brief description..." placeholderTextColor="#999"/>
+            </ScrollView>
+            <View style={styles.buttonRow}>
+              <TouchableOpacity style={styles.secondaryButton} onPress={() => setShowManualModuleModal(false)}>
+                <Text style={styles.secondaryButtonText}>Cancel</Text>
+              </TouchableOpacity>
+              {/* ✅ DISABLE BUTTON IF DUPLICATE OR EMPTY TITLE */}
+              <TouchableOpacity
+                style={[
+                  styles.primaryButton,
+                  (modules.some(m => Number(m.moduleNumber) === Number(newModuleNum)) || !newModuleTitle.trim())
+                    ? styles.disabledButton
+                    : null
+                ]}
+                onPress={handleCreateManualModule}
+                disabled={modules.some(m => Number(m.moduleNumber) === Number(newModuleNum)) || !newModuleTitle.trim()}
+              >
+                <Text style={styles.primaryButtonText}>Create</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       {/* ══════════════════════════════════════════════════════════════════════
 MANUAL LESSON CREATION MODAL
@@ -4616,45 +4712,45 @@ GENERATE NEXT LESSON - MULTI TOPIC SELECTION MODAL
               </TouchableOpacity>
             </View>
             <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 20 }}>
-  {/* ✅ UPDATED: Check if there are any remaining topics after filtering */}
-  {!targetModuleForGen?.topics || targetModuleForGen.topics.length === 0 ? (
-    <Text style={{ textAlign: 'center', color: '#888', padding: 20 }}>
-      All topics for this module have already been generated!
-    </Text>
-  ) : (
-    targetModuleForGen.topics.map((topic: any, idx: number) => {
-      const isSelected = selectedTopicsForGen.includes(topic.title);
-      return (
-        <TouchableOpacity
-          key={idx}
-          onPress={() => toggleTopicSelection(topic.title)}
-          style={[
-            styles.materialChip,
-            { marginBottom: 8, minHeight: 50 },
-            isSelected && styles.materialChipActive
-          ]}
-        >
-          <Ionicons
-            name={isSelected ? "checkbox" : "square-outline"}
-            size={22}
-            color={isSelected ? "#FFF" : "#D32F2F"}
-          />
-          <View style={{ flex: 1, marginLeft: 8 }}>
-            <Text style={[styles.materialChipText, isSelected && styles.materialChipTextActive]}>
-              {topic.title}
-            </Text>
-            {topic.subtopics && topic.subtopics.length > 0 && (
-              <Text style={{ fontSize: 11, color: isSelected ? '#FFE0E0' : '#888', marginTop: 2 }}>
-                {topic.subtopics.length} subtopic(s): {topic.subtopics.slice(0, 3).join(', ')}
-                {topic.subtopics.length > 3 ? '...' : ''}
-              </Text>
-            )}
-          </View>
-        </TouchableOpacity>
-      );
-    })
-  )}
-</ScrollView>
+              {/* ✅ UPDATED: Check if there are any remaining topics after filtering */}
+              {!targetModuleForGen?.topics || targetModuleForGen.topics.length === 0 ? (
+                <Text style={{ textAlign: 'center', color: '#888', padding: 20 }}>
+                  All topics for this module have already been generated!
+                </Text>
+              ) : (
+                targetModuleForGen.topics.map((topic: any, idx: number) => {
+                  const isSelected = selectedTopicsForGen.includes(topic.title);
+                  return (
+                    <TouchableOpacity
+                      key={idx}
+                      onPress={() => toggleTopicSelection(topic.title)}
+                      style={[
+                        styles.materialChip,
+                        { marginBottom: 8, minHeight: 50 },
+                        isSelected && styles.materialChipActive
+                      ]}
+                    >
+                      <Ionicons
+                        name={isSelected ? "checkbox" : "square-outline"}
+                        size={22}
+                        color={isSelected ? "#FFF" : "#D32F2F"}
+                      />
+                      <View style={{ flex: 1, marginLeft: 8 }}>
+                        <Text style={[styles.materialChipText, isSelected && styles.materialChipTextActive]}>
+                          {topic.title}
+                        </Text>
+                        {topic.subtopics && topic.subtopics.length > 0 && (
+                          <Text style={{ fontSize: 11, color: isSelected ? '#FFE0E0' : '#888', marginTop: 2 }}>
+                            {topic.subtopics.length} subtopic(s): {topic.subtopics.slice(0, 3).join(', ')}
+                            {topic.subtopics.length > 3 ? '...' : ''}
+                          </Text>
+                        )}
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })
+              )}
+            </ScrollView>
             <View style={styles.buttonRow}>
               <TouchableOpacity style={styles.secondaryButton} onPress={() => setShowNextLessonModal(false)}>
                 <Text style={styles.secondaryButtonText}>Cancel</Text>
@@ -4671,6 +4767,59 @@ GENERATE NEXT LESSON - MULTI TOPIC SELECTION MODAL
                     <Ionicons name="sparkles-outline" size={18} color="#FFF" />
                     <Text style={styles.primaryButtonText}>Generate ({selectedTopicsForGen.length})</Text>
                   </>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ══════════════════════════════════════════════════════════════════════
+SYLLABUS UPLOAD CONFIRMATION MODAL
+════════════════════════════════════════════════════════════════════════ */}
+      <Modal
+        visible={!!pendingSyllabusFile}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setPendingSyllabusFile(null)}
+      >
+        <View style={styles.modalOverlayCenter}>
+          <View style={[styles.modalCardElevated, { width: isMobile ? Math.min(width - 28, 330) : 360 }]}>
+            <Text style={[styles.createTitle, { textAlign: 'center', marginBottom: 10 }]}>Confirm Upload</Text>
+            
+            <View style={{ backgroundColor: '#F5F5F5', padding: 12, borderRadius: 8, marginBottom: 16, alignItems: 'center' }}>
+              <Ionicons name="document-text-outline" size={32} color="#D32F2F" style={{ marginBottom: 8 }} />
+              <Text style={{ fontSize: 14, fontWeight: '700', color: '#333', textAlign: 'center' }} numberOfLines={2}>
+                {pendingSyllabusFile?.name}
+              </Text>
+              {pendingSyllabusFile?.size && (
+                <Text style={{ fontSize: 12, color: '#666', marginTop: 4 }}>
+                  Size: {(pendingSyllabusFile.size / 1024 / 1024).toFixed(2)} MB
+                </Text>
+              )}
+            </View>
+
+            <Text style={{ fontSize: 13, color: '#555', textAlign: 'center', lineHeight: 20, marginBottom: 20 }}>
+              Please verify that this is the correct syllabus file. 
+              <Text style={{ fontWeight: '700', color: '#D32F2F' }}> Once uploaded, it cannot be replaced or deleted.</Text>
+            </Text>
+
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              <TouchableOpacity 
+                style={styles.secondaryButton} 
+                onPress={() => setPendingSyllabusFile(null)}
+              >
+                <Text style={styles.secondaryButtonText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={styles.primaryButton} 
+                onPress={confirmAndUploadSyllabus}
+                disabled={isUploadingSyllabus}
+              >
+                {isUploadingSyllabus ? (
+                  <ActivityIndicator size="small" color="#FFF" />
+                ) : (
+                  <Text style={styles.primaryButtonText}>Confirm & Upload</Text>
                 )}
               </TouchableOpacity>
             </View>
