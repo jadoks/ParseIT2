@@ -15526,59 +15526,122 @@ app.post("/course-modules/create-manual", requireAuth, async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
-
-// ─── NEW: POST /course-lessons/create-manual ──────────────────────────────────
+// ─── UPDATED: POST /course-lessons/create-manual ─────────────────────────────
 app.post("/course-lessons/create-manual", requireAuth, async (req, res) => {
   try {
-    const { moduleId, classId, title, description, discussion, activity, assessment, fileData } = req.body;
-    
+    const {
+      moduleId,
+      classId,
+      title,
+      description,
+      discussion,
+      activity,
+      assessment,
+      lessonNumber, // Optional - if not provided, backend will auto-calculate
+      fileBase64,
+      fileName,
+      fileType
+    } = req.body;
+
     if (!moduleId || !classId || !title) {
       return res.status(400).json({ error: "Missing required fields." });
     }
 
-    let fileUrl = null;
-    let fileName = null;
-    let fileType = null;
-    let storagePath = null;
+    // ✅ AUTO-CALCULATE LESSON NUMBER IF NOT PROVIDED
+    let finalLessonNumber = lessonNumber;
+    
+    if (!finalLessonNumber) {
+      try {
+        // Fetch all existing lessons for this module
+        const existingLessonsSnap = await db
+          .collection("courseLessons")
+          .where("moduleId", "==", moduleId)
+          .orderBy("lessonNumber", "desc")
+          .limit(1)
+          .get();
 
-    // Handle File Upload if present
-    if (fileData && fileData.base64) {
-      const bucket = admin.storage().bucket();
-      const filePath = `lessons/${classId}/${moduleId}/${Date.now()}_${fileData.name}`;
-      const file = bucket.file(filePath);
-      const buffer = Buffer.from(fileData.base64.split(',')[1], 'base64');
-      
-      await file.save(buffer, { metadata: { contentType: fileData.type } });
-      storagePath = filePath;
-      fileName = fileData.name;
-      fileType = fileData.type;
-      
-      // Generate signed URL for immediate viewing
-      const [url] = await file.getSignedUrl({
-        action: 'read',
-        expires: Date.now() + 60 * 60 * 1000,
-      });
-      fileUrl = url;
+        let maxLessonNum = 0;
+        if (!existingLessonsSnap.empty) {
+          maxLessonNum = existingLessonsSnap.docs[0].data().lessonNumber || 0;
+        }
+
+        finalLessonNumber = maxLessonNum + 1;
+      } catch (error) {
+        console.error("Error fetching existing lessons:", error);
+        finalLessonNumber = 1; // Default to 1 if query fails
+      }
+    } else {
+      // ✅ VALIDATE PROVIDED LESSON NUMBER
+      const parsedLessonNumber = Number(finalLessonNumber);
+      if (!Number.isInteger(parsedLessonNumber) || parsedLessonNumber < 1) {
+        return res.status(400).json({ 
+          error: "lessonNumber must be a positive integer." 
+        });
+      }
+      finalLessonNumber = parsedLessonNumber;
     }
 
+    let fileUrl = null;
+    let storagePath = null;
+    let bucketPath = null;
+    let pdfUrl = null;
+    let pdfStoragePath = null;
+
+    // 1. Handle File Upload if present
+    if (fileBase64 && fileName) {
+      try {
+        const uploadedFile = await uploadGenericFileToStorage({
+          fileBase64,
+          fileMimeType: fileType,
+          fileName,
+          folder: "class-materials",
+          classId,
+        });
+
+        if (uploadedFile.storagePath) {
+          fileUrl = await createReadSignedUrl(uploadedFile.storagePath);
+        } else {
+          fileUrl = uploadedFile.fileUrl;
+        }
+
+        storagePath = uploadedFile.storagePath;
+        bucketPath = uploadedFile.bucketPath;
+        pdfUrl = uploadedFile.pdfUrl || null;
+        pdfStoragePath = uploadedFile.pdfStoragePath || null;
+
+      } catch (uploadError) {
+        console.error("Lesson file upload failed:", uploadError);
+        return res.status(500).json({ error: "Failed to upload lesson file." });
+      }
+    }
+
+    // 2. Save to Firestore 'courseLessons' collection
     const lessonRef = await db.collection("courseLessons").add({
       classId,
       moduleId,
+      lessonNumber: finalLessonNumber, // ✅ Use auto-calculated or provided number
       title,
       description: description || "",
-      discussion: discussion || "",
-      activity: activity || "",
-      assessment: assessment || { items: [] },
-      type: fileUrl ? "manual_file" : "manual_text",
-      fileName,
-      fileUrl,
-      fileType,
-      storagePath,
+      discussion: fileBase64 ? null : (discussion || ""),
+      activity: fileBase64 ? null : (activity || ""),
+      assessment: fileBase64 ? null : (assessment || { items: [] }),
+      type: fileBase64 ? "manual_file" : "manual_text",
+      fileName: fileBase64 ? fileName : null,
+      fileUrl: fileUrl,
+      fileType: fileBase64 ? fileType : null,
+      storagePath: storagePath,
+      bucketPath: bucketPath,
+      pdfUrl: pdfUrl,
+      pdfStoragePath: pdfStoragePath,
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp()
     });
 
-    res.json({ success: true, lessonId: lessonRef.id });
+    res.json({ 
+      success: true, 
+      lessonId: lessonRef.id,
+      lessonNumber: finalLessonNumber // ✅ Return the assigned lesson number
+    });
   } catch (error) {
     console.error("Create manual lesson error:", error);
     res.status(500).json({ error: error.message });

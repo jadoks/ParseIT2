@@ -944,27 +944,32 @@ const TeacherCourseDetail2 = ({
     }
   };
 
-  // ─── Lesson Detail Handler (NEW)
-  const handleOpenLessonDetail = async (lesson: any) => {
-    setSelectedLesson(lesson); // Set basic info immediately
-    setLessonDetailModalVisible(true);
-    setIsLessonLoading(true);
-    try {
-      // Fetch full details from backend if needed
-      const response = await fetch(`${API_BASE_URL}/course-lessons/${lesson.id}`, {
-        credentials: 'include'
-      });
-      if (response.ok) {
-        const result = await response.json();
-        setSelectedLesson(result.data);
-      }
-    } catch (error) {
-      console.error("Failed to load lesson details:", error);
-    } finally {
-      setIsLessonLoading(false);
-    }
-  };
+ // ─── UPDATED: Lesson Detail Handler ──────────────────────────────────────────
+const handleOpenLessonDetail = async (lesson: any) => {
+  // 1. Set loading state and show the modal immediately
+  setSelectedLesson(lesson);
+  setLessonDetailModalVisible(true);
+  setIsLessonLoading(true);
 
+  try {
+    // 2. Fetch full details from backend to get fresh signed URLs if needed
+    const response = await fetch(`${API_BASE_URL}/course-lessons/${lesson.id}`, {
+      credentials: 'include'
+    });
+    
+    if (response.ok) {
+      const result = await response.json();
+      // 3. Update state with full data. 
+      // The modal will now render the "Tap to open preview" container 
+      // because type === 'manual_file', but it WON'T open the viewer yet.
+      setSelectedLesson(result.data);
+    }
+  } catch (error) {
+    console.error("Failed to load lesson details:", error);
+  } finally {
+    setIsLessonLoading(false);
+  }
+};
   const handleOpenNextLessonModal = (savedModule: any) => {
     // ✅ FIX: Find the matching module in the CURRENT SYLLABUS structure
     const syllabusMod = currentSyllabus?.structure?.modules?.find(
@@ -1112,70 +1117,88 @@ const TeacherCourseDetail2 = ({
   };
 
   const handleCreateManualLesson = async () => {
-    if (!newLessonTitle.trim() || !selectedModuleForLesson || !course?.id) return;
+  if (!newLessonTitle.trim() || !selectedModuleForLesson || !course?.id) return;
 
-    // Validate: If text mode, need discussion/activity. If file mode, need file.
-    if (lessonMode === 'text' && !newLessonDiscussion.trim()) {
-      showResultModal('error', 'Required', 'Discussion content is required for text-based lessons.');
-      return;
-    }
-    if (lessonMode === 'file' && !newLessonFile) {
-      showResultModal('error', 'Required', 'Please upload a file.');
-      return;
-    }
+  // Validate based on mode
+  if (lessonMode === 'text' && !newLessonDiscussion.trim()) {
+    showResultModal('error', 'Required', 'Discussion content is required for text-based lessons.');
+    return;
+  }
+  if (lessonMode === 'file' && !newLessonFile) {
+    showResultModal('error', 'Required', 'Please upload a file.');
+    return;
+  }
 
-    try {
-      let fileData = null;
-      if (lessonMode === 'file' && newLessonFile) {
-        // Convert file to base64 similar to other upload handlers
-        let base64 = '';
-        if (Platform.OS === 'web') {
-          if (newLessonFile.base64) base64 = newLessonFile.base64;
-          else if (newLessonFile.file) {
-            base64 = await new Promise<string>((resolve, reject) => {
-              const reader = new FileReader();
-              reader.onload = () => resolve(reader.result as string);
-              reader.onerror = reject;
-              reader.readAsDataURL(newLessonFile.file as File);
-            });
-          }
-        } else if (newLessonFile.uri) {
-          base64 = await FileSystem.readAsStringAsync(newLessonFile.uri, { encoding: 'base64' });
+  setIsSaving(true);
+  try {
+    // ✅ AUTO-INCREMENT LESSON NUMBER
+    // Get all existing lessons in this module and find the highest lessonNumber
+    const existingLessons = selectedModuleForLesson.lessons || [];
+    const maxLessonNum = existingLessons.reduce((max: number, l: any) => {
+      const num = Number(l.lessonNumber) || 0;
+      return num > max ? num : max;
+    }, 0);
+    
+    const nextLessonNumber = maxLessonNum + 1;
+
+    let payload: any = {
+      classId: course.id,
+      moduleId: selectedModuleForLesson.id,
+      title: newLessonTitle,
+      description: newLessonDesc,
+      lessonNumber: nextLessonNumber, // ✅ Pass the calculated number
+    };
+
+    if (lessonMode === 'file' && newLessonFile) {
+      // Convert file to base64
+      let base64 = '';
+      if (Platform.OS === 'web') {
+        if (newLessonFile.base64) {
+          base64 = newLessonFile.base64;
+        } else if (newLessonFile.file) {
+          base64 = await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result as string);
+            reader.onerror = reject;
+            reader.readAsDataURL(newLessonFile.file as File);
+          });
         }
-        fileData = {
-          name: newLessonFile.name,
-          type: newLessonFile.type,
-          base64: base64.includes(',') ? base64.split(',')[1] : base64
-        };
+      } else if (newLessonFile.uri) {
+        base64 = await FileSystem.readAsStringAsync(newLessonFile.uri, { encoding: 'base64' });
       }
-
-      const response = await fetch(`${API_BASE_URL}/course-lessons/create-manual`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
-          classId: course.id,
-          moduleId: selectedModuleForLesson.id,
-          title: newLessonTitle,
-          description: newLessonDesc,
-          discussion: lessonMode === 'text' ? newLessonDiscussion : '',
-          activity: lessonMode === 'text' ? newLessonActivity : '',
-          assessment: lessonMode === 'text' ? { items: [] } : undefined, // Empty assessment for now
-          fileData: fileData
-        })
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error);
-
-      setShowManualLessonModal(false);
-      resetLessonForm();
-      await loadCourseContent();
-      showResultModal('success', 'Success', 'Lesson created successfully.');
-    } catch (e: any) {
-      showResultModal('error', 'Error', e.message);
+      
+      payload.fileBase64 = base64.includes(',') ? base64.split(',')[1] : base64;
+      payload.fileName = newLessonFile.name;
+      payload.fileType = newLessonFile.type;
+      payload.discussion = null;
+      payload.activity = null;
+      payload.assessment = null;
+    } else {
+      payload.discussion = newLessonDiscussion;
+      payload.activity = newLessonActivity;
+      payload.assessment = { items: [] };
     }
-  };
 
+    const response = await fetch(`${API_BASE_URL}/course-lessons/create-manual`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify(payload)
+    });
+
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error);
+
+    setShowManualLessonModal(false);
+    resetLessonForm();
+    await loadCourseContent(); // Refresh to show the new Lesson N+1
+    showResultModal('success', 'Success', `Lesson ${nextLessonNumber} created successfully.`);
+  } catch (e: any) {
+    showResultModal('error', 'Error', e.message);
+  } finally {
+    setIsSaving(false);
+  }
+};
   const resetLessonForm = () => {
     setNewLessonTitle('');
     setNewLessonDesc('');
@@ -4314,110 +4337,163 @@ SYLLABUS VIEWER MODAL
       </Modal>
 
       {/* ══════════════════════════════════════════════════════════════════════
-LESSON DETAIL MODAL (NEW)
+LESSON DETAIL MODAL (UPDATED WITH FILE PREVIEW TRIGGER)
 ════════════════════════════════════════════════════════════════════════ */}
-      <Modal
-        visible={lessonDetailModalVisible}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setLessonDetailModalVisible(false)}
-      >
-        <View style={styles.modalOverlayCenter}>
-          <View style={[styles.modalCardElevated, { width: isMobile ? Math.min(width - 28, 400) : 800, maxHeight: height * 0.9 }]}>
-            <View style={styles.createHeaderRow}>
-              <View style={styles.modalHeaderTextWrap}>
-                <Text style={styles.createTitle}>{selectedLesson?.title || 'Lesson Details'}</Text>
-                <Text style={styles.modalSubtitle}>Module Content & Assessments</Text>
-              </View>
-              <TouchableOpacity onPress={() => setLessonDetailModalVisible(false)}>
-                <Ionicons name="close" size={24} color="#111" />
-              </TouchableOpacity>
-            </View>
-            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 20 }}>
-              {isLessonLoading ? (
-                <ActivityIndicator size="large" color="#D32F2F" style={{ marginVertical: 20 }} />
-              ) : selectedLesson ? (
-                <>
-                  {/* Description */}
-                  <View style={{ marginBottom: 16 }}>
-                    <Text style={styles.sectionLabel}>Description</Text>
-                    <Text style={{ color: '#333', lineHeight: 20 }}>{selectedLesson.description || 'No description available.'}</Text>
-                  </View>
-                  {/* File Viewer if Manual File Upload */}
-                  {selectedLesson.type === 'manual_file' && selectedLesson.fileUrl ? (
-                    <View style={{ marginBottom: 16, height: 400, borderWidth: 1, borderColor: '#EEE', borderRadius: 8 }}>
-                      <InlineMaterialViewer viewerUrl={selectedLesson.fileUrl} height={400} />
-                    </View>
-                  ) : null}
-                  {/* Discussion Content */}
-                  {selectedLesson.discussion ? (
-                    <View style={{ marginBottom: 16, backgroundColor: '#F9F9F9', padding: 12, borderRadius: 8 }}>
-                      <Text style={styles.sectionLabel}>Discussion / Lecture Notes</Text>
-                      <Text style={{ color: '#444', lineHeight: 22 }}>
-                        {renderFormattedText(selectedLesson.discussion, { color: '#444', lineHeight: 22 })}
-                      </Text>
-                    </View>
-                  ) : null}
-                  {/* Activity */}
-                  {selectedLesson.activity ? (
-                    <View style={{ marginBottom: 16, backgroundColor: '#E3F2FD', padding: 12, borderRadius: 8 }}>
-                      <Text style={[styles.sectionLabel, { color: '#1565C0' }]}>Activity / Scenario</Text>
-                      <Text style={{ color: '#0D47A1', lineHeight: 22 }}>
-                        {renderFormattedText(selectedLesson.activity, { color: '#0D47A1', lineHeight: 22 })}
-                      </Text>
-                    </View>
-                  ) : null}
-                  {/* Assessment Items */}
-                  {selectedLesson.assessment?.items && selectedLesson.assessment.items.length > 0 ? (
-                    <View style={{ marginBottom: 16 }}>
-                      <Text style={styles.sectionLabel}>Assessment Items ({selectedLesson.assessment.items.length})</Text>
-                      {selectedLesson.assessment.items.map((item: any, idx: number) => (
-                        <View key={idx} style={{ backgroundColor: '#FFF', borderWidth: 1, borderColor: '#EEE', borderRadius: 8, padding: 10, marginBottom: 8 }}>
-                          <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                            <Text style={{ fontWeight: '700', color: '#333' }}>Item {idx + 1} ({item.type === 'multiple_choice' ? 'MCQ' : 'T/F'})</Text>
-                            <Text style={{ fontSize: 12, color: '#888' }}>Pts: {item.points || 1}</Text>
-                          </View>
-                          <Text style={{ marginTop: 6, color: '#555' }}>{item.question}</Text>
-                          {item.type === 'multiple_choice' && item.options && (
-                            <View style={{ marginTop: 6 }}>
-                              {item.options.map((opt: string, oIdx: number) => (
-                                <Text key={oIdx} style={{
-                                  color: oIdx === item.correctAnswer ? '#2E7D32' : '#555',
-                                  fontWeight: oIdx === item.correctAnswer ? '700' : '400',
-                                  marginLeft: 8
-                                }}>
-                                  {String.fromCharCode(65 + oIdx)}. {opt} {oIdx === item.correctAnswer ? '(Correct)' : ''}
-                                </Text>
-                              ))}
-                            </View>
-                          )}
-                          {item.explanation && (
-                            <Text style={{ marginTop: 6, fontSize: 12, color: '#666', fontStyle: 'italic' }}>
-                              Explanation: {item.explanation}
-                            </Text>
-                          )}
-                        </View>
-                      ))}
-                    </View>
-                  ) : null}
-                  {/* Estimated Hours */}
-                  {selectedLesson.estimatedHours && (
-                    <Text style={{ fontSize: 12, color: '#888', textAlign: 'right' }}>Estimated Time: {selectedLesson.estimatedHours} hours</Text>
-                  )}
-                </>
-              ) : (
-                <Text style={{ textAlign: 'center', color: '#888' }}>Could not load lesson details.</Text>
-              )}
-            </ScrollView>
-            <View style={styles.buttonRow}>
-              <TouchableOpacity style={styles.primaryButton} onPress={() => setLessonDetailModalVisible(false)}>
-                <Text style={styles.primaryButtonText}>Close</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
+<Modal
+  visible={lessonDetailModalVisible}
+  transparent
+  animationType="slide"
+  onRequestClose={() => setLessonDetailModalVisible(false)}
+>
+  <View style={styles.modalOverlayCenter}>
+    <View style={[styles.modalCardElevated, { width: isMobile ? Math.min(width - 28, 400) : 800, maxHeight: height * 0.9 }]}>
+      <View style={styles.createHeaderRow}>
+        <View style={styles.modalHeaderTextWrap}>
+          <Text style={styles.createTitle}>{selectedLesson?.title || 'Lesson Details'}</Text>
+          <Text style={styles.modalSubtitle}>Module Content & Assessments</Text>
         </View>
-      </Modal>
+        <TouchableOpacity onPress={() => setLessonDetailModalVisible(false)}>
+          <Ionicons name="close" size={24} color="#111" />
+        </TouchableOpacity>
+      </View>
+      
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 20 }}>
+        {isLessonLoading ? (
+          <ActivityIndicator size="large" color="#D32F2F" style={{ marginVertical: 20 }} />
+        ) : selectedLesson ? (
+          <>
+            {/* ✅ NEW: File Preview Trigger Container - ONLY OPENS ON CLICK */}
+            {selectedLesson.type === 'manual_file' && selectedLesson.fileUrl ? (
+              <TouchableOpacity
+                onPress={() => {
+                  // Map lesson data to Material format
+                  const materialViewData: Material = {
+                    id: selectedLesson.id,
+                    title: selectedLesson.title,
+                    week: '',
+                    posted: new Date().toLocaleString(),
+                    content: selectedLesson.description || '',
+                    fileName: selectedLesson.fileName,
+                    fileUri: selectedLesson.fileUrl, // ✅ Signed URL from backend
+                    fileType: selectedLesson.fileType,
+                    storagePath: selectedLesson.storagePath,
+                    bucketPath: selectedLesson.bucketPath,
+                    pdfUrl: selectedLesson.pdfUrl,
+                    pdfStoragePath: selectedLesson.pdfStoragePath,
+                  };
+                  
+                  // Close detail modal FIRST
+                  setLessonDetailModalVisible(false);
+                  
+                  // THEN open the Material Viewer
+                  setViewerMaterial(materialViewData);
+                }}
+                style={{
+                  backgroundColor: '#FFF5F5',
+                  borderWidth: 2,
+                  borderColor: '#D32F2F',
+                  borderStyle: 'dashed',
+                  borderRadius: 16,
+                  padding: 24,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  marginBottom: 16,
+                  gap: 12,
+                }}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="document-text-outline" size={48} color="#D32F2F" />
+                <Text style={{ fontSize: 16, fontWeight: '800', color: '#D32F2F' }}>
+                  {selectedLesson.fileName || 'View Attached File'}
+                </Text>
+                <Text style={{ fontSize: 13, color: '#666' }}>
+                  Tap to open preview • {selectedLesson.fileType?.split('/')[1]?.toUpperCase() || 'FILE'}
+                </Text>
+              </TouchableOpacity>
+            ) : null}
 
+            {/* Description */}
+            <View style={{ marginBottom: 16 }}>
+              <Text style={styles.sectionLabel}>Description</Text>
+              <Text style={{ color: '#333', lineHeight: 20 }}>
+                {selectedLesson.description || 'No description available.'}
+              </Text>
+            </View>
+
+            {/* Discussion Content */}
+            {selectedLesson.discussion ? (
+              <View style={{ marginBottom: 16, backgroundColor: '#F9F9F9', padding: 12, borderRadius: 8 }}>
+                <Text style={styles.sectionLabel}>Discussion / Lecture Notes</Text>
+                <Text style={{ color: '#444', lineHeight: 22 }}>
+                  {renderFormattedText(selectedLesson.discussion, { color: '#444', lineHeight: 22 })}
+                </Text>
+              </View>
+            ) : null}
+
+            {/* Activity */}
+            {selectedLesson.activity ? (
+              <View style={{ marginBottom: 16, backgroundColor: '#E3F2FD', padding: 12, borderRadius: 8 }}>
+                <Text style={[styles.sectionLabel, { color: '#1565C0' }]}>Activity / Scenario</Text>
+                <Text style={{ color: '#0D47A1', lineHeight: 22 }}>
+                  {renderFormattedText(selectedLesson.activity, { color: '#0D47A1', lineHeight: 22 })}
+                </Text>
+              </View>
+            ) : null}
+
+            {/* Assessment Items */}
+            {selectedLesson.assessment?.items && selectedLesson.assessment.items.length > 0 ? (
+              <View style={{ marginBottom: 16 }}>
+                <Text style={styles.sectionLabel}>Assessment Items ({selectedLesson.assessment.items.length})</Text>
+                {selectedLesson.assessment.items.map((item: any, idx: number) => (
+                  <View key={idx} style={{ backgroundColor: '#FFF', borderWidth: 1, borderColor: '#EEE', borderRadius: 8, padding: 10, marginBottom: 8 }}>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                      <Text style={{ fontWeight: '700', color: '#333' }}>Item {idx + 1} ({item.type === 'multiple_choice' ? 'MCQ' : 'T/F'})</Text>
+                      <Text style={{ fontSize: 12, color: '#888' }}>Pts: {item.points || 1}</Text>
+                    </View>
+                    <Text style={{ marginTop: 6, color: '#555' }}>{item.question}</Text>
+                    {item.type === 'multiple_choice' && item.options && (
+                      <View style={{ marginTop: 6 }}>
+                        {item.options.map((opt: string, oIdx: number) => (
+                          <Text key={oIdx} style={{
+                            color: oIdx === item.correctAnswer ? '#2E7D32' : '#555',
+                            fontWeight: oIdx === item.correctAnswer ? '700' : '400',
+                            marginLeft: 8
+                          }}>
+                            {String.fromCharCode(65 + oIdx)}. {opt} {oIdx === item.correctAnswer ? '(Correct)' : ''}
+                          </Text>
+                        ))}
+                      </View>
+                    )}
+                    {item.explanation && (
+                      <Text style={{ marginTop: 6, fontSize: 12, color: '#666', fontStyle: 'italic' }}>
+                        Explanation: {item.explanation}
+                      </Text>
+                    )}
+                  </View>
+                ))}
+              </View>
+            ) : null}
+
+            {/* Estimated Hours */}
+            {selectedLesson.estimatedHours && (
+              <Text style={{ fontSize: 12, color: '#888', textAlign: 'right' }}>
+                Estimated Time: {selectedLesson.estimatedHours} hours
+              </Text>
+            )}
+          </>
+        ) : (
+          <Text style={{ textAlign: 'center', color: '#888' }}>Could not load lesson details.</Text>
+        )}
+      </ScrollView>
+
+      <View style={styles.buttonRow}>
+        <TouchableOpacity style={styles.primaryButton} onPress={() => setLessonDetailModalVisible(false)}>
+          <Text style={styles.primaryButtonText}>Close</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  </View>
+</Modal>
       {/* ══════════════════════════════════════════════════════════════════════
 MANUAL MODULE CREATION MODAL
 ═════════════════════════════════════════════════════════════════════════ */}
