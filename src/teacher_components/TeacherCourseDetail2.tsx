@@ -25,13 +25,11 @@ import * as XLSX from 'xlsx';
 import TeacherAssignmentSection from './TeacherAssignmentSection';
 import TeacherMaterialSection from './TeacherMaterialSection';
 import TeacherSubmissionsSection from './TeacherSubmissionsSection';
-
 // ─── Optional WebView ────────────────────────────────────────────────────────
 let WebView: any = null;
 try {
   WebView = require('react-native-webview').WebView;
 } catch (_) {}
-
 // ─── Types ─────────────────────────────────────────────────────────────────
 export type Assignment = {
   id: string;
@@ -54,7 +52,6 @@ export type Assignment = {
   timeLimit?: string;
   customTimeLimit?: string;
 };
-
 export type Material = {
   id: string;
   title: string;
@@ -69,13 +66,11 @@ export type Material = {
   pdfUrl?: string | null;
   pdfStoragePath?: string | null;
 };
-
 export type Member = {
   id: string;
   name: string;
   handle: string;
 };
-
 export type Submission = {
   id: string;
   assignmentId: string;
@@ -89,7 +84,6 @@ export type Submission = {
   fileType?: string;
   feedback?: string;
 };
-
 export type CourseDetailData = {
   id: string;
   name: string;
@@ -102,7 +96,6 @@ export type CourseDetailData = {
   semester?: string;
   schoolYear?: string | null;
 };
-
 type SignedInTeacher = {
   teacherId?: string;
   authUid?: string | null;
@@ -112,7 +105,6 @@ type SignedInTeacher = {
   profileImage?: any;
   bannerImage?: any;
 };
-
 type PickedUploadFile = {
   name?: string;
   uri?: string;
@@ -120,7 +112,6 @@ type PickedUploadFile = {
   base64?: string;
   file?: File;
 } | null;
-
 type FormErrors = {
   title?: string;
   instruction?: string;
@@ -135,7 +126,6 @@ type FormErrors = {
   timeLimit?: string;
   customTimeLimit?: string;
 };
-
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 function getApiBaseUrl() {
   if (Platform.OS === 'web') return 'http://localhost:5000';
@@ -147,12 +137,9 @@ function getApiBaseUrl() {
   if (host) return `http://${host}:5000`;
   return 'http://192.168.1.5:5000';
 }
-
 const API_BASE_URL = getApiBaseUrl();
-
 const WEEKDAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const pad = (value: number) => String(value).padStart(2, '0');
-
 const formatDateTime = (value?: any) => {
   if (!value) return '';
   if (typeof value === 'string') return value;
@@ -160,7 +147,6 @@ const formatDateTime = (value?: any) => {
   if (value?.seconds) return new Date(value.seconds * 1000).toLocaleString();
   return '';
 };
-
 const formatSyllabusDate = (value: any): string => {
   if (!value) return 'Recently';
   // If it's already a valid date string
@@ -189,22 +175,18 @@ const formatSyllabusDate = (value: any): string => {
   }
   return 'Recently';
 };
-
 const formatDateOnly = (value?: Date | null) => {
   if (!value) return '';
   return `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(value.getDate())}`;
 };
-
 const formatTimeOnly = (value?: Date | null) => {
   if (!value) return '';
   return `${pad(value.getHours())}:${pad(value.getMinutes())}`;
 };
-
 const formatDueDateTime = (value?: Date | null) => {
   if (!value) return '';
   return `${formatDateOnly(value)} ${formatTimeOnly(value)}`;
 };
-
 const parseDueDateTime = (value?: string) => {
   if (!value?.trim()) return new Date();
   const normalized = value.trim().replace(' ', 'T');
@@ -221,7 +203,6 @@ const parseDueDateTime = (value?: string) => {
     );
   return new Date();
 };
-
 const isSameDate = (a?: Date | null, b?: Date | null) => {
   if (!a || !b) return false;
   return (
@@ -230,45 +211,36 @@ const isSameDate = (a?: Date | null, b?: Date | null) => {
     a.getDate() === b.getDate()
   );
 };
-
 const startOfToday = () => {
   const now = new Date();
   return new Date(now.getFullYear(), now.getMonth(), now.getDate());
 };
-
 const isPastDay = (date: Date) => date.getTime() < startOfToday().getTime();
-
 const getCalendarDays = (visibleMonth: Date) => {
   const year = visibleMonth.getFullYear();
   const month = visibleMonth.getMonth();
   const firstDay = new Date(year, month, 1);
   const startOffset = firstDay.getDay();
   const days: Array<{ key: string; date: Date; inCurrentMonth: boolean }> = [];
-
   for (let i = startOffset; i > 0; i -= 1) {
     const date = new Date(year, month, 1 - i);
     days.push({ key: `prev-${date.toISOString()}`, date, inCurrentMonth: false });
   }
-
   const lastDay = new Date(year, month + 1, 0).getDate();
   for (let day = 1; day <= lastDay; day += 1) {
     const date = new Date(year, month, day);
     days.push({ key: `curr-${date.toISOString()}`, date, inCurrentMonth: true });
   }
-
   let nextDay = 1;
   while (days.length % 7 !== 0) {
     const date = new Date(year, month + 1, nextDay);
     days.push({ key: `next-${date.toISOString()}`, date, inCurrentMonth: false });
     nextDay += 1;
   }
-
   return days;
 };
-
 const monthLabel = (value: Date) =>
   value.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
-
 const mapMaterial = (item: any): Material => {
   const fileName = item.fileName || undefined;
   const fileType =
@@ -289,7 +261,6 @@ const mapMaterial = (item: any): Material => {
     pdfStoragePath: item.pdfStoragePath || null,
   };
 };
-
 const mapAssignment = (item: any): Assignment => ({
   id: item.id,
   header: item.header || '',
@@ -311,13 +282,11 @@ const mapAssignment = (item: any): Assignment => ({
   customTimeLimit: item.customTimeLimit,
   questions: item.questions || [],
 });
-
 const mapMember = (item: any): Member => ({
   id: item.userId || item.id || '',
   name: item.name || '',
   handle: item.email ? `@${String(item.email).split('@')[0]}` : '@member',
 });
-
 const mapSubmission = (item: any): Submission => ({
   id: item.id,
   assignmentId: item.assignmentId || '',
@@ -341,7 +310,6 @@ const mapSubmission = (item: any): Submission => ({
   fileType: item.fileType || undefined,
   feedback: item.feedback || '',
 });
-
 // ─── Viewer URL helpers (mirrors CourseDetail.tsx) ────────────────────────────
 function getMimeFromFileName(fileName: string): string {
   const ext = fileName.split('.').pop()?.toLowerCase() || '';
@@ -365,7 +333,6 @@ function getMimeFromFileName(fileName: string): string {
   };
   return map[ext] || 'application/octet-stream';
 }
-
 function isPresentationFile(fileName?: string | null, fileType?: string | null): boolean {
   const ext = (fileName || '').split('.').pop()?.toLowerCase() || '';
   const mime = (fileType || '').toLowerCase();
@@ -377,15 +344,12 @@ function isPresentationFile(fileName?: string | null, fileType?: string | null):
     'application/vnd.openxmlformats-officedocument.presentationml.presentation'
   );
 }
-
 function getGoogleDocsViewerUrl(fileUrl: string) {
   return `https://docs.google.com/gview?embedded=true&url=${encodeURIComponent(fileUrl)}`;
 }
-
 function getMicrosoftOfficeViewerUrl(fileUrl: string) {
   return `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(fileUrl)}`;
 }
-
 function getViewerUrl(
   fileUrl: string,
   fileName?: string | null,
@@ -401,7 +365,6 @@ function getViewerUrl(
   }
   return getGoogleDocsViewerUrl(fileUrl);
 }
-
 const renderFormattedText = (text: string, baseStyle: any) => {
   if (!text) return null;
   const lines = text.split("\n");
@@ -414,20 +377,17 @@ const renderFormattedText = (text: string, baseStyle: any) => {
       fontSize: 14,
     },
   ];
-
   return lines.map((line, lineIndex) => {
     const trimmedLine = line.trim();
     // Empty line spacing
     if (!trimmedLine) {
       return <View key={lineIndex} style={{ height: 8 }} />;
     }
-
     // Detect bullets
     const isBullet =
       trimmedLine.startsWith("* ") ||
       trimmedLine.startsWith("- ") ||
       trimmedLine.startsWith("• ");
-
     let contentToParse = trimmedLine;
     if (trimmedLine.startsWith("* ")) {
       contentToParse = trimmedLine.substring(2).trim();
@@ -436,17 +396,14 @@ const renderFormattedText = (text: string, baseStyle: any) => {
     } else if (trimmedLine.startsWith("• ")) {
       contentToParse = trimmedLine.substring(2).trim();
     }
-
     // Count markdown bold markers
     const boldMarkers = contentToParse.match(/\*\*/g) || [];
     const boldCount = boldMarkers.length;
-
     // Detect malformed markdown
     const hasInvalidBold =
       boldCount % 2 !== 0 ||
       /^\*+\s*\*/.test(contentToParse) ||
       /\*\*\*$/.test(contentToParse);
-
     // Fallback: render as plain text
     if (hasInvalidBold) {
       const cleanedText = contentToParse.replace(/\*/g, "");
@@ -477,11 +434,9 @@ const renderFormattedText = (text: string, baseStyle: any) => {
         </View>
       );
     }
-
     // Parse valid **bold**
     const boldRegex = /(\*\*[^*]+\*\*)/g;
     const parts = contentToParse.split(boldRegex);
-
     return (
       <View
         key={lineIndex}
@@ -528,7 +483,6 @@ const renderFormattedText = (text: string, baseStyle: any) => {
     );
   });
 };
-
 // ─── Inline Viewer ────────────────────────────────────────────────────────────
 function InlineMaterialViewer({
   viewerUrl,
@@ -550,7 +504,6 @@ function InlineMaterialViewer({
       </View>
     );
   }
-
   if (WebView) {
     return (
       <WebView
@@ -572,7 +525,6 @@ function InlineMaterialViewer({
       />
     );
   }
-
   return (
     <View style={inlineStyles.noWebViewFallback}>
       <Ionicons name="document-text-outline" size={48} color="#CCC" />
@@ -582,7 +534,6 @@ function InlineMaterialViewer({
     </View>
   );
 }
-
 const inlineStyles = StyleSheet.create({
   loadingOverlay: {
     position: 'absolute',
@@ -604,7 +555,6 @@ const inlineStyles = StyleSheet.create({
   },
   noWebViewText: { color: '#888', textAlign: 'center', fontSize: 13, lineHeight: 20 },
 });
-
 // ─── Main Component ───────────────────────────────────────────────────────────
 const TeacherCourseDetail2 = ({
   onBack,
@@ -621,13 +571,11 @@ const TeacherCourseDetail2 = ({
   const insets = useSafeAreaInsets();
   const isSmallPhone = width < 360;
   const isMobile = width < 768;
-
   const teacherFullName = useMemo(() => {
     const first = currentTeacher?.firstName?.trim() || '';
     const last = currentTeacher?.lastName?.trim() || '';
     return `${first} ${last}`.trim() || course?.instructor || 'Teacher';
   }, [currentTeacher, course?.instructor]);
-
   const teacherIdentity = useMemo(
     () =>
       currentTeacher?.teacherId?.trim() ||
@@ -636,43 +584,40 @@ const TeacherCourseDetail2 = ({
       teacherFullName,
     [currentTeacher, teacherFullName]
   );
-
+  // Add these states near other 'Generate' states
+  const [pendingGeneratedLessons, setPendingGeneratedLessons] = useState<any[]>([]);
+  const [showLessonPreviewModal, setShowLessonPreviewModal] = useState(false);
+  const [editingPreviewIndex, setEditingPreviewIndex] = useState<number | null>(null);
+  const [isSavingGeneratedLessons, setIsSavingGeneratedLessons] = useState(false);
   // ── Generate Next Lesson Modal State ────────────────────────────────
   const [showNextLessonModal, setShowNextLessonModal] = useState(false);
   const [selectedTopicsForGen, setSelectedTopicsForGen] = useState<string[]>([]);
   const [isGeneratingNextLessons, setIsGeneratingNextLessons] = useState(false);
   const [targetModuleForGen, setTargetModuleForGen] = useState<any>(null);
-
   // ── Tab / display state
   const [activeTab, setActiveTab] = useState<'Materials' | 'Assignments' | 'Modules'>('Materials');
   const [showSubmissions, setShowSubmissions] = useState(false);
-
   const cleanModuleTitle = (title: string, moduleNumber: number) => {
     // Remove common prefixes the AI might add
     let cleaned = title.replace(/^Module\s+\d+[:.\s]*/i, '').trim();
     // If empty after cleaning, fallback to a generic title
     return cleaned || `Module ${moduleNumber}`;
   };
-
   // ── Data
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [materials, setMaterials] = useState<Material[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
   const [submissions, setSubmissions] = useState<Submission[]>([]);
-
   // Add these states inside the component
   const [showGenerateModal, setShowGenerateModal] = useState(false);
   const [selectedGenModule, setSelectedGenModule] = useState<any>(null);
   const [selectedGenTopic, setSelectedGenTopic] = useState<any>(null);
   const [selectedGenSubtopic, setSelectedGenSubtopic] = useState<string | null>(null);
-
   // Checkboxes state
   const [genDiscussion, setGenDiscussion] = useState(true);
   const [genActivity, setGenActivity] = useState(true);
-  const [genAssessment, setGenAssessment] = useState(true);
   const [genSummary, setGenSummary] = useState(true);
   const [isGeneratingContent, setIsGeneratingContent] = useState(false);
-
   // ── Module AI Tools State
   const [modules, setModules] = useState<any[]>([]);
   const [selectedModule, setSelectedModule] = useState<any>(null);
@@ -680,12 +625,10 @@ const TeacherCourseDetail2 = ({
   const [aiPreviewType, setAiPreviewType] = useState<string>('');
   const [isAiLoading, setIsAiLoading] = useState(false);
   const [aiLoadingType, setAiLoadingType] = useState<string>('');
-
   // ── Syllabus Upload State
   const [currentSyllabus, setCurrentSyllabus] = useState<any>(null);
   const [isUploadingSyllabus, setIsUploadingSyllabus] = useState(false);
   const [syllabusViewerUrl, setSyllabusViewerUrl] = useState<string | null>(null);
-  
   // ✅ NEW: State for pending syllabus file before confirmation
   const [pendingSyllabusFile, setPendingSyllabusFile] = useState<{
     name?: string;
@@ -695,29 +638,24 @@ const TeacherCourseDetail2 = ({
     base64?: string;
     file?: File;
   } | null>(null);
-
   // ── Course Structure Generation State
   const [generatedStructure, setGeneratedStructure] = useState<any>(null);
   const [isGeneratingStructure, setIsGeneratingStructure] = useState(false);
   const [showStructurePreviewModal, setShowStructurePreviewModal] = useState(false);
   const [expandedModules, setExpandedModules] = useState<Record<number, boolean>>({});
-
   // ── Lesson Detail View State (NEW)
   const [selectedLesson, setSelectedLesson] = useState<any>(null);
   const [isLessonLoading, setIsLessonLoading] = useState(false);
   const [lessonDetailModalVisible, setLessonDetailModalVisible] = useState(false);
-
   // ── Manual Creation Modals State
   const [showManualModuleModal, setShowManualModuleModal] = useState(false);
   const [showManualLessonModal, setShowManualLessonModal] = useState(false);
   const [selectedModuleForLesson, setSelectedModuleForLesson] = useState<any>(null);
-
   // Manual Module Form State
   const [newModuleNum, setNewModuleNum] = useState('');
   const [newModuleTitle, setNewModuleTitle] = useState('');
   const [newModuleDesc, setNewModuleDesc] = useState('');
   const [newModuleWeek, setNewModuleWeek] = useState('');
-
   // Manual Lesson Form State
   const [newLessonTitle, setNewLessonTitle] = useState('');
   const [newLessonDesc, setNewLessonDesc] = useState('');
@@ -725,11 +663,9 @@ const TeacherCourseDetail2 = ({
   const [newLessonActivity, setNewLessonActivity] = useState('');
   const [newLessonFile, setNewLessonFile] = useState<PickedUploadFile>(null);
   const [lessonMode, setLessonMode] = useState<'text' | 'file'>('text');
-
   // ── Material viewer state
   const [viewerMaterial, setViewerMaterial] = useState<Material | null>(null);
   const [isDownloading, setIsDownloading] = useState(false);
-
   // ── Edit material state
   const [showEditMaterialModal, setShowEditMaterialModal] = useState(false);
   const [editingMaterial, setEditingMaterial] = useState<Material | null>(null);
@@ -739,7 +675,6 @@ const TeacherCourseDetail2 = ({
   const [editMatPickedFile, setEditMatPickedFile] = useState<PickedUploadFile>(null);
   const [isSavingMaterial, setIsSavingMaterial] = useState(false);
   const [isDeletingMaterial, setIsDeletingMaterial] = useState(false);
-
   // ── Create / update assignment state
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showUpdateModal, setShowUpdateModal] = useState(false);
@@ -780,21 +715,18 @@ const TeacherCourseDetail2 = ({
   const [generatedQuestions, setGeneratedQuestions] = useState<any[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
   const [showGeneratedPreview, setShowGeneratedPreview] = useState(false);
-
   const gameOptions = [
     { value: 'quiz_master', label: 'Quiz Master', desc: 'Timed, auto-graded questions from materials' },
     { value: 'memory_match', label: 'Memory Match', desc: 'Match terms ↔ definitions' },
     { value: 'fill_in_blanks', label: 'Fill-in-the-Blanks', desc: 'Complete missing keywords' },
     { value: 'flashcard', label: 'Flashcard Challenge', desc: 'Review flashcards & answer questions' },
   ];
-
   const showResultModal = (type: 'success' | 'error' | 'info', title: string, message: string) => {
     setResultModalType(type);
     setResultModalTitle(title);
     setResultModalMessage(message);
     setResultModalVisible(true);
   };
-
   const mapModule = (item: any): any => {
     return {
       ...item,
@@ -802,7 +734,6 @@ const TeacherCourseDetail2 = ({
       lessons: Array.isArray(item.lessons) ? item.lessons : []
     };
   };
-
   // ─── UPDATE loadCourseContent ────────────────────────────────────────────────
   const loadCourseContent = async () => {
     if (!course?.id) {
@@ -815,7 +746,6 @@ const TeacherCourseDetail2 = ({
       setGeneratedStructure(null);
       return;
     }
-
     try {
       const [modulesRes, syllabusRes, materialsRes, assignmentsRes, membersRes, submissionsRes] =
         await Promise.all([
@@ -826,7 +756,6 @@ const TeacherCourseDetail2 = ({
           fetch(`${API_BASE_URL}/class-members/${course.id}`, { credentials: 'include' }),
           fetch(`${API_BASE_URL}/class-submissions/${course.id}`, { credentials: 'include' }),
         ]);
-
       const [modulesData, syllabusData, materialsData, assignmentsData, membersData, submissionsData] =
         await Promise.all([
           modulesRes.json(),
@@ -836,7 +765,6 @@ const TeacherCourseDetail2 = ({
           membersRes.json(),
           submissionsRes.json(),
         ]);
-
       // ✅ ENSURE MODULES ARE MAPPED WITH CORRECT TYPES
       setModules(
         modulesRes.ok && Array.isArray(modulesData)
@@ -872,21 +800,18 @@ const TeacherCourseDetail2 = ({
       setCurrentSyllabus(null);
     }
   };
-
   useEffect(() => {
     loadCourseContent();
   }, [course?.id]);
-
   const handleGenerateLessonContent = async () => {
     if (!selectedGenModule || !selectedGenTopic) {
       showResultModal('error', 'Error', 'Please select a Module and Topic.');
       return;
     }
-    if (!genDiscussion && !genActivity && !genAssessment && !genSummary) {
+    if (!genDiscussion && !genActivity && !genSummary) {
       showResultModal('error', 'Error', 'Please select at least one content type to generate.');
       return;
     }
-
     setIsGeneratingContent(true);
     try {
       const response = await fetch(`${API_BASE_URL}/ai/generate-lesson-content`, {
@@ -900,13 +825,11 @@ const TeacherCourseDetail2 = ({
           subtopicTitle: selectedGenSubtopic,
           generateDiscussion: genDiscussion,
           generateActivity: genActivity,
-          generateAssessment: genAssessment,
           generateSummary: genSummary
         })
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error);
-
       showResultModal('success', 'Generated!', 'Lesson content generated successfully.');
       setShowGenerateModal(false);
       // Reset selections
@@ -919,7 +842,6 @@ const TeacherCourseDetail2 = ({
       setIsGeneratingContent(false);
     }
   };
-
   const saveModuleLessonsToBackend = async (moduleId: string, lessons: any[]) => {
     try {
       // We use the existing save endpoint. It merges the moduleData.
@@ -943,8 +865,8 @@ const TeacherCourseDetail2 = ({
       console.error('Error saving lessons:', error);
     }
   };
-
- // ─── UPDATED: Lesson Detail Handler ──────────────────────────────────────────
+  // ─── UPDATED: Lesson Detail Handler ──────────────────────────────────────────
+  // ─── UPDATED: Lesson Detail Handler with Fresh URL Fetching ──────────────────
 const handleOpenLessonDetail = async (lesson: any) => {
   // 1. Set loading state and show the modal immediately
   setSelectedLesson(lesson);
@@ -952,17 +874,27 @@ const handleOpenLessonDetail = async (lesson: any) => {
   setIsLessonLoading(true);
 
   try {
-    // 2. Fetch full details from backend to get fresh signed URLs if needed
+    // 2. Fetch full details from backend to get fresh signed URLs
     const response = await fetch(`${API_BASE_URL}/course-lessons/${lesson.id}`, {
       credentials: 'include'
     });
-    
+
     if (response.ok) {
       const result = await response.json();
-      // 3. Update state with full data. 
-      // The modal will now render the "Tap to open preview" container 
-      // because type === 'manual_file', but it WON'T open the viewer yet.
-      setSelectedLesson(result.data);
+      
+      // ✅ FIX: Check if the fetched data has a valid fileUrl
+      // If the backend returns a fresh signed URL, use it. 
+      // If not, fallback to the local lesson object's url (if any).
+      const freshData = result.data;
+      
+      // Update state with full data including fresh URL
+      setSelectedLesson({
+        ...freshData,
+        // Ensure fileUrl is present even if backend didn't return it explicitly
+        fileUrl: freshData.fileUrl || lesson.fileUrl 
+      });
+    } else {
+      console.warn("Failed to fetch fresh lesson details, using cached data.");
     }
   } catch (error) {
     console.error("Failed to load lesson details:", error);
@@ -979,17 +911,14 @@ const handleOpenLessonDetail = async (lesson: any) => {
       showResultModal('error', 'Error', 'Syllabus structure not found for this module.');
       return;
     }
-
     // ✅ NEW: Get existing lesson titles for this specific module
     const existingLessonTitles = new Set(
       (savedModule.lessons || []).map((l: any) => l.title.toLowerCase().trim())
     );
-
     // ✅ NEW: Filter out topics that are already generated as lessons
     const availableTopics = (syllabusMod.topics || []).filter(
       (topic: any) => !existingLessonTitles.has(topic.title.toLowerCase().trim())
     );
-
     setTargetModuleForGen({
       ...savedModule,
       topics: availableTopics // Pass only the filtered topics
@@ -997,7 +926,6 @@ const handleOpenLessonDetail = async (lesson: any) => {
     setSelectedTopicsForGen([]);
     setShowNextLessonModal(true);
   };
-
   const toggleTopicSelection = (topicTitle: string) => {
     setSelectedTopicsForGen(prev =>
       prev.includes(topicTitle)
@@ -1005,13 +933,11 @@ const handleOpenLessonDetail = async (lesson: any) => {
         : [...prev, topicTitle]
     );
   };
-
   const handleGenerateNextLessons = async () => {
     if (!targetModuleForGen || selectedTopicsForGen.length === 0 || !course?.id) {
       showResultModal('error', 'Error', 'Please select at least one topic.');
       return;
     }
-
     setIsGeneratingNextLessons(true);
     try {
       const response = await fetch(`${API_BASE_URL}/course-syllabus/generate-next-lessons`, {
@@ -1026,35 +952,100 @@ const handleOpenLessonDetail = async (lesson: any) => {
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error);
-
-      // 1. Update Local State (Immediate UI feedback)
-      setModules(prevModules =>
-        prevModules.map(mod => {
-          if (mod.moduleNumber === targetModuleForGen.moduleNumber) {
-            const existingIds = new Set((mod.lessons || []).map((l: any) => l.title));
-            const newLessons = (data.data.lessons || []).filter((l: any) => !existingIds.has(l.title));
-            const updatedLessons = [...(mod.lessons || []), ...newLessons];
-            
-            // 2. ✅ SAVE TO BACKEND HERE
-            // We do this asynchronously so it doesn't block the UI update
-            saveModuleLessonsToBackend(mod.id, updatedLessons);
-            
-            return { ...mod, lessons: updatedLessons };
-          }
-          return mod;
-        })
-      );
-
+      // ✅ UPDATED: Store lessons AND open directly in Edit Mode for the first lesson
+      if (data.data && data.data.lessons && data.data.lessons.length > 0) {
+        setPendingGeneratedLessons(data.data.lessons);
+        setEditingPreviewIndex(0); // 👈 Opens the first lesson in Edit Mode immediately
+        setShowLessonPreviewModal(true);
+        showResultModal('success', 'Generated!', 'Review and edit the content before saving.');
+      } else {
+        showResultModal('info', 'No New Content', 'No new lessons were generated or they already exist.');
+      }
       setShowNextLessonModal(false);
-      showResultModal('success', 'Success', `${selectedTopicsForGen.length} lesson(s) generated and saved!`);
     } catch (error: any) {
       showResultModal('error', 'Generation Failed', error?.message || 'Unable to generate lessons.');
     } finally {
       setIsGeneratingNextLessons(false);
     }
   };
+ const handleSavePreviewedLessons = async () => {
+  if (!targetModuleForGen || pendingGeneratedLessons.length === 0) return;
+  
+  setIsSavingGeneratedLessons(true);
+  
+  try {
+    // ✅ STEP 1: Fetch TRUE current max lesson number from backend
+    // This ensures we don't overwrite or duplicate numbers if manual lessons were added recently
+    // or if "Generate Module" previously saved lessons.
+    let currentMax = 0;
+    try {
+      const modulesRes = await fetch(`${API_BASE_URL}/course-modules/${course?.id}`, {
+        credentials: 'include'
+      });
+      
+      if (modulesRes.ok) {
+        const allModules = await modulesRes.json();
+        // Find the specific module we are adding lessons to
+        const targetMod = allModules.find((m: any) => m.id === targetModuleForGen.id);
+        
+        if (targetMod && Array.isArray(targetMod.lessons)) {
+          currentMax = targetMod.lessons.reduce((max: number, l: any) => 
+            Math.max(max, Number(l.lessonNumber) || 0), 0
+          );
+        }
+      }
+    } catch (e) {
+      console.warn("Failed to sync max lesson number for AI save, using local state");
+      // Fallback to local state if network fails, but prefer DB truth
+      currentMax = (targetModuleForGen.lessons || []).reduce((max: number, l: any) => 
+        Math.max(max, Number(l.lessonNumber) || 0), 0
+      );
+    }
 
-  // ─── UPDATE handleCreateManualModule ─────────────────────────────────────────
+    // ✅ STEP 2: Save each lesson with calculated sequential numbers
+    const promises = pendingGeneratedLessons.map(async (lesson, idx) => {
+      const payload = {
+        classId: course?.id,
+        moduleId: targetModuleForGen.id,
+        title: lesson.title,
+        description: lesson.description,
+        discussion: lesson.discussion,
+        activity: lesson.activity,
+        // ✅ CRITICAL: Use fetched max + index offset
+        lessonNumber: currentMax + idx + 1
+      };
+
+      const res = await fetch(`${API_BASE_URL}/course-lessons/create-manual`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(payload)
+      });
+      
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.error || `Failed to save lesson: ${lesson.title}`);
+      }
+      return res.json();
+    });
+
+    await Promise.all(promises);
+    
+    // ✅ STEP 3: Refresh UI immediately to reflect new lesson numbers
+    await loadCourseContent(); 
+    
+    setShowLessonPreviewModal(false);
+    setPendingGeneratedLessons([]);
+    
+    showResultModal('success', 'Saved!', `${pendingGeneratedLessons.length} lesson(s) saved successfully.`);
+
+  } catch (error: any) {
+    showResultModal('error', 'Save Failed', error?.message || 'Failed to save some lessons.');
+  } finally {
+    setIsSavingGeneratedLessons(false);
+  }
+};
+    // ─── UPDATE handleCreateManualModule ─────────────────────────────────────────
   const handleCreateManualModule = async () => {
     // 1. Basic Validation
     const num = Number(newModuleNum);
@@ -1067,7 +1058,6 @@ const handleOpenLessonDetail = async (lesson: any) => {
       showResultModal('error', 'Invalid Number', 'Module number must be a positive whole number (e.g., 1, 2, 3).');
       return;
     }
-
     // 2. Check Local State for Duplicates (with consistent number comparison)
     // ✅ Convert all to numbers for comparison
     const existingModule = modules.find(m => Number(m.moduleNumber) === num);
@@ -1075,7 +1065,6 @@ const handleOpenLessonDetail = async (lesson: any) => {
       showResultModal('error', 'Duplicate Module', `Module ${num} already exists. Please choose a different number.`);
       return;
     }
-
     setIsSaving(true);
     try {
       const response = await fetch(`${API_BASE_URL}/course-modules/create-manual`, {
@@ -1087,7 +1076,9 @@ const handleOpenLessonDetail = async (lesson: any) => {
           moduleNumber: num, // Send as Number
           title: newModuleTitle,
           description: newModuleDesc,
-          weeklySchedule: newModuleWeek
+          weeklySchedule: newModuleWeek,
+          // ✅ ADD THIS: Tag manual modules so they work with Syllabus features
+          type: "ai_generated" 
         })
       });
       const data = await response.json();
@@ -1097,14 +1088,12 @@ const handleOpenLessonDetail = async (lesson: any) => {
         }
         throw new Error(data.error || 'Failed to create module.');
       }
-
       // 3. Success: Reset Form
       setShowManualModuleModal(false);
       setNewModuleNum('');
       setNewModuleTitle('');
       setNewModuleDesc('');
       setNewModuleWeek('');
-      
       // ✅ RELOAD CONTENT to sync state
       await loadCourseContent();
       showResultModal('success', 'Success', `Module ${num} created successfully!`);
@@ -1115,10 +1104,9 @@ const handleOpenLessonDetail = async (lesson: any) => {
       setIsSaving(false);
     }
   };
-
-  const handleCreateManualLesson = async () => {
+const handleCreateManualLesson = async () => {
   if (!newLessonTitle.trim() || !selectedModuleForLesson || !course?.id) return;
-
+  
   // Validate based on mode
   if (lessonMode === 'text' && !newLessonDiscussion.trim()) {
     showResultModal('error', 'Required', 'Discussion content is required for text-based lessons.');
@@ -1130,32 +1118,48 @@ const handleOpenLessonDetail = async (lesson: any) => {
   }
 
   setIsSaving(true);
-  try {
-    // ✅ AUTO-INCREMENT LESSON NUMBER
-    // Get all existing lessons in this module and find the highest lessonNumber
-    const existingLessons = selectedModuleForLesson.lessons || [];
-    const maxLessonNum = existingLessons.reduce((max: number, l: any) => {
-      const num = Number(l.lessonNumber) || 0;
-      return num > max ? num : max;
-    }, 0);
-    
-    const nextLessonNumber = maxLessonNum + 1;
+  let finalLessonNumber = 1;
 
+  try {
+    // ✅ STEP 1: ALWAYS fetch fresh max from backend (No stale state allowed)
+    // This ensures we see lessons created by "Generate Module" or other users
+    const modulesRes = await fetch(`${API_BASE_URL}/course-modules/${course.id}`, {
+      credentials: 'include'
+    });
+    
+    if (!modulesRes.ok) {
+      throw new Error("Network Error: Unable to verify lesson sequence. Please check your connection.");
+    }
+    
+    const allModules = await modulesRes.json();
+    const currentModule = allModules.find((m: any) => m.id === selectedModuleForLesson.id);
+    
+    if (currentModule && Array.isArray(currentModule.lessons)) {
+      // Calculate max existing lesson number from DB data
+      const maxNum = currentModule.lessons.reduce((max: number, l: any) => {
+        const num = Number(l.lessonNumber) || 0;
+        return num > max ? num : max;
+      }, 0);
+      finalLessonNumber = maxNum + 1;
+    } else {
+      // Module exists but has no lessons yet
+      finalLessonNumber = 1;
+    }
+
+    // ✅ STEP 2: Build payload with verified number
     let payload: any = {
       classId: course.id,
       moduleId: selectedModuleForLesson.id,
       title: newLessonTitle,
       description: newLessonDesc,
-      lessonNumber: nextLessonNumber, // ✅ Pass the calculated number
+      lessonNumber: finalLessonNumber, // ✅ Guaranteed correct
     };
 
     if (lessonMode === 'file' && newLessonFile) {
-      // Convert file to base64
       let base64 = '';
       if (Platform.OS === 'web') {
-        if (newLessonFile.base64) {
-          base64 = newLessonFile.base64;
-        } else if (newLessonFile.file) {
+        if (newLessonFile.base64) base64 = newLessonFile.base64;
+        else if (newLessonFile.file) {
           base64 = await new Promise<string>((resolve, reject) => {
             const reader = new FileReader();
             reader.onload = () => resolve(reader.result as string);
@@ -1172,13 +1176,12 @@ const handleOpenLessonDetail = async (lesson: any) => {
       payload.fileType = newLessonFile.type;
       payload.discussion = null;
       payload.activity = null;
-      payload.assessment = null;
     } else {
       payload.discussion = newLessonDiscussion;
       payload.activity = newLessonActivity;
-      payload.assessment = { items: [] };
     }
 
+    // ✅ STEP 3: Save to backend
     const response = await fetch(`${API_BASE_URL}/course-lessons/create-manual`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1191,9 +1194,11 @@ const handleOpenLessonDetail = async (lesson: any) => {
 
     setShowManualLessonModal(false);
     resetLessonForm();
-    await loadCourseContent(); // Refresh to show the new Lesson N+1
-    showResultModal('success', 'Success', `Lesson ${nextLessonNumber} created successfully.`);
+    await loadCourseContent(); // Immediate UI refresh
+    showResultModal('success', 'Success', `Lesson ${finalLessonNumber} created successfully.`);
+
   } catch (e: any) {
+    // ✅ Block save if we couldn't verify the number safely
     showResultModal('error', 'Error', e.message);
   } finally {
     setIsSaving(false);
@@ -1207,7 +1212,6 @@ const handleOpenLessonDetail = async (lesson: any) => {
     setNewLessonFile(null);
     setLessonMode('text');
   };
-
   // ─── Module AI Tool Handlers ──────────────────────────────────────────────
   const handleAiTool = async (tool: string, module: any, extraParams?: any) => {
     setIsAiLoading(true);
@@ -1221,7 +1225,6 @@ const handleOpenLessonDetail = async (lesson: any) => {
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'AI generation failed');
-
       setAiPreviewData(data.data);
       setAiPreviewType(tool);
       setSelectedModule(module);
@@ -1232,24 +1235,20 @@ const handleOpenLessonDetail = async (lesson: any) => {
       setAiLoadingType('');
     }
   };
-
   const handleSaveAiPreview = async () => {
     if (!selectedModule || !aiPreviewData) return;
     let updatedModule = { ...selectedModule };
-
     if (aiPreviewType === 'regenerate') updatedModule = { ...updatedModule, ...aiPreviewData };
     else if (aiPreviewType === 'generate-lessons') updatedModule.lessons = [...(updatedModule.lessons || []), ...(aiPreviewData.lessons || [])];
     else if (aiPreviewType === 'improve-outcomes') updatedModule.learningOutcomes = aiPreviewData.learningOutcomes;
     else if (aiPreviewType === 'generate-blooms') updatedModule.bloomsObjectives = aiPreviewData.bloomsObjectives;
     else if (aiPreviewType === 'generate-summary') updatedModule.summary = aiPreviewData.summary;
-
     try {
       const response = await fetch(`${API_BASE_URL}/course-modules/save`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
         body: JSON.stringify({ moduleData: { ...updatedModule, courseId: course?.id } })
       });
       if (!response.ok) throw new Error('Failed to save');
-
       const modulesRes = await fetch(`${API_BASE_URL}/course-modules/${course?.id}`, { credentials: 'include' });
       setModules(await modulesRes.json());
       setAiPreviewData(null); setAiPreviewType(''); setSelectedModule(null);
@@ -1258,7 +1257,6 @@ const handleOpenLessonDetail = async (lesson: any) => {
       showResultModal('error', 'Save Failed', error?.message || 'Failed to save module.');
     }
   };
-
   // ─── UPDATE handleUploadSyllabus (Split into Pick and Confirm) ─────────────────────────────────────────────
   // This function now only picks the file and shows the confirmation modal
   const handlePickSyllabus = async () => {
@@ -1274,15 +1272,12 @@ const handleOpenLessonDetail = async (lesson: any) => {
         base64: Platform.OS === 'web',
       });
       if (result.canceled || !result.assets?.[0]) return;
-      
       const asset = result.assets[0];
-
       // Validate file size (20MB limit)
       if (asset.size && asset.size > 20 * 1024 * 1024) {
         showResultModal('error', 'File Too Large', 'File exceeds maximum size of 20 MB.');
         return;
       }
-
       // Validate extension
       const ext = asset.name?.split('.').pop()?.toLowerCase();
       const allowedExts = ['pdf', 'doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx', 'txt', 'csv', 'png', 'jpg', 'jpeg', 'webp'];
@@ -1290,7 +1285,6 @@ const handleOpenLessonDetail = async (lesson: any) => {
         showResultModal('error', 'Unsupported File', 'Please upload a supported file type (PDF, DOCX, PPTX, etc.).');
         return;
       }
-
       // Store file details in state to show in modal
       setPendingSyllabusFile({
         name: asset.name,
@@ -1300,20 +1294,16 @@ const handleOpenLessonDetail = async (lesson: any) => {
         base64: (asset as any).base64,
         file: (asset as any).file,
       });
-
     } catch (error: any) {
       console.error('Syllabus pick error:', error);
       showResultModal('error', 'Error', 'Failed to pick file.');
     }
   };
-
   // ✅ NEW: This function performs the actual upload after confirmation
   const confirmAndUploadSyllabus = async () => {
     if (!pendingSyllabusFile || !course?.id) return;
-
     setIsUploadingSyllabus(true);
     setPendingSyllabusFile(null); // Clear pending file
-
     try {
       // Convert file to Base64
       let fileBase64 = '';
@@ -1335,7 +1325,6 @@ const handleOpenLessonDetail = async (lesson: any) => {
       } else if (pendingSyllabusFile.uri) {
         fileBase64 = await FileSystem.readAsStringAsync(pendingSyllabusFile.uri, { encoding: 'base64' });
       }
-
       // Upload to Backend (Backend handles Storage + CloudConvert + Gemini Parsing)
       const response = await fetch(`${API_BASE_URL}/course-syllabus/upload`, {
         method: 'POST',
@@ -1349,19 +1338,15 @@ const handleOpenLessonDetail = async (lesson: any) => {
           fileSize: pendingSyllabusFile.size,
         }),
       });
-
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Upload failed.');
-
       // Update Syllabus State
       setCurrentSyllabus(data.syllabus);
-
       if (data.syllabus?.structure && data.syllabus.structure.modules) {
         showResultModal('success', 'Syllabus Uploaded', 'Syllabus parsed successfully! Click "Generate Module 1" to create course content.');
       } else {
         showResultModal('info', 'Upload Complete', 'Syllabus uploaded. Auto-parsing could not extract structure. You can generate modules manually or try uploading a different file.');
       }
-
     } catch (error: any) {
       console.error('Syllabus upload error:', error);
       showResultModal('error', 'Upload Failed', error?.message || 'Failed to upload syllabus.');
@@ -1369,10 +1354,8 @@ const handleOpenLessonDetail = async (lesson: any) => {
       setIsUploadingSyllabus(false);
     }
   };
-
   // ❌ REMOVED: handleReplaceSyllabus
   // ❌ REMOVED: handleDeleteSyllabus
-
   const handleViewSyllabus = async () => {
     if (!currentSyllabus?.id) return;
     try {
@@ -1387,74 +1370,89 @@ const handleOpenLessonDetail = async (lesson: any) => {
       showResultModal('error', 'Error', 'Failed to load syllabus preview.');
     }
   };
-
-  // In TeacherCourseDetail2.tsx
   const handleGenerateStructure = async () => {
-    if (!currentSyllabus || isGeneratingStructure) return;
-    setIsGeneratingStructure(true);
-    setGeneratedStructure(null);
-    try {
-      // ✅ FIX: Use 'structure' instead of 'parsedModules'
-      const modules = currentSyllabus.structure?.modules || [];
-      if (modules.length === 0) {
-        throw new Error("No modules found in syllabus structure.");
-      }
-      // Always start with Module 1 for initial generation
-      const response = await fetch(`${API_BASE_URL}/course-syllabus/generate`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
-          classId: course?.id,
-          moduleNumber: 1,
-          // Optional: Pass the cached structure so backend doesn't need to re-fetch
-          cachedModules: modules
-        })
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'Generation failed');
-
-      setGeneratedStructure(data.data);
-      setShowStructurePreviewModal(true);
-    } catch (error: any) {
-      console.error("Generation Error:", error);
-      showResultModal('error', 'Generation Failed', error?.message || 'Unable to generate course structure.');
-    } finally {
-      setIsGeneratingStructure(false);
+  if (!currentSyllabus || isGeneratingStructure) return;
+  setIsGeneratingStructure(true);
+  setGeneratedStructure(null);
+  
+  try {
+    const modules = currentSyllabus.structure?.modules || [];
+    if (modules.length === 0) {
+      throw new Error("No modules found in syllabus structure.");
     }
-  };
-
+    
+    // Get the first module's details
+    const firstModule = modules[0];
+    const moduleTitle = firstModule.moduleTitle || `Module 1`;
+    
+    const response = await fetch(`${API_BASE_URL}/course-syllabus/generate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({
+        classId: course?.id,
+        moduleNumber: 1,
+        cachedModules: modules,
+        title: moduleTitle // ✅ Ensure title is passed
+      })
+    });
+    
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Generation failed');
+    setGeneratedStructure(data.data);
+    setShowStructurePreviewModal(true);
+  } catch (error: any) {
+    console.error("Generation Error:", error);
+    showResultModal('error', 'Generation Failed', error?.message || 'Unable to generate course structure.');
+  } finally {
+    setIsGeneratingStructure(false);
+  }
+};
   const handleGenerateAnotherModule = async () => {
-    if (!currentSyllabus || isGeneratingStructure) return;
-    // Calculate next module number based on existing saved modules
-    const nextNum = (modules.length > 0 ? Math.max(...modules.map((m: any) => m.moduleNumber || 0)) : 0) + 1;
-    setIsGeneratingStructure(true);
-    setGeneratedStructure(null);
-    try {
-      const response = await fetch(`${API_BASE_URL}/course-syllabus/generate`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ classId: course?.id, moduleNumber: nextNum })
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'Generation failed');
-
-      setGeneratedStructure(data.data);
-      setShowStructurePreviewModal(true);
-    } catch (error: any) {
-      showResultModal('error', 'Generation Failed', error?.message || 'Unable to generate module.');
-    } finally {
-      setIsGeneratingStructure(false);
-    }
-  };
-
+  if (!currentSyllabus || isGeneratingStructure) return;
+  
+  const nextNum = (modules.length > 0 ? Math.max(...modules.map((m: any) => m.moduleNumber || 0)) : 0) + 1;
+  setIsGeneratingStructure(true);
+  setGeneratedStructure(null);
+  
+  try {
+    // Find the corresponding module from syllabus structure
+    const syllabusModule = currentSyllabus.structure?.modules?.find(
+      (m: any) => m.moduleNumber === nextNum
+    );
+    
+    // Use moduleTitle from syllabus if available, otherwise use moduleNumber
+    const moduleTitle = syllabusModule?.moduleTitle || `Module ${nextNum}`;
+    
+    const response = await fetch(`${API_BASE_URL}/course-modules/create-manual`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ 
+        classId: course?.id, 
+        moduleNumber: nextNum,
+        title: moduleTitle, // ✅ Pass the proper title
+        description: syllabusModule?.description || '',
+        weeklySchedule: syllabusModule?.weeklySchedule || ''
+      })
+    });
+    
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Generation failed');
+    
+    setGeneratedStructure(data.data);
+    setShowStructurePreviewModal(true);
+  } catch (error: any) {
+    showResultModal('error', 'Generation Failed', error?.message || 'Unable to generate module.');
+  } finally {
+    setIsGeneratingStructure(false);
+  }
+};
   const updateStructureField = (path: string, value: any) => {
     if (!generatedStructure) return;
     const keys = path.split('.');
     const newStructure = JSON.parse(JSON.stringify(generatedStructure)); // Deep clone
     let current: any = newStructure;
-
     // Navigate to parent and create missing intermediate objects
     for (let i = 0; i < keys.length - 1; i++) {
       const key = keys[i];
@@ -1479,7 +1477,6 @@ const handleOpenLessonDetail = async (lesson: any) => {
         current = current[key];
       }
     }
-
     // Set the final value
     const lastKey = keys[keys.length - 1];
     const lastIndexMatch = lastKey.match(/^(\w+)\[(\d+)\]$/);
@@ -1493,10 +1490,8 @@ const handleOpenLessonDetail = async (lesson: any) => {
     } else {
       current[lastKey] = value;
     }
-
     setGeneratedStructure(newStructure);
   };
-
   const handleApproveStructure = async () => {
     if (!generatedStructure || !course?.id) return;
     setIsGeneratingStructure(true);
@@ -1512,7 +1507,6 @@ const handleOpenLessonDetail = async (lesson: any) => {
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Approval failed');
-
       setShowStructurePreviewModal(false);
       setGeneratedStructure(null);
       await loadCourseContent(); // Refresh to show newly saved modules
@@ -1523,28 +1517,23 @@ const handleOpenLessonDetail = async (lesson: any) => {
       setIsGeneratingStructure(false);
     }
   };
-
   // ─── Material viewer helpers ──────────────────────────────────────────────
   const getMaterialFileUrl = (material: Material | null) => {
     if (!material) return null;
     const raw = material.fileUri || (material as any).fileUrl || null;
     return typeof raw === 'string' && raw.trim() ? raw.trim() : null;
   };
-
   const getMaterialPdfUrl = (material: Material | null) => {
     if (!material) return null;
     const raw = (material as any).pdfUrl;
     return typeof raw === 'string' && raw.trim() ? raw.trim() : null;
   };
-
   const openMaterialViewer = (material: Material) => {
     setViewerMaterial(material);
   };
-
   const closeMaterialViewer = () => {
     setViewerMaterial(null);
   };
-
   // ─── Edit material handlers ───────────────────────────────────────────────
   const openEditMaterialModal = (material: Material) => {
     setEditingMaterial(material);
@@ -1554,7 +1543,6 @@ const handleOpenLessonDetail = async (lesson: any) => {
     setEditMatPickedFile(null);
     setShowEditMaterialModal(true);
   };
-
   const handlePickEditMaterialFile = async () => {
     try {
       const result = await DocumentPicker.getDocumentAsync({
@@ -1575,7 +1563,6 @@ const handleOpenLessonDetail = async (lesson: any) => {
       showResultModal('error', 'Error', 'Failed to pick file.');
     }
   };
-
   const handleSaveEditMaterial = async () => {
     if (!editingMaterial || !editMatTitle.trim() || !editMatWeek.trim()) {
       showResultModal('error', 'Required', 'Title and Week are required.');
@@ -1585,7 +1572,6 @@ const handleOpenLessonDetail = async (lesson: any) => {
     try {
       let uploadedFile: any = null;
       const hasNewFile = !!(editMatPickedFile && (editMatPickedFile.uri || editMatPickedFile.base64 || editMatPickedFile.file));
-
       if (hasNewFile && course?.id) {
         let fileBase64: string | null = null;
         if (Platform.OS === 'web') {
@@ -1609,7 +1595,6 @@ const handleOpenLessonDetail = async (lesson: any) => {
             encoding: 'base64' as any,
           });
         }
-
         if (fileBase64) {
           const uploadRes = await fetch(`${API_BASE_URL}/upload-class-file`, {
             credentials: 'include',
@@ -1628,13 +1613,11 @@ const handleOpenLessonDetail = async (lesson: any) => {
           uploadedFile = uploadData.data;
         }
       }
-
       const updateBody: any = {
         title: editMatTitle.trim(),
         week: editMatWeek.trim(),
         content: editMatContent.trim() || undefined,
       };
-
       if (uploadedFile) {
         updateBody.fileName = uploadedFile.fileName ?? null;
         updateBody.fileUrl = uploadedFile.fileUrl ?? null;
@@ -1644,7 +1627,6 @@ const handleOpenLessonDetail = async (lesson: any) => {
         updateBody.pdfUrl = uploadedFile.pdfUrl ?? null;
         updateBody.pdfStoragePath = uploadedFile.pdfStoragePath ?? null;
       }
-
       const response = await fetch(
         `${API_BASE_URL}/update-class-material/${editingMaterial.id}`,
         {
@@ -1656,7 +1638,6 @@ const handleOpenLessonDetail = async (lesson: any) => {
       );
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Failed to update material.');
-
       await loadCourseContent();
       setShowEditMaterialModal(false);
       setViewerMaterial(null);
@@ -1667,7 +1648,6 @@ const handleOpenLessonDetail = async (lesson: any) => {
       setIsSavingMaterial(false);
     }
   };
-
   const handleDeleteMaterial = () => {
     if (!editingMaterial) return;
     Alert.alert(
@@ -1701,23 +1681,19 @@ const handleOpenLessonDetail = async (lesson: any) => {
       ]
     );
   };
-
   const handleDownloadMaterial = async () => {
     if (!viewerMaterial) {
       showResultModal('error', 'No File', 'This material has no downloadable file.');
       return;
     }
-
     const storagePath = viewerMaterial.storagePath;
     const firebaseUrl = getMaterialFileUrl(viewerMaterial);
     if (!storagePath && !firebaseUrl) {
       showResultModal('error', 'No File', 'This material has no file to download.');
       return;
     }
-
     const fileName = viewerMaterial.fileName || viewerMaterial.title || 'material';
     const mimeType = viewerMaterial.fileType || getMimeFromFileName(fileName);
-
     setIsDownloading(true);
     try {
       let downloadUrl: string;
@@ -1735,7 +1711,6 @@ const handleOpenLessonDetail = async (lesson: any) => {
         }
         downloadUrl = firebaseUrl;
       }
-
       if (Platform.OS === 'web') {
         const response = await fetch(downloadUrl, { credentials: 'include' });
         if (!response.ok) throw new Error(`Download failed (${response.status})`);
@@ -1765,7 +1740,6 @@ const handleOpenLessonDetail = async (lesson: any) => {
       setIsDownloading(false);
     }
   };
-
   // ─── Create / update form helpers ─────────────────────────────────────────
   const resetCreateForm = () => {
     setFormTitle('');
@@ -1793,12 +1767,10 @@ const handleOpenLessonDetail = async (lesson: any) => {
     setShowGameTypeModal(false);
     setShowClassModal(false);
   };
-
   const openCreateModal = () => {
     resetCreateForm();
     setShowCreateModal(true);
   };
-
   const openUpdateModal = (item: Assignment | undefined) => {
     if (!item) return;
     setSelectedId(item.id);
@@ -1820,7 +1792,6 @@ const handleOpenLessonDetail = async (lesson: any) => {
     setCustomAttempts(String((item as any).customAttempts || ''));
     setTimeLimit(String((item as any).timeLimit || ''));
     setCustomTimeLimit(String((item as any).customTimeLimit || ''));
-
     const existingQuestions = (item as any).questions || [];
     const mappedQuestions = existingQuestions.map((q: any, index: number) => {
       if ((item as any).gameType === 'memory_match') {
@@ -1836,14 +1807,12 @@ const handleOpenLessonDetail = async (lesson: any) => {
     setShowClassModal(false);
     setShowUpdateModal(true);
   };
-
   const openDateTimePicker = () => {
     const parsed = parseDueDateTime(formDue);
     setDraftDueDateTime(parsed);
     setVisibleCalendarMonth(new Date(parsed.getFullYear(), parsed.getMonth(), 1));
     setShowDateTimeModal(true);
   };
-
   const applyDraftDateTime = () => {
     if (draftDueDateTime.getTime() < startOfToday().getTime()) {
       setErrors((prev) => ({ ...prev, dueDate: 'Past dates are not allowed.' }));
@@ -1853,27 +1822,23 @@ const handleOpenLessonDetail = async (lesson: any) => {
     setErrors((prev) => ({ ...prev, dueDate: undefined }));
     setShowDateTimeModal(false);
   };
-
   const selectDraftDate = (date: Date) => {
     const next = new Date(draftDueDateTime);
     next.setFullYear(date.getFullYear(), date.getMonth(), date.getDate());
     setDraftDueDateTime(next);
   };
-
   const updateDraftTime = (field: 'hours' | 'minutes', value: number) => {
     const next = new Date(draftDueDateTime);
     if (field === 'hours') next.setHours(value);
     if (field === 'minutes') next.setMinutes(value);
     setDraftDueDateTime(next);
   };
-
   const toggleRelatedMaterial = (materialId: string) => {
     setSelectedMaterialIds((prev) =>
       prev.includes(materialId) ? prev.filter((id) => id !== materialId) : [...prev, materialId]
     );
     setErrors((prev) => ({ ...prev, materials: undefined }));
   };
-
   const handlePickFile = async () => {
     try {
       const result = await DocumentPicker.getDocumentAsync({
@@ -1894,7 +1859,6 @@ const handleOpenLessonDetail = async (lesson: any) => {
       showResultModal('error', 'Error', 'Failed to pick file.');
     }
   };
-
   const handlePickAssignmentFile = async () => {
     try {
       const result = await DocumentPicker.getDocumentAsync({
@@ -1915,7 +1879,6 @@ const handleOpenLessonDetail = async (lesson: any) => {
       showResultModal('error', 'Error', 'Failed to pick assignment file.');
     }
   };
-
   const uploadPickedFile = async (picked: PickedUploadFile, kind: 'material' | 'assignment') => {
     if (!picked || !course?.id) return null;
     let fileBase64: string | null = null;
@@ -1938,7 +1901,6 @@ const handleOpenLessonDetail = async (lesson: any) => {
     } else if (picked.uri) {
       fileBase64 = await FileSystem.readAsStringAsync(picked.uri, { encoding: 'base64' as any });
     }
-
     const response = await fetch(`${API_BASE_URL}/upload-class-file`, {
       credentials: 'include',
       method: 'POST',
@@ -1955,7 +1917,6 @@ const handleOpenLessonDetail = async (lesson: any) => {
     if (!response.ok) throw new Error(data.error || 'Failed to upload file.');
     return data.data;
   };
-
   const handleOpenUploadedFile = async (fileUri?: string) => {
     if (!fileUri) {
       showResultModal('error', 'No File', 'No uploaded file available.');
@@ -1967,7 +1928,6 @@ const handleOpenLessonDetail = async (lesson: any) => {
       showResultModal('error', 'Error', 'Unable to open the file.');
     }
   };
-
   const handleGradeSubmission = async (
     submissionId: string,
     score: number,
@@ -1988,7 +1948,6 @@ const handleOpenLessonDetail = async (lesson: any) => {
       showResultModal('error', 'Grade Failed', error?.message || 'Unable to save score.');
     }
   };
-
   const handleCopyClassCode = async () => {
     const codeToCopy = course?.classCode || '';
     if (!codeToCopy || codeToCopy === 'No Class Code') return;
@@ -1996,7 +1955,6 @@ const handleOpenLessonDetail = async (lesson: any) => {
     setClassCodeCopied(true);
     setTimeout(() => setClassCodeCopied(false), 2000);
   };
-
   const downloadClassGradesExcel = async () => {
     if (!course?.id) {
       showResultModal('error', 'No Class', 'No class selected.');
@@ -2007,7 +1965,6 @@ const handleOpenLessonDetail = async (lesson: any) => {
         credentials: 'include',
       });
       const gameScores = gameResponse.ok ? await gameResponse.json() : [];
-
       const workbook = XLSX.utils.book_new();
       const gradeRows = members.map((member) => {
         const studentSubmissions = submissions.filter((s) => s.studentId === member.id);
@@ -2025,7 +1982,6 @@ const handleOpenLessonDetail = async (lesson: any) => {
         XLSX.utils.json_to_sheet(gradeRows),
         'Assignment Grades'
       );
-
       const gameRows = gameScores.map((game: any, index: number) => ({
         No: index + 1,
         'Student ID': game.studentId,
@@ -2039,7 +1995,6 @@ const handleOpenLessonDetail = async (lesson: any) => {
         XLSX.utils.json_to_sheet(gameRows),
         'Quiz Masters Scores'
       );
-
       const wbout = XLSX.write(workbook, { type: 'array', bookType: 'xlsx' });
       if (Platform.OS === 'web') {
         const blob = new Blob([wbout], {
@@ -2064,7 +2019,6 @@ const handleOpenLessonDetail = async (lesson: any) => {
       showResultModal('error', 'Export Failed', error?.message || 'Failed to export Excel.');
     }
   };
-
   const validateAssignmentForm = () => {
     const nextErrors: FormErrors = {};
     if (!formTitle.trim()) nextErrors.title = 'Header is required.';
@@ -2079,7 +2033,6 @@ const handleOpenLessonDetail = async (lesson: any) => {
     if (!formDue.trim()) nextErrors.dueDate = 'Due date and time is required.';
     if (selectedMaterialIds.length === 0)
       nextErrors.materials = 'Select at least one related material.';
-
     if (assignmentType === 'game_based') {
       if (!gameType) nextErrors.gameType = 'Please select a game type.';
       if (availableCourses.length > 1 && !selectedClassId)
@@ -2094,7 +2047,6 @@ const handleOpenLessonDetail = async (lesson: any) => {
       if (timeLimit === 'custom' && !customTimeLimit.trim())
         nextErrors.customTimeLimit = 'Please enter custom time limit.';
     }
-
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length > 0) {
       showResultModal('error', 'Required', 'Please complete the highlighted assignment fields.');
@@ -2102,7 +2054,6 @@ const handleOpenLessonDetail = async (lesson: any) => {
     }
     return true;
   };
-
   const handleGenerateQuestions = async () => {
     if (!gameType) {
       showResultModal('error', 'Error', 'Please select a game type first before generating questions.');
@@ -2127,11 +2078,9 @@ const handleOpenLessonDetail = async (lesson: any) => {
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Failed to generate questions.');
-
       const questionsArray = Array.isArray(data.questions) ? data.questions : [];
       if (questionsArray.length === 0)
         throw new Error('AI did not return any valid questions. Please try again.');
-
       const editableQuestions = questionsArray.map((q: any, index: number) => {
         if (gameType === 'memory_match') {
           return { id: `gen-${Date.now()}-${index}`, question: q.question || '', answer: q.answer || '' };
@@ -2150,7 +2099,6 @@ const handleOpenLessonDetail = async (lesson: any) => {
       setIsGenerating(false);
     }
   };
-
   const handleGenerateMoreQuestions = async () => {
     if (selectedMaterialIds.length === 0) {
       showResultModal('error', 'Error', 'Please select at least one learning material first.');
@@ -2171,11 +2119,9 @@ const handleOpenLessonDetail = async (lesson: any) => {
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Failed to generate questions.');
-
       const questionsArray = Array.isArray(data.questions) ? data.questions : [];
       if (questionsArray.length === 0)
         throw new Error('AI did not return any valid questions. Please try again.');
-
       const newQuestions = questionsArray.map((q: any, index: number) => {
         if (gameType === 'memory_match') {
           return { id: `gen-${Date.now()}-${index}`, question: q.question || '', answer: q.answer || '' };
@@ -2193,7 +2139,6 @@ const handleOpenLessonDetail = async (lesson: any) => {
       setIsGenerating(false);
     }
   };
-
   const updateGeneratedQuestion = (index: number, field: string, value: string) => {
     setGeneratedQuestions((prev) => {
       const next = [...prev];
@@ -2201,7 +2146,6 @@ const handleOpenLessonDetail = async (lesson: any) => {
       return next;
     });
   };
-
   const updateGeneratedOption = (qIndex: number, oIndex: number, value: string) => {
     setGeneratedQuestions((prev) => {
       const next = [...prev];
@@ -2213,7 +2157,6 @@ const handleOpenLessonDetail = async (lesson: any) => {
       return next;
     });
   };
-
   const toggleCorrectOption = (qIndex: number, oIndex: number) => {
     setGeneratedQuestions((prev) => {
       const next = [...prev];
@@ -2221,18 +2164,15 @@ const handleOpenLessonDetail = async (lesson: any) => {
       return next;
     });
   };
-
   const deleteGeneratedQuestion = (qIndex: number) => {
     setGeneratedQuestions((prev) => prev.filter((_, index) => index !== qIndex));
   };
-
   const handleCreate = async () => {
     if (isSaving) return;
     if (!course?.id) {
       showResultModal('error', 'Error', 'No class selected.');
       return;
     }
-
     if (activeTab === 'Materials') {
       if (!formTitle.trim() || !formPointsOnTime.trim()) {
         showResultModal('error', 'Required', 'Please enter the title and week.');
@@ -2243,7 +2183,6 @@ const handleOpenLessonDetail = async (lesson: any) => {
         let uploadedFile = null;
         if (pickedFile?.uri || pickedFile?.base64 || pickedFile?.file)
           uploadedFile = await uploadPickedFile(pickedFile, 'material');
-
         const response = await fetch(`${API_BASE_URL}/create-class-material`, {
           credentials: 'include',
           method: 'POST',
@@ -2267,7 +2206,6 @@ const handleOpenLessonDetail = async (lesson: any) => {
         });
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || 'Failed to create material');
-
         await loadCourseContent();
         setShowCreateModal(false);
         resetCreateForm();
@@ -2279,14 +2217,12 @@ const handleOpenLessonDetail = async (lesson: any) => {
       }
       return;
     }
-
     if (!validateAssignmentForm()) return;
     setIsSaving(true);
     try {
       let uploadedFile = null;
       if (pickedAssignmentFile?.uri || pickedAssignmentFile?.base64 || pickedAssignmentFile?.file)
         uploadedFile = await uploadPickedFile(pickedAssignmentFile, 'assignment');
-
       const response = await fetch(`${API_BASE_URL}/create-class-assignment`, {
         credentials: 'include',
         method: 'POST',
@@ -2334,7 +2270,6 @@ const handleOpenLessonDetail = async (lesson: any) => {
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Failed to create assignment');
-
       await loadCourseContent();
       setShowCreateModal(false);
       resetCreateForm();
@@ -2345,7 +2280,6 @@ const handleOpenLessonDetail = async (lesson: any) => {
       setIsSaving(false);
     }
   };
-
   const handleUpdate = async () => {
     if (!selectedId || !validateAssignmentForm()) return;
     try {
@@ -2385,7 +2319,6 @@ const handleOpenLessonDetail = async (lesson: any) => {
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Failed to update assignment');
-
       await loadCourseContent();
       setShowUpdateModal(false);
       showResultModal('success', 'Success', 'Assignment updated.');
@@ -2393,7 +2326,6 @@ const handleOpenLessonDetail = async (lesson: any) => {
       showResultModal('error', 'Error', error?.message || 'Failed to update assignment.');
     }
   };
-
   const handleDelete = async () => {
     if (!selectedId) return;
     try {
@@ -2403,7 +2335,6 @@ const handleOpenLessonDetail = async (lesson: any) => {
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Failed to delete assignment');
-
       await loadCourseContent();
       setShowUpdateModal(false);
       setShowSubmissions(false);
@@ -2412,7 +2343,6 @@ const handleOpenLessonDetail = async (lesson: any) => {
       showResultModal('error', 'Error', error?.message || 'Failed to delete assignment.');
     }
   };
-
   // ─── Viewer-related computed values ───────────────────────────────────────
   const viewerFileUrl = getMaterialFileUrl(viewerMaterial);
   const viewerPdfUrl = getMaterialPdfUrl(viewerMaterial);
@@ -2436,9 +2366,7 @@ const handleOpenLessonDetail = async (lesson: any) => {
     )
     : null;
   const viewerHasFile = !!viewerFileUrl;
-
   const selectedAssignment = assignments.find((a) => a.id === selectedId);
-
   const courseName = course?.name || 'Untitled Course';
   const courseYear = course?.year || '';
   const courseSection = course?.section || '';
@@ -2446,12 +2374,9 @@ const handleOpenLessonDetail = async (lesson: any) => {
   const classCode = course?.classCode || 'No Class Code';
   const courseSemester = course?.semester || '';
   const schoolYear = course?.schoolYear || '';
-
   const calendarDays = getCalendarDays(visibleCalendarMonth);
-
   const renderInputError = (message?: string) =>
     !!message ? <Text style={styles.errorText}>{message}</Text> : null;
-
   const renderRelatedMaterialsSelector = () => (
     <View style={styles.sectionBlock}>
       <Text style={styles.sectionLabel}>Learning Materials</Text>
@@ -2490,7 +2415,6 @@ const handleOpenLessonDetail = async (lesson: any) => {
       {renderInputError(errors.materials)}
     </View>
   );
-
   const renderDateTimeField = () => (
     <View style={styles.sectionBlock}>
       <Text style={styles.sectionLabel}>Due Date & Time</Text>
@@ -2510,7 +2434,6 @@ const handleOpenLessonDetail = async (lesson: any) => {
       {renderInputError(errors.dueDate)}
     </View>
   );
-
   const renderGameAndClassRow = () => {
     const selectedGame = gameOptions.find((g) => g.value === gameType);
     const selectedClass = availableCourses.find((c) => c.id === selectedClassId);
@@ -2559,7 +2482,6 @@ const handleOpenLessonDetail = async (lesson: any) => {
       </View>
     );
   };
-
   const renderAttemptsSelector = () => (
     <View style={styles.sectionBlock}>
       <Text style={styles.sectionLabel}>Number of Attempts</Text>
@@ -2610,7 +2532,6 @@ const handleOpenLessonDetail = async (lesson: any) => {
       {renderInputError(errors.attempts || errors.customAttempts)}
     </View>
   );
-
   const renderTimeLimitSelector = () => (
     <View style={styles.sectionBlock}>
       <Text style={styles.sectionLabel}>Time Limit</Text>
@@ -2658,7 +2579,6 @@ const handleOpenLessonDetail = async (lesson: any) => {
       {renderInputError(errors.timeLimit || errors.customTimeLimit)}
     </View>
   );
-
   const renderAssignmentFields = () => (
     <View style={[styles.formGrid, !isMobile && styles.formGridDesktop]}>
       <View style={styles.sectionBlock}>
@@ -2694,9 +2614,7 @@ const handleOpenLessonDetail = async (lesson: any) => {
           </TouchableOpacity>
         </View>
       </View>
-
       {assignmentType === 'game_based' && renderGameAndClassRow()}
-
       <View style={[styles.formColumnLeft, !isMobile && styles.formColumnLeftDesktop]}>
         <Text style={styles.sectionLabel}>Header</Text>
         <TextInput
@@ -2711,7 +2629,6 @@ const handleOpenLessonDetail = async (lesson: any) => {
           editable={!isSaving}
         />
         {renderInputError(errors.title)}
-
         <Text style={styles.sectionLabel}>Instruction</Text>
         <TextInput
           style={[styles.textAreaBox, errors.instruction ? styles.errorBorder : null]}
@@ -2726,14 +2643,11 @@ const handleOpenLessonDetail = async (lesson: any) => {
           editable={!isSaving}
         />
         {renderInputError(errors.instruction)}
-
         {assignmentType === 'game_based' && renderAttemptsSelector()}
         {assignmentType === 'game_based' && renderTimeLimitSelector()}
       </View>
-
       <View style={[styles.formColumnRight, !isMobile && styles.formColumnRightDesktop]}>
         {renderDateTimeField()}
-
         <View style={styles.scoreStackDesktop}>
           <View style={styles.scoreFieldFull}>
             <Text style={styles.sectionLabel}>Total Score</Text>
@@ -2783,10 +2697,8 @@ const handleOpenLessonDetail = async (lesson: any) => {
           )}
         </View>
       </View>
-
       <View style={styles.fullWidthSection}>
         {renderRelatedMaterialsSelector()}
-
         {assignmentType === 'game_based' && selectedMaterialIds.length > 0 && gameType && (
           <TouchableOpacity
             style={[styles.generateButton, isGenerating ? styles.disabledButton : null]}
@@ -2811,7 +2723,6 @@ const handleOpenLessonDetail = async (lesson: any) => {
             <Text style={styles.generateButtonText}>Select a Game Type to Generate Questions</Text>
           </View>
         )}
-
         {assignmentType === 'regular' && (
           <>
             <Text style={styles.sectionLabel}>Attachment</Text>
@@ -2833,7 +2744,6 @@ const handleOpenLessonDetail = async (lesson: any) => {
             )}
           </>
         )}
-
         <View style={styles.checkboxRow}>
           <TouchableOpacity
             style={[
@@ -2853,7 +2763,6 @@ const handleOpenLessonDetail = async (lesson: any) => {
       </View>
     </View>
   );
-
   const renderCreateModalBody = () => {
     if (activeTab === 'Materials') {
       return (
@@ -2903,7 +2812,6 @@ const handleOpenLessonDetail = async (lesson: any) => {
     }
     return renderAssignmentFields();
   };
-
   const renderQuestionEditor = (q: any, qIndex: number) => {
     const renderHeader = (title: string) => (
       <View
@@ -2923,7 +2831,6 @@ const handleOpenLessonDetail = async (lesson: any) => {
         </TouchableOpacity>
       </View>
     );
-
     const renderOptionWithDropdown = (opt: string, oIndex: number, placeholderPrefix: string) => {
       const isCorrect = q.correctIndex === oIndex;
       return (
@@ -2962,7 +2869,6 @@ const handleOpenLessonDetail = async (lesson: any) => {
         </View>
       );
     };
-
     switch (gameType) {
       case 'memory_match':
         return (
@@ -3050,7 +2956,6 @@ const handleOpenLessonDetail = async (lesson: any) => {
         );
     }
   };
-
   // ─── Structure Preview Modal Renderer ─────────────────────────────────────
   const renderStructurePreviewModal = () => {
     if (!showStructurePreviewModal || !generatedStructure) return null;
@@ -3067,18 +2972,7 @@ const handleOpenLessonDetail = async (lesson: any) => {
                 <Ionicons name="close" size={24} color="#111" />
               </TouchableOpacity>
             </View>
-            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 100 }}>
-              <View style={{ marginBottom: 20, padding: 16, backgroundColor: '#F5F5F5', borderRadius: 12 }}>
-                <Text style={styles.sectionLabel}>Course Info</Text>
-                <TextInput style={styles.inputBox} value={generatedStructure?.courseInformation?.title || ''} onChangeText={v => updateStructureField('courseInformation.title', v)} placeholder="Title" />
-                <TextInput style={[styles.textAreaBox, { minHeight: 60 }]} value={generatedStructure?.courseInformation?.description || ''} onChangeText={v => updateStructureField('courseInformation.description', v)} multiline placeholder="Description" />
-                {generatedStructure?.courseInformation?.learningApproach && <View style={{ marginTop: 8, padding: 8, backgroundColor: '#E3F2FD', borderRadius: 8 }}><Text style={{ fontSize: 12, fontWeight: '700', color: '#1565C0' }}>Approach: {generatedStructure.courseInformation.learningApproach}</Text></View>}
-              </View>
-              <View style={{ marginBottom: 20 }}>
-                <Text style={styles.sectionLabel}>Learning Outcomes</Text>
-                {generatedStructure?.learningOutcomes?.map((o: string, i: number) => <View key={i} style={{ flexDirection: 'row', gap: 8, marginBottom: 8, alignItems: 'center' }}><Ionicons name="checkmark-circle-outline" size={16} color="#D32F2F" /><TextInput style={[styles.inputBox, { flex: 1, marginBottom: 0 }]} value={o} onChangeText={v => { const n = [...generatedStructure.learningOutcomes]; n[i] = v; updateStructureField('learningOutcomes', n); }} /><TouchableOpacity onPress={() => updateStructureField('learningOutcomes', generatedStructure.learningOutcomes.filter((_: any, idx: number) => idx !== i))}><Ionicons name="trash-outline" size={20} color="#D32F2F" /></TouchableOpacity></View>)}
-                <TouchableOpacity onPress={() => updateStructureField('learningOutcomes', [...(generatedStructure.learningOutcomes || []), ''])} style={{ marginTop: 8, flexDirection: 'row', alignItems: 'center', gap: 8 }}><Ionicons name="add-circle-outline" size={20} color="#D32F2F" /><Text style={{ color: '#D32F2F', fontWeight: '700' }}>Add Outcome</Text></TouchableOpacity>
-              </View>
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 50 }}>
               {generatedStructure?.modules?.map((mod: any, mi: number) => (
                 <View key={mi} style={{ marginBottom: 24 }}>
                   <View style={{ backgroundColor: '#D32F2F', padding: 16, borderRadius: 12, marginBottom: 16 }}>
@@ -3086,7 +2980,7 @@ const handleOpenLessonDetail = async (lesson: any) => {
                       Module {mod.moduleNumber}: {cleanModuleTitle(mod.title, mod.moduleNumber)}
                     </Text>
                       <TouchableOpacity onPress={() => updateStructureField('modules', generatedStructure.modules.filter((_: any, idx: number) => idx !== mi))}><Ionicons name="trash-outline" size={24} color="#FFF" /></TouchableOpacity></View>
-                    <Text style={{ color: '#FFE0E0', marginTop: 4 }}>{mod.weeklySchedule}</Text>
+                    
                   </View>
                   <View style={{ paddingLeft: 16, marginBottom: 16 }}><Text style={styles.sectionLabel}>Description</Text><TextInput style={styles.textAreaBox} value={mod.description} onChangeText={v => updateStructureField(`modules.${mi}.description`, v)} multiline /></View>
                   <View style={{ paddingLeft: 16 }}>
@@ -3096,29 +2990,15 @@ const handleOpenLessonDetail = async (lesson: any) => {
                         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}><Text style={{ fontSize: 16, fontWeight: '700', color: '#1976D2' }}>Lesson {li + 1}: {l.title}</Text><TouchableOpacity onPress={() => { const nl = mod.lessons.filter((_: any, idx: number) => idx !== li); updateStructureField(`modules.${mi}.lessons`, nl); }}><Ionicons name="close-circle" size={20} color="#999" /></TouchableOpacity></View>
                         <TextInput style={styles.inputBox} placeholder="Title" value={l.title} onChangeText={v => updateStructureField(`modules.${mi}.lessons.${li}.title`, v)} />
                         <TextInput style={[styles.textAreaBox, { minHeight: 60 }]} placeholder="Description" value={l.description} onChangeText={v => updateStructureField(`modules.${mi}.lessons.${li}.description`, v)} multiline />
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8 }}><Ionicons name="time-outline" size={16} color="#666" /><Text style={{ fontSize: 12, color: '#666' }}>Hours:</Text><TextInput style={[styles.inputBox, { flex: 1, marginBottom: 0, minWidth: 60 }]} placeholder="2" value={String(l.estimatedHours || '')} keyboardType="numeric" onChangeText={v => updateStructureField(`modules.${mi}.lessons.${li}.estimatedHours`, v)} /></View>
-                        <View style={{ marginTop: 12 }}><Text style={styles.sectionLabel}>Discussion</Text><TextInput style={[styles.textAreaBox, { minHeight: 200 }]} placeholder="AI content..." value={l.discussion || ''} onChangeText={v => updateStructureField(`modules.${mi}.lessons.${li}.discussion`, v)} multiline /></View>
-                        <View style={{ marginTop: 12 }}><Text style={styles.sectionLabel}>Activity</Text><TextInput style={[styles.textAreaBox, { minHeight: 150 }]} placeholder="Scenario..." value={l.activity || ''} onChangeText={v => updateStructureField(`modules.${mi}.lessons.${li}.activity`, v)} multiline /></View>
-                        <View style={{ marginTop: 12 }}>
-                          <Text style={styles.sectionLabel}>Assessment ({l.assessment?.items?.length || 0}/5)</Text>
-                          {l.assessment?.items?.map((it: any, ai: number) => (
-                            <View key={ai} style={{ backgroundColor: '#F9F9F9', borderRadius: 8, padding: 12, marginBottom: 8, borderWidth: 1, borderColor: '#EEE' }}>
-                              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}><Text style={{ fontSize: 13, fontWeight: '700', color: '#333' }}>Item {ai + 1} ({it.type === 'multiple_choice' ? 'MC' : 'T/F'})</Text><TouchableOpacity onPress={() => { const ni = l.assessment.items.filter((_: any, idx: number) => idx !== ai); updateStructureField(`modules.${mi}.lessons.${li}.assessment.items`, ni); }}><Ionicons name="trash-outline" size={16} color="#D32F2F" /></TouchableOpacity></View>
-                              <TextInput style={[styles.inputBox, { marginBottom: 8 }]} placeholder="Question" value={it.question} onChangeText={v => updateStructureField(`modules.${mi}.lessons.${li}.assessment.items.${ai}.question`, v)} multiline />
-                              {it.type === 'multiple_choice' && <View style={{ marginBottom: 8 }}><Text style={{ fontSize: 12, color: '#666', marginBottom: 4 }}>Options:</Text>{it.options?.map((o: string, oi: number) => <View key={oi} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}><TouchableOpacity onPress={() => updateStructureField(`modules.${mi}.lessons.${li}.assessment.items.${ai}.correctAnswer`, oi)}><Ionicons name={it.correctAnswer === oi ? 'radio-button-on' : 'radio-button-off'} size={18} color={it.correctAnswer === oi ? '#2E7D32' : '#999'} /></TouchableOpacity><TextInput style={[styles.inputBox, { flex: 1, marginBottom: 0 }]} placeholder={`Opt ${String.fromCharCode(65 + oi)}`} value={o} onChangeText={v => { const no = [...it.options]; no[oi] = v; updateStructureField(`modules.${mi}.lessons.${li}.assessment.items.${ai}.options`, no); }} /></View>)}</View>}
-                              {it.type === 'true_false' && <View style={{ flexDirection: 'row', gap: 16, marginBottom: 8 }}><TouchableOpacity onPress={() => updateStructureField(`modules.${mi}.lessons.${li}.assessment.items.${ai}.correctAnswer`, true)} style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}><Ionicons name={it.correctAnswer === true ? 'radio-button-on' : 'radio-button-off'} size={18} color={it.correctAnswer === true ? '#2E7D32' : '#999'} /><Text style={{ color: it.correctAnswer === true ? '#2E7D32' : '#666' }}>True</Text></TouchableOpacity><TouchableOpacity onPress={() => updateStructureField(`modules.${mi}.lessons.${li}.assessment.items.${ai}.correctAnswer`, false)} style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}><Ionicons name={it.correctAnswer === false ? 'radio-button-on' : 'radio-button-off'} size={18} color={it.correctAnswer === false ? '#2E7D32' : '#999'} /><Text style={{ color: it.correctAnswer === false ? '#2E7D32' : '#666' }}>False</Text></TouchableOpacity></View>}
-                              <TextInput style={[styles.inputBox, { marginBottom: 0 }]} placeholder="Explanation" value={it.explanation || ''} onChangeText={v => updateStructureField(`modules.${mi}.lessons.${li}.assessment.items.${ai}.explanation`, v)} multiline />
-                            </View>
-                          ))}
-                          <TouchableOpacity onPress={() => { if ((l.assessment?.items?.length || 0) >= 5) { showResultModal('error', 'Limit', 'Max 5 items'); return; } const ni = { type: (l.assessment?.items?.length || 0) % 2 === 0 ? 'multiple_choice' : 'true_false', question: '', options: ['A', 'B', 'C', 'D'], correctAnswer: 0, explanation: '' }; const ci = l.assessment?.items || []; updateStructureField(`modules.${mi}.lessons.${li}.assessment.items`, [...ci, ni]); }} style={{ marginTop: 8, padding: 10, backgroundColor: '#FFF', borderRadius: 8, borderWidth: 1, borderColor: '#1976D2', alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 6 }}><Ionicons name="add-circle-outline" size={16} color="#1976D2" /><Text style={{ color: '#1976D2', fontWeight: '700', fontSize: 12 }}>Add Item</Text></TouchableOpacity>
-                        </View>
+            
+                        <View style={{ marginTop: 12 }}><Text style={styles.sectionLabel}>Discussion</Text><TextInput style={[styles.textAreaBox, { minHeight: 300 }]} placeholder="AI content..." value={l.discussion || ''} onChangeText={v => updateStructureField(`modules.${mi}.lessons.${li}.discussion`, v)} multiline /></View>
+                        <View style={{ marginTop: 12 }}><Text style={styles.sectionLabel}>Activity</Text><TextInput style={[styles.textAreaBox, { minHeight: 300 }]} placeholder="Scenario..." value={l.activity || ''} onChangeText={v => updateStructureField(`modules.${mi}.lessons.${li}.activity`, v)} multiline /></View>
                       </View>
                     ))}
-                    <TouchableOpacity onPress={() => { const nl = { id: `l-${Date.now()}`, title: '', description: '', discussion: '', activity: '', assessment: { instructions: '', items: [] }, estimatedHours: 2 }; updateStructureField(`modules.${mi}.lessons`, [...(mod.lessons || []), nl]); }} style={{ marginTop: 8, padding: 12, backgroundColor: '#FFF', borderRadius: 8, borderWidth: 1, borderColor: '#1976D2', alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8 }}><Ionicons name="add-circle-outline" size={20} color="#1976D2" /><Text style={{ color: '#1976D2', fontWeight: '700' }}>Add Lesson</Text></TouchableOpacity>
+                    <TouchableOpacity onPress={() => { const nl = { id: `l-${Date.now()}`, title: '', description: '', discussion: '', activity: '', estimatedHours: 2 }; updateStructureField(`modules.${mi}.lessons`, [...(mod.lessons || []), nl]); }} style={{ marginTop: 8, padding: 12, backgroundColor: '#FFF', borderRadius: 8, borderWidth: 1, borderColor: '#1976D2', alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8 }}><Ionicons name="add-circle-outline" size={20} color="#1976D2" /><Text style={{ color: '#1976D2', fontWeight: '700' }}>Add Lesson</Text></TouchableOpacity>
                   </View>
                 </View>
               ))}
-              <TouchableOpacity onPress={() => { const nm = { moduleNumber: (generatedStructure.modules?.length || 0) + 1, title: '', description: '', weeklySchedule: '', lessons: [] }; updateStructureField('modules', [...(generatedStructure.modules || []), nm]); }} style={{ padding: 16, backgroundColor: '#FFF', borderRadius: 12, borderWidth: 2, borderColor: '#D32F2F', alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8, marginBottom: 20 }}><Ionicons name="add-circle-outline" size={24} color="#D32F2F" /><Text style={{ color: '#D32F2F', fontWeight: '800', fontSize: 16 }}>Add Module</Text></TouchableOpacity>
             </ScrollView>
             <View style={styles.buttonRow}><TouchableOpacity style={styles.secondaryButton} onPress={() => setShowStructurePreviewModal(false)} disabled={isGeneratingStructure}><Text style={styles.secondaryButtonText}>Cancel</Text></TouchableOpacity><TouchableOpacity style={styles.primaryButton} onPress={handleApproveStructure} disabled={isGeneratingStructure}>{isGeneratingStructure ? <ActivityIndicator size="small" color="#FFF" /> : <Text style={styles.primaryButtonText}>Approve & Save</Text>}</TouchableOpacity></View>
           </View>
@@ -3126,7 +3006,6 @@ const handleOpenLessonDetail = async (lesson: any) => {
       </Modal>
     );
   };
-
   // ─── Submissions sub-view ─────────────────────────────────────────────────
   if (showSubmissions) {
     return (
@@ -3178,7 +3057,6 @@ const handleOpenLessonDetail = async (lesson: any) => {
       </>
     );
   }
-
   // ─── Main render ─────────────────────────────────────────────────────────
   return (
     <View style={styles.container}>
@@ -3318,7 +3196,6 @@ const handleOpenLessonDetail = async (lesson: any) => {
             </View>
           </View>
         </View>
-
         {/* ── Tabs ─ */}
         <View style={styles.tabContainer}>
           <TouchableOpacity
@@ -3352,7 +3229,6 @@ const handleOpenLessonDetail = async (lesson: any) => {
             </Text>
           </TouchableOpacity>
         </View>
-
         {activeTab === 'Materials' ? (
           <TeacherMaterialSection
             materials={materials}
@@ -3396,7 +3272,6 @@ const handleOpenLessonDetail = async (lesson: any) => {
                       </Text>
                     </View>
                   </View>
-                  
                   {/* Generating State Indicator */}
                   {currentSyllabus.status === 'generating' && (
                     <View style={{ marginTop: 12, padding: 12, backgroundColor: '#FFF8E1', borderRadius: 8, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
@@ -3404,7 +3279,6 @@ const handleOpenLessonDetail = async (lesson: any) => {
                       <Text style={{ color: '#F57C00', fontWeight: '600', fontSize: 13 }}>AI is analyzing your syllabus...</Text>
                     </View>
                   )}
-
                   <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 12 }}>
                     <TouchableOpacity onPress={handleViewSyllabus} style={{ backgroundColor: '#E3F2FD', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8 }}>
                       <Text style={{ color: '#1565C0', fontWeight: '700', fontSize: 12 }}>View</Text>
@@ -3415,80 +3289,89 @@ const handleOpenLessonDetail = async (lesson: any) => {
                 </View>
               )}
             </View>
-
             {/* ACCORDION MODULES LIST */}
-            {modules.length === 0 ? (
-              <Text style={{ textAlign: 'center', color: '#888', marginTop: 40 }}>No modules generated yet.</Text>
-            ) : (
-              <>
-                {modules.map((mod: any) => {
-                  const isExpanded = expandedModules[mod.moduleNumber] || false;
-                  const totalHours = mod.estimatedHours ||
-                    (mod.lessons?.reduce((sum: number, l: any) => sum + (l.estimatedHours || 0), 0) || 0);
-                  return (
-                    <View key={mod.id} style={{ backgroundColor: '#FFF', borderRadius: 12, marginBottom: 16, borderWidth: 1, borderColor: '#EEE', overflow: 'hidden' }}>
-                      <TouchableOpacity
-                        onPress={() => setExpandedModules(p => ({ ...p, [mod.moduleNumber]: !isExpanded }))}
-                        style={{ padding: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: isExpanded ? '#FFF5F5' : '#FFF' }}
-                      >
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 }}>
-                          <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: '#D32F2F', alignItems: 'center', justifyContent: 'center' }}>
-                            <Ionicons name="layers-outline" size={20} color="#FFF" />
-                          </View>
-                          <View style={{ flex: 1 }}>
-                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                              <Text style={{ fontSize: 16, fontWeight: '800', color: '#111' }}>
-                                Module {mod.moduleNumber}: {cleanModuleTitle(mod.title, mod.moduleNumber)}
-                              </Text>
-                            </View>
-                            <Text style={{ fontSize: 12, color: '#666', marginTop: 2 }}>{mod.description?.substring(0, 60)}...</Text>
-                          </View>
-                        </View>
-                        <Ionicons name={isExpanded ? 'chevron-up' : 'chevron-down'} size={24} color="#D32F2F" />
-                      </TouchableOpacity>
-                      {isExpanded && (
-                        <View style={{ padding: 16, borderTopWidth: 1, borderTopColor: '#EEE', backgroundColor: '#FAFAFA' }}>
-                          {mod.lessons && mod.lessons.length > 0 ? (
-                            mod.lessons.map((lesson: any, li: number) => (
-                              <TouchableOpacity
-                                key={lesson.id || li}
-                                onPress={() => handleOpenLessonDetail(lesson)}
-                                style={{ backgroundColor: '#FFF', borderRadius: 8, padding: 12, marginBottom: 8, borderWidth: 1, borderColor: '#DDD', borderLeftWidth: 3, borderLeftColor: '#1976D2' }}
-                              >
-                                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                                  <Text style={{ fontSize: 14, fontWeight: '700', color: '#1976D2', marginBottom: 4 }}>
-                                    Lesson {li + 1}: {lesson.title}
-                                  </Text>
-                                  <Ionicons name="chevron-forward" size={16} color="#999" />
-                                </View>
-                                <Text style={{ fontSize: 12, color: '#555', lineHeight: 18 }}>{lesson.description}</Text>
-                              </TouchableOpacity>
-                            ))
-                          ) : (
-                            <Text style={{ textAlign: 'center', color: '#999', padding: 12 }}>No lessons added yet.</Text>
-                          )}
-                          <TouchableOpacity
-                            onPress={() => { setSelectedModuleForLesson(mod); setShowManualLessonModal(true); }}
-                            style={{ marginTop: 8, padding: 10, backgroundColor: '#FFF', borderRadius: 8, borderWidth: 1, borderColor: '#1976D2', alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 6 }}
-                          >
-                            <Ionicons name="add-circle-outline" size={16} color="#1976D2" />
-                            <Text style={{ color: '#1976D2', fontWeight: '700', fontSize: 12 }}>Add Lesson (Manual)</Text>
-                          </TouchableOpacity>
-                          <TouchableOpacity
-                            onPress={() => handleOpenNextLessonModal(mod)}
-                            style={{ marginTop: 8, padding: 16, backgroundColor: '#E3F2FD', borderRadius: 12, borderWidth: 1, borderColor: '#1976D2', alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8 }}
-                          >
-                            <Ionicons name="sparkles-outline" size={24} color="#1976D2" />
-                            <Text style={{ color: '#1976D2', fontWeight: '800', fontSize: 16 }}>Generate Next Lesson</Text>
-                          </TouchableOpacity>
-                        </View>
-                      )}
-                    </View>
+{modules.length === 0 ? (
+  <Text style={{ textAlign: 'center', color: '#888', marginTop: 40 }}>No modules generated yet.</Text>
+) : (
+  <>
+    {modules.map((mod: any) => {
+      const isExpanded = expandedModules[mod.moduleNumber] || false;
+      const totalHours = mod.estimatedHours ||
+        (mod.lessons?.reduce((sum: number, l: any) => sum + (l.estimatedHours || 0), 0) || 0);
+      return (
+        <View key={mod.id} style={{ backgroundColor: '#FFF', borderRadius: 12, marginBottom: 16, borderWidth: 1, borderColor: '#EEE', overflow: 'hidden' }}>
+          <TouchableOpacity
+            onPress={() => setExpandedModules(p => ({ ...p, [mod.moduleNumber]: !isExpanded }))}
+            style={{ padding: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: isExpanded ? '#FFF5F5' : '#FFF' }}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 }}>
+              <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: '#D32F2F', alignItems: 'center', justifyContent: 'center' }}>
+                <Ionicons name="layers-outline" size={20} color="#FFF" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <Text style={{ fontSize: 16, fontWeight: '800', color: '#111' }}>
+                    Module {mod.moduleNumber}: {cleanModuleTitle(mod.title, mod.moduleNumber)}
+                  </Text>
+                </View>
+              
+              </View>
+            </View>
+            <Ionicons name={isExpanded ? 'chevron-up' : 'chevron-down'} size={24} color="#D32F2F" />
+          </TouchableOpacity>
+          
+          {isExpanded && (
+            <View style={{ padding: 16, borderTopWidth: 1, borderTopColor: '#EEE', backgroundColor: '#FAFAFA' }}>
+              {mod.lessons && mod.lessons.length > 0 ? (
+                (() => {
+                  // ✅ SORT LESSONS BY LESSON NUMBER BEFORE RENDERING
+                  const sortedLessons = [...mod.lessons].sort((a: any, b: any) => 
+                    (Number(a.lessonNumber) || 0) - (Number(b.lessonNumber) || 0)
                   );
-                })}
-              </>
-            )}
 
+                  return sortedLessons.map((lesson: any, li: number) => (
+                    <TouchableOpacity
+                      key={lesson.id || li}
+                      onPress={() => handleOpenLessonDetail(lesson)}
+                      style={{ backgroundColor: '#FFF', borderRadius: 8, padding: 12, marginBottom: 8, borderWidth: 1, borderColor: '#DDD', borderLeftWidth: 3, borderLeftColor: '#1976D2' }}
+                    >
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                        {/* ✅ USE ACTUAL LESSON NUMBER FROM DB INSTEAD OF ARRAY INDEX */}
+                        <Text style={{ fontSize: 14, fontWeight: '700', color: '#1976D2', marginBottom: 4 }}>
+                          Lesson {lesson.lessonNumber || (li + 1)}: {lesson.title}
+                        </Text>
+                        <Ionicons name="chevron-forward" size={16} color="#999" />
+                      </View>
+                      <Text style={{ fontSize: 12, color: '#555', lineHeight: 18 }}>{lesson.description}</Text>
+                    </TouchableOpacity>
+                  ));
+                })()
+              ) : (
+                <Text style={{ textAlign: 'center', color: '#999', padding: 12 }}>No lessons added yet.</Text>
+              )}
+              
+              {/* Add Lesson & Generate buttons remain unchanged below */}
+              <TouchableOpacity
+                onPress={() => { setSelectedModuleForLesson(mod); setShowManualLessonModal(true); }}
+                style={{ marginTop: 8, padding: 10, backgroundColor: '#FFF', borderRadius: 8, borderWidth: 1, borderColor: '#1976D2', alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 6 }}
+              >
+                <Ionicons name="add-circle-outline" size={16} color="#1976D2" />
+                <Text style={{ color: '#1976D2', fontWeight: '700', fontSize: 12 }}>Add Lesson (Manual)</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => handleOpenNextLessonModal(mod)}
+                style={{ marginTop: 8, padding: 16, backgroundColor: '#E3F2FD', borderRadius: 12, borderWidth: 1, borderColor: '#1976D2', alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8 }}
+              >
+                <Ionicons name="sparkles-outline" size={24} color="#1976D2" />
+                <Text style={{ color: '#1976D2', fontWeight: '800', fontSize: 16 }}>Generate Next Lesson</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+        </View>
+      );
+    })}
+  </>
+)}
             {/* ✅ MOVED OUTSIDE THE TERNARY: Always visible when syllabus exists */}
             {currentSyllabus && (
               <>
@@ -3523,7 +3406,6 @@ const handleOpenLessonDetail = async (lesson: any) => {
           </View>
         )}
       </ScrollView>
-
       {/* ══════════════════════════════════════════════════════════════════════
 FULLSCREEN MATERIAL VIEWER MODAL (Teacher Side — mirrors student)
 ════════════════════════════════════════════════════════════════════════ */}
@@ -3600,7 +3482,6 @@ FULLSCREEN MATERIAL VIEWER MODAL (Teacher Side — mirrors student)
               )}
             </View>
           </View>
-
           {viewerShouldUseInline && viewerUrl ? (
             <InlineMaterialViewer viewerUrl={viewerUrl} height={height - 62} />
           ) : viewerIsVideo && viewerFileUrl ? (
@@ -3646,7 +3527,6 @@ FULLSCREEN MATERIAL VIEWER MODAL (Teacher Side — mirrors student)
           )}
         </SafeAreaView>
       </Modal>
-
       {/* ══════════════════════════════════════════════════════════════════════
 EDIT MATERIAL MODAL
 ════════════════════════════════════════════════════════════════════════ */}
@@ -3785,7 +3665,6 @@ EDIT MATERIAL MODAL
           </View>
         </View>
       </Modal>
-
       {/* ══════════════════════════════════════════════════════════════════════
 CREATE MODAL
 ════════════════════════════════════════════════════════════════════════ */}
@@ -3868,7 +3747,6 @@ CREATE MODAL
           </View>
         </View>
       </Modal>
-
       {/* ══════════════════════════════════════════════════════════════════════
 DATE TIME MODAL
 ════════════════════════════════════════════════════════════════════════ */}
@@ -4041,7 +3919,6 @@ DATE TIME MODAL
           </View>
         </View>
       </Modal>
-
       {/* ══════════════════════════════════════════════════════════════════════
 GAME TYPE MODAL
 ════════════════════════════════════════════════════════════════════════ */}
@@ -4115,7 +3992,6 @@ GAME TYPE MODAL
           </Pressable>
         </Pressable>
       </Modal>
-
       {/* ══════════════════════════════════════════════════════════════════════
 CLASS MODAL
 ════════════════════════════════════════════════════════════════════════ */}
@@ -4176,7 +4052,6 @@ CLASS MODAL
           </Pressable>
         </Pressable>
       </Modal>
-
       {/* ══════════════════════════════════════════════════════════════════════
 GENERATED QUESTIONS PREVIEW MODAL
 ════════════════════════════════════════════════════════════════════════ */}
@@ -4283,7 +4158,6 @@ GENERATED QUESTIONS PREVIEW MODAL
           </View>
         </View>
       </Modal>
-
       {/* ══════════════════════════════════════════════════════════════════════
 AI PREVIEW & APPROVAL MODAL
 ════════════════════════════════════════════════════════════════════════ */}
@@ -4318,7 +4192,6 @@ AI PREVIEW & APPROVAL MODAL
           </View>
         </View>
       </Modal>
-
       {/* ══════════════════════════════════════════════════════════════════════
 SYLLABUS VIEWER MODAL
 ════════════════════════════════════════════════════════════════════════ */}
@@ -4335,165 +4208,117 @@ SYLLABUS VIEWER MODAL
           {syllabusViewerUrl && <InlineMaterialViewer viewerUrl={syllabusViewerUrl} height={height - 62} />}
         </SafeAreaView>
       </Modal>
-
       {/* ══════════════════════════════════════════════════════════════════════
 LESSON DETAIL MODAL (UPDATED WITH FILE PREVIEW TRIGGER)
 ════════════════════════════════════════════════════════════════════════ */}
-<Modal
-  visible={lessonDetailModalVisible}
-  transparent
-  animationType="slide"
-  onRequestClose={() => setLessonDetailModalVisible(false)}
->
-  <View style={styles.modalOverlayCenter}>
-    <View style={[styles.modalCardElevated, { width: isMobile ? Math.min(width - 28, 400) : 800, maxHeight: height * 0.9 }]}>
-      <View style={styles.createHeaderRow}>
-        <View style={styles.modalHeaderTextWrap}>
-          <Text style={styles.createTitle}>{selectedLesson?.title || 'Lesson Details'}</Text>
-          <Text style={styles.modalSubtitle}>Module Content & Assessments</Text>
-        </View>
-        <TouchableOpacity onPress={() => setLessonDetailModalVisible(false)}>
-          <Ionicons name="close" size={24} color="#111" />
-        </TouchableOpacity>
-      </View>
-      
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 20 }}>
-        {isLessonLoading ? (
-          <ActivityIndicator size="large" color="#D32F2F" style={{ marginVertical: 20 }} />
-        ) : selectedLesson ? (
-          <>
-            {/* ✅ NEW: File Preview Trigger Container - ONLY OPENS ON CLICK */}
-            {selectedLesson.type === 'manual_file' && selectedLesson.fileUrl ? (
-              <TouchableOpacity
-                onPress={() => {
-                  // Map lesson data to Material format
-                  const materialViewData: Material = {
-                    id: selectedLesson.id,
-                    title: selectedLesson.title,
-                    week: '',
-                    posted: new Date().toLocaleString(),
-                    content: selectedLesson.description || '',
-                    fileName: selectedLesson.fileName,
-                    fileUri: selectedLesson.fileUrl, // ✅ Signed URL from backend
-                    fileType: selectedLesson.fileType,
-                    storagePath: selectedLesson.storagePath,
-                    bucketPath: selectedLesson.bucketPath,
-                    pdfUrl: selectedLesson.pdfUrl,
-                    pdfStoragePath: selectedLesson.pdfStoragePath,
-                  };
-                  
-                  // Close detail modal FIRST
-                  setLessonDetailModalVisible(false);
-                  
-                  // THEN open the Material Viewer
-                  setViewerMaterial(materialViewData);
-                }}
-                style={{
-                  backgroundColor: '#FFF5F5',
-                  borderWidth: 2,
-                  borderColor: '#D32F2F',
-                  borderStyle: 'dashed',
-                  borderRadius: 16,
-                  padding: 24,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  marginBottom: 16,
-                  gap: 12,
-                }}
-                activeOpacity={0.8}
-              >
-                <Ionicons name="document-text-outline" size={48} color="#D32F2F" />
-                <Text style={{ fontSize: 16, fontWeight: '800', color: '#D32F2F' }}>
-                  {selectedLesson.fileName || 'View Attached File'}
-                </Text>
-                <Text style={{ fontSize: 13, color: '#666' }}>
-                  Tap to open preview • {selectedLesson.fileType?.split('/')[1]?.toUpperCase() || 'FILE'}
-                </Text>
+      <Modal
+        visible={lessonDetailModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setLessonDetailModalVisible(false)}
+      >
+        <View style={styles.modalOverlayCenter}>
+          <View style={[styles.modalCardElevated, { width: isMobile ? Math.min(width - 28, 400) : 800, maxHeight: height * 0.9 }]}>
+            <View style={styles.createHeaderRow}>
+              <View style={styles.modalHeaderTextWrap}>
+                <Text style={styles.createTitle}>{selectedLesson?.title || 'Lesson Details'}</Text>
+                <Text style={styles.modalSubtitle}>Module Content & Activities</Text>
+              </View>
+              <TouchableOpacity onPress={() => setLessonDetailModalVisible(false)}>
+                <Ionicons name="close" size={24} color="#111" />
               </TouchableOpacity>
-            ) : null}
-
-            {/* Description */}
-            <View style={{ marginBottom: 16 }}>
-              <Text style={styles.sectionLabel}>Description</Text>
-              <Text style={{ color: '#333', lineHeight: 20 }}>
-                {selectedLesson.description || 'No description available.'}
-              </Text>
             </View>
-
-            {/* Discussion Content */}
-            {selectedLesson.discussion ? (
-              <View style={{ marginBottom: 16, backgroundColor: '#F9F9F9', padding: 12, borderRadius: 8 }}>
-                <Text style={styles.sectionLabel}>Discussion / Lecture Notes</Text>
-                <Text style={{ color: '#444', lineHeight: 22 }}>
-                  {renderFormattedText(selectedLesson.discussion, { color: '#444', lineHeight: 22 })}
-                </Text>
-              </View>
-            ) : null}
-
-            {/* Activity */}
-            {selectedLesson.activity ? (
-              <View style={{ marginBottom: 16, backgroundColor: '#E3F2FD', padding: 12, borderRadius: 8 }}>
-                <Text style={[styles.sectionLabel, { color: '#1565C0' }]}>Activity / Scenario</Text>
-                <Text style={{ color: '#0D47A1', lineHeight: 22 }}>
-                  {renderFormattedText(selectedLesson.activity, { color: '#0D47A1', lineHeight: 22 })}
-                </Text>
-              </View>
-            ) : null}
-
-            {/* Assessment Items */}
-            {selectedLesson.assessment?.items && selectedLesson.assessment.items.length > 0 ? (
-              <View style={{ marginBottom: 16 }}>
-                <Text style={styles.sectionLabel}>Assessment Items ({selectedLesson.assessment.items.length})</Text>
-                {selectedLesson.assessment.items.map((item: any, idx: number) => (
-                  <View key={idx} style={{ backgroundColor: '#FFF', borderWidth: 1, borderColor: '#EEE', borderRadius: 8, padding: 10, marginBottom: 8 }}>
-                    <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                      <Text style={{ fontWeight: '700', color: '#333' }}>Item {idx + 1} ({item.type === 'multiple_choice' ? 'MCQ' : 'T/F'})</Text>
-                      <Text style={{ fontSize: 12, color: '#888' }}>Pts: {item.points || 1}</Text>
-                    </View>
-                    <Text style={{ marginTop: 6, color: '#555' }}>{item.question}</Text>
-                    {item.type === 'multiple_choice' && item.options && (
-                      <View style={{ marginTop: 6 }}>
-                        {item.options.map((opt: string, oIdx: number) => (
-                          <Text key={oIdx} style={{
-                            color: oIdx === item.correctAnswer ? '#2E7D32' : '#555',
-                            fontWeight: oIdx === item.correctAnswer ? '700' : '400',
-                            marginLeft: 8
-                          }}>
-                            {String.fromCharCode(65 + oIdx)}. {opt} {oIdx === item.correctAnswer ? '(Correct)' : ''}
-                          </Text>
-                        ))}
-                      </View>
-                    )}
-                    {item.explanation && (
-                      <Text style={{ marginTop: 6, fontSize: 12, color: '#666', fontStyle: 'italic' }}>
-                        Explanation: {item.explanation}
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 20 }}>
+              {isLessonLoading ? (
+                <ActivityIndicator size="large" color="#D32F2F" style={{ marginVertical: 20 }} />
+              ) : selectedLesson ? (
+                <>
+                  {/* ✅ NEW: File Preview Trigger Container - ONLY OPENS ON CLICK */}
+                  {selectedLesson.type === 'manual_file' && selectedLesson.fileUrl ? (
+                    <TouchableOpacity
+                      onPress={() => {
+                        // Map lesson data to Material format
+                        const materialViewData: Material = {
+                          id: selectedLesson.id,
+                          title: selectedLesson.title,
+                          week: '',
+                          posted: new Date().toLocaleString(),
+                          content: selectedLesson.description || '',
+                          fileName: selectedLesson.fileName,
+                          fileUri: selectedLesson.fileUrl, // ✅ Signed URL from backend
+                          fileType: selectedLesson.fileType,
+                          storagePath: selectedLesson.storagePath,
+                          bucketPath: selectedLesson.bucketPath,
+                          pdfUrl: selectedLesson.pdfUrl,
+                          pdfStoragePath: selectedLesson.pdfStoragePath,
+                        };
+                        // Close detail modal FIRST
+                        setLessonDetailModalVisible(false);
+                        // THEN open the Material Viewer
+                        setViewerMaterial(materialViewData);
+                      }}
+                      style={{
+                        backgroundColor: '#FFF5F5',
+                        borderWidth: 2,
+                        borderColor: '#D32F2F',
+                        borderStyle: 'dashed',
+                        borderRadius: 16,
+                        padding: 24,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        marginBottom: 16,
+                        gap: 12,
+                      }}
+                      activeOpacity={0.8}
+                    >
+                      <Ionicons name="document-text-outline" size={48} color="#D32F2F" />
+                      <Text style={{ fontSize: 16, fontWeight: '800', color: '#D32F2F' }}>
+                        {selectedLesson.fileName || 'View Attached File'}
                       </Text>
-                    )}
+                      <Text style={{ fontSize: 13, color: '#666' }}>
+                        Tap to open preview • {selectedLesson.fileType?.split('/')[1]?.toUpperCase() || 'FILE'}
+                      </Text>
+                    </TouchableOpacity>
+                  ) : null}
+                  {/* Description */}
+                  <View style={{ marginBottom: 16 }}>
+                    <Text style={styles.sectionLabel}>Description</Text>
+                    <Text style={{ color: '#333', lineHeight: 20 }}>
+                      {selectedLesson.description || 'No description available.'}
+                    </Text>
                   </View>
-                ))}
-              </View>
-            ) : null}
-
-            {/* Estimated Hours */}
-            {selectedLesson.estimatedHours && (
-              <Text style={{ fontSize: 12, color: '#888', textAlign: 'right' }}>
-                Estimated Time: {selectedLesson.estimatedHours} hours
-              </Text>
-            )}
-          </>
-        ) : (
-          <Text style={{ textAlign: 'center', color: '#888' }}>Could not load lesson details.</Text>
-        )}
-      </ScrollView>
-
-      <View style={styles.buttonRow}>
-        <TouchableOpacity style={styles.primaryButton} onPress={() => setLessonDetailModalVisible(false)}>
-          <Text style={styles.primaryButtonText}>Close</Text>
-        </TouchableOpacity>
-      </View>
-    </View>
-  </View>
-</Modal>
+                  {/* Discussion Content */}
+                  {selectedLesson.discussion ? (
+                    <View style={{ marginBottom: 16, backgroundColor: '#F9F9F9', padding: 12, borderRadius: 8 }}>
+                      <Text style={styles.sectionLabel}>Discussion / Lecture Notes</Text>
+                      <Text style={{ color: '#444', lineHeight: 22 }}>
+                        {renderFormattedText(selectedLesson.discussion, { color: '#444', lineHeight: 22 })}
+                      </Text>
+                    </View>
+                  ) : null}
+                  {/* Activity */}
+                  {selectedLesson.activity ? (
+                    <View style={{ marginBottom: 16, backgroundColor: '#E3F2FD', padding: 12, borderRadius: 8 }}>
+                      <Text style={[styles.sectionLabel, { color: '#1565C0' }]}>Activity / Scenario</Text>
+                      <Text style={{ color: '#0D47A1', lineHeight: 22 }}>
+                        {renderFormattedText(selectedLesson.activity, { color: '#0D47A1', lineHeight: 22 })}
+                      </Text>
+                    </View>
+                  ) : null}
+                  
+                </>
+              ) : (
+                <Text style={{ textAlign: 'center', color: '#888' }}>Could not load lesson details.</Text>
+              )}
+            </ScrollView>
+            <View style={styles.buttonRow}>
+              <TouchableOpacity style={styles.primaryButton} onPress={() => setLessonDetailModalVisible(false)}>
+                <Text style={styles.primaryButtonText}>Close</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
       {/* ══════════════════════════════════════════════════════════════════════
 MANUAL MODULE CREATION MODAL
 ═════════════════════════════════════════════════════════════════════════ */}
@@ -4532,11 +4357,11 @@ MANUAL MODULE CREATION MODAL
               )}
               {/* --- REST OF THE FORM --- */}
               <Text style={styles.sectionLabel}>Title</Text>
-              <TextInput style={styles.inputBox} value={newModuleTitle} onChangeText={setNewModuleTitle} placeholder="Module Title" placeholderTextColor="#999"/>
+              <TextInput style={styles.inputBox} value={newModuleTitle} onChangeText={setNewModuleTitle} placeholder="Module Title" placeholderTextColor="#999" />
               <Text style={styles.sectionLabel}>Weekly Schedule</Text>
-              <TextInput style={styles.inputBox} value={newModuleWeek} onChangeText={setNewModuleWeek} placeholder="e.g. Week 1-2" placeholderTextColor="#999"/>
+              <TextInput style={styles.inputBox} value={newModuleWeek} onChangeText={setNewModuleWeek} placeholder="e.g. Week 1-2" placeholderTextColor="#999" />
               <Text style={styles.sectionLabel}>Description</Text>
-              <TextInput style={[styles.textAreaBox, { minHeight: 80 }]} value={newModuleDesc} onChangeText={setNewModuleDesc} multiline placeholder="Brief description..." placeholderTextColor="#999"/>
+              <TextInput style={[styles.textAreaBox, { minHeight: 80 }]} value={newModuleDesc} onChangeText={setNewModuleDesc} multiline placeholder="Brief description..." placeholderTextColor="#999" />
             </ScrollView>
             <View style={styles.buttonRow}>
               <TouchableOpacity style={styles.secondaryButton} onPress={() => setShowManualModuleModal(false)}>
@@ -4559,7 +4384,6 @@ MANUAL MODULE CREATION MODAL
           </View>
         </View>
       </Modal>
-
       {/* ══════════════════════════════════════════════════════════════════════
 MANUAL LESSON CREATION MODAL
 ════════════════════════════════════════════════════════════════════════ */}
@@ -4613,12 +4437,10 @@ MANUAL LESSON CREATION MODAL
           </View>
         </View>
       </Modal>
-
       {/* ══════════════════════════════════════════════════════════════════════
 COURSE STRUCTURE PREVIEW & APPROVAL MODAL
 ════════════════════════════════════════════════════════════════════════ */}
       {renderStructurePreviewModal()}
-
       {/* ══════════════════════════════════════════════════════════════════════
 RESULT MODAL
 ════════════════════════════════════════════════════════════════════════ */}
@@ -4653,7 +4475,6 @@ RESULT MODAL
           </View>
         </View>
       </Modal>
-
       {/* ══════════════════════════════════════════════════════════════════════
 GENERATE LESSON CONTENT MODAL
 ═══════════════════════════════════════════════════════════════════════ */}
@@ -4741,10 +4562,6 @@ GENERATE LESSON CONTENT MODAL
                 <Ionicons name={genActivity ? "checkbox" : "square-outline"} size={24} color="#D32F2F" />
                 <Text style={{ marginLeft: 10, fontSize: 14 }}>Activity / Hands-on Task</Text>
               </TouchableOpacity>
-              <TouchableOpacity onPress={() => setGenAssessment(!genAssessment)} style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
-                <Ionicons name={genAssessment ? "checkbox" : "square-outline"} size={24} color="#D32F2F" />
-                <Text style={{ marginLeft: 10, fontSize: 14 }}>Assessment / Quiz Items</Text>
-              </TouchableOpacity>
               <TouchableOpacity onPress={() => setGenSummary(!genSummary)} style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
                 <Ionicons name={genSummary ? "checkbox" : "square-outline"} size={24} color="#D32F2F" />
                 <Text style={{ marginLeft: 10, fontSize: 14 }}>Summary</Text>
@@ -4769,7 +4586,6 @@ GENERATE LESSON CONTENT MODAL
           </View>
         </View>
       </Modal>
-
       {/* ══════════════════════════════════════════════════════════════════════
 GENERATE NEXT LESSON - MULTI TOPIC SELECTION MODAL
 ═══════════════════════════════════════════════════════════════════════ */}
@@ -4849,7 +4665,6 @@ GENERATE NEXT LESSON - MULTI TOPIC SELECTION MODAL
           </View>
         </View>
       </Modal>
-
       {/* ══════════════════════════════════════════════════════════════════════
 SYLLABUS UPLOAD CONFIRMATION MODAL
 ════════════════════════════════════════════════════════════════════════ */}
@@ -4862,7 +4677,6 @@ SYLLABUS UPLOAD CONFIRMATION MODAL
         <View style={styles.modalOverlayCenter}>
           <View style={[styles.modalCardElevated, { width: isMobile ? Math.min(width - 28, 330) : 360 }]}>
             <Text style={[styles.createTitle, { textAlign: 'center', marginBottom: 10 }]}>Confirm Upload</Text>
-            
             <View style={{ backgroundColor: '#F5F5F5', padding: 12, borderRadius: 8, marginBottom: 16, alignItems: 'center' }}>
               <Ionicons name="document-text-outline" size={32} color="#D32F2F" style={{ marginBottom: 8 }} />
               <Text style={{ fontSize: 14, fontWeight: '700', color: '#333', textAlign: 'center' }} numberOfLines={2}>
@@ -4874,21 +4688,19 @@ SYLLABUS UPLOAD CONFIRMATION MODAL
                 </Text>
               )}
             </View>
-
             <Text style={{ fontSize: 13, color: '#555', textAlign: 'center', lineHeight: 20, marginBottom: 20 }}>
-              Please verify that this is the correct syllabus file. 
+              Please verify that this is the correct syllabus file.
               <Text style={{ fontWeight: '700', color: '#D32F2F' }}> Once uploaded, it cannot be replaced or deleted.</Text>
             </Text>
-
             <View style={{ flexDirection: 'row', gap: 10 }}>
-              <TouchableOpacity 
-                style={styles.secondaryButton} 
+              <TouchableOpacity
+                style={styles.secondaryButton}
                 onPress={() => setPendingSyllabusFile(null)}
               >
                 <Text style={styles.secondaryButtonText}>Cancel</Text>
               </TouchableOpacity>
-              <TouchableOpacity 
-                style={styles.primaryButton} 
+              <TouchableOpacity
+                style={styles.primaryButton}
                 onPress={confirmAndUploadSyllabus}
                 disabled={isUploadingSyllabus}
               >
@@ -4902,7 +4714,106 @@ SYLLABUS UPLOAD CONFIRMATION MODAL
           </View>
         </View>
       </Modal>
-
+      {/* ══════════════════════════════════════════════════════════════════════
+LESSON EDIT MODAL (Direct Edit - No Preview Toggle)
+══════════════════════════════════════════════════════════════════════ */}
+      <Modal
+        visible={showLessonPreviewModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowLessonPreviewModal(false)}
+      >
+        <View style={styles.modalOverlayCenter}>
+          <View style={[styles.modalCardElevated, { width: isMobile ? Math.min(width - 28, 400) : 800, maxHeight: height * 0.9 }]}>
+            <View style={styles.createHeaderRow}>
+              <View style={styles.modalHeaderTextWrap}>
+                <Text style={styles.createTitle}>Edit Generated Lessons</Text>
+                <Text style={styles.modalSubtitle}>Review and modify content before saving.</Text>
+              </View>
+              <TouchableOpacity onPress={() => setShowLessonPreviewModal(false)}>
+                <Ionicons name="close" size={24} color="#111" />
+              </TouchableOpacity>
+            </View>
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 20 }}>
+              {pendingGeneratedLessons.map((lesson, index) => (
+                <View key={lesson.id || index} style={{ marginBottom: 24, borderBottomWidth: 1, borderBottomColor: '#EEE', paddingBottom: 20 }}>
+                  {/* Lesson Header (No toggle button) */}
+                  <Text style={{ fontSize: 16, fontWeight: '800', color: '#D32F2F', marginBottom: 12 }}>
+                    Lesson {index + 1}: {lesson.title}
+                  </Text>
+                  {/* Always Show Edit Fields */}
+                  <View style={{ gap: 12 }}>
+                    <Text style={styles.sectionLabel}>Title</Text>
+                    <TextInput
+                      style={styles.inputBox}
+                      value={lesson.title}
+                      onChangeText={(text) => {
+                        const updated = [...pendingGeneratedLessons];
+                        updated[index] = { ...updated[index], title: text };
+                        setPendingGeneratedLessons(updated);
+                      }}
+                    />
+                    <Text style={styles.sectionLabel}>Description</Text>
+                    <TextInput
+                      style={[styles.textAreaBox, { minHeight: 60 }]}
+                      value={lesson.description || ''}
+                      onChangeText={(text) => {
+                        const updated = [...pendingGeneratedLessons];
+                        updated[index] = { ...updated[index], description: text };
+                        setPendingGeneratedLessons(updated);
+                      }}
+                      multiline
+                    />
+                    <Text style={styles.sectionLabel}>Discussion</Text>
+                    <TextInput
+                      style={[styles.textAreaBox, { minHeight: 300 }]}
+                      value={lesson.discussion || ''}
+                      onChangeText={(text) => {
+                        const updated = [...pendingGeneratedLessons];
+                        updated[index] = { ...updated[index], discussion: text };
+                        setPendingGeneratedLessons(updated);
+                      }}
+                      multiline
+                      textAlignVertical="top"
+                    />
+                    <Text style={styles.sectionLabel}>Activity</Text>
+                    <TextInput
+                      style={[styles.textAreaBox, { minHeight: 300 }]}
+                      value={lesson.activity || ''}
+                      onChangeText={(text) => {
+                        const updated = [...pendingGeneratedLessons];
+                        updated[index] = { ...updated[index], activity: text };
+                        setPendingGeneratedLessons(updated);
+                      }}
+                      multiline
+                      textAlignVertical="top"
+                    />
+                  </View>
+                </View>
+              ))}
+            </ScrollView>
+            <View style={styles.buttonRow}>
+              <TouchableOpacity
+                style={styles.secondaryButton}
+                onPress={() => setShowLessonPreviewModal(false)}
+              >
+                <Text style={styles.secondaryButtonText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.primaryButton, isSavingGeneratedLessons && styles.disabledButton]}
+                onPress={handleSavePreviewedLessons}
+                disabled={isSavingGeneratedLessons}
+              >
+                {isSavingGeneratedLessons ? (
+                  <ActivityIndicator size="small" color="#FFF" />
+                ) : (
+                  <Text style={styles.primaryButtonText}>Save Lesson</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
       {/* ── Saving overlay ── */}
       {isSaving && (
         <View style={styles.savingOverlay} pointerEvents="auto">
@@ -4920,9 +4831,7 @@ SYLLABUS UPLOAD CONFIRMATION MODAL
     </View>
   );
 };
-
 export default TeacherCourseDetail2;
-
 // ─── Styles ───────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#ffffff' },

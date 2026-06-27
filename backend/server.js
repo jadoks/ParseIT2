@@ -14409,7 +14409,8 @@ app.get("/course-modules/:classId", async (req, res) => {
 
 // Add this route to your backend index.js, preferably near other course-module routes
 
-app.get("/course-lessons/:lessonId", requireAuth, async (req, res) => {
+// CHANGE THIS LINE: Remove 'requireAuth' from the parameters
+app.get("/course-lessons/:lessonId", async (req, res) => {
   try {
     const { lessonId } = req.params;
     
@@ -14422,14 +14423,22 @@ app.get("/course-lessons/:lessonId", requireAuth, async (req, res) => {
 
     const lessonData = lessonDoc.data();
     
-    // Optional: If you store assessments/activities in subcollections, fetch them here.
-    // For now, we assume they are stored directly in the lesson document as per your 'approve' logic.
+    // ✅ FIX: Generate fresh signed URL if file exists
+    let freshFileUrl = lessonData.fileUrl;
+    if (lessonData.storagePath) {
+        try {
+            freshFileUrl = await createReadSignedUrlIfExists(lessonData.storagePath);
+        } catch (e) {
+            console.warn("Failed to refresh lesson file URL:", e);
+        }
+    }
     
     res.json({
       success: true,
       data: {
         id: lessonDoc.id,
-        ...lessonData
+        ...lessonData,
+        fileUrl: freshFileUrl // Return the fresh URL
       }
     });
 
@@ -14795,39 +14804,43 @@ async function extractSyllabusStructure(buffer, mimeType, fileName) {
   });
 
   const prompt = `
-You are an expert Academic Syllabus Parser.
-Your task is to extract ONLY the structural hierarchy from the uploaded syllabus file.
-CRITICAL RULES:
-1. EXTRACT: Course Title, Module Titles, Weekly Schedule (e.g., "Week 1-2", "Wk 3"), Topics, and Subtopics.
-2. The "weeklySchedule" field must contain the EXACT text representing the week range from the syllabus (e.g., "Week 1-2", "Weeks 3-4"). Do NOT generate "Week 1" if the syllabus says "Weeks 1-2".
-3. IGNORE: Discussions, Activities, Assessments, Quizzes, Reflections, Summaries, Faculty Info, Policies.
-4. DO NOT generate any lesson content.
-Return ONLY valid JSON in this exact format:
-{
+  You are an expert Academic Syllabus Parser.
+  Your task is to extract ONLY the structural hierarchy from the uploaded syllabus file.
+
+  CRITICAL RULES FOR MAPPING:
+  1. "moduleTitle": Must be the MAIN TOPIC or SUBJECT NAME for that period (e.g., "Introduction to Networking", "Physical Layer"). DO NOT use "Week 1" or "Week 1-2" as the title.
+  2. "weeklySchedule": Must be the exact time frame (e.g., "Week 1", "Weeks 1-2", "Aug 20-24").
+  3. "topics": Extract the specific sub-topics listed under that module.
+
+  IGNORE: Discussions, Activities, Assessments, Quizzes, Reflections, Summaries, Faculty Info, Policies.
+  DO NOT generate any lesson content.
+
+  Return ONLY valid JSON in this exact format:
+  {
   "courseInformation": {
-    "title": "String",
-    "code": "String",
-    "units": Number,
-    "semester": "String",
-    "totalHours": Number
+  "title": "String",
+  "code": "String",
+  "units": Number,
+  "semester": "String",
+  "totalHours": Number
   },
   "structure": {
-    "modules": [
-      {
-        "moduleNumber": 1,
-        "moduleTitle": "Module Title from File",
-        "weeklySchedule": "Exact Week Range from File",
-        "topics": [
-          {
-            "title": "Topic Title",
-            "subtopics": ["Subtopic 1", "Subtopic 2"]
-          }
-        ]
-      }
-    ]
+  "modules": [
+  {
+  "moduleNumber": 1,
+  "moduleTitle": "The Main Topic Name (NOT the Week Number)", 
+  "weeklySchedule": "Exact Week Range from File",
+  "topics": [
+  {
+  "title": "Subtopic 1",
+  "subtopics": ["Detail A", "Detail B"]
   }
-}
-`;
+  ]
+  }
+  ]
+  }
+  }
+  `;
 
   const fileBase64 = buffer.toString("base64");
   let result;
@@ -14875,15 +14888,14 @@ Return ONLY valid JSON in this exact format:
   return parsed;
 }
 
-// Replace the existing /course-syllabus/generate-next-lessons route with this updated version
 app.post("/course-syllabus/generate-next-lessons", requireAuth, async (req, res) => {
   try {
     const { classId, moduleNumber, topicTitles } = req.body;
-    if (!classId || !moduleNumber || !Array.isArray(topicTitles) || topicTitles.length === 0) {
-      return res.status(400).json({ error: "classId, moduleNumber, and topicTitles are required." });
+    if (!classId || !moduleNumber || !topicTitles?.length) {
+      return res.status(400).json({ error: "Missing required fields." });
     }
 
-    // 1. Fetch the Module Document ID from courseModules
+    // 1. Find the target module in DB to get its ID
     const moduleSnap = await db.collection("courseModules")
       .where("classId", "==", classId)
       .where("moduleNumber", "==", moduleNumber)
@@ -14891,108 +14903,103 @@ app.post("/course-syllabus/generate-next-lessons", requireAuth, async (req, res)
       .get();
 
     if (moduleSnap.empty) {
-      return res.status(404).json({ error: "Module not found in courseModules." });
+      return res.status(404).json({ error: "Module not found." });
     }
-    
-    const moduleDoc = moduleSnap.docs[0];
-    const moduleId = moduleDoc.id;
-    const currentModuleData = moduleDoc.data();
-    const currentLessons = currentModuleData.lessons || [];
 
-    // 2. Fetch Syllabus Structure to get Topic Details
-    let syllabusModules = [];
+    const moduleId = moduleSnap.docs[0].id;
+
+    // ✅ STEP 1: Fetch TRUE current max lesson number from DB
+    let nextLessonNumber = 1;
+    const lessonsSnap = await db.collection("courseLessons")
+      .where("moduleId", "==", moduleId)
+      .orderBy("lessonNumber", "desc")
+      .limit(1)
+      .get();
+
+    if (!lessonsSnap.empty) {
+      nextLessonNumber = (lessonsSnap.docs[0].data().lessonNumber || 0) + 1;
+    }
+
+    console.log(`Generating next lessons for Module ${moduleNumber}. Starting at Lesson #${nextLessonNumber}`);
+
+    // 2. Get syllabus structure for context
     const syllabusSnap = await db.collection("courseSyllabi")
       .where("classId", "==", classId)
       .where("isCurrent", "==", true)
       .limit(1)
       .get();
-      
-    if (syllabusSnap.empty) return res.status(404).json({ error: "No current syllabus found." });
-    
-    const syllabusData = syllabusSnap.docs[0].data();
-    syllabusModules = syllabusData.structure?.modules || [];
-    const targetSyllabusModule = syllabusModules.find(m => m.moduleNumber === moduleNumber);
-    
-    if (!targetSyllabusModule) return res.status(404).json({ error: "Module not found in syllabus structure." });
 
-    // 3. Generate content for EACH selected topic
-    const newLessonObjectsForModule = []; // For updating the module's lessons array
-    const newLessonDocsForCollection = []; // For creating individual docs in courseLessons
-    
+    let targetSyllabusModule = null;
+    if (!syllabusSnap.empty) {
+      const modules = syllabusSnap.docs[0].data().structure?.modules || [];
+      targetSyllabusModule = modules.find(m => m.moduleNumber === moduleNumber);
+    }
+
+    if (!targetSyllabusModule) {
+      return res.status(404).json({ error: "Syllabus module not found." });
+    }
+
+    // 3. Generate content for each selected topic WITH correct starting number
+    const newLessonObjectsForPreview = [];
+    let currentLessonNum = nextLessonNumber;
+
     for (const topicTitle of topicTitles) {
-      // Check if lesson already exists locally to avoid duplicates
-      const alreadyExists = currentLessons.some(l => l.title.toLowerCase().trim() === topicTitle.toLowerCase().trim());
-      if (alreadyExists) continue;
+      // Skip if already exists (your existing logic)
+      const existingCheck = await db.collection("courseLessons")
+        .where("moduleId", "==", moduleId)
+        .where("title", "==", topicTitle)
+        .limit(1)
+        .get();
+      
+      if (!existingCheck.empty) {
+        console.log(`Skipping topic "${topicTitle}" because it already exists.`);
+        continue;
+      }
 
       try {
-        console.log(`Generating next lesson for Module ${moduleNumber}, Topic: "${topicTitle}"...`);
+        console.log(`Generating next lesson for Module ${moduleNumber}, Topic: "${topicTitle}", Lesson #: ${currentLessonNum}...`);
         
-        // Use your existing helper
-        const content = await generateTopicContent(targetSyllabusModule, moduleNumber, topicTitle);
-        
-        if (content.modules && content.modules.length > 0 && content.modules[0].lessons) {
-          const generatedLesson = content.modules[0].lessons[0]; // Assuming 1 lesson per topic generation
-          
-          if (generatedLesson) {
-            // Create a unique ID for this lesson
-            const lessonId = `lesson-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-            
-            // A. Prepare object for 'courseLessons' collection (Uses FieldValue for DB accuracy)
-            const lessonDocData = {
-              ...generatedLesson,
-              id: lessonId,
-              classId,
-              moduleId,
-              createdAt: admin.firestore.FieldValue.serverTimestamp(),
-              updatedAt: admin.firestore.FieldValue.serverTimestamp()
-            };
-            newLessonDocsForCollection.push({ id: lessonId, data: lessonDocData });
+        // ✅ STEP 2: PASS currentLessonNum as the 4th parameter
+        const content = await generateTopicContent(
+          targetSyllabusModule, 
+          moduleNumber, 
+          topicTitle, 
+          currentLessonNum // <-- THIS WAS MISSING
+        );
 
-            // B. Prepare object for 'courseModules' lessons array (Uses JS Date to avoid Firestore error)
-            const lessonArrayData = {
-              ...generatedLesson,
-              id: lessonId,
-              classId,
-              moduleId,
-              createdAt: new Date(), // ✅ FIX: Use standard JS Date instead of FieldValue
-              updatedAt: new Date()   // ✅ FIX: Use standard JS Date instead of FieldValue
-            };
-            newLessonObjectsForModule.push(lessonArrayData);
+        if (content.modules && content.modules.length > 0 && content.modules[0].lessons) {
+          const generatedLesson = content.modules[0].lessons[0];
+          if (generatedLesson) {
+            // Ensure the lesson number is explicitly set on the preview object
+            generatedLesson.lessonNumber = currentLessonNum;
+            generatedLesson.id = `preview-${moduleId}-${currentLessonNum}`;
+            newLessonObjectsForPreview.push(generatedLesson);
+            
+            // Increment for the next topic in this batch
+            currentLessonNum++;
           }
         }
-      } catch (err) {
-        console.error(`Failed to generate topic "${topicTitle}":`, err.message);
+      } catch (genError) {
+        console.error(`Failed to generate content for ${topicTitle}:`, genError);
+        // Continue with next topic instead of failing entire batch
       }
     }
 
-    if (newLessonObjectsForModule.length === 0) {
-      return res.status(200).json({ success: true, message: "No new lessons generated or all already exist.", data: { lessons: [] } });
+    if (newLessonObjectsForPreview.length === 0) {
+      return res.json({
+        success: true,
+        message: "No new lessons generated or all selected topics already exist.",
+        data: { lessons: [] }
+      });
     }
 
-    // 4. Save to Firestore using a Batch
-    const batch = db.batch();
-
-    // A. Create individual documents in 'courseLessons' collection
-    newLessonDocsForCollection.forEach(item => {
-      const lessonRef = db.collection("courseLessons").doc(item.id);
-      batch.set(lessonRef, item.data);
-    });
-
-    // B. Update the 'courseModules' document to include these new lessons in its array
-    const updatedLessonsArray = [...currentLessons, ...newLessonObjectsForModule];
-    batch.update(moduleDoc.ref, {
-      lessons: updatedLessonsArray,
-      updatedAt: admin.firestore.FieldValue.serverTimestamp()
-    });
-
-    await batch.commit();
-
+    // 4. Return the generated data for Preview (DO NOT SAVE TO FIRESTORE YET)
     res.json({
       success: true,
       data: {
         moduleId: moduleId,
         moduleNumber: moduleNumber,
-        lessons: newLessonObjectsForModule
+        lessons: newLessonObjectsForPreview
       }
     });
 
@@ -15011,7 +15018,7 @@ app.post("/ai/generate-lesson-content", requireAuth, async (req, res) => {
       subtopicTitle, // Optional
       generateDiscussion,
       generateActivity,
-      generateAssessment,
+      // ❌ REMOVED: generateAssessment
       generateSummary
     } = req.body;
 
@@ -15029,27 +15036,25 @@ app.post("/ai/generate-lesson-content", requireAuth, async (req, res) => {
     
     // --- UPDATED INSTRUCTIONS FOR PLAIN TEXT FORMAT ---
     if (generateDiscussion) {
-      instructions.push(`- Generate a 'discussion' section. 
-        RULES: 
-        1. Use ONLY plain text. NO HTML, NO Markdown headers (#), NO code blocks.
-        2. Use numbered headings for sections (e.g., "1. Introduction", "2. Core Concepts").
-        3. Use **text** for bolding key terms.
-        4. Use * or - at the start of lines for bullet points.
-        5. Separate paragraphs with blank lines.`);
+    instructions.push(`- Generate a 'discussion' section.
+    RULES:
+    1. Use ONLY plain text. NO HTML, NO Markdown headers (#), NO code blocks.
+    2. Do NOT use bolding markers like ** or __. Just write normal text.
+    3. Use numbered headings for sections (e.g., "1. Introduction", "2. Core Concepts").
+    4. Use * or - at the start of lines for bullet points.
+    5. Separate paragraphs with blank lines.`);
     }
     
     if (generateActivity) {
       instructions.push(`- Generate an 'activity' section.
-        RULES:
-        1. Use ONLY plain text.
-        2. Provide clear, numbered steps (1., 2., 3.).
-        3. Use **bold** for important instructions.`);
+RULES:
+1. Use ONLY plain text.
+2. Provide clear, numbered steps (1., 2., 3.).
+3. Use **bold** for important instructions.`);
     }
-
-    if (generateAssessment) {
-      instructions.push("- Generate 3-5 'assessment' items (Multiple Choice or True/False) with correct answers and explanations.");
-    }
-
+    
+    // ❌ REMOVED: Assessment instructions
+    
     if (generateSummary) {
       instructions.push("- Generate a concise 'summary' of the key takeaways using plain text.");
     }
@@ -15077,19 +15082,8 @@ CRITICAL OUTPUT FORMAT RULES:
 
 RETURN VALID JSON ONLY:
 {
-  "discussion": "${generateDiscussion ? "1. Introduction\n\nThis is a sample paragraph with **bold text**.\n\n* Key point 1\n* Key point 2" : ""}",
-  "activity": "${generateActivity ? "1. Step one\n2. Step two\n\n**Note:** Be careful here." : ""}",
-  "assessment": {
-    "items": [
-      ${generateAssessment ? `{
-        "type": "multiple_choice",
-        "question": "Question?",
-        "options": ["A", "B", "C", "D"],
-        "correctAnswer": 0,
-        "explanation": "Why A is correct."
-      }` : ''}
-    ]
-  },
+  "discussion": "${generateDiscussion ? "1. Introduction\\n\\nThis is a sample paragraph with **bold text**.\\n\\n* Key point 1\\n* Key point 2" : ""}",
+  "activity": "${generateActivity ? "1. Step one\\n2. Step two\\n\\n**Note:** Be careful here." : ""}",
   "summary": "${generateSummary ? "Key takeaways..." : ""}"
 }
 `;
@@ -15124,6 +15118,7 @@ RETURN VALID JSON ONLY:
       lessonId: lessonRef.id,
       data: generatedContent
     });
+
   } catch (error) {
     console.error("Generate lesson content error:", error);
     res.status(500).json({ error: error.message || "Failed to generate lesson content." });
@@ -15131,14 +15126,13 @@ RETURN VALID JSON ONLY:
 });
 
 /// ─── HELPER: Generate Deep Content for ONE SPECIFIC TOPIC ─────────────────────
-async function generateTopicContent(syllabusModule, targetModuleNum, specificTopic) {
+async function generateTopicContent(syllabusModule, targetModuleNum, specificTopic, startLessonNumber = 1) {
   if (!geminiGameAI) throw new Error("GEMINI_API_KEY is missing.");
-
-  let modelName = GEMINI_GAME_MODEL || "gemini-2.5-flash";
   
+  let modelName = GEMINI_GAME_MODEL || "gemini-2.5-flash";
   const model = geminiGameAI.getGenerativeModel({
     model: modelName,
-    generationConfig: { 
+    generationConfig: {
       responseMimeType: "application/json",
       temperature: 0.7,
       maxOutputTokens: 8192 // Optimized for single-topic depth
@@ -15147,35 +15141,28 @@ async function generateTopicContent(syllabusModule, targetModuleNum, specificTop
 
   // ✅ FIX: Use moduleTitle instead of title to prevent "undefined"
   const moduleName = syllabusModule.moduleTitle || syllabusModule.title || "Untitled Module";
-  const topicList = syllabusModule.topics 
-    ? syllabusModule.topics.map(t => t.title || t).join(", ") 
+  const topicList = syllabusModule.topics
+    ? syllabusModule.topics.map(t => t.title || t).join(", ")
     : moduleName;
 
   // Prompt focuses strictly on the specificTopic within the context of the module
-  const prompt = `You are an expert curriculum designer and university instructor from Cebu Technological University (CTU). 
+  const prompt = `You are an expert curriculum designer and university instructor from Cebu Technological University (CTU).
 Generate course content for ONE SPECIFIC LESSON/TOPIC ONLY.
-
 MODULE CONTEXT:
 - Week/Module: ${syllabusModule.weeklySchedule || ""} (${moduleName})
 - All Topics in this Week: ${topicList}
-
 CURRENT LESSON TO GENERATE:
 - Topic: "${specificTopic}"
-
 INSTRUCTIONS:
-Create a comprehensive lesson specifically for "${specificTopic}". Do NOT cover other topics in this week unless necessary for context. 
-
+Create a comprehensive lesson specifically for "${specificTopic}". Do NOT cover other topics in this week unless necessary for context.
 LESSON STRUCTURE:
 1. Introduction & Learning Objectives (Specific to ${specificTopic})
 2. Core Concepts with Real-World Examples
-3. Key Terminology 
+3. Key Terminology
 4. Practical Applications
 5. Common Mistakes
 6. Best Practices
-
 ACTIVITY: Hands-on exercise specific to "${specificTopic}" (2-3 steps)
-ASSESSMENT: 3-4 items (MUST include 1 Multiple Choice AND 1 True/False) related to "${specificTopic}"
-
 CRITICAL FORMATTING RULES FOR DISCUSSION AND ACTIVITY:
 - Return VALID JSON only.
 - The values for "discussion" and "activity" must be PLAIN TEXT strings.
@@ -15185,7 +15172,6 @@ CRITICAL FORMATTING RULES FOR DISCUSSION AND ACTIVITY:
 - Use * or - at the start of lines for bullet points.
 - Use numbered lists (1., 2.) for steps.
 - Separate paragraphs with blank lines.
-
 RETURN VALID JSON ONLY (no markdown, no code blocks):
 {
 "modules": [
@@ -15201,24 +15187,7 @@ RETURN VALID JSON ONLY (no markdown, no code blocks):
 "title": "${specificTopic}",
 "description": "Detailed coverage of ${specificTopic}.",
 "discussion": "1. Introduction\\n\\nThis is a sample paragraph with **bold text**.\\n\\n* Key point 1\\n* Key point 2",
-"activity": "1. Step one\\n2. Step two\\n\\n**Note:** Be careful here.",
-"assessment": { 
-  "items": [
-    {
-      "type": "multiple_choice",
-      "question": "Sample Question?",
-      "options": ["A", "B", "C", "D"],
-      "correctAnswer": 0,
-      "explanation": "Why A is correct."
-    },
-    {
-      "type": "true_false",
-      "question": "Sample T/F Question?",
-      "correctAnswer": true,
-      "explanation": "Why it is true."
-    }
-  ] 
-}
+"activity": "1. Step one\\n2. Step two\\n\\n**Note:** Be careful here."
 }
 ]
 }
@@ -15227,12 +15196,10 @@ RETURN VALID JSON ONLY (no markdown, no code blocks):
 
   let result;
   const maxRetries = 4;
-  
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
       console.log(`Attempt ${attempt}/${maxRetries} generating content for Topic: ${specificTopic}...`);
       result = await model.generateContent([{ text: prompt }]);
-      
       if (result && result.response && result.response.text()) {
         break;
       } else {
@@ -15240,7 +15207,6 @@ RETURN VALID JSON ONLY (no markdown, no code blocks):
       }
     } catch (error) {
       console.warn(`Attempt ${attempt} failed:`, error.message);
-      
       if ((error.status === 503 || error.message.includes("Service Unavailable")) && attempt < maxRetries) {
         const delay = Math.pow(2, attempt) * 1000;
         console.warn(`Server busy. Retrying in ${delay}ms...`);
@@ -15256,57 +15222,62 @@ RETURN VALID JSON ONLY (no markdown, no code blocks):
   }
 
   if (!result) throw new Error("Failed to generate topic content after multiple retries.");
-  
-  // ═══════════════════════════════════════════════════════════════════
+
+  // ══════════════════════════════════════════════════════════════════════
   // IMPROVED JSON RECOVERY LOGIC
-  // ═══════════════════════════════════════════════════════════════════
+  // ══════════════════════════════════════════════════════════════════════
   let rawText = result.response.text().trim();
   const originalLength = rawText.length;
-  
   console.log(`Raw response length: ${originalLength}`);
-  
+
   // Step 1: Remove markdown code blocks
   rawText = rawText
     .replace(/^```(?:json)?\s*\n?/gi, '')
     .replace(/\n?```\s*$/gi, '')
     .trim();
-  
   console.log(`After removing markdown: ${rawText.length}`);
-  
+
   // Step 2: Extract JSON boundaries
   const jsonStart = rawText.indexOf('{');
   const jsonEnd = rawText.lastIndexOf('}');
-  
   if (jsonStart === -1 || jsonEnd === -1 || jsonEnd <= jsonStart) {
     throw new Error("No valid JSON object found in response");
   }
-  
   rawText = rawText.substring(jsonStart, jsonEnd + 1);
   console.log(`After extracting boundaries: ${rawText.length}`);
-  
+
   // Step 3: Check for truncation and repair if needed
   let isTruncated = false;
-  
-  // Look for common truncation patterns
-  if (rawText.endsWith('\\') || // Ends with escape char
-      rawText.endsWith('"') === false || // Doesn't end with quote
-      rawText.match(/[,:]\s*}$/) || // Ends with comma before closing brace
-      rawText.match(/[,:]\s*\]$/) || // Ends with comma before closing bracket
-      (rawText.match(/"/g) || []).length % 2 !== 0) { // Odd number of quotes
+  if (rawText.endsWith('\\') || 
+      rawText.endsWith('"') === false || 
+      rawText.match(/[,:]\s*}$/) || 
+      rawText.match(/[,:]\s*\]$/) || 
+      (rawText.match(/"/g) || []).length % 2 !== 0) {
     isTruncated = true;
   }
-  
+
   if (isTruncated) {
     console.warn("⚠️ Response appears truncated. Attempting repair...");
-    
-    // Find the last unclosed string and close it properly
     rawText = repairTruncatedJSON(rawText);
   }
-  
+
   // Step 4: Try to parse
   try {
     const parsed = JSON.parse(rawText);
-    console.log("✅ Successfully parsed JSON");
+    
+    // ✅ CRITICAL FIX: Safely assign lesson numbers using the passed parameter
+    if (parsed.modules && Array.isArray(parsed.modules) && parsed.modules.length > 0) {
+      const firstModule = parsed.modules[0];
+      if (firstModule.lessons && Array.isArray(firstModule.lessons)) {
+        firstModule.lessons.forEach((lesson, idx) => {
+          // Ensure startLessonNumber is treated as a number
+          const num = Number(startLessonNumber) || 1;
+          lesson.lessonNumber = num + idx;
+        });
+      }
+    }
+    
+    console.log("✅ Successfully parsed JSON with lesson numbers assigned");
     return parsed;
   } catch (parseError) {
     console.error("JSON Parse Error:", parseError.message);
@@ -15319,14 +15290,25 @@ RETURN VALID JSON ONLY (no markdown, no code blocks):
     console.error(`\nContext around error (${start}-${end}):`);
     console.error(rawText.substring(start, end));
     console.error('\n---');
-    
+
     // Step 5: Apply aggressive fixes
     console.log("Attempting aggressive JSON repair...");
     const fixedText = aggressiveJSONRepair(rawText);
-    
     try {
       const parsed = JSON.parse(fixedText);
-      console.log("✅ Successfully parsed after aggressive repair");
+      
+      // ✅ ALSO ASSIGN NUMBERS AFTER AGGRESSIVE REPAIR
+      if (parsed.modules && Array.isArray(parsed.modules) && parsed.modules.length > 0) {
+        const firstModule = parsed.modules[0];
+        if (firstModule.lessons && Array.isArray(firstModule.lessons)) {
+          firstModule.lessons.forEach((lesson, idx) => {
+            const num = Number(startLessonNumber) || 1;
+            lesson.lessonNumber = num + idx;
+          });
+        }
+      }
+      
+      console.log("✅ Successfully parsed after aggressive repair with lesson numbers");
       return parsed;
     } catch (finalError) {
       console.error("Final parse attempt failed:", finalError.message);
@@ -15421,8 +15403,6 @@ app.post("/course-syllabus/generate", requireAuth, async (req, res) => {
     if (!classId) return res.status(400).json({ error: "classId is required." });
 
     let syllabusModules = [];
-
-    // ✅ FIX: Check for cachedModules first, then fallback to Firestore 'structure' field
     if (cachedModules && Array.isArray(cachedModules)) {
       syllabusModules = cachedModules;
     } else {
@@ -15431,35 +15411,56 @@ app.post("/course-syllabus/generate", requireAuth, async (req, res) => {
         .where("isCurrent", "==", true)
         .limit(1)
         .get();
-
       if (syllabusSnap.empty) return res.status(404).json({ error: "No syllabus found." });
-      
-      const syllabusData = syllabusSnap.docs[0].data();
-      // ✅ FIX: Access 'structure.modules' instead of 'parsedModules'
-      syllabusModules = syllabusData.structure?.modules || [];
+      syllabusModules = syllabusSnap.docs[0].data().structure?.modules || [];
     }
 
     if (syllabusModules.length === 0) {
-      return res.status(400).json({ error: "Syllabus structure not available. Please re-upload." });
+      return res.status(400).json({ error: "Syllabus structure not available." });
     }
 
-    // Determine Target Module & Topic
     let targetModuleNum = moduleNumber || 1;
     let syllabusModule = syllabusModules.find(m => m.moduleNumber === targetModuleNum);
-    
     if (!syllabusModule) {
       syllabusModule = syllabusModules[0];
       targetModuleNum = syllabusModule.moduleNumber;
     }
 
-    // Get topics from the structured syllabus
+    // ✅ STEP 1: Check if this module already exists in courseModules to get its ID
+    const existingModuleSnap = await db.collection("courseModules")
+      .where("classId", "==", classId)
+      .where("moduleNumber", "==", targetModuleNum)
+      .limit(1)
+      .get();
+
+    let moduleId = null;
+    let nextLessonNumber = 1;
+
+    if (!existingModuleSnap.empty) {
+      // Module exists! Get its ID and calculate next lesson number
+      const existingModDoc = existingModuleSnap.docs[0];
+      moduleId = existingModDoc.id;
+      
+      const lessonsSnap = await db.collection("courseLessons")
+        .where("moduleId", "==", moduleId)
+        .orderBy("lessonNumber", "desc")
+        .limit(1)
+        .get();
+        
+      if (!lessonsSnap.empty) {
+        nextLessonNumber = (lessonsSnap.docs[0].data().lessonNumber || 0) + 1;
+      }
+    } 
+    // If module doesn't exist yet (e.g., first time generating Module 1), 
+    // nextLessonNumber stays 1.
+
     const topics = syllabusModule.topics || [syllabusModule.moduleTitle];
     const specificTopic = topics[0]?.title || syllabusModule.moduleTitle;
 
-    console.log(`Generating content for Module ${targetModuleNum}, Topic: "${specificTopic}"`);
+    console.log(`Generating content for Module ${targetModuleNum}, Topic: "${specificTopic}", Starting Lesson #: ${nextLessonNumber}`);
 
-    // Generate Content for SINGLE TOPIC using your existing helper
-    const generatedContent = await generateTopicContent(syllabusModule, targetModuleNum, specificTopic);
+    // ✅ STEP 2: Pass nextLessonNumber to the generator
+    const generatedContent = await generateTopicContent(syllabusModule, targetModuleNum, specificTopic, nextLessonNumber);
 
     res.json({
       success: true,
@@ -15467,10 +15468,10 @@ app.post("/course-syllabus/generate", requireAuth, async (req, res) => {
       meta: {
         moduleNumber: targetModuleNum,
         topic: specificTopic,
-        source: "cached_syllabus"
+        source: "cached_syllabus",
+        startingLessonNumber: nextLessonNumber // Send this to frontend for preview accuracy
       }
     });
-
   } catch (error) {
     console.error("Generate error:", error);
     res.status(error.status || 500).json({ error: error.message || "Failed to generate." });
@@ -15547,38 +15548,36 @@ app.post("/course-lessons/create-manual", requireAuth, async (req, res) => {
       return res.status(400).json({ error: "Missing required fields." });
     }
 
-    // ✅ AUTO-CALCULATE LESSON NUMBER IF NOT PROVIDED
+     // ✅ ROBUST AUTO-CALCULATION LOGIC
     let finalLessonNumber = lessonNumber;
     
     if (!finalLessonNumber) {
       try {
-        // Fetch all existing lessons for this module
-        const existingLessonsSnap = await db
-          .collection("courseLessons")
+        // Attempt optimized query first
+        const existingLessonsSnap = await db.collection("courseLessons")
           .where("moduleId", "==", moduleId)
           .orderBy("lessonNumber", "desc")
           .limit(1)
           .get();
 
-        let maxLessonNum = 0;
         if (!existingLessonsSnap.empty) {
-          maxLessonNum = existingLessonsSnap.docs[0].data().lessonNumber || 0;
+          const lastLesson = existingLessonsSnap.docs[0].data();
+          finalLessonNumber = (Number(lastLesson.lessonNumber) || 0) + 1;
+        } else {
+          finalLessonNumber = 1;
         }
-
-        finalLessonNumber = maxLessonNum + 1;
-      } catch (error) {
-        console.error("Error fetching existing lessons:", error);
-        finalLessonNumber = 1; // Default to 1 if query fails
-      }
-    } else {
-      // ✅ VALIDATE PROVIDED LESSON NUMBER
-      const parsedLessonNumber = Number(finalLessonNumber);
-      if (!Number.isInteger(parsedLessonNumber) || parsedLessonNumber < 1) {
-        return res.status(400).json({ 
-          error: "lessonNumber must be a positive integer." 
+      } catch (indexError) {
+        // ⚠️ FALLBACK: If composite index is missing, fetch all and calculate manually
+        console.warn("Composite index query failed, falling back to unsorted fetch:", indexError.message);
+        
+        const allLessonsSnap = await db.collection("courseLessons").where("moduleId", "==", moduleId).get();
+        let maxNum = 0;
+        allLessonsSnap.forEach(doc => {
+          const num = Number(doc.data().lessonNumber) || 0;
+          if (num > maxNum) maxNum = num;
         });
+        finalLessonNumber = maxNum + 1;
       }
-      finalLessonNumber = parsedLessonNumber;
     }
 
     let fileUrl = null;
@@ -15615,17 +15614,16 @@ app.post("/course-lessons/create-manual", requireAuth, async (req, res) => {
       }
     }
 
-    // 2. Save to Firestore 'courseLessons' collection
     const lessonRef = await db.collection("courseLessons").add({
       classId,
       moduleId,
-      lessonNumber: finalLessonNumber, // ✅ Use auto-calculated or provided number
+      lessonNumber: finalLessonNumber, // ✅ ALWAYS SAVE A VALID NUMBER
       title,
       description: description || "",
       discussion: fileBase64 ? null : (discussion || ""),
       activity: fileBase64 ? null : (activity || ""),
       assessment: fileBase64 ? null : (assessment || { items: [] }),
-      type: fileBase64 ? "manual_file" : "manual_text",
+      type: fileBase64 ? "manual_file" : "ai_generated", // Tag appropriately
       fileName: fileBase64 ? fileName : null,
       fileUrl: fileUrl,
       fileType: fileBase64 ? fileType : null,
