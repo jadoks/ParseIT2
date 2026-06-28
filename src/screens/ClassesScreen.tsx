@@ -74,6 +74,7 @@ const ClassesScreen = ({
       const sectionMatch = course.section?.toLowerCase().includes(lowerQuery);
       return nameMatch || codeMatch || instructorMatch || sectionMatch;
     });
+    
   }, [courses, searchQuery]);
 
   const handleJoinClass = () => {

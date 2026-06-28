@@ -12180,7 +12180,7 @@ async function callProvider(provider, context) {
   if (provider === "gemini") {
     return withTimeout(
       callGeminiProvider(context),
-      20_000,
+      60_000,
       "Gemini"
     );
   }
@@ -12188,7 +12188,7 @@ async function callProvider(provider, context) {
   if (provider === "openai") {
     return withTimeout(
       callOpenAIProvider(context),
-      20_000,
+      60_000,
       "OpenAI"
     );
   }
@@ -12196,7 +12196,7 @@ async function callProvider(provider, context) {
   if (provider === "claude") {
     return withTimeout(
       callClaudeProvider(context),
-      20_000,
+      60_000,
       "Claude"
     );
   }
@@ -12204,7 +12204,7 @@ async function callProvider(provider, context) {
   if (provider === "groq") {
     return withTimeout(
       callGroqProvider(context),
-      20_000,
+      60_000,
       "Groq"
     );
   }
@@ -12212,7 +12212,7 @@ async function callProvider(provider, context) {
   if (provider === "mistral") {
     return withTimeout(
       callMistralProvider(context),
-      20_000,
+      60_000,
       "Mistral"
     );
   }
@@ -12220,7 +12220,7 @@ async function callProvider(provider, context) {
   if (provider === "cohere") {
     return withTimeout(
       callCohereProvider(context),
-      20_000,
+      60_000,
       "Cohere"
     );
   }
@@ -14750,6 +14750,30 @@ app.post("/course-syllabus/parse", requireAuth, async (req, res) => {
     // Use existing conversion logic if needed (PPTX -> PDF)
     let processBuffer = buffer;
     let processMimeType = fileType;
+     
+    // Only convert if it's a DOCX/PPTX/XLSX
+    if (fileName.toLowerCase().endsWith('.docx') || fileName.toLowerCase().endsWith('.pptx') || fileName.toLowerCase().endsWith('.xlsx')) {
+       try {
+         const converted = await convertToPDF(buffer, fileName, fileType);
+         processBuffer = converted.buffer;
+         processMimeType = converted.mimeType;
+       } catch (e) {
+         console.warn("Conversion failed, using original:", e.message);
+       }
+    }
+
+    // 2. Parse Structure using Gemini
+    console.log("Parsing syllabus structure with Gemini...");
+    let parsedData = {};
+    try {
+      // Pass the CLEAN PDF buffer to Gemini
+      parsedData = await extractSyllabusStructure(processBuffer, processMimeType, fileName);
+    } catch (parseError) {
+      console.warn("Auto-parse failed:", parseError.message);
+      // If parsing fails, it might be because the PDF is still unreadable.
+      // You might want to return an error here instead of saving incomplete data.
+      return res.status(500).json({ error: "Could not read syllabus content. Please ensure the file is text-based and not scanned images." });
+    }
     if (needsConversion(fileType, fileName)) {
        try {
          processBuffer = await convertPPTXtoPDFViaCloudConverter(buffer, fileName);
@@ -14811,6 +14835,69 @@ Do not generate content for discussions or activities yet. Just the structure.
     res.status(500).json({ error: error.message || "Failed to parse syllabus." });
   }
 });
+
+const axios = require('axios'); // Ensure axios is installed
+
+async function convertToPDF(buffer, fileName, fileType) {
+  const lowerName = fileName.toLowerCase();
+  
+  // If it's already a PDF, return as is
+  if (fileType === 'application/pdf' || lowerName.endsWith('.pdf')) {
+    return { buffer, mimeType: 'application/pdf' };
+  }
+
+  // Check if conversion is needed (DOCX, PPTX, etc.)
+  if (!lowerName.endsWith('.docx') && !lowerName.endsWith('.pptx') && !lowerName.endsWith('.xlsx')) {
+     // For unsupported types, try to send original, but warn
+     console.warn(`File type ${fileType} may not be directly parsable by Gemini.`);
+     return { buffer, mimeType: fileType };
+  }
+
+  try {
+    console.log(`Converting ${fileName} to PDF via CloudConvert...`);
+    
+    // 1. Upload to CloudConvert (Simplified example - adjust based on your actual CloudConvert setup)
+    // Note: You likely have a specific implementation for this. 
+    // Ensure you are using the latest CloudConvert API v2.
+    
+    // Example using CloudConvert Node SDK or Axios:
+    const formData = new FormData();
+    formData.append('file', buffer, {
+      filename: fileName,
+      contentType: fileType
+    });
+    formData.append('inputformat', getFileExtension(fileName));
+    formData.append('outputformat', 'pdf');
+    formData.append('engine', 'document'); // Use 'document' engine for DOCX/PPTX
+
+    const response = await axios.post('https://api.cloudconvert.com/v2/convert', formData, {
+      headers: {
+        'Authorization': `Bearer ${process.env.CLOUDCONVERT_API_KEY}`,
+        ...formData.getHeaders()
+      },
+      responseType: 'arraybuffer' // Important: Get raw binary data
+    });
+
+    if (response.status !== 200 || !response.data || response.data.length === 0) {
+      throw new Error('CloudConvert returned empty or invalid PDF.');
+    }
+
+    console.log('Conversion successful.');
+    return { buffer: Buffer.from(response.data), mimeType: 'application/pdf' };
+
+  } catch (error) {
+    console.error('CloudConvert Error:', error.message);
+    // Fallback: Return original buffer if conversion fails
+    console.warn('Falling back to original file format for parsing.');
+    return { buffer, mimeType: fileType };
+  }
+}
+
+// Helper to get extension
+function getFileExtension(filename) {
+  return filename.slice((filename.lastIndexOf(".") - 1 >>> 0) + 2);
+}
+
 // UPDATED ROUTE: Upload Syllabus with Conversion Logic
 app.post("/course-syllabus/upload", requireAuth, async (req, res) => {
   try {

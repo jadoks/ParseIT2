@@ -356,13 +356,6 @@ function getViewerUrl(
   fileType?: string | null,
   pdfUrl?: string | null
 ): string {
-  if (isPresentationFile(fileName, fileType)) {
-    if (pdfUrl) return pdfUrl;
-    return getMicrosoftOfficeViewerUrl(fileUrl);
-  }
-  if (fileType === 'application/pdf') {
-    return getGoogleDocsViewerUrl(fileUrl);
-  }
   return getGoogleDocsViewerUrl(fileUrl);
 }
 const renderFormattedText = (text: string, baseStyle: any) => {
@@ -626,6 +619,7 @@ const TeacherCourseDetail2 = ({
   const [isGeneratingContent, setIsGeneratingContent] = useState(false);
   // ── Module AI Tools State
   const [modules, setModules] = useState<any[]>([]);
+  const [isLoadingModules, setIsLoadingModules] = useState(false);
   const [selectedModule, setSelectedModule] = useState<any>(null);
   const [aiPreviewData, setAiPreviewData] = useState<any>(null);
   const [aiPreviewType, setAiPreviewType] = useState<string>('');
@@ -752,6 +746,7 @@ const TeacherCourseDetail2 = ({
       setGeneratedStructure(null);
       return;
     }
+    setIsLoadingModules(true); // ✅ START LOADING
     try {
       const [modulesRes, syllabusRes, materialsRes, assignmentsRes, membersRes, submissionsRes] =
         await Promise.all([
@@ -804,7 +799,9 @@ const TeacherCourseDetail2 = ({
       setSubmissions([]);
       setModules([]);
       setCurrentSyllabus(null);
-    }
+    } finally {
+    setIsLoadingModules(false); // ✅ STOP LOADING
+  }
   };
   useEffect(() => {
     loadCourseContent();
@@ -909,29 +906,39 @@ const handleOpenLessonDetail = async (lesson: any) => {
   }
 };
   const handleOpenNextLessonModal = (savedModule: any) => {
-    // ✅ FIX: Find the matching module in the CURRENT SYLLABUS structure
-    const syllabusMod = currentSyllabus?.structure?.modules?.find(
-      (m: any) => m.moduleNumber === savedModule.moduleNumber
-    );
-    if (!syllabusMod) {
-      showResultModal('error', 'Error', 'Syllabus structure not found for this module.');
-      return;
-    }
-    // ✅ NEW: Get existing lesson titles for this specific module
+  // ✅ STRICT VALIDATION: Match ONLY by Module Title from Syllabus Structure
+  const syllabusMod = currentSyllabus?.structure?.modules?.find(
+    (m: any) => 
+      // Compare titles case-insensitively and trimmed to avoid whitespace issues
+      String(m.moduleTitle || m.title).trim().toLowerCase() === 
+      String(savedModule.title).trim().toLowerCase()
+  );
+
+  let availableTopics: any[] = [];
+
+  // Only populate topics if we found an EXACT title match in the Syllabus
+  if (syllabusMod && syllabusMod.topics) {
+    // Get existing lesson titles for this specific module to avoid duplicates
     const existingLessonTitles = new Set(
       (savedModule.lessons || []).map((l: any) => l.title.toLowerCase().trim())
     );
-    // ✅ NEW: Filter out topics that are already generated as lessons
-    const availableTopics = (syllabusMod.topics || []).filter(
+
+    // Filter out topics that are already generated as lessons
+    availableTopics = syllabusMod.topics.filter(
       (topic: any) => !existingLessonTitles.has(topic.title.toLowerCase().trim())
     );
-    setTargetModuleForGen({
-      ...savedModule,
-      topics: availableTopics // Pass only the filtered topics
-    });
-    setSelectedTopicsForGen([]);
-    setShowNextLessonModal(true);
-  };
+  } 
+  // ELSE: If syllabusMod is undefined (Manual Module with different title) 
+  // OR has no topics, availableTopics remains an empty array []
+
+  setTargetModuleForGen({
+    ...savedModule,
+    topics: availableTopics // Pass empty array for manual modules
+  });
+  
+  setSelectedTopicsForGen([]);
+  setShowNextLessonModal(true);
+};
   const toggleTopicSelection = (topicTitle: string) => {
     setSelectedTopicsForGen(prev =>
       prev.includes(topicTitle)
@@ -1053,63 +1060,57 @@ const handleOpenLessonDetail = async (lesson: any) => {
 };
     // ─── UPDATE handleCreateManualModule ─────────────────────────────────────────
   const handleCreateManualModule = async () => {
-    // 1. Basic Validation
-    const num = Number(newModuleNum);
-    if (!newModuleTitle.trim() || !course?.id) {
-      showResultModal('error', 'Error', 'Please enter a title and ensure course is loaded.');
-      return;
-    }
-    // Ensure module number is a valid positive integer
-    if (isNaN(num) || num < 1 || !Number.isInteger(num)) {
-      showResultModal('error', 'Invalid Number', 'Module number must be a positive whole number (e.g., 1, 2, 3).');
-      return;
-    }
-    // 2. Check Local State for Duplicates (with consistent number comparison)
-    // ✅ Convert all to numbers for comparison
-    const existingModule = modules.find(m => Number(m.moduleNumber) === num);
-    if (existingModule) {
-      showResultModal('error', 'Duplicate Module', `Module ${num} already exists. Please choose a different number.`);
-      return;
-    }
-    setIsSaving(true);
-    try {
-      const response = await fetch(`${API_BASE_URL}/course-modules/create-manual`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
-          classId: course.id,
-          moduleNumber: num, // Send as Number
-          title: newModuleTitle,
-          description: newModuleDesc,
-          weeklySchedule: newModuleWeek,
-          // ✅ ADD THIS: Tag manual modules so they work with Syllabus features
-          type: "ai_generated" 
-        })
-      });
-      const data = await response.json();
-      if (!response.ok) {
-        if (data.error && data.error.includes('already exists')) {
-          throw new Error(`Module ${num} already exists in the database.`);
-        }
-        throw new Error(data.error || 'Failed to create module.');
-      }
-      // 3. Success: Reset Form
-      setShowManualModuleModal(false);
-      setNewModuleNum('');
-      setNewModuleTitle('');
-      setNewModuleDesc('');
-      setNewModuleWeek('');
-      // ✅ RELOAD CONTENT to sync state
-      await loadCourseContent();
-      showResultModal('success', 'Success', `Module ${num} created successfully!`);
-    } catch (e: any) {
-      console.error("Create Manual Module Error:", e);
-      showResultModal('error', 'Error', e.message);
-    } finally {
-      setIsSaving(false);
-    }
-  };
+  // 1. Basic Validation
+  const num = Number(newModuleNum);
+  
+  if (!newModuleTitle.trim() || !course?.id) {
+    showResultModal('error', 'Error', 'Please enter a title.');
+    return;
+  }
+
+  // ✅ Simple check: Ensure the auto-generated number is valid (should always be true)
+  if (isNaN(num) || num < 1) {
+    showResultModal('error', 'Invalid Number', 'Module number generation failed.');
+    return;
+  }
+
+  setIsSaving(true);
+  try {
+    const response = await fetch(`${API_BASE_URL}/course-modules/create-manual`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({
+        classId: course.id,
+        moduleNumber: num,
+        title: newModuleTitle,
+        description: newModuleDesc,
+        weeklySchedule: newModuleWeek,
+        type: "manual"
+      })
+    });
+
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Failed to create module.');
+
+    // Success: Reset Form
+    setShowManualModuleModal(false);
+    setNewModuleNum('');
+    setNewModuleTitle('');
+    setNewModuleDesc('');
+    setNewModuleWeek('');
+    
+    // ✅ RELOAD CONTENT to sync state
+    await loadCourseContent();
+    showResultModal('success', 'Success', `Module ${num} created successfully!`);
+
+  } catch (e: any) {
+    console.error("Create Manual Module Error:", e);
+    showResultModal('error', 'Error', e.message);
+  } finally {
+    setIsSaving(false);
+  }
+};
 const handleCreateManualLesson = async () => {
   if (!newLessonTitle.trim() || !selectedModuleForLesson || !course?.id) return;
   
@@ -1416,38 +1417,81 @@ const handleCreateManualLesson = async () => {
 };
   const handleGenerateAnotherModule = async () => {
   if (!currentSyllabus || isGeneratingStructure) return;
-  
-  const nextNum = (modules.length > 0 ? Math.max(...modules.map((m: any) => m.moduleNumber || 0)) : 0) + 1;
+
   setIsGeneratingStructure(true);
   setGeneratedStructure(null);
-  
+
   try {
-    // Find the corresponding module from syllabus structure
-    const syllabusModule = currentSyllabus.structure?.modules?.find(
-      (m: any) => m.moduleNumber === nextNum
+    // 1. Identify which Syllabus MODULE TITLES have NOT been created yet
+    // We compare by Title (case-insensitive) to see which content is missing.
+    const createdModuleTitles = new Set(
+      modules.map((m: any) => String(m.title).trim().toLowerCase())
     );
     
-    // Use moduleTitle from syllabus if available, otherwise use moduleNumber
-    const moduleTitle = syllabusModule?.moduleTitle || `Module ${nextNum}`;
-    
+    // Find all syllabus modules whose TITLES do not exist in the created modules
+    const missingSyllabusModules = currentSyllabus.structure?.modules?.filter(
+      (sylMod: any) => !createdModuleTitles.has(String(sylMod.moduleTitle).trim().toLowerCase())
+    ) || [];
+
+    let targetSyllabusModule: any = null;
+    let nextNum: number = 0;
+
+    if (missingSyllabusModules.length > 0) {
+      // ✅ FIX: Prioritize filling the MISSING SYLLABUS CONTENT first.
+      // Pick the first missing module from the syllabus (usually the lowest original number).
+      targetSyllabusModule = missingSyllabusModules[0];
+      
+      // Decide on the Module Number:
+      // Option A: Use the next sequential number (1, 2, 3...) regardless of syllabus number.
+      const maxExistingNum = modules.length > 0 
+        ? Math.max(...modules.map((m: any) => Number(m.moduleNumber) || 0)) 
+        : 0;
+      nextNum = maxExistingNum + 1;
+
+      console.log(`Filling missing syllabus content: "${targetSyllabusModule.moduleTitle}" as Module ${nextNum}`);
+    } else {
+      // If all syllabus titles are present, just create a new sequential module.
+      const maxExistingNum = modules.length > 0 
+        ? Math.max(...modules.map((m: any) => Number(m.moduleNumber) || 0)) 
+        : 0;
+      
+      nextNum = maxExistingNum + 1;
+      
+      // Try to find a syllabus module for this new number, if it exists (for extra metadata)
+      targetSyllabusModule = currentSyllabus.structure?.modules?.find(
+        (m: any) => Number(m.moduleNumber) === nextNum
+      );
+    }
+
+    // Determine the Title: ALWAYS use the Syllabus Title if we found a missing one.
+    // Otherwise, fallback to "Module X".
+    const moduleTitle = targetSyllabusModule?.moduleTitle || `Module ${nextNum}`;
+    const weeklySchedule = targetSyllabusModule?.weeklySchedule || '';
+    const description = targetSyllabusModule?.description || '';
+
+    console.log(`Generating Module ${nextNum} with Title: "${moduleTitle}"`);
+
     const response = await fetch(`${API_BASE_URL}/course-modules/create-manual`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
-      body: JSON.stringify({ 
-        classId: course?.id, 
+      body: JSON.stringify({
+        classId: course?.id,
         moduleNumber: nextNum,
-        title: moduleTitle, // ✅ Pass the proper title
-        description: syllabusModule?.description || '',
-        weeklySchedule: syllabusModule?.weeklySchedule || ''
+        title: moduleTitle, // ✅ Uses the missing Syllabus Title
+        description: description,
+        weeklySchedule: weeklySchedule
       })
     });
-    
+
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || 'Generation failed');
-    
-    setGeneratedStructure(data.data);
-    setShowStructurePreviewModal(true);
+
+    // 2. Reload Course Content to update the 'modules' state
+    await loadCourseContent();
+
+    showResultModal('success', 'Module Created', `Module ${nextNum} ("${moduleTitle}") has been created.`);
+
   } catch (error: any) {
     showResultModal('error', 'Generation Failed', error?.message || 'Unable to generate module.');
   } finally {
@@ -3597,10 +3641,15 @@ let finalQuestions = uniqueQuestions;
                 </View>
               )}
             </View>
-            {/* ACCORDION MODULES LIST */}
-{modules.length === 0 ? (
-  <Text style={{ textAlign: 'center', color: '#888', marginTop: 40 }}>No modules generated yet.</Text>
-) : (
+             {/* ACCORDION MODULES LIST WITH LOADING STATE */}
+    {isLoadingModules ? (
+      <View style={{ padding: 40, alignItems: 'center' }}>
+        <ActivityIndicator size="large" color="#D32F2F" />
+        <Text style={{ marginTop: 12, color: '#666', fontSize: 14 }}>Loading resources...</Text>
+      </View>
+    ) : modules.length === 0 ? (
+      <Text style={{ textAlign: 'center', color: '#888', marginTop: 40 }}>No modules generated yet.</Text>
+    ) : (
   <>
     {modules.map((mod: any) => {
       const isExpanded = expandedModules[mod.moduleNumber] || false;
@@ -4624,41 +4673,37 @@ MANUAL MODULE CREATION MODAL
           <View style={[styles.modalCardElevated, { width: isMobile ? Math.min(width - 28, 360) : 500 }]}>
             <View style={styles.createHeaderRow}>
               <Text style={styles.createTitle}>Create Module Manually</Text>
-              <TouchableOpacity onPress={() => setShowManualModuleModal(false)}><Ionicons name="close" size={24} color="#111" /></TouchableOpacity>
+              <TouchableOpacity onPress={() => {
+                // ✅ Calculate next available module number
+                const maxExistingNum = modules.length > 0 
+                  ? Math.max(...modules.map((m: any) => Number(m.moduleNumber) || 0)) 
+                  : 0;
+                const nextNum = maxExistingNum + 1;
+                
+                setNewModuleNum(String(nextNum)); // Set as string for TextInput
+                setShowManualModuleModal(true);
+              }}><TouchableOpacity onPress={() => setShowManualModuleModal(false)}>
+  <Ionicons name="close" size={24} color="#111" />
+</TouchableOpacity></TouchableOpacity>
             </View>
             <ScrollView contentContainerStyle={{ paddingBottom: 20 }}>
               {/* --- UPDATED MODULE NUMBER INPUT WITH VALIDATION --- */}
+             
               <Text style={styles.sectionLabel}>Module Number</Text>
+  
+              {/* ✅ UPDATED: Read-Only Input with Automatic Value */}
               <TextInput
-                style={[
-                  styles.inputBox,
-                  // Add red border if duplicate is detected
-                  modules.some(m => m.moduleNumber === Number(newModuleNum)) && newModuleNum !== ''
-                    ? styles.errorBorder
-                    : null
-                ]}
-                keyboardType="numeric"
+                style={[styles.inputBox, { backgroundColor: '#f5f5f5' }]} // Optional: Grey background to indicate read-only
                 value={newModuleNum}
-                onChangeText={(text) => {
-                  // Only allow numbers
-                  const cleaned = text.replace(/[^0-9]/g, '');
-                  setNewModuleNum(cleaned);
-                }}
-                placeholder="e.g. 1"  placeholderTextColor="#999"
+                editable={false} // 🔒 Makes it unchangeable by user
+                keyboardType="numeric"
+                placeholder="Auto-generated"
+                placeholderTextColor="#999"
               />
-              {/* ✅ DISPLAY ERROR MESSAGE IF DUPLICATE */}
-              {modules.some(m => Number(m.moduleNumber) === Number(newModuleNum)) && newModuleNum !== '' && (
-                <Text style={[styles.errorText, { marginTop: -4, marginBottom: 8 }]}>
-                  Already created Module {newModuleNum}
-                </Text>
-              )}
               {/* --- REST OF THE FORM --- */}
               <Text style={styles.sectionLabel}>Title</Text>
               <TextInput style={styles.inputBox} value={newModuleTitle} onChangeText={setNewModuleTitle} placeholder="Module Title" placeholderTextColor="#999" />
-              <Text style={styles.sectionLabel}>Weekly Schedule</Text>
-              <TextInput style={styles.inputBox} value={newModuleWeek} onChangeText={setNewModuleWeek} placeholder="e.g. Week 1-2" placeholderTextColor="#999" />
-              <Text style={styles.sectionLabel}>Description</Text>
-              <TextInput style={[styles.textAreaBox, { minHeight: 80 }]} value={newModuleDesc} onChangeText={setNewModuleDesc} multiline placeholder="Brief description..." placeholderTextColor="#999" />
+              
             </ScrollView>
             <View style={styles.buttonRow}>
               <TouchableOpacity style={styles.secondaryButton} onPress={() => setShowManualModuleModal(false)}>
@@ -4903,9 +4948,18 @@ GENERATE NEXT LESSON - MULTI TOPIC SELECTION MODAL
             <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 20 }}>
               {/* ✅ UPDATED: Check if there are any remaining topics after filtering */}
               {!targetModuleForGen?.topics || targetModuleForGen.topics.length === 0 ? (
-                <Text style={{ textAlign: 'center', color: '#888', padding: 20 }}>
-                  All topics for this module have already been generated!
-                </Text>
+              <Text style={{ textAlign: 'center', color: '#888', padding: 20 }}>
+                {/* Check if it's a manual module (no syllabus title match) */}
+                {(!currentSyllabus?.structure?.modules || 
+                !currentSyllabus.structure.modules.some((m: any) => 
+                  // ✅ SAFE: Check if targetModuleForGen and its title exist before comparing
+                  targetModuleForGen?.title && 
+                  String(m.moduleTitle || m.title).trim().toLowerCase() === 
+                  String(targetModuleForGen.title).trim().toLowerCase()
+                ))
+                  ? "This is a manually created module. Topics are only available for modules defined in the uploaded Syllabus."
+                  : "All topics for this module have already been generated!"}
+              </Text>
               ) : (
                 targetModuleForGen.topics.map((topic: any, idx: number) => {
                   const isSelected = selectedTopicsForGen.includes(topic.title);
