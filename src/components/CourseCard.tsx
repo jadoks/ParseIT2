@@ -451,7 +451,7 @@ const CourseCard: React.FC<CourseCardProps> = ({
             </View>
 
             <View style={styles.metaBlockHalf}>
-              <Text style={styles.metaLabel}>Materials</Text>
+              <Text style={styles.metaLabel}>Course Resources</Text>
               <Text style={styles.metaValue}>{course.materials.length}</Text>
             </View>
           </View>

@@ -1235,9 +1235,16 @@ function buildGamePrompt({ extractedText, fileName, gameType, hasInlineData, num
       instructions = `Style: Flashcard Challenge. Generate exactly ${count} flashcards. Front: A clear question, concept, or term. Back: A concise, direct answer or definition.`;
       formatExample = `{"questions": [{"front": "What is HTML?", "back": "HTML stands for HyperText Markup Language and is the standard markup language used to create web pages."}]}`;
       break;
+    
     case "fill_in_blanks":
-      instructions = `Style: Fill-in-the-Blanks. Generate exactly ${count} sentences with a missing keyword. Rules: The sentence must provide context. The answer must be the exact missing word. Provide a helpful hint.`;
-      formatExample = `{"questions": [{"sentence": "_____ stands for HyperText Markup Language.", "answer": "HTML", "hint": "It is the foundational language for web pages."}]}`;
+      instructions = `Style: Fill-in-the-Blanks. Generate exactly ${count} unique educational statements based on the provided material. 
+      CRITICAL RULES FOR SENTENCES:
+      1. Each sentence must be a unique fact, definition, or concept from the material. DO NOT repeat the same sentence structure.
+      2. Replace ONLY the key term/concept with '___' (three underscores).
+      3. The sentence MUST provide enough context clues so the student can deduce the missing word.
+      4. Example: "The ___ protocol uses CSMA/CD to manage network traffic." (NOT "The process of ___ is defined as...")`;
+      
+      formatExample = `{"questions": [{"sentence": "The ___ layer of the OSI model handles physical transmission.", "answer": "Physical", "hint": "Layer 1"}]}`;
       break;
     case "quiz_master":
     default:
@@ -1282,12 +1289,42 @@ function normalizeGameQuestions(value, gameType = "quiz_master", numberOfQuestio
         return (front && back) ? { front, back } : null;
       }).filter(Boolean).slice(0, count);
     case "fill_in_blanks":
-      return sourceQuestions.map(item => {
-        const sentence = normalizeOptionalText(item?.sentence || item?.question);
-        const answer = normalizeOptionalText(item?.answer);
+    return sourceQuestions.map(item => {
+        // 1. Robustly find the sentence. AI often returns 'question' instead of 'sentence'.
+        let sentence = normalizeOptionalText(item?.sentence);
+        
+        // If 'sentence' is missing, check 'question'
+        if (!sentence) {
+            sentence = normalizeOptionalText(item?.question);
+        }
+
+        // 2. Robustly find the answer.
+        let answer = normalizeOptionalText(item?.answer);
+        
+        // If 'answer' is missing, sometimes it's in 'correctAnswer' or 'key'
+        if (!answer) {
+            answer = normalizeOptionalText(item?.correctAnswer || item?.key);
+        }
+
         const hint = normalizeOptionalText(item?.hint) || "";
-        return (sentence && answer) ? { sentence, answer, hint } : null;
-      }).filter(Boolean).slice(0, count);
+
+        // 3. Validation: Ensure we have content
+        if (!sentence || !answer) return null;
+
+        // 4. Clean up the sentence to ensure it has the blank '___'
+        // If the AI forgot to put underscores, we can't use it as a fill-in-blank
+        if (!sentence.includes("___")) {
+             // Optional: You could try to replace the answer with ___ automatically, 
+             // but it's safer to just reject malformed items for now to ensure quality.
+             // Or, if you want to be lenient:
+             // sentence = sentence.replace(new RegExp(answer, 'gi'), '___');
+             
+             // For now, let's strictly require the blank to ensure game logic works
+             if (!sentence.includes("___")) return null; 
+        }
+
+        return { sentence, answer, hint };
+    }).filter(Boolean).slice(0, count);
     case "quiz_master":
     default:
       return sourceQuestions.map(item => {
@@ -3593,63 +3630,94 @@ app.post("/game-ai/generate-quiz-masters", requireAuth, gameUpload.single("file"
   }
 });
 
-// === Generate quiz from selected class materials (FIXED) ===
+// === UPDATED: Generate quiz from selected class materials AND module lessons ===
 app.post("/game-ai/generate-quiz-materials", requireAuth, async (req, res) => {
   try {
     const { classId, materialIds, gameType, authUid, numberOfQuestions } = req.body;
+    
     if (!classId || !materialIds || !Array.isArray(materialIds) || materialIds.length === 0) {
       return res.status(400).json({ error: "classId and materialIds are required." });
     }
     if (!gameType) return res.status(400).json({ error: "gameType is required." });
 
-    // Fetch materials from database
-    const materialsData = [];
-    for (const materialId of materialIds) {
-      const materialSnap = await db.collection("classMaterials").doc(materialId).get();
-      if (materialSnap.exists) {
-        materialsData.push({ id: materialSnap.id, ...materialSnap.data() });
+    // Unified fetching logic for both Class Materials and Module Lessons
+    const contentsData = [];
+    for (const id of materialIds) {
+      // 1. Try fetching from classMaterials first
+      let docSnap = await db.collection("classMaterials").doc(id).get();
+      
+      if (docSnap.exists) {
+        const data = docSnap.data();
+        contentsData.push({ 
+          id, 
+          type: 'standard_material',
+          title: data.title || "Material",
+          fileName: data.fileName,
+          fileType: data.fileType,
+          storagePath: data.storagePath,
+          fileUrl: data.fileUrl,
+          content: data.content // Text-based material content
+        });
+      } else {
+        // 2. If not found, try fetching from courseLessons
+        docSnap = await db.collection("courseLessons").doc(id).get();
+        
+        if (docSnap.exists) {
+          const data = docSnap.data();
+          contentsData.push({ 
+            id, 
+            type: 'module_lesson',
+            title: data.title || "Lesson",
+            fileName: data.fileName,
+            fileType: data.fileType,
+            storagePath: data.storagePath,
+            fileUrl: data.fileUrl,
+            content: data.discussion || data.description // Lesson text content
+          });
+        }
       }
     }
 
-    if (materialsData.length === 0) {
-      return res.status(404).json({ error: "No materials found." });
+    if (contentsData.length === 0) {
+      return res.status(404).json({ error: "No materials or lessons found for the provided IDs." });
     }
 
     const resolvedGameType = gameType === "quiz_master" ? "quiz_master" : gameType;
-    const fileName = materialsData.map(m => m.fileName || m.title || "material").join(", ");
-
+    const fileName = contentsData.map(m => m.fileName || m.title || "content").join(", ");
+    
     // MIME types Gemini's inlineData actually supports natively.
     const GEMINI_INLINE_SUPPORTED = /^(application\/pdf|image\/|audio\/|video\/|text\/plain)/;
-
+    
     // Prepare files for Gemini
     const geminiContents = [];
     let combinedExtractedText = "";
 
-    for (const material of materialsData) {
-      const storagePath = material.storagePath || material.fileStoragePath;
-      const fileUrl = material.fileUrl || material.fileUri || material.downloadUrl;
-      let mimeType = material.fileType || material.mimeType || "application/octet-stream";
-      const matFileName = material.fileName || material.title || "material";
-
+    for (const item of contentsData) {
+      const matFileName = item.fileName || item.title || "content";
+      let mimeType = item.fileType || "application/octet-stream";
       let buffer = null;
-      try {
-        if (storagePath) {
-          const file = bucket.file(storagePath);
+
+      // Handle File Uploads (Standard Material or Manual Lesson File)
+      if (item.storagePath) {
+        try {
+          const file = bucket.file(item.storagePath);
           [buffer] = await file.download();
-        } else if (fileUrl) {
-          const response = await fetch(fileUrl);
-          buffer = Buffer.from(await response.arrayBuffer());
+        } catch (downloadError) {
+          console.warn(`Failed to download file "${matFileName}":`, downloadError.message);
+          continue;
         }
-      } catch (downloadError) {
-        console.warn(`Failed to download material "${matFileName}":`, downloadError.message);
-        continue;
+      } 
+      // Handle Text-Based Content (Standard Material Text or Lesson Discussion)
+      else if (item.content && item.content.trim()) {
+        combinedExtractedText += `\n[${matFileName}]\n${limitText(item.content, 12000)}`;
+        continue; // Skip file processing for pure text items
       }
 
       if (!buffer) continue;
 
       // Check if file is PowerPoint and needs conversion
       const isPowerPoint = matFileName.toLowerCase().endsWith('.pptx') || 
-                           matFileName.toLowerCase().endsWith('.ppt') ||
+                           matFileName.toLowerCase().endsWith('.ppt') || 
                            mimeType.includes('presentationml');
       
       if (isPowerPoint) {
@@ -3657,36 +3725,26 @@ app.post("/game-ai/generate-quiz-materials", requireAuth, async (req, res) => {
           console.log(`Converting PowerPoint "${matFileName}" to PDF...`);
           buffer = await convertPPTXtoPDFViaCloudConverter(buffer, matFileName);
           mimeType = "application/pdf";
-          console.log(`PowerPoint "${matFileName}" converted successfully`);
         } catch (convertError) {
           console.error(`PowerPoint conversion failed for "${matFileName}":`, convertError.message);
-          // Continue with original file if conversion fails
         }
       }
 
-      // Check if Gemini can handle this MIME type directly
+      // Send supported files directly to Gemini
       if (GEMINI_INLINE_SUPPORTED.test(mimeType)) {
-        // Gemini can read this natively (PDF, image, audio, video, plain text)
         geminiContents.push({
-          inlineData: {
-            mimeType,
-            data: buffer.toString("base64"),
-          },
+          inlineData: { mimeType, data: buffer.toString("base64") },
         });
       } else {
-        // Unsupported types - extract text first
+        // Extract text from unsupported formats (DOCX, XLSX, etc.)
         try {
           const extracted = await extractTextFromFile(buffer, mimeType, matFileName);
-          
           if (typeof extracted === "string" && extracted.trim()) {
             combinedExtractedText += `\n[${matFileName}]\n${extracted}`;
           } else if (extracted && typeof extracted === "object") {
             if (extracted.imagePdf && extracted.pdfBase64) {
-              geminiContents.push({
-                inlineData: { mimeType: "application/pdf", data: extracted.pdfBase64 },
-              });
+              geminiContents.push({ inlineData: { mimeType: "application/pdf", data: extracted.pdfBase64 } });
             }
-            
             if (extracted.extractedText) {
               combinedExtractedText += `\n[${matFileName}]\n${extracted.extractedText}`;
             }
@@ -3699,7 +3757,7 @@ app.post("/game-ai/generate-quiz-materials", requireAuth, async (req, res) => {
 
     if (geminiContents.length === 0 && !combinedExtractedText.trim()) {
       return res.status(400).json({
-        error: "No readable files found in materials. Please ensure materials have uploaded files in supported formats (PDF, TXT, or extractable Office documents)."
+        error: "No readable content found. Ensure materials have uploaded files or text content."
       });
     }
 
@@ -7814,16 +7872,44 @@ app.post("/messenger-send-message", async (req, res) => {
 
 // Update your /class-materials/:classId route
 app.get("/class-materials/:classId", requireAuth, async (req, res) => {
-   try {
+  try {
     const { classId } = req.params;
-    const snapshot = await db
+    
+    // 1. Fetch Standard Class Materials
+    const materialsSnapshot = await db
       .collection("classMaterials")
       .where("classId", "==", classId)
       .orderBy("createdAt", "desc")
       .get();
+
+    // 2. Fetch Module Lessons for this Class
+    // First, get all modules for this class to get their IDs
+    const modulesSnapshot = await db
+      .collection("courseModules")
+      .where("classId", "==", classId)
+      .get();
     
-    const materials = await Promise.all(
-      snapshot.docs.map(async (doc) => {
+    const moduleIds = modulesSnapshot.docs.map(doc => doc.id);
+    let lessons = [];
+
+    if (moduleIds.length > 0) {
+      // Firestore 'in' query limit is 10, so we might need to chunk if there are many modules
+      // For simplicity, assuming < 10 modules or using multiple queries if needed. 
+      // Here we use a simple loop for robustness or a single query if module count is low.
+      
+      // Better approach: Query lessons directly by classId if you store classId in lessons (which you do)
+      const lessonsSnapshot = await db
+        .collection("courseLessons")
+        .where("classId", "==", classId)
+        .orderBy("createdAt", "desc") // Or orderBy lessonNumber if preferred
+        .get();
+        
+      lessons = lessonsSnapshot.docs;
+    }
+
+    // 3. Process Standard Materials
+    const processedMaterials = await Promise.all(
+      materialsSnapshot.docs.map(async (doc) => {
         const materialData = doc.data() || {};
         let freshFileUrl = null;
         let freshPdfUrl = null;
@@ -7835,7 +7921,6 @@ app.get("/class-materials/:classId", requireAuth, async (req, res) => {
             console.warn(`Failed to refresh URL for material ${doc.id}:`, e?.message);
           }
         }
-        
         if (materialData.pdfStoragePath) {
           try {
             freshPdfUrl = await createReadSignedUrlIfExists(materialData.pdfStoragePath);
@@ -7846,14 +7931,57 @@ app.get("/class-materials/:classId", requireAuth, async (req, res) => {
         
         return {
           id: doc.id,
+          type: 'standard_material', // Tag to identify in frontend
           ...materialData,
           fileUrl: freshFileUrl || materialData.fileUrl || null,
           pdfUrl: freshPdfUrl || materialData.pdfUrl || null,
         };
       })
     );
-    
-    res.json(materials);
+
+    // 4. Process Module Lessons as Materials
+    const processedLessons = await Promise.all(
+      lessons.map(async (doc) => {
+        const lessonData = doc.data() || {};
+        let freshFileUrl = null;
+        
+        // Lessons might have files if they were uploaded manually
+        if (lessonData.storagePath) {
+          try {
+            freshFileUrl = await createReadSignedUrlIfExists(lessonData.storagePath);
+          } catch (e) {
+            console.warn(`Failed to refresh URL for lesson ${doc.id}:`, e?.message);
+          }
+        }
+
+        // Map Lesson to Material Structure
+        return {
+          id: doc.id,
+          type: 'module_lesson', // Tag to identify in frontend
+          title: lessonData.title || "Untitled Lesson",
+          week: `Module Lesson`, // Or fetch Module Number if needed
+          posted: formatFirestoreDateTime(lessonData.createdAt),
+          content: lessonData.discussion || lessonData.description || "", // Use discussion/text as content
+          fileName: lessonData.fileName || null,
+          fileUri: freshFileUrl || lessonData.fileUrl || null,
+          fileType: lessonData.fileType || null,
+          storagePath: lessonData.storagePath || null,
+          bucketPath: lessonData.bucketPath || null,
+          pdfUrl: lessonData.pdfUrl || null,
+          pdfStoragePath: lessonData.pdfStoragePath || null,
+          // Add specific lesson metadata if needed for preview
+          isLesson: true,
+          moduleId: lessonData.moduleId,
+          lessonNumber: lessonData.lessonNumber
+        };
+      })
+    );
+
+    // 5. Combine and Return
+    // We put lessons first or last depending on preference. Here we append them.
+    const allMaterials = [...processedMaterials, ...processedLessons];
+
+    res.json(allMaterials);
   } catch (error) {
     console.error("Fetch class materials error:", error);
     res.status(500).json({

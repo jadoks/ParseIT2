@@ -584,6 +584,12 @@ const TeacherCourseDetail2 = ({
       teacherFullName,
     [currentTeacher, teacherFullName]
   );
+
+  const [numberOfQuestions, setNumberOfQuestions] = useState<string>('10');
+
+  // Helper validation matching Game.tsx logic
+  const parsedQuestionCount = parseInt(numberOfQuestions, 10) || 0;
+  const isInvalidQuestionCount = parsedQuestionCount > 100 || parsedQuestionCount < 1;
   // Add these states near other 'Generate' states
   const [pendingGeneratedLessons, setPendingGeneratedLessons] = useState<any[]>([]);
   const [showLessonPreviewModal, setShowLessonPreviewModal] = useState(false);
@@ -595,7 +601,7 @@ const TeacherCourseDetail2 = ({
   const [isGeneratingNextLessons, setIsGeneratingNextLessons] = useState(false);
   const [targetModuleForGen, setTargetModuleForGen] = useState<any>(null);
   // ── Tab / display state
-  const [activeTab, setActiveTab] = useState<'Materials' | 'Assignments' | 'Modules'>('Materials');
+  const [activeTab, setActiveTab] = useState<"materials" | "assignments" | "modules">('modules');
   const [showSubmissions, setShowSubmissions] = useState(false);
   const cleanModuleTitle = (title: string, moduleNumber: number) => {
     // Remove common prefixes the AI might add
@@ -2054,91 +2060,131 @@ const handleCreateManualLesson = async () => {
     }
     return true;
   };
-  const handleGenerateQuestions = async () => {
-    if (!gameType) {
-      showResultModal('error', 'Error', 'Please select a game type first before generating questions.');
-      return;
-    }
-    if (selectedMaterialIds.length === 0) {
-      showResultModal('error', 'Error', 'Please select at least one learning material first.');
-      return;
-    }
-    setIsGenerating(true);
-    try {
-      const response = await fetch(`${API_BASE_URL}/game-ai/generate-quiz-materials`, {
-        credentials: 'include',
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          classId: course?.id,
-          materialIds: selectedMaterialIds,
-          studentId: currentTeacher?.teacherId || 'teacher-preview',
-          gameType,
-        }),
+ const handleGenerateQuestions = async () => {
+  // ✅ VALIDATION: Match Game.tsx logic strictly
+  if (!gameType) {
+    showResultModal('error', 'Error', 'Please select a game type first.');
+    return;
+  }
+  if (selectedMaterialIds.length === 0) {
+    showResultModal('error', 'Error', 'Please select at least one learning material.');
+    return;
+  }
+
+  // ✅ STRICT COUNT VALIDATION
+  const parsedCount = parseInt(numberOfQuestions, 10) || 0;
+  if (parsedCount < 1 || parsedCount > 100) {
+    showResultModal('error', 'Invalid Count', 'Please enter between 1 and 100 questions.');
+    return;
+  }
+
+  setIsGenerating(true);
+  try {
+    const response = await fetch(`${API_BASE_URL}/game-ai/generate-quiz-materials`, {
+      credentials: 'include',
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        classId: course?.id,
+        materialIds: selectedMaterialIds,
+        studentId: currentTeacher?.teacherId || 'teacher-preview',
+        gameType,
+        numberOfQuestions: parsedCount, // ✅ Send validated number
+      }),
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Failed to generate questions.');
+
+    const questionsArray = Array.isArray(data.questions) ? data.questions : [];
+    
+    const uniqueQuestions = questionsArray.filter((q: any, index: number, self: any[]) => {
+      // Determine the unique identifier based on game type
+      const uniqueKey = gameType === 'fill_in_blanks' 
+        ? q.sentence 
+        : (q.question || q.term || q.front);
+        
+      const answerKey = q.answer || q.definition || q.back;
+
+      // Check for exact duplicates based on the CORRECT field
+      const isDuplicate = index !== self.findIndex((t: any) => {
+         const tKey = gameType === 'fill_in_blanks' ? t.sentence : (t.question || t.term || t.front);
+         return tKey === uniqueKey;
       });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'Failed to generate questions.');
-      const questionsArray = Array.isArray(data.questions) ? data.questions : [];
-      if (questionsArray.length === 0)
-        throw new Error('AI did not return any valid questions. Please try again.');
-      const editableQuestions = questionsArray.map((q: any, index: number) => {
-        if (gameType === 'memory_match') {
-          return { id: `gen-${Date.now()}-${index}`, question: q.question || '', answer: q.answer || '' };
-        }
-        const options = q.options && q.options.length === 4 ? q.options : ['', '', '', ''];
-        const answer = q.answer || options[0] || '';
-        const correctIndex = options.indexOf(answer);
-        return { id: `gen-${Date.now()}-${index}`, question: q.question || '', options, answer, correctIndex: correctIndex !== -1 ? correctIndex : 0 };
+
+      // Specific check for low-quality placeholders
+      const isPlaceholder = uniqueKey?.toLowerCase().includes("the process of ___ is defined as");
+      
+      return !isDuplicate && !isPlaceholder;
+    });
+
+let finalQuestions = uniqueQuestions;
+    if (uniqueQuestions.length < 3 && questionsArray.length >= 3) {
+      console.warn("Strict filtering removed too many questions. Using relaxed filter.");
+      finalQuestions = questionsArray.filter((q: any, index: number, self: any[]) => {
+         const uniqueKey = gameType === 'fill_in_blanks' ? q.sentence : (q.question || q.term || q.front);
+         return index === self.findIndex((t: any) => {
+            const tKey = gameType === 'fill_in_blanks' ? t.sentence : (t.question || t.term || t.front);
+            return tKey === uniqueKey;
+         });
       });
-      setGeneratedQuestions(editableQuestions);
-      setShowGeneratedPreview(true);
-      showResultModal('success', 'Generated', 'Questions generated successfully! You can edit them before saving.');
-    } catch (error: any) {
-      showResultModal('error', 'Generation Failed', error?.message || 'Unable to generate questions.');
-    } finally {
-      setIsGenerating(false);
     }
-  };
-  const handleGenerateMoreQuestions = async () => {
-    if (selectedMaterialIds.length === 0) {
-      showResultModal('error', 'Error', 'Please select at least one learning material first.');
-      return;
+
+
+    if (finalQuestions.length === 0) {
+      throw new Error('AI did not return any valid questions. Please try again.');
     }
-    setIsGenerating(true);
-    try {
-      const response = await fetch(`${API_BASE_URL}/game-ai/generate-quiz-materials`, {
-        credentials: 'include',
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          classId: course?.id,
-          materialIds: selectedMaterialIds,
-          studentId: currentTeacher?.teacherId || 'teacher-preview',
-          gameType,
-        }),
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'Failed to generate questions.');
-      const questionsArray = Array.isArray(data.questions) ? data.questions : [];
-      if (questionsArray.length === 0)
-        throw new Error('AI did not return any valid questions. Please try again.');
-      const newQuestions = questionsArray.map((q: any, index: number) => {
-        if (gameType === 'memory_match') {
-          return { id: `gen-${Date.now()}-${index}`, question: q.question || '', answer: q.answer || '' };
-        }
-        const options = q.options && q.options.length === 4 ? q.options : ['', '', '', ''];
-        const answer = q.answer || options[0] || '';
-        const correctIndex = options.indexOf(answer);
-        return { id: `gen-${Date.now()}-${index}`, question: q.question || '', options, answer, correctIndex: correctIndex !== -1 ? correctIndex : 0 };
-      });
-      setGeneratedQuestions((prev) => [...prev, ...newQuestions]);
-      showResultModal('success', 'Generated', `${newQuestions.length} more questions added successfully!`);
-    } catch (error: any) {
-      showResultModal('error', 'Generation Failed', error?.message || 'Unable to generate questions.');
-    } finally {
-      setIsGenerating(false);
-    }
-  };
+
+
+   const editableQuestions = finalQuestions.map((q: any, index: number) => {
+    
+    
+    // ✅ FIX: Handle fill_in_blanks specifically
+  if (gameType === 'fill_in_blanks') {
+    return { 
+      id: `gen-${Date.now()}-${index}`, 
+      sentence: q.sentence || '', // ✅ Keep sentence
+      answer: q.answer || '', 
+      // Keep question as fallback just in case
+      question: q.sentence || q.question || '' 
+    };
+  }
+  if (gameType === 'flashcard') {
+        return { 
+          id: `gen-${Date.now()}-${index}`, 
+          question: q.front || '', 
+          answer: q.back || '' 
+        };
+      }
+      if (gameType === 'memory_match') {
+    return { 
+      id: `gen-${Date.now()}-${index}`, 
+      question: q.term || q.question || '',       // ✅ Map term → question for UI
+      answer: q.definition || q.answer || ''      // ✅ Map definition → answer for UI
+    };
+  }
+
+    const options = q.options && q.options.length === 4 ? q.options : ['', '', '', ''];
+    const answer = q.answer || options[0] || '';
+    const correctIndex = options.indexOf(answer);
+    return {
+      id: `gen-${Date.now()}-${index}`,
+      question: q.question || '',
+      options,
+      answer,
+      correctIndex: correctIndex !== -1 ? correctIndex : 0
+    };
+  });
+
+    setGeneratedQuestions(editableQuestions);
+    setShowGeneratedPreview(true);
+    showResultModal('success', 'Generated', 'Questions generated successfully! You can edit them before saving.');
+  } catch (error: any) {
+    showResultModal('error', 'Generation Failed', error?.message || 'Unable to generate questions.');
+  } finally {
+    setIsGenerating(false);
+  }
+};
+  
   const updateGeneratedQuestion = (index: number, field: string, value: string) => {
     setGeneratedQuestions((prev) => {
       const next = [...prev];
@@ -2173,7 +2219,7 @@ const handleCreateManualLesson = async () => {
       showResultModal('error', 'Error', 'No class selected.');
       return;
     }
-    if (activeTab === 'Materials') {
+    if (activeTab === 'materials') {
       if (!formTitle.trim() || !formPointsOnTime.trim()) {
         showResultModal('error', 'Required', 'Please enter the title and week.');
         return;
@@ -2378,43 +2424,61 @@ const handleCreateManualLesson = async () => {
   const renderInputError = (message?: string) =>
     !!message ? <Text style={styles.errorText}>{message}</Text> : null;
   const renderRelatedMaterialsSelector = () => (
-    <View style={styles.sectionBlock}>
-      <Text style={styles.sectionLabel}>Learning Materials</Text>
-      <Text style={styles.helperText}>
-        Select the materials the AI should use for follow-up activity generation or game content.
-      </Text>
-      {materials.length === 0 ? (
-        <Text style={styles.emptyMiniText}>No created materials yet.</Text>
-      ) : (
-        <View
-          style={[styles.materialSelectorWrap, errors.materials ? styles.errorContainer : null]}
-        >
-          {materials.map((material) => {
-            const active = selectedMaterialIds.includes(material.id);
-            return (
-              <TouchableOpacity
-                key={material.id}
-                style={[styles.materialChip, active && styles.materialChipActive]}
-                onPress={() => toggleRelatedMaterial(material.id)}
-                activeOpacity={0.85}
-                disabled={isSaving}
-              >
-                <Ionicons
-                  name={active ? 'checkmark-circle' : 'ellipse-outline'}
-                  size={16}
-                  color={active ? '#FFF' : '#D32F2F'}
-                />
-                <Text style={[styles.materialChipText, active && styles.materialChipTextActive]}>
+  <View style={styles.sectionBlock}>
+    <Text style={styles.sectionLabel}>Learning Materials</Text>
+    <Text style={styles.helperText}>
+      Select the materials or lessons the AI should use for follow-up activity generation or game content.
+    </Text>
+    {materials.length === 0 ? (
+      <Text style={styles.emptyMiniText}>No created materials or lessons yet.</Text>
+    ) : (
+      <View
+        style={[styles.materialSelectorWrap, errors.materials ? styles.errorContainer : null]}
+      >
+        {materials.map((material) => {
+          const active = selectedMaterialIds.includes(material.id);
+          // Check if this item is a Module Lesson based on the 'type' field added in backend
+          const isLesson = (material as any).isLesson === true || (material as any).type === 'module_lesson';
+          
+          return (
+            <TouchableOpacity
+              key={material.id}
+              style={[
+                styles.materialChip, 
+                active && styles.materialChipActive,
+                isLesson && styles.lessonChip // Add specific style for lessons
+              ]}
+              onPress={() => toggleRelatedMaterial(material.id)}
+              activeOpacity={0.85}
+              disabled={isSaving}
+            >
+              <Ionicons
+                name={active ? 'checkmark-circle' : isLesson ? 'book-outline' : 'ellipse-outline'}
+                size={16}
+                color={active ? '#FFF' : isLesson ? '#1976D2' : '#D32F2F'}
+              />
+              <View style={{ flex: 1 }}>
+                <Text style={[
+                  styles.materialChipText, 
+                  active && styles.materialChipTextActive,
+                  isLesson && styles.lessonChipText
+                ]}>
                   {material.title}
                 </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-      )}
-      {renderInputError(errors.materials)}
-    </View>
-  );
+                {isLesson && (
+                  <Text style={[styles.lessonSubtext, active && styles.lessonSubtextActive]}>
+                    Lesson {(material as any).lessonNumber || ''}
+                  </Text>
+                )}
+              </View>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+    )}
+    {renderInputError(errors.materials)}
+  </View>
+);
   const renderDateTimeField = () => (
     <View style={styles.sectionBlock}>
       <Text style={styles.sectionLabel}>Due Date & Time</Text>
@@ -2764,54 +2828,298 @@ const handleCreateManualLesson = async () => {
     </View>
   );
   const renderCreateModalBody = () => {
-    if (activeTab === 'Materials') {
-      return (
-        <>
-          <Text style={styles.sectionLabel}>Title</Text>
-          <TextInput
-            style={styles.inputBox}
-            placeholder="Material Title"
-            placeholderTextColor="#999"
-            value={formTitle}
-            onChangeText={setFormTitle}
-          />
-          <Text style={styles.sectionLabel}>Week</Text>
-          <TextInput
-            style={styles.inputBox}
-            placeholder="Week (example: Week 1)"
-            placeholderTextColor="#999"
-            value={formPointsOnTime}
-            onChangeText={setFormPointsOnTime}
-          />
-          <Text style={styles.sectionLabel}>Description</Text>
-          <TextInput
-            style={styles.textAreaBox}
-            placeholder="Optional description"
-            placeholderTextColor="#999"
-            value={formDesc}
-            onChangeText={setFormDesc}
-            multiline
-          />
-          <Text style={styles.sectionLabel}>Attachment</Text>
+  // Helper to validate question count (matches Game.tsx logic)
+  const parsedQuestionCount = parseInt(numberOfQuestions, 10) || 0;
+  const isInvalidQuestionCount = parsedQuestionCount > 100 || parsedQuestionCount < 1;
+
+  if (activeTab === 'materials') {
+    return (
+      <>
+        <Text style={styles.sectionLabel}>Title</Text>
+        <TextInput
+          style={styles.inputBox}
+          placeholder="Material Title"
+          placeholderTextColor="#999"
+          value={formTitle}
+          onChangeText={setFormTitle}
+        />
+        <Text style={styles.sectionLabel}>Week</Text>
+        <TextInput
+          style={styles.inputBox}
+          placeholder="Week (example: Week 1)"
+          placeholderTextColor="#999"
+          value={formPointsOnTime}
+          onChangeText={setFormPointsOnTime}
+        />
+        <Text style={styles.sectionLabel}>Description</Text>
+        <TextInput
+          style={styles.textAreaBox}
+          placeholder="Optional description"
+          placeholderTextColor="#999"
+          value={formDesc}
+          onChangeText={setFormDesc}
+          multiline
+        />
+        <Text style={styles.sectionLabel}>Attachment</Text>
+        <TouchableOpacity
+          style={[styles.primaryButtonWide, isSaving ? styles.disabledButton : null]}
+          onPress={handlePickFile}
+          disabled={isSaving}
+        >
+          <Ionicons name="cloud-upload-outline" size={18} color="#FFF" />
+          <Text style={styles.uploadBtnText}>Upload File</Text>
+        </TouchableOpacity>
+        {!!pickedFile?.name && (
+          <View style={styles.filePreviewBox}>
+            <Ionicons name="document-text-outline" size={20} color="#D32F2F" />
+            <Text style={styles.filePreviewText}>{pickedFile.name}</Text>
+          </View>
+        )}
+      </>
+    );
+  }
+
+  // --- GAME-BASED ASSIGNMENT FORM ---
+  return (
+    <View style={[styles.formGrid, !isMobile && styles.formGridDesktop]}>
+      {/* Assignment Type Toggle */}
+      <View style={styles.sectionBlock}>
+        <Text style={styles.sectionLabel}>Assignment Type</Text>
+        <View style={{ flexDirection: 'row', gap: 10, marginTop: 8 }}>
           <TouchableOpacity
-            style={[styles.primaryButtonWide, isSaving ? styles.disabledButton : null]}
-            onPress={handlePickFile}
+            style={[styles.typeChip, assignmentType === 'regular' && styles.typeChipActive]}
+            onPress={() => setAssignmentType('regular')}
             disabled={isSaving}
           >
-            <Ionicons name="cloud-upload-outline" size={18} color="#FFF" />
-            <Text style={styles.uploadBtnText}>Upload File</Text>
+            <Text
+              style={[
+                styles.typeChipText,
+                assignmentType === 'regular' && styles.typeChipTextActive,
+              ]}
+            >
+              Regular Submission
+            </Text>
           </TouchableOpacity>
-          {!!pickedFile?.name && (
-            <View style={styles.filePreviewBox}>
-              <Ionicons name="document-text-outline" size={20} color="#D32F2F" />
-              <Text style={styles.filePreviewText}>{pickedFile.name}</Text>
+          <TouchableOpacity
+            style={[styles.typeChip, assignmentType === 'game_based' && styles.typeChipActive]}
+            onPress={() => setAssignmentType('game_based')}
+            disabled={isSaving}
+          >
+            <Text
+              style={[
+                styles.typeChipText,
+                assignmentType === 'game_based' && styles.typeChipTextActive,
+              ]}
+            >
+              Game Based Assignment
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      {assignmentType === 'game_based' && renderGameAndClassRow()}
+
+      <View style={[styles.formColumnLeft, !isMobile && styles.formColumnLeftDesktop]}>
+        <Text style={styles.sectionLabel}>Header</Text>
+        <TextInput
+          style={[styles.inputBox, errors.title ? styles.errorBorder : null]}
+          value={formTitle}
+          onChangeText={(value) => {
+            setFormTitle(value);
+            if (errors.title) setErrors((prev) => ({ ...prev, title: undefined }));
+          }}
+          placeholder="Enter Header"
+          placeholderTextColor="#999"
+          editable={!isSaving}
+        />
+        {renderInputError(errors.title)}
+
+        <Text style={styles.sectionLabel}>Instruction</Text>
+        <TextInput
+          style={[styles.textAreaBox, errors.instruction ? styles.errorBorder : null]}
+          value={formDesc}
+          onChangeText={(value) => {
+            setFormDesc(value);
+            if (errors.instruction) setErrors((prev) => ({ ...prev, instruction: undefined }));
+          }}
+          placeholder="Enter Instruction"
+          placeholderTextColor="#999"
+          multiline
+          editable={!isSaving}
+        />
+        {renderInputError(errors.instruction)}
+
+        {/* ✅ NEW: Number of Questions Input for Game-Based Assignments */}
+{assignmentType === 'game_based' && (
+  <>
+    <Text style={styles.sectionLabel}>Number of Questions (Max 100)</Text>
+    <TextInput
+      style={[
+        styles.inputBox,
+        isInvalidQuestionCount && styles.errorBorder, // ✅ Show red border if invalid
+      ]}
+      placeholder="e.g., 10"
+      placeholderTextColor="#999"
+      value={numberOfQuestions}
+      onChangeText={(text) => {
+        // ✅ Sanitize input: Only allow numbers (matches Game.tsx UX)
+        setNumberOfQuestions(text.replace(/[^0-9]/g, ''));
+        // Clear error when user starts typing valid input
+        if (errors.totalScore) setErrors((prev) => ({ ...prev, totalScore: undefined }));
+      }}
+      keyboardType="numeric"
+      maxLength={3}
+      editable={!isSaving}
+    />
+    {/* ✅ Display specific error message under input */}
+    {isInvalidQuestionCount && (
+      <Text style={styles.errorText}>
+        {parsedQuestionCount > 100
+          ? 'Maximum limit is 100 questions.'
+          : 'Please enter at least 1 question.'}
+      </Text>
+    )}
+  </>
+)}
+
+        {assignmentType === 'game_based' && renderAttemptsSelector()}
+        {assignmentType === 'game_based' && renderTimeLimitSelector()}
+      </View>
+
+      <View style={[styles.formColumnRight, !isMobile && styles.formColumnRightDesktop]}>
+        {renderDateTimeField()}
+        
+        <View style={styles.scoreStackDesktop}>
+          <View style={styles.scoreFieldFull}>
+            <Text style={styles.sectionLabel}>Total Score</Text>
+            <TextInput
+              style={[
+                styles.inputBox,
+                errors.totalScore ? styles.errorBorder : null,
+                assignmentType === 'game_based' 
+                  ? { backgroundColor: '#F5F5F5', color: '#666' } 
+                  : null,
+              ]}
+              value={
+                assignmentType === 'game_based' 
+                  ? String(generatedQuestions.length) 
+                  : formPoints
+              }
+              onChangeText={(value) => {
+                setFormPoints(value);
+                if (errors.totalScore) setErrors((prev) => ({ ...prev, totalScore: undefined }));
+              }}
+              keyboardType="numeric"
+              placeholder="Total Score"
+              placeholderTextColor="#999"
+              editable={assignmentType !== 'game_based' && !isSaving}
+            />
+            {assignmentType === 'game_based' && (
+              <Text style={{ fontSize: 11, color: '#888', marginTop: -4, marginBottom: 8, marginLeft: 4 }}>
+                * Auto-calculated based on generated questions (1 point per item).
+              </Text>
+            )}
+            {renderInputError(errors.totalScore)}
+          </View>
+
+          {assignmentType !== 'game_based' && (
+            <View style={styles.scoreFieldFull}>
+              <Text style={styles.sectionLabel}>Points On Time</Text>
+              <TextInput
+                style={[styles.inputBox, errors.pointsOnTime ? styles.errorBorder : null]}
+                value={formPointsOnTime}
+                onChangeText={(value) => {
+                  setFormPointsOnTime(value);
+                  if (errors.pointsOnTime)
+                    setErrors((prev) => ({ ...prev, pointsOnTime: undefined }));
+                }}
+                keyboardType="numeric"
+                placeholder="Points On Time"
+                placeholderTextColor="#999"
+                editable={!isSaving}
+              />
+              {renderInputError(errors.pointsOnTime)}
             </View>
           )}
-        </>
-      );
-    }
-    return renderAssignmentFields();
-  };
+        </View>
+      </View>
+
+      <View style={styles.fullWidthSection}>
+        {renderRelatedMaterialsSelector()}
+
+        {/* Generate Button for Game-Based */}
+        {assignmentType === 'game_based' && selectedMaterialIds.length > 0 && gameType && (
+          <TouchableOpacity
+            style={[
+              styles.generateButton, 
+              (isGenerating || isInvalidQuestionCount) ? styles.disabledButton : null
+            ]}
+            onPress={handleGenerateQuestions}
+            disabled={isGenerating || isSaving || isInvalidQuestionCount}
+          >
+            {isGenerating ? (
+              <ActivityIndicator size="small" color="#FFF" />
+            ) : (
+              <Ionicons name="sparkles-outline" size={18} color="#FFF" />
+            )}
+            <Text style={styles.generateButtonText}>
+              {isGenerating
+                ? 'Generating...'
+                : `Generate ${gameOptions.find((g) => g.value === gameType)?.label || ''} Questions`}
+            </Text>
+          </TouchableOpacity>
+        )}
+
+        {assignmentType === 'game_based' && selectedMaterialIds.length > 0 && !gameType && (
+          <View style={[styles.generateButton, { backgroundColor: '#9E9E9E' }]}>
+            <Ionicons name="alert-circle-outline" size={18} color="#FFF" />
+            <Text style={styles.generateButtonText}>Select a Game Type to Generate Questions</Text>
+          </View>
+        )}
+
+        {/* Attachment for Regular Submission */}
+        {assignmentType === 'regular' && (
+          <>
+            <Text style={styles.sectionLabel}>Attachment</Text>
+            <TouchableOpacity
+              style={[styles.primaryButtonWide, isSaving ? styles.disabledButton : null]}
+              onPress={handlePickAssignmentFile}
+              disabled={isSaving}
+            >
+              <Ionicons name="cloud-upload-outline" size={18} color="#FFF" />
+              <Text style={styles.uploadBtnText}>
+                {pickedAssignmentFile?.name ? 'Change File' : 'Upload File'}
+              </Text>
+            </TouchableOpacity>
+            {!!pickedAssignmentFile?.name && (
+              <View style={styles.filePreviewBox}>
+                <Ionicons name="document-text-outline" size={20} color="#D32F2F" />
+                <Text style={styles.filePreviewText}>{pickedAssignmentFile.name}</Text>
+              </View>
+            )}
+          </>
+        )}
+
+        <View style={styles.checkboxRow}>
+          <TouchableOpacity
+            style={[
+              styles.checkboxBox,
+              assignmentDisableRepositoryAfterDue && styles.checkboxBoxChecked,
+            ]}
+            onPress={() =>
+              setAssignmentDisableRepositoryAfterDue(!assignmentDisableRepositoryAfterDue)
+            }
+          >
+            {assignmentDisableRepositoryAfterDue ? (
+              <Ionicons name="checkmark" size={16} color="#FFF" />
+            ) : null}
+          </TouchableOpacity>
+          <Text style={styles.checkboxLabel}>Disable repository after due</Text>
+        </View>
+      </View>
+    </View>
+  );
+};
   const renderQuestionEditor = (q: any, qIndex: number) => {
     const renderHeader = (title: string) => (
       <View
@@ -2891,22 +3199,28 @@ const handleCreateManualLesson = async () => {
             />
           </View>
         );
+      
+            
       case 'fill_in_blanks':
         return (
           <View key={q.id} style={styles.generatedQuestionBlock}>
             {renderHeader(`Item ${qIndex + 1}`)}
+            
+            {/* ✅ UPDATED: Use q.sentence */}
             <Text style={styles.sectionLabel}>Sentence (Use '___' for the blank)</Text>
             <TextInput
               style={styles.inputBox}
-              value={q.question}
-              onChangeText={(val) => updateGeneratedQuestion(qIndex, 'question', val)}
+              // ✅ FIX: Bind to 'sentence' if available, fallback to 'question' for legacy safety
+              value={q.sentence || q.question || ''} 
+              onChangeText={(val) => updateGeneratedQuestion(qIndex, 'sentence', val)} // ✅ SAVE as 'sentence'
               placeholder="The process of ___ is defined as..."
               multiline
             />
+            
             <Text style={styles.sectionLabel}>Missing Word / Correct Answer</Text>
             <TextInput
               style={styles.inputBox}
-              value={q.answer}
+              value={q.answer || ''}
               onChangeText={(val) => updateGeneratedQuestion(qIndex, 'answer', val)}
               placeholder="Enter the exact word to fill in the blank"
             />
@@ -3198,44 +3512,38 @@ const handleCreateManualLesson = async () => {
         </View>
         {/* ── Tabs ─ */}
         <View style={styles.tabContainer}>
-          <TouchableOpacity
-            onPress={() => setActiveTab('Materials')}
-            style={[styles.tab, activeTab === 'Materials' && styles.tabActive]}
-          >
-            <Text
-              style={[styles.tabText, activeTab === 'Materials' && styles.tabTextActive]}
-            >
-              Materials ({materials.length})
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => setActiveTab('Assignments')}
-            style={[styles.tab, activeTab === 'Assignments' && styles.tabActive]}
-          >
-            <Text
-              style={[styles.tabText, activeTab === 'Assignments' && styles.tabTextActive]}
-            >
-              Assignments ({assignments.length})
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => setActiveTab('Modules')}
-            style={[styles.tab, activeTab === 'Modules' && styles.tabActive]}
-          >
-            <Text
-              style={[styles.tabText, activeTab === 'Modules' && styles.tabTextActive]}
-            >
-              Modules ({modules.length})
-            </Text>
-          </TouchableOpacity>
-        </View>
-        {activeTab === 'Materials' ? (
+  {/* ✅ MOVED TO FIRST POSITION (LEFT) */}
+  <TouchableOpacity
+    onPress={() => setActiveTab('modules')}
+    style={[styles.tab, activeTab === 'modules' && styles.tabActive]}
+  >
+    <Text
+      style={[styles.tabText, activeTab === 'modules' && styles.tabTextActive]}
+    >
+      Course Resources ({modules.length})
+    </Text>
+  </TouchableOpacity>
+
+  <TouchableOpacity
+    onPress={() => setActiveTab('assignments')}
+    style={[styles.tab, activeTab === 'assignments' && styles.tabActive]}
+  >
+    <Text
+      style={[styles.tabText, activeTab === 'assignments' && styles.tabTextActive]}
+    >
+      Assignments ({assignments.length})
+    </Text>
+  </TouchableOpacity>
+
+  {/* ❌ REMOVED MATERIALS TAB AS REQUESTED */}
+</View>
+        {activeTab === 'materials' ? (
           <TeacherMaterialSection
             materials={materials}
             onCreate={openCreateModal}
             onOpenMaterial={openMaterialViewer}
           />
-        ) : activeTab === 'Assignments' ? (
+        ) : activeTab === 'assignments' ? (
           <TeacherAssignmentSection
             assignments={assignments}
             onCreate={openCreateModal}
@@ -3680,14 +3988,14 @@ CREATE MODAL
               <View style={styles.modalHeaderTextWrap}>
                 <Text style={styles.createTitle}>
                   Create{' '}
-                  {activeTab === 'Materials'
+                  {activeTab === 'materials'
                     ? 'Material'
                     : assignmentType === 'game_based'
                       ? 'Game-Based Assignment'
                       : 'Assignment'}
                 </Text>
                 <Text style={styles.modalSubtitle}>
-                  {activeTab === 'Materials'
+                  {activeTab === 'materials'
                     ? 'Add a new class material with optional file attachment.'
                     : assignmentType === 'game_based'
                       ? 'Create a new game-based assignment with interactive challenges.'
@@ -3720,7 +4028,7 @@ CREATE MODAL
               <TouchableOpacity
                 style={[
                   styles.floatingSaveButton,
-                  activeTab === 'Assignments' && Object.keys(errors).length > 0
+                  activeTab === 'assignments' && Object.keys(errors).length > 0
                     ? styles.floatingSaveButtonWarn
                     : null,
                   isSaving ? styles.floatingSaveButtonDisabled : null,
@@ -3733,7 +4041,7 @@ CREATE MODAL
                   <>
                     <ActivityIndicator size="small" color="#FFF" />
                     <Text style={styles.floatingSaveButtonText}>
-                      {activeTab === 'Materials' ? 'Saving Material...' : 'Saving Assignment...'}
+                      {activeTab === 'materials' ? 'Saving Material...' : 'Saving Assignment...'}
                     </Text>
                   </>
                 ) : (
@@ -4093,18 +4401,7 @@ GENERATED QUESTIONS PREVIEW MODAL
                 <Text style={styles.emptyMiniText}>No questions generated yet.</Text>
               )}
               {generatedQuestions.map((q, qIndex) => renderQuestionEditor(q, qIndex))}
-              <TouchableOpacity
-                style={[styles.generateButton, { backgroundColor: '#1976D2', marginTop: 16 }]}
-                onPress={handleGenerateMoreQuestions}
-                disabled={isGenerating}
-              >
-                {isGenerating ? (
-                  <ActivityIndicator size="small" color="#FFF" />
-                ) : (
-                  <Ionicons name="add-circle-outline" size={18} color="#FFF" />
-                )}
-                <Text style={styles.generateButtonText}>Generate 10 More Questions</Text>
-              </TouchableOpacity>
+              
             </ScrollView>
             <View style={styles.buttonRow}>
               <TouchableOpacity
@@ -4820,7 +5117,7 @@ LESSON EDIT MODAL (Direct Edit - No Preview Toggle)
           <View style={styles.savingCard}>
             <ActivityIndicator size="large" color="#D32F2F" />
             <Text style={styles.savingTitle}>
-              {activeTab === 'Materials' ? 'Saving Material' : 'Saving Assignment'}
+              {activeTab === 'materials' ? 'Saving Material' : 'Saving Assignment'}
             </Text>
             <Text style={styles.savingMessage}>
               Please wait while your file and details are being stored in Firebase.
@@ -5156,7 +5453,7 @@ const styles = StyleSheet.create({
     maxHeight: '90%',
   },
   dateTimeCard: { backgroundColor: '#FFF', borderRadius: 18, padding: 18, maxHeight: '92%' },
-  modalScrollContent: { paddingBottom: 100 },
+  modalScrollContent: { paddingBottom: 10 },
   createHeaderRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -5246,6 +5543,21 @@ const styles = StyleSheet.create({
   materialChipActive: { backgroundColor: '#D32F2F', borderColor: '#D32F2F' },
   materialChipText: { color: '#D32F2F', fontWeight: '700', flex: 1 },
   materialChipTextActive: { color: '#FFF' },
+  lessonChip: {
+    backgroundColor: '#E3F2FD', // Light Blue background for lessons
+    borderColor: '#90CAF9',
+  },
+  lessonChipText: {
+    color: '#1565C0', // Darker blue text
+  },
+  lessonSubtext: {
+    fontSize: 10,
+    color: '#1976D2',
+    marginTop: 2,
+  },
+  lessonSubtextActive: {
+    color: '#E3F2FD',
+  },
   primaryButtonWide: {
     backgroundColor: '#D32F2F',
     minHeight: 48,
@@ -5300,7 +5612,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  primaryButtonText: { color: '#FFF', fontWeight: '800' },
+  primaryButtonText: { color: '#FFF', fontWeight: '800' , textAlign: 'center'},
   secondaryButton: {
     flex: 1,
     borderWidth: 1,

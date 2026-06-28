@@ -1209,7 +1209,7 @@ const Assignments = ({
                     )}
 
                     <View style={styles.section}>
-                      <Text style={styles.sectionTitle}>📚 Related Materials</Text>
+                      <Text style={styles.sectionTitle}>📚 Related Course Resources</Text>
                       {getRelatedMaterials(selectedAssignment).length > 0 ? (
                         getRelatedMaterials(selectedAssignment).map((material) => (
                           <View key={material.id} style={styles.relatedMaterialItem}>

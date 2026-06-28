@@ -441,6 +441,89 @@ const EMPTY_COURSE: AssignmentCourse = {
   assignments: [],
 };
 
+// ─────────────────────────────────────────────────────────────────────────────
+// RICH TEXT RENDERER HELPER (Matches Teacher Implementation)
+// ─────────────────────────────────────────────────────────────────────────────
+const renderFormattedText = (text: string, baseStyle: any) => {
+  if (!text) return null;
+  const lines = text.split("\n");
+  const justifiedBaseStyle = [
+    baseStyle,
+    {
+      textAlign: "justify",
+      lineHeight: 24,
+      letterSpacing: 0.3,
+      fontSize: 14,
+    },
+  ];
+
+  return lines.map((line, lineIndex) => {
+    const trimmedLine = line.trim();
+    // Empty line spacing
+    if (!trimmedLine) {
+      return <View key={lineIndex} style={{ height: 8 }} />;
+    }
+    // Detect bullets
+    const isBullet =
+      trimmedLine.startsWith("* ") ||
+      trimmedLine.startsWith("- ") ||
+      trimmedLine.startsWith("• ");
+    
+    let contentToParse = trimmedLine;
+    if (trimmedLine.startsWith("* ")) {
+      contentToParse = trimmedLine.substring(2).trim();
+    } else if (trimmedLine.startsWith("- ")) {
+      contentToParse = trimmedLine.substring(2).trim();
+    } else if (trimmedLine.startsWith("• ")) {
+      contentToParse = trimmedLine.substring(2).trim();
+    }
+
+    // Count markdown bold markers
+    const boldMarkers = contentToParse.match(/\*\*/g) || [];
+    const boldCount = boldMarkers.length;
+    // Detect malformed markdown
+    const hasInvalidBold =
+      boldCount % 2 !== 0 ||
+      /^\*+\s*\*/.test(contentToParse) ||
+      /\*\*\*$/.test(contentToParse);
+
+    // Fallback: render as plain text
+    if (hasInvalidBold) {
+      const cleanedText = contentToParse.replace(/\*/g, "");
+      return (
+        <View key={lineIndex} style={{ flexDirection: "row", marginBottom: 6 }}>
+          {isBullet && (
+            <Text style={[justifiedBaseStyle, { marginRight: 10, fontWeight: "bold" }]}>•</Text>
+          )}
+          <Text style={justifiedBaseStyle}>{cleanedText}</Text>
+        </View>
+      );
+    }
+
+    // Parse valid **bold**
+    const boldRegex = /(\*\*[^*]+\*\*)/g;
+    const parts = contentToParse.split(boldRegex);
+
+    return (
+      <View key={lineIndex} style={{ flexDirection: "row", marginBottom: 6 }}>
+        {isBullet && (
+          <Text style={[justifiedBaseStyle, { marginRight: 10, fontWeight: "bold" }]}>•</Text>
+        )}
+        <Text style={{ flex: 1 }}>
+          {parts.map((part, partIndex) => {
+            const isBold = part.startsWith("**") && part.endsWith("**") && part.length > 4;
+            return (
+              <Text key={`${lineIndex}-${partIndex}`} style={[justifiedBaseStyle, isBold && { fontWeight: "bold" }]}>
+                {isBold ? part.slice(2, -2) : part}
+              </Text>
+            );
+          })}
+        </Text>
+      </View>
+    );
+  });
+};
+
 const CourseDetail = ({
   course,
   initialTab = "materials",
@@ -462,13 +545,41 @@ const CourseDetail = ({
   onEditComment,
   onDeleteComment,
 }: CourseDetailProps) => {
-  const { width, height: windowHeight } = useWindowDimensions();
+  // Helper to safely format Firestore timestamps or date strings
+const formatSafeDate = (value: any) => {
+  if (!value) return 'Recently';
+  
+  // Handle Firestore Timestamp objects
+  if (typeof value?.toDate === 'function') {
+    return value.toDate().toLocaleDateString();
+  }
+  
+  // Handle timestamp with _seconds property
+  if (typeof value?._seconds === 'number') {
+    return new Date(value._seconds * 1000).toLocaleDateString();
+  }
+  
+  // Handle standard date strings
+  try {
+    const d = new Date(value);
+    if (!isNaN(d.getTime())) return d.toLocaleDateString();
+  } catch {}
+  
+  return 'Recently';
+};
+
+  // ✅ FIX 1: Destructure 'height' correctly
+  const { width, height } = useWindowDimensions();
+  const windowHeight = height; // Alias for clarity if needed
+  
   const isSmallPhone = width < 360;
   const isLargeScreen = width >= 768;
 
   const safeCourse = course ?? EMPTY_COURSE;
 
-  const [activeTab, setActiveTab] = useState<"materials" | "assignments" | "modules">(initialTab); // 👈 UPDATED
+   
+const [activeTab, setActiveTab] = useState<"materials" | "assignments" | "modules">('modules'); 
+
   const [selectedAssignment, setSelectedAssignment] = useState<AssignmentItem | null>(null);
   const [selectedMaterial, setSelectedMaterial] = useState<
     AssignmentCourse["materials"][number] | null
@@ -499,6 +610,17 @@ const CourseDetail = ({
   // 👇 NEW: Modules state
   const [modules, setModules] = useState<any[]>([]);
   const [isLoadingModules, setIsLoadingModules] = useState(false);
+  const [expandedModules, setExpandedModules] = useState<Record<number, boolean>>({});
+
+  // 👇 NEW: Syllabus state
+  const [currentSyllabus, setCurrentSyllabus] = useState<any>(null);
+  const [isLoadingSyllabus, setIsLoadingSyllabus] = useState(false);
+  const [syllabusViewerUrl, setSyllabusViewerUrl] = useState<string | null>(null);
+
+  // 👇 NEW: Lesson Detail State
+  const [selectedLesson, setSelectedLesson] = useState<any>(null);
+  const [isLessonLoading, setIsLessonLoading] = useState(false);
+  const [lessonDetailModalVisible, setLessonDetailModalVisible] = useState(false);
 
   const insets = useSafeAreaInsets();
   const autoHandledRef = useRef<string | null>(null);
@@ -531,6 +653,32 @@ const CourseDetail = ({
       }
     };
     fetchModules();
+  }, [course?.id]);
+
+  // 👇 NEW: Fetch Syllabus
+  useEffect(() => {
+    if (!course?.id) {
+      setCurrentSyllabus(null);
+      return;
+    }
+    const fetchSyllabus = async () => {
+      setIsLoadingSyllabus(true);
+      try {
+        const response = await apiFetch(`${API_BASE_URL}/course-syllabus/${course.id}`);
+        const data = await response.json();
+        if (response.ok && data) {
+          setCurrentSyllabus(data);
+        } else {
+          setCurrentSyllabus(null);
+        }
+      } catch (error) {
+        console.error("Error fetching syllabus:", error);
+        setCurrentSyllabus(null);
+      } finally {
+        setIsLoadingSyllabus(false);
+      }
+    };
+    fetchSyllabus();
   }, [course?.id]);
 
   const getScorePercent = (assignment: AssignmentItem) => {
@@ -1160,6 +1308,56 @@ const CourseDetail = ({
     onPlayGame?.(assignment);
   };
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // SYLLABUS VIEWER LOGIC
+  // ─────────────────────────────────────────────────────────────────────────
+  const handleViewSyllabus = async () => {
+    if (!currentSyllabus?.id) return;
+    try {
+      const res = await apiFetch(`${API_BASE_URL}/course-syllabus/view/${currentSyllabus.id}`);
+      const data = await res.json();
+      if (res.ok && data.url) {
+        // Use Google Docs Viewer for better compatibility
+        const googleDocsUrl = getGoogleDocsViewerUrl(data.url);
+        setSyllabusViewerUrl(googleDocsUrl);
+      } else {
+        Alert.alert("Error", "Failed to load syllabus preview.");
+      }
+    } catch (e) {
+      Alert.alert("Error", "Failed to load syllabus preview.");
+    }
+  };
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // LESSON DETAIL HANDLER
+  // ─────────────────────────────────────────────────────────────────────────
+  const handleOpenLessonDetail = async (lesson: any) => {
+    // 1. Set loading state and show the modal immediately
+    setSelectedLesson(lesson);
+    setLessonDetailModalVisible(true);
+    setIsLessonLoading(true);
+    try {
+      // 2. Fetch full details from backend to get fresh signed URLs
+      const response = await apiFetch(`${API_BASE_URL}/course-lessons/${lesson.id}`);
+      if (response.ok) {
+        const result = await response.json();
+        const freshData = result.data;
+        // Update state with full data including fresh URL
+        setSelectedLesson({
+          ...freshData,
+          // Ensure fileUrl is present even if backend didn't return it explicitly
+          fileUrl: freshData.fileUrl || lesson.fileUrl
+        });
+      } else {
+        console.warn("Failed to fetch fresh lesson details, using cached data.");
+      }
+    } catch (error) {
+      console.error("Failed to load lesson details:", error);
+    } finally {
+      setIsLessonLoading(false);
+    }
+  };
+
   const renderMaterialItem = ({
     item,
   }: {
@@ -1403,62 +1601,47 @@ const CourseDetail = ({
       </View>
 
       {/* ── Tabs ── */}
-      <View style={styles.tabContainer}>
-        <TouchableOpacity
-          onPress={() => setActiveTab("materials")}
-          style={[styles.tab, activeTab === "materials" && styles.tabActive]}
-        >
-          <View style={styles.tabContent}>
-            <Ionicons
-              name="document-text-outline"
-              size={16}
-              color={activeTab === "materials" ? "#D32F2F" : "#999"}
-            />
-            <Text style={[styles.tabText, activeTab === "materials" && styles.tabTextActive]}>
-              Materials ({safeCourse.materials.length})
-            </Text>
-          </View>
-        </TouchableOpacity>
+<View style={styles.tabContainer}>
+  {/* ✅ MOVED TO FIRST POSITION (LEFT) */}
+  <TouchableOpacity
+    onPress={() => setActiveTab("modules")}
+    style={[styles.tab, activeTab === "modules" && styles.tabActive]}
+  >
+    <View style={styles.tabContent}>
+      <Ionicons
+        name="layers-outline"
+        size={16}
+        color={activeTab === "modules" ? "#D32F2F" : "#999"}
+      />
+      <Text style={[styles.tabText, activeTab === "modules" && styles.tabTextActive]}>
+        Course Resources ({modules.length})
+      </Text>
+    </View>
+  </TouchableOpacity>
 
-        <TouchableOpacity
-          onPress={() => setActiveTab("assignments")}
-          style={[styles.tab, activeTab === "assignments" && styles.tabActive]}
-        >
-          <View style={styles.tabContent}>
-            <Ionicons
-              name="checkmark-circle-outline"
-              size={16}
-              color={activeTab === "assignments" ? "#D32F2F" : "#999"}
-            />
-            <Text style={[styles.tabText, activeTab === "assignments" && styles.tabTextActive]}>
-              Assignments ({safeCourse.assignments.length})
-            </Text>
-          </View>
-        </TouchableOpacity>
+  <TouchableOpacity
+    onPress={() => setActiveTab("assignments")}
+    style={[styles.tab, activeTab === "assignments" && styles.tabActive]}
+  >
+    <View style={styles.tabContent}>
+      <Ionicons
+        name="checkmark-circle-outline"
+        size={16}
+        color={activeTab === "assignments" ? "#D32F2F" : "#999"}
+      />
+      <Text style={[styles.tabText, activeTab === "assignments" && styles.tabTextActive]}>
+        Assignments ({safeCourse.assignments.length})
+      </Text>
+    </View>
+  </TouchableOpacity>
 
-        {/* 👇 NEW MODULES TAB */}
-        <TouchableOpacity
-          onPress={() => setActiveTab("modules")}
-          style={[styles.tab, activeTab === "modules" && styles.tabActive]}
-        >
-          <View style={styles.tabContent}>
-            <Ionicons
-              name="layers-outline"
-              size={16}
-              color={activeTab === "modules" ? "#D32F2F" : "#999"}
-            />
-            <Text style={[styles.tabText, activeTab === "modules" && styles.tabTextActive]}>
-              Modules ({modules.length})
-            </Text>
-          </View>
-        </TouchableOpacity>
-      </View>
-
+  {/* ❌ REMOVED MATERIALS TAB AS REQUESTED */}
+</View>
       {/* ── Content ── */}
       <View
         style={[
           styles.contentContainer,
-          { paddingHorizontal: wp(isSmallPhone ? "3" : "4") },
+          
         ]}
       >
         {activeTab === "materials" ? (
@@ -1486,66 +1669,126 @@ const CourseDetail = ({
             <Text style={styles.emptyText}>No assignments yet</Text>
           )
         ) : activeTab === "modules" ? (
-          isLoadingModules ? (
-            <View style={{ padding: 40, alignItems: 'center' }}>
-              <ActivityIndicator size="large" color="#D32F2F" />
-              <Text style={{ marginTop: 12, color: '#666', fontSize: 14 }}>Loading modules...</Text>
+  <View>
+    {/* ── AI Course Builder / Syllabus Container (Read-Only for Student) ── */}
+    <View style={{ backgroundColor: '#FFF', borderRadius: 12, padding: 16, marginBottom: 16, borderWidth: 1, borderColor: '#EEE' }}>
+      <Text style={{ fontSize: 16, fontWeight: '800', color: '#111', marginBottom: 12 }}>Course Resources</Text>
+      
+      {!currentSyllabus ? (
+        <View style={{ alignItems: 'center', paddingVertical: 10 }}>
+          <Text style={{ color: '#888', fontSize: 13 }}>No syllabus uploaded for this course.</Text>
+        </View>
+      ) : (
+        <View style={{ backgroundColor: '#F9F9F9', borderRadius: 12, padding: 16, borderWidth: 1, borderColor: '#EEE' }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+            <Ionicons name="document-text-outline" size={24} color="#D32F2F" />
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 14, fontWeight: '700', color: '#111' }} numberOfLines={1}>
+                {currentSyllabus.fileName || 'Syllabus Document'}
+              </Text>
+              <Text style={{ fontSize: 12, color: '#666' }}>
+              Uploaded {formatSafeDate(currentSyllabus.uploadedAt)}
+            </Text>
             </View>
-          ) : modules.length > 0 ? (
-            <View>
-              {modules.map((mod) => (
-                <View key={mod.id} style={styles.moduleCard}>
-                  <Text style={styles.moduleTitle}>Module {mod.moduleNumber}: {mod.title}</Text>
-                  <Text style={styles.moduleDescription}>{mod.description}</Text>
-                  
-                  {mod.summary ? (
-                    <View style={styles.moduleSection}>
-                      <Text style={styles.moduleSectionTitle}>📝 Summary</Text>
-                      <Text style={styles.moduleSectionText}>{mod.summary}</Text>
-                    </View>
-                  ) : null}
+          </View>
+          
+          {/* Generating State Indicator */}
+          {currentSyllabus.status === 'generating' && (
+            <View style={{ marginTop: 12, padding: 12, backgroundColor: '#FFF8E1', borderRadius: 8, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <ActivityIndicator size="small" color="#F57C00" />
+              <Text style={{ color: '#F57C00', fontWeight: '600', fontSize: 13 }}>AI is analyzing your syllabus...</Text>
+            </View>
+          )}
+          
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 12 }}>
+            <TouchableOpacity 
+              onPress={handleViewSyllabus} 
+              disabled={currentSyllabus.status === 'generating'}
+              style={{ backgroundColor: '#E3F2FD', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, flexDirection: 'row', alignItems: 'center', gap: 6 }}
+            >
+              <Ionicons name="eye-outline" size={14} color="#1565C0" />
+              <Text style={{ color: '#1565C0', fontWeight: '700', fontSize: 12 }}>View Syllabus</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
+    </View>
 
-                  {mod.learningOutcomes?.length > 0 ? (
-                    <View style={styles.moduleSection}>
-                      <Text style={styles.moduleSectionTitle}>✨ Learning Outcomes</Text>
-                      {mod.learningOutcomes.map((outcome: string, i: number) => (
-                        <Text key={i} style={styles.moduleBulletText}>• {outcome}</Text>
-                      ))}
+    {/* ── Modules List ── */}
+    {isLoadingModules ? (
+      <View style={{ padding: 40, alignItems: 'center' }}>
+        <ActivityIndicator size="large" color="#D32F2F" />
+        <Text style={{ marginTop: 12, color: '#666', fontSize: 14 }}>Loading resources...</Text>
+      </View>
+    ) : modules.length > 0 ? (
+      <View>
+        {modules.map((mod) => {
+          const isExpanded = expandedModules[mod.moduleNumber] || false;
+          return (
+           <View key={mod.id} style={{ 
+              backgroundColor: '#FFF', 
+              borderRadius: 10, // ✅ Remove border radius for full-width look
+              marginBottom: 14, 
+              borderWidth: 1, // Optional: Add separator line
+              borderColor: '#EEE',
+              overflow: 'hidden' 
+            }}>
+              <TouchableOpacity
+                onPress={() => setExpandedModules(p => ({ ...p, [mod.moduleNumber]: !isExpanded }))}
+                style={{ padding: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: isExpanded ? '#FFF5F5' : '#FFF' }}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 }}>
+                  <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: '#D32F2F', alignItems: 'center', justifyContent: 'center' }}>
+                    <Ionicons name="layers-outline" size={20} color="#FFF" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                      <Text style={{ fontSize: 16, fontWeight: '800', color: '#111' }}>
+                        Module {mod.moduleNumber}: {mod.title}
+                      </Text>
                     </View>
-                  ) : null}
-
-                  {mod.bloomsObjectives?.length > 0 ? (
-                    <View style={styles.moduleSection}>
-                      <Text style={styles.moduleSectionTitle}>🎯 Bloom's Taxonomy Objectives</Text>
-                      {mod.bloomsObjectives.map((obj: any, i: number) => (
-                        <View key={i} style={{ marginBottom: 8 }}>
-                          <Text style={styles.moduleSubTitle}>{obj.level}</Text>
-                          {obj.objectives?.map((o: string, j: number) => (
-                            <Text key={j} style={styles.moduleBulletText}>• {o}</Text>
-                          ))}
-                        </View>
-                      ))}
-                    </View>
-                  ) : null}
-
-                  {mod.lessons?.length > 0 ? (
-                    <View style={styles.moduleSection}>
-                      <Text style={styles.moduleSectionTitle}>📚 Lessons</Text>
-                      {mod.lessons.map((lesson: any, i: number) => (
-                        <View key={lesson.id || i} style={styles.lessonItem}>
-                          <Text style={styles.lessonTitle}>Lesson {i + 1}: {lesson.title}</Text>
-                          <Text style={styles.lessonDescription}>{lesson.description}</Text>
-                        </View>
-                      ))}
-                    </View>
-                  ) : null}
+                  </View>
                 </View>
-              ))}
+                <Ionicons name={isExpanded ? 'chevron-up' : 'chevron-down'} size={24} color="#D32F2F" />
+              </TouchableOpacity>
+              {isExpanded && (
+                <View style={{ padding: 16, borderTopWidth: 1, borderTopColor: '#EEE', backgroundColor: '#FAFAFA' }}>
+                  {mod.lessons && mod.lessons.length > 0 ? (
+                    (() => {
+                      // ✅ SORT LESSONS BY LESSON NUMBER BEFORE RENDERING
+                      const sortedLessons = [...mod.lessons].sort((a: any, b: any) =>
+                        (Number(a.lessonNumber) || 0) - (Number(b.lessonNumber) || 0)
+                      );
+                      return sortedLessons.map((lesson: any, li: number) => (
+                        <TouchableOpacity
+                          key={lesson.id || li}
+                          onPress={() => handleOpenLessonDetail(lesson)}
+                          style={{ backgroundColor: '#FFF', borderRadius: 8, padding: 12, marginBottom: 8, borderWidth: 1, borderColor: '#DDD', borderLeftWidth: 3, borderLeftColor: '#1976D2' }}
+                        >
+                          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <Text style={{ fontSize: 14, fontWeight: '700', color: '#1976D2', marginBottom: 4 }}>
+                              Lesson {lesson.lessonNumber || (li + 1)}: {lesson.title}
+                            </Text>
+                            <Ionicons name="chevron-forward" size={16} color="#999" />
+                          </View>
+                          <Text style={{ fontSize: 12, color: '#555', lineHeight: 18 }}>{lesson.description}</Text>
+                        </TouchableOpacity>
+                      ));
+                    })()
+                  ) : (
+                    <Text style={{ textAlign: 'center', color: '#999', padding: 12 }}>No lessons added yet.</Text>
+                  )}
+                </View>
+              )}
             </View>
-          ) : (
-            <Text style={styles.emptyText}>No modules available yet.</Text>
-          )
-        ) : null}
+          );
+        })}
+      </View>
+    ) : (
+      <Text style={styles.emptyText}>No modules available yet.</Text>
+    )}
+  </View>
+) : null}
 
         {/* ══════════════════════════════════════════════════════════════════
             FULLSCREEN INLINE MATERIAL VIEWER MODAL
@@ -1644,6 +1887,159 @@ const CourseDetail = ({
               </View>
             )}
           </SafeAreaView>
+        </Modal>
+
+        {/* ═══════════════════════════════════════════════════════════════════
+            SYLLABUS VIEWER MODAL
+        ═══════════════════════════════════════════════════════════════════ */}
+        <Modal
+          visible={!!syllabusViewerUrl}
+          transparent={false}
+          animationType="slide"
+          onRequestClose={() => setSyllabusViewerUrl(null)}
+        >
+          <SafeAreaView style={styles.viewerModal} edges={["top", "bottom"]}>
+            <View style={styles.viewerTopBar}>
+              <TouchableOpacity
+                onPress={() => setSyllabusViewerUrl(null)}
+                style={styles.viewerBackBtn}
+              >
+                <Ionicons name="arrow-back" size={22} color="#FFF" />
+              </TouchableOpacity>
+              <View style={styles.viewerTitleBlock}>
+                <Text style={styles.viewerTitle} numberOfLines={1}>
+                  {currentSyllabus?.fileName || 'Course Syllabus'}
+                </Text>
+              </View>
+            </View>
+            {syllabusViewerUrl && <InlineMaterialViewer viewerUrl={syllabusViewerUrl} height={windowHeight - 62} />}
+          </SafeAreaView>
+        </Modal>
+
+        {/* ═══════════════════════════════════════════════════════════════════
+            LESSON DETAIL MODAL (Read-Only Mirror of Teacher)
+        ═══════════════════════════════════════════════════════════════════ */}
+        <Modal
+          visible={lessonDetailModalVisible}
+          transparent
+          animationType="slide"
+          onRequestClose={() => setLessonDetailModalVisible(false)}
+        >
+          <View style={styles.modalOverlayCenter}>
+            <View 
+                style={[
+                  styles.modalCardElevated, 
+                  { 
+                    // ✅ RESPONSIVE WIDTH LOGIC
+                    width: isLargeScreen ? Math.min(width * 0.85, 900) : '92%', 
+                    maxWidth: 900,
+                    maxHeight: height * 0.9,
+                    alignSelf: 'center'
+                  }
+                ]}
+              >
+              <View style={styles.createHeaderRow}>
+                <View style={styles.modalHeaderTextWrap}>
+                  {/* ✅ FIX 2: sectionTitle style is now defined below */}
+                  <Text style={styles.sectionTitle}>{selectedLesson?.title || 'Lesson Details'}</Text>
+                  <Text style={styles.modalSubtitle}>Module Content & Activities</Text>
+                </View>
+                <TouchableOpacity onPress={() => setLessonDetailModalVisible(false)}>
+                  <Ionicons name="close" size={24} color="#111" />
+                </TouchableOpacity>
+              </View>
+              <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 20 }}>
+                {isLessonLoading ? (
+                  <ActivityIndicator size="large" color="#D32F2F" style={{ marginVertical: 20 }} />
+                ) : selectedLesson ? (
+                  <>
+                    {/* ✅ File Preview Trigger Container - ONLY OPENS ON CLICK */}
+                    {selectedLesson.type === 'manual_file' && selectedLesson.fileUrl ? (
+                      <TouchableOpacity
+                        onPress={() => {
+                          // Map lesson data to Material format to reuse existing Viewer/Download logic
+                          const materialViewData: any = {
+                            id: selectedLesson.id,
+                            title: selectedLesson.title,
+                            type: selectedLesson.fileType?.startsWith('video/') ? 'video' : (selectedLesson.pdfUrl ? 'pdf' : 'document'),
+                            uploadedDate: new Date().toLocaleDateString(),
+                            fileName: selectedLesson.fileName,
+                            fileUrl: selectedLesson.fileUrl, // Signed URL from backend
+                            fileType: selectedLesson.fileType,
+                            storagePath: selectedLesson.storagePath,
+                            bucketPath: selectedLesson.bucketPath,
+                            pdfUrl: selectedLesson.pdfUrl,
+                            pdfStoragePath: selectedLesson.pdfStoragePath,
+                            content: selectedLesson.discussion || selectedLesson.description
+                          };
+                          // Close detail modal FIRST
+                          setLessonDetailModalVisible(false);
+                          // THEN open the Material Viewer
+                          setSelectedMaterial(materialViewData);
+                        }}
+                        style={{
+                          backgroundColor: '#FFF5F5',
+                          borderWidth: 2,
+                          borderColor: '#D32F2F',
+                          borderStyle: 'dashed',
+                          borderRadius: 16,
+                          padding: 24,
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          marginBottom: 16,
+                          gap: 12,
+                        }}
+                        activeOpacity={0.8}
+                      >
+                        <Ionicons name="document-text-outline" size={48} color="#D32F2F" />
+                        <Text style={{ fontSize: 16, fontWeight: '800', color: '#D32F2F' }}>
+                          {selectedLesson.fileName || 'View Attached File'}
+                        </Text>
+                        <Text style={{ fontSize: 13, color: '#666' }}>
+                          Tap to open preview • {selectedLesson.fileType?.split('/')[1]?.toUpperCase() || 'FILE'}
+                        </Text>
+                      </TouchableOpacity>
+                    ) : null}
+                    
+                    {/* Description */}
+                    <View style={{ marginBottom: 16 }}>
+                      <Text style={styles.sectionLabel}>Description</Text>
+                      <Text style={{ color: '#333', lineHeight: 20 }}>
+                        {selectedLesson.description || 'No description available.'}
+                      </Text>
+                    </View>
+                    
+                    {/* Discussion Content */}
+                    {selectedLesson.discussion ? (
+                      <View style={{ marginBottom: 16, backgroundColor: '#F9F9F9', padding: 12, borderRadius: 8 }}>
+                        <Text style={styles.sectionLabel}>Discussion / Lecture Notes</Text>
+                        <Text style={{ color: '#444', lineHeight: 22 }}>
+                          {renderFormattedText(selectedLesson.discussion, { color: '#444', lineHeight: 22 })}
+                        </Text>
+                      </View>
+                    ) : null}
+                    
+                    {/* Activity */}
+                    {selectedLesson.activity ? (
+                      <View style={{ marginBottom: 16, backgroundColor: '#E3F2FD', padding: 12, borderRadius: 8 }}>
+                        <Text style={[styles.sectionLabel, { color: '#1565C0' }]}>Activity / Scenario</Text>
+                        <Text style={{ color: '#0D47A1', lineHeight: 22 }}>
+                          {renderFormattedText(selectedLesson.activity, { color: '#0D47A1', lineHeight: 22 })}
+                        </Text>
+                      </View>
+                    ) : null}
+                  </>
+                ) : (
+                  <Text style={{ textAlign: 'center', color: '#888' }}>Could not load lesson details.</Text>
+                )}
+              </ScrollView>
+              <View style={styles.buttonRow}>
+                <TouchableOpacity style={styles.primaryButton} onPress={() => setLessonDetailModalVisible(false)}>
+                  <Text style={styles.primaryButtonText}>Close</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
         </Modal>
 
         {/* ═══════════════════════════════════════════════════════════════════
@@ -1926,7 +2322,7 @@ const CourseDetail = ({
 
                       {/* Related Materials */}
                       <View style={styles.section}>
-                        <Text style={styles.sectionTitle}>📚 Related Materials</Text>
+                        <Text style={styles.sectionTitle}>📚 Related Course Resources</Text>
                         {getRelatedMaterials(selectedAssignment).length > 0 ? (
                           getRelatedMaterials(selectedAssignment).map((material) => (
                             <TouchableOpacity
@@ -1935,7 +2331,8 @@ const CourseDetail = ({
                               activeOpacity={0.85}
                               onPress={() => {
                                 closeAssignmentModal();
-                                setTimeout(() => handleOpenMaterialPreview(material), 300);
+                                // ✅ UPDATED: Open Lesson Detail Modal instead of File Viewer
+                                setTimeout(() => handleOpenLessonDetail(material), 300);
                               }}
                             >
                               <View style={styles.relatedMaterialRow}>
@@ -2483,12 +2880,13 @@ const styles = StyleSheet.create({
   tabText: { fontWeight: "600", color: "#999" },
   tabTextActive: { color: "#D32F2F" },
   contentContainer: {
-    paddingVertical: hp("2"),
-    backgroundColor: "#FFFFFF",
-    maxWidth: 1100,
-    alignSelf: "center",
-    width: "100%",
-  },
+  paddingVertical: hp("2"),
+  backgroundColor: "#FFFFFF",
+  // ✅ UPDATED: 90% Width & Centered
+  width: '90%', 
+  alignSelf: 'center', 
+  flex: 1,
+},
   materialCard: {
     flexDirection: "row",
     borderWidth: 1,
@@ -2825,7 +3223,20 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   section: { marginBottom: 18 },
-  sectionTitle: { fontSize: 16, fontWeight: "700", color: "#000", marginBottom: 10 },
+  sectionLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#222',
+    marginBottom: 8,
+    marginTop: 10,
+  },
+  // ✅ FIX 2: Added missing sectionTitle style
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#000',
+    marginBottom: 10,
+  },
   relatedMaterialItem: {
     backgroundColor: "#F5F5F5",
     borderRadius: 10,
@@ -3198,4 +3609,47 @@ const styles = StyleSheet.create({
     color: '#555',
     lineHeight: 18,
   },
+  
+  // ── Lesson Detail Modal Styles (Reused from Teacher) ──
+  modalOverlayCenter: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    padding: 12,
+  },
+  modalCardElevated: {
+    backgroundColor: '#FFF',
+    borderRadius: 18,
+    padding: 18,
+    // Removed fixed maxHeight, handled inline now
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.25,
+    shadowRadius: 20,
+    elevation: 15,
+  },
+  moduleContentWrapper: {
+    paddingHorizontal: wp('4'),
+    paddingVertical: 16,
+  },
+  createHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 14,
+  },
+  modalHeaderTextWrap: { flex: 1, paddingRight: 12 },
+  createTitle: { fontSize: 18, fontWeight: '800', color: '#111' },
+  modalSubtitle: { fontSize: 13, color: '#666', lineHeight: 19, marginTop: 4 },
+  buttonRow: { flexDirection: 'row', gap: 10, marginTop: 16 },
+  primaryButton: {
+    flex: 1,
+    backgroundColor: '#D32F2F',
+    minHeight: 46,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  primaryButtonText: { color: '#FFF', fontWeight: '800' , textAlign: 'center'},
 });

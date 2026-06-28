@@ -278,16 +278,104 @@ const mapCoursesToAssignmentCourses = (courses: CourseDetailData[]): AssignmentC
 type CourseWithBannerFields = CourseDetailData & { units?: number; bannerUrl?: string | null; bannerStoragePath?: string | null; bannerFileName?: string | null; bannerMimeType?: string | null };
 type AssignmentCourseWithBannerFields = AssignmentCourse & { bannerUrl?: string | null; bannerStoragePath?: string | null; bannerFileName?: string | null; bannerMimeType?: string | null };
 
-const mapJoinedClassToCourseDetail = (item: any): CourseWithBannerFields => ({
-  id: String(item.id || ''), name: item.name || 'Untitled Class', code: item.courseCode || item.classCode || '',
-  instructor: item.instructorName || 'Unknown Instructor', description: item.description || 'No description available.',
-  semester: item.semester || '', schoolYear: item.schoolYear || '', section: item.section || '',
-  bannerUrl: item.bannerStoragePath ? null : item.bannerUrl || item.bannerUri || item.bannerLocalUri || null,
-  bannerStoragePath: item.bannerStoragePath || null, bannerFileName: item.bannerFileName || null, bannerMimeType: item.bannerMimeType || null,
-  units: typeof item.units === 'number' ? item.units : Number(item.units) || 0,
-  materials: Array.isArray(item.materials) ? item.materials : [],
-  assignments: Array.isArray(item.assignments) ? item.assignments.map((a: any) => ({ ...a, assignmentType: a.assignmentType || 'regular', gameType: a.gameType || null })) : [],
-});
+// In StudentApp.tsx - Replace the existing fetchCombinedMaterials function
+const fetchCombinedMaterials = async (classId: string) => {
+  try {
+    const response = await apiFetch(`${API_BASE_URL}/class-materials/${classId}`);
+    const data = await response.json();
+    
+    if (response.ok && Array.isArray(data)) {
+      // ✅ FILTER: Only keep items tagged as 'module_lesson'
+      const lessonsOnly = data.filter((item: any) => item.type === 'module_lesson');
+      
+      return lessonsOnly.map((item: any) => ({
+        id: item.id,
+        title: item.title || "Untitled Lesson",
+        type: 'document', // Treat lessons as documents for the viewer
+        uploadedDate: item.posted || item.createdAt 
+          ? new Date(item.posted || item.createdAt.seconds * 1000).toLocaleDateString() 
+          : "Unknown",
+        content: item.content || item.discussion || "",
+        fileName: item.fileName,
+        fileUrl: item.fileUrl || item.fileUri,
+        fileType: item.fileType,
+        storagePath: item.storagePath,
+        bucketPath: item.bucketPath,
+        pdfUrl: item.pdfUrl,
+        pdfStoragePath: item.pdfStoragePath,
+        isLesson: true,
+        moduleId: item.moduleId,
+        lessonNumber: item.lessonNumber
+      }));
+    }
+  } catch (error) {
+    console.error("Error fetching module lessons for class", classId, error);
+  }
+  return [];
+};
+// In StudentApp.tsx
+
+const fetchModuleLessonsOnly = async (classId: string) => {
+  try {
+    const response = await apiFetch(`${API_BASE_URL}/class-materials/${classId}`);
+    const data = await response.json();
+    
+    if (response.ok && Array.isArray(data)) {
+      // ✅ FILTER: Only keep items tagged as 'module_lesson'
+      const lessonsOnly = data.filter((item: any) => item.type === 'module_lesson');
+      
+      return lessonsOnly.map((item: any) => ({
+        id: item.id,
+        title: item.title || "Untitled Lesson",
+        // ✅ FIX: Use 'as const' to satisfy the Material type union
+        type: 'document' as const, 
+        uploadedDate: item.posted || item.createdAt 
+          ? new Date(item.posted || item.createdAt.seconds * 1000).toLocaleDateString() 
+          : "Unknown",
+        content: item.content || item.discussion || "",
+        fileName: item.fileName,
+        fileUrl: item.fileUrl || item.fileUri,
+        fileType: item.fileType,
+        storagePath: item.storagePath,
+        bucketPath: item.bucketPath,
+        pdfUrl: item.pdfUrl,
+        pdfStoragePath: item.pdfStoragePath,
+        isLesson: true,
+        moduleId: item.moduleId,
+        lessonNumber: item.lessonNumber
+      }));
+    }
+  } catch (error) {
+    console.error("Error fetching module lessons for class", classId, error);
+  }
+  return [];
+};
+
+// Update the existing mapping function
+// Update the existing mapping function
+const mapJoinedClassToCourseDetail = async (item: any): Promise<CourseWithBannerFields> => {
+  // Fetch ONLY Module Lessons
+  const moduleLessons = await fetchModuleLessonsOnly(item.id);
+
+  return {
+    id: String(item.id || ''), 
+    name: item.name || 'Untitled Class', 
+    code: item.courseCode || item.classCode || '',
+    instructor: item.instructorName || 'Unknown Instructor', 
+    description: item.description || 'No description available.',
+    semester: item.semester || '', 
+    schoolYear: item.schoolYear || '', 
+    section: item.section || '',
+    bannerUrl: item.bannerStoragePath ? null : item.bannerUrl || item.bannerUri || item.bannerLocalUri || null,
+    bannerStoragePath: item.bannerStoragePath || null, 
+    bannerFileName: item.bannerFileName || null, 
+    bannerMimeType: item.bannerMimeType || null,
+    units: typeof item.units === 'number' ? item.units : Number(item.units) || 0,
+    // ✅ USE ONLY MODULE LESSONS HERE
+    materials: moduleLessons,
+    assignments: Array.isArray(item.assignments) ? item.assignments.map((a: any) => ({ ...a, assignmentType: a.assignmentType || 'regular', gameType: a.gameType || null })) : [],
+  };
+};
 
 const mapCourseDetailToAssignmentCourse = (course: CourseDetailData): AssignmentCourseWithBannerFields => ({
   id: course.id, name: course.name, code: course.code, instructor: course.instructor, description: course.description,
@@ -337,7 +425,7 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
   const [isConversationActive, setIsConversationActive] = useState(false);
   const [isVideoActive, setIsVideoActive] = useState(false);
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
-  const [activeCourseTab, setActiveCourseTab] = useState<'materials' | 'assignments' | 'modules'>('materials');
+  const [activeCourseTab, setActiveCourseTab] = useState<'materials' | 'assignments' | 'modules'>('modules');
   const [currentUserAvatar, setCurrentUserAvatar] = useState<any>(initialAvatar);
   const [currentUserBanner, setCurrentUserBanner] = useState<any>(initialBanner);
   const [hasImageChanged, setHasImageChanged] = useState(false);
@@ -584,32 +672,36 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
     }
   };
 
-  const loadJoinedClasses = async () => {
-    if (!currentStudent?.studentId) return;
+    const loadJoinedClasses = async () => {
+  if (!currentStudent?.studentId) return;
+  try {
+    setIsLoadingJoinedCourses(true);
+    const response = await apiFetch(`${API_BASE_URL}/student-joined-classes/${currentStudent.studentId}`);
+    const data = await response.json();
+    if (!response.ok) throw new Error(data?.error || 'Failed to load joined classes.');
+    
+    const classesArray = Array.isArray(data) ? data : data?.data || [];
+    
+    // ✅ MAP ASYNC AND WAIT FOR ALL TO COMPLETE
+    const mappedCourses = await Promise.all(classesArray.map(mapJoinedClassToCourseDetail));
+    
+    const mappedCoursesWithFreshBanners = await Promise.all(mappedCourses.map(refreshClassBannerUrl));
+    
+    setJoinedCourses(mappedCoursesWithFreshBanners);
+    setIsLoadingAnnouncements(true);
     try {
-      setIsLoadingJoinedCourses(true);
-      const response = await apiFetch(`${API_BASE_URL}/student-joined-classes/${currentStudent.studentId}`);
-      const data = await response.json();
-      if (!response.ok) throw new Error(data?.error || 'Failed to load joined classes.');
-      const classesArray = Array.isArray(data) ? data : data?.data || [];
-      const mappedCourses = classesArray.map(mapJoinedClassToCourseDetail);
-      const mappedCoursesWithFreshBanners = await Promise.all(mappedCourses.map(refreshClassBannerUrl));
-      
-      setJoinedCourses(mappedCoursesWithFreshBanners);
-      setIsLoadingAnnouncements(true);
-      try {
-        await loadStudentAnnouncements(mappedCoursesWithFreshBanners);
-      } finally {
-        setIsLoadingAnnouncements(false);
-      }
-    } catch (error) { 
-      console.log('LOAD JOINED CLASSES ERROR =>', error); 
-      setJoinedCourses([]); 
-      setStudentAnnouncements([]); 
-    } finally { 
-      setIsLoadingJoinedCourses(false); 
+      await loadStudentAnnouncements(mappedCoursesWithFreshBanners);
+    } finally {
+      setIsLoadingAnnouncements(false);
     }
-  };
+  } catch (error) { 
+    console.log('LOAD JOINED CLASSES ERROR =>', error); 
+    setJoinedCourses([]); 
+    setStudentAnnouncements([]); 
+  } finally { 
+    setIsLoadingJoinedCourses(false); 
+  }
+};
 
   useEffect(() => { loadJoinedClasses(); }, [currentStudent?.studentId]);
 
@@ -1802,7 +1894,7 @@ const handleAddAssignmentComment = async (assignmentId: string, content: string,
         if (!selectedAssignmentCourse) return <Text style={{ textAlign: 'center', marginTop: 50 }}>No course selected.</Text>;
         return <CourseDetail 
           course={selectedAssignmentCourse} 
-          initialTab={activeCourseTab} 
+          initialTab={'modules'} 
           autoOpenAssignmentId={autoOpenAssignmentId}
           onConsumedAutoOpenAssignment={() => setAutoOpenAssignmentId(null)}
           onBack={() => setActiveScreen(lastScreen)} 
