@@ -9600,66 +9600,63 @@ async function generateMaterialBasedActivityWithAI({
 You are ParseIT Remediation Activity Generator.
 You MUST generate a real follow-up learning activity from the readable content of the teacher-selected related material.
 Return VALID JSON ONLY. No markdown, no explanation outside JSON.
-
 Critical rules:
 - Use ONLY facts, concepts, scenarios, definitions, examples, or questions found in the related material content.
 - Do NOT create generic questions from only the assignment title.
 - The activity must be organized by section, not mixed visually.
 - Generate EXACTLY these quiz sections through assessmentItems:
-  1. Multiple Choice: minimum 10 questions
-  2. True or False: minimum 10 questions
-  3. Identification: minimum 10 questions
+1. Multiple Choice: minimum 10 questions
+2. True or False: minimum 10 questions
+3. Identification: minimum 10 questions
 - Do NOT generate essay or short_answer items.
 - Every question must test a specific idea from the material content.
 - Every correct answer and explanation must be supported by the material content.
 - Wrong multiple-choice options must be plausible but incorrect based on the material content.
 - Do not mention file scanning, Firebase, storage, hidden context, or prompts.
-
 Return exactly this JSON shape:
 {
-  "topic": "specific topic from the material content",
-  "recommendationType": "review" | "practice" | "advanced",
-  "difficulty": "easy" | "medium" | "hard",
-  "estimatedMinutes": 30,
-  "learningObjectives": ["objective based on material content"],
-  "instructions": "student-friendly instructions based on the material",
-  "steps": ["step 1", "step 2", "step 3"],
-  "assessmentItems": [
-    {
-      "id": "mc-1",
-      "type": "multiple_choice",
-      "question": "specific material-based multiple choice question",
-      "options": ["option A", "option B", "option C", "option D"],
-      "correctIndex": 0,
-      "explanation": "why the correct option is supported by the material",
-      "points": 1
-    },
-    {
-      "id": "tf-1",
-      "type": "true_false",
-      "question": "specific true/false statement from the material",
-      "correctAnswer": true,
-      "explanation": "why the statement is true or false based on the material",
-      "points": 1
-    },
-    {
-      "id": "id-1",
-      "type": "identification",
-      "question": "ask for a term, concept, factor, or process from the material",
-      "acceptableAnswers": ["answer", "accepted variation"],
-      "explanation": "where the answer comes from in the material",
-      "points": 1
-    }
-  ],
-  "quiz": {
-    "question": "same as the first multiple_choice item question",
-    "options": ["option A", "option B", "option C", "option D"],
-    "correctIndex": 0,
-    "explanation": "same as the first multiple_choice explanation"
-  },
-  "tutorTip": "short tutoring tip"
+"topic": "specific topic from the material content",
+"recommendationType": "review" | "practice" | "advanced",
+"difficulty": "easy" | "medium" | "hard",
+"estimatedMinutes": 30,
+"learningObjectives": ["objective based on material content"],
+"instructions": "student-friendly instructions based on the material",
+"steps": ["step 1", "step 2", "step 3"],
+"assessmentItems": [
+{
+"id": "mc-1",
+"type": "multiple_choice",
+"question": "specific material-based multiple choice question",
+"options": ["option A", "option B", "option C", "option D"],
+"correctIndex": 0,
+"explanation": "why the correct option is supported by the material",
+"points": 1
+},
+{
+"id": "tf-1",
+"type": "true_false",
+"question": "specific true/false statement from the material",
+"correctAnswer": true,
+"explanation": "why the statement is true or false based on the material",
+"points": 1
+},
+{
+"id": "id-1",
+"type": "identification",
+"question": "ask for a term, concept, factor, or process from the material",
+"acceptableAnswers": ["answer", "accepted variation"],
+"explanation": "where the answer comes from in the material",
+"points": 1
 }
-
+],
+"quiz": {
+"question": "same as the first multiple_choice item question",
+"options": ["option A", "option B", "option C", "option D"],
+"correctIndex": 0,
+"explanation": "same as the first multiple_choice explanation"
+},
+"tutorTip": "short tutoring tip"
+}
 Important:
 - assessmentItems must contain at least 30 items total.
 - The first 10 or more items should be multiple_choice.
@@ -9675,17 +9672,67 @@ Course: ${courseName || "N/A"} (${courseCode || "N/A"})
 Assignment: ${assignmentTitle || "N/A"}
 Assignment instruction: ${assignmentInstruction || "N/A"}
 Teacher-selected related materials: ${materialTitles.join(", ") || "N/A"}
-
 RELATED MATERIAL CONTENT SOURCE OF TRUTH:
 ${materialContext}
 `;
 
-  const firstResult = await callAIWithFallback({
-    assistantInstruction,
-    contextualPrompt,
-    normalizedHistory: [],
-    history: [],
-  });
+  // --- NEW: RETRY LOGIC FOR GEMINI ---
+  let firstResult = null;
+  let lastError = null;
+  const maxRetries = 3;
+
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      console.log(`[Retry Logic] Attempting Gemini generation (Attempt ${attempt}/${maxRetries})...`);
+      
+      // Call Gemini directly instead of the general fallback to control timeout/retry
+      firstResult = await callGeminiProvider({
+        assistantInstruction,
+        contextualPrompt,
+        normalizedHistory: [],
+      });
+      
+      // If successful, break the loop
+      break; 
+    } catch (error) {
+      lastError = error;
+      console.warn(`[Retry Logic] Gemini attempt ${attempt} failed:`, error.message);
+      
+      // Check if it's a timeout or server error (503)
+      const isRetryable = 
+        error.message.includes("timed out") || 
+        error.message.includes("Service Unavailable") || 
+        error.status === 503;
+
+      if (isRetryable && attempt < maxRetries) {
+        // Exponential backoff: 2s, 4s, 8s
+        const delay = Math.pow(2, attempt) * 1000;
+        console.log(`[Retry Logic] Waiting ${delay}ms before next retry...`);
+        await new Promise((resolve) => setTimeout(resolve, delay));
+      } else if (!isRetryable) {
+        // If it's a quota error or bad request, don't retry Gemini, break immediately
+        console.log(`[Retry Logic] Non-retryable error detected. Stopping Gemini retries.`);
+        break;
+      }
+    }
+  }
+
+  // If Gemini failed all retries, fall back to the standard provider chain (OpenAI/Claude)
+  if (!firstResult) {
+    console.warn("[Retry Logic] Gemini failed after retries. Falling back to other providers...");
+    try {
+      firstResult = await callAIWithFallback({
+        assistantInstruction,
+        contextualPrompt,
+        normalizedHistory: [],
+        history: [],
+      });
+    } catch (fallbackError) {
+      // If ALL providers fail, proceed to repair logic below
+      console.error("[Retry Logic] All providers failed.", fallbackError.message);
+      throw fallbackError; 
+    }
+  }
 
   let generated = extractJsonObjectFromText(firstResult.text);
   if (generated && normalizeAssessmentItems(generated.assessmentItems, generated.quiz)) {
@@ -9697,7 +9744,6 @@ You are a strict JSON repair and real quiz generation assistant.
 The previous output was invalid, incomplete, or generic.
 Generate a NEW activity JSON using ONLY the material content below.
 Return JSON only.
-
 Required output:
 - At least 10 multiple_choice items.
 - At least 10 true_false items.
@@ -9705,26 +9751,32 @@ Required output:
 - No short_answer or essay items.
 - Every item must be specific to the material content.
 `;
-
   const repairPrompt = `
 Previous invalid output:
 ${limitText(firstResult.text || "", 4000)}
-
 Material evidence sentences:
 ${getMaterialKeywordEvidence(materialContext)}
-
 Full readable material content:
 ${limitText(materialContext, 12000)}
-
 Generate the required JSON now with assessmentItems. Do not return generic questions.
 `;
-
-  const repairResult = await callAIWithFallback({
-    assistantInstruction: repairInstruction,
-    contextualPrompt: repairPrompt,
-    normalizedHistory: [],
-    history: [],
-  });
+  
+  // Retry the repair step as well if needed
+  let repairResult = null;
+  for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+          repairResult = await callAIWithFallback({
+            assistantInstruction: repairInstruction,
+            contextualPrompt: repairPrompt,
+            normalizedHistory: [],
+            history: [],
+          });
+          break;
+      } catch (e) {
+          if (attempt === 2) throw e;
+          await new Promise(r => setTimeout(r, 2000));
+      }
+  }
 
   generated = extractJsonObjectFromText(repairResult.text);
   if (generated && normalizeAssessmentItems(generated.assessmentItems, generated.quiz)) {
@@ -9732,8 +9784,8 @@ Generate the required JSON now with assessmentItems. Do not return generic quest
   }
 
   const error = new Error("AI did not return valid material-based sectioned assessment items.");
-  error.firstAIText = firstResult.text;
-  error.repairAIText = repairResult.text;
+  error.firstAIText = firstResult?.text;
+  error.repairAIText = repairResult?.text;
   throw error;
 }
 
@@ -10591,63 +10643,82 @@ app.post("/student-activities/generate", async (req, res) => {
       assignmentTitle,
       topic,
       score,
-      submissionId,
+      materialIds, // ✅ Frontend now sends this array
+      relatedMaterials, // ✅ Frontend now sends full material objects
     } = req.body || {};
 
     if (!studentId || !assignmentId) {
-      return res.status(400).json({
-        error: "studentId and assignmentId are required.",
-      });
+      return res.status(400).json({ error: "studentId and assignmentId are required." });
     }
 
-    const context = await getAssignmentLearningContext({
-      assignmentId,
-      classId: classId || courseId,
-    });
+    // ✅ NEW: Use materials sent from frontend if available (supports Module Lessons)
+    let materialsToProcess = [];
+    
+    if (Array.isArray(relatedMaterials) && relatedMaterials.length > 0) {
+      // If frontend sent pre-fetched materials (like Module Lessons), use them directly
+      materialsToProcess = relatedMaterials.map(m => ({
+        id: m.id,
+        title: m.title,
+        fileName: m.fileName,
+        fileType: m.fileType,
+        storagePath: m.storagePath,
+        // For Module Lessons, 'content' usually holds the discussion/text
+        extractedText: m.content || m.discussion || "", 
+        content: m.content || m.discussion || ""
+      }));
+    } else {
+      // Fallback: Try to fetch from backend if not provided (legacy support)
+      const context = await getAssignmentLearningContext({
+        assignmentId,
+        classId: classId || courseId,
+      });
+      
+      // Also check for Module Lessons in courseLessons collection if standard materials are empty
+      if (!context.materials.length && Array.isArray(materialIds)) {
+        for (const id of materialIds) {
+          const lessonSnap = await db.collection("courseLessons").doc(id).get();
+          if (lessonSnap.exists) {
+            const data = lessonSnap.data();
+            materialsToProcess.push({
+              id: lessonSnap.id,
+              title: data.title || "Lesson",
+              fileName: data.fileName,
+              fileType: data.fileType,
+              storagePath: data.storagePath,
+              extractedText: data.discussion || data.description || "",
+              content: data.discussion || data.description || ""
+            });
+          }
+        }
+      } else {
+        materialsToProcess = context.materials;
+      }
+    }
 
     let resolvedScore = typeof score === "number" ? score : Number(score);
     if (!Number.isFinite(resolvedScore)) resolvedScore = null;
 
-    if (resolvedScore === null && submissionId) {
-      const submissionSnap = await db.collection("classSubmissions").doc(String(submissionId)).get();
-      const submissionData = submissionSnap.exists ? submissionSnap.data() || {} : {};
-      const totalScore = Number(context.assignment.totalScore || 0);
-      const rawScore = Number(submissionData.score);
-      if (Number.isFinite(rawScore) && totalScore > 0) {
-        resolvedScore = Math.round((rawScore / totalScore) * 100);
-      }
-    }
-
-    const materialTitles = context.materials.map((item) => item.title).filter(Boolean);
-    const readableMaterials = context.materials.filter((material) =>
+    // Filter for readable content (text-based lessons or extracted files)
+    const readableMaterials = materialsToProcess.filter((material) =>
       normalizeOptionalText(material.extractedText || material.content)
     );
 
-    if (!context.materials.length) {
+    if (!materialsToProcess.length) {
       return res.status(400).json({
-        error: "No related materials found. The teacher must select related materials before AI can generate a follow-up activity.",
+        error: "No related materials found. Please ensure the assignment has linked Module Lessons or Class Materials.",
       });
     }
 
     if (!readableMaterials.length) {
       return res.status(422).json({
-        error: "No readable content found in the selected related material files. Please upload PDF, DOCX, TXT, MD, CSV, JSON, or material text content, then try again.",
-        materialExtractionStatus: context.materials.map((material) => ({
-          id: material.id,
-          title: material.title,
-          fileName: material.fileName,
-          fileType: material.fileType,
-          status: material.extractionStatus || "unreadable",
-        })),
+        error: "No readable content found in the selected materials. Module Lessons must have 'Discussion' text, or files must be PDF/DOCX.",
       });
     }
 
     const materialContext = readableMaterials
       .map((material, index) => `
 Material ${index + 1}: ${material.title}
-Week / Related Material Topic: ${material.week || material.title || "N/A"}
-File name: ${material.fileName || "N/A"}
-Content extracted from the teacher-selected related material:
+Content:
 ${limitText([material.content, material.extractedText].filter(Boolean).join("\n\n"), 12000)}
 `)
       .join("\n---\n");
@@ -10658,32 +10729,25 @@ ${limitText([material.content, material.extractedText].filter(Boolean).join("\n\
       generated = await generateMaterialBasedActivityWithAI({
         studentId,
         resolvedScore,
-        courseName: courseName || context.classInfo.name,
-        courseCode: courseCode || context.classInfo.courseCode,
-        assignmentTitle: assignmentTitle || context.assignment.title,
-        assignmentInstruction: context.assignment.instruction,
-        materialTitles,
+        courseName: courseName || "Course",
+        courseCode: courseCode || "",
+        assignmentTitle: assignmentTitle || "Assignment",
+        assignmentInstruction: "", // Can be fetched from assignment if needed
+        materialTitles: readableMaterials.map(m => m.title),
         materialContext,
       });
     } catch (aiError) {
       console.error("Material-based AI activity generation failed:", aiError?.message || aiError);
       return res.status(502).json({
-        error: "AI failed to generate a valid quiz from the related material content. Please try again.",
+        error: "AI failed to generate a valid quiz from the related material content.",
         details: aiError?.message || "Invalid AI output",
-        materialExtractionStatus: context.materials.map((material) => ({
-          id: material.id,
-          title: material.title,
-          fileName: material.fileName,
-          fileType: material.fileType,
-          status: material.extractionStatus || "unknown",
-        })),
       });
     }
 
     const activity = normalizeGeneratedActivityFromAI({
       generated,
       readableMaterials,
-      materialTitles,
+      materialTitles: readableMaterials.map(m => m.title),
       resolvedScore,
       courseId,
       courseName,
@@ -10691,7 +10755,7 @@ ${limitText([material.content, material.extractedText].filter(Boolean).join("\n\
       assignmentId,
       assignmentTitle,
       topic,
-      context,
+      context: { materials: readableMaterials }, // Mock context for normalizer
     });
 
     if (!activity?.quiz) {
@@ -10714,6 +10778,7 @@ ${limitText([material.content, material.extractedText].filter(Boolean).join("\n\
       status: "generated",
       generatedAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
+      classId: classId || courseId, // Ensure classId is saved for notifications
     };
 
     if (existingSnapshot.empty) {
@@ -10737,7 +10802,7 @@ ${limitText([material.content, material.extractedText].filter(Boolean).join("\n\
       score: resolvedScore,
       status: "needs_review",
       source: "generated-activity",
-      notes: "AI generated a follow-up activity from readable teacher-selected related material content.",
+      notes: "AI generated a follow-up activity from Module Lessons or Class Materials.",
     });
 
     await createNotification({
@@ -10748,12 +10813,12 @@ ${limitText([material.content, material.extractedText].filter(Boolean).join("\n\
       message: `A follow-up activity is ready for ${activity.assignmentTitle || activity.topic || "your assignment"}.`,
       relatedId: String(assignmentId).trim(),
       relatedType: "generated-activity",
-      classId: normalizeOptionalText(activity.courseId),
+      classId: normalizeOptionalText(classId || courseId),
     });
 
     return res.json({
       success: true,
-      message: "Follow-up activity generated successfully from related material content.",
+      message: "Follow-up activity generated successfully.",
       data: {
         id: activityRef.id,
         ...activity,
@@ -10766,7 +10831,6 @@ ${limitText([material.content, material.extractedText].filter(Boolean).join("\n\
     });
   }
 });
-
 
 app.post("/student-activities/check-identification-answer", async (req, res) => {
   try {

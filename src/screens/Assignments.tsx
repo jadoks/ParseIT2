@@ -86,6 +86,7 @@ export interface AssignmentItem {
   numberOfAttempts?: string | null;
   customAttempts?: string | null;
   attemptNumber?: number;
+  createdAt?: string; 
 }
 
 export interface AssignmentCourse {
@@ -255,8 +256,8 @@ const Assignments = ({
     return courses.filter((c) => c.id === selectedCourseId);
   }, [courses, selectedCourseId]);
 
-  const allAssignments = useMemo<FlattenedAssignment[]>(() => {
-    return sourceCourses.flatMap((course) =>
+    const allAssignments = useMemo<FlattenedAssignment[]>(() => {
+    const flattened = sourceCourses.flatMap((course) =>
       course.assignments.map((assignment) => ({
         ...assignment,
         courseId: course.id,
@@ -270,6 +271,14 @@ const Assignments = ({
         materials: course.materials,
       }))
     );
+
+    return flattened.sort((a, b) => {
+      // Simple string comparison for IDs often works if they are sequential or UUIDs
+      // But timestamp sorting is always safer.
+      if (a.id > b.id) return -1; 
+      if (a.id < b.id) return 1;
+      return 0;
+    });
   }, [sourceCourses]);
 
   const statusFilteredAssignments = useMemo(() => {

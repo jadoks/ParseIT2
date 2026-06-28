@@ -1437,75 +1437,97 @@ const handleAddAssignmentComment = async (assignmentId: string, content: string,
     };
   };
 
-  const openGeneratedActivity = async (course: CourseDetailData, assignment: DashboardAssignment | CourseAssignment | AssignmentItem) => {
-    if (isGeneratingActivity) return;
-    const normalizedCourse = findFreshCourseForActivity(course);
-    const score = getScorePercent(assignment);
-    if (score === null) { Alert.alert('Not available', 'Generate Activity is only available after the assignment has been graded.'); return; }
-    if (score >= 75) { Alert.alert('Not available', 'Generate Activity is only available for graded assignments below 75%.'); return; }
-    const completedSupportActivity = completedActivityScores[assignment.id];
-    if (completedSupportActivity?.completed && completedSupportActivity.scorePercent !== null && completedSupportActivity.scorePercent >= 75) { 
-      Alert.alert('Already mastered', `You already scored ${completedSupportActivity.scorePercent}% on the generated follow-up activity for this assignment.`); 
-      return; 
+    const openGeneratedActivity = async (course: CourseDetailData, assignment: DashboardAssignment | CourseAssignment | AssignmentItem) => {
+  if (isGeneratingActivity) return;
+  
+  const normalizedCourse = findFreshCourseForActivity(course);
+  const score = getScorePercent(assignment);
+  
+  // Validation checks
+  if (score === null) { 
+    Alert.alert('Not available', 'Generate Activity is only available after the assignment has been graded.'); 
+    return; 
+  }
+  if (score >= 75) { 
+    Alert.alert('Not available', 'Generate Activity is only available for graded assignments below 75%.'); 
+    return; 
+  }
+  const completedSupportActivity = completedActivityScores[assignment.id];
+  if (completedSupportActivity?.completed && completedSupportActivity.scorePercent !== null && completedSupportActivity.scorePercent >= 75) { 
+    Alert.alert('Already mastered', `You already scored ${completedSupportActivity.scorePercent}% on the generated follow-up activity for this assignment.`); 
+    return; 
+  }
+   
+  // ✅ UPDATED LOGIC: Support both Material IDs and Module Lessons
+  let materialIds = Array.isArray(assignment.materialIds) ? assignment.materialIds.filter(Boolean) : [];
+  
+  // If no specific material IDs are linked, try to use ALL available Module Lessons as context
+  let relatedMaterials = (normalizedCourse.materials || []).filter((material) => materialIds.includes(material.id));
+  
+  if (!relatedMaterials.length) {
+    // Fallback: Use all module lessons if none are specifically linked
+    relatedMaterials = normalizedCourse.materials || [];
+    
+    // If still empty, use assignment title/topic as a last resort
+    if (!relatedMaterials.length) {
+      Alert.alert('No Content Found', 'There are no module lessons or related materials available for this assignment. Please ask your instructor to add learning content first.');
+      return;
     }
-     
-    const materialIds = Array.isArray(assignment.materialIds) ? assignment.materialIds.filter(Boolean) : [];
-    const relatedMaterials = (normalizedCourse.materials || []).filter((material) => materialIds.includes(material.id));
-    if (!relatedMaterials.length) { 
-      Alert.alert('Related materials required', 'The teacher must select related materials first. AI follow-up activities are generated from those materials, not from the assignment title.'); 
-      return; 
-    }
+    
+    // Clear materialIds so backend knows we're sending generic lesson content
+    materialIds = relatedMaterials.map(m => m.id);
+  }
 
-    try {
-      setIsGeneratingActivity(true); 
-      setSelectedCourse(normalizedCourse); 
-      setSelectedCourseIdForAssignments(normalizedCourse.id);
-      setLastScreen(activeScreen === 'notification' ? lastScreen : activeScreen);
-      setIsNotificationOpen(false);
-      
-      const response = await apiFetch(`${API_BASE_URL}/student-activities/generate`, { 
-        method: 'POST', 
-        headers: { 'Content-Type': 'application/json' }, 
-        body: JSON.stringify({ 
-          studentId: currentStudent.studentId, 
-          courseId: normalizedCourse.id, 
-          classId: normalizedCourse.id, 
-          courseName: normalizedCourse.name, 
-          courseCode: normalizedCourse.code, 
-          assignmentId: assignment.id, 
-          assignmentTitle: assignment.title, 
-          topic: relatedMaterials.map((material) => material.title).join(', ') || assignment.topic || assignment.title, 
-          score, 
-          materialIds, 
-          relatedMaterials: relatedMaterials.map((material) => ({ 
-            id: material.id, 
-            title: material.title, 
-            type: material.type, 
-            content: material.content || null, 
-            fileName: material.fileName || null, 
-            fileUrl: material.fileUrl || material.fileUri || null, 
-            fileUri: material.fileUri || material.fileUrl || null, 
-            fileType: material.fileType || null 
-          })) 
-        }) 
-      });
-      
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data?.error || data?.message || 'Failed to generate follow-up activity.');
-      
-      const activity = data?.data as GenerateActivityData | undefined;
-      if (!activity || !activity.assignmentId) throw new Error('The server did not return a valid generated activity.');
-      
-      await loadStudentNotifications(); 
-      setGeneratedActivity(activity); 
-      setActiveScreen('generateactivity');
-    } catch (error: any) { 
-      console.log('GENERATE ACTIVITY ERROR =>', error); 
-      Alert.alert('Generate Activity Failed', error?.message || 'The AI material scan failed. Please try again after confirming the related material file is readable.'); 
-    } finally { 
-      setIsGeneratingActivity(false); 
-    }
-  };
+  try {
+    setIsGeneratingActivity(true); 
+    setSelectedCourse(normalizedCourse); 
+    setSelectedCourseIdForAssignments(normalizedCourse.id);
+    setLastScreen(activeScreen === 'notification' ? lastScreen : activeScreen);
+    setIsNotificationOpen(false);
+    
+    const response = await apiFetch(`${API_BASE_URL}/student-activities/generate`, { 
+      method: 'POST', 
+      headers: { 'Content-Type': 'application/json' }, 
+      body: JSON.stringify({ 
+        studentId: currentStudent.studentId, 
+        courseId: normalizedCourse.id, 
+        classId: normalizedCourse.id, 
+        courseName: normalizedCourse.name, 
+        courseCode: normalizedCourse.code, 
+        assignmentId: assignment.id, 
+        assignmentTitle: assignment.title, 
+        topic: relatedMaterials.map((material) => material.title).join(', ') || assignment.topic || assignment.title, 
+        score, 
+        materialIds, // ✅ Send the collected IDs (either from assignment or fallback)
+        relatedMaterials: relatedMaterials.map((material) => ({ 
+          id: material.id, 
+          title: material.title, 
+          type: material.type, 
+          content: material.content || null, 
+          fileName: material.fileName || null, 
+          fileUrl: material.fileUrl || material.fileUri || null, 
+          fileUri: material.fileUri || material.fileUrl || null, 
+          fileType: material.fileType || null 
+        })) 
+      }) 
+    });
+    
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data?.error || data?.message || 'Failed to generate follow-up activity.');
+    
+    const activity = data?.data as GenerateActivityData | undefined;
+    if (!activity || !activity.assignmentId) throw new Error('The server did not return a valid generated activity.');
+    
+    await loadStudentNotifications(); 
+    setGeneratedActivity(activity); 
+    setActiveScreen('generateactivity');
+  } catch (error: any) { 
+    console.log('GENERATE ACTIVITY ERROR =>', error); 
+    Alert.alert('Generate Activity Failed', error?.message || 'The AI material scan failed. Please try again after confirming the related material file is readable.'); 
+  } finally { 
+    setIsGeneratingActivity(false); 
+  }
+};
 
   const handlePlayGame = async (assignment: any) => {
     if (isFetchingGame) return;
