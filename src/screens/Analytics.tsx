@@ -240,9 +240,12 @@ const Analytics: React.FC<AnalyticsProps> = ({
   const isDesktop = width >= 1200;
   const isChartGrid = width >= 900;
 
+const [showAllMissingWork, setShowAllMissingWork] = useState(false);
+
   const analytics = useMemo(() => buildStudentAnalytics(courses), [courses]);
 
   const overallRiskColor = getRiskColor(analytics.overallRisk);
+  const [showAllRecentAssignments, setShowAllRecentAssignments] = useState(false);
 
   const subjectBarData = useMemo(() => {
     const labels = analytics.subjectSummaries.map((subject: SubjectAnalyticsSummary) =>
@@ -503,7 +506,7 @@ const Analytics: React.FC<AnalyticsProps> = ({
         </View>
       </View>
 
-      {/* Recent Assignment Grades */}
+            {/* Recent Assignment Grades */}
       <View style={styles.sectionCard}>
         <Text style={styles.sectionTitle}>Recent Assignment Grades</Text>
         <Text style={styles.sectionCaption}>Your latest graded assignments</Text>
@@ -514,33 +517,53 @@ const Analytics: React.FC<AnalyticsProps> = ({
           </View>
         ) : (
           <>
-            {analytics.recentGradedAssignments.map((item) => {
-              const scoreColor =
-                item.score >= 90 ? COLORS.success : item.score >= 80 ? COLORS.info : item.score >= 70 ? COLORS.warning : COLORS.danger;
-              return (
-                <View key={item.id} style={styles.recentAssignmentCard}>
-                  <View style={styles.recentAssignmentTopRow}>
-                    <View style={{ flex: 1, paddingRight: 12 }}>
-                      <Text style={styles.recentAssignmentTitle}>{item.title}</Text>
-                      <Text style={styles.recentAssignmentMeta}>
-                        {item.courseName} • {formatDueDate(item.gradedAt)}
-                      </Text>
-                    </View>
-                    <View style={styles.recentAssignmentScoreWrap}>
-                      <Text style={[styles.recentAssignmentScore, { color: scoreColor }]}>
-                        {Math.round(item.score)}%
-                      </Text>
-                      <View style={[styles.statusBadge, { backgroundColor: `${COLORS.success}18` }]}>
-                        <Text style={[styles.statusBadgeText, { color: COLORS.success }]}>GRADED</Text>
+            {analytics.recentGradedAssignments
+              .slice(0, showAllRecentAssignments ? undefined : 5)
+              .map((item) => {
+                const scoreColor =
+                  item.score >= 90 ? COLORS.success : item.score >= 80 ? COLORS.info : item.score >= 70 ? COLORS.warning : COLORS.danger;
+                return (
+                  <View key={item.id} style={styles.recentAssignmentCard}>
+                    <View style={styles.recentAssignmentTopRow}>
+                      <View style={{ flex: 1, paddingRight: 12 }}>
+                        <Text style={styles.recentAssignmentTitle}>{item.title}</Text>
+                        <Text style={styles.recentAssignmentMeta}>
+                          {item.courseName}{item.gradedAt ? ` • ${formatDueDate(item.gradedAt)}` : ''}
+                        </Text>
+                      </View>
+                      <View style={styles.recentAssignmentScoreWrap}>
+                        <Text style={[styles.recentAssignmentScore, { color: scoreColor }]}>
+                          {Math.round(item.score)}%
+                        </Text>
+                        <View style={[styles.statusBadge, { backgroundColor: `${COLORS.success}18` }]}>
+                          <Text style={[styles.statusBadgeText, { color: COLORS.success }]}>GRADED</Text>
+                        </View>
                       </View>
                     </View>
                   </View>
-                </View>
-              );
-            })}
-            {analytics.totalGradedAssignments > 5 && (
-              <TouchableOpacity style={styles.seeAllButton} activeOpacity={0.85}>
-                <Text style={styles.seeAllButtonText}>See All</Text>
+                );
+              })}
+            
+            {/* Replace the existing TouchableOpacity block with this */}
+            {!showAllRecentAssignments && analytics.recentGradedAssignments.length >= 5 && (
+              <TouchableOpacity
+                style={styles.seeAllButton}
+                activeOpacity={0.85}
+                onPress={() => setShowAllRecentAssignments((prev) => !prev)}
+              >
+                <Text style={styles.seeAllButtonText}>
+                  See All ({analytics.recentGradedAssignments.length})
+                </Text>
+              </TouchableOpacity>
+            )}
+
+            {showAllRecentAssignments && (
+              <TouchableOpacity
+                style={styles.seeAllButton}
+                activeOpacity={0.85}
+                onPress={() => setShowAllRecentAssignments(false)}
+              >
+                <Text style={styles.seeAllButtonText}>Show Less</Text>
               </TouchableOpacity>
             )}
           </>
@@ -557,21 +580,48 @@ const Analytics: React.FC<AnalyticsProps> = ({
             <Text style={styles.emptyStateText}>Great job. You do not have any overdue unsubmitted assignments.</Text>
           </View>
         ) : (
-          analytics.missingAssignments.map((item: AnalyticsAssignment, index: number) => (
-            <View key={`${item.id}-${index}`} style={styles.missingWorkCard}>
-              <View style={styles.missingWorkTopRow}>
-                <View style={{ flex: 1, paddingRight: 12 }}>
-                  <Text style={styles.missingWorkTitle}>{item.title}</Text>
-                  <Text style={styles.missingWorkMeta}>
-                    {item.topic ? `${item.topic} • ` : ''}Due: {formatDueDate(item.dueDate)}
-                  </Text>
+          <>
+            {analytics.missingAssignments
+              .slice(0, showAllMissingWork ? undefined : 5) // ✅ Show first 5 or all
+              .map((item: AnalyticsAssignment, index: number) => (
+                <View key={`${item.id}-${index}`} style={styles.missingWorkCard}>
+                  <View style={styles.missingWorkTopRow}>
+                    <View style={{ flex: 1, paddingRight: 12 }}>
+                      <Text style={styles.missingWorkTitle}>{item.title}</Text>
+                      <Text style={styles.missingWorkMeta}>
+                        {item.topic ? `${item.topic} • ` : ''}Due: {formatDueDate(item.dueDate)}
+                      </Text>
+                    </View>
+                    <View style={styles.missingBadge}>
+                      <Text style={styles.missingBadgeText}>MISSING</Text>
+                    </View>
+                  </View>
                 </View>
-                <View style={styles.missingBadge}>
-                  <Text style={styles.missingBadgeText}>MISSING</Text>
-                </View>
-              </View>
-            </View>
-          ))
+              ))}
+            
+            {/* See All / Show Less Button */}
+            {!showAllMissingWork && analytics.missingAssignments.length > 5 && (
+              <TouchableOpacity
+                style={styles.seeAllButton}
+                activeOpacity={0.85}
+                onPress={() => setShowAllMissingWork(true)}
+              >
+                <Text style={styles.seeAllButtonText}>
+                  See All ({analytics.missingAssignments.length})
+                </Text>
+              </TouchableOpacity>
+            )}
+
+            {showAllMissingWork && analytics.missingAssignments.length > 5 && (
+              <TouchableOpacity
+                style={styles.seeAllButton}
+                activeOpacity={0.85}
+                onPress={() => setShowAllMissingWork(false)}
+              >
+                <Text style={styles.seeAllButtonText}>Show Less</Text>
+              </TouchableOpacity>
+            )}
+          </>
         )}
       </View>
 
@@ -716,7 +766,7 @@ const styles = StyleSheet.create({
   missingBadgeText: { fontSize: 11, fontWeight: '800', color: '#FFFFFF' },
   subjectSectionHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 12 },
   subjectCountText: { flex: 1, fontSize: 13, color: COLORS.subtext, fontWeight: '600' },
-  seeAllButton: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999, backgroundColor: '#FEF2F2', borderWidth: 1, borderColor: '#FECACA' },
+  seeAllButton: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999, backgroundColor: '#FEF2F2', borderWidth: 1, borderColor: '#FECACA' , alignItems: 'center'},
   seeAllButtonText: { fontSize: 13, fontWeight: '800', color: COLORS.primary },
   subjectGrid: { flexDirection: 'column' },
   subjectGridTablet: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },

@@ -209,27 +209,33 @@ export const buildStudentAnalytics = (
   const allScores = allGradedAssignments.map((a) => (a.points! / a.maxPoints!) * 100);
   const highestAssignmentGrade = allScores.length ? Math.max(...allScores) : 0;
 
-  // Recent Graded Assignments (Latest 5)
-  const recentGradedAssignments = allGradedAssignments
-    .map((a) => ({
-      id: a.id,
-      title: a.title,
-      courseName: a.courseName,
-      score: (a.points! / a.maxPoints!) * 100,
-      gradedAt: a.gradedAt || a.submittedAt,
-      status: a.status,
-    }))
-    .sort((a, b) => new Date(b.gradedAt || 0).getTime() - new Date(a.gradedAt || 0).getTime())
-    .slice(0, 5);
-
+ const recentGradedAssignments = allGradedAssignments
+  .map((a) => ({
+    id: a.id,
+    title: a.title,
+    courseName: a.courseName,
+    score: (a.points! / a.maxPoints!) * 100,
+    gradedAt: a.gradedAt 
+      ? new Date(a.gradedAt).toISOString() 
+      : a.submittedAt 
+      ? new Date(a.submittedAt).toISOString()
+      : '',
+    status: a.status,
+  }))
+  .sort((a, b) => {
+    // Match Assignment.tsx sorting logic: descending by ID
+    if (a.id > b.id) return -1;
+    if (a.id < b.id) return 1;
+    return 0;
+  })
   // Assignment Score Trend (Chronological)
   const assignmentScoreTrend = allGradedAssignments
     .map((a) => ({
       title: a.title,
       score: (a.points! / a.maxPoints!) * 100,
-      date: a.gradedAt || a.submittedAt,
+      date: a.gradedAt || a.submittedAt || new Date().toISOString(),
     }))
-    .sort((a, b) => new Date(a.date || 0).getTime() - new Date(b.date || 0).getTime());
+    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
   // Grade Distribution Buckets
   const gradeDistribution = { excellent: 0, good: 0, average: 0, needsImprovement: 0 };

@@ -22,6 +22,8 @@ export interface DashboardMaterial {
   title: string;
   type: 'pdf' | 'video' | 'document' | 'link';
   uploadedDate: string;
+   moduleId?: string;
+  lessonNumber?: number;
 }
 
 export interface DashboardAssignment {
@@ -202,7 +204,7 @@ const Dashboard = ({
       return [];
     }
 
-    return course.materials.filter((material) =>
+      return course.materials.filter((material) =>
       assignment.materialIds?.includes(material.id)
     );
   };
@@ -611,8 +613,8 @@ const Dashboard = ({
                 { fontSize: isMobile ? 13 : 14 },
               ]}
             >
-              Generate Activity is available only for graded assignments below 75% that already have related materials selected by the teacher and have not been completed yet.
-            </Text>
+              Generate Activity is available only for graded assignments below 75% that already have related Module Lessons selected by the teacher and have not been completed yet.
+       </Text >
 
             <View style={styles.recommendationList}>
               {recommendedAssignments.length === 0 ? (
@@ -650,7 +652,7 @@ const Dashboard = ({
                           { fontSize: isMobile ? 12 : 13, marginTop: 4 },
                         ]}
                       >
-                        Related material: {item.materialTitle}
+                        Related Lesson: {item.materialTitle}
                       </Text>
 
                       <Text
@@ -742,7 +744,7 @@ const Dashboard = ({
                     { fontSize: isMobile ? 13 : 14 },
                   ]}
                 >
-                  Recommended next lesson material in {nextBest.course.name}. This is based on the related material selected by your teacher for the assignment where your score was below 75%.
+                  Recommended next Module Lesson in {nextBest.course.name}. This is based on the related material selected by your teacher for the assignment where your score was below 75%.
                 </Text>
 
                 <Text

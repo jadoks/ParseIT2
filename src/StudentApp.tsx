@@ -262,6 +262,8 @@ const mapCourseAssignmentsToAssignmentItems = (assignments: CourseAssignment[]):
     comments: mapCourseCommentsToAssignmentComments(assignment.comments), files: mapCourseFilesToAssignmentFiles(assignment.files),
     assignmentType: (assignment as any).assignmentType || 'regular', gameType: (assignment as any).gameType || null,
     numberOfAttempts: (assignment as any).numberOfAttempts || null, customAttempts: (assignment as any).customAttempts || null,
+    gradedAt: (assignment as any).gradedAt || null,
+    submittedAt: (assignment as any).submittedAt || null,
   }));
 
 const mapCoursesToAssignmentCourses = (courses: CourseDetailData[]): AssignmentCourseWithBannerFields[] =>
@@ -377,23 +379,59 @@ const mapJoinedClassToCourseDetail = async (item: any): Promise<CourseWithBanner
   };
 };
 
+// ✅ ENSURE THIS HELPER IS USED EVERYWHERE COURSES ARE MAPPED
 const mapCourseDetailToAssignmentCourse = (course: CourseDetailData): AssignmentCourseWithBannerFields => ({
-  id: course.id, name: course.name, code: course.code, instructor: course.instructor, description: course.description,
-  semester: course.semester, schoolYear: course.schoolYear, section: course.section,
-  bannerUrl: (course as any).bannerUrl || null, bannerStoragePath: (course as any).bannerStoragePath || null,
-  bannerFileName: (course as any).bannerFileName || null, bannerMimeType: (course as any).bannerMimeType || null,
-  materials: (course.materials || []).map((material) => ({ id: material.id, title: material.title, type: material.type, uploadedDate: material.uploadedDate, content: material.content, fileName: material.fileName, fileUrl: material.fileUrl || material.fileUri, fileUri: material.fileUri || material.fileUrl, fileType: material.fileType })),
+  id: course.id, 
+  name: course.name, 
+  code: course.code, 
+  instructor: course.instructor, 
+  description: course.description,
+  semester: course.semester, 
+  schoolYear: course.schoolYear, 
+  section: course.section,
+  bannerUrl: (course as any).bannerUrl || null, 
+  bannerStoragePath: (course as any).bannerStoragePath || null,
+  bannerFileName: (course as any).bannerFileName || null, 
+  bannerMimeType: (course as any).bannerMimeType || null,
+  // ✅ CRITICAL: Ensure materials passed here are the filtered Module Lessons
+  materials: (course.materials || []).map((material) => ({ 
+    id: material.id, 
+    title: material.title, 
+    type: material.type, 
+    uploadedDate: material.uploadedDate, 
+    content: material.content, 
+    fileName: material.fileName, 
+    fileUrl: material.fileUrl || material.fileUri, 
+    fileUri: material.fileUri || material.fileUrl, 
+    fileType: material.fileType,
+    // ✅ Pass lesson-specific metadata if available
+    moduleId: (material as any).moduleId,
+    lessonNumber: (material as any).lessonNumber,
+    isLesson: true 
+  })),
   assignments: (course.assignments || []).map((assignment) => ({
-    id: assignment.id, title: assignment.title, dueDate: assignment.dueDate, status: assignment.status,
-    points: assignment.points, maxPoints: assignment.maxPoints, topic: assignment.topic, materialIds: assignment.materialIds,
+    id: assignment.id, 
+    title: assignment.title, 
+    dueDate: assignment.dueDate, 
+    status: assignment.status,
+    points: assignment.points, 
+    maxPoints: assignment.maxPoints, 
+    topic: assignment.topic, 
+    materialIds: assignment.materialIds,
     description: (assignment as any).description || (assignment as any).instruction || '',
-    fileName: (assignment as any).fileName || null, fileUrl: (assignment as any).fileUrl || (assignment as any).fileUri || null,
-    fileUri: (assignment as any).fileUri || (assignment as any).fileUrl || null, fileType: (assignment as any).fileType || null,
-    storagePath: (assignment as any).storagePath || null, bucketPath: (assignment as any).bucketPath || null,
-    comments: mapCourseCommentsToAssignmentComments(assignment.comments), files: mapCourseFilesToAssignmentFiles(assignment.files),
-    assignmentType: (assignment as any).assignmentType || 'regular', gameType: (assignment as any).gameType || null,
+    fileName: (assignment as any).fileName || null, 
+    fileUrl: (assignment as any).fileUrl || (assignment as any).fileUri || null,
+    fileUri: (assignment as any).fileUri || (assignment as any).fileUrl || null, 
+    fileType: (assignment as any).fileType || null,
+    storagePath: (assignment as any).storagePath || null, 
+    bucketPath: (assignment as any).bucketPath || null,
+    comments: mapCourseCommentsToAssignmentComments(assignment.comments), 
+    files: mapCourseFilesToAssignmentFiles(assignment.files),
+    assignmentType: (assignment as any).assignmentType || 'regular', 
+    gameType: (assignment as any).gameType || null,
   })),
 });
+
 
 export default function StudentApp({ onLogout, currentStudent }: Props) {
   const { width } = useWindowDimensions();
@@ -459,6 +497,8 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
   } | null>(null);
   const [autoOpenAssignmentId, setAutoOpenAssignmentId] = useState<string | null>(null);
   const [communityInitialPostId, setCommunityInitialPostId] = useState<string | null>(null);
+
+  
 
   const isFullscreenScreen = activeScreen === 'flipit' || activeScreen === 'fruitmania' || activeScreen === 'quizmasters' || activeScreen === 'gamebasedassignment';
   const isMobileFullscreenScreen = isSmallScreen && (activeScreen === 'messenger' || activeScreen === 'notification' || activeScreen === 'coursedetail' || activeScreen === 'generateactivity');
@@ -781,6 +821,8 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
     };
   }) })), [joinedCourses, sharedAssignmentComments, sharedAssignmentFiles, sharedAssignmentScores, sharedAssignmentStatuses]);
 
+  
+
   const selectedAssignmentCourse = useMemo(() => {
     if (!selectedCourse) return joinedAssignmentCourses[0] || null;
     return joinedAssignmentCourses.find((course) => course.id === selectedCourse.id) || joinedAssignmentCourses[0] || null;
@@ -811,8 +853,11 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
         statusesByAssignment[assignmentId] = status;
         if (status !== 'graded') { scoresByAssignment[assignmentId] = {}; }
         if (status === 'graded') {
-          const numericScore = Number(submission?.score);
-          const numericMaxScore = Number(submission?.maxPoints ?? submission?.totalScore ?? submission?.maxScore);
+          const numericScore = Number(submission?.score ?? submission?.gameScore);
+          const numericMaxScore = Number(
+            submission?.maxPoints ?? submission?.totalScore ?? 
+            submission?.maxScore ?? submission?.gameTotalQuestions
+          );
           scoresByAssignment[assignmentId] = { 
             ...(Number.isFinite(numericScore) ? { points: numericScore } : {}), 
             ...(Number.isFinite(numericMaxScore) && numericMaxScore > 0 ? { maxPoints: numericMaxScore } : {}), 
@@ -1685,7 +1730,7 @@ const handleAddAssignmentComment = async (assignmentId: string, content: string,
             setLastScreen(activeScreen); 
             setIsNotificationOpen(false); 
             setActiveScreen('coursedetail'); 
-            setActiveCourseTab('materials'); 
+             setActiveCourseTab('modules'); 
           }} 
           onOpenAssignments={(course) => { 
             setSelectedCourse(course as unknown as CourseDetailData); 
