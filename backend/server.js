@@ -16060,6 +16060,125 @@ app.delete("/course-syllabus/:syllabusId", requireAuth, async (req, res) => {
   }
 });
 
+// PUT /course-lessons/:lessonId
+app.put("/course-lessons/:lessonId", requireAuth, async (req, res) => {
+  try {
+    const { lessonId } = req.params;
+    const { title, description, discussion, activity, fileBase64, fileName, fileType } = req.body;
+
+    if (!lessonId) return res.status(400).json({ error: "Lesson ID is required." });
+
+    // Fetch existing lesson to verify it exists and get current data
+    const lessonRef = db.collection("courseLessons").doc(lessonId);
+    const lessonSnap = await lessonRef.get();
+    
+    if (!lessonSnap.exists) {
+      return res.status(404).json({ error: "Lesson not found." });
+    }
+
+    const currentData = lessonSnap.data();
+    let updatePayload = {
+      updatedAt: FieldValue.serverTimestamp(),
+    };
+
+    // Update text fields if provided
+    if (title !== undefined) updatePayload.title = title.trim();
+    if (description !== undefined) updatePayload.description = description.trim();
+    if (discussion !== undefined) updatePayload.discussion = discussion.trim() || null;
+    if (activity !== undefined) updatePayload.activity = activity.trim() || null;
+
+    // Handle File Replacement (Optional)
+    if (fileBase64 && fileName) {
+      // Delete old file from storage if it exists
+      if (currentData.storagePath) {
+        await deleteStorageFileIfExists(currentData.storagePath);
+      }
+      
+      // Upload new file
+      const uploadedFile = await uploadGenericFileToStorage({
+        fileBase64,
+        fileMimeType: fileType,
+        fileName,
+        folder: "class-materials", // Using same folder as manual lessons
+        classId: currentData.classId,
+      });
+
+      // Generate fresh signed URL for immediate access
+      let freshFileUrl = null;
+      if (uploadedFile.storagePath) {
+        try {
+          freshFileUrl = await createReadSignedUrl(uploadedFile.storagePath);
+        } catch (e) { console.warn("Failed to refresh URL after edit:", e); }
+      }
+
+      updatePayload.fileName = uploadedFile.fileName;
+      updatePayload.fileType = uploadedFile.fileType;
+      updatePayload.storagePath = uploadedFile.storagePath;
+      updatePayload.bucketPath = uploadedFile.bucketPath;
+      updatePayload.fileUrl = freshFileUrl;
+      updatePayload.pdfUrl = null; // Reset PDF preview if file changes
+      updatePayload.pdfStoragePath = null;
+    }
+
+    await lessonRef.update(updatePayload);
+
+    // Return updated data with fresh URL
+    const updatedSnap = await lessonRef.get();
+    const finalData = updatedSnap.data();
+    
+    // Ensure we return a valid URL even if generation failed above
+    let returnUrl = finalData.fileUrl;
+    if (!returnUrl && finalData.storagePath) {
+       returnUrl = await createReadSignedUrlIfExists(finalData.storagePath);
+    }
+
+    res.json({
+      success: true,
+      message: "Lesson updated successfully.",
+      data: { ...finalData, fileUrl: returnUrl }
+    });
+
+  } catch (error) {
+    console.error("Update lesson error:", error);
+    res.status(500).json({ error: error.message || "Failed to update lesson." });
+  }
+});
+
+// DELETE /course-lessons/:lessonId
+app.delete("/course-lessons/:lessonId", requireAuth, async (req, res) => {
+  try {
+    const { lessonId } = req.params;
+
+    if (!lessonId) return res.status(400).json({ error: "Lesson ID is required." });
+
+    const lessonRef = db.collection("courseLessons").doc(lessonId);
+    const lessonSnap = await lessonRef.get();
+
+    if (!lessonSnap.exists) {
+      return res.status(404).json({ error: "Lesson not found." });
+    }
+
+    const lessonData = lessonSnap.data();
+
+    // Delete associated file from Firebase Storage
+    if (lessonData.storagePath) {
+      await deleteStorageFileIfExists(lessonData.storagePath);
+    }
+
+    // Delete document from Firestore
+    await lessonRef.delete();
+
+    res.json({
+      success: true,
+      message: "Lesson deleted successfully."
+    });
+
+  } catch (error) {
+    console.error("Delete lesson error:", error);
+    res.status(500).json({ error: error.message || "Failed to delete lesson." });
+  }
+});
+
 const PORT = process.env.PORT || 5000;
 
 app.listen(PORT, "0.0.0.0", () => {
