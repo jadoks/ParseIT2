@@ -211,24 +211,65 @@ const formatRemoteDateTime = (value: any) => {
   return Number.isNaN(parsed.getTime()) ? new Date().toLocaleString() : parsed.toLocaleString();
 };
 
-const mapSubmissionToFile = (submission: any): AssignmentFileUpload | null => {
+const mapSubmissionToFile = (submission: any): AssignmentFileUpload[] => {
+  const items: AssignmentFileUpload[] = [];
+  const baseDate = formatRemoteDateTime(submission?.submittedAt || submission?.createdAt);
+  
+  // 1. Map the Primary File (if exists)
   const fileUrl = submission?.fileUrl || submission?.url || submission?.downloadUrl;
-  const fileName = submission?.fileName || submission?.name;
-  if (!fileUrl || !fileName) return null;
-  return {
-    id: String(submission?.submissionId || submission?.id || `submission-${submission?.assignmentId || Date.now()}`),
-    submissionId: submission?.submissionId || submission?.id,
-    fileName,
-    fileSize: submission?.fileSize || 'Submitted file',
-    uploadedDate: formatRemoteDateTime(submission?.submittedAt || submission?.uploadedDate || submission?.createdAt),
-    submittedAt: formatRemoteDateTime(submission?.submittedAt || submission?.createdAt),
-    fileUrl,
-    fileType: submission?.fileType || 'application/octet-stream',
-    storagePath: submission?.storagePath,
-    bucketPath: submission?.bucketPath,
-    isSubmitted: true,
-    source: 'student',
-  };
+  if (fileUrl && submission?.fileName) {
+    items.push({
+      id: `${submission.id}-file`,
+      submissionId: submission.id,
+      fileName: submission.fileName,
+      fileSize: 'Submitted file',
+      uploadedDate: baseDate,
+      submittedAt: baseDate,
+      fileUrl: fileUrl,
+      fileType: submission.fileType || 'application/octet-stream',
+      storagePath: submission.storagePath,
+      bucketPath: submission.bucketPath,
+      isSubmitted: true,
+      source: 'student',
+    });
+  }
+
+  // 2. Map ALL Link URLs from the array
+  const linkUrls = Array.isArray(submission.linkUrls) ? submission.linkUrls : [];
+  linkUrls.forEach((url: string, index: number) => {
+    if (url && typeof url === 'string') {
+      items.push({
+        id: `${submission.id}-link-${index}`,
+        submissionId: submission.id,
+        fileName: 'Submitted link',
+        fileSize: 'Link submission',
+        uploadedDate: baseDate,
+        submittedAt: baseDate,
+        linkUrl: url.trim(),
+        fileType: 'text/uri-list',
+        isSubmitted: true,
+        source: 'student',
+      });
+    }
+  });
+
+  // Fallback for legacy single linkUrl field
+  if (!linkUrls.length && submission.linkUrl) {
+     items.push({
+      id: `${submission.id}-link-legacy`,
+      submissionId: submission.id,
+      fileName: 'Submitted link',
+      fileSize: 'Link submission',
+      uploadedDate: baseDate,
+      submittedAt: baseDate,
+      linkUrl: submission.linkUrl,
+      fileType: 'text/uri-list',
+      isSubmitted: true,
+      source: 'student',
+    });
+  }
+
+  return items;
 };
 
 const ANNOUNCEMENT_BANNERS: Record<number, any> = {
@@ -249,23 +290,56 @@ const mapCourseCommentsToAssignmentComments = (comments?: CourseAssignmentCommen
   }));
 
 const mapCourseFilesToAssignmentFiles = (files?: CourseAssignment['files']): AssignmentFileUpload[] =>
-  (files || []).map((file) => ({ id: file.id, fileName: file.name, fileSize: (file as any).fileSize || '1.2 MB', uploadedDate: file.uploadedAt, fileUrl: file.uri || (file as any).fileUrl, fileType: (file as any).fileType, source: 'teacher' }));
-
+  (files || [])
+    .filter((file: any) => {
+      // ✅ CRITICAL: Filter out student submissions
+      const isStudentSubmission = 
+        file.source === 'student' || 
+        file.submissionId || 
+        file.isSubmitted === true;
+      return !isStudentSubmission;
+    })
+    .map((file) => ({ 
+      id: file.id, 
+      fileName: file.name, 
+      fileSize: (file as any).fileSize || '1.2 MB', 
+      uploadedDate: file.uploadedAt, 
+      fileUrl: file.uri || (file as any).fileUrl, 
+      fileType: (file as any).fileType, 
+      source: 'teacher' as const  // ✅ Explicitly mark as teacher
+    }));
 const mapCourseAssignmentsToAssignmentItems = (assignments: CourseAssignment[]): AssignmentItem[] =>
   assignments.map((assignment) => ({
-    id: assignment.id, title: assignment.title, dueDate: assignment.dueDate, status: assignment.status,
-    points: assignment.points, maxPoints: assignment.maxPoints, topic: assignment.topic, materialIds: assignment.materialIds,
+    id: assignment.id, 
+    title: assignment.title, 
+    dueDate: assignment.dueDate, 
+    status: assignment.status,
+    points: assignment.points, 
+    maxPoints: assignment.maxPoints, 
+    topic: assignment.topic, 
+    materialIds: assignment.materialIds,
     description: (assignment as any).description || (assignment as any).instruction || '',
-    fileName: (assignment as any).fileName || null, fileUrl: (assignment as any).fileUrl || (assignment as any).fileUri || null,
-    fileUri: (assignment as any).fileUri || (assignment as any).fileUrl || null, fileType: (assignment as any).fileType || null,
-    storagePath: (assignment as any).storagePath || null, bucketPath: (assignment as any).bucketPath || null,
-    comments: mapCourseCommentsToAssignmentComments(assignment.comments), files: mapCourseFilesToAssignmentFiles(assignment.files),
-    assignmentType: (assignment as any).assignmentType || 'regular', gameType: (assignment as any).gameType || null,
-    numberOfAttempts: (assignment as any).numberOfAttempts || null, customAttempts: (assignment as any).customAttempts || null,
+    
+    // ✅ ONLY map teacher-uploaded files here
+    fileName: (assignment as any).fileName || null, 
+    fileUrl: (assignment as any).fileUrl || (assignment as any).fileUri || null,
+    fileUri: (assignment as any).fileUri || (assignment as any).fileUrl || null, 
+    fileType: (assignment as any).fileType || null,
+    storagePath: (assignment as any).storagePath || null, 
+    bucketPath: (assignment as any).bucketPath || null,
+    
+    // ✅ Do NOT include student submissions in 'files' array here
+    // Student submissions should be handled separately via the 'submissions' prop
+    comments: mapCourseCommentsToAssignmentComments(assignment.comments), 
+    files: mapCourseFilesToAssignmentFiles(assignment.files), // ✅ Now properly filtered
+    
+    assignmentType: (assignment as any).assignmentType || 'regular', 
+    gameType: (assignment as any).gameType || null,
+    numberOfAttempts: (assignment as any).numberOfAttempts || null, 
+    customAttempts: (assignment as any).customAttempts || null,
     gradedAt: (assignment as any).gradedAt || null,
     submittedAt: (assignment as any).submittedAt || null,
   }));
-
 const mapCoursesToAssignmentCourses = (courses: CourseDetailData[]): AssignmentCourseWithBannerFields[] =>
   courses.map((course) => ({
     id: course.id, name: course.name, code: course.code, instructor: course.instructor, description: course.description,
@@ -867,8 +941,13 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
             attemptNumber: submission?.attemptNumber 
           };
         }
-        const mappedFile = mapSubmissionToFile(submission);
-        if (mappedFile) filesByAssignment[assignmentId] = [...(filesByAssignment[assignmentId] || []), mappedFile];
+        const mappedFiles = mapSubmissionToFile(submission);
+        if (mappedFiles.length > 0) {
+          filesByAssignment[assignmentId] = [
+            ...(filesByAssignment[assignmentId] || []), 
+            ...mappedFiles
+          ];
+        }
       });
       applySavedAssignmentState({ files: filesByAssignment, statuses: statusesByAssignment, scores: scoresByAssignment });
     } catch (error) { 
@@ -1015,9 +1094,16 @@ const handleAddAssignmentComment = async (assignmentId: string, content: string,
     }
   };
 
-  const handleAddAssignmentFile = (assignmentId: string, file: AssignmentFileUpload) => {
-    setSharedAssignmentFiles((prev) => ({ ...prev, [assignmentId]: [...(prev[assignmentId] || []), file] }));
-  };
+  // ✅ CORRECT: This keeps existing files and adds the new one
+const handleAddAssignmentFile = (assignmentId: string, file: AssignmentFileUpload) => {
+  setSharedAssignmentFiles((prev) => {
+    const currentFiles = prev[assignmentId] || [];
+    return {
+      ...prev,
+      [assignmentId]: [...currentFiles, file], // Append new file to existing array
+    };
+  });
+};
 
   const handleRemoveAssignmentFile = (assignmentId: string, fileId: string) => {
     setSharedAssignmentFiles((prev) => ({ ...prev, [assignmentId]: (prev[assignmentId] || []).filter((file) => file.id !== fileId) }));

@@ -83,6 +83,7 @@ export type Submission = {
   fileUrl?: string;
   fileType?: string;
   feedback?: string;
+  linkUrls?: string[]; 
 };
 export type CourseDetailData = {
   id: string;
@@ -309,6 +310,11 @@ const mapSubmission = (item: any): Submission => ({
   fileUrl: item.fileUrl || undefined,
   fileType: item.fileType || undefined,
   feedback: item.feedback || '',
+  linkUrls: Array.isArray(item.linkUrls)
+    ? item.linkUrls
+    : item.linkUrl
+      ? [item.linkUrl] // fallback for legacy single-link field
+      : [],
 });
 // ─── Viewer URL helpers (mirrors CourseDetail.tsx) ────────────────────────────
 function getMimeFromFileName(fileName: string): string {

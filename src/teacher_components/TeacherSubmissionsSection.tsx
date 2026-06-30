@@ -6,7 +6,6 @@ import {
   Linking,
   Modal,
   Platform,
-
   ScrollView,
   StyleSheet,
   Text,
@@ -30,6 +29,7 @@ function getApiBaseUrl() {
   if (host) return `http://${host}:5000`;
   return "http://192.168.1.5:5000";
 }
+
 const API_BASE_URL = getApiBaseUrl();
 const apiFetch = (url: string, options: any = {}) =>
   fetch(url, { credentials: "include", ...options });
@@ -40,7 +40,6 @@ type Props = {
   submissions: Submission[];
   onBack: () => void;
   onOpenUpdate: () => void;
-
   classId?: string;
   currentTeacher?: {
     teacherId?: string;
@@ -49,7 +48,6 @@ type Props = {
     lastName?: string;
     email?: string;
   };
-
   onGradeSubmission?: (
     submissionId: string,
     score: number,
@@ -72,7 +70,6 @@ type AssignmentComment = {
   updatedAt?: any;
 };
 
-// UI-only filter keys — purely for client-side display filtering, no backend impact
 type FilterKey = "all" | "submitted" | "graded" | "late" | "pending";
 
 const TeacherSubmissionsSection = ({
@@ -87,41 +84,41 @@ const TeacherSubmissionsSection = ({
 }: Props) => {
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
-
   const isSmallPhone = width < 360;
   const isMobile = width < 768;
   const isTablet = width >= 768 && width < 1200;
   const isLargeScreen = width >= 1200;
-
   const pagePadding = isSmallPhone ? 12 : isMobile ? 14 : isTablet ? 20 : 24;
   const mobileTopSpace = isMobile ? insets.top : 0;
-
   const cardWidth = isMobile ? "100%" : isLargeScreen ? "48.8%" : "48.5%";
 
-  // ── Comment States (unchanged) ──
+  // ── Comment States ──
   const [allComments, setAllComments] = useState<AssignmentComment[]>([]);
   const [isLoadingComments, setIsLoadingComments] = useState(false);
-
   const [studentCommentDrafts, setStudentCommentDrafts] = useState<Record<string, string>>({});
   const [isPostingComment, setIsPostingComment] = useState(false);
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
   const [editText, setEditText] = useState("");
   const [savingEdit, setSavingEdit] = useState(false);
-
   const [deleteModalVisible, setDeleteModalVisible] = useState(false);
   const [commentToDeleteId, setCommentToDeleteId] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
-  // ── New UI-only state (display/navigation only — no business logic) ──
+  // ── UI States ──
   const [searchQuery, setSearchQuery] = useState("");
   const [activeFilter, setActiveFilter] = useState<FilterKey>("all");
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
   const [commentsExpanded, setCommentsExpanded] = useState<Record<string, boolean>>({});
 
+  // ── Grade States ──
+  const [scoreDrafts, setScoreDrafts] = useState<Record<string, string>>({});
+  const [savingSubmissionId, setSavingSubmissionId] = useState<string | null>(null);
+
   const currentTeacherId = useMemo(() => {
     return currentTeacher?.teacherId || currentTeacher?.authUid || currentTeacher?.email || "";
   }, [currentTeacher]);
 
+  // ✅ UPDATED: Get ALL submission docs for this assignment
   const assignmentSubmissions = useMemo(() => {
     if (!currentAssignment) return [];
     return submissions.filter((item) => item.assignmentId === currentAssignment.id);
@@ -135,20 +132,32 @@ const TeacherSubmissionsSection = ({
     });
   }, [members]);
 
-  const completedCount = assignmentSubmissions.filter(
-    (item) =>
-      item.status === "submitted" ||
-      item.status === "graded" ||
-      item.status === "late"
-  ).length;
+  // ✅ FIXED: Count unique students who have submitted, not total submission docs
+  const completedCount = useMemo(() => {
+    const uniqueStudentIds = new Set(
+      assignmentSubmissions
+        .filter((item) => ["submitted", "graded", "late"].includes(item.status || ""))
+        .map((item) => item.studentId)
+    );
+    return uniqueStudentIds.size;
+  }, [assignmentSubmissions]);
 
   const pendingCount = studentMembers.length - completedCount;
-
-  const lateCount = assignmentSubmissions.filter((item) => item.status === "late").length;
+  
+  // Count late unique students
+  const lateCount = useMemo(() => {
+    const uniqueLateIds = new Set(
+      assignmentSubmissions
+        .filter((item) => item.status === "late")
+        .map((item) => item.studentId)
+    );
+    return uniqueLateIds.size;
+  }, [assignmentSubmissions]);
 
   const gradedSubmissionsForAvg = assignmentSubmissions.filter(
     (item) => item.status === "graded" && typeof item.score === "number"
   );
+
   const averageScore =
     gradedSubmissionsForAvg.length > 0
       ? Math.round(
@@ -164,10 +173,7 @@ const TeacherSubmissionsSection = ({
 
   const totalScoreValue = Number(currentAssignment?.totalScore || 0);
 
-  const [scoreDrafts, setScoreDrafts] = useState<Record<string, string>>({});
-  const [savingSubmissionId, setSavingSubmissionId] = useState<string | null>(null);
-
-  // ── Comment Fetching (unchanged) ──
+  // ── Comment API Functions ──
   const fetchComments = async () => {
     if (!currentAssignment?.id) return;
     setIsLoadingComments(true);
@@ -192,16 +198,222 @@ const TeacherSubmissionsSection = ({
     }
   }, [currentAssignment?.id]);
 
-  // TRUE PER-STUDENT FILTERING (unchanged)
   const getStudentComments = (studentId: string) => {
     return allComments.filter((c) => c.studentId === studentId);
   };
 
-  // ── Comment Actions (unchanged) ──
+  // Helper to format dates consistently
+const formatRemoteDateTime = (value: any) => {
+  if (!value) return new Date().toLocaleString();
+  if (typeof value === 'string') return value;
+  if (typeof value?.toDate === 'function') return value.toDate().toLocaleString();
+  if (typeof value?._seconds === 'number') return new Date(value._seconds * 1000).toLocaleString();
+  if (typeof value?.seconds === 'number') return new Date(value.seconds * 1000).toLocaleString();
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? new Date().toLocaleString() : parsed.toLocaleString();
+};
+
+// Helper to map a single submission doc to multiple UI items (File + Links)
+const mapSubmissionToItems = (submission: any): any[] => {
+  const items: any[] = [];
+  const baseDate = formatRemoteDateTime(submission?.submittedAt || submission?.createdAt);
+  
+  // 1. Map the Primary File (if exists)
+  const fileUrl = submission?.fileUrl || submission?.url || submission?.downloadUrl;
+  if (fileUrl && submission?.fileName) {
+    items.push({
+      id: `${submission.id}-file`,
+      submissionId: submission.id,
+      fileName: submission.fileName,
+      fileSize: 'Submitted file',
+      uploadedDate: baseDate,
+      submittedAt: baseDate,
+      fileUrl: fileUrl,
+      fileType: submission.fileType || 'application/octet-stream',
+      storagePath: submission.storagePath,
+      bucketPath: submission.bucketPath,
+      isSubmitted: true,
+      source: 'student',
+      type: 'file' // Explicit type for rendering
+    });
+  }
+
+  // 2. Map ALL Link URLs from the array
+  const linkUrls = Array.isArray(submission.linkUrls) ? submission.linkUrls : [];
+  linkUrls.forEach((url: string, index: number) => {
+    if (url && typeof url === 'string') {
+      items.push({
+        id: `${submission.id}-link-${index}`,
+        submissionId: submission.id,
+        fileName: 'Submitted link',
+        fileSize: 'Link submission',
+        uploadedDate: baseDate,
+        submittedAt: baseDate,
+        linkUrl: url.trim(),
+        fileType: 'text/uri-list',
+        isSubmitted: true,
+        source: 'student',
+        type: 'link' // Explicit type for rendering
+      });
+    }
+  });
+
+  // Fallback for legacy single linkUrl field
+  if (!linkUrls.length && submission.linkUrl) {
+     items.push({
+      id: `${submission.id}-link-legacy`,
+      submissionId: submission.id,
+      fileName: 'Submitted link',
+      fileSize: 'Link submission',
+      uploadedDate: baseDate,
+      submittedAt: baseDate,
+      linkUrl: submission.linkUrl,
+      fileType: 'text/uri-list',
+      isSubmitted: true,
+      source: 'student',
+      type: 'link'
+    });
+  }
+
+  return items;
+};
+  // ── File Handling Functions ──
+
+  /**
+   * ✅ FIXED: Extract ALL individual submission items including links from the unified doc.
+   * This matches the logic used in StudentApp.tsx and Assignments.tsx
+   */
+  const getStudentSubmissionItems = (studentId: string) => {
+  if (!currentAssignment) return [];
+
+  const studentSubs = assignmentSubmissions.filter(
+    sub => sub.studentId === studentId && sub.assignmentId === currentAssignment.id
+  );
+
+  if (studentSubs.length === 0) return [];
+
+  const sub = studentSubs[0]; 
+  
+  // DEBUG LOG: Check if linkUrls exists in the fetched data
+  console.log("DEBUG SUBMISSION DATA:", sub); 
+  console.log("DEBUG LINKURLS:", sub.linkUrls); 
+
+  const items: any[] = [];
+
+  // 1. Handle Primary File Upload
+  if (sub.fileUrl && sub.fileName) {
+    items.push({
+      id: `${sub.id}-file`,
+      type: 'file' as const,
+      url: sub.fileUrl,
+      fileName: sub.fileName,
+      fileType: sub.fileType || 'application/octet-stream',
+      submittedAt: sub.submittedAt,
+      status: sub.status
+    });
+  }
+
+  // 2. Handle Link URLs Array
+  // Note: If sub.linkUrls is undefined, this block won't run.
+  if (Array.isArray(sub.linkUrls) && sub.linkUrls.length > 0) {
+    sub.linkUrls.forEach((url: string, index: number) => {
+      if (url && typeof url === 'string' && url.trim()) {
+        items.push({
+          id: `${sub.id}-link-${index}`,
+          type: 'link' as const,
+          url: url.trim(),
+          fileName: url.trim(),
+          fileType: 'text/uri-list',
+          submittedAt: sub.submittedAt,
+          status: sub.status
+        });
+      }
+    });
+  }
+
+  return items;
+};
+
+  /**
+   * ✅ UPDATED: Renders individual file/link items exactly like Assignment Modal
+   */
+    /**
+   * ✅ UPDATED: Renders individual file/link items exactly like Assignment Modal
+   */
+  const renderSubmittedFiles = (student: Member) => {
+    const items = getStudentSubmissionItems(student.id);
+    
+    if (items.length === 0) {
+      return (
+        <View style={styles.noSubmissionContainer}>
+          <MaterialCommunityIcons name="file-remove-outline" size={24} color="#9CA3AF" />
+          <Text style={styles.noSubmissionText}>No submission</Text>
+        </View>
+      );
+    }
+
+    return (
+      <View style={styles.submittedFilesContainer}>
+        <Text style={styles.submittedFilesTitle}> Submitted Items ({items.length})</Text>
+        {items.map((item) => {
+          const isLink = item.type === 'link';
+          
+          return (
+            <TouchableOpacity
+              key={item.id}
+              style={[styles.submittedFileItem, isLink && styles.linkSubmissionItem]}
+              onPress={() => handleOpenSubmittedFile(item.url!, item.fileName, isLink)}
+              activeOpacity={0.7}
+            >
+              <View style={styles.fileIconContainer}>
+                <MaterialCommunityIcons
+                  name={isLink ? "link-variant" : "file-document-outline"}
+                  size={16}
+                  color={isLink ? "#1a73e8" : "#D32F2F"}
+                />
+              </View>
+              <View style={styles.fileDetails}>
+                <Text
+                  style={[
+                    styles.fileNameText,
+                    isLink && styles.linkFileNameText,
+                  ]}
+                  numberOfLines={2}
+                >
+                  {isLink ? item.url : item.fileName}
+                </Text>
+                <Text style={styles.fileTypeText}>
+                  {isLink ? "Link submission" : "Submitted file"} • {new Date(item.submittedAt || Date.now()).toLocaleDateString()}
+                </Text>
+              </View>
+              <MaterialCommunityIcons name="open-in-new" size={16} color="#9CA3AF" />
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+    );
+  };
+  const handleOpenSubmittedFile = async (url: string, fileName: string, isLink: boolean) => {
+    if (!url) {
+      Alert.alert("No file", "This submission has no URL to open.");
+      return;
+    }
+    try {
+      const supported = await Linking.canOpenURL(url);
+      if (!supported) {
+        Alert.alert("Cannot open", "This URL is not supported on this device.");
+        return;
+      }
+      await Linking.openURL(url);
+    } catch {
+      Alert.alert("Open failed", `Unable to open the ${isLink ? "link" : "file"}.`);
+    }
+  };
+
+  // ── Comment Functions ──
   const handleAddComment = async (studentId: string) => {
     const commentText = studentCommentDrafts[studentId]?.trim();
     if (!commentText || !currentAssignment?.id) return;
-
     setIsPostingComment(true);
     try {
       const response = await apiFetch(`${API_BASE_URL}/assignment-comments`, {
@@ -293,11 +505,24 @@ const TeacherSubmissionsSection = ({
     return comment.authorId === currentTeacherId;
   };
 
-  const getStudentSubmission = (studentId: string) => {
-    return assignmentSubmissions.find((item) => item.studentId === studentId);
+  // ── Helper Functions ──
+  const getStudentSubmissionStatus = (studentId: string) => {
+    // Get the latest/highest priority status from their submissions
+    const subs = assignmentSubmissions.filter(s => s.studentId === studentId);
+    if (subs.length === 0) return undefined;
+    // Priority: graded > late > submitted
+    if (subs.some(s => s.status === 'graded')) return 'graded';
+    if (subs.some(s => s.status === 'late')) return 'late';
+    if (subs.some(s => s.status === 'submitted')) return 'submitted';
+    return subs[0].status;
   };
 
-  const getDotColor = (status?: Submission["status"]) => {
+  const getStudentScore = (studentId: string) => {
+    const graded = assignmentSubmissions.find(s => s.studentId === studentId && s.status === 'graded');
+    return graded?.score;
+  };
+
+  const getDotColor = (status?: string) => {
     switch (status) {
       case "graded": return "#10B981";
       case "submitted": return "#3B82F6";
@@ -306,7 +531,7 @@ const TeacherSubmissionsSection = ({
     }
   };
 
-  const getStatusText = (status?: Submission["status"]) => {
+  const getStatusText = (status?: string) => {
     switch (status) {
       case "graded": return "Graded";
       case "submitted": return "Submitted";
@@ -316,7 +541,7 @@ const TeacherSubmissionsSection = ({
     }
   };
 
-  const getStatusColor = (status?: Submission["status"]) => {
+  const getStatusColor = (status?: string) => {
     switch (status) {
       case "graded": return "#065F46";
       case "submitted": return "#1E40AF";
@@ -326,7 +551,7 @@ const TeacherSubmissionsSection = ({
     }
   };
 
-  const getStatusBgColor = (status?: Submission["status"]) => {
+  const getStatusBgColor = (status?: string) => {
     switch (status) {
       case "graded": return "#D1FAE5";
       case "submitted": return "#DBEAFE";
@@ -336,9 +561,7 @@ const TeacherSubmissionsSection = ({
     }
   };
 
-  // Maps a submission status (or lack thereof) to one of the five UI filter
-  // chip keys. Pure presentational helper — does not touch submission data.
-  const getFilterKeyForStatus = (status?: Submission["status"]): FilterKey => {
+  const getFilterKeyForStatus = (status?: string): FilterKey => {
     switch (status) {
       case "graded": return "graded";
       case "submitted": return "submitted";
@@ -347,55 +570,13 @@ const TeacherSubmissionsSection = ({
     }
   };
 
-  const getSubmissionFileUrl = (submission?: Submission) => {
-    const candidate =
-      (submission as any)?.fileUrl ||
-      (submission as any)?.fileUri ||
-      (submission as any)?.url ||
-      null;
+  const handleSaveScore = async (studentId: string) => {
+    // Find the primary submission ID to grade (usually the first one or the one with fileUrl)
+    const subToGrade = assignmentSubmissions.find(s => s.studentId === studentId);
+    if (!subToGrade) return;
 
-    if (!candidate || typeof candidate !== "string") return null;
-    const trimmed = candidate.trim();
-    return trimmed || null;
-  };
-
-  const isLinkSubmission = (submission?: Submission) => {
-    const type = String((submission as any)?.fileType || "").toLowerCase();
-    const url = getSubmissionFileUrl(submission);
-    return type === "text/uri-list" || (!!url && !submission?.fileName);
-  };
-
-  const getSubmissionFileName = (submission?: Submission) => {
-    if (isLinkSubmission(submission)) return "Submitted link";
-    return (
-      (submission as any)?.fileName ||
-      (submission as any)?.name ||
-      "Submitted file"
-    );
-  };
-
-  const handleOpenSubmittedFile = async (submission?: Submission) => {
-    const fileUrl = getSubmissionFileUrl(submission);
-    if (!fileUrl) {
-      Alert.alert("No file", "This student has no submitted file to view.");
-      return;
-    }
-    try {
-      const supported = await Linking.canOpenURL(fileUrl);
-      if (!supported) {
-        Alert.alert("Cannot open file", "This file URL is not supported on this device.");
-        return;
-      }
-      await Linking.openURL(fileUrl);
-    } catch {
-      Alert.alert("Open failed", "Unable to open the submitted file.");
-    }
-  };
-
-  const handleSaveScore = async (submission: Submission) => {
-    const rawScore = scoreDrafts[submission.id] ?? String(submission.score ?? "");
+    const rawScore = scoreDrafts[studentId] ?? String(subToGrade.score ?? "");
     const score = Number(rawScore);
-
     if (!Number.isFinite(score)) {
       Alert.alert("Invalid score", "Please enter a valid numeric score.");
       return;
@@ -414,8 +595,8 @@ const TeacherSubmissionsSection = ({
     }
 
     try {
-      setSavingSubmissionId(submission.id);
-      await onGradeSubmission(submission.id, score, "");
+      setSavingSubmissionId(studentId);
+      await onGradeSubmission(subToGrade.id, score, "");
       Alert.alert("Saved", "Score saved successfully.");
     } catch (error: any) {
       Alert.alert("Save failed", error?.message || "Unable to save score.");
@@ -424,16 +605,13 @@ const TeacherSubmissionsSection = ({
     }
   };
 
-  // ── Display-only filtering (search + status chips). Does not touch
-  // assignmentSubmissions, allComments, or any backend-facing state.
-  // NOTE: search matches Student Name ONLY — email/handle is intentionally
-  // excluded from the search comparison. ──
+  // ── Filtering ──
   const visibleStudents = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
     return studentMembers.filter((student) => {
+      const status = getStudentSubmissionStatus(student.id);
       if (activeFilter !== "all") {
-        const submission = getStudentSubmission(student.id);
-        if (getFilterKeyForStatus(submission?.status) !== activeFilter) return false;
+        if (getFilterKeyForStatus(status) !== activeFilter) return false;
       }
       if (!query) return true;
       const name = String(student.name || "").toLowerCase();
@@ -441,7 +619,6 @@ const TeacherSubmissionsSection = ({
     });
   }, [studentMembers, searchQuery, activeFilter, assignmentSubmissions]);
 
-  // Keep a valid selection for desktop master-detail as the visible list changes
   useEffect(() => {
     if (isLargeScreen && visibleStudents.length > 0) {
       const stillVisible = visibleStudents.some((s) => s.id === selectedStudentId);
@@ -468,9 +645,8 @@ const TeacherSubmissionsSection = ({
     { key: "pending", label: "Pending" },
   ];
 
-  // ── Reusable render pieces ──
-
-  const renderStatusChip = (status?: Submission["status"], small?: boolean) => (
+  // ── Render Functions ──
+  const renderStatusChip = (status?: string, small?: boolean) => (
     <View
       style={[
         styles.statusChip,
@@ -489,8 +665,9 @@ const TeacherSubmissionsSection = ({
   );
 
   const renderStudentListItem = (student: Member, variant: "list" | "grid" | "card") => {
-    const submission = getStudentSubmission(student.id);
+    const status = getStudentSubmissionStatus(student.id);
     const isSelected = selectedStudentId === student.id;
+    const score = getStudentScore(student.id);
 
     if (variant === "list") {
       return (
@@ -500,7 +677,7 @@ const TeacherSubmissionsSection = ({
           onPress={() => setSelectedStudentId(student.id)}
           style={[styles.listItem, isSelected && styles.listItemActive]}
           accessibilityRole="button"
-          accessibilityLabel={`${student.name}, ${getStatusText(submission?.status)}`}
+          accessibilityLabel={`${student.name}, ${getStatusText(status)}`}
         >
           <View style={styles.listItemAvatar}>
             <MaterialCommunityIcons name="account" size={18} color={isSelected ? "#D32F2F" : "#9CA3AF"} />
@@ -513,84 +690,59 @@ const TeacherSubmissionsSection = ({
               {student.handle}
             </Text>
           </View>
-          {submission?.status === "graded" && (
+          {status === "graded" && score !== undefined && (
             <Text style={styles.listItemScore} numberOfLines={1}>
-              {submission.score ?? 0}/{totalScoreValue}
+              {score}/{totalScoreValue}
             </Text>
           )}
-          <View style={[styles.listItemDot, { backgroundColor: getDotColor(submission?.status) }]} />
+          <View style={[styles.listItemDot, { backgroundColor: getDotColor(status) }]} />
         </TouchableOpacity>
       );
     }
 
-    // grid (tablet) and card (mobile) variants both render the full card
     return renderStudentCard(student, variant === "card");
   };
 
-  // Score / game score / submitted date / view-file link — the substance of
-  // a submission, independent of how it's framed (card header vs. detail pane).
-  const renderSubmissionMeta = (student: Member) => {
-    const submission = getStudentSubmission(student.id);
-    const fileUrl = getSubmissionFileUrl(submission);
 
+  const renderSubmissionMeta = (student: Member) => {
+    const status = getStudentSubmissionStatus(student.id);
+    const score = getStudentScore(student.id);
+    const latestSub = assignmentSubmissions.find(s => s.studentId === student.id);
+    
     return (
       <View>
         <View style={styles.metaRow}>
           <View style={styles.metaCell}>
             <Text style={styles.metaCellLabel}>⭐ Score</Text>
             <Text style={styles.metaCellValue}>
-              {submission?.score ?? 0}/{totalScoreValue}
+              {score ?? 0}/{totalScoreValue}
             </Text>
           </View>
-          {(submission as any)?.gameScore !== undefined && (
+          {(latestSub as any)?.gameScore !== undefined && (
             <View style={styles.metaCell}>
               <Text style={styles.metaCellLabel}>🎮 Game</Text>
               <Text style={styles.metaCellValue}>
-                {(submission as any).gameScore}/{(submission as any).gameTotalQuestions || "?"}
-                {(submission as any).attemptNumber > 1 ? ` (Att.${(submission as any).attemptNumber})` : ""}
+                {(latestSub as any).gameScore}/{(latestSub as any).gameTotalQuestions || "?"}
+                {(latestSub as any).attemptNumber > 1 ? ` (Att.${(latestSub as any).attemptNumber})` : ""}
               </Text>
             </View>
           )}
           <View style={styles.metaCell}>
             <Text style={styles.metaCellLabel}>📅 Submitted</Text>
             <Text style={styles.metaCellValue} numberOfLines={1}>
-              {submission?.submittedAt || "Not yet"}
+              {latestSub?.submittedAt ? new Date(latestSub.submittedAt).toLocaleDateString() : "Not yet"}
             </Text>
           </View>
         </View>
 
-        {!!fileUrl && (
-          <TouchableOpacity
-            style={styles.viewFileButton}
-            onPress={() => handleOpenSubmittedFile(submission)}
-            activeOpacity={0.85}
-            accessibilityRole="button"
-            accessibilityLabel={isLinkSubmission(submission) ? "Open submitted link" : "View submitted file"}
-          >
-            <MaterialCommunityIcons
-              name={
-                isLinkSubmission(submission)
-                  ? "link-variant"
-                  : String((submission as any)?.fileType || "").startsWith("image/")
-                    ? "image-outline"
-                    : "file-document-outline"
-              }
-              size={16}
-              color="#D32F2F"
-            />
-            <Text style={styles.viewFileText} numberOfLines={1}>
-              {isLinkSubmission(submission) ? "Open" : "View"} {getSubmissionFileName(submission)}
-            </Text>
-          </TouchableOpacity>
-        )}
+        {renderSubmittedFiles(student)}
       </View>
     );
   };
 
   const renderStudentCard = (student: Member, fullWidth: boolean) => {
-    const submission = getStudentSubmission(student.id);
+    const status = getStudentSubmissionStatus(student.id);
     const isSelected = selectedStudentId === student.id;
-
     return (
       <TouchableOpacity
         key={student.id}
@@ -618,7 +770,7 @@ const TeacherSubmissionsSection = ({
               </Text>
             </View>
           </View>
-          {renderStatusChip(submission?.status, true)}
+          {renderStatusChip(status, true)}
         </View>
 
         <View style={styles.cardDivider} />
@@ -629,16 +781,12 @@ const TeacherSubmissionsSection = ({
   };
 
   const renderGradePanel = (student: Member) => {
-    const submission = getStudentSubmission(student.id);
-    const scoreDraft = submission
-      ? scoreDrafts[submission.id] ?? String(submission.score ?? "")
-      : "";
-    const canGrade =
-      !!submission &&
-      (submission.status === "submitted" ||
-        submission.status === "late" ||
-        submission.status === "graded");
-    const isSaving = !!submission && savingSubmissionId === submission.id;
+    const status = getStudentSubmissionStatus(student.id);
+    const currentScore = getStudentScore(student.id);
+    const scoreDraft = scoreDrafts[student.id] ?? String(currentScore ?? "");
+    
+    const canGrade = status === "submitted" || status === "late" || status === "graded";
+    const isSaving = savingSubmissionId === student.id;
 
     return (
       <View style={styles.gradePanel}>
@@ -652,10 +800,9 @@ const TeacherSubmissionsSection = ({
             style={[styles.scoreInput, !canGrade && styles.inputDisabled]}
             value={scoreDraft}
             onChangeText={(value) => {
-              if (!submission) return;
               setScoreDrafts((prev) => ({
                 ...prev,
-                [submission.id]: value.replace(/[^0-9.]/g, ""),
+                [student.id]: value.replace(/[^0-9.]/g, ""),
               }));
             }}
             editable={canGrade && !isSaving}
@@ -670,7 +817,7 @@ const TeacherSubmissionsSection = ({
         <TouchableOpacity
           style={[styles.saveScoreButton, (!canGrade || isSaving) && styles.disabledButton]}
           disabled={!canGrade || isSaving}
-          onPress={() => submission && handleSaveScore(submission)}
+          onPress={() => handleSaveScore(student.id)}
           activeOpacity={0.85}
           accessibilityRole="button"
           accessibilityLabel="Save grade"
@@ -679,7 +826,7 @@ const TeacherSubmissionsSection = ({
             <ActivityIndicator size="small" color="#FFF" />
           ) : (
             <Text style={styles.saveScoreText}>
-              {submission?.status === "graded" ? "Update Grade" : "Save Grade"}
+              {status === "graded" ? "Update Grade" : "Save Grade"}
             </Text>
           )}
         </TouchableOpacity>
@@ -691,7 +838,6 @@ const TeacherSubmissionsSection = ({
     const studentComments = getStudentComments(student.id);
     const commentDraft = studentCommentDrafts[student.id] || "";
     const isCollapsed = collapsedByDefault && !commentsExpanded[student.id];
-
     return (
       <View style={styles.commentsSection}>
         <TouchableOpacity
@@ -705,7 +851,7 @@ const TeacherSubmissionsSection = ({
           </Text>
           {collapsedByDefault && (
             <View style={styles.showCommentsBtn}>
-              <Text style={styles.showCommentsBtnText}>{isCollapsed ? "Show" : "Hide"}</Text>
+              <Text style={styles.showCommentsBtnText}>{isCollapsed ? "Show " : "Hide "}</Text>
               <MaterialCommunityIcons
                 name={isCollapsed ? "chevron-down" : "chevron-up"}
                 size={16}
@@ -846,14 +992,13 @@ const TeacherSubmissionsSection = ({
           <Text style={styles.detailName}>{student.name}</Text>
           <Text style={styles.detailHandle}>{student.handle} · {student.id}</Text>
         </View>
-        {renderStatusChip(getStudentSubmission(student.id)?.status)}
+        {renderStatusChip(getStudentSubmissionStatus(student.id))}
       </View>
-
       <View style={styles.detailMetaCard}>{renderSubmissionMeta(student)}</View>
 
       <View style={isTablet ? styles.tabletDetailRow : undefined}>
         <View style={isTablet ? styles.gradePanelContainer : undefined}>{renderGradePanel(student)}</View>
-        <View style={isTablet ? styles.commentsPanelContainer : {marginTop: 20}}>{renderComments(student, false)}</View>
+        <View style={isTablet ? styles.commentsPanelContainer : { marginTop: 20 }}>{renderComments(student, false)}</View>
       </View>
     </View>
   );
@@ -861,7 +1006,6 @@ const TeacherSubmissionsSection = ({
   return (
     <SafeAreaView style={styles.container}>
       {isMobile ? <View style={{ height: mobileTopSpace }} /> : null}
-
       {/* ── Header ── */}
       <View
         style={[
@@ -997,7 +1141,6 @@ const TeacherSubmissionsSection = ({
 
       {/* ── Main Content ── */}
       {isLargeScreen ? (
-        // Desktop: master-detail
         <View style={[styles.masterDetailRow, { paddingHorizontal: pagePadding }]}>
           <View style={styles.masterList}>
             <Text style={styles.masterListTitle}>Student List</Text>
@@ -1053,7 +1196,6 @@ const TeacherSubmissionsSection = ({
               );
             }
 
-            // Mobile: one card per student, tap to expand grade + comments below
             return (
               <View key={student.id} style={{ width: "100%" }}>
                 {renderStudentListItem(student, "card")}
@@ -1075,7 +1217,7 @@ const TeacherSubmissionsSection = ({
         </ScrollView>
       )}
 
-      {/* ── Mobile FAB for Update Assignment ── */}
+      {/* ── Mobile FAB ── */}
       {isMobile && (
         <TouchableOpacity
           style={[styles.fab, { bottom: Math.max(24, insets.bottom + 16) }]}
@@ -1088,7 +1230,7 @@ const TeacherSubmissionsSection = ({
         </TouchableOpacity>
       )}
 
-      {/* ── Delete Confirmation Modal (unchanged logic) ── */}
+      {/* ── Delete Modal ── */}
       <Modal
         visible={deleteModalVisible}
         transparent
@@ -1138,8 +1280,7 @@ const TeacherSubmissionsSection = ({
 export default TeacherSubmissionsSection;
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#F8FAFC"  , paddingBottom: 15},
-
+  container: { flex: 1, backgroundColor: "#F8FAFC", paddingBottom: 15 },
   // ── Header ──
   headerBar: { backgroundColor: "#FFFFFF", borderBottomWidth: 1, borderBottomColor: "#E5E7EB" },
   headerTopRow: { flexDirection: "row", alignItems: "center", marginBottom: 12 },
@@ -1159,16 +1300,13 @@ const styles = StyleSheet.create({
     minHeight: 44,
   },
   updateButtonOutlinedText: { color: "#D32F2F", fontWeight: "700", fontSize: 13 },
-
   progressBarTrack: { height: 8, borderRadius: 16, backgroundColor: "#E5E7EB", overflow: "hidden" },
   progressBarFill: { height: "100%", borderRadius: 16, backgroundColor: "#D32F2F" },
   progressPercentLabel: { fontSize: 12, fontWeight: "700", color: "#6B7280", marginTop: 6 },
-
   chipsRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 12 },
   smallChip: { borderRadius: 999, paddingHorizontal: 10, paddingVertical: 6 },
   smallChipText: { fontSize: 11, fontWeight: "700" },
-
-  // ── Progress Summary Dashboard ──
+  // ── Progress Summary ──
   summaryRow: { flexDirection: "row", gap: 10, marginTop: 16, marginBottom: 4 },
   summaryCard: {
     flex: 1,
@@ -1184,7 +1322,6 @@ const styles = StyleSheet.create({
   },
   summaryCardValue: { fontSize: 18, fontWeight: "800", color: "#111827" },
   summaryCardLabel: { fontSize: 11, fontWeight: "600", color: "#6B7280", marginTop: 4 },
-
   // ── Search + Filters ──
   searchFilterWrap: { marginTop: 16, marginBottom: 8 },
   searchBar: {
@@ -1213,17 +1350,14 @@ const styles = StyleSheet.create({
   filterChipActive: { backgroundColor: "#D32F2F", borderColor: "#D32F2F" },
   filterChipText: { fontSize: 12, fontWeight: "700", color: "#4B5563" },
   filterChipTextActive: { color: "#FFFFFF" },
-
   // ── Scroll containers ──
   scrollContent: { gap: 14, paddingTop: 8 },
   scrollContentGrid: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between" },
-
-  // ── Master-detail (desktop) ──
+  // ── Master-detail ──
   masterDetailRow: { flex: 1, flexDirection: "row", gap: 20, marginTop: 12 },
   masterList: { width: 280, backgroundColor: "#FFFFFF", borderRadius: 16, padding: 12, borderWidth: 1, borderColor: "#E5E7EB" },
   masterListTitle: { fontSize: 13, fontWeight: "800", color: "#6B7280", textTransform: "uppercase", marginBottom: 8, paddingHorizontal: 6 },
   detailScroll: { flex: 1 },
-
   listItem: {
     flexDirection: "row",
     alignItems: "center",
@@ -1241,7 +1375,6 @@ const styles = StyleSheet.create({
   listItemHandle: { fontSize: 11, color: "#9CA3AF", marginTop: 1 },
   listItemScore: { fontSize: 11, fontWeight: "700", color: "#6B7280", marginRight: 4 },
   listItemDot: { width: 8, height: 8, borderRadius: 4 },
-
   detailPane: { gap: 16 },
   detailHeaderRow: { flexDirection: "row", alignItems: "center", gap: 12 },
   avatarCircleLarge: { width: 52, height: 52, borderRadius: 26, backgroundColor: "#FEF2F2", alignItems: "center", justifyContent: "center" },
@@ -1249,7 +1382,7 @@ const styles = StyleSheet.create({
   detailHandle: { fontSize: 12, color: "#6B7280", fontWeight: "600", marginTop: 2 },
   tabletDetailRow: { flexDirection: "row", gap: 20 },
   gradePanelContainer: { flex: 1, minWidth: 0 },
-  commentsPanelContainer: { flex: 1, minWidth: 0, marginTop: 20},
+  commentsPanelContainer: { flex: 1, minWidth: 0, marginTop: 20 },
   detailMetaCard: {
     backgroundColor: "#FFFFFF",
     borderRadius: 16,
@@ -1262,7 +1395,6 @@ const styles = StyleSheet.create({
   },
   tabletExpandedDetail: { marginTop: 8, marginBottom: 8 },
   mobileExpandedDetail: { gap: 12, marginTop: 5, marginBottom: 8 },
-
   // ── Student Card ──
   studentCard: {
     backgroundColor: "#FFFFFF",
@@ -1283,36 +1415,90 @@ const styles = StyleSheet.create({
   studentCardNameWrap: { flex: 1, minWidth: 0 },
   studentCardName: { fontSize: 16, fontWeight: "800", color: "#111827" },
   studentCardId: { fontSize: 12, color: "#6B7280", fontWeight: "500", marginTop: 1 },
-
   statusChip: { flexDirection: "row", alignItems: "center", gap: 6, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 6 },
   statusChipSmall: { paddingHorizontal: 8, paddingVertical: 5 },
   statusDot: { width: 6, height: 6, borderRadius: 3 },
   statusChipText: { fontSize: 12, fontWeight: "700" },
   statusChipTextSmall: { fontSize: 11 },
-
   cardDivider: { height: 1, backgroundColor: "#F3F4F6", marginVertical: 14 },
-
   metaRow: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
   metaCell: { flexGrow: 1, flexBasis: 100, minWidth: 90 },
   metaCellLabel: { fontSize: 11, color: "#6B7280", fontWeight: "600", marginBottom: 3 },
   metaCellValue: { fontSize: 14, color: "#111827", fontWeight: "800" },
-
-  viewFileButton: {
+  // ── Submitted Files ──
+  noSubmissionContainer: {
     marginTop: 14,
+    padding: 16,
+    backgroundColor: "#F8FAFC",
+    borderRadius: 10,
+    borderLeftWidth: 3,
+    borderLeftColor: "#E5E7EB",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+  },
+  noSubmissionText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#9CA3AF",
+    fontStyle: "italic",
+  },
+  submittedFilesContainer: {
+    marginTop: 14,
+    backgroundColor: "#F8FAFC",
+    borderRadius: 10,
+    padding: 12,
+    borderLeftWidth: 3,
+    borderLeftColor: "#3B82F6",
+  },
+  submittedFilesTitle: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#111827",
+    marginBottom: 10,
+  },
+  submittedFileItem: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
-    backgroundColor: "#FEF2F2",
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    alignSelf: "flex-start",
-    maxWidth: "100%",
-    minHeight: 44,
+    gap: 10,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 8,
+    padding: 10,
+    marginBottom: 8,
+    borderLeftWidth: 2,
+    borderLeftColor: "#D32F2F",
   },
-  viewFileText: { color: "#D32F2F", fontWeight: "700", fontSize: 12, flexShrink: 1 },
-
-  // ── Grade panel ──
+  linkSubmissionItem: {
+    borderLeftColor: "#1a73e8",
+  },
+  
+  fileIconContainer: {
+    width: 32,
+    height: 32,
+    borderRadius: 6,
+    backgroundColor: "#FEF2F2",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  fileDetails: {
+    flex: 1,
+    minWidth: 0,
+  },
+  fileNameText: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#111827",
+    marginBottom: 2,
+  },
+  linkFileNameText: {
+    color: "#1a73e8",
+    textDecorationLine: "underline",
+  },
+  fileTypeText: {
+    fontSize: 11,
+    color: "#9CA3AF",
+  },
+  // ── Grade Panel ──
   gradePanel: {
     backgroundColor: "#FFFFFF",
     borderRadius: 16,
@@ -1353,7 +1539,6 @@ const styles = StyleSheet.create({
   },
   disabledButton: { backgroundColor: "#D1D5DB" },
   saveScoreText: { color: "#FFFFFF", fontWeight: "700", fontSize: 14 },
-
   // ── Comments ──
   commentsSection: {
     backgroundColor: "#FFFFFF",
@@ -1370,7 +1555,6 @@ const styles = StyleSheet.create({
   commentsSectionTitle: { fontSize: 15, fontWeight: "800", color: "#111827" },
   showCommentsBtn: { flexDirection: "row", alignItems: "center", gap: 2, minHeight: 32, paddingHorizontal: 6 },
   showCommentsBtnText: { color: "#D32F2F", fontWeight: "700", fontSize: 12 },
-
   bubbleList: { marginTop: 14, gap: 10 },
   bubbleRow: { flexDirection: "row" },
   bubbleRowTeacher: { justifyContent: "flex-start" },
@@ -1384,9 +1568,7 @@ const styles = StyleSheet.create({
   bubbleActionBtn: { padding: 4 },
   bubbleContent: { fontSize: 13, color: "#111827", lineHeight: 19, marginTop: 6 },
   bubbleTime: { fontSize: 10, color: "#9CA3AF", fontWeight: "600", marginTop: 8, textAlign: "right" },
-
   emptyCommentsText: { fontSize: 12, color: "#9CA3AF", textAlign: "center", marginVertical: 16 },
-
   commentInputContainer: { flexDirection: "row", alignItems: "flex-end", gap: 8, marginTop: 14 },
   commentInput: {
     flex: 1,
@@ -1411,7 +1593,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   sendButtonDisabled: { backgroundColor: "#D1D5DB" },
-
   editRow: { marginTop: 6 },
   editInput: { borderWidth: 1, borderColor: "#D1D5DB", borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8, color: "#111827", backgroundColor: "#FFFFFF", fontSize: 13, lineHeight: 18 },
   editActionsRow: { flexDirection: "row", justifyContent: "flex-end", gap: 8, marginTop: 8 },
@@ -1419,7 +1600,6 @@ const styles = StyleSheet.create({
   editCancelText: { fontWeight: "600", color: "#4B5563", fontSize: 12 },
   editSaveBtn: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12, backgroundColor: "#D32F2F", minHeight: 32 },
   editSaveText: { fontWeight: "700", color: "#FFFFFF", fontSize: 12 },
-
   // ── Delete Modal ──
   deleteModalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "center", alignItems: "center", padding: 20 },
   deleteModalContent: { backgroundColor: "#FFFFFF", borderRadius: 16, padding: 24, width: "100%", maxWidth: 360, alignItems: "center", shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 8, elevation: 10 },
@@ -1431,7 +1611,6 @@ const styles = StyleSheet.create({
   deleteModalCancelText: { fontSize: 14, fontWeight: "700", color: "#4B5563" },
   deleteModalConfirmBtn: { flex: 1, paddingVertical: 12, borderRadius: 12, backgroundColor: "#EF4444", alignItems: "center", justifyContent: "center", minHeight: 44 },
   deleteModalConfirmText: { fontSize: 14, fontWeight: "700", color: "#FFFFFF" },
-
   // ── FAB ──
   fab: {
     position: "absolute",
@@ -1448,6 +1627,5 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     elevation: 6,
   },
-
   emptyText: { width: "100%", textAlign: "center", color: "#9CA3AF", fontSize: 14, marginTop: 30, fontWeight: "600", paddingHorizontal: 20 },
 });

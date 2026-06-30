@@ -8507,6 +8507,7 @@ app.get("/student-submissions/:studentId", async (req, res) => {
 });
 
 
+// REPLACE THE EXISTING /create-submission ROUTE WITH THIS (FIXED VERSION):
 app.post("/create-submission", async (req, res) => {
   try {
     const {
@@ -8517,18 +8518,24 @@ app.post("/create-submission", async (req, res) => {
       studentName,
       status,
       score,
+      feedback,
+      // Legacy single fields
+      linkUrl,
       fileName,
       fileUrl,
       fileType,
-      feedback,
       storagePath,
       bucketPath,
+      // New batch fields
+      submissions, // Array of file objects
+      linkUrls,    // Array of string URLs
     } = req.body;
 
     if (!classId || !assignmentId || !studentId) {
       return res.status(400).json({ error: "Missing required fields." });
     }
 
+    // 1. CHECK FOR EXISTING SUBMISSION (We want ONE doc per student/assignment)
     const existingSnapshot = await db
       .collection("classSubmissions")
       .where("classId", "==", classId)
@@ -8537,7 +8544,44 @@ app.post("/create-submission", async (req, res) => {
       .limit(1)
       .get();
 
-    const submissionPayload = {
+    // Prevent modifying graded assignments
+    if (!existingSnapshot.empty && existingSnapshot.docs[0].data().status === "graded") {
+      return res.status(409).json({
+        error: "This assignment has already been graded and can no longer be changed.",
+      });
+    }
+
+    // 2. PREPARE THE UNIFIED PAYLOAD
+    // We prioritize the FIRST file in the 'submissions' array as the main attachment
+    // so the teacher sees a file icon, but we store ALL links in linkUrls array.
+    
+    let primaryFileName = normalizeOptionalText(fileName);
+    let primaryFileUrl = normalizeOptionalText(fileUrl);
+    let primaryFileType = normalizeOptionalText(fileType);
+    let primaryStoragePath = normalizeOptionalText(storagePath);
+    let primaryBucketPath = normalizeOptionalText(bucketPath);
+
+    // If using the new batch format, grab the first valid file as the "primary" display file
+    if (Array.isArray(submissions) && submissions.length > 0) {
+      const firstFile = submissions.find(s => s.fileUrl || s.storagePath);
+      if (firstFile) {
+        primaryFileName = normalizeOptionalText(firstFile.fileName);
+        primaryFileUrl = normalizeOptionalText(firstFile.fileUrl);
+        primaryFileType = normalizeOptionalText(firstFile.fileType);
+        primaryStoragePath = normalizeOptionalText(firstFile.storagePath);
+        primaryBucketPath = normalizeOptionalText(firstFile.bucketPath);
+      }
+    }
+
+    // Merge legacy single linkUrl into the new linkUrls array structure
+    let finalLinkUrls = [];
+    if (Array.isArray(linkUrls)) {
+      finalLinkUrls = linkUrls.map(url => normalizeOptionalText(url)).filter(Boolean);
+    } else if (linkUrl) {
+      finalLinkUrls = [normalizeOptionalText(linkUrl)];
+    }
+
+    const unifiedPayload = {
       classId,
       assignmentId,
       studentUid: normalizeOptionalText(studentUid),
@@ -8545,56 +8589,47 @@ app.post("/create-submission", async (req, res) => {
       studentName: normalizeOptionalText(studentName),
       status: normalizeOptionalText(status) || "submitted",
       score: typeof score === "number" ? score : null,
-      fileName: normalizeOptionalText(fileName),
-      fileUrl: normalizeOptionalText(fileUrl),
-      fileType: normalizeOptionalText(fileType),
-      storagePath: normalizeOptionalText(storagePath),
-      bucketPath: normalizeOptionalText(bucketPath),
       feedback: normalizeOptionalText(feedback),
+      
+      // Primary File Fields (For backward compatibility & UI icons)
+      fileName: primaryFileName,
+      fileUrl: primaryFileUrl,
+      fileType: primaryFileType,
+      storagePath: primaryStoragePath,
+      bucketPath: primaryBucketPath,
+      
+      // Unified Links Field
+      linkUrls: finalLinkUrls, 
+      
+      submittedAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
     };
 
-    let ref;
+    let submissionId;
     let createdNew = false;
 
+    // 3. SAVE OR UPDATE THE SINGLE DOCUMENT
     if (!existingSnapshot.empty) {
+      // UPDATE existing document (Preserves the same ID!)
       const existingDoc = existingSnapshot.docs[0];
-      const existingData = existingDoc.data() || {};
-
-      if (existingData.status === "graded") {
-        return res.status(409).json({
-          error: "This assignment has already been graded and can no longer be changed.",
-        });
-      }
-
-      ref = existingDoc.ref;
-
-      await ref.update({
-        ...submissionPayload,
-        submittedAt: existingData.submittedAt || FieldValue.serverTimestamp(),
-        gradedAt: null,
-      });
+      await existingDoc.ref.update(unifiedPayload);
+      submissionId = existingDoc.id;
     } else {
-      ref = await db.collection("classSubmissions").add({
-        ...submissionPayload,
-        submittedAt: FieldValue.serverTimestamp(),
-        gradedAt: null,
+      // CREATE new document
+      const ref = await db.collection("classSubmissions").add({
+        ...unifiedPayload,
         createdAt: FieldValue.serverTimestamp(),
       });
+      submissionId = ref.id;
       createdNew = true;
     }
 
-    const classSnap = await db.collection("classes").doc(classId).get();
-    const classData = classSnap.exists ? classSnap.data() || {} : {};
-
-    const assignmentSnap = await db.collection("classAssignments").doc(assignmentId).get();
-    const assignmentData = assignmentSnap.exists ? assignmentSnap.data() || {} : {};
-
+    // 4. SEND NOTIFICATION ONLY ONCE
     if ((normalizeOptionalText(status) || "submitted") === "submitted") {
       await createSubmittedAssignmentNotificationForTeacher({
         classId,
         assignmentId,
-        submissionId: ref.id,
+        submissionId,
         studentId,
         studentName: normalizeOptionalText(studentName) || studentId,
       });
@@ -8605,8 +8640,9 @@ app.post("/create-submission", async (req, res) => {
       message: createdNew
         ? "Submission created successfully."
         : "Submission updated successfully.",
-      data: { id: ref.id },
+      data: { id: submissionId },
     });
+
   } catch (error) {
     console.error("Create submission error:", error);
     res.status(500).json({

@@ -38,6 +38,7 @@ export interface AssignmentFileUpload {
   fileSize: string;
   uploadedDate: string;
   fileUrl?: string;
+  linkUrl?: string; 
   fileType?: string;
   storagePath?: string;
   bucketPath?: string;
@@ -543,24 +544,25 @@ const Assignments = ({
   };
 
   const handleAddLinkSubmission = () => {
-    if (!selectedAssignment) return;
-    const linkUrl = normalizeSubmissionLink(submissionLink);
-    if (!linkUrl) {
-      Alert.alert('Missing link', 'Please paste a submission link first.');
-      return;
-    }
-    onAddFile(selectedAssignment.id, {
-      id: `link-${Date.now()}`,
-      fileName: 'Submitted link',
-      fileSize: 'Link submission',
-      uploadedDate: new Date().toLocaleString(),
-      fileUrl: linkUrl,
-      fileType: 'text/uri-list',
-      isSubmitted: false,
-      source: 'student',
-    });
-    setSubmissionLink('');
-  };
+  if (!selectedAssignment) return;
+  const linkUrl = normalizeSubmissionLink(submissionLink);
+  if (!linkUrl) {
+    Alert.alert('Missing link', 'Please paste a submission link first.');
+    return;
+  }
+  onAddFile(selectedAssignment.id, {
+    id: `link-${Date.now()}`,
+    fileName: 'Submitted link',
+    fileSize: 'Link submission',
+    uploadedDate: new Date().toLocaleString(),
+    fileUrl: undefined,          // Explicitly null for links
+    linkUrl: linkUrl,       // 👈 Store link here
+    fileType: 'text/uri-list',
+    isSubmitted: false,
+    source: 'student',
+  });
+  setSubmissionLink('');
+};
 
   const isAssignmentSubmitted = (assignment?: AssignmentItem | null) => {
     return assignment?.status === 'submitted' || assignment?.status === 'graded';
@@ -577,35 +579,52 @@ const Assignments = ({
     );
   };
 
-  const getTeacherAssignmentFiles = (assignment?: AssignmentItem | null) => {
-    if (!assignment) return [];
-    const mappedFiles = (assignment.files || []).map((file: any, index) => ({
+    const getTeacherAssignmentFiles = (assignment?: AssignmentItem | null) => {
+  if (!assignment) return [];
+
+  // 1. Start with files explicitly defined in the Assignment Object (Teacher's files)
+  // These are usually stored in assignment.files or assignment.fileUrl
+  const teacherFiles = (assignment.files || [])
+    .filter((file: any) => {
+      // ✅ CRITICAL FILTER: Exclude student submissions by checking for student-specific properties
+      const isStudentSubmission = 
+        file.source === 'student' || 
+        file.submissionId || 
+        file.isSubmitted === true ||
+        (file.id && file.id.startsWith('f')); // Student files start with 'f'
+      
+      return !isStudentSubmission;
+    })
+    .map((file: any, index) => ({
       id: file.id || `teacher-file-${assignment.id}-${index}`,
       fileName: file.fileName || file.name || 'Assignment attachment',
       fileSize: file.fileSize || 'Teacher file',
       uploadedDate: file.uploadedDate || file.uploadedAt || 'Attached by teacher',
       fileUrl: file.fileUrl || file.fileUri || file.uri || file.downloadUrl || null,
       fileType: file.fileType,
-      source: 'teacher' as const,
+      source: 'teacher' as const, // Explicitly mark as teacher source
     }));
 
-    const topLevelUrl = getAssignmentFileUrl(assignment);
-    if (topLevelUrl) {
-      const alreadyIncluded = mappedFiles.some((file) => file.fileUrl === topLevelUrl);
-      if (!alreadyIncluded) {
-        mappedFiles.unshift({
-          id: `teacher-file-${assignment.id}-main`,
-          fileName: getAssignmentFileName(assignment),
-          fileSize: 'Teacher file',
-          uploadedDate: 'Attached by teacher',
-          fileUrl: topLevelUrl,
-          fileType: (assignment as any)?.fileType || (assignment as any)?.attachmentType,
-          source: 'teacher' as const,
-        });
-      }
+  // 2. Check for top-level fileUrl on the assignment object (common for single attachments)
+  const topLevelUrl = getAssignmentFileUrl(assignment);
+  if (topLevelUrl) {
+    // Ensure we don't duplicate if it's already in the array
+    const alreadyIncluded = teacherFiles.some((file) => file.fileUrl === topLevelUrl);
+    if (!alreadyIncluded) {
+      teacherFiles.unshift({
+        id: `teacher-file-${assignment.id}-main`,
+        fileName: getAssignmentFileName(assignment),
+        fileSize: 'Teacher file',
+        uploadedDate: 'Attached by teacher',
+        fileUrl: topLevelUrl,
+        fileType: (assignment as any)?.fileType || (assignment as any)?.attachmentType,
+        source: 'teacher' as const,
+      });
     }
-    return mappedFiles;
-  };
+  }
+
+  return teacherFiles;
+};
 
   const getAssignmentFileUrl = (assignment?: AssignmentItem | null) => {
     const raw =
@@ -652,31 +671,51 @@ const Assignments = ({
     onUpdateAssignmentStatus?.(selectedAssignment.id, status);
   };
 
-  const handleSubmitAssignment = async () => {
+     const handleSubmitAssignment = async () => {
     if (!selectedAssignment) return;
-    if (isAssignmentSubmitted(selectedAssignment)) {
-      return;
-    }
+    if (isAssignmentSubmitted(selectedAssignment)) return;
     if (!currentStudent?.studentId) {
-      Alert.alert('Missing student', 'Student account information is missing. Please sign in again.');
+      Alert.alert('Missing student', 'Student account information is missing.');
       return;
     }
 
     const files = assignmentFiles[selectedAssignment.id] || [];
     if (files.length === 0) {
-      Alert.alert('No files', 'Please upload at least one file before submitting.');
-      return;
-    }
-
-    const file = files[0];
-    if (!file.fileUrl) {
-      Alert.alert('Upload still needed', 'Please re-upload the file before submitting.');
+      Alert.alert('No files', 'Please upload at least one file or link before submitting.');
       return;
     }
 
     try {
       setIsSubmittingAssignment(true);
       const studentName = `${currentStudent.firstName || ''} ${currentStudent.lastName || ''}`.trim();
+      
+      // 1. STRICT SEPARATION OF FILES AND LINKS
+      const regularFiles = files.filter(file => {
+        const isLink = file.fileType === 'text/uri-list' || !!file.linkUrl;
+        return !isLink && (!!file.fileUrl || !!file.storagePath);
+      });
+
+      const linkUrls = files
+        .filter(file => (file.fileType === 'text/uri-list' || !!file.linkUrl) && !!file.linkUrl)
+        .map(file => file.linkUrl!.trim());
+
+      if (regularFiles.length === 0 && linkUrls.length === 0) {
+        throw new Error('No valid items were found. Please check your uploads.');
+      }
+
+      // 2. BUILD PAYLOAD MATCHING BACKEND BATCH EXPECTATIONS
+      const submissionItems = regularFiles.map(file => ({
+        fileName: file.fileName,
+        fileUrl: file.fileUrl || null,
+        linkUrl: null, // Explicitly null for file docs
+        fileType: file.fileType || 'application/octet-stream',
+        storagePath: file.storagePath || null,
+        bucketPath: file.bucketPath || null,
+      }));
+
+      console.log('[SUBMIT] Files:', submissionItems.length, 'Links:', linkUrls.length);
+
+      // 3. SEND SINGLE ATOMIC REQUEST
       const response = await apiFetch(`${API_BASE_URL}/create-submission`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -688,24 +727,24 @@ const Assignments = ({
           studentName,
           status: 'submitted',
           score: null,
-          fileName: file.fileName,
-          fileUrl: file.fileUrl,
-          fileType: file.fileType || 'application/octet-stream',
-          storagePath: file.storagePath || null,
-          bucketPath: file.bucketPath || null,
           feedback: null,
+          submissions: submissionItems, // 👈 ARRAY OF FILE OBJECTS
+          linkUrls: linkUrls.length > 0 ? linkUrls : undefined, // ✅ FIXED: Use 'linkUrls' instead of 'links'
         }),
       });
 
-      const data = await response.json();
       if (!response.ok) {
+        const data = await response.json();
         throw new Error(data?.error || 'Failed to submit assignment.');
       }
 
       syncSelectedAssignmentStatus('submitted');
       await onRefreshSubmissions?.();
-      Alert.alert('Submitted', 'Your assignment was submitted successfully.');
+      
+      const totalItems = submissionItems.length + (linkUrls.length > 0 ? 1 : 0);
+      Alert.alert('Success', `Submitted ${totalItems} item(s) successfully.`);
     } catch (error: any) {
+      console.error('[SUBMIT ERROR]', error);
       Alert.alert('Submit Failed', error?.message || 'Unable to submit assignment.');
     } finally {
       setIsSubmittingAssignment(false);
@@ -715,11 +754,11 @@ const Assignments = ({
   const handleUnsubmitAssignment = async () => {
     if (!selectedAssignment) return;
     if (selectedAssignment.status === 'graded') {
-      Alert.alert('Already graded', 'This assignment has already been graded and cannot be unsubmitted.');
+      Alert.alert('Already graded', 'This assignment has been graded and cannot be unsubmitted.');
       return;
     }
     if (!currentStudent?.studentId) {
-      Alert.alert('Missing student', 'Student account information is missing. Please sign in again.');
+      Alert.alert('Missing student', 'Please sign in again.');
       return;
     }
 
@@ -737,15 +776,18 @@ const Assignments = ({
       });
 
       const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data?.error || 'Failed to unsubmit assignment.');
-      }
+      if (!response.ok) throw new Error(data?.error || 'Failed to unsubmit.');
 
+      // CRITICAL: Update local status FIRST
       syncSelectedAssignmentStatus('pending');
+      
+      // CRITICAL: Force refresh from DB to clear any "ghost" files 
+      // that were deleted locally but might still be cached
       await onRefreshSubmissions?.();
-      Alert.alert('Unsubmitted', 'Your file is still attached. You can edit it and submit again.');
+
+      Alert.alert('Unsubmitted', 'You can now edit your files and resubmit.');
     } catch (error: any) {
-      Alert.alert('Unsubmit Failed', error?.message || 'Unable to unsubmit assignment.');
+      Alert.alert('Unsubmit Failed', error?.message || 'Unable to unsubmit.');
     } finally {
       setIsSubmittingAssignment(false);
     }
@@ -1240,33 +1282,72 @@ const Assignments = ({
                       <Text style={styles.sectionTitle}>📤 Your Uploads</Text>
                       {getSubmittedFiles(selectedAssignment).length > 0 ? (
                         <View>
-                          {getSubmittedFiles(selectedAssignment).map((file) => (
-                            <View key={file.id} style={[styles.fileItem, !isLargeScreen && styles.fileCardMobile]}>
-                              <Text style={{ fontSize: 20 }}>{file.fileType === 'text/uri-list' ? '🔗' : '📄'}</Text>
-                              <View style={styles.fileInfo}>
-                                <Text style={styles.fileName}>{file.fileName}</Text>
-                                <Text style={styles.fileDetails}>
-                                  {file.fileSize} • {file.uploadedDate}
-                                </Text>
-                              </View>
-                              <View style={[styles.fileActionsRow, !isLargeScreen && styles.fileActionsRowMobile]}>
-                                <TouchableOpacity
-                                  style={[styles.fileOpenButton, !isLargeScreen && styles.fileOpenButtonMobile, !file.fileUrl && styles.fileOpenButtonDisabled]}
-                                  disabled={!file.fileUrl}
-                                  activeOpacity={0.85}
-                                  onPress={() => handleOpenUploadedFile(file.fileUrl, 'This submitted file has no URL yet.')}
+                          {getSubmittedFiles(selectedAssignment).map((file) => {
+                            const isLink = file.fileType === 'text/uri-list';
+                            const displayUrl = isLink ? file.linkUrl : file.fileUrl;
+                            
+                            // Render Link as Clickable Text (Google Classroom Style)
+                            if (isLink && file.linkUrl) {
+                              return (
+                                <TouchableOpacity 
+                                  key={file.id} 
+                                  style={[styles.fileItem, !isLargeScreen && styles.fileCardMobile]}
+                                  onPress={() => handleOpenUploadedFile(file.linkUrl, 'Invalid link URL')}
+                                  activeOpacity={0.7}
                                 >
-                                  <Text style={styles.fileOpenButtonText}>Open</Text>
+                                  <Text style={{ fontSize: 20 }}>🔗</Text>
+                                  <View style={styles.fileInfo}>
+                                    <Text style={[styles.fileName, { color: '#1a73e8', textDecorationLine: 'underline' }]}>
+                                      {file.linkUrl}
+                                    </Text>
+                                    <Text style={styles.fileDetails}>
+                                      Link submission • {file.uploadedDate}
+                                    </Text>
+                                  </View>
+                                  {!isAssignmentSubmitted(selectedAssignment) && (
+                                    <TouchableOpacity
+                                      onPress={(e) => {
+                                        e.stopPropagation(); // Prevent triggering the link open
+                                        onRemoveFile(selectedAssignment.id, file.id);
+                                      }}
+                                      style={{ marginLeft: 8 }}
+                                    >
+                                      <Text style={styles.removeButton}>✕</Text>
+                                    </TouchableOpacity>
+                                  )}
                                 </TouchableOpacity>
-                                <TouchableOpacity
-                                  disabled={isAssignmentSubmitted(selectedAssignment)}
-                                  onPress={() => onRemoveFile(selectedAssignment.id, file.id)}
-                                >
-                                  <Text style={[styles.removeButton, isAssignmentSubmitted(selectedAssignment) && styles.disabledRemoveButton]}>✕</Text>
-                                </TouchableOpacity>
+                              );
+                            }
+
+                            // Render Regular Files with Open Button (Existing Logic)
+                            return (
+                              <View key={file.id} style={[styles.fileItem, !isLargeScreen && styles.fileCardMobile]}>
+                                <Text style={{ fontSize: 20 }}>📄</Text>
+                                <View style={styles.fileInfo}>
+                                  <Text style={styles.fileName}>{file.fileName}</Text>
+                                  <Text style={styles.fileDetails}>
+                                    {file.fileSize} • {file.uploadedDate}
+                                  </Text>
+                                </View>
+                                <View style={[styles.fileActionsRow, !isLargeScreen && styles.fileActionsRowMobile]}>
+                                  <TouchableOpacity
+                                    style={[styles.fileOpenButton, !isLargeScreen && styles.fileOpenButtonMobile, !file.fileUrl && styles.fileOpenButtonDisabled]}
+                                    disabled={!file.fileUrl}
+                                    activeOpacity={0.85}
+                                    onPress={() => handleOpenUploadedFile(file.fileUrl, 'This submitted file has no URL yet.')}
+                                  >
+                                    <Text style={styles.fileOpenButtonText}>Open</Text>
+                                  </TouchableOpacity>
+                                  <TouchableOpacity
+                                    disabled={isAssignmentSubmitted(selectedAssignment)}
+                                    onPress={() => onRemoveFile(selectedAssignment.id, file.id)}
+                                  >
+                                    <Text style={[styles.removeButton, isAssignmentSubmitted(selectedAssignment) && styles.disabledRemoveButton]}>✕</Text>
+                                  </TouchableOpacity>
+                                </View>
                               </View>
-                            </View>
-                          ))}
+                            );
+                          })}
                         </View>
                       ) : (
                         <Text style={styles.emptyText}>No student submission added yet</Text>
