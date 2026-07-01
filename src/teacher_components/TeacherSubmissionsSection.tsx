@@ -17,6 +17,16 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import MaterialCommunityIcons from "react-native-vector-icons/MaterialCommunityIcons";
 import type { Assignment, Member, Submission } from "./TeacherCourseDetail2";
+// ✅ ADDED: FileSystem and Sharing for downloads
+import * as FileSystem from 'expo-file-system/legacy';
+import * as MediaLibrary from 'expo-media-library';
+import * as Sharing from 'expo-sharing';
+
+// ✅ NEW: Optional WebView import (mirrors CourseDetail.tsx pattern)
+let WebView: any = null;
+try {
+  WebView = require("react-native-webview").WebView;
+} catch (_) {}
 
 // Helper to resolve API URL
 function getApiBaseUrl() {
@@ -33,6 +43,136 @@ function getApiBaseUrl() {
 const API_BASE_URL = getApiBaseUrl();
 const apiFetch = (url: string, options: any = {}) =>
   fetch(url, { credentials: "include", ...options });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ✅ HELPER FUNCTIONS
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ✅ MOVED HERE: Defined at top level so InlineMaterialViewer can access it
+function isImageFile(fileName: string, fileType?: string): boolean {
+  const ext = fileName.split('.').pop()?.toLowerCase() || '';
+  const mime = (fileType || '').toLowerCase();
+  return ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'].includes(ext) || 
+         mime.startsWith('image/');
+}
+
+function getGoogleDocsViewerUrl(fileUrl: string) {
+  return `https://docs.google.com/gview?embedded=true&url=${encodeURIComponent(fileUrl)}`;
+}
+
+// ✅ UPDATED: Accepts fileName and fileType to handle images natively
+function InlineMaterialViewer({
+  viewerUrl,
+  height,
+  fileName,
+  fileType,
+}: {
+  viewerUrl: string;
+  height: number;
+  fileName?: string;
+  fileType?: string;
+}) {
+  // ✅ Direct image rendering for JPG/PNG/GIF
+  if (fileName && isImageFile(fileName, fileType)) {
+    if (Platform.OS === "web") {
+      return (
+        <View style={{ flex: 1, width: "100%", height, alignItems: 'center', justifyContent: 'center', backgroundColor: '#f0f0f0' }}>
+          {/* @ts-ignore */}
+          <img
+            src={viewerUrl}
+            alt={fileName}
+            style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
+          />
+        </View>
+      );
+    }
+    
+    // Native Image fallback via WebView HTML
+    if (WebView) {
+       return (
+        <WebView
+          source={{ html: `<html><body style="margin:0;padding:0;display:flex;align-items:center;justify-content:center;height:100vh;background:#f0f0f0;"><img src="${viewerUrl}" style="max-width:100%;max-height:100%;object-fit:contain;" /></body></html>` }}
+          style={{ flex: 1, width: "100%", height }}
+          startInLoadingState
+          renderLoading={() => (
+            <View style={previewViewerStyles.loadingOverlay}>
+              <ActivityIndicator size="large" color="#D32F2F" />
+              <Text style={previewViewerStyles.loadingText}>Loading image...</Text>
+            </View>
+          )}
+        />
+      );
+    }
+  }
+
+  // Existing Document Viewer Logic
+  if (Platform.OS === "web") {
+    return (
+      <View style={{ flex: 1, width: "100%", height }}>
+        {/* @ts-ignore */}
+        <iframe
+          src={viewerUrl}
+          style={{ width: "100%", height: "100%", border: "none" }}
+          allow="autoplay"
+          title="Document Viewer"
+        />
+      </View>
+    );
+  }
+
+  if (WebView) {
+    return (
+      <WebView
+        source={{ uri: viewerUrl }}
+        style={{ flex: 1, width: "100%", height }}
+        startInLoadingState
+        renderLoading={() => (
+          <View style={previewViewerStyles.loadingOverlay}>
+            <ActivityIndicator size="large" color="#D32F2F" />
+            <Text style={previewViewerStyles.loadingText}>Loading document...</Text>
+          </View>
+        )}
+        javaScriptEnabled
+        domStorageEnabled
+        allowsFullscreenVideo
+        mediaPlaybackRequiresUserAction={false}
+        originWhitelist={["*"]}
+        mixedContentMode="always"
+      />
+    );
+  }
+
+  return (
+    <View style={previewViewerStyles.noWebViewFallback}>
+      <MaterialCommunityIcons name="file-document-outline" size={48} color="#CCC" />
+      <Text style={previewViewerStyles.noWebViewText}>
+        Install react-native-webview to preview files inline.
+      </Text>
+    </View>
+  );
+}
+
+const previewViewerStyles = StyleSheet.create({
+  loadingOverlay: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#FFF",
+  },
+  loadingText: { marginTop: 12, color: "#666", fontSize: 14 },
+  noWebViewFallback: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 24,
+    gap: 12,
+  },
+  noWebViewText: { color: "#888", textAlign: "center", fontSize: 13, lineHeight: 20 },
+});
 
 type Props = {
   members: Member[];
@@ -72,6 +212,19 @@ type AssignmentComment = {
 
 type FilterKey = "all" | "submitted" | "graded" | "late" | "pending";
 
+// ✅ NEW: Shape of an individual submitted item (file or link) used by the Preview Modal
+type SubmissionPreviewSource = {
+  id: string;
+  submissionId: string;
+  type: "file" | "link";
+  url?: string;
+  fileName: string;
+  fileType?: string;
+  submittedAt?: any;
+  status?: string;
+  storagePath?: string | null; 
+};
+
 const TeacherSubmissionsSection = ({
   members,
   currentAssignment,
@@ -82,7 +235,7 @@ const TeacherSubmissionsSection = ({
   currentTeacher,
   onGradeSubmission,
 }: Props) => {
-  const { width } = useWindowDimensions();
+  const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const isSmallPhone = width < 360;
   const isMobile = width < 768;
@@ -91,6 +244,32 @@ const TeacherSubmissionsSection = ({
   const pagePadding = isSmallPhone ? 12 : isMobile ? 14 : isTablet ? 20 : 24;
   const mobileTopSpace = isMobile ? insets.top : 0;
   const cardWidth = isMobile ? "100%" : isLargeScreen ? "48.8%" : "48.5%";
+
+  // Add this state at the component level
+  const [freshUrlsCache, setFreshUrlsCache] = useState<Record<string, { url: string; timestamp: number }>>({});
+
+  const CACHED_URL_TTL = 5 * 60 * 1000; // 5 minutes
+
+  const getCachedOrFreshUrl = async (submissionId: string): Promise<string | null> => {
+    const cached = freshUrlsCache[submissionId];
+    
+    // Return cached URL if still valid
+    if (cached && (Date.now() - cached.timestamp) < CACHED_URL_TTL) {
+      return cached.url;
+    }
+    
+    // Fetch fresh URL
+    const freshUrl = await fetchFreshSubmissionFile(submissionId);
+    
+    if (freshUrl) {
+      setFreshUrlsCache(prev => ({
+        ...prev,
+        [submissionId]: { url: freshUrl, timestamp: Date.now() }
+      }));
+    }
+    
+    return freshUrl;
+  };
 
   // ── Comment States ──
   const [allComments, setAllComments] = useState<AssignmentComment[]>([]);
@@ -104,6 +283,30 @@ const TeacherSubmissionsSection = ({
   const [commentToDeleteId, setCommentToDeleteId] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
+  const isTokenExpired = (url: string): boolean => {
+  try {
+    // Firebase Storage signed URLs typically contain an expiration timestamp
+    const urlObj = new URL(url);
+    const expiresParam = urlObj.searchParams.get('Expires');
+    if (expiresParam) {
+      const expiresTime = parseInt(expiresParam, 10) * 1000; // Convert to milliseconds
+      return Date.now() > expiresTime;
+    }
+    
+    // Alternative: Check for 'X-Goog-Expires' or similar params
+    const googExpires = urlObj.searchParams.get('X-Goog-Expires');
+    if (googExpires) {
+      const expiresTime = parseInt(googExpires, 10) * 1000;
+      return Date.now() > expiresTime;
+    }
+    
+    // If no expiration param found, assume it might be expired
+    return false;
+  } catch {
+    return false;
+  }
+};
+
   // ── UI States ──
   const [searchQuery, setSearchQuery] = useState("");
   const [activeFilter, setActiveFilter] = useState<FilterKey>("all");
@@ -113,6 +316,22 @@ const TeacherSubmissionsSection = ({
   // ── Grade States ──
   const [scoreDrafts, setScoreDrafts] = useState<Record<string, string>>({});
   const [savingSubmissionId, setSavingSubmissionId] = useState<string | null>(null);
+
+  // ── ✅ NEW: Preview Modal States (inline document viewer, matches CourseDetail.tsx) ──
+  const [previewVisible, setPreviewVisible] = useState(false);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewItem, setPreviewItem] = useState<{
+    fileName: string;
+    url: string;
+    isLink: boolean;
+    submissionId?: string;
+     fileType?: string; 
+     storagePath?: string | null; 
+  } | null>(null);
+  const [previewViewerUrl, setPreviewViewerUrl] = useState<string | null>(null);
+  
+  // ✅ NEW: Download State
+  const [isDownloading, setIsDownloading] = useState(false);
 
   const currentTeacherId = useMemo(() => {
     return currentTeacher?.teacherId || currentTeacher?.authUid || currentTeacher?.email || "";
@@ -143,7 +362,7 @@ const TeacherSubmissionsSection = ({
   }, [assignmentSubmissions]);
 
   const pendingCount = studentMembers.length - completedCount;
-  
+
   // Count late unique students
   const lateCount = useMemo(() => {
     const uniqueLateIds = new Set(
@@ -282,8 +501,10 @@ const mapSubmissionToItems = (submission: any): any[] => {
   /**
    * ✅ FIXED: Extract ALL individual submission items including links from the unified doc.
    * This matches the logic used in StudentApp.tsx and Assignments.tsx
+   * ✅ UPDATED: Each item now carries `submissionId` so the Preview Modal can
+   * request a fresh signed URL if the current one has expired.
    */
-  const getStudentSubmissionItems = (studentId: string) => {
+  const getStudentSubmissionItems = (studentId: string): SubmissionPreviewSource[] => {
   if (!currentAssignment) return [];
 
   const studentSubs = assignmentSubmissions.filter(
@@ -297,19 +518,22 @@ const mapSubmissionToItems = (submission: any): any[] => {
   // DEBUG LOG: Check if linkUrls exists in the fetched data
   console.log("DEBUG SUBMISSION DATA:", sub); 
   console.log("DEBUG LINKURLS:", sub.linkUrls); 
+  console.log("DEBUG STORAGE PATH:", sub.storagePath, typeof sub.storagePath);
 
-  const items: any[] = [];
+  const items: SubmissionPreviewSource[] = [];
 
   // 1. Handle Primary File Upload
   if (sub.fileUrl && sub.fileName) {
     items.push({
       id: `${sub.id}-file`,
       type: 'file' as const,
+      submissionId: sub.id,
       url: sub.fileUrl,
       fileName: sub.fileName,
       fileType: sub.fileType || 'application/octet-stream',
       submittedAt: sub.submittedAt,
-      status: sub.status
+      status: sub.status,
+      storagePath: (sub as any).storagePath || null, 
     });
   }
 
@@ -321,6 +545,7 @@ const mapSubmissionToItems = (submission: any): any[] => {
         items.push({
           id: `${sub.id}-link-${index}`,
           type: 'link' as const,
+          submissionId: sub.id,
           url: url.trim(),
           fileName: url.trim(),
           fileType: 'text/uri-list',
@@ -362,7 +587,7 @@ const mapSubmissionToItems = (submission: any): any[] => {
             <TouchableOpacity
               key={item.id}
               style={[styles.submittedFileItem, isLink && styles.linkSubmissionItem]}
-              onPress={() => handleOpenSubmittedFile(item.url!, item.fileName, isLink)}
+              onPress={() => handlePreviewItem(item)}
               activeOpacity={0.7}
             >
               <View style={styles.fileIconContainer}>
@@ -386,27 +611,256 @@ const mapSubmissionToItems = (submission: any): any[] => {
                   {isLink ? "Link submission" : "Submitted file"} • {new Date(item.submittedAt || Date.now()).toLocaleDateString()}
                 </Text>
               </View>
-              <MaterialCommunityIcons name="open-in-new" size={16} color="#9CA3AF" />
+              <MaterialCommunityIcons name="eye-outline" size={16} color="#9CA3AF" />
             </TouchableOpacity>
           );
         })}
       </View>
     );
   };
-  const handleOpenSubmittedFile = async (url: string, fileName: string, isLink: boolean) => {
-    if (!url) {
-      Alert.alert("No file", "This submission has no URL to open.");
+
+  const fetchFreshSubmissionFile = async (
+  submissionId: string, 
+  retries = 2
+): Promise<string | null> => {
+  if (!classId) return null;
+  
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const response = await apiFetch(`${API_BASE_URL}/class-submissions/${classId}`);
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      
+      const data = await response.json();
+      
+      if (Array.isArray(data)) {
+        const match = data.find((item: any) => item.id === submissionId);
+        if (match?.fileUrl) {
+          return match.fileUrl as string;
+        }
+      }
+      
+      throw new Error("Submission not found");
+    } catch (error) {
+      console.error(`Fetch attempt ${attempt + 1} failed:`, error);
+      
+      if (attempt === retries) {
+        return null;
+      }
+      
+      // Wait before retrying (exponential backoff)
+      await new Promise(resolve => setTimeout(resolve, 1000 * Math.pow(2, attempt)));
+    }
+  }
+  
+  return null;
+};
+
+// ✅ FIXED DOWNLOAD FUNCTION: Routes through backend to avoid CORS and preserve filenames
+const downloadFileToDevice = async (
+  fileUrl: string,
+  fileName: string,
+  mimeType?: string,
+  storagePath?: string | null
+): Promise<void> => {
+  let resolvedName = fileName || "downloaded_file";
+  const resolvedMime = mimeType || "application/octet-stream";
+
+  // Ensure filename has extension
+  if (!resolvedName.includes(".")) {
+    const ext = resolvedMime.split("/").pop()?.split(";")[0] || "bin";
+    resolvedName += `.${ext}`;
+  }
+
+  if (Platform.OS === "web") {
+    // ✅ FIX: ALWAYS route through backend proxy to bypass CORS and get proper headers
+    let downloadUrl = fileUrl;
+    if (storagePath && classId) {
+      downloadUrl = `${API_BASE_URL}/class-submission-download/${classId}?storagePath=${encodeURIComponent(storagePath)}`;
+    }
+
+    const response = await fetch(downloadUrl, { credentials: "include" });
+    if (!response.ok) throw new Error(`Download failed (${response.status})`);
+    
+    const blob = await response.blob();
+    const objectUrl = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = objectUrl;
+    a.download = resolvedName; // Backend sets Content-Disposition, but this reinforces it
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(objectUrl), 10_000);
+    return;
+  }
+
+  // ── Mobile: Use backend proxy if available, otherwise direct URL ──
+  if (Platform.OS !== "android" && Platform.OS !== "ios") return;
+
+  // Prefer backend proxy for mobile too to ensure auth works seamlessly
+  let finalDownloadUrl = fileUrl;
+  if (storagePath && classId) {
+    finalDownloadUrl = `${API_BASE_URL}/class-submission-download/${classId}?storagePath=${encodeURIComponent(storagePath)}`;
+  }
+
+  const cacheUri = FileSystem.cacheDirectory + resolvedName;
+  const { uri: localUri, status } = await FileSystem.downloadAsync(finalDownloadUrl, cacheUri);
+  if (status !== 200) throw new Error(`Download failed with status ${status}`);
+
+  const isImage = resolvedMime.startsWith("image/");
+
+  if (Platform.OS === "ios") {
+    if (isImage) {
+      const perm = await MediaLibrary.requestPermissionsAsync();
+      if (perm.granted) {
+        await MediaLibrary.saveToLibraryAsync(localUri);
+        Alert.alert("Saved", "Image saved to your Photos!");
+        return;
+      }
+    }
+    const canShare = await Sharing.isAvailableAsync();
+    if (canShare) {
+      await Sharing.shareAsync(localUri, {
+        mimeType: resolvedMime,
+        UTI: resolvedMime,
+        dialogTitle: `Save ${resolvedName}`,
+      });
+    } else {
+      Alert.alert("Saved", `File cached at:\n${localUri}`);
+    }
+    return;
+  }
+
+  // Android SAF
+  try {
+    const perms = await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync();
+    if (!perms.granted) {
+      const canShare = await Sharing.isAvailableAsync();
+      if (canShare) await Sharing.shareAsync(localUri, { mimeType: resolvedMime, dialogTitle: `Save ${resolvedName}` });
       return;
     }
+    const destUri = await FileSystem.StorageAccessFramework.createFileAsync(perms.directoryUri, resolvedName, resolvedMime);
+    const base64 = await FileSystem.readAsStringAsync(localUri, { encoding: FileSystem.EncodingType.Base64 });
+    await FileSystem.writeAsStringAsync(destUri, base64, { encoding: FileSystem.EncodingType.Base64 });
+    Alert.alert("Saved", "File saved to your selected folder!");
+  } catch (error) {
+    console.error("Android SAF error:", error);
+    const canShare = await Sharing.isAvailableAsync();
+    if (canShare) {
+      await Sharing.shareAsync(localUri, { mimeType: resolvedMime, dialogTitle: `Save ${resolvedName}` });
+    } else {
+      Alert.alert("Error", "Unable to save file. Please try again.");
+    }
+  }
+};
+
+const handleDownloadPreview = async () => {
+  if (!previewItem || previewItem.isLink) return;
+  setIsDownloading(true);
+  try {
+    await downloadFileToDevice(
+      previewItem.url,
+      previewItem.fileName || 'downloaded_file',
+      previewItem.fileType || 'application/octet-stream',
+      previewItem.storagePath
+    );
+  } catch (error: any) {
+    Alert.alert('Download Failed', error?.message || 'Unable to download file.');
+  } finally {
+    setIsDownloading(false);
+  }
+};
+
+  const handlePreviewItem = async (item: SubmissionPreviewSource) => {
+  if (!item.url) {
+    Alert.alert("No file", "This submission has no URL to open.");
+    return;
+  }
+
+  const isLink = item.type === "link";
+
+  // ✅ Links navigate directly — no inline preview modal
+  if (isLink) {
     try {
-      const supported = await Linking.canOpenURL(url);
+      const supported = await Linking.canOpenURL(item.url);
       if (!supported) {
         Alert.alert("Cannot open", "This URL is not supported on this device.");
         return;
       }
-      await Linking.openURL(url);
+      await Linking.openURL(item.url);
     } catch {
-      Alert.alert("Open failed", `Unable to open the ${isLink ? "link" : "file"}.`);
+      Alert.alert("Open failed", "Unable to open the link.");
+    }
+    return;
+  }
+
+  // Files still go through the inline preview modal
+  setPreviewItem({
+    fileName: item.fileName,
+    url: item.url,
+    isLink: false,
+    submissionId: item.submissionId,
+    fileType: item.fileType,
+    storagePath: item.storagePath || null,
+  });
+  setPreviewVisible(true);
+  setPreviewLoading(true);
+  setPreviewViewerUrl(null);
+
+  try {
+    let resolvedUrl = item.url;
+
+    if (item.submissionId) {
+      const needsRefresh = isTokenExpired(item.url);
+
+      if (needsRefresh) {
+        console.log("Token expired, fetching fresh URL...");
+        const freshUrl = await getCachedOrFreshUrl(item.submissionId);
+        if (freshUrl) {
+          resolvedUrl = freshUrl;
+          setPreviewItem((prev) => (prev ? { ...prev, url: freshUrl } : prev));
+        } else {
+          throw new Error("Failed to refresh expired token");
+        }
+      }
+    }
+
+    const viewerUrl = isImageFile(item.fileName, item.fileType)
+      ? resolvedUrl
+      : getGoogleDocsViewerUrl(resolvedUrl);
+
+    setPreviewViewerUrl(viewerUrl);
+  } catch (error) {
+    console.error("Preview error:", error);
+    Alert.alert(
+      "Preview failed",
+      "Unable to load a preview for this item. The file may no longer be available."
+    );
+    setPreviewVisible(false);
+  } finally {
+    setPreviewLoading(false);
+  }
+};
+  const closePreviewModal = () => {
+    setPreviewVisible(false);
+    setPreviewItem(null);
+    setPreviewViewerUrl(null);
+    setPreviewLoading(false);
+  };
+
+  const handleOpenPreviewExternally = async () => {
+    if (!previewItem?.url) return;
+    try {
+      const supported = await Linking.canOpenURL(previewItem.url);
+      if (!supported) {
+        Alert.alert("Cannot open", "This URL is not supported on this device.");
+        return;
+      }
+      await Linking.openURL(previewItem.url);
+    } catch {
+      Alert.alert("Open failed", `Unable to open the ${previewItem.isLink ? "link" : "file"}.`);
     }
   };
 
@@ -1006,7 +1460,7 @@ const mapSubmissionToItems = (submission: any): any[] => {
   return (
     <SafeAreaView style={styles.container}>
       {isMobile ? <View style={{ height: mobileTopSpace }} /> : null}
-      {/* ── Header ── */}
+      {/* ── Header ─ */}
       <View
         style={[
           styles.headerBar,
@@ -1229,6 +1683,102 @@ const mapSubmissionToItems = (submission: any): any[] => {
           <MaterialCommunityIcons name="pencil-outline" size={22} color="#FFF" />
         </TouchableOpacity>
       )}
+
+      {/* ══════════════════════════════════════════════════════════════════
+          ✅ NEW: PREVIEW MODAL — inline document/link viewer
+          Matches the fullscreen viewer used in CourseDetail.tsx. Files always
+          get a freshly-signed URL from the backend right before previewing,
+          so an expired signed URL never results in a broken preview.
+      ═══════════════════════════════════════════════════════════════════ */}
+      <Modal
+        visible={previewVisible}
+        transparent={false}
+        animationType="slide"
+        onRequestClose={closePreviewModal}
+        statusBarTranslucent
+      >
+        <SafeAreaView style={styles.previewModalContainer} edges={["top", "bottom"]}>
+          <View style={styles.previewTopBar}>
+            <TouchableOpacity
+              onPress={closePreviewModal}
+              style={styles.previewBackBtn}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              accessibilityRole="button"
+              accessibilityLabel="Close preview"
+            >
+              <MaterialCommunityIcons name="arrow-left" size={22} color="#FFF" />
+            </TouchableOpacity>
+
+            <View style={styles.previewTitleBlock}>
+              <Text style={styles.previewTitle} numberOfLines={1}>
+                {previewItem?.fileName || "Preview"}
+              </Text>
+              <View style={styles.previewTypeBadge}>
+                <MaterialCommunityIcons
+                  name={previewItem?.isLink ? "link-variant" : "file-document-outline"}
+                  size={11}
+                  color="#D32F2F"
+                />
+                <Text style={styles.previewTypeText}>
+                  {previewItem?.isLink ? "LINK" : "FILE"}
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.previewActions}>
+              {/* ✅ NEW: Download Button */}
+              {!!previewItem?.url && !previewItem.isLink && (
+                <TouchableOpacity
+                  onPress={handleDownloadPreview}
+                  disabled={isDownloading}
+                  style={[styles.previewActionBtn, isDownloading && { opacity: 0.55 }]}
+                  hitSlop={{ top: 10, bottom: 10, left: 6, right: 6 }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Download file"
+                >
+                  {isDownloading ? (
+                    <ActivityIndicator size="small" color="#FFF" />
+                  ) : (
+                    <MaterialCommunityIcons name="download-outline" size={20} color="#FFF" />
+                  )}
+                </TouchableOpacity>
+              )}
+
+              {!!previewItem?.url && (
+                <TouchableOpacity
+                  onPress={handleOpenPreviewExternally}
+                  style={styles.previewOpenExtBtn}
+                  hitSlop={{ top: 10, bottom: 10, left: 6, right: 6 }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Open in browser"
+                >
+                  <MaterialCommunityIcons name="open-in-new" size={20} color="#FFF" />
+                </TouchableOpacity>
+              )}
+            </View>
+          </View>
+
+          {/* ✅ UPDATED: Pass fileName and fileType to handle images natively */}
+          {previewLoading ? (
+            <View style={styles.previewLoadingWrap}>
+              <ActivityIndicator size="large" color="#D32F2F" />
+              <Text style={styles.previewLoadingText}>Loading preview...</Text>
+            </View>
+          ) : previewViewerUrl ? (
+            <InlineMaterialViewer 
+              viewerUrl={previewViewerUrl} 
+              height={height - 62} 
+              fileName={previewItem?.fileName}   
+              fileType={previewItem?.fileType}   
+            />
+          ) : (
+            <View style={styles.previewLoadingWrap}>
+              <MaterialCommunityIcons name="file-remove-outline" size={48} color="#CCC" />
+              <Text style={styles.previewLoadingText}>Unable to load preview.</Text>
+            </View>
+          )}
+        </SafeAreaView>
+      </Modal>
 
       {/* ── Delete Modal ── */}
       <Modal
@@ -1539,7 +2089,7 @@ const styles = StyleSheet.create({
   },
   disabledButton: { backgroundColor: "#D1D5DB" },
   saveScoreText: { color: "#FFFFFF", fontWeight: "700", fontSize: 14 },
-  // ── Comments ──
+  // ── Comments ─
   commentsSection: {
     backgroundColor: "#FFFFFF",
     borderRadius: 16,
@@ -1628,4 +2178,71 @@ const styles = StyleSheet.create({
     elevation: 6,
   },
   emptyText: { width: "100%", textAlign: "center", color: "#9CA3AF", fontSize: 14, marginTop: 30, fontWeight: "600", paddingHorizontal: 20 },
+
+  // ── ✅ NEW: Preview Modal (inline document/link viewer) ──
+  previewModalContainer: { flex: 1, backgroundColor: "#3c3c3c87" },
+  previewTopBar: {
+    height: 62,
+    backgroundColor: "#D32F2F",
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 14,
+    paddingTop: Platform.OS === "android" ? 8 : 0,
+    gap: 10,
+    shadowColor: "#000",
+    shadowOpacity: 0.18,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 8,
+  },
+  previewBackBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.15)",
+  },
+  previewTitleBlock: { flex: 1, gap: 3 },
+  previewTitle: { color: "#FFF", fontSize: 15, fontWeight: "700", letterSpacing: 0.1 },
+  previewTypeBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: "#FFF",
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    alignSelf: "flex-start",
+  },
+  previewTypeText: { color: "#D32F2F", fontSize: 10, fontWeight: "800", letterSpacing: 0.5 },
+  previewActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  previewActionBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.15)',
+  },
+  previewOpenExtBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.15)",
+  },
+  previewLoadingWrap: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 12,
+    backgroundColor: "#FFF",
+  },
+  previewLoadingText: { color: "#666", fontSize: 14, fontWeight: "600" },
 });

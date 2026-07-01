@@ -84,6 +84,8 @@ export type Submission = {
   fileType?: string;
   feedback?: string;
   linkUrls?: string[]; 
+  storagePath?: string | null;   // ✅ add
+  bucketPath?: string | null;  
 };
 export type CourseDetailData = {
   id: string;
@@ -315,6 +317,8 @@ const mapSubmission = (item: any): Submission => ({
     : item.linkUrl
       ? [item.linkUrl] // fallback for legacy single-link field
       : [],
+       storagePath: item.storagePath || null,   // ✅ add
+  bucketPath: item.bucketPath || null, 
 });
 // ─── Viewer URL helpers (mirrors CourseDetail.tsx) ────────────────────────────
 function getMimeFromFileName(fileName: string): string {

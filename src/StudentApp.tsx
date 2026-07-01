@@ -306,6 +306,8 @@ const mapCourseFilesToAssignmentFiles = (files?: CourseAssignment['files']): Ass
       uploadedDate: file.uploadedAt, 
       fileUrl: file.uri || (file as any).fileUrl, 
       fileType: (file as any).fileType, 
+      storagePath: (file as any).storagePath || null,   // ✅ ADD
+      bucketPath: (file as any).bucketPath || null, 
       source: 'teacher' as const  // ✅ Explicitly mark as teacher
     }));
 const mapCourseAssignmentsToAssignmentItems = (assignments: CourseAssignment[]): AssignmentItem[] =>

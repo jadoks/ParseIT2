@@ -2,11 +2,12 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import Constants from 'expo-constants';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
   FlatList,
+  Image,
   Linking,
   Modal,
   Platform,
@@ -19,6 +20,7 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 /* =========================
    TYPES
@@ -40,8 +42,8 @@ export interface AssignmentFileUpload {
   fileUrl?: string;
   linkUrl?: string; 
   fileType?: string;
-  storagePath?: string;
-  bucketPath?: string;
+  storagePath?: string; // ✅ CRITICAL FOR REFRESH
+  bucketPath?: string;  // ✅ CRITICAL FOR REFRESH
   submissionId?: string;
   submittedAt?: string;
   isSubmitted?: boolean;
@@ -78,8 +80,8 @@ export interface AssignmentItem {
   fileUrl?: string | null;
   fileUri?: string | null;
   fileType?: string | null;
-  storagePath?: string | null;
-  bucketPath?: string | null;
+  storagePath?: string | null; // ✅ ADD
+  bucketPath?: string | null;  // ✅ ADD
   comments?: AssignmentComment[];
   files?: AssignmentFileUpload[];
   assignmentType?: 'regular' | 'game_based';
@@ -205,6 +207,178 @@ interface AssignmentsProps {
 
 type FilterType = 'all' | 'pending' | 'submitted' | 'graded';
 
+// ✅ HELPER: Check if file is an image
+function isImageFile(fileName?: string, fileType?: string): boolean {
+  if (!fileName && !fileType) return false;
+  const ext = fileName?.split('.').pop()?.toLowerCase() || '';
+  const mime = (fileType || '').toLowerCase();
+  return ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'].includes(ext) || 
+         mime.startsWith('image/');
+}
+
+// ✅ HELPER: Get Viewer URL for Documents
+function getViewerUrl(fileUrl: string, fileName?: string, fileType?: string): string {
+  // For images, return direct URL
+  if (isImageFile(fileName, fileType)) return fileUrl;
+  
+  // For documents, use Google Docs Viewer
+  return `https://docs.google.com/gview?embedded=true&url=${encodeURIComponent(fileUrl)}`;
+}
+
+function InlineMaterialViewer({
+  viewerUrl,
+  height,
+  fileName,
+  fileType,
+  storagePath,
+  bucketPath,
+  classId,
+}: {
+  viewerUrl: string;
+  height: number;
+  fileName?: string;
+  fileType?: string;
+  storagePath?: string | null;
+  bucketPath?: string | null;
+  classId?: string;
+}) {
+  const [resolvedUrl, setResolvedUrl] = useState(viewerUrl);
+  const [hasError, setHasError] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  // Reset state when a new file is opened
+  useEffect(() => {
+    setResolvedUrl(viewerUrl);
+    setHasError(false);
+  }, [viewerUrl]);
+
+  const tryRefreshUrl = async () => {
+    // Use storagePath primarily, fallback to bucketPath if needed
+    const path = storagePath || bucketPath;
+    
+    if (!path || isRefreshing) {
+      console.warn("Cannot refresh: No storage path available or already refreshing.");
+      setHasError(true);
+      return;
+    }
+
+    try {
+      setIsRefreshing(true);
+      console.log(`Attempting to refresh signed URL for: ${path}`);
+      
+      const response = await apiFetch(`${API_BASE_URL}/storage/signed-url`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          storagePath: path, 
+          classId // Pass classId if required by your backend validation
+        }),
+      });
+      
+      const data = await response.json();
+      
+      if (response.ok && data?.url) {
+        console.log("URL Refreshed Successfully");
+        setResolvedUrl(data.url);
+        setHasError(false);
+      } else {
+        console.error("Backend returned error for signed URL:", data);
+        setHasError(true);
+      }
+    } catch (err) {
+      console.error("Failed to fetch signed URL:", err);
+      setHasError(true);
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
+  // --- IMAGE HANDLING ---
+  if (fileName && isImageFile(fileName, fileType)) {
+    if (isRefreshing) {
+      return (
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#f0f0f0' }}>
+          <ActivityIndicator size="large" color="#D32F2F" />
+          <Text style={{ marginTop: 10, color: '#666' }}>Refreshing link...</Text>
+        </View>
+      );
+    }
+
+    if (hasError || !resolvedUrl) {
+      return (
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 20, backgroundColor: '#f0f0f0' }}>
+          <MaterialCommunityIcons name="image-off-outline" size={48} color="#CCC" />
+          <Text style={{ color: '#888', textAlign: 'center', marginTop: 10 }}>
+            This image couldn't be loaded. It may have expired.
+          </Text>
+          <TouchableOpacity 
+            onPress={tryRefreshUrl} 
+            style={{ marginTop: 10, padding: 8, backgroundColor: '#D32F2F', borderRadius: 4 }}
+          >
+            <Text style={{ color: '#FFF', fontWeight: 'bold' }}>Try Again</Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+
+    if (Platform.OS === 'web') {
+      return (
+        <View style={{ flex: 1, width: '100%', height, alignItems: 'center', justifyContent: 'center', backgroundColor: '#f0f0f0' }}>
+          {/* @ts-ignore */}
+          <img
+            src={resolvedUrl}
+            alt={fileName}
+            style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
+            onError={() => {
+              // Only try refresh once to avoid infinite loops if the file is truly gone
+              if (!isRefreshing && !hasError) tryRefreshUrl();
+            }}
+          />
+        </View>
+      );
+    }
+
+    // ✅ Native: Render the image
+    return (
+      <View style={{ flex: 1, width: '100%', height, alignItems: 'center', justifyContent: 'center', backgroundColor: '#f0f0f0' }}>
+        <Image
+          source={{ uri: resolvedUrl }}
+          style={{ width: '100%', height: '100%' }}
+          resizeMode="contain"
+          onError={() => {
+             if (!isRefreshing && !hasError) tryRefreshUrl();
+          }}
+        />
+      </View>
+    );
+  }
+
+  // --- DOCUMENT HANDLING ---
+  if (Platform.OS === "web") {
+    return (
+      <View style={{ flex: 1, width: "100%", height }}>
+        {/* @ts-ignore */}
+        <iframe
+          src={resolvedUrl}
+          style={{ width: "100%", height: "100%", border: "none" }}
+          allow="autoplay"
+          title="Document Viewer"
+        />
+      </View>
+    );
+  }
+
+  // Fallback for native document preview (since WebView might not be installed or configured for all docs)
+  return (
+    <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+      <MaterialCommunityIcons name="file-document-outline" size={48} color="#CCC" />
+      <Text style={{ color: "#888", textAlign: "center", marginTop: 10 }}>
+        Preview not available on this device. Please download or open externally.
+      </Text>
+    </View>
+  );
+}
+
 const Assignments = ({
   courses,
   selectedCourseId = null,
@@ -224,7 +398,7 @@ const Assignments = ({
   onEditComment,
   onDeleteComment,
 }: AssignmentsProps) => {
-  const { width } = useWindowDimensions();
+  const { width, height } = useWindowDimensions();
   const isLargeScreen = width >= 768;
   const isSmallScreen = width < 480;
   const modalWidth = isLargeScreen ? '72%' : isSmallScreen ? '92%' : '88%';
@@ -248,6 +422,9 @@ const Assignments = ({
   const [deleteModalVisible, setDeleteModalVisible] = useState(false);
   const [commentToDeleteId, setCommentToDeleteId] = useState<string | null>(null);
   const [isDeletingComment, setIsDeletingComment] = useState(false);
+
+  //  NEW: Inline Preview State
+  const [previewFile, setPreviewFile] = useState<AssignmentFileUpload | null>(null);
 
   const [gameAttempts, setGameAttempts] = useState<Record<string, number>>({});
   const [isLoadingAttempts, setIsLoadingAttempts] = useState<Record<string, boolean>>({});
@@ -274,8 +451,6 @@ const Assignments = ({
     );
 
     return flattened.sort((a, b) => {
-      // Simple string comparison for IDs often works if they are sequential or UUIDs
-      // But timestamp sorting is always safer.
       if (a.id > b.id) return -1; 
       if (a.id < b.id) return 1;
       return 0;
@@ -402,7 +577,6 @@ const Assignments = ({
     setNewComment('');
   };
 
-  // 👇 NEW: Handle comment edit
   const handleEditComment = async (commentId: string) => {
     if (!selectedAssignment || !editText.trim() || savingEdit) return;
     if (!onEditComment) {
@@ -422,7 +596,6 @@ const Assignments = ({
     }
   };
 
-  // 👇 NEW: Handle comment delete
   const handleDeleteComment = (commentId: string) => {
     if (!selectedAssignment) return;
     if (!onDeleteComment) {
@@ -449,7 +622,6 @@ const Assignments = ({
     }
   };
 
-  // 👇 NEW: Handle menu press with positioning
   const handleMenuPress = (commentId: string, event: any) => {
     event.persist?.();
     
@@ -523,8 +695,8 @@ const Assignments = ({
           uploadedDate: new Date().toLocaleString(),
           fileUrl: uploadData?.data?.fileUrl,
           fileType: uploadData?.data?.fileType || file.mimeType,
-          storagePath: uploadData?.data?.storagePath,
-          bucketPath: uploadData?.data?.bucketPath,
+          storagePath: uploadData?.data?.storagePath, // ✅ Ensure this is saved
+          bucketPath: uploadData?.data?.bucketPath,   // ✅ Ensure this is saved
           isSubmitted: false,
           source: 'student',
         });
@@ -555,8 +727,8 @@ const Assignments = ({
     fileName: 'Submitted link',
     fileSize: 'Link submission',
     uploadedDate: new Date().toLocaleString(),
-    fileUrl: undefined,          // Explicitly null for links
-    linkUrl: linkUrl,       // 👈 Store link here
+    fileUrl: undefined,
+    linkUrl: linkUrl,
     fileType: 'text/uri-list',
     isSubmitted: false,
     source: 'student',
@@ -582,16 +754,13 @@ const Assignments = ({
     const getTeacherAssignmentFiles = (assignment?: AssignmentItem | null) => {
   if (!assignment) return [];
 
-  // 1. Start with files explicitly defined in the Assignment Object (Teacher's files)
-  // These are usually stored in assignment.files or assignment.fileUrl
   const teacherFiles = (assignment.files || [])
     .filter((file: any) => {
-      // ✅ CRITICAL FILTER: Exclude student submissions by checking for student-specific properties
       const isStudentSubmission = 
         file.source === 'student' || 
         file.submissionId || 
         file.isSubmitted === true ||
-        (file.id && file.id.startsWith('f')); // Student files start with 'f'
+        (file.id && file.id.startsWith('f')); 
       
       return !isStudentSubmission;
     })
@@ -602,13 +771,13 @@ const Assignments = ({
       uploadedDate: file.uploadedDate || file.uploadedAt || 'Attached by teacher',
       fileUrl: file.fileUrl || file.fileUri || file.uri || file.downloadUrl || null,
       fileType: file.fileType,
-      source: 'teacher' as const, // Explicitly mark as teacher source
+      storagePath: file.storagePath || null,   // ✅ PASS THROUGH
+      bucketPath: file.bucketPath || null,     // ✅ PASS THROUGH
+      source: 'teacher' as const,
     }));
 
-  // 2. Check for top-level fileUrl on the assignment object (common for single attachments)
   const topLevelUrl = getAssignmentFileUrl(assignment);
   if (topLevelUrl) {
-    // Ensure we don't duplicate if it's already in the array
     const alreadyIncluded = teacherFiles.some((file) => file.fileUrl === topLevelUrl);
     if (!alreadyIncluded) {
       teacherFiles.unshift({
@@ -618,6 +787,8 @@ const Assignments = ({
         uploadedDate: 'Attached by teacher',
         fileUrl: topLevelUrl,
         fileType: (assignment as any)?.fileType || (assignment as any)?.attachmentType,
+        storagePath: (assignment as any)?.storagePath || null,  // ✅ PASS THROUGH
+        bucketPath: (assignment as any)?.bucketPath || null,     // ✅ PASS THROUGH
         source: 'teacher' as const,
       });
     }
@@ -647,22 +818,37 @@ const Assignments = ({
     );
   };
 
+  // ✅ UPDATED: Handle opening files/links
   const handleOpenUploadedFile = async (
-    fileUri?: string | null,
+    file: AssignmentFileUpload,
     emptyMessage = 'This file has no URL yet.'
   ) => {
-    const url = fileUri?.trim();
+    // 1. CHECK IF IT'S A LINK -> DIRECT NAVIGATION
+    if (file.fileType === 'text/uri-list' || !!file.linkUrl) {
+      const url = file.linkUrl?.trim();
+      if (!url) {
+        Alert.alert('Invalid Link', 'No URL found for this submission.');
+        return;
+      }
+      try {
+        const supported = await Linking.canOpenURL(url);
+        if (!supported && Platform.OS !== 'web') throw new Error('Unsupported URL.');
+        await Linking.openURL(url);
+      } catch {
+        Alert.alert('Open Failed', 'Unable to open this link.');
+      }
+      return;
+    }
+
+    // 2. CHECK IF IT'S A FILE -> INLINE PREVIEW
+    const url = file.fileUrl?.trim();
     if (!url) {
       Alert.alert('No File', emptyMessage);
       return;
     }
-    try {
-      const supported = await Linking.canOpenURL(url);
-      if (!supported && Platform.OS !== 'web') throw new Error('Unsupported file URL.');
-      await Linking.openURL(url);
-    } catch {
-      Alert.alert('Open Failed', 'Unable to open this file.');
-    }
+
+    // Set preview state to open the modal
+    setPreviewFile(file);
   };
 
   const syncSelectedAssignmentStatus = (status: AssignmentItem['status']) => {
@@ -689,7 +875,6 @@ const Assignments = ({
       setIsSubmittingAssignment(true);
       const studentName = `${currentStudent.firstName || ''} ${currentStudent.lastName || ''}`.trim();
       
-      // 1. STRICT SEPARATION OF FILES AND LINKS
       const regularFiles = files.filter(file => {
         const isLink = file.fileType === 'text/uri-list' || !!file.linkUrl;
         return !isLink && (!!file.fileUrl || !!file.storagePath);
@@ -703,11 +888,10 @@ const Assignments = ({
         throw new Error('No valid items were found. Please check your uploads.');
       }
 
-      // 2. BUILD PAYLOAD MATCHING BACKEND BATCH EXPECTATIONS
       const submissionItems = regularFiles.map(file => ({
         fileName: file.fileName,
         fileUrl: file.fileUrl || null,
-        linkUrl: null, // Explicitly null for file docs
+        linkUrl: null,
         fileType: file.fileType || 'application/octet-stream',
         storagePath: file.storagePath || null,
         bucketPath: file.bucketPath || null,
@@ -715,7 +899,6 @@ const Assignments = ({
 
       console.log('[SUBMIT] Files:', submissionItems.length, 'Links:', linkUrls.length);
 
-      // 3. SEND SINGLE ATOMIC REQUEST
       const response = await apiFetch(`${API_BASE_URL}/create-submission`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -728,8 +911,8 @@ const Assignments = ({
           status: 'submitted',
           score: null,
           feedback: null,
-          submissions: submissionItems, // 👈 ARRAY OF FILE OBJECTS
-          linkUrls: linkUrls.length > 0 ? linkUrls : undefined, // ✅ FIXED: Use 'linkUrls' instead of 'links'
+          submissions: submissionItems,
+          linkUrls: linkUrls.length > 0 ? linkUrls : undefined,
         }),
       });
 
@@ -778,11 +961,7 @@ const Assignments = ({
       const data = await response.json();
       if (!response.ok) throw new Error(data?.error || 'Failed to unsubmit.');
 
-      // CRITICAL: Update local status FIRST
       syncSelectedAssignmentStatus('pending');
-      
-      // CRITICAL: Force refresh from DB to clear any "ghost" files 
-      // that were deleted locally but might still be cached
       await onRefreshSubmissions?.();
 
       Alert.alert('Unsubmitted', 'You can now edit your files and resubmit.');
@@ -852,7 +1031,6 @@ const Assignments = ({
     }
   };
 
-  // 👇 Check if current user can manage a comment
   const canManageComment = (comment: AssignmentComment) => {
     if (!currentStudent) return false;
     const studentName = `${currentStudent.firstName || ''} ${currentStudent.lastName || ''}`.trim();
@@ -1171,7 +1349,7 @@ const Assignments = ({
                                 style={[styles.fileOpenButton, !isLargeScreen && styles.fileOpenButtonMobile, !file.fileUrl && styles.fileOpenButtonDisabled]}
                                 disabled={!file.fileUrl}
                                 activeOpacity={0.85}
-                                onPress={() => handleOpenUploadedFile(file.fileUrl, 'This assignment has no attached file yet.')}
+                                onPress={() => handleOpenUploadedFile(file, 'This assignment has no attached file yet.')}
                               >
                                 <Text style={styles.fileOpenButtonText}>Open</Text>
                               </TouchableOpacity>
@@ -1185,7 +1363,7 @@ const Assignments = ({
                     
                     {selectedAssignment.assignmentType === 'game_based' && (
                       <View style={styles.section}>
-                        <Text style={styles.sectionTitle}>🎮 Game-Based Assignment</Text>
+                        <Text style={styles.sectionTitle}> Game-Based Assignment</Text>
                         <Text style={{ color: '#666', marginBottom: 10, fontSize: 13 }}>
                           This is an interactive game assignment. Click below to start playing!
                         </Text>
@@ -1284,7 +1462,6 @@ const Assignments = ({
                         <View>
                           {getSubmittedFiles(selectedAssignment).map((file) => {
                             const isLink = file.fileType === 'text/uri-list';
-                            const displayUrl = isLink ? file.linkUrl : file.fileUrl;
                             
                             // Render Link as Clickable Text (Google Classroom Style)
                             if (isLink && file.linkUrl) {
@@ -1292,7 +1469,7 @@ const Assignments = ({
                                 <TouchableOpacity 
                                   key={file.id} 
                                   style={[styles.fileItem, !isLargeScreen && styles.fileCardMobile]}
-                                  onPress={() => handleOpenUploadedFile(file.linkUrl, 'Invalid link URL')}
+                                  onPress={() => handleOpenUploadedFile(file, 'Invalid link URL')}
                                   activeOpacity={0.7}
                                 >
                                   <Text style={{ fontSize: 20 }}>🔗</Text>
@@ -1307,7 +1484,7 @@ const Assignments = ({
                                   {!isAssignmentSubmitted(selectedAssignment) && (
                                     <TouchableOpacity
                                       onPress={(e) => {
-                                        e.stopPropagation(); // Prevent triggering the link open
+                                        e.stopPropagation();
                                         onRemoveFile(selectedAssignment.id, file.id);
                                       }}
                                       style={{ marginLeft: 8 }}
@@ -1319,7 +1496,7 @@ const Assignments = ({
                               );
                             }
 
-                            // Render Regular Files with Open Button (Existing Logic)
+                            // Render Regular Files with Open Button (Now triggers Inline Preview)
                             return (
                               <View key={file.id} style={[styles.fileItem, !isLargeScreen && styles.fileCardMobile]}>
                                 <Text style={{ fontSize: 20 }}>📄</Text>
@@ -1334,9 +1511,9 @@ const Assignments = ({
                                     style={[styles.fileOpenButton, !isLargeScreen && styles.fileOpenButtonMobile, !file.fileUrl && styles.fileOpenButtonDisabled]}
                                     disabled={!file.fileUrl}
                                     activeOpacity={0.85}
-                                    onPress={() => handleOpenUploadedFile(file.fileUrl, 'This submitted file has no URL yet.')}
+                                    onPress={() => handleOpenUploadedFile(file, 'This submitted file has no URL yet.')}
                                   >
-                                    <Text style={styles.fileOpenButtonText}>Open</Text>
+                                    <Text style={styles.fileOpenButtonText}>Preview</Text>
                                   </TouchableOpacity>
                                   <TouchableOpacity
                                     disabled={isAssignmentSubmitted(selectedAssignment)}
@@ -1376,7 +1553,7 @@ const Assignments = ({
                           return (
                             <View style={styles.uploadActionsRow}>
                               <View style={styles.lockedSubmissionBox}>
-                                <Text style={styles.lockedSubmissionTitle}>📨 Already submitted</Text>
+                                <Text style={styles.lockedSubmissionTitle}> Already submitted</Text>
                                 <Text style={styles.lockedSubmissionText}>
                                   Your teacher has received this assignment. Unsubmit only if you need to change your file before grading.
                                 </Text>
@@ -1653,6 +1830,58 @@ const Assignments = ({
           </View>
         </View>
       </Modal>
+
+      {/* ✅ NEW: INLINE PREVIEW MODAL FOR FILES */}
+      <Modal
+        visible={!!previewFile}
+        transparent={false}
+        animationType="slide"
+        onRequestClose={() => setPreviewFile(null)}
+        statusBarTranslucent
+      >
+        <SafeAreaView style={styles.previewModalContainer} edges={['top', 'bottom']}>
+          <View style={styles.previewTopBar}>
+            <TouchableOpacity
+              onPress={() => setPreviewFile(null)}
+              style={styles.previewBackBtn}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <MaterialCommunityIcons name="arrow-left" size={22} color="#FFF" />
+            </TouchableOpacity>
+
+            <View style={styles.previewTitleBlock}>
+              <Text style={styles.previewTitle} numberOfLines={1}>
+                {previewFile?.fileName || 'Preview'}
+              </Text>
+              <View style={styles.previewTypeBadge}>
+                <MaterialCommunityIcons
+                  name={previewFile?.fileType === 'text/uri-list' ? "link-variant" : "file-document-outline"}
+                  size={11}
+                  color="#D32F2F"
+                />
+                <Text style={styles.previewTypeText}>
+                  {previewFile?.fileType === 'text/uri-list' ? "LINK" : "FILE"}
+                </Text>
+              </View>
+            </View>
+
+            {/* Download/Open External Button could go here if needed */}
+          </View>
+
+          {previewFile && (
+            <InlineMaterialViewer 
+              viewerUrl={getViewerUrl(previewFile.fileUrl || '', previewFile.fileName, previewFile.fileType)}
+              height={height - 62}
+              fileName={previewFile.fileName}
+              fileType={previewFile.fileType}
+              storagePath={previewFile.storagePath}
+              bucketPath={previewFile.bucketPath}
+              classId={selectedAssignment?.courseId}
+            />
+          )}
+        </SafeAreaView>
+      </Modal>
+
     </ScrollView>
   );
 };
@@ -1796,7 +2025,6 @@ const styles = StyleSheet.create({
   editSaveText: { fontWeight: '700', color: '#fff', fontSize: 13 },
   commentPostBtnDisabled: { opacity: 0.6 },
   
-  // 👇 NEW STYLES FOR DROPDOWN MENU
   menuBackdrop: {
     position: 'absolute',
     top: 0,
@@ -1838,7 +2066,6 @@ const styles = StyleSheet.create({
     color: '#D32F2F',
   },
 
-  // 👇 NEW STYLES FOR DELETE CONFIRMATION MODAL
   deleteModalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.5)',
@@ -1912,6 +2139,44 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#FFF',
   },
+
+  // ✅ NEW STYLES FOR INLINE PREVIEW MODAL
+  previewModalContainer: { flex: 1, backgroundColor: '#3c3c3c87' },
+  previewTopBar: {
+    height: 62,
+    backgroundColor: '#D32F2F',
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingTop: Platform.OS === 'android' ? 8 : 0,
+    gap: 10,
+    shadowColor: '#000',
+    shadowOpacity: 0.18,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 8,
+  },
+  previewBackBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.15)',
+  },
+  previewTitleBlock: { flex: 1, gap: 3 },
+  previewTitle: { color: '#FFF', fontSize: 15, fontWeight: '700', letterSpacing: 0.1 },
+  previewTypeBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#FFF',
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    alignSelf: 'flex-start',
+  },
+  previewTypeText: { color: '#D32F2F', fontSize: 10, fontWeight: '800', letterSpacing: 0.5 },
 });
 
 export default Assignments;

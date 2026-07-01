@@ -8430,10 +8430,31 @@ app.get("/class-submissions/:classId", async (req, res) => {
       .orderBy("submittedAt", "desc")
       .get();
 
-    const submissions = snapshot.docs.map((doc) => ({
-      id: doc.id,
-      ...doc.data(),
-    }));
+    const submissions = await Promise.all(
+      snapshot.docs.map(async (doc) => {
+        const data = doc.data();
+        
+        // Generate fresh signed URL if fileUrl exists
+        if (data.fileUrl && data.storagePath) {
+          try {
+            const bucket = admin.storage().bucket();
+            const file = bucket.file(data.storagePath);
+            const [signedUrl] = await file.getSignedUrl({
+              action: 'read',
+              expires: Date.now() + 15 * 60 * 1000, // 15 minutes
+            });
+            data.fileUrl = signedUrl;
+          } catch (err) {
+            console.error("Error generating signed URL:", err);
+          }
+        }
+        
+        return {
+          id: doc.id,
+          ...data,
+        };
+      })
+    );
 
     res.json(submissions);
   } catch (error) {
@@ -14407,6 +14428,62 @@ app.post("/messenger-mark-read", async (req, res) => {
       error: error.message || "Failed to mark conversation as read.",
     });
   }
+});
+
+app.get("/class-submission-download/:classId", requireAuth, async (req, res) => {
+    try {
+        const { classId } = req.params;
+        const storagePath = decodeURIComponent(req.query.storagePath || "");
+
+        if (!storagePath) {
+            return res.status(400).json({
+                error: "storagePath is required."
+            });
+        }
+
+        await requireClassAccess({
+            authUid: req.user.uid,
+            classId,
+            allowedRoles: ["student", "teacher"],
+        });
+
+        if (!isStoragePathAllowedForClass(storagePath, classId)) {
+            return res.status(403).json({
+                error: "Invalid storage path."
+            });
+        }
+
+        const file = bucket.file(storagePath);
+
+        const [exists] = await file.exists();
+
+        if (!exists) {
+            return res.status(404).json({
+                error: "File not found."
+            });
+        }
+
+        const [metadata] = await file.getMetadata();
+
+        res.setHeader(
+            "Content-Type",
+            metadata.contentType || "application/octet-stream"
+        );
+
+        res.setHeader(
+            "Content-Disposition",
+            `attachment; filename="${storagePath.split("/").pop()}"`
+        );
+
+        file.createReadStream().pipe(res);
+
+    } catch (error) {
+        console.error(error);
+
+        res.status(error.statusCode || 500).json({
+            error: error.message || "Download failed."
+        });
+    }
 });
 
 
