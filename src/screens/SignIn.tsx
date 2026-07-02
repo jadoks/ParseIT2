@@ -650,7 +650,7 @@ const SignIn = ({ onLogIn, onGoToLanding, onGoToRegister }: SignInProps) => {
       const userId = pendingUserId;
 
       resetFirstLoginState();
-      
+
       // ✅ DIRECTLY PROCEED TO DASHBOARD (No success modal)
       await completeLogin(userId, role);
 
@@ -798,131 +798,184 @@ const SignIn = ({ onLogIn, onGoToLanding, onGoToRegister }: SignInProps) => {
     return 'information-circle';
   };
 
-  return (
-    <ImageBackground
-      source={require('../../assets/images/cote.jpeg')}
-      style={styles.backgroundImage}
-      resizeMode="cover"
-    >
-      <View style={styles.backgroundOverlay} />
+  // ── Shared sign-in fields (rendered inside either layout) ────────────────
+  const FormFields = (
+    <>
+      <View style={styles.formGroup}>
+        <Text style={styles.fieldLabel}>ID Number</Text>
+        <View style={styles.inputWrapper}>
+          <TextInput
+            style={styles.inputWithIcon}
+            placeholder="Enter your numeric ID"
+            placeholderTextColor="#9E9E9E"
+            value={id}
+            onChangeText={(text) => {
+              const numericOnly = text.replace(/[^0-9]/g, '');
+              setId(numericOnly);
+            }}
+            keyboardType="number-pad"
+            editable={!isLoading}
+          />
+        </View>
+      </View>
 
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={styles.screen}
+      <View style={styles.formGroup}>
+        <Text style={styles.fieldLabel}>Password</Text>
+        <View style={styles.passwordContainer}>
+          <TextInput
+            style={styles.passwordInput}
+            placeholder="Enter your password"
+            placeholderTextColor="#9E9E9E"
+            value={password}
+            onChangeText={setPassword}
+            secureTextEntry={!showPassword}
+            autoCapitalize="none"
+            editable={!isLoading}
+            returnKeyType="go"
+            onSubmitEditing={handleLogIn}
+          />
+
+          <TouchableOpacity
+            onPress={() => setShowPassword(!showPassword)}
+            style={styles.iconButton}
+            disabled={isLoading}
+          >
+            <Icon
+              name={showPassword ? 'eye-off-outline' : 'eye-outline'}
+              size={20}
+              color="#7A7A7A"
+            />
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      <TouchableOpacity onPress={handleForgotPassword} disabled={isLoading}>
+        <Text style={[styles.forgotPassword, isLargeScreen && styles.forgotPasswordLeft]}>
+          Forgot Password?
+        </Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        style={[styles.logInButton, isLoading && styles.disabledButton]}
+        onPress={handleLogIn}
+        activeOpacity={0.9}
+        disabled={isLoading}
       >
-        <ScrollView
-          contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}
-        >
-          <View style={[styles.pageWrapper, { maxWidth: isLargeScreen ? 460 : 420 }]}>
-            <View style={styles.card}>
+        <Text style={styles.logInText}>
+          {isLoading ? 'Signing in...' : 'Sign In'}
+        </Text>
+      </TouchableOpacity>
+      <TouchableOpacity
+        style={styles.registerButton}
+        onPress={onGoToRegister}
+        disabled={isLoading}
+      >
+        <Text style={styles.registerButtonText}>
+          Don't have an account? Sign Up
+        </Text>
+      </TouchableOpacity>
+    </>
+  );
+
+  return (
+    <View style={styles.rootContainer}>
+      {isLargeScreen ? (
+        // ── LARGE SCREEN: two-column split layout (matches Register) ─────
+        <View style={styles.splitContainer}>
+          {/* LEFT: image + text panel */}
+          <View style={styles.leftPanel}>
+            <ImageBackground
+              source={require('../../assets/images/cote.jpeg')}
+              style={styles.leftPanelBg}
+              resizeMode="cover"
+            >
+              <View style={styles.leftPanelOverlay} />
+
               <TouchableOpacity
-                style={styles.brandBlock}
+                style={styles.leftBackButton}
                 onPress={handleGoToLanding}
-                activeOpacity={0.9}
+                activeOpacity={0.85}
               >
-                <View style={styles.logoFloatingContainer}>
+                <Icon name="chevron-back" size={20} color="#FFFFFF" />
+              </TouchableOpacity>
+
+              <View style={styles.leftPanelContent}>
+                <View style={styles.leftLogoWrap}>
                   <Image
                     source={require('../../assets/images/logo.png')}
-                    style={styles.logoImage}
+                    style={styles.leftLogoImage}
                     resizeMode="contain"
                   />
                 </View>
-              </TouchableOpacity>
-
-              <Text style={styles.heading}>Sign in to your account</Text>
-              <Text style={styles.subheading}>
-                Enter your credentials to continue.
-              </Text>
-
-              <View style={styles.formGroup}>
-                <Text style={styles.fieldLabel}>ID Number</Text>
-                <View style={styles.inputWrapper}>
-                  <Icon
-                    name="person-outline"
-                    size={18}
-                    color="#7A7A7A"
-                    style={styles.inputIcon}
-                  />
-                  <TextInput
-                    style={styles.inputWithIcon}
-                    placeholder="Enter your numeric ID"
-                    placeholderTextColor="#9E9E9E"
-                    value={id}
-                    onChangeText={(text) => {
-                      const numericOnly = text.replace(/[^0-9]/g, '');
-                      setId(numericOnly);
-                    }}
-                    keyboardType="number-pad"
-                    editable={!isLoading}
-                  />
-                </View>
-              </View>
-
-              <View style={styles.formGroup}>
-                <Text style={styles.fieldLabel}>Password</Text>
-                <View style={styles.passwordContainer}>
-                  <Icon
-                    name="lock-closed-outline"
-                    size={18}
-                    color="#7A7A7A"
-                    style={styles.inputIcon}
-                  />
-                  <TextInput
-                    style={styles.passwordInput}
-                    placeholder="Enter your password"
-                    placeholderTextColor="#9E9E9E"
-                    value={password}
-                    onChangeText={setPassword}
-                    secureTextEntry={!showPassword}
-                    autoCapitalize="none"
-                    editable={!isLoading}
-                    returnKeyType="go" 
-                    onSubmitEditing={handleLogIn} 
-                  />
-
-                  <TouchableOpacity
-                    onPress={() => setShowPassword(!showPassword)}
-                    style={styles.iconButton}
-                    disabled={isLoading}
-                  >
-                    <Icon
-                      name={showPassword ? 'eye-off-outline' : 'eye-outline'}
-                      size={20}
-                      color="#7A7A7A"
-                    />
-                  </TouchableOpacity>
-                </View>
-              </View>
-
-              <TouchableOpacity onPress={handleForgotPassword} disabled={isLoading}>
-                <Text style={styles.forgotPassword}>Forgot Password?</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[styles.logInButton, isLoading && styles.disabledButton]}
-                onPress={handleLogIn}
-                activeOpacity={0.9}
-                disabled={isLoading}
-              >
-                <Text style={styles.logInText}>
-                  {isLoading ? 'Signing in...' : 'Sign In'}
+                <Text style={styles.leftQuote}>
+                  "Learning today, leading tomorrow."
                 </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.registerButton}
-                onPress={onGoToRegister}
-                disabled={isLoading}
-              >
-                <Text style={styles.registerButtonText}>
-                  Don't have an account? Sign Up
-                </Text>
-              </TouchableOpacity>
-            </View>
+                <Text style={styles.leftQuoteAuthor}>— ParseIT Hub</Text>
+              </View>
+            </ImageBackground>
           </View>
-        </ScrollView>
-      </KeyboardAvoidingView>
 
+          {/* RIGHT: form panel */}
+          <View style={styles.rightPanel}>
+            <KeyboardAvoidingView
+              behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+              style={{ flex: 1 }}
+            >
+              <ScrollView
+                contentContainerStyle={styles.rightScrollContent}
+                showsVerticalScrollIndicator={false}
+              >
+                <View style={styles.formWrapperLarge}>
+                  <Text style={styles.headingSplit}>Sign in to your account</Text>
+                  <Text style={styles.subheadingSplit}>
+                    Enter your credentials to continue.
+                  </Text>
+
+                  {FormFields}
+                </View>
+              </ScrollView>
+            </KeyboardAvoidingView>
+          </View>
+        </View>
+      ) : (
+        // ── SMALL SCREEN: full-screen layout (no background image / floating card) ───
+        <View style={styles.fullScreenContainer}>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            style={styles.screen}
+          >
+            <ScrollView
+              contentContainerStyle={styles.fullScreenScrollContent}
+              showsVerticalScrollIndicator={false}
+            >
+              <View style={styles.fullScreenWrapper}>
+                <TouchableOpacity
+                  style={styles.brandBlock}
+                  onPress={handleGoToLanding}
+                  activeOpacity={0.9}
+                >
+                  <View style={styles.logoFloatingContainer}>
+                    <Image
+                      source={require('../../assets/images/logo.png')}
+                      style={styles.logoImage}
+                      resizeMode="contain"
+                    />
+                  </View>
+                </TouchableOpacity>
+
+                <Text style={styles.heading}>Sign in to your account</Text>
+                <Text style={styles.subheading}>
+                  Enter your credentials to continue.
+                </Text>
+
+                {FormFields}
+              </View>
+            </ScrollView>
+          </KeyboardAvoidingView>
+        </View>
+      )}
+
+      {/* Forgot password modal */}
       <Modal
         visible={forgotVisible}
         transparent
@@ -1170,6 +1223,7 @@ const SignIn = ({ onLogIn, onGoToLanding, onGoToRegister }: SignInProps) => {
         </View>
       </Modal>
 
+      {/* First-login setup modal */}
       <Modal
         visible={firstLoginVisible}
         transparent
@@ -1366,6 +1420,7 @@ const SignIn = ({ onLogIn, onGoToLanding, onGoToRegister }: SignInProps) => {
         </View>
       </Modal>
 
+      {/* Feedback modal */}
       <Modal
         visible={feedbackVisible}
         transparent
@@ -1395,11 +1450,111 @@ const SignIn = ({ onLogIn, onGoToLanding, onGoToRegister }: SignInProps) => {
           </View>
         </View>
       </Modal>
-    </ImageBackground>
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
+  // ── Root / split (two-column) layout for large screens (matches Register) ─
+  rootContainer: { flex: 1, backgroundColor: '#FFFFFF' },
+  splitContainer: { flex: 1, flexDirection: 'row' },
+
+  leftPanel: { flex: 1, maxWidth: '48%' },
+  leftPanelBg: {
+    flex: 1,
+    width: '100%',
+    height: '100%',
+    justifyContent: 'space-between',
+    paddingHorizontal: 48,
+    paddingVertical: 40,
+  },
+  leftPanelOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(11, 18, 32, 0.58)',
+  },
+  leftBackButton: {
+    width: 42,
+    height: 42,
+    borderRadius: 13,
+    backgroundColor: 'rgba(255,255,255,0.14)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.3)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  leftPanelContent: { flex: 1, justifyContent: 'flex-end' },
+  leftLogoWrap: {
+    width: 88,
+    height: 88,
+    borderRadius: 24,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 28,
+    shadowColor: '#780000',
+    shadowOpacity: 0.2,
+    shadowOffset: { width: 0, height: 10 },
+    shadowRadius: 24,
+    elevation: 8,
+    borderWidth: 1,
+    borderColor: '#F2F4F7',
+  },
+  leftLogoImage: { width: 58, height: 58 },
+  leftQuote: {
+    fontSize: 27,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    lineHeight: 37,
+    marginBottom: 14,
+  },
+  leftQuoteAuthor: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.85)',
+  },
+
+  rightPanel: { flex: 1, backgroundColor: '#FFFFFF' },
+  rightScrollContent: {
+    flexGrow: 1,
+    justifyContent: 'center',
+    paddingHorizontal: 56,
+    paddingVertical: 18,
+  },
+  formWrapperLarge: { width: '100%', maxWidth: 520, alignSelf: 'center' },
+  headingSplit: {
+    fontSize: 30,
+    fontWeight: '800',
+    color: '#111827',
+    marginBottom: 8,
+    textAlign: 'left',
+  },
+  subheadingSplit: {
+    fontSize: 14,
+    color: '#6B7280',
+    lineHeight: 22,
+    marginBottom: 28,
+    textAlign: 'left',
+  },
+  forgotPasswordLeft: { textAlign: 'left' },
+
+  // ── Full-screen layout (used on small/medium screens) ─────────────────────
+  fullScreenContainer: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+  },
+  fullScreenScrollContent: {
+    flexGrow: 1,
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+    paddingVertical: 40,
+  },
+  fullScreenWrapper: {
+    width: '100%',
+    maxWidth: 420,
+    alignSelf: 'center',
+  },
+
+  // ── Original single-card layout (kept for reference / other screens) ─────
   backgroundImage: {
     flex: 1,
     width: '100%',

@@ -199,14 +199,33 @@ function BirthdayField({
               </TouchableOpacity>
             </View>
 
-            {/* Scrollable columns */}
-            <View style={bdStyles.webDateContent}>
+            {/*
+              Scrollable columns.
+              IMPORTANT: this is now a ScrollView (not a plain View) so that on
+              small/mobile screens — where Month / Day / Year stack vertically
+              via modalRowStack — the user can scroll the whole stack to reach
+              the Year column. Each inner list (webDateList) still scrolls
+              independently for its own options, but nestedScrollEnabled lets
+              both scroll views coexist on Android without one swallowing the
+              other's touches.
+            */}
+            <ScrollView
+              style={bdStyles.webDateContent}
+              contentContainerStyle={bdStyles.webDateContentInner}
+              showsVerticalScrollIndicator={false}
+              nestedScrollEnabled
+              keyboardShouldPersistTaps="handled"
+            >
               <View style={[bdStyles.modalRow, isMobile && bdStyles.modalRowStack]}>
                 {/* Month */}
                 <View style={bdStyles.modalCol}>
                   <Text style={bdStyles.fieldLabel}>Month</Text>
                   <ScrollView
-                    style={bdStyles.webDateList}
+                    style={[
+                      bdStyles.webDateList,
+                      isMobile && bdStyles.webDateListMobile,
+                    ]}
+                    nestedScrollEnabled
                     showsVerticalScrollIndicator={false}
                   >
                     {months.map((month, index) => {
@@ -247,7 +266,11 @@ function BirthdayField({
                 <View style={bdStyles.modalCol}>
                   <Text style={bdStyles.fieldLabel}>Day</Text>
                   <ScrollView
-                    style={bdStyles.webDateList}
+                    style={[
+                      bdStyles.webDateList,
+                      isMobile && bdStyles.webDateListMobile,
+                    ]}
+                    nestedScrollEnabled
                     showsVerticalScrollIndicator={false}
                   >
                     {days.map((day) => {
@@ -284,7 +307,11 @@ function BirthdayField({
                 <View style={bdStyles.modalCol}>
                   <Text style={bdStyles.fieldLabel}>Year</Text>
                   <ScrollView
-                    style={bdStyles.webDateList}
+                    style={[
+                      bdStyles.webDateList,
+                      isMobile && bdStyles.webDateListMobile,
+                    ]}
+                    nestedScrollEnabled
                     showsVerticalScrollIndicator={false}
                   >
                     {years.map((year) => {
@@ -321,7 +348,7 @@ function BirthdayField({
                   </ScrollView>
                 </View>
               </View>
-            </View>
+            </ScrollView>
 
             {/* Footer */}
             <View style={bdStyles.modalFooter}>
@@ -349,7 +376,7 @@ function BirthdayField({
   );
 }
 
-// ─── BirthdayField styles (copied 1-to-1 from AddStudentModal) ───────────────
+// ─── BirthdayField styles (copied 1-to-1 from AddStudentModal, plus scroll fix) ─
 
 const bdStyles = StyleSheet.create({
   fieldLabel: {
@@ -472,10 +499,21 @@ const bdStyles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  // ── FIX: was a plain View before; now the ScrollView that wraps the
+  // Month/Day/Year row. flexShrink lets it take only the space left over
+  // between the header and footer inside webDateModalCard (which already
+  // has maxHeight: '88%'), so it adapts to any screen height instead of
+  // relying on a hardcoded number.
   webDateContent: {
+    flexShrink: 1,
+  },
+  // Padding moved here (into the ScrollView's contentContainerStyle) since
+  // it previously lived directly on the (non-scrollable) webDateContent view.
+  webDateContentInner: {
     paddingHorizontal: 24,
     paddingTop: 20,
     paddingBottom: 8,
+    flexGrow: 1,
   },
   modalRow: {
     flexDirection: 'row',
@@ -496,6 +534,12 @@ const bdStyles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#F1CACA',
     backgroundColor: '#FFF9F9',
+  },
+  // On mobile the three lists stack instead of sitting side by side, so each
+  // one is shortened a bit — this keeps all three (plus their labels) closer
+  // to a comfortable single scroll, while still scrolling internally too.
+  webDateListMobile: {
+    maxHeight: 200,
   },
   dropdownItem: {
     minHeight: 52,
@@ -908,406 +952,414 @@ export default function Register({
   // isMobile used by BirthdayField to stack columns inside the picker modal
   const isMobile = width < 600;
 
-  return (
-    <ImageBackground
-      source={require('../../assets/images/cote.jpeg')}
-      style={styles.backgroundImage}
-      resizeMode="cover"
-    >
-      <View style={styles.backgroundOverlay} />
+  // ── Shared form fields (used inside either layout) ─────────────────────────
+  const RoleSelector = (
+    <View style={[styles.roleSelectionRow, isLargeScreen && styles.roleSelectionRowLargeSplit]}>
+      <View style={styles.roleSelectionContainer}>
+        <Text style={[styles.roleSelectionLabel, isLargeScreen && styles.roleSelectionLabelLeft]}>
+          Choose Your Role
+        </Text>
 
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={styles.screen}
-      >
-        <ScrollView
-          contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}
+        <View style={styles.rolePillContainer}>
+          <TouchableOpacity
+            style={[styles.rolePillButton, userType === 'student' && styles.activeRolePillButton]}
+            onPress={() => setUserType('student')}
+            disabled={isLoading}
+            activeOpacity={0.85}
+          >
+            <View style={styles.rolePillContent}>
+              <Ionicons
+                name="school-outline"
+                size={20}
+                color={userType === 'student' ? '#FFFFFF' : '#6B7280'}
+              />
+              <Text style={[styles.rolePillButtonText, userType === 'student' && styles.activeRolePillButtonText]}>
+                Student
+              </Text>
+            </View>
+          </TouchableOpacity>
+
+          <View style={styles.rolePillDivider} />
+
+          <TouchableOpacity
+            style={[styles.rolePillButton, userType === 'teacher' && styles.activeRolePillButton]}
+            onPress={() => setUserType('teacher')}
+            disabled={isLoading}
+            activeOpacity={0.85}
+          >
+            <View style={styles.rolePillContent}>
+              <Ionicons
+                name="book-outline"
+                size={20}
+                color={userType === 'teacher' ? '#FFFFFF' : '#6B7280'}
+              />
+              <Text style={[styles.rolePillButtonText, userType === 'teacher' && styles.activeRolePillButtonText]}>
+                Teacher
+              </Text>
+            </View>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </View>
+  );
+
+  const FormFields = isLargeScreen ? (
+    // ── LARGE SCREEN: 2-column layout ─────────────────────────────
+    <>
+      <View style={styles.formRow}>
+        <View style={styles.formColumn}>
+          <Text style={styles.fieldLabel}>User ID</Text>
+          <View style={styles.inputWrapper}>
+            <TextInput
+              style={styles.inputWithIcon}
+              placeholder="1234567"
+              placeholderTextColor="#9E9E9E"
+              value={userId}
+              onChangeText={(t) => setUserId(t.replace(/[^0-9]/g, ''))}
+              keyboardType="number-pad"
+              editable={!isLoading}
+            />
+          </View>
+        </View>
+
+        <View style={styles.formColumn}>
+          <Text style={styles.fieldLabel}>First Name</Text>
+          <View style={styles.inputWrapper}>
+            <TextInput
+              style={styles.inputWithIcon}
+              placeholder="John"
+              placeholderTextColor="#9E9E9E"
+              value={firstName}
+              onChangeText={setFirstName}
+              editable={!isLoading}
+            />
+          </View>
+        </View>
+      </View>
+
+      <View style={styles.formRow}>
+        <View style={styles.formColumn}>
+          <Text style={styles.fieldLabel}>Last Name</Text>
+          <View style={styles.inputWrapper}>
+            <TextInput
+              style={styles.inputWithIcon}
+              placeholder="Doe"
+              placeholderTextColor="#9E9E9E"
+              value={lastName}
+              onChangeText={setLastName}
+              editable={!isLoading}
+            />
+          </View>
+        </View>
+
+        <View style={styles.formColumn}>
+          <Text style={styles.fieldLabel}>Email</Text>
+          <View style={styles.inputWrapper}>
+            <TextInput
+              style={styles.inputWithIcon}
+              placeholder="john.doe@gmail.com"
+              placeholderTextColor="#9E9E9E"
+              value={email}
+              onChangeText={setEmail}
+              keyboardType="email-address"
+              autoCapitalize="none"
+              editable={!isLoading}
+            />
+          </View>
+        </View>
+      </View>
+
+      <View style={styles.formRow}>
+        <View style={[styles.formColumn, { flex: 2 }]}>
+          <BirthdayField value={birthday} onChange={setBirthday} isMobile={isMobile} />
+        </View>
+      </View>
+
+      <View style={styles.formRow}>
+        <View style={[styles.formColumn, { flex: 1 }]}>
+          <Text style={styles.fieldLabel}>Password</Text>
+          <View style={styles.passwordContainer}>
+            <TextInput
+              style={styles.passwordInput}
+              placeholder="********"
+              placeholderTextColor="#9E9E9E"
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry={!showPassword}
+              autoCapitalize="none"
+              editable={!isLoading}
+            />
+            <TouchableOpacity onPress={() => setShowPassword(!showPassword)} style={styles.iconButton} disabled={isLoading}>
+              <Ionicons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={20} color="#7A7A7A" />
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        <View style={[styles.formColumn, { flex: 1 }]}>
+          <Text style={styles.fieldLabel}>Confirm Password</Text>
+          <View style={styles.passwordContainer}>
+            <TextInput
+              style={styles.passwordInput}
+              placeholder="********"
+              placeholderTextColor="#9E9E9E"
+              value={confirmPassword}
+              onChangeText={setConfirmPassword}
+              secureTextEntry={!showConfirmPassword}
+              autoCapitalize="none"
+              editable={!isLoading}
+            />
+            <TouchableOpacity onPress={() => setShowConfirmPassword(!showConfirmPassword)} style={styles.iconButton} disabled={isLoading}>
+              <Ionicons name={showConfirmPassword ? 'eye-off-outline' : 'eye-outline'} size={20} color="#7A7A7A" />
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </>
+  ) : (
+    // ── SMALL SCREEN: single column ───────────────────────────────
+    <>
+      <View style={styles.formGroup}>
+        <Text style={styles.fieldLabel}>User ID</Text>
+        <View style={styles.inputWrapper}>
+          <TextInput
+            style={styles.inputWithIcon}
+            placeholder="1234567"
+            placeholderTextColor="#9E9E9E"
+            value={userId}
+            onChangeText={(t) => setUserId(t.replace(/[^0-9]/g, ''))}
+            keyboardType="number-pad"
+            editable={!isLoading}
+          />
+        </View>
+      </View>
+
+      <View style={styles.formGroup}>
+        <Text style={styles.fieldLabel}>First Name</Text>
+        <View style={styles.inputWrapper}>
+          <TextInput
+            style={styles.inputWithIcon}
+            placeholder="John"
+            placeholderTextColor="#9E9E9E"
+            value={firstName}
+            onChangeText={setFirstName}
+            editable={!isLoading}
+          />
+        </View>
+      </View>
+
+      <View style={styles.formGroup}>
+        <Text style={styles.fieldLabel}>Last Name</Text>
+        <View style={styles.inputWrapper}>
+          <TextInput
+            style={styles.inputWithIcon}
+            placeholder="Doe"
+            placeholderTextColor="#9E9E9E"
+            value={lastName}
+            onChangeText={setLastName}
+            editable={!isLoading}
+          />
+        </View>
+      </View>
+
+      <View style={styles.formGroup}>
+        <Text style={styles.fieldLabel}>Email</Text>
+        <View style={styles.inputWrapper}>
+          <TextInput
+            style={styles.inputWithIcon}
+            placeholder="john.doe@gmail.com"
+            placeholderTextColor="#9E9E9E"
+            value={email}
+            onChangeText={setEmail}
+            keyboardType="email-address"
+            autoCapitalize="none"
+            editable={!isLoading}
+          />
+        </View>
+      </View>
+
+      <View style={styles.formGroup}>
+        <BirthdayField value={birthday} onChange={setBirthday} isMobile={isMobile} />
+      </View>
+
+      <View style={styles.formGroup}>
+        <Text style={styles.fieldLabel}>Password</Text>
+        <View style={styles.passwordContainer}>
+          <TextInput
+            style={styles.passwordInput}
+            placeholder="********"
+            placeholderTextColor="#9E9E9E"
+            value={password}
+            onChangeText={setPassword}
+            secureTextEntry={!showPassword}
+            autoCapitalize="none"
+            editable={!isLoading}
+          />
+          <TouchableOpacity onPress={() => setShowPassword(!showPassword)} style={styles.iconButton} disabled={isLoading}>
+            <Ionicons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={20} color="#7A7A7A" />
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      <View style={styles.formGroup}>
+        <Text style={styles.fieldLabel}>Confirm Password</Text>
+        <View style={styles.passwordContainer}>
+          <TextInput
+            style={styles.passwordInput}
+            placeholder="********"
+            placeholderTextColor="#9E9E9E"
+            value={confirmPassword}
+            onChangeText={setConfirmPassword}
+            secureTextEntry={!showConfirmPassword}
+            autoCapitalize="none"
+            editable={!isLoading}
+          />
+          <TouchableOpacity onPress={() => setShowConfirmPassword(!showConfirmPassword)} style={styles.iconButton} disabled={isLoading}>
+            <Ionicons name={showConfirmPassword ? 'eye-off-outline' : 'eye-outline'} size={20} color="#7A7A7A" />
+          </TouchableOpacity>
+        </View>
+      </View>
+    </>
+  );
+
+  const TermsAndSubmit = (
+    <>
+      <Text style={[styles.termsLabel, isLargeScreen && styles.termsLabelLeft]}>
+        By tapping Sign Up, you agree to create an account and to ParseIT Hub's{' '}
+        <Text
+          style={styles.termsLink}
+          onPress={() => {
+            setPolicyView('terms');
+            setPolicyModalVisible(true);
+          }}
         >
-          <View style={[styles.pageWrapper, { maxWidth: isLargeScreen ? 700 : 420 }]}>
-            <View style={styles.card}>
+          Terms of Service
+        </Text>{' '}
+        and{' '}
+        <Text
+          style={styles.termsLink}
+          onPress={() => {
+            setPolicyView('privacy');
+            setPolicyModalVisible(true);
+          }}
+        >
+          Privacy Policy
+        </Text>
+      </Text>
+
+      <TouchableOpacity
+        style={[styles.registerButton, isLoading && styles.disabledButton]}
+        onPress={handleRegister}
+        activeOpacity={0.9}
+        disabled={isLoading}
+      >
+        <Text style={styles.registerButtonText}>
+          {isLoading ? 'Creating Account...' : 'Sign Up'}
+        </Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity style={styles.backButton} onPress={onBack} disabled={isLoading}>
+        <Text style={styles.backButtonText}>Already have an account? Sign In</Text>
+      </TouchableOpacity>
+    </>
+  );
+
+  return (
+    <View style={styles.rootContainer}>
+      {isLargeScreen ? (
+        // ── LARGE SCREEN: two-column split layout ─────────────────────────
+        <View style={styles.splitContainer}>
+          {/* LEFT: image + text panel */}
+          <View style={styles.leftPanel}>
+            <ImageBackground
+              source={require('../../assets/images/cote.jpeg')}
+              style={styles.leftPanelBg}
+              resizeMode="cover"
+            >
+              <View style={styles.leftPanelOverlay} />
+
               <TouchableOpacity
-                style={styles.brandBlock}
+                style={styles.leftBackButton}
                 onPress={() => onGoToLanding?.()}
-                activeOpacity={0.9}
+                activeOpacity={0.85}
               >
-                <View style={styles.logoFloatingContainer}>
+                <Ionicons name="chevron-back" size={20} color="#FFFFFF" />
+              </TouchableOpacity>
+
+              <View style={styles.leftPanelContent}>
+                <View style={styles.leftLogoWrap}>
                   <Image
                     source={require('../../assets/images/logo.png')}
-                    style={styles.logoImage}
+                    style={styles.leftLogoImage}
                     resizeMode="contain"
                   />
                 </View>
-              </TouchableOpacity>
-
-              <Text style={styles.heading}>Create Account</Text>
-              <Text style={styles.subheading}>Sign up as Student or Teacher</Text>
-
-              {/* ── ROW 1: Role Selection (Pill Container) ── */}
-              <View style={[
-                styles.roleSelectionRow,
-                isLargeScreen && styles.roleSelectionRowLarge
-              ]}>
-                <View style={[
-                  styles.roleSelectionContainer,
-                  isLargeScreen && styles.roleSelectionContainerLarge
-                ]}>
-                  <Text style={styles.roleSelectionLabel}>Choose Your Role</Text>
-                  
-                  {/* Outer Pill Container */}
-                  <View style={[
-                    styles.rolePillContainer,
-                    isLargeScreen && styles.rolePillContainerLarge
-                  ]}>
-                    {/* Student Button */}
-                    <TouchableOpacity
-                      style={[
-                        styles.rolePillButton,
-                        userType === 'student' && styles.activeRolePillButton,
-                        isLargeScreen && styles.rolePillButtonLarge,
-                      ]}
-                      onPress={() => setUserType('student')}
-                      disabled={isLoading}
-                      activeOpacity={0.85}
-                    >
-                      <View style={styles.rolePillContent}>
-                        <Ionicons 
-                          name="school-outline" 
-                          size={isLargeScreen ? 18 : 20} 
-                          color={userType === 'student' ? '#FFFFFF' : '#6B7280'} 
-                        />
-                        <Text 
-                          style={[
-                            styles.rolePillButtonText, 
-                            userType === 'student' && styles.activeRolePillButtonText,
-                            isLargeScreen && styles.rolePillButtonTextLarge,
-                          ]}
-                        >
-                          Student
-                        </Text>
-                      </View>
-                    </TouchableOpacity>
-
-                    {/* Divider */}
-                    <View style={styles.rolePillDivider} />
-
-                    {/* Teacher Button */}
-                    <TouchableOpacity
-                      style={[
-                        styles.rolePillButton,
-                        userType === 'teacher' && styles.activeRolePillButton,
-                        isLargeScreen && styles.rolePillButtonLarge,
-                      ]}
-                      onPress={() => setUserType('teacher')}
-                      disabled={isLoading}
-                      activeOpacity={0.85}
-                    >
-                      <View style={styles.rolePillContent}>
-                        <Ionicons 
-                          name="book-outline" 
-                          size={isLargeScreen ? 18 : 20} 
-                          color={userType === 'teacher' ? '#FFFFFF' : '#6B7280'} 
-                        />
-                        <Text 
-                          style={[
-                            styles.rolePillButtonText, 
-                            userType === 'teacher' && styles.activeRolePillButtonText,
-                            isLargeScreen && styles.rolePillButtonTextLarge,
-                          ]}
-                        >
-                          Teacher
-                        </Text>
-                      </View>
-                    </TouchableOpacity>
-                  </View>
-                </View>
+                <Text style={styles.leftQuote}>
+                  "Learning today, leading tomorrow."
+                </Text>
+                <Text style={styles.leftQuoteAuthor}>— ParseIT Hub</Text>
               </View>
+            </ImageBackground>
+          </View>
 
-              {isLargeScreen ? (
-                // ── LARGE SCREEN: 2-column layout ─────────────────────────────
-                <>
-                  {/* Row 2: User ID · First Name */}
-                  <View style={styles.formRow}>
-                    <View style={styles.formColumn}>
-                      <Text style={styles.fieldLabel}>User ID</Text>
-                      <View style={styles.inputWrapper}>
-                        <Ionicons name="person-outline" size={18} color="#7A7A7A" style={styles.inputIcon} />
-                        <TextInput
-                          style={styles.inputWithIcon}
-                          placeholder="ID"
-                          placeholderTextColor="#9E9E9E"
-                          value={userId}
-                          onChangeText={(t) => setUserId(t.replace(/[^0-9]/g, ''))}
-                          keyboardType="number-pad"
-                          editable={!isLoading}
-                        />
-                      </View>
-                    </View>
+          {/* RIGHT: form panel */}
+          <View style={styles.rightPanel}>
+            <KeyboardAvoidingView
+              behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+              style={{ flex: 1 }}
+            >
+              <ScrollView
+                contentContainerStyle={styles.rightScrollContent}
+                showsVerticalScrollIndicator={false}
+              >
+                <View style={styles.formWrapperLarge}>
+                  <Text style={styles.headingSplit}>Create your Account</Text>
+                  <Text style={styles.subheadingSplit}>Join ParseIT Hub and start your smarter learning journey.</Text>
 
-                    <View style={styles.formColumn}>
-                      <Text style={styles.fieldLabel}>First Name</Text>
-                      <View style={styles.inputWrapper}>
-                        <Ionicons name="person-outline" size={18} color="#7A7A7A" style={styles.inputIcon} />
-                        <TextInput
-                          style={styles.inputWithIcon}
-                          placeholder="First name"
-                          placeholderTextColor="#9E9E9E"
-                          value={firstName}
-                          onChangeText={setFirstName}
-                          editable={!isLoading}
-                        />
-                      </View>
-                    </View>
-                  </View>
-
-                  {/* Row 3: Last Name · Email */}
-                  <View style={styles.formRow}>
-                    <View style={styles.formColumn}>
-                      <Text style={styles.fieldLabel}>Last Name</Text>
-                      <View style={styles.inputWrapper}>
-                        <Ionicons name="person-outline" size={18} color="#7A7A7A" style={styles.inputIcon} />
-                        <TextInput
-                          style={styles.inputWithIcon}
-                          placeholder="Last name"
-                          placeholderTextColor="#9E9E9E"
-                          value={lastName}
-                          onChangeText={setLastName}
-                          editable={!isLoading}
-                        />
-                      </View>
-                    </View>
-
-                    <View style={styles.formColumn}>
-                      <Text style={styles.fieldLabel}>Email</Text>
-                      <View style={styles.inputWrapper}>
-                        <Ionicons name="mail-outline" size={18} color="#7A7A7A" style={styles.inputIcon} />
-                        <TextInput
-                          style={styles.inputWithIcon}
-                          placeholder="Email"
-                          placeholderTextColor="#9E9E9E"
-                          value={email}
-                          onChangeText={setEmail}
-                          keyboardType="email-address"
-                          autoCapitalize="none"
-                          editable={!isLoading}
-                        />
-                      </View>
-                    </View>
-                  </View>
-
-                  {/* Row 4: Birthday (full width) */}
-                  <View style={styles.formRow}>
-                    <View style={[styles.formColumn, { flex: 2 }]}>
-                      <BirthdayField
-                        value={birthday}
-                        onChange={setBirthday}
-                        isMobile={isMobile}
-                      />
-                    </View>
-                  </View>
-
-                  {/* Row 5: Password · Confirm Password */}
-                  <View style={styles.formRow}>
-                    <View style={[styles.formColumn, { flex: 1 }]}>
-                      <Text style={styles.fieldLabel}>Password</Text>
-                      <View style={styles.passwordContainer}>
-                        <Ionicons name="lock-closed-outline" size={18} color="#7A7A7A" style={styles.inputIcon} />
-                        <TextInput
-                          style={styles.passwordInput}
-                          placeholder="Password"
-                          placeholderTextColor="#9E9E9E"
-                          value={password}
-                          onChangeText={setPassword}
-                          secureTextEntry={!showPassword}
-                          autoCapitalize="none"
-                          editable={!isLoading}
-                        />
-                        <TouchableOpacity onPress={() => setShowPassword(!showPassword)} style={styles.iconButton} disabled={isLoading}>
-                          <Ionicons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={20} color="#7A7A7A" />
-                        </TouchableOpacity>
-                      </View>
-                    </View>
-
-                    <View style={[styles.formColumn, { flex: 1 }]}>
-                      <Text style={styles.fieldLabel}>Confirm Password</Text>
-                      <View style={styles.passwordContainer}>
-                        <Ionicons name="lock-closed-outline" size={18} color="#7A7A7A" style={styles.inputIcon} />
-                        <TextInput
-                          style={styles.passwordInput}
-                          placeholder="Confirm password"
-                          placeholderTextColor="#9E9E9E"
-                          value={confirmPassword}
-                          onChangeText={setConfirmPassword}
-                          secureTextEntry={!showConfirmPassword}
-                          autoCapitalize="none"
-                          editable={!isLoading}
-                        />
-                        <TouchableOpacity onPress={() => setShowConfirmPassword(!showConfirmPassword)} style={styles.iconButton} disabled={isLoading}>
-                          <Ionicons name={showConfirmPassword ? 'eye-off-outline' : 'eye-outline'} size={20} color="#7A7A7A" />
-                        </TouchableOpacity>
-                      </View>
-                    </View>
-                  </View>
-                </>
-              ) : (
-                // ── SMALL SCREEN: single column ───────────────────────────────
-                <>
-                  <View style={styles.formGroup}>
-                    <Text style={styles.fieldLabel}>User ID</Text>
-                    <View style={styles.inputWrapper}>
-                      <Ionicons name="person-outline" size={18} color="#7A7A7A" style={styles.inputIcon} />
-                      <TextInput
-                        style={styles.inputWithIcon}
-                        placeholder="Enter your numeric ID"
-                        placeholderTextColor="#9E9E9E"
-                        value={userId}
-                        onChangeText={(t) => setUserId(t.replace(/[^0-9]/g, ''))}
-                        keyboardType="number-pad"
-                        editable={!isLoading}
-                      />
-                    </View>
-                  </View>
-
-                  <View style={styles.formGroup}>
-                    <Text style={styles.fieldLabel}>First Name</Text>
-                    <View style={styles.inputWrapper}>
-                      <Ionicons name="person-outline" size={18} color="#7A7A7A" style={styles.inputIcon} />
-                      <TextInput
-                        style={styles.inputWithIcon}
-                        placeholder="Enter first name"
-                        placeholderTextColor="#9E9E9E"
-                        value={firstName}
-                        onChangeText={setFirstName}
-                        editable={!isLoading}
-                      />
-                    </View>
-                  </View>
-
-                  <View style={styles.formGroup}>
-                    <Text style={styles.fieldLabel}>Last Name</Text>
-                    <View style={styles.inputWrapper}>
-                      <Ionicons name="person-outline" size={18} color="#7A7A7A" style={styles.inputIcon} />
-                      <TextInput
-                        style={styles.inputWithIcon}
-                        placeholder="Enter last name"
-                        placeholderTextColor="#9E9E9E"
-                        value={lastName}
-                        onChangeText={setLastName}
-                        editable={!isLoading}
-                      />
-                    </View>
-                  </View>
-
-                  <View style={styles.formGroup}>
-                    <Text style={styles.fieldLabel}>Email</Text>
-                    <View style={styles.inputWrapper}>
-                      <Ionicons name="mail-outline" size={18} color="#7A7A7A" style={styles.inputIcon} />
-                      <TextInput
-                        style={styles.inputWithIcon}
-                        placeholder="Enter email address"
-                        placeholderTextColor="#9E9E9E"
-                        value={email}
-                        onChangeText={setEmail}
-                        keyboardType="email-address"
-                        autoCapitalize="none"
-                        editable={!isLoading}
-                      />
-                    </View>
-                  </View>
-
-                  {/* ── Birthday picker (single column) ── */}
-                  <View style={styles.formGroup}>
-                    <BirthdayField
-                      value={birthday}
-                      onChange={setBirthday}
-                      isMobile={isMobile}
+                  {RoleSelector}
+                  {FormFields}
+                  {TermsAndSubmit}
+                </View>
+              </ScrollView>
+            </KeyboardAvoidingView>
+          </View>
+        </View>
+      ) : (
+        // ── SMALL SCREEN: full-screen layout (no background image / floating card) ───
+        <View style={styles.fullScreenContainer}>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            style={styles.screen}
+          >
+            <ScrollView
+              contentContainerStyle={styles.fullScreenScrollContent}
+              showsVerticalScrollIndicator={false}
+            >
+              <View style={styles.fullScreenWrapper}>
+                <TouchableOpacity
+                  style={styles.brandBlock}
+                  onPress={() => onGoToLanding?.()}
+                  activeOpacity={0.9}
+                >
+                  <View style={styles.logoFloatingContainer}>
+                    <Image
+                      source={require('../../assets/images/logo.png')}
+                      style={styles.logoImage}
+                      resizeMode="contain"
                     />
                   </View>
+                </TouchableOpacity>
 
-                  <View style={styles.formGroup}>
-                    <Text style={styles.fieldLabel}>Password</Text>
-                    <View style={styles.passwordContainer}>
-                      <Ionicons name="lock-closed-outline" size={18} color="#7A7A7A" style={styles.inputIcon} />
-                      <TextInput
-                        style={styles.passwordInput}
-                        placeholder="Enter password"
-                        placeholderTextColor="#9E9E9E"
-                        value={password}
-                        onChangeText={setPassword}
-                        secureTextEntry={!showPassword}
-                        autoCapitalize="none"
-                        editable={!isLoading}
-                      />
-                      <TouchableOpacity onPress={() => setShowPassword(!showPassword)} style={styles.iconButton} disabled={isLoading}>
-                        <Ionicons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={20} color="#7A7A7A" />
-                      </TouchableOpacity>
-                    </View>
-                  </View>
+                <Text style={styles.heading}>Create your Account</Text>
+                <Text style={styles.subheading}>Join ParseIT Hub and start your smarter learning journey.</Text>
 
-                  <View style={styles.formGroup}>
-                    <Text style={styles.fieldLabel}>Confirm Password</Text>
-                    <View style={styles.passwordContainer}>
-                      <Ionicons name="lock-closed-outline" size={18} color="#7A7A7A" style={styles.inputIcon} />
-                      <TextInput
-                        style={styles.passwordInput}
-                        placeholder="Confirm password"
-                        placeholderTextColor="#9E9E9E"
-                        value={confirmPassword}
-                        onChangeText={setConfirmPassword}
-                        secureTextEntry={!showConfirmPassword}
-                        autoCapitalize="none"
-                        editable={!isLoading}
-                      />
-                      <TouchableOpacity onPress={() => setShowConfirmPassword(!showConfirmPassword)} style={styles.iconButton} disabled={isLoading}>
-                        <Ionicons name={showConfirmPassword ? 'eye-off-outline' : 'eye-outline'} size={20} color="#7A7A7A" />
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                </>
-              )}
-
-              <Text style={styles.termsLabel}>
-                By tapping Sign Up, you agree to create an account and to
-                ParseIT Hub's{' '}
-                <Text
-                  style={styles.termsLink}
-                  onPress={() => {
-                    setPolicyView('terms');
-                    setPolicyModalVisible(true);
-                  }}
-                >
-                  Terms of Service
-                </Text>{' '}
-                and{' '}
-                <Text
-                  style={styles.termsLink}
-                  onPress={() => {
-                    setPolicyView('privacy');
-                    setPolicyModalVisible(true);
-                  }}
-                >
-                  Privacy Policy
-                </Text>
-              </Text>
-
-              <TouchableOpacity
-                style={[styles.registerButton, isLoading && styles.disabledButton]}
-                onPress={handleRegister}
-                activeOpacity={0.9}
-                disabled={isLoading}
-              >
-                <Text style={styles.registerButtonText}>
-                  {isLoading ? 'Creating Account...' : 'Sign Up'}
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity style={styles.backButton} onPress={onBack} disabled={isLoading}>
-                <Text style={styles.backButtonText}>Already have an account? Sign In</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </ScrollView>
-      </KeyboardAvoidingView>
+                {RoleSelector}
+                {FormFields}
+                {TermsAndSubmit}
+              </View>
+            </ScrollView>
+          </KeyboardAvoidingView>
+        </View>
+      )}
 
       {/* Terms of Service / Privacy Policy full-screen page */}
       <TermsPrivacyModal
@@ -1331,13 +1383,116 @@ export default function Register({
           </View>
         </View>
       </Modal>
-    </ImageBackground>
+    </View>
   );
 }
 
 // ─── Register styles (updated with pill container role selection) ─────────────
 
 const styles = StyleSheet.create({
+  // ── Split (two-column) layout for large screens ──────────────────────────
+  rootContainer: { flex: 1, backgroundColor: '#FFFFFF' },
+  splitContainer: { flex: 1, flexDirection: 'row' },
+
+  leftPanel: { flex: 1, maxWidth: '48%' },
+  leftPanelBg: {
+    flex: 1,
+    width: '100%',
+    height: '100%',
+    justifyContent: 'space-between',
+    paddingHorizontal: 48,
+    paddingVertical: 40,
+  },
+  leftPanelOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(11, 18, 32, 0.58)',
+  },
+  leftBackButton: {
+    width: 42,
+    height: 42,
+    borderRadius: 13,
+    backgroundColor: 'rgba(255,255,255,0.14)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.3)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  leftPanelContent: { flex: 1, justifyContent: 'flex-end' },
+  leftLogoWrap: {
+    width: 88,
+    height: 88,
+    borderRadius: 24,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 28,
+    shadowColor: '#780000',
+    shadowOpacity: 0.2,
+    shadowOffset: { width: 0, height: 10 },
+    shadowRadius: 24,
+    elevation: 8,
+    borderWidth: 1,
+    borderColor: '#F2F4F7',
+  },
+  leftLogoImage: { width: 58, height: 58 },
+  leftQuote: {
+    fontSize: 27,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    lineHeight: 37,
+    marginBottom: 14,
+  },
+  leftQuoteAuthor: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.85)',
+  },
+
+  rightPanel: { flex: 1, backgroundColor: '#FFFFFF' },
+  rightScrollContent: {
+    flexGrow: 1,
+    justifyContent: 'center',
+    paddingHorizontal: 56,
+    paddingVertical: 18,
+  },
+  formWrapperLarge: { width: '100%', maxWidth: 520, alignSelf: 'center' },
+  headingSplit: {
+    
+    fontSize: 30,
+    fontWeight: '800',
+    color: '#111827',
+    marginBottom: 8,
+    textAlign: 'left',
+  },
+  subheadingSplit: {
+    fontSize: 14,
+    color: '#6B7280',
+    lineHeight: 22,
+    marginBottom: 28,
+    textAlign: 'left',
+  },
+  roleSelectionRowLargeSplit: { alignItems: 'flex-start' },
+  roleSelectionLabelLeft: { textAlign: 'left' },
+  termsLabelLeft: { textAlign: 'left' },
+
+  // ── Full-screen layout (used on small/medium screens) ─────────────────────
+  fullScreenContainer: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+  },
+  fullScreenScrollContent: {
+    flexGrow: 1,
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+    paddingVertical: 40,
+  },
+  fullScreenWrapper: {
+    width: '100%',
+    maxWidth: 420,
+    alignSelf: 'center',
+  },
+
+  // ── Original single-card layout (kept for reference / other screens) ─────
   backgroundImage: { flex: 1, width: '100%', height: '100%' },
   backgroundOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(11, 18, 32, 0.58)' },
   screen: { flex: 1 },
@@ -1498,7 +1653,6 @@ const styles = StyleSheet.create({
     lineHeight: 19,
     color: '#6B7280',
     textAlign: 'center',
-    marginTop: 22,
   },
   termsLink: {
     color: '#D32F2F',
