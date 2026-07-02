@@ -1,7 +1,9 @@
 import Constants from 'expo-constants';
 import { signInWithEmailAndPassword, signOut } from 'firebase/auth';
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Animated,
+  Easing,
   Image,
   ImageBackground,
   KeyboardAvoidingView,
@@ -87,6 +89,10 @@ function getApiBaseUrl() {
 
 const API_BASE_URL = getApiBaseUrl();
 
+// ─── Screen transition timing (kept in sync with Register.tsx) ──────────────
+const SCREEN_TRANSITION_DURATION = 280;
+const SCREEN_SLIDE_DISTANCE = 24;
+
 const SignIn = ({ onLogIn, onGoToLanding, onGoToRegister }: SignInProps) => {
   const [id, setId] = useState('');
   const [password, setPassword] = useState('');
@@ -122,6 +128,59 @@ const SignIn = ({ onLogIn, onGoToLanding, onGoToRegister }: SignInProps) => {
   const isLargeScreen = width >= 1024;
   const isSmallScreen = width < 480;
   const isTablet = width >= 768;
+
+  // ── Screen enter/exit animation ─────────────────────────────────────────
+  // Sign In is treated as the "start" screen: it enters by fading/sliding in
+  // from the left, and when the user navigates forward to Register it exits
+  // by fading/sliding out to the left (so Register can slide in from the
+  // right, giving the two screens a consistent left↔right relationship).
+  const screenOpacity = useRef(new Animated.Value(0)).current;
+  const screenTranslateX = useRef(new Animated.Value(-SCREEN_SLIDE_DISTANCE)).current;
+
+  useEffect(() => {
+    screenOpacity.setValue(0);
+    screenTranslateX.setValue(-SCREEN_SLIDE_DISTANCE);
+
+    Animated.parallel([
+      Animated.timing(screenOpacity, {
+        toValue: 1,
+        duration: SCREEN_TRANSITION_DURATION,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+      Animated.timing(screenTranslateX, {
+        toValue: 0,
+        duration: SCREEN_TRANSITION_DURATION,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+    ]).start();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const navigateAway = (direction: 'toRegister' | 'toLanding', action?: () => void) => {
+    const exitTo =
+      direction === 'toRegister' ? -SCREEN_SLIDE_DISTANCE : SCREEN_SLIDE_DISTANCE;
+
+    Animated.parallel([
+      Animated.timing(screenOpacity, {
+        toValue: 0,
+        duration: SCREEN_TRANSITION_DURATION,
+        easing: Easing.in(Easing.cubic),
+        useNativeDriver: true,
+      }),
+      Animated.timing(screenTranslateX, {
+        toValue: exitTo,
+        duration: SCREEN_TRANSITION_DURATION,
+        easing: Easing.in(Easing.cubic),
+        useNativeDriver: true,
+      }),
+    ]).start(({ finished }) => {
+      if (finished) {
+        action?.();
+      }
+    });
+  };
 
   const isValidEmail = (email: string) => {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
@@ -177,7 +236,13 @@ const SignIn = ({ onLogIn, onGoToLanding, onGoToRegister }: SignInProps) => {
 
   const handleGoToLanding = () => {
     if (typeof onGoToLanding === 'function') {
-      onGoToLanding();
+      navigateAway('toLanding', onGoToLanding);
+    }
+  };
+
+  const handleGoToRegister = () => {
+    if (typeof onGoToRegister === 'function') {
+      navigateAway('toRegister', onGoToRegister);
     }
   };
 
@@ -867,7 +932,7 @@ const SignIn = ({ onLogIn, onGoToLanding, onGoToRegister }: SignInProps) => {
       </TouchableOpacity>
       <TouchableOpacity
         style={styles.registerButton}
-        onPress={onGoToRegister}
+        onPress={handleGoToRegister}
         disabled={isLoading}
       >
         <Text style={styles.registerButtonText}>
@@ -878,7 +943,15 @@ const SignIn = ({ onLogIn, onGoToLanding, onGoToRegister }: SignInProps) => {
   );
 
   return (
-    <View style={styles.rootContainer}>
+    <Animated.View
+      style={[
+        styles.rootContainer,
+        {
+          opacity: screenOpacity,
+          transform: [{ translateX: screenTranslateX }],
+        },
+      ]}
+    >
       {isLargeScreen ? (
         // ── LARGE SCREEN: two-column split layout (matches Register) ─────
         <View style={styles.splitContainer}>
@@ -1450,7 +1523,7 @@ const SignIn = ({ onLogIn, onGoToLanding, onGoToRegister }: SignInProps) => {
           </View>
         </View>
       </Modal>
-    </View>
+    </Animated.View>
   );
 };
 

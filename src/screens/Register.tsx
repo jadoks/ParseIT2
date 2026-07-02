@@ -3,8 +3,10 @@ import DateTimePicker, {
   DateTimePickerEvent,
 } from '@react-native-community/datetimepicker';
 import Constants from 'expo-constants';
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
+  Animated,
+  Easing,
   Image,
   ImageBackground,
   KeyboardAvoidingView,
@@ -54,6 +56,10 @@ function getApiBaseUrl() {
 }
 
 const API_BASE_URL = getApiBaseUrl();
+
+// ─── Screen transition timing (kept in sync with SignIn.tsx) ────────────────
+const SCREEN_TRANSITION_DURATION = 280;
+const SCREEN_SLIDE_DISTANCE = 24;
 
 // ─── BirthdayField (matches AddStudentModal exactly) ─────────────────────────
 
@@ -845,6 +851,69 @@ export default function Register({
   const [feedbackMessage, setFeedbackMessage] = useState('');
   const [feedbackOnClose, setFeedbackOnClose] = useState<(() => void) | null>(null);
 
+  // ── Screen enter/exit animation ─────────────────────────────────────────
+  // Register is treated as the "forward" screen relative to Sign In: it
+  // enters by fading/sliding in from the right, and when the user goes back
+  // to Sign In it exits by fading/sliding out to the right — mirroring
+  // SignIn's left↔right behavior so the pair feels like one connected flow.
+  const screenOpacity = useRef(new Animated.Value(0)).current;
+  const screenTranslateX = useRef(new Animated.Value(SCREEN_SLIDE_DISTANCE)).current;
+
+  useEffect(() => {
+    screenOpacity.setValue(0);
+    screenTranslateX.setValue(SCREEN_SLIDE_DISTANCE);
+
+    Animated.parallel([
+      Animated.timing(screenOpacity, {
+        toValue: 1,
+        duration: SCREEN_TRANSITION_DURATION,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+      Animated.timing(screenTranslateX, {
+        toValue: 0,
+        duration: SCREEN_TRANSITION_DURATION,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+    ]).start();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const navigateAway = (direction: 'toSignIn' | 'toLanding', action?: () => void) => {
+    const exitTo =
+      direction === 'toSignIn' ? SCREEN_SLIDE_DISTANCE : -SCREEN_SLIDE_DISTANCE;
+
+    Animated.parallel([
+      Animated.timing(screenOpacity, {
+        toValue: 0,
+        duration: SCREEN_TRANSITION_DURATION,
+        easing: Easing.in(Easing.cubic),
+        useNativeDriver: true,
+      }),
+      Animated.timing(screenTranslateX, {
+        toValue: exitTo,
+        duration: SCREEN_TRANSITION_DURATION,
+        easing: Easing.in(Easing.cubic),
+        useNativeDriver: true,
+      }),
+    ]).start(({ finished }) => {
+      if (finished) {
+        action?.();
+      }
+    });
+  };
+
+  const handleGoToSignIn = () => {
+    navigateAway('toSignIn', onBack);
+  };
+
+  const handleGoToLanding = () => {
+    if (typeof onGoToLanding === 'function') {
+      navigateAway('toLanding', onGoToLanding);
+    }
+  };
+
   const isValidEmail = (value: string) =>
     /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
 
@@ -1257,14 +1326,22 @@ export default function Register({
         </Text>
       </TouchableOpacity>
 
-      <TouchableOpacity style={styles.backButton} onPress={onBack} disabled={isLoading}>
+      <TouchableOpacity style={styles.backButton} onPress={handleGoToSignIn} disabled={isLoading}>
         <Text style={styles.backButtonText}>Already have an account? Sign In</Text>
       </TouchableOpacity>
     </>
   );
 
   return (
-    <View style={styles.rootContainer}>
+    <Animated.View
+      style={[
+        styles.rootContainer,
+        {
+          opacity: screenOpacity,
+          transform: [{ translateX: screenTranslateX }],
+        },
+      ]}
+    >
       {isLargeScreen ? (
         // ── LARGE SCREEN: two-column split layout ─────────────────────────
         <View style={styles.splitContainer}>
@@ -1279,7 +1356,7 @@ export default function Register({
 
               <TouchableOpacity
                 style={styles.leftBackButton}
-                onPress={() => onGoToLanding?.()}
+                onPress={handleGoToLanding}
                 activeOpacity={0.85}
               >
                 <Ionicons name="chevron-back" size={20} color="#FFFFFF" />
@@ -1309,7 +1386,7 @@ export default function Register({
             >
               <ScrollView
                 contentContainerStyle={styles.rightScrollContent}
-                showsVerticalScrollIndicator={false}
+                showsVerticalScrollIndicator={true}
               >
                 <View style={styles.formWrapperLarge}>
                   <Text style={styles.headingSplit}>Create your Account</Text>
@@ -1337,7 +1414,7 @@ export default function Register({
               <View style={styles.fullScreenWrapper}>
                 <TouchableOpacity
                   style={styles.brandBlock}
-                  onPress={() => onGoToLanding?.()}
+                  onPress={handleGoToLanding}
                   activeOpacity={0.9}
                 >
                   <View style={styles.logoFloatingContainer}>
@@ -1383,7 +1460,7 @@ export default function Register({
           </View>
         </View>
       </Modal>
-    </View>
+    </Animated.View>
   );
 }
 
