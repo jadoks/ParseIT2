@@ -1897,11 +1897,21 @@ const handleCreateManualLesson = async () => {
     setDraftDueDateTime(next);
   };
   const toggleRelatedMaterial = (materialId: string) => {
-    setSelectedMaterialIds((prev) =>
-      prev.includes(materialId) ? prev.filter((id) => id !== materialId) : [...prev, materialId]
-    );
-    setErrors((prev) => ({ ...prev, materials: undefined }));
-  };
+  setSelectedMaterialIds((prev) => {
+    const isSelected = prev.includes(materialId);
+
+    if (isSelected) {
+      // Deselecting: remove it, nothing stays hidden
+      return prev.filter((id) => id !== materialId);
+    }
+
+    // ✅ STRICT MODE FOR ALL TYPES: selecting ANY material or lesson
+    // clears everything else — only this one item remains selected.
+    return [materialId];
+  });
+
+  setErrors((prev) => ({ ...prev, materials: undefined }));
+};
   const handlePickFile = async () => {
     try {
       const result = await DocumentPicker.getDocumentAsync({
@@ -2480,62 +2490,73 @@ let finalQuestions = uniqueQuestions;
   const calendarDays = getCalendarDays(visibleCalendarMonth);
   const renderInputError = (message?: string) =>
     !!message ? <Text style={styles.errorText}>{message}</Text> : null;
-  const renderRelatedMaterialsSelector = () => (
-  <View style={styles.sectionBlock}>
-    <Text style={styles.sectionLabel}>Learning Materials</Text>
-    <Text style={styles.helperText}>
-      Select the materials or lessons the AI should use for follow-up activity generation or game content.
-    </Text>
-    {materials.length === 0 ? (
-      <Text style={styles.emptyMiniText}>No created materials or lessons yet.</Text>
-    ) : (
-      <View
-        style={[styles.materialSelectorWrap, errors.materials ? styles.errorContainer : null]}
-      >
-        {materials.map((material) => {
-          const active = selectedMaterialIds.includes(material.id);
-          // Check if this item is a Module Lesson based on the 'type' field added in backend
-          const isLesson = (material as any).isLesson === true || (material as any).type === 'module_lesson';
-          
-          return (
-            <TouchableOpacity
-              key={material.id}
-              style={[
-                styles.materialChip, 
-                active && styles.materialChipActive,
-                isLesson && styles.lessonChip // Add specific style for lessons
-              ]}
-              onPress={() => toggleRelatedMaterial(material.id)}
-              activeOpacity={0.85}
-              disabled={isSaving}
-            >
-              <Ionicons
-                name={active ? 'checkmark-circle' : isLesson ? 'book-outline' : 'ellipse-outline'}
-                size={16}
-                color={active ? '#FFF' : isLesson ? '#1976D2' : '#D32F2F'}
-              />
-              <View style={{ flex: 1 }}>
-                <Text style={[
-                  styles.materialChipText, 
-                  active && styles.materialChipTextActive,
-                  isLesson && styles.lessonChipText
-                ]}>
-                  {material.title}
-                </Text>
-                {isLesson && (
-                  <Text style={[styles.lessonSubtext, active && styles.lessonSubtextActive]}>
-                    Lesson {(material as any).lessonNumber || ''}
+  const renderRelatedMaterialsSelector = () => {
+  // Check if ANY item is currently selected (material or lesson)
+  const hasSelection = selectedMaterialIds.length > 0;
+
+  return (
+    <View style={styles.sectionBlock}>
+      <Text style={styles.sectionLabel}>Module Lessons</Text>
+      <Text style={styles.helperText}>
+        Select one lesson the AI should use for follow-up activity generation or game content.
+      </Text>
+      {materials.length === 0 ? (
+        <Text style={styles.emptyMiniText}>No created materials or lessons yet.</Text>
+      ) : (
+        <View
+          style={[styles.materialSelectorWrap, errors.materials ? styles.errorContainer : null]}
+        >
+          {materials.map((material) => {
+            const active = selectedMaterialIds.includes(material.id);
+            const isLesson = (material as any).isLesson === true || (material as any).type === 'module_lesson';
+
+            // ✅ HIDE LOGIC: If anything is selected, hide everything except that item
+            if (hasSelection && !active) {
+              return null;
+            }
+
+            return (
+              <TouchableOpacity
+                key={material.id}
+                style={[
+                  styles.materialChip,
+                  active && styles.materialChipActive,
+                  isLesson && styles.lessonChip
+                ]}
+                onPress={() => toggleRelatedMaterial(material.id)}
+                activeOpacity={0.85}
+                disabled={isSaving}
+              >
+                <Ionicons
+                  name={active ? 'checkmark-circle' : isLesson ? 'book-outline' : 'ellipse-outline'}
+                  size={16}
+                  color={active ? '#FFF' : isLesson ? '#1976D2' : '#D32F2F'}
+                />
+                <View style={{ flex: 1 }}>
+                  <Text style={[
+                    styles.materialChipText,
+                    active && styles.materialChipTextActive,
+                    isLesson && styles.lessonChipText
+                  ]}>
+                    {material.title}
                   </Text>
-                )}
-              </View>
-            </TouchableOpacity>
-          );
-        })}
-      </View>
-    )}
-    {renderInputError(errors.materials)}
-  </View>
-);
+                  {isLesson && (
+                    <Text style={[styles.lessonSubtext, active && styles.lessonSubtextActive]}>
+                      {active 
+                        ? 'Selected' 
+                        : 'Lesson ' + ((material as any).lessonNumber || '')}
+                    </Text>
+                  )}
+                </View>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      )}
+      {renderInputError(errors.materials)}
+    </View>
+  );
+};
   const renderDateTimeField = () => (
     <View style={styles.sectionBlock}>
       <Text style={styles.sectionLabel}>Due Date & Time</Text>

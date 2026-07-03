@@ -243,7 +243,7 @@ const Game = ({ onNavigate, enrolledCourses = [], studentId, onSaveQuizScore }: 
           <Text style={styles.settingsTitle}>Quiz Settings</Text>
         </View>
         <Text style={styles.settingsSubtitle}>
-          This configuration applies to both <Text style={{fontWeight: '700'}}>File Uploads</Text> and <Text style={{fontWeight: '700'}}>Class Materials</Text>.
+          This configuration applies to both <Text style={{fontWeight: '700'}}>File Uploads</Text> and <Text style={{fontWeight: '700'}}>Class Lessons</Text>.
         </Text>
         
         <View>
@@ -285,7 +285,7 @@ const Game = ({ onNavigate, enrolledCourses = [], studentId, onSaveQuizScore }: 
       </View>
 
       <View style={styles.selectorCard}>
-        <Text style={styles.selectorTitle}>Choose class & materials</Text>
+        <Text style={styles.selectorTitle}>Choose class & lesson</Text>
         <View style={{ marginBottom: 20 }}>
           <Text style={styles.inputLabel}>Select Class</Text>
           <TouchableOpacity style={styles.dropdownTrigger} onPress={() => setIsClassDropdownOpen(true)} activeOpacity={0.7}>
@@ -328,28 +328,52 @@ const Game = ({ onNavigate, enrolledCourses = [], studentId, onSaveQuizScore }: 
         </Modal>
 
         {selectedClassId !== '' && (
-          <View style={styles.materialsSection}>
-            <Text style={styles.inputLabel}>Select materials (one or more)</Text>
-            {availableMaterials.length === 0 ? (
-              <View style={styles.noMaterialsBox}>
-                <Ionicons name="folder-open-outline" size={24} color="#999" />
-                <Text style={styles.noMaterials}>No materials uploaded for this class yet.</Text>
-              </View>
-            ) : (
-              <View style={styles.materialsGrid}>
-                {availableMaterials.map(mat => {
-                  const isSelected = selectedMaterialIds.includes(mat.id);
-                  return (
-                    <Pressable key={mat.id} style={[styles.materialChip, isSelected && styles.materialChipSelected]} onPress={() => toggleMaterial(mat.id)}>
-                      <Ionicons name={isSelected ? "document-text" : "document-text-outline"} size={16} color={isSelected ? "#FFF" : "#D32F2F"} style={{ marginRight: 6 }} />
-                      <Text style={[styles.materialTitle, isSelected && styles.materialTitleSelected]}>{mat.title}</Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
-            )}
-          </View>
-        )}
+  <View style={styles.materialsSection}>
+    <View style={styles.materialsHeaderRow}>
+      <Text style={styles.inputLabel}>Select one Lesson</Text>
+      {selectedMaterialIds.length > 0 && (
+        <TouchableOpacity onPress={() => setSelectedMaterialIds([])} hitSlop={8}>
+          <Text style={styles.clearSelectionText}>Show all ({availableMaterials.length})</Text>
+        </TouchableOpacity>
+      )}
+    </View>
+    {availableMaterials.length === 0 ? (
+      <View style={styles.noMaterialsBox}>
+        <Ionicons name="folder-open-outline" size={24} color="#999" />
+        <Text style={styles.noMaterials}>No materials uploaded for this class yet.</Text>
+      </View>
+    ) : (
+      <View style={styles.materialsGrid}>
+        {(selectedMaterialIds.length > 0
+          ? availableMaterials.filter(mat => selectedMaterialIds.includes(mat.id))
+          : availableMaterials
+        ).map(mat => {
+          const isSelected = selectedMaterialIds.includes(mat.id);
+          return (
+            <Pressable
+              key={mat.id}
+              style={[styles.materialChip, isSelected && styles.materialChipSelected]}
+              onPress={() => toggleMaterial(mat.id)}
+            >
+              <Ionicons
+                name={isSelected ? "document-text" : "document-text-outline"}
+                size={16}
+                color={isSelected ? "#FFF" : "#D32F2F"}
+                style={{ marginRight: 6 }}
+              />
+              <Text style={[styles.materialTitle, isSelected && styles.materialTitleSelected]}>
+                {mat.title}
+              </Text>
+              {isSelected && (
+                <Ionicons name="close-circle" size={16} color="#FFF" style={{ marginLeft: 6 }} />
+              )}
+            </Pressable>
+          );
+        })}
+      </View>
+    )}
+  </View>
+)}
 
         <Pressable
           style={[styles.generateButton, (!selectedClassId || selectedMaterialIds.length === 0 || isGenerating || isInvalidCount || !gameType) && styles.generateButtonDisabled]}
@@ -578,6 +602,17 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     maxWidth: '100%',
   },
+  materialsHeaderRow: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  marginBottom: 8,
+},
+clearSelectionText: {
+  color: '#D32F2F',
+  fontSize: 13,
+  fontWeight: '700',
+},
   materialChipSelected: { backgroundColor: '#D32F2F', borderColor: '#D32F2F' },
   materialTitle: { fontSize: 13, fontWeight: '700', color: '#444', flexShrink: 1 },
   materialTitleSelected: { color: '#FFF' },
