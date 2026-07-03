@@ -7,6 +7,7 @@ import {
   Easing,
   Image,
   LayoutChangeEvent,
+  Linking,
   Platform,
   SafeAreaView,
   ScrollView,
@@ -26,7 +27,7 @@ type LandingPageProps = {
   onGetStarted?: () => void;
 };
 
-type SectionKey = "features" | "how" | "modules" | "users" | "analytics" | "architecture";
+type SectionKey = "features" | "how" | "modules" | "users" | "analytics" | "architecture" | "contact";
 
 type FeatureCard = {
   icon: React.ReactNode;
@@ -54,6 +55,16 @@ type UserCard = {
 
 const MAX_WIDTH = 1360;
 
+// --- Contact Us settings -----------------------------------------------
+// CONTACT_EMAIL: tapping the Email card opens a compose window
+// (Gmail compose on web, the default mail app on mobile) addressed to this.
+const CONTACT_EMAIL = "parseitlearninghub@gmail.com"; // TODO: replace with the real contact email if different
+
+// FACEBOOK_URL: tapping the Social card opens this link.
+// ⚠️ PLACEHOLDER — replace with the actual ParseIT Hub Facebook page URL before shipping.
+const FACEBOOK_URL = "https://www.facebook.com/profile.php?id=61575864027115"; // TODO: update Facebook link
+// -------------------------------------------------------------------------
+
 type RevealDirection = "up" | "left" | "right";
 
 type RevealSectionContextValue = {
@@ -80,6 +91,7 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
     users: 0,
     analytics: 0,
     architecture: 0,
+    contact: 0,
   });
 
   const isDesktop = width >= 1100;
@@ -277,6 +289,7 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
     { label: "How It Works", section: "how" },
     { label: "Modules", section: "modules" },
     { label: "Analytics", section: "analytics" },
+    { label: "Contact", section: "contact" },
   ];
 
   return (
@@ -410,7 +423,10 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
             </View>
           </SectionWrapper>
 
-          
+          <SectionWrapper scrollY={scrollY} onLayout={onSectionLayout("contact")}>
+            <SectionHeader scrollY={scrollY} isMobile={isMobile} isSmall={isSmall} title="Contact Us" subtitle="Reach out by email or follow our page for updates." />
+            <ContactSection isSmall={isSmall} />
+          </SectionWrapper>
 
           <View style={[styles.ctaOuter, isSmall && styles.ctaOuterSmall]}>
             <ScrollReveal scrollY={scrollY} direction="left" distance={32} style={[styles.ctaCard, isMobile && styles.ctaCardMobile, isSmall && styles.ctaCardSmall]}>
@@ -1200,6 +1216,83 @@ function ArchitectureFlow() {
   );
 }
 
+// --- Contact Us section --------------------------------------------------
+// Three cards only, per design: Email (opens compose), Studio (info only),
+// Social (Facebook only — update FACEBOOK_URL near the top of this file).
+function ContactSection({ isSmall }: { isSmall?: boolean }) {
+  const handleEmailPress = () => {
+    const gmailComposeUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${CONTACT_EMAIL}`;
+    const mailtoUrl = `mailto:${CONTACT_EMAIL}`;
+    const preferredUrl = Platform.OS === "web" ? gmailComposeUrl : mailtoUrl;
+
+    Linking.openURL(preferredUrl).catch(() => {
+      // Fallback in case the Gmail web compose link can't be opened
+      Linking.openURL(mailtoUrl).catch(() => {});
+    });
+  };
+
+  const handleFacebookPress = () => {
+    // ⚠️ FACEBOOK_URL is a placeholder — update it near the top of this file
+    // with the real ParseIT Hub Facebook page before shipping.
+    Linking.openURL(FACEBOOK_URL).catch(() => {});
+  };
+
+  return (
+    <View style={[styles.contactGrid, isSmall && styles.contactGridSmall]}>
+      <TouchableOpacity
+        activeOpacity={0.85}
+        onPress={handleEmailPress}
+        style={[styles.contactCard, isSmall && styles.contactCardSmall]}
+        accessibilityRole="button"
+        accessibilityLabel="Email us"
+      >
+        <LinearGradient colors={["#ff3b30", "#ff7a00"]} style={[styles.contactIcon, isSmall && styles.contactIconSmall]}>
+          <Feather name="mail" size={isSmall ? 22 : 26} color="#fff" />
+        </LinearGradient>
+        <View style={styles.contactTextWrap}>
+          <Text style={[styles.contactTitle, isSmall && styles.contactTitleSmall]}>Email</Text>
+          <Text style={[styles.contactValue, isSmall && styles.contactValueSmall]}>{CONTACT_EMAIL}</Text>
+          <Text style={styles.contactNote}>Usually respond within 24 hours</Text>
+          <Text style={styles.contactTapHint}>Tap to Compose</Text>
+        </View>
+      </TouchableOpacity>
+
+      <View style={[styles.contactCard, isSmall && styles.contactCardSmall]}>
+        <LinearGradient colors={["#ff3b30", "#ff7a00"]} style={[styles.contactIcon, isSmall && styles.contactIconSmall]}>
+          <Ionicons name="location-outline" size={isSmall ? 22 : 26} color="#fff" />
+        </LinearGradient>
+        <View style={styles.contactTextWrap}>
+          <Text style={[styles.contactTitle, isSmall && styles.contactTitleSmall]}>Location</Text>
+          <Text style={[styles.contactValue, isSmall && styles.contactValueSmall]}>
+             Ed, Isidro Kintanar St, Argao, 6021 Cebu{"\n"}COTE Building - 3rd Floor, BSIT Department
+          </Text>
+          <Text style={styles.contactNote}>Visit Our Department Office</Text>
+        </View>
+      </View>
+
+      <TouchableOpacity
+        activeOpacity={0.85}
+        onPress={handleFacebookPress}
+        style={[styles.contactCard, isSmall && styles.contactCardSmall]}
+        accessibilityRole="button"
+        accessibilityLabel="Visit our Facebook page"
+      >
+        <LinearGradient colors={["#ff3b30", "#ff7a00"]} style={[styles.contactIcon, isSmall && styles.contactIconSmall]}>
+          <Ionicons name="logo-facebook" size={isSmall ? 22 : 26} color="#fff" />
+        </LinearGradient>
+        <View style={styles.contactTextWrap}>
+          <Text style={[styles.contactTitle, isSmall && styles.contactTitleSmall]}>Social</Text>
+          <Text style={[styles.contactValue, isSmall && styles.contactValueSmall]}>
+            Stay updated with the latest department news, announcements, and events.
+          </Text>
+          <Text style={styles.contactTapHint}>Tap to Follow BSIT Facebook Page</Text>
+        </View>
+      </TouchableOpacity>
+    </View>
+  );
+}
+// -------------------------------------------------------------------------
+
 function SmallTag({ text, orange }: { text: string; orange?: boolean }) {
   return (
     <View style={[styles.smallTag, orange && styles.smallTagOrange]}>
@@ -1523,6 +1616,33 @@ const styles = StyleSheet.create({
   archIndex: { color: "#ff7a00", fontSize: 13, fontWeight: "900", marginBottom: 8 },
   archTitle: { color: "#fff", fontSize: 21, fontWeight: "900" },
   archText: { color: "#a8b4cc", fontSize: 15, lineHeight: 23, marginTop: 12 },
+
+  // --- Contact Us styles ---
+  contactGrid: { flexDirection: "row", flexWrap: "wrap", gap: 24, justifyContent: "center" },
+  contactGridSmall: { flexDirection: "column", gap: 16 },
+  contactCard: {
+    flexGrow: 1,
+    flexBasis: Platform.OS === "web" ? "30%" : undefined,
+    minWidth: 280,
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 18,
+    borderRadius: 16,
+    padding: 26,
+    backgroundColor: "rgba(26,30,48,0.82)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.12)",
+  },
+  contactCardSmall: { padding: 18, minWidth: "100%", flexBasis: "auto" },
+  contactIcon: { width: 54, height: 54, borderRadius: 14, alignItems: "center", justifyContent: "center" },
+  contactIconSmall: { width: 44, height: 44, borderRadius: 12 },
+  contactTextWrap: { flex: 1 },
+  contactTitle: { color: "#fff", fontSize: 20, fontWeight: "900" },
+  contactTitleSmall: { fontSize: 17 },
+  contactValue: { color: "#c7cfe0", fontSize: 16, lineHeight: 24, marginTop: 8 },
+  contactValueSmall: { fontSize: 14, lineHeight: 21 },
+  contactNote: { color: "#8b96ad", fontSize: 13, marginTop: 8 },
+  contactTapHint: { color: "#f9a876", fontSize: 13, fontWeight: "600", marginTop: 10 },
 
   ctaOuter: { paddingVertical: 90, paddingHorizontal: 38 },
   ctaOuterSmall: { paddingVertical: 60, paddingHorizontal: 16 },
