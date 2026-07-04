@@ -257,6 +257,7 @@ const Messenger = ({
   onConversationActiveChange,
   onUnreadCountChanged,
   onBack,
+  onClearSearch, 
   courses = [],
   currentUser,
   currentUserUid,
@@ -266,6 +267,7 @@ const Messenger = ({
   onConversationActiveChange?: (isActive: boolean) => void;
   onUnreadCountChanged?: () => void;
   onBack?: () => void;
+  onClearSearch?: () => void;
   courses?: MessengerCourse[];
   currentUser: string;
   currentUserUid: string;
@@ -821,6 +823,7 @@ const Messenger = ({
     (item: Conversation) => {
       setSelected(item);
       onConversationActiveChange?.(true);
+      onClearSearch?.(); 
     },
     [onConversationActiveChange]
   );

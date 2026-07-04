@@ -1,5 +1,5 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Image,
   Keyboard,
@@ -64,6 +64,7 @@ interface HeaderProps {
   onNotificationPress?: () => void;
   // ✅ NEW PROP: Unread conversation count
   messengerUnreadCount?: number;
+  searchValue?: string;
 }
 
 const TeacherHeader: React.FC<HeaderProps> = ({
@@ -75,6 +76,7 @@ const TeacherHeader: React.FC<HeaderProps> = ({
   notificationCount = 0,
   onNotificationPress,
   messengerUnreadCount = 0,
+  searchValue,
 }) => {
   const { width } = useWindowDimensions();
   const isVerySmall = width < 360;
@@ -88,6 +90,14 @@ const TeacherHeader: React.FC<HeaderProps> = ({
   const [isSearchFocused, setIsSearchFocused] = useState(false);
   const [hoveredNav, setHoveredNav] = useState<ScreenType | null>(null);
   const [isBellHovered, setIsBellHovered] = useState(false);
+
+  useEffect(() => {
+    if (searchValue !== undefined && searchValue !== searchQuery) {
+      setSearchQuery(searchValue);
+      if (!searchValue) setSearchResults([]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchValue]);
   
   // 👇 NEW STATE FOR CONTEXTUAL RESULTS
   const [searchResults, setSearchResults] = useState<SearchFeature[]>([]);

@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Image,
   Keyboard,
@@ -74,6 +74,7 @@ interface HeaderProps {
   onMenuPress?: () => void;
   onNotificationPress?: () => void;
   messengerUnreadCount?: number; 
+  resetSearchKey?: number;
 }
 
 const Header: React.FC<HeaderProps> = ({
@@ -85,6 +86,7 @@ const Header: React.FC<HeaderProps> = ({
   messengerUnreadCount = 0, 
   onMenuPress,
   onNotificationPress,
+  resetSearchKey,
 }) => {
   const { width } = useWindowDimensions();
 
@@ -99,10 +101,18 @@ const Header: React.FC<HeaderProps> = ({
   const [isSearchFocused, setIsSearchFocused] = useState(false);
   const [hoveredNav, setHoveredNav] = useState<ScreenType | null>(null);
   const [isBellHovered, setIsBellHovered] = useState(false);
+
+  
   
   // 👇 NEW STATE FOR CONTEXTUAL RESULTS
   const [searchResults, setSearchResults] = useState<SearchFeature[]>([]);
   const searchInputRef = useRef<TextInput>(null);
+
+  useEffect(() => {
+    if (resetSearchKey === undefined) return;
+    setSearchQuery('');
+    setSearchResults([]);
+  }, [resetSearchKey]);
 
   const responsiveSize = (mobile: number, tablet: number, desktopMax: number) => {
     if (isVerySmall) return mobile * 0.9;

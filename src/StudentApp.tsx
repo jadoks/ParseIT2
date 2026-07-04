@@ -113,6 +113,8 @@ function getApiBaseUrl() {
   return 'http://192.168.1.5:5000';
 }
 
+
+
 const API_BASE_URL = getApiBaseUrl();
 const apiFetch = (url: string, options: any = {}) =>
   fetch(url, { credentials: 'include', ...options });
@@ -515,7 +517,7 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
   const isLargeScreen = width >= 768;
   const isSmallScreen = width < 768;
 
-  
+  const [searchResetKey, setSearchResetKey] = useState(0);
 
   const [remoteStudentProfile, setRemoteStudentProfile] = useState<RemoteStudentProfile | null>(null);
   const currentUserFirstName = remoteStudentProfile?.firstName || currentStudent.firstName || '';
@@ -2027,7 +2029,13 @@ const handleAddAssignmentFile = (assignmentId: string, file: AssignmentFileUploa
       case 'messenger': 
         return <Messenger 
           searchQuery={globalSearchQuery} 
-          onConversationActiveChange={setIsConversationActive} 
+          onConversationActiveChange={(isActive) => {
+            setIsConversationActive(isActive);
+            if (isActive) {
+              setGlobalSearchQuery('');       // clears what's actually filtering the list
+              setSearchResetKey((k) => k + 1); // tells Header to blank its input too
+            }
+          }}
           onBack={() => setActiveScreen(lastScreen)} 
           currentUser={currentStudent.studentId} 
           currentUserName={currentUserName} 
@@ -2110,6 +2118,7 @@ const handleAddAssignmentFile = (assignmentId: string, file: AssignmentFileUploa
               messengerUnreadCount={messengerUnreadCount}
               onNotificationPress={handleNotificationPress}
               onMenuPress={() => setMobileDrawerOpen((prev) => !prev)}
+              resetSearchKey={searchResetKey}
             />
           </View>
         )}

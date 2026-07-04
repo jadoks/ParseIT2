@@ -146,6 +146,10 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
   const isLargeScreen = width >= 768;
   const isMobile = width < 768;
 
+const handleClearGlobalSearch = () => {
+  setGlobalSearchQuery('');
+};
+
   const safeAreaEdges = ['top', 'right', 'bottom', 'left'] as const;
 
   const [activeScreen, setActiveScreen] = useState<AppScreenType>('home');
@@ -993,6 +997,7 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
             activeScreen={activeScreen}
             onNavigate={handleHeaderNavigate}
             onSearchChange={handleSearchChange}
+            searchValue={globalSearchQuery} 
             onMenuPress={() => {
               setMobileDrawerOpen((prev) => !prev);
             }}
@@ -1117,6 +1122,7 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
             <TeacherMessenger
             onBack={() => setActiveScreen(lastScreen)}
             searchQuery={globalSearchQuery}
+            onClearSearch={handleClearGlobalSearch}
             currentUser={currentTeacherData?.teacherId || ''}
             currentUserUid={currentTeacherData?.authUid || ''}
             currentUserName={teacherFullName}
