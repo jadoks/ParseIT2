@@ -1,6 +1,6 @@
 import Constants from "expo-constants";
 import * as DocumentPicker from 'expo-document-picker';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -47,6 +47,72 @@ type TutorSuggestion = {
 };
 
 const PAGE_SIZE = 30;
+
+// ✅ DAILY USAGE LIMITS (per student)
+const DAILY_CHAT_LIMIT = 30; // AI chat prompts/day (text-only messages)
+const DAILY_GENERATION_LIMIT = 10; // AI generations/day (prompts that analyze an uploaded file)
+const DAILY_UPLOAD_LIMIT = 10; // File uploads/day
+const MAX_PROMPT_LENGTH = 500; // 500-character prompt limit
+const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB maximum per file
+// Note: only 1 file may be attached per prompt — enforced structurally below
+// since `selectedFile` holds a single file and the picker only allows one
+// selection at a time.
+
+type DailyUsage = {
+  date: string;
+  chatPrompts: number;
+  generations: number;
+  fileUploads: number;
+};
+
+const getTodayDateString = () => new Date().toISOString().slice(0, 10);
+
+const emptyUsage = (): DailyUsage => ({
+  date: getTodayDateString(),
+  chatPrompts: 0,
+  generations: 0,
+  fileUploads: 0,
+});
+
+const getUsageStorageKey = (studentId: string) => `ai-usage-${studentId}`;
+
+const readDailyUsage = async (studentId: string): Promise<DailyUsage> => {
+  if (!studentId) return emptyUsage();
+  const key = getUsageStorageKey(studentId);
+  try {
+    const raw =
+      Platform.OS === 'web'
+        ? (globalThis as any).localStorage?.getItem(key)
+        : await FileSystem.readAsStringAsync(`${FileSystem.documentDirectory}${key}.json`);
+    if (!raw) return emptyUsage();
+    const parsed = JSON.parse(raw);
+    // Reset automatically if the stored usage is from a previous day
+    if (parsed?.date !== getTodayDateString()) return emptyUsage();
+    return {
+      date: parsed.date,
+      chatPrompts: Number(parsed.chatPrompts) || 0,
+      generations: Number(parsed.generations) || 0,
+      fileUploads: Number(parsed.fileUploads) || 0,
+    };
+  } catch {
+    return emptyUsage();
+  }
+};
+
+const writeDailyUsage = async (studentId: string, usage: DailyUsage) => {
+  if (!studentId) return;
+  const key = getUsageStorageKey(studentId);
+  const raw = JSON.stringify(usage);
+  try {
+    if (Platform.OS === 'web') {
+      (globalThis as any).localStorage?.setItem(key, raw);
+      return;
+    }
+    await FileSystem.writeAsStringAsync(`${FileSystem.documentDirectory}${key}.json`, raw);
+  } catch (err) {
+    console.warn('Failed to save AI usage:', err);
+  }
+};
 
 function getDefaultMessages(mode: ChatMode): Message[] {
   return [
@@ -206,6 +272,10 @@ export default function GeminiFloatingModal({
   const [isUploading, setIsUploading] = useState(false);
   const [selectedFile, setSelectedFile] = useState<{ name: string; type: string; uri: string } | null>(null);
 
+  // ✅ Daily usage tracking (chat prompts / generations / uploads)
+  const [dailyUsage, setDailyUsage] = useState<DailyUsage>(emptyUsage());
+  const [usageLoaded, setUsageLoaded] = useState(false);
+
   const [messages, setMessages] = useState<Message[]>(
     getDefaultMessages("assistant")
   );
@@ -225,6 +295,12 @@ export default function GeminiFloatingModal({
         : "Lesson tutoring, guided practice, and learning support",
     [isAssistant]
   );
+
+  const remainingChatPrompts = Math.max(DAILY_CHAT_LIMIT - dailyUsage.chatPrompts, 0);
+  const remainingGenerations = Math.max(DAILY_GENERATION_LIMIT - dailyUsage.generations, 0);
+  const remainingUploads = Math.max(DAILY_UPLOAD_LIMIT - dailyUsage.fileUploads, 0);
+  const isOverPromptLength = input.trim().length > MAX_PROMPT_LENGTH;
+  const uploadLimitReached = remainingUploads <= 0;
 
   const scrollToBottom = (animated = true) => {
     setIsAtBottom(true);
@@ -275,6 +351,32 @@ export default function GeminiFloatingModal({
       setInputHeight(42);
     }
   }, [input]);
+
+  // ✅ Load today's usage counters (per student) whenever the student id becomes available
+  useEffect(() => {
+    const loadUsage = async () => {
+      const usage = await readDailyUsage(currentStudentId || '');
+      setDailyUsage(usage);
+      setUsageLoaded(true);
+    };
+    loadUsage();
+  }, [currentStudentId]);
+
+  // ✅ Persist a usage increment (auto-resets if the stored day has rolled over)
+  const bumpUsage = (patch: Partial<Omit<DailyUsage, 'date'>>) => {
+    setDailyUsage((prev) => {
+      const today = getTodayDateString();
+      const base = prev.date === today ? prev : emptyUsage();
+      const next: DailyUsage = {
+        date: today,
+        chatPrompts: base.chatPrompts + (patch.chatPrompts || 0),
+        generations: base.generations + (patch.generations || 0),
+        fileUploads: base.fileUploads + (patch.fileUploads || 0),
+      };
+      void writeDailyUsage(currentStudentId || '', next);
+      return next;
+    });
+  };
 
   // Load chat history FROM FIREBASE ONLY
   useEffect(() => {
@@ -368,6 +470,16 @@ export default function GeminiFloatingModal({
 
   const sendTutorSuggestion = async (suggestion: TutorSuggestion) => {
     if (loading) return;
+
+    // ✅ Enforce daily chat prompt limit
+    if (dailyUsage.chatPrompts >= DAILY_CHAT_LIMIT) {
+      Alert.alert(
+        'Daily Limit Reached',
+        `You've used your ${DAILY_CHAT_LIMIT} AI chat prompts for today. Please come back tomorrow.`
+      );
+      return;
+    }
+
     shouldScrollToBottomRef.current = true;
     const prompt = suggestion.text || `Help me understand ${suggestion.topic} step by step.`;
     const userMessage: Message = { role: "user", text: prompt };
@@ -396,6 +508,7 @@ export default function GeminiFloatingModal({
       }
       setMessages((prev) => [...prev, { role: "model", text: data.reply || "No response returned." }]);
       setVisibleCount(PAGE_SIZE);
+      bumpUsage({ chatPrompts: 1 });
     } catch (error: any) {
       setMessages((prev) => [...prev, { role: "model", text: `Error: ${error?.message || "Something went wrong."}` }]);
     } finally {
@@ -404,6 +517,15 @@ export default function GeminiFloatingModal({
   };
 
   const handlePickFile = async () => {
+    // ✅ Enforce daily file upload limit
+    if (dailyUsage.fileUploads >= DAILY_UPLOAD_LIMIT) {
+      Alert.alert(
+        'Daily Upload Limit Reached',
+        `You can upload up to ${DAILY_UPLOAD_LIMIT} files per day. Please try again tomorrow.`
+      );
+      return;
+    }
+
     try {
       const result = await DocumentPicker.getDocumentAsync({
         type: [
@@ -413,12 +535,15 @@ export default function GeminiFloatingModal({
           'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
         ],
         copyToCacheDirectory: true,
+        // ✅ 1 file per prompt: only a single selection is allowed
+        multiple: false,
       });
       
       if (result.canceled || !result.assets?.length) return;
       const asset = result.assets[0];
       
-      if (asset.size && asset.size > 10 * 1024 * 1024) {
+      // ✅ 10 MB maximum per file
+      if (asset.size && asset.size > MAX_FILE_SIZE_BYTES) {
         Alert.alert('File Too Large', 'Please select a file smaller than 10MB.');
         return;
       }
@@ -442,6 +567,8 @@ export default function GeminiFloatingModal({
       else if (lowerName.endsWith('.xlsx')) realType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
       setSelectedFile({ name: asset.name, type: realType, uri: asset.uri });
+      // ✅ Count this as one of today's file uploads
+      bumpUsage({ fileUploads: 1 });
     } catch (err) {
       console.error('Error picking document:', err);
       Alert.alert('Error', 'Failed to pick file.');
@@ -469,6 +596,34 @@ export default function GeminiFloatingModal({
   const sendMessage = async () => {
     const trimmed = input.trim();
     if ((!trimmed && !selectedFile) || loading) return;
+
+    // ✅ 500-character prompt limit
+    if (trimmed.length > MAX_PROMPT_LENGTH) {
+      Alert.alert('Message Too Long', `Please keep your message under ${MAX_PROMPT_LENGTH} characters.`);
+      return;
+    }
+
+    // A prompt with an attached file counts as an "AI generation";
+    // a plain text prompt counts as an "AI chat prompt".
+    const isGenerationRequest = !!selectedFile;
+
+    // ✅ Enforce daily AI generation limit (file-based prompts)
+    if (isGenerationRequest && dailyUsage.generations >= DAILY_GENERATION_LIMIT) {
+      Alert.alert(
+        'Daily Limit Reached',
+        `You've used your ${DAILY_GENERATION_LIMIT} AI generations for today. Please try again tomorrow.`
+      );
+      return;
+    }
+
+    // ✅ Enforce daily AI chat prompt limit (text-only prompts)
+    if (!isGenerationRequest && dailyUsage.chatPrompts >= DAILY_CHAT_LIMIT) {
+      Alert.alert(
+        'Daily Limit Reached',
+        `You've used your ${DAILY_CHAT_LIMIT} AI chat prompts for today. Please come back tomorrow.`
+      );
+      return;
+    }
 
     shouldScrollToBottomRef.current = true;
     let fileBase64 = '';
@@ -520,6 +675,13 @@ export default function GeminiFloatingModal({
 
       setMessages((prev) => [...prev, { role: "model", text: data.reply || "No response returned." }]);
       setVisibleCount(PAGE_SIZE);
+
+      // ✅ Only count usage against the daily limit on a successful response
+      if (isGenerationRequest) {
+        bumpUsage({ generations: 1 });
+      } else {
+        bumpUsage({ chatPrompts: 1 });
+      }
     } catch (error: any) {
       setMessages((prev) => [...prev, { role: "model", text: `Error: ${error?.message || "Something went wrong."}` }]);
     } finally {
@@ -617,6 +779,15 @@ export default function GeminiFloatingModal({
               </TouchableOpacity>
             </View>
 
+            {/* ✅ Daily Usage Indicator */}
+            {usageLoaded && (
+              <View style={styles.usageBar}>
+                <Text style={styles.usageBarText} numberOfLines={1}>
+                  Chats {remainingChatPrompts}/{DAILY_CHAT_LIMIT} · Generations {remainingGenerations}/{DAILY_GENERATION_LIMIT} · Uploads {remainingUploads}/{DAILY_UPLOAD_LIMIT} left today
+                </Text>
+              </View>
+            )}
+
             
             {/* Messages Wrapper */}
             <View style={{ flex: 1 }}>
@@ -705,19 +876,23 @@ export default function GeminiFloatingModal({
               )}
               <View style={styles.inputRow}>
                 <TouchableOpacity 
-                  style={styles.uploadBtn} 
+                  style={[styles.uploadBtn, uploadLimitReached && styles.uploadBtnDisabled]} 
                   onPress={handlePickFile}
                   disabled={loading || isUploading}
                 >
                   <MaterialCommunityIcons 
                     name={selectedFile ? "file-check-outline" : "paperclip"} 
                     size={22} 
-                    color={selectedFile ? "#16A34A" : "#6B7280"} 
+                    color={selectedFile ? "#16A34A" : uploadLimitReached ? "#D1D5DB" : "#6B7280"} 
                   />
                 </TouchableOpacity>
 
                 <TextInput
-                  style={[styles.input, { height: inputHeight, borderRadius: Math.min(inputHeight / 2, 21) }]}
+                  style={[
+                    styles.input,
+                    { height: inputHeight, borderRadius: Math.min(inputHeight / 2, 21) },
+                    isOverPromptLength && styles.inputError,
+                  ]}
                   placeholder={mode === "tutor" ? "Ask about a difficult lesson..." : "Type your question..."}
                   placeholderTextColor="#9CA3AF"
                   value={input}
@@ -725,6 +900,7 @@ export default function GeminiFloatingModal({
                   editable={!loading && !isUploading}
                   returnKeyType="send"
                   multiline
+                  maxLength={MAX_PROMPT_LENGTH}
                   textAlignVertical="top"
                   onContentSizeChange={handleContentSizeChange}
                   onKeyPress={(e) => {
@@ -752,6 +928,11 @@ export default function GeminiFloatingModal({
                   )}
                 </TouchableOpacity>
               </View>
+              {input.length > 0 && (
+                <Text style={[styles.charCounter, isOverPromptLength && styles.charCounterError]}>
+                  {input.length}/{MAX_PROMPT_LENGTH}
+                </Text>
+              )}
             </View>
           </View>
         </SafeAreaView>
@@ -796,6 +977,13 @@ const styles = StyleSheet.create({
   modeButtonActive: { backgroundColor: "#D32F2F", shadowColor: "#D32F2F", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 4, elevation: 3 },
   modeButtonText: { fontSize: 13, fontWeight: "700", color: "#6B7280" },
   modeButtonTextActive: { color: "#FFF" },
+
+  usageBar: {
+    marginHorizontal: 16,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+  },
+  usageBarText: { fontSize: 11, fontWeight: "600", color: "#9CA3AF", textAlign: "center" },
   
   messages: { padding: 16, paddingBottom: 20, flexGrow: 1 },
   loadOlderWrap: { alignItems: "center", marginBottom: 16 },
@@ -843,12 +1031,16 @@ const styles = StyleSheet.create({
     width: 42, height: 42, borderRadius: 21, backgroundColor: '#F3F4F6',
     justifyContent: 'center', alignItems: 'center',
   },
+  uploadBtnDisabled: { backgroundColor: '#F9FAFB' },
   input: {
     flex: 1,
     borderWidth: 1.5, borderColor: "#E5E7EB",
     paddingHorizontal: 16, paddingVertical: 10,
     color: "#111827", backgroundColor: "#F9FAFB", fontSize: 14, fontWeight: "500",
   },
+  inputError: { borderColor: "#D32F2F" },
+  charCounter: { marginTop: 6, fontSize: 11, color: "#9CA3AF", textAlign: "right", fontWeight: "500" },
+  charCounterError: { color: "#D32F2F", fontWeight: "700" },
   sendBtn: {
     width: 42, height: 42, borderRadius: 21, backgroundColor: "#D32F2F",
     alignItems: "center", justifyContent: "center",
