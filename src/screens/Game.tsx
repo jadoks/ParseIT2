@@ -1,3 +1,4 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
 import * as DocumentPicker from 'expo-document-picker';
 import React, { useEffect, useState } from 'react';
@@ -57,6 +58,21 @@ const gameOptions = [
   { value: 'fill_in_blanks', label: 'Fill in the Blanks', icon: 'create-outline' },
 ];
 
+// 🌟 NEW: Daily AI generation limit config
+const MAX_QUESTIONS_PER_GENERATION = 20;
+const MAX_GENERATIONS_PER_DAY = 10;
+
+function getTodayKey() {
+  const now = new Date();
+  return `${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()}`;
+}
+
+// 🌟 NEW: Per-student storage key so each student gets their own 10/day pool,
+// even if multiple students use the same device.
+function getGenerationLimitStorageKey(studentId?: string) {
+  return `gameAi_dailyGenerationLimit_${studentId || 'anonymous'}`;
+}
+
 const Game = ({ onNavigate, enrolledCourses = [], studentId, onSaveQuizScore }: Props) => {
   const { width } = useWindowDimensions();
   const [uploadStage, setUploadStage] = useState<string>('');
@@ -65,14 +81,67 @@ const Game = ({ onNavigate, enrolledCourses = [], studentId, onSaveQuizScore }: 
   const [isGenerating, setIsGenerating] = useState(false);
   const [numberOfQuestions, setNumberOfQuestions] = useState('10');
   const [gameType, setGameType] = useState<string>('');
-  
+
+  // 🌟 NEW: Track how many AI generations have been used today
+  const [generationsUsedToday, setGenerationsUsedToday] = useState<number>(0);
+  const [isLimitLoaded, setIsLimitLoaded] = useState(false);
+
   const parsedCount = parseInt(numberOfQuestions, 10) || 0;
-  const isInvalidCount = parsedCount > 100 || parsedCount < 1;
+  const isInvalidCount = parsedCount > MAX_QUESTIONS_PER_GENERATION || parsedCount < 1;
+  const remainingGenerations = Math.max(0, MAX_GENERATIONS_PER_DAY - generationsUsedToday);
+  const hasReachedDailyLimit = generationsUsedToday >= MAX_GENERATIONS_PER_DAY;
 
   const [selectedClassId, setSelectedClassId] = useState<string>('');
   const [selectedMaterialIds, setSelectedMaterialIds] = useState<string[]>([]);
   const [availableMaterials, setAvailableMaterials] = useState<{ id: string; title: string }[]>([]);
   const [isClassDropdownOpen, setIsClassDropdownOpen] = useState(false);
+
+  // 🌟 NEW: Load this student's generation count on mount, and whenever the
+  // logged-in student changes (resets automatically on a new day too).
+  useEffect(() => {
+    let isCancelled = false;
+    const loadGenerationCount = async () => {
+      setIsLimitLoaded(false);
+      const storageKey = getGenerationLimitStorageKey(studentId);
+      try {
+        const raw = await AsyncStorage.getItem(storageKey);
+        const todayKey = getTodayKey();
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed.date === todayKey) {
+            if (!isCancelled) setGenerationsUsedToday(parsed.count || 0);
+          } else {
+            if (!isCancelled) setGenerationsUsedToday(0);
+            await AsyncStorage.setItem(storageKey, JSON.stringify({ date: todayKey, count: 0 }));
+          }
+        } else {
+          if (!isCancelled) setGenerationsUsedToday(0);
+          await AsyncStorage.setItem(storageKey, JSON.stringify({ date: todayKey, count: 0 }));
+        }
+      } catch (err) {
+        console.warn('Failed to load AI generation limit:', err);
+      } finally {
+        if (!isCancelled) setIsLimitLoaded(true);
+      }
+    };
+    loadGenerationCount();
+    return () => {
+      isCancelled = true;
+    };
+  }, [studentId]);
+
+  // 🌟 NEW: Increment and persist this student's generation count
+  const recordGenerationUsed = async () => {
+    const storageKey = getGenerationLimitStorageKey(studentId);
+    const todayKey = getTodayKey();
+    const nextCount = generationsUsedToday + 1;
+    setGenerationsUsedToday(nextCount);
+    try {
+      await AsyncStorage.setItem(storageKey, JSON.stringify({ date: todayKey, count: nextCount }));
+    } catch (err) {
+      console.warn('Failed to persist AI generation limit:', err);
+    }
+  };
 
   useEffect(() => {
     if (!selectedClassId) {
@@ -100,6 +169,14 @@ const Game = ({ onNavigate, enrolledCourses = [], studentId, onSaveQuizScore }: 
     if (!gameType) return Alert.alert('Selection required', 'Please select a game type first.');
     if (!selectedClassId || selectedMaterialIds.length === 0) return Alert.alert('Selection required', 'Please select a class and at least one material.');
     if (!studentId) return Alert.alert('Not logged in', 'Student ID missing.');
+    if (isInvalidCount) return Alert.alert('Invalid count', `Please enter between 1 and ${MAX_QUESTIONS_PER_GENERATION} items.`);
+    // 🌟 NEW: Enforce daily AI generation limit
+    if (hasReachedDailyLimit) {
+      return Alert.alert(
+        'Daily limit reached',
+        `You've used all ${MAX_GENERATIONS_PER_DAY} AI generations for today. Please try again tomorrow.`
+      );
+    }
 
     setIsGenerating(true);
     try {
@@ -120,6 +197,8 @@ const Game = ({ onNavigate, enrolledCourses = [], studentId, onSaveQuizScore }: 
 
       setGeneratedQuestions(data.questions);
       setMode('quizmasters');
+      // 🌟 NEW: Count this as one of today's AI generations
+      await recordGenerationUsed();
       // 🌟 PASS gameType to the navigator
       if (onNavigate) onNavigate('quizmasters', data.questions, gameType);
     } catch (error: any) {
@@ -131,6 +210,14 @@ const Game = ({ onNavigate, enrolledCourses = [], studentId, onSaveQuizScore }: 
 
   const handleFileUpload = async () => {
     if (!gameType) return Alert.alert('Selection required', 'Please select a game type first.');
+    if (isInvalidCount) return Alert.alert('Invalid count', `Please enter between 1 and ${MAX_QUESTIONS_PER_GENERATION} items.`);
+    // 🌟 NEW: Enforce daily AI generation limit
+    if (hasReachedDailyLimit) {
+      return Alert.alert(
+        'Daily limit reached',
+        `You've used all ${MAX_GENERATIONS_PER_DAY} AI generations for today. Please try again tomorrow.`
+      );
+    }
     
     setUploadStage('Selecting file...');
     setIsGenerating(true);
@@ -192,6 +279,8 @@ const Game = ({ onNavigate, enrolledCourses = [], studentId, onSaveQuizScore }: 
       setUploadStage('Complete');
       setGeneratedQuestions(processData.questions);
       setMode('quizmasters');
+      // 🌟 NEW: Count this as one of today's AI generations
+      await recordGenerationUsed();
       // 🌟 PASS gameType to the navigator
       if (onNavigate) onNavigate('quizmasters', processData.questions, gameType);
       
@@ -214,9 +303,9 @@ const Game = ({ onNavigate, enrolledCourses = [], studentId, onSaveQuizScore }: 
         </View>
         
         <Pressable
-          style={[styles.uploadButton, (isGenerating || isInvalidCount || !gameType) && styles.uploadButtonDisabled]}
+          style={[styles.uploadButton, (isGenerating || isInvalidCount || !gameType || hasReachedDailyLimit) && styles.uploadButtonDisabled]}
           onPress={handleFileUpload}
-          disabled={isGenerating || isInvalidCount || !gameType}
+          disabled={isGenerating || isInvalidCount || !gameType || hasReachedDailyLimit}
         >
           {isGenerating ? (
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
@@ -228,6 +317,11 @@ const Game = ({ onNavigate, enrolledCourses = [], studentId, onSaveQuizScore }: 
               <Ionicons name="alert-circle-outline" size={18} color="#FFF" />
               <Text style={styles.uploadButtonText}>Select Game Type</Text>
             </View>
+          ) : hasReachedDailyLimit ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Ionicons name="lock-closed-outline" size={18} color="#FFF" />
+              <Text style={styles.uploadButtonText}>Daily Limit Reached</Text>
+            </View>
           ) : (
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
               <Ionicons name="cloud-upload-outline" size={18} color="#FFF" />
@@ -236,6 +330,22 @@ const Game = ({ onNavigate, enrolledCourses = [], studentId, onSaveQuizScore }: 
           )}
         </Pressable>
       </View>
+
+      {/* 🌟 NEW: Daily AI generation usage banner */}
+      {isLimitLoaded && (
+        <View style={[styles.limitBanner, hasReachedDailyLimit && styles.limitBannerReached]}>
+          <Ionicons
+            name={hasReachedDailyLimit ? 'alert-circle' : 'sparkles'}
+            size={18}
+            color={hasReachedDailyLimit ? '#D32F2F' : '#2E7D32'}
+          />
+          <Text style={[styles.limitBannerText, hasReachedDailyLimit && styles.limitBannerTextReached]}>
+            {hasReachedDailyLimit
+              ? `You've used all ${MAX_GENERATIONS_PER_DAY} AI generations today. Come back tomorrow!`
+              : `${remainingGenerations} of ${MAX_GENERATIONS_PER_DAY} AI generations remaining today`}
+          </Text>
+        </View>
+      )}
 
       <View style={styles.settingsCard}>
         <View style={styles.settingsHeader}>
@@ -247,7 +357,7 @@ const Game = ({ onNavigate, enrolledCourses = [], studentId, onSaveQuizScore }: 
         </Text>
         
         <View>
-          <Text style={styles.inputLabel}>Number of Questions / Items (Max 100)</Text>
+          <Text style={styles.inputLabel}>Number of Questions / Items (Max {MAX_QUESTIONS_PER_GENERATION})</Text>
           <TextInput
             style={[styles.questionsInput, isInvalidCount && styles.questionsInputError]}
             placeholder="e.g., 10"
@@ -258,7 +368,7 @@ const Game = ({ onNavigate, enrolledCourses = [], studentId, onSaveQuizScore }: 
           />
           {isInvalidCount && (
             <Text style={styles.errorText}>
-              {parsedCount > 100 ? 'Maximum limit is 100 items.' : 'Please enter at least 1 item.'}
+              {parsedCount > MAX_QUESTIONS_PER_GENERATION ? `Maximum limit is ${MAX_QUESTIONS_PER_GENERATION} items.` : 'Please enter at least 1 item.'}
             </Text>
           )}
         </View>
@@ -376,9 +486,9 @@ const Game = ({ onNavigate, enrolledCourses = [], studentId, onSaveQuizScore }: 
 )}
 
         <Pressable
-          style={[styles.generateButton, (!selectedClassId || selectedMaterialIds.length === 0 || isGenerating || isInvalidCount || !gameType) && styles.generateButtonDisabled]}
+          style={[styles.generateButton, (!selectedClassId || selectedMaterialIds.length === 0 || isGenerating || isInvalidCount || !gameType || hasReachedDailyLimit) && styles.generateButtonDisabled]}
           onPress={generateFromMaterials}
-          disabled={!selectedClassId || selectedMaterialIds.length === 0 || isGenerating || isInvalidCount || !gameType}
+          disabled={!selectedClassId || selectedMaterialIds.length === 0 || isGenerating || isInvalidCount || !gameType || hasReachedDailyLimit}
         >
           {isGenerating ? (
             <ActivityIndicator color="#FFF" size="small" />
@@ -386,6 +496,11 @@ const Game = ({ onNavigate, enrolledCourses = [], studentId, onSaveQuizScore }: 
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
               <Ionicons name="alert-circle-outline" size={20} color="#FFF" />
               <Text style={styles.generateButtonText}>Select a Game Type</Text>
+            </View>
+          ) : hasReachedDailyLimit ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <Ionicons name="lock-closed-outline" size={20} color="#FFF" />
+              <Text style={styles.generateButtonText}>Daily Limit Reached</Text>
             </View>
           ) : (
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
@@ -429,6 +544,33 @@ const styles = StyleSheet.create({
   },
   uploadButtonDisabled: { opacity: 0.5, shadowOpacity: 0 },
   uploadButtonText: { color: '#FFF', fontWeight: '800', fontSize: 14, letterSpacing: 0.2 },
+
+  // 🌟 NEW: Daily limit banner styles
+  limitBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#E8F5E9',
+    borderWidth: 1,
+    borderColor: '#C8E6C9',
+    borderRadius: 14,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    marginBottom: 24,
+  },
+  limitBannerReached: {
+    backgroundColor: '#FFF5F5',
+    borderColor: '#FFD7D7',
+  },
+  limitBannerText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#2E7D32',
+    flex: 1,
+  },
+  limitBannerTextReached: {
+    color: '#D32F2F',
+  },
   
   settingsCard: {
     backgroundColor: '#FFF',

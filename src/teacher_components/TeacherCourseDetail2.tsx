@@ -244,6 +244,65 @@ const getCalendarDays = (visibleMonth: Date) => {
 };
 const monthLabel = (value: Date) =>
   value.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+// ─── Game Question Generation Limits (per teacher, across ALL classes) ─────
+const DAILY_GENERATION_LIMIT = 30;       // generations/day
+const MAX_QUESTIONS_PER_GENERATION = 45; // questions per generation
+
+const GENERATION_USAGE_KEY = 'teacher_question_gen_usage_v1';
+const getTodayDateKey = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+};
+
+// Shape: { [teacherIdentity]: { date: 'YYYY-MM-DD', count: number } }
+type GenerationUsageMap = Record<string, { date: string; count: number }>;
+
+const readGenerationUsage = async (): Promise<GenerationUsageMap> => {
+  try {
+    if (Platform.OS === 'web') {
+      const raw =
+        typeof window !== 'undefined'
+          ? window.localStorage?.getItem(GENERATION_USAGE_KEY)
+          : null;
+      return raw ? JSON.parse(raw) : {};
+    }
+    const path = `${FileSystem.documentDirectory}${GENERATION_USAGE_KEY}.json`;
+    const info = await FileSystem.getInfoAsync(path);
+    if (!info.exists) return {};
+    const raw = await FileSystem.readAsStringAsync(path);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+};
+
+const writeGenerationUsage = async (data: GenerationUsageMap) => {
+  try {
+    if (Platform.OS === 'web') {
+      if (typeof window !== 'undefined') {
+        window.localStorage?.setItem(GENERATION_USAGE_KEY, JSON.stringify(data));
+      }
+      return;
+    }
+    const path = `${FileSystem.documentDirectory}${GENERATION_USAGE_KEY}.json`;
+    await FileSystem.writeAsStringAsync(path, JSON.stringify(data));
+  } catch (e) {
+    console.warn('Failed to persist question generation usage', e);
+  }
+};
+
+// Returns today's count for this teacher, auto-resetting if stored date != today.
+// Keyed by teacherIdentity ONLY (not classId), so the cap is shared across
+// every class/course the teacher generates game questions for.
+const getTodayUsageForTeacher = async (
+  teacherKey: string
+): Promise<{ usageMap: GenerationUsageMap; count: number }> => {
+  const usageMap = await readGenerationUsage();
+  const todayKey = getTodayDateKey();
+  const entry = usageMap[teacherKey];
+  const count = entry && entry.date === todayKey ? entry.count : 0;
+  return { usageMap, count };
+};
 const mapMaterial = (item: any): Material => {
   const fileName = item.fileName || undefined;
   const fileType =
@@ -590,13 +649,16 @@ const TeacherCourseDetail2 = ({
 
   const [numberOfQuestions, setNumberOfQuestions] = useState<string>('10');
   const [isEditingLesson, setIsEditingLesson] = useState(false);
+  // ✅ Daily generation usage for THIS teacher, shared across all classes/courses
+  const [dailyGenerationsUsed, setDailyGenerationsUsed] = useState<number>(0);
 
   const [showDeleteLessonModal, setShowDeleteLessonModal] = useState(false);
   const [isDeletingLesson, setIsDeletingLesson] = useState(false);
 
   // Helper validation matching Game.tsx logic
   const parsedQuestionCount = parseInt(numberOfQuestions, 10) || 0;
-  const isInvalidQuestionCount = parsedQuestionCount > 100 || parsedQuestionCount < 1;
+  const isInvalidQuestionCount =
+    parsedQuestionCount > MAX_QUESTIONS_PER_GENERATION || parsedQuestionCount < 1;
   // Add these states near other 'Generate' states
   const [pendingGeneratedLessons, setPendingGeneratedLessons] = useState<any[]>([]);
   const [showLessonPreviewModal, setShowLessonPreviewModal] = useState(false);
@@ -845,6 +907,13 @@ const TeacherCourseDetail2 = ({
   useEffect(() => {
     loadCourseContent();
   }, [course?.id]);
+  // ✅ Load today's cross-class generation usage for this teacher on mount / identity change
+  useEffect(() => {
+    (async () => {
+      const { count } = await getTodayUsageForTeacher(teacherIdentity);
+      setDailyGenerationsUsed(count);
+    })();
+  }, [teacherIdentity]);
   const handleGenerateLessonContent = async () => {
     if (!selectedGenModule || !selectedGenTopic) {
       showResultModal('error', 'Error', 'Please select a Module and Topic.');
@@ -2138,10 +2207,28 @@ const handleCreateManualLesson = async () => {
     return;
   }
 
-  // ✅ STRICT COUNT VALIDATION
+  // ✅ MAX QUESTIONS PER GENERATION (shared constant)
   const parsedCount = parseInt(numberOfQuestions, 10) || 0;
-  if (parsedCount < 1 || parsedCount > 100) {
-    showResultModal('error', 'Invalid Count', 'Please enter between 1 and 100 questions.');
+  if (parsedCount < 1 || parsedCount > MAX_QUESTIONS_PER_GENERATION) {
+    showResultModal(
+      'error',
+      'Invalid Count',
+      `Please enter between 1 and ${MAX_QUESTIONS_PER_GENERATION} questions.`
+    );
+    return;
+  }
+
+  // ✅ DAILY GENERATION LIMIT — per teacher, shared across ALL classes/courses.
+  // We re-check the persisted usage right before generating so the limit can't
+  // be bypassed by switching between classes/tabs without refreshing state.
+  const { usageMap, count: usedToday } = await getTodayUsageForTeacher(teacherIdentity);
+  if (usedToday >= DAILY_GENERATION_LIMIT) {
+    setDailyGenerationsUsed(usedToday);
+    showResultModal(
+      'error',
+      'Daily Limit Reached',
+      `You've used all ${DAILY_GENERATION_LIMIT} question generations allowed today across your classes. Please try again tomorrow.`
+    );
     return;
   }
 
@@ -2242,9 +2329,23 @@ let finalQuestions = uniqueQuestions;
     };
   });
 
+    // ✅ Record generation usage — persisted per teacher and shared across
+    // every class/course, resets automatically at the start of a new day.
+    const nextCount = usedToday + 1;
+    const nextUsageMap: GenerationUsageMap = {
+      ...usageMap,
+      [teacherIdentity]: { date: getTodayDateKey(), count: nextCount },
+    };
+    await writeGenerationUsage(nextUsageMap);
+    setDailyGenerationsUsed(nextCount);
+
     setGeneratedQuestions(editableQuestions);
     setShowGeneratedPreview(true);
-    showResultModal('success', 'Generated', 'Questions generated successfully! You can edit them before saving.');
+    showResultModal(
+      'success',
+      'Generated',
+      `Questions generated successfully! (${nextCount}/${DAILY_GENERATION_LIMIT} generations used today) You can edit them before saving.`
+    );
   } catch (error: any) {
     showResultModal('error', 'Generation Failed', error?.message || 'Unable to generate questions.');
   } finally {
@@ -2843,9 +2944,16 @@ let finalQuestions = uniqueQuestions;
         {renderRelatedMaterialsSelector()}
         {assignmentType === 'game_based' && selectedMaterialIds.length > 0 && gameType && (
           <TouchableOpacity
-            style={[styles.generateButton, isGenerating ? styles.disabledButton : null]}
+            style={[
+              styles.generateButton,
+              (isGenerating || dailyGenerationsUsed >= DAILY_GENERATION_LIMIT)
+                ? styles.disabledButton
+                : null,
+            ]}
             onPress={handleGenerateQuestions}
-            disabled={isGenerating || isSaving}
+            disabled={
+              isGenerating || isSaving || dailyGenerationsUsed >= DAILY_GENERATION_LIMIT
+            }
           >
             {isGenerating ? (
               <ActivityIndicator size="small" color="#FFF" />
@@ -2855,7 +2963,9 @@ let finalQuestions = uniqueQuestions;
             <Text style={styles.generateButtonText}>
               {isGenerating
                 ? 'Generating...'
-                : `Generate ${gameOptions.find((g) => g.value === gameType)?.label || ''} Questions`}
+                : dailyGenerationsUsed >= DAILY_GENERATION_LIMIT
+                  ? 'Daily Limit Reached'
+                  : `Generate ${gameOptions.find((g) => g.value === gameType)?.label || ''} Questions`}
             </Text>
           </TouchableOpacity>
         )}
@@ -2908,7 +3018,8 @@ let finalQuestions = uniqueQuestions;
   const renderCreateModalBody = () => {
   // Helper to validate question count (matches Game.tsx logic)
   const parsedQuestionCount = parseInt(numberOfQuestions, 10) || 0;
-  const isInvalidQuestionCount = parsedQuestionCount > 100 || parsedQuestionCount < 1;
+  const isInvalidQuestionCount =
+    parsedQuestionCount > MAX_QUESTIONS_PER_GENERATION || parsedQuestionCount < 1;
 
   if (activeTab === 'materials') {
     return (
@@ -3030,7 +3141,9 @@ let finalQuestions = uniqueQuestions;
         {/* ✅ NEW: Number of Questions Input for Game-Based Assignments */}
 {assignmentType === 'game_based' && (
   <>
-    <Text style={styles.sectionLabel}>Number of Questions (Max 100)</Text>
+    <Text style={styles.sectionLabel}>
+      Number of Questions (Max {MAX_QUESTIONS_PER_GENERATION})
+    </Text>
     <TextInput
       style={[
         styles.inputBox,
@@ -3046,17 +3159,29 @@ let finalQuestions = uniqueQuestions;
         if (errors.totalScore) setErrors((prev) => ({ ...prev, totalScore: undefined }));
       }}
       keyboardType="numeric"
-      maxLength={3}
+      maxLength={2}
       editable={!isSaving}
     />
     {/* ✅ Display specific error message under input */}
     {isInvalidQuestionCount && (
       <Text style={styles.errorText}>
-        {parsedQuestionCount > 100
-          ? 'Maximum limit is 100 questions.'
+        {parsedQuestionCount > MAX_QUESTIONS_PER_GENERATION
+          ? `Maximum limit is ${MAX_QUESTIONS_PER_GENERATION} questions.`
           : 'Please enter at least 1 question.'}
       </Text>
     )}
+    {/* ✅ Daily generation usage, shared across ALL of this teacher's classes/courses */}
+    <Text
+      style={{
+        fontSize: 11,
+        color: dailyGenerationsUsed >= DAILY_GENERATION_LIMIT ? '#D32F2F' : '#888',
+        marginTop: -4,
+        marginBottom: 8,
+      }}
+    >
+      {dailyGenerationsUsed}/{DAILY_GENERATION_LIMIT} generations used today across all your classes
+      {dailyGenerationsUsed >= DAILY_GENERATION_LIMIT ? ' — limit reached, try again tomorrow.' : ''}
+    </Text>
   </>
 )}
 
@@ -3130,10 +3255,15 @@ let finalQuestions = uniqueQuestions;
           <TouchableOpacity
             style={[
               styles.generateButton, 
-              (isGenerating || isInvalidQuestionCount) ? styles.disabledButton : null
+              (isGenerating || isInvalidQuestionCount || dailyGenerationsUsed >= DAILY_GENERATION_LIMIT)
+                ? styles.disabledButton
+                : null
             ]}
             onPress={handleGenerateQuestions}
-            disabled={isGenerating || isSaving || isInvalidQuestionCount}
+            disabled={
+              isGenerating || isSaving || isInvalidQuestionCount ||
+              dailyGenerationsUsed >= DAILY_GENERATION_LIMIT
+            }
           >
             {isGenerating ? (
               <ActivityIndicator size="small" color="#FFF" />
@@ -3143,7 +3273,9 @@ let finalQuestions = uniqueQuestions;
             <Text style={styles.generateButtonText}>
               {isGenerating
                 ? 'Generating...'
-                : `Generate ${gameOptions.find((g) => g.value === gameType)?.label || ''} Questions`}
+                : dailyGenerationsUsed >= DAILY_GENERATION_LIMIT
+                  ? 'Daily Limit Reached'
+                  : `Generate ${gameOptions.find((g) => g.value === gameType)?.label || ''} Questions`}
             </Text>
           </TouchableOpacity>
         )}
