@@ -8,6 +8,7 @@ import {
   Image,
   LayoutChangeEvent,
   Linking,
+  Modal,
   Platform,
   SafeAreaView,
   ScrollView,
@@ -28,6 +29,8 @@ type LandingPageProps = {
 };
 
 type SectionKey = "features" | "how" | "modules" | "users" | "analytics" | "architecture" | "contact";
+
+type PolicyView = "terms" | "privacy";
 
 type FeatureCard = {
   icon: React.ReactNode;
@@ -65,6 +68,213 @@ const CONTACT_EMAIL = "parseitlearninghub@gmail.com"; // TODO: replace with the 
 const FACEBOOK_URL = "https://www.facebook.com/profile.php?id=61575864027115"; // TODO: update Facebook link
 // -------------------------------------------------------------------------
 
+// --- Terms of Service / Privacy Policy content ---------------------------
+// Copied 1-to-1 from Register.tsx so the modal matches exactly (style,
+// layout, animation, and content).
+const TERMS_SECTIONS = [
+  {
+    title: '1. Use of Service',
+    body:
+      "ParseIT Hub provides a platform for adaptive learning and academic support. You must use this service responsibly and ethically. Any attempt to cheat or manipulate the certification, grading, or AI Assistant process is strictly prohibited.",
+  },
+  {
+    title: '2. User Accounts',
+    body:
+      'You are responsible for maintaining the confidentiality of your account and password. Do not share your account information with others. You are solely responsible for all activities that occur under your account.',
+  },
+  {
+    title: '3. Content',
+    body:
+      'By using ParseIT Hub, you may encounter content from Module Lessons, other users, and the AI Assistant. We do not guarantee the accuracy of AI-generated content. You are responsible for verifying such information before relying on it academically.',
+  },
+  {
+    title: '4. Acceptable Use',
+    body:
+      'You agree not to upload harmful software or files, misuse or cheat with AI-generated responses, upload copyrighted material without permission, harass or abuse other users, attempt unauthorized access, or exploit bugs and vulnerabilities.',
+  },
+  {
+    title: '5. Intellectual Property',
+    body:
+      "The application's features, source code, branding, Module Lessons, and other materials created by the development team belong to the ParseIT Hub developers unless stated otherwise. You keep ownership of the content you upload.",
+  },
+  {
+    title: '6. Changes to Terms',
+    body:
+      'We reserve the right to modify or replace these Terms at any time. It is your responsibility to check the Terms periodically for changes.',
+  },
+  {
+    title: '7. Contact Us',
+    body:
+      'If you have any questions about these Terms, please contact the ParseIT Hub administrators or the BSIT Department of Cebu Technological University – Argao Campus.',
+  },
+];
+
+const PRIVACY_SECTIONS = [
+  {
+    title: '1. Our Commitment',
+    body:
+      'ParseIT Hub protects your personal information in line with the Data Privacy Act of 2012 (Republic Act No. 10173). This policy explains how your data is collected, used, stored, and safeguarded.',
+  },
+  {
+    title: '2. Information We Collect',
+    body:
+      'Depending on your role, we may collect personal details (name, student or employee ID, email, birthdate, photo, role), academic information (enrolled classes, Module Lessons progress, assignment submissions, quiz results, grades), system information (device, login activity, IP address, app version, crash and usage logs), and AI interaction data such as prompts and questions submitted to the AI Assistant.',
+  },
+  {
+    title: '3. How We Use It',
+    body:
+      'Your information helps us authenticate accounts, deliver Module Lessons and other educational services, manage classes and assignments, generate academic analytics, personalize AI tutoring, monitor progress, and maintain platform security.',
+  },
+  {
+    title: '4. Storage and Security',
+    body:
+      'Your data is stored securely using Firebase cloud services and protected with role-based access controls, encrypted HTTPS communication, secure authentication, and session management.',
+  },
+  {
+    title: '5. Data Sharing',
+    body:
+      "ParseIT Hub does not sell your personal information. It's only shared with authorized teachers and administrators, when required by law, or when necessary to operate the platform's services.",
+  },
+  {
+    title: '6. Your Rights',
+    body:
+      'You may access your personal information, request corrections, request deletion of eligible data (subject to institutional policy), request a copy of your data where applicable, and report privacy concerns.',
+  },
+  {
+    title: '7. Changes to This Policy',
+    body:
+      "This policy may be updated from time to time. You'll be notified of significant changes through the application, and continued use after changes are made means you accept the updated terms.",
+  },
+  {
+    title: '8. Contact',
+    body:
+      'Questions about this Privacy Policy can be directed to the ParseIT Hub administrators or the BSIT Department of Cebu Technological University – Argao Campus.',
+  },
+];
+
+function TermsPrivacyModal({
+  visible,
+  view,
+  onClose,
+}: {
+  visible: boolean;
+  view: PolicyView;
+  onClose: () => void;
+}) {
+  const isTerms = view === 'terms';
+  const sections = isTerms ? TERMS_SECTIONS : PRIVACY_SECTIONS;
+
+  return (
+    <Modal
+      visible={visible}
+      animationType="slide"
+      onRequestClose={onClose}
+    >
+      <View style={termsStyles.overlay}>
+        <ScrollView
+          style={termsStyles.body}
+          contentContainerStyle={termsStyles.bodyContent}
+          showsVerticalScrollIndicator={false}
+        >
+          <Text style={termsStyles.title}>
+            {isTerms ? 'Terms of Service' : 'Privacy Policy'}
+          </Text>
+          <Text style={termsStyles.intro}>
+            {isTerms
+              ? 'Welcome to ParseIT Hub. By using our service, you agree to these terms. Please read them carefully.'
+              : 'ParseIT Hub values your privacy. This policy explains how we collect, use, and protect your personal information.'}
+          </Text>
+
+          {sections.map((section) => (
+            <View key={section.title} style={termsStyles.sectionCard}>
+              <Text style={termsStyles.sectionTitle}>{section.title}</Text>
+              <Text style={termsStyles.paragraph}>{section.body}</Text>
+            </View>
+          ))}
+
+          <TouchableOpacity
+            style={termsStyles.backButtonRow}
+            onPress={onClose}
+            activeOpacity={0.8}
+          >
+            <Ionicons name="arrow-back" size={18} color="#111827" />
+            <Text style={termsStyles.backButtonText}>Back to previous page</Text>
+          </TouchableOpacity>
+        </ScrollView>
+      </View>
+    </Modal>
+  );
+}
+
+const termsStyles = StyleSheet.create({
+  overlay: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+  },
+  body: {
+    flex: 1,
+  },
+  bodyContent: {
+    paddingHorizontal: 24,
+    paddingTop: Platform.OS === 'ios' ? 60 : 36,
+    paddingBottom: 48,
+    maxWidth: 900,
+    width: '100%',
+    alignSelf: 'center',
+  },
+  title: {
+    fontSize: 32,
+    fontWeight: '800',
+    color: '#0F172A',
+    marginBottom: 14,
+  },
+  intro: {
+    fontSize: 16,
+    lineHeight: 24,
+    color: '#6B7280',
+    marginBottom: 24,
+  },
+  sectionCard: {
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    borderRadius: 16,
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 20,
+    paddingVertical: 18,
+    marginBottom: 16,
+  },
+  sectionTitle: {
+    fontSize: 19,
+    fontWeight: '800',
+    color: '#0F172A',
+    marginBottom: 10,
+  },
+  paragraph: {
+    fontSize: 15,
+    lineHeight: 24,
+    color: '#6B7280',
+  },
+  backButtonRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 18,
+    marginTop: 8,
+    gap: 8,
+  },
+  backButtonText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#111827',
+  },
+});
+// -------------------------------------------------------------------------
+
 type RevealDirection = "up" | "left" | "right";
 
 type RevealSectionContextValue = {
@@ -84,6 +294,8 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
   const [showBackToTop, setShowBackToTop] = useState(false);
   const showBackToTopRef = useRef(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [policyView, setPolicyView] = useState<PolicyView>("terms");
+  const [policyModalVisible, setPolicyModalVisible] = useState(false);
   const sectionPositions = useRef<Record<SectionKey, number>>({
     features: 0,
     how: 0,
@@ -118,6 +330,16 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
 
   const scrollToTop = () => {
     scrollRef.current?.scrollTo({ y: 0, animated: true });
+  };
+
+  const openTerms = () => {
+    setPolicyView("terms");
+    setPolicyModalVisible(true);
+  };
+
+  const openPrivacy = () => {
+    setPolicyView("privacy");
+    setPolicyModalVisible(true);
   };
 
   const handleScrollPosition = (offsetY: number) => {
@@ -452,7 +674,11 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
           </View>
 
           <ScrollReveal scrollY={scrollY} direction="right" distance={30}>
-            <Footer />
+            <Footer
+              onContactPress={() => scrollToSection("contact")}
+              onTermsPress={openTerms}
+              onPrivacyPress={openPrivacy}
+            />
           </ScrollReveal>
         </LinearGradient>
       </Animated.ScrollView>
@@ -474,6 +700,13 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
           </LinearGradient>
         </TouchableOpacity>
       </Animated.View>
+
+      {/* Terms of Service / Privacy Policy full-screen page (same as Register.tsx) */}
+      <TermsPrivacyModal
+        visible={policyModalVisible}
+        view={policyView}
+        onClose={() => setPolicyModalVisible(false)}
+      />
     </SafeAreaView>
   );
 }
@@ -1302,7 +1535,15 @@ function SmallTag({ text, orange }: { text: string; orange?: boolean }) {
   );
 }
 
-function Footer() {
+function Footer({
+  onContactPress,
+  onTermsPress,
+  onPrivacyPress,
+}: {
+  onContactPress: () => void;
+  onTermsPress: () => void;
+  onPrivacyPress: () => void;
+}) {
   const { width } = useWindowDimensions();
   const isMobile = width < 768;
   const isSmall = width < 430;
@@ -1336,6 +1577,42 @@ function Footer() {
           <View style={styles.universityTextWrap}>
             <Text style={styles.universityTitle}>Cebu Technological University - Argao Campus</Text>
             <Text style={styles.universitySub}>College of Technology and Engineering</Text>
+
+            {/* Navigation buttons: Contact Us / Terms of Service / Privacy Policy */}
+            <View style={[styles.footerNavRow, isSmall && styles.footerNavRowSmall]}>
+              <TouchableOpacity
+                style={styles.footerNavButton}
+                onPress={onContactPress}
+                activeOpacity={0.85}
+                accessibilityRole="button"
+                accessibilityLabel="Go to Contact Us section"
+              >
+                <Feather name="mail" size={14} color="#ffb7bf" />
+                <Text style={styles.footerNavButtonText}>Contact Us</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.footerNavButton}
+                onPress={onTermsPress}
+                activeOpacity={0.85}
+                accessibilityRole="button"
+                accessibilityLabel="View Terms of Service"
+              >
+                <Feather name="file-text" size={14} color="#ffb7bf" />
+                <Text style={styles.footerNavButtonText}>Terms of Service</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.footerNavButton}
+                onPress={onPrivacyPress}
+                activeOpacity={0.85}
+                accessibilityRole="button"
+                accessibilityLabel="View Privacy Policy"
+              >
+                <Feather name="shield" size={14} color="#ffb7bf" />
+                <Text style={styles.footerNavButtonText}>Privacy Policy</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
 
@@ -1697,6 +1974,23 @@ const styles = StyleSheet.create({
   universityTitle: { color: "#fff", fontSize: 18, fontWeight: "900" },
   universitySub: { color: "#a8b4cc", fontSize: 16, marginTop: 4 },
   universityTextWrap: { flex: 1 },
+
+  // Contact Us / Terms of Service / Privacy Policy nav buttons in the footer
+  footerNavRow: { flexDirection: "row", flexWrap: "wrap", gap: 10, marginTop: 18 },
+  footerNavRowSmall: { gap: 8, marginTop: 14 },
+  footerNavButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 7,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "rgba(255,95,110,0.35)",
+    backgroundColor: "rgba(255,40,70,0.12)",
+  },
+  footerNavButtonText: { color: "#ffb7bf", fontSize: 13, fontWeight: "700" },
+
   footerColumn: { minWidth: 230, gap: 22 },
   footerColumnTitle: { color: "#fff", fontSize: 18, fontWeight: "900", marginBottom: 8 },
   footerLinkRow: { flexDirection: "row", alignItems: "center", gap: 12 },

@@ -629,6 +629,8 @@ const TeacherCourseDetail2 = ({
   currentTeacher: SignedInTeacher;
   availableCourses?: CourseDetailData[];
 }) => {
+
+  
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const isSmallPhone = width < 360;
@@ -4735,7 +4737,7 @@ LESSON DETAIL MODAL (UPDATED WITH EDIT & DELETE ACTIONS)
           <Ionicons name="close" size={24} color="#111" />
         </TouchableOpacity>
       </View>
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 20 }}>
+      <ScrollView showsVerticalScrollIndicator={true} contentContainerStyle={{ paddingBottom: 20 }}>
         {isLessonLoading ? (
           <ActivityIndicator size="large" color="#D32F2F" style={{ marginVertical: 20 }} />
         ) : selectedLesson ? (

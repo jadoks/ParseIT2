@@ -851,6 +851,35 @@ export default function Register({
   const [feedbackMessage, setFeedbackMessage] = useState('');
   const [feedbackOnClose, setFeedbackOnClose] = useState<(() => void) | null>(null);
 
+  useEffect(() => {
+  if (Platform.OS === 'web') {
+    const style = document.createElement('style');
+    style.innerHTML = `
+      /* Hide Edge/IE's built-in "reveal password" eye icon */
+      input::-ms-reveal, input::-ms-clear { display: none !important; }
+
+      /* Hide Chrome's autofill "key" icon inside password fields */
+      input::-webkit-credentials-auto-fill-button {
+        display: none !important;
+        visibility: hidden;
+        pointer-events: none;
+        position: absolute;
+        right: 0;
+      }
+
+      /* Hide Safari's "strong password" suggestion icon */
+      input::-webkit-strong-password-auto-fill-button {
+        display: none !important;
+        visibility: hidden;
+      }
+    `;
+    document.head.appendChild(style);
+    return () => {
+      document.head.removeChild(style);
+    };
+  }
+}, []);
+
   // ── Screen enter/exit animation ─────────────────────────────────────────
   // Register is treated as the "forward" screen relative to Sign In: it
   // enters by fading/sliding in from the right, and when the user goes back

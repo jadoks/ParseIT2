@@ -129,6 +129,35 @@ const SignIn = ({ onLogIn, onGoToLanding, onGoToRegister }: SignInProps) => {
   const isSmallScreen = width < 480;
   const isTablet = width >= 768;
 
+  useEffect(() => {
+  if (Platform.OS === 'web') {
+    const style = document.createElement('style');
+    style.innerHTML = `
+      /* Hide Edge/IE's built-in "reveal password" eye icon */
+      input::-ms-reveal, input::-ms-clear { display: none !important; }
+
+      /* Hide Chrome's autofill "key" icon inside password fields */
+      input::-webkit-credentials-auto-fill-button {
+        display: none !important;
+        visibility: hidden;
+        pointer-events: none;
+        position: absolute;
+        right: 0;
+      }
+
+      /* Hide Safari's "strong password" suggestion icon */
+      input::-webkit-strong-password-auto-fill-button {
+        display: none !important;
+        visibility: hidden;
+      }
+    `;
+    document.head.appendChild(style);
+    return () => {
+      document.head.removeChild(style);
+    };
+  }
+}, []);
+
   // ── Screen enter/exit animation ─────────────────────────────────────────
   // Sign In is treated as the "start" screen: it enters by fading/sliding in
   // from the left, and when the user navigates forward to Register it exits

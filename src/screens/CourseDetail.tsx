@@ -1908,7 +1908,7 @@ const CourseDetail = ({
                 <Ionicons name="close" size={24} color="#111" />
               </TouchableOpacity>
             </View>
-            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 20 }}>
+            <ScrollView showsVerticalScrollIndicator={true} contentContainerStyle={{ paddingBottom: 20 }}>
               {isLessonLoading ? (
                 <ActivityIndicator size="large" color="#D32F2F" style={{ marginVertical: 20 }} />
               ) : selectedLesson ? (
