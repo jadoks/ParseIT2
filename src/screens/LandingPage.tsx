@@ -174,7 +174,7 @@ function TermsPrivacyModal({
         <ScrollView
           style={termsStyles.body}
           contentContainerStyle={termsStyles.bodyContent}
-          showsVerticalScrollIndicator={false}
+          showsVerticalScrollIndicator={true}
         >
           <Text style={termsStyles.title}>
             {isTerms ? 'Terms of Service' : 'Privacy Policy'}
@@ -519,7 +519,7 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
       <StatusBar style="light" />
       <Animated.ScrollView
         ref={scrollRef as any}
-        showsVerticalScrollIndicator={false}
+        showsVerticalScrollIndicator={true}
         contentContainerStyle={styles.scrollContent}
         scrollEventThrottle={16}
         onScroll={Animated.event(
