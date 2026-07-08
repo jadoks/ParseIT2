@@ -1,21 +1,22 @@
+import Ionicons from '@expo/vector-icons/Ionicons';
 import Constants from 'expo-constants';
-import { Image } from 'expo-image'; // <--- expo-image for instant caching
+import { Image } from 'expo-image'; // instant caching + fade-in, same as Student CourseCard
 import React, { useEffect, useState } from 'react';
 import {
-  Modal,
   Platform,
-  SafeAreaView,
-  ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
+import {
+  getCachedBannerUrl,
+  setCachedBannerUrl,
+} from './bannerUrlCache';
 
-// Matching the type from TeacherApp.tsx
-interface CourseWithIcon {
+// ---- Matches the TeacherCourseData shape used in TeacherDashboard.tsx ----
+export type TeacherCourseData = {
   id: string;
   name: string;
   courseCode: string;
@@ -23,32 +24,37 @@ interface CourseWithIcon {
   instructor: string;
   section?: string;
   bannerUri?: string;
-  bannerStoragePath?: string | null; // Added for signed URL fetching
-  semester?: string;
-  schoolYear?: string;
+  bannerStoragePath?: string | null;
+  bannerFileName?: string | null;
+  bannerMimeType?: string | null;
   year?: string;
+  yearSection?: string;
+  semester?: string;
+  schoolYear?: string | null;
+  description?: string | null;
+  position?: number;
+  units?: number;
+  themeColor?: string;
+};
+
+interface TeacherCourseCardProps {
+  item: TeacherCourseData;
+  cardWidth: string | number;
+  copiedId: string | null;
+  onOpenCourse?: (course: TeacherCourseData) => void;
+  onCopyCode: (course: TeacherCourseData) => void;
+  onMenuPress: (event: any, course: TeacherCourseData) => void;
 }
 
-interface Coursedetail2Props {
-  onBack?: () => void;
-  course?: CourseWithIcon | null;
-  currentTeacher?: any;
-  availableCourses?: any[];
-}
-
-// API Helpers (Matching Student CourseCard)
+// ---- API base URL helper (same pattern used across the app) ----
 function getApiBaseUrl() {
-  if (Platform.OS === 'web') {
-    return 'http://localhost:5000';
-  }
+  if (Platform.OS === 'web') return 'http://localhost:5000';
   const possibleHost =
     Constants.expoConfig?.hostUri ||
     Constants.manifest2?.extra?.expoGo?.debuggerHost ||
     '';
   const host = possibleHost.split(':')[0];
-  if (host) {
-    return `http://${host}:5000`;
-  }
+  if (host) return `http://${host}:5000`;
   return 'http://192.168.1.5:5000';
 }
 
@@ -60,30 +66,80 @@ const apiFetch = (url: string, options: any = {}) =>
     ...options,
   });
 
-const Coursedetail2 = ({ onBack, course }: Coursedetail2Props) => {
-  const [activeTab, setActiveTab] = useState('Materials');
-  const [isCreateModalVisible, setCreateModalVisible] = useState(false);
-  const [newModuleName, setNewModuleName] = useState('');
-  
-  const [modules, setModules] = useState([
-    { id: '1', title: 'Week 1', date: 'Feb 28, 2026 (4:21 PM)' }
-  ]);
+// ---- Local fallback image map, same idea as Student CourseCard ----
+const COURSE_IMAGE_MAP: { [key: string]: any } = {
+  'CC111 – Introduction to Computing': require('../../assets/parseclass/CC111.jpg'),
+  'CC112 – Data Structures and Algorithms': require('../../assets/parseclass/CC112.jpg'),
+  'PC121 – Discrete Mathematics': require('../../assets/parseclass/PC121.jpg'),
+  'GEC-US – Understanding the Self': require('../../assets/parseclass/GEC-US.jpg'),
+  'NSTP1 – Civic Welfare Training Service': require('../../assets/parseclass/NSTP1.jpg'),
+  'PATHFIT2 – Exercise-Based Fitness Activities': require('../../assets/parseclass/PATHFIT2.jpg'),
+  'Web Development': require('../../assets/parseclass/AP1.jpg'),
+  'Programming Logic': require('../../assets/parseclass/AP1.jpg'),
+  'Computer Fundamentals': require('../../assets/parseclass/AP1.jpg'),
+};
 
-  // Banner logic matching Student CourseCard
+const getYearSectionLabel = (course: TeacherCourseData) => {
+  const year = course.year?.trim() || '';
+  const section = (course.yearSection || course.section || '').trim();
+  if (year && section) return `${year} • ${section}`;
+  if (year) return year;
+  if (section) return section;
+  return 'Year and section not set';
+};
+
+const getSemesterSchoolYearLabel = (course: TeacherCourseData) => {
+  const semester = course.semester?.trim() || '';
+  const schoolYear = course.schoolYear?.trim() || '';
+  if (semester && schoolYear) return `${semester} • S.Y. ${schoolYear}`;
+  if (semester) return semester;
+  if (schoolYear) return `S.Y. ${schoolYear}`;
+  return 'Semester and school year not set';
+};
+
+const TeacherCourseCard: React.FC<TeacherCourseCardProps> = ({
+  item,
+  cardWidth,
+  copiedId,
+  onOpenCourse,
+  onCopyCode,
+  onMenuPress,
+}) => {
+  // ---- Seed initial state straight from the shared cache. If this course's
+  // banner was already fetched earlier in the session (e.g. before the user
+  // navigated to another screen and back), this renders the correct image
+  // on the very first frame — no blank/fallback flash, no refetch. ----
+  const initialCachedUrl = item.bannerStoragePath
+    ? getCachedBannerUrl(item.id, item.bannerStoragePath)
+    : null;
+
   const [bannerLoadFailed, setBannerLoadFailed] = useState(false);
-  const [signedBannerUrl, setSignedBannerUrl] = useState<string | null>(null);
+  const [signedBannerUrl, setSignedBannerUrl] = useState<string | null>(initialCachedUrl);
 
   useEffect(() => {
     let isMounted = true;
 
     const refreshSignedBannerUrl = async () => {
-      setBannerLoadFailed(false);
-      setSignedBannerUrl(null);
-
-      if (!course?.bannerStoragePath) {
+      if (!item.bannerStoragePath) {
+        setSignedBannerUrl(null);
+        setBannerLoadFailed(false);
         return;
       }
 
+      // ---- Cache hit: reuse it, skip the network call entirely. This is
+      // what makes revisiting the Dashboard instant instead of re-fetching
+      // every card's signed URL from the backend again. ----
+      const cached = getCachedBannerUrl(item.id, item.bannerStoragePath);
+      if (cached) {
+        if (isMounted) {
+          setSignedBannerUrl(cached);
+          setBannerLoadFailed(false);
+        }
+        return;
+      }
+
+      // ---- Cache miss (first time this session, or the cached entry
+      // expired): fetch a fresh signed URL and store it for next time. ----
       try {
         const response = await apiFetch(`${API_BASE_URL}/storage/signed-url`, {
           method: 'POST',
@@ -91,8 +147,8 @@ const Coursedetail2 = ({ onBack, course }: Coursedetail2Props) => {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            storagePath: course.bannerStoragePath,
-            classId: course.id,
+            storagePath: item.bannerStoragePath,
+            classId: item.id,
           }),
         });
 
@@ -102,9 +158,12 @@ const Coursedetail2 = ({ onBack, course }: Coursedetail2Props) => {
           throw new Error(data?.error || 'Unable to refresh class banner.');
         }
 
-        if (isMounted && data?.url) {
-          setSignedBannerUrl(data.url);
-          setBannerLoadFailed(false); 
+        if (data?.url) {
+          setCachedBannerUrl(item.id, item.bannerStoragePath, data.url);
+          if (isMounted) {
+            setSignedBannerUrl(data.url);
+            setBannerLoadFailed(false);
+          }
         }
       } catch {
         if (isMounted) {
@@ -118,213 +177,187 @@ const Coursedetail2 = ({ onBack, course }: Coursedetail2Props) => {
     return () => {
       isMounted = false;
     };
-  }, [course?.id, course?.bannerUri, course?.bannerStoragePath]);
+  }, [item.id, item.bannerUri, item.bannerStoragePath]);
 
   const getCourseImage = () => {
-    // Local fallback assets matching Student CourseCard
-    const imageMap: { [key: string]: any } = {
-      'CC111 – Introduction to Computing': require('../../assets/parseclass/CC111.jpg'),
-      'CC112 – Data Structures and Algorithms': require('../../assets/parseclass/CC112.jpg'),
-      'PC121 – Discrete Mathematics': require('../../assets/parseclass/PC121.jpg'),
-      'GEC-US – Understanding the Self': require('../../assets/parseclass/GEC-US.jpg'),
-      'NSTP1 – Civic Welfare Training Service': require('../../assets/parseclass/NSTP1.jpg'),
-      'PATHFIT2 – Exercise-Based Fitness Activities': require('../../assets/parseclass/PATHFIT2.jpg'),
-      'Web Development': require('../../assets/parseclass/AP1.jpg'),
-      'Programming Logic': require('../../assets/parseclass/AP1.jpg'),
-      'Computer Fundamentals': require('../../assets/parseclass/AP1.jpg'),
-    };
+    const uri = signedBannerUrl || item.bannerUri;
 
-    const uri = signedBannerUrl || course?.bannerUri;
-
-    // Show the remote image immediately if we have a URI and it hasn't permanently failed
     if (uri && !bannerLoadFailed) {
       return { uri };
     }
 
-    // Fallback to local asset
-    return imageMap[course?.name || ''] || require('../../assets/parseclass/AP1.jpg');
+    // Fallback to a local asset if we recognize the course name, matching
+    // the Student CourseCard behavior instead of showing a plain gray box.
+    return COURSE_IMAGE_MAP[item.name] || null;
   };
 
-  const handleCreateModule = () => {
-    if (newModuleName.trim() === '') return;
-    const newModule = {
-      id: Math.random().toString(),
-      title: newModuleName,
-      date: new Date().toLocaleString('en-US', { 
-        month: 'short', day: '2-digit', year: 'numeric', 
-        hour: '2-digit', minute: '2-digit', hour12: true 
-      }),
-    };
-    setModules([newModule, ...modules]);
-    setNewModuleName('');
-    setCreateModalVisible(false);
-  };
+  const resolvedImage = getCourseImage();
 
   return (
-    <SafeAreaView style={styles.container}>
-      {/* Header with Optional Banner Image */}
-      <View style={styles.headerContainer}>
-        {/* expo-image ensures instant caching and smooth 200ms fade-in */}
-        <Image
-          source={getCourseImage()}
-          style={StyleSheet.absoluteFillObject}
-          contentFit="cover"
-          transition={200}
-          onError={() => setBannerLoadFailed(true)}
-        />
-        
-        {/* Dark overlay to ensure white text is always readable over the image */}
-        <View style={styles.headerOverlay} />
-
-        <View style={styles.headerTopRow}>
-          <TouchableOpacity style={styles.backButton} onPress={onBack}>
-            <MaterialCommunityIcons name="chevron-left" size={32} color="#FFF" />
-          </TouchableOpacity>
-          
-          <View style={styles.headerInfo}>
-            <Text style={styles.courseTitle}>
-              {course ? `${course.courseCode} (${course.year} - ${course.section})` : 'CC123 (3A - Python)'}
-            </Text>
-            <Text style={styles.courseSubText}>
-              {course?.name || 'Programming 2 (Lecture)'} • {course?.semester || '1st Semester'}
-            </Text>
-            <Text style={styles.instructorText}>
-              Instructor: {course?.instructor || 'Ramcee Bading'}
-            </Text>
-          </View>
-          
-          <MaterialCommunityIcons name="information-outline" size={24} color="#FFF" />
-        </View>
-      </View>
-
-      {/* Tabs */}
-      <View style={styles.tabContainer}>
-        <TouchableOpacity 
-          style={[styles.tabItem, activeTab === 'Materials' && styles.tabActive]} 
-          onPress={() => setActiveTab('Materials')}
-        >
-          <MaterialCommunityIcons name="book-multiple" size={20} color={activeTab === 'Materials' ? "#B71C1C" : "#555"} />
-          <Text style={[styles.tabLabel, activeTab === 'Materials' && styles.tabLabelActive]}>
-            Materials ({modules.length})
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity 
-          style={[styles.tabItem, activeTab === 'Assignments' && styles.tabActive]} 
-          onPress={() => setActiveTab('Assignments')}
-        >
-          <MaterialCommunityIcons name="clipboard-text-outline" size={20} color={activeTab === 'Assignments' ? "#B71C1C" : "#555"} />
-          <Text style={[styles.tabLabel, activeTab === 'Assignments' && styles.tabLabelActive]}>
-            Assignments (2)
-          </Text>
-        </TouchableOpacity>
-      </View>
-
-      <ScrollView contentContainerStyle={styles.contentPadding}>
-        <TouchableOpacity style={styles.createBtn} onPress={() => setCreateModalVisible(true)}>
-          <Text style={styles.createBtnText}>+ Create</Text>
-        </TouchableOpacity>
-
-        {activeTab === 'Materials' ? (
-          modules.map((item) => (
-            <View key={item.id} style={styles.moduleCard}>
-              <View style={styles.cardLeftAccent} />
-              <View style={styles.cardInner}>
-                <View style={styles.iconBox}>
-                  <MaterialCommunityIcons name="book-open-variant" size={30} color="#000" />
-                </View>
-                <Text style={styles.weekTitle}>{item.title}</Text>
-                <View style={styles.postedRow}>
-                  <Text style={styles.postedLabel}>Posted</Text>
-                  <Text style={styles.dateText}>{item.date}</Text>
-                </View>
-              </View>
-            </View>
-          ))
-        ) : (
-          <View style={styles.placeholder}><Text>Assignments Content...</Text></View>
-        )}
-      </ScrollView>
-
-      {/* Create Modal */}
-      <Modal visible={isCreateModalVisible} transparent animationType="fade">
-        <View style={styles.modalOverlay}>
-          <View style={styles.createModal}>
-            <Text style={styles.modalHeading}>New Module</Text>
-            <TextInput
-              style={styles.modalInput}
-              placeholder="e.g. Week 2"
-              value={newModuleName}
-              onChangeText={setNewModuleName}
-              autoFocus
+    <TouchableOpacity
+      style={[styles.card, { width: cardWidth as any }]}
+      onPress={() => onOpenCourse?.(item)}
+      activeOpacity={0.9}
+    >
+      <View style={styles.bannerWrapper}>
+        {resolvedImage ? (
+          <>
+            <Image
+              source={resolvedImage}
+              style={[StyleSheet.absoluteFillObject, styles.cardBannerImage]}
+              contentFit="cover"
+              transition={200}
+              onError={() => setBannerLoadFailed(true)}
             />
-            <View style={styles.modalButtons}>
-              <TouchableOpacity onPress={() => setCreateModalVisible(false)} style={styles.cancelBtn}>
-                <Text style={{color: '#888'}}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={handleCreateModule} style={styles.postBtn}>
-                <Text style={{color: '#FFF', fontWeight: 'bold'}}>Post</Text>
-              </TouchableOpacity>
+            <View style={styles.bannerOverlay}>
+              <Text style={styles.bannerName} numberOfLines={2}>
+                {item.name}
+              </Text>
             </View>
+          </>
+        ) : (
+          <View style={styles.missingBannerBox}>
+            <Text style={styles.missingBannerText} numberOfLines={2}>
+              {item.name}
+            </Text>
+            <Text style={styles.missingBannerSubText}>No banner stored</Text>
+          </View>
+        )}
+      </View>
+
+      <View style={styles.cardContent}>
+        <Text style={styles.instructorLabel}>INSTRUCTOR</Text>
+        <Text style={styles.instructorName}>{item.instructor}</Text>
+
+        <View style={styles.classMetaWrap}>
+          <View style={styles.classMetaPill}>
+            <Ionicons name="school-outline" size={14} color="#D32F2F" />
+            <Text style={styles.classMetaText} numberOfLines={1}>
+              {getYearSectionLabel(item)}
+            </Text>
+          </View>
+          <View style={styles.classMetaPill}>
+            <Ionicons name="calendar-outline" size={14} color="#D32F2F" />
+            <Text style={styles.classMetaText} numberOfLines={1}>
+              {getSemesterSchoolYearLabel(item)}
+            </Text>
           </View>
         </View>
-      </Modal>
-    </SafeAreaView>
+
+        <View style={styles.classCodeRow}>
+          <Text style={styles.bannerCode}>Class Code: {item.classCode}</Text>
+          <TouchableOpacity
+            onPress={() => onCopyCode(item)}
+            style={styles.copyButton}
+            activeOpacity={0.7}
+          >
+            <Ionicons
+              name={copiedId === item.id ? 'checkmark-outline' : 'copy-outline'}
+              size={16}
+              color="#000000"
+            />
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      <View style={styles.cardFooter}>
+        <TouchableOpacity
+          onPress={(event) => {
+            event.stopPropagation?.();
+            onMenuPress(event, item);
+          }}
+          style={styles.dotButton}
+        >
+          <MaterialCommunityIcons name="dots-vertical" size={22} color="#5f6368" />
+        </TouchableOpacity>
+        <View
+          style={[
+            styles.bottomBorder,
+            { backgroundColor: item.themeColor || '#2E7D32' },
+          ]}
+        />
+      </View>
+    </TouchableOpacity>
   );
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#FFF' },
-  
-  // UPDATED Header Styles
-  headerContainer: {
-    minHeight: 140,
-    paddingHorizontal: 25,
-    paddingVertical: 30,
-    justifyContent: 'center',
+  card: {
+    backgroundColor: '#fff',
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: '#ECECEC',
+    shadowColor: '#000',
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
     overflow: 'hidden',
-    position: 'relative', // Required for absoluteFillObject to work inside
+    marginBottom: 8,
   },
-  headerOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.4)', // Ensures text is readable over any image
+  bannerWrapper: {
+    height: 140,
+    width: '100%',
+    overflow: 'hidden',
   },
-  headerTopRow: { 
-    flexDirection: 'row', 
+  missingBannerBox: {
+    flex: 1,
+    backgroundColor: '#F3F4F6',
+    borderTopLeftRadius: 18,
+    borderTopRightRadius: 18,
+    padding: 16,
+    justifyContent: 'flex-end',
+  },
+  missingBannerText: { color: '#202124', fontSize: 18, fontWeight: '700' },
+  missingBannerSubText: {
+    color: '#6B7280',
+    fontSize: 12,
+    fontWeight: '700',
+    marginTop: 4,
+  },
+  cardBannerImage: {
+    borderTopLeftRadius: 18,
+    borderTopRightRadius: 18,
+  },
+  bannerOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.28)',
+    padding: 16,
+    justifyContent: 'flex-end',
+  },
+  bannerName: { color: '#fff', fontSize: 18, fontWeight: '700' },
+  bannerCode: {
+    color: 'rgba(19, 17, 17, 0.92)',
+    fontSize: 13,
+    fontWeight: '600',
+    marginTop: 2,
+  },
+  classMetaWrap: { marginTop: 12, gap: 8 },
+  classMetaPill: {
+    minHeight: 32,
+    borderRadius: 12,
+    backgroundColor: '#FFF4F4',
+    borderWidth: 1,
+    borderColor: '#F8D7D7',
+    paddingHorizontal: 10,
+    flexDirection: 'row',
     alignItems: 'center',
-    zIndex: 10, // Ensures text stays above the image/overlay
+    gap: 7,
   },
-  
-  backButton: { marginRight: 15 },
-  headerInfo: { flex: 1 },
-  courseTitle: { fontSize: 26, fontWeight: 'bold', color: '#FFF' },
-  courseSubText: { fontSize: 12, color: 'rgba(255,255,255,0.9)', marginTop: 4 },
-  instructorText: { fontSize: 12, color: 'rgba(255,255,255,0.9)' },
-  
-  tabContainer: { flexDirection: 'row', justifyContent: 'center', borderBottomWidth: 1, borderBottomColor: '#EEE' },
-  tabItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 15, paddingHorizontal: 30, gap: 8 },
-  tabActive: { borderBottomWidth: 3, borderBottomColor: '#B71C1C' },
-  tabLabel: { fontSize: 14, color: '#555', fontWeight: '600' },
-  tabLabelActive: { color: '#B71C1C' },
-  contentPadding: { padding: 30 },
-  createBtn: { backgroundColor: '#D32F2F', paddingHorizontal: 18, paddingVertical: 8, borderRadius: 20, alignSelf: 'flex-start', marginBottom: 30 },
-  createBtnText: { color: '#FFF', fontWeight: 'bold', fontSize: 13 },
-  moduleCard: { flexDirection: 'row', backgroundColor: '#FFF', height: 90, borderRadius: 12, borderWidth: 1, borderColor: '#F0F0F0', overflow: 'hidden', marginBottom: 15 },
-  cardLeftAccent: { width: 6, height: '60%', backgroundColor: '#D32F2F', alignSelf: 'center', borderRadius: 3, marginLeft: 5 },
-  cardInner: { flex: 1, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20 },
-  iconBox: { width: 45, height: 45, backgroundColor: '#E0E0E0', borderRadius: 10, justifyContent: 'center', alignItems: 'center', marginRight: 20 },
-  weekTitle: { flex: 1, fontSize: 16, fontWeight: '700', color: '#333' },
-  postedRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  postedLabel: { fontSize: 14, fontWeight: 'bold', color: '#000' },
-  dateText: { fontSize: 11, color: '#888' },
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },
-  createModal: { width: '80%', backgroundColor: '#FFF', borderRadius: 15, padding: 25 },
-  modalHeading: { fontSize: 18, fontWeight: 'bold', marginBottom: 15 },
-  modalInput: { borderWidth: 1, borderColor: '#DDD', borderRadius: 8, padding: 12, marginBottom: 20 },
-  modalButtons: { flexDirection: 'row', justifyContent: 'flex-end', gap: 20 },
-  cancelBtn: { padding: 10 },
-  postBtn: { backgroundColor: '#D32F2F', paddingHorizontal: 20, paddingVertical: 10, borderRadius: 8 },
-  placeholder: { padding: 50, alignItems: 'center' }
+  classMetaText: { flex: 1, color: '#7A1F1F', fontSize: 12, fontWeight: '700' },
+  classCodeRow: { flexDirection: 'row', alignItems: 'center', marginTop: 10 },
+  copyButton: { marginLeft: 8, padding: 4 },
+  cardContent: { paddingHorizontal: 16, paddingTop: 14, paddingBottom: 8 },
+  instructorLabel: {
+    fontSize: 11,
+    color: '#9AA0A6',
+    fontWeight: '700',
+    letterSpacing: 0.6,
+  },
+  instructorName: { fontSize: 15, color: '#202124', fontWeight: '700', marginTop: 4 },
+  cardFooter: { position: 'relative', minHeight: 36, justifyContent: 'center' },
+  dotButton: { alignSelf: 'flex-end', paddingHorizontal: 12, paddingVertical: 6 },
+  bottomBorder: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 4 },
 });
 
-export default Coursedetail2;
+export default TeacherCourseCard;

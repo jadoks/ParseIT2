@@ -688,7 +688,7 @@ async function uploadGenericFileToStorage({
   
   const uniqueFileName = `${Date.now()}-${safeFileName}`;
   const storagePath = `${folder}/${classId}/${uniqueFileName}`;
-
+  
   // 1. Upload Original File
   const file = bucket.file(storagePath);
   await file.save(Buffer.from(cleanedBase64, "base64"), {
@@ -699,16 +699,63 @@ async function uploadGenericFileToStorage({
     resumable: false,
   });
 
-  // Return basic file info without PDF conversion fields
+  // 2. Check if Conversion to PDF is needed for AI Processing
+  let pdfStoragePath = null;
+  let pdfUrl = null;
+  
+  // Define types that Gemini struggles with but CloudConvert can handle
+  const needsConversion = [
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document', // .docx
+    'application/vnd.openxmlformats-officedocument.presentationml.presentation', // .pptx
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', // .xlsx
+    'application/msword', // .doc
+    'application/vnd.ms-powerpoint', // .ppt
+    'application/vnd.ms-excel' // .xls
+  ].includes(safeMimeType) || 
+  ['.docx', '.pptx', '.xlsx', '.doc', '.ppt', '.xls'].some(ext => 
+    safeFileName.toLowerCase().endsWith(ext)
+  );
+
+  if (needsConversion && process.env.CLOUDCONVERTER_API_KEY) {
+    try {
+      console.log(`Converting ${safeFileName} to PDF for AI processing...`);
+      const buffer = Buffer.from(cleanedBase64, "base64");
+      
+      // Use the existing CloudConvert helper
+      const pdfBuffer = await convertPPTXtoPDFViaCloudConverter(buffer, safeFileName);
+      
+      // Save the converted PDF to a specific subfolder or same folder with suffix
+      const pdfUniqueFileName = `${Date.now()}-converted-${safeFileName.replace(/\.\w+$/, '.pdf')}`;
+      pdfStoragePath = `${folder}/${classId}/converted/${pdfUniqueFileName}`;
+      
+      const pdfFile = bucket.file(pdfStoragePath);
+      await pdfFile.save(pdfBuffer, {
+        metadata: {
+          contentType: "application/pdf",
+          cacheControl: "private,max-age=0,no-transform",
+        },
+        resumable: false,
+      });
+      
+      console.log(`Successfully converted and saved PDF to: ${pdfStoragePath}`);
+      
+    } catch (convertError) {
+      console.warn(`Failed to convert ${safeFileName} to PDF:`, convertError.message);
+      // If conversion fails, we proceed without the PDF copy. AI will try its best with extraction.
+    }
+  }
+
+  // Return basic file info including the new PDF path
   return {
     fileUrl: null, // Original file usually doesn't have a direct public URL in this flow
     storagePath,
     fileName: safeFileName,
     fileType: safeMimeType,
     bucketPath: `gs://parseit2-4b26d.firebasestorage.app/${storagePath}`,
-    // PDF fields are now always null since conversion is removed
-    pdfStoragePath: null,
-    pdfUrl: null,
+    
+    // New fields for AI-optimized PDF
+    pdfStoragePath: pdfStoragePath, 
+    pdfUrl: null, // Will be generated as signed URL when needed by AI or Frontend
   };
 }
 
@@ -3631,6 +3678,7 @@ app.post("/game-ai/generate-quiz-masters", requireAuth, gameUpload.single("file"
 });
 
 // === UPDATED: Generate quiz from selected class materials AND module lessons ===
+// === UPDATED: Generate quiz from selected class materials AND module lessons ===
 app.post("/game-ai/generate-quiz-materials", requireAuth, async (req, res) => {
   try {
     const { classId, materialIds, gameType, authUid, numberOfQuestions } = req.body;
@@ -3655,6 +3703,7 @@ app.post("/game-ai/generate-quiz-materials", requireAuth, async (req, res) => {
           fileName: data.fileName,
           fileType: data.fileType,
           storagePath: data.storagePath,
+          pdfStoragePath: data.pdfStoragePath, // ✅ NEW: Fetch pre-converted PDF path
           fileUrl: data.fileUrl,
           content: data.content // Text-based material content
         });
@@ -3671,6 +3720,7 @@ app.post("/game-ai/generate-quiz-materials", requireAuth, async (req, res) => {
             fileName: data.fileName,
             fileType: data.fileType,
             storagePath: data.storagePath,
+            pdfStoragePath: data.pdfStoragePath, // ✅ NEW: Fetch pre-converted PDF path
             fileUrl: data.fileUrl,
             content: data.discussion || data.description // Lesson text content
           });
@@ -3696,37 +3746,59 @@ app.post("/game-ai/generate-quiz-materials", requireAuth, async (req, res) => {
       const matFileName = item.fileName || item.title || "content";
       let mimeType = item.fileType || "application/octet-stream";
       let buffer = null;
+      let usedPreConvertedPdf = false;
 
-      // Handle File Uploads (Standard Material or Manual Lesson File)
-      if (item.storagePath) {
+      // ✅ PRIORITY 1: Check if we have a pre-converted PDF path stored in the database
+      if (item.pdfStoragePath) {
+        try {
+          console.log(`Using pre-converted PDF for AI: ${matFileName}`);
+          const pdfFile = bucket.file(item.pdfStoragePath);
+          [buffer] = await pdfFile.download();
+          mimeType = "application/pdf"; // Force PDF mime type for Gemini
+          usedPreConvertedPdf = true;
+        } catch (downloadError) {
+          console.warn(`Failed to download converted PDF for "${matFileName}", falling back to original:`, downloadError.message);
+          // Fallback to original file logic below if PDF download fails
+          buffer = null; 
+        }
+      }
+
+      // ✅ PRIORITY 2: If no pre-converted PDF or download failed, process original file
+      if (!buffer && item.storagePath) {
         try {
           const file = bucket.file(item.storagePath);
           [buffer] = await file.download();
         } catch (downloadError) {
-          console.warn(`Failed to download file "${matFileName}":`, downloadError.message);
+          console.warn(`Failed to download original file "${matFileName}":`, downloadError.message);
           continue;
         }
       } 
+      
       // Handle Text-Based Content (Standard Material Text or Lesson Discussion)
-      else if (item.content && item.content.trim()) {
+      // Only if we haven't already processed a file
+      if (!buffer && item.content && item.content.trim()) {
         combinedExtractedText += `\n[${matFileName}]\n${limitText(item.content, 12000)}`;
         continue; // Skip file processing for pure text items
       }
 
       if (!buffer) continue;
 
-      // Check if file is PowerPoint and needs conversion
-      const isPowerPoint = matFileName.toLowerCase().endsWith('.pptx') || 
-                           matFileName.toLowerCase().endsWith('.ppt') || 
-                           mimeType.includes('presentationml');
-      
-      if (isPowerPoint) {
-        try {
-          console.log(`Converting PowerPoint "${matFileName}" to PDF...`);
-          buffer = await convertPPTXtoPDFViaCloudConverter(buffer, matFileName);
-          mimeType = "application/pdf";
-        } catch (convertError) {
-          console.error(`PowerPoint conversion failed for "${matFileName}":`, convertError.message);
+      // ✅ PRIORITY 3: If using original file (not pre-converted), check if it needs conversion
+      if (!usedPreConvertedPdf) {
+        // Check if file is PowerPoint and needs conversion
+        const isPowerPoint = matFileName.toLowerCase().endsWith('.pptx') || 
+                             matFileName.toLowerCase().endsWith('.ppt') || 
+                             mimeType.includes('presentationml');
+        
+        if (isPowerPoint) {
+          try {
+            console.log(`Converting PowerPoint "${matFileName}" to PDF...`);
+            buffer = await convertPPTXtoPDFViaCloudConverter(buffer, matFileName);
+            mimeType = "application/pdf";
+          } catch (convertError) {
+            console.error(`PowerPoint conversion failed for "${matFileName}":`, convertError.message);
+            // Continue with original buffer if conversion fails
+          }
         }
       }
 
@@ -3737,6 +3809,7 @@ app.post("/game-ai/generate-quiz-materials", requireAuth, async (req, res) => {
         });
       } else {
         // Extract text from unsupported formats (DOCX, XLSX, etc.)
+        // Note: If we used a pre-converted PDF, this block is skipped because mimeType is application/pdf
         try {
           const extracted = await extractTextFromFile(buffer, mimeType, matFileName);
           if (typeof extracted === "string" && extracted.trim()) {
@@ -4004,11 +4077,9 @@ app.post("/upload-class-file", requireAuth, async (req, res) => {
       fileType,
       kind,
     } = req.body;
-
     if (!classId) {
       return res.status(400).json({ error: "classId is required." });
     }
-
     if (!fileBase64) {
       return res.status(400).json({ error: "fileBase64 is required." });
     }
@@ -4041,7 +4112,6 @@ app.post("/upload-class-file", requireAuth, async (req, res) => {
     });
 
     // GENERATE SIGNED URL FOR THE ORIGINAL FILE
-    // This fixes the issue where fileUrl was null in the database
     let signedFileUrl = null;
     if (uploadedFile.storagePath) {
       try {
@@ -4056,7 +4126,7 @@ app.post("/upload-class-file", requireAuth, async (req, res) => {
       message: "File uploaded successfully.",
       data: {
         ...uploadedFile,
-        fileUrl: signedFileUrl, // <--- ADD THIS LINE
+        fileUrl: signedFileUrl, // <--- Original file URL for Previewing
       },
     });
   } catch (error) {

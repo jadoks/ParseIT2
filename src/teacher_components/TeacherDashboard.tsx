@@ -22,6 +22,7 @@ import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityI
 
 import AnnouncementBanner from './TeacherAnnouncementBanner';
 import { Announcement } from './TeacherAnnouncementModal';
+import TeacherCourseCard from './TeacherCourseCard'; // <--- NEW: extracted course card component
 
 export type TeacherCourseData = {
   id: string;
@@ -139,24 +140,6 @@ const mapBackendClass = (item: any, fallbackInstructor: string): TeacherCourseDa
   position: item.position, units: typeof item.units === 'number' ? item.units : undefined,
 });
 
-const getYearSectionLabel = (course: TeacherCourseData) => {
-  const year = course.year?.trim() || '';
-  const section = (course.yearSection || course.section || '').trim();
-  if (year && section) return `${year} • ${section}`;
-  if (year) return year;
-  if (section) return section;
-  return 'Year and section not set';
-};
-
-const getSemesterSchoolYearLabel = (course: TeacherCourseData) => {
-  const semester = course.semester?.trim() || '';
-  const schoolYear = course.schoolYear?.trim() || '';
-  if (semester && schoolYear) return `${semester} • S.Y. ${schoolYear}`;
-  if (semester) return semester;
-  if (schoolYear) return `S.Y. ${schoolYear}`;
-  return 'Semester and school year not set';
-};
-
 const Dashboard2 = ({
   announcements = [],
   courses = [],
@@ -176,8 +159,8 @@ const Dashboard2 = ({
   const [isCreateModalVisible, setCreateModalVisible] = useState(false);
   const [isEditModalVisible, setEditModalVisible] = useState(false);
   const [isCreatingClass, setIsCreatingClass] = useState(false);
-  const [isSavingEdit, setIsSavingEdit] = useState(false); // <-- NEW: Loading state for Edit
-  const [isDeletingClass, setIsDeletingClass] = useState(false); // <-- NEW: Loading state for Delete
+  const [isSavingEdit, setIsSavingEdit] = useState(false); // <-- Loading state for Edit
+  const [isDeletingClass, setIsDeletingClass] = useState(false); // <-- Loading state for Delete
   const [toastVisible, setToastVisible] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
   const [toastType, setToastType] = useState<'success' | 'error'>('success');
@@ -906,57 +889,29 @@ const Dashboard2 = ({
             </View>
           </View>
 
+          {/* UPDATED: Now rendered via the extracted TeacherCourseCard component,
+              which handles its own signed-banner-URL refresh and fallback,
+              matching the Student CourseCard behavior. */}
           <View style={styles.courseGrid}>
             {visibleCourses.map((item) => (
-              <TouchableOpacity key={item.id} style={[styles.card, { width: cardWidth }]} onPress={() => onOpenCourse?.(item)} activeOpacity={0.9}>
-                <View style={styles.bannerWrapper}>
-                  {item.bannerUri ? (
-                    <>
-                      {/* UPDATED: Using expo-image for instant caching and smooth fade-in */}
-                      <Image
-                        source={{ uri: item.bannerUri }}
-                        style={[StyleSheet.absoluteFillObject, styles.cardBannerImage]}
-                        contentFit="cover"
-                        transition={200}
-                      />
-                      <View style={styles.bannerOverlay}>
-                        <Text style={styles.bannerName} numberOfLines={2}>{item.name}</Text>
-                      </View>
-                    </>
-                  ) : (
-                    <View style={styles.missingBannerBox}>
-                      <Text style={styles.missingBannerText} numberOfLines={2}>{item.name}</Text>
-                      <Text style={styles.missingBannerSubText}>No banner stored</Text>
-                    </View>
-                  )}
-                </View>
-                <View style={styles.cardContent}>
-                  <Text style={styles.instructorLabel}>INSTRUCTOR</Text>
-                  <Text style={styles.instructorName}>{item.instructor}</Text>
-                  <View style={styles.classMetaWrap}>
-                    <View style={styles.classMetaPill}>
-                      <Ionicons name="school-outline" size={14} color="#D32F2F" />
-                      <Text style={styles.classMetaText} numberOfLines={1}>{getYearSectionLabel(item)}</Text>
-                    </View>
-                    <View style={styles.classMetaPill}>
-                      <Ionicons name="calendar-outline" size={14} color="#D32F2F" />
-                      <Text style={styles.classMetaText} numberOfLines={1}>{getSemesterSchoolYearLabel(item)}</Text>
-                    </View>
-                  </View>
-                  <View style={styles.classCodeRow}>
-                    <Text style={styles.bannerCode}>Class Code: {item.classCode}</Text>
-                    <TouchableOpacity onPress={async () => { await Clipboard.setStringAsync(item.classCode); setCopiedId(item.id); setTimeout(() => setCopiedId(null), 3000); }} style={styles.copyButton} activeOpacity={0.7}>
-                      <Ionicons name={copiedId === item.id ? 'checkmark-outline' : 'copy-outline'} size={16} color="#000000" />
-                    </TouchableOpacity>
-                  </View>
-                </View>
-                <View style={styles.cardFooter}>
-                  <TouchableOpacity onPress={(event) => { event.stopPropagation?.(); const { pageX, pageY } = event.nativeEvent; setMenuPosition({ x: pageX, y: pageY }); setMenuCourse(item); setMenuVisible(true); }} style={styles.dotButton}>
-                    <MaterialCommunityIcons name="dots-vertical" size={22} color="#5f6368" />
-                  </TouchableOpacity>
-                  <View style={[styles.bottomBorder, { backgroundColor: item.themeColor || '#2E7D32' }]} />
-                </View>
-              </TouchableOpacity>
+              <TeacherCourseCard
+                key={item.id}
+                item={item}
+                cardWidth={cardWidth}
+                copiedId={copiedId}
+                onOpenCourse={onOpenCourse}
+                onCopyCode={async (course) => {
+                  await Clipboard.setStringAsync(course.classCode);
+                  setCopiedId(course.id);
+                  setTimeout(() => setCopiedId(null), 3000);
+                }}
+                onMenuPress={(event, course) => {
+                  const { pageX, pageY } = event.nativeEvent;
+                  setMenuPosition({ x: pageX, y: pageY });
+                  setMenuCourse(course);
+                  setMenuVisible(true);
+                }}
+              />
             ))}
           </View>
         </View>
@@ -1014,7 +969,7 @@ const styles = StyleSheet.create({
   },
   createBtnText: { color: '#FFF', fontWeight: '700', fontSize: 14 },
   
-  // ✅ NEW: Icon-only button style for mobile
+  // Icon-only button style for mobile
   iconOnlyButton: {
     paddingHorizontal: 12,
     paddingVertical: 12,
@@ -1023,26 +978,13 @@ const styles = StyleSheet.create({
   },
   
   courseGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'flex-start', gap: 21, width: '100%' },
-  card: { backgroundColor: '#fff', borderRadius: 18, borderWidth: 1, borderColor: '#ECECEC', shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 4, shadowOffset: { width: 0, height: 2 }, elevation: 2, overflow: 'hidden', marginBottom: 8 },
-  bannerWrapper: { height: 140, width: '100%', overflow: 'hidden' }, // Added overflow: hidden to clip the absolute image
-  missingBannerBox: { flex: 1, backgroundColor: '#F3F4F6', borderTopLeftRadius: 18, borderTopRightRadius: 18, padding: 16, justifyContent: 'flex-end' },
-  missingBannerText: { color: '#202124', fontSize: 18, fontWeight: '700' },
-  missingBannerSubText: { color: '#6B7280', fontSize: 12, fontWeight: '700', marginTop: 4 },
-  cardBannerImage: { borderTopLeftRadius: 18, borderTopRightRadius: 18 },
-  bannerOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.28)', padding: 16, justifyContent: 'flex-end' },
-  bannerName: { color: '#fff', fontSize: 18, fontWeight: '700' },
-  bannerCode: { color: 'rgba(19, 17, 17, 0.92)', fontSize: 13, fontWeight: '600', marginTop: 2 },
-  classMetaWrap: { marginTop: 12, gap: 8 },
-  classMetaPill: { minHeight: 32, borderRadius: 12, backgroundColor: '#FFF4F4', borderWidth: 1, borderColor: '#F8D7D7', paddingHorizontal: 10, flexDirection: 'row', alignItems: 'center', gap: 7 },
-  classMetaText: { flex: 1, color: '#7A1F1F', fontSize: 12, fontWeight: '700' },
-  classCodeRow: { flexDirection: 'row', alignItems: 'center', marginTop: 10 },
-  copyButton: { marginLeft: 8, padding: 4 },
-  cardContent: { paddingHorizontal: 16, paddingTop: 14, paddingBottom: 8 },
-  instructorLabel: { fontSize: 11, color: '#9AA0A6', fontWeight: '700', letterSpacing: 0.6 },
-  instructorName: { fontSize: 15, color: '#202124', fontWeight: '700', marginTop: 4 },
-  cardFooter: { position: 'relative', minHeight: 36, justifyContent: 'center' },
-  dotButton: { alignSelf: 'flex-end', paddingHorizontal: 12, paddingVertical: 6 },
-  bottomBorder: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 4 },
+
+  // NOTE: card / bannerWrapper / missingBannerBox / cardBannerImage / bannerOverlay /
+  // bannerName / bannerCode / classMetaWrap / classMetaPill / classMetaText /
+  // classCodeRow / copyButton / cardContent / instructorLabel / instructorName /
+  // cardFooter / dotButton / bottomBorder have all moved into TeacherCourseCard.tsx
+  // and are intentionally removed from here to avoid duplication.
+
   menuOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.08)' },
   menuBox: { width: 220, backgroundColor: '#fff', borderRadius: 16, paddingVertical: 8, shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 10 },
   menuItem: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingVertical: 12 },
@@ -1083,7 +1025,7 @@ const styles = StyleSheet.create({
   textAreaInput: { minHeight: 84, fontSize: 14, color: '#111827' },
   uploadBtn: { minHeight: 48, borderWidth: 1, borderColor: '#F4B4B4', borderRadius: 14, backgroundColor: '#FFF7F7', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 14 },
   uploadBtnText: { color: '#D32F2F', fontWeight: '700', fontSize: 14 },
-  bannerPreview: { height: 150, borderRadius: 16, overflow: 'hidden', marginBottom: 14, position: 'relative' }, // Added position: relative to anchor the absolute image
+  bannerPreview: { height: 150, borderRadius: 16, overflow: 'hidden', marginBottom: 14, position: 'relative' },
   previewOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.28)', alignItems: 'center', justifyContent: 'center' },
   previewText: { color: '#fff', fontWeight: '700', fontSize: 14 },
   codeNoticeBox: { flexDirection: 'row', gap: 10, alignItems: 'center', backgroundColor: '#F4FBF5', borderWidth: 1, borderColor: '#D8F1DC', borderRadius: 14, paddingHorizontal: 14, paddingVertical: 12, marginBottom: 16 },
@@ -1103,13 +1045,13 @@ const styles = StyleSheet.create({
   toastSuccess: { backgroundColor: '#2E7D32' },
   toastError: { backgroundColor: '#D32F2F' },
   toastText: { flex: 1, color: '#FFFFFF', fontSize: 13, fontWeight: '800', lineHeight: 18 },
-  deleteConfirmBox: { width: '100%', maxWidth: 360, backgroundColor: '#fff', borderRadius: 22, paddingHorizontal: 22, paddingVertical: 22, overflow: 'hidden' }, // Added overflow: hidden for the overlay
+  deleteConfirmBox: { width: '100%', maxWidth: 360, backgroundColor: '#fff', borderRadius: 22, paddingHorizontal: 22, paddingVertical: 22, overflow: 'hidden' },
   deleteConfirmTitle: { fontSize: 20, fontWeight: '800', color: '#202124', marginBottom: 10 },
   deleteConfirmText: { fontSize: 14, color: '#5F6368', lineHeight: 22 },
   deleteConfirmActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 12, marginTop: 18 },
   deleteConfirmBtn: { minWidth: 110, minHeight: 46, borderRadius: 14, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 16, backgroundColor: '#D32F2F' },
   deleteConfirmBtnText: { color: '#fff', fontWeight: '800', fontSize: 14 },
-  deletingOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(255, 255, 255, 0.88)', zIndex: 100, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24 }, // <-- NEW: Overlay style for delete
+  deletingOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(255, 255, 255, 0.88)', zIndex: 100, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24 },
   fullPageLoader: {
     flex: 1,
     justifyContent: 'center',
