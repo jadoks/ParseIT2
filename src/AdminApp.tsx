@@ -66,6 +66,13 @@ type Props = {
   currentAdmin: CurrentAdmin;
 };
 
+// Snapshot of the navigation state we can jump back to.
+type ScreenSnapshot = {
+  activeTopNav: string;
+  activeSideNav: string | null;
+  activeContentScreen: string;
+};
+
 export default function AdminApp({ onLogout, currentAdmin }: Props) {
   const { width } = useWindowDimensions();
 
@@ -85,7 +92,30 @@ export default function AdminApp({ onLogout, currentAdmin }: Props) {
   const [activeContentScreen, setActiveContentScreen] = useState("Dashboard");
   const [isLogoutModalVisible, setIsLogoutModalVisible] = useState(false);
 
+  // Remembers whatever screen the user was on right before we navigated
+  // to Settings/Analytics, so "close" can send them back to it instead
+  // of always hardcoding Dashboard.
+  const [previousScreen, setPreviousScreen] = useState<ScreenSnapshot>({
+    activeTopNav: "Dashboard",
+    activeSideNav: null,
+    activeContentScreen: "Dashboard",
+  });
+
+  const captureCurrentScreen = (): ScreenSnapshot => ({
+    activeTopNav,
+    activeSideNav,
+    activeContentScreen,
+  });
+
+  const restoreScreen = (snapshot: ScreenSnapshot) => {
+    setActiveTopNav(snapshot.activeTopNav);
+    setActiveSideNav(snapshot.activeSideNav);
+    setActiveContentScreen(snapshot.activeContentScreen);
+    setSidebarVisible(false);
+  };
+
   const handleTopNavChange = (item: string) => {
+    setPreviousScreen(captureCurrentScreen());
     setActiveTopNav(item);
     setActiveSideNav(null);
     setActiveContentScreen(item);
@@ -114,13 +144,23 @@ export default function AdminApp({ onLogout, currentAdmin }: Props) {
       return;
     }
 
+    // Save where the user currently is before jumping to Settings/Analytics.
+    setPreviousScreen(captureCurrentScreen());
+
     setActiveTopNav("Dashboard");
     setActiveSideNav(item);
     setActiveContentScreen(item);
     setSidebarVisible(false);
   };
 
+  // Pass this as onClose to Settings/Analytics — it returns the user to
+  // whatever screen they were on right before opening it.
+  const handleGoToLastPage = () => {
+    restoreScreen(previousScreen);
+  };
+
   const handleNavigateToManageClass = () => {
+    setPreviousScreen(captureCurrentScreen());
     setActiveTopNav("Class");
     setActiveSideNav(null);
     setActiveContentScreen("Class");
@@ -128,6 +168,7 @@ export default function AdminApp({ onLogout, currentAdmin }: Props) {
   };
 
   const handleNavigateToManageAdmin = () => {
+    setPreviousScreen(captureCurrentScreen());
     setActiveTopNav("Admin");
     setActiveSideNav(null);
     setActiveContentScreen("Admin");
@@ -135,6 +176,7 @@ export default function AdminApp({ onLogout, currentAdmin }: Props) {
   };
 
   const handleNavigateToManageStudent = () => {
+    setPreviousScreen(captureCurrentScreen());
     setActiveTopNav("Student");
     setActiveSideNav(null);
     setActiveContentScreen("Student");
@@ -142,6 +184,7 @@ export default function AdminApp({ onLogout, currentAdmin }: Props) {
   };
 
   const handleNavigateToManageTeacher = () => {
+    setPreviousScreen(captureCurrentScreen());
     setActiveTopNav("Teacher");
     setActiveSideNav(null);
     setActiveContentScreen("Teacher");
@@ -149,6 +192,7 @@ export default function AdminApp({ onLogout, currentAdmin }: Props) {
   };
 
   const handleNavigateToDashboard = () => {
+    setPreviousScreen(captureCurrentScreen());
     setActiveTopNav("Dashboard");
     setActiveSideNav(null);
     setActiveContentScreen("Dashboard");
@@ -157,11 +201,16 @@ export default function AdminApp({ onLogout, currentAdmin }: Props) {
 
   const renderContent = () => {
     if (activeSideNav === "Analytics") {
-      return <Analytics width={width} apiBaseUrl={API_BASE_URL} />;
+      return (
+        <Analytics
+          width={width}
+          apiBaseUrl={API_BASE_URL}
+        />
+      );
     }
 
     if (activeSideNav === "Settings") {
-      return <Settings width={width} />;
+      return <Settings width={width} onClose={handleGoToLastPage} />;
     }
 
     if (activeTopNav === "Class" || activeContentScreen === "Class") {

@@ -133,6 +133,15 @@ export default function Sidebar({
     );
   }
 
+  // Selecting a menu item on mobile should update the active item AND
+  // close the modal in one atomic action, so the two states never
+  // become out of sync (which was causing the "snap back to last page"
+  // behavior when the X button was tapped afterward).
+  const handleMobileSelect = (item: string) => {
+    onChange(item);
+    onClose();
+  };
+
   return (
     <Modal
       visible={visible}
@@ -173,7 +182,7 @@ export default function Sidebar({
           >
             <MenuContent
               activeItem={activeItem}
-              onChange={onChange}
+              onChange={handleMobileSelect}
               adminName={adminName}
               isMobileMenu={true}
             />

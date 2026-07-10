@@ -32,12 +32,6 @@ type SemesterOption = {
   label: string;
 };
 
-type CourseOption = {
-  id: string;
-  label: string;
-  units: number;
-};
-
 type BannerFile = {
   uri: string;
   name: string | null;
@@ -89,105 +83,23 @@ const SECTION_OPTIONS: Record<string, SectionOption[]> = {
   "1st": [
     { id: "1A", label: "1A Microsoft" },
     { id: "1B", label: "1B Google" },
+    { id: "1C", label: "1C Amazon" },
   ],
   "2nd": [
     { id: "2A", label: "2A Algorithm" },
     { id: "2B", label: "2B Pseudocode" },
+    { id: "2C", label: "2C Binary" },
   ],
   "3rd": [
     { id: "3A", label: "3A Python" },
     { id: "3B", label: "3B Java" },
+    { id: "3C", label: "3C C++" },
   ],
   "4th": [
     { id: "4A", label: "4A Xamarin" },
     { id: "4B", label: "4B Laravel" },
+    { id: "4C", label: "4C Flutter" },
   ],
-};
-
-const COURSE_OPTIONS: Record<string, Record<string, CourseOption[]>> = {
-  "1st": {
-    "sem-1": [
-      { id: "AP 1", label: "AP 1 - MULTIMEDIA", units: 3.00 },
-      { id: "CC 111", label: "CC 111 - INTRODUCTION TO COMPUTING", units: 3.00 },
-      { id: "CC 112", label: "CC 112 - COMPUTER PROGRAMMING 1 (LEC)", units: 2.00 },
-      { id: "CC 112 L", label: "CC 112 L - COMPUTER PROGRAMMING 1 (LAB)", units: 3.00 },
-      { id: "GEC-MMW", label: "GEC-MMW - MATHEMATICS IN THE MODERN WORLD", units: 3.00 },
-      { id: "GEC-RPH", label: "GEC-RPH - READINGS IN PHILIPPINE HISTORY", units: 3.00 },
-      { id: "GEE-TEM", label: "GEE-TEM - THE ENTREPRENEURIAL MIND", units: 3.00 },
-      { id: "NSTP 1", label: "NSTP 1 - NATIONAL SERVICE TRAINING PROGRAM 1", units: 3.00 },
-      { id: "PATHFIT 1", label: "PATHFIT 1 - PHYSICAL ACTIVITIES TOWARDS HEALTH AND FITNESS 1", units: 2.00 },
-    ],
-    "sem-2": [
-      { id: "GEC-PC", label: "GEC-PC - PURPOSIVE COMMUNICATION", units: 3.00 },
-      { id: "NSTP 2", label: "NSTP 2 - NATIONAL SERVICE TRAINING PROGRAM 2", units: 3.00 },
-      { id: "GEC-STS", label: "GEC-STS - SCIENCE, TECHNOLOGY AND SOCIETY", units: 3.00 },
-      { id: "GEC-US", label: "GEC-US - UNDERSTANDING THE SELF", units: 3.00 },
-      { id: "GEE-GSPS", label: "GEE-GSPS - GENDER AND SOCIETY WITH PEACE STUDIES", units: 3.00 },
-      { id: "CC 123", label: "CC 123 - COMPUTER PROGRAMMING 2 (LEC)", units: 2.00 },
-      { id: "CC 123L", label: "CC 123L - COMPUTER PROGRAMMING 2 (LAB)", units: 3.00 },
-      { id: "PC 121/MATH-E 2", label: "PC 121/MATH-E 2 - DISCRETE MATHEMATICS", units: 3.00 },
-      { id: "AP 2", label: "AP 2 - DIGITAL LOGIC DESIGN", units: 3.00 },
-      { id: "PATHFIT 2", label: "PATHFIT 2 - PHYSICAL ACTIVITIES TOWARDS HEALTH AND FITNESS 2", units: 2.00 },
-    ],
-    "sem-3": [],
-  },
-  "2nd": {
-    "sem-1": [
-      { id: "GEC-E", label: "GEC-E - ETHICS", units: 3.00 },
-      { id: "GEE-ES", label: "GEE-ES - ENVIRONMENTAL SCIENCE", units: 3.00 },
-      { id: "GEC-LWR", label: "GEC-LWR - LIFE AND WORKS OF RIZAL", units: 3.00 },
-      { id: "PC 212", label: "PC 212 - QUANTITATIVE METHODS (MODELING & SIMULATION)", units: 3.00 },
-      { id: "CC 214", label: "CC 214 - DATA STRUCTURES AND ALGORITHMS (LEC)", units: 2.00 },
-      { id: "CC 214L", label: "CC 214L - DATA STRUCTURES AND ALGORITHMS (LAB)", units: 3.00 },
-      { id: "P ELEC 1", label: "P ELEC 1 - OBJECT-ORIENTED PROGRAMMING", units: 3.00 },
-      { id: "P ELEC 2", label: "P ELEC 2 - WEB SYSTEMS AND TECHNOLOGIES", units: 3.00 },
-      { id: "PATHFIT 3", label: "PATHFIT 3 - PHYSICAL ACTIVITIES TOWARDS HEALTH AND FITNESS 3", units: 2.00 },
-    ],
-    "sem-2": [
-      { id: "GEC-TCW", label: "GEC-TCW - THE CONTEMPORARY WORLD", units: 3.00 },
-      { id: "PC 223", label: "PC 223 - INTEGRATIVE PROGRAMMING AND TECHNOLOGIES 1", units: 3.00 },
-      { id: "PC 224", label: "PC 224 - NETWORKING 1", units: 3.00 },
-      { id: "CC 225", label: "CC 225 - INFORMATION MANAGEMENT (LEC)", units: 2.00 },
-      { id: "CC 225L", label: "CC 225L - INFORMATION MANAGEMENT (LAB)", units: 3.00 },
-      { id: "P ELEC 3", label: "P ELEC 3 - PLATFORM TECHNOLOGIES", units: 3.00 },
-      { id: "AP 3", label: "AP 3 - ASP.NET", units: 3.00 },
-      { id: "PATHFIT 4", label: "PATHFIT 4 - PHYSICAL ACTIVITIES TOWARDS HEALTH AND FITNESS 4", units: 2.00 },
-    ],
-    "sem-3": [],
-  },
-  "3rd": {
-    "sem-1": [
-      { id: "PC 317", label: "PC 317 - INTRODUCTION TO HUMAN COMPUTER INTERACTION", units: 3.00 },
-      { id: "PC 318", label: "PC 318 - DATABASE MANAGEMENT SYSTEMS", units: 3.00 },
-      { id: "CC 316", label: "CC 316 - APPLICATIONS DEVELOPMENT AND EMERGING TECHNOLOGIES", units: 3.00 },
-      { id: "GEE-FE", label: "GEE-FE - FUNCTIONAL ENGLISH", units: 3.00 },
-      { id: "PC 315", label: "PC 315 - NETWORKING 2 (LEC)", units: 2.00 },
-      { id: "PC 315L", label: "PC 315L - NETWORKING 2 (LAB)", units: 3.00 },
-      { id: "PC 316", label: "PC 316 - SYSTEMS INTEGRATION AND ARCHITECTURE 1", units: 3.00 },
-    ],
-    "sem-2": [
-      { id: "PC 3210", label: "PC 3210 - SOCIAL AND PROFESSIONAL ISSUES", units: 3.00 },
-      { id: "PC 3211", label: "PC 3211 - INFORMATION ASSURANCE AND SECURITY 1 (LEC)", units: 2.00 },
-      { id: "PC 3211L", label: "PC 3211L - INFORMATION ASSURANCE AND SECURITY 1 (LAB)", units: 3.00 },
-      { id: "AP 4", label: "AP 4 - IOS MOBILE APPLICATION DEVELOPMENT CROSS-PLATFORM", units: 3.00 },
-      { id: "AP 5", label: "AP 5 - TECHNOLOGY AND THE APPLICATION OF THE INTERNET OF THINGS", units: 3.00 },
-      { id: "GEC-AA", label: "GEC-AA - ART APPRECIATION", units: 3.00 },
-      { id: "GEE-PEE", label: "GEE-PEE - PEOPLE AND THE EARTH'S ECOSYSTEMS", units: 3.00 },
-      { id: "PC 329", label: "PC 329 - CAPSTONE PROJECT AND RESEARCH 1", units: 3.00 },
-    ],
-    "sem-3": [],
-  },
-  "4th": {
-    "sem-1": [
-      { id: "PC 411", label: "PC 411 - CAPSTONE PROJECT AND RESEARCH 2", units: 3.00 },
-      { id: "PC 412", label: "PC 412 - PRACTICUM / INTERNSHIP", units: 6.00 },
-    ],
-    "sem-2": [
-      { id: "PC 421", label: "PC 421 - SYSTEM ADMINISTRATION AND MAINTENANCE", units: 3.00 },
-      { id: "PC 422", label: "PC 422 - PROFESSIONAL ELECTIVE", units: 3.00 },
-    ],
-    "sem-3": [],
-  },
 };
 
 const SEMESTER_OPTIONS: SemesterOption[] = [
@@ -215,10 +127,14 @@ export default function AddClassModal({
   const [selectedYear, setSelectedYear] = useState<string | null>(null);
   const [selectedSection, setSelectedSection] = useState<string | null>(null);
   const [selectedSemester, setSelectedSemester] = useState<string | null>(null);
-  const [selectedCourse, setSelectedCourse] = useState<string | null>(null);
   const [isSemesterModalVisible, setIsSemesterModalVisible] = useState(false);
 
   const [instructorIdentifier, setInstructorIdentifier] = useState("");
+
+  // Course details are now free-text input (matches Teacher Dashboard Create Class flow)
+  const [courseCodeInput, setCourseCodeInput] = useState("");
+  const [courseNameInput, setCourseNameInput] = useState("");
+  const [courseUnitsInput, setCourseUnitsInput] = useState("");
 
   const [description, setDescription] = useState("");
   const [startYear, setStartYear] = useState("2025");
@@ -232,11 +148,6 @@ export default function AddClassModal({
       "Select semester"
     );
   }, [selectedSemester]);
-
-  const visibleCourseOptions = useMemo<CourseOption[]>(() => {
-    if (!selectedYear || !selectedSemester) return [];
-    return COURSE_OPTIONS[selectedYear]?.[selectedSemester] || [];
-  }, [selectedYear, selectedSemester]);
 
   const shouldShowBannerOverlay =
     !bannerFile?.uri || isMobile || Platform.OS !== "web" || isBannerHovered;
@@ -273,7 +184,6 @@ export default function AddClassModal({
   const handleSelectSemester = (semesterId: string) => {
     setSelectedSemester(semesterId);
     setSelectedSection(null);
-    setSelectedCourse(null);
     closeSemesterDropdown();
   };
 
@@ -282,14 +192,12 @@ export default function AddClassModal({
       setSelectedYear(null);
       setSelectedSemester(null);
       setSelectedSection(null);
-      setSelectedCourse(null);
       return;
     }
 
     setSelectedYear(yearId);
     setSelectedSemester(null);
     setSelectedSection(null);
-    setSelectedCourse(null);
   };
 
   const toggleSection = (sectionId: string) => {
@@ -299,15 +207,6 @@ export default function AddClassModal({
     }
 
     setSelectedSection(sectionId);
-  };
-
-  const toggleCourse = (courseId: string) => {
-    if (selectedCourse === courseId) {
-      setSelectedCourse(null);
-      return;
-    }
-
-    setSelectedCourse(courseId);
   };
 
   const handlePickBanner = async () => {
@@ -349,8 +248,10 @@ export default function AddClassModal({
     setEndYear("2026");
     setSelectedYear(null);
     setSelectedSection(null);
-    setSelectedCourse(null);
     setSelectedSemester(null);
+    setCourseCodeInput("");
+    setCourseNameInput("");
+    setCourseUnitsInput("");
     setBannerFile(null);
     setIsBannerHovered(false);
     closeSemesterDropdown();
@@ -384,16 +285,7 @@ export default function AddClassModal({
 
     let matchedYear: string | null = null;
 
-    if (initialData.courseCode) {
-      const yearEntry = Object.entries(COURSE_OPTIONS).find(([, semesterMap]) =>
-        Object.values(semesterMap).some((courses) =>
-          courses.some((course) => course.id === initialData.courseCode)
-        )
-      );
-      matchedYear = yearEntry?.[0] || null;
-    }
-
-    if (!matchedYear && initialData.section) {
+    if (initialData.section) {
       const yearEntry = Object.entries(SECTION_OPTIONS).find(([, sections]) =>
         sections.some((section) => section.label === initialData.section)
       );
@@ -408,17 +300,16 @@ export default function AddClassModal({
           (section) => section.label === initialData.section
         )?.id || null;
 
-      const matchedCourse =
-        COURSE_OPTIONS[matchedYear]?.[matchedSemester]?.find(
-          (course) => course.id === initialData.courseCode
-        )?.id || null;
-
       setSelectedSection(matchedSection);
-      setSelectedCourse(matchedCourse);
     } else {
       setSelectedSection(null);
-      setSelectedCourse(null);
     }
+
+    setCourseCodeInput(initialData.courseCode || "");
+    setCourseNameInput(initialData.className || "");
+    setCourseUnitsInput(
+      typeof initialData.units === "number" ? String(initialData.units) : ""
+    );
 
     if (initialData.bannerFileName || initialData.bannerUrl) {
       setBannerFile({
@@ -457,8 +348,13 @@ export default function AddClassModal({
       return;
     }
 
-    if (!selectedCourse) {
-      Alert.alert("Missing Field", "Please select a course.");
+    if (!courseCodeInput.trim()) {
+      Alert.alert("Missing Field", "Please enter a course code.");
+      return;
+    }
+
+    if (!courseNameInput.trim()) {
+      Alert.alert("Missing Field", "Please enter a course name.");
       return;
     }
 
@@ -480,14 +376,9 @@ export default function AddClassModal({
         (section) => section.id === selectedSection
       )?.label || "Not set";
 
-    const selectedCourseItem =
-      COURSE_OPTIONS[selectedYear]?.[selectedSemester]?.find(
-        (course) => course.id === selectedCourse
-      ) || null;
-
-    const selectedCourseLabel = selectedCourseItem?.label || "Untitled Course";
-    const selectedCourseCode = selectedCourseItem?.id || "";
-    const units = selectedCourseItem?.units || 0;
+    const selectedCourseLabel = courseNameInput.trim();
+    const selectedCourseCode = courseCodeInput.trim();
+    const units = parseFloat(courseUnitsInput) || 0;
 
     const schoolYear = `${startYear.trim()}-${endYear.trim()}`;
 
@@ -533,7 +424,7 @@ export default function AddClassModal({
                   <Text style={styles.modalSubtitle}>
                     {isEditMode
                       ? "Update class details with existing values already selected."
-                      : "Create a class by selecting year, semester, section, course, teacher ID, school year, optional description, and an optional banner file."}
+                      : "Create a class by selecting year, semester, section, entering course code, course name, units, teacher ID, school year, optional description, and an optional banner file."}
                   </Text>
                 </View>
               </View>
@@ -686,42 +577,59 @@ export default function AddClassModal({
                     <View style={styles.modalSectionHeaderRow}>
                       <Ionicons name="book-outline" size={18} color="#DC2626" />
                       <Text style={styles.modalSectionTitle}>
-                        Select Course Code with Course Name
+                        Course Details
                       </Text>
                     </View>
 
-                    {visibleCourseOptions.map((course) => {
-                      const isChecked = selectedCourse === course.id;
+                    <Text style={styles.fieldLabel}>Course Code</Text>
+                    <View style={styles.inputField}>
+                      <Ionicons
+                        name="pricetag-outline"
+                        size={18}
+                        color="#8A6F6F"
+                      />
+                      <TextInput
+                        value={courseCodeInput}
+                        onChangeText={setCourseCodeInput}
+                        placeholder="e.g., CC 111"
+                        placeholderTextColor="#B79A9A"
+                        style={[styles.textInput, { marginBottom: 0 }]}
+                      />
+                    </View>
 
-                      return (
-                        <TouchableOpacity
-                          key={course.id}
-                          style={[
-                            styles.sectionRow,
-                            isChecked && styles.sectionRowActive,
-                          ]}
-                          activeOpacity={0.85}
-                          onPress={() => toggleCourse(course.id)}
-                        >
-                          <View
-                            style={[
-                              styles.checkboxBase,
-                              isChecked && styles.checkboxChecked,
-                            ]}
-                          >
-                            {isChecked && (
-                              <Ionicons
-                                name="checkmark"
-                                size={14}
-                                color="#FFFFFF"
-                              />
-                            )}
-                          </View>
+                    <Text style={[styles.fieldLabel, { marginTop: 16 }]}>
+                      Course Name
+                    </Text>
+                    <View style={styles.descriptionField}>
+                      <TextInput
+                        value={courseNameInput}
+                        onChangeText={setCourseNameInput}
+                        placeholder="e.g., INTRODUCTION TO COMPUTING"
+                        placeholderTextColor="#B79A9A"
+                        multiline
+                        textAlignVertical="top"
+                        style={[styles.descriptionInput, { minHeight: 60 }]}
+                      />
+                    </View>
 
-                          <Text style={styles.checkText}>{course.label}</Text>
-                        </TouchableOpacity>
-                      );
-                    })}
+                    <Text style={[styles.fieldLabel, { marginTop: 16 }]}>
+                      Units
+                    </Text>
+                    <View style={styles.inputField}>
+                      <Ionicons
+                        name="calculator-outline"
+                        size={18}
+                        color="#8A6F6F"
+                      />
+                      <TextInput
+                        value={courseUnitsInput}
+                        onChangeText={setCourseUnitsInput}
+                        placeholder="e.g., 3.0"
+                        placeholderTextColor="#B79A9A"
+                        keyboardType="numeric"
+                        style={[styles.textInput, { marginBottom: 0 }]}
+                      />
+                    </View>
                   </View>
                 )}
 

@@ -14,6 +14,7 @@ import {
 
 type SettingsProps = {
   width: number;
+   onClose?: () => void;
 };
 
 type PinInputProps = {
@@ -61,7 +62,7 @@ function PinInput({ value, onChange, isMobile }: PinInputProps) {
   );
 }
 
-export default function Settings({ width }: SettingsProps) {
+export default function Settings({ width, onClose }: SettingsProps) {
   const isMobile = width < 768;
   const isTablet = width >= 768 && width < 1100;
 
@@ -157,8 +158,12 @@ export default function Settings({ width }: SettingsProps) {
 
               <TouchableOpacity
                 style={styles.modalCloseButton}
-                onPress={() => setIsSettingsModalVisible(false)}
+                onPress={() => {
+                  setIsSettingsModalVisible(false);
+                  onClose?.();
+                }}
                 activeOpacity={0.85}
+                
               >
                 <Ionicons name="close" size={20} color="#7A4A4A" />
               </TouchableOpacity>
@@ -242,7 +247,10 @@ export default function Settings({ width }: SettingsProps) {
                   styles.modalSecondaryButton,
                   isMobile && styles.fullWidthButton,
                 ]}
-                onPress={() => setIsSettingsModalVisible(false)}
+                onPress={() => {
+                  setIsSettingsModalVisible(false);
+                  onClose?.();
+                }}
                 activeOpacity={0.85}
               >
                 <Text style={styles.modalSecondaryButtonText}>Close</Text>

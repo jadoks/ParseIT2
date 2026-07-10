@@ -96,10 +96,26 @@ const YEAR_OPTIONS: YearOption[] = [
 ];
 
 const SECTION_OPTIONS: Record<string, SectionOption[]> = {
-  '1st': [{ id: '1A', label: '1A Microsoft' }, { id: '1B', label: '1B Google' }],
-  '2nd': [{ id: '2A', label: '2A Algorithm' }, { id: '2B', label: '2B Pseudocode' }],
-  '3rd': [{ id: '3A', label: '3A Python' }, { id: '3B', label: '3B Java' }],
-  '4th': [{ id: '4A', label: '4A Xamarin' }, { id: '4B', label: '4B Laravel' }],
+  "1st": [
+    { id: "1A", label: "1A Microsoft" },
+    { id: "1B", label: "1B Google" },
+    { id: "1C", label: "1C Amazon" },
+  ],
+  "2nd": [
+    { id: "2A", label: "2A Algorithm" },
+    { id: "2B", label: "2B Pseudocode" },
+    { id: "2C", label: "2C Binary" },
+  ],
+  "3rd": [
+    { id: "3A", label: "3A Python" },
+    { id: "3B", label: "3B Java" },
+    { id: "3C", label: "3C C++" },
+  ],
+  "4th": [
+    { id: "4A", label: "4A Xamarin" },
+    { id: "4B", label: "4B Laravel" },
+    { id: "4C", label: "4C Flutter" },
+  ],
 };
 
 const SEMESTER_OPTIONS: SemesterOption[] = [
@@ -624,10 +640,7 @@ const Dashboard2 = ({
                 </View>
               ) : null}
 
-              <View style={styles.codeNoticeBox}>
-                <MaterialCommunityIcons name="book-education-outline" size={18} color="#2E7D32" />
-                <Text style={styles.codeNoticeText}>The entered course units will also be saved to the class record.</Text>
-              </View>
+           
               <View style={styles.modalButtonRow}>
                 <TouchableOpacity style={[styles.cancelBtn, isCreatingClass && styles.disabledBtn]} disabled={isCreatingClass} onPress={() => { if (isCreatingClass) return; resetCreateForm(); setCreateModalVisible(false); }}>
                   <Text style={styles.cancelBtnText}>Cancel</Text>
