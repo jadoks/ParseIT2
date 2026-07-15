@@ -86,6 +86,11 @@ export default function Chatbot({
   const [uploadingFile, setUploadingFile] = useState(false);
   const [saving, setSaving] = useState(false);
 
+  // Focus tracking so these fields get the same highlighted-border
+  // behavior as inputs elsewhere in the app instead of always looking static.
+  const [isResponseFocused, setIsResponseFocused] = useState(false);
+  const [isTriggerFocused, setIsTriggerFocused] = useState(false);
+
   const handleClose = () => {
     if (saving || uploadingFile) return;
     onClose();
@@ -241,7 +246,13 @@ export default function Chatbot({
 
               <View style={styles.fieldBlock}>
                 <Text style={styles.fieldLabel}>Chatbot Response</Text>
-                <View style={[styles.inputField, styles.textAreaField]}>
+                <View
+                  style={[
+                    styles.inputField,
+                    styles.textAreaField,
+                    isResponseFocused && styles.inputFieldFocused,
+                  ]}
+                >
                   <TextInput
                     value={chatbotResponse}
                     onChangeText={setChatbotResponse}
@@ -250,6 +261,8 @@ export default function Chatbot({
                     style={styles.textAreaInput}
                     multiline
                     textAlignVertical="top"
+                    onFocus={() => setIsResponseFocused(true)}
+                    onBlur={() => setIsResponseFocused(false)}
                   />
                 </View>
               </View>
@@ -258,7 +271,12 @@ export default function Chatbot({
                 <Text style={styles.fieldLabel}>Trigger Input</Text>
                 <View style={[styles.modalRow, isMobile && styles.modalRowStack]}>
                   <View style={styles.triggerInputWrap}>
-                    <View style={styles.inputField}>
+                    <View
+                      style={[
+                        styles.inputField,
+                        isTriggerFocused && styles.inputFieldFocused,
+                      ]}
+                    >
                       <Ionicons name="flash-outline" size={18} color="#8A6F6F" />
                       <TextInput
                         value={triggerInput}
@@ -268,6 +286,8 @@ export default function Chatbot({
                         style={styles.textInput}
                         onSubmitEditing={handleAddTrigger}
                         returnKeyType="done"
+                        onFocus={() => setIsTriggerFocused(true)}
+                        onBlur={() => setIsTriggerFocused(false)}
                       />
                     </View>
                   </View>
@@ -454,6 +474,13 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
   },
+  // Applied alongside inputField when the inner TextInput is focused.
+  // Gives a visible highlighted border on the whole rounded container,
+  // matching the focus behavior used across the rest of the app.
+  inputFieldFocused: {
+    borderColor: "#DC2626",
+    borderWidth: 1.5,
+  },
   textInput: {
     flex: 1,
     marginLeft: 10,
@@ -461,6 +488,7 @@ const styles = StyleSheet.create({
     color: "#2B1111",
     fontWeight: "600",
     height: "80%",
+    ...(Platform.OS === "web" ? ({ outlineStyle: "none" } as any) : {}),
   },
   textAreaField: {
     minHeight: 130,
@@ -474,6 +502,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: "#2B1111",
     fontWeight: "600",
+    ...(Platform.OS === "web" ? ({ outlineStyle: "none" } as any) : {}),
   },
   addTriggerButton: {
     height: 54,

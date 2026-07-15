@@ -505,16 +505,9 @@ const bdStyles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  // ── FIX: was a plain View before; now the ScrollView that wraps the
-  // Month/Day/Year row. flexShrink lets it take only the space left over
-  // between the header and footer inside webDateModalCard (which already
-  // has maxHeight: '88%'), so it adapts to any screen height instead of
-  // relying on a hardcoded number.
   webDateContent: {
     flexShrink: 1,
   },
-  // Padding moved here (into the ScrollView's contentContainerStyle) since
-  // it previously lived directly on the (non-scrollable) webDateContent view.
   webDateContentInner: {
     paddingHorizontal: 24,
     paddingTop: 20,
@@ -541,9 +534,6 @@ const bdStyles = StyleSheet.create({
     borderColor: '#F1CACA',
     backgroundColor: '#FFF9F9',
   },
-  // On mobile the three lists stack instead of sitting side by side, so each
-  // one is shortened a bit — this keeps all three (plus their labels) closer
-  // to a comfortable single scroll, while still scrolling internally too.
   webDateListMobile: {
     maxHeight: 200,
   },
@@ -842,6 +832,15 @@ export default function Register({
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
+  // Focus tracking so these fields get the same highlighted-border behavior
+  // used in SignIn.tsx (isIdFocused / isPasswordFocused, etc.).
+  const [isUserIdFocused, setIsUserIdFocused] = useState(false);
+  const [isFirstNameFocused, setIsFirstNameFocused] = useState(false);
+  const [isLastNameFocused, setIsLastNameFocused] = useState(false);
+  const [isEmailFocused, setIsEmailFocused] = useState(false);
+  const [isPasswordFocused, setIsPasswordFocused] = useState(false);
+  const [isConfirmPasswordFocused, setIsConfirmPasswordFocused] = useState(false);
+
   const [policyView, setPolicyView] = useState<PolicyView>('terms');
   const [policyModalVisible, setPolicyModalVisible] = useState(false);
 
@@ -871,6 +870,11 @@ export default function Register({
       input::-webkit-strong-password-auto-fill-button {
         display: none !important;
         visibility: hidden;
+      }
+
+      /* Disable default browser focus outline (black ring) to allow custom red border */
+      input:focus, textarea:focus, select:focus {
+        outline: none !important;
       }
     `;
     document.head.appendChild(style);
@@ -1107,7 +1111,7 @@ export default function Register({
       <View style={styles.formRow}>
         <View style={styles.formColumn}>
           <Text style={styles.fieldLabel}>User ID</Text>
-          <View style={styles.inputWrapper}>
+          <View style={[styles.inputWrapper, isUserIdFocused && styles.inputWrapperFocused]}>
             <TextInput
               style={styles.inputWithIcon}
               placeholder="1234567"
@@ -1116,13 +1120,15 @@ export default function Register({
               onChangeText={(t) => setUserId(t.replace(/[^0-9]/g, ''))}
               keyboardType="number-pad"
               editable={!isLoading}
+              onFocus={() => setIsUserIdFocused(true)}
+              onBlur={() => setIsUserIdFocused(false)}
             />
           </View>
         </View>
 
         <View style={styles.formColumn}>
           <Text style={styles.fieldLabel}>First Name</Text>
-          <View style={styles.inputWrapper}>
+          <View style={[styles.inputWrapper, isFirstNameFocused && styles.inputWrapperFocused]}>
             <TextInput
               style={styles.inputWithIcon}
               placeholder="John"
@@ -1130,6 +1136,8 @@ export default function Register({
               value={firstName}
               onChangeText={setFirstName}
               editable={!isLoading}
+              onFocus={() => setIsFirstNameFocused(true)}
+              onBlur={() => setIsFirstNameFocused(false)}
             />
           </View>
         </View>
@@ -1138,7 +1146,7 @@ export default function Register({
       <View style={styles.formRow}>
         <View style={styles.formColumn}>
           <Text style={styles.fieldLabel}>Last Name</Text>
-          <View style={styles.inputWrapper}>
+          <View style={[styles.inputWrapper, isLastNameFocused && styles.inputWrapperFocused]}>
             <TextInput
               style={styles.inputWithIcon}
               placeholder="Doe"
@@ -1146,13 +1154,15 @@ export default function Register({
               value={lastName}
               onChangeText={setLastName}
               editable={!isLoading}
+              onFocus={() => setIsLastNameFocused(true)}
+              onBlur={() => setIsLastNameFocused(false)}
             />
           </View>
         </View>
 
         <View style={styles.formColumn}>
           <Text style={styles.fieldLabel}>Email</Text>
-          <View style={styles.inputWrapper}>
+          <View style={[styles.inputWrapper, isEmailFocused && styles.inputWrapperFocused]}>
             <TextInput
               style={styles.inputWithIcon}
               placeholder="john.doe@gmail.com"
@@ -1162,6 +1172,8 @@ export default function Register({
               keyboardType="email-address"
               autoCapitalize="none"
               editable={!isLoading}
+              onFocus={() => setIsEmailFocused(true)}
+              onBlur={() => setIsEmailFocused(false)}
             />
           </View>
         </View>
@@ -1176,7 +1188,7 @@ export default function Register({
       <View style={styles.formRow}>
         <View style={[styles.formColumn, { flex: 1 }]}>
           <Text style={styles.fieldLabel}>Password</Text>
-          <View style={styles.passwordContainer}>
+          <View style={[styles.passwordContainer, isPasswordFocused && styles.passwordContainerFocused]}>
             <TextInput
               style={styles.passwordInput}
               placeholder="********"
@@ -1186,6 +1198,8 @@ export default function Register({
               secureTextEntry={!showPassword}
               autoCapitalize="none"
               editable={!isLoading}
+              onFocus={() => setIsPasswordFocused(true)}
+              onBlur={() => setIsPasswordFocused(false)}
             />
             <TouchableOpacity onPress={() => setShowPassword(!showPassword)} style={styles.iconButton} disabled={isLoading}>
               <Ionicons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={20} color="#7A7A7A" />
@@ -1195,7 +1209,7 @@ export default function Register({
 
         <View style={[styles.formColumn, { flex: 1 }]}>
           <Text style={styles.fieldLabel}>Confirm Password</Text>
-          <View style={styles.passwordContainer}>
+          <View style={[styles.passwordContainer, isConfirmPasswordFocused && styles.passwordContainerFocused]}>
             <TextInput
               style={styles.passwordInput}
               placeholder="********"
@@ -1205,6 +1219,8 @@ export default function Register({
               secureTextEntry={!showConfirmPassword}
               autoCapitalize="none"
               editable={!isLoading}
+              onFocus={() => setIsConfirmPasswordFocused(true)}
+              onBlur={() => setIsConfirmPasswordFocused(false)}
             />
             <TouchableOpacity onPress={() => setShowConfirmPassword(!showConfirmPassword)} style={styles.iconButton} disabled={isLoading}>
               <Ionicons name={showConfirmPassword ? 'eye-off-outline' : 'eye-outline'} size={20} color="#7A7A7A" />
@@ -1218,7 +1234,7 @@ export default function Register({
     <>
       <View style={styles.formGroup}>
         <Text style={styles.fieldLabel}>User ID</Text>
-        <View style={styles.inputWrapper}>
+        <View style={[styles.inputWrapper, isUserIdFocused && styles.inputWrapperFocused]}>
           <TextInput
             style={styles.inputWithIcon}
             placeholder="1234567"
@@ -1227,13 +1243,15 @@ export default function Register({
             onChangeText={(t) => setUserId(t.replace(/[^0-9]/g, ''))}
             keyboardType="number-pad"
             editable={!isLoading}
+            onFocus={() => setIsUserIdFocused(true)}
+            onBlur={() => setIsUserIdFocused(false)}
           />
         </View>
       </View>
 
       <View style={styles.formGroup}>
         <Text style={styles.fieldLabel}>First Name</Text>
-        <View style={styles.inputWrapper}>
+        <View style={[styles.inputWrapper, isFirstNameFocused && styles.inputWrapperFocused]}>
           <TextInput
             style={styles.inputWithIcon}
             placeholder="John"
@@ -1241,13 +1259,15 @@ export default function Register({
             value={firstName}
             onChangeText={setFirstName}
             editable={!isLoading}
+            onFocus={() => setIsFirstNameFocused(true)}
+            onBlur={() => setIsFirstNameFocused(false)}
           />
         </View>
       </View>
 
       <View style={styles.formGroup}>
         <Text style={styles.fieldLabel}>Last Name</Text>
-        <View style={styles.inputWrapper}>
+        <View style={[styles.inputWrapper, isLastNameFocused && styles.inputWrapperFocused]}>
           <TextInput
             style={styles.inputWithIcon}
             placeholder="Doe"
@@ -1255,13 +1275,15 @@ export default function Register({
             value={lastName}
             onChangeText={setLastName}
             editable={!isLoading}
+            onFocus={() => setIsLastNameFocused(true)}
+            onBlur={() => setIsLastNameFocused(false)}
           />
         </View>
       </View>
 
       <View style={styles.formGroup}>
         <Text style={styles.fieldLabel}>Email</Text>
-        <View style={styles.inputWrapper}>
+        <View style={[styles.inputWrapper, isEmailFocused && styles.inputWrapperFocused]}>
           <TextInput
             style={styles.inputWithIcon}
             placeholder="john.doe@gmail.com"
@@ -1271,6 +1293,8 @@ export default function Register({
             keyboardType="email-address"
             autoCapitalize="none"
             editable={!isLoading}
+            onFocus={() => setIsEmailFocused(true)}
+            onBlur={() => setIsEmailFocused(false)}
           />
         </View>
       </View>
@@ -1281,7 +1305,7 @@ export default function Register({
 
       <View style={styles.formGroup}>
         <Text style={styles.fieldLabel}>Password</Text>
-        <View style={styles.passwordContainer}>
+        <View style={[styles.passwordContainer, isPasswordFocused && styles.passwordContainerFocused]}>
           <TextInput
             style={styles.passwordInput}
             placeholder="********"
@@ -1291,6 +1315,8 @@ export default function Register({
             secureTextEntry={!showPassword}
             autoCapitalize="none"
             editable={!isLoading}
+            onFocus={() => setIsPasswordFocused(true)}
+            onBlur={() => setIsPasswordFocused(false)}
           />
           <TouchableOpacity onPress={() => setShowPassword(!showPassword)} style={styles.iconButton} disabled={isLoading}>
             <Ionicons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={20} color="#7A7A7A" />
@@ -1300,7 +1326,7 @@ export default function Register({
 
       <View style={styles.formGroup}>
         <Text style={styles.fieldLabel}>Confirm Password</Text>
-        <View style={styles.passwordContainer}>
+        <View style={[styles.passwordContainer, isConfirmPasswordFocused && styles.passwordContainerFocused]}>
           <TextInput
             style={styles.passwordInput}
             placeholder="********"
@@ -1310,6 +1336,8 @@ export default function Register({
             secureTextEntry={!showConfirmPassword}
             autoCapitalize="none"
             editable={!isLoading}
+            onFocus={() => setIsConfirmPasswordFocused(true)}
+            onBlur={() => setIsConfirmPasswordFocused(false)}
           />
           <TouchableOpacity onPress={() => setShowConfirmPassword(!showConfirmPassword)} style={styles.iconButton} disabled={isLoading}>
             <Ionicons name={showConfirmPassword ? 'eye-off-outline' : 'eye-outline'} size={20} color="#7A7A7A" />
@@ -1731,11 +1759,22 @@ const styles = StyleSheet.create({
     backgroundColor: '#F9FAFB', borderRadius: 14, borderWidth: 1,
     borderColor: '#E5E7EB', paddingHorizontal: 14,
   },
+  // Applied alongside inputWrapper when the inner TextInput is focused,
+  // matching the highlighted-border focus behavior used in SignIn.tsx.
+  inputWrapperFocused: {
+    borderColor: '#D32F2F',
+    borderWidth: 1.5,
+  },
   inputWithIcon: { flex: 1, fontSize: 16, color: '#111827', paddingVertical: 15 },
   passwordContainer: {
     width: '100%', flexDirection: 'row', alignItems: 'center',
     backgroundColor: '#F9FAFB', borderRadius: 14, borderWidth: 1,
     borderColor: '#E5E7EB', paddingLeft: 14,
+  },
+  // Applied alongside passwordContainer when the inner TextInput is focused.
+  passwordContainerFocused: {
+    borderColor: '#D32F2F',
+    borderWidth: 1.5,
   },
   passwordInput: { flex: 1, paddingVertical: 15, fontSize: 16, color: '#111827' },
   inputIcon: { marginRight: 10 },

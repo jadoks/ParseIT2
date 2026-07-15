@@ -41,8 +41,49 @@ export type AddStudentModalInitialData = {
   lastName?: string;
   birthday?: string | null;
   email?: string;
-
 };
+
+/**
+ * Small helper component so every text field gets consistent
+ * focus behavior (highlighted container border instead of the
+ * browser's default clipped outline on web).
+ */
+function FormInput({
+  icon,
+  value,
+  onChangeText,
+  placeholder,
+  keyboardType,
+  autoCapitalize,
+}: {
+  icon: React.ComponentProps<typeof Ionicons>["name"];
+  value: string;
+  onChangeText: (text: string) => void;
+  placeholder: string;
+  keyboardType?: "default" | "email-address";
+  autoCapitalize?: "none" | "sentences" | "words" | "characters";
+}) {
+  const [isFocused, setIsFocused] = useState(false);
+
+  return (
+    <View
+      style={[styles.inputField, isFocused && styles.inputFieldFocused]}
+    >
+      <Ionicons name={icon} size={18} color="#8A6F6F" />
+      <TextInput
+        value={value}
+        onChangeText={onChangeText}
+        placeholder={placeholder}
+        placeholderTextColor="#B79A9A"
+        style={styles.textInput}
+        keyboardType={keyboardType}
+        autoCapitalize={autoCapitalize}
+        onFocus={() => setIsFocused(true)}
+        onBlur={() => setIsFocused(false)}
+      />
+    </View>
+  );
+}
 
 function BirthdayField({
   value,
@@ -389,7 +430,6 @@ export default function AddStudentModal({
   const [lastName, setLastName] = useState("");
   const [birthday, setBirthday] = useState<Date | null>(null);
   const [email, setEmail] = useState("");
-  
 
   const resetForm = () => {
     setStudentId("");
@@ -397,7 +437,6 @@ export default function AddStudentModal({
     setLastName("");
     setBirthday(null);
     setEmail("");
-   
   };
 
   useEffect(() => {
@@ -409,7 +448,7 @@ export default function AddStudentModal({
       setLastName(initialData.lastName || "");
       setBirthday(parseDateString(initialData.birthday));
       setEmail(initialData.email || "");
-      
+
       return;
     }
 
@@ -428,7 +467,6 @@ export default function AddStudentModal({
       lastName,
       birthday: birthday ? formatDate(birthday) : "",
       email,
-     
     };
 
     try {
@@ -440,7 +478,6 @@ export default function AddStudentModal({
         console.log("Last Name:", payload.lastName);
         console.log("Birthday:", payload.birthday);
         console.log("Email Address:", payload.email);
-      
       }
 
       handleClose();
@@ -495,62 +532,46 @@ export default function AddStudentModal({
               <View style={[styles.modalRow, isMobile && styles.modalRowStack]}>
                 <View style={styles.modalCol}>
                   <Text style={styles.fieldLabel}>Student ID</Text>
-                  <View style={styles.inputField}>
-                    <Ionicons name="card-outline" size={18} color="#8A6F6F" />
-                    <TextInput
-                      value={studentId}
-                      onChangeText={setStudentId}
-                      placeholder="Enter student ID"
-                      placeholderTextColor="#B79A9A"
-                      style={styles.textInput}
-                    />
-                  </View>
+                  <FormInput
+                    icon="card-outline"
+                    value={studentId}
+                    onChangeText={setStudentId}
+                    placeholder="Enter student ID"
+                  />
                 </View>
 
                 <View style={styles.modalCol}>
                   <Text style={styles.fieldLabel}>First Name</Text>
-                  <View style={styles.inputField}>
-                    <Ionicons name="person-outline" size={18} color="#8A6F6F" />
-                    <TextInput
-                      value={firstName}
-                      onChangeText={setFirstName}
-                      placeholder="Enter first name"
-                      placeholderTextColor="#B79A9A"
-                      style={styles.textInput}
-                    />
-                  </View>
+                  <FormInput
+                    icon="person-outline"
+                    value={firstName}
+                    onChangeText={setFirstName}
+                    placeholder="Enter first name"
+                  />
                 </View>
               </View>
 
               <View style={[styles.modalRow, isMobile && styles.modalRowStack]}>
                 <View style={styles.modalCol}>
                   <Text style={styles.fieldLabel}>Last Name</Text>
-                  <View style={styles.inputField}>
-                    <Ionicons name="people-outline" size={18} color="#8A6F6F" />
-                    <TextInput
-                      value={lastName}
-                      onChangeText={setLastName}
-                      placeholder="Enter last name"
-                      placeholderTextColor="#B79A9A"
-                      style={styles.textInput}
-                    />
-                  </View>
+                  <FormInput
+                    icon="people-outline"
+                    value={lastName}
+                    onChangeText={setLastName}
+                    placeholder="Enter last name"
+                  />
                 </View>
 
                 <View style={styles.modalCol}>
                   <Text style={styles.fieldLabel}>Email Address</Text>
-                  <View style={styles.inputField}>
-                    <Ionicons name="mail-outline" size={18} color="#8A6F6F" />
-                    <TextInput
-                      value={email}
-                      onChangeText={setEmail}
-                      placeholder="Enter email address"
-                      placeholderTextColor="#B79A9A"
-                      style={styles.textInput}
-                      keyboardType="email-address"
-                      autoCapitalize="none"
-                    />
-                  </View>
+                  <FormInput
+                    icon="mail-outline"
+                    value={email}
+                    onChangeText={setEmail}
+                    placeholder="Enter email address"
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                  />
                 </View>
               </View>
 
@@ -564,8 +585,6 @@ export default function AddStudentModal({
                 </View>
               </View>
             </View>
-
-            
           </ScrollView>
 
           <View style={styles.modalFooter}>
@@ -729,12 +748,24 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
 
+  // Applied alongside inputField when the inner TextInput is focused.
+  // Gives a visible highlighted border on the whole rounded container
+  // instead of relying on the browser's default (clipped) outline.
+  inputFieldFocused: {
+    borderColor: "#DC2626",
+    borderWidth: 1.5,
+  },
+
   textInput: {
     flex: 1,
+    height: "100%",
     marginLeft: 10,
     fontSize: 14,
     color: "#2B1111",
     fontWeight: "600",
+    // Remove the native browser focus ring on web so it doesn't clip
+    // to the input's own small box; inputFieldFocused handles focus styling.
+    ...(Platform.OS === "web" ? ({ outlineStyle: "none" } as any) : {}),
   },
 
   selectField: {

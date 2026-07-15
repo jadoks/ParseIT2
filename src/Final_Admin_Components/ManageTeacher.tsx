@@ -3,7 +3,6 @@ import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import Constants from "expo-constants";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  Alert,
   Modal,
   Platform,
   Pressable,
@@ -12,12 +11,13 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  View,
+  View
 } from "react-native";
 
 import AddTeacherModal, {
   AddTeacherModalInitialData,
 } from "./AddTeacherModal";
+import Toast from "./Toast";
 
 type ManageTeacherProps = {
   width: number;
@@ -124,6 +124,18 @@ export default function ManageTeacher({ width }: ManageTeacherProps) {
   const [isDeleteModalVisible, setIsDeleteModalVisible] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
+  const [toast, setToast] = useState<{
+    visible: boolean;
+    message: string;
+    type: "success" | "error" | "info";
+  }>({ visible: false, message: "", type: "success" });
+
+  const showToast = (message: string, type: "success" | "error" | "info" = "success") => {
+    setToast({ visible: true, message, type });
+  };
+
+  const hideToast = () => setToast((prev) => ({ ...prev, visible: false }));
+
   const isMobile = width < 768;
   const isTablet = width >= 768 && width < 1100;
   const tableMinWidth = isMobile ? 980 : isTablet ? 1080 : 1180;
@@ -150,7 +162,7 @@ export default function ManageTeacher({ width }: ManageTeacherProps) {
       setTeachers(raw.map(mapBackendTeacher));
     } catch (error) {
       console.error("Error loading teachers:", error);
-      Alert.alert("Error", "Failed to load teachers.");
+      showToast("Failed to load teachers.", "error");
     } finally {
       setIsLoading(false);
     }
@@ -187,6 +199,29 @@ export default function ManageTeacher({ width }: ManageTeacherProps) {
   };
 
   const handleSubmitTeacher = async (payload: TeacherFormPayload) => {
+    const isCreating = !isEditMode;
+    let tempId: string | null = null;
+
+    if (isCreating) {
+      // 1. Build a temporary local entry from what was just typed
+      tempId = `temp-${Date.now()}`;
+      const optimisticRaw: BackendTeacherItem = {
+        id: tempId,
+        teacherId: payload.teacherId,
+        firstName: payload.firstName,
+        lastName: payload.lastName,
+        birthday: payload.birthday,
+        email: payload.email,
+      };
+
+      // 2. Show it in the table immediately
+      setRawTeachers((prev) => [optimisticRaw, ...prev]);
+      setTeachers((prev) => [mapBackendTeacher(optimisticRaw), ...prev]);
+
+      // 3. Close the modal right away so it feels instant
+      resetModalState();
+    }
+
     try {
       if (isEditMode && selectedTeacher?.id) {
         const response = await apiFetch(`${API_BASE_URL}/update-teacher/${selectedTeacher.id}`,
@@ -207,7 +242,7 @@ export default function ManageTeacher({ width }: ManageTeacherProps) {
 
         resetModalState();
         await loadTeachers();
-        Alert.alert("Success", "Teacher updated successfully.");
+        showToast("Teacher updated successfully.", "success");
         return;
       }
 
@@ -225,12 +260,22 @@ export default function ManageTeacher({ width }: ManageTeacherProps) {
         throw new Error(data.error || "Failed to create teacher");
       }
 
-      resetModalState();
+      // 4. Swap the temp row for the real backend data
       await loadTeachers();
-      Alert.alert("Success", "Teacher created successfully.");
+      showToast("Teacher created successfully.", "success");
     } catch (error) {
       console.error("Error saving teacher:", error);
-      Alert.alert("Error", "Failed to save teacher.");
+
+      if (isCreating && tempId) {
+        // 5. Roll back the optimistic row if the backend call failed
+        setRawTeachers((prev) => prev.filter((item) => item.id !== tempId));
+        setTeachers((prev) => prev.filter((item) => item.id !== tempId));
+      }
+
+      showToast(
+        error instanceof Error ? error.message : "Failed to save teacher.",
+        "error"
+      );
     }
   };
 
@@ -238,7 +283,7 @@ export default function ManageTeacher({ width }: ManageTeacherProps) {
     const fullTeacher = rawTeachers.find((row) => row.id === item.id);
 
     if (!fullTeacher) {
-      Alert.alert("Error", "Teacher details not found.");
+      showToast("Teacher details not found.", "error");
       return;
     }
 
@@ -287,10 +332,10 @@ export default function ManageTeacher({ width }: ManageTeacherProps) {
       closeDeleteModal();
       await loadTeachers();
 
-      Alert.alert("Success", "Teacher deleted successfully.");
+      showToast("Teacher deleted successfully.", "success");
     } catch (error) {
       console.error("Error deleting teacher:", error);
-      Alert.alert("Error", "Failed to delete teacher.");
+      showToast("Failed to delete teacher.", "error");
     }
   };
 
@@ -517,6 +562,13 @@ export default function ManageTeacher({ width }: ManageTeacherProps) {
           </View>
         </View>
       </Modal>
+
+      <Toast
+        visible={toast.visible}
+        message={toast.message}
+        type={toast.type}
+        onHide={hideToast}
+      />
     </View>
   );
 }

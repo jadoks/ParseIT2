@@ -3,7 +3,6 @@ import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import Constants from "expo-constants";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  Alert,
   Modal,
   Platform,
   Pressable,
@@ -12,12 +11,13 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  View,
+  View
 } from "react-native";
 
 import AddStudentModal, {
   AddStudentModalInitialData,
 } from "./AddStudentModal";
+import Toast from "./Toast";
 
 type ManageStudentProps = {
   width: number;
@@ -125,6 +125,18 @@ export default function ManageStudent({ width }: ManageStudentProps) {
   const [isDeleteModalVisible, setIsDeleteModalVisible] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
+  const [toast, setToast] = useState<{
+    visible: boolean;
+    message: string;
+    type: "success" | "error" | "info";
+  }>({ visible: false, message: "", type: "success" });
+
+  const showToast = (message: string, type: "success" | "error" | "info" = "success") => {
+    setToast({ visible: true, message, type });
+  };
+
+  const hideToast = () => setToast((prev) => ({ ...prev, visible: false }));
+
   const isMobile = width < 768;
   const isTablet = width >= 768 && width < 1100;
   const tableMinWidth = isMobile ? 1120 : isTablet ? 1200 : 1300;
@@ -151,7 +163,7 @@ export default function ManageStudent({ width }: ManageStudentProps) {
       setStudents(raw.map(mapStudent));
     } catch (error) {
       console.error("Error loading students:", error);
-      Alert.alert("Error", "Failed to load students.");
+      showToast("Failed to load students.", "error");
     } finally {
       setIsLoading(false);
     }
@@ -188,6 +200,29 @@ export default function ManageStudent({ width }: ManageStudentProps) {
   };
 
   const handleSubmitStudent = async (payload: StudentFormPayload) => {
+    const isCreating = !isEditMode;
+    let tempId: string | null = null;
+
+    if (isCreating) {
+      // 1. Build a temporary local entry from what was just typed
+      tempId = `temp-${Date.now()}`;
+      const optimisticRaw: BackendStudentItem = {
+        id: tempId,
+        studentId: payload.studentId,
+        firstName: payload.firstName,
+        lastName: payload.lastName,
+        birthday: payload.birthday,
+        email: payload.email,
+      };
+
+      // 2. Show it in the table immediately
+      setRawStudents((prev) => [optimisticRaw, ...prev]);
+      setStudents((prev) => [mapStudent(optimisticRaw), ...prev]);
+
+      // 3. Close the modal right away so it feels instant
+      resetModalState();
+    }
+
     try {
       if (isEditMode && selectedStudent?.id) {
         const response = await apiFetch(`${API_BASE_URL}/update-student/${selectedStudent.id}`,
@@ -208,7 +243,7 @@ export default function ManageStudent({ width }: ManageStudentProps) {
 
         resetModalState();
         await loadStudents();
-        Alert.alert("Success", "Student updated successfully.");
+        showToast("Student updated successfully.", "success");
         return;
       }
 
@@ -226,12 +261,22 @@ export default function ManageStudent({ width }: ManageStudentProps) {
         throw new Error(data.error || "Failed to create student");
       }
 
-      resetModalState();
+      // 4. Swap the temp row for the real backend data
       await loadStudents();
-      Alert.alert("Success", "Student created successfully.");
+      showToast("Student created successfully.", "success");
     } catch (error) {
       console.error("Error saving student:", error);
-      Alert.alert("Error", "Failed to save student.");
+
+      if (isCreating && tempId) {
+        // 5. Roll back the optimistic row if the backend call failed
+        setRawStudents((prev) => prev.filter((item) => item.id !== tempId));
+        setStudents((prev) => prev.filter((item) => item.id !== tempId));
+      }
+
+      showToast(
+        error instanceof Error ? error.message : "Failed to save student.",
+        "error"
+      );
     }
   };
 
@@ -239,7 +284,7 @@ export default function ManageStudent({ width }: ManageStudentProps) {
     const fullStudent = rawStudents.find((row) => row.id === item.id);
 
     if (!fullStudent) {
-      Alert.alert("Error", "Student details not found.");
+      showToast("Student details not found.", "error");
       return;
     }
 
@@ -288,10 +333,10 @@ export default function ManageStudent({ width }: ManageStudentProps) {
 
       closeDeleteModal();
       await loadStudents();
-      Alert.alert("Success", "Student deleted successfully.");
+      showToast("Student deleted successfully.", "success");
     } catch (error) {
       console.error("Error deleting student:", error);
-      Alert.alert("Error", "Failed to delete student.");
+      showToast("Failed to delete student.", "error");
     }
   };
 
@@ -521,6 +566,13 @@ export default function ManageStudent({ width }: ManageStudentProps) {
           </View>
         </View>
       </Modal>
+
+      <Toast
+        visible={toast.visible}
+        message={toast.message}
+        type={toast.type}
+        onHide={hideToast}
+      />
     </View>
   );
 }

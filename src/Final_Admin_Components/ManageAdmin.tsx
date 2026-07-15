@@ -3,7 +3,6 @@ import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import Constants from "expo-constants";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  Alert,
   Modal,
   Platform,
   Pressable,
@@ -12,11 +11,12 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  View,
+  View
 } from "react-native";
 
 import AddAdminModal, { AddAdminModalInitialData } from "./AddAdminModal";
 import type { AdminFormPayload } from "./adminTypes";
+import Toast from "./Toast";
 
 type ManageAdminProps = {
   width: number;
@@ -116,6 +116,18 @@ export default function ManageAdmin({ width }: ManageAdminProps) {
   const [isDeleteModalVisible, setIsDeleteModalVisible] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
+  const [toast, setToast] = useState<{
+    visible: boolean;
+    message: string;
+    type: "success" | "error" | "info";
+  }>({ visible: false, message: "", type: "success" });
+
+  const showToast = (message: string, type: "success" | "error" | "info" = "success") => {
+    setToast({ visible: true, message, type });
+  };
+
+  const hideToast = () => setToast((prev) => ({ ...prev, visible: false }));
+
   const isMobile = width < 768;
   const isTablet = width >= 768 && width < 1100;
   const tableMinWidth = isMobile ? 980 : isTablet ? 1080 : 1180;
@@ -142,7 +154,7 @@ export default function ManageAdmin({ width }: ManageAdminProps) {
       setAdmins(raw.map(mapBackendAdmin));
     } catch (error) {
       console.error("Error loading admins:", error);
-      Alert.alert("Error", "Failed to load admins.");
+      showToast("Failed to load admins.", "error");
     } finally {
       setIsLoading(false);
     }
@@ -179,6 +191,29 @@ export default function ManageAdmin({ width }: ManageAdminProps) {
   };
 
   const handleSubmitAdmin = async (payload: AdminFormPayload) => {
+    const isCreating = !isEditMode;
+    let tempId: string | null = null;
+
+    if (isCreating) {
+      // 1. Build a temporary local entry from what the admin just typed
+      tempId = `temp-${Date.now()}`;
+      const optimisticRaw: BackendAdminItem = {
+        id: tempId,
+        adminId: (payload as any).adminId || "",
+        firstName: (payload as any).firstName || "",
+        lastName: (payload as any).lastName || "",
+        birthday: (payload as any).birthday || "",
+        email: (payload as any).email || "",
+      };
+
+      // 2. Show it in the table immediately
+      setRawAdmins((prev) => [optimisticRaw, ...prev]);
+      setAdmins((prev) => [mapBackendAdmin(optimisticRaw), ...prev]);
+
+      // 3. Close the modal right away so it feels instant
+      resetModalState();
+    }
+
     try {
       if (isEditMode && selectedAdmin?.id) {
         const response = await apiFetch(`${API_BASE_URL}/update-admin/${selectedAdmin.id}`,
@@ -199,7 +234,7 @@ export default function ManageAdmin({ width }: ManageAdminProps) {
 
         resetModalState();
         await loadAdmins();
-        Alert.alert("Success", "Admin updated successfully.");
+        showToast("Admin updated successfully.", "success");
         return;
       }
 
@@ -217,12 +252,22 @@ export default function ManageAdmin({ width }: ManageAdminProps) {
         throw new Error(data.error || "Failed to create admin");
       }
 
-      resetModalState();
+      // 4. Swap the temp row for the real backend data
       await loadAdmins();
-      Alert.alert("Success", "Admin created successfully.");
+      showToast("Admin created successfully.", "success");
     } catch (error) {
       console.error("Error saving admin:", error);
-      Alert.alert("Error", "Failed to save admin.");
+
+      if (isCreating && tempId) {
+        // 5. Roll back the optimistic row if the backend call failed
+        setRawAdmins((prev) => prev.filter((item) => item.id !== tempId));
+        setAdmins((prev) => prev.filter((item) => item.id !== tempId));
+      }
+
+      showToast(
+        error instanceof Error ? error.message : "Failed to save admin.",
+        "error"
+      );
     }
   };
 
@@ -230,7 +275,7 @@ export default function ManageAdmin({ width }: ManageAdminProps) {
     const fullAdmin = rawAdmins.find((row) => row.id === item.id);
 
     if (!fullAdmin) {
-      Alert.alert("Error", "Admin details not found.");
+      showToast("Admin details not found.", "error");
       return;
     }
 
@@ -278,10 +323,10 @@ export default function ManageAdmin({ width }: ManageAdminProps) {
 
       closeDeleteModal();
       await loadAdmins();
-      Alert.alert("Success", "Admin deleted successfully.");
+      showToast("Admin deleted successfully.", "success");
     } catch (error) {
       console.error("Error deleting admin:", error);
-      Alert.alert("Error", "Failed to delete admin.");
+      showToast("Failed to delete admin.", "error");
     }
   };
 
@@ -508,6 +553,13 @@ export default function ManageAdmin({ width }: ManageAdminProps) {
           </View>
         </View>
       </Modal>
+
+      <Toast
+        visible={toast.visible}
+        message={toast.message}
+        type={toast.type}
+        onHide={hideToast}
+      />
     </View>
   );
 }

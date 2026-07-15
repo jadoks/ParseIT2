@@ -99,10 +99,16 @@ const SignIn = ({ onLogIn, onGoToLanding, onGoToRegister }: SignInProps) => {
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
+  // Focus tracking so these fields get the same highlighted-border behavior
+  // used across the app's other input components (Chatbot.tsx, etc.).
+  const [isIdFocused, setIsIdFocused] = useState(false);
+  const [isPasswordFocused, setIsPasswordFocused] = useState(false);
+
   const [forgotVisible, setForgotVisible] = useState(false);
   const [forgotStep, setForgotStep] = useState<ForgotStep>(1);
   const [recoveryEmail, setRecoveryEmail] = useState('');
   const [forgotPasswordVerifiedEmail, setForgotPasswordVerifiedEmail] = useState('');
+  const [isRecoveryEmailFocused, setIsRecoveryEmailFocused] = useState(false);
 
   const [firstLoginVisible, setFirstLoginVisible] = useState(false);
   const [firstLoginStep, setFirstLoginStep] = useState<FirstLoginStep>(1);
@@ -117,6 +123,10 @@ const SignIn = ({ onLogIn, onGoToLanding, onGoToRegister }: SignInProps) => {
   const [confirmNewPassword, setConfirmNewPassword] = useState('');
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showConfirmNewPassword, setShowConfirmNewPassword] = useState(false);
+  // Shared by both the "forgot password" step 3 and "first login" step 2
+  // password fields, since only one of those modals is ever visible at once.
+  const [isNewPasswordFocused, setIsNewPasswordFocused] = useState(false);
+  const [isConfirmNewPasswordFocused, setIsConfirmNewPasswordFocused] = useState(false);
 
   const [feedbackVisible, setFeedbackVisible] = useState(false);
   const [feedbackType, setFeedbackType] = useState<FeedbackType>('info');
@@ -897,7 +907,7 @@ const SignIn = ({ onLogIn, onGoToLanding, onGoToRegister }: SignInProps) => {
     <>
       <View style={styles.formGroup}>
         <Text style={styles.fieldLabel}>ID Number</Text>
-        <View style={styles.inputWrapper}>
+        <View style={[styles.inputWrapper, isIdFocused && styles.inputWrapperFocused]}>
           <TextInput
             style={styles.inputWithIcon}
             placeholder="Enter your numeric ID"
@@ -909,13 +919,15 @@ const SignIn = ({ onLogIn, onGoToLanding, onGoToRegister }: SignInProps) => {
             }}
             keyboardType="number-pad"
             editable={!isLoading}
+            onFocus={() => setIsIdFocused(true)}
+            onBlur={() => setIsIdFocused(false)}
           />
         </View>
       </View>
 
       <View style={styles.formGroup}>
         <Text style={styles.fieldLabel}>Password</Text>
-        <View style={styles.passwordContainer}>
+        <View style={[styles.passwordContainer, isPasswordFocused && styles.passwordContainerFocused]}>
           <TextInput
             style={styles.passwordInput}
             placeholder="Enter your password"
@@ -927,6 +939,8 @@ const SignIn = ({ onLogIn, onGoToLanding, onGoToRegister }: SignInProps) => {
             editable={!isLoading}
             returnKeyType="go"
             onSubmitEditing={handleLogIn}
+            onFocus={() => setIsPasswordFocused(true)}
+            onBlur={() => setIsPasswordFocused(false)}
           />
 
           <TouchableOpacity
@@ -1119,7 +1133,7 @@ const SignIn = ({ onLogIn, onGoToLanding, onGoToRegister }: SignInProps) => {
                     Enter your registered email address to receive a 4-digit verification code.
                   </Text>
 
-                  <View style={styles.modalInputWrapper}>
+                  <View style={[styles.modalInputWrapper, isRecoveryEmailFocused && styles.modalInputWrapperFocused]}>
                     <Icon name="mail-outline" size={18} color="#888" style={styles.inputIcon} />
                     <TextInput
                       style={styles.modalInput}
@@ -1132,6 +1146,8 @@ const SignIn = ({ onLogIn, onGoToLanding, onGoToRegister }: SignInProps) => {
                       editable={!isLoading}
                        returnKeyType="go"
                       onSubmitEditing={handleEmailVerification}
+                      onFocus={() => setIsRecoveryEmailFocused(true)}
+                      onBlur={() => setIsRecoveryEmailFocused(false)}
                     />
                   </View>
 
@@ -1237,7 +1253,7 @@ const SignIn = ({ onLogIn, onGoToLanding, onGoToRegister }: SignInProps) => {
                     Use a strong password and make sure both fields match.
                   </Text>
 
-                  <View style={styles.passwordFieldWrapper}>
+                  <View style={[styles.passwordFieldWrapper, isNewPasswordFocused && styles.passwordFieldWrapperFocused]}>
                     <Icon
                       name="lock-closed-outline"
                       size={18}
@@ -1253,6 +1269,8 @@ const SignIn = ({ onLogIn, onGoToLanding, onGoToRegister }: SignInProps) => {
                       secureTextEntry={!showNewPassword}
                       autoCapitalize="none"
                       editable={!isLoading}
+                      onFocus={() => setIsNewPasswordFocused(true)}
+                      onBlur={() => setIsNewPasswordFocused(false)}
                     />
                     <TouchableOpacity
                       onPress={() => setShowNewPassword(!showNewPassword)}
@@ -1267,7 +1285,7 @@ const SignIn = ({ onLogIn, onGoToLanding, onGoToRegister }: SignInProps) => {
                     </TouchableOpacity>
                   </View>
 
-                  <View style={styles.passwordFieldWrapper}>
+                  <View style={[styles.passwordFieldWrapper, isConfirmNewPasswordFocused && styles.passwordFieldWrapperFocused]}>
                     <Icon
                       name="lock-closed-outline"
                       size={18}
@@ -1285,6 +1303,8 @@ const SignIn = ({ onLogIn, onGoToLanding, onGoToRegister }: SignInProps) => {
                       editable={!isLoading}
                        returnKeyType="done"
                       onSubmitEditing={handlePasswordReset}
+                      onFocus={() => setIsConfirmNewPasswordFocused(true)}
+                      onBlur={() => setIsConfirmNewPasswordFocused(false)}
                     />
                     <TouchableOpacity
                       onPress={() => setShowConfirmNewPassword(!showConfirmNewPassword)}
@@ -1434,7 +1454,7 @@ const SignIn = ({ onLogIn, onGoToLanding, onGoToRegister }: SignInProps) => {
                     Create a secure password to finish setting up your account.
                   </Text>
 
-                  <View style={styles.passwordFieldWrapper}>
+                  <View style={[styles.passwordFieldWrapper, isNewPasswordFocused && styles.passwordFieldWrapperFocused]}>
                     <Icon
                       name="lock-closed-outline"
                       size={18}
@@ -1450,6 +1470,8 @@ const SignIn = ({ onLogIn, onGoToLanding, onGoToRegister }: SignInProps) => {
                       secureTextEntry={!showNewPassword}
                       autoCapitalize="none"
                       editable={!isLoading}
+                      onFocus={() => setIsNewPasswordFocused(true)}
+                      onBlur={() => setIsNewPasswordFocused(false)}
                     />
                     <TouchableOpacity
                       onPress={() => setShowNewPassword(!showNewPassword)}
@@ -1464,7 +1486,7 @@ const SignIn = ({ onLogIn, onGoToLanding, onGoToRegister }: SignInProps) => {
                     </TouchableOpacity>
                   </View>
 
-                  <View style={styles.passwordFieldWrapper}>
+                  <View style={[styles.passwordFieldWrapper, isConfirmNewPasswordFocused && styles.passwordFieldWrapperFocused]}>
                     <Icon
                       name="lock-closed-outline"
                       size={18}
@@ -1482,6 +1504,8 @@ const SignIn = ({ onLogIn, onGoToLanding, onGoToRegister }: SignInProps) => {
                       editable={!isLoading}
                        returnKeyType="done"
                       onSubmitEditing={handlePasswordReset}
+                      onFocus={() => setIsConfirmNewPasswordFocused(true)}
+                      onBlur={() => setIsConfirmNewPasswordFocused(false)}
                     />
                     <TouchableOpacity
                       onPress={() => setShowConfirmNewPassword(!showConfirmNewPassword)}
@@ -1752,11 +1776,18 @@ const styles = StyleSheet.create({
     borderColor: '#E5E7EB',
     paddingHorizontal: 14,
   },
+  // Applied alongside inputWrapper when the inner TextInput is focused,
+  // matching the highlighted-border focus behavior used across the app.
+  inputWrapperFocused: {
+    borderColor: '#D32F2F',
+    borderWidth: 1.5,
+  },
   inputWithIcon: {
     flex: 1,
     fontSize: 16,
     color: '#111827',
     paddingVertical: 15,
+    ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : {}),
   },
   passwordContainer: {
     width: '100%',
@@ -1768,11 +1799,17 @@ const styles = StyleSheet.create({
     borderColor: '#E5E7EB',
     paddingLeft: 14,
   },
+  // Applied alongside passwordContainer when the inner TextInput is focused.
+  passwordContainerFocused: {
+    borderColor: '#D32F2F',
+    borderWidth: 1.5,
+  },
   passwordInput: {
     flex: 1,
     paddingVertical: 15,
     fontSize: 16,
     color: '#111827',
+    ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : {}),
   },
   inputIcon: {
     marginRight: 10,
@@ -1967,11 +2004,17 @@ const styles = StyleSheet.create({
     marginBottom: 18,
     paddingHorizontal: 14,
   },
+  // Applied alongside modalInputWrapper when the inner TextInput is focused.
+  modalInputWrapperFocused: {
+    borderColor: '#D32F2F',
+    borderWidth: 1.5,
+  },
   modalInput: {
     flex: 1,
     fontSize: 15,
     color: '#111',
     paddingVertical: 15,
+    ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : {}),
   },
   otpContainer: {
     width: '100%',
@@ -1997,6 +2040,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 0,
     paddingVertical: 0,
     includeFontPadding: false,
+    ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : {}),
   },
   otpInputFilled: {
     borderColor: '#D32F2F',
@@ -2058,11 +2102,17 @@ const styles = StyleSheet.create({
     marginBottom: 14,
     paddingLeft: 14,
   },
+  // Applied alongside passwordFieldWrapper when the inner TextInput is focused.
+  passwordFieldWrapperFocused: {
+    borderColor: '#D32F2F',
+    borderWidth: 1.5,
+  },
   passwordFieldInput: {
     flex: 1,
     fontSize: 15,
     color: '#111',
     paddingVertical: 15,
+    ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : {}),
   },
   feedbackOverlay: {
     flex: 1,

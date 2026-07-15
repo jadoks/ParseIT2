@@ -603,8 +603,7 @@ const Dashboard2 = ({
                   <View style={styles.yearInputWrap}><TextInput value={courseCodeInput} onChangeText={setCourseCodeInput} placeholder="e.g., CC 111" placeholderTextColor="#9AA0A6" style={styles.yearInput} /></View>
                   <Text style={styles.inputLabel}>Course Name</Text>
                   <View style={styles.textAreaWrap}><TextInput value={courseNameInput} onChangeText={setCourseNameInput} placeholder="e.g., INTRODUCTION TO COMPUTING" placeholderTextColor="#9AA0A6" multiline textAlignVertical="top" style={styles.textAreaInput} /></View>
-                  <Text style={styles.inputLabel}>Units</Text>
-                  <View style={styles.yearInputWrap}><TextInput value={courseUnitsInput} onChangeText={setCourseUnitsInput} placeholder="e.g., 3.0" placeholderTextColor="#9AA0A6" keyboardType="numeric" style={styles.yearInput} /></View>
+                  
                 </View>
               )}
               <View style={styles.yearRow}>

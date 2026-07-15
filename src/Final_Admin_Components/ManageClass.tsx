@@ -2,7 +2,6 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import Constants from "expo-constants";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  Alert,
   Modal,
   Platform,
   Pressable,
@@ -11,13 +10,14 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  View,
+  View
 } from "react-native";
 
 import AddClassModal, {
   AddClassModalInitialData,
   AddClassModalPayload,
 } from "./AddClassModal";
+import Toast from "./Toast";
 
 type ManageClassProps = {
   width: number;
@@ -125,6 +125,18 @@ export default function ManageClass({ width, currentAdmin }: ManageClassProps) {
   const [isDeleteModalVisible, setIsDeleteModalVisible] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
+  const [toast, setToast] = useState<{
+    visible: boolean;
+    message: string;
+    type: "success" | "error" | "info";
+  }>({ visible: false, message: "", type: "success" });
+
+  const showToast = (message: string, type: "success" | "error" | "info" = "success") => {
+    setToast({ visible: true, message, type });
+  };
+
+  const hideToast = () => setToast((prev) => ({ ...prev, visible: false }));
+
   // --- STATES FOR MEMBER MANAGEMENT ---
   const [isMemberModalVisible, setIsMemberModalVisible] = useState(false);
   const [selectedClassForMembers, setSelectedClassForMembers] = useState<TableClassItem | null>(null);
@@ -218,6 +230,38 @@ export default function ManageClass({ width, currentAdmin }: ManageClassProps) {
   };
 
   const handleSubmitClass = async (payload: AddClassModalPayload) => {
+    const isCreating = !isEditMode;
+    let tempId: string | null = null;
+
+    if (isCreating) {
+      // 1. Build a temporary local entry from what the admin just typed
+      tempId = `temp-${Date.now()}`;
+      const optimisticRaw: BackendClassItem = {
+        id: tempId,
+        classCode: payload.classCode,
+        name: payload.className,
+        semester: payload.semester,
+        section: payload.section,
+        instructorName: "Fetching teacher…", // backend resolves the real name
+        memberCount: 0,
+        courseCode: payload.courseCode,
+        schoolYear: payload.schoolYear,
+        description: payload.description,
+        bannerUrl: payload.bannerLocalUri,
+        bannerFileName: payload.bannerFileName,
+        bannerMimeType: payload.bannerMimeType,
+        assignedTeacherId: payload.instructorIdentifier,
+        status: "active",
+      };
+
+      // 2. Show it in the table immediately
+      setRawClasses((prev) => [optimisticRaw, ...prev]);
+      setClasses((prev) => [mapBackendClassToTable(optimisticRaw), ...prev]);
+
+      // 3. Close the modal right away so it feels instant
+      resetModalState();
+    }
+
     try {
       let bannerBase64 = undefined;
       if (payload.bannerLocalUri) {
@@ -253,7 +297,7 @@ export default function ManageClass({ width, currentAdmin }: ManageClassProps) {
         if (!response.ok) throw new Error(data.error || "Failed to update class");
         resetModalState();
         await loadClasses();
-        Alert.alert("Success", "Class updated successfully.");
+        showToast("Class updated successfully.", "success");
         return;
       }
 
@@ -278,18 +322,30 @@ export default function ManageClass({ width, currentAdmin }: ManageClassProps) {
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Failed to create class");
-      resetModalState();
+
+      // 4. Swap the temp row for the real backend data (real id, resolved teacher name, etc.)
       await loadClasses();
-      Alert.alert("Success", `Class created successfully.\nClass Code: ${data?.data?.classCode || payload.classCode}`);
+      showToast(`Class created successfully. Class Code: ${data?.data?.classCode || payload.classCode}`, "success");
     } catch (error) {
       console.error("Error saving class:", error);
+
+      if (isCreating && tempId) {
+        // 5. Roll back the optimistic row if the backend call failed
+        setRawClasses((prev) => prev.filter((item) => item.id !== tempId));
+        setClasses((prev) => prev.filter((item) => item.id !== tempId));
+      }
+
+      showToast(
+        error instanceof Error ? error.message : "Something went wrong. Please try again.",
+        "error"
+      );
     }
   };
 
   const handleEdit = (item: TableClassItem) => {
     const fullClass = rawClasses.find((row) => row.id === item.id);
     if (!fullClass) {
-      Alert.alert("Error", "Class details not found.");
+      showToast("Class details not found.", "error");
       return;
     }
     setSelectedClass({
@@ -332,9 +388,10 @@ export default function ManageClass({ width, currentAdmin }: ManageClassProps) {
       if (!response.ok) throw new Error(data.error || "Failed to delete class");
       closeDeleteModal();
       await loadClasses();
-      Alert.alert("Success", "Class deleted successfully.");
+      showToast("Class deleted successfully.", "success");
     } catch (error) {
       console.error("Error deleting class:", error);
+      showToast("Failed to delete class.", "error");
     }
   };
 
@@ -357,7 +414,7 @@ export default function ManageClass({ width, currentAdmin }: ManageClassProps) {
       setClassMembers(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error("Error fetching members:", error);
-      Alert.alert("Error", "Failed to load class members.");
+      showToast("Failed to load class members.", "error");
     } finally {
       setIsLoadingMembers(false);
     }
@@ -367,7 +424,7 @@ export default function ManageClass({ width, currentAdmin }: ManageClassProps) {
     if (!selectedClassForMembers) return;
     const studentId = newMemberStudentId.trim();
     if (!studentId) {
-      Alert.alert("Error", "Please enter a Student ID.");
+      showToast("Please enter a Student ID.", "error");
       return;
     }
     try {
@@ -383,14 +440,14 @@ export default function ManageClass({ width, currentAdmin }: ManageClassProps) {
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Failed to add member");
       
-      Alert.alert("Success", "Member added successfully.");
+      showToast("Member added successfully.", "success");
       setNewMemberStudentId("");
       setIsAddMemberModalVisible(false);
       await fetchClassMembers(selectedClassForMembers.id);
       await loadClasses();
     } catch (error: any) {
       console.error("Error adding member:", error);
-      Alert.alert("Error", error.message || "Failed to add member.");
+      showToast(error.message || "Failed to add member.", "error");
     } finally {
       setIsAddingMember(false);
     }
@@ -869,6 +926,13 @@ export default function ManageClass({ width, currentAdmin }: ManageClassProps) {
           </View>
         </View>
       </Modal>
+
+      <Toast
+        visible={toast.visible}
+        message={toast.message}
+        type={toast.type}
+        onHide={hideToast}
+      />
     </View>
   );
 }

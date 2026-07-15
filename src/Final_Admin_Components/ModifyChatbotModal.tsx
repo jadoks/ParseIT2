@@ -111,6 +111,13 @@ export default function ModifyChatbotModal({
   const [searchText, setSearchText] = useState("");
   const [confirmDeleteItem, setConfirmDeleteItem] = useState<ChatbotTrainingItem | null>(null);
 
+  // Focus tracking so these fields get the same highlighted-border
+  // behavior as inputs elsewhere in the app (matches Chatbot.tsx) instead
+  // of always looking static.
+  const [isEditResponseFocused, setIsEditResponseFocused] = useState(false);
+  const [isNewTriggerFocused, setIsNewTriggerFocused] = useState(false);
+  const [isSearchFocused, setIsSearchFocused] = useState(false);
+
   const filteredItems = useMemo(() => {
     const keyword = searchText.trim().toLowerCase();
     if (!keyword) return items;
@@ -196,7 +203,7 @@ export default function ModifyChatbotModal({
   const handleSaveEdit = async (item: ChatbotTrainingItem) => {
     const cleanedResponse = editedResponse.trim();
     const cleanedTriggers = editedTriggers.map((entry) => entry.trim()).filter(Boolean);
-    
+
     if (!cleanedResponse) {
       Alert.alert("Required", "Response cannot be empty.");
       return;
@@ -211,9 +218,9 @@ export default function ModifyChatbotModal({
       setSavingId(item.id);
 
       const response = await apiFetch(`${API_BASE_URL}/chatbot-training/${item.id}`, {
-        method: "PUT", // FIXED: Removed trailing space
+        method: "PUT",
         headers: {
-          "Content-Type": "application/json", // FIXED: Removed trailing spaces
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({
           response: cleanedResponse,
@@ -221,7 +228,7 @@ export default function ModifyChatbotModal({
         }),
       });
 
-      const data = await response.json(); // FIXED TYPO: "respon se"
+      const data = await response.json();
 
       if (!response.ok) {
         throw new Error(data?.error || "Failed to update training data.");
@@ -266,9 +273,9 @@ export default function ModifyChatbotModal({
       const fileBase64 = await fileUriToBase64(file.uri);
 
       const response = await apiFetch(`${API_BASE_URL}/chatbot-training/${item.id}/file`, {
-        method: "PATCH", // FIXED: Removed trailing space
+        method: "PATCH",
         headers: {
-          "Content-Type": "application/json", // FIXED: Removed trailing spaces
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({
           fileBase64,
@@ -308,7 +315,7 @@ export default function ModifyChatbotModal({
     try {
       setRemovingFileId(item.id);
       const response = await apiFetch(`${API_BASE_URL}/chatbot-training/${item.id}/file`, {
-        method: "DELETE", // FIXED: Removed trailing space
+        method: "DELETE",
       });
 
       const data = await response.json();
@@ -353,7 +360,7 @@ export default function ModifyChatbotModal({
       setDeletingId(confirmDeleteItem.id);
 
       const response = await apiFetch(`${API_BASE_URL}/chatbot-training/${confirmDeleteItem.id}`, {
-        method: "DELETE", // FIXED: Removed trailing space
+        method: "DELETE",
       });
 
       const data = await response.json();
@@ -397,7 +404,12 @@ export default function ModifyChatbotModal({
             </View>
 
             <View style={styles.searchWrap}>
-              <View style={styles.searchField}>
+              <View
+                style={[
+                  styles.searchField,
+                  isSearchFocused && styles.inputFieldFocused,
+                ]}
+              >
                 <Ionicons name="search-outline" size={18} color="#8A6F6F" />
                 <TextInput
                   value={searchText}
@@ -405,6 +417,8 @@ export default function ModifyChatbotModal({
                   placeholder="Search by response, trigger, or file name"
                   placeholderTextColor="#B79A9A"
                   style={styles.searchInput}
+                  onFocus={() => setIsSearchFocused(true)}
+                  onBlur={() => setIsSearchFocused(false)}
                 />
               </View>
             </View>
@@ -436,7 +450,6 @@ export default function ModifyChatbotModal({
                       <View style={styles.trainingCardHeader}>
                         <View style={styles.trainingCardHeaderLeft}>
                           <Text style={styles.trainingCardTitle}>Training Entry</Text>
-                          {/* NEW: Show badge if auto-split */}
                           {item.source === "admin-panel-auto-split" && (
                             <Text style={styles.autoSplitBadge}>Auto-split from File</Text>
                           )}
@@ -473,7 +486,13 @@ export default function ModifyChatbotModal({
                       <View style={styles.fieldBlock}>
                         <Text style={styles.fieldLabel}>Response</Text>
                         {isEditing ? (
-                          <View style={[styles.inputField, styles.textAreaField]}>
+                          <View
+                            style={[
+                              styles.inputField,
+                              styles.textAreaField,
+                              isEditResponseFocused && styles.inputFieldFocused,
+                            ]}
+                          >
                             <TextInput
                               value={editedResponse}
                               onChangeText={setEditedResponse}
@@ -482,6 +501,8 @@ export default function ModifyChatbotModal({
                               style={styles.textAreaInput}
                               multiline
                               textAlignVertical="top"
+                              onFocus={() => setIsEditResponseFocused(true)}
+                              onBlur={() => setIsEditResponseFocused(false)}
                             />
                           </View>
                         ) : (
@@ -515,6 +536,7 @@ export default function ModifyChatbotModal({
                                   styles.inputField,
                                   styles.addTriggerInputWrap,
                                   isMobile && styles.addTriggerInputWrapStack,
+                                  isNewTriggerFocused && styles.inputFieldFocused,
                                 ]}
                               >
                                 <TextInput
@@ -525,6 +547,8 @@ export default function ModifyChatbotModal({
                                   style={styles.textInput}
                                   onSubmitEditing={handleAddTrigger}
                                   returnKeyType="done"
+                                  onFocus={() => setIsNewTriggerFocused(true)}
+                                  onBlur={() => setIsNewTriggerFocused(false)}
                                 />
                               </View>
                               <TouchableOpacity style={styles.addTriggerButton} activeOpacity={0.85} onPress={handleAddTrigger}>
@@ -759,6 +783,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: "#2B1111",
     fontWeight: "600",
+    ...(Platform.OS === "web" ? ({ outlineStyle: "none" } as any) : {}),
   },
   modalContent: {
     padding: 24,
@@ -899,10 +924,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     justifyContent: "center",
   },
+  // Applied alongside inputField / searchField when the inner TextInput is
+  // focused. Gives a visible highlighted border on the whole rounded
+  // container, matching the focus behavior used in Chatbot.tsx.
+  inputFieldFocused: {
+    borderColor: "#DC2626",
+    borderWidth: 1.5,
+  },
   textInput: {
     fontSize: 14,
     color: "#2B1111",
     fontWeight: "600",
+    ...(Platform.OS === "web" ? ({ outlineStyle: "none" } as any) : {}),
   },
   textAreaField: {
     minHeight: 130,
@@ -915,6 +948,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: "#2B1111",
     fontWeight: "600",
+    ...(Platform.OS === "web" ? ({ outlineStyle: "none" } as any) : {}),
   },
   previewBox: {
     borderRadius: 16,
@@ -1152,7 +1186,6 @@ const styles = StyleSheet.create({
   disabledButton: {
     opacity: 0.7,
   },
-  // NEW STYLE FOR AUTO-SPLIT BADGE
   autoSplitBadge: {
     fontSize: 11,
     fontWeight: "700",

@@ -72,6 +72,97 @@ export type AddClassModalInitialData = {
   units?: number | null;
 };
 
+/**
+ * Small helper component so every text field gets consistent
+ * focus behavior (highlighted container border instead of the
+ * browser's default clipped outline on web).
+ */
+function FormInput({
+  icon,
+  value,
+  onChangeText,
+  placeholder,
+  keyboardType,
+  autoCapitalize,
+  maxLength,
+  editable,
+}: {
+  icon: React.ComponentProps<typeof Ionicons>["name"];
+  value: string;
+  onChangeText?: (text: string) => void;
+  placeholder: string;
+  keyboardType?: "default" | "email-address" | "number-pad";
+  autoCapitalize?: "none" | "sentences" | "words" | "characters";
+  maxLength?: number;
+  editable?: boolean;
+}) {
+  const [isFocused, setIsFocused] = useState(false);
+
+  return (
+    <View
+      style={[styles.inputField, isFocused && styles.inputFieldFocused]}
+    >
+      <Ionicons name={icon} size={18} color="#8A6F6F" />
+      <TextInput
+        value={value}
+        onChangeText={onChangeText}
+        placeholder={placeholder}
+        placeholderTextColor="#B79A9A"
+        style={styles.textInput}
+        keyboardType={keyboardType}
+        autoCapitalize={autoCapitalize}
+        maxLength={maxLength}
+        editable={editable}
+        onFocus={() => setIsFocused(true)}
+        onBlur={() => setIsFocused(false)}
+      />
+    </View>
+  );
+}
+
+/**
+ * Multiline sibling of FormInput. Same focus-highlight behavior
+ * (border lights up on focus) but sized/styled for free-text blocks
+ * like Course Name and Description. Having this as its own component
+ * (instead of an inline TextInput per field) is what makes the focus
+ * state actually work — a raw TextInput dropped into a static View
+ * never gets a way to know it's focused.
+ */
+function FormTextArea({
+  value,
+  onChangeText,
+  placeholder,
+  minHeight = 100,
+}: {
+  value: string;
+  onChangeText?: (text: string) => void;
+  placeholder: string;
+  minHeight?: number;
+}) {
+  const [isFocused, setIsFocused] = useState(false);
+
+  return (
+    <View
+      style={[
+        styles.descriptionField,
+        isFocused && styles.descriptionFieldFocused,
+      ]}
+    >
+      <TextInput
+        value={value}
+        onChangeText={onChangeText}
+        placeholder={placeholder}
+        placeholderTextColor="#B79A9A"
+        multiline
+        textAlignVertical="top"
+        style={[styles.descriptionInput, { minHeight }]}
+        onFocus={() => setIsFocused(true)}
+        onBlur={() => setIsFocused(false)}
+      />
+    </View>
+  );
+}
+
 const YEAR_OPTIONS: YearOption[] = [
   { id: "1st", label: "1st Year" },
   { id: "2nd", label: "2nd Year" },
@@ -582,54 +673,22 @@ export default function AddClassModal({
                     </View>
 
                     <Text style={styles.fieldLabel}>Course Code</Text>
-                    <View style={styles.inputField}>
-                      <Ionicons
-                        name="pricetag-outline"
-                        size={18}
-                        color="#8A6F6F"
-                      />
-                      <TextInput
-                        value={courseCodeInput}
-                        onChangeText={setCourseCodeInput}
-                        placeholder="e.g., CC 111"
-                        placeholderTextColor="#B79A9A"
-                        style={[styles.textInput, { marginBottom: 0 }]}
-                      />
-                    </View>
+                    <FormInput
+                      icon="pricetag-outline"
+                      value={courseCodeInput}
+                      onChangeText={setCourseCodeInput}
+                      placeholder="e.g., CC 111"
+                    />
 
                     <Text style={[styles.fieldLabel, { marginTop: 16 }]}>
                       Course Name
                     </Text>
-                    <View style={styles.descriptionField}>
-                      <TextInput
-                        value={courseNameInput}
-                        onChangeText={setCourseNameInput}
-                        placeholder="e.g., INTRODUCTION TO COMPUTING"
-                        placeholderTextColor="#B79A9A"
-                        multiline
-                        textAlignVertical="top"
-                        style={[styles.descriptionInput, { minHeight: 60 }]}
-                      />
-                    </View>
-
-                    <Text style={[styles.fieldLabel, { marginTop: 16 }]}>
-                      Units
-                    </Text>
-                    <View style={styles.inputField}>
-                      <Ionicons
-                        name="calculator-outline"
-                        size={18}
-                        color="#8A6F6F"
-                      />
-                      <TextInput
-                        value={courseUnitsInput}
-                        onChangeText={setCourseUnitsInput}
-                        placeholder="e.g., 3.0"
-                        placeholderTextColor="#B79A9A"
-                        keyboardType="numeric"
-                        style={[styles.textInput, { marginBottom: 0 }]}
-                      />
-                    </View>
+                    <FormTextArea
+                      value={courseNameInput}
+                      onChangeText={setCourseNameInput}
+                      placeholder="e.g., INTRODUCTION TO COMPUTING"
+                      minHeight={60}
+                    />
                   </View>
                 )}
 
@@ -642,21 +701,13 @@ export default function AddClassModal({
                       Enter only the teacher ID. The system will automatically fetch
                       the teacher name and email.
                     </Text>
-                    <View style={styles.inputField}>
-                      <Ionicons
-                        name="card-outline"
-                        size={18}
-                        color="#8A6F6F"
-                      />
-                      <TextInput
-                        value={instructorIdentifier}
-                        onChangeText={setInstructorIdentifier}
-                        placeholder="Enter teacher ID"
-                        placeholderTextColor="#B79A9A"
-                        style={styles.textInput}
-                        autoCapitalize="none"
-                      />
-                    </View>
+                    <FormInput
+                      icon="card-outline"
+                      value={instructorIdentifier}
+                      onChangeText={setInstructorIdentifier}
+                      placeholder="Enter teacher ID"
+                      autoCapitalize="none"
+                    />
                   </View>
                 </View>
 
@@ -665,40 +716,25 @@ export default function AddClassModal({
                 >
                   <View style={styles.modalCol}>
                     <Text style={styles.fieldLabel}>Start Year</Text>
-                    <View style={styles.inputField}>
-                      <Ionicons
-                        name="calendar-outline"
-                        size={18}
-                        color="#8A6F6F"
-                      />
-                      <TextInput
-                        value={startYear}
-                        onChangeText={setStartYear}
-                        placeholder="2025"
-                        placeholderTextColor="#B79A9A"
-                        keyboardType="number-pad"
-                        maxLength={4}
-                        style={styles.textInput}
-                      />
-                    </View>
+                    <FormInput
+                      icon="calendar-outline"
+                      value={startYear}
+                      onChangeText={setStartYear}
+                      placeholder="2025"
+                      keyboardType="number-pad"
+                      maxLength={4}
+                    />
                   </View>
 
                   <View style={styles.modalCol}>
                     <Text style={styles.fieldLabel}>End Year</Text>
-                    <View style={styles.inputField}>
-                      <Ionicons
-                        name="calendar-outline"
-                        size={18}
-                        color="#8A6F6F"
-                      />
-                      <TextInput
-                        value={endYear}
-                        placeholder="Auto"
-                        placeholderTextColor="#B79A9A"
-                        editable={false}
-                        style={styles.textInput}
-                      />
-                    </View>
+                    <FormInput
+                      icon="calendar-outline"
+                      value={endYear}
+                      onChangeText={() => {}}
+                      placeholder="Auto"
+                      editable={false}
+                    />
                   </View>
                 </View>
 
@@ -714,17 +750,12 @@ export default function AddClassModal({
                     </Text>
                   </View>
 
-                  <View style={styles.descriptionField}>
-                    <TextInput
-                      value={description}
-                      onChangeText={setDescription}
-                      placeholder="Enter class description"
-                      placeholderTextColor="#B79A9A"
-                      multiline
-                      textAlignVertical="top"
-                      style={styles.descriptionInput}
-                    />
-                  </View>
+                  <FormTextArea
+                    value={description}
+                    onChangeText={setDescription}
+                    placeholder="Enter class description"
+                    minHeight={100}
+                  />
                 </View>
 
                 <View style={styles.modalSection}>
@@ -1141,12 +1172,23 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
   },
+  // Applied alongside inputField when the inner TextInput is focused.
+  // Gives a visible highlighted border on the whole rounded container
+  // instead of relying on the browser's default (clipped) outline.
+  inputFieldFocused: {
+    borderColor: "#DC2626",
+    borderWidth: 1.5,
+  },
   textInput: {
     flex: 1,
+    height: "100%",
     marginLeft: 10,
     fontSize: 14,
     color: "#2B1111",
     fontWeight: "600",
+    // Remove the native browser focus ring on web so it doesn't clip
+    // to the input's own small box; inputFieldFocused handles focus styling.
+    ...(Platform.OS === "web" ? ({ outlineStyle: "none" } as any) : {}),
   },
   descriptionField: {
     borderRadius: 18,
@@ -1156,11 +1198,20 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 12,
   },
+  // Applied alongside descriptionField when the inner multiline TextInput
+  // (Course Name / Description, via FormTextArea) is focused. Mirrors
+  // inputFieldFocused so all fields — single-line or multiline — share
+  // the same highlighted-border behavior.
+  descriptionFieldFocused: {
+    borderColor: "#DC2626",
+    borderWidth: 1.5,
+  },
   descriptionInput: {
     minHeight: 100,
     fontSize: 14,
     color: "#2B1111",
     fontWeight: "500",
+    ...(Platform.OS === "web" ? ({ outlineStyle: "none" } as any) : {}),
   },
   bannerUpload: {
     minHeight: 220,
