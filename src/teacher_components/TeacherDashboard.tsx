@@ -1,8 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import * as Clipboard from 'expo-clipboard';
-import Constants from 'expo-constants';
 import * as FileSystem from 'expo-file-system/legacy';
-import { Image } from 'expo-image'; // <--- IMPORTED expo-image
+import { Image } from 'expo-image';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
@@ -20,9 +19,15 @@ import {
 import { launchImageLibrary } from 'react-native-image-picker';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 
+// 🔥 IMPORT GLOBAL API SERVICE INSTEAD OF LOCAL FETCH LOGIC
+import { apiFetch } from '../services/api';
+
 import AnnouncementBanner from './TeacherAnnouncementBanner';
 import { Announcement } from './TeacherAnnouncementModal';
-import TeacherCourseCard from './TeacherCourseCard'; // <--- NEW: extracted course card component
+import TeacherCourseCard from './TeacherCourseCard';
+
+// ✅ Reuses the same Toast component used in the Admin ManageStudent screen.
+import Toast from '../Final_Admin_Components/Toast';
 
 export type TeacherCourseData = {
   id: string;
@@ -73,22 +78,76 @@ interface DashboardProps {
   onDeleteCourse?: (id: string) => void;
   onEditCourse?: (course: TeacherCourseData) => void;
   currentTeacher: SignedInTeacher;
-  isLoading?: boolean; // Added to handle initial page load gracefully
+  isLoading?: boolean;
 }
 
 type YearOption = { id: string; label: string; };
 type SectionOption = { id: string; label: string; };
 type SemesterOption = { id: string; label: string; };
+type ToastType = 'success' | 'error' | 'info';
 
-function getApiBaseUrl() {
-  if (Platform.OS === 'web') return 'http://localhost:5000';
-  const possibleHost = Constants.expoConfig?.hostUri || Constants.manifest2?.extra?.expoGo?.debuggerHost || '';
-  const host = possibleHost.split(':')[0];
-  if (host) return `http://${host}:5000`;
-  return 'http://192.168.1.5:5000';
+function DashboardTextField({
+  value,
+  onChangeText,
+  placeholder,
+  keyboardType,
+  maxLength,
+  editable,
+}: {
+  value: string;
+  onChangeText?: (text: string) => void;
+  placeholder: string;
+  keyboardType?: 'default' | 'number-pad' | 'numeric';
+  maxLength?: number;
+  editable?: boolean;
+}) {
+  const [isFocused, setIsFocused] = useState(false);
+
+  return (
+    <View style={[styles.yearInputWrap, isFocused && styles.yearInputWrapFocused]}>
+      <TextInput
+        value={value}
+        onChangeText={onChangeText}
+        placeholder={placeholder}
+        placeholderTextColor="#9AA0A6"
+        keyboardType={keyboardType}
+        maxLength={maxLength}
+        editable={editable}
+        style={styles.yearInput}
+        onFocus={() => setIsFocused(true)}
+        onBlur={() => setIsFocused(false)}
+      />
+    </View>
+  );
 }
 
-const API_BASE_URL = getApiBaseUrl();
+function DashboardTextArea({
+  value,
+  onChangeText,
+  placeholder,
+}: {
+  value: string;
+  onChangeText?: (text: string) => void;
+  placeholder: string;
+}) {
+  const [isFocused, setIsFocused] = useState(false);
+
+  return (
+    <View style={[styles.textAreaWrap, isFocused && styles.textAreaWrapFocused]}>
+      <TextInput
+        value={value}
+        onChangeText={onChangeText}
+        placeholder={placeholder}
+        placeholderTextColor="#9AA0A6"
+        multiline
+        textAlignVertical="top"
+        style={styles.textAreaInput}
+        onFocus={() => setIsFocused(true)}
+        onBlur={() => setIsFocused(false)}
+      />
+    </View>
+  );
+}
 
 const YEAR_OPTIONS: YearOption[] = [
   { id: '1st', label: '1st Year' }, { id: '2nd', label: '2nd Year' },
@@ -175,11 +234,16 @@ const Dashboard2 = ({
   const [isCreateModalVisible, setCreateModalVisible] = useState(false);
   const [isEditModalVisible, setEditModalVisible] = useState(false);
   const [isCreatingClass, setIsCreatingClass] = useState(false);
-  const [isSavingEdit, setIsSavingEdit] = useState(false); // <-- Loading state for Edit
-  const [isDeletingClass, setIsDeletingClass] = useState(false); // <-- Loading state for Delete
-  const [toastVisible, setToastVisible] = useState(false);
-  const [toastMessage, setToastMessage] = useState('');
-  const [toastType, setToastType] = useState<'success' | 'error'>('success');
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
+  const [isDeletingClass, setIsDeletingClass] = useState(false);
+
+  // ✅ Toast state
+  const [toast, setToast] = useState<{
+    visible: boolean;
+    message: string;
+    type: ToastType;
+  }>({ visible: false, message: '', type: 'error' });
+
   const [isMenuVisible, setMenuVisible] = useState(false);
   const [isSemesterDropdownVisible, setSemesterDropdownVisible] = useState(false);
   const [isEditSemesterDropdownVisible, setEditSemesterDropdownVisible] = useState(false);
@@ -223,16 +287,15 @@ const Dashboard2 = ({
   const teacherUid = useMemo(() => currentTeacher?.authUid?.trim() || '', [currentTeacher]);
   const teacherId = useMemo(() => currentTeacher?.teacherId?.trim() || '', [currentTeacher]);
 
-  const showToast = (message: string, type: 'success' | 'error' = 'error') => {
-    setToastMessage(message);
-    setToastType(type);
-    setToastVisible(true);
-    setTimeout(() => setToastVisible(false), 2800);
+  const showToast = (message: string, type: ToastType = 'error') => {
+    setToast({ visible: true, message, type });
   };
+
+  const hideToast = () => setToast((prev) => ({ ...prev, visible: false }));
 
   const loadTeacherClasses = async () => {
     try {
-      const response = await fetch(`${API_BASE_URL}/classes`, { credentials: 'include' });
+      const response = await apiFetch('/classes'); 
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Failed to fetch classes');
       const classList = Array.isArray(data) ? data : [];
@@ -286,9 +349,6 @@ const Dashboard2 = ({
     return Number.isNaN(parsedStartYear) ? '' : String(parsedStartYear + 1);
   }, [editStartYear]);
 
-  // ==========================================
-  // ALL HOOKS MUST BE CALLED BEFORE ANY EARLY RETURNS
-  // ==========================================
   const isInitialLoad = isLoading && courses.length === 0 && announcements.length === 0;
 
   if (isInitialLoad) {
@@ -374,8 +434,8 @@ const Dashboard2 = ({
       let bannerBase64: string | null = null;
       if (classBanner) bannerBase64 = await fileUriToBase64(classBanner);
 
-      const response = await fetch(`${API_BASE_URL}/create-class`, {
-        credentials: 'include', method: 'POST', headers: { 'Content-Type': 'application/json' },
+      const response = await apiFetch('/create-class', {
+        method: 'POST',
         body: JSON.stringify({
           name: courseLabel, courseCode, section: sectionLabel, semester: selectedSemesterLabel,
           schoolYear: `${startYear.trim()}-${endYear}`, description: description.trim() ? description.trim() : null,
@@ -424,7 +484,7 @@ const Dashboard2 = ({
   };
 
   const handleSaveEdit = async () => {
-    if (!editingCourse || isSavingEdit) return; // <-- Check isSavingEdit
+    if (!editingCourse || isSavingEdit) return;
     const activeEditYear = editSelectedYear; const activeEditSemester = editSelectedSemester;
     if (!activeEditYear) { showToast('Please select a year.', 'error'); return; }
     if (!activeEditSemester) { showToast('Please select a semester.', 'error'); return; }
@@ -438,7 +498,7 @@ const Dashboard2 = ({
     const sectionLabel = SECTION_OPTIONS[activeEditYear]?.find((section: SectionOption) => section.id === editSelectedSection)?.label || '';
     const courseCode = editCourseCodeInput.trim(); const courseLabel = editCourseNameInput.trim(); const units = parseFloat(editCourseUnitsInput) || 0;
 
-    setIsSavingEdit(true); // <-- Set loading state
+    setIsSavingEdit(true);
 
     try {
       let bannerBase64: string | null | undefined = undefined;
@@ -447,8 +507,8 @@ const Dashboard2 = ({
         if (!isRemote) bannerBase64 = await fileUriToBase64(editClassBanner);
       } else bannerBase64 = null;
 
-      const response = await fetch(`${API_BASE_URL}/update-class/${editingCourse.id}`, {
-        credentials: 'include', method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      const response = await apiFetch(`/update-class/${editingCourse.id}`, {
+        method: 'PUT',
         body: JSON.stringify({
           name: courseLabel, courseCode, section: sectionLabel, semester: editSelectedSemesterLabel,
           schoolYear: `${editStartYear.trim()}-${editEndYear}`, description: editDescription.trim() ? editDescription.trim() : null,
@@ -482,7 +542,7 @@ const Dashboard2 = ({
       console.error('Error updating class:', error);
       showToast('Failed to update class.', 'error');
     } finally { 
-      setIsSavingEdit(false); // <-- Reset loading state
+      setIsSavingEdit(false);
     }
   };
 
@@ -490,26 +550,29 @@ const Dashboard2 = ({
   const handleDeleteCourse = () => { if (!menuCourse) return; setCourseToDelete(menuCourse); setDeleteConfirmVisible(true); closeMenu(); };
 
   const confirmDeleteCourse = async () => {
-    if (!courseToDelete || isDeletingClass) return; // <-- Check isDeletingClass
-    setIsDeletingClass(true); // <-- Set loading state
+    if (!courseToDelete || isDeletingClass) return;
+    setIsDeletingClass(true);
     
     try {
-      const response = await fetch(`${API_BASE_URL}/delete-class/${courseToDelete.id}`, { credentials: 'include', method: 'DELETE', headers: { 'Content-Type': 'application/json' } });
+      const response = await apiFetch(`/delete-class/${courseToDelete.id}`, {
+        method: 'DELETE',
+      });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Failed to delete class');
       await refreshClassesAfterStorageWrite();
       onDeleteCourse?.(courseToDelete.id);
       setDeleteConfirmVisible(false); setCourseToDelete(null);
+      showToast('Class deleted successfully.', 'success');
     } catch (error) {
       console.error('Error deleting class:', error);
       showToast('Failed to delete class.', 'error');
     } finally {
-      setIsDeletingClass(false); // <-- Reset loading state
+      setIsDeletingClass(false);
     }
   };
 
   const cancelDeleteCourse = () => { 
-    if (isDeletingClass) return; // <-- Prevent closing while deleting
+    if (isDeletingClass) return;
     setDeleteConfirmVisible(false); 
     setCourseToDelete(null); 
   };
@@ -600,16 +663,30 @@ const Dashboard2 = ({
                     <Text style={styles.modalSectionTitle}>Course Details</Text>
                   </View>
                   <Text style={styles.inputLabel}>Course Code</Text>
-                  <View style={styles.yearInputWrap}><TextInput value={courseCodeInput} onChangeText={setCourseCodeInput} placeholder="e.g., CC 111" placeholderTextColor="#9AA0A6" style={styles.yearInput} /></View>
+                  <DashboardTextField
+                    value={courseCodeInput}
+                    onChangeText={setCourseCodeInput}
+                    placeholder="e.g., CC 111"
+                  />
                   <Text style={styles.inputLabel}>Course Name</Text>
-                  <View style={styles.textAreaWrap}><TextInput value={courseNameInput} onChangeText={setCourseNameInput} placeholder="e.g., INTRODUCTION TO COMPUTING" placeholderTextColor="#9AA0A6" multiline textAlignVertical="top" style={styles.textAreaInput} /></View>
+                  <DashboardTextArea
+                    value={courseNameInput}
+                    onChangeText={setCourseNameInput}
+                    placeholder="e.g., INTRODUCTION TO COMPUTING"
+                  />
                   
                 </View>
               )}
               <View style={styles.yearRow}>
                 <View style={styles.yearCol}>
                   <Text style={styles.inputLabel}>Start Year</Text>
-                  <View style={styles.yearInputWrap}><TextInput value={startYear} onChangeText={setStartYear} placeholder="2025" placeholderTextColor="#9AA0A6" keyboardType="number-pad" maxLength={4} style={styles.yearInput} /></View>
+                  <DashboardTextField
+                    value={startYear}
+                    onChangeText={setStartYear}
+                    placeholder="2025"
+                    keyboardType="number-pad"
+                    maxLength={4}
+                  />
                 </View>
                 <View style={styles.yearCol}>
                   <Text style={styles.inputLabel}>End Year</Text>
@@ -617,14 +694,17 @@ const Dashboard2 = ({
                 </View>
               </View>
               <Text style={styles.inputLabel}>Description (Optional)</Text>
-              <View style={styles.textAreaWrap}><TextInput value={description} onChangeText={setDescription} placeholder="Enter class description" placeholderTextColor="#9AA0A6" multiline textAlignVertical="top" style={styles.textAreaInput} /></View>
+              <DashboardTextArea
+                value={description}
+                onChangeText={setDescription}
+                placeholder="Enter class description"
+              />
               <Text style={styles.inputLabel}>Class Banner / Background Photo</Text>
               <TouchableOpacity style={[styles.uploadBtn, isCreatingClass && styles.disabledBtn]} onPress={handlePickBanner} disabled={isCreatingClass}>
                 <MaterialCommunityIcons name="image-plus" size={20} color="#D32F2F" />
                 <Text style={styles.uploadBtnText}>{classBanner ? 'Change Banner Photo' : 'Upload Banner Photo'}</Text>
               </TouchableOpacity>
               
-              {/* UPDATED: Using expo-image for instant caching and smooth fade-in */}
               {classBanner ? (
                 <View style={styles.bannerPreview}>
                   <Image
@@ -728,17 +808,36 @@ const Dashboard2 = ({
                     <Text style={styles.modalSectionTitle}>Course Details</Text>
                   </View>
                   <Text style={styles.inputLabel}>Course Code</Text>
-                  <View style={styles.yearInputWrap}><TextInput value={editCourseCodeInput} onChangeText={setEditCourseCodeInput} placeholder="e.g., CC 111" placeholderTextColor="#9AA0A6" style={styles.yearInput} /></View>
+                  <DashboardTextField
+                    value={editCourseCodeInput}
+                    onChangeText={setEditCourseCodeInput}
+                    placeholder="e.g., CC 111"
+                  />
                   <Text style={styles.inputLabel}>Course Name</Text>
-                  <View style={styles.textAreaWrap}><TextInput value={editCourseNameInput} onChangeText={setEditCourseNameInput} placeholder="e.g., INTRODUCTION TO COMPUTING" placeholderTextColor="#9AA0A6" multiline textAlignVertical="top" style={styles.textAreaInput} /></View>
+                  <DashboardTextArea
+                    value={editCourseNameInput}
+                    onChangeText={setEditCourseNameInput}
+                    placeholder="e.g., INTRODUCTION TO COMPUTING"
+                  />
                   <Text style={styles.inputLabel}>Units</Text>
-                  <View style={styles.yearInputWrap}><TextInput value={editCourseUnitsInput} onChangeText={setEditCourseUnitsInput} placeholder="e.g., 3.0" placeholderTextColor="#9AA0A6" keyboardType="numeric" style={styles.yearInput} /></View>
+                  <DashboardTextField
+                    value={editCourseUnitsInput}
+                    onChangeText={setEditCourseUnitsInput}
+                    placeholder="e.g., 3.0"
+                    keyboardType="numeric"
+                  />
                 </View>
               )}
               <View style={styles.yearRow}>
                 <View style={styles.yearCol}>
                   <Text style={styles.inputLabel}>Start Year</Text>
-                  <View style={styles.yearInputWrap}><TextInput value={editStartYear} onChangeText={setEditStartYear} placeholder="2025" placeholderTextColor="#9AA0A6" keyboardType="number-pad" maxLength={4} style={styles.yearInput} /></View>
+                  <DashboardTextField
+                    value={editStartYear}
+                    onChangeText={setEditStartYear}
+                    placeholder="2025"
+                    keyboardType="number-pad"
+                    maxLength={4}
+                  />
                 </View>
                 <View style={styles.yearCol}>
                   <Text style={styles.inputLabel}>End Year</Text>
@@ -746,14 +845,17 @@ const Dashboard2 = ({
                 </View>
               </View>
               <Text style={styles.inputLabel}>Description (Optional)</Text>
-              <View style={styles.textAreaWrap}><TextInput value={editDescription} onChangeText={setEditDescription} placeholder="Enter class description" placeholderTextColor="#9AA0A6" multiline textAlignVertical="top" style={styles.textAreaInput} /></View>
+              <DashboardTextArea
+                value={editDescription}
+                onChangeText={setEditDescription}
+                placeholder="Enter class description"
+              />
               <Text style={styles.inputLabel}>Class Banner / Background Photo</Text>
               <TouchableOpacity style={styles.uploadBtn} onPress={handlePickEditBanner}>
                 <MaterialCommunityIcons name="image-edit-outline" size={20} color="#D32F2F" />
                 <Text style={styles.uploadBtnText}>{editClassBanner ? 'Change Banner Photo' : 'Upload Banner Photo'}</Text>
               </TouchableOpacity>
 
-              {/* UPDATED: Using expo-image for instant caching and smooth fade-in */}
               {editClassBanner ? (
                 <View style={styles.bannerPreview}>
                   <Image
@@ -901,9 +1003,6 @@ const Dashboard2 = ({
             </View>
           </View>
 
-          {/* UPDATED: Now rendered via the extracted TeacherCourseCard component,
-              which handles its own signed-banner-URL refresh and fallback,
-              matching the Student CourseCard behavior. */}
           <View style={styles.courseGrid}>
             {visibleCourses.map((item) => (
               <TeacherCourseCard
@@ -929,14 +1028,23 @@ const Dashboard2 = ({
         </View>
       </ScrollView>
 
-      {toastVisible && (
-        <View style={styles.toastContainer} pointerEvents="none">
-          <View style={[styles.toastBox, toastType === 'success' ? styles.toastSuccess : styles.toastError]}>
-            <Ionicons name={toastType === 'success' ? 'checkmark-circle' : 'alert-circle'} size={18} color="#FFFFFF" />
-            <Text style={styles.toastText}>{toastMessage}</Text>
-          </View>
+      {/* Toast — now portal-based so it renders above other Modals (Create/Edit/Delete) */}
+      <Modal
+        visible={toast.visible}
+        transparent
+        animationType="fade"
+        onRequestClose={hideToast}
+        statusBarTranslucent
+      >
+        <View style={styles.toastPortal} pointerEvents="box-none">
+          <Toast
+            visible={toast.visible}
+            message={toast.message}
+            type={toast.type}
+            onHide={hideToast}
+          />
         </View>
-      )}
+      </Modal>
     </View>
   );
 };
@@ -981,7 +1089,6 @@ const styles = StyleSheet.create({
   },
   createBtnText: { color: '#FFF', fontWeight: '700', fontSize: 14 },
   
-  // Icon-only button style for mobile
   iconOnlyButton: {
     paddingHorizontal: 12,
     paddingVertical: 12,
@@ -990,12 +1097,6 @@ const styles = StyleSheet.create({
   },
   
   courseGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'flex-start', gap: 21, width: '100%' },
-
-  // NOTE: card / bannerWrapper / missingBannerBox / cardBannerImage / bannerOverlay /
-  // bannerName / bannerCode / classMetaWrap / classMetaPill / classMetaText /
-  // classCodeRow / copyButton / cardContent / instructorLabel / instructorName /
-  // cardFooter / dotButton / bottomBorder have all moved into TeacherCourseCard.tsx
-  // and are intentionally removed from here to avoid duplication.
 
   menuOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.08)' },
   menuBox: { width: 220, backgroundColor: '#fff', borderRadius: 16, paddingVertical: 8, shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 10 },
@@ -1031,10 +1132,22 @@ const styles = StyleSheet.create({
   yearRow: { flexDirection: 'row', gap: 12, marginBottom: 16 },
   yearCol: { flex: 1 },
   yearInputWrap: { minHeight: 48, borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 14, backgroundColor: '#F9FAFB', paddingHorizontal: 14, justifyContent: 'center' },
-  yearInput: { fontSize: 14, color: '#111827', paddingVertical: 10 },
+  yearInputWrapFocused: { borderColor: '#D32F2F', borderWidth: 1.5 },
+  yearInput: {
+    fontSize: 14,
+    color: '#111827',
+    paddingVertical: 10,
+    ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : {}),
+  },
   autoYearText: { fontSize: 14, color: '#111827', fontWeight: '600', paddingVertical: 10 },
   textAreaWrap: { minHeight: 108, borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 16, backgroundColor: '#F9FAFB', paddingHorizontal: 14, paddingVertical: 12, marginBottom: 16 },
-  textAreaInput: { minHeight: 84, fontSize: 14, color: '#111827' },
+  textAreaWrapFocused: { borderColor: '#D32F2F', borderWidth: 1.5 },
+  textAreaInput: {
+    minHeight: 84,
+    fontSize: 14,
+    color: '#111827',
+    ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : {}),
+  },
   uploadBtn: { minHeight: 48, borderWidth: 1, borderColor: '#F4B4B4', borderRadius: 14, backgroundColor: '#FFF7F7', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 14 },
   uploadBtnText: { color: '#D32F2F', fontWeight: '700', fontSize: 14 },
   bannerPreview: { height: 150, borderRadius: 16, overflow: 'hidden', marginBottom: 14, position: 'relative' },
@@ -1052,11 +1165,6 @@ const styles = StyleSheet.create({
   creatingOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(255, 255, 255, 0.88)', zIndex: 100, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24 },
   creatingTitle: { marginTop: 14, fontSize: 16, fontWeight: '800', color: '#202124' },
   creatingSubtitle: { marginTop: 6, fontSize: 13, fontWeight: '600', color: '#5F6368', textAlign: 'center' },
-  toastContainer: { position: 'absolute', top: 20, right: 20, zIndex: 9999, elevation: 9999 },
-  toastBox: { minWidth: 240, maxWidth: 340, minHeight: 52, borderRadius: 14, paddingHorizontal: 16, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', gap: 10, shadowColor: '#000', shadowOpacity: 0.18, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 12 },
-  toastSuccess: { backgroundColor: '#2E7D32' },
-  toastError: { backgroundColor: '#D32F2F' },
-  toastText: { flex: 1, color: '#FFFFFF', fontSize: 13, fontWeight: '800', lineHeight: 18 },
   deleteConfirmBox: { width: '100%', maxWidth: 360, backgroundColor: '#fff', borderRadius: 22, paddingHorizontal: 22, paddingVertical: 22, overflow: 'hidden' },
   deleteConfirmTitle: { fontSize: 20, fontWeight: '800', color: '#202124', marginBottom: 10 },
   deleteConfirmText: { fontSize: 14, color: '#5F6368', lineHeight: 22 },
@@ -1076,5 +1184,10 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#666',
     fontWeight: '600',
+  },
+  // ✅ Added toastPortal style
+  toastPortal: {
+    ...StyleSheet.absoluteFillObject,
+    // let touches pass through to whatever's behind, except the toast itself
   },
 });

@@ -18,6 +18,12 @@ import {
 } from 'react-native';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { auth } from '../../firebaseConfig';
+// 🔥 Import shared API and Cache utilities
+import { apiFetch } from '../services/api';
+import {
+  getCachedUserImageUrl,
+  setCachedUserImageUrl,
+} from '../services/userImageUrlCache';
 
 export type DrawerScreenType =
   | 'home'
@@ -39,6 +45,7 @@ interface DrawerMenuProps {
   userName?: string;
   userEmail?: string;
   userAvatar?: any;
+  userAvatarStoragePath?: string | null; // 👈 ADDED: To fetch signed URL
   userId: string;
   userRole: 'student' | 'teacher' | 'admin';
   apiBaseUrl: string;
@@ -48,6 +55,33 @@ interface DrawerMenuProps {
 }
 
 const DEFAULT_AVATAR = require('../../assets/images/pogi.jpg');
+
+// 👇 Helper to refresh signed URL for the drawer avatar
+const refreshUserImageUrl = async (
+  entityId: string,
+  storagePath?: string | null
+): Promise<string | null> => {
+  if (!storagePath) return null;
+  const cached = getCachedUserImageUrl(entityId, storagePath);
+  if (cached) return cached;
+  try {
+    const response = await apiFetch('/storage/user-image-signed-url', {
+      method: 'POST',
+      body: JSON.stringify({ storagePath }),
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data?.error || 'Unable to refresh user image.');
+    }
+    if (data?.url) {
+      setCachedUserImageUrl(entityId, storagePath, data.url);
+      return data.url;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+};
 
 const normalizeImageSource = (img: any) => {
   if (!img) return DEFAULT_AVATAR;
@@ -87,14 +121,12 @@ const MenuItem = ({
             borderRadius: 14,
           },
         ];
-
         if (Platform.OS === 'web' && (state as any).hovered && !active) {
           base.push({
             backgroundColor: 'rgba(130,129,129,0.08)',
             borderRadius: 14,
           });
         }
-
         return base;
       }}
     >
@@ -111,7 +143,6 @@ const MenuItem = ({
           style={[styles.menuIcon, active && { tintColor: '#D32F2F' }]}
         />
       )}
-
       <Text
         style={[
           styles.menuLabel,
@@ -133,6 +164,7 @@ const TeacherDrawerMenu = ({
   userName = 'Teacher',
   userEmail = '',
   userAvatar,
+  userAvatarStoragePath, // 👈 ADDED
   userId,
   userRole,
   apiBaseUrl,
@@ -141,7 +173,6 @@ const TeacherDrawerMenu = ({
   setIsLoggedIn,
 }: DrawerMenuProps) => {
   const { width } = useWindowDimensions();
-
   const [contentHeight, setContentHeight] = useState(0);
   const [scrollViewHeight, setScrollViewHeight] = useState(0);
   const [isSettingsModalVisible, setSettingsModalVisible] = useState(false);
@@ -150,21 +181,40 @@ const TeacherDrawerMenu = ({
   const [isChangePasswordModalVisible, setChangePasswordModalVisible] = useState(false);
   const [savingEmail, setSavingEmail] = useState(false);
   const [savingPassword, setSavingPassword] = useState(false);
-
   const [email, setEmail] = useState(userEmail || '');
   const [emailPassword, setEmailPassword] = useState('');
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
 
+  // 👇 State for refreshed avatar URL
+  const [refreshedAvatarUrl, setRefreshedAvatarUrl] = useState<string | null>(null);
+
   useEffect(() => {
     setEmail(userEmail || '');
   }, [userEmail]);
 
+  // 👇 Fetch signed URL for drawer avatar
+  useEffect(() => {
+    let isMounted = true;
+    const fetchAvatar = async () => {
+      const url = await refreshUserImageUrl(userId, userAvatarStoragePath);
+      if (isMounted && url) {
+        setRefreshedAvatarUrl(url);
+      }
+    };
+    fetchAvatar();
+    // Refresh every 5 minutes to keep URL valid if drawer stays open
+    const interval = setInterval(fetchAvatar, 5 * 60 * 1000);
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, [userId, userAvatarStoragePath]);
+
   const isMobile = width < 768;
   const isTablet = width >= 768 && width < 1024;
   const isSmallMobile = width < 380;
-
   const hasOverflow = contentHeight > scrollViewHeight && scrollViewHeight > 0;
   const shouldShowScrollBar = (isMobile || isTablet) && hasOverflow;
   const drawerWidth = isMobile ? (isSmallMobile ? '85%' : 280) : isTablet ? 300 : 260;
@@ -188,7 +238,6 @@ const TeacherDrawerMenu = ({
   const reauthenticateCurrentUser = async (emailValue: string, passwordValue: string) => {
     const firebaseUser = auth.currentUser;
     if (!firebaseUser) throw new Error('No authenticated user found. Please sign in again.');
-
     const credential = EmailAuthProvider.credential(emailValue.trim(), passwordValue);
     await reauthenticateWithCredential(firebaseUser, credential);
   };
@@ -201,12 +250,10 @@ const TeacherDrawerMenu = ({
       Alert.alert('Required', 'Please enter a new email address.');
       return;
     }
-
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
       Alert.alert('Invalid Email', 'Please enter a valid email address.');
       return;
     }
-
     if (!trimmedPassword) {
       Alert.alert('Required', 'Please enter your current password.');
       return;
@@ -215,7 +262,6 @@ const TeacherDrawerMenu = ({
     try {
       setSavingEmail(true);
       await reauthenticateCurrentUser(userEmail, trimmedPassword);
-
       const response = await fetch(`${apiBaseUrl}/auth/change-email`, {
         method: 'POST',
         credentials: 'include',
@@ -226,10 +272,8 @@ const TeacherDrawerMenu = ({
           newEmail: trimmedEmail,
         }),
       });
-
       const data = await response.json();
       if (!response.ok) throw new Error(data?.error || 'Failed to update email.');
-
       onEmailUpdated?.(trimmedEmail);
       setEmailPassword('');
       setChangeEmailModalVisible(false);
@@ -250,12 +294,10 @@ const TeacherDrawerMenu = ({
       Alert.alert('Required', 'Please fill in all password fields.');
       return;
     }
-
     if (trimmedNewPassword.length < 8) {
       Alert.alert('Weak Password', 'Your new password must be at least 8 characters long.');
       return;
     }
-
     if (trimmedNewPassword !== trimmedConfirmPassword) {
       Alert.alert('Mismatch', 'New password and confirm password do not match.');
       return;
@@ -264,7 +306,6 @@ const TeacherDrawerMenu = ({
     try {
       setSavingPassword(true);
       await reauthenticateCurrentUser(userEmail, trimmedCurrentPassword);
-
       const response = await fetch(`${apiBaseUrl}/auth/change-password`, {
         method: 'POST',
         credentials: 'include',
@@ -275,10 +316,8 @@ const TeacherDrawerMenu = ({
           newPassword: trimmedNewPassword,
         }),
       });
-
       const data = await response.json();
       if (!response.ok) throw new Error(data?.error || 'Failed to update password.');
-
       setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
@@ -298,26 +337,28 @@ const TeacherDrawerMenu = ({
         credentials: 'include',
       });
     } catch {}
-
     try {
       await signOut(auth);
     } catch {}
-
     setLogoutModalVisible(false);
     if (!isFixed) onClose?.();
     setIsLoggedIn(false);
   };
 
+  // 👇 Determine final avatar source
+  const finalAvatarSource = refreshedAvatarUrl
+    ? { uri: refreshedAvatarUrl }
+    : normalizeImageSource(userAvatar);
+
   return (
-    <View style={[styles.drawerContainer, { width: drawerWidth }]}> 
+    <View style={[styles.drawerContainer, { width: drawerWidth }]}>
       <Pressable style={styles.profileSection} onPress={onAvatarPress}>
-        <Image source={normalizeImageSource(userAvatar)} style={styles.avatar} resizeMode="cover" />
+        <Image source={finalAvatarSource} style={styles.avatar} resizeMode="cover" />
         <View style={{ flex: 1 }}>
           <Text style={styles.userName}>{userName}</Text>
           {!!userEmail && <Text style={styles.userEmail}>{userEmail}</Text>}
         </View>
       </Pressable>
-
       <ScrollView
         style={{ flex: 1 }}
         showsVerticalScrollIndicator={shouldShowScrollBar}
@@ -329,12 +370,10 @@ const TeacherDrawerMenu = ({
         <MenuItem iconName="chart-line" label="Academic Analytics" onPress={() => { onNavigate?.('analytics'); if (!isFixed) onClose?.(); }} active={activeScreen === 'analytics'} />
         <MenuItem iconSource={require('../../assets/images/gear-solid.png')} label="Settings" onPress={() => setSettingsModalVisible(true)} />
       </ScrollView>
-
       <Pressable style={styles.logoutMenuItem} onPress={() => setLogoutModalVisible(true)}>
         <MaterialCommunityIcons name="logout" size={28} color="#D32F2F" style={{ marginRight: 20 }} />
         <Text style={styles.logoutLabel}>Logout</Text>
       </Pressable>
-
       <Modal animationType="fade" transparent visible={isSettingsModalVisible} onRequestClose={() => setSettingsModalVisible(false)}>
         <View style={styles.modalOverlay}>
           <View style={styles.settingsModalContainer}>
@@ -342,7 +381,6 @@ const TeacherDrawerMenu = ({
               <Text style={styles.settingsTitle}>Settings</Text>
               <Text style={styles.settingsSubtitle}>Manage your account preferences</Text>
             </View>
-
             <Pressable style={(state) => [styles.settingsOptionButton, pressableWebHover(state)]} onPress={() => { setSettingsModalVisible(false); setEmail(userEmail || ''); setChangeEmailModalVisible(true); }}>
               <View style={styles.settingsOptionContent}>
                 <View style={styles.settingsOptionIconWrap}><MaterialCommunityIcons name="email-outline" size={22} color="#D32F2F" /></View>
@@ -353,7 +391,6 @@ const TeacherDrawerMenu = ({
                 <MaterialCommunityIcons name="chevron-right" size={24} color="#999" />
               </View>
             </Pressable>
-
             <Pressable style={(state) => [styles.settingsOptionButton, pressableWebHover(state)]} onPress={() => { setSettingsModalVisible(false); setCurrentPassword(''); setNewPassword(''); setConfirmPassword(''); setChangePasswordModalVisible(true); }}>
               <View style={styles.settingsOptionContent}>
                 <View style={styles.settingsOptionIconWrap}><MaterialCommunityIcons name="lock-outline" size={22} color="#D32F2F" /></View>
@@ -364,12 +401,10 @@ const TeacherDrawerMenu = ({
                 <MaterialCommunityIcons name="chevron-right" size={24} color="#999" />
               </View>
             </Pressable>
-
             <Pressable style={styles.settingsCloseBtn} onPress={() => setSettingsModalVisible(false)}><Text style={styles.settingsCloseText}>Close</Text></Pressable>
           </View>
         </View>
       </Modal>
-
       <Modal animationType="fade" transparent visible={isChangeEmailModalVisible} onRequestClose={() => setChangeEmailModalVisible(false)}>
         <View style={styles.modalOverlay}>
           <View style={styles.formModalContainer}>
@@ -390,7 +425,6 @@ const TeacherDrawerMenu = ({
           </View>
         </View>
       </Modal>
-
       <Modal animationType="fade" transparent visible={isChangePasswordModalVisible} onRequestClose={() => setChangePasswordModalVisible(false)}>
         <View style={styles.modalOverlay}>
           <View style={styles.formModalContainer}>
@@ -415,7 +449,6 @@ const TeacherDrawerMenu = ({
           </View>
         </View>
       </Modal>
-
       <Modal animationType="fade" transparent visible={isLogoutModalVisible} onRequestClose={() => setLogoutModalVisible(false)}>
         <View style={styles.modalOverlay}>
           <View style={styles.logoutModalContainer}>

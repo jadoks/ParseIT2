@@ -1,8 +1,10 @@
-import { Picker } from '@react-native-picker/picker';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
+  Modal,
+  Platform,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -11,6 +13,7 @@ import {
   View,
   useWindowDimensions,
 } from 'react-native';
+import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 
 const apiFetch = (url: string, options: any = {}) =>
   fetch(url, {
@@ -58,13 +61,25 @@ const MyJourney = ({
   studentName,
   apiBaseUrl,
 }: MyJourneyProps) => {
-  const { width } = useWindowDimensions();
+  const { width, height } = useWindowDimensions();
   const isMobile = width < 768;
   const isTablet = width >= 768 && width < 1100;
 
   const [startYearInput, setStartYearInput] = useState(() => getDefaultStartYear());
   const [sem, setSem] = useState(SEMS[0]);
   const [show, setShow] = useState(false);
+
+  // 👇 NEW: focus tracking for the year input, so it gets the same
+  // highlighted-border focus behavior used elsewhere in the app (e.g.
+  // SignIn.tsx's inputWrapperFocused pattern).
+  const [isYearFocused, setIsYearFocused] = useState(false);
+
+  // 👇 NEW: custom modern dropdown state for the Semester selector
+  // (replaces the native <select> Picker with an anchored Modal dropdown,
+  // matching the pattern used by Messenger.tsx's info/create-room menus).
+  const [semesterDropdownVisible, setSemesterDropdownVisible] = useState(false);
+  const [semesterAnchor, setSemesterAnchor] = useState({ x: 0, y: 0, width: 0 });
+  const semesterTriggerRef = useRef<View>(null);
 
   // State for AI-parsed uploaded grades
   const [uploadedGrades, setUploadedGrades] = useState<ParsedGrade[]>([]);
@@ -84,6 +99,24 @@ const MyJourney = ({
     const digitsOnly = value.replace(/[^0-9]/g, '').slice(0, 4);
     setStartYearInput(digitsOnly);
     setShow(false);
+  };
+
+  // 👇 NEW: measure the trigger button and open the anchored dropdown
+  const openSemesterDropdown = () => {
+    if (semesterTriggerRef.current) {
+      semesterTriggerRef.current.measureInWindow((x, y, measuredWidth, measuredHeight) => {
+        setSemesterAnchor({ x, y: y + measuredHeight + 6, width: measuredWidth });
+        setSemesterDropdownVisible(true);
+      });
+      return;
+    }
+    setSemesterDropdownVisible(true);
+  };
+
+  const handleSelectSemester = (value: string) => {
+    setSem(value);
+    setShow(false);
+    setSemesterDropdownVisible(false);
   };
 
   // Fetch and parse uploaded grade file when "Generate Record" is clicked
@@ -142,6 +175,68 @@ const MyJourney = ({
     return () => { cancelled = true; };
   }, [apiBaseUrl, currentStudent?.studentId, show]);
 
+  // 👇 NEW: modern anchored dropdown for the Semester selector
+  const renderSemesterDropdown = () => {
+    const dropdownWidth = semesterAnchor.width || 220;
+    const safeLeft = Math.max(8, Math.min(semesterAnchor.x, width - dropdownWidth - 8));
+    const estimatedHeight = SEMS.length * 48 + 8;
+    const safeTop = Math.max(8, Math.min(semesterAnchor.y, height - estimatedHeight - 16));
+
+    return (
+      <Modal
+        transparent
+        visible={semesterDropdownVisible}
+        animationType="fade"
+        onRequestClose={() => setSemesterDropdownVisible(false)}
+      >
+        <Pressable
+          style={styles.semesterOverlay}
+          onPress={() => setSemesterDropdownVisible(false)}
+        >
+          <Pressable
+            onPress={(e) => e.stopPropagation()}
+            style={[
+              styles.semesterDropdownCard,
+              { left: safeLeft, top: safeTop, width: dropdownWidth },
+            ]}
+          >
+            {SEMS.map((option, index) => {
+              const active = option === sem;
+              const isLast = index === SEMS.length - 1;
+              return (
+                <Pressable
+                  key={option}
+                  onPress={() => handleSelectSemester(option)}
+                  style={(state: any) => [
+                    styles.semesterOption,
+                    isLast && styles.semesterOptionLast,
+                    active && styles.semesterOptionActive,
+                    Platform.OS === 'web' &&
+                      state.hovered &&
+                      !active &&
+                      styles.semesterOptionHover,
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.semesterOptionText,
+                      active && styles.semesterOptionTextActive,
+                    ]}
+                  >
+                    {option}
+                  </Text>
+                  {active && (
+                    <MaterialCommunityIcons name="check" size={18} color="#D32F2F" />
+                  )}
+                </Pressable>
+              );
+            })}
+          </Pressable>
+        </Pressable>
+      </Modal>
+    );
+  };
+
   return (
     <ScrollView
       contentContainerStyle={[
@@ -179,7 +274,14 @@ const MyJourney = ({
         <View style={[styles.controlsRow, isTablet && styles.controlsRowTablet, isMobile && styles.controlsRowMobile]}>
           <View style={[styles.selectWrap, isTablet && styles.selectWrapTablet, isMobile && styles.selectWrapMobile]}>
             <Text style={styles.selectLabel}>Academic Year Start</Text>
-            <View style={styles.inputShell}>
+            <View
+              style={[
+                styles.inputShell,
+                // 👇 highlighted-border focus state, matching
+                // inputWrapperFocused in SignIn.tsx
+                isYearFocused && styles.inputShellFocused,
+              ]}
+            >
               <TextInput
                 value={startYearInput}
                 onChangeText={handleStartYearChange}
@@ -187,6 +289,8 @@ const MyJourney = ({
                 placeholderTextColor="#9CA3AF"
                 keyboardType="number-pad"
                 maxLength={4}
+                onFocus={() => setIsYearFocused(true)}
+                onBlur={() => setIsYearFocused(false)}
                 style={styles.textInput}
               />
               <Text style={styles.inputSuffix}>+ 1 year</Text>
@@ -198,14 +302,22 @@ const MyJourney = ({
 
           <View style={[styles.selectWrap, isTablet && styles.selectWrapTablet, isMobile && styles.selectWrapMobile]}>
             <Text style={styles.selectLabel}>Semester</Text>
-            <View style={styles.pickerWrapper}>
-              <Picker
-                selectedValue={sem}
-                onValueChange={(itemValue) => { setSem(itemValue); setShow(false); }}
-                style={styles.picker}
+            <View ref={semesterTriggerRef} collapsable={false}>
+              <TouchableOpacity
+                style={[
+                  styles.dropdownTrigger,
+                  semesterDropdownVisible && styles.dropdownTriggerActive,
+                ]}
+                activeOpacity={0.85}
+                onPress={openSemesterDropdown}
               >
-                {SEMS.map((s) => (<Picker.Item key={s} label={s} value={s} />))}
-              </Picker>
+                <Text style={styles.dropdownTriggerText}>{sem}</Text>
+                <MaterialCommunityIcons
+                  name={semesterDropdownVisible ? 'chevron-up' : 'chevron-down'}
+                  size={22}
+                  color={semesterDropdownVisible ? '#D32F2F' : '#6B7280'}
+                />
+              </TouchableOpacity>
             </View>
             <Text style={styles.helperText}>Select the semester for your record.</Text>
           </View>
@@ -338,6 +450,8 @@ const MyJourney = ({
 
         </View>
       )}
+
+      {renderSemesterDropdown()}
     </ScrollView>
   );
 };
@@ -371,11 +485,108 @@ const styles = StyleSheet.create({
   selectWrapMobile: { width: '100%', minWidth: 0 },
   selectLabel: { color: '#374151', marginBottom: 8, fontWeight: '900', fontSize: 13 },
   inputShell: { height: 54, borderRadius: 16, borderWidth: 1, borderColor: '#E5E7EB', backgroundColor: '#F9FAFB', flexDirection: 'row', alignItems: 'center', overflow: 'hidden' },
-  textInput: { flex: 1, height: 54, paddingHorizontal: 16, fontSize: 16, fontWeight: '800', color: '#111827', backgroundColor: '#FFFFFF' },
+  // 👇 highlighted-border focus state, matching inputWrapperFocused
+  // in SignIn.tsx (red border + slightly thicker width on focus).
+  inputShellFocused: { borderColor: '#D32F2F', borderWidth: 1.5 },
+  textInput: {
+    flex: 1,
+    height: 54,
+    paddingHorizontal: 16,
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#111827',
+    backgroundColor: '#FFFFFF',
+    // 👇 disables the browser's default black focus outline in
+    // Chrome/Edge on React Native Web (same trick used in SignIn.tsx)
+    ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : {}),
+  },
   inputSuffix: { height: '100%', paddingHorizontal: 14, textAlignVertical: 'center', color: '#6B7280', fontSize: 12, fontWeight: '800', borderLeftWidth: 1, borderLeftColor: '#E5E7EB' },
   helperText: { marginTop: 7, color: '#6B7280', fontSize: 12 },
-  pickerWrapper: { height: 54, overflow: 'hidden', borderRadius: 16, borderWidth: 1, borderColor: '#E5E7EB', backgroundColor: '#FFFFFF', justifyContent: 'center' },
-  picker: { height: 54, width: '100%', color: '#111827' },
+
+  // 👇 NEW: modern custom dropdown trigger (replaces the native Picker)
+  dropdownTrigger: {
+    height: 54,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    backgroundColor: '#FFFFFF',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : {}),
+  },
+  dropdownTriggerActive: {
+    borderColor: '#D32F2F',
+    borderWidth: 1.5,
+    shadowColor: '#D32F2F',
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+  },
+  dropdownTriggerText: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#111827',
+  },
+
+  // 👇 NEW: anchored dropdown modal styles (card, options, hover/active states)
+  semesterOverlay: {
+    flex: 1,
+    backgroundColor: 'transparent',
+  },
+  semesterDropdownCard: {
+    position: 'absolute',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#EFEFEF',
+    shadowColor: '#000',
+    shadowOpacity: 0.14,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 8,
+    overflow: 'hidden',
+  },
+  semesterOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
+    backgroundColor: '#FFFFFF',
+  },
+  semesterOptionLast: { borderBottomWidth: 0 },
+  semesterOptionActive: { backgroundColor: '#FEF2F2' },
+  semesterOptionHover: { backgroundColor: '#F9FAFB' },
+  semesterOptionText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#111827',
+  },
+  semesterOptionTextActive: {
+    color: '#D32F2F',
+    fontWeight: '800',
+  },
+
+  pickerWrapper: {
+    height: 54,
+    overflow: 'hidden',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    backgroundColor: '#FFFFFF',
+    justifyContent: 'center',
+  },
+  pickerWrapperFocused: { borderColor: '#D32F2F', borderWidth: 1.5 },
+  picker: {
+    height: 54,
+    width: '100%',
+    color: '#111827',
+    ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : {}),
+  },
   showBtn: { minWidth: 170, height: 54, backgroundColor: '#D32F2F', paddingHorizontal: 20, borderRadius: 16, alignItems: 'center', justifyContent: 'center', marginTop: 25, shadowColor: '#D32F2F', shadowOpacity: 0.22, shadowRadius: 12, shadowOffset: { width: 0, height: 7 }, elevation: 2 },
   showBtnTablet: { flexGrow: 1, minWidth: 220 },
   showBtnMobile: { width: '100%', marginTop: 2 },

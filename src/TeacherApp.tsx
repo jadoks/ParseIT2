@@ -1,4 +1,3 @@
-import Constants from 'expo-constants';
 import * as FileSystem from 'expo-file-system/legacy';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
@@ -12,6 +11,10 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+
+// 🔥 UPDATED: use the shared, auto-refreshing apiFetch instead of a local createSecureFetch
+import { API_BASE_URL, apiFetch } from './services/api'; // adjust path if your folder layout differs
+
 import Grades from './teacher_components/Grades';
 import Honors from './teacher_components/Honors';
 import TeacherAnalytics from './teacher_components/TeacherAnalytics';
@@ -42,9 +45,13 @@ interface SignedInTeacher {
   bannerImageStoragePath?: string | null;
 }
 
+// 🔥 idToken is no longer required here — apiFetch pulls a fresh token from
+// Firebase directly. Kept optional so App.tsx doesn't need to change if it
+// still passes it down; it's simply ignored.
 interface Props {
   onLogout: () => void;
   currentTeacher: SignedInTeacher;
+  idToken?: string | null;
 }
 
 type AppScreenType =
@@ -111,28 +118,6 @@ const normalizeText = (value?: string | null) => {
   return value.trim();
 };
 
-function getApiBaseUrl() {
-  if (Platform.OS === 'web') {
-    return 'http://localhost:5000';
-  }
-  const possibleHost =
-    Constants.expoConfig?.hostUri ||
-    Constants.manifest2?.extra?.expoGo?.debuggerHost ||
-    '';
-  const host = possibleHost.split(':')[0];
-  if (host) {
-    return `http://${host}:5000`;
-  }
-  return 'http://192.168.1.5:5000';
-}
-
-const API_BASE_URL = getApiBaseUrl();
-const apiFetch = (url: string, options: any = {}) =>
-  fetch(url, {
-    credentials: 'include',
-    ...options,
-  });
-
 const TEACHER_ALLOWED_NOTIFICATION_TYPES = new Set([
   'submitted-assignment',
   'community-answer',
@@ -146,9 +131,9 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
   const isLargeScreen = width >= 768;
   const isMobile = width < 768;
 
-const handleClearGlobalSearch = () => {
-  setGlobalSearchQuery('');
-};
+  const handleClearGlobalSearch = () => {
+    setGlobalSearchQuery('');
+  };
 
   const safeAreaEdges = ['top', 'right', 'bottom', 'left'] as const;
 
@@ -156,10 +141,10 @@ const handleClearGlobalSearch = () => {
   const [lastScreen, setLastScreen] = useState<AppScreenType>('home');
   const [isMobileDrawerOpen, setMobileDrawerOpen] = useState(false);
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
-  
-  // 👇 NEW STATE FOR GLOBAL SEARCH
+
+  // 👇 GLOBAL SEARCH STATE
   const [globalSearchQuery, setGlobalSearchQuery] = useState('');
-  
+
   const [courses, setCourses] = useState<CourseWithIcon[]>([]);
   const [teacherClasses, setTeacherClasses] = useState<CourseWithIcon[]>([]);
   const [selectedCourse, setSelectedCourse] = useState<CourseWithIcon | null>(null);
@@ -168,40 +153,43 @@ const handleClearGlobalSearch = () => {
   const [teacherProfile, setTeacherProfile] = useState<SignedInTeacher | null>(null);
   const [teacherNotifications, setTeacherNotifications] = useState<NotificationItem[]>([]);
   const [teacherAnnouncements, setTeacherAnnouncements] = useState<TeacherClassAnnouncement[]>([]);
-  
-  // ADDED: Loading states to prevent the initial empty-state flash on the dashboard
+
+  // Loading states to prevent the initial empty-state flash on the dashboard
   const [isLoadingClasses, setIsLoadingClasses] = useState(true);
   const [isLoadingAnnouncements, setIsLoadingAnnouncements] = useState(true);
 
   // 👇 MESSENGER UNREAD COUNT STATE
   const [messengerUnreadCount, setMessengerUnreadCount] = useState(0);
 
-  const currentTeacherData: SignedInTeacher = teacherProfile || currentTeacher;
-  
+  // 🔥 FIX: Derive active profile from teacherProfile first, fallback to currentTeacher
+  // This ensures storage paths are always available after profile loads or updates
+  const activeProfile = teacherProfile || currentTeacher;
+
   const teacherFullName = useMemo(() => {
-    const first = normalizeText(currentTeacherData?.firstName);
-    const last = normalizeText(currentTeacherData?.lastName);
+    const first = normalizeText(activeProfile?.firstName);
+    const last = normalizeText(activeProfile?.lastName);
     return `${first} ${last}`.trim() || 'Teacher';
-  }, [currentTeacherData]);
+  }, [activeProfile]);
 
   const teacherEmail = useMemo(() => {
-    return normalizeText(currentTeacherData?.email);
-  }, [currentTeacherData]);
+    return normalizeText(activeProfile?.email);
+  }, [activeProfile]);
 
   const teacherIdentity = useMemo(() => {
     return (
-      normalizeText(currentTeacherData?.teacherId) ||
-      normalizeText(currentTeacherData?.authUid || '') ||
+      normalizeText(activeProfile?.teacherId) ||
+      normalizeText(activeProfile?.authUid || '') ||
       teacherEmail ||
       teacherFullName
     );
-  }, [currentTeacherData, teacherEmail, teacherFullName]);
+  }, [activeProfile, teacherEmail, teacherFullName]);
 
-  const initialAvatar = currentTeacherData?.profileImage
-    ? { uri: currentTeacherData.profileImage }
+  // Initialize with safe values derived from activeProfile
+  const initialAvatar = activeProfile?.profileImage
+    ? { uri: activeProfile.profileImage }
     : null;
-  const initialBanner = currentTeacherData?.bannerImage
-    ? { uri: currentTeacherData.bannerImage }
+  const initialBanner = activeProfile?.bannerImage
+    ? { uri: activeProfile.bannerImage }
     : null;
 
   const [currentUserAvatar, setCurrentUserAvatar] = useState<any>(initialAvatar);
@@ -226,17 +214,19 @@ const handleClearGlobalSearch = () => {
     });
   }, [teacherClasses, courses]);
 
+  // 🔥 FIX: Sync avatar when activeProfile updates (after load or image save)
   useEffect(() => {
-    if (currentTeacherData?.profileImage) {
-      setCurrentUserAvatar({ uri: currentTeacherData.profileImage });
+    if (activeProfile?.profileImage) {
+      setCurrentUserAvatar({ uri: activeProfile.profileImage });
     }
-  }, [currentTeacherData?.profileImage]);
+  }, [activeProfile?.profileImage]);
 
+  // 🔥 FIX: Sync banner when activeProfile updates
   useEffect(() => {
-    if (currentTeacherData?.bannerImage) {
-      setCurrentUserBanner({ uri: currentTeacherData.bannerImage });
+    if (activeProfile?.bannerImage) {
+      setCurrentUserBanner({ uri: activeProfile.bannerImage });
     }
-  }, [currentTeacherData?.bannerImage]);
+  }, [activeProfile?.bannerImage]);
 
   useEffect(() => {
     if (!isLargeScreen) {
@@ -257,9 +247,8 @@ const handleClearGlobalSearch = () => {
       currentTeacher.email;
     if (!teacherId) return;
     try {
-      const response = await apiFetch(`${API_BASE_URL}/auth/user-profile`, {
+      const response = await apiFetch('/auth/user-profile', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           id: teacherId,
           role: 'teacher',
@@ -290,7 +279,7 @@ const handleClearGlobalSearch = () => {
 
   const loadTeacherNotifications = useCallback(async () => {
     const teacherId =
-      normalizeText(currentTeacherData?.teacherId) ||
+      normalizeText(activeProfile?.teacherId) ||
       normalizeText(currentTeacher?.teacherId);
     if (!teacherId) {
       setTeacherNotifications([]);
@@ -298,9 +287,7 @@ const handleClearGlobalSearch = () => {
     }
     try {
       const response = await apiFetch(
-        `${API_BASE_URL}/notifications?userId=${encodeURIComponent(
-          teacherId
-        )}&role=teacher`
+        `/notifications?userId=${encodeURIComponent(teacherId)}&role=teacher`
       );
 
       const data = await response.json();
@@ -319,7 +306,7 @@ const handleClearGlobalSearch = () => {
     } catch (error) {
       console.log('LOAD TEACHER NOTIFICATIONS ERROR =>', error);
     }
-  }, [currentTeacher?.teacherId, currentTeacherData?.teacherId]);
+  }, [currentTeacher?.teacherId, activeProfile?.teacherId]);
 
   const toMillis = (value: any) => {
     if (!value) return 0;
@@ -337,10 +324,9 @@ const handleClearGlobalSearch = () => {
     return expiry.getTime() > Date.now();
   };
 
-  // UPDATED: Added finally block to set isLoadingClasses to false
   const loadTeacherClasses = useCallback(async () => {
     try {
-      const response = await apiFetch(`${API_BASE_URL}/classes`);
+      const response = await apiFetch('/classes');
       const data = await response.json();
       if (!response.ok) {
         throw new Error(data?.error || 'Failed to load classes.');
@@ -349,9 +335,9 @@ const handleClearGlobalSearch = () => {
 
       const filteredClasses = allClasses.filter((item: any) => {
         return (
-          item.assignedTeacherId === currentTeacherData?.teacherId ||
-          item.assignedTeacherUid === currentTeacherData?.authUid ||
-          item.instructorEmail === currentTeacherData?.email
+          item.assignedTeacherId === activeProfile?.teacherId ||
+          item.assignedTeacherUid === activeProfile?.authUid ||
+          item.instructorEmail === activeProfile?.email
         );
       });
 
@@ -363,24 +349,24 @@ const handleClearGlobalSearch = () => {
       setIsLoadingClasses(false);
     }
   }, [
-    currentTeacherData?.teacherId,
-    currentTeacherData?.authUid,
-    currentTeacherData?.email,
+    activeProfile?.teacherId,
+    activeProfile?.authUid,
+    activeProfile?.email,
   ]);
 
   const loadTeacherAnalytics = useCallback(async () => {
     const teacherId =
-      normalizeText(currentTeacherData?.teacherId) ||
+      normalizeText(activeProfile?.teacherId) ||
       normalizeText(currentTeacher?.teacherId) ||
-      normalizeText(currentTeacherData?.authUid || '') ||
-      normalizeText(currentTeacherData?.email);
+      normalizeText(activeProfile?.authUid || '') ||
+      normalizeText(activeProfile?.email);
     if (!teacherId) {
       setAnalyticsStudents([]);
       return;
     }
     try {
       const response = await apiFetch(
-        `${API_BASE_URL}/teacher-analytics/${encodeURIComponent(teacherId)}`
+        `/teacher-analytics/${encodeURIComponent(teacherId)}`
       );
 
       const rawText = await response.text();
@@ -397,12 +383,11 @@ const handleClearGlobalSearch = () => {
     }
   }, [
     currentTeacher?.teacherId,
-    currentTeacherData?.teacherId,
-    currentTeacherData?.authUid,
-    currentTeacherData?.email,
+    activeProfile?.teacherId,
+    activeProfile?.authUid,
+    activeProfile?.email,
   ]);
 
-  // UPDATED: Added finally block to set isLoadingAnnouncements to false
   const loadTeacherAnnouncements = useCallback(async () => {
     try {
       const classIds = effectiveCourses.map((item) => item.id).filter(Boolean);
@@ -412,7 +397,7 @@ const handleClearGlobalSearch = () => {
       }
       const groupedAnnouncements = await Promise.all(
         classIds.map(async (classId) => {
-          const response = await apiFetch(`${API_BASE_URL}/class-announcements/${classId}`);
+          const response = await apiFetch(`/class-announcements/${classId}`);
           const data = await response.json();
 
           if (!response.ok) {
@@ -552,7 +537,7 @@ const handleClearGlobalSearch = () => {
 
   const loadCommunityPosts = async () => {
     try {
-      const response = await apiFetch(`${API_BASE_URL}/community-posts`);
+      const response = await apiFetch('/community-posts');
       const data = await response.json();
       if (!response.ok) {
         throw new Error(data?.error || 'Failed to load community posts.');
@@ -591,7 +576,6 @@ const handleClearGlobalSearch = () => {
     loadTeacherAnnouncements();
   }, [loadTeacherAnnouncements]);
 
-  // 👇 UPDATED: Store search query in state
   const handleSearchChange = (query: string) => {
     setGlobalSearchQuery(query);
   };
@@ -626,9 +610,9 @@ const handleClearGlobalSearch = () => {
 
   const resolveCurrentUserDocId = () => {
     return (
-      currentTeacherData?.teacherId ||
-      currentTeacherData?.authUid ||
-      currentTeacherData?.email
+      activeProfile?.teacherId ||
+      activeProfile?.authUid ||
+      activeProfile?.email
     );
   };
 
@@ -657,9 +641,8 @@ const handleClearGlobalSearch = () => {
       body.bannerImageFileName = 'banner.jpg';
     }
 
-    const response = await apiFetch(`${API_BASE_URL}/auth/update-user-images`, {
+    const response = await apiFetch('/auth/update-user-images', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     });
 
@@ -688,6 +671,7 @@ const handleClearGlobalSearch = () => {
 
       setCurrentUserAvatar({ uri: savedData.profileImage });
 
+      // 🔥 Update teacherProfile so activeProfile gets new storage path
       setTeacherProfile((prev) => ({
         ...(prev || {}),
         profileImage: savedData.profileImage,
@@ -722,6 +706,7 @@ const handleClearGlobalSearch = () => {
 
       setCurrentUserBanner({ uri: savedData.bannerImage });
 
+      // 🔥 Update teacherProfile so activeProfile gets new storage path
       setTeacherProfile((prev) => ({
         ...(prev || {}),
         bannerImage: savedData.bannerImage,
@@ -744,13 +729,12 @@ const handleClearGlobalSearch = () => {
     const trimmedQuery = query.trim();
     if (!trimmedQuery) return;
     try {
-      const response = await apiFetch(`${API_BASE_URL}/community-posts`, {
+      const response = await apiFetch('/community-posts', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           content: trimmedQuery,
-          authorId: currentTeacherData?.teacherId || teacherIdentity,
-          authorUid: currentTeacherData?.authUid || null,
+          authorId: activeProfile?.teacherId || teacherIdentity,
+          authorUid: activeProfile?.authUid || null,
           authorRole: 'teacher',
           userName: teacherFullName,
           userEmail: teacherEmail,
@@ -774,13 +758,12 @@ const handleClearGlobalSearch = () => {
     const trimmedMessage = message.trim();
     if (!trimmedMessage) return;
     try {
-      const response = await apiFetch(`${API_BASE_URL}/community-posts/${postId}/answers`, {
+      const response = await apiFetch(`/community-posts/${postId}/answers`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           message: trimmedMessage,
-          authorId: currentTeacherData?.teacherId || teacherIdentity,
-          authorUid: currentTeacherData?.authUid || null,
+          authorId: activeProfile?.teacherId || teacherIdentity,
+          authorUid: activeProfile?.authUid || null,
           authorRole: 'teacher',
           userName: teacherFullName,
           avatar: normalizeCommunityAvatar(currentUserAvatar),
@@ -803,9 +786,8 @@ const handleClearGlobalSearch = () => {
     const trimmedContent = content.trim();
     if (!trimmedContent) return;
     try {
-      const response = await apiFetch(`${API_BASE_URL}/community-posts/${postId}`, {
+      const response = await apiFetch(`/community-posts/${postId}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ content: trimmedContent }),
       });
       const data = await response.json();
@@ -823,7 +805,7 @@ const handleClearGlobalSearch = () => {
 
   const handleDeleteCommunityPost = async (postId: string) => {
     try {
-      const response = await apiFetch(`${API_BASE_URL}/community-posts/${postId}`, {
+      const response = await apiFetch(`/community-posts/${postId}`, {
         method: 'DELETE',
       });
       const data = await response.json();
@@ -847,10 +829,9 @@ const handleClearGlobalSearch = () => {
     if (!trimmedMessage) return;
     try {
       const response = await apiFetch(
-        `${API_BASE_URL}/community-posts/${postId}/answers/${answerId}`,
+        `/community-posts/${postId}/answers/${answerId}`,
         {
           method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ message: trimmedMessage }),
         }
       );
@@ -870,7 +851,7 @@ const handleClearGlobalSearch = () => {
   const handleDeleteCommunityAnswer = async (postId: string, answerId: string) => {
     try {
       const response = await apiFetch(
-        `${API_BASE_URL}/community-posts/${postId}/answers/${answerId}`,
+        `/community-posts/${postId}/answers/${answerId}`,
         {
           method: 'DELETE',
         }
@@ -889,7 +870,7 @@ const handleClearGlobalSearch = () => {
 
   const handleDrawerEmailUpdated = (nextEmail: string) => {
     setTeacherProfile((prev) => ({
-      ...(prev || currentTeacherData || {}),
+      ...(prev || activeProfile || {}),
       email: nextEmail,
     }));
   };
@@ -954,42 +935,34 @@ const handleClearGlobalSearch = () => {
     }, 500);
   };
 
-  
-
   const loadMessengerUnreadCount = useCallback(async () => {
-  try {
-    const response = await apiFetch(
-      `${API_BASE_URL}/messenger-unread-count?role=teacher&userId=${encodeURIComponent(
-        currentTeacherData?.teacherId || ''
-      )}&userUid=${encodeURIComponent(
-        currentTeacherData?.authUid || ''
-      )}`
-    );
+    try {
+      const response = await apiFetch(
+        `/messenger-unread-count?role=teacher&userId=${encodeURIComponent(
+          activeProfile?.teacherId || ''
+        )}&userUid=${encodeURIComponent(
+          activeProfile?.authUid || ''
+        )}`
+      );
 
-    const data = await response.json();
+      const data = await response.json();
 
-    if (response.ok) {
-      setMessengerUnreadCount(Number(data?.count || 0));
+      if (response.ok) {
+        setMessengerUnreadCount(Number(data?.count || 0));
+      }
+    } catch (error) {
+      console.log('LOAD MESSENGER UNREAD ERROR =>', error);
     }
-  } catch (error) {
-    console.log('LOAD MESSENGER UNREAD ERROR =>', error);
-  }
-}, [
-  currentTeacherData?.teacherId,
-  currentTeacherData?.authUid,
-]);
+  }, [activeProfile?.teacherId, activeProfile?.authUid]);
 
   useEffect(() => {
-  loadMessengerUnreadCount();
-  const interval = setInterval(loadMessengerUnreadCount, 10000); // poll every 10 seconds
-  return () => clearInterval(interval);
-}, [loadMessengerUnreadCount]);
+    loadMessengerUnreadCount();
+    const interval = setInterval(loadMessengerUnreadCount, 10000); // poll every 10 seconds
+    return () => clearInterval(interval);
+  }, [loadMessengerUnreadCount]);
 
   return (
-    <SafeAreaView
-        style={styles.mainContainer}
-        edges={safeAreaEdges}
-      >
+    <SafeAreaView style={styles.mainContainer} edges={safeAreaEdges}>
       {!shouldHideMobileHeader && (
         <View style={styles.headerWrapper}>
           <TeacherHeader
@@ -997,7 +970,7 @@ const handleClearGlobalSearch = () => {
             activeScreen={activeScreen}
             onNavigate={handleHeaderNavigate}
             onSearchChange={handleSearchChange}
-            searchValue={globalSearchQuery} 
+            searchValue={globalSearchQuery}
             onMenuPress={() => {
               setMobileDrawerOpen((prev) => !prev);
             }}
@@ -1036,6 +1009,7 @@ const handleClearGlobalSearch = () => {
       <View style={styles.contentWrapper}>
         {isLargeScreen && !isProfileScreen && activeScreen !== 'notification' && (
           <View style={styles.desktopDrawer}>
+            {/* 🔥 FIX: Pass userAvatarStoragePath to desktop drawer */}
             <TeacherDrawerMenu
               isFixed={true}
               activeScreen={activeScreen}
@@ -1043,6 +1017,7 @@ const handleClearGlobalSearch = () => {
               userName={teacherFullName}
               userEmail={teacherEmail}
               userAvatar={currentUserAvatar}
+              userAvatarStoragePath={activeProfile?.profileImageStoragePath || null}
               userId={teacherIdentity}
               userRole="teacher"
               apiBaseUrl={API_BASE_URL}
@@ -1055,6 +1030,7 @@ const handleClearGlobalSearch = () => {
 
         <View style={styles.screenContainer}>
           {activeScreen === 'profile' ? (
+            /* 🔥 FIX: Pass storage paths to Profile2 */
             <Profile2
               userPosts={currentUserPosts}
               onCreatePost={handleCreateCommunityPost}
@@ -1067,6 +1043,8 @@ const handleClearGlobalSearch = () => {
               userEmail={teacherEmail}
               profileImage={currentUserAvatar}
               bannerImage={currentUserBanner}
+              profileImageStoragePath={activeProfile?.profileImageStoragePath || null}
+              bannerImageStoragePath={activeProfile?.bannerImageStoragePath || null}
               onChangeProfileImage={handleChangeProfileImage}
               onChangeBannerImage={handleChangeBannerImage}
             />
@@ -1077,17 +1055,17 @@ const handleClearGlobalSearch = () => {
               onOpenCourse={(course: CourseDetailData) => handleOpenCourse(course)}
               onCreateClass={(course: CourseDetailData) => handleCreateClass(course)}
               onDeleteCourse={handleDeleteCourse}
-              currentTeacher={currentTeacherData}
+              currentTeacher={activeProfile}
               isLoading={isLoadingClasses || isLoadingAnnouncements}
             />
           ) : activeScreen === 'honors' ? (
-            <Honors apiBaseUrl={API_BASE_URL} /> 
+            <Honors apiBaseUrl={API_BASE_URL} />
           ) : activeScreen === 'grades' ? (
             <Grades apiBaseUrl={API_BASE_URL} />
           ) : activeScreen === 'announcement' ? (
             <ShareAnnouncement
               apiBaseUrl={API_BASE_URL}
-              currentTeacher={currentTeacherData}
+              currentTeacher={activeProfile}
               classes={effectiveCourses.map((course) => ({
                 id: course.id,
                 name: course.name,
@@ -1118,22 +1096,21 @@ const handleClearGlobalSearch = () => {
               onDeleteAnswer={handleDeleteCommunityAnswer}
             />
           ) : activeScreen === 'messenger' ? (
-            // 👇 PASS THE GLOBAL SEARCH QUERY HERE AND UNREAD CALLBACK
             <TeacherMessenger
-            onBack={() => setActiveScreen(lastScreen)}
-            searchQuery={globalSearchQuery}
-            onClearSearch={handleClearGlobalSearch}
-            currentUser={currentTeacherData?.teacherId || ''}
-            currentUserUid={currentTeacherData?.authUid || ''}
-            currentUserName={teacherFullName}
-            courses={messengerCourses}
-            onUnreadCountChanged={loadMessengerUnreadCount}
-          />
+              onBack={() => setActiveScreen(lastScreen)}
+              searchQuery={globalSearchQuery}
+              onClearSearch={handleClearGlobalSearch}
+              currentUser={activeProfile?.teacherId || ''}
+              currentUserUid={activeProfile?.authUid || ''}
+              currentUserName={teacherFullName}
+              courses={messengerCourses}
+              onUnreadCountChanged={loadMessengerUnreadCount}
+            />
           ) : activeScreen === 'coursedetail' ? (
             <Coursedetail2
               onBack={() => setActiveScreen(lastScreen)}
               course={selectedCourse || undefined}
-              currentTeacher={currentTeacherData}
+              currentTeacher={activeProfile}
               availableCourses={effectiveCourses}
             />
           ) : activeScreen === 'notification' ? (
@@ -1163,7 +1140,7 @@ const handleClearGlobalSearch = () => {
         </View>
       </View>
 
-      {!isLargeScreen && isMobileDrawerOpen &&  (
+      {!isLargeScreen && isMobileDrawerOpen && (
         <View style={styles.mobileDrawerLayer} pointerEvents="box-none">
           <TouchableOpacity
             style={styles.mobileBackdrop}
@@ -1180,6 +1157,7 @@ const handleClearGlobalSearch = () => {
               },
             ]}
           >
+            {/* 🔥 FIX: Pass userAvatarStoragePath to mobile drawer */}
             <TeacherDrawerMenu
               isFixed={false}
               onClose={() => setMobileDrawerOpen(false)}
@@ -1188,6 +1166,7 @@ const handleClearGlobalSearch = () => {
               userName={teacherFullName}
               userEmail={teacherEmail}
               userAvatar={currentUserAvatar}
+              userAvatarStoragePath={activeProfile?.profileImageStoragePath || null}
               userId={teacherIdentity}
               userRole="teacher"
               apiBaseUrl={API_BASE_URL}

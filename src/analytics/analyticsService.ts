@@ -29,6 +29,47 @@ import {
   TeacherStudentRow,
 } from './types';
 
+// --- Safe date helpers -----------------------------------------------------
+// Handles: JS Date, ISO strings, epoch numbers, Firestore Timestamp objects
+// ({ toDate(): Date } or { _seconds, _nanoseconds }), null/undefined, and any
+// other malformed value. Never throws — falls back to '' / 0 instead of
+// letting `new Date(x).toISOString()` blow up with "Invalid time value".
+
+const toSafeISOString = (value: any): string => {
+  if (!value) return '';
+
+  if (typeof value?.toDate === 'function') {
+    const d = value.toDate();
+    return Number.isNaN(d.getTime()) ? '' : d.toISOString();
+  }
+
+  if (typeof value?._seconds === 'number') {
+    const d = new Date(value._seconds * 1000);
+    return Number.isNaN(d.getTime()) ? '' : d.toISOString();
+  }
+
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? '' : parsed.toISOString();
+};
+
+const toSafeTime = (value: any): number => {
+  if (!value) return 0;
+
+  if (typeof value?.toDate === 'function') {
+    const time = value.toDate().getTime();
+    return Number.isNaN(time) ? 0 : time;
+  }
+
+  if (typeof value?._seconds === 'number') {
+    return value._seconds * 1000;
+  }
+
+  const parsed = new Date(value).getTime();
+  return Number.isNaN(parsed) ? 0 : parsed;
+};
+
+// -----------------------------------------------------------------------
+
 const getStrongestSubject = (
   subjectSummaries: SubjectAnalyticsSummary[]
 ): string => {
@@ -59,13 +100,13 @@ export const buildSubjectAnalyticsSummary = (
     course.assignments || [],
     currentDate
   );
-  
+
   const averageScore = getAssignmentAverage(normalizedAssignments);
   const gradedCount = getGradedCount(normalizedAssignments);
   const submittedCount = getSubmittedCount(normalizedAssignments);
   const pendingCount = getPendingCount(normalizedAssignments);
   const missingCount = getMissingCount(normalizedAssignments);
-  
+
   const predictedGrade = getPredictedGrade(
     averageScore,
     pendingCount,
@@ -73,12 +114,12 @@ export const buildSubjectAnalyticsSummary = (
     missingCount,
     gradedCount
   );
-  
+
   const scoreSeries = getAssignmentScoreSeries(normalizedAssignments);
   const trend = getTrendValue(scoreSeries);
   const trendDirection = getTrendDirection(trend);
   const trendSymbol = getTrendSymbol(trend);
-  
+
   const riskLevel = getRiskLevel(
     averageScore,
     pendingCount,
@@ -193,7 +234,7 @@ export const buildStudentAnalytics = (
   const missingAssignments = getMissingAssignments(allAssignments);
 
   // --- NEW CALCULATIONS FOR REDESIGNED DASHBOARD ---
-  
+
   // Map assignments with their course names for easier tracking
   const assignmentsWithCourse = courses.flatMap((course) =>
     normalizeAssignments(course.assignments || [], currentDate).map((a) => ({
@@ -209,33 +250,33 @@ export const buildStudentAnalytics = (
   const allScores = allGradedAssignments.map((a) => (a.points! / a.maxPoints!) * 100);
   const highestAssignmentGrade = allScores.length ? Math.max(...allScores) : 0;
 
- const recentGradedAssignments = allGradedAssignments
-  .map((a) => ({
-    id: a.id,
-    title: a.title,
-    courseName: a.courseName,
-    score: (a.points! / a.maxPoints!) * 100,
-    gradedAt: a.gradedAt 
-      ? new Date(a.gradedAt).toISOString() 
-      : a.submittedAt 
-      ? new Date(a.submittedAt).toISOString()
-      : '',
-    status: a.status,
-  }))
-  .sort((a, b) => {
-    // Match Assignment.tsx sorting logic: descending by ID
-    if (a.id > b.id) return -1;
-    if (a.id < b.id) return 1;
-    return 0;
-  })
+  const recentGradedAssignments = allGradedAssignments
+    .map((a) => ({
+      id: a.id,
+      title: a.title,
+      courseName: a.courseName,
+      score: (a.points! / a.maxPoints!) * 100,
+      gradedAt: toSafeISOString(a.gradedAt) || toSafeISOString(a.submittedAt),
+      status: a.status,
+    }))
+    .sort((a, b) => {
+      // Match Assignment.tsx sorting logic: descending by ID
+      if (a.id > b.id) return -1;
+      if (a.id < b.id) return 1;
+      return 0;
+    });
+
   // Assignment Score Trend (Chronological)
   const assignmentScoreTrend = allGradedAssignments
     .map((a) => ({
       title: a.title,
       score: (a.points! / a.maxPoints!) * 100,
-      date: a.gradedAt || a.submittedAt || new Date().toISOString(),
+      date:
+        toSafeISOString(a.gradedAt) ||
+        toSafeISOString(a.submittedAt) ||
+        new Date().toISOString(),
     }))
-    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    .sort((a, b) => toSafeTime(a.date) - toSafeTime(b.date));
 
   // Grade Distribution Buckets
   const gradeDistribution = { excellent: 0, good: 0, average: 0, needsImprovement: 0 };

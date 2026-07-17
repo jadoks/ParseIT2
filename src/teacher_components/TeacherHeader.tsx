@@ -91,6 +91,11 @@ const TeacherHeader: React.FC<HeaderProps> = ({
   const [hoveredNav, setHoveredNav] = useState<ScreenType | null>(null);
   const [isBellHovered, setIsBellHovered] = useState(false);
 
+  // 👇 NEW: focus tracking for the mobile expanded search input, so it gets
+  // the same highlighted-border focus behavior as other inputs in the app,
+  // consistent with isSearchFocused used on desktop/tablet.
+  const [isMobileSearchFocused, setIsMobileSearchFocused] = useState(false);
+
   useEffect(() => {
     if (searchValue !== undefined && searchValue !== searchQuery) {
       setSearchQuery(searchValue);
@@ -463,6 +468,10 @@ const TeacherHeader: React.FC<HeaderProps> = ({
                       height: 40,
                       marginRight: 8,
                     },
+                    // 👇 NEW: same highlighted-border focus behavior as other
+                    // inputs in the app, consistent with isSearchFocused
+                    // used on desktop/tablet.
+                    isMobileSearchFocused && styles.expandedSearchInputFocused,
                   ]}
                 >
                   <TextInput
@@ -472,12 +481,17 @@ const TeacherHeader: React.FC<HeaderProps> = ({
                     placeholderTextColor="#888"
                     value={searchQuery}
                     onChangeText={handleSearchChange}
-                    style={{
-                      flex: 1,
-                      fontSize: 16,
-                      color: '#000',
-                      paddingVertical: 8,
-                    }}
+                    onFocus={() => setIsMobileSearchFocused(true)}
+                    onBlur={() => setIsMobileSearchFocused(false)}
+                    style={[
+                      styles.expandedSearchTextInput,
+                      {
+                        flex: 1,
+                        fontSize: 16,
+                        color: '#000',
+                        paddingVertical: 8,
+                      },
+                    ]}
                     returnKeyType="search"
                   />
                   {searchQuery.length > 0 && (
@@ -744,6 +758,9 @@ const styles = StyleSheet.create({
     paddingVertical: Platform.select({ ios: 12, default: 8 }),
     borderWidth: 0,
     backgroundColor: 'transparent',
+    // 👇 disables the browser's default black focus outline in
+    // Chrome/Edge on React Native Web (same trick used in Header.tsx)
+    ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : {}),
   },
   centerSection: {
     flexDirection: 'row',
@@ -827,6 +844,17 @@ const styles = StyleSheet.create({
   },
   expandedSearchInput: {
     // Defined inline in component
+  },
+  // 👇 NEW: highlighted-border focus state for the mobile expanded search
+  // input, matching the desktop/tablet focus behavior (red border on focus).
+  expandedSearchInputFocused: {
+    borderWidth: 1.5,
+    borderColor: '#D32F2F',
+  },
+  // 👇 NEW: disables the browser's default black focus outline in
+  // Chrome/Edge on React Native Web for the mobile expanded search TextInput.
+  expandedSearchTextInput: {
+    ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : {}),
   },
   // 👇 NEW STYLES FOR SEARCH RESULTS
   searchResultsContainer: {

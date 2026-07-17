@@ -1,9 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import Constants from 'expo-constants';
 import { Image } from 'expo-image'; // instant caching + fade-in, same as Student CourseCard
 import React, { useEffect, useState } from 'react';
 import {
-  Platform,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -14,6 +12,11 @@ import {
   getCachedBannerUrl,
   setCachedBannerUrl,
 } from './bannerUrlCache';
+// 🔥 Use the shared apiFetch — it attaches a fresh Firebase Bearer token
+// automatically. The old local apiFetch here only sent `credentials: 'include'`
+// with no Authorization header at all, which is why every signed-url request
+// came back 401.
+import { apiFetch } from '../services/api'; // adjust path if your folder layout differs
 
 // ---- Matches the TeacherCourseData shape used in TeacherDashboard.tsx ----
 export type TeacherCourseData = {
@@ -45,26 +48,6 @@ interface TeacherCourseCardProps {
   onCopyCode: (course: TeacherCourseData) => void;
   onMenuPress: (event: any, course: TeacherCourseData) => void;
 }
-
-// ---- API base URL helper (same pattern used across the app) ----
-function getApiBaseUrl() {
-  if (Platform.OS === 'web') return 'http://localhost:5000';
-  const possibleHost =
-    Constants.expoConfig?.hostUri ||
-    Constants.manifest2?.extra?.expoGo?.debuggerHost ||
-    '';
-  const host = possibleHost.split(':')[0];
-  if (host) return `http://${host}:5000`;
-  return 'http://192.168.1.5:5000';
-}
-
-const API_BASE_URL = getApiBaseUrl();
-
-const apiFetch = (url: string, options: any = {}) =>
-  fetch(url, {
-    credentials: 'include',
-    ...options,
-  });
 
 // ---- Local fallback image map, same idea as Student CourseCard ----
 const COURSE_IMAGE_MAP: { [key: string]: any } = {
@@ -141,11 +124,8 @@ const TeacherCourseCard: React.FC<TeacherCourseCardProps> = ({
       // ---- Cache miss (first time this session, or the cached entry
       // expired): fetch a fresh signed URL and store it for next time. ----
       try {
-        const response = await apiFetch(`${API_BASE_URL}/storage/signed-url`, {
+        const response = await apiFetch('/storage/signed-url', {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
           body: JSON.stringify({
             storagePath: item.bannerStoragePath,
             classId: item.id,

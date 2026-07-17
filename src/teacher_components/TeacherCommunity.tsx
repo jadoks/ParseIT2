@@ -1,4 +1,3 @@
-import Constants from 'expo-constants';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   GestureResponderEvent,
@@ -17,6 +16,16 @@ import {
 } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import PostQueryModal from './TeacherPostQueryModal'; // Ensure this path is correct for your project structure
+
+// 🔥 Use the shared apiFetch — it attaches a fresh Firebase Bearer token
+// automatically and retries once on 401. The old local apiFetch here only
+// sent `credentials: 'include'` with no Authorization header at all, which
+// is why signed-url requests started failing after the session/token aged.
+import { apiFetch } from '../services/api'; // adjust path if your folder layout differs
+import {
+  getCachedUserImageUrl,
+  setCachedUserImageUrl,
+} from '../services/userImageUrlCache'; // adjust path if your folder layout differs
 
 export interface CommunityAnswer {
   id: string;
@@ -68,42 +77,24 @@ type AnswerDropdownState = {
   y: number;
 } | null;
 
-function getApiBaseUrl() {
-  if (Platform.OS === 'web') {
-    return 'http://localhost:5000';
-  }
-
-  const possibleHost =
-    Constants.expoConfig?.hostUri ||
-    Constants.manifest2?.extra?.expoGo?.debuggerHost ||
-    '';
-
-  const host = possibleHost.split(':')[0];
-
-  if (host) {
-    return `http://${host}:5000`;
-  }
-
-  return 'http://192.168.1.5:5000';
-}
-
-const API_BASE_URL = getApiBaseUrl();
-
-const apiFetch = (url: string, options: any = {}) =>
-  fetch(url, {
-    credentials: 'include',
-    ...options,
-  });
-
-const refreshUserImageUrl = async (storagePath?: string | null) => {
+// ---- Cache-aware signed-URL refresh for post/answer avatars. ----
+// `entityId` is the post/answer id, used as the cache key alongside the
+// storage path so different posts sharing a storage path (unlikely, but
+// possible for the same user) don't collide, and so a stale cache entry
+// naturally falls out of scope once its TTL passes (see userImageUrlCache).
+const refreshUserImageUrl = async (
+  entityId: string,
+  storagePath?: string | null
+): Promise<string | null> => {
   if (!storagePath) return null;
 
+  // Cache hit — skip the network call entirely.
+  const cached = getCachedUserImageUrl(entityId, storagePath);
+  if (cached) return cached;
+
   try {
-    const response = await apiFetch(`${API_BASE_URL}/storage/user-image-signed-url`, {
+    const response = await apiFetch('/storage/user-image-signed-url', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
       body: JSON.stringify({ storagePath }),
     });
 
@@ -113,7 +104,12 @@ const refreshUserImageUrl = async (storagePath?: string | null) => {
       throw new Error(data?.error || 'Unable to refresh user image.');
     }
 
-    return data?.url || null;
+    if (data?.url) {
+      setCachedUserImageUrl(entityId, storagePath, data.url);
+      return data.url;
+    }
+
+    return null;
   } catch {
     return null;
   }
@@ -160,7 +156,7 @@ const Community: React.FC<CommunityProps> = ({
   const filteredPosts = useMemo(() => {
     const trimmedQuery = searchQuery.trim().toLowerCase();
     if (!trimmedQuery) return posts;
-    
+
     return posts.filter((post) => {
       const matchesUser = post.userName.toLowerCase().includes(trimmedQuery);
       const matchesContent = post.content.toLowerCase().includes(trimmedQuery);
@@ -218,7 +214,7 @@ const Community: React.FC<CommunityProps> = ({
 
       for (const post of posts) {
         if (post.avatarStoragePath) {
-          const url = await refreshUserImageUrl(post.avatarStoragePath);
+          const url = await refreshUserImageUrl(post.id, post.avatarStoragePath);
           if (url) {
             nextPostAvatars[post.id] = url;
           }
@@ -226,7 +222,7 @@ const Community: React.FC<CommunityProps> = ({
 
         for (const answer of post.answers || []) {
           if (answer.avatarStoragePath) {
-            const url = await refreshUserImageUrl(answer.avatarStoragePath);
+            const url = await refreshUserImageUrl(answer.id, answer.avatarStoragePath);
             if (url) {
               nextAnswerAvatars[answer.id] = url;
             }
@@ -242,8 +238,14 @@ const Community: React.FC<CommunityProps> = ({
 
     refreshAvatars();
 
+    // Re-check periodically so avatars keep working even if this screen is
+    // left open longer than the signed-URL cache TTL — otherwise they'd
+    // only ever refresh when the `posts` array itself changes.
+    const interval = setInterval(refreshAvatars, 5 * 60 * 1000); // every 5 min
+
     return () => {
       isMounted = false;
+      clearInterval(interval);
     };
   }, [posts]);
 
@@ -1372,7 +1374,7 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 4 },
   },
-  
+
   // 👇 NEW STYLES FOR EMPTY STATE
   emptyState: {
     alignItems: 'center',

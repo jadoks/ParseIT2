@@ -4,7 +4,6 @@ import DateTimePicker, {
 } from '@react-native-community/datetimepicker';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
-  Alert,
   Image,
   Modal,
   Platform,
@@ -17,6 +16,11 @@ import {
   View,
   useWindowDimensions,
 } from 'react-native';
+
+// ✅ Reuses the same Toast component used in the Admin ManageStudent screen.
+// Adjust this relative path to match where Toast.tsx actually lives
+// relative to this file (e.g. "../Final_Admin_Components/Toast").
+import Toast from '../Final_Admin_Components/Toast';
 
 export type ShareAnnouncementClassItem = {
   id: string;
@@ -42,6 +46,8 @@ interface ShareAnnouncementProps {
   onShared?: () => Promise<void> | void;
 }
 
+type ToastType = 'success' | 'error' | 'info';
+
 const BACKGROUNDS = [
   { id: 1, image: require('../../assets/images/Banner1.png') },
   { id: 2, image: require('../../assets/images/Banner2.png') },
@@ -54,15 +60,6 @@ const fontFamily = Platform.select({
   android: 'Roboto',
   default: 'sans-serif',
 });
-
-// ✅ CROSS-PLATFORM ALERT HELPER
-const showAlert = (title: string, message: string) => {
-  if (Platform.OS === 'web') {
-    window.alert(`${title}\n\n${message}`);
-  } else {
-    Alert.alert(title, message);
-  }
-};
 
 const formatDisplayDate = (value: Date | null) => {
   if (!value) return '';
@@ -103,10 +100,12 @@ function ExpiryDateField({
   value,
   onChange,
   isMobile,
+  showToast,
 }: {
   value: Date | null;
   onChange: (date: Date) => void;
   isMobile: boolean;
+  showToast: (message: string, type?: ToastType) => void;
 }) {
   const [showNativePicker, setShowNativePicker] = useState(false);
   const [showWebModal, setShowWebModal] = useState(false);
@@ -119,7 +118,7 @@ function ExpiryDateField({
   const minDate = useMemo(() => {
     const d = new Date();
     d.setDate(d.getDate() + 1);
-    d.setHours(0, 0, 0, 0); 
+    d.setHours(0, 0, 0, 0);
     return d;
   }, []);
 
@@ -185,12 +184,12 @@ function ExpiryDateField({
   const confirmWebDate = () => {
     const selected = new Date(tempYear, tempMonth, tempDay);
     selected.setHours(0, 0, 0, 0); // Ensure midnight comparison
-    
+
     if (selected >= minDate) {
       onChange(selected);
       setShowWebModal(false);
     } else {
-      showAlert('Invalid Date', 'Please select a future date.');
+      showToast('Please select a future date.', 'error');
     }
   };
 
@@ -289,7 +288,7 @@ function ExpiryDateField({
                       const active = tempMonth === index;
                       // Disable past months if the current year is the minimum year
                       const disabled = tempYear === minDate.getFullYear() && index < minDate.getMonth();
-                      
+
                       return (
                         <TouchableOpacity
                           key={month}
@@ -340,7 +339,7 @@ function ExpiryDateField({
                         tempYear === minDate.getFullYear() &&
                         tempMonth === minDate.getMonth() &&
                         day < minDate.getDate();
-                        
+
                       return (
                         <TouchableOpacity
                           key={day}
@@ -719,6 +718,19 @@ export default function ShareAnnouncement({
   const [selectAllClasses, setSelectAllClasses] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // ✅ Toast state (same shape/pattern as Admin's ManageStudent screen)
+  const [toast, setToast] = useState<{
+    visible: boolean;
+    message: string;
+    type: ToastType;
+  }>({ visible: false, message: '', type: 'success' });
+
+  const showToast = (message: string, type: ToastType = 'success') => {
+    setToast({ visible: true, message, type });
+  };
+
+  const hideToast = () => setToast((prev) => ({ ...prev, visible: false }));
+
   const teacherName = useMemo(() => {
     const first = currentTeacher?.firstName?.trim() || '';
     const last = currentTeacher?.lastName?.trim() || '';
@@ -758,9 +770,9 @@ export default function ShareAnnouncement({
     const trimmedDesc = description.trim();
 
     if (!trimmedHeader || !trimmedDesc || !expiryDate || !expiryTime) {
-      showAlert(
-        'Missing Fields',
-        'Please complete header, description, expiry date, and expiry time.'
+      showToast(
+        'Please complete header, description, expiry date, and expiry time.',
+        'error'
       );
       return;
     }
@@ -768,20 +780,17 @@ export default function ShareAnnouncement({
     const expiresAt = buildExpiryIso(expiryDate, expiryTime);
 
     if (!expiresAt) {
-      showAlert('Invalid Date/Time', 'Please enter a valid expiry date and time.');
+      showToast('Please enter a valid expiry date and time.', 'error');
       return;
     }
 
     if (new Date(expiresAt).getTime() <= Date.now()) {
-      showAlert('Invalid Expiry', 'Please choose a future date and time.');
+      showToast('Please choose a future date and time.', 'error');
       return;
     }
 
     if (!availableClasses.length) {
-      showAlert(
-        'No Classes Found',
-        'There are no created classes available yet.'
-      );
+      showToast('There are no created classes available yet.', 'error');
       return;
     }
 
@@ -816,7 +825,7 @@ export default function ShareAnnouncement({
       const expiresAt = buildExpiryIso(expiryDate, expiryTime);
 
       if (!expiresAt) {
-        showAlert('Invalid Date/Time', 'Please enter a valid expiry date and time.');
+        showToast('Please enter a valid expiry date and time.', 'error');
         return;
       }
 
@@ -825,7 +834,7 @@ export default function ShareAnnouncement({
         : selectedClassIds;
 
       if (!targetClassIds.length) {
-        showAlert('Missing Selection', 'Please select a class or choose All Classes.');
+        showToast('Please select a class or choose All Classes.', 'error');
         return;
       }
 
@@ -854,19 +863,19 @@ export default function ShareAnnouncement({
 
       setShowTargetModal(false);
 
-      showAlert(
-        'Success',
+      showToast(
         selectAllClasses || targetClassIds.length > 1
           ? `Announcement shared successfully to ${targetClassIds.length} classes!`
-          : `Announcement shared successfully to ${selectedClasses[0]?.label || 'the selected class'}!`
+          : `Announcement shared successfully to ${selectedClasses[0]?.label || 'the selected class'}!`,
+        'success'
       );
 
       await onShared?.();
       resetAll();
     } catch (error: any) {
-      showAlert(
-        'Share Failed',
-        error?.message || 'Unable to share announcement.'
+      showToast(
+        error?.message || 'Unable to share announcement.',
+        'error'
       );
     } finally {
       setIsSubmitting(false);
@@ -975,6 +984,7 @@ export default function ShareAnnouncement({
                 value={expiryDate}
                 onChange={setExpiryDate}
                 isMobile={isMobile}
+                showToast={showToast}
               />
             </View>
 
@@ -1108,6 +1118,13 @@ export default function ShareAnnouncement({
           </View>
         </View>
       </Modal>
+
+      <Toast
+        visible={toast.visible}
+        message={toast.message}
+        type={toast.type}
+        onHide={hideToast}
+      />
     </View>
   );
 }
@@ -1123,27 +1140,27 @@ const styles = StyleSheet.create({
   headerSpacer: { height: 10, marginBottom: 20 },
   formTitle: { fontWeight: 'bold', color: '#000', fontFamily, letterSpacing: -0.5 },
   formSubTitle: { fontSize: 14, color: '#444', marginBottom: 30, fontFamily },
-  
+
   inputOutlineBox: { borderWidth: 1.5, borderColor: '#718096', borderRadius: 8, padding: 12, marginBottom: 20, backgroundColor: '#FFF' },
   inputOutlineBoxFocused: { borderColor: '#000' },
   innerLabel: { fontSize: 14, fontWeight: '600', color: '#222', marginBottom: 5, fontFamily },
   nakedInput: { fontSize: 14, color: '#222', padding: 0, margin: 0, fontFamily, ...Platform.select({ web: { outlineStyle: 'none' } as any }) },
   descriptionInput: { height: 80 },
-  
+
   dateTimeRow: { flexDirection: 'row', gap: 12, marginBottom: 20, flexWrap: 'wrap' },
   dateTimeBox: { flex: 1, minWidth: 220 },
-  
+
   selectorOutlineBox: { borderWidth: 1.5, borderColor: '#718096', borderRadius: 8, padding: 15, marginBottom: 35, backgroundColor: '#FFF' },
   bgGrid: { marginTop: 10 },
   bgOption: { width: '100%', height: 80, borderRadius: 8, marginBottom: 12, overflow: 'hidden', borderWidth: 1, borderColor: '#E2E8F0' },
   bgOptionSelected: { borderColor: '#B71C1C', borderWidth: 3 },
   bgImage: { width: '100%', height: '100%', resizeMode: 'cover' },
   checkOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(183, 28, 28, 0.3)', justifyContent: 'center', alignItems: 'center' },
-  
+
   submitBtn: { backgroundColor: '#B71C1C', paddingVertical: 16, borderRadius: 8, alignItems: 'center', marginBottom: 40 },
   submitBtnDisabled: { opacity: 0.7 },
   submitBtnText: { color: '#FFF', fontSize: 18, fontWeight: '900', fontFamily },
-  
+
   // Target Audience Modal
   modalOverlay: { flex: 1, backgroundColor: 'rgba(15, 23, 42, 0.18)', justifyContent: 'center', alignItems: 'center', paddingHorizontal: 20 },
   targetModalCard: { width: '100%', maxWidth: 520, maxHeight: '88%', backgroundColor: '#FFF', borderRadius: 18, padding: 20 },
@@ -1153,7 +1170,7 @@ const styles = StyleSheet.create({
   targetModalScrollContent: { paddingBottom: 12 },
   targetSection: { marginBottom: 18 },
   targetSectionTitle: { fontSize: 15, fontWeight: '700', color: '#222', marginBottom: 10, fontFamily },
-  
+
   checkRow: { minHeight: 48, borderRadius: 12, borderWidth: 1, borderColor: '#E5CACA', backgroundColor: '#FFF', flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 9, marginBottom: 8 },
   compactCheckRow: { minHeight: 52, borderRadius: 10, borderWidth: 1, borderColor: '#E5CACA', backgroundColor: '#FFF', flexDirection: 'row', alignItems: 'center', paddingHorizontal: 11, paddingVertical: 8, marginBottom: 7 },
   checkRowActive: { borderColor: '#D32F2F', backgroundColor: '#FFF7F7' },
@@ -1163,10 +1180,10 @@ const styles = StyleSheet.create({
   checkText: { fontSize: 13, fontWeight: '600', color: '#202124', fontFamily },
   compactCheckText: { fontSize: 13, fontWeight: '700', color: '#202124', fontFamily },
   checkSubText: { marginTop: 2, fontSize: 11.5, color: '#6B7280', fontFamily },
-  
+
   emptyClassesBox: { borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 10, paddingVertical: 16, paddingHorizontal: 14, backgroundColor: '#FAFAFA' },
   emptyClassesText: { color: '#6B7280', fontSize: 13, textAlign: 'center', fontFamily },
-  
+
   modalButtonRow: { flexDirection: 'row', gap: 10 },
   cancelBtn: { flex: 1, backgroundColor: '#F3F4F6', paddingVertical: 13, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   cancelBtnText: { color: '#374151', fontWeight: '700', fontSize: 14, fontFamily },
@@ -1178,15 +1195,15 @@ const styles = StyleSheet.create({
   selectField: { height: 54, borderRadius: 14, borderWidth: 1, borderColor: '#E5E7EB', backgroundColor: '#F9FAFB', paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   selectFieldText: { fontSize: 16, fontWeight: '400', color: '#111827', flex: 1, marginRight: 10 },
   placeholderSelectText: { color: '#9E9E9E' },
-  
+
   datePickerWrap: { marginTop: 10, borderRadius: 14, borderWidth: 1, borderColor: '#E5E7EB', backgroundColor: '#F9FAFB', overflow: 'hidden' },
   datePickerActions: { paddingHorizontal: 14, paddingBottom: 14, alignItems: 'flex-end' },
   datePickerButtonSecondary: { minWidth: 88, height: 38, borderRadius: 12, borderWidth: 1, borderColor: '#E7C0C0', backgroundColor: '#FFF7F7', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 14 },
   datePickerButtonSecondaryText: { fontSize: 13, fontWeight: '700', color: '#7A4A4A' },
-  
+
   // ✅ RENAMED to avoid duplicate key error
   pickerModalOverlay: { flex: 1, backgroundColor: 'rgba(43, 17, 17, 0.45)', justifyContent: 'center', alignItems: 'center', padding: 20 },
-  
+
   webDateModalCard: { width: '100%', maxWidth: 860, maxHeight: '88%', backgroundColor: '#FFFFFF', borderRadius: 28, borderWidth: 1, borderColor: '#F3D4D4', overflow: 'hidden' },
   modalHeader: { paddingHorizontal: 24, paddingTop: 22, paddingBottom: 18, borderBottomWidth: 1, borderBottomColor: '#F8E3E3', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
   modalHeaderLeft: { flex: 1, flexDirection: 'row', paddingRight: 16 },
@@ -1195,19 +1212,19 @@ const styles = StyleSheet.create({
   modalTitle: { fontSize: 22, fontWeight: '800', color: '#2B1111', marginBottom: 4 },
   modalSubtitle: { fontSize: 14, lineHeight: 21, color: '#8A6F6F' },
   modalCloseButton: { width: 40, height: 40, borderRadius: 14, backgroundColor: '#FFF5F5', alignItems: 'center', justifyContent: 'center' },
-  
+
   webDateContent: { paddingHorizontal: 24, paddingTop: 20, paddingBottom: 8 },
   modalRow: { flexDirection: 'row', gap: 14, marginBottom: 22, zIndex: 20 },
   modalRowStack: { flexDirection: 'column', gap: 14 },
   modalCol: { flex: 1 },
-  
+
   webDateList: { maxHeight: 260, borderRadius: 16, borderWidth: 1, borderColor: '#F1CACA', backgroundColor: '#FFF9F9' },
   dropdownItem: { minHeight: 52, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   dropdownItemBorder: { borderBottomWidth: 1, borderBottomColor: '#FAE9E9' },
   dropdownItemActive: { backgroundColor: '#FFF7F7' },
   dropdownItemText: { flex: 1, fontSize: 14, color: '#5F3B3B', fontWeight: '600', paddingRight: 10 },
   dropdownItemTextActive: { color: '#DC2626', fontWeight: '700' },
-  
+
   modalFooter: { paddingHorizontal: 24, paddingTop: 16, paddingBottom: 22, borderTopWidth: 1, borderTopColor: '#F8E3E3', flexDirection: 'row', justifyContent: 'flex-end' },
   modalSecondaryButton: { height: 48, paddingHorizontal: 18, borderRadius: 14, borderWidth: 1, borderColor: '#E7C0C0', backgroundColor: '#FFF7F7', alignItems: 'center', justifyContent: 'center', marginRight: 12 },
   modalSecondaryButtonText: { fontSize: 14, fontWeight: '700', color: '#7A4A4A' },

@@ -342,6 +342,13 @@ const Messenger = ({
   const [localSearchQuery, setLocalSearchQuery] = useState('');
   const searchInputRef = useRef<TextInput>(null);
 
+  // 👇 NEW: focus tracking for TextInputs, so they get the same
+  // highlighted-border focus behavior used elsewhere in the app (e.g.
+  // SignIn.tsx's inputWrapperFocused / passwordContainerFocused pattern).
+  const [isFullScreenSearchFocused, setIsFullScreenSearchFocused] = useState(false);
+  const [isRoomNameFocused, setIsRoomNameFocused] = useState(false);
+  const [isMessageInputFocused, setIsMessageInputFocused] = useState(false);
+
   const toggleMobileSearch = (expand: boolean) => {
     setIsMobileSearchExpanded(expand);
     if (!expand) {
@@ -1563,7 +1570,14 @@ const Messenger = ({
             <MaterialCommunityIcons name="arrow-left" size={24} color="#000" />
           </TouchableOpacity>
           
-          <View style={styles.fullScreenSearchInputContainer}>
+          <View
+            style={[
+              styles.fullScreenSearchInputContainer,
+              // 👇 NEW: highlighted-border focus state, matching
+              // inputWrapperFocused in SignIn.tsx
+              isFullScreenSearchFocused && styles.fullScreenSearchInputContainerFocused,
+            ]}
+          >
             <TextInput
               ref={searchInputRef}
               autoFocus
@@ -1571,6 +1585,8 @@ const Messenger = ({
               placeholderTextColor="#888"
               value={localSearchQuery}
               onChangeText={setLocalSearchQuery}
+              onFocus={() => setIsFullScreenSearchFocused(true)}
+              onBlur={() => setIsFullScreenSearchFocused(false)}
               style={styles.fullScreenSearchInput}
               returnKeyType="search"
             />
@@ -2443,9 +2459,14 @@ const Messenger = ({
                     onChangeText={setRoomName}
                     placeholder="Enter room name"
                     placeholderTextColor="#9a9a9a"
+                    onFocus={() => setIsRoomNameFocused(true)}
+                    onBlur={() => setIsRoomNameFocused(false)}
                     style={[
                       styles.professionalInput,
                       isTinyPhone && styles.professionalInputStack,
+                      // 👇 NEW: highlighted-border focus state, matching
+                      // inputWrapperFocused in SignIn.tsx
+                      isRoomNameFocused && styles.professionalInputFocused,
                     ]}
                   />
                   <TouchableOpacity
@@ -2734,6 +2755,8 @@ const Messenger = ({
             }
             placeholderTextColor="#9a9a9a"
             multiline={false}
+            onFocus={() => setIsMessageInputFocused(true)}
+            onBlur={() => setIsMessageInputFocused(false)}
             style={[
               styles.input,
               {
@@ -2744,6 +2767,9 @@ const Messenger = ({
                 paddingHorizontal: isDesktop ? 14 : isTablet ? 12 : 10,
                 paddingVertical: 0,
               },
+              // 👇 NEW: highlighted-border focus state, matching
+              // inputWrapperFocused / passwordContainerFocused in SignIn.tsx
+              isMessageInputFocused && styles.inputFocused,
             ]}
             onSubmitEditing={handleSend}
             returnKeyType="send"
@@ -2925,12 +2951,23 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     paddingHorizontal: 12,
     height: 44,
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  // 👇 NEW: highlighted-border focus state, matching inputWrapperFocused
+  // in SignIn.tsx (red border on focus).
+  fullScreenSearchInputContainerFocused: {
+    borderColor: '#D32F2F',
+    borderWidth: 1.5,
   },
   fullScreenSearchInput: {
     flex: 1,
     fontSize: 16,
     color: '#000',
     paddingVertical: 8,
+    // 👇 NEW: disables the browser's default black focus outline in
+    // Chrome/Edge on React Native Web (same trick used in SignIn.tsx)
+    ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : {}),
   },
   searchIconButton: {
     padding: 8,
@@ -3062,6 +3099,15 @@ const styles = StyleSheet.create({
     borderColor: '#e1e4e8',
     color: '#111',
     backgroundColor: '#f7f8fa',
+    // 👇 NEW: disables the browser's default black focus outline in
+    // Chrome/Edge on React Native Web (same trick used in SignIn.tsx)
+    ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : {}),
+  },
+  // 👇 NEW: highlighted-border focus state, matching passwordContainerFocused
+  // in SignIn.tsx (red border + slightly thicker width on focus).
+  inputFocused: {
+    borderColor: '#D32F2F',
+    borderWidth: 1.5,
   },
   sendBtn: {
     backgroundColor: '#ea1111',
@@ -3179,6 +3225,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     fontSize: 14,
     color: '#111',
+    // 👇 NEW: disables the browser's default black focus outline in
+    // Chrome/Edge on React Native Web (same trick used in SignIn.tsx)
+    ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : {}),
+  },
+  // 👇 NEW: highlighted-border focus state, matching inputWrapperFocused
+  // in SignIn.tsx (red border + slightly thicker width on focus).
+  professionalInputFocused: {
+    borderColor: '#D32F2F',
+    borderWidth: 1.5,
   },
   professionalInputStack: { width: '100%' },
   professionalPrimaryButton: {

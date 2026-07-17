@@ -53,9 +53,7 @@ const bucket = admin.storage().bucket();
 const FieldValue = admin.firestore.FieldValue;
 
 const SESSION_COOKIE_NAME = process.env.SESSION_COOKIE_NAME || "session";
-const SESSION_EXPIRES_IN_MS = Number(
-  process.env.SESSION_EXPIRES_IN_MS || 60 * 60 * 1000
-);
+const SESSION_EXPIRES_IN_MS = 14 * 24 * 60 * 60 * 1000;
 const SIGNED_URL_EXPIRES_IN_MS = Number(
   process.env.SIGNED_URL_EXPIRES_IN_MS || 60 * 60 * 1000
 );
@@ -129,28 +127,35 @@ async function uploadBufferToGeminiFileAPI(buffer, mimeType, fileName) {
 }
 
 async function requireAuth(req, res, next) {
-  try {
-    const sessionCookie = req.cookies?.[SESSION_COOKIE_NAME] || "";
-    const bearerToken = getAuthBearerToken(req);
-    let decoded = null;
+  const sessionCookie = req.cookies?.[SESSION_COOKIE_NAME] || "";
+  const bearerToken = getAuthBearerToken(req);
+  let decoded = null;
 
-    if (sessionCookie) {
+  if (sessionCookie) {
+    try {
       decoded = await admin.auth().verifySessionCookie(sessionCookie, true);
-    } else if (bearerToken) {
-      decoded = await admin.auth().verifyIdToken(bearerToken, false);
+    } catch (cookieError) {
+      // Session cookie expired/invalid — fall through and try the bearer token
+      // instead of failing immediately.
+      console.warn("Session cookie invalid, falling back to bearer token:", cookieError?.message);
     }
-
-    if (!decoded?.uid) {
-      return res.status(401).json({ error: "Authentication required." });
-    }
-
-    req.user = decoded;
-    req.clientIp = getClientIp(req);
-    return next();
-  } catch (error) {
-    console.warn("Authentication failed:", error?.message || error);
-    return res.status(401).json({ error: "Invalid or expired session." });
   }
+
+  if (!decoded?.uid && bearerToken) {
+    try {
+      decoded = await admin.auth().verifyIdToken(bearerToken, false);
+    } catch (tokenError) {
+      console.warn("Bearer token invalid:", tokenError?.message);
+    }
+  }
+
+  if (!decoded?.uid) {
+    return res.status(401).json({ error: "Authentication required." });
+  }
+
+  req.user = decoded;
+  req.clientIp = getClientIp(req);
+  return next();
 }
 
 async function findUserProfileByAuthUid(authUid) {

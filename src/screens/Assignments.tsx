@@ -225,8 +225,15 @@ function getViewerUrl(fileUrl: string, fileName?: string, fileType?: string): st
   return `https://docs.google.com/gview?embedded=true&url=${encodeURIComponent(fileUrl)}`;
 }
 
+// ✅ UPDATED: InlineMaterialViewer now:
+//   1. Proactively fetches a fresh signed URL as soon as a file is opened
+//      (works for BOTH teacher and student files, since it keys off
+//      storagePath/bucketPath rather than `source`).
+//   2. Supports manual refresh for DOCUMENTS too (not just images), since an
+//      expired link inside the Google Docs iframe viewer usually won't fire
+//      a JS onError event — it just silently shows a broken/blank page.
 function InlineMaterialViewer({
-  viewerUrl,
+  fileUrl,
   height,
   fileName,
   fileType,
@@ -234,7 +241,7 @@ function InlineMaterialViewer({
   bucketPath,
   classId,
 }: {
-  viewerUrl: string;
+  fileUrl: string;
   height: number;
   fileName?: string;
   fileType?: string;
@@ -242,56 +249,97 @@ function InlineMaterialViewer({
   bucketPath?: string | null;
   classId?: string;
 }) {
-  const [resolvedUrl, setResolvedUrl] = useState(viewerUrl);
+  const [resolvedUrl, setResolvedUrl] = useState(fileUrl);
   const [hasError, setHasError] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [hasAutoRefreshed, setHasAutoRefreshed] = useState(false);
 
-  // Reset state when a new file is opened
+  const canRefresh = !!(storagePath || bucketPath);
+  // Identify "which file" independent of the (possibly stale) URL so the
+  // effects below correctly reset/retrigger when a new file is opened.
+  const identity = `${fileName || ''}|${storagePath || bucketPath || ''}`;
+
+  // Reset state whenever a new file is opened
   useEffect(() => {
-    setResolvedUrl(viewerUrl);
+    setResolvedUrl(fileUrl);
     setHasError(false);
-  }, [viewerUrl]);
+    setHasAutoRefreshed(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [identity, fileUrl]);
 
-  const tryRefreshUrl = async () => {
+  const tryRefreshUrl = async (silent = false) => {
     // Use storagePath primarily, fallback to bucketPath if needed
     const path = storagePath || bucketPath;
-    
-    if (!path || isRefreshing) {
-      console.warn("Cannot refresh: No storage path available or already refreshing.");
-      setHasError(true);
+
+    if (!path) {
+      console.warn('Cannot refresh: No storage path available.');
+      if (!silent) setHasError(true);
       return;
     }
+    if (isRefreshing) return;
 
     try {
       setIsRefreshing(true);
       console.log(`Attempting to refresh signed URL for: ${path}`);
-      
+
       const response = await apiFetch(`${API_BASE_URL}/storage/signed-url`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          storagePath: path, 
-          classId // Pass classId if required by your backend validation
+        body: JSON.stringify({
+          storagePath: path,
+          classId, // Pass classId if required by your backend validation
         }),
       });
-      
+
       const data = await response.json();
-      
+
       if (response.ok && data?.url) {
-        console.log("URL Refreshed Successfully");
+        console.log('URL Refreshed Successfully');
         setResolvedUrl(data.url);
         setHasError(false);
       } else {
-        console.error("Backend returned error for signed URL:", data);
-        setHasError(true);
+        console.error('Backend returned error for signed URL:', data);
+        if (!silent) setHasError(true);
       }
     } catch (err) {
-      console.error("Failed to fetch signed URL:", err);
-      setHasError(true);
+      console.error('Failed to fetch signed URL:', err);
+      if (!silent) setHasError(true);
     } finally {
       setIsRefreshing(false);
     }
   };
+
+  // ✅ Proactively refresh the URL the moment a file is opened for preview,
+  // rather than waiting for a load error. This catches links that already
+  // expired before the user even tapped "Open".
+  useEffect(() => {
+    if (canRefresh && !hasAutoRefreshed) {
+      setHasAutoRefreshed(true);
+      void tryRefreshUrl(true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [identity, hasAutoRefreshed, canRefresh]);
+
+  const displayUrl = getViewerUrl(resolvedUrl, fileName, fileType);
+
+  const RefreshBar = () =>
+    canRefresh ? (
+      <TouchableOpacity
+        onPress={() => tryRefreshUrl(false)}
+        disabled={isRefreshing}
+        style={styles.previewRefreshBar}
+        activeOpacity={0.8}
+      >
+        {isRefreshing ? (
+          <ActivityIndicator size="small" color="#D32F2F" />
+        ) : (
+          <MaterialCommunityIcons name="refresh" size={16} color="#D32F2F" />
+        )}
+        <Text style={styles.previewRefreshBarText}>
+          {isRefreshing ? 'Refreshing link...' : "Preview looks broken? Tap to refresh"}
+        </Text>
+      </TouchableOpacity>
+    ) : null;
 
   // --- IMAGE HANDLING ---
   if (fileName && isImageFile(fileName, fileType)) {
@@ -312,7 +360,7 @@ function InlineMaterialViewer({
             This image couldn't be loaded. It may have expired.
           </Text>
           <TouchableOpacity 
-            onPress={tryRefreshUrl} 
+            onPress={() => tryRefreshUrl(false)} 
             style={{ marginTop: 10, padding: 8, backgroundColor: '#D32F2F', borderRadius: 4 }}
           >
             <Text style={{ color: '#FFF', fontWeight: 'bold' }}>Try Again</Text>
@@ -331,7 +379,7 @@ function InlineMaterialViewer({
             style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
             onError={() => {
               // Only try refresh once to avoid infinite loops if the file is truly gone
-              if (!isRefreshing && !hasError) tryRefreshUrl();
+              if (!isRefreshing && !hasError) tryRefreshUrl(false);
             }}
           />
         </View>
@@ -346,7 +394,7 @@ function InlineMaterialViewer({
           style={{ width: '100%', height: '100%' }}
           resizeMode="contain"
           onError={() => {
-             if (!isRefreshing && !hasError) tryRefreshUrl();
+             if (!isRefreshing && !hasError) tryRefreshUrl(false);
           }}
         />
       </View>
@@ -354,13 +402,24 @@ function InlineMaterialViewer({
   }
 
   // --- DOCUMENT HANDLING ---
-  if (Platform.OS === "web") {
+  if (isRefreshing) {
     return (
-      <View style={{ flex: 1, width: "100%", height }}>
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#f0f0f0' }}>
+        <ActivityIndicator size="large" color="#D32F2F" />
+        <Text style={{ marginTop: 10, color: '#666' }}>Refreshing link...</Text>
+      </View>
+    );
+  }
+
+  if (Platform.OS === 'web') {
+    return (
+      <View style={{ flex: 1, width: '100%', height }}>
+        <RefreshBar />
         {/* @ts-ignore */}
         <iframe
-          src={resolvedUrl}
-          style={{ width: "100%", height: "100%", border: "none" }}
+          key={resolvedUrl}
+          src={displayUrl}
+          style={{ width: '100%', height: canRefresh ? height - 34 : '100%', border: 'none' }}
           allow="autoplay"
           title="Document Viewer"
         />
@@ -375,6 +434,30 @@ function InlineMaterialViewer({
       <Text style={{ color: "#888", textAlign: "center", marginTop: 10 }}>
         Preview not available on this device. Please download or open externally.
       </Text>
+      {canRefresh && (
+        <TouchableOpacity
+          onPress={() => tryRefreshUrl(false)}
+          style={{ marginTop: 14, padding: 8, backgroundColor: '#D32F2F', borderRadius: 4 }}
+        >
+          <Text style={{ color: '#FFF', fontWeight: 'bold' }}>Refresh Link</Text>
+        </TouchableOpacity>
+      )}
+      {!!resolvedUrl && (
+        <TouchableOpacity
+          onPress={async () => {
+            try {
+              const supported = await Linking.canOpenURL(resolvedUrl);
+              if (!supported) throw new Error('Unsupported URL.');
+              await Linking.openURL(resolvedUrl);
+            } catch {
+              Alert.alert('Open Failed', 'Unable to open this file externally.');
+            }
+          }}
+          style={{ marginTop: 10, padding: 8, backgroundColor: '#EFEFEF', borderRadius: 4 }}
+        >
+          <Text style={{ color: '#333', fontWeight: 'bold' }}>Open Externally</Text>
+        </TouchableOpacity>
+      )}
     </View>
   );
 }
@@ -841,8 +924,11 @@ const Assignments = ({
     }
 
     // 2. CHECK IF IT'S A FILE -> INLINE PREVIEW
-    const url = file.fileUrl?.trim();
-    if (!url) {
+    // NOTE: we no longer require file.fileUrl to already be present/fresh —
+    // as long as we have a storagePath/bucketPath, InlineMaterialViewer will
+    // fetch (or refresh) a working URL itself. We only block if there's
+    // truly nothing to go on.
+    if (!file.fileUrl && !file.storagePath && !file.bucketPath) {
       Alert.alert('No File', emptyMessage);
       return;
     }
@@ -1346,8 +1432,8 @@ const Assignments = ({
                                 <Text style={styles.fileDetails}>Uploaded by your teacher for this assignment</Text>
                               </View>
                               <TouchableOpacity
-                                style={[styles.fileOpenButton, !isLargeScreen && styles.fileOpenButtonMobile, !file.fileUrl && styles.fileOpenButtonDisabled]}
-                                disabled={!file.fileUrl}
+                                style={[styles.fileOpenButton, !isLargeScreen && styles.fileOpenButtonMobile, !file.fileUrl && !file.storagePath && !file.bucketPath && styles.fileOpenButtonDisabled]}
+                                disabled={!file.fileUrl && !file.storagePath && !file.bucketPath}
                                 activeOpacity={0.85}
                                 onPress={() => handleOpenUploadedFile(file, 'This assignment has no attached file yet.')}
                               >
@@ -1508,8 +1594,8 @@ const Assignments = ({
                                 </View>
                                 <View style={[styles.fileActionsRow, !isLargeScreen && styles.fileActionsRowMobile]}>
                                   <TouchableOpacity
-                                    style={[styles.fileOpenButton, !isLargeScreen && styles.fileOpenButtonMobile, !file.fileUrl && styles.fileOpenButtonDisabled]}
-                                    disabled={!file.fileUrl}
+                                    style={[styles.fileOpenButton, !isLargeScreen && styles.fileOpenButtonMobile, !file.fileUrl && !file.storagePath && !file.bucketPath && styles.fileOpenButtonDisabled]}
+                                    disabled={!file.fileUrl && !file.storagePath && !file.bucketPath}
                                     activeOpacity={0.85}
                                     onPress={() => handleOpenUploadedFile(file, 'This submitted file has no URL yet.')}
                                   >
@@ -1869,8 +1955,11 @@ const Assignments = ({
           </View>
 
           {previewFile && (
-            <InlineMaterialViewer 
-              viewerUrl={getViewerUrl(previewFile.fileUrl || '', previewFile.fileName, previewFile.fileType)}
+            <InlineMaterialViewer
+              // ✅ Pass the raw fileUrl (may already be stale/expired) — the
+              // viewer itself will fetch a fresh signed URL on open using
+              // storagePath/bucketPath, for BOTH teacher and student files.
+              fileUrl={previewFile.fileUrl || ''}
               height={height - 62}
               fileName={previewFile.fileName}
               fileType={previewFile.fileType}
@@ -2177,6 +2266,25 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
   },
   previewTypeText: { color: '#D32F2F', fontSize: 10, fontWeight: '800', letterSpacing: 0.5 },
+
+  // ✅ NEW: refresh bar shown above document previews (web) since expired
+  // links inside the Google Docs viewer iframe don't reliably trigger an
+  // error event we can detect programmatically.
+  previewRefreshBar: {
+    height: 34,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: '#FFF3F3',
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3D4D4',
+  },
+  previewRefreshBarText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#D32F2F',
+  },
 });
 
 export default Assignments;

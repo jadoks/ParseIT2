@@ -1,12 +1,11 @@
+import AsyncStorage from '@react-native-async-storage/async-storage'; // Install if missing: npx expo install @react-native-async-storage/async-storage
 import Constants from 'expo-constants';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-// ⚠️ Make sure this path correctly points to your firebaseConfig file
 import { auth } from './firebaseConfig';
-
 import AdminApp from './src/AdminApp';
 import LandingPage from './src/screens/LandingPage';
 import Register from './src/screens/Register';
@@ -30,75 +29,75 @@ type SignedInUser = {
   bannerImage?: any;
 };
 
-// Re-using the same API URL logic from your SignIn screen
 function getApiBaseUrl() {
-  if (Platform.OS === 'web') {
-    return 'http://localhost:5000';
-  }
+  if (Platform.OS === 'web') return 'http://localhost:5000';
   const possibleHost =
     Constants.expoConfig?.hostUri ||
-    Constants.manifest2?.extra?.expoGo?.debuggerHost ||
-    '';
+    Constants.manifest2?.extra?.expoGo?.debuggerHost || '';
   const host = possibleHost.split(':')[0];
-  if (host) {
-    return `http://${host}:5000`;
-  }
-  return 'http://192.168.1.5:5000';
+  return host ? `http://${host}:5000` : 'http://192.168.1.5:5000';
 }
 
 const API_BASE_URL = getApiBaseUrl();
 
+// 🔥 GLOBAL AUTH STATE MANAGEMENT
 export default function App() {
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   const [showLanding, setShowLanding] = useState(false);
   const [showRegister, setShowRegister] = useState(false);
-
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [currentUser, setCurrentUser] = useState<SignedInUser | null>(null);
+  
+  // Store the latest valid ID Token for manual injection
+  const [idToken, setIdToken] = useState<string | null>(null);
 
-  // 🔥 PERSISTENT LOGIN LOGIC
+  // 🔥 REFRESH TOKEN SILENTLY
+  const refreshAuthToken = useCallback(async () => {
+    const user = auth.currentUser;
+    if (!user) return null;
+    try {
+      // Force refresh ensures we get a fresh token even if the old one is technically still valid
+      const freshToken = await user.getIdToken(true);
+      setIdToken(freshToken);
+      
+      // Optional: Persist token for offline resilience or quick re-auth
+      await AsyncStorage.setItem('@auth_token', freshToken);
+      return freshToken;
+    } catch (error) {
+      console.error("Token refresh failed:", error);
+      return null;
+    }
+  }, []);
+
+  // 🔥 MAIN AUTH CHECKER
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
         try {
-          // 1. Get the secure Firebase ID token (force refresh)
-          const idToken = await firebaseUser.getIdToken(true);
-          
-          // 2. 🔥 NEW: Establish session cookie with backend
-          // This tells the backend to set a long-lasting HttpOnly cookie
-          const sessionResponse = await fetch(`${API_BASE_URL}/auth/session-login`, {
+          const token = await refreshAuthToken();
+          if (!token) throw new Error("Failed to retrieve ID token");
+
+          // Establish backend session (for web compatibility / future proofing)
+          await fetch(`${API_BASE_URL}/auth/session-login`, {
             method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            credentials: 'include', // 🔥 CRITICAL: Tells the app to accept and store the cookie
-            body: JSON.stringify({ 
-              idToken,
-              deviceId: Platform.OS 
-            }),
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ idToken: token, deviceId: Platform.OS }),
           });
 
-          if (!sessionResponse.ok) {
-            // Session establishment failed
-            setIsLoggedIn(false);
-            setShowLanding(true);
-            setIsCheckingAuth(false);
-            return;
-          }
-
-          // 3. Verify with backend and fetch full profile using the newly set cookie
+          // Verify profile using Bearer token instead of relying solely on cookies
           const response = await fetch(`${API_BASE_URL}/auth/session-me`, {
             method: 'GET',
-            credentials: 'include', // 🔥 CRITICAL: Automatically sends the stored cookie
+            credentials: 'include',
             headers: {
               'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`, //  INJECT TOKEN HERE
             },
           });
 
           if (response.ok) {
             const data = await response.json();
             if (data.success && data.profile) {
-              // 4. Map backend data to our frontend SignedInUser type
               const user: SignedInUser = {
                 role: data.role,
                 id: data.id,
@@ -117,12 +116,10 @@ export default function App() {
               setIsLoggedIn(true);
               setShowLanding(false);
             } else {
-              // Token valid but no profile found in backend DB
               setIsLoggedIn(false);
               setShowLanding(true);
             }
           } else {
-            // Token invalid, expired, or backend rejected it
             setIsLoggedIn(false);
             setShowLanding(true);
           }
@@ -132,35 +129,38 @@ export default function App() {
           setShowLanding(true);
         }
       } else {
-        // No user is logged into Firebase
         setIsLoggedIn(false);
         setShowLanding(true);
       }
-      
-      // Stop showing the loading splash screen
       setIsCheckingAuth(false);
     });
 
-    // Cleanup listener on unmount
-    return () => unsubscribe();
-  }, []);
+    // 🔥 AUTO-REFRESH TOKEN EVERY 50 MINUTES (Firebase tokens expire in 1 hour)
+    const interval = setInterval(refreshAuthToken, 50 * 60 * 1000);
 
-  const handleLogin = (user: SignedInUser) => {
-    setCurrentUser(user);
-    setIsLoggedIn(true);
-    setShowLanding(false);
-    setShowRegister(false);
+    return () => {
+      unsubscribe();
+      clearInterval(interval);
+    };
+  }, [refreshAuthToken]);
+
+  const handleLogin = async (user: SignedInUser) => {
+    const token = await refreshAuthToken();
+    if (token) {
+      setCurrentUser(user);
+      setIsLoggedIn(true);
+      setShowLanding(false);
+      setShowRegister(false);
+    }
   };
 
   const handleLogout = async () => {
     try {
-      // 🔥 Clear the backend session cookie before signing out of Firebase
       await fetch(`${API_BASE_URL}/auth/session-logout`, {
         method: 'POST',
         credentials: 'include',
       });
-      
-      // Sign out from Firebase so the app truly forgets them
+      await AsyncStorage.removeItem('@auth_token');
       await signOut(auth);
     } catch (error) {
       console.error("Sign out error:", error);
@@ -170,6 +170,7 @@ export default function App() {
     setIsLoggedIn(false);
     setShowLanding(true);
     setShowRegister(false);
+    setIdToken(null);
   };
 
   const handleGetStarted = () => {
@@ -181,7 +182,6 @@ export default function App() {
     setShowRegister(false);
   };
 
-  // 🔄 SHOW LOADING SCREEN WHILE CHECKING FIREBASE AUTH STATE
   if (isCheckingAuth) {
     return (
       <SafeAreaView style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#FFF' }}>
@@ -222,10 +222,16 @@ export default function App() {
     );
   }
 
+  // 🔥 PASS THE TOKEN DOWN TO YOUR APPS SO THEY CAN USE IT FOR API CALLS
+  const commonProps = {
+    onLogout: handleLogout,
+    idToken: idToken, // Pass this to StudentApp, TeacherApp, AdminApp
+  };
+
   if (currentUser?.role === 'teacher') {
     return (
       <TeacherApp
-        onLogout={handleLogout}
+        {...commonProps}
         currentTeacher={{
           teacherId: currentUser.teacherId || currentUser.id,
           authUid: currentUser.authUid || null,
@@ -242,7 +248,7 @@ export default function App() {
   if (currentUser?.role === 'student') {
     return (
       <StudentApp
-        onLogout={handleLogout}
+        {...commonProps}
         currentStudent={{
           studentId: currentUser.studentId || currentUser.id,
           authUid: currentUser.authUid || null,
@@ -259,7 +265,7 @@ export default function App() {
   if (currentUser?.role === 'admin') {
     return (
       <AdminApp
-        onLogout={handleLogout}
+        {...commonProps}
         currentAdmin={{
           adminId: currentUser.adminId || currentUser.id,
           authUid: currentUser.authUid || null,
