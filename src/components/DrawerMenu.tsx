@@ -18,9 +18,21 @@ import {
   View,
   ViewStyle,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context'; // ✅ IMPORT ADDED
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { auth } from '../../firebaseConfig';
+
+// 🔥 Shared apiFetch — attaches a fresh Firebase Bearer token automatically
+// and retries once on 401. Used here specifically for the signed-URL avatar
+// refresh, mirroring the teacher-side drawer. The rest of this file's calls
+// (change email/password, logout, upload grade) keep using the plain
+// credentials-based fetch below since they already work against session
+// cookies and don't need to change.
+import { apiFetch as sharedApiFetch } from '../services/api';
+import {
+  getCachedUserImageUrl,
+  setCachedUserImageUrl,
+} from '../services/userImageUrlCache';
 
 const apiFetch = (url: string, options: any = {}) =>
   fetch(url, {
@@ -54,6 +66,7 @@ interface DrawerMenuProps {
   userName?: string;
   userEmail?: string;
   userAvatar?: any;
+  userAvatarStoragePath?: string | null; // 👈 ADDED: enables cached signed-URL refresh
   userId: string;
   userRole: 'student' | 'teacher' | 'admin';
   apiBaseUrl: string;
@@ -66,6 +79,41 @@ interface DrawerMenuProps {
 }
 
 const DEFAULT_AVATAR = require('../../assets/images/default_profile.png');
+
+// ---- Cache-aware signed-URL refresh for the drawer avatar. ----
+// Mirrors the teacher-side pattern: check the cache first, only hit the
+// network when the cached signed URL is missing or expired.
+const refreshUserImageUrl = async (
+  entityId: string,
+  storagePath?: string | null
+): Promise<string | null> => {
+  if (!storagePath) return null;
+
+  const cached = getCachedUserImageUrl(entityId, storagePath);
+  if (cached) return cached;
+
+  try {
+    const response = await sharedApiFetch('/storage/user-image-signed-url', {
+      method: 'POST',
+      body: JSON.stringify({ storagePath }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data?.error || 'Unable to refresh user image.');
+    }
+
+    if (data?.url) {
+      setCachedUserImageUrl(entityId, storagePath, data.url);
+      return data.url;
+    }
+
+    return null;
+  } catch {
+    return null;
+  }
+};
 
 const normalizeImageSource = (img: any) => {
   if (!img) return DEFAULT_AVATAR;
@@ -164,6 +212,7 @@ const DrawerMenu = ({
   userName = 'Student',
   userEmail = '',
   userAvatar,
+  userAvatarStoragePath, // 👈 ADDED
   userId,
   userRole,
   apiBaseUrl,
@@ -175,7 +224,7 @@ const DrawerMenu = ({
   setIsLoggedIn,
 }: DrawerMenuProps) => {
   const { width } = useWindowDimensions();
-  const insets = useSafeAreaInsets(); // ✅ GET SAFE AREA INSETS
+  const insets = useSafeAreaInsets();
 
   const [contentHeight, setContentHeight] = useState(0);
   const [scrollViewHeight, setScrollViewHeight] = useState(0);
@@ -194,9 +243,30 @@ const DrawerMenu = ({
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
 
+  // 👇 State for the cached/refreshed avatar signed URL
+  const [refreshedAvatarUrl, setRefreshedAvatarUrl] = useState<string | null>(null);
+
   useEffect(() => {
     setEmail(userEmail || '');
   }, [userEmail]);
+
+  // 👇 Fetch (and periodically refresh) the signed URL for the drawer avatar
+  useEffect(() => {
+    let isMounted = true;
+    const fetchAvatar = async () => {
+      const url = await refreshUserImageUrl(userId, userAvatarStoragePath);
+      if (isMounted && url) {
+        setRefreshedAvatarUrl(url);
+      }
+    };
+    fetchAvatar();
+    // Refresh every 5 minutes to keep the signed URL valid if the drawer stays open
+    const interval = setInterval(fetchAvatar, 5 * 60 * 1000);
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, [userId, userAvatarStoragePath]);
 
   const isMobile = width < 768;
   const isTablet = width >= 768 && width < 1024;
@@ -421,12 +491,16 @@ const DrawerMenu = ({
     }
   };
 
+  // 👇 Prefer the freshly-refreshed signed URL; fall back to whatever was passed in
+  const finalAvatarSource = refreshedAvatarUrl
+    ? { uri: refreshedAvatarUrl }
+    : normalizeImageSource(userAvatar);
+
   return (
     <View 
       style={[
         styles.drawerContainer, 
         { width: drawerWidth },
-        // ✅ APPLY SAFE AREA INSETS + EXISTING PADDING (25) ON SMALL SCREENS
         isMobile && {
           paddingTop: insets.top + 25,
           paddingBottom: insets.bottom + 25,
@@ -436,7 +510,7 @@ const DrawerMenu = ({
       ]}
     > 
       <Pressable style={styles.profileSection} onPress={onAvatarPress}>
-        <Image source={normalizeImageSource(userAvatar)} style={styles.avatar} resizeMode="cover" />
+        <Image source={finalAvatarSource} style={styles.avatar} resizeMode="cover" />
         <View style={{ flex: 1 }}>
           <Text style={styles.userName}>{userName}</Text>
           {!!userEmail && <Text style={styles.userEmail}>{userEmail}</Text>}

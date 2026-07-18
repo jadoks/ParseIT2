@@ -31,6 +31,10 @@ import {
   setCachedUserImageUrl,
 } from '../services/userImageUrlCache';
 
+// ✅ Reuses the same Toast component used in the Admin ManageStudent screen /
+// TeacherDashboard, instead of relying on native Alert popups.
+import Toast from '../Final_Admin_Components/Toast';
+
 type CropType = 'profile' | 'banner';
 
 interface ProfileProps {
@@ -71,6 +75,8 @@ type AnswerDropdownState =
       y: number;
     }
   | null;
+
+type ToastType = 'success' | 'error' | 'info';
 
 // ---- Cache-aware signed-URL refresh for the teacher's own profile/banner images. ----
 const refreshUserImageUrl = async (
@@ -185,6 +191,19 @@ const Profile: React.FC<ProfileProps> = ({
   const [cropImageSize, setCropImageSize] = useState({ width: 1, height: 1 });
   const [cropScale, setCropScale] = useState(1);
   const [cropOffset, setCropOffset] = useState({ x: 0, y: 0 });
+
+  // ✅ Toast state — replaces any native Alert usage with the shared Toast UI.
+  const [toast, setToast] = useState<{
+    visible: boolean;
+    message: string;
+    type: ToastType;
+  }>({ visible: false, message: '', type: 'success' });
+
+  const showToast = (message: string, type: ToastType = 'success') => {
+    setToast({ visible: true, message, type });
+  };
+
+  const hideToast = () => setToast((prev) => ({ ...prev, visible: false }));
 
   const editBtnRef = useRef<View | null>(null);
   const animatedPan = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
@@ -453,6 +472,7 @@ const Profile: React.FC<ProfileProps> = ({
       setCropModal({ uri: normalized.uri, type });
     } catch (error) {
       console.log('Image prep error:', error);
+      showToast('Unable to prepare the selected image.', 'error');
       if (type === 'profile') {
         onChangeProfileImage({ uri });
       } else {
@@ -473,13 +493,18 @@ const Profile: React.FC<ProfileProps> = ({
       });
       if (result.canceled) return;
       const selected = result.assets?.[0];
-      if (!selected?.uri) return;
+      if (!selected?.uri) {
+        showToast('No image was selected.', 'error');
+        return;
+      }
       if (selected.size && selected.size > MAX_IMAGE_SIZE_BYTES) {
+        showToast(`Image must be smaller than ${MAX_IMAGE_SIZE_MB}MB.`, 'error');
         return;
       }
       await openCropModal(selected.uri, type);
     } catch (error) {
       console.log('Picker error:', error);
+      showToast('Unable to pick an image.', 'error');
     } finally {
       setTimeout(() => {
         setIsPickingImage(false);
@@ -553,13 +578,16 @@ const Profile: React.FC<ProfileProps> = ({
       );
       if (cropModal.type === 'profile') {
         onChangeProfileImage({ uri: result.uri });
+        showToast('Profile photo updated successfully.', 'success');
       } else {
         onChangeBannerImage({ uri: result.uri });
+        showToast('Banner photo updated successfully.', 'success');
       }
       setCropModal(null);
       resetCropState();
     } catch (error) {
       console.log('Crop error:', error);
+      showToast('Failed to update the image. Please try again.', 'error');
     } finally {
       setIsCroppingImage(false);
     }
@@ -587,9 +615,23 @@ const Profile: React.FC<ProfileProps> = ({
     setAnswersModalVisible(true);
   };
 
+  const handleCreatePost = (query: string) => {
+    const trimmed = query.trim();
+    if (!trimmed) {
+      showToast('Please write a question or post first.', 'error');
+      return;
+    }
+    onCreatePost?.(trimmed);
+    setQueryModalVisible(false);
+    showToast('Post created successfully.', 'success');
+  };
+
   const handlePostAnswer = () => {
     const trimmed = answerText.trim();
-    if (!trimmed || !selectedPostId) return;
+    if (!trimmed || !selectedPostId) {
+      if (!trimmed) showToast('Please write an answer first.', 'error');
+      return;
+    }
     const newAnswer: CommunityAnswer = {
       id: `answer-${Date.now()}`,
       userName: safeUserName,
@@ -606,6 +648,7 @@ const Profile: React.FC<ProfileProps> = ({
     );
     onAddAnswer?.(selectedPostId, trimmed);
     setAnswerText('');
+    showToast('Answer posted successfully.', 'success');
   };
 
   const handleEditPost = (post: CommunityPost) => {
@@ -617,7 +660,10 @@ const Profile: React.FC<ProfileProps> = ({
 
   const handleSaveEditedPost = () => {
     const trimmed = editPostText.trim();
-    if (!trimmed || !editingPostId) return;
+    if (!trimmed || !editingPostId) {
+      if (!trimmed) showToast('Post cannot be empty.', 'error');
+      return;
+    }
     setLocalPosts((prev) =>
       prev.map((post) =>
         post.id === editingPostId ? { ...post, content: trimmed } : post
@@ -627,6 +673,7 @@ const Profile: React.FC<ProfileProps> = ({
     setEditingPostId(null);
     setEditPostText('');
     setEditPostModalVisible(false);
+    showToast('Post updated successfully.', 'success');
   };
 
   const handleCloseEditPostModal = () => {
@@ -650,6 +697,7 @@ const Profile: React.FC<ProfileProps> = ({
     }
     setPostToDelete(null);
     setDeletePostConfirmVisible(false);
+    showToast('Post deleted successfully.', 'success');
   };
 
   const cancelDeletePost = () => {
@@ -670,7 +718,10 @@ const Profile: React.FC<ProfileProps> = ({
 
   const handleSaveEditedAnswer = () => {
     const trimmed = editAnswerText.trim();
-    if (!trimmed || !editingAnswerId || !selectedPostId) return;
+    if (!trimmed || !editingAnswerId || !selectedPostId) {
+      if (!trimmed) showToast('Answer cannot be empty.', 'error');
+      return;
+    }
     setLocalPosts((prev) =>
       prev.map((post) =>
         post.id === selectedPostId
@@ -691,6 +742,7 @@ const Profile: React.FC<ProfileProps> = ({
     setEditAnswerText('');
     closeAnswerDropdown();
     reopenAnswersModal();
+    showToast('Answer updated successfully.', 'success');
   };
 
   const handleCloseEditAnswerModal = () => {
@@ -728,6 +780,7 @@ const Profile: React.FC<ProfileProps> = ({
     setDeleteAnswerConfirmVisible(false);
     closeAnswerDropdown();
     reopenAnswersModal();
+    showToast('Answer deleted successfully.', 'success');
   };
 
   const cancelDeleteAnswer = () => {
@@ -745,6 +798,7 @@ const Profile: React.FC<ProfileProps> = ({
       ...prev,
       [selectedPostId]: [...(prev[selectedPostId] || []), answerId],
     }));
+    showToast('Answer hidden.', 'info');
   };
 
   const renderProfileImage = (source: ImageSourcePropType | undefined, style: any) => {
@@ -1702,8 +1756,26 @@ const Profile: React.FC<ProfileProps> = ({
         <PostQueryModal
           visible={queryModalVisible}
           onClose={() => setQueryModalVisible(false)}
-          onPost={onCreatePost}
+          onPost={handleCreatePost}
         />
+
+        {/* Toast — portal-based so it renders above all other Modals (Crop/Answers/Edit/Delete) */}
+        <Modal
+          visible={toast.visible}
+          transparent
+          animationType="fade"
+          onRequestClose={hideToast}
+          statusBarTranslucent
+        >
+          <View style={styles.toastPortal} pointerEvents="box-none">
+            <Toast
+              visible={toast.visible}
+              message={toast.message}
+              type={toast.type}
+              onHide={hideToast}
+            />
+          </View>
+        </Modal>
       </View>
     </TouchableWithoutFeedback>
   );
@@ -2192,6 +2264,11 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.18,
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 4 },
+  },
+
+  // ✅ Toast portal — lets touches pass through to whatever's behind, except the toast itself
+  toastPortal: {
+    ...StyleSheet.absoluteFillObject,
   },
 });
 

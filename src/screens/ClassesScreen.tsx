@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import {
+  ActivityIndicator,
   Modal,
   ScrollView,
   StyleSheet,
@@ -14,6 +15,11 @@ import Ionicons from 'react-native-vector-icons/Ionicons';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import CourseCard, { CourseCardCourse } from '../components/CourseCard';
 
+// ✅ Reuses the same Toast component used across the app (Admin/Teacher
+// screens, Community, Dashboard) for join-class feedback instead of
+// silently succeeding/failing with no feedback at all.
+import Toast from '../Final_Admin_Components/Toast'; // adjust path if your folder layout differs
+
 interface ClassesScreenProps {
   courses?: CourseCardCourse[];
   searchQuery?: string; // 👈 ADDED: Global search query from Header
@@ -21,7 +27,7 @@ interface ClassesScreenProps {
   onAssignmentPress?: (course: CourseCardCourse) => void;
   onMaterialsPress?: (course: CourseCardCourse) => void;
   onGeneratePress?: (course: CourseCardCourse) => void;
-  onJoinClass?: (classCode: string) => void;
+  onJoinClass?: (classCode: string) => void | Promise<void> | Promise<any> | any;
   onLeaveCourse?: (course: CourseCardCourse) => void;
   completedActivityScores?: Record<
     string,
@@ -35,6 +41,8 @@ interface ClassesScreenProps {
     }
   >;
 }
+
+type ToastType = 'success' | 'error' | 'info';
 
 const DEFAULT_COURSES: CourseCardCourse[] = [
   { id: '1', name: 'Web Development', code: 'CS-101', instructor: 'Prof. John Smith', semester: '2nd Semester', schoolYear: '2025-2026', section: '3A - Python', description: 'Learn the fundamentals of web development including HTML, CSS, JavaScript, and introductory React concepts.', materials: [{ id: 'm1', title: 'HTML Basics Tutorial', type: 'video', uploadedDate: '2026-02-01' }, { id: 'm2', title: 'CSS Styling Guide', type: 'pdf', uploadedDate: '2026-02-03' }, { id: 'm3', title: 'JavaScript Fundamentals', type: 'video', uploadedDate: '2026-02-05' }, { id: 'm4', title: 'React Components Introduction', type: 'document', uploadedDate: '2026-02-07' }], assignments: [{ id: 'a1', title: 'React Fundamentals Quiz', dueDate: '2026-02-15', status: 'graded', points: 8, maxPoints: 20, topic: 'React Fundamentals', materialIds: ['m4'] }, { id: 'a2', title: 'Build a Simple Website', dueDate: '2026-02-20', status: 'graded', points: 42, maxPoints: 50, topic: 'HTML and CSS Layout', materialIds: ['m1', 'm2'] }] },
@@ -59,9 +67,23 @@ const ClassesScreen = ({
   const { width } = useWindowDimensions();
   const [joinModalVisible, setJoinModalVisible] = useState(false);
   const [classCode, setClassCode] = useState('');
+  const [isJoiningClass, setIsJoiningClass] = useState(false);
   const isMobile = width < 768;
   const isTablet = width >= 768 && width < 1200;
   const pagePadding = isMobile ? 14 : isTablet ? 20 : 20;
+
+  // ✅ Toast state — same shape/usage as Community and Dashboard.
+  const [toast, setToast] = useState<{
+    visible: boolean;
+    message: string;
+    type: ToastType;
+  }>({ visible: false, message: '', type: 'success' });
+
+  const showToast = (message: string, type: ToastType = 'success') => {
+    setToast({ visible: true, message, type });
+  };
+
+  const hideToast = () => setToast((prev) => ({ ...prev, visible: false }));
 
   // 👇 FILTER COURSES BASED ON SEARCH QUERY
   const filteredCourses = useMemo(() => {
@@ -74,15 +96,48 @@ const ClassesScreen = ({
       const sectionMatch = course.section?.toLowerCase().includes(lowerQuery);
       return nameMatch || codeMatch || instructorMatch || sectionMatch;
     });
-    
+
   }, [courses, searchQuery]);
 
-  const handleJoinClass = () => {
-    const trimmedCode = classCode.trim();
-    if (!trimmedCode) return;
-    onJoinClass?.(trimmedCode);
-    setClassCode('');
-    setJoinModalVisible(false);
+  const handleJoinClass = async () => {
+    if (isJoiningClass) return;
+
+    const trimmedCode = classCode.trim().toUpperCase();
+
+    if (!trimmedCode) {
+      showToast('Please enter a class code.', 'error');
+      return;
+    }
+
+    if (!onJoinClass) {
+      showToast('Join class action is not available.', 'error');
+      return;
+    }
+
+    try {
+      setIsJoiningClass(true);
+
+      const result: any = await onJoinClass(trimmedCode);
+
+      if (result && result.success === false) {
+        throw new Error(
+          result.error ||
+            result.message ||
+            'Failed to join class. Please check the class code.'
+        );
+      }
+
+      setClassCode('');
+      setJoinModalVisible(false);
+      showToast(result?.message || 'Class joined successfully.', 'success');
+    } catch (error: any) {
+      showToast(
+        error?.message || 'Failed to join class. Please check the class code.',
+        'error'
+      );
+    } finally {
+      setIsJoiningClass(false);
+    }
   };
 
   return (
@@ -152,9 +207,19 @@ const ClassesScreen = ({
         visible={joinModalVisible}
         transparent
         animationType="fade"
-        onRequestClose={() => setJoinModalVisible(false)}
+        onRequestClose={() => {
+          if (!isJoiningClass) {
+            setJoinModalVisible(false);
+          }
+        }}
       >
-        <TouchableWithoutFeedback onPress={() => setJoinModalVisible(false)}>
+        <TouchableWithoutFeedback
+          onPress={() => {
+            if (!isJoiningClass) {
+              setJoinModalVisible(false);
+            }
+          }}
+        >
           <View style={styles.modalOverlay}>
             <TouchableWithoutFeedback>
               <View
@@ -181,7 +246,7 @@ const ClassesScreen = ({
                 <Text style={styles.inputLabel}>Class Code</Text>
                 <TextInput
                   value={classCode}
-                  onChangeText={setClassCode}
+                  onChangeText={(value) => setClassCode(value.toUpperCase())}
                   placeholder="Enter class code"
                   placeholderTextColor="#999"
                   autoCapitalize="characters"
@@ -190,23 +255,53 @@ const ClassesScreen = ({
                 />
                 <View style={styles.joinDropdownActions}>
                   <TouchableOpacity
-                    style={styles.cancelButton}
+                    style={[styles.cancelButton, isJoiningClass && styles.joinDisabledButton]}
+                    disabled={isJoiningClass}
                     onPress={() => { setClassCode(''); setJoinModalVisible(false); }}
                   >
                     <Text style={styles.cancelButtonText}>Cancel</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
-                    style={[styles.confirmButton, !classCode.trim() && styles.confirmButtonDisabled]}
+                    style={[
+                      styles.confirmButton,
+                      (!classCode.trim() || isJoiningClass) && styles.confirmButtonDisabled,
+                    ]}
                     onPress={handleJoinClass}
-                    disabled={!classCode.trim()}
+                    disabled={!classCode.trim() || isJoiningClass}
                   >
-                    <Text style={styles.confirmButtonText}>Join Now</Text>
+                    {isJoiningClass ? (
+                      <View style={styles.joinLoadingContent}>
+                        <ActivityIndicator size="small" color="#FFFFFF" />
+                        <Text style={styles.confirmButtonText}>Joining...</Text>
+                      </View>
+                    ) : (
+                      <Text style={styles.confirmButtonText}>Join Now</Text>
+                    )}
                   </TouchableOpacity>
                 </View>
               </View>
             </TouchableWithoutFeedback>
           </View>
         </TouchableWithoutFeedback>
+      </Modal>
+
+      {/* Toast — portal-based, matches Community/Dashboard so join-class
+          success/error feedback looks and behaves the same way everywhere. */}
+      <Modal
+        visible={toast.visible}
+        transparent
+        animationType="fade"
+        onRequestClose={hideToast}
+        statusBarTranslucent
+      >
+        <View style={styles.toastPortal} pointerEvents="box-none">
+          <Toast
+            visible={toast.visible}
+            message={toast.message}
+            type={toast.type}
+            onHide={hideToast}
+          />
+        </View>
       </Modal>
     </>
   );
@@ -242,9 +337,17 @@ const styles = StyleSheet.create({
   joinDropdownActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 10 },
   cancelButton: { paddingHorizontal: 14, paddingVertical: 11, borderRadius: 12, backgroundColor: '#F3F4F6' },
   cancelButtonText: { color: '#374151', fontWeight: '600', fontSize: 13 },
+  joinDisabledButton: { opacity: 0.65 },
+  joinLoadingContent: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
   confirmButton: { paddingHorizontal: 16, paddingVertical: 11, borderRadius: 12, backgroundColor: '#D32F2F' },
   confirmButtonDisabled: { backgroundColor: '#F0A7A7' },
   confirmButtonText: { color: '#FFFFFF', fontWeight: '700', fontSize: 13 },
+
+  // ✅ Toast portal — matches Community/Dashboard; lets touches pass through
+  // to whatever's behind, except the toast itself.
+  toastPortal: {
+    ...StyleSheet.absoluteFillObject,
+  },
 });
 
 export default ClassesScreen;

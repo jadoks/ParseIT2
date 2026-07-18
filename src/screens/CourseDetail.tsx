@@ -144,15 +144,14 @@ function isImageFile(fileName?: string, fileType?: string): boolean {
   if (!fileName && !fileType) return false;
   const ext = fileName?.split('.').pop()?.toLowerCase() || '';
   const mime = (fileType || '').toLowerCase();
-  return ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'].includes(ext) || 
-         mime.startsWith('image/');
+  return ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'].includes(ext) ||
+    mime.startsWith('image/');
 }
 
 // ✅ HELPER: Get Viewer URL for Documents
 function getViewerUrl(fileUrl: string, fileName?: string, fileType?: string,  pdfUrl?: string | null): string {
   // For images, return direct URL
   if (isImageFile(fileName, fileType)) return fileUrl;
-  
   // For documents, use Google Docs Viewer
   return `https://docs.google.com/gview?embedded=true&url=${encodeURIComponent(fileUrl)}`;
 }
@@ -162,9 +161,6 @@ function getGoogleDocsViewerUrl(fileUrl: string) {
 }
 
 // ✅ NEW: Best-effort storagePath resolver from a Firebase/GCS download URL.
-// Used as a fallback whenever an object (e.g. syllabus) doesn't already carry
-// an explicit storagePath/bucketPath from the API, so the "Tap to refresh"
-// bar in InlineMaterialViewer still has something to refresh against.
 function resolveStoragePathFromUrl(fileUrl?: string | null): string | null {
   if (!fileUrl) return null;
   try {
@@ -183,15 +179,7 @@ function resolveStoragePathFromUrl(fileUrl?: string | null): string | null {
   return null;
 }
 
-// ✅ UPDATED: InlineMaterialViewer now:
-//   1. Proactively fetches a fresh signed URL as soon as a file is opened
-//      (works for BOTH teacher and student files, since it keys off
-//      storagePath/bucketPath rather than any "source" flag).
-//   2. Supports manual refresh for DOCUMENTS too (not just images), since an
-//      expired link inside the Google Docs iframe/WebView viewer usually
-//      won't fire a load-error event — it just silently shows a broken or
-//      blank page. A "Preview looks broken? Tap to refresh" bar is shown
-//      above the document viewer whenever a refreshable path is available.
+// ✅ UPDATED: InlineMaterialViewer
 function InlineMaterialViewer({
   fileUrl,
   height,
@@ -213,13 +201,9 @@ function InlineMaterialViewer({
   const [hasError, setHasError] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [hasAutoRefreshed, setHasAutoRefreshed] = useState(false);
-
   const canRefresh = !!(storagePath || bucketPath);
-  // Identify "which file" independent of the (possibly stale) URL so the
-  // effects below correctly reset/retrigger when a new file is opened.
   const identity = `${fileName || ""}|${storagePath || bucketPath || ""}`;
 
-  // Reset state whenever a new file is opened
   useEffect(() => {
     setResolvedUrl(fileUrl);
     setHasError(false);
@@ -229,13 +213,11 @@ function InlineMaterialViewer({
 
   const tryRefreshUrl = async (silent = false) => {
     const path = storagePath || bucketPath;
-
     if (!path) {
       if (!silent) setHasError(true);
       return;
     }
     if (isRefreshing) return;
-
     try {
       setIsRefreshing(true);
       const response = await apiFetch(`${API_BASE_URL}/storage/signed-url`, {
@@ -246,9 +228,7 @@ function InlineMaterialViewer({
           classId,
         }),
       });
-
       const data = await response.json();
-
       if (response.ok && data?.url) {
         setResolvedUrl(data.url);
         setHasError(false);
@@ -262,9 +242,6 @@ function InlineMaterialViewer({
     }
   };
 
-  // ✅ Proactively refresh the URL the moment a file is opened for preview,
-  // rather than waiting for a load error. This catches links that already
-  // expired before the user even tapped "Open".
   useEffect(() => {
     if (canRefresh && !hasAutoRefreshed) {
       setHasAutoRefreshed(true);
@@ -274,7 +251,6 @@ function InlineMaterialViewer({
   }, [identity, hasAutoRefreshed, canRefresh]);
 
   const displayUrl = getViewerUrl(resolvedUrl, fileName, fileType);
-
   const RefreshBar = () =>
     canRefresh ? (
       <TouchableOpacity
@@ -304,7 +280,6 @@ function InlineMaterialViewer({
         </View>
       );
     }
-
     if (hasError || !resolvedUrl) {
       return (
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 20, backgroundColor: '#f0f0f0' }}>
@@ -321,7 +296,6 @@ function InlineMaterialViewer({
         </View>
       );
     }
-
     if (Platform.OS === 'web') {
       return (
         <View style={{ flex: 1, width: '100%', height, alignItems: 'center', justifyContent: 'center', backgroundColor: '#f0f0f0' }}>
@@ -337,7 +311,6 @@ function InlineMaterialViewer({
         </View>
       );
     }
-
     return (
       <View style={{ flex: 1, width: '100%', height, alignItems: 'center', justifyContent: 'center', backgroundColor: '#f0f0f0' }}>
         <Image
@@ -438,9 +411,6 @@ const inlineViewerStyles = StyleSheet.create({
     padding: 24, gap: 12,
   },
   noWebViewText: { color: "#888", textAlign: "center", fontSize: 13, lineHeight: 20 },
-  // ✅ NEW: refresh bar shown above document previews since expired links
-  // inside the Google Docs viewer iframe/WebView don't reliably trigger an
-  // error event we can detect programmatically.
   refreshBar: {
     height: 34,
     flexDirection: "row",
@@ -529,9 +499,16 @@ export interface CourseDetailData {
 interface CourseDetailProps {
   course?: AssignmentCourse | null;
   onBack?: () => void;
-  initialTab?: "materials" | "assignments" | "modules"; 
+  initialTab?: "materials" | "assignments" | "modules";
   autoOpenAssignmentId?: string | null;
   onConsumedAutoOpenAssignment?: () => void;
+  // ✅ NEW: allows a parent (e.g. Assignments screen's "View" on a Related
+  // Course Resource) to request that a specific Module Lesson's detail
+  // modal be auto-opened as soon as this course is displayed.
+  autoOpenLessonId?: string | null;
+  // ✅ NEW: called once the auto-open request above has been handled, so
+  // the parent can clear its state and avoid re-triggering on re-render.
+  onConsumedAutoOpenLesson?: () => void;
   onGenerateActivity?: (assignment: AssignmentItem) => void;
   onUpdateAssignmentStatus?: (assignmentId: string, status: AssignmentItem["status"]) => void;
   onRefreshSubmissions?: () => Promise<void> | void;
@@ -606,10 +583,10 @@ const renderFormattedText = (text: string, baseStyle: any) => {
     const boldCount = boldMarkers.length;
     const hasInvalidBold =
       boldCount % 2 !== 0 ||
-      /^\*+\s*\*/.test(contentToParse) ||
-      /\*\*\*$/.test(contentToParse);
+      /^\*\*\s/.test(contentToParse) ||
+      /\*\*$/.test(contentToParse);
     if (hasInvalidBold) {
-      const cleanedText = contentToParse.replace(/\*/g, "");
+      const cleanedText = contentToParse.replace(/\*\*/g, "");
       return (
         <View key={lineIndex} style={{ flexDirection: "row", marginBottom: 6 }}>
           {isBullet && (
@@ -647,6 +624,8 @@ const CourseDetail = ({
   onBack,
   autoOpenAssignmentId = null,
   onConsumedAutoOpenAssignment,
+  autoOpenLessonId = null,
+  onConsumedAutoOpenLesson,
   onGenerateActivity,
   onUpdateAssignmentStatus,
   onRefreshSubmissions,
@@ -678,7 +657,7 @@ const CourseDetail = ({
   };
 
   const { width, height } = useWindowDimensions();
-  const windowHeight = height; 
+  const windowHeight = height;
   const isSmallPhone = width < 360;
   const isLargeScreen = width >= 768;
   const safeCourse = course ?? EMPTY_COURSE;
@@ -707,7 +686,6 @@ const CourseDetail = ({
   
   // ✅ NEW: Inline Preview State
   const [previewFile, setPreviewFile] = useState<AssignmentFileUpload | null>(null);
-
   const [gameAttempts, setGameAttempts] = useState<Record<string, number>>({});
   const [isLoadingAttempts, setIsLoadingAttempts] = useState<Record<string, boolean>>({});
   
@@ -728,6 +706,10 @@ const CourseDetail = ({
   
   const insets = useSafeAreaInsets();
   const autoHandledRef = useRef<string | null>(null);
+  // ✅ NEW: guards autoOpenLessonId the same way autoHandledRef guards
+  // autoOpenAssignmentId — prevents re-triggering the lesson modal on every
+  // re-render once a given id has already been auto-opened.
+  const autoLessonHandledRef = useRef<string | null>(null);
 
   useEffect(() => {
     setActiveTab(initialTab);
@@ -989,17 +971,11 @@ const CourseDetail = ({
       }
       return;
     }
-
     // 2. CHECK IF IT'S A FILE -> INLINE PREVIEW
-    // NOTE: we no longer require file.fileUrl to already be present/fresh —
-    // as long as we have a storagePath/bucketPath, InlineMaterialViewer will
-    // fetch (or refresh) a working URL itself. We only block if there's
-    // truly nothing to go on.
     if (!file.fileUrl && !file.storagePath && !file.bucketPath) {
       Alert.alert('No File', emptyMessage);
       return;
     }
-
     // Set preview state to open the modal
     setPreviewFile(file);
   };
@@ -1008,15 +984,12 @@ const CourseDetail = ({
     const storagePath = (selectedMaterial as any)?.storagePath;
     const firebaseUrl = getMaterialUrl(selectedMaterial);
     const resolvedStoragePath = storagePath || resolveStoragePathFromUrl(firebaseUrl);
-
     if (!resolvedStoragePath && !firebaseUrl) {
       Alert.alert("No file", "This material has no file to download.");
       return;
     }
-
     const fileName = selectedMaterial?.fileName || selectedMaterial?.title || "material";
     const mimeType = (selectedMaterial as any)?.fileType || getMimeFromFileName(fileName);
-    
     // Simplified download logic for brevity - reusing existing pattern
     Alert.alert("Download", "Download started..."); 
     // In real implementation, call downloadFileToDevice here
@@ -1127,7 +1100,7 @@ const CourseDetail = ({
     try {
       setIsUploadingFile(true);
       const res = await DocumentPicker.getDocumentAsync({
-        type: "*/*",
+        type: "/",
         copyToCacheDirectory: true,
         base64: Platform.OS === "web",
       });
@@ -1135,7 +1108,6 @@ const CourseDetail = ({
         const file = res.assets[0];
         const fileBase64 = await readPickedFileBase64(file);
         if (!fileBase64) throw new Error("Unable to read selected file.");
-        
         const uploadResponse = await apiFetch(`${API_BASE_URL}/upload-class-file`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -1147,10 +1119,8 @@ const CourseDetail = ({
             kind: "submission",
           }),
         });
-        
         const uploadData = await uploadResponse.json();
         if (!uploadResponse.ok) throw new Error(uploadData?.error || "Failed to upload file.");
-        
         onAddFile(selectedAssignment.id, {
           id: `f${Date.now()}`,
           fileName: uploadData?.data?.fileName || file.name || "file",
@@ -1223,50 +1193,47 @@ const CourseDetail = ({
   };
 
   const getTeacherAssignmentFiles = (assignment?: AssignmentItem | null) => {
-  if (!assignment) return [];
-
-  const mappedFiles = (assignment.files || [])
-    .filter((file: any) => {
-      // ✅ Exclude student submissions — only teacher-attached files belong here
-      const isStudentSubmission =
-        file.source === 'student' ||
-        file.submissionId ||
-        file.isSubmitted === true ||
-        (file.id && file.id.startsWith('f'));
-      return !isStudentSubmission;
-    })
-    .map((file: any, index) => ({
-      id: file.id || `teacher-file-${assignment.id}-${index}`,
-      fileName: file.fileName || file.name || "Assignment attachment",
-      fileSize: file.fileSize || "Teacher file",
-      uploadedDate: file.uploadedDate || file.uploadedAt || "Attached by teacher",
-      fileUrl: file.fileUrl || file.fileUri || file.uri || file.downloadUrl || null,
-      fileType: file.fileType,
-      storagePath: file.storagePath || null,   // ✅ pass through, matches Assignments.tsx
-      bucketPath: file.bucketPath || null,     // ✅ pass through, matches Assignments.tsx
-      source: "teacher" as const,
-    }));
-
-  const topLevelUrl = getAssignmentFileUrl(assignment);
-  if (topLevelUrl) {
-    const alreadyIncluded = mappedFiles.some((f) => f.fileUrl === topLevelUrl);
-    if (!alreadyIncluded) {
-      mappedFiles.unshift({
-        id: `teacher-file-${assignment.id}-main`,
-        fileName: getAssignmentFileName(assignment),
-        fileSize: "Teacher file",
-        uploadedDate: "Attached by teacher",
-        fileUrl: topLevelUrl,
-        fileType: (assignment as any)?.fileType || (assignment as any)?.attachmentType,
-        storagePath: (assignment as any)?.storagePath || null,  // ✅ pass through
-        bucketPath: (assignment as any)?.bucketPath || null,    // ✅ pass through
+    if (!assignment) return [];
+    const mappedFiles = (assignment.files || [])
+      .filter((file: any) => {
+        // ✅ Exclude student submissions — only teacher-attached files belong here
+        const isStudentSubmission =
+          file.source === 'student' ||
+          file.submissionId ||
+          file.isSubmitted === true ||
+          (file.id && file.id.startsWith('f'));
+        return !isStudentSubmission;
+      })
+      .map((file: any, index) => ({
+        id: file.id || `teacher-file-${assignment.id}-${index}`,
+        fileName: file.fileName || file.name || "Assignment attachment",
+        fileSize: file.fileSize || "Teacher file",
+        uploadedDate: file.uploadedDate || file.uploadedAt || "Attached by teacher",
+        fileUrl: file.fileUrl || file.fileUri || file.uri || file.downloadUrl || null,
+        fileType: file.fileType,
+        storagePath: file.storagePath || null,   // ✅ pass through, matches Assignments.tsx
+        bucketPath: file.bucketPath || null,     // ✅ pass through, matches Assignments.tsx
         source: "teacher" as const,
-      });
+      }));
+    const topLevelUrl = getAssignmentFileUrl(assignment);
+    if (topLevelUrl) {
+      const alreadyIncluded = mappedFiles.some((f) => f.fileUrl === topLevelUrl);
+      if (!alreadyIncluded) {
+        mappedFiles.unshift({
+          id: `teacher-file-${assignment.id}-main`,
+          fileName: getAssignmentFileName(assignment),
+          fileSize: "Teacher file",
+          uploadedDate: "Attached by teacher",
+          fileUrl: topLevelUrl,
+          fileType: (assignment as any)?.fileType || (assignment as any)?.attachmentType,
+          storagePath: (assignment as any)?.storagePath || null,  // ✅ pass through
+          bucketPath: (assignment as any)?.bucketPath || null,    // ✅ pass through
+          source: "teacher" as const,
+        });
+      }
     }
-  }
-
-  return mappedFiles;
-};
+    return mappedFiles;
+  };
 
   const syncSelectedAssignmentStatus = (status: AssignmentItem["status"]) => {
     if (!selectedAssignment) return;
@@ -1282,31 +1249,25 @@ const CourseDetail = ({
       Alert.alert("Missing student", "Student account information is missing. Please sign in again.");
       return;
     }
-
     const files = assignmentFiles[selectedAssignment.id] || [];
     if (files.length === 0) {
       Alert.alert("No files", "Please upload at least one file or link before submitting.");
       return;
     }
-
     try {
       setIsSubmittingAssignment(true);
       const studentName = `${currentStudent.firstName || ""} ${currentStudent.lastName || ""}`.trim();
-      
       // Separate regular files from links
       const regularFiles = files.filter(file => {
         const isLink = file.fileType === 'text/uri-list' || !!file.linkUrl;
         return !isLink && (!!file.fileUrl || !!file.storagePath);
       });
-
       const linkUrls = files
         .filter(file => (file.fileType === 'text/uri-list' || !!file.linkUrl) && !!file.linkUrl)
         .map(file => file.linkUrl!.trim());
-
       if (regularFiles.length === 0 && linkUrls.length === 0) {
         throw new Error('No valid items were found. Please check your uploads.');
       }
-
       const submissionItems = regularFiles.map(file => ({
         fileName: file.fileName,
         fileUrl: file.fileUrl || null,
@@ -1315,7 +1276,6 @@ const CourseDetail = ({
         storagePath: file.storagePath || null,
         bucketPath: file.bucketPath || null,
       }));
-
       const response = await apiFetch(`${API_BASE_URL}/create-submission`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1332,13 +1292,10 @@ const CourseDetail = ({
           linkUrls: linkUrls.length > 0 ? linkUrls : undefined,
         }),
       });
-
       const data = await response.json();
       if (!response.ok) throw new Error(data?.error || "Failed to submit assignment.");
-      
       syncSelectedAssignmentStatus("submitted");
       await onRefreshSubmissions?.();
-      
       const totalItems = submissionItems.length + (linkUrls.length > 0 ? 1 : 0);
       Alert.alert("Success", `Submitted ${totalItems} item(s) successfully.`);
     } catch (error: any) {
@@ -1462,6 +1419,38 @@ const CourseDetail = ({
     }
   };
 
+  // ✅ NEW: Auto-open a specific Module Lesson's detail modal when requested
+  // by a parent (e.g. tapping "View" on a Related Course Resource inside
+  // the Assignments screen navigates here and asks for this lesson to pop
+  // open automatically). Mirrors the autoOpenAssignmentId effect above.
+  useEffect(() => {
+    if (!autoOpenLessonId) return;
+    if (autoLessonHandledRef.current === autoOpenLessonId) return;
+    
+    const targetMaterial = safeCourse.materials.find((m) => m.id === autoOpenLessonId);
+    
+    if (targetMaterial) {
+      // ✅ SUCCESS: Material found
+      autoLessonHandledRef.current = autoOpenLessonId;
+      
+      // Ensure we are on the modules tab (in case user was on assignments)
+      setActiveTab("modules");
+      
+      // Open the modal
+      handleOpenLessonDetail(targetMaterial);
+      
+      // Notify parent to clear the ID
+      onConsumedAutoOpenLesson?.();
+    } else {
+      // ⚠️ MATERIAL NOT FOUND YET
+      // Do NOT consume the ID yet. The course data might still be loading 
+      // or updating. The effect will re-run when 'safeCourse.materials' changes.
+    }
+    
+    // Dependency array must include safeCourse.materials to catch data loads
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoOpenLessonId, safeCourse.materials]);
+
   const renderMaterialItem = ({
     item,
   }: {
@@ -1571,7 +1560,6 @@ const CourseDetail = ({
   const courseSchoolYear = safeCourse.schoolYear || "";
   const courseCode = safeCourse.code || (safeCourse as any).courseCode || "";
   const classCode = (safeCourse as any).classCode || (safeCourse as any).joinCode || courseCode || "No Code";
-  
   const selectedMaterialUrl = getMaterialUrl(selectedMaterial);
   const selectedMaterialPdfUrl = getMaterialPdfPreviewUrl(selectedMaterial);
   const useInlineViewer = shouldUseInlineViewer(selectedMaterial);
@@ -1788,7 +1776,6 @@ const CourseDetail = ({
                 </View>
               )}
             </View>
-
             {/* Modules List */}
             {isLoadingModules ? (
               <View style={{ padding: 40, alignItems: 'center' }}>
@@ -1923,7 +1910,6 @@ const CourseDetail = ({
               </TouchableOpacity>
             )}
           </View>
-          
           {useInlineViewer && selectedMaterialUrl ? (
             <InlineMaterialViewer
               fileUrl={selectedMaterialUrl}
@@ -1992,10 +1978,6 @@ const CourseDetail = ({
               fileName={currentSyllabus?.fileName}
               fileType={currentSyllabus?.fileType}
               // ✅ UPDATED: fall back to a path derived from the signed URL
-              // whenever the syllabus API response doesn't already include
-              // storagePath/bucketPath, so the "Preview looks broken? Tap to
-              // refresh" bar (already built into InlineMaterialViewer's
-              // document branch) actually has something to refresh with.
               storagePath={
                 currentSyllabus?.storagePath ||
                 resolveStoragePathFromUrl(syllabusViewerUrl)
@@ -2083,14 +2065,12 @@ const CourseDetail = ({
                       </Text>
                     </TouchableOpacity>
                   ) : null}
-                  
                   <View style={{ marginBottom: 16 }}>
                     <Text style={styles.sectionLabel}>Description</Text>
                     <Text style={{ color: '#333', lineHeight: 20 }}>
                       {selectedLesson.description || 'No description available.'}
                     </Text>
                   </View>
-                  
                   {selectedLesson.discussion ? (
                     <View style={{ marginBottom: 16, backgroundColor: '#F9F9F9', padding: 12, borderRadius: 8 }}>
                       <Text style={styles.sectionLabel}>Discussion / Lecture Notes</Text>
@@ -2099,7 +2079,6 @@ const CourseDetail = ({
                       </Text>
                     </View>
                   ) : null}
-                  
                   {selectedLesson.activity ? (
                     <View style={{ marginBottom: 16, backgroundColor: '#E3F2FD', padding: 12, borderRadius: 8 }}>
                       <Text style={[styles.sectionLabel, { color: '#1565C0' }]}>Activity / Scenario</Text>
@@ -2295,7 +2274,6 @@ const CourseDetail = ({
                         </Text>
                       ) : null}
                     </View>
-                    
                     {canGenerateActivity(selectedAssignment) && (
                       <View style={styles.section}>
                         <Text style={styles.sectionTitle}>Follow-Up Activity</Text>
@@ -2321,7 +2299,6 @@ const CourseDetail = ({
                         </TouchableOpacity>
                       </View>
                     )}
-
                     {/* Assignment File */}
                     <View style={styles.section}>
                       <Text style={styles.sectionTitle}>📄 Assignment File</Text>
@@ -2355,7 +2332,6 @@ const CourseDetail = ({
                         <Text style={styles.emptyText}>No assignment file attached.</Text>
                       )}
                     </View>
-                    
                     {/* Game-Based Assignment */}
                     {selectedAssignment.assignmentType === "game_based" && (
                       <View style={styles.section}>
@@ -2395,7 +2371,6 @@ const CourseDetail = ({
                         )}
                       </View>
                     )}
-                    
                     {/* Related Materials */}
                     <View style={styles.section}>
                       <Text style={styles.sectionTitle}>📚 Related Course Resources</Text>
@@ -2433,7 +2408,6 @@ const CourseDetail = ({
                         <Text style={styles.emptyText}>No linked materials.</Text>
                       )}
                     </View>
-
                     {/* ✅ UPDATED: Your Uploads Section with Multi-File/Link Support */}
                     <View style={styles.section}>
                       <Text style={styles.sectionTitle}>📎 Your Uploads</Text>
@@ -2441,7 +2415,6 @@ const CourseDetail = ({
                         <View>
                           {getSubmittedFiles(selectedAssignment).map((file) => {
                              const isLink = file.fileType === 'text/uri-list';
-                             
                              // Render Link as Clickable Text
                              if (isLink && file.linkUrl) {
                                return (
@@ -2474,7 +2447,6 @@ const CourseDetail = ({
                                  </TouchableOpacity>
                                );
                              }
-
                              // Render Regular Files
                              return (
                               <View key={file.id} style={styles.fileItem}>
@@ -2524,14 +2496,12 @@ const CourseDetail = ({
                       ) : (
                         <Text style={styles.emptyText}>No student submission added yet</Text>
                       )}
-                      
                       {(() => {
                         const uploadedFiles = getSubmittedFiles(selectedAssignment);
                         const hasFiles = uploadedFiles.length > 0;
                         const isSubmitted = isAssignmentSubmitted(selectedAssignment);
                         const isGraded = isAssignmentGraded(selectedAssignment);
                         const canEditFiles = !isSubmitted && !isGraded;
-
                         if (isGraded) {
                           return (
                             <View style={styles.uploadActionsRow}>
@@ -2550,7 +2520,6 @@ const CourseDetail = ({
                             </View>
                           );
                         }
-
                         if (isSubmitted) {
                           return (
                             <View style={styles.uploadActionsRow}>
@@ -2582,7 +2551,6 @@ const CourseDetail = ({
                             </View>
                           );
                         }
-
                         return (
                           <View style={styles.uploadActionsRow}>
                             {canEditFiles && (
@@ -2654,7 +2622,6 @@ const CourseDetail = ({
                         );
                       })()}
                     </View>
-
                     {/* COMMENTS SECTION */}
                     <View style={styles.section}>
                       <Text style={styles.sectionTitle}>💬 Comments</Text>
@@ -2757,7 +2724,6 @@ const CourseDetail = ({
             </ScrollView>
           </View>
         </View>
-        
         {/* DROPDOWN MENU FOR COMMENT ACTIONS */}
         {openMenuCommentId && menuPosition && (
           <>
@@ -2863,7 +2829,6 @@ const CourseDetail = ({
             >
               <MaterialCommunityIcons name="arrow-left" size={22} color="#FFF" />
             </TouchableOpacity>
-
             <View style={styles.previewTitleBlock}>
               <Text style={styles.previewTitle} numberOfLines={1}>
                 {previewFile?.fileName || 'Preview'}
@@ -2880,7 +2845,6 @@ const CourseDetail = ({
               </View>
             </View>
           </View>
-
           {previewFile && (
             <InlineMaterialViewer 
               fileUrl={previewFile.fileUrl || ''}
@@ -2894,7 +2858,6 @@ const CourseDetail = ({
           )}
         </SafeAreaView>
       </Modal>
-
     </ScrollView>
   );
 };
@@ -3785,9 +3748,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  primaryButtonText: { color: '#FFF', fontWeight: '800' , textAlign: 'center'},
+  primaryButtonText: { color: '#FFF', fontWeight: '800', textAlign: 'center'},
   removeButton: { color: '#D32F2F', fontWeight: 'bold', paddingLeft: 8 },
-  
   // ✅ NEW STYLES FOR INLINE PREVIEW MODAL
   previewModalContainer: { flex: 1, backgroundColor: '#3c3c3c87' },
   previewTopBar: {

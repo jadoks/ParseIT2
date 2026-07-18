@@ -1,4 +1,3 @@
-import Constants from 'expo-constants';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   GestureResponderEvent,
@@ -16,7 +15,21 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
-import PostQueryModal from '../components/PostQueryModal';
+import PostQueryModal from '../components/PostQueryModal'; // Ensure this path is correct for your project structure
+
+// 🔥 Use the shared apiFetch — it attaches a fresh Firebase Bearer token
+// automatically and retries once on 401. The old local apiFetch here only
+// sent `credentials: 'include'` with no Authorization header at all, which
+// is why signed-url requests started failing after the session/token aged.
+import { apiFetch } from '../services/api'; // adjust path if your folder layout differs
+import {
+  getCachedUserImageUrl,
+  setCachedUserImageUrl,
+} from '../services/userImageUrlCache'; // adjust path if your folder layout differs
+
+// ✅ Reuses the same Toast component used across the app (Admin/Teacher
+// screens), instead of relying on native Alert popups.
+import Toast from '../Final_Admin_Components/Toast'; // adjust path if your folder layout differs
 
 export interface CommunityAnswer {
   id: string;
@@ -49,8 +62,8 @@ interface CommunityProps {
   onDeletePost?: (postId: string) => void;
   onEditAnswer?: (postId: string, answerId: string, message: string) => void;
   onDeleteAnswer?: (postId: string, answerId: string) => void;
-  searchQuery?: string;
-  initialPostId?: string | null; // 👈 ADDED: To open a specific post modal from notification
+  searchQuery?: string; // 👈 To receive global search query
+  initialPostId?: string | null; // 👈 To open specific post from notification
 }
 
 type PostDropdownState =
@@ -68,42 +81,26 @@ type AnswerDropdownState = {
   y: number;
 } | null;
 
-function getApiBaseUrl() {
-  if (Platform.OS === 'web') {
-    return 'http://localhost:5000';
-  }
+type ToastType = 'success' | 'error' | 'info';
 
-  const possibleHost =
-    Constants.expoConfig?.hostUri ||
-    Constants.manifest2?.extra?.expoGo?.debuggerHost ||
-    '';
-
-  const host = possibleHost.split(':')[0];
-
-  if (host) {
-    return `http://${host}:5000`;
-  }
-
-  return 'http://192.168.1.5:5000';
-}
-
-const API_BASE_URL = getApiBaseUrl();
-
-const apiFetch = (url: string, options: any = {}) =>
-  fetch(url, {
-    credentials: 'include',
-    ...options,
-  });
-
-const refreshUserImageUrl = async (storagePath?: string | null) => {
+// ---- Cache-aware signed-URL refresh for post/answer avatars. ----
+// `entityId` is the post/answer id, used as the cache key alongside the
+// storage path so different posts sharing a storage path (unlikely, but
+// possible for the same user) don't collide, and so a stale cache entry
+// naturally falls out of scope once its TTL passes (see userImageUrlCache).
+const refreshUserImageUrl = async (
+  entityId: string,
+  storagePath?: string | null
+): Promise<string | null> => {
   if (!storagePath) return null;
 
+  // Cache hit — skip the network call entirely.
+  const cached = getCachedUserImageUrl(entityId, storagePath);
+  if (cached) return cached;
+
   try {
-    const response = await apiFetch(`${API_BASE_URL}/storage/user-image-signed-url`, {
+    const response = await apiFetch('/storage/user-image-signed-url', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
       body: JSON.stringify({ storagePath }),
     });
 
@@ -113,7 +110,12 @@ const refreshUserImageUrl = async (storagePath?: string | null) => {
       throw new Error(data?.error || 'Unable to refresh user image.');
     }
 
-    return data?.url || null;
+    if (data?.url) {
+      setCachedUserImageUrl(entityId, storagePath, data.url);
+      return data.url;
+    }
+
+    return null;
   } catch {
     return null;
   }
@@ -126,17 +128,16 @@ const ANSWER_DROPDOWN_WIDTH = 170;
 const normalizeImageSource = (img: any) => {
   if (!img) return DEFAULT_AVATAR;
 
-  if (typeof img === 'number') {
-    return img;
-  }
+  if (typeof img === 'number') return img;
 
+  // ✅ handle Firebase string URL
   if (typeof img === 'string') {
     const trimmed = img.trim();
     return trimmed ? { uri: trimmed } : DEFAULT_AVATAR;
   }
 
-  if (img?.uri && typeof img.uri === 'string') {
-    const trimmed = img.uri.trim();
+  if (img?.uri) {
+    const trimmed = String(img.uri).trim();
     return trimmed ? { uri: trimmed } : DEFAULT_AVATAR;
   }
 
@@ -154,20 +155,40 @@ const Community: React.FC<CommunityProps> = ({
   onDeletePost,
   onEditAnswer,
   onDeleteAnswer,
-  searchQuery = '',
+  searchQuery = '', // 👈 Default empty string
   initialPostId, // 👈 ADDED
 }) => {
+  // ✅ Optimistic local copy of posts — mirrors the pattern used in Profile.
+  // Handlers below update this immediately so the UI reacts right away instead
+  // of waiting for the parent to re-fetch/re-render with the `posts` prop.
+  //
+  // ⚠️ Important: StudentApp now patches its own `communityPosts` state
+  // in-place for every create/edit/delete action (instead of doing a full
+  // `loadCommunityPosts()` refetch after each mutation). That means the
+  // `posts` prop coming into this component already reflects the same
+  // optimistic change this component just made locally, so this sync effect
+  // becomes a no-op most of the time — it only actually overwrites
+  // `localPosts` when the parent's data changes for a genuinely different
+  // reason (e.g. initial load, or another user's action arriving via a
+  // future realtime subscription). This is what keeps things smooth: no
+  // double-update flash on your own actions.
+  const [localPosts, setLocalPosts] = useState<CommunityPost[]>(posts);
+
+  useEffect(() => {
+    setLocalPosts(posts);
+  }, [posts]);
+
   // 👇 ROBUST LOCAL SEARCH FILTERING
   const filteredPosts = useMemo(() => {
     const trimmedQuery = searchQuery.trim().toLowerCase();
-    if (!trimmedQuery) return posts;
+    if (!trimmedQuery) return localPosts;
 
-    return posts.filter((post) => {
+    return localPosts.filter((post) => {
       const matchesUser = post.userName.toLowerCase().includes(trimmedQuery);
       const matchesContent = post.content.toLowerCase().includes(trimmedQuery);
       return matchesUser || matchesContent;
     });
-  }, [posts, searchQuery]);
+  }, [localPosts, searchQuery]);
 
   const [hiddenPosts, setHiddenPosts] = useState<string[]>([]);
   const [modalVisible, setModalVisible] = useState(false);
@@ -194,12 +215,19 @@ const Community: React.FC<CommunityProps> = ({
   const [postDropdownState, setPostDropdownState] = useState<PostDropdownState>(null);
   const [answerDropdownState, setAnswerDropdownState] = useState<AnswerDropdownState>(null);
 
+  // ✅ Toast state — replaces any native Alert usage with the shared Toast UI.
+  const [toast, setToast] = useState<{
+    visible: boolean;
+    message: string;
+    type: ToastType;
+  }>({ visible: false, message: '', type: 'success' });
+
   const { width, height } = useWindowDimensions();
   const isLargeScreen = width >= 1024;
 
   const selectedPost = useMemo(
-    () => posts.find((post) => post.id === selectedPostId) || null,
-    [posts, selectedPostId]
+    () => localPosts.find((post) => post.id === selectedPostId) || null,
+    [localPosts, selectedPostId]
   );
 
   const userAvatarSource = useMemo(
@@ -210,6 +238,12 @@ const Community: React.FC<CommunityProps> = ({
   const [refreshedPostAvatars, setRefreshedPostAvatars] = useState<Record<string, string>>({});
   const [refreshedAnswerAvatars, setRefreshedAnswerAvatars] = useState<Record<string, string>>({});
 
+  const showToast = (message: string, type: ToastType = 'success') => {
+    setToast({ visible: true, message, type });
+  };
+
+  const hideToast = () => setToast((prev) => ({ ...prev, visible: false }));
+
   useEffect(() => {
     let isMounted = true;
 
@@ -217,9 +251,9 @@ const Community: React.FC<CommunityProps> = ({
       const nextPostAvatars: Record<string, string> = {};
       const nextAnswerAvatars: Record<string, string> = {};
 
-      for (const post of posts) {
+      for (const post of localPosts) {
         if (post.avatarStoragePath) {
-          const url = await refreshUserImageUrl(post.avatarStoragePath);
+          const url = await refreshUserImageUrl(post.id, post.avatarStoragePath);
           if (url) {
             nextPostAvatars[post.id] = url;
           }
@@ -227,7 +261,7 @@ const Community: React.FC<CommunityProps> = ({
 
         for (const answer of post.answers || []) {
           if (answer.avatarStoragePath) {
-            const url = await refreshUserImageUrl(answer.avatarStoragePath);
+            const url = await refreshUserImageUrl(answer.id, answer.avatarStoragePath);
             if (url) {
               nextAnswerAvatars[answer.id] = url;
             }
@@ -243,22 +277,28 @@ const Community: React.FC<CommunityProps> = ({
 
     refreshAvatars();
 
+    // Re-check periodically so avatars keep working even if this screen is
+    // left open longer than the signed-URL cache TTL — otherwise they'd
+    // only ever refresh when the `posts` array itself changes.
+    const interval = setInterval(refreshAvatars, 5 * 60 * 1000); // every 5 min
+
     return () => {
       isMounted = false;
+      clearInterval(interval);
     };
-  }, [posts]);
+  }, [localPosts]);
 
-  // 👇 ADDED: Automatically open the answers modal if a specific post ID is passed via notification
+  // 👇 Automatically open the answers modal if a specific post ID is passed via notification
   useEffect(() => {
     if (initialPostId) {
-      const post = posts.find((p) => p.id === initialPostId);
+      const post = localPosts.find((p) => p.id === initialPostId);
       if (post) {
         setSelectedPostId(post.id);
         setAnswerText('');
         setAnswersModalVisible(true);
       }
     }
-  }, [initialPostId, posts]);
+  }, [initialPostId, localPosts]);
 
   // Use filteredPosts instead of raw posts for visibility logic
   const visiblePosts = useMemo(
@@ -351,12 +391,56 @@ const Community: React.FC<CommunityProps> = ({
     setAnswersModalVisible(true);
   };
 
+  const handleCreatePost = (query: string) => {
+    const trimmed = query.trim();
+    if (!trimmed) {
+      showToast('Please write a question or post first.', 'error');
+      return;
+    }
+
+    // ✅ Optimistic update — add the post to local state immediately instead
+    // of waiting for the parent to refresh the `posts` prop.
+    const newPost: CommunityPost = {
+      id: `post-${Date.now()}`,
+      userName,
+      userEmail,
+      avatar: userAvatarSource,
+      dateTime: new Date().toLocaleString(),
+      content: trimmed,
+      answers: [],
+    };
+    setLocalPosts((prev) => [newPost, ...prev]);
+
+    onCreatePost?.(trimmed);
+    setModalVisible(false);
+    showToast('Post created successfully.', 'success');
+  };
+
   const handlePostAnswer = () => {
     const trimmed = answerText.trim();
-    if (!trimmed || !selectedPostId) return;
+    if (!trimmed || !selectedPostId) {
+      if (!trimmed) showToast('Please write an answer first.', 'error');
+      return;
+    }
+
+    const newAnswer: CommunityAnswer = {
+      id: `answer-${Date.now()}`,
+      userName,
+      avatar: userAvatarSource,
+      answeredAt: new Date().toLocaleString(),
+      message: trimmed,
+    };
+    setLocalPosts((prev) =>
+      prev.map((post) =>
+        post.id === selectedPostId
+          ? { ...post, answers: [...post.answers, newAnswer] }
+          : post
+      )
+    );
 
     onAddAnswer?.(selectedPostId, trimmed);
     setAnswerText('');
+    showToast('Answer posted successfully.', 'success');
   };
 
   const handleEditPost = (post: CommunityPost) => {
@@ -368,12 +452,22 @@ const Community: React.FC<CommunityProps> = ({
 
   const handleSaveEditedPost = () => {
     const trimmed = editPostText.trim();
-    if (!trimmed || !editingPostId) return;
+    if (!trimmed || !editingPostId) {
+      if (!trimmed) showToast('Post cannot be empty.', 'error');
+      return;
+    }
+
+    setLocalPosts((prev) =>
+      prev.map((post) =>
+        post.id === editingPostId ? { ...post, content: trimmed } : post
+      )
+    );
 
     onEditPost?.(editingPostId, trimmed);
     setEditingPostId(null);
     setEditPostText('');
     setEditPostModalVisible(false);
+    showToast('Post updated successfully.', 'success');
   };
 
   const handleCloseEditPostModal = () => {
@@ -391,6 +485,7 @@ const Community: React.FC<CommunityProps> = ({
   const confirmDeletePost = () => {
     if (!postToDelete) return;
 
+    setLocalPosts((prev) => prev.filter((post) => post.id !== postToDelete));
     onDeletePost?.(postToDelete);
 
     if (selectedPostId === postToDelete) {
@@ -399,6 +494,7 @@ const Community: React.FC<CommunityProps> = ({
 
     setPostToDelete(null);
     setDeletePostConfirmVisible(false);
+    showToast('Post deleted successfully.', 'success');
   };
 
   const cancelDeletePost = () => {
@@ -409,6 +505,7 @@ const Community: React.FC<CommunityProps> = ({
   const handleHidePost = (postId: string) => {
     closePostDropdown();
     setHiddenPosts((prev) => [...prev, postId]);
+    showToast('Post hidden.', 'info');
   };
 
   const handleEditAnswer = (answer: CommunityAnswer) => {
@@ -424,7 +521,25 @@ const Community: React.FC<CommunityProps> = ({
 
   const handleSaveEditedAnswer = () => {
     const trimmed = editAnswerText.trim();
-    if (!trimmed || !editingAnswerId || !selectedPostId) return;
+    if (!trimmed || !editingAnswerId || !selectedPostId) {
+      if (!trimmed) showToast('Answer cannot be empty.', 'error');
+      return;
+    }
+
+    setLocalPosts((prev) =>
+      prev.map((post) =>
+        post.id === selectedPostId
+          ? {
+              ...post,
+              answers: post.answers.map((answer) =>
+                answer.id === editingAnswerId
+                  ? { ...answer, message: trimmed }
+                  : answer
+              ),
+            }
+          : post
+      )
+    );
 
     onEditAnswer?.(selectedPostId, editingAnswerId, trimmed);
 
@@ -433,6 +548,7 @@ const Community: React.FC<CommunityProps> = ({
     setEditAnswerText('');
     closeAnswerDropdown();
     reopenAnswersModal();
+    showToast('Answer updated successfully.', 'success');
   };
 
   const handleCloseEditAnswerModal = () => {
@@ -456,12 +572,24 @@ const Community: React.FC<CommunityProps> = ({
   const confirmDeleteAnswer = () => {
     if (!selectedPostId || !answerToDelete) return;
 
+    setLocalPosts((prev) =>
+      prev.map((post) =>
+        post.id === selectedPostId
+          ? {
+              ...post,
+              answers: post.answers.filter((answer) => answer.id !== answerToDelete),
+            }
+          : post
+      )
+    );
+
     onDeleteAnswer?.(selectedPostId, answerToDelete);
 
     setAnswerToDelete(null);
     setDeleteAnswerConfirmVisible(false);
     closeAnswerDropdown();
     reopenAnswersModal();
+    showToast('Answer deleted successfully.', 'success');
   };
 
   const cancelDeleteAnswer = () => {
@@ -480,6 +608,7 @@ const Community: React.FC<CommunityProps> = ({
       ...prev,
       [selectedPostId]: [...(prev[selectedPostId] || []), answerId],
     }));
+    showToast('Answer hidden.', 'info');
   };
 
   const renderPost = ({ item }: { item: CommunityPost }) => {
@@ -575,7 +704,6 @@ const Community: React.FC<CommunityProps> = ({
   };
 
   return (
-    // 1. Moved TouchableWithoutFeedback INSIDE the ScrollView
     <View style={{ flex: 1 }}>
       <ScrollView
         style={styles.container}
@@ -622,7 +750,6 @@ const Community: React.FC<CommunityProps> = ({
               </TouchableOpacity>
             </View>
 
-            {/* 👇 2. Replaced FlatList with .map() to prevent nested virtualization conflicts */}
             {visiblePosts.length > 0 ? (
               <View style={{ paddingBottom: 50 }}>
                 {visiblePosts.map((item) => (
@@ -651,7 +778,7 @@ const Community: React.FC<CommunityProps> = ({
       <PostQueryModal
         visible={modalVisible}
         onClose={() => setModalVisible(false)}
-        onPost={onCreatePost}
+        onPost={handleCreatePost}
       />
 
       <Modal
@@ -978,6 +1105,24 @@ const Community: React.FC<CommunityProps> = ({
           )}
         </View>
       </Modal>
+
+      {/* Toast — portal-based so it renders above all other Modals (Answers/Edit/Delete) */}
+      <Modal
+        visible={toast.visible}
+        transparent
+        animationType="fade"
+        onRequestClose={hideToast}
+        statusBarTranslucent
+      >
+        <View style={styles.toastPortal} pointerEvents="box-none">
+          <Toast
+            visible={toast.visible}
+            message={toast.message}
+            type={toast.type}
+            onHide={hideToast}
+          />
+        </View>
+      </Modal>
     </View>
   );
 };
@@ -987,34 +1132,41 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#ffffff',
   },
+
   contentContainer: {
     paddingHorizontal: 16,
     paddingVertical: 30,
   },
+
   largeScreenContentContainer: {
     paddingHorizontal: 150,
   },
+
   innerWrapper: {
     width: '100%',
     maxWidth: 900,
     alignSelf: 'center',
   },
+
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: 20,
   },
+
   title: {
     fontSize: 20,
     fontWeight: '700',
     color: '#222',
   },
+
   inputRow: {
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 20,
   },
+
   inputAvatar: {
     width: 40,
     height: 40,
@@ -1023,6 +1175,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     aspectRatio: 1,
   },
+
   inputField: {
     flex: 1,
     height: 45,
@@ -1035,6 +1188,7 @@ const styles = StyleSheet.create({
     maxWidth: 400,
     width: '100%',
   },
+
   postContainer: {
     backgroundColor: '#ffffff',
     padding: 18,
@@ -1045,16 +1199,19 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderRightWidth: 1,
   },
+
   postHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
   },
+
   userRow: {
     flexDirection: 'row',
     alignItems: 'center',
     flex: 1,
   },
+
   postAvatar: {
     width: 36,
     height: 36,
@@ -1062,26 +1219,32 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     aspectRatio: 1,
   },
+
   postUserName: {
     fontWeight: '700',
     color: '#222',
   },
+
   postDateTime: {
     fontSize: 12,
     color: '#666',
   },
+
   postContent: {
     color: '#333',
     marginVertical: 8,
   },
+
   showAnswersBtn: {
     color: '#1976d2',
     fontWeight: '400',
   },
+
   dropdownOverlay: {
     flex: 1,
     backgroundColor: 'transparent',
   },
+
   dropdownMenuModal: {
     position: 'absolute',
     backgroundColor: '#fff',
@@ -1093,12 +1256,14 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 4 },
   },
+
   menuItem: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 12,
     paddingVertical: 9,
   },
+
   actionIconCircle: {
     width: 20,
     height: 20,
@@ -1107,6 +1272,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+
   deleteIconCircle: {
     width: 20,
     height: 20,
@@ -1115,6 +1281,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+
   hideIconCircle: {
     width: 20,
     height: 20,
@@ -1123,11 +1290,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+
   menuText: {
     marginLeft: 8,
     fontSize: 14,
     color: '#333',
   },
+
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.35)',
@@ -1135,6 +1304,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 20,
   },
+
   answersModalCard: {
     width: '100%',
     maxWidth: 520,
@@ -1143,6 +1313,7 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     padding: 18,
   },
+
   editPostModalCard: {
     width: '100%',
     maxWidth: 520,
@@ -1150,6 +1321,7 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     padding: 18,
   },
+
   confirmModalCard: {
     width: '100%',
     maxWidth: 380,
@@ -1157,35 +1329,42 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     padding: 20,
   },
+
   answerModalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 16,
   },
+
   answerModalTitle: {
     fontSize: 18,
     fontWeight: '700',
     color: '#222',
   },
+
   selectedPostText: {
     fontSize: 15,
     color: '#333',
     lineHeight: 22,
     marginBottom: 16,
   },
+
   answersListWrapper: {
     flex: 1,
     minHeight: 160,
     marginBottom: 8,
   },
+
   answersScroll: {
     flex: 1,
   },
+
   modalAnswersContainer: {
     paddingRight: 8,
     paddingBottom: 8,
   },
+
   answerCard: {
     backgroundColor: '#F8F8F8',
     borderRadius: 12,
@@ -1194,9 +1373,11 @@ const styles = StyleSheet.create({
     borderColor: '#E8E8E8',
     marginBottom: 10,
   },
+
   answerPreviewHeader: {
     marginBottom: 6,
   },
+
   answerAvatar: {
     width: 30,
     height: 30,
@@ -1204,38 +1385,45 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     aspectRatio: 1,
   },
+
   answerUserName: {
     fontSize: 14,
     fontWeight: '700',
     color: '#222',
   },
+
   answerDate: {
     fontSize: 12,
     color: '#777',
   },
+
   answerPreviewText: {
     fontSize: 14,
     color: '#555',
     lineHeight: 20,
   },
+
   noAnswersText: {
     fontSize: 14,
     color: '#777',
     textAlign: 'center',
     paddingVertical: 12,
   },
+
   answerInputSection: {
     borderTopWidth: 1,
     borderTopColor: '#EEE',
     paddingTop: 14,
     marginTop: 4,
   },
+
   answerInputLabel: {
     fontSize: 14,
     fontWeight: '600',
     color: '#222',
     marginBottom: 8,
   },
+
   answerInput: {
     minHeight: 90,
     borderWidth: 1,
@@ -1247,6 +1435,7 @@ const styles = StyleSheet.create({
     color: '#222',
     backgroundColor: '#FFF',
   },
+
   postAnswerButton: {
     alignSelf: 'flex-start',
     marginTop: 12,
@@ -1255,48 +1444,57 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderRadius: 8,
   },
+
   postAnswerButtonText: {
     color: '#FFF',
     fontWeight: '600',
     fontSize: 14,
   },
+
   confirmTitle: {
     fontSize: 18,
     fontWeight: '700',
     color: '#222',
     marginBottom: 10,
   },
+
   confirmMessage: {
     fontSize: 14,
     color: '#555',
     lineHeight: 20,
     marginBottom: 18,
   },
+
   confirmActions: {
     flexDirection: 'row',
     justifyContent: 'flex-end',
     gap: 10,
   },
+
   cancelButton: {
     paddingHorizontal: 16,
     paddingVertical: 10,
     borderRadius: 8,
     backgroundColor: '#E0E0E0',
   },
+
   cancelButtonText: {
     color: '#333',
     fontWeight: '600',
   },
+
   deleteButton: {
     paddingHorizontal: 16,
     paddingVertical: 10,
     borderRadius: 8,
     backgroundColor: '#D32F2F',
   },
+
   deleteButtonText: {
     color: '#FFF',
     fontWeight: '600',
   },
+
   answerDropdownOverlay: {
     position: 'absolute',
     top: 0,
@@ -1306,6 +1504,7 @@ const styles = StyleSheet.create({
     zIndex: 99998,
     elevation: 99998,
   },
+
   answerDropdownFloating: {
     position: 'absolute',
     width: ANSWER_DROPDOWN_WIDTH,
@@ -1319,6 +1518,7 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 4 },
   },
+
   emptyState: {
     alignItems: 'center',
     justifyContent: 'center',
@@ -1337,6 +1537,11 @@ const styles = StyleSheet.create({
     color: '#777',
     textAlign: 'center',
     lineHeight: 20,
+  },
+
+  // ✅ Toast portal — lets touches pass through to whatever's behind, except the toast itself
+  toastPortal: {
+    ...StyleSheet.absoluteFillObject,
   },
 });
 

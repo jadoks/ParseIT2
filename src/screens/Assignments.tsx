@@ -203,6 +203,17 @@ interface AssignmentsProps {
   onPlayGame?: (assignment: AssignmentItem) => void;
   onEditComment?: (assignmentId: string, commentId: string, newContent: string) => Promise<void>;
   onDeleteComment?: (assignmentId: string, commentId: string) => Promise<void>;
+  // ✅ NEW: allows a parent (e.g. notification click, dashboard "Open Assignment")
+  // to request that a specific assignment's detail modal be auto-opened.
+  autoOpenAssignmentId?: string | null;
+  // ✅ NEW: called once the auto-open request above has been handled, so the
+  // parent can clear its state and avoid re-triggering on re-render.
+  onConsumedAutoOpenAssignment?: () => void;
+  // ✅ NEW: when provided, tapping "View" on a Related Course Resource
+  // delegates navigation to the parent (StudentApp) instead of previewing
+  // inline here — the parent switches to CourseDetail and auto-opens the
+  // matching Module Lesson Detail modal there.
+  onOpenRelatedMaterial?: (course: AssignmentCourse, material: AssignmentMaterial) => void;
 }
 
 type FilterType = 'all' | 'pending' | 'submitted' | 'graded';
@@ -480,6 +491,10 @@ const Assignments = ({
   onPlayGame,
   onEditComment,
   onDeleteComment,
+  // ✅ NEW
+  autoOpenAssignmentId = null,
+  onConsumedAutoOpenAssignment,
+  onOpenRelatedMaterial,
 }: AssignmentsProps) => {
   const { width, height } = useWindowDimensions();
   const isLargeScreen = width >= 768;
@@ -634,6 +649,42 @@ const Assignments = ({
     );
   };
 
+  // ✅ UPDATED: "View" on a Related Course Resource now prefers navigating
+  // to CourseDetail's Module Lesson Detail modal (matches clicking the same
+  // material from inside CourseDetail). Falls back to the local inline
+  // preview only if the parent hasn't wired up onOpenRelatedMaterial.
+  const handleOpenRelatedMaterial = (material: AssignmentMaterial) => {
+    if (!selectedAssignment) return;
+
+    if (onOpenRelatedMaterial) {
+      const course = courses.find((c) => c.id === selectedAssignment.courseId);
+      if (!course) {
+        Alert.alert('Unable to open', 'Could not find the class for this material.');
+        return;
+      }
+      onOpenRelatedMaterial(course, material);
+      closeModal();
+      return;
+    }
+
+    const url = material.fileUrl || material.fileUri || null;
+    if (!url && !material.storagePath && !material.bucketPath) {
+      Alert.alert('No File', 'This material has no attached file yet.');
+      return;
+    }
+    setPreviewFile({
+      id: material.id,
+      fileName: material.fileName || material.title,
+      fileSize: 'Course material',
+      uploadedDate: material.uploadedDate,
+      fileUrl: url || undefined,
+      fileType: material.fileType,
+      storagePath: material.storagePath || undefined,
+      bucketPath: material.bucketPath || undefined,
+      source: 'teacher',
+    });
+  };
+
   const handleOpenGeneratedActivity = (assignment: FlattenedAssignment) => {
     if (isGeneratingActivity) return;
     const relatedMaterials = getRelatedMaterials(assignment);
@@ -653,6 +704,47 @@ const Assignments = ({
       } as any);
     }
   };
+
+  const fetchGameAttempts = async (assignmentId: string) => {
+    if (!currentStudent?.studentId) return;
+    setIsLoadingAttempts((prev) => ({ ...prev, [assignmentId]: true }));
+    try {
+      const response = await apiFetch(`${API_BASE_URL}/student-submissions/${currentStudent.studentId}`);
+      const data = await response.json();
+      if (response.ok && data?.data) {
+        const submissions = Array.isArray(data.data) ? data.data : [];
+        const assignmentSubmissions = submissions.filter(
+          (sub: any) => sub.assignmentId === assignmentId
+        );
+        const attemptCount = assignmentSubmissions.length;
+        setGameAttempts((prev) => ({ ...prev, [assignmentId]: attemptCount }));
+      }
+    } catch (error) {
+      console.error('Error fetching game attempts:', error);
+    } finally {
+      setIsLoadingAttempts((prev) => ({ ...prev, [assignmentId]: false }));
+    }
+  };
+
+  // ✅ NEW: Auto-open a specific assignment's detail modal when requested by
+  // a parent (e.g. clicking a notification, or "Open Assignment" on the
+  // Dashboard). Waits until the target assignment is actually present in
+  // `allAssignments` (data may still be loading), opens it, primes game
+  // attempts if needed, then tells the parent the request was consumed so
+  // it doesn't keep re-triggering.
+  useEffect(() => {
+    if (!autoOpenAssignmentId) return;
+
+    const target = allAssignments.find((a) => a.id === autoOpenAssignmentId);
+    if (!target) return;
+
+    setSelectedAssignment(target);
+    if (target.assignmentType === 'game_based') {
+      fetchGameAttempts(target.id);
+    }
+    onConsumedAutoOpenAssignment?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoOpenAssignmentId, allAssignments]);
 
   const handleAddComment = () => {
     if (!selectedAssignment || !newComment.trim()) return;
@@ -1068,27 +1160,6 @@ const Assignments = ({
     setDeleteModalVisible(false);
     setCommentToDeleteId(null);
     setIsDeletingComment(false);
-  };
-
-  const fetchGameAttempts = async (assignmentId: string) => {
-    if (!currentStudent?.studentId) return;
-    setIsLoadingAttempts((prev) => ({ ...prev, [assignmentId]: true }));
-    try {
-      const response = await apiFetch(`${API_BASE_URL}/student-submissions/${currentStudent.studentId}`);
-      const data = await response.json();
-      if (response.ok && data?.data) {
-        const submissions = Array.isArray(data.data) ? data.data : [];
-        const assignmentSubmissions = submissions.filter(
-          (sub: any) => sub.assignmentId === assignmentId
-        );
-        const attemptCount = assignmentSubmissions.length;
-        setGameAttempts((prev) => ({ ...prev, [assignmentId]: attemptCount }));
-      }
-    } catch (error) {
-      console.error('Error fetching game attempts:', error);
-    } finally {
-      setIsLoadingAttempts((prev) => ({ ...prev, [assignmentId]: false }));
-    }
   };
 
   const getRemainingAttempts = (assignment: AssignmentItem) => {
@@ -1527,15 +1598,28 @@ const Assignments = ({
                       <Text style={styles.sectionTitle}>📚 Related Course Resources</Text>
                       {getRelatedMaterials(selectedAssignment).length > 0 ? (
                         getRelatedMaterials(selectedAssignment).map((material) => (
-                          <View key={material.id} style={styles.relatedMaterialItem}>
-                            <Text style={styles.relatedMaterialTitle}>{material.title}</Text>
-                            <Text style={styles.relatedMaterialMeta}>
-                              {material.type} • {material.uploadedDate}
-                            </Text>
-                            {!!material.fileName && (
-                              <Text style={styles.relatedMaterialFileName}>{material.fileName}</Text>
-                            )}
-                          </View>
+                          <TouchableOpacity
+                            key={material.id}
+                            style={styles.relatedMaterialItem}
+                            activeOpacity={0.85}
+                            onPress={() => handleOpenRelatedMaterial(material)}
+                          >
+                            <View style={styles.relatedMaterialRow}>
+                              <View style={{ flex: 1 }}>
+                                <Text style={styles.relatedMaterialTitle}>{material.title}</Text>
+                                <Text style={styles.relatedMaterialMeta}>
+                                  {material.type} • {material.uploadedDate}
+                                </Text>
+                                {!!material.fileName && (
+                                  <Text style={styles.relatedMaterialFileName}>{material.fileName}</Text>
+                                )}
+                              </View>
+                              <View style={styles.relatedMaterialOpenBadge}>
+                                <MaterialCommunityIcons name="eye-outline" size={13} color="#D32F2F" />
+                                <Text style={styles.relatedMaterialOpenText}>View</Text>
+                              </View>
+                            </View>
+                          </TouchableOpacity>
                         ))
                       ) : (
                         <Text style={styles.emptyText}>No linked materials.</Text>
@@ -2053,9 +2137,22 @@ const styles = StyleSheet.create({
   section: { marginBottom: 18 },
   sectionTitle: { fontSize: 16, fontWeight: '700', color: '#000', marginBottom: 10 },
   relatedMaterialItem: { backgroundColor: '#F5F5F5', borderRadius: 10, padding: 10, marginBottom: 8 },
+  relatedMaterialRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   relatedMaterialTitle: { fontWeight: '600', color: '#111', marginBottom: 4 },
   relatedMaterialMeta: { color: '#777', fontSize: 12, textTransform: 'capitalize' },
   relatedMaterialFileName: { color: '#D32F2F', fontSize: 12, fontWeight: '600', marginTop: 4 },
+  relatedMaterialOpenBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#FFF1F1',
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderWidth: 1,
+    borderColor: '#F3D4D4',
+  },
+  relatedMaterialOpenText: { fontSize: 11, fontWeight: '700', color: '#D32F2F' },
   materialWarningText: { color: '#B26A00', fontSize: 12, lineHeight: 18, fontWeight: '600', marginBottom: 8 },
   attachmentFileCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFF7F7', borderRadius: 12, borderWidth: 1, borderColor: '#F3D4D4', padding: 12, marginBottom: 8 },
   fileItem: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F5F5F5', borderRadius: 10, padding: 10, marginBottom: 8 },

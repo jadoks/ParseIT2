@@ -27,6 +27,10 @@ import {
   setCachedUserImageUrl,
 } from '../services/userImageUrlCache'; // adjust path if your folder layout differs
 
+// ✅ Reuses the same Toast component used in the Admin ManageStudent screen /
+// TeacherDashboard, instead of relying on native Alert popups.
+import Toast from '../Final_Admin_Components/Toast';
+
 export interface CommunityAnswer {
   id: string;
   userName: string;
@@ -76,6 +80,8 @@ type AnswerDropdownState = {
   x: number;
   y: number;
 } | null;
+
+type ToastType = 'success' | 'error' | 'info';
 
 // ---- Cache-aware signed-URL refresh for post/answer avatars. ----
 // `entityId` is the post/answer id, used as the cache key alongside the
@@ -152,17 +158,27 @@ const Community: React.FC<CommunityProps> = ({
   searchQuery = '', // 👈 Default empty string
   initialPostId, // 👈 ADDED
 }) => {
+  // ✅ Optimistic local copy of posts — mirrors the pattern used in TeacherProfile.
+  // Handlers below update this immediately so the UI reacts right away instead
+  // of waiting for the parent to re-fetch/re-render with the `posts` prop
+  // (which is what caused the perceived delay on post/answer/edit/delete).
+  const [localPosts, setLocalPosts] = useState<CommunityPost[]>(posts);
+
+  useEffect(() => {
+    setLocalPosts(posts);
+  }, [posts]);
+
   // 👇 ROBUST LOCAL SEARCH FILTERING (Same as Student Community)
   const filteredPosts = useMemo(() => {
     const trimmedQuery = searchQuery.trim().toLowerCase();
-    if (!trimmedQuery) return posts;
+    if (!trimmedQuery) return localPosts;
 
-    return posts.filter((post) => {
+    return localPosts.filter((post) => {
       const matchesUser = post.userName.toLowerCase().includes(trimmedQuery);
       const matchesContent = post.content.toLowerCase().includes(trimmedQuery);
       return matchesUser || matchesContent;
     });
-  }, [posts, searchQuery]);
+  }, [localPosts, searchQuery]);
 
   const [hiddenPosts, setHiddenPosts] = useState<string[]>([]);
   const [modalVisible, setModalVisible] = useState(false);
@@ -189,12 +205,19 @@ const Community: React.FC<CommunityProps> = ({
   const [postDropdownState, setPostDropdownState] = useState<PostDropdownState>(null);
   const [answerDropdownState, setAnswerDropdownState] = useState<AnswerDropdownState>(null);
 
+  // ✅ Toast state — replaces any native Alert usage with the shared Toast UI.
+  const [toast, setToast] = useState<{
+    visible: boolean;
+    message: string;
+    type: ToastType;
+  }>({ visible: false, message: '', type: 'success' });
+
   const { width, height } = useWindowDimensions();
   const isLargeScreen = width >= 1024;
 
   const selectedPost = useMemo(
-    () => posts.find((post) => post.id === selectedPostId) || null,
-    [posts, selectedPostId]
+    () => localPosts.find((post) => post.id === selectedPostId) || null,
+    [localPosts, selectedPostId]
   );
 
   const userAvatarSource = useMemo(
@@ -205,6 +228,12 @@ const Community: React.FC<CommunityProps> = ({
   const [refreshedPostAvatars, setRefreshedPostAvatars] = useState<Record<string, string>>({});
   const [refreshedAnswerAvatars, setRefreshedAnswerAvatars] = useState<Record<string, string>>({});
 
+  const showToast = (message: string, type: ToastType = 'success') => {
+    setToast({ visible: true, message, type });
+  };
+
+  const hideToast = () => setToast((prev) => ({ ...prev, visible: false }));
+
   useEffect(() => {
     let isMounted = true;
 
@@ -212,7 +241,7 @@ const Community: React.FC<CommunityProps> = ({
       const nextPostAvatars: Record<string, string> = {};
       const nextAnswerAvatars: Record<string, string> = {};
 
-      for (const post of posts) {
+      for (const post of localPosts) {
         if (post.avatarStoragePath) {
           const url = await refreshUserImageUrl(post.id, post.avatarStoragePath);
           if (url) {
@@ -247,19 +276,19 @@ const Community: React.FC<CommunityProps> = ({
       isMounted = false;
       clearInterval(interval);
     };
-  }, [posts]);
+  }, [localPosts]);
 
   // 👇 ADDED: Automatically open the answers modal if a specific post ID is passed via notification
   useEffect(() => {
     if (initialPostId) {
-      const post = posts.find((p) => p.id === initialPostId);
+      const post = localPosts.find((p) => p.id === initialPostId);
       if (post) {
         setSelectedPostId(post.id);
         setAnswerText('');
         setAnswersModalVisible(true);
       }
     }
-  }, [initialPostId, posts]);
+  }, [initialPostId, localPosts]);
 
   // Use filteredPosts instead of raw posts for visibility logic
   const visiblePosts = useMemo(
@@ -352,12 +381,56 @@ const Community: React.FC<CommunityProps> = ({
     setAnswersModalVisible(true);
   };
 
+  const handleCreatePost = (query: string) => {
+    const trimmed = query.trim();
+    if (!trimmed) {
+      showToast('Please write a question or post first.', 'error');
+      return;
+    }
+
+    // ✅ Optimistic update — add the post to local state immediately instead
+    // of waiting for the parent to refresh the `posts` prop.
+    const newPost: CommunityPost = {
+      id: `post-${Date.now()}`,
+      userName,
+      userEmail,
+      avatar: userAvatarSource,
+      dateTime: new Date().toLocaleString(),
+      content: trimmed,
+      answers: [],
+    };
+    setLocalPosts((prev) => [newPost, ...prev]);
+
+    onCreatePost?.(trimmed);
+    setModalVisible(false);
+    showToast('Post created successfully.', 'success');
+  };
+
   const handlePostAnswer = () => {
     const trimmed = answerText.trim();
-    if (!trimmed || !selectedPostId) return;
+    if (!trimmed || !selectedPostId) {
+      if (!trimmed) showToast('Please write an answer first.', 'error');
+      return;
+    }
+
+    const newAnswer: CommunityAnswer = {
+      id: `answer-${Date.now()}`,
+      userName,
+      avatar: userAvatarSource,
+      answeredAt: new Date().toLocaleString(),
+      message: trimmed,
+    };
+    setLocalPosts((prev) =>
+      prev.map((post) =>
+        post.id === selectedPostId
+          ? { ...post, answers: [...post.answers, newAnswer] }
+          : post
+      )
+    );
 
     onAddAnswer?.(selectedPostId, trimmed);
     setAnswerText('');
+    showToast('Answer posted successfully.', 'success');
   };
 
   const handleEditPost = (post: CommunityPost) => {
@@ -369,12 +442,22 @@ const Community: React.FC<CommunityProps> = ({
 
   const handleSaveEditedPost = () => {
     const trimmed = editPostText.trim();
-    if (!trimmed || !editingPostId) return;
+    if (!trimmed || !editingPostId) {
+      if (!trimmed) showToast('Post cannot be empty.', 'error');
+      return;
+    }
+
+    setLocalPosts((prev) =>
+      prev.map((post) =>
+        post.id === editingPostId ? { ...post, content: trimmed } : post
+      )
+    );
 
     onEditPost?.(editingPostId, trimmed);
     setEditingPostId(null);
     setEditPostText('');
     setEditPostModalVisible(false);
+    showToast('Post updated successfully.', 'success');
   };
 
   const handleCloseEditPostModal = () => {
@@ -392,6 +475,7 @@ const Community: React.FC<CommunityProps> = ({
   const confirmDeletePost = () => {
     if (!postToDelete) return;
 
+    setLocalPosts((prev) => prev.filter((post) => post.id !== postToDelete));
     onDeletePost?.(postToDelete);
 
     if (selectedPostId === postToDelete) {
@@ -400,6 +484,7 @@ const Community: React.FC<CommunityProps> = ({
 
     setPostToDelete(null);
     setDeletePostConfirmVisible(false);
+    showToast('Post deleted successfully.', 'success');
   };
 
   const cancelDeletePost = () => {
@@ -410,6 +495,7 @@ const Community: React.FC<CommunityProps> = ({
   const handleHidePost = (postId: string) => {
     closePostDropdown();
     setHiddenPosts((prev) => [...prev, postId]);
+    showToast('Post hidden.', 'info');
   };
 
   const handleEditAnswer = (answer: CommunityAnswer) => {
@@ -425,7 +511,25 @@ const Community: React.FC<CommunityProps> = ({
 
   const handleSaveEditedAnswer = () => {
     const trimmed = editAnswerText.trim();
-    if (!trimmed || !editingAnswerId || !selectedPostId) return;
+    if (!trimmed || !editingAnswerId || !selectedPostId) {
+      if (!trimmed) showToast('Answer cannot be empty.', 'error');
+      return;
+    }
+
+    setLocalPosts((prev) =>
+      prev.map((post) =>
+        post.id === selectedPostId
+          ? {
+              ...post,
+              answers: post.answers.map((answer) =>
+                answer.id === editingAnswerId
+                  ? { ...answer, message: trimmed }
+                  : answer
+              ),
+            }
+          : post
+      )
+    );
 
     onEditAnswer?.(selectedPostId, editingAnswerId, trimmed);
 
@@ -434,6 +538,7 @@ const Community: React.FC<CommunityProps> = ({
     setEditAnswerText('');
     closeAnswerDropdown();
     reopenAnswersModal();
+    showToast('Answer updated successfully.', 'success');
   };
 
   const handleCloseEditAnswerModal = () => {
@@ -457,12 +562,24 @@ const Community: React.FC<CommunityProps> = ({
   const confirmDeleteAnswer = () => {
     if (!selectedPostId || !answerToDelete) return;
 
+    setLocalPosts((prev) =>
+      prev.map((post) =>
+        post.id === selectedPostId
+          ? {
+              ...post,
+              answers: post.answers.filter((answer) => answer.id !== answerToDelete),
+            }
+          : post
+      )
+    );
+
     onDeleteAnswer?.(selectedPostId, answerToDelete);
 
     setAnswerToDelete(null);
     setDeleteAnswerConfirmVisible(false);
     closeAnswerDropdown();
     reopenAnswersModal();
+    showToast('Answer deleted successfully.', 'success');
   };
 
   const cancelDeleteAnswer = () => {
@@ -481,6 +598,7 @@ const Community: React.FC<CommunityProps> = ({
       ...prev,
       [selectedPostId]: [...(prev[selectedPostId] || []), answerId],
     }));
+    showToast('Answer hidden.', 'info');
   };
 
   const renderPost = ({ item }: { item: CommunityPost }) => {
@@ -652,7 +770,7 @@ const Community: React.FC<CommunityProps> = ({
       <PostQueryModal
         visible={modalVisible}
         onClose={() => setModalVisible(false)}
-        onPost={onCreatePost}
+        onPost={handleCreatePost}
       />
 
       <Modal
@@ -977,6 +1095,24 @@ const Community: React.FC<CommunityProps> = ({
               </View>
             </TouchableWithoutFeedback>
           )}
+        </View>
+      </Modal>
+
+      {/* Toast — portal-based so it renders above all other Modals (Answers/Edit/Delete) */}
+      <Modal
+        visible={toast.visible}
+        transparent
+        animationType="fade"
+        onRequestClose={hideToast}
+        statusBarTranslucent
+      >
+        <View style={styles.toastPortal} pointerEvents="box-none">
+          <Toast
+            visible={toast.visible}
+            message={toast.message}
+            type={toast.type}
+            onHide={hideToast}
+          />
         </View>
       </Modal>
     </View>
@@ -1394,6 +1530,11 @@ const styles = StyleSheet.create({
     color: '#777',
     textAlign: 'center',
     lineHeight: 20,
+  },
+
+  // ✅ Toast portal — lets touches pass through to whatever's behind, except the toast itself
+  toastPortal: {
+    ...StyleSheet.absoluteFillObject,
   },
 });
 

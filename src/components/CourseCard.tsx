@@ -1,9 +1,7 @@
-import Constants from 'expo-constants';
-import { Image } from 'expo-image'; // <--- IMPORTED expo-image for instant caching
+import { Image } from 'expo-image'; // instant caching + fade-in
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   Modal,
-  Platform,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -12,6 +10,18 @@ import {
   useWindowDimensions
 } from 'react-native';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
+
+// 🔥 Use the shared, auto-refreshing apiFetch instead of a local one.
+// It attaches a fresh Firebase Bearer token automatically and retries once
+// on a 401 — the old local apiFetch here only sent `credentials: 'include'`
+// with no Authorization header, so /storage/signed-url could 401 silently
+// and this card would quietly fall back to the static asset every time.
+import { apiFetch } from '../services/api'; // adjust path if your folder layout differs
+
+// Cache-first signed URL lookup — skips the network call entirely on a
+// cache hit, and proactively refetches once the cached entry is close to
+// expiring instead of waiting for an <Image> load failure.
+import { getCachedBannerUrl, setCachedBannerUrl } from './Bannerurlcache';
 
 export interface CourseCardMaterial {
   id: string;
@@ -86,33 +96,6 @@ type DropdownState =
     }
   | null;
 
-function getApiBaseUrl() {
-  if (Platform.OS === 'web') {
-    return 'http://localhost:5000';
-  }
-
-  const possibleHost =
-    Constants.expoConfig?.hostUri ||
-    Constants.manifest2?.extra?.expoGo?.debuggerHost ||
-    '';
-
-  const host = possibleHost.split(':')[0];
-
-  if (host) {
-    return `http://${host}:5000`;
-  }
-
-  return 'http://192.168.1.5:5000';
-}
-
-const API_BASE_URL = getApiBaseUrl();
-
-const apiFetch = (url: string, options: any = {}) =>
-  fetch(url, {
-    credentials: 'include',
-    ...options,
-  });
-
 const DROPDOWN_WIDTH = 170;
 
 const CourseCard: React.FC<CourseCardProps> = ({
@@ -129,7 +112,14 @@ const CourseCard: React.FC<CourseCardProps> = ({
 
   const [dropdownState, setDropdownState] = useState<DropdownState>(null);
   const [bannerLoadFailed, setBannerLoadFailed] = useState(false);
-  const [signedBannerUrl, setSignedBannerUrl] = useState<string | null>(null);
+
+  // Seed initial state straight from the cache. If this course's banner was
+  // already fetched earlier in the session, this renders the correct image
+  // on the very first frame — no blank/fallback flash, no refetch.
+  const initialCachedUrl = course.bannerStoragePath
+    ? getCachedBannerUrl(course.id, course.bannerStoragePath)
+    : null;
+  const [signedBannerUrl, setSignedBannerUrl] = useState<string | null>(initialCachedUrl);
 
   const getScorePercent = (assignment: CourseCardAssignment) => {
     if (
@@ -292,19 +282,27 @@ const CourseCard: React.FC<CourseCardProps> = ({
     let isMounted = true;
 
     const refreshSignedBannerUrl = async () => {
-      setBannerLoadFailed(false);
-      setSignedBannerUrl(null);
-
       if (!course.bannerStoragePath) {
+        setSignedBannerUrl(null);
+        setBannerLoadFailed(false);
         return;
       }
 
+      // Cache hit: reuse it, skip the network call entirely.
+      const cached = getCachedBannerUrl(course.id, course.bannerStoragePath);
+      if (cached) {
+        if (isMounted) {
+          setSignedBannerUrl(cached);
+          setBannerLoadFailed(false);
+        }
+        return;
+      }
+
+      // Cache miss (first time this session, or the cached entry expired):
+      // fetch a fresh signed URL and store it for next time.
       try {
-        const response = await apiFetch(`${API_BASE_URL}/storage/signed-url`, {
+        const response = await apiFetch('/storage/signed-url', {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
           body: JSON.stringify({
             storagePath: course.bannerStoragePath,
             classId: course.id,
@@ -318,8 +316,9 @@ const CourseCard: React.FC<CourseCardProps> = ({
         }
 
         if (isMounted && data?.url) {
+          setCachedBannerUrl(course.id, course.bannerStoragePath, data.url);
           setSignedBannerUrl(data.url);
-          setBannerLoadFailed(false); 
+          setBannerLoadFailed(false);
         }
       } catch {
         if (isMounted) {
@@ -397,12 +396,11 @@ const CourseCard: React.FC<CourseCardProps> = ({
         }}
       >
         <View style={{ height: bannerHeight }}>
-          {/* UPDATED: Using expo-image for instant native caching and smooth fade-in */}
           <Image
             source={getCourseImage()}
             style={styles.bannerImage}
-            contentFit="cover" // Replaces resizeMode="cover"
-            transition={200}   // Adds a smooth 200ms fade-in effect
+            contentFit="cover"
+            transition={200}
             onError={() => setBannerLoadFailed(true)}
           />
           <View style={styles.overlay} />
@@ -470,7 +468,7 @@ const CourseCard: React.FC<CourseCardProps> = ({
                 ]}
               >
                 {analytics.supportCount > 0
-                  ? `${analytics.supportCount} material-based support activit${analytics.supportCount > 1 ? 'ies' : 'y'} available`
+                  ? `${analytics.supportCount} support activit${analytics.supportCount > 1 ? 'ies' : 'y'} available`
                   : getRecommendationLabel(recommendedRecommendation)}
               </Text>
             </View>

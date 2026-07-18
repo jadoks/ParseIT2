@@ -1,6 +1,6 @@
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Animated,
   GestureResponderEvent,
@@ -17,18 +17,29 @@ import {
   TouchableOpacity,
   TouchableWithoutFeedback,
   View,
-  useWindowDimensions,
+  useWindowDimensions
 } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import PostQueryModal from '../components/PostQueryModal';
 import { CommunityAnswer, CommunityPost } from './Community';
+// 🔥 Use the shared apiFetch — it attaches a fresh Firebase Bearer token
+// automatically and retries once on 401.
+import { apiFetch } from '../services/api';
+import {
+  getCachedUserImageUrl,
+  setCachedUserImageUrl,
+} from '../services/userImageUrlCache';
+
+// ✅ Reuses the same Toast component used across the app, instead of
+// relying on native Alert popups.
+import Toast from '../Final_Admin_Components/Toast';
 
 type CropType = 'profile' | 'banner';
 
 interface ProfileProps {
   userPosts: CommunityPost[];
-  searchQuery?: string;
+  searchQuery?: string; // kept for backward compatibility with callers; unused internally
   onCreatePost?: (query: string) => void;
   onAddAnswer?: (postId: string, message: string) => void;
   onEditPost?: (postId: string, content: string) => void;
@@ -39,6 +50,8 @@ interface ProfileProps {
   userEmail?: string;
   profileImage?: any;
   bannerImage?: any;
+  profileImageStoragePath?: string | null;
+  bannerImageStoragePath?: string | null;
   onChangeProfileImage: (image: any) => void;
   onChangeBannerImage: (image: any) => void;
 }
@@ -64,9 +77,34 @@ type AnswerDropdownState =
     }
   | null;
 
-const normalizeText = (value?: string | null) => {
-  if (typeof value !== 'string') return '';
-  return value.trim();
+type ToastType = 'success' | 'error' | 'info';
+
+// ---- Cache-aware signed-URL refresh for the student's own profile/banner images. ----
+const refreshUserImageUrl = async (
+  entityId: string,
+  storagePath?: string | null
+): Promise<string | null> => {
+  if (!storagePath) return null;
+  // Cache hit — skip the network call entirely.
+  const cached = getCachedUserImageUrl(entityId, storagePath);
+  if (cached) return cached;
+  try {
+    const response = await apiFetch('/storage/user-image-signed-url', {
+      method: 'POST',
+      body: JSON.stringify({ storagePath }),
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data?.error || 'Unable to refresh user image.');
+    }
+    if (data?.url) {
+      setCachedUserImageUrl(entityId, storagePath, data.url);
+      return data.url;
+    }
+    return null;
+  } catch {
+    return null;
+  }
 };
 
 const MAX_IMAGE_SIZE_MB = 15;
@@ -74,20 +112,22 @@ const MAX_IMAGE_SIZE_BYTES = MAX_IMAGE_SIZE_MB * 1024 * 1024;
 const POST_DROPDOWN_WIDTH = 165;
 const ANSWER_DROPDOWN_WIDTH = 170;
 
+const normalizeText = (value?: string | null) => {
+  if (typeof value !== 'string') return '';
+  return value.trim();
+};
+
 const normalizeImageSource = (img: any): ImageSourcePropType | undefined => {
   if (!img) return undefined;
   if (typeof img === 'number') return img;
-
   if (typeof img === 'string') {
     const trimmed = img.trim();
     return trimmed ? { uri: trimmed } : undefined;
   }
-
   if (img?.uri) {
     const trimmed = String(img.uri).trim();
     return trimmed ? { uri: trimmed } : undefined;
   }
-
   return undefined;
 };
 
@@ -96,7 +136,6 @@ const clamp = (value: number, min: number, max: number) =>
 
 const Profile: React.FC<ProfileProps> = ({
   userPosts,
-  searchQuery = '',
   onCreatePost,
   onAddAnswer,
   onEditPost,
@@ -107,21 +146,19 @@ const Profile: React.FC<ProfileProps> = ({
   userEmail,
   profileImage,
   bannerImage,
+  profileImageStoragePath,
+  bannerImageStoragePath,
   onChangeProfileImage,
   onChangeBannerImage,
 }) => {
   const { width, height } = useWindowDimensions();
-
   const safeUserName = useMemo(() => normalizeText(userName), [userName]);
   const safeUserEmail = useMemo(() => normalizeText(userEmail), [userEmail]);
-
   const isSmallPhone = width < 380;
   const isPhone = width < 768;
   const isLargeScreen = width > 1000;
-
   const horizontalPadding = isSmallPhone ? 12 : isPhone ? 16 : 20;
   const contentMaxWidth = isLargeScreen ? 600 : 800;
-
   const bannerHeight = isSmallPhone ? 128 : isPhone ? 140 : 150;
   const avatarSize = isSmallPhone ? 84 : isPhone ? 92 : 95;
   const avatarBorderWidth = isSmallPhone ? 3 : 4;
@@ -130,40 +167,44 @@ const Profile: React.FC<ProfileProps> = ({
   const [editMenuVisible, setEditMenuVisible] = useState(false);
   const [isPickingImage, setIsPickingImage] = useState(false);
   const [isCroppingImage, setIsCroppingImage] = useState(false);
-
-  const [hiddenPosts, setHiddenPosts] = useState<string[]>([]);
   const [postDropdownState, setPostDropdownState] = useState<PostDropdownState>(null);
-
   const [answersModalVisible, setAnswersModalVisible] = useState(false);
   const [selectedPostId, setSelectedPostId] = useState<string | null>(null);
   const [localPosts, setLocalPosts] = useState<CommunityPost[]>(userPosts);
   const [answerText, setAnswerText] = useState('');
-
   const [editingPostId, setEditingPostId] = useState<string | null>(null);
   const [editPostText, setEditPostText] = useState('');
   const [editPostModalVisible, setEditPostModalVisible] = useState(false);
-
   const [hiddenAnswersByPost, setHiddenAnswersByPost] = useState<Record<string, string[]>>({});
   const [editingAnswerId, setEditingAnswerId] = useState<string | null>(null);
   const [editAnswerText, setEditAnswerText] = useState('');
   const [editAnswerModalVisible, setEditAnswerModalVisible] = useState(false);
   const [answerDropdownState, setAnswerDropdownState] = useState<AnswerDropdownState>(null);
-
   const [deletePostConfirmVisible, setDeletePostConfirmVisible] = useState(false);
   const [postToDelete, setPostToDelete] = useState<string | null>(null);
-
   const [deleteAnswerConfirmVisible, setDeleteAnswerConfirmVisible] = useState(false);
   const [answerToDelete, setAnswerToDelete] = useState<string | null>(null);
-
   const [menuPosition, setMenuPosition] = useState({
     top: 0,
     left: 0,
   });
-
   const [cropModal, setCropModal] = useState<CropModalState | null>(null);
   const [cropImageSize, setCropImageSize] = useState({ width: 1, height: 1 });
   const [cropScale, setCropScale] = useState(1);
   const [cropOffset, setCropOffset] = useState({ x: 0, y: 0 });
+
+  // ✅ Toast state — replaces any native Alert usage with the shared Toast UI.
+  const [toast, setToast] = useState<{
+    visible: boolean;
+    message: string;
+    type: ToastType;
+  }>({ visible: false, message: '', type: 'success' });
+
+  const showToast = (message: string, type: ToastType = 'success') => {
+    setToast({ visible: true, message, type });
+  };
+
+  const hideToast = () => setToast((prev) => ({ ...prev, visible: false }));
 
   const editBtnRef = useRef<View | null>(null);
   const animatedPan = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
@@ -178,14 +219,51 @@ const Profile: React.FC<ProfileProps> = ({
     [localPosts, selectedPostId]
   );
 
+  // Seeded synchronously from cache so a warm cache (revisiting within the
+  // ~50min TTL) renders the real profile/banner image on the very first
+  // frame instead of flashing the fallback/prop image while the refresh
+  // effect below fires its network check.
+  const [refreshedProfileImageUrl, setRefreshedProfileImageUrl] = useState<string | null>(
+    () => (profileImageStoragePath ? getCachedUserImageUrl('profile', profileImageStoragePath) : null)
+  );
+  const [refreshedBannerImageUrl, setRefreshedBannerImageUrl] = useState<string | null>(
+    () => (bannerImageStoragePath ? getCachedUserImageUrl('banner', bannerImageStoragePath) : null)
+  );
+
+  useEffect(() => {
+    let isMounted = true;
+    const refreshProfileImages = async () => {
+      const [nextProfileUrl, nextBannerUrl] = await Promise.all([
+        profileImageStoragePath
+          ? refreshUserImageUrl('profile', profileImageStoragePath)
+          : Promise.resolve(null),
+        bannerImageStoragePath
+          ? refreshUserImageUrl('banner', bannerImageStoragePath)
+          : Promise.resolve(null),
+      ]);
+      if (isMounted) {
+        setRefreshedProfileImageUrl(nextProfileUrl);
+        setRefreshedBannerImageUrl(nextBannerUrl);
+      }
+    };
+    refreshProfileImages();
+    // Re-check periodically so images keep working even if this screen is
+    // left open longer than the signed-URL cache TTL.
+    const interval = setInterval(refreshProfileImages, 5 * 60 * 1000); // every 5 min
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, [profileImageStoragePath, bannerImageStoragePath]);
+
   const profileImageSource = useMemo(
-    () => normalizeImageSource(profileImage),
-    [profileImage]
+    () => normalizeImageSource(refreshedProfileImageUrl || profileImage),
+    [profileImage, refreshedProfileImageUrl]
   );
 
   const bannerImageSource = useMemo(
-    () => normalizeImageSource(bannerImage),
-    [bannerImage]
+    () => normalizeImageSource(refreshedBannerImageUrl || bannerImage),
+    [bannerImage, refreshedBannerImageUrl]
   );
 
   const visibleAnswers = useMemo(() => {
@@ -198,7 +276,6 @@ const Profile: React.FC<ProfileProps> = ({
 
   const cropViewport = useMemo(() => {
     const modalMaxWidth = Math.min(width - 32, isLargeScreen ? 760 : 520);
-
     if (cropModal?.type === 'banner') {
       const bannerViewportWidth = Math.min(
         modalMaxWidth - 32,
@@ -209,13 +286,11 @@ const Profile: React.FC<ProfileProps> = ({
         height: Math.round(bannerViewportWidth * 0.42),
       };
     }
-
     const circleSize = Math.min(
       modalMaxWidth - 40,
       isLargeScreen ? 360 : width - 72,
       height * 0.4
     );
-
     return {
       width: circleSize,
       height: circleSize,
@@ -225,10 +300,8 @@ const Profile: React.FC<ProfileProps> = ({
   const displayedImage = useMemo(() => {
     const imageRatio = cropImageSize.width / cropImageSize.height;
     const viewportRatio = cropViewport.width / cropViewport.height;
-
     let baseWidth = cropViewport.width;
     let baseHeight = cropViewport.height;
-
     if (imageRatio > viewportRatio) {
       baseHeight = cropViewport.height;
       baseWidth = baseHeight * imageRatio;
@@ -236,7 +309,6 @@ const Profile: React.FC<ProfileProps> = ({
       baseWidth = cropViewport.width;
       baseHeight = baseWidth / imageRatio;
     }
-
     return {
       width: baseWidth * cropScale,
       height: baseHeight * cropScale,
@@ -255,7 +327,6 @@ const Profile: React.FC<ProfileProps> = ({
     (x: number, y: number) => {
       const maxX = Math.max(0, (displayedImage.width - cropViewport.width) / 2);
       const maxY = Math.max(0, (displayedImage.height - cropViewport.height) / 2);
-
       return {
         x: clamp(x, -maxX, maxX),
         y: clamp(y, -maxY, maxY),
@@ -306,7 +377,6 @@ const Profile: React.FC<ProfileProps> = ({
 
   const openEditMenu = () => {
     if (isPickingImage || isCroppingImage) return;
-
     if (editBtnRef.current && 'measureInWindow' in editBtnRef.current) {
       (editBtnRef.current as any).measureInWindow(
         (x: number, y: number, _btnWidth: number, btnHeight: number) => {
@@ -315,7 +385,6 @@ const Profile: React.FC<ProfileProps> = ({
             horizontalPadding,
             Math.min(x, width - menuWidth - horizontalPadding)
           );
-
           setMenuPosition({
             top: y + btnHeight + 8,
             left: safeLeft,
@@ -328,27 +397,21 @@ const Profile: React.FC<ProfileProps> = ({
 
   const getPostDropdownPosition = (event: GestureResponderEvent) => {
     const { pageX, pageY } = event.nativeEvent;
-
     const left = Math.min(
       Math.max(12, pageX - POST_DROPDOWN_WIDTH + 24),
       width - POST_DROPDOWN_WIDTH - 12
     );
-
     const top = Math.min(pageY + 8, height - 180);
-
     return { x: left, y: top };
   };
 
   const getAnswerDropdownPosition = (event: GestureResponderEvent) => {
     const { pageX, pageY } = event.nativeEvent;
-
     const left = Math.min(
       Math.max(12, pageX - ANSWER_DROPDOWN_WIDTH + 24),
       width - ANSWER_DROPDOWN_WIDTH - 12
     );
-
     const top = Math.min(pageY + 8, height - 160);
-
     return { x: left, y: top };
   };
 
@@ -389,7 +452,6 @@ const Profile: React.FC<ProfileProps> = ({
           base64: false,
         }
       );
-
       return result;
     } catch (e) {
       console.log('Normalize error:', e);
@@ -400,7 +462,6 @@ const Profile: React.FC<ProfileProps> = ({
           () => resolve({ width: 1, height: 1 })
         );
       });
-
       return {
         uri,
         width: fallbackSize.width,
@@ -412,7 +473,6 @@ const Profile: React.FC<ProfileProps> = ({
   const openCropModal = async (uri: string, type: CropType) => {
     try {
       const normalized = await normalizeImage(uri);
-
       setCropImageSize({
         width: normalized.width ?? 1,
         height: normalized.height ?? 1,
@@ -421,6 +481,7 @@ const Profile: React.FC<ProfileProps> = ({
       setCropModal({ uri: normalized.uri, type });
     } catch (error) {
       console.log('Image prep error:', error);
+      showToast('Unable to prepare the selected image.', 'error');
       if (type === 'profile') {
         onChangeProfileImage({ uri });
       } else {
@@ -431,29 +492,28 @@ const Profile: React.FC<ProfileProps> = ({
 
   const pickFile = async (type: CropType) => {
     if (isPickingImage || isCroppingImage) return;
-
     try {
       setIsPickingImage(true);
       setEditMenuVisible(false);
-
       const result = await DocumentPicker.getDocumentAsync({
         type: ['image/*'],
         copyToCacheDirectory: true,
         multiple: false,
       });
-
       if (result.canceled) return;
-
       const selected = result.assets?.[0];
-      if (!selected?.uri) return;
-
-      if (selected.size && selected.size > MAX_IMAGE_SIZE_BYTES) {
+      if (!selected?.uri) {
+        showToast('No image was selected.', 'error');
         return;
       }
-
+      if (selected.size && selected.size > MAX_IMAGE_SIZE_BYTES) {
+        showToast(`Image must be smaller than ${MAX_IMAGE_SIZE_MB}MB.`, 'error');
+        return;
+      }
       await openCropModal(selected.uri, type);
     } catch (error) {
       console.log('Picker error:', error);
+      showToast('Unable to pick an image.', 'error');
     } finally {
       setTimeout(() => {
         setIsPickingImage(false);
@@ -464,57 +524,46 @@ const Profile: React.FC<ProfileProps> = ({
   const handleCropScaleChange = (delta: number) => {
     const nextScale = clamp(cropScale + delta, 1, 3);
     setCropScale(nextScale);
-
     const nextDisplayedWidth = displayedImage.baseWidth * nextScale;
     const nextDisplayedHeight = displayedImage.baseHeight * nextScale;
-
     const maxX = Math.max(0, (nextDisplayedWidth - cropViewport.width) / 2);
     const maxY = Math.max(0, (nextDisplayedHeight - cropViewport.height) / 2);
-
     const nextOffset = {
       x: clamp(cropOffset.x, -maxX, maxX),
       y: clamp(cropOffset.y, -maxY, maxY),
     };
-
     setCropOffset(nextOffset);
     animatedPan.setValue(nextOffset);
   };
 
   const handleConfirmCrop = async () => {
     if (!cropModal) return;
-
     try {
       setIsCroppingImage(true);
-
       const imageLeft =
         (cropViewport.width - displayedImage.width) / 2 + cropOffset.x;
       const imageTop =
         (cropViewport.height - displayedImage.height) / 2 + cropOffset.y;
-
       const originX = clamp(
         Math.round((-imageLeft / displayedImage.width) * cropImageSize.width),
         0,
         cropImageSize.width - 1
       );
-
       const originY = clamp(
         Math.round((-imageTop / displayedImage.height) * cropImageSize.height),
         0,
         cropImageSize.height - 1
       );
-
       const cropWidth = clamp(
         Math.round((cropViewport.width / displayedImage.width) * cropImageSize.width),
         1,
         cropImageSize.width - originX
       );
-
       const cropHeight = clamp(
         Math.round((cropViewport.height / displayedImage.height) * cropImageSize.height),
         1,
         cropImageSize.height - originY
       );
-
       const result = await ImageManipulator.manipulateAsync(
         cropModal.uri,
         [
@@ -536,17 +585,18 @@ const Profile: React.FC<ProfileProps> = ({
           base64: false,
         }
       );
-
       if (cropModal.type === 'profile') {
         onChangeProfileImage({ uri: result.uri });
+        showToast('Profile photo updated successfully.', 'success');
       } else {
         onChangeBannerImage({ uri: result.uri });
+        showToast('Banner photo updated successfully.', 'success');
       }
-
       setCropModal(null);
       resetCropState();
     } catch (error) {
       console.log('Crop error:', error);
+      showToast('Failed to update the image. Please try again.', 'error');
     } finally {
       setIsCroppingImage(false);
     }
@@ -574,10 +624,39 @@ const Profile: React.FC<ProfileProps> = ({
     setAnswersModalVisible(true);
   };
 
+  const handleCreatePost = (query: string) => {
+    const trimmed = query.trim();
+    if (!trimmed) {
+      showToast('Please write a question or post first.', 'error');
+      return;
+    }
+
+    // ✅ Optimistic update — add the post to local state immediately instead
+    // of waiting for the parent to refresh the `userPosts` prop. This mirrors
+    // the fix applied to the Community screen so post creation feels instant
+    // here too, matching how answers/edits/deletes already behave below.
+    const newPost: CommunityPost = {
+      id: `post-${Date.now()}`,
+      userName: safeUserName,
+      userEmail: safeUserEmail,
+      avatar: profileImageSource,
+      dateTime: new Date().toLocaleString(),
+      content: trimmed,
+      answers: [],
+    };
+    setLocalPosts((prev) => [newPost, ...prev]);
+
+    onCreatePost?.(trimmed);
+    setQueryModalVisible(false);
+    showToast('Post created successfully.', 'success');
+  };
+
   const handlePostAnswer = () => {
     const trimmed = answerText.trim();
-    if (!trimmed || !selectedPostId) return;
-
+    if (!trimmed || !selectedPostId) {
+      if (!trimmed) showToast('Please write an answer first.', 'error');
+      return;
+    }
     const newAnswer: CommunityAnswer = {
       id: `answer-${Date.now()}`,
       userName: safeUserName,
@@ -585,7 +664,6 @@ const Profile: React.FC<ProfileProps> = ({
       answeredAt: new Date().toLocaleString(),
       message: trimmed,
     };
-
     setLocalPosts((prev) =>
       prev.map((post) =>
         post.id === selectedPostId
@@ -593,9 +671,9 @@ const Profile: React.FC<ProfileProps> = ({
           : post
       )
     );
-
     onAddAnswer?.(selectedPostId, trimmed);
     setAnswerText('');
+    showToast('Answer posted successfully.', 'success');
   };
 
   const handleEditPost = (post: CommunityPost) => {
@@ -607,18 +685,20 @@ const Profile: React.FC<ProfileProps> = ({
 
   const handleSaveEditedPost = () => {
     const trimmed = editPostText.trim();
-    if (!trimmed || !editingPostId) return;
-
+    if (!trimmed || !editingPostId) {
+      if (!trimmed) showToast('Post cannot be empty.', 'error');
+      return;
+    }
     setLocalPosts((prev) =>
       prev.map((post) =>
         post.id === editingPostId ? { ...post, content: trimmed } : post
       )
     );
-
     onEditPost?.(editingPostId, trimmed);
     setEditingPostId(null);
     setEditPostText('');
     setEditPostModalVisible(false);
+    showToast('Post updated successfully.', 'success');
   };
 
   const handleCloseEditPostModal = () => {
@@ -635,26 +715,19 @@ const Profile: React.FC<ProfileProps> = ({
 
   const confirmDeletePost = () => {
     if (!postToDelete) return;
-
     setLocalPosts((prev) => prev.filter((post) => post.id !== postToDelete));
     onDeletePost?.(postToDelete);
-
     if (selectedPostId === postToDelete) {
       closeAnswersModal();
     }
-
     setPostToDelete(null);
     setDeletePostConfirmVisible(false);
+    showToast('Post deleted successfully.', 'success');
   };
 
   const cancelDeletePost = () => {
     setPostToDelete(null);
     setDeletePostConfirmVisible(false);
-  };
-
-  const handleHidePost = (postId: string) => {
-    closePostDropdown();
-    setHiddenPosts((prev) => [...prev, postId]);
   };
 
   const handleEditAnswer = (answer: CommunityAnswer) => {
@@ -670,8 +743,10 @@ const Profile: React.FC<ProfileProps> = ({
 
   const handleSaveEditedAnswer = () => {
     const trimmed = editAnswerText.trim();
-    if (!trimmed || !editingAnswerId || !selectedPostId) return;
-
+    if (!trimmed || !editingAnswerId || !selectedPostId) {
+      if (!trimmed) showToast('Answer cannot be empty.', 'error');
+      return;
+    }
     setLocalPosts((prev) =>
       prev.map((post) =>
         post.id === selectedPostId
@@ -686,15 +761,13 @@ const Profile: React.FC<ProfileProps> = ({
           : post
       )
     );
-
     onEditAnswer?.(selectedPostId, editingAnswerId, trimmed);
-
     setEditAnswerModalVisible(false);
     setEditingAnswerId(null);
     setEditAnswerText('');
     closeAnswerDropdown();
-
     reopenAnswersModal();
+    showToast('Answer updated successfully.', 'success');
   };
 
   const handleCloseEditAnswerModal = () => {
@@ -702,7 +775,6 @@ const Profile: React.FC<ProfileProps> = ({
     setEditingAnswerId(null);
     setEditAnswerText('');
     closeAnswerDropdown();
-
     reopenAnswersModal();
   };
 
@@ -718,7 +790,6 @@ const Profile: React.FC<ProfileProps> = ({
 
   const confirmDeleteAnswer = () => {
     if (!selectedPostId || !answerToDelete) return;
-
     setLocalPosts((prev) =>
       prev.map((post) =>
         post.id === selectedPostId
@@ -729,40 +800,36 @@ const Profile: React.FC<ProfileProps> = ({
           : post
       )
     );
-
     onDeleteAnswer?.(selectedPostId, answerToDelete);
-
     setAnswerToDelete(null);
     setDeleteAnswerConfirmVisible(false);
     closeAnswerDropdown();
-
     reopenAnswersModal();
+    showToast('Answer deleted successfully.', 'success');
   };
 
   const cancelDeleteAnswer = () => {
     setAnswerToDelete(null);
     setDeleteAnswerConfirmVisible(false);
     closeAnswerDropdown();
-
     reopenAnswersModal();
   };
 
   const handleHideAnswer = (answerId: string) => {
     if (!selectedPostId) return;
-
     closeAnswerDropdown();
     closePostDropdown();
     setHiddenAnswersByPost((prev) => ({
       ...prev,
       [selectedPostId]: [...(prev[selectedPostId] || []), answerId],
     }));
+    showToast('Answer hidden.', 'info');
   };
 
   const renderProfileImage = (source: ImageSourcePropType | undefined, style: any) => {
     if (source) {
       return <Image source={source} style={style} resizeMode="cover" />;
     }
-
     return (
       <View style={[style, styles.imagePlaceholder]}>
         <MaterialCommunityIcons name="account" size={28} color="#A8A8A8" />
@@ -774,7 +841,6 @@ const Profile: React.FC<ProfileProps> = ({
     if (source) {
       return <Image source={source} style={style} resizeMode="cover" />;
     }
-
     return (
       <View style={[style, styles.bannerPlaceholder]}>
         <MaterialCommunityIcons name="image-outline" size={34} color="#B5B5B5" />
@@ -819,7 +885,6 @@ const Profile: React.FC<ProfileProps> = ({
               ]
             )}
           </View>
-
           <View
             style={[
               styles.profileInfo,
@@ -853,23 +918,23 @@ const Profile: React.FC<ProfileProps> = ({
                 ]
               )}
             </View>
-
             <View
               style={[
                 styles.nameContainer,
                 { marginTop: isSmallPhone ? 14 : 20, flex: 1 },
               ]}
             >
-              <Text
-                style={[
-                  styles.name,
-                  { fontSize: isSmallPhone ? 18 : isPhone ? 20 : 22 },
-                ]}
-                numberOfLines={1}
-              >
-                {safeUserName}
-              </Text>
-
+              {!!safeUserName && (
+                <Text
+                  style={[
+                    styles.name,
+                    { fontSize: isSmallPhone ? 18 : isPhone ? 20 : 22 },
+                  ]}
+                  numberOfLines={1}
+                >
+                  {safeUserName}
+                </Text>
+              )}
               {!!safeUserEmail && (
                 <Text
                   style={[
@@ -881,7 +946,6 @@ const Profile: React.FC<ProfileProps> = ({
                   {safeUserEmail}
                 </Text>
               )}
-
               <View ref={editBtnRef} collapsable={false}>
                 <TouchableOpacity
                   style={[
@@ -919,14 +983,12 @@ const Profile: React.FC<ProfileProps> = ({
               </View>
             </View>
           </View>
-
           <View
             style={[
               styles.divider,
               { marginVertical: isSmallPhone ? 20 : 25 },
             ]}
           />
-
           <View
             style={[
               styles.askContainer,
@@ -946,7 +1008,6 @@ const Profile: React.FC<ProfileProps> = ({
                 },
               ]
             )}
-
             <TouchableOpacity
               style={[
                 styles.askInput,
@@ -965,91 +1026,84 @@ const Profile: React.FC<ProfileProps> = ({
               </Text>
             </TouchableOpacity>
           </View>
-
-          {localPosts
-            .filter((post) => !hiddenPosts.includes(post.id))
-            .map((post) => (
-              <View
-                key={post.id}
-                style={[
-                  styles.postCard,
-                  {
-                    padding: isSmallPhone ? 14 : 18,
-                    borderRadius: isSmallPhone ? 14 : 16,
-                    marginBottom: isSmallPhone ? 12 : 14,
-                  },
-                  isLargeScreen && { alignSelf: 'center', maxWidth: contentMaxWidth },
-                ]}
-              >
-                <View style={styles.postHeader}>
-                  <View style={styles.userRow}>
-                    {renderProfileImage(
-                      normalizeImageSource(post.avatar),
-                      [
-                        styles.postAvatar,
-                        {
-                          width: isSmallPhone ? 32 : 35,
-                          height: isSmallPhone ? 32 : 35,
-                          borderRadius: isSmallPhone ? 16 : 20,
-                        },
-                      ]
-                    )}
-                    <View style={{ flex: 1, marginLeft: 8 }}>
-                      <Text
-                        style={[
-                          styles.postName,
-                          { fontSize: isSmallPhone ? 15 : 16 },
-                        ]}
-                        numberOfLines={1}
-                      >
-                        {post.userName}
-                      </Text>
-                      <Text
-                        style={[
-                          styles.postTime,
-                          { fontSize: isSmallPhone ? 11 : 12 },
-                        ]}
-                        numberOfLines={1}
-                      >
-                        {post.dateTime}
-                      </Text>
-                    </View>
+          {localPosts.map((post) => (
+            <View
+              key={post.id}
+              style={[
+                styles.postCard,
+                {
+                  padding: isSmallPhone ? 14 : 18,
+                  borderRadius: isSmallPhone ? 14 : 16,
+                  marginBottom: isSmallPhone ? 12 : 14,
+                },
+                isLargeScreen && { alignSelf: 'center', maxWidth: contentMaxWidth },
+              ]}
+            >
+              <View style={styles.postHeader}>
+                <View style={styles.userRow}>
+                  {renderProfileImage(
+                    normalizeImageSource(post.avatar),
+                    [
+                      styles.postAvatar,
+                      {
+                        width: isSmallPhone ? 32 : 35,
+                        height: isSmallPhone ? 32 : 35,
+                        borderRadius: isSmallPhone ? 16 : 20,
+                      },
+                    ]
+                  )}
+                  <View style={{ flex: 1, marginLeft: 8 }}>
+                    <Text
+                      style={[
+                        styles.postName,
+                        { fontSize: isSmallPhone ? 15 : 16 },
+                      ]}
+                      numberOfLines={1}
+                    >
+                      {post.userName}
+                    </Text>
+                    <Text
+                      style={[
+                        styles.postTime,
+                        { fontSize: isSmallPhone ? 11 : 12 },
+                      ]}
+                      numberOfLines={1}
+                    >
+                      {post.dateTime}
+                    </Text>
                   </View>
-
-                  <TouchableOpacity
-                    onPress={(event) => openPostDropdown(event, post)}
-                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                  >
-                    <Ionicons name="ellipsis-vertical" size={20} color="#333" />
-                  </TouchableOpacity>
                 </View>
-
-                <Text
-                  style={[
-                    styles.postText,
-                    {
-                      fontSize: isSmallPhone ? 14 : 15,
-                      lineHeight: isSmallPhone ? 21 : 23,
-                    },
-                  ]}
+                <TouchableOpacity
+                  onPress={(event) => openPostDropdown(event, post)}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                 >
-                  {post.content}
-                </Text>
-
-                <TouchableOpacity onPress={() => openAnswersModal(post)}>
-                  <Text
-                    style={[
-                      styles.answerLink,
-                      { fontSize: isSmallPhone ? 12 : 13 },
-                    ]}
-                  >
-                    View {post.answers.length} Answer(s)
-                  </Text>
+                  <Ionicons name="ellipsis-vertical" size={20} color="#333" />
                 </TouchableOpacity>
               </View>
-            ))}
+              <Text
+                style={[
+                  styles.postText,
+                  {
+                    fontSize: isSmallPhone ? 14 : 15,
+                    lineHeight: isSmallPhone ? 21 : 23,
+                  },
+                ]}
+              >
+                {post.content}
+              </Text>
+              <TouchableOpacity onPress={() => openAnswersModal(post)}>
+                <Text
+                  style={[
+                    styles.answerLink,
+                    { fontSize: isSmallPhone ? 12 : 13 },
+                  ]}
+                >
+                  View {post.answers.length} Answer(s)
+                </Text>
+              </TouchableOpacity>
+            </View>
+          ))}
         </ScrollView>
-
         <Modal
           visible={editMenuVisible}
           transparent
@@ -1083,7 +1137,6 @@ const Profile: React.FC<ProfileProps> = ({
               >
                 Choose Option
               </Text>
-
               <TouchableOpacity
                 style={[
                   styles.dropdownItem,
@@ -1107,7 +1160,6 @@ const Profile: React.FC<ProfileProps> = ({
                   Avatar
                 </Text>
               </TouchableOpacity>
-
               <TouchableOpacity
                 style={[
                   styles.dropdownItem,
@@ -1137,7 +1189,6 @@ const Profile: React.FC<ProfileProps> = ({
             </View>
           </Pressable>
         </Modal>
-
         <Modal
           visible={!!postDropdownState}
           transparent
@@ -1159,40 +1210,24 @@ const Profile: React.FC<ProfileProps> = ({
                         },
                       ]}
                     >
-                      {postDropdownState.post.userName === userName ||
-                      postDropdownState.post.userEmail === userEmail ? (
-                        <>
-                          <TouchableOpacity
-                            style={styles.menuItem}
-                            onPress={() => handleEditPost(postDropdownState.post)}
-                          >
-                            <View style={styles.actionIconCircle}>
-                              <Ionicons name="create-outline" size={13} color="#fff" />
-                            </View>
-                            <Text style={styles.menuText}>Edit Post</Text>
-                          </TouchableOpacity>
-
-                          <TouchableOpacity
-                            style={styles.menuItem}
-                            onPress={() => requestDeletePost(postDropdownState.post.id)}
-                          >
-                            <View style={styles.deleteIconCircle}>
-                              <Ionicons name="trash-outline" size={13} color="#fff" />
-                            </View>
-                            <Text style={styles.menuText}>Delete Post</Text>
-                          </TouchableOpacity>
-                        </>
-                      ) : (
-                        <TouchableOpacity
-                          style={styles.menuItem}
-                          onPress={() => handleHidePost(postDropdownState.post.id)}
-                        >
-                          <View style={styles.hideIconCircle}>
-                            <Ionicons name="eye-off" size={13} color="#fff" />
-                          </View>
-                          <Text style={styles.menuText}>Hide</Text>
-                        </TouchableOpacity>
-                      )}
+                      <TouchableOpacity
+                        style={styles.menuItem}
+                        onPress={() => handleEditPost(postDropdownState.post)}
+                      >
+                        <View style={styles.actionIconCircle}>
+                          <Ionicons name="create-outline" size={13} color="#fff" />
+                        </View>
+                        <Text style={styles.menuText}>Edit Post</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.menuItem}
+                        onPress={() => requestDeletePost(postDropdownState.post.id)}
+                      >
+                        <View style={styles.deleteIconCircle}>
+                          <Ionicons name="trash-outline" size={13} color="#fff" />
+                        </View>
+                        <Text style={styles.menuText}>Delete Post</Text>
+                      </TouchableOpacity>
                     </View>
                   )}
                 </View>
@@ -1200,7 +1235,6 @@ const Profile: React.FC<ProfileProps> = ({
             </View>
           </TouchableWithoutFeedback>
         </Modal>
-
         <Modal
           visible={!!cropModal}
           transparent
@@ -1233,24 +1267,20 @@ const Profile: React.FC<ProfileProps> = ({
                 >
                   <Text style={styles.cropCancelText}>Cancel</Text>
                 </TouchableOpacity>
-
                 <Text style={styles.cropHeaderTitle}>
                   {cropModal?.type === 'profile'
                     ? 'Crop profile photo'
                     : 'Crop banner photo'}
                 </Text>
-
                 <TouchableOpacity onPress={handleConfirmCrop} disabled={isCroppingImage}>
                   <Text style={styles.cropSaveText}>
                     {isCroppingImage ? 'Saving...' : 'Save'}
                   </Text>
                 </TouchableOpacity>
               </View>
-
               <Text style={styles.cropHintText}>
                 Drag to reposition. Use the zoom controls below for a cleaner crop.
               </Text>
-
               <View
                 style={[
                   styles.cropViewportWrapper,
@@ -1279,7 +1309,6 @@ const Profile: React.FC<ProfileProps> = ({
                     {...cropPanResponder.panHandlers}
                   />
                 </View>
-
                 <View
                   pointerEvents="none"
                   style={[
@@ -1293,7 +1322,6 @@ const Profile: React.FC<ProfileProps> = ({
                   ]}
                 />
               </View>
-
               <View style={styles.cropControls}>
                 <TouchableOpacity
                   style={styles.cropZoomButton}
@@ -1302,12 +1330,10 @@ const Profile: React.FC<ProfileProps> = ({
                 >
                   <Text style={styles.cropZoomButtonText}>−</Text>
                 </TouchableOpacity>
-
                 <View style={styles.cropZoomInfo}>
                   <Text style={styles.cropZoomLabel}>Zoom</Text>
                   <Text style={styles.cropZoomValue}>{cropScale.toFixed(1)}x</Text>
                 </View>
-
                 <TouchableOpacity
                   style={styles.cropZoomButton}
                   onPress={() => handleCropScaleChange(0.2)}
@@ -1319,7 +1345,6 @@ const Profile: React.FC<ProfileProps> = ({
             </View>
           </View>
         </Modal>
-
         <Modal
           visible={editPostModalVisible}
           transparent
@@ -1353,7 +1378,6 @@ const Profile: React.FC<ProfileProps> = ({
                       <Ionicons name="close" size={22} color="#333" />
                     </TouchableOpacity>
                   </View>
-
                   <TextInput
                     style={[
                       styles.answerInput,
@@ -1369,7 +1393,6 @@ const Profile: React.FC<ProfileProps> = ({
                     onChangeText={setEditPostText}
                     textAlignVertical="top"
                   />
-
                   <TouchableOpacity
                     style={[
                       styles.postAnswerButton,
@@ -1394,7 +1417,6 @@ const Profile: React.FC<ProfileProps> = ({
             </View>
           </TouchableWithoutFeedback>
         </Modal>
-
         <Modal
           visible={editAnswerModalVisible}
           transparent
@@ -1428,7 +1450,6 @@ const Profile: React.FC<ProfileProps> = ({
                       <Ionicons name="close" size={22} color="#333" />
                     </TouchableOpacity>
                   </View>
-
                   <TextInput
                     style={[
                       styles.answerInput,
@@ -1444,7 +1465,6 @@ const Profile: React.FC<ProfileProps> = ({
                     onChangeText={setEditAnswerText}
                     textAlignVertical="top"
                   />
-
                   <TouchableOpacity
                     style={[
                       styles.postAnswerButton,
@@ -1469,7 +1489,6 @@ const Profile: React.FC<ProfileProps> = ({
             </View>
           </TouchableWithoutFeedback>
         </Modal>
-
         <Modal
           visible={deletePostConfirmVisible}
           transparent
@@ -1494,7 +1513,6 @@ const Profile: React.FC<ProfileProps> = ({
                   <Text style={styles.confirmMessage}>
                     Are you sure you want to delete this post?
                   </Text>
-
                   <View style={styles.confirmActions}>
                     <TouchableOpacity
                       style={styles.cancelButton}
@@ -1502,7 +1520,6 @@ const Profile: React.FC<ProfileProps> = ({
                     >
                       <Text style={styles.cancelButtonText}>Cancel</Text>
                     </TouchableOpacity>
-
                     <TouchableOpacity
                       style={styles.deleteButton}
                       onPress={confirmDeletePost}
@@ -1515,7 +1532,6 @@ const Profile: React.FC<ProfileProps> = ({
             </View>
           </TouchableWithoutFeedback>
         </Modal>
-
         <Modal
           visible={deleteAnswerConfirmVisible}
           transparent
@@ -1540,7 +1556,6 @@ const Profile: React.FC<ProfileProps> = ({
                   <Text style={styles.confirmMessage}>
                     Are you sure you want to delete this answer?
                   </Text>
-
                   <View style={styles.confirmActions}>
                     <TouchableOpacity
                       style={styles.cancelButton}
@@ -1548,7 +1563,6 @@ const Profile: React.FC<ProfileProps> = ({
                     >
                       <Text style={styles.cancelButtonText}>Cancel</Text>
                     </TouchableOpacity>
-
                     <TouchableOpacity
                       style={styles.deleteButton}
                       onPress={confirmDeleteAnswer}
@@ -1561,7 +1575,6 @@ const Profile: React.FC<ProfileProps> = ({
             </View>
           </TouchableWithoutFeedback>
         </Modal>
-
         <Modal
           visible={answersModalVisible}
           transparent
@@ -1582,7 +1595,6 @@ const Profile: React.FC<ProfileProps> = ({
                 closeAnswersModal();
               }}
             />
-
             <View
               style={[
                 styles.answersModalCard,
@@ -1602,63 +1614,42 @@ const Profile: React.FC<ProfileProps> = ({
                   <Ionicons name="close" size={22} color="#333" />
                 </TouchableOpacity>
               </View>
-
               {selectedPost && (
                 <>
                   <Text
                     style={[
                       styles.selectedPostText,
                       {
-                        fontSize: isSmallPhone ? 13 : 14,
-                        lineHeight: isSmallPhone ? 18 : 20,
+                        fontSize: isSmallPhone ? 14 : 15,
+                        lineHeight: isSmallPhone ? 20 : 22,
                       },
                     ]}
                   >
                     {selectedPost.content}
                   </Text>
-
                   <View style={styles.answersListWrapper}>
                     <ScrollView
                       style={styles.answersScroll}
                       contentContainerStyle={styles.modalAnswersContainer}
+                      showsVerticalScrollIndicator={true}
+                      persistentScrollbar={true}
+                      nestedScrollEnabled={true}
                       keyboardShouldPersistTaps="handled"
+                      scrollEventThrottle={16}
                     >
                       {visibleAnswers.length > 0 ? (
                         visibleAnswers.map((answer) => (
                           <View key={answer.id} style={styles.answerCard}>
                             <View style={styles.answerPreviewHeader}>
                               <View style={styles.userRow}>
-                                <Image
-                                  source={normalizeImageSource(answer.avatar)}
-                                  style={[
-                                    styles.answerAvatar,
-                                    {
-                                      width: isSmallPhone ? 30 : 34,
-                                      height: isSmallPhone ? 30 : 34,
-                                      borderRadius: isSmallPhone ? 15 : 17,
-                                    },
-                                  ]}
-                                  resizeMode="cover"
-                                />
+                                {renderProfileImage(
+                                  normalizeImageSource(answer.avatar),
+                                  styles.answerAvatar
+                                )}
                                 <View style={{ marginLeft: 8, flex: 1 }}>
-                                  <Text
-                                    style={[
-                                      styles.answerUserName,
-                                      { fontSize: isSmallPhone ? 13 : 14 },
-                                    ]}
-                                  >
-                                    {answer.userName}
-                                  </Text>
-                                  <Text
-                                    style={[
-                                      styles.answerDate,
-                                      { fontSize: isSmallPhone ? 11 : 12 },
-                                    ]}
-                                  >
-                                    {answer.answeredAt}
-                                  </Text>
+                                  <Text style={styles.answerUserName}>{answer.userName}</Text>
+                                  <Text style={styles.answerDate}>{answer.answeredAt}</Text>
                                 </View>
-
                                 <TouchableOpacity
                                   onPress={(event) => openAnswerDropdown(event, answer)}
                                   hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
@@ -1671,28 +1662,16 @@ const Profile: React.FC<ProfileProps> = ({
                                 </TouchableOpacity>
                               </View>
                             </View>
-
-                            <Text
-                              style={[
-                                styles.answerPreviewText,
-                                {
-                                  fontSize: isSmallPhone ? 13 : 14,
-                                  lineHeight: isSmallPhone ? 18 : 20,
-                                },
-                              ]}
-                            >
+                            <Text style={styles.answerPreviewText}>
                               {answer.message}
                             </Text>
                           </View>
                         ))
                       ) : (
-                        <Text style={styles.noAnswersText}>
-                          No answers yet.
-                        </Text>
+                        <Text style={styles.noAnswersText}>No answers yet.</Text>
                       )}
                     </ScrollView>
                   </View>
-
                   <View style={styles.answerInputSection}>
                     <Text
                       style={[
@@ -1740,7 +1719,6 @@ const Profile: React.FC<ProfileProps> = ({
                 </>
               )}
             </View>
-
             {answerDropdownState && (
               <TouchableWithoutFeedback onPress={closeAnswerDropdown}>
                 <View style={styles.answerDropdownOverlay}>
@@ -1754,7 +1732,7 @@ const Profile: React.FC<ProfileProps> = ({
                         },
                       ]}
                     >
-                      {answerDropdownState.answer.userName === userName ? (
+                      {answerDropdownState.answer.userName === safeUserName ? (
                         <>
                           <TouchableOpacity
                             style={styles.menuItem}
@@ -1772,7 +1750,6 @@ const Profile: React.FC<ProfileProps> = ({
                             </View>
                             <Text style={styles.menuText}>Edit Answer</Text>
                           </TouchableOpacity>
-
                           <TouchableOpacity
                             style={styles.menuItem}
                             onPress={() => requestDeleteAnswer(answerDropdownState.answer.id)}
@@ -1801,44 +1778,56 @@ const Profile: React.FC<ProfileProps> = ({
             )}
           </View>
         </Modal>
-
         <PostQueryModal
           visible={queryModalVisible}
           onClose={() => setQueryModalVisible(false)}
-          onPost={onCreatePost}
+          onPost={handleCreatePost}
         />
+
+        {/* Toast — portal-based so it renders above all other Modals (Crop/Answers/Edit/Delete) */}
+        <Modal
+          visible={toast.visible}
+          transparent
+          animationType="fade"
+          onRequestClose={hideToast}
+          statusBarTranslucent
+        >
+          <View style={styles.toastPortal} pointerEvents="box-none">
+            <Toast
+              visible={toast.visible}
+              message={toast.message}
+              type={toast.type}
+              onHide={hideToast}
+            />
+          </View>
+        </Modal>
       </View>
     </TouchableWithoutFeedback>
   );
 };
 
 const styles = StyleSheet.create({
-  imagePlaceholder: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#F2F2F2',
-  },
-
-  bannerPlaceholder: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#F6F6F6',
-  },
-
   container: {
     flex: 1,
     backgroundColor: '#ffffff',
   },
-
   bannerContainer: {
     alignItems: 'center',
   },
-
   banner: {
     width: '100%',
     maxWidth: 800,
   },
-
+  bannerPlaceholder: {
+    backgroundColor: '#EFEFEF',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  imagePlaceholder: {
+    backgroundColor: '#F2F2F2',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   profileInfo: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1846,7 +1835,6 @@ const styles = StyleSheet.create({
     maxWidth: 800,
     width: '100%',
   },
-
   avatarOuter: {
     backgroundColor: '#FFF',
     justifyContent: 'center',
@@ -1854,42 +1842,34 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     borderColor: '#FFF',
   },
-
   avatarImage: {
     overflow: 'hidden',
     aspectRatio: 1,
   },
-
   nameContainer: {
     justifyContent: 'center',
   },
-
   name: {
     fontWeight: '700',
     color: '#111',
   },
-
   email: {
     color: '#666',
     marginTop: 4,
   },
-
   editBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#F4DCDC',
     alignSelf: 'flex-start',
   },
-
   editBtnDisabled: {
     opacity: 0.7,
   },
-
   editText: {
     color: '#D32F2F',
     fontWeight: '600',
   },
-
   divider: {
     height: 1,
     backgroundColor: '#DDD',
@@ -1897,7 +1877,6 @@ const styles = StyleSheet.create({
     maxWidth: 700,
     alignSelf: 'center',
   },
-
   askContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1906,12 +1885,10 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 800,
   },
-
   smallAvatar: {
     overflow: 'hidden',
     aspectRatio: 1,
   },
-
   askInput: {
     flex: 1,
     borderWidth: 1.5,
@@ -1920,11 +1897,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFF',
     justifyContent: 'center',
   },
-
   askText: {
     color: '#999',
   },
-
   postCard: {
     borderLeftWidth: 5,
     borderBottomWidth: 1,
@@ -1933,49 +1908,40 @@ const styles = StyleSheet.create({
     width: '100%',
     backgroundColor: '#fff',
   },
-
   postHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-
   userRow: {
     flexDirection: 'row',
     alignItems: 'center',
     flex: 1,
   },
-
   postAvatar: {
     overflow: 'hidden',
     aspectRatio: 1,
   },
-
   postName: {
     fontWeight: '700',
     color: '#111',
   },
-
   postTime: {
     color: '#777',
   },
-
   postText: {
     marginTop: 8,
     color: '#333',
   },
-
   answerLink: {
     color: '#1976d2',
     marginTop: 8,
     fontWeight: '400',
   },
-
   dropdownOverlay: {
     flex: 1,
     backgroundColor: 'transparent',
   },
-
   dropdownMenu: {
     position: 'absolute',
     backgroundColor: '#fff',
@@ -1986,13 +1952,11 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     elevation: 8,
   },
-
   dropdownTitle: {
     fontWeight: '700',
     textAlign: 'center',
     color: '#333',
   },
-
   dropdownItem: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2001,16 +1965,13 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     marginBottom: 12,
   },
-
   dropdownIcon: {
     marginRight: 8,
   },
-
   dropdownText: {
     color: '#222',
     fontWeight: '500',
   },
-
   dropdownPostMenuFloating: {
     position: 'absolute',
     backgroundColor: '#fff',
@@ -2022,14 +1983,12 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 4 },
   },
-
   menuItem: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 10,
     paddingVertical: 8,
   },
-
   actionIconCircle: {
     width: 20,
     height: 20,
@@ -2038,7 +1997,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-
   deleteIconCircle: {
     width: 20,
     height: 20,
@@ -2047,7 +2005,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-
   hideIconCircle: {
     width: 20,
     height: 20,
@@ -2056,13 +2013,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-
   menuText: {
     marginLeft: 6,
     fontSize: 14,
     color: '#333',
   },
-
   cropOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.72)',
@@ -2071,58 +2026,49 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 18,
   },
-
   cropCard: {
     backgroundColor: '#121212',
     borderRadius: 22,
     maxWidth: 860,
   },
-
   cropHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: 8,
   },
-
   cropHeaderTitle: {
     color: '#FFF',
     fontWeight: '700',
     fontSize: 16,
   },
-
   cropCancelText: {
     color: '#CFCFCF',
     fontSize: 14,
     fontWeight: '600',
   },
-
   cropSaveText: {
     color: '#4EA1FF',
     fontSize: 14,
     fontWeight: '700',
   },
-
   cropHintText: {
     color: '#BDBDBD',
     fontSize: 13,
     marginBottom: 14,
     textAlign: 'center',
   },
-
   cropViewportWrapper: {
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 18,
   },
-
   cropViewport: {
     overflow: 'hidden',
     backgroundColor: '#000',
     justifyContent: 'center',
     alignItems: 'center',
   },
-
   cropFrame: {
     position: 'absolute',
     borderWidth: 2,
@@ -2132,14 +2078,12 @@ const styles = StyleSheet.create({
     shadowRadius: 10,
     elevation: 4,
   },
-
   cropControls: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 16,
   },
-
   cropZoomButton: {
     width: 44,
     height: 44,
@@ -2148,38 +2092,32 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-
   cropZoomButtonText: {
     color: '#FFF',
     fontSize: 24,
     fontWeight: '600',
     lineHeight: 26,
   },
-
   cropZoomInfo: {
     minWidth: 90,
     alignItems: 'center',
   },
-
   cropZoomLabel: {
     color: '#BDBDBD',
     fontSize: 12,
     marginBottom: 2,
   },
-
   cropZoomValue: {
     color: '#FFF',
     fontSize: 15,
     fontWeight: '700',
   },
-
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.35)',
     justifyContent: 'center',
     alignItems: 'center',
   },
-
   answersModalCard: {
     width: '100%',
     maxWidth: 520,
@@ -2187,53 +2125,44 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFF',
     borderRadius: 18,
   },
-
   editPostModalCard: {
     width: '100%',
     maxWidth: 520,
     backgroundColor: '#FFF',
     borderRadius: 18,
   },
-
   confirmModalCard: {
     width: '100%',
     maxWidth: 380,
     backgroundColor: '#FFF',
     borderRadius: 18,
   },
-
   answersModalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 16,
   },
-
   answersModalTitle: {
     fontWeight: '700',
     color: '#222',
   },
-
   selectedPostText: {
     color: '#333',
     marginBottom: 16,
   },
-
   answersListWrapper: {
     flex: 1,
     minHeight: 160,
     marginBottom: 8,
   },
-
   answersScroll: {
     flex: 1,
   },
-
   modalAnswersContainer: {
     paddingRight: 8,
     paddingBottom: 8,
   },
-
   answerCard: {
     backgroundColor: '#F8F8F8',
     borderRadius: 12,
@@ -2242,49 +2171,47 @@ const styles = StyleSheet.create({
     borderColor: '#E8E8E8',
     marginBottom: 10,
   },
-
   answerPreviewHeader: {
     marginBottom: 6,
   },
-
   answerAvatar: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
     overflow: 'hidden',
     aspectRatio: 1,
   },
-
   answerUserName: {
+    fontSize: 14,
     fontWeight: '700',
     color: '#222',
   },
-
   answerDate: {
+    fontSize: 12,
     color: '#777',
   },
-
   answerPreviewText: {
+    fontSize: 14,
     color: '#555',
+    lineHeight: 20,
   },
-
   noAnswersText: {
     fontSize: 14,
     color: '#777',
     textAlign: 'center',
     paddingVertical: 12,
   },
-
   answerInputSection: {
     borderTopWidth: 1,
     borderTopColor: '#EEE',
     paddingTop: 14,
     marginTop: 4,
   },
-
   answerInputLabel: {
     fontWeight: '600',
     color: '#222',
     marginBottom: 8,
   },
-
   answerInput: {
     borderWidth: 1,
     borderColor: '#D9D9D9',
@@ -2294,63 +2221,53 @@ const styles = StyleSheet.create({
     color: '#222',
     backgroundColor: '#FFF',
   },
-
   postAnswerButton: {
     alignSelf: 'flex-start',
     marginTop: 12,
     backgroundColor: '#D32F2F',
     borderRadius: 8,
   },
-
   postAnswerButtonText: {
     color: '#FFF',
     fontWeight: '600',
   },
-
   confirmTitle: {
     fontSize: 18,
     fontWeight: '700',
     color: '#222',
     marginBottom: 10,
   },
-
   confirmMessage: {
     fontSize: 14,
     color: '#555',
     lineHeight: 20,
     marginBottom: 18,
   },
-
   confirmActions: {
     flexDirection: 'row',
     justifyContent: 'flex-end',
     gap: 10,
   },
-
   cancelButton: {
     paddingHorizontal: 16,
     paddingVertical: 10,
     borderRadius: 8,
     backgroundColor: '#E0E0E0',
   },
-
   cancelButtonText: {
     color: '#333',
     fontWeight: '600',
   },
-
   deleteButton: {
     paddingHorizontal: 16,
     paddingVertical: 10,
     borderRadius: 8,
     backgroundColor: '#D32F2F',
   },
-
   deleteButtonText: {
     color: '#FFF',
     fontWeight: '600',
   },
-
   answerDropdownOverlay: {
     position: 'absolute',
     top: 0,
@@ -2360,7 +2277,6 @@ const styles = StyleSheet.create({
     zIndex: 99998,
     elevation: 99998,
   },
-
   answerDropdownFloating: {
     position: 'absolute',
     width: ANSWER_DROPDOWN_WIDTH,
@@ -2373,6 +2289,11 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.18,
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 4 },
+  },
+
+  // ✅ Toast portal — lets touches pass through to whatever's behind, except the toast itself
+  toastPortal: {
+    ...StyleSheet.absoluteFillObject,
   },
 });
 

@@ -17,6 +17,11 @@ import { RiskLevel, TrendDirection } from '../analytics/types';
 import AnnouncementBanner from '../components/AnnouncementBanner';
 import { Announcement } from '../components/AnnouncementModal';
 
+// ✅ Reuses the same Toast component used across the app (Admin/Teacher
+// screens, Community), instead of the ad-hoc joinFeedback banner that used
+// to live here. Keeps toast styling/behavior consistent app-wide.
+import Toast from '../Final_Admin_Components/Toast'; // adjust path if your folder layout differs
+
 export interface DashboardMaterial {
   id: string;
   title: string;
@@ -54,7 +59,7 @@ interface DashboardProps {
   announcements?: Announcement[];
   courses?: DashboardCourse[];
   onOpenCourse?: (course: DashboardCourse) => void;
-  onOpenAssignments?: (course: DashboardCourse) => void;
+  onOpenAssignments?: (course: DashboardCourse, assignment?: DashboardAssignment) => void;
   onOpenMaterials?: (course: DashboardCourse) => void;
   onOpenGeneratedActivity?: (
     course: DashboardCourse,
@@ -74,6 +79,7 @@ interface DashboardProps {
 }
 
 type RecommendationType = 'review' | 'practice';
+type ToastType = 'success' | 'error' | 'info';
 
 const Dashboard = ({
   announcements = [],
@@ -91,10 +97,14 @@ const Dashboard = ({
   const [joinModalVisible, setJoinModalVisible] = useState(false);
   const [classCode, setClassCode] = useState('');
   const [showAllCourses, setShowAllCourses] = useState(false);
-  const [joinFeedbackVisible, setJoinFeedbackVisible] = useState(false);
-  const [joinFeedbackType, setJoinFeedbackType] = useState<'success' | 'error'>('success');
-  const [joinFeedbackMessage, setJoinFeedbackMessage] = useState('');
   const [isJoiningClass, setIsJoiningClass] = useState(false);
+
+  // ✅ Toast state — replaces the old joinFeedbackVisible/Type/Message trio.
+  const [toast, setToast] = useState<{
+    visible: boolean;
+    message: string;
+    type: ToastType;
+  }>({ visible: false, message: '', type: 'success' });
 
   const isMobile = width < 768;
   const isTablet = width >= 768 && width < 1200;
@@ -106,18 +116,11 @@ const Dashboard = ({
   const bannerHeight = isMobile ? 110 : isTablet ? 125 : 140;
   const contentMaxWidth = isLargeScreen ? 1280 : 1100;
 
-  const showJoinFeedback = (
-    message: string,
-    type: 'success' | 'error' = 'success'
-  ) => {
-    setJoinFeedbackMessage(message);
-    setJoinFeedbackType(type);
-    setJoinFeedbackVisible(true);
-
-    setTimeout(() => {
-      setJoinFeedbackVisible(false);
-    }, 2800);
+  const showToast = (message: string, type: ToastType = 'success') => {
+    setToast({ visible: true, message, type });
   };
+
+  const hideToast = () => setToast((prev) => ({ ...prev, visible: false }));
 
   const handleJoinClass = async () => {
     if (isJoiningClass) return;
@@ -125,12 +128,12 @@ const Dashboard = ({
     const trimmedCode = classCode.trim().toUpperCase();
 
     if (!trimmedCode) {
-      showJoinFeedback('Please enter a class code.', 'error');
+      showToast('Please enter a class code.', 'error');
       return;
     }
 
     if (!onJoinClass) {
-      showJoinFeedback('Join class action is not available.', 'error');
+      showToast('Join class action is not available.', 'error');
       return;
     }
 
@@ -149,12 +152,12 @@ const Dashboard = ({
 
       setClassCode('');
       setJoinModalVisible(false);
-      showJoinFeedback(
+      showToast(
         result?.message || 'Class joined successfully.',
         'success'
       );
     } catch (error: any) {
-      showJoinFeedback(
+      showToast(
         error?.message || 'Failed to join class. Please check the class code.',
         'error'
       );
@@ -691,7 +694,7 @@ const Dashboard = ({
                             styles.smallActionBtn,
                             { backgroundColor: '#444' },
                           ]}
-                          onPress={() => onOpenAssignments?.(item.course)}
+                          onPress={() => onOpenAssignments?.(item.course, item.assignment)}
                         >
                           <Text style={styles.smallActionBtnText}>
                             Open Assignment
@@ -883,30 +886,6 @@ const Dashboard = ({
         </View>
       </ScrollView>
 
-      {joinFeedbackVisible ? (
-        <View pointerEvents="none" style={styles.joinFeedbackContainer}>
-          <View
-            style={[
-              styles.joinFeedbackBox,
-              joinFeedbackType === 'success'
-                ? styles.joinFeedbackSuccess
-                : styles.joinFeedbackError,
-            ]}
-          >
-            <Ionicons
-              name={
-                joinFeedbackType === 'success'
-                  ? 'checkmark-circle'
-                  : 'alert-circle'
-              }
-              size={20}
-              color="#FFFFFF"
-            />
-            <Text style={styles.joinFeedbackText}>{joinFeedbackMessage}</Text>
-          </View>
-        </View>
-      ) : null}
-
       <Modal
         visible={joinModalVisible}
         transparent
@@ -990,6 +969,26 @@ const Dashboard = ({
             </TouchableWithoutFeedback>
           </View>
         </TouchableWithoutFeedback>
+      </Modal>
+
+      {/* Toast — portal-based, matches the Community screen implementation
+          so join-class success/error feedback looks and behaves the same
+          way as everywhere else in the app. */}
+      <Modal
+        visible={toast.visible}
+        transparent
+        animationType="fade"
+        onRequestClose={hideToast}
+        statusBarTranslucent
+      >
+        <View style={styles.toastPortal} pointerEvents="box-none">
+          <Toast
+            visible={toast.visible}
+            message={toast.message}
+            type={toast.type}
+            onHide={hideToast}
+          />
+        </View>
       </Modal>
     </>
   );
@@ -1303,45 +1302,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
 
-  joinFeedbackContainer: {
-    position: 'absolute',
-    top: 18,
-    left: 0,
-    right: 0,
-    zIndex: 9999,
-    elevation: 9999,
-    alignItems: 'center',
-    paddingHorizontal: 16,
-  },
-  joinFeedbackBox: {
-    maxWidth: 420,
-    minHeight: 52,
-    borderRadius: 16,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    shadowColor: '#000',
-    shadowOpacity: 0.18,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 5 },
-    elevation: 12,
-  },
-  joinFeedbackSuccess: {
-    backgroundColor: '#2E7D32',
-  },
-  joinFeedbackError: {
-    backgroundColor: '#D32F2F',
-  },
-  joinFeedbackText: {
-    flex: 1,
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '800',
-    lineHeight: 19,
-  },
-
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(15, 23, 42, 0.18)',
@@ -1455,6 +1415,12 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#666',
     fontWeight: '600',
+  },
+
+  // ✅ Toast portal — matches Community; lets touches pass through to
+  // whatever's behind, except the toast itself.
+  toastPortal: {
+    ...StyleSheet.absoluteFillObject,
   },
 });
 

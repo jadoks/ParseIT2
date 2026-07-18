@@ -20,10 +20,16 @@ import {
 import Icon from 'react-native-vector-icons/Ionicons';
 import { auth } from '../../firebaseConfig';
 
+// ✅ Reuses the same Toast component used across the app (Admin/Teacher
+// screens, Community, Dashboard, ClassesScreen) instead of the bespoke
+// "feedback" modal that used to live here, so login/reset feedback looks
+// and behaves consistently everywhere.
+import Toast from '../Final_Admin_Components/Toast'; // adjust path if your folder layout differs
+
 type UserRole = 'student' | 'teacher' | 'admin';
 type ForgotStep = 1 | 2 | 3;
 type FirstLoginStep = 1 | 2;
-type FeedbackType = 'success' | 'error' | 'info';
+type ToastType = 'success' | 'error' | 'info';
 
 interface SignedInUser {
   role: UserRole;
@@ -128,11 +134,17 @@ const SignIn = ({ onLogIn, onGoToLanding, onGoToRegister }: SignInProps) => {
   const [isNewPasswordFocused, setIsNewPasswordFocused] = useState(false);
   const [isConfirmNewPasswordFocused, setIsConfirmNewPasswordFocused] = useState(false);
 
-  const [feedbackVisible, setFeedbackVisible] = useState(false);
-  const [feedbackType, setFeedbackType] = useState<FeedbackType>('info');
-  const [feedbackTitle, setFeedbackTitle] = useState('');
-  const [feedbackMessage, setFeedbackMessage] = useState('');
-  const [feedbackOnClose, setFeedbackOnClose] = useState<(() => void) | null>(null);
+  // ✅ Toast state — same shape/usage as Community, Dashboard, ClassesScreen.
+  const [toast, setToast] = useState<{
+    visible: boolean;
+    message: string;
+    type: ToastType;
+  }>({ visible: false, message: '', type: 'success' });
+
+  // Some of the old feedback calls advanced the flow only after the user
+  // acknowledged the message (see the password-reset success case below).
+  // Toast auto-dismisses, so we run that follow-up when it hides instead.
+  const [toastOnHide, setToastOnHide] = useState<(() => void) | null>(null);
 
   const { width } = useWindowDimensions();
   const isLargeScreen = width >= 1024;
@@ -228,24 +240,31 @@ const SignIn = ({ onLogIn, onGoToLanding, onGoToRegister }: SignInProps) => {
   const otpValue = verificationPin.join('');
   const isPinValid = useMemo(() => /^\d{4}$/.test(otpValue), [otpValue]);
 
+  const showToast = (
+    message: string,
+    type: ToastType = 'success',
+    onHide?: () => void
+  ) => {
+    setToast({ visible: true, message, type });
+    setToastOnHide(() => onHide || null);
+  };
+
+  const hideToast = () => {
+    setToast((prev) => ({ ...prev, visible: false }));
+    const callback = toastOnHide;
+    setToastOnHide(null);
+    if (callback) callback();
+  };
+
+  // Thin wrapper so every existing call site below can keep passing a
+  // title alongside the message — the toast just folds them into one line.
   const showFeedback = (
-    type: FeedbackType,
+    type: ToastType,
     title: string,
     message: string,
     onClose?: () => void
   ) => {
-    setFeedbackType(type);
-    setFeedbackTitle(title);
-    setFeedbackMessage(message);
-    setFeedbackOnClose(() => onClose || null);
-    setFeedbackVisible(true);
-  };
-
-  const closeFeedback = () => {
-    setFeedbackVisible(false);
-    const callback = feedbackOnClose;
-    setFeedbackOnClose(null);
-    if (callback) callback();
+    showToast(`${title}: ${message}`, type, onClose);
   };
 
   const resetSharedPasswordState = () => {
@@ -888,18 +907,6 @@ const SignIn = ({ onLogIn, onGoToLanding, onGoToRegister }: SignInProps) => {
         })}
       </View>
     );
-  };
-
-  const getFeedbackColor = () => {
-    if (feedbackType === 'success') return '#16A34A';
-    if (feedbackType === 'error') return '#D32F2F';
-    return '#2563EB';
-  };
-
-  const getFeedbackIcon = () => {
-    if (feedbackType === 'success') return 'checkmark-circle';
-    if (feedbackType === 'error') return 'close-circle';
-    return 'information-circle';
   };
 
   // ── Shared sign-in fields (rendered inside either layout) ────────────────
@@ -1546,34 +1553,22 @@ const SignIn = ({ onLogIn, onGoToLanding, onGoToRegister }: SignInProps) => {
         </View>
       </Modal>
 
-      {/* Feedback modal */}
+      {/* Toast — portal-based, matches Community/Dashboard/ClassesScreen so
+          login/reset/setup feedback looks and behaves the same everywhere. */}
       <Modal
-        visible={feedbackVisible}
+        visible={toast.visible}
         transparent
         animationType="fade"
-        onRequestClose={closeFeedback}
+        onRequestClose={hideToast}
+        statusBarTranslucent
       >
-        <View style={styles.feedbackOverlay}>
-          <View style={styles.feedbackCard}>
-            <View
-              style={[
-                styles.feedbackIconWrapper,
-                { backgroundColor: `${getFeedbackColor()}18` },
-              ]}
-            >
-              <Icon name={getFeedbackIcon()} size={40} color={getFeedbackColor()} />
-            </View>
-
-            <Text style={styles.feedbackTitle}>{feedbackTitle}</Text>
-            <Text style={styles.feedbackMessage}>{feedbackMessage}</Text>
-
-            <TouchableOpacity
-              style={[styles.feedbackButton, { backgroundColor: getFeedbackColor() }]}
-              onPress={closeFeedback}
-            >
-              <Text style={styles.feedbackButtonText}>OK</Text>
-            </TouchableOpacity>
-          </View>
+        <View style={styles.toastPortal} pointerEvents="box-none">
+          <Toast
+            visible={toast.visible}
+            message={toast.message}
+            type={toast.type}
+            onHide={hideToast}
+          />
         </View>
       </Modal>
     </Animated.View>
@@ -2114,60 +2109,11 @@ const styles = StyleSheet.create({
     paddingVertical: 15,
     ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : {}),
   },
-  feedbackOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.45)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 24,
-  },
-  feedbackCard: {
-    width: '100%',
-    maxWidth: 360,
-    backgroundColor: '#FFF',
-    borderRadius: 24,
-    paddingHorizontal: 24,
-    paddingVertical: 28,
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOpacity: 0.22,
-    shadowOffset: { width: 0, height: 8 },
-    shadowRadius: 20,
-    elevation: 10,
-  },
-  feedbackIconWrapper: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  feedbackTitle: {
-    fontSize: 22,
-    fontWeight: '800',
-    color: '#111827',
-    textAlign: 'center',
-    marginBottom: 8,
-  },
-  feedbackMessage: {
-    fontSize: 15,
-    color: '#6B7280',
-    textAlign: 'center',
-    lineHeight: 22,
-    marginBottom: 22,
-  },
-  feedbackButton: {
-    minWidth: 120,
-    borderRadius: 14,
-    paddingVertical: 14,
-    paddingHorizontal: 24,
-    alignItems: 'center',
-  },
-  feedbackButtonText: {
-    color: '#FFF',
-    fontSize: 15,
-    fontWeight: '800',
+
+  // ✅ Toast portal — matches Community/Dashboard/ClassesScreen; lets touches
+  // pass through to whatever's behind, except the toast itself.
+  toastPortal: {
+    ...StyleSheet.absoluteFillObject,
   },
 });
 

@@ -27,9 +27,10 @@ import Assignments, {
   AssignmentCourse,
   AssignmentFileUpload,
   AssignmentItem,
+  AssignmentMaterial,
 } from './screens/Assignments';
 import ClassesScreen from './screens/ClassesScreen';
-import Community, { CommunityPost } from './screens/Community';
+import Community, { CommunityAnswer, CommunityPost } from './screens/Community';
 import CourseDetail, {
   CourseAssignment,
   CourseAssignmentComment,
@@ -113,9 +114,8 @@ function getApiBaseUrl() {
   return 'http://192.168.1.5:5000';
 }
 
-
-
 const API_BASE_URL = getApiBaseUrl();
+
 const apiFetch = (url: string, options: any = {}) =>
   fetch(url, { credentials: 'include', ...options });
 
@@ -163,7 +163,12 @@ type CompletedActivityScore = {
 };
 
 const getAssignmentStateKey = (studentId: string) => `student-assignment-state-${studentId}`;
-const emptyStoredAssignmentState = (): StoredAssignmentState => ({ files: {}, statuses: {}, scores: {} });
+
+const emptyStoredAssignmentState = (): StoredAssignmentState => ({
+  files: {},
+  statuses: {},
+  scores: {},
+});
 
 const readStoredAssignmentState = async (studentId: string): Promise<StoredAssignmentState> => {
   if (!studentId) return emptyStoredAssignmentState();
@@ -216,7 +221,7 @@ const formatRemoteDateTime = (value: any) => {
 const mapSubmissionToFile = (submission: any): AssignmentFileUpload[] => {
   const items: AssignmentFileUpload[] = [];
   const baseDate = formatRemoteDateTime(submission?.submittedAt || submission?.createdAt);
-  
+
   // 1. Map the Primary File (if exists)
   const fileUrl = submission?.fileUrl || submission?.url || submission?.downloadUrl;
   if (fileUrl && submission?.fileName) {
@@ -257,7 +262,7 @@ const mapSubmissionToFile = (submission: any): AssignmentFileUpload[] => {
 
   // Fallback for legacy single linkUrl field
   if (!linkUrls.length && submission.linkUrl) {
-     items.push({
+    items.push({
       id: `${submission.id}-link-legacy`,
       submissionId: submission.id,
       fileName: 'Submitted link',
@@ -282,48 +287,48 @@ const ANNOUNCEMENT_BANNERS: Record<number, any> = {
 };
 
 const mapCourseCommentsToAssignmentComments = (comments?: CourseAssignmentComment[]): AssignmentComment[] =>
-  (comments || []).map((comment) => ({ 
-    id: comment.id, 
-    author: comment.author, 
+  (comments || []).map((comment) => ({
+    id: comment.id,
+    author: comment.author,
     authorId: (comment as any).authorId,   // ← add this
-    content: comment.content, 
-    timestamp: comment.timestamp, 
-    isInstructor: comment.isInstructor 
+    content: comment.content,
+    timestamp: comment.timestamp,
+    isInstructor: comment.isInstructor
   }));
 
 const mapCourseFilesToAssignmentFiles = (files?: CourseAssignment['files']): AssignmentFileUpload[] =>
   (files || [])
     .filter((file: any) => {
       // ✅ CRITICAL: Filter out student submissions
-      const isStudentSubmission = 
-        file.source === 'student' || 
-        file.submissionId || 
+      const isStudentSubmission =
+        file.source === 'student' ||
+        file.submissionId ||
         file.isSubmitted === true;
       return !isStudentSubmission;
     })
-    .map((file) => ({ 
-      id: file.id, 
-      fileName: file.name, 
-      fileSize: (file as any).fileSize || '1.2 MB', 
-      uploadedDate: file.uploadedAt, 
-      fileUrl: file.uri || (file as any).fileUrl, 
-      fileType: (file as any).fileType, 
+    .map((file) => ({
+      id: file.id,
+      fileName: file.name,
+      fileSize: (file as any).fileSize || '1.2 MB',
+      uploadedDate: file.uploadedAt,
+      fileUrl: file.uri || (file as any).fileUrl,
+      fileType: (file as any).fileType,
       storagePath: (file as any).storagePath || null,   // ✅ ADD
-      bucketPath: (file as any).bucketPath || null, 
+      bucketPath: (file as any).bucketPath || null,
       source: 'teacher' as const  // ✅ Explicitly mark as teacher
     }));
+
 const mapCourseAssignmentsToAssignmentItems = (assignments: CourseAssignment[]): AssignmentItem[] =>
   assignments.map((assignment) => ({
-    id: assignment.id, 
-    title: assignment.title, 
-    dueDate: assignment.dueDate, 
+    id: assignment.id,
+    title: assignment.title,
+    dueDate: assignment.dueDate,
     status: assignment.status,
-    points: assignment.points, 
-    maxPoints: assignment.maxPoints, 
-    topic: assignment.topic, 
+    points: assignment.points,
+    maxPoints: assignment.maxPoints,
+    topic: assignment.topic,
     materialIds: assignment.materialIds,
     description: (assignment as any).description || (assignment as any).instruction || '',
-    
     // ✅ ONLY map teacher-uploaded files here
     fileName: (assignment as any).fileName || null, 
     fileUrl: (assignment as any).fileUrl || (assignment as any).fileUri || null,
@@ -331,12 +336,10 @@ const mapCourseAssignmentsToAssignmentItems = (assignments: CourseAssignment[]):
     fileType: (assignment as any).fileType || null,
     storagePath: (assignment as any).storagePath || null, 
     bucketPath: (assignment as any).bucketPath || null,
-    
     // ✅ Do NOT include student submissions in 'files' array here
     // Student submissions should be handled separately via the 'submissions' prop
     comments: mapCourseCommentsToAssignmentComments(assignment.comments), 
     files: mapCourseFilesToAssignmentFiles(assignment.files), // ✅ Now properly filtered
-    
     assignmentType: (assignment as any).assignmentType || 'regular', 
     gameType: (assignment as any).gameType || null,
     numberOfAttempts: (assignment as any).numberOfAttempts || null, 
@@ -344,6 +347,7 @@ const mapCourseAssignmentsToAssignmentItems = (assignments: CourseAssignment[]):
     gradedAt: (assignment as any).gradedAt || null,
     submittedAt: (assignment as any).submittedAt || null,
   }));
+
 const mapCoursesToAssignmentCourses = (courses: CourseDetailData[]): AssignmentCourseWithBannerFields[] =>
   courses.map((course) => ({
     id: course.id, name: course.name, code: course.code, instructor: course.instructor, description: course.description,
@@ -363,68 +367,64 @@ const fetchCombinedMaterials = async (classId: string) => {
   try {
     const response = await apiFetch(`${API_BASE_URL}/class-materials/${classId}`);
     const data = await response.json();
-    
     if (response.ok && Array.isArray(data)) {
-      // ✅ FILTER: Only keep items tagged as 'module_lesson'
-      const lessonsOnly = data.filter((item: any) => item.type === 'module_lesson');
-      
-      return lessonsOnly.map((item: any) => ({
-        id: item.id,
-        title: item.title || "Untitled Lesson",
-        type: 'document', // Treat lessons as documents for the viewer
-        uploadedDate: item.posted || item.createdAt 
-          ? new Date(item.posted || item.createdAt.seconds * 1000).toLocaleDateString() 
-          : "Unknown",
-        content: item.content || item.discussion || "",
-        fileName: item.fileName,
-        fileUrl: item.fileUrl || item.fileUri,
-        fileType: item.fileType,
-        storagePath: item.storagePath,
-        bucketPath: item.bucketPath,
-        pdfUrl: item.pdfUrl,
-        pdfStoragePath: item.pdfStoragePath,
-        isLesson: true,
-        moduleId: item.moduleId,
-        lessonNumber: item.lessonNumber
-      }));
-    }
+       // ✅ FILTER: Only keep items tagged as 'module_lesson'
+       const lessonsOnly = data.filter((item: any) => item.type === 'module_lesson');
+       return lessonsOnly.map((item: any) => ({
+         id: item.id,
+         title: item.title || "Untitled Lesson",
+         type: 'document', // Treat lessons as documents for the viewer
+         uploadedDate: item.posted || item.createdAt 
+           ? new Date(item.posted || item.createdAt.seconds * 1000).toLocaleDateString() 
+           : "Unknown",
+         content: item.content || item.discussion || "",
+         fileName: item.fileName,
+         fileUrl: item.fileUrl || item.fileUri,
+         fileType: item.fileType,
+         storagePath: item.storagePath,
+         bucketPath: item.bucketPath,
+         pdfUrl: item.pdfUrl,
+         pdfStoragePath: item.pdfStoragePath,
+         isLesson: true,
+         moduleId: item.moduleId,
+         lessonNumber: item.lessonNumber
+       }));
+     }
   } catch (error) {
     console.error("Error fetching module lessons for class", classId, error);
   }
   return [];
 };
-// In StudentApp.tsx
 
+// In StudentApp.tsx
 const fetchModuleLessonsOnly = async (classId: string) => {
   try {
     const response = await apiFetch(`${API_BASE_URL}/class-materials/${classId}`);
     const data = await response.json();
-    
     if (response.ok && Array.isArray(data)) {
-      // ✅ FILTER: Only keep items tagged as 'module_lesson'
-      const lessonsOnly = data.filter((item: any) => item.type === 'module_lesson');
-      
-      return lessonsOnly.map((item: any) => ({
-        id: item.id,
-        title: item.title || "Untitled Lesson",
-        // ✅ FIX: Use 'as const' to satisfy the Material type union
-        type: 'document' as const, 
-        uploadedDate: item.posted || item.createdAt 
-          ? new Date(item.posted || item.createdAt.seconds * 1000).toLocaleDateString() 
-          : "Unknown",
-        content: item.content || item.discussion || "",
-        fileName: item.fileName,
-        fileUrl: item.fileUrl || item.fileUri,
-        fileType: item.fileType,
-        storagePath: item.storagePath,
-        bucketPath: item.bucketPath,
-        pdfUrl: item.pdfUrl,
-        pdfStoragePath: item.pdfStoragePath,
-        isLesson: true,
-        moduleId: item.moduleId,
-        lessonNumber: item.lessonNumber
-      }));
-    }
+       // ✅ FILTER: Only keep items tagged as 'module_lesson'
+       const lessonsOnly = data.filter((item: any) => item.type === 'module_lesson');
+       return lessonsOnly.map((item: any) => ({
+         id: item.id,
+         title: item.title || "Untitled Lesson",
+         // ✅ FIX: Use 'as const' to satisfy the Material type union
+         type: 'document' as const, 
+         uploadedDate: item.posted || item.createdAt 
+           ? new Date(item.posted || item.createdAt.seconds * 1000).toLocaleDateString() 
+           : "Unknown",
+         content: item.content || item.discussion || "",
+         fileName: item.fileName,
+         fileUrl: item.fileUrl || item.fileUri,
+         fileType: item.fileType,
+         storagePath: item.storagePath,
+         bucketPath: item.bucketPath,
+         pdfUrl: item.pdfUrl,
+         pdfStoragePath: item.pdfStoragePath,
+         isLesson: true,
+         moduleId: item.moduleId,
+         lessonNumber: item.lessonNumber
+       }));
+     }
   } catch (error) {
     console.error("Error fetching module lessons for class", classId, error);
   }
@@ -436,19 +436,18 @@ const fetchModuleLessonsOnly = async (classId: string) => {
 const mapJoinedClassToCourseDetail = async (item: any): Promise<CourseWithBannerFields> => {
   // Fetch ONLY Module Lessons
   const moduleLessons = await fetchModuleLessonsOnly(item.id);
-
   return {
-    id: String(item.id || ''), 
-    name: item.name || 'Untitled Class', 
+    id: String(item.id || ''),
+    name: item.name || 'Untitled Class',
     code: item.courseCode || item.classCode || '',
-    instructor: item.instructorName || 'Unknown Instructor', 
+    instructor: item.instructorName || 'Unknown Instructor',
     description: item.description || 'No description available.',
-    semester: item.semester || '', 
-    schoolYear: item.schoolYear || '', 
+    semester: item.semester || '',
+    schoolYear: item.schoolYear || '',
     section: item.section || '',
     bannerUrl: item.bannerStoragePath ? null : item.bannerUrl || item.bannerUri || item.bannerLocalUri || null,
-    bannerStoragePath: item.bannerStoragePath || null, 
-    bannerFileName: item.bannerFileName || null, 
+    bannerStoragePath: item.bannerStoragePath || null,
+    bannerFileName: item.bannerFileName || null,
     bannerMimeType: item.bannerMimeType || null,
     units: typeof item.units === 'number' ? item.units : Number(item.units) || 0,
     // ✅ USE ONLY MODULE LESSONS HERE
@@ -459,66 +458,63 @@ const mapJoinedClassToCourseDetail = async (item: any): Promise<CourseWithBanner
 
 // ✅ ENSURE THIS HELPER IS USED EVERYWHERE COURSES ARE MAPPED
 const mapCourseDetailToAssignmentCourse = (course: CourseDetailData): AssignmentCourseWithBannerFields => ({
-  id: course.id, 
-  name: course.name, 
-  code: course.code, 
-  instructor: course.instructor, 
+  id: course.id,
+  name: course.name,
+  code: course.code,
+  instructor: course.instructor,
   description: course.description,
-  semester: course.semester, 
-  schoolYear: course.schoolYear, 
+  semester: course.semester,
+  schoolYear: course.schoolYear,
   section: course.section,
-  bannerUrl: (course as any).bannerUrl || null, 
+  bannerUrl: (course as any).bannerUrl || null,
   bannerStoragePath: (course as any).bannerStoragePath || null,
-  bannerFileName: (course as any).bannerFileName || null, 
+  bannerFileName: (course as any).bannerFileName || null,
   bannerMimeType: (course as any).bannerMimeType || null,
   // ✅ CRITICAL: Ensure materials passed here are the filtered Module Lessons
-  materials: (course.materials || []).map((material) => ({ 
-    id: material.id, 
-    title: material.title, 
-    type: material.type, 
-    uploadedDate: material.uploadedDate, 
-    content: material.content, 
-    fileName: material.fileName, 
-    fileUrl: material.fileUrl || material.fileUri, 
-    fileUri: material.fileUri || material.fileUrl, 
+  materials: (course.materials || []).map((material) => ({
+    id: material.id,
+    title: material.title,
+    type: material.type,
+    uploadedDate: material.uploadedDate,
+    content: material.content,
+    fileName: material.fileName,
+    fileUrl: material.fileUrl || material.fileUri,
+    fileUri: material.fileUri || material.fileUrl,
     fileType: material.fileType,
     // ✅ Pass lesson-specific metadata if available
     moduleId: (material as any).moduleId,
     lessonNumber: (material as any).lessonNumber,
-    isLesson: true 
+    isLesson: true
   })),
   assignments: (course.assignments || []).map((assignment) => ({
-    id: assignment.id, 
-    title: assignment.title, 
-    dueDate: assignment.dueDate, 
+    id: assignment.id,
+    title: assignment.title,
+    dueDate: assignment.dueDate,
     status: assignment.status,
-    points: assignment.points, 
-    maxPoints: assignment.maxPoints, 
-    topic: assignment.topic, 
+    points: assignment.points,
+    maxPoints: assignment.maxPoints,
+    topic: assignment.topic,
     materialIds: assignment.materialIds,
     description: (assignment as any).description || (assignment as any).instruction || '',
-    fileName: (assignment as any).fileName || null, 
+    fileName: (assignment as any).fileName || null,
     fileUrl: (assignment as any).fileUrl || (assignment as any).fileUri || null,
-    fileUri: (assignment as any).fileUri || (assignment as any).fileUrl || null, 
+    fileUri: (assignment as any).fileUri || (assignment as any).fileUrl || null,
     fileType: (assignment as any).fileType || null,
-    storagePath: (assignment as any).storagePath || null, 
+    storagePath: (assignment as any).storagePath || null,
     bucketPath: (assignment as any).bucketPath || null,
-    comments: mapCourseCommentsToAssignmentComments(assignment.comments), 
+    comments: mapCourseCommentsToAssignmentComments(assignment.comments),
     files: mapCourseFilesToAssignmentFiles(assignment.files),
-    assignmentType: (assignment as any).assignmentType || 'regular', 
+    assignmentType: (assignment as any).assignmentType || 'regular',
     gameType: (assignment as any).gameType || null,
   })),
 });
-
 
 export default function StudentApp({ onLogout, currentStudent }: Props) {
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const isLargeScreen = width >= 768;
   const isSmallScreen = width < 768;
-
   const [searchResetKey, setSearchResetKey] = useState(0);
-
   const [remoteStudentProfile, setRemoteStudentProfile] = useState<RemoteStudentProfile | null>(null);
   const currentUserFirstName = remoteStudentProfile?.firstName || currentStudent.firstName || '';
   const currentUserLastName = remoteStudentProfile?.lastName || currentStudent.lastName || '';
@@ -526,6 +522,12 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
   const currentUserEmail = remoteStudentProfile?.email || currentStudent.email || '';
   const initialAvatar = remoteStudentProfile?.profileImage || currentStudent.profileImage ? { uri: remoteStudentProfile?.profileImage || currentStudent.profileImage || '' } : null;
   const initialBanner = remoteStudentProfile?.bannerImage || currentStudent.bannerImage ? { uri: remoteStudentProfile?.bannerImage || currentStudent.bannerImage || '' } : null;
+  
+  // 🔑 Resolved storage paths for the current student's profile/banner images.
+  const currentUserProfileImageStoragePath =
+    remoteStudentProfile?.profileImageStoragePath ?? currentStudent.profileImageStoragePath ?? null;
+  const currentUserBannerImageStoragePath =
+    remoteStudentProfile?.bannerImageStoragePath ?? currentStudent.bannerImageStoragePath ?? null;
 
   const [activeScreen, setActiveScreen] = useState<ScreenType>('home');
   const [lastScreen, setLastScreen] = useState<ScreenType>('home');
@@ -538,7 +540,7 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
   const [completedActivityScores, setCompletedActivityScores] = useState<Record<string, CompletedActivityScore>>({});
   const [isMobileDrawerOpen, setMobileDrawerOpen] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
-  const [isConversationActive, setIsConversationActive] = useState(false);
+  const [isConversationActive, setIsConversationActive]  = useState(false);
   const [isVideoActive, setIsVideoActive] = useState(false);
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
   const [activeCourseTab, setActiveCourseTab] = useState<'materials' | 'assignments' | 'modules'>('modules');
@@ -551,22 +553,16 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
   const [studentAnnouncements, setStudentAnnouncements] = useState<StudentClassAnnouncement[]>([]);
   const [communityPosts, setCommunityPosts] = useState<CommunityPost[]>([]);
   const [studentNotifications, setStudentNotifications] = useState<NotificationItem[]>([]);
-  
   const [messengerUnreadCount, setMessengerUnreadCount] = useState(0);
-  
   const [isVerificationErrorModalVisible, setVerificationErrorModalVisible] = useState(false);
   const [verificationErrorMessage, setVerificationErrorMessage] = useState('');
-
   const [isUploadSuccessModalVisible, setUploadSuccessModalVisible] = useState(false);
-
   const [isLeaveConfirmModalVisible, setLeaveConfirmModalVisible] = useState(false);
   const [courseToLeave, setCourseToLeave] = useState<any>(null);
   const [isLeavingCourse, setIsLeavingCourse] = useState(false);
-
   const [isLeaveSuccessModalVisible, setLeaveSuccessModalVisible] = useState(false);
   const [isLeaveErrorModalVisible, setLeaveErrorModalVisible] = useState(false);
   const [leaveErrorMessage, setLeaveErrorMessage] = useState('');
-
   const [globalSearchQuery, setGlobalSearchQuery] = useState('');
   const [isFetchingGame, setIsFetchingGame] = useState(false);
   const [gameAssignmentData, setGameAssignmentData] = useState<{
@@ -574,9 +570,11 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
     timeLimit?: string | null; customTimeLimit?: string | null; numberOfAttempts?: string;
   } | null>(null);
   const [autoOpenAssignmentId, setAutoOpenAssignmentId] = useState<string | null>(null);
-  const [communityInitialPostId, setCommunityInitialPostId] = useState<string | null>(null);
-
   
+  // ✅ NEW: State to track which lesson should auto-open in CourseDetail
+  const [autoOpenLessonId, setAutoOpenLessonId] = useState<string | null>(null);
+  
+  const [communityInitialPostId, setCommunityInitialPostId] = useState<string | null>(null);
 
   const isFullscreenScreen = activeScreen === 'flipit' || activeScreen === 'fruitmania' || activeScreen === 'quizmasters' || activeScreen === 'gamebasedassignment';
   const isMobileFullscreenScreen = isSmallScreen && (activeScreen === 'messenger' || activeScreen === 'notification' || activeScreen === 'coursedetail' || activeScreen === 'generateactivity');
@@ -606,19 +604,17 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
       const data = await response.json();
       if (!response.ok) throw new Error(data?.error || 'Failed to load user profile.');
       const profileData = data?.data || {};
-      setRemoteStudentProfile({ 
-        firstName: profileData.firstName || currentStudent.firstName, 
-        lastName: profileData.lastName || currentStudent.lastName, 
-        email: profileData.email || currentStudent.email, 
-        profileImage: profileData.profileImage || null, 
-        bannerImage: profileData.bannerImage || null, 
-        profileImageStoragePath: profileData.profileImageStoragePath || null, 
-        bannerImageStoragePath: profileData.bannerImageStoragePath || null 
+      setRemoteStudentProfile({
+        firstName: profileData.firstName || currentStudent.firstName,
+        lastName: profileData.lastName || currentStudent.lastName,
+        email: profileData.email || currentStudent.email,
+        profileImage: profileData.profileImage || null,
+        bannerImage: profileData.bannerImage || null,
+        profileImageStoragePath: profileData.profileImageStoragePath || null,
+        bannerImageStoragePath: profileData.bannerImageStoragePath || null
       });
-      
       if (profileData.profileImage) setCurrentUserAvatar({ uri: profileData.profileImage });
       else if (currentStudent.profileImage) setCurrentUserAvatar({ uri: currentStudent.profileImage });
-      
       if (profileData.bannerImage) setCurrentUserBanner({ uri: profileData.bannerImage });
       else if (currentStudent.bannerImage) setCurrentUserBanner({ uri: currentStudent.bannerImage });
     } catch (error) {
@@ -653,6 +649,7 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
   useEffect(() => { if (isMobileFullscreenScreen && isMobileDrawerOpen) setMobileDrawerOpen(false); }, [isMobileFullscreenScreen, isMobileDrawerOpen]);
   useEffect(() => { if (!isLargeScreen) setIsNotificationOpen(false); }, [isLargeScreen]);
   useEffect(() => { if (activeScreen === 'notification' || isMobileFullscreenScreen) setIsNotificationOpen(false); }, [activeScreen, isMobileFullscreenScreen]);
+  
   useEffect(() => {
     if (activeScreen !== 'community') {
       setCommunityInitialPostId(null);
@@ -699,7 +696,6 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
       if (!image?.uri) return;
       const savedData = await saveUserImagesToFirestore({ profileImage: image });
       if (!savedData?.profileImage) throw new Error('Backend did not return the saved profile image URL.');
-      
       setCurrentUserAvatar({ uri: savedData.profileImage });
       setRemoteStudentProfile((prev) => ({ 
         ...(prev || {}), 
@@ -707,6 +703,7 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
         lastName: prev?.lastName || currentStudent.lastName, 
         email: prev?.email || currentStudent.email, 
         profileImage: savedData.profileImage, 
+        profileImageStoragePath: savedData.profileImageStoragePath ?? prev?.profileImageStoragePath ?? null,
         bannerImage: prev?.bannerImage || currentUserBanner?.uri || currentStudent.bannerImage || null 
       }));
     } catch (error: any) { 
@@ -724,7 +721,6 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
       if (!image?.uri) return;
       const savedData = await saveUserImagesToFirestore({ bannerImage: image });
       if (!savedData?.bannerImage) throw new Error('Backend did not return the saved banner image URL.');
-      
       setCurrentUserBanner({ uri: savedData.bannerImage });
       setRemoteStudentProfile((prev) => ({ 
         ...(prev || {}), 
@@ -732,7 +728,8 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
         lastName: prev?.lastName || currentStudent.lastName, 
         email: prev?.email || currentStudent.email, 
         profileImage: prev?.profileImage || currentUserAvatar?.uri || currentStudent.profileImage || null, 
-        bannerImage: savedData.bannerImage 
+        bannerImage: savedData.bannerImage,
+        bannerImageStoragePath: savedData.bannerImageStoragePath ?? prev?.bannerImageStoragePath ?? null,
       }));
     } catch (error: any) { 
       setCurrentUserBanner(previousBanner); 
@@ -756,70 +753,63 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
     try {
       const classIds = courses.map((item) => item.id).filter(Boolean);
       if (!classIds.length) { setStudentAnnouncements([]); return; }
-      const groupedAnnouncements = await Promise.all(classIds.map(async (classId) => { 
-        const response = await apiFetch(`${API_BASE_URL}/class-announcements/${classId}`); 
-        const data = await response.json(); 
-        if (!response.ok) throw new Error(data?.error || 'Failed to load announcements.'); 
-        return Array.isArray(data) ? data : []; 
+      const groupedAnnouncements = await Promise.all(classIds.map(async (classId) => {
+        const response = await apiFetch(`${API_BASE_URL}/class-announcements/${classId}`);
+        const data = await response.json();
+        if (!response.ok) throw new Error(data?.error || 'Failed to load announcements.');
+        return Array.isArray(data) ? data : [];
       }));
-      
       const rawAnnouncements = groupedAnnouncements.flat();
-      const active = rawAnnouncements.filter((item: any) => isAnnouncementActive(item?.expiresAt));
-      const uniqueMap = new Map<string, any>();
-      active.forEach((item: any) => { 
-        const key = `${item.title}-${item.message}-${item.expiresAt}-${item.bannerKey}`; 
-        if (!uniqueMap.has(key)) uniqueMap.set(key, item); 
-      });
-      
-      const mappedAnnouncements: StudentClassAnnouncement[] = Array.from(uniqueMap.values()).map((item: any) => ({ 
-        id: item.id, 
-        classIds: Array.isArray(item.classIds) ? item.classIds : [], 
-        title: item.title || '', 
-        message: item.message || '', 
-        bannerKey: typeof item.bannerKey === 'number' ? item.bannerKey : 4, 
-        bannerImage: ANNOUNCEMENT_BANNERS[typeof item.bannerKey === 'number' ? item.bannerKey : 4], 
-        expiresAt: item.expiresAt || null, 
-        createdAt: item.createdAt || null, 
-        updatedAt: item.updatedAt || null 
-      })).sort((a, b) => toMillis(b.createdAt) - toMillis(a.createdAt));
-      
-      setStudentAnnouncements(mappedAnnouncements);
-    } catch (error) { 
-      console.log('LOAD STUDENT ANNOUNCEMENTS ERROR =>', error); 
-      setStudentAnnouncements([]); 
-    }
+       const active = rawAnnouncements.filter((item: any) => isAnnouncementActive(item?.expiresAt));
+       const uniqueMap = new Map<string, any>();
+       active.forEach((item: any) => { 
+         const key = `${item.title}-${item.message}-${item.expiresAt}-${item.bannerKey}`; 
+         if (!uniqueMap.has(key)) uniqueMap.set(key, item); 
+       });
+       const mappedAnnouncements: StudentClassAnnouncement[] = Array.from(uniqueMap.values()).map((item: any) => ({ 
+         id: item.id, 
+         classIds: Array.isArray(item.classIds) ? item.classIds : [], 
+         title: item.title || '', 
+         message: item.message || '', 
+         bannerKey: typeof item.bannerKey === 'number' ? item.bannerKey : 4, 
+         bannerImage: ANNOUNCEMENT_BANNERS[typeof item.bannerKey === 'number' ? item.bannerKey : 4], 
+         expiresAt: item.expiresAt || null, 
+         createdAt: item.createdAt || null, 
+         updatedAt: item.updatedAt || null 
+       })).sort((a, b) => toMillis(b.createdAt) - toMillis(a.createdAt));
+       setStudentAnnouncements(mappedAnnouncements);
+     } catch (error) { 
+       console.log('LOAD STUDENT ANNOUNCEMENTS ERROR =>', error); 
+       setStudentAnnouncements([]); 
+     }
   };
 
-    const loadJoinedClasses = async () => {
-  if (!currentStudent?.studentId) return;
-  try {
-    setIsLoadingJoinedCourses(true);
-    const response = await apiFetch(`${API_BASE_URL}/student-joined-classes/${currentStudent.studentId}`);
-    const data = await response.json();
-    if (!response.ok) throw new Error(data?.error || 'Failed to load joined classes.');
-    
-    const classesArray = Array.isArray(data) ? data : data?.data || [];
-    
-    // ✅ MAP ASYNC AND WAIT FOR ALL TO COMPLETE
-    const mappedCourses = await Promise.all(classesArray.map(mapJoinedClassToCourseDetail));
-    
-    const mappedCoursesWithFreshBanners = await Promise.all(mappedCourses.map(refreshClassBannerUrl));
-    
-    setJoinedCourses(mappedCoursesWithFreshBanners);
-    setIsLoadingAnnouncements(true);
+  const loadJoinedClasses = async () => {
+    if (!currentStudent?.studentId) return;
     try {
-      await loadStudentAnnouncements(mappedCoursesWithFreshBanners);
+      setIsLoadingJoinedCourses(true);
+      const response = await apiFetch(`${API_BASE_URL}/student-joined-classes/${currentStudent.studentId}`);
+      const data = await response.json();
+      if (!response.ok) throw new Error(data?.error || 'Failed to load joined classes.');
+      const classesArray = Array.isArray(data) ? data : data?.data || [];
+      // ✅ MAP ASYNC AND WAIT FOR ALL TO COMPLETE
+      const mappedCourses = await Promise.all(classesArray.map(mapJoinedClassToCourseDetail));
+      const mappedCoursesWithFreshBanners = await Promise.all(mappedCourses.map(refreshClassBannerUrl));
+      setJoinedCourses(mappedCoursesWithFreshBanners);
+      setIsLoadingAnnouncements(true);
+      try {
+        await loadStudentAnnouncements(mappedCoursesWithFreshBanners);
+      } finally {
+        setIsLoadingAnnouncements(false);
+      }
+    } catch (error) {
+      console.log('LOAD JOINED CLASSES ERROR =>', error);
+      setJoinedCourses([]);
+      setStudentAnnouncements([]);
     } finally {
-      setIsLoadingAnnouncements(false);
+      setIsLoadingJoinedCourses(false);
     }
-  } catch (error) { 
-    console.log('LOAD JOINED CLASSES ERROR =>', error); 
-    setJoinedCourses([]); 
-    setStudentAnnouncements([]); 
-  } finally { 
-    setIsLoadingJoinedCourses(false); 
-  }
-};
+  };
 
   useEffect(() => { loadJoinedClasses(); }, [currentStudent?.studentId]);
 
@@ -830,7 +820,6 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
     const joinResponse = await apiFetch(`${API_BASE_URL}/join-class`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ classCode: trimmedCode, studentId: currentStudent.studentId }) });
     const joinData = await joinResponse.json().catch(() => ({}));
     if (!joinResponse.ok) throw new Error(joinData?.error || joinData?.message || 'Failed to join class. Please check the class code.');
-
     await loadJoinedClasses();
     return { success: true, message: joinData?.message || 'Class joined successfully.', data: joinData?.data };
   };
@@ -899,8 +888,6 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
     };
   }) })), [joinedCourses, sharedAssignmentComments, sharedAssignmentFiles, sharedAssignmentScores, sharedAssignmentStatuses]);
 
-  
-
   const selectedAssignmentCourse = useMemo(() => {
     if (!selectedCourse) return joinedAssignmentCourses[0] || null;
     return joinedAssignmentCourses.find((course) => course.id === selectedCourse.id) || joinedAssignmentCourses[0] || null;
@@ -923,42 +910,41 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
       const filesByAssignment: Record<string, AssignmentFileUpload[]> = {};
       const statusesByAssignment: Record<string, AssignmentItem['status']> = {};
       const scoresByAssignment: Record<string, StoredAssignmentScore> = {};
-      
       normalizeSubmissionList(data).forEach((submission) => {
-        const assignmentId = String(submission?.assignmentId || '');
-        if (!assignmentId) return;
-        const status = submission?.status === 'graded' ? 'graded' : submission?.status === 'submitted' ? 'submitted' : 'pending';
-        statusesByAssignment[assignmentId] = status;
-        if (status !== 'graded') { scoresByAssignment[assignmentId] = {}; }
-        if (status === 'graded') {
-          const numericScore = Number(submission?.score ?? submission?.gameScore);
-          const numericMaxScore = Number(
-            submission?.maxPoints ?? submission?.totalScore ?? 
-            submission?.maxScore ?? submission?.gameTotalQuestions
-          );
-          scoresByAssignment[assignmentId] = { 
-            ...(Number.isFinite(numericScore) ? { points: numericScore } : {}), 
-            ...(Number.isFinite(numericMaxScore) && numericMaxScore > 0 ? { maxPoints: numericMaxScore } : {}), 
-            feedback: submission?.feedback ?? null, 
-            gameScore: submission?.gameScore, 
-            gameTotalQuestions: submission?.gameTotalQuestions, 
-            attemptNumber: submission?.attemptNumber 
-          };
-        }
-        const mappedFiles = mapSubmissionToFile(submission);
-        if (mappedFiles.length > 0) {
-          filesByAssignment[assignmentId] = [
-            ...(filesByAssignment[assignmentId] || []), 
-            ...mappedFiles
-          ];
-        }
-      });
-      applySavedAssignmentState({ files: filesByAssignment, statuses: statusesByAssignment, scores: scoresByAssignment });
-    } catch (error) { 
-      console.log('LOAD STUDENT SUBMISSIONS FALLBACK TO LOCAL CACHE =>', error); 
-    } finally { 
-      setHasLoadedAssignmentState(true); 
-    }
+         const assignmentId = String(submission?.assignmentId || '');
+         if (!assignmentId) return;
+         const status = submission?.status === 'graded' ? 'graded' : submission?.status === 'submitted' ? 'submitted' : 'pending';
+         statusesByAssignment[assignmentId] = status;
+         if (status !== 'graded') { scoresByAssignment[assignmentId] = {}; }
+         if (status === 'graded') {
+           const numericScore = Number(submission?.score ?? submission?.gameScore);
+           const numericMaxScore = Number(
+             submission?.maxPoints ?? submission?.totalScore ?? 
+             submission?.maxScore ?? submission?.gameTotalQuestions
+           );
+           scoresByAssignment[assignmentId] = { 
+             ...(Number.isFinite(numericScore) ? { points: numericScore } : {}), 
+             ...(Number.isFinite(numericMaxScore) && numericMaxScore > 0 ? { maxPoints: numericMaxScore } : {}), 
+             feedback: submission?.feedback ?? null, 
+             gameScore: submission?.gameScore, 
+             gameTotalQuestions: submission?.gameTotalQuestions, 
+             attemptNumber: submission?.attemptNumber 
+           };
+         }
+         const mappedFiles = mapSubmissionToFile(submission);
+         if (mappedFiles.length > 0) {
+           filesByAssignment[assignmentId] = [
+             ...(filesByAssignment[assignmentId] || []), 
+             ...mappedFiles
+           ];
+         }
+       });
+       applySavedAssignmentState({ files: filesByAssignment, statuses: statusesByAssignment, scores: scoresByAssignment });
+     } catch (error) { 
+       console.log('LOAD STUDENT SUBMISSIONS FALLBACK TO LOCAL CACHE =>', error); 
+     } finally { 
+       setHasLoadedAssignmentState(true); 
+     }
   }, [currentStudent?.studentId]);
 
   useEffect(() => { setHasLoadedAssignmentState(false); void loadStudentSubmissionState(); }, [loadStudentSubmissionState]);
@@ -970,58 +956,58 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
 
   const currentUserPosts = useMemo(() => hydratedCommunityPosts.filter((post) => post.userName === currentUserName || post.userEmail === currentUserEmail), [hydratedCommunityPosts, currentUserEmail, currentUserName]);
 
-const handleAddAssignmentComment = async (assignmentId: string, content: string, studentId?: string) => {
-  if (!content.trim()) return;
-  const tempId = `c${Date.now()}`;
-  const newComment = {
-    id: tempId,
-    author: currentUserName,
-    authorId: currentStudent.studentId,
-    content,
-    timestamp: new Date().toLocaleString(),
-    isInstructor: false
+  const handleAddAssignmentComment = async (assignmentId: string, content: string, studentId?: string) => {
+    if (!content.trim()) return;
+    const tempId = `c${Date.now()}`;
+    const newComment = {
+      id: tempId,
+      author: currentUserName,
+      authorId: currentStudent.studentId,
+      content,
+      timestamp: new Date().toLocaleString(),
+      isInstructor: false
+    };
+    setSharedAssignmentComments((prev) => ({
+      ...prev,
+      [assignmentId]: [...(prev[assignmentId] || []), newComment]
+    }));
+    try {
+      const course = joinedAssignmentCourses.find(c => c.assignments.some(a => a.id === assignmentId));
+      const classId = course?.id;
+      if (!classId) throw new Error('Class not found for this assignment.');
+      const response = await apiFetch(`${API_BASE_URL}/assignment-comments`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          assignmentId,
+          classId,
+          studentId: studentId || currentStudent.studentId, // ✅ ADD THIS
+          content
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data?.error || 'Failed to post comment.');
+      // ✅ Replace tempId with the real Firestore comment ID
+      setSharedAssignmentComments((prev) => ({
+        ...prev,
+        [assignmentId]: (prev[assignmentId] || []).map((c) =>
+          c.id === tempId
+            ? { ...c, id: data.data.id, authorId: currentStudent.studentId }
+            : c
+        ),
+      }));
+    } catch (error: any) {
+      console.error('POST COMMENT ERROR =>', error);
+      setSharedAssignmentComments((prev) => ({
+        ...prev,
+        [assignmentId]: (prev[assignmentId] || []).filter(c => c.id !== tempId)
+      }));
+      Alert.alert('Comment Failed', error?.message || 'Unable to post comment.');
+    }
   };
-  setSharedAssignmentComments((prev) => ({
-    ...prev,
-    [assignmentId]: [...(prev[assignmentId] || []), newComment]
-  }));
-  try {
-    const course = joinedAssignmentCourses.find(c => c.assignments.some(a => a.id === assignmentId));
-    const classId = course?.id;
-    if (!classId) throw new Error('Class not found for this assignment.');
-    const response = await apiFetch(`${API_BASE_URL}/assignment-comments`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ 
-        assignmentId, 
-        classId, 
-        studentId: studentId || currentStudent.studentId, // ✅ ADD THIS
-        content 
-      }),
-    });
-    const data = await response.json();
-    if (!response.ok) throw new Error(data?.error || 'Failed to post comment.');
-    // ✅ Replace tempId with the real Firestore comment ID
-    setSharedAssignmentComments((prev) => ({
-      ...prev,
-      [assignmentId]: (prev[assignmentId] || []).map((c) =>
-        c.id === tempId
-          ? { ...c, id: data.data.id, authorId: currentStudent.studentId }
-          : c
-      ),
-    }));
-  } catch (error: any) {
-    console.error('POST COMMENT ERROR =>', error);
-    setSharedAssignmentComments((prev) => ({
-      ...prev,
-      [assignmentId]: (prev[assignmentId] || []).filter(c => c.id !== tempId)
-    }));
-    Alert.alert('Comment Failed', error?.message || 'Unable to post comment.');
-  }
-};
 
   // 👇 NEW: Handle assignment comment edit
-    const handleEditAssignmentComment = async (assignmentId: string, commentId: string, newContent: string) => {
+  const handleEditAssignmentComment = async (assignmentId: string, commentId: string, newContent: string) => {
     try {
       const response = await apiFetch(`${API_BASE_URL}/assignment-comments/${commentId}`, {
         method: 'PUT',
@@ -1030,7 +1016,6 @@ const handleAddAssignmentComment = async (assignmentId: string, content: string,
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data?.error || 'Failed to update comment.');
-      
       // 👇 FIX: Update local state directly to trigger instant UI re-render
       setSharedAssignmentComments((prev) => {
         const currentComments = prev[assignmentId] || [];
@@ -1039,7 +1024,6 @@ const handleAddAssignmentComment = async (assignmentId: string, content: string,
         );
         return { ...prev, [assignmentId]: updatedComments };
       });
-
       // Keep joinedCourses in sync so data doesn't revert if re-mapped
       setJoinedCourses((prev) =>
         prev.map((course) => ({
@@ -1056,28 +1040,25 @@ const handleAddAssignmentComment = async (assignmentId: string, content: string,
           ),
         }))
       );
-
     } catch (error: any) {
       Alert.alert('Update Failed', error?.message || 'Unable to update comment.');
     }
   };
 
   // 👇 NEW: Handle assignment comment delete
-    const handleDeleteAssignmentComment = async (assignmentId: string, commentId: string) => {
+  const handleDeleteAssignmentComment = async (assignmentId: string, commentId: string) => {
     try {
       const response = await apiFetch(`${API_BASE_URL}/assignment-comments/${commentId}`, {
         method: 'DELETE',
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data?.error || 'Failed to delete comment.');
-      
       // 👇 FIX: Remove from local state directly
       setSharedAssignmentComments((prev) => {
         const currentComments = prev[assignmentId] || [];
         const updatedComments = currentComments.filter((c) => c.id !== commentId);
         return { ...prev, [assignmentId]: updatedComments };
       });
-
       // Keep joinedCourses in sync
       setJoinedCourses((prev) =>
         prev.map((course) => ({
@@ -1092,22 +1073,21 @@ const handleAddAssignmentComment = async (assignmentId: string, content: string,
           ),
         }))
       );
-
     } catch (error: any) {
       Alert.alert('Delete Failed', error?.message || 'Unable to delete comment.');
     }
   };
 
   // ✅ CORRECT: This keeps existing files and adds the new one
-const handleAddAssignmentFile = (assignmentId: string, file: AssignmentFileUpload) => {
-  setSharedAssignmentFiles((prev) => {
-    const currentFiles = prev[assignmentId] || [];
-    return {
-      ...prev,
-      [assignmentId]: [...currentFiles, file], // Append new file to existing array
-    };
-  });
-};
+  const handleAddAssignmentFile = (assignmentId: string, file: AssignmentFileUpload) => {
+    setSharedAssignmentFiles((prev) => {
+      const currentFiles = prev[assignmentId] || [];
+      return {
+        ...prev,
+        [assignmentId]: [...currentFiles, file], // Append new file to existing array
+      };
+    });
+  };
 
   const handleRemoveAssignmentFile = (assignmentId: string, fileId: string) => {
     setSharedAssignmentFiles((prev) => ({ ...prev, [assignmentId]: (prev[assignmentId] || []).filter((file) => file.id !== fileId) }));
@@ -1162,9 +1142,23 @@ const handleAddAssignmentFile = (assignmentId: string, file: AssignmentFileUploa
     }
   };
 
+  // ---------------------------------------------------------------------
+  // ✅ COMMUNITY MUTATIONS — PATCH LOCAL STATE, DON'T RE-FETCH EVERYTHING
+  // ---------------------------------------------------------------------
   const handleCreateCommunityPost = async (query: string) => {
     const trimmedQuery = query.trim();
     if (!trimmedQuery) return;
+    const tempId = `post-${Date.now()}`;
+    const optimisticPost: CommunityPost = {
+      id: tempId,
+      userName: currentUserName,
+      userEmail: currentUserEmail,
+      avatar: normalizeCommunityAvatar(currentUserAvatar),
+      dateTime: new Date().toLocaleString(),
+      content: trimmedQuery,
+      answers: [],
+    };
+    setCommunityPosts((prev) => [optimisticPost, ...prev]);
     try {
       const response = await apiFetch(`${API_BASE_URL}/community-posts`, {
         method: 'POST',
@@ -1181,9 +1175,14 @@ const handleAddAssignmentFile = (assignmentId: string, file: AssignmentFileUploa
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data?.error || 'Failed to create post.');
-      await loadCurrentStudentProfile();
-      await loadCommunityPosts();
+      const realId = data?.data?.id;
+      if (realId) {
+        setCommunityPosts((prev) =>
+          prev.map((post) => (post.id === tempId ? { ...post, id: realId } : post))
+        );
+      }
     } catch (error: any) {
+      setCommunityPosts((prev) => prev.filter((post) => post.id !== tempId));
       Alert.alert('Post Failed', error?.message || 'Unable to create post.');
     }
   };
@@ -1191,6 +1190,19 @@ const handleAddAssignmentFile = (assignmentId: string, file: AssignmentFileUploa
   const handleAddCommunityAnswer = async (postId: string, message: string) => {
     const trimmedMessage = message.trim();
     if (!trimmedMessage) return;
+    const tempAnswerId = `answer-${Date.now()}`;
+    const optimisticAnswer: CommunityAnswer = {
+      id: tempAnswerId,
+      userName: currentUserName,
+      avatar: normalizeCommunityAvatar(currentUserAvatar),
+      answeredAt: new Date().toLocaleString(),
+      message: trimmedMessage,
+    };
+    setCommunityPosts((prev) =>
+      prev.map((post) =>
+        post.id === postId ? { ...post, answers: [...post.answers, optimisticAnswer] } : post
+      )
+    );
     try {
       const response = await apiFetch(`${API_BASE_URL}/community-posts/${postId}/answers`, {
         method: 'POST',
@@ -1206,8 +1218,29 @@ const handleAddAssignmentFile = (assignmentId: string, file: AssignmentFileUploa
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data?.error || 'Failed to add answer.');
-      await loadCommunityPosts();
+      const realId = data?.data?.id;
+      if (realId) {
+        setCommunityPosts((prev) =>
+          prev.map((post) =>
+            post.id === postId
+              ? {
+                  ...post,
+                  answers: post.answers.map((answer) =>
+                    answer.id === tempAnswerId ? { ...answer, id: realId } : answer
+                  ),
+                }
+              : post
+          )
+        );
+      }
     } catch (error: any) {
+      setCommunityPosts((prev) =>
+        prev.map((post) =>
+          post.id === postId
+            ? { ...post, answers: post.answers.filter((answer) => answer.id !== tempAnswerId) }
+            : post
+        )
+      );
       Alert.alert('Answer Failed', error?.message || 'Unable to post answer.');
     }
   };
@@ -1215,6 +1248,13 @@ const handleAddAssignmentFile = (assignmentId: string, file: AssignmentFileUploa
   const handleEditCommunityPost = async (postId: string, content: string) => {
     const trimmedContent = content.trim();
     if (!trimmedContent) return;
+    let previousContent = '';
+    setCommunityPosts((prev) =>
+      prev.map((post) => {
+        if (post.id === postId) previousContent = post.content;
+        return post.id === postId ? { ...post, content: trimmedContent } : post;
+      })
+    );
     try {
       const response = await apiFetch(`${API_BASE_URL}/community-posts/${postId}`, {
         method: 'PUT',
@@ -1223,19 +1263,34 @@ const handleAddAssignmentFile = (assignmentId: string, file: AssignmentFileUploa
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data?.error || 'Failed to update post.');
-      await loadCommunityPosts();
     } catch (error: any) {
+      setCommunityPosts((prev) =>
+        prev.map((post) => (post.id === postId ? { ...post, content: previousContent } : post))
+      );
       Alert.alert('Update Failed', error?.message || 'Unable to update post.');
     }
   };
 
   const handleDeleteCommunityPost = async (postId: string) => {
+    let removedPost: CommunityPost | undefined;
+    let removedIndex = -1;
+    setCommunityPosts((prev) => {
+      removedIndex = prev.findIndex((post) => post.id === postId);
+      removedPost = prev[removedIndex];
+      return prev.filter((post) => post.id !== postId);
+    });
     try {
       const response = await apiFetch(`${API_BASE_URL}/community-posts/${postId}`, { method: 'DELETE' });
       const data = await response.json();
       if (!response.ok) throw new Error(data?.error || 'Failed to delete post.');
-      await loadCommunityPosts();
     } catch (error: any) {
+      if (removedPost) {
+        setCommunityPosts((prev) => {
+          const next = [...prev];
+          next.splice(removedIndex < 0 ? 0 : removedIndex, 0, removedPost!);
+          return next;
+        });
+      }
       Alert.alert('Delete Failed', error?.message || 'Unable to delete post.');
     }
   };
@@ -1243,6 +1298,20 @@ const handleAddAssignmentFile = (assignmentId: string, file: AssignmentFileUploa
   const handleEditCommunityAnswer = async (postId: string, answerId: string, message: string) => {
     const trimmedMessage = message.trim();
     if (!trimmedMessage) return;
+    let previousMessage = '';
+    setCommunityPosts((prev) =>
+      prev.map((post) =>
+        post.id === postId
+          ? {
+              ...post,
+              answers: post.answers.map((answer) => {
+                if (answer.id === answerId) previousMessage = answer.message;
+                return answer.id === answerId ? { ...answer, message: trimmedMessage } : answer;
+              }),
+            }
+          : post
+      )
+    );
     try {
       const response = await apiFetch(`${API_BASE_URL}/community-posts/${postId}/answers/${answerId}`, {
         method: 'PUT',
@@ -1251,19 +1320,49 @@ const handleAddAssignmentFile = (assignmentId: string, file: AssignmentFileUploa
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data?.error || 'Failed to update answer.');
-      await loadCommunityPosts();
     } catch (error: any) {
+      setCommunityPosts((prev) =>
+        prev.map((post) =>
+          post.id === postId
+            ? {
+                ...post,
+                answers: post.answers.map((answer) =>
+                  answer.id === answerId ? { ...answer, message: previousMessage } : answer
+                ),
+              }
+            : post
+        )
+      );
       Alert.alert('Update Failed', error?.message || 'Unable to update answer.');
     }
   };
 
   const handleDeleteCommunityAnswer = async (postId: string, answerId: string) => {
+    let removedAnswer: CommunityAnswer | undefined;
+    let removedIndex = -1;
+    setCommunityPosts((prev) =>
+      prev.map((post) => {
+        if (post.id !== postId) return post;
+        removedIndex = post.answers.findIndex((answer) => answer.id === answerId);
+        removedAnswer = post.answers[removedIndex];
+        return { ...post, answers: post.answers.filter((answer) => answer.id !== answerId) };
+      })
+    );
     try {
       const response = await apiFetch(`${API_BASE_URL}/community-posts/${postId}/answers/${answerId}`, { method: 'DELETE' });
       const data = await response.json();
       if (!response.ok) throw new Error(data?.error || 'Failed to delete answer.');
-      await loadCommunityPosts();
     } catch (error: any) {
+      if (removedAnswer) {
+        setCommunityPosts((prev) =>
+          prev.map((post) => {
+            if (post.id !== postId) return post;
+            const next = [...post.answers];
+            next.splice(removedIndex < 0 ? 0 : removedIndex, 0, removedAnswer!);
+            return { ...post, answers: next };
+          })
+        );
+      }
       Alert.alert('Delete Failed', error?.message || 'Unable to delete answer.');
     }
   };
@@ -1379,6 +1478,7 @@ const handleAddAssignmentFile = (assignmentId: string, file: AssignmentFileUploa
   }, [loadMessengerUnreadCount]);
 
   const cleanVideoSearchText = (value = '') => String(value || '').replace(/_/g, ' ').replace(/[^a-zA-Z0-9\s+#.()-]/g, ' ').replace(/\s+/g, ' ').trim();
+
   const getRotatingIndex = (length: number, salt = 0) => { if (length <= 0) return 0; const today = new Date(); const daySeed = Math.floor(new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime() / 86400000); return Math.abs(daySeed + salt) % length; };
 
   const adaptiveVideoRecommendation = useMemo(() => {
@@ -1391,7 +1491,7 @@ const handleAddAssignmentFile = (assignmentId: string, file: AssignmentFileUploa
         completedSupportActivity.scorePercent !== null &&
         completedSupportActivity.scorePercent >= 75
       ) {
-          return null;
+        return null;
       }
       const relatedMaterialTitles = (course.materials || []).filter((material) => assignment.materialIds?.includes(material.id)).map((material) => cleanVideoSearchText(material.title)).filter(Boolean);
       const primaryMaterial = relatedMaterialTitles[getRotatingIndex(relatedMaterialTitles.length, assignment.id.length)] || cleanVideoSearchText(assignment.topic || '') || cleanVideoSearchText(course.name);
@@ -1401,21 +1501,21 @@ const handleAddAssignmentFile = (assignmentId: string, file: AssignmentFileUploa
         primaryTopic: primaryMaterial,
         score,
         query: `${primaryMaterial}`.trim(),
-        reason: relatedMaterialTitles.length > 0 ? `Related material (${primaryMaterial})` : `Weak topic (${primaryMaterial})` 
+        reason: relatedMaterialTitles.length > 0 ? `Related material (${primaryMaterial})` : `Weak topic (${primaryMaterial})`
       };
     }).filter(Boolean)).sort((a: any, b: any) => (a.score ?? 100) - (b.score ?? 100)) as Array<{ type: 'weak'; primaryTopic: string; score: number; query: string; reason: string }>;
 
     const courseRecommendations = joinedAssignmentCourses.map((course, courseIndex) => { 
-      const materialTitles = (course.materials || []).map((material) => cleanVideoSearchText(material.title)).filter(Boolean); 
-      const rotatingMaterial = materialTitles[getRotatingIndex(materialTitles.length, courseIndex)] || cleanVideoSearchText(course.name); 
-      if (!rotatingMaterial) return null; 
-      return { 
-        type: 'course' as const, 
-        primaryTopic: rotatingMaterial, 
-        query: `${rotatingMaterial} tutorial lesson explanation`.trim(), 
-        reason: `Course topic (${course.name})` 
-      }; 
-    }).filter(Boolean) as Array<{ type: 'course'; primaryTopic: string; query: string; reason: string }>;
+       const materialTitles = (course.materials || []).map((material) => cleanVideoSearchText(material.title)).filter(Boolean); 
+       const rotatingMaterial = materialTitles[getRotatingIndex(materialTitles.length, courseIndex)] || cleanVideoSearchText(course.name); 
+       if (!rotatingMaterial) return null; 
+       return { 
+         type: 'course' as const, 
+         primaryTopic: rotatingMaterial, 
+         query: `${rotatingMaterial} tutorial lesson explanation`.trim(), 
+         reason: `Course topic (${course.name})` 
+       }; 
+     }).filter(Boolean) as Array<{ type: 'course'; primaryTopic: string; query: string; reason: string }>;
 
     if (weakRecommendations.length > 0) { 
       const selectedWeak = weakRecommendations[0]; 
@@ -1474,7 +1574,6 @@ const handleAddAssignmentFile = (assignmentId: string, file: AssignmentFileUploa
     const targetId = notification.targetId;
     const courseId = notification.courseId;
     setAutoOpenAssignmentId(null);
-
     switch (notification.type) {
       case 'assignment':
       case 'game-assignment': {
@@ -1572,97 +1671,85 @@ const handleAddAssignmentFile = (assignmentId: string, file: AssignmentFileUploa
     };
   };
 
-    const openGeneratedActivity = async (course: CourseDetailData, assignment: DashboardAssignment | CourseAssignment | AssignmentItem) => {
-  if (isGeneratingActivity) return;
-  
-  const normalizedCourse = findFreshCourseForActivity(course);
-  const score = getScorePercent(assignment);
-  
-  // Validation checks
-  if (score === null) { 
-    Alert.alert('Not available', 'Generate Activity is only available after the assignment has been graded.'); 
-    return; 
-  }
-  if (score >= 75) { 
-    Alert.alert('Not available', 'Generate Activity is only available for graded assignments below 75%.'); 
-    return; 
-  }
-  const completedSupportActivity = completedActivityScores[assignment.id];
-  if (completedSupportActivity?.completed && completedSupportActivity.scorePercent !== null && completedSupportActivity.scorePercent >= 75) { 
-    Alert.alert('Already mastered', `You already scored ${completedSupportActivity.scorePercent}% on the generated follow-up activity for this assignment.`); 
-    return; 
-  }
-   
-  // ✅ UPDATED LOGIC: Support both Material IDs and Module Lessons
-  let materialIds = Array.isArray(assignment.materialIds) ? assignment.materialIds.filter(Boolean) : [];
-  
-  // If no specific material IDs are linked, try to use ALL available Module Lessons as context
-  let relatedMaterials = (normalizedCourse.materials || []).filter((material) => materialIds.includes(material.id));
-  
-  if (!relatedMaterials.length) {
-    // Fallback: Use all module lessons if none are specifically linked
-    relatedMaterials = normalizedCourse.materials || [];
-    
-    // If still empty, use assignment title/topic as a last resort
-    if (!relatedMaterials.length) {
-      Alert.alert('No Content Found', 'There are no module lessons or related materials available for this assignment. Please ask your instructor to add learning content first.');
+  const openGeneratedActivity = async (course: CourseDetailData, assignment: DashboardAssignment | CourseAssignment | AssignmentItem) => {
+    if (isGeneratingActivity) return;
+    const normalizedCourse = findFreshCourseForActivity(course);
+    const score = getScorePercent(assignment);
+    // Validation checks
+    if (score === null) {
+      Alert.alert('Not available', 'Generate Activity is only available after the assignment has been graded.');
       return;
     }
-    
-    // Clear materialIds so backend knows we're sending generic lesson content
-    materialIds = relatedMaterials.map(m => m.id);
-  }
-
-  try {
-    setIsGeneratingActivity(true); 
-    setSelectedCourse(normalizedCourse); 
-    setSelectedCourseIdForAssignments(normalizedCourse.id);
-    setLastScreen(activeScreen === 'notification' ? lastScreen : activeScreen);
-    setIsNotificationOpen(false);
-    
-    const response = await apiFetch(`${API_BASE_URL}/student-activities/generate`, { 
-      method: 'POST', 
-      headers: { 'Content-Type': 'application/json' }, 
-      body: JSON.stringify({ 
-        studentId: currentStudent.studentId, 
-        courseId: normalizedCourse.id, 
-        classId: normalizedCourse.id, 
-        courseName: normalizedCourse.name, 
-        courseCode: normalizedCourse.code, 
-        assignmentId: assignment.id, 
-        assignmentTitle: assignment.title, 
-        topic: relatedMaterials.map((material) => material.title).join(', ') || assignment.topic || assignment.title, 
-        score, 
-        materialIds, // ✅ Send the collected IDs (either from assignment or fallback)
-        relatedMaterials: relatedMaterials.map((material) => ({ 
-          id: material.id, 
-          title: material.title, 
-          type: material.type, 
-          content: material.content || null, 
-          fileName: material.fileName || null, 
-          fileUrl: material.fileUrl || material.fileUri || null, 
-          fileUri: material.fileUri || material.fileUrl || null, 
-          fileType: material.fileType || null 
-        })) 
-      }) 
-    });
-    
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(data?.error || data?.message || 'Failed to generate follow-up activity.');
-    
-    const activity = data?.data as GenerateActivityData | undefined;
-    if (!activity || !activity.assignmentId) throw new Error('The server did not return a valid generated activity.');
-    
-    await loadStudentNotifications(); 
-    setGeneratedActivity(activity); 
-    setActiveScreen('generateactivity');
-  } catch (error: any) { 
-    console.log('GENERATE ACTIVITY ERROR =>', error); 
-    Alert.alert('Generate Activity Failed', error?.message || 'The AI material scan failed. Please try again after confirming the related material file is readable.'); 
-  } finally { 
-    setIsGeneratingActivity(false); 
-  }
-};
+    if (score >= 75) {
+      Alert.alert('Not available', 'Generate Activity is only available for graded assignments below 75%.');
+      return;
+    }
+    const completedSupportActivity = completedActivityScores[assignment.id];
+    if (completedSupportActivity?.completed && completedSupportActivity.scorePercent !== null && completedSupportActivity.scorePercent >= 75) {
+      Alert.alert('Already mastered', `You already scored ${completedSupportActivity.scorePercent}% on the generated follow-up activity for this assignment.`);
+      return;
+    }
+    // ✅ UPDATED LOGIC: Support both Material IDs and Module Lessons
+    let materialIds = Array.isArray(assignment.materialIds) ? assignment.materialIds.filter(Boolean) : [];
+    // If no specific material IDs are linked, try to use ALL available Module Lessons as context
+    let relatedMaterials = (normalizedCourse.materials || []).filter((material) => materialIds.includes(material.id));
+    if (!relatedMaterials.length) {
+      // Fallback: Use all module lessons if none are specifically linked
+      relatedMaterials = normalizedCourse.materials || [];
+      // If still empty, use assignment title/topic as a last resort
+      if (!relatedMaterials.length) {
+        Alert.alert('No Content Found', 'There are no module lessons or related materials available for this assignment. Please ask your instructor to add learning content first.');
+        return;
+      }
+      // Clear materialIds so backend knows we're sending generic lesson content
+      materialIds = relatedMaterials.map(m => m.id);
+    }
+    try {
+      setIsGeneratingActivity(true);
+      setSelectedCourse(normalizedCourse);
+      setSelectedCourseIdForAssignments(normalizedCourse.id);
+      setLastScreen(activeScreen === 'notification' ? lastScreen : activeScreen);
+      setIsNotificationOpen(false);
+      const response = await apiFetch(`${API_BASE_URL}/student-activities/generate`, { 
+        method: 'POST', 
+        headers: { 'Content-Type': 'application/json' }, 
+        body: JSON.stringify({ 
+          studentId: currentStudent.studentId, 
+          courseId: normalizedCourse.id, 
+          classId: normalizedCourse.id, 
+          courseName: normalizedCourse.name, 
+          courseCode: normalizedCourse.code, 
+          assignmentId: assignment.id, 
+          assignmentTitle: assignment.title, 
+          topic: relatedMaterials.map((material) => material.title).join(', ') || assignment.topic || assignment.title, 
+          score, 
+          materialIds, // ✅ Send the collected IDs (either from assignment or fallback)
+          relatedMaterials: relatedMaterials.map((material) => ({ 
+            id: material.id, 
+            title: material.title, 
+            type: material.type, 
+            content: material.content || null, 
+            fileName: material.fileName || null, 
+            fileUrl: material.fileUrl || material.fileUri || null, 
+            fileUri: material.fileUri || material.fileUrl || null, 
+            fileType: material.fileType || null 
+          })) 
+        }) 
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data?.error || data?.message || 'Failed to generate follow-up activity.');
+      const activity = data?.data as GenerateActivityData | undefined;
+      if (!activity || !activity.assignmentId) throw new Error('The server did not return a valid generated activity.');
+      await loadStudentNotifications(); 
+      setGeneratedActivity(activity); 
+      setActiveScreen('generateactivity');
+    } catch (error: any) {
+      console.log('GENERATE ACTIVITY ERROR =>', error);
+      Alert.alert('Generate Activity Failed', error?.message || 'The AI material scan failed. Please try again after confirming the related material file is readable.');
+    } finally {
+      setIsGeneratingActivity(false);
+    }
+  };
 
   const handlePlayGame = async (assignment: any) => {
     if (isFetchingGame) return;
@@ -1671,14 +1758,13 @@ const handleAddAssignmentFile = (assignmentId: string, file: AssignmentFileUploa
       const response = await apiFetch(`${API_BASE_URL}/game-ai/get-game-questions/${assignment.id}`);
       const data = await response.json();
       if (!response.ok) throw new Error(data?.error || 'Failed to load game.');
-      const questions = (data.questions || []).map((q: any, idx: number) => ({ 
-        id: q.id || `q-${idx}`, 
-        question: q.question, 
-        options: q.options, 
-        answer: q.answer, 
-        correctIndex: q.options ? q.options.indexOf(q.answer) : 0 
+      const questions = (data.questions || []).map((q: any, idx: number) => ({
+        id: q.id || `q-${idx}`,
+        question: q.question,
+        options: q.options,
+        answer: q.answer,
+        correctIndex: q.options ? q.options.indexOf(q.answer) : 0
       }));
-      
       setGameAssignmentData({ 
         assignmentId: assignment.id, 
         assignmentTitle: assignment.title || assignment.header || 'Game Assignment', 
@@ -1713,9 +1799,7 @@ const handleAddAssignmentFile = (assignmentId: string, file: AssignmentFileUploa
 
   const confirmLeaveCourse = useCallback(async () => {
     if (!courseToLeave || isLeavingCourse) return;
-    
     setIsLeavingCourse(true);
-
     try {
       const findResponse = await apiFetch(`${API_BASE_URL}/class-members/find`, {
         method: 'POST',
@@ -1726,28 +1810,23 @@ const handleAddAssignmentFile = (assignmentId: string, file: AssignmentFileUploa
           userUid: currentStudent.authUid || null,
         }),
       });
-
       const findData = await findResponse.json();
       if (!findResponse.ok) {
         throw new Error(findData?.error || 'Membership not found.');
       }
-
       const memberId = findData.memberId;
       if (!memberId) {
         throw new Error('Could not find your membership record.');
       }
-
       const deleteResponse = await apiFetch(`${API_BASE_URL}/class-members/${memberId}`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ classId: courseToLeave.id }),
       });
-
       const deleteData = await deleteResponse.json();
       if (!deleteResponse.ok) {
         throw new Error(deleteData?.error || 'Unable to leave the course.');
       }
-
       await Promise.all([
         loadJoinedClasses(),
         loadStudentSubmissionState(),
@@ -1755,7 +1834,6 @@ const handleAddAssignmentFile = (assignmentId: string, file: AssignmentFileUploa
         loadStudentNotifications(),
         loadMessengerUnreadCount(),
       ]);
-
       if (
         selectedCourse?.id === courseToLeave.id ||
         activeScreen === 'coursedetail' ||
@@ -1766,7 +1844,6 @@ const handleAddAssignmentFile = (assignmentId: string, file: AssignmentFileUploa
         setSelectedCourse(null);
         setSelectedCourseIdForAssignments(null);
       }
-
       setLeaveSuccessModalVisible(true);
     } catch (error: any) {
       setLeaveErrorMessage(
@@ -1780,7 +1857,7 @@ const handleAddAssignmentFile = (assignmentId: string, file: AssignmentFileUploa
     }
   }, [
     courseToLeave,
-    isLeavingCourse, 
+    isLeavingCourse,
     currentStudent,
     selectedCourse,
     activeScreen,
@@ -1790,6 +1867,30 @@ const handleAddAssignmentFile = (assignmentId: string, file: AssignmentFileUploa
     loadStudentNotifications,
     loadMessengerUnreadCount,
   ]);
+
+  // ✅ ADD: Handler to navigate from Assignments "View" button to CourseDetail Lesson
+  const handleOpenRelatedMaterialFromAssignment = useCallback(
+    (course: AssignmentCourse, material: AssignmentMaterial) => {
+      // 1. Find the full CourseDetailData object from our joined courses
+      const targetCourse = joinedCourses.find((c) => c.id === course.id);
+      
+      if (targetCourse) {
+        // 2. Set the selected course so CourseDetail renders the correct data
+        setSelectedCourse(targetCourse);
+        
+        // 3. Switch screen to CourseDetail
+        setLastScreen(activeScreen); // Save where we came from
+        setActiveScreen('coursedetail');
+        setActiveCourseTab('modules'); // Ensure we are on the modules tab
+        
+        // 4. Set the lesson ID to trigger the auto-open effect in CourseDetail
+        setAutoOpenLessonId(material.id);
+      } else {
+        Alert.alert('Error', 'Could not find the course details.');
+      }
+    },
+    [joinedCourses, activeScreen]
+  );
 
   const renderScreen = () => {
     switch (activeScreen) {
@@ -1807,45 +1908,46 @@ const handleAddAssignmentFile = (assignmentId: string, file: AssignmentFileUploa
           userEmail={currentUserEmail}
           profileImage={currentUserAvatar}
           bannerImage={currentUserBanner}
+          profileImageStoragePath={currentUserProfileImageStoragePath}
+          bannerImageStoragePath={currentUserBannerImageStoragePath}
           onChangeProfileImage={handleChangeProfileImage}
           onChangeBannerImage={handleChangeBannerImage}
         />;
-      case 'home': 
-        return <Dashboard 
-          announcements={studentAnnouncements} 
-          courses={dashboardCourses} 
-          onOpenCourse={(course) => { 
-            setSelectedCourse(course as unknown as CourseDetailData); 
-            setGeneratedActivity(null); 
-            setLastScreen(activeScreen); 
-            setIsNotificationOpen(false); 
-            setActiveScreen('coursedetail'); 
-             setActiveCourseTab('modules'); 
-          }} 
-          onOpenAssignments={(course) => { 
-            setSelectedCourse(course as unknown as CourseDetailData); 
-            setSelectedCourseIdForAssignments(course.id); 
-            setGeneratedActivity(null); 
-            setLastScreen(activeScreen); 
-            setIsNotificationOpen(false); 
-            setActiveScreen('coursedetail'); 
-            setActiveCourseTab('assignments'); 
-          }} 
-          onOpenMaterials={(course) => { 
-            setSelectedCourse(course as unknown as CourseDetailData); 
-            setGeneratedActivity(null); 
-            setLastScreen(activeScreen); 
-            setIsNotificationOpen(false); 
-            setActiveScreen('coursedetail'); 
-            setActiveCourseTab('materials'); 
-          }} 
-          onOpenGeneratedActivity={(course, assignment) => openGeneratedActivity(course as unknown as CourseDetailData, assignment)} 
-          onJoinClass={handleJoinClass} 
-          isGeneratingActivity={isGeneratingActivity} 
-          completedActivityScores={completedActivityScores} 
-          isLoading={isLoadingJoinedCourses || isLoadingAnnouncements} 
+      case 'home':
+        return <Dashboard
+          announcements={studentAnnouncements}
+          courses={dashboardCourses}
+          onOpenCourse={(course) => {
+            setSelectedCourse(course as unknown as CourseDetailData);
+            setGeneratedActivity(null);
+            setLastScreen(activeScreen);
+            setIsNotificationOpen(false);
+            setActiveScreen('coursedetail');
+            setActiveCourseTab('modules');
+          }}
+          onOpenAssignments={(course, assignment) => {
+            setSelectedCourse(course as unknown as CourseDetailData);
+            setSelectedCourseIdForAssignments(course.id);
+            setGeneratedActivity(null);
+            setLastScreen(activeScreen);
+            setIsNotificationOpen(false);
+            setAutoOpenAssignmentId(assignment?.id || null);
+            setActiveScreen('assignments');
+          }}
+          onOpenMaterials={(course) => {
+            setSelectedCourse(course as unknown as CourseDetailData);
+            setGeneratedActivity(null);
+            setLastScreen(activeScreen);
+            setIsNotificationOpen(false);
+            setActiveScreen('coursedetail');
+            setActiveCourseTab('materials');
+          }}
+          onOpenGeneratedActivity={(course, assignment) => openGeneratedActivity(course as unknown as CourseDetailData, assignment)}
+          onJoinClass={handleJoinClass}
+          isGeneratingActivity={isGeneratingActivity}
+          completedActivityScores={completedActivityScores}
+          isLoading={isLoadingJoinedCourses || isLoadingAnnouncements}
         />;
-        
       case 'classes': 
         return <ClassesScreen 
           courses={classesScreenCourses} 
@@ -1879,7 +1981,6 @@ const handleAddAssignmentFile = (assignmentId: string, file: AssignmentFileUploa
           }} 
           onJoinClass={handleJoinClass} 
         />;
-        
       case 'game': 
         return <Game 
           enrolledCourses={joinedCourses.map(course => ({ id: course.id, name: course.name, materials: course.materials.map(m => ({ id: m.id, title: m.title, type: m.type })) }))} 
@@ -1907,20 +2008,16 @@ const handleAddAssignmentFile = (assignmentId: string, file: AssignmentFileUploa
             } 
           }} 
         />;
-        
       case 'flipit': 
         return <FlipIt onBack={exitFullscreenGameToGames} />;
-        
       case 'fruitmania': 
         return <FruitMania onBack={exitFullscreenGameToGames} />;
-        
-       case 'quizmasters': 
+      case 'quizmasters': 
         return <QuizMasters 
           onBack={exitFullscreenGameToGames} 
           generatedQuestions={generatedQuizMastersData} 
           gameType={currentGameType} // 🌟 Pass the captured gameType down to QuizMasters
         />;
-        
       case 'gamebasedassignment': 
         return <GameBasedAssignment 
           assignmentTitle={gameAssignmentData?.assignmentTitle || 'Game'} 
@@ -1957,7 +2054,6 @@ const handleAddAssignmentFile = (assignmentId: string, file: AssignmentFileUploa
             setActiveScreen(lastScreen); 
           }} 
         />;
-        
       case 'videos': 
         return <Videos 
           onVideoActiveChange={setIsVideoActive} 
@@ -1971,7 +2067,6 @@ const handleAddAssignmentFile = (assignmentId: string, file: AssignmentFileUploa
           adaptiveReason={adaptiveVideoRecommendation.reason} 
           queryRotationKey={adaptiveVideoRecommendation.rotationKey}
         />;
-        
       case 'myjourney': 
         return <MyJourney 
           searchQuery={globalSearchQuery} 
@@ -1980,7 +2075,6 @@ const handleAddAssignmentFile = (assignmentId: string, file: AssignmentFileUploa
           studentName={currentUserName} 
           apiBaseUrl={API_BASE_URL} 
         />;
-        
       case 'analytics': 
         return <Analytics 
           searchQuery={globalSearchQuery} 
@@ -1988,7 +2082,6 @@ const handleAddAssignmentFile = (assignmentId: string, file: AssignmentFileUploa
           studentName={currentUserName} 
           completedActivityScores={completedActivityScores} 
         />;
-        
       case 'assignments': 
         return <Assignments 
           searchQuery={globalSearchQuery} 
@@ -2008,8 +2101,11 @@ const handleAddAssignmentFile = (assignmentId: string, file: AssignmentFileUploa
           completedActivityScores={completedActivityScores} 
           onOpenGeneratedActivity={(course, assignment) => openGeneratedActivity(course as unknown as CourseDetailData, assignment)} 
           onPlayGame={handlePlayGame} 
+          autoOpenAssignmentId={autoOpenAssignmentId}
+          onConsumedAutoOpenAssignment={() => setAutoOpenAssignmentId(null)}
+          // ✅ PASS THE NEW HANDLER HERE
+          onOpenRelatedMaterial={handleOpenRelatedMaterialFromAssignment}
         />;
-        
       case 'community': 
         return <Community 
           searchQuery={globalSearchQuery} 
@@ -2025,7 +2121,6 @@ const handleAddAssignmentFile = (assignmentId: string, file: AssignmentFileUploa
           onDeleteAnswer={handleDeleteCommunityAnswer} 
           initialPostId={communityInitialPostId} 
         />;
-        
       case 'messenger': 
         return <Messenger 
           searchQuery={globalSearchQuery} 
@@ -2042,7 +2137,6 @@ const handleAddAssignmentFile = (assignmentId: string, file: AssignmentFileUploa
           courses={messengerCourses} 
           onUnreadCountChanged={loadMessengerUnreadCount}
         />;
-        
       case 'notification': 
         return <Notification 
           mode="screen" 
@@ -2052,7 +2146,6 @@ const handleAddAssignmentFile = (assignmentId: string, file: AssignmentFileUploa
           onMarkAllAsRead={handleMarkAllNotificationsAsRead} 
           onNotificationPress={handleNotificationItemClick} 
         />;
-        
       case 'coursedetail': 
         if (!selectedAssignmentCourse) return <Text style={{ textAlign: 'center', marginTop: 50 }}>No course selected.</Text>;
         return <CourseDetail 
@@ -2060,6 +2153,9 @@ const handleAddAssignmentFile = (assignmentId: string, file: AssignmentFileUploa
           initialTab={'modules'} 
           autoOpenAssignmentId={autoOpenAssignmentId}
           onConsumedAutoOpenAssignment={() => setAutoOpenAssignmentId(null)}
+          // ✅ PASS LESSON AUTO-OPEN PROPS
+          autoOpenLessonId={autoOpenLessonId}
+          onConsumedAutoOpenLesson={() => setAutoOpenLessonId(null)}
           onBack={() => setActiveScreen(lastScreen)} 
           assignmentComments={sharedAssignmentComments} 
           assignmentFiles={sharedAssignmentFiles} 
@@ -2076,7 +2172,6 @@ const handleAddAssignmentFile = (assignmentId: string, file: AssignmentFileUploa
           onGenerateActivity={(assignment) => openGeneratedActivity(selectedAssignmentCourse as unknown as CourseDetailData, assignment)} 
           onPlayGame={handlePlayGame} 
         />;
-        
       case 'generateactivity': 
         return <GenerateActivity 
           activity={generatedActivity} 
@@ -2085,7 +2180,6 @@ const handleAddAssignmentFile = (assignmentId: string, file: AssignmentFileUploa
           apiBaseUrl={API_BASE_URL} 
           onCompleted={handleGeneratedActivityCompleted} 
         />;
-        
       default: 
         return <Text style={{ textAlign: 'center', marginTop: 50 }}>Screen not found: {activeScreen}</Text>;
     }
@@ -2122,7 +2216,6 @@ const handleAddAssignmentFile = (assignmentId: string, file: AssignmentFileUploa
             />
           </View>
         )}
-        
         {isLargeScreen && isNotificationOpen && (
           <>
             <Pressable
@@ -2146,7 +2239,6 @@ const handleAddAssignmentFile = (assignmentId: string, file: AssignmentFileUploa
             </View>
           </>
         )}
-
         <View
           style={[
             styles.contentLayer,
@@ -2162,6 +2254,7 @@ const handleAddAssignmentFile = (assignmentId: string, file: AssignmentFileUploa
               userName={currentUserName}
               userEmail={currentUserEmail}
               userAvatar={currentUserAvatar}
+              userAvatarStoragePath={currentUserProfileImageStoragePath}
               userId={currentStudent.studentId}
               userRole="student"
               apiBaseUrl={API_BASE_URL}
@@ -2175,7 +2268,6 @@ const handleAddAssignmentFile = (assignmentId: string, file: AssignmentFileUploa
           )}
           <View style={{ flex: 1 }}>{renderScreen()}</View>
         </View>
-
         {!isFullscreenScreen &&
           !isMobileFullscreenScreen &&
           !isLargeScreen &&
@@ -2204,6 +2296,7 @@ const handleAddAssignmentFile = (assignmentId: string, file: AssignmentFileUploa
                   userName={currentUserName}
                   userEmail={currentUserEmail}
                   userAvatar={currentUserAvatar}
+                  userAvatarStoragePath={currentUserProfileImageStoragePath}
                   userId={currentStudent.studentId}
                   userRole="student"
                   apiBaseUrl={API_BASE_URL}
@@ -2220,7 +2313,6 @@ const handleAddAssignmentFile = (assignmentId: string, file: AssignmentFileUploa
               </View>
             </View>
         )}
-
         {!isFullscreenScreen &&
           activeScreen !== 'messenger' &&
           activeScreen !== 'notification' &&
@@ -2269,7 +2361,6 @@ const handleAddAssignmentFile = (assignmentId: string, file: AssignmentFileUploa
               )}
             </Pressable>
         )}
-
         {!isFullscreenScreen && (
           <GeminiFloatingModal
             visible={isChatOpen}
@@ -2277,7 +2368,6 @@ const handleAddAssignmentFile = (assignmentId: string, file: AssignmentFileUploa
             currentStudentId={currentStudent.studentId}
           />
         )}
-
         {isGeneratingActivity && (
           <View style={styles.generatingOverlay} pointerEvents="auto">
             <View style={styles.generatingCard}>
@@ -2290,7 +2380,6 @@ const handleAddAssignmentFile = (assignmentId: string, file: AssignmentFileUploa
             </View>
           </View>
         )}
-
         <Modal 
           animationType="fade" 
           transparent 
@@ -2317,7 +2406,6 @@ const handleAddAssignmentFile = (assignmentId: string, file: AssignmentFileUploa
             </View>
           </View>
         </Modal>
-
         <Modal 
           animationType="fade" 
           transparent 
@@ -2344,7 +2432,6 @@ const handleAddAssignmentFile = (assignmentId: string, file: AssignmentFileUploa
             </View>
           </View>
         </Modal>
-
         <Modal
           animationType="fade"
           transparent
@@ -2403,7 +2490,6 @@ const handleAddAssignmentFile = (assignmentId: string, file: AssignmentFileUploa
             </View>
           </View>
         </Modal>
-
         <Modal
           animationType="fade"
           transparent
@@ -2430,7 +2516,6 @@ const handleAddAssignmentFile = (assignmentId: string, file: AssignmentFileUploa
             </View>
           </View>
         </Modal>
-
         <Modal
           animationType="fade"
           transparent
@@ -2457,7 +2542,6 @@ const handleAddAssignmentFile = (assignmentId: string, file: AssignmentFileUploa
             </View>
           </View>
         </Modal>
-
       </SafeAreaView>
     </>
   );
@@ -2491,17 +2575,16 @@ const styles = StyleSheet.create({
   logoutModalSubtitle: { fontSize: 14, color: '#777', textAlign: 'center', marginTop: 8 },
   logoutButtonsRow: { flexDirection: 'row', justifyContent: 'center', marginTop: 20 },
   logoutConfirmBtn: {
-  paddingVertical: 12,
-  paddingHorizontal: 16,
-  borderRadius: 10,
-  backgroundColor: '#D32F2F',
-
-  justifyContent: 'center',
-  alignItems: 'center',
-},
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 10,
+    backgroundColor: '#D32F2F',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   logoutConfirmText: {
-  color: '#FFF',
-  fontWeight: '700',
-  textAlign: 'center',
-},
+    color: '#FFF',
+    fontWeight: '700',
+    textAlign: 'center',
+  },
 });
