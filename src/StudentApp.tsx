@@ -597,7 +597,9 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
     return expiry.getTime() > Date.now();
   };
 
-  const loadCurrentStudentProfile = async () => {
+  // 🔥 FIX: wrapped in useCallback so it can be safely reused as an effect
+  // dependency and passed directly to setInterval below.
+  const loadCurrentStudentProfile = useCallback(async () => {
     if (!currentStudent?.studentId) return;
     try {
       const response = await apiFetch(`${API_BASE_URL}/auth/user-profile`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: currentStudent.studentId, role: 'student' }) });
@@ -622,9 +624,31 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
       if (currentStudent.profileImage) setCurrentUserAvatar({ uri: currentStudent.profileImage });
       if (currentStudent.bannerImage) setCurrentUserBanner({ uri: currentStudent.bannerImage });
     }
-  };
+  }, [
+    currentStudent?.studentId,
+    currentStudent.firstName,
+    currentStudent.lastName,
+    currentStudent.email,
+    currentStudent.profileImage,
+    currentStudent.bannerImage,
+  ]);
 
-  useEffect(() => { loadCurrentStudentProfile(); }, [currentStudent?.studentId]);
+  useEffect(() => {
+    loadCurrentStudentProfile();
+
+    // 🔥 FIX: keep the CURRENT student's own signed avatar/banner URL fresh.
+    // Community.tsx and Profile.tsx already refresh avatars that come with a
+    // `storagePath` (other users' post/answer avatars, and Profile's own big
+    // avatar/banner via profileImageStoragePath/bannerImageStoragePath) — but
+    // `currentUserAvatar`/`currentUserBanner` here were only ever set once on
+    // mount (or when the student manually changes their photo). Without this
+    // interval, the "Have a question, X?" compose avatar in Community, the
+    // drawer avatar, and any other consumer of these two state values go
+    // stale once the signed URL from /auth/user-profile expires.
+    const profileRefreshInterval = setInterval(loadCurrentStudentProfile, 5 * 60 * 1000); // every 5 min
+
+    return () => clearInterval(profileRefreshInterval);
+  }, [loadCurrentStudentProfile]);
 
   useEffect(() => {
     if (!remoteStudentProfile?.profileImage && currentStudent.profileImage) setCurrentUserAvatar({ uri: currentStudent.profileImage });

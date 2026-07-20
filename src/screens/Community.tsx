@@ -731,7 +731,7 @@ const Community: React.FC<CommunityProps> = ({
         >
           <View style={styles.innerWrapper}>
             <View style={styles.header}>
-              <Text style={styles.title}>ParseIt Community</Text>
+              <Text style={styles.title}>ParseIT Community</Text>
             </View>
 
             <View style={styles.inputRow}>

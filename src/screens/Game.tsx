@@ -526,7 +526,7 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   titleWrap: { flex: 1 },
-  pageTitle: { fontSize: 32, fontWeight: '900', color: '#111', letterSpacing: -0.5 },
+  pageTitle: { fontSize: 32, fontWeight: '700', color: '#111', letterSpacing: -0.5 },
   pageSubtitle: { color: '#666', marginTop: 6, fontSize: 15, lineHeight: 22 },
   uploadButton: {
     backgroundColor: '#D32F2F',

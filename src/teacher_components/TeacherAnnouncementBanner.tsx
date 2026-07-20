@@ -213,7 +213,7 @@ const AnnouncementBanner = ({
               </Text>
 
               <Text style={styles.sharedText}>
-                Shared to {currentAnnouncement?.classIds?.length || 1} classes
+                Shared to {currentAnnouncement?.classIds?.length || 1} class{(currentAnnouncement?.classIds?.length || 1) > 1 ? 'es' : ''}
               </Text>
             </View>
 

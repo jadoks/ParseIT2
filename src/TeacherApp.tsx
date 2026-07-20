@@ -125,6 +125,13 @@ const TEACHER_ALLOWED_NOTIFICATION_TYPES = new Set([
   'class-assigned',
 ]);
 
+// 🔥 How often to re-pull the teacher profile purely to refresh the signed
+// avatar/banner URLs. TeacherCommunity already refreshes OTHER users'
+// avatars on this same cadence — this keeps the CURRENT user's own avatar
+// in sync too, since Community.tsx intentionally skips refreshing "own"
+// avatars (it assumes the `userAvatar` prop is always fresh).
+const PROFILE_IMAGE_REFRESH_INTERVAL_MS = 5 * 60 * 1000; // every 5 min
+
 export default function TeacherApp({ onLogout, currentTeacher }: Props) {
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
@@ -240,7 +247,7 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
     }
   }, [activeScreen]);
 
-  const loadTeacherProfile = async () => {
+  const loadTeacherProfile = useCallback(async () => {
     const teacherId =
       currentTeacher.teacherId ||
       currentTeacher.authUid ||
@@ -275,7 +282,7 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
     } catch (error) {
       console.log('LOAD TEACHER PROFILE ERROR =>', error);
     }
-  };
+  }, [currentTeacher?.teacherId, currentTeacher?.authUid, currentTeacher?.email]);
 
   const loadTeacherNotifications = useCallback(async () => {
     const teacherId =
@@ -551,7 +558,20 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
   useEffect(() => {
     loadTeacherProfile();
     loadCommunityPosts();
-  }, [currentTeacher?.teacherId, currentTeacher?.authUid, currentTeacher?.email]);
+
+    // 🔥 FIX: keep the CURRENT user's own signed avatar/banner URL fresh.
+    // TeacherCommunity (and other consumers of `currentUserAvatar`) treat
+    // "own" avatars as always up to date and never re-fetch them — they
+    // only refresh OTHER users' avatars on a timer. Without this interval,
+    // once the signed URL returned by /auth/user-profile expires, the
+    // logged-in user's own avatar breaks everywhere until they reload.
+    const profileRefreshInterval = setInterval(
+      loadTeacherProfile,
+      PROFILE_IMAGE_REFRESH_INTERVAL_MS
+    );
+
+    return () => clearInterval(profileRefreshInterval);
+  }, [loadTeacherProfile]);
 
   useEffect(() => {
     loadTeacherNotifications();

@@ -78,7 +78,8 @@ type AnswerDropdownState =
 
 type ToastType = 'success' | 'error' | 'info';
 
-// ---- Cache-aware signed-URL refresh for the teacher's own profile/banner images. ----
+// ---- Cache-aware signed-URL refresh for the teacher's own profile/banner images,
+// and also for post/answer avatars (mirrors TeacherCommunity's implementation). ----
 const refreshUserImageUrl = async (
   entityId: string,
   storagePath?: string | null
@@ -256,6 +257,57 @@ const Profile: React.FC<ProfileProps> = ({
     () => normalizeImageSource(refreshedBannerImageUrl || bannerImage),
     [bannerImage, refreshedBannerImageUrl]
   );
+
+  // 🔥 NEW: Cache-aware signed-URL refresh for post/answer avatars — mirrors
+  // the exact pattern used in TeacherCommunity so avatars on this teacher's
+  // own posts (and any answers left by other users on those posts) keep
+  // working even after the signed URL expires, instead of only refreshing
+  // when the `userPosts` prop itself changes.
+  const [refreshedPostAvatars, setRefreshedPostAvatars] = useState<Record<string, string>>({});
+  const [refreshedAnswerAvatars, setRefreshedAnswerAvatars] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const refreshAvatars = async () => {
+      const nextPostAvatars: Record<string, string> = {};
+      const nextAnswerAvatars: Record<string, string> = {};
+
+      for (const post of localPosts) {
+        if (post.avatarStoragePath) {
+          const url = await refreshUserImageUrl(post.id, post.avatarStoragePath);
+          if (url) {
+            nextPostAvatars[post.id] = url;
+          }
+        }
+
+        for (const answer of post.answers || []) {
+          if (answer.avatarStoragePath) {
+            const url = await refreshUserImageUrl(answer.id, answer.avatarStoragePath);
+            if (url) {
+              nextAnswerAvatars[answer.id] = url;
+            }
+          }
+        }
+      }
+
+      if (isMounted) {
+        setRefreshedPostAvatars(nextPostAvatars);
+        setRefreshedAnswerAvatars(nextAnswerAvatars);
+      }
+    };
+
+    refreshAvatars();
+
+    // Re-check periodically so avatars keep working even if this screen is
+    // left open longer than the signed-URL cache TTL.
+    const interval = setInterval(refreshAvatars, 5 * 60 * 1000); // every 5 min
+
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, [localPosts]);
 
   const visibleAnswers = useMemo(() => {
     if (!selectedPost) return [];
@@ -1017,7 +1069,7 @@ const Profile: React.FC<ProfileProps> = ({
               <View style={styles.postHeader}>
                 <View style={styles.userRow}>
                   {renderProfileImage(
-                    normalizeImageSource(post.avatar),
+                    normalizeImageSource(refreshedPostAvatars[post.id] || post.avatar),
                     [
                       styles.postAvatar,
                       {
@@ -1618,7 +1670,9 @@ const Profile: React.FC<ProfileProps> = ({
                             <View style={styles.answerPreviewHeader}>
                               <View style={styles.userRow}>
                                 {renderProfileImage(
-                                  normalizeImageSource(answer.avatar),
+                                  normalizeImageSource(
+                                    refreshedAnswerAvatars[answer.id] || answer.avatar
+                                  ),
                                   styles.answerAvatar
                                 )}
                                 <View style={{ marginLeft: 8, flex: 1 }}>

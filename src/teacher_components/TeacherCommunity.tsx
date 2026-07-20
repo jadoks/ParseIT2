@@ -225,44 +225,68 @@ const Community: React.FC<CommunityProps> = ({
     [userAvatar]
   );
 
+  // 🔥 Cache-aware signed-URL refresh for OTHER users' post/answer avatars.
+  // Two fixes applied here:
+  //  1. Skip refreshing entries that belong to the current user — those are
+  //     already fresh via `userAvatarSource` (passed straight from props),
+  //     so hitting the signed-url endpoint for them again was wasted work
+  //     and part of what made this feel slow.
+  //  2. Run every remaining refresh in parallel with Promise.all instead of
+  //     one at a time in a for/await loop, which is what made the refresh
+  //     take noticeably long when there were several posts/answers.
   const [refreshedPostAvatars, setRefreshedPostAvatars] = useState<Record<string, string>>({});
   const [refreshedAnswerAvatars, setRefreshedAnswerAvatars] = useState<Record<string, string>>({});
-
-  const showToast = (message: string, type: ToastType = 'success') => {
-    setToast({ visible: true, message, type });
-  };
-
-  const hideToast = () => setToast((prev) => ({ ...prev, visible: false }));
 
   useEffect(() => {
     let isMounted = true;
 
     const refreshAvatars = async () => {
+      const postEntries: Array<[string, string]> = [];
+      const answerEntries: Array<[string, string]> = [];
+
+      localPosts.forEach((post) => {
+        const isOwnPost = post.userName === userName || post.userEmail === userEmail;
+        if (!isOwnPost && post.avatarStoragePath) {
+          postEntries.push([post.id, post.avatarStoragePath]);
+        }
+
+        (post.answers || []).forEach((answer) => {
+          const isOwnAnswer = answer.userName === userName;
+          if (!isOwnAnswer && answer.avatarStoragePath) {
+            answerEntries.push([answer.id, answer.avatarStoragePath]);
+          }
+        });
+      });
+
+      if (!postEntries.length && !answerEntries.length) {
+        if (isMounted) {
+          setRefreshedPostAvatars({});
+          setRefreshedAnswerAvatars({});
+        }
+        return;
+      }
+
+      const [postResults, answerResults] = await Promise.all([
+        Promise.all(postEntries.map(([id, storagePath]) => refreshUserImageUrl(id, storagePath))),
+        Promise.all(answerEntries.map(([id, storagePath]) => refreshUserImageUrl(id, storagePath))),
+      ]);
+
+      if (!isMounted) return;
+
       const nextPostAvatars: Record<string, string> = {};
+      postEntries.forEach(([id], idx) => {
+        const url = postResults[idx];
+        if (url) nextPostAvatars[id] = url;
+      });
+
       const nextAnswerAvatars: Record<string, string> = {};
+      answerEntries.forEach(([id], idx) => {
+        const url = answerResults[idx];
+        if (url) nextAnswerAvatars[id] = url;
+      });
 
-      for (const post of localPosts) {
-        if (post.avatarStoragePath) {
-          const url = await refreshUserImageUrl(post.id, post.avatarStoragePath);
-          if (url) {
-            nextPostAvatars[post.id] = url;
-          }
-        }
-
-        for (const answer of post.answers || []) {
-          if (answer.avatarStoragePath) {
-            const url = await refreshUserImageUrl(answer.id, answer.avatarStoragePath);
-            if (url) {
-              nextAnswerAvatars[answer.id] = url;
-            }
-          }
-        }
-      }
-
-      if (isMounted) {
-        setRefreshedPostAvatars(nextPostAvatars);
-        setRefreshedAnswerAvatars(nextAnswerAvatars);
-      }
+      setRefreshedPostAvatars(nextPostAvatars);
+      setRefreshedAnswerAvatars(nextAnswerAvatars);
     };
 
     refreshAvatars();
@@ -276,7 +300,7 @@ const Community: React.FC<CommunityProps> = ({
       isMounted = false;
       clearInterval(interval);
     };
-  }, [localPosts]);
+  }, [localPosts, userName, userEmail]);
 
   // 👇 ADDED: Automatically open the answers modal if a specific post ID is passed via notification
   useEffect(() => {
@@ -303,6 +327,18 @@ const Community: React.FC<CommunityProps> = ({
       (answer) => !hiddenForSelectedPost.includes(answer.id)
     );
   }, [selectedPost, hiddenAnswersByPost]);
+
+  const getPostAvatarSource = (post: CommunityPost) => {
+    const isOwnPost = post.userName === userName || post.userEmail === userEmail;
+    if (isOwnPost) return userAvatarSource;
+    return normalizeImageSource(refreshedPostAvatars[post.id] || post.avatar);
+  };
+
+  const getAnswerAvatarSource = (answer: CommunityAnswer) => {
+    const isOwnAnswer = answer.userName === userName;
+    if (isOwnAnswer) return userAvatarSource;
+    return normalizeImageSource(refreshedAnswerAvatars[answer.id] || answer.avatar);
+  };
 
   const getPostDropdownPosition = (event: GestureResponderEvent) => {
     const { pageX, pageY } = event.nativeEvent;
@@ -601,13 +637,19 @@ const Community: React.FC<CommunityProps> = ({
     showToast('Answer hidden.', 'info');
   };
 
+  const showToast = (message: string, type: ToastType = 'success') => {
+    setToast({ visible: true, message, type });
+  };
+
+  const hideToast = () => setToast((prev) => ({ ...prev, visible: false }));
+
   const renderPost = ({ item }: { item: CommunityPost }) => {
     return (
       <View style={styles.postContainer}>
         <View style={styles.postHeader}>
           <View style={styles.userRow}>
             <Image
-              source={normalizeImageSource(refreshedPostAvatars[item.id] || item.avatar)}
+              source={getPostAvatarSource(item)}
               style={styles.postAvatar}
               resizeMode="cover"
             />
@@ -982,7 +1024,7 @@ const Community: React.FC<CommunityProps> = ({
                           <View style={styles.answerPreviewHeader}>
                             <View style={styles.userRow}>
                               <Image
-                                source={normalizeImageSource(refreshedAnswerAvatars[answer.id] || answer.avatar)}
+                                source={getAnswerAvatarSource(answer)}
                                 style={styles.answerAvatar}
                                 resizeMode="cover"
                               />
