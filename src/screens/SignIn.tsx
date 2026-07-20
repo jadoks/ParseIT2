@@ -76,7 +76,7 @@ type UserProfileResponse = {
 
 function getApiBaseUrl() {
   if (Platform.OS === 'web') {
-    return 'http://localhost:5000';
+    return process.env.EXPO_PUBLIC_API_URL!;
   }
 
   const possibleHost =

@@ -39,16 +39,20 @@ const DEFAULT_AVATAR = require('../../assets/images/default_profile.png');
 
 function getApiBaseUrl() {
   if (Platform.OS === 'web') {
-    return 'http://localhost:5000';
+    return process.env.EXPO_PUBLIC_API_URL!;
   }
+
   const possibleHost =
     Constants.expoConfig?.hostUri ||
     Constants.manifest2?.extra?.expoGo?.debuggerHost ||
     '';
+
   const host = possibleHost.split(':')[0];
+
   if (host) {
     return `http://${host}:5000`;
   }
+
   return 'http://192.168.1.5:5000';
 }
 
