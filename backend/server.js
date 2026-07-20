@@ -16,29 +16,47 @@ import { createRequire } from "module";
 import multer from "multer";
 import nodemailer from "nodemailer";
 import officeparser from "officeparser";
-import serviceAccount from "./serviceAccountKey.json" with { type: "json" };
+
 
 const require = createRequire(import.meta.url);
 const pdf = require("pdf-parse");
 const vision = require("@google-cloud/vision");
 
-
-let client; 
+// ✅ CORRECTED INITIALIZATION BLOCK
+let client;
+let firebaseServiceAccount;
 
 if (process.env.FIREBASE_SERVICE_ACCOUNT_KEY) {
-  //  PRODUCTION (Render): Use credentials from environment variable
+  //  PRODUCTION (Render): Parse credentials from environment variable
   const serviceAccountCredentials = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_KEY);
+  
   client = new vision.ImageAnnotatorClient({
     credentials: serviceAccountCredentials,
   });
+  
+  firebaseServiceAccount = serviceAccountCredentials;
 } else {
-  // 💻 LOCAL DEVELOPMENT: Use the local JSON file
-  client = new vision.ImageAnnotatorClient({
-    keyFilename: "./serviceAccountKey.json",
-  });
+  // 💻 LOCAL DEVELOPMENT: Use static import with proper attribute
+  // Note: This line MUST be at the top level of the module to work correctly
+  // If you moved it inside an if-block, Node ESM will reject it.
+  // Since we can't conditionally use static imports, we'll use require() fallback
+  try {
+    const { createRequire } = await import('module');
+    const require = createRequire(import.meta.url);
+    const localKey = require("./serviceAccountKey.json");
+    
+    firebaseServiceAccount = localKey;
+    
+    client = new vision.ImageAnnotatorClient({
+      keyFilename: "./serviceAccountKey.json",
+    });
+  } catch (err) {
+    console.error("Failed to load local service account key:", err.message);
+    throw new Error("Local serviceAccountKey.json not found and FIREBASE_SERVICE_ACCOUNT_KEY env var is missing.");
+  }
 }
-dotenv.config();
 
+dotenv.config();
 const app = express();
 app.use(
   cors({
@@ -50,7 +68,7 @@ app.use(express.json({ limit: "50mb" }));
 app.use(cookieParser());
 
 admin.initializeApp({
-  credential: admin.credential.cert(serviceAccount),
+  credential: admin.credential.cert(firebaseServiceAccount),
   storageBucket: "parseit2-4b26d.firebasestorage.app",
 });
 
