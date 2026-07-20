@@ -58,9 +58,19 @@ if (process.env.FIREBASE_SERVICE_ACCOUNT_KEY) {
 
 dotenv.config();
 const app = express();
+const allowedOrigins = [
+  "https://parse-it-hub.vercel.app",
+  "http://localhost:8081", // for local dev
+];
+
 app.use(
   cors({
-    origin: process.env.FRONTEND_ORIGIN || "http://localhost:8081", //origin: ["https://parse-it-hub.vercel.app/"],
+    origin(origin, callback) {
+      if (!origin || allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+      return callback(new Error(`Not allowed by CORS: ${origin}`));
+    },
     credentials: true,
   })
 );
