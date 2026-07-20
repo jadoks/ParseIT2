@@ -23,16 +23,26 @@ const pdf = require("pdf-parse");
 const vision = require("@google-cloud/vision");
 
 
-const client = new vision.ImageAnnotatorClient({
-  keyFilename: "./serviceAccountKey.json",
-});
+let client; 
 
+if (process.env.FIREBASE_SERVICE_ACCOUNT_KEY) {
+  //  PRODUCTION (Render): Use credentials from environment variable
+  const serviceAccountCredentials = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_KEY);
+  client = new vision.ImageAnnotatorClient({
+    credentials: serviceAccountCredentials,
+  });
+} else {
+  // 💻 LOCAL DEVELOPMENT: Use the local JSON file
+  client = new vision.ImageAnnotatorClient({
+    keyFilename: "./serviceAccountKey.json",
+  });
+}
 dotenv.config();
 
 const app = express();
 app.use(
   cors({
-    origin: process.env.FRONTEND_ORIGIN || "http://localhost:8081",
+    origin: process.env.FRONTEND_ORIGIN || "http://localhost:8081", //origin: ["https://parse-it-hub.vercel.app/"],
     credentials: true,
   })
 );
