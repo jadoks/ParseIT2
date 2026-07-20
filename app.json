@@ -5,7 +5,7 @@
     "version": "1.0.0",
     "icon": "./assets/images/logo.png",
     "web": {
-      "favicon": "./assets/images/logo.png"
+      "favicon": "./public/logo.png"
     },
     "android": {
       "softwareKeyboardLayoutMode": "pan"

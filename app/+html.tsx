@@ -1,1 +1,1 @@
-<link rel="icon" href="/logo.png" />
+<link rel="icon" href="/public/logo.png" />
