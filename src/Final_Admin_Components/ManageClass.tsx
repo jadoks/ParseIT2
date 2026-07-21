@@ -109,6 +109,113 @@ const fileUriToBase64 = async (uri: string): Promise<string> => {
   });
 };
 
+function getInitials(className: string): string {
+  const words = className.trim().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return "?";
+  if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
+  return (words[0][0] + words[1][0]).toUpperCase();
+}
+
+// Small deterministic palette so each class gets a consistent avatar color
+const AVATAR_PALETTE = [
+  { bg: "#FEE2E2", fg: "#DC2626" },
+  { bg: "#FFE8D6", fg: "#C2410C" },
+  { bg: "#FDE68A33", fg: "#B45309" },
+  { bg: "#E0E7FF", fg: "#4338CA" },
+  { bg: "#DCFCE7", fg: "#15803D" },
+  { bg: "#F3E8FF", fg: "#7E22CE" },
+];
+
+function getAvatarColors(seed: string) {
+  let hash = 0;
+  for (let i = 0; i < seed.length; i++) {
+    hash = (hash * 31 + seed.charCodeAt(i)) >>> 0;
+  }
+  return AVATAR_PALETTE[hash % AVATAR_PALETTE.length];
+}
+
+type SortColumn =
+  | "classCode"
+  | "className"
+  | "section"
+  | "instructor"
+  | "classMembers"
+  | null;
+type SortDirection = "asc" | "desc";
+
+const PAGE_SIZE = 8;
+
+// Builds a compact page list like: 1 2 3 4 5 ... 15
+function getPageNumbers(current: number, total: number): (number | "...")[] {
+  if (total <= 7) {
+    return Array.from({ length: total }, (_, i) => i + 1);
+  }
+
+  const pages: (number | "...")[] = [1];
+
+  if (current > 3) pages.push("...");
+
+  const start = Math.max(2, current - 1);
+  const end = Math.min(total - 1, current + 1);
+
+  for (let i = start; i <= end; i++) pages.push(i);
+
+  if (current < total - 2) pages.push("...");
+
+  pages.push(total);
+
+  return pages;
+}
+
+type SortableHeaderProps = {
+  label: string;
+  column: Exclude<SortColumn, null>;
+  activeColumn: SortColumn;
+  direction: SortDirection;
+  onPress: (column: Exclude<SortColumn, null>) => void;
+  style?: any;
+};
+
+function SortableHeader({
+  label,
+  column,
+  activeColumn,
+  direction,
+  onPress,
+  style,
+}: SortableHeaderProps) {
+  const isActive = activeColumn === column;
+
+  return (
+    <TouchableOpacity
+      style={[styles.sortableHeaderButton, style]}
+      activeOpacity={0.6}
+      onPress={() => onPress(column)}
+    >
+      <Text
+        style={[
+          styles.tableHeaderText,
+          isActive && styles.tableHeaderTextActive,
+        ]}
+      >
+        {label}
+      </Text>
+      <Ionicons
+        name={
+          isActive
+            ? direction === "asc"
+              ? "chevron-up"
+              : "chevron-down"
+            : "swap-vertical-outline"
+        }
+        size={12}
+        color={isActive ? "#DC2626" : "#C7B0B0"}
+        style={styles.sortIcon}
+      />
+    </TouchableOpacity>
+  );
+}
+
 export default function ManageClass({ width, currentAdmin }: ManageClassProps) {
   const [classes, setClasses] = useState<TableClassItem[]>([]);
   const [rawClasses, setRawClasses] = useState<BackendClassItem[]>([]);
@@ -122,6 +229,16 @@ export default function ManageClass({ width, currentAdmin }: ManageClassProps) {
   );
   const [isDeleteModalVisible, setIsDeleteModalVisible] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [hoveredRowId, setHoveredRowId] = useState<string | null>(null);
+  const [sortColumn, setSortColumn] = useState<SortColumn>(null);
+  const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [rowMenu, setRowMenu] = useState<{
+    item: TableClassItem;
+    x: number;
+    y: number;
+  } | null>(null);
+  const rowMenuButtonRefs = React.useRef<Record<string, View | null>>({});
 
   const [toast, setToast] = useState<{
     visible: boolean;
@@ -156,7 +273,7 @@ export default function ManageClass({ width, currentAdmin }: ManageClassProps) {
 
   const isMobile = width < 768;
   const isTablet = width >= 768 && width < 1100;
-  const tableMinWidth = isMobile ? 1100 : isTablet ? 1200 : 1300; 
+  const tableMinWidth = isMobile ? 1000 : isTablet ? 1080 : 1160;
 
   const mapBackendClassToTable = (item: BackendClassItem): TableClassItem => {
     const formattedSchoolYear = item.schoolYear
@@ -220,6 +337,73 @@ export default function ManageClass({ width, currentAdmin }: ManageClassProps) {
       return searchable.includes(keyword);
     });
   }, [classes, searchText]);
+
+  const sortedClasses = useMemo(() => {
+    if (!sortColumn) return filteredClasses;
+
+    const getValue = (item: TableClassItem) => {
+      switch (sortColumn) {
+        case "classCode":
+          return item.classCode.toLowerCase();
+        case "className":
+          return item.className.toLowerCase();
+        case "section":
+          return item.section.toLowerCase();
+        case "instructor":
+          return item.instructor.toLowerCase();
+        case "classMembers":
+          return item.classMembers;
+        default:
+          return "";
+      }
+    };
+
+    const sorted = [...filteredClasses].sort((a, b) => {
+      const valueA = getValue(a);
+      const valueB = getValue(b);
+      if (valueA < valueB) return -1;
+      if (valueA > valueB) return 1;
+      return 0;
+    });
+
+    return sortDirection === "asc" ? sorted : sorted.reverse();
+  }, [filteredClasses, sortColumn, sortDirection]);
+
+  const totalPages = Math.max(1, Math.ceil(sortedClasses.length / PAGE_SIZE));
+
+  const paginatedClasses = useMemo(() => {
+    const start = (currentPage - 1) * PAGE_SIZE;
+    return sortedClasses.slice(start, start + PAGE_SIZE);
+  }, [sortedClasses, currentPage]);
+
+  // Reset to page 1 whenever the underlying result set changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchText, sortColumn, sortDirection, classes.length]);
+
+  const handleSort = (column: Exclude<SortColumn, null>) => {
+    if (sortColumn === column) {
+      setSortDirection((prev) => (prev === "asc" ? "desc" : "asc"));
+    } else {
+      setSortColumn(column);
+      setSortDirection("asc");
+    }
+  };
+
+  const openRowMenu = (item: TableClassItem, key: string) => {
+    const node = rowMenuButtonRefs.current[key];
+    if (node && (node as any).measureInWindow) {
+      (node as any).measureInWindow(
+        (x: number, y: number, w: number, h: number) => {
+          setRowMenu({ item, x: x + w, y: y + h });
+        }
+      );
+    } else {
+      setRowMenu({ item, x: 0, y: 0 });
+    }
+  };
+
+  const closeRowMenu = () => setRowMenu(null);
 
   const resetModalState = () => {
     setIsAddModalVisible(false);
@@ -502,12 +686,12 @@ export default function ManageClass({ width, currentAdmin }: ManageClassProps) {
       <View style={[styles.toolbar, isMobile && styles.toolbarStack]}>
         <View style={styles.searchWrap}>
           <View style={styles.searchField}>
-            <Ionicons name="search-outline" size={18} color="#8A6F6F" />
+            <Ionicons name="search-outline" size={18} color="#A18888" />
             <TextInput
               value={searchText}
               onChangeText={setSearchText}
               placeholder="Search class, section, semester, or instructor"
-              placeholderTextColor="#B79A9A"
+              placeholderTextColor="#C2ABAB"
               style={styles.searchInput}
             />
           </View>
@@ -522,98 +706,322 @@ export default function ManageClass({ width, currentAdmin }: ManageClassProps) {
             setIsAddModalVisible(true);
           }}
         >
-          <Ionicons name="add-circle-outline" size={18} color="#FFFFFF" />
-          <Text style={styles.primaryActionButtonText}>Add</Text>
+          <Ionicons name="add" size={18} color="#FFFFFF" />
+          <Text style={styles.primaryActionButtonText}>Add Class</Text>
         </TouchableOpacity>
       </View>
 
       <View style={styles.tableCard}>
-        <ScrollView
-          horizontal
-          nestedScrollEnabled
-          showsHorizontalScrollIndicator={true}
-          contentContainerStyle={styles.tableHorizontalContent}
-        >
+        <View style={styles.tableCardInner}>
+          <View style={styles.tableMetaRow}>
+            <Text style={styles.tableMetaText}>
+              {sortedClasses.length} {sortedClasses.length === 1 ? "class" : "classes"}
+            </Text>
+          </View>
+
           <ScrollView
-          nestedScrollEnabled
-            showsVerticalScrollIndicator={true}
-            style={styles.tableVerticalScroll}
-            contentContainerStyle={styles.tableVerticalContent}
+            horizontal
+            nestedScrollEnabled
+            showsHorizontalScrollIndicator={true}
+            contentContainerStyle={styles.tableHorizontalContent}
           >
-            <View style={{ minWidth: tableMinWidth }}>
-              <View style={styles.tableHeaderRow}>
-                <Text style={[styles.tableHeaderText, styles.codeColumn]}>Class Code</Text>
-                <Text style={[styles.tableHeaderText, styles.classNameColumn]}>Class Name with Semester</Text>
-                <Text style={[styles.tableHeaderText, styles.sectionColumn]}>Section</Text>
-                <Text style={[styles.tableHeaderText, styles.instructorColumn]}>Instructor</Text>
-                <Text style={[styles.tableHeaderText, styles.memberColumn]}>Number of Class Member</Text>
-                <Text style={[styles.tableHeaderText, styles.actionColumn]}>Action</Text>
+            <ScrollView
+              nestedScrollEnabled
+              showsVerticalScrollIndicator={true}
+              style={styles.tableVerticalScroll}
+              contentContainerStyle={styles.tableVerticalContent}
+            >
+              <View style={{ minWidth: tableMinWidth }}>
+                <View style={styles.tableHeaderRow}>
+                  <SortableHeader
+                    label="Class Code"
+                    column="classCode"
+                    activeColumn={sortColumn}
+                    direction={sortDirection}
+                    onPress={handleSort}
+                    style={styles.codeColumn}
+                  />
+                  <SortableHeader
+                    label="Class Name with Semester"
+                    column="className"
+                    activeColumn={sortColumn}
+                    direction={sortDirection}
+                    onPress={handleSort}
+                    style={styles.classNameColumn}
+                  />
+                  <SortableHeader
+                    label="Section"
+                    column="section"
+                    activeColumn={sortColumn}
+                    direction={sortDirection}
+                    onPress={handleSort}
+                    style={styles.sectionColumn}
+                  />
+                  <SortableHeader
+                    label="Instructor"
+                    column="instructor"
+                    activeColumn={sortColumn}
+                    direction={sortDirection}
+                    onPress={handleSort}
+                    style={styles.instructorColumn}
+                  />
+                  <SortableHeader
+                    label="Members"
+                    column="classMembers"
+                    activeColumn={sortColumn}
+                    direction={sortDirection}
+                    onPress={handleSort}
+                    style={styles.memberColumn}
+                  />
+                  <Text
+                    style={[
+                      styles.tableHeaderText,
+                      styles.actionColumn,
+                      styles.actionHeaderText,
+                    ]}
+                  >
+                    Action
+                  </Text>
+                </View>
+
+                {isLoading ? (
+                  <View style={styles.emptyState}>
+                    <Ionicons name="sync-outline" size={26} color="#DC2626" />
+                    <Text style={styles.emptyStateTitle}>Loading classes...</Text>
+                  </View>
+                ) : paginatedClasses.length === 0 ? (
+                  <View style={styles.emptyState}>
+                    <Ionicons name="albums-outline" size={26} color="#DC2626" />
+                    <Text style={styles.emptyStateTitle}>No classes found</Text>
+                    <Text style={styles.emptyStateSubtitle}>
+                      Try another search or add a new class record.
+                    </Text>
+                  </View>
+                ) : (
+                  paginatedClasses.map((item) => {
+                    const avatarColors = getAvatarColors(item.id || item.classCode);
+                    const isHovered = hoveredRowId === item.id;
+                    const menuKey = item.id;
+
+                    return (
+                      <Pressable
+                        key={item.id}
+                        onHoverIn={() => setHoveredRowId(item.id)}
+                        onHoverOut={() => setHoveredRowId(null)}
+                        style={[
+                          styles.tableBodyRow,
+                          isHovered && styles.tableBodyRowHovered,
+                        ]}
+                      >
+                        <View style={styles.codeColumn}>
+                          <Text style={styles.codeBadge}>{item.classCode}</Text>
+                        </View>
+
+                        <View style={[styles.classNameColumn, styles.nameCell]}>
+                          <View
+                            style={[
+                              styles.avatar,
+                              { backgroundColor: avatarColors.bg },
+                            ]}
+                          >
+                            <Text
+                              style={[
+                                styles.avatarText,
+                                { color: avatarColors.fg },
+                              ]}
+                            >
+                              {getInitials(item.className)}
+                            </Text>
+                          </View>
+                          <Text style={styles.tablePrimaryText} numberOfLines={2}>
+                            {item.className}
+                          </Text>
+                        </View>
+
+                        <View style={styles.sectionColumn}>
+                          <Text style={styles.tableSecondaryText} numberOfLines={1}>
+                            {item.section || "—"}
+                          </Text>
+                        </View>
+
+                        <View style={styles.instructorColumn}>
+                          <Text style={styles.tableSecondaryText} numberOfLines={1}>
+                            {item.instructor || "—"}
+                          </Text>
+                        </View>
+
+                        <View style={styles.memberColumn}>
+                          <View style={styles.memberCountBadge}>
+                            <Ionicons name="people-outline" size={13} color="#57474A" />
+                            <Text style={styles.memberCountText}>{item.classMembers}</Text>
+                          </View>
+                        </View>
+
+                        <View style={[styles.actionColumn, styles.actionCellRow]}>
+                          <View
+                            ref={(node) => {
+                              rowMenuButtonRefs.current[menuKey] = node;
+                            }}
+                            collapsable={false}
+                          >
+                            <TouchableOpacity
+                              style={styles.iconActionButton}
+                              activeOpacity={0.7}
+                              onPress={() => openRowMenu(item, menuKey)}
+                            >
+                              <Ionicons
+                                name="ellipsis-horizontal"
+                                size={16}
+                                color="#57474A"
+                              />
+                            </TouchableOpacity>
+                          </View>
+                        </View>
+                      </Pressable>
+                    );
+                  })
+                )}
+              </View>
+            </ScrollView>
+          </ScrollView>
+
+          {!isLoading && sortedClasses.length > 0 && (
+            <View style={styles.paginationBar}>
+              <TouchableOpacity
+                style={[
+                  styles.paginationNavButton,
+                  currentPage === 1 && styles.paginationNavButtonDisabled,
+                ]}
+                activeOpacity={0.7}
+                disabled={currentPage === 1}
+                onPress={() => setCurrentPage((p) => Math.max(1, p - 1))}
+              >
+                <Ionicons name="chevron-back" size={15} color={currentPage === 1 ? "#CBB8B8" : "#57474A"} />
+                <Text
+                  style={[
+                    styles.paginationNavText,
+                    currentPage === 1 && styles.paginationNavTextDisabled,
+                  ]}
+                >
+                  Previous
+                </Text>
+              </TouchableOpacity>
+
+              <View style={styles.paginationPages}>
+                {getPageNumbers(currentPage, totalPages).map((page, idx) =>
+                  page === "..." ? (
+                    <Text key={`ellipsis-${idx}`} style={styles.paginationEllipsis}>
+                      ⋯
+                    </Text>
+                  ) : (
+                    <TouchableOpacity
+                      key={page}
+                      style={[
+                        styles.paginationPageButton,
+                        currentPage === page && styles.paginationPageButtonActive,
+                      ]}
+                      activeOpacity={0.75}
+                      onPress={() => setCurrentPage(page)}
+                    >
+                      <Text
+                        style={[
+                          styles.paginationPageText,
+                          currentPage === page && styles.paginationPageTextActive,
+                        ]}
+                      >
+                        {page}
+                      </Text>
+                    </TouchableOpacity>
+                  )
+                )}
               </View>
 
-              {isLoading ? (
-                <View style={styles.emptyState}>
-                  <Ionicons name="sync-outline" size={28} color="#DC2626" />
-                  <Text style={styles.emptyStateTitle}>Loading classes...</Text>
-                </View>
-              ) : filteredClasses.length === 0 ? (
-                <View style={styles.emptyState}>
-                  <Ionicons name="albums-outline" size={28} color="#DC2626" />
-                  <Text style={styles.emptyStateTitle}>No classes found</Text>
-                </View>
-              ) : (
-                filteredClasses.map((item, index) => {
-                  const isLast = index === filteredClasses.length - 1;
-                  return (
-                    <View key={item.id} style={[styles.tableBodyRow, !isLast && styles.tableRowBorder]}>
-                      <View style={styles.codeColumn}>
-                        <Text style={styles.codeBadge}>{item.classCode}</Text>
-                      </View>
-                      <View style={styles.classNameColumn}>
-                        <Text style={styles.tablePrimaryText}>{item.className}</Text>
-                      </View>
-                      <View style={styles.sectionColumn}>
-                        <Text style={styles.tablePrimaryText}>{item.section}</Text>
-                      </View>
-                      <View style={styles.instructorColumn}>
-                        <Text style={styles.tablePrimaryText}>{item.instructor}</Text>
-                      </View>
-                      <View style={styles.memberColumn}>
-                        <Text style={styles.tablePrimaryText}>{item.classMembers}</Text>
-                      </View>
-                      <View style={[styles.actionColumn, styles.actionCellRow]}>
-                        <TouchableOpacity
-                          style={[styles.rowActionButton, { borderColor: "#BFDBFE", backgroundColor: "#EFF6FF" }]}
-                          activeOpacity={0.85}
-                          onPress={() => handleViewMembers(item)}
-                        >
-                          <Ionicons name="people-outline" size={15} color="#2563EB" />
-                          <Text style={[styles.rowActionButtonText, { color: "#2563EB" }]}>Members</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                          style={[styles.rowActionButton, styles.editButton]}
-                          activeOpacity={0.85}
-                          onPress={() => handleEdit(item)}
-                        >
-                          <Ionicons name="create-outline" size={15} color="#7A4A4A" />
-                          <Text style={styles.rowActionButtonText}>Edit</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                          style={[styles.rowActionButton, styles.deleteButton]}
-                          activeOpacity={0.85}
-                          onPress={() => openDeleteModal(item)}
-                        >
-                          <Ionicons name="trash-outline" size={15} color="#DC2626" />
-                          <Text style={styles.deleteButtonText}>Delete</Text>
-                        </TouchableOpacity>
-                      </View>
-                    </View>
-                  );
-                })
-              )}
+              <TouchableOpacity
+                style={[
+                  styles.paginationNavButton,
+                  currentPage === totalPages && styles.paginationNavButtonDisabled,
+                ]}
+                activeOpacity={0.7}
+                disabled={currentPage === totalPages}
+                onPress={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+              >
+                <Text
+                  style={[
+                    styles.paginationNavText,
+                    currentPage === totalPages && styles.paginationNavTextDisabled,
+                  ]}
+                >
+                  Next
+                </Text>
+                <Ionicons
+                  name="chevron-forward"
+                  size={15}
+                  color={currentPage === totalPages ? "#CBB8B8" : "#57474A"}
+                />
+              </TouchableOpacity>
             </View>
-          </ScrollView>
-        </ScrollView>
+          )}
+        </View>
       </View>
+
+      {rowMenu && (
+        <Modal transparent visible animationType="fade" onRequestClose={closeRowMenu}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={closeRowMenu} />
+          <View
+            style={[
+              styles.rowMenuCard,
+              {
+                position: "absolute",
+                top: rowMenu.y + 6,
+                left: Math.max(12, rowMenu.x - 190),
+              },
+            ]}
+          >
+            <TouchableOpacity
+              style={styles.rowMenuItem}
+              activeOpacity={0.7}
+              onPress={() => {
+                const item = rowMenu.item;
+                closeRowMenu();
+                handleViewMembers(item);
+              }}
+            >
+              <Ionicons name="people-outline" size={16} color="#2563EB" />
+              <Text style={[styles.rowMenuItemText, styles.rowMenuItemTextInfo]}>
+                Members
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.rowMenuItem}
+              activeOpacity={0.7}
+              onPress={() => {
+                const item = rowMenu.item;
+                closeRowMenu();
+                handleEdit(item);
+              }}
+            >
+              <Ionicons name="create-outline" size={16} color="#3A2C2C" />
+              <Text style={styles.rowMenuItemText}>Edit</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.rowMenuItem}
+              activeOpacity={0.7}
+              onPress={() => {
+                const item = rowMenu.item;
+                closeRowMenu();
+                openDeleteModal(item);
+              }}
+            >
+              <Ionicons name="trash-outline" size={16} color="#DC2626" />
+              <Text style={[styles.rowMenuItemText, styles.rowMenuItemTextDanger]}>
+                Delete
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </Modal>
+      )}
 
       <AddClassModal
         visible={isAddModalVisible}
@@ -952,52 +1360,114 @@ const styles = StyleSheet.create({
   toolbarStack: { flexDirection: "column", alignItems: "stretch" },
   searchWrap: { flex: 1 },
   searchField: {
-    height: 54, borderRadius: 16, borderWidth: 1, borderColor: "#F1CACA",
-    backgroundColor: "#FFF9F9", paddingHorizontal: 14, flexDirection: "row", alignItems: "center",
+    height: 50, borderRadius: 14, borderWidth: 1, borderColor: "#EFE3E3",
+    backgroundColor: "#FFFFFF", paddingHorizontal: 16, flexDirection: "row", alignItems: "center",
   },
-  searchInput: { flex: 1, marginLeft: 10, height: "80%", fontSize: 14, color: "#2B1111", fontWeight: "600" },
+  searchInput: { flex: 1, marginLeft: 10, height: "80%", fontSize: 14, color: "#2B1111", fontWeight: "500" },
   primaryActionButton: {
-    height: 54, minWidth: 120, paddingHorizontal: 18, borderRadius: 16,
+    height: 50, minWidth: 140, paddingHorizontal: 20, borderRadius: 14,
     backgroundColor: "#DC2626", alignItems: "center", justifyContent: "center", flexDirection: "row",
+    shadowColor: "#DC2626", shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.18, shadowRadius: 12, elevation: 3,
   },
   fullWidthButton: { width: "100%" },
-  primaryActionButtonText: { fontSize: 14, fontWeight: "800", color: "#FFFFFF", marginLeft: 8 },
-  tableCard: {flex: 1,
-    minHeight: 0, backgroundColor: "#FFFFFF", borderRadius: 24, borderWidth: 1, borderColor: "#F3D4D4", overflow: "hidden" },
+  primaryActionButtonText: { fontSize: 14, fontWeight: "700", color: "#FFFFFF", marginLeft: 6 },
+
+  tableCard: {
+    backgroundColor: "#FFFFFF", borderRadius: 20, borderWidth: 1, borderColor: "#F1E4E4",
+    overflow: "hidden", flex: 1, minHeight: 0,
+    shadowColor: "#3B0D0D", shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.04, shadowRadius: 24, elevation: 1,
+  },
+  tableCardInner: { flex: 1, minHeight: 0 },
+  tableMetaRow: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 12 },
+  tableMetaText: {
+    fontSize: 12, fontWeight: "700", color: "#A88989", letterSpacing: 0.4, textTransform: "uppercase",
+  },
   tableHorizontalContent: { flexGrow: 1 },
   tableVerticalScroll: { maxHeight: 520 },
   tableVerticalContent: { flexGrow: 1 },
   tableHeaderRow: {
-    minHeight: 58, backgroundColor: "#FFF5F5", flexDirection: "row", alignItems: "center",
-    paddingHorizontal: 16, borderBottomWidth: 1, borderBottomColor: "#F8E3E3",
+    minHeight: 44, flexDirection: "row", alignItems: "center",
+    paddingHorizontal: 20, borderBottomWidth: 1, borderBottomColor: "#F1E4E4",
   },
-  tableBodyRow: { minHeight: 82, flexDirection: "row", alignItems: "center", paddingHorizontal: 16, backgroundColor: "#FFFFFF" },
-  tableRowBorder: { borderBottomWidth: 1, borderBottomColor: "#F8E3E3" },
-  tableHeaderText: { fontSize: 13, fontWeight: "800", color: "#7A4A4A" },
-  tablePrimaryText: { fontSize: 14, fontWeight: "700", color: "#2B1111" },
+  tableBodyRow: {
+    minHeight: 78, flexDirection: "row", alignItems: "center", paddingHorizontal: 20,
+    backgroundColor: "#FFFFFF", borderBottomWidth: 1, borderBottomColor: "#F8F1F1",
+  },
+  tableBodyRowHovered: { backgroundColor: "#FFFAFA" },
+  tableHeaderText: {
+    fontSize: 11, fontWeight: "700", color: "#B99C9C", letterSpacing: 0.6, textTransform: "uppercase",
+  },
+  tableHeaderTextActive: { color: "#DC2626" },
+  actionHeaderText: { textAlign: "right" },
+  sortableHeaderButton: { flexDirection: "row", alignItems: "center" },
+  sortIcon: { marginLeft: 4 },
+
+  tablePrimaryText: { fontSize: 14, fontWeight: "600", color: "#2B1111", flexShrink: 1 },
+  tableSecondaryText: { fontSize: 13.5, fontWeight: "500", color: "#8A6F6F" },
+
   codeColumn: { width: 140, paddingRight: 12 },
-  classNameColumn: { width: 360, paddingRight: 12 },
-  sectionColumn: { width: 170, paddingRight: 22, paddingLeft: 40 },
-  instructorColumn: { width: 240, paddingRight: 12, paddingLeft: 50 },
-  memberColumn: { width: 190, paddingRight: 12 },
-  actionColumn: { width: 320 },
+  classNameColumn: { width: 320, paddingRight: 12 },
+  nameCell: { flexDirection: "row", alignItems: "center" },
+  sectionColumn: { width: 140, paddingRight: 12 },
+  instructorColumn: { width: 220, paddingRight: 12 },
+  memberColumn: { width: 130, paddingRight: 12 },
+  actionColumn: { width: 90 },
+
+  avatar: {
+    width: 34, height: 34, borderRadius: 10, alignItems: "center", justifyContent: "center", marginRight: 10,
+  },
+  avatarText: { fontSize: 12, fontWeight: "800" },
+
   codeBadge: {
-    alignSelf: "flex-start", backgroundColor: "#FEE2E2", color: "#DC2626",
-    paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999, overflow: "hidden", fontSize: 12, fontWeight: "800",
+    alignSelf: "flex-start", backgroundColor: "#FDF2F2", color: "#B5484B",
+    paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, overflow: "hidden",
+    fontSize: 12, fontWeight: "700", borderWidth: 1, borderColor: "#F5DEDE",
   },
-  actionCellRow: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", paddingVertical: 8 },
-  rowActionButton: {
-    minHeight: 38, paddingHorizontal: 12, borderRadius: 12, borderWidth: 1,
-    alignItems: "center", justifyContent: "center", flexDirection: "row", marginRight: 8, marginBottom: 8,
+
+  memberCountBadge: {
+    flexDirection: "row", alignItems: "center", alignSelf: "flex-start",
+    backgroundColor: "#F7F3F3", paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8,
   },
-  editButton: { borderColor: "#E7C0C0", backgroundColor: "#FFF7F7" },
-  deleteButton: { borderColor: "#F5C2C7", backgroundColor: "#FFF1F2" },
-  rowActionButtonText: { fontSize: 13, fontWeight: "700", color: "#7A4A4A", marginLeft: 6 },
-  deleteButtonText: { fontSize: 13, fontWeight: "700", color: "#DC2626", marginLeft: 6 },
+  memberCountText: { fontSize: 13, fontWeight: "700", color: "#57474A", marginLeft: 6 },
+
+  actionCellRow: { flexDirection: "row", alignItems: "center", justifyContent: "flex-end" },
+  iconActionButton: {
+    width: 34, height: 34, borderRadius: 10, alignItems: "center", justifyContent: "center", backgroundColor: "#F7F3F3",
+  },
+
   emptyState: { alignItems: "center", justifyContent: "center", paddingVertical: 40, paddingHorizontal: 20 },
   emptyStateTitle: { marginTop: 12, fontSize: 17, fontWeight: "800", color: "#2B1111" },
   emptyStateSubtitle: { marginTop: 6, fontSize: 13, color: "#8A6F6F", textAlign: "center" },
-  
+
+  paginationBar: {
+    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+    paddingHorizontal: 20, paddingVertical: 16, borderTopWidth: 1, borderTopColor: "#F1E4E4",
+  },
+  paginationNavButton: {
+    flexDirection: "row", alignItems: "center", paddingVertical: 8, paddingHorizontal: 10, borderRadius: 10,
+  },
+  paginationNavButtonDisabled: { opacity: 0.6 },
+  paginationNavText: { fontSize: 13, fontWeight: "600", color: "#57474A", marginHorizontal: 4 },
+  paginationNavTextDisabled: { color: "#CBB8B8" },
+  paginationPages: { flexDirection: "row", alignItems: "center", gap: 4 },
+  paginationPageButton: {
+    minWidth: 32, height: 32, borderRadius: 8, alignItems: "center", justifyContent: "center", paddingHorizontal: 6,
+  },
+  paginationPageButtonActive: { backgroundColor: "#DC2626" },
+  paginationPageText: { fontSize: 13, fontWeight: "600", color: "#8A6F6F" },
+  paginationPageTextActive: { color: "#FFFFFF", fontWeight: "700" },
+  paginationEllipsis: { fontSize: 13, color: "#C7B0B0", marginHorizontal: 4 },
+
+  rowMenuCard: {
+    width: 190, backgroundColor: "#FFFFFF", borderRadius: 14, borderWidth: 1, borderColor: "#F1E4E4",
+    paddingVertical: 6,
+    shadowColor: "#3B0D0D", shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.12, shadowRadius: 24, elevation: 8,
+  },
+  rowMenuItem: { flexDirection: "row", alignItems: "center", paddingVertical: 10, paddingHorizontal: 14 },
+  rowMenuItemText: { fontSize: 14, fontWeight: "600", color: "#3A2C2C", marginLeft: 10 },
+  rowMenuItemTextDanger: { color: "#DC2626" },
+  rowMenuItemTextInfo: { color: "#2563EB" },
+
   // --- MODALS BASE ---
   modalOverlay: { flex: 1, backgroundColor: "rgba(43, 17, 17, 0.45)", justifyContent: "center", alignItems: "center", padding: 20 },
   confirmModalCard: {

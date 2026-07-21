@@ -47,7 +47,6 @@ type TableStudentItem = {
   lastName: string;
   birthday: string;
   email: string;
-  
 };
 
 function getApiBaseUrl() {
@@ -110,6 +109,106 @@ function mapStudent(item: BackendStudentItem): TableStudentItem {
   };
 }
 
+function getInitials(firstName: string, lastName: string): string {
+  const a = firstName?.trim()?.[0] || "";
+  const b = lastName?.trim()?.[0] || "";
+  return (a + b).toUpperCase() || "?";
+}
+
+// Small deterministic palette so each student gets a consistent avatar color
+const AVATAR_PALETTE = [
+  { bg: "#FEE2E2", fg: "#DC2626" },
+  { bg: "#FFE8D6", fg: "#C2410C" },
+  { bg: "#FDE68A33", fg: "#B45309" },
+  { bg: "#E0E7FF", fg: "#4338CA" },
+  { bg: "#DCFCE7", fg: "#15803D" },
+  { bg: "#F3E8FF", fg: "#7E22CE" },
+];
+
+function getAvatarColors(seed: string) {
+  let hash = 0;
+  for (let i = 0; i < seed.length; i++) {
+    hash = (hash * 31 + seed.charCodeAt(i)) >>> 0;
+  }
+  return AVATAR_PALETTE[hash % AVATAR_PALETTE.length];
+}
+
+type SortColumn = "studentId" | "name" | "birthday" | "email" | null;
+type SortDirection = "asc" | "desc";
+
+const PAGE_SIZE = 8;
+
+// Builds a compact page list like: 1 2 3 4 5 ... 15
+function getPageNumbers(current: number, total: number): (number | "...")[] {
+  if (total <= 7) {
+    return Array.from({ length: total }, (_, i) => i + 1);
+  }
+
+  const pages: (number | "...")[] = [1];
+
+  if (current > 3) pages.push("...");
+
+  const start = Math.max(2, current - 1);
+  const end = Math.min(total - 1, current + 1);
+
+  for (let i = start; i <= end; i++) pages.push(i);
+
+  if (current < total - 2) pages.push("...");
+
+  pages.push(total);
+
+  return pages;
+}
+
+type SortableHeaderProps = {
+  label: string;
+  column: Exclude<SortColumn, null>;
+  activeColumn: SortColumn;
+  direction: SortDirection;
+  onPress: (column: Exclude<SortColumn, null>) => void;
+  style?: any;
+};
+
+function SortableHeader({
+  label,
+  column,
+  activeColumn,
+  direction,
+  onPress,
+  style,
+}: SortableHeaderProps) {
+  const isActive = activeColumn === column;
+
+  return (
+    <TouchableOpacity
+      style={[styles.sortableHeaderButton, style]}
+      activeOpacity={0.6}
+      onPress={() => onPress(column)}
+    >
+      <Text
+        style={[
+          styles.tableHeaderText,
+          isActive && styles.tableHeaderTextActive,
+        ]}
+      >
+        {label}
+      </Text>
+      <Ionicons
+        name={
+          isActive
+            ? direction === "asc"
+              ? "chevron-up"
+              : "chevron-down"
+            : "swap-vertical-outline"
+        }
+        size={12}
+        color={isActive ? "#DC2626" : "#C7B0B0"}
+        style={styles.sortIcon}
+      />
+    </TouchableOpacity>
+  );
+}
+
 export default function ManageStudent({ width }: ManageStudentProps) {
   const [students, setStudents] = useState<TableStudentItem[]>([]);
   const [rawStudents, setRawStudents] = useState<BackendStudentItem[]>([]);
@@ -122,6 +221,16 @@ export default function ManageStudent({ width }: ManageStudentProps) {
     useState<TableStudentItem | null>(null);
   const [isDeleteModalVisible, setIsDeleteModalVisible] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [hoveredRowId, setHoveredRowId] = useState<string | null>(null);
+  const [sortColumn, setSortColumn] = useState<SortColumn>(null);
+  const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [rowMenu, setRowMenu] = useState<{
+    item: TableStudentItem;
+    x: number;
+    y: number;
+  } | null>(null);
+  const rowMenuButtonRefs = React.useRef<Record<string, View | null>>({});
 
   const [toast, setToast] = useState<{
     visible: boolean;
@@ -137,7 +246,7 @@ export default function ManageStudent({ width }: ManageStudentProps) {
 
   const isMobile = width < 768;
   const isTablet = width >= 768 && width < 1100;
-  const tableMinWidth = isMobile ? 1120 : isTablet ? 1200 : 1300;
+  const tableMinWidth = isMobile ? 980 : isTablet ? 1080 : 1180;
 
   const loadStudents = useCallback(async () => {
     try {
@@ -190,6 +299,71 @@ export default function ManageStudent({ width }: ManageStudentProps) {
       return searchable.includes(keyword);
     });
   }, [students, searchText]);
+
+  const sortedStudents = useMemo(() => {
+    if (!sortColumn) return filteredStudents;
+
+    const getValue = (item: TableStudentItem) => {
+      switch (sortColumn) {
+        case "studentId":
+          return item.studentId.toLowerCase();
+        case "name":
+          return `${item.firstName} ${item.lastName}`.trim().toLowerCase();
+        case "birthday":
+          return item.birthday;
+        case "email":
+          return item.email.toLowerCase();
+        default:
+          return "";
+      }
+    };
+
+    const sorted = [...filteredStudents].sort((a, b) => {
+      const valueA = getValue(a);
+      const valueB = getValue(b);
+      if (valueA < valueB) return -1;
+      if (valueA > valueB) return 1;
+      return 0;
+    });
+
+    return sortDirection === "asc" ? sorted : sorted.reverse();
+  }, [filteredStudents, sortColumn, sortDirection]);
+
+  const totalPages = Math.max(1, Math.ceil(sortedStudents.length / PAGE_SIZE));
+
+  const paginatedStudents = useMemo(() => {
+    const start = (currentPage - 1) * PAGE_SIZE;
+    return sortedStudents.slice(start, start + PAGE_SIZE);
+  }, [sortedStudents, currentPage]);
+
+  // Reset to page 1 whenever the underlying result set changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchText, sortColumn, sortDirection, students.length]);
+
+  const handleSort = (column: Exclude<SortColumn, null>) => {
+    if (sortColumn === column) {
+      setSortDirection((prev) => (prev === "asc" ? "desc" : "asc"));
+    } else {
+      setSortColumn(column);
+      setSortDirection("asc");
+    }
+  };
+
+  const openRowMenu = (item: TableStudentItem, key: string) => {
+    const node = rowMenuButtonRefs.current[key];
+    if (node && (node as any).measureInWindow) {
+      (node as any).measureInWindow(
+        (x: number, y: number, w: number, h: number) => {
+          setRowMenu({ item, x: x + w, y: y + h });
+        }
+      );
+    } else {
+      setRowMenu({ item, x: 0, y: 0 });
+    }
+  };
+
+  const closeRowMenu = () => setRowMenu(null);
 
   const resetModalState = () => {
     setIsAddModalVisible(false);
@@ -293,7 +467,6 @@ export default function ManageStudent({ width }: ManageStudentProps) {
       lastName: fullStudent.lastName || "",
       birthday: formatBirthday(fullStudent.birthday),
       email: fullStudent.email || "",
-
     });
 
     setIsEditMode(true);
@@ -358,12 +531,12 @@ export default function ManageStudent({ width }: ManageStudentProps) {
       <View style={[styles.toolbar, isMobile && styles.toolbarStack]}>
         <View style={styles.searchWrap}>
           <View style={styles.searchField}>
-            <Ionicons name="search-outline" size={18} color="#8A6F6F" />
+            <Ionicons name="search-outline" size={18} color="#A18888" />
             <TextInput
               value={searchText}
               onChangeText={setSearchText}
-              placeholder="Search student ID, name, birthday,or email"
-              placeholderTextColor="#B79A9A"
+              placeholder="Search student ID, name, birthday, or email"
+              placeholderTextColor="#C2ABAB"
               style={styles.searchInput}
             />
           </View>
@@ -381,133 +554,299 @@ export default function ManageStudent({ width }: ManageStudentProps) {
             setIsAddModalVisible(true);
           }}
         >
-          <Ionicons name="add-circle-outline" size={18} color="#FFFFFF" />
-          <Text style={styles.primaryActionButtonText}>Add</Text>
+          <Ionicons name="add" size={18} color="#FFFFFF" />
+          <Text style={styles.primaryActionButtonText}>Add Student</Text>
         </TouchableOpacity>
       </View>
 
       <View style={styles.tableCard}>
-        <ScrollView
-          horizontal
-          nestedScrollEnabled
-          showsHorizontalScrollIndicator={true}
-          contentContainerStyle={styles.tableHorizontalContent}
-        >
+        <View style={styles.tableCardInner}>
+          <View style={styles.tableMetaRow}>
+            <Text style={styles.tableMetaText}>
+              {sortedStudents.length} {sortedStudents.length === 1 ? "student" : "students"}
+            </Text>
+          </View>
+
           <ScrollView
-            showsVerticalScrollIndicator={true}
+            horizontal
             nestedScrollEnabled
-            style={styles.tableVerticalScroll}
-            contentContainerStyle={styles.tableVerticalContent}
+            showsHorizontalScrollIndicator={true}
+            contentContainerStyle={styles.tableHorizontalContent}
           >
-            <View style={{ minWidth: tableMinWidth }}>
-              <View style={styles.tableHeaderRow}>
-                <Text style={[styles.tableHeaderText, styles.idColumn]}>
-                  Student ID
+            <ScrollView
+              showsVerticalScrollIndicator={true}
+              nestedScrollEnabled
+              style={styles.tableVerticalScroll}
+              contentContainerStyle={styles.tableVerticalContent}
+            >
+              <View style={{ minWidth: tableMinWidth }}>
+                <View style={styles.tableHeaderRow}>
+                  <SortableHeader
+                    label="Student ID"
+                    column="studentId"
+                    activeColumn={sortColumn}
+                    direction={sortDirection}
+                    onPress={handleSort}
+                    style={styles.idColumn}
+                  />
+                  <SortableHeader
+                    label="Full Name"
+                    column="name"
+                    activeColumn={sortColumn}
+                    direction={sortDirection}
+                    onPress={handleSort}
+                    style={styles.nameColumn}
+                  />
+                  <SortableHeader
+                    label="Birthday"
+                    column="birthday"
+                    activeColumn={sortColumn}
+                    direction={sortDirection}
+                    onPress={handleSort}
+                    style={styles.birthdayColumn}
+                  />
+                  <SortableHeader
+                    label="Email"
+                    column="email"
+                    activeColumn={sortColumn}
+                    direction={sortDirection}
+                    onPress={handleSort}
+                    style={styles.emailColumn}
+                  />
+                  <Text
+                    style={[
+                      styles.tableHeaderText,
+                      styles.actionColumn,
+                      styles.actionHeaderText,
+                    ]}
+                  >
+                    Action
+                  </Text>
+                </View>
+
+                {isLoading ? (
+                  <View style={styles.emptyState}>
+                    <Ionicons name="sync-outline" size={26} color="#DC2626" />
+                    <Text style={styles.emptyStateTitle}>Loading students...</Text>
+                    <Text style={styles.emptyStateSubtitle}>
+                      Please wait while student records are fetched.
+                    </Text>
+                  </View>
+                ) : paginatedStudents.length === 0 ? (
+                  <View style={styles.emptyState}>
+                    <MaterialCommunityIcons
+                      name="account-school-outline"
+                      size={26}
+                      color="#DC2626"
+                    />
+                    <Text style={styles.emptyStateTitle}>No students found</Text>
+                    <Text style={styles.emptyStateSubtitle}>
+                      Try another search or add a new student record.
+                    </Text>
+                  </View>
+                ) : (
+                  paginatedStudents.map((item) => {
+                    const avatarColors = getAvatarColors(item.id || item.email);
+                    const isHovered = hoveredRowId === item.id;
+                    const menuKey = item.id;
+
+                    return (
+                      <Pressable
+                        key={item.id}
+                        onHoverIn={() => setHoveredRowId(item.id)}
+                        onHoverOut={() => setHoveredRowId(null)}
+                        style={[
+                          styles.tableBodyRow,
+                          isHovered && styles.tableBodyRowHovered,
+                        ]}
+                      >
+                        <View style={styles.idColumn}>
+                          <Text style={styles.codeBadge}>{item.studentId}</Text>
+                        </View>
+
+                        <View style={[styles.nameColumn, styles.nameCell]}>
+                          <View
+                            style={[
+                              styles.avatar,
+                              { backgroundColor: avatarColors.bg },
+                            ]}
+                          >
+                            <Text
+                              style={[
+                                styles.avatarText,
+                                { color: avatarColors.fg },
+                              ]}
+                            >
+                              {getInitials(item.firstName, item.lastName)}
+                            </Text>
+                          </View>
+                          <Text style={styles.tablePrimaryText} numberOfLines={1}>
+                            {`${item.firstName} ${item.lastName}`.toUpperCase()}
+                          </Text>
+                        </View>
+
+                        <View style={styles.birthdayColumn}>
+                          <Text style={styles.tableSecondaryText}>
+                            {item.birthday || "—"}
+                          </Text>
+                        </View>
+
+                        <View style={styles.emailColumn}>
+                          <Text style={styles.tableSecondaryText} numberOfLines={1}>
+                            {item.email}
+                          </Text>
+                        </View>
+
+                        <View style={[styles.actionColumn, styles.actionCellRow]}>
+                          <View
+                            ref={(node) => {
+                              rowMenuButtonRefs.current[menuKey] = node;
+                            }}
+                            collapsable={false}
+                          >
+                            <TouchableOpacity
+                              style={styles.iconActionButton}
+                              activeOpacity={0.7}
+                              onPress={() => openRowMenu(item, menuKey)}
+                            >
+                              <Ionicons
+                                name="ellipsis-horizontal"
+                                size={16}
+                                color="#57474A"
+                              />
+                            </TouchableOpacity>
+                          </View>
+                        </View>
+                      </Pressable>
+                    );
+                  })
+                )}
+              </View>
+            </ScrollView>
+          </ScrollView>
+
+          {!isLoading && sortedStudents.length > 0 && (
+            <View style={styles.paginationBar}>
+              <TouchableOpacity
+                style={[
+                  styles.paginationNavButton,
+                  currentPage === 1 && styles.paginationNavButtonDisabled,
+                ]}
+                activeOpacity={0.7}
+                disabled={currentPage === 1}
+                onPress={() => setCurrentPage((p) => Math.max(1, p - 1))}
+              >
+                <Ionicons name="chevron-back" size={15} color={currentPage === 1 ? "#CBB8B8" : "#57474A"} />
+                <Text
+                  style={[
+                    styles.paginationNavText,
+                    currentPage === 1 && styles.paginationNavTextDisabled,
+                  ]}
+                >
+                  Previous
                 </Text>
-                <Text style={[styles.tableHeaderText, styles.nameColumn]}>
-                  Full Name
-                </Text>
-                <Text style={[styles.tableHeaderText, styles.birthdayColumn]}>
-                  Birthday
-                </Text>
-                <Text style={[styles.tableHeaderText, styles.emailColumn]}>
-                  Email
-                </Text>
-                
-                <Text style={[styles.tableHeaderText, styles.actionColumn]}>
-                  Action
-                </Text>
+              </TouchableOpacity>
+
+              <View style={styles.paginationPages}>
+                {getPageNumbers(currentPage, totalPages).map((page, idx) =>
+                  page === "..." ? (
+                    <Text key={`ellipsis-${idx}`} style={styles.paginationEllipsis}>
+                      ⋯
+                    </Text>
+                  ) : (
+                    <TouchableOpacity
+                      key={page}
+                      style={[
+                        styles.paginationPageButton,
+                        currentPage === page && styles.paginationPageButtonActive,
+                      ]}
+                      activeOpacity={0.75}
+                      onPress={() => setCurrentPage(page)}
+                    >
+                      <Text
+                        style={[
+                          styles.paginationPageText,
+                          currentPage === page && styles.paginationPageTextActive,
+                        ]}
+                      >
+                        {page}
+                      </Text>
+                    </TouchableOpacity>
+                  )
+                )}
               </View>
 
-              {isLoading ? (
-                <View style={styles.emptyState}>
-                  <Ionicons name="sync-outline" size={28} color="#DC2626" />
-                  <Text style={styles.emptyStateTitle}>Loading students...</Text>
-                  <Text style={styles.emptyStateSubtitle}>
-                    Please wait while student records are fetched.
-                  </Text>
-                </View>
-              ) : filteredStudents.length === 0 ? (
-                <View style={styles.emptyState}>
-                  <MaterialCommunityIcons
-                    name="account-school-outline"
-                    size={28}
-                    color="#DC2626"
-                  />
-                  <Text style={styles.emptyStateTitle}>No students found</Text>
-                  <Text style={styles.emptyStateSubtitle}>
-                    Try another search or add a new student record.
-                  </Text>
-                </View>
-              ) : (
-                filteredStudents.map((item, index) => {
-                  const isLast = index === filteredStudents.length - 1;
-
-                  return (
-                    <View
-                      key={item.id}
-                      style={[
-                        styles.tableBodyRow,
-                        !isLast && styles.tableRowBorder,
-                      ]}
-                    >
-                      <View style={styles.idColumn}>
-                        <Text style={styles.codeBadge}>{item.studentId}</Text>
-                      </View>
-
-                      <View style={styles.nameColumn}>
-                        <Text style={styles.tablePrimaryText}>
-                          {`${item.firstName} ${item.lastName}`.toUpperCase()}
-                        </Text>
-                      </View>
-
-                      <View style={styles.birthdayColumn}>
-                        <Text style={styles.tablePrimaryText}>
-                          {item.birthday}
-                        </Text>
-                      </View>
-
-                      <View style={styles.emailColumn}>
-                        <Text style={styles.tablePrimaryText}>{item.email}</Text>
-                      </View>
-
-              
-
-                      <View style={[styles.actionColumn, styles.actionCellRow]}>
-                        <TouchableOpacity
-                          style={[styles.rowActionButton, styles.editButton]}
-                          activeOpacity={0.85}
-                          onPress={() => handleEdit(item)}
-                        >
-                          <Ionicons
-                            name="create-outline"
-                            size={15}
-                            color="#7A4A4A"
-                          />
-                          <Text style={styles.rowActionButtonText}>Edit</Text>
-                        </TouchableOpacity>
-
-                        <TouchableOpacity
-                          style={[styles.rowActionButton, styles.deleteButton]}
-                          activeOpacity={0.85}
-                          onPress={() => openDeleteModal(item)}
-                        >
-                          <Ionicons
-                            name="trash-outline"
-                            size={15}
-                            color="#DC2626"
-                          />
-                          <Text style={styles.deleteButtonText}>Delete</Text>
-                        </TouchableOpacity>
-                      </View>
-                    </View>
-                  );
-                })
-              )}
+              <TouchableOpacity
+                style={[
+                  styles.paginationNavButton,
+                  currentPage === totalPages && styles.paginationNavButtonDisabled,
+                ]}
+                activeOpacity={0.7}
+                disabled={currentPage === totalPages}
+                onPress={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+              >
+                <Text
+                  style={[
+                    styles.paginationNavText,
+                    currentPage === totalPages && styles.paginationNavTextDisabled,
+                  ]}
+                >
+                  Next
+                </Text>
+                <Ionicons
+                  name="chevron-forward"
+                  size={15}
+                  color={currentPage === totalPages ? "#CBB8B8" : "#57474A"}
+                />
+              </TouchableOpacity>
             </View>
-          </ScrollView>
-        </ScrollView>
+          )}
+        </View>
       </View>
+
+      {rowMenu && (
+        <Modal transparent visible animationType="fade" onRequestClose={closeRowMenu}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={closeRowMenu} />
+          <View
+            style={[
+              styles.rowMenuCard,
+              {
+                position: "absolute",
+                top: rowMenu.y + 6,
+                left: Math.max(12, rowMenu.x - 180),
+              },
+            ]}
+          >
+            <TouchableOpacity
+              style={styles.rowMenuItem}
+              activeOpacity={0.7}
+              onPress={() => {
+                const item = rowMenu.item;
+                closeRowMenu();
+                handleEdit(item);
+              }}
+            >
+              <Ionicons name="create-outline" size={16} color="#3A2C2C" />
+              <Text style={styles.rowMenuItemText}>Edit</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.rowMenuItem}
+              activeOpacity={0.7}
+              onPress={() => {
+                const item = rowMenu.item;
+                closeRowMenu();
+                openDeleteModal(item);
+              }}
+            >
+              <Ionicons name="trash-outline" size={16} color="#DC2626" />
+              <Text style={[styles.rowMenuItemText, styles.rowMenuItemTextDanger]}>
+                Delete
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </Modal>
+      )}
 
       <AddStudentModal
         visible={isAddModalVisible}
@@ -650,12 +989,12 @@ const styles = StyleSheet.create({
   },
 
   searchField: {
-    height: 54,
-    borderRadius: 16,
+    height: 50,
+    borderRadius: 14,
     borderWidth: 1,
-    borderColor: "#F1CACA",
-    backgroundColor: "#FFF9F9",
-    paddingHorizontal: 14,
+    borderColor: "#EFE3E3",
+    backgroundColor: "#FFFFFF",
+    paddingHorizontal: 16,
     flexDirection: "row",
     alignItems: "center",
   },
@@ -666,18 +1005,23 @@ const styles = StyleSheet.create({
     height: "80%",
     fontSize: 14,
     color: "#2B1111",
-    fontWeight: "600",
+    fontWeight: "500",
   },
 
   primaryActionButton: {
-    height: 54,
-    minWidth: 120,
-    paddingHorizontal: 18,
-    borderRadius: 16,
+    height: 50,
+    minWidth: 140,
+    paddingHorizontal: 20,
+    borderRadius: 14,
     backgroundColor: "#DC2626",
     alignItems: "center",
     justifyContent: "center",
     flexDirection: "row",
+    shadowColor: "#DC2626",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.18,
+    shadowRadius: 12,
+    elevation: 3,
   },
 
   fullWidthButton: {
@@ -686,19 +1030,43 @@ const styles = StyleSheet.create({
 
   primaryActionButtonText: {
     fontSize: 14,
-    fontWeight: "800",
+    fontWeight: "700",
     color: "#FFFFFF",
-    marginLeft: 8,
+    marginLeft: 6,
   },
 
   tableCard: {
     backgroundColor: "#FFFFFF",
-    borderRadius: 24,
+    borderRadius: 20,
     borderWidth: 1,
-    borderColor: "#F3D4D4",
+    borderColor: "#F1E4E4",
     overflow: "hidden",
     flex: 1,
     minHeight: 0,
+    shadowColor: "#3B0D0D",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.04,
+    shadowRadius: 24,
+    elevation: 1,
+  },
+
+  tableCardInner: {
+    flex: 1,
+    minHeight: 0,
+  },
+
+  tableMetaRow: {
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 12,
+  },
+
+  tableMetaText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#A88989",
+    letterSpacing: 0.4,
+    textTransform: "uppercase",
   },
 
   tableHorizontalContent: {
@@ -714,38 +1082,64 @@ const styles = StyleSheet.create({
   },
 
   tableHeaderRow: {
-    minHeight: 58,
-    backgroundColor: "#FFF5F5",
+    minHeight: 44,
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 16,
+    paddingHorizontal: 20,
     borderBottomWidth: 1,
-    borderBottomColor: "#F8E3E3",
+    borderBottomColor: "#F1E4E4",
   },
 
   tableBodyRow: {
-    minHeight: 82,
+    minHeight: 76,
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 16,
+    paddingHorizontal: 20,
     backgroundColor: "#FFFFFF",
+    borderBottomWidth: 1,
+    borderBottomColor: "#F8F1F1",
   },
 
-  tableRowBorder: {
-    borderBottomWidth: 1,
-    borderBottomColor: "#F8E3E3",
+  tableBodyRowHovered: {
+    backgroundColor: "#FFFAFA",
   },
 
   tableHeaderText: {
-    fontSize: 13,
-    fontWeight: "800",
-    color: "#7A4A4A",
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#B99C9C",
+    letterSpacing: 0.6,
+    textTransform: "uppercase",
+  },
+
+  tableHeaderTextActive: {
+    color: "#DC2626",
+  },
+
+  actionHeaderText: {
+    textAlign: "right",
+  },
+
+  sortableHeaderButton: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+
+  sortIcon: {
+    marginLeft: 4,
   },
 
   tablePrimaryText: {
     fontSize: 14,
-    fontWeight: "700",
+    fontWeight: "600",
     color: "#2B1111",
+    flexShrink: 1,
+  },
+
+  tableSecondaryText: {
+    fontSize: 13.5,
+    fontWeight: "500",
+    color: "#8A6F6F",
   },
 
   idColumn: {
@@ -758,6 +1152,25 @@ const styles = StyleSheet.create({
     paddingRight: 12,
   },
 
+  nameCell: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+
+  avatar: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 10,
+  },
+
+  avatarText: {
+    fontSize: 12,
+    fontWeight: "800",
+  },
+
   birthdayColumn: {
     width: 180,
     paddingRight: 12,
@@ -768,64 +1181,37 @@ const styles = StyleSheet.create({
     paddingRight: 12,
   },
 
-
   actionColumn: {
-    width: 220,
+    width: 100,
   },
 
   codeBadge: {
     alignSelf: "flex-start",
-    backgroundColor: "#FEE2E2",
-    color: "#DC2626",
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 999,
+    backgroundColor: "#FDF2F2",
+    color: "#B5484B",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
     overflow: "hidden",
     fontSize: 12,
-    fontWeight: "800",
+    fontWeight: "700",
+    borderWidth: 1,
+    borderColor: "#F5DEDE",
   },
 
   actionCellRow: {
     flexDirection: "row",
     alignItems: "center",
-    flexWrap: "wrap",
-    paddingVertical: 8,
+    justifyContent: "flex-end",
   },
 
-  rowActionButton: {
-    minHeight: 38,
-    paddingHorizontal: 12,
-    borderRadius: 12,
-    borderWidth: 1,
+  iconActionButton: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
     alignItems: "center",
     justifyContent: "center",
-    flexDirection: "row",
-    marginRight: 8,
-    marginBottom: 8,
-  },
-
-  editButton: {
-    borderColor: "#E7C0C0",
-    backgroundColor: "#FFF7F7",
-  },
-
-  deleteButton: {
-    borderColor: "#F5C2C7",
-    backgroundColor: "#FFF1F2",
-  },
-
-  rowActionButtonText: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: "#7A4A4A",
-    marginLeft: 6,
-  },
-
-  deleteButtonText: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: "#DC2626",
-    marginLeft: 6,
+    backgroundColor: "#F7F3F3",
   },
 
   emptyState: {
@@ -847,6 +1233,107 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: "#8A6F6F",
     textAlign: "center",
+  },
+
+  paginationBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderTopWidth: 1,
+    borderTopColor: "#F1E4E4",
+  },
+
+  paginationNavButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    borderRadius: 10,
+  },
+
+  paginationNavButtonDisabled: {
+    opacity: 0.6,
+  },
+
+  paginationNavText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#57474A",
+    marginHorizontal: 4,
+  },
+
+  paginationNavTextDisabled: {
+    color: "#CBB8B8",
+  },
+
+  paginationPages: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+
+  paginationPageButton: {
+    minWidth: 32,
+    height: 32,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 6,
+  },
+
+  paginationPageButtonActive: {
+    backgroundColor: "#DC2626",
+  },
+
+  paginationPageText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#8A6F6F",
+  },
+
+  paginationPageTextActive: {
+    color: "#FFFFFF",
+    fontWeight: "700",
+  },
+
+  paginationEllipsis: {
+    fontSize: 13,
+    color: "#C7B0B0",
+    marginHorizontal: 4,
+  },
+
+  rowMenuCard: {
+    width: 190,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#F1E4E4",
+    paddingVertical: 6,
+    shadowColor: "#3B0D0D",
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.12,
+    shadowRadius: 24,
+    elevation: 8,
+  },
+
+  rowMenuItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+  },
+
+  rowMenuItemText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#3A2C2C",
+    marginLeft: 10,
+  },
+
+  rowMenuItemTextDanger: {
+    color: "#DC2626",
   },
 
   modalOverlay: {
