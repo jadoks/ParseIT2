@@ -138,12 +138,6 @@ type SortDirection = "asc" | "desc";
 
 const PAGE_SIZE = 8;
 
-// The table only needs to be as wide as its columns actually require.
-// This is used as a floor (not a forced width), so on normal/wide
-// screens the table simply fills the available space with no
-// horizontal scrollbar, and only narrow phones fall back to scrolling.
-const TABLE_CONTENT_MIN_WIDTH = 900;
-
 // Builds a compact page list like: 1 2 3 4 5 ... 15
 function getPageNumbers(current: number, total: number): (number | "...")[] {
   if (total <= 7) {
@@ -251,6 +245,8 @@ export default function ManageStudent({ width }: ManageStudentProps) {
   const hideToast = () => setToast((prev) => ({ ...prev, visible: false }));
 
   const isMobile = width < 768;
+  const isTablet = width >= 768 && width < 1100;
+  const tableMinWidth = isMobile ? 980 : isTablet ? 1080 : 1180;
 
   const loadStudents = useCallback(async () => {
     try {
@@ -583,7 +579,7 @@ export default function ManageStudent({ width }: ManageStudentProps) {
               style={styles.tableVerticalScroll}
               contentContainerStyle={styles.tableVerticalContent}
             >
-              <View style={{ minWidth: TABLE_CONTENT_MIN_WIDTH }}>
+              <View style={{ minWidth: tableMinWidth }}>
                 <View style={styles.tableHeaderRow}>
                   <SortableHeader
                     label="Student ID"
@@ -1089,7 +1085,7 @@ const styles = StyleSheet.create({
     minHeight: 44,
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 16,
+    paddingHorizontal: 20,
     borderBottomWidth: 1,
     borderBottomColor: "#F1E4E4",
   },
@@ -1098,7 +1094,7 @@ const styles = StyleSheet.create({
     minHeight: 76,
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 16,
+    paddingHorizontal: 20,
     backgroundColor: "#FFFFFF",
     borderBottomWidth: 1,
     borderBottomColor: "#F8F1F1",
@@ -1147,13 +1143,13 @@ const styles = StyleSheet.create({
   },
 
   idColumn: {
-    width: 130,
-    paddingRight: 8,
+    width: 160,
+    paddingRight: 12,
   },
 
   nameColumn: {
-    width: 220,
-    paddingRight: 8,
+    width: 260,
+    paddingRight: 12,
   },
 
   nameCell: {
@@ -1162,31 +1158,31 @@ const styles = StyleSheet.create({
   },
 
   avatar: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
     alignItems: "center",
     justifyContent: "center",
-    marginRight: 8,
+    marginRight: 10,
   },
 
   avatarText: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: "800",
   },
 
   birthdayColumn: {
-    width: 130,
-    paddingRight: 8,
+    width: 180,
+    paddingRight: 12,
   },
 
   emailColumn: {
-    width: 250,
-    paddingRight: 8,
+    width: 300,
+    paddingRight: 12,
   },
 
   actionColumn: {
-    width: 70,
+    width: 100,
   },
 
   codeBadge: {
