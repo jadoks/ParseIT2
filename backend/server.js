@@ -4592,55 +4592,84 @@ RULES:
 Return ONLY valid JSON. No markdown.
 `;
 
-    let aiVerificationText = "";
-    let isIdentityVerified = false;
-    let maxRetries = 3;
-    let retryCount = 0;
-    let lastError = null;
+    // Inside app.post("/upload-student-grade", ...)
+// REPLACE the existing while (retryCount < maxRetries) loop with this:
 
-    while (retryCount < maxRetries) {
-      try {
-        console.log(`Verifying Student Identity via Gemini... (Attempt ${retryCount + 1})`);
-        const model = geminiGameAI.getGenerativeModel({ model: GEMINI_GAME_MODEL });
-        
-        const result = await model.generateContent([
-          { text: verificationPrompt },
-          { inlineData: { mimeType: safeMimeType, data: cleanedBase64 } },
-        ]);
-        
-        aiVerificationText = result.response.text();
-        const cleanJson = aiVerificationText.replace(/```json/g, "").replace(/```/g, "").trim();
-        const verificationResult = JSON.parse(cleanJson);
+let aiVerificationText = "";
+let isIdentityVerified = false;
+let lastError = null;
+const MAX_RETRIES = 4; // Increased from 3
 
-        if (verificationResult.verified === true) {
-          isIdentityVerified = true;
-          console.log("Identity Verified:", verificationResult.foundId);
-          break; // Success, exit loop
-        } else {
-          console.warn("Identity Verification Failed:", verificationResult.reason);
-          return res.status(403).json({ 
-            error: `Security Check Failed: The ID in your account (${currentStudentId}) does not match the ID found in the uploaded file (${verificationResult.foundId || 'None'}). Please upload the correct transcript.` 
-          });
-        }
+for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+  try {
+    console.log(`[Identity Check] Attempt ${attempt}/${MAX_RETRIES}...`);
+    
+    const model = geminiGameAI.getGenerativeModel({ 
+      model: GEMINI_GAME_MODEL,
+      generationConfig: { temperature: 0.1 } // Lower temp for deterministic ID matching
+    });
 
-      } catch (aiErr) {
-        lastError = aiErr;
-        console.error(`Gemini Verification failed (Attempt ${retryCount + 1}):`, aiErr.message);
-        
-        // If it's a 503 error, wait before retrying
-        if (aiErr.status === 503) {
-          retryCount++;
-          if (retryCount < maxRetries) {
-            const delay = 2000 * retryCount; // Wait 2s, then 4s, then 6s
-            console.log(`Waiting ${delay}ms before retry...`);
-            await new Promise(resolve => setTimeout(resolve, delay));
-          }
-        } else {
-          // If it's NOT a 503 error (e.g., bad API key), stop retrying
-          break;
-        }
-      }
+    // Add explicit timeout handling if using a wrapper, or rely on fetch timeout
+    const result = await model.generateContent([
+      { text: verificationPrompt },
+      { inlineData: { mimeType: safeMimeType, data: cleanedBase64 } },
+    ]);
+
+    aiVerificationText = result.response.text();
+    const cleanJson = aiVerificationText.replace(/```json/g, "").replace(/```/g, "").trim();
+    const verificationResult = JSON.parse(cleanJson);
+
+    if (verificationResult.verified === true) {
+      isIdentityVerified = true;
+      console.log("[Identity Check] ✅ Verified:", verificationResult.foundId);
+      break; // Success! Exit loop
+    } else {
+      // ⚠️ CRITICAL: If AI says "not verified", DO NOT RETRY. 
+      // It successfully read the file and found a mismatch.
+      console.warn("[Identity Check] ❌ Mismatch:", verificationResult.reason);
+      return res.status(403).json({
+        error: `Security Check Failed: The ID in your account (${currentStudentId}) does not match the ID found in the uploaded file (${verificationResult.foundId || 'None'}). Please upload the correct transcript.`
+      });
     }
+
+  } catch (aiErr) {
+    lastError = aiErr;
+    console.error(`[Identity Check] Attempt ${attempt} failed:`, aiErr.message);
+
+    // Only retry on transient errors (503, timeouts, network issues)
+    const isTransient = 
+      aiErr.status === 503 || 
+      aiErr.message.includes("Service Unavailable") ||
+      aiErr.message.includes("timed out") ||
+      aiErr.message.includes("rate limit");
+
+    if (!isTransient || attempt === MAX_RETRIES) {
+      // Non-transient error or final attempt failed -> Stop retrying
+      break;
+    }
+
+    // Exponential backoff: 2s, 4s, 8s, 16s
+    const delay = Math.pow(2, attempt) * 1000;
+    console.log(`[Identity Check] Retrying in ${delay}ms...`);
+    await new Promise(resolve => setTimeout(resolve, delay));
+  }
+}
+
+// AFTER THE LOOP: Handle final failure
+if (!isIdentityVerified) {
+  if (lastError?.status === 503 || lastError?.message.includes("Service Unavailable")) {
+    // Specific message for AI outage
+    return res.status(503).json({ 
+      error: "Identity verification service is currently busy. Please try again in a few minutes." 
+    });
+  }
+  
+  // Generic failure
+  console.error("[Identity Check] All attempts failed.", lastError);
+  return res.status(500).json({ 
+    error: "Unable to verify document identity. Please try again later." 
+  });
+}
 
     if (!isIdentityVerified) {
     // STRICT MODE: If verification failed (whether due to mismatch or AI error), block the upload.
