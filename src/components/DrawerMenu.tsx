@@ -481,13 +481,20 @@ const DrawerMenu = ({
       const data = await response.json();
       
       if (!response.ok) {
-        if (response.status === 403) {
-          onVerificationFailed?.(data?.error || 'Identity verification failed.');
-        } else {
-          throw new Error(data?.error || 'Failed to upload grade file.');
-        }
+      // Handle Identity Mismatch
+      if (response.status === 403) {
+        onVerificationFailed?.(data?.error || 'Identity verification failed.');
         return;
       }
+      
+      // Handle AI Service Outage (New Strict Mode)
+      if (response.status === 503) {
+        Alert.alert('Service Unavailable', data?.error || 'Please try uploading your grade again in a few minutes.');
+        return;
+      }
+      
+      throw new Error(data?.error || 'Failed to upload grade file.');
+    }
 
       onUploadSuccess?.();
 

@@ -4642,15 +4642,22 @@ Return ONLY valid JSON. No markdown.
       }
     }
 
-    if (!isIdentityVerified && lastError) {
-       // If all retries failed
-       console.error("All Gemini verification attempts failed.");
-       // Option A: Block the upload strictly
-       // return res.status(503).json({ error: "AI Verification service is currently busy. Please try again in a few minutes." });
-       
-       // Option B: Allow upload but warn user (Recommended for better UX during outages)
-       console.warn("Proceeding with upload despite verification failure due to AI outage.");
-    }
+    // In server.js, inside app.post("/upload-student-grade", ...)
+// Replace the existing "Option B" block with this:
+
+if (!isIdentityVerified && lastError) {
+  console.error("All Gemini verification attempts failed.");
+  
+  // STRICT MODE FOR PRODUCTION: Block uploads if AI can't verify identity
+  if (process.env.NODE_ENV === 'production') {
+    return res.status(503).json({ 
+      error: "Verification service temporarily unavailable. Please try again in a few minutes." 
+    });
+  }
+  
+  // DEVELOPMENT ONLY: Allow fallback for testing without AI
+  console.warn("DEV MODE: Proceeding with upload despite verification failure.");
+}
 
     // 3. Proceed with Grade Parsing (Only if verified)
     if (isIdentityVerified) {
