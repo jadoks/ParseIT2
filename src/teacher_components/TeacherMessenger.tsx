@@ -304,7 +304,7 @@ const Messenger = ({
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
   const [avatarCacheBuster, setAvatarCacheBuster] = useState(() => Date.now());
-  
+
   // Toast State
   const [toast, setToast] = useState<{ visible: boolean; message: string; type: 'success' | 'error' }>({
     visible: false,
@@ -714,7 +714,9 @@ const Messenger = ({
   // 🔧 FIX: Refresh a single conversation's avatar signed URL, but only
   // when we're told it's actually expired/broken (via the <Image>
   // onError handler below) — never on a timer. This is the "only refresh
-  // if the image URL is about to expire" behavior.
+  // if the image URL is about to expire" behavior. The cache-buster bump
+  // is now scoped to THIS conversation's id only, so no other
+  // conversation's avatar is affected or re-rendered.
   const handleAvatarLoadError = useCallback(
     async (item: Conversation) => {
       if (!item.avatarStoragePath) return;
@@ -1718,10 +1720,10 @@ const Messenger = ({
                 >
                   <Image
                     source={
-                    item.avatarUrl
-                      ? { uri: `${item.avatarUrl}&_cb=${avatarCacheBuster}` }
-                      : item.avatar
-                  }
+                      item.avatarUrl
+                        ? { uri: `${item.avatarUrl}&_cb=${avatarCacheBuster}` }
+                        : item.avatar
+                    }
                     onError={() => handleAvatarLoadError(item)}
                     style={{
                       width: sizes.listAvatar,
