@@ -1540,7 +1540,7 @@ const handleCreateManualLesson = async () => {
         : 0;
       nextNum = maxExistingNum + 1;
 
-      console.log(`Filling missing syllabus content: "${targetSyllabusModule.moduleTitle}" as Module ${nextNum}`);
+     
     } else {
       // If all syllabus titles are present, just create a new sequential module.
       const maxExistingNum = modules.length > 0 
@@ -1561,7 +1561,7 @@ const handleCreateManualLesson = async () => {
     const weeklySchedule = targetSyllabusModule?.weeklySchedule || '';
     const description = targetSyllabusModule?.description || '';
 
-    console.log(`Generating Module ${nextNum} with Title: "${moduleTitle}"`);
+    
 
     const response = await fetch(`${API_BASE_URL}/course-modules/create-manual`, {
       method: 'POST',

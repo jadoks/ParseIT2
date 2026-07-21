@@ -59,7 +59,7 @@ const NAV_ICONS_ACTIVE: Record<
 
 function getApiBaseUrl() {
   if (Platform.OS === "web") {
-    return "http://localhost:5000";
+    return process.env.EXPO_PUBLIC_API_URL;
   }
 
   const possibleHost =
@@ -69,11 +69,9 @@ function getApiBaseUrl() {
 
   const host = possibleHost.split(":")[0];
 
-  if (host) {
-    return `http://${host}:5000`;
-  }
-
-  return "http://192.168.1.5:5000";
+  return host
+    ? `http://${host}:5000`
+    : "http://192.168.1.5:5000";
 }
 
 const API_BASE_URL = getApiBaseUrl();

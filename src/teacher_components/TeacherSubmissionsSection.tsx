@@ -515,10 +515,7 @@ const mapSubmissionToItems = (submission: any): any[] => {
 
   const sub = studentSubs[0]; 
   
-  // DEBUG LOG: Check if linkUrls exists in the fetched data
-  console.log("DEBUG SUBMISSION DATA:", sub); 
-  console.log("DEBUG LINKURLS:", sub.linkUrls); 
-  console.log("DEBUG STORAGE PATH:", sub.storagePath, typeof sub.storagePath);
+  
 
   const items: SubmissionPreviewSource[] = [];
 
@@ -816,7 +813,7 @@ const handleDownloadPreview = async () => {
       const needsRefresh = isTokenExpired(item.url);
 
       if (needsRefresh) {
-        console.log("Token expired, fetching fresh URL...");
+        
         const freshUrl = await getCachedOrFreshUrl(item.submissionId);
         if (freshUrl) {
           resolvedUrl = freshUrl;

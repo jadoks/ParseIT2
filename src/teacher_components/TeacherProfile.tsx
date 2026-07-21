@@ -497,7 +497,7 @@ const Profile: React.FC<ProfileProps> = ({
       );
       return result;
     } catch (e) {
-      console.log('Normalize error:', e);
+      
       const fallbackSize = await new Promise<{ width: number; height: number }>((resolve) => {
         Image.getSize(
           uri,
@@ -523,7 +523,7 @@ const Profile: React.FC<ProfileProps> = ({
       resetCropState();
       setCropModal({ uri: normalized.uri, type });
     } catch (error) {
-      console.log('Image prep error:', error);
+      
       showToast('Unable to prepare the selected image.', 'error');
       if (type === 'profile') {
         onChangeProfileImage({ uri });
@@ -555,7 +555,7 @@ const Profile: React.FC<ProfileProps> = ({
       }
       await openCropModal(selected.uri, type);
     } catch (error) {
-      console.log('Picker error:', error);
+      
       showToast('Unable to pick an image.', 'error');
     } finally {
       setTimeout(() => {
@@ -638,7 +638,7 @@ const Profile: React.FC<ProfileProps> = ({
       setCropModal(null);
       resetCropState();
     } catch (error) {
-      console.log('Crop error:', error);
+      
       showToast('Failed to update the image. Please try again.', 'error');
     } finally {
       setIsCroppingImage(false);

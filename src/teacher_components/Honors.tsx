@@ -368,7 +368,7 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
 
       // FIXED: Correctly format the school year and log the exact URL being fetched
       const computedSchoolYear = `${normalizedStartYear}-${Number(normalizedStartYear) + 1}`;
-      console.log(`Fetching Honor Roll: ${apiBaseUrl}/honor-roll?schoolYear=${computedSchoolYear}&semester=${semester}`);
+     
 
       // UPDATED: Use the dynamic apiBaseUrl prop instead of the hardcoded IP
       const response = await fetch(

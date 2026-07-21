@@ -137,7 +137,7 @@ const refreshClassBannerUrl = async (course: any) => {
     if (!response.ok) throw new Error(data?.error || 'Unable to refresh class banner.');
     return { ...course, bannerUrl: data?.url || course.bannerUrl || null };
   } catch (error) {
-    console.log('REFRESH CLASS BANNER ERROR =>', error);
+    
     return course;
   }
 };
@@ -1774,7 +1774,7 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
       setGeneratedActivity(activity); 
       setActiveScreen('generateactivity');
     } catch (error: any) {
-      console.log('GENERATE ACTIVITY ERROR =>', error);
+      
       Alert.alert('Generate Activity Failed', error?.message || 'The AI material scan failed. Please try again after confirming the related material file is readable.');
     } finally {
       setIsGeneratingActivity(false);

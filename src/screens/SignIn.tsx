@@ -552,7 +552,6 @@ const SignIn = ({ onLogIn, onGoToLanding, onGoToRegister }: SignInProps) => {
       await completeLogin(user.id, user.role);
 
     } catch (error: any) {
-      console.log('LOGIN ERROR =>', error);
       try {
         await signOut(auth);
       } catch {}

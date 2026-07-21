@@ -222,7 +222,7 @@ const Videos = ({
       if (!response.ok) throw new Error(data?.error || 'Failed to load comments.');
       setVideoComments(Array.isArray(data?.data) ? data.data : []);
     } catch (err: any) {
-      console.log('LOAD VIDEO COMMENTS ERROR =>', err);
+      
       setVideoComments([]);
     } finally {
       setCommentsLoading(false);
