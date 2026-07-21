@@ -4642,15 +4642,24 @@ Return ONLY valid JSON. No markdown.
       }
     }
 
-    if (!isIdentityVerified && lastError) {
-       // If all retries failed
-       console.error("All Gemini verification attempts failed.");
-       // Option A: Block the upload strictly
-       // return res.status(503).json({ error: "AI Verification service is currently busy. Please try again in a few minutes." });
-       
-       // Option B: Allow upload but warn user (Recommended for better UX during outages)
-       console.warn("Proceeding with upload despite verification failure due to AI outage.");
+    if (!isIdentityVerified) {
+    // STRICT MODE: If verification failed (whether due to mismatch or AI error), block the upload.
+    if (lastError) {
+      console.error("AI Verification service failed:", lastError.message);
+      return res.status(503).json({ 
+        error: "Identity verification service is currently unavailable. Please try again in a few minutes." 
+      });
+    } else {
+      // Verification completed but IDs did not match
+      console.warn("Identity Verification Failed: ID Mismatch.");
+      // The specific error message was already returned inside the loop if it was a mismatch,
+      // but if we reach here without a lastError and !isIdentityVerified, it means 
+      // the AI returned verified: false but didn't throw an error earlier (edge case).
+      return res.status(403).json({
+        error: "Security Check Failed: The Student ID in your account does not match the ID found in the uploaded document. Please upload the correct transcript."
+      });
     }
+  }
 
     // 3. Proceed with Grade Parsing (Only if verified)
     if (isIdentityVerified) {
