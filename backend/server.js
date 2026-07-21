@@ -367,7 +367,7 @@ async function hydrateUserImageUrls(userData = {}) {
 
 
 
-const GEMINI_GAME_MODEL = process.env.GEMINI_GAME_MODEL || "gemini-2.5-flash";
+const GEMINI_GAME_MODEL = process.env.GEMINI_GAME_MODEL || "gemini-3.5-flash";
 const OPENAI_GAME_MODEL =
   process.env.OPENAI_GAME_MODEL || process.env.OPENAI_MODEL || "gpt-4o-mini";
 const geminiGameAI = process.env.GEMINI_API_KEY
@@ -3213,7 +3213,7 @@ app.post("/auth/reset-forgot-password", async (req, res) => {
  *
  * Required .env values:
  *   GEMINI_API_KEY=your_gemini_api_key_here
- *   GEMINI_GAME_MODEL=gemini-2.5-flash
+ *   GEMINI_GAME_MODEL=gemini-3.5-flash
  */
 // === NEW: Automatically grade game-based assignment submission ===
 // === UPDATED: Automatically grade game-based assignment submission ===
@@ -12014,7 +12014,7 @@ async function callGeminiProvider({
     throw new Error("Gemini API key is not configured.");
   }
 
-  const model = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+  const model = process.env.GEMINI_MODEL || "gemini-3.5-flash";
 
   const response = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
@@ -12341,7 +12341,7 @@ function normalizeProviderName(provider = "") {
 function getProviderModelName(provider = "") {
   const value = String(provider || "").trim().toLowerCase();
 
-  if (value === "gemini") return process.env.GEMINI_MODEL || "gemini-2.5-flash";
+  if (value === "gemini") return process.env.GEMINI_MODEL || "gemini-3.5-flash";
   if (value === "openai") return process.env.OPENAI_MODEL || "gpt-4o-mini";
   if (value === "claude") return process.env.CLAUDE_MODEL || "claude-3-5-haiku-latest";
   if (value === "groq") return process.env.GROQ_MODEL || "llama-3.1-8b-instant";
@@ -12651,7 +12651,7 @@ ${materialsText || "No readable materials found."}
             extractedText.imagePdf
           ) {
             const model = geminiGameAI.getGenerativeModel({
-              model: "gemini-2.5-flash",
+              model: "gemini-3.5-flash",
             });
 
             const result = await model.generateContent([
@@ -12825,7 +12825,7 @@ In tutor mode, tutor the student step by step and ask a quick check question whe
       // =========================
       if (imageFileForVision) {
         const model = geminiGameAI.getGenerativeModel({
-          model: "gemini-2.5-flash",
+          model: "gemini-3.5-flash",
         });
 
         const result = await model.generateContent([
@@ -15035,7 +15035,7 @@ app.post("/course-syllabus/parse", requireAuth, async (req, res) => {
 
     // Call Gemini to extract structure
     const model = geminiGameAI.getGenerativeModel({
-      model: GEMINI_GAME_MODEL || "gemini-2.5-flash",
+      model: GEMINI_GAME_MODEL || "gemini-3.5-flash",
       generationConfig: { responseMimeType: "application/json", temperature: 0.1 }
     });
 
@@ -15660,7 +15660,7 @@ RETURN VALID JSON ONLY:
 async function generateTopicContent(syllabusModule, targetModuleNum, specificTopic, startLessonNumber = 1) {
   if (!geminiGameAI) throw new Error("GEMINI_API_KEY is missing.");
   
-  let modelName = GEMINI_GAME_MODEL || "gemini-2.5-flash";
+  let modelName = GEMINI_GAME_MODEL || "gemini-3.5-flash";
   const model = geminiGameAI.getGenerativeModel({
     model: modelName,
     generationConfig: {
