@@ -124,6 +124,82 @@ function getAvatarColors(seed: string) {
   return AVATAR_PALETTE[hash % AVATAR_PALETTE.length];
 }
 
+type SortColumn = "adminId" | "name" | "birthday" | "email" | null;
+type SortDirection = "asc" | "desc";
+
+const PAGE_SIZE = 8;
+
+// Builds a compact page list like: 1 2 3 4 5 ... 15
+function getPageNumbers(current: number, total: number): (number | "...")[] {
+  if (total <= 7) {
+    return Array.from({ length: total }, (_, i) => i + 1);
+  }
+
+  const pages: (number | "...")[] = [1];
+
+  if (current > 3) pages.push("...");
+
+  const start = Math.max(2, current - 1);
+  const end = Math.min(total - 1, current + 1);
+
+  for (let i = start; i <= end; i++) pages.push(i);
+
+  if (current < total - 2) pages.push("...");
+
+  pages.push(total);
+
+  return pages;
+}
+
+type SortableHeaderProps = {
+  label: string;
+  column: Exclude<SortColumn, null>;
+  activeColumn: SortColumn;
+  direction: SortDirection;
+  onPress: (column: Exclude<SortColumn, null>) => void;
+  style?: any;
+};
+
+function SortableHeader({
+  label,
+  column,
+  activeColumn,
+  direction,
+  onPress,
+  style,
+}: SortableHeaderProps) {
+  const isActive = activeColumn === column;
+
+  return (
+    <TouchableOpacity
+      style={[styles.sortableHeaderButton, style]}
+      activeOpacity={0.6}
+      onPress={() => onPress(column)}
+    >
+      <Text
+        style={[
+          styles.tableHeaderText,
+          isActive && styles.tableHeaderTextActive,
+        ]}
+      >
+        {label}
+      </Text>
+      <Ionicons
+        name={
+          isActive
+            ? direction === "asc"
+              ? "chevron-up"
+              : "chevron-down"
+            : "swap-vertical-outline"
+        }
+        size={12}
+        color={isActive ? "#DC2626" : "#C7B0B0"}
+        style={styles.sortIcon}
+      />
+    </TouchableOpacity>
+  );
+}
+
 export default function ManageAdmin({ width }: ManageAdminProps) {
   const [admins, setAdmins] = useState<TableAdminItem[]>([]);
   const [rawAdmins, setRawAdmins] = useState<BackendAdminItem[]>([]);
@@ -138,6 +214,15 @@ export default function ManageAdmin({ width }: ManageAdminProps) {
   const [isDeleteModalVisible, setIsDeleteModalVisible] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [hoveredRowId, setHoveredRowId] = useState<string | null>(null);
+  const [sortColumn, setSortColumn] = useState<SortColumn>(null);
+  const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [rowMenu, setRowMenu] = useState<{
+    item: TableAdminItem;
+    x: number;
+    y: number;
+  } | null>(null);
+  const rowMenuButtonRefs = React.useRef<Record<string, View | null>>({});
 
   const [toast, setToast] = useState<{
     visible: boolean;
@@ -206,6 +291,71 @@ export default function ManageAdmin({ width }: ManageAdminProps) {
       return searchable.includes(keyword);
     });
   }, [admins, searchText]);
+
+  const sortedAdmins = useMemo(() => {
+    if (!sortColumn) return filteredAdmins;
+
+    const getValue = (item: TableAdminItem) => {
+      switch (sortColumn) {
+        case "adminId":
+          return item.adminId.toLowerCase();
+        case "name":
+          return `${item.firstName} ${item.lastName}`.trim().toLowerCase();
+        case "birthday":
+          return item.birthday;
+        case "email":
+          return item.email.toLowerCase();
+        default:
+          return "";
+      }
+    };
+
+    const sorted = [...filteredAdmins].sort((a, b) => {
+      const valueA = getValue(a);
+      const valueB = getValue(b);
+      if (valueA < valueB) return -1;
+      if (valueA > valueB) return 1;
+      return 0;
+    });
+
+    return sortDirection === "asc" ? sorted : sorted.reverse();
+  }, [filteredAdmins, sortColumn, sortDirection]);
+
+  const totalPages = Math.max(1, Math.ceil(sortedAdmins.length / PAGE_SIZE));
+
+  const paginatedAdmins = useMemo(() => {
+    const start = (currentPage - 1) * PAGE_SIZE;
+    return sortedAdmins.slice(start, start + PAGE_SIZE);
+  }, [sortedAdmins, currentPage]);
+
+  // Reset to page 1 whenever the underlying result set changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchText, sortColumn, sortDirection, admins.length]);
+
+  const handleSort = (column: Exclude<SortColumn, null>) => {
+    if (sortColumn === column) {
+      setSortDirection((prev) => (prev === "asc" ? "desc" : "asc"));
+    } else {
+      setSortColumn(column);
+      setSortDirection("asc");
+    }
+  };
+
+  const openRowMenu = (item: TableAdminItem, key: string) => {
+    const node = rowMenuButtonRefs.current[key];
+    if (node && (node as any).measureInWindow) {
+      (node as any).measureInWindow(
+        (x: number, y: number, w: number, h: number) => {
+          setRowMenu({ item, x: x + w, y: y + h });
+        }
+      );
+    } else {
+      setRowMenu({ item, x: 0, y: 0 });
+    }
+  };
+
+  const closeRowMenu = () => setRowMenu(null);
 
   const resetModalState = () => {
     setIsAddModalVisible(false);
@@ -423,18 +573,38 @@ export default function ManageAdmin({ width }: ManageAdminProps) {
             >
               <View style={{ minWidth: tableMinWidth }}>
                 <View style={styles.tableHeaderRow}>
-                  <Text style={[styles.tableHeaderText, styles.idColumn]}>
-                    Admin ID
-                  </Text>
-                  <Text style={[styles.tableHeaderText, styles.nameColumn]}>
-                    Full Name
-                  </Text>
-                  <Text style={[styles.tableHeaderText, styles.birthdayColumn]}>
-                    Birthday
-                  </Text>
-                  <Text style={[styles.tableHeaderText, styles.emailColumn]}>
-                    Email
-                  </Text>
+                  <SortableHeader
+                    label="Admin ID"
+                    column="adminId"
+                    activeColumn={sortColumn}
+                    direction={sortDirection}
+                    onPress={handleSort}
+                    style={styles.idColumn}
+                  />
+                  <SortableHeader
+                    label="Full Name"
+                    column="name"
+                    activeColumn={sortColumn}
+                    direction={sortDirection}
+                    onPress={handleSort}
+                    style={styles.nameColumn}
+                  />
+                  <SortableHeader
+                    label="Birthday"
+                    column="birthday"
+                    activeColumn={sortColumn}
+                    direction={sortDirection}
+                    onPress={handleSort}
+                    style={styles.birthdayColumn}
+                  />
+                  <SortableHeader
+                    label="Email"
+                    column="email"
+                    activeColumn={sortColumn}
+                    direction={sortDirection}
+                    onPress={handleSort}
+                    style={styles.emailColumn}
+                  />
                   <Text
                     style={[
                       styles.tableHeaderText,
@@ -467,9 +637,10 @@ export default function ManageAdmin({ width }: ManageAdminProps) {
                     </Text>
                   </View>
                 ) : (
-                  filteredAdmins.map((item) => {
+                  paginatedAdmins.map((item) => {
                     const avatarColors = getAvatarColors(item.id || item.email);
                     const isHovered = hoveredRowId === item.id;
+                    const menuKey = item.id;
 
                     return (
                       <Pressable
@@ -519,29 +690,24 @@ export default function ManageAdmin({ width }: ManageAdminProps) {
                         </View>
 
                         <View style={[styles.actionColumn, styles.actionCellRow]}>
-                          <TouchableOpacity
-                            style={styles.iconActionButton}
-                            activeOpacity={0.7}
-                            onPress={() => handleEdit(item)}
+                          <View
+                            ref={(node) => {
+                              rowMenuButtonRefs.current[menuKey] = node;
+                            }}
+                            collapsable={false}
                           >
-                            <Ionicons
-                              name="create-outline"
-                              size={16}
-                              color="#57474A"
-                            />
-                          </TouchableOpacity>
-
-                          <TouchableOpacity
-                            style={[styles.iconActionButton, styles.iconActionButtonDanger]}
-                            activeOpacity={0.7}
-                            onPress={() => openDeleteModal(item)}
-                          >
-                            <Ionicons
-                              name="trash-outline"
-                              size={16}
-                              color="#DC2626"
-                            />
-                          </TouchableOpacity>
+                            <TouchableOpacity
+                              style={styles.iconActionButton}
+                              activeOpacity={0.7}
+                              onPress={() => openRowMenu(item, menuKey)}
+                            >
+                              <Ionicons
+                                name="ellipsis-horizontal"
+                                size={16}
+                                color="#57474A"
+                              />
+                            </TouchableOpacity>
+                          </View>
                         </View>
                       </Pressable>
                     );
@@ -550,8 +716,129 @@ export default function ManageAdmin({ width }: ManageAdminProps) {
               </View>
             </ScrollView>
           </ScrollView>
+
+          {!isLoading && sortedAdmins.length > 0 && (
+            <View style={styles.paginationBar}>
+              <TouchableOpacity
+                style={[
+                  styles.paginationNavButton,
+                  currentPage === 1 && styles.paginationNavButtonDisabled,
+                ]}
+                activeOpacity={0.7}
+                disabled={currentPage === 1}
+                onPress={() => setCurrentPage((p) => Math.max(1, p - 1))}
+              >
+                <Ionicons name="chevron-back" size={15} color={currentPage === 1 ? "#CBB8B8" : "#57474A"} />
+                <Text
+                  style={[
+                    styles.paginationNavText,
+                    currentPage === 1 && styles.paginationNavTextDisabled,
+                  ]}
+                >
+                  Previous
+                </Text>
+              </TouchableOpacity>
+
+              <View style={styles.paginationPages}>
+                {getPageNumbers(currentPage, totalPages).map((page, idx) =>
+                  page === "..." ? (
+                    <Text key={`ellipsis-${idx}`} style={styles.paginationEllipsis}>
+                      ⋯
+                    </Text>
+                  ) : (
+                    <TouchableOpacity
+                      key={page}
+                      style={[
+                        styles.paginationPageButton,
+                        currentPage === page && styles.paginationPageButtonActive,
+                      ]}
+                      activeOpacity={0.75}
+                      onPress={() => setCurrentPage(page)}
+                    >
+                      <Text
+                        style={[
+                          styles.paginationPageText,
+                          currentPage === page && styles.paginationPageTextActive,
+                        ]}
+                      >
+                        {page}
+                      </Text>
+                    </TouchableOpacity>
+                  )
+                )}
+              </View>
+
+              <TouchableOpacity
+                style={[
+                  styles.paginationNavButton,
+                  currentPage === totalPages && styles.paginationNavButtonDisabled,
+                ]}
+                activeOpacity={0.7}
+                disabled={currentPage === totalPages}
+                onPress={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+              >
+                <Text
+                  style={[
+                    styles.paginationNavText,
+                    currentPage === totalPages && styles.paginationNavTextDisabled,
+                  ]}
+                >
+                  Next
+                </Text>
+                <Ionicons
+                  name="chevron-forward"
+                  size={15}
+                  color={currentPage === totalPages ? "#CBB8B8" : "#57474A"}
+                />
+              </TouchableOpacity>
+            </View>
+          )}
         </View>
       </View>
+
+      {rowMenu && (
+        <Modal transparent visible animationType="fade" onRequestClose={closeRowMenu}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={closeRowMenu} />
+          <View
+            style={[
+              styles.rowMenuCard,
+              {
+                position: "absolute",
+                top: rowMenu.y + 6,
+                left: Math.max(12, rowMenu.x - 180),
+              },
+            ]}
+          >
+            <TouchableOpacity
+              style={styles.rowMenuItem}
+              activeOpacity={0.7}
+              onPress={() => {
+                const item = rowMenu.item;
+                closeRowMenu();
+                handleEdit(item);
+              }}
+            >
+              <Ionicons name="create-outline" size={16} color="#3A2C2C" />
+              <Text style={styles.rowMenuItemText}>Edit</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.rowMenuItem}
+              activeOpacity={0.7}
+              onPress={() => {
+                const item = rowMenu.item;
+                closeRowMenu();
+                openDeleteModal(item);
+              }}
+            >
+              <Ionicons name="trash-outline" size={16} color="#DC2626" />
+              <Text style={[styles.rowMenuItemText, styles.rowMenuItemTextDanger]}>
+                Delete
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </Modal>
+      )}
 
       <AddAdminModal
         visible={isAddModalVisible}
@@ -852,10 +1139,23 @@ const styles = StyleSheet.create({
   avatar: {
     width: 34,
     height: 34,
-    borderRadius: 10,
+    borderRadius: 17,
     alignItems: "center",
     justifyContent: "center",
     marginRight: 10,
+  },
+
+  sortableHeaderButton: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+
+  sortIcon: {
+    marginLeft: 4,
+  },
+
+  tableHeaderTextActive: {
+    color: "#DC2626",
   },
 
   avatarText: {
@@ -909,6 +1209,107 @@ const styles = StyleSheet.create({
 
   iconActionButtonDanger: {
     backgroundColor: "#FEF2F2",
+  },
+
+  paginationBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderTopWidth: 1,
+    borderTopColor: "#F1E4E4",
+  },
+
+  paginationNavButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    borderRadius: 10,
+  },
+
+  paginationNavButtonDisabled: {
+    opacity: 0.6,
+  },
+
+  paginationNavText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#57474A",
+    marginHorizontal: 4,
+  },
+
+  paginationNavTextDisabled: {
+    color: "#CBB8B8",
+  },
+
+  paginationPages: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+
+  paginationPageButton: {
+    minWidth: 32,
+    height: 32,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 6,
+  },
+
+  paginationPageButtonActive: {
+    backgroundColor: "#DC2626",
+  },
+
+  paginationPageText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#8A6F6F",
+  },
+
+  paginationPageTextActive: {
+    color: "#FFFFFF",
+    fontWeight: "700",
+  },
+
+  paginationEllipsis: {
+    fontSize: 13,
+    color: "#C7B0B0",
+    marginHorizontal: 4,
+  },
+
+  rowMenuCard: {
+    width: 190,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#F1E4E4",
+    paddingVertical: 6,
+    shadowColor: "#3B0D0D",
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.12,
+    shadowRadius: 24,
+    elevation: 8,
+  },
+
+  rowMenuItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+  },
+
+  rowMenuItemText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#3A2C2C",
+    marginLeft: 10,
+  },
+
+  rowMenuItemTextDanger: {
+    color: "#DC2626",
   },
 
   emptyState: {
