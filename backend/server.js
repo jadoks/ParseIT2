@@ -121,39 +121,6 @@ function getAuthBearerToken(req) {
   return authHeader.slice(7).trim() || null;
 }
 
-function withRetry(fn, maxRetries = 5, baseDelayMs = 1000) {
-  return async (...args) => {
-    let lastError;
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
-      try {
-        return await fn(...args);
-      } catch (error) {
-        lastError = error;
-
-        // 🟢 Retryable errors: 503, 429, quota/rate limit, network timeout
-        const isRetryable =
-          error.status === 503 ||
-          error.status === 429 ||
-          (typeof error.message === "string" &&
-            (error.message.includes("quota") ||
-              error.message.includes("rate limit") ||
-              error.message.includes("Service Unavailable") ||
-              error.message.includes("timeout")));
-
-        if (!isRetryable || attempt === maxRetries) {
-          throw error;
-        }
-
-        // ⏳ Exponential backoff: 1s, 2s, 4s, 8s, 16s
-        const delay = baseDelayMs * Math.pow(2, attempt - 1);
-        console.warn(`Gemini request failed (attempt ${attempt}/${maxRetries}), retrying in ${delay}ms...`);
-        await new Promise((resolve) => setTimeout(resolve, delay));
-      }
-    }
-    throw lastError;
-  };
-}
-
 
 
 // MIME types Gemini's inlineData actually supports natively.
@@ -1471,12 +1438,10 @@ function normalizeGameQuestions(value, gameType = "quiz_master", numberOfQuestio
 // ==========================================
 async function generateGameWithGemini({ extractedText, fileName, gameType, inlineData, fileData, numberOfQuestions }) {
   if (!geminiGameAI) throw new Error("GEMINI_API_KEY is missing.");
-
   const model = geminiGameAI.getGenerativeModel({
     model: GEMINI_GAME_MODEL,
     generationConfig: {
-      temperature: 0.3,
-      maxOutputTokens: 4096,
+      temperature: 0.3, maxOutputTokens: 4096,
       responseMimeType: "application/json",
       responseSchema: getGeminiSchemaForGame(gameType)
     }
@@ -1492,25 +1457,18 @@ async function generateGameWithGemini({ extractedText, fileName, gameType, inlin
     filePart = { fileData: { mimeType: fileData.mimeType, fileUri: fileData.fileUri } };
   }
 
-  // ✅ Wrap the actual call with retry
-  const callWithRetry = withRetry(async () => {
-    const result = filePart
-      ? await model.generateContent([{ text: prompt }, filePart])
-      : await model.generateContent(prompt);
-
-    const parsed = parseQuizMastersJsonResponse(result.response.text(), "Gemini");
-    const questions = normalizeGameQuestions(parsed, gameType, numberOfQuestions);
-    // 🌟 RELAXED THRESHOLD: Changed from >= 5 to >= 1 so small requests don't fail
-    if (questions.length >= 1) return questions;
-    throw new Error("Gemini returned too few questions.");
-  }, 5); // 5 retries
-
-  try {
-    return await callWithRetry();
-  } catch (error) {
-    console.error(`Gemini failed after 5 retries for ${gameType}:`, error.message);
-    throw error;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      const result = filePart
+        ? await model.generateContent([{ text: prompt }, filePart])
+        : await model.generateContent(prompt);
+      const parsed = parseQuizMastersJsonResponse(result.response.text(), "Gemini");
+      const questions = normalizeGameQuestions(parsed, gameType, numberOfQuestions);
+      // 🌟 RELAXED THRESHOLD: Changed from >= 5 to >= 1 so small requests don't fail
+      if (questions.length >= 1) return questions; 
+    } catch (error) { console.log(`Gemini attempt ${attempt} failed for ${gameType}:`, error.message); }
   }
+  throw new Error("Gemini failed after 3 attempts.");
 }
 
 async function generateGameWithOpenAI({ extractedText, fileName, gameType, inlineData, numberOfQuestions }) {
@@ -4684,22 +4642,15 @@ Return ONLY valid JSON. No markdown.
       }
     }
 
-    // In server.js, inside app.post("/upload-student-grade", ...)
-// Replace the existing "Option B" block with this:
-
-if (!isIdentityVerified && lastError) {
-  console.error("All Gemini verification attempts failed.");
-  
-  // STRICT MODE FOR PRODUCTION: Block uploads if AI can't verify identity
-  if (process.env.NODE_ENV === 'production') {
-    return res.status(503).json({ 
-      error: "Verification service temporarily unavailable. Please try again in a few minutes." 
-    });
-  }
-  
-  // DEVELOPMENT ONLY: Allow fallback for testing without AI
-  console.warn("DEV MODE: Proceeding with upload despite verification failure.");
-}
+    if (!isIdentityVerified && lastError) {
+       // If all retries failed
+       console.error("All Gemini verification attempts failed.");
+       // Option A: Block the upload strictly
+       // return res.status(503).json({ error: "AI Verification service is currently busy. Please try again in a few minutes." });
+       
+       // Option B: Allow upload but warn user (Recommended for better UX during outages)
+       console.warn("Proceeding with upload despite verification failure due to AI outage.");
+    }
 
     // 3. Proceed with Grade Parsing (Only if verified)
     if (isIdentityVerified) {
@@ -12042,7 +11993,7 @@ async function callGeminiProvider({
   }
 
   const model = process.env.GEMINI_MODEL || "gemini-2.5-flash";
-  const callWithRetry = withRetry(async () => {
+
   const response = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
     {
@@ -12065,8 +12016,6 @@ async function callGeminiProvider({
       }),
     }
   );
-  }, 5);
-return await callWithRetry();
 
   const data = await response.json().catch(() => ({}));
 
