@@ -1182,7 +1182,7 @@ const styles = StyleSheet.create({
   },
 
   actionColumn: {
-    width: 100,
+    width: 90,
   },
 
   codeBadge: {
