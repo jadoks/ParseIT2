@@ -109,31 +109,6 @@ const fileUriToBase64 = async (uri: string): Promise<string> => {
   });
 };
 
-function getInitials(className: string): string {
-  const words = className.trim().split(/\s+/).filter(Boolean);
-  if (words.length === 0) return "?";
-  if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
-  return (words[0][0] + words[1][0]).toUpperCase();
-}
-
-// Small deterministic palette so each class gets a consistent avatar color
-const AVATAR_PALETTE = [
-  { bg: "#FEE2E2", fg: "#DC2626" },
-  { bg: "#FFE8D6", fg: "#C2410C" },
-  { bg: "#FDE68A33", fg: "#B45309" },
-  { bg: "#E0E7FF", fg: "#4338CA" },
-  { bg: "#DCFCE7", fg: "#15803D" },
-  { bg: "#F3E8FF", fg: "#7E22CE" },
-];
-
-function getAvatarColors(seed: string) {
-  let hash = 0;
-  for (let i = 0; i < seed.length; i++) {
-    hash = (hash * 31 + seed.charCodeAt(i)) >>> 0;
-  }
-  return AVATAR_PALETTE[hash % AVATAR_PALETTE.length];
-}
-
 type SortColumn =
   | "classCode"
   | "className"
@@ -799,7 +774,6 @@ export default function ManageClass({ width, currentAdmin }: ManageClassProps) {
                   </View>
                 ) : (
                   paginatedClasses.map((item) => {
-                    const avatarColors = getAvatarColors(item.id || item.classCode);
                     const isHovered = hoveredRowId === item.id;
                     const menuKey = item.id;
 
@@ -817,22 +791,7 @@ export default function ManageClass({ width, currentAdmin }: ManageClassProps) {
                           <Text style={styles.codeBadge}>{item.classCode}</Text>
                         </View>
 
-                        <View style={[styles.classNameColumn, styles.nameCell]}>
-                          <View
-                            style={[
-                              styles.avatar,
-                              { backgroundColor: avatarColors.bg },
-                            ]}
-                          >
-                            <Text
-                              style={[
-                                styles.avatarText,
-                                { color: avatarColors.fg },
-                              ]}
-                            >
-                              {getInitials(item.className)}
-                            </Text>
-                          </View>
+                        <View style={styles.classNameColumn}>
                           <Text style={styles.tablePrimaryText} numberOfLines={2}>
                             {item.className}
                           </Text>
@@ -1407,16 +1366,10 @@ const styles = StyleSheet.create({
 
   codeColumn: { width: 140, paddingRight: 12 },
   classNameColumn: { width: 320, paddingRight: 12 },
-  nameCell: { flexDirection: "row", alignItems: "center" },
   sectionColumn: { width: 140, paddingRight: 12 },
   instructorColumn: { width: 220, paddingRight: 12 },
   memberColumn: { width: 130, paddingRight: 12 },
   actionColumn: { width: 90 },
-
-  avatar: {
-    width: 34, height: 34, borderRadius: 10, alignItems: "center", justifyContent: "center", marginRight: 10,
-  },
-  avatarText: { fontSize: 12, fontWeight: "800" },
 
   codeBadge: {
     alignSelf: "flex-start", backgroundColor: "#FDF2F2", color: "#B5484B",
