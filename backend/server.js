@@ -14335,14 +14335,22 @@ app.post("/messenger-upload-file", requireAuth, async (req, res) => {
   }
 });
 
-// 2. Refresh Signed URL for Downloading/Previewing (Prevents expired link errors)
 app.post("/messenger-file-url", requireAuth, async (req, res) => {
   try {
     const { storagePath, conversationId } = req.body;
     if (!storagePath || !conversationId) {
       return res.status(400).json({ error: "storagePath and conversationId are required." });
     }
-    if (!storagePath.startsWith(`messenger-files/${conversationId}/`)) {
+
+    // 🔧 FIX: allow both message-attachment files AND conversation avatar
+    // files to be refreshed through this same endpoint — they live under
+    // different storage prefixes, but both should be readable by anyone
+    // with access to the conversation.
+    const allowedPrefixes = [
+      `messenger-files/${conversationId}/`,
+      `conversation-avatars/${conversationId}/`,
+    ];
+    if (!allowedPrefixes.some((prefix) => storagePath.startsWith(prefix))) {
       return res.status(400).json({ error: "Invalid storage path." });
     }
     
@@ -14353,7 +14361,6 @@ app.post("/messenger-file-url", requireAuth, async (req, res) => {
     const profile = await findUserProfileByAuthUid(req.user.uid);
     const userId = profile?.data?.studentId || profile?.data?.teacherId || profile?.data?.adminId || profile?.id;
     
-    // Verify user has access to this conversation
     const isParticipant = Array.isArray(convData.participants) && convData.participants.some(p => p.userId === userId || p.userUid === req.user.uid);
     const isTeacher = convData.classId && (convData.assignedTeacherUid === req.user.uid || convData.assignedTeacherId === userId);
     const isAdmin = profile?.role === "admin";
