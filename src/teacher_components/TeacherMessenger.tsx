@@ -352,6 +352,14 @@ const Messenger = ({
     new Set()
   );
 
+  // 🔧 FIX: tracks which conversation avatars are currently being
+  // refreshed (i.e. we detected an expired signed URL via onError and
+  // are fetching a new one). Prevents duplicate in-flight refreshes for
+  // the same conversation.
+  const [refreshingAvatars, setRefreshingAvatars] = useState<Set<string>>(
+    new Set()
+  );
+
   // Pending File State
   const [pendingFile, setPendingFile] = useState<{
     uri: string;
@@ -665,18 +673,24 @@ const Messenger = ({
     };
 
     loadMessages();
-  const interval = setInterval(() => {
-    loadMessages();
-    if (!cancelled) setAvatarCacheBuster(Date.now()); // 👈 ADD THIS ONE LINE
-  }, 15000);
-  return () => {
-    cancelled = true;
-    clearInterval(interval);
-  };
-}, [selected?.id, normalizeMessages]);
+    // 🔧 FIX: Don't force an avatar cache-bust on every poll — that was
+    // causing the conversation avatar image to re-fetch/re-render every
+    // 15s even when the signed URL was still perfectly valid. The cache
+    // buster is now only bumped when we actually obtain a fresh signed
+    // URL (see handleAvatarLoadError below), which only happens when the
+    // image fails to load (i.e. the previous signed URL expired).
+    const interval = setInterval(loadMessages, 15000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [selected?.id, normalizeMessages]);
 
   // ---------------------------------------------------------------------------
-  // FILE URL REFRESH
+  // FILE URL REFRESH — used for message file/image attachments AND for
+  // conversation avatars (both live under storage paths namespaced by
+  // conversationId, and both are validated/served by the same
+  // /messenger-file-url endpoint on the backend).
   // ---------------------------------------------------------------------------
   const refreshFileUrl = useCallback(
     async (storagePath: string, conversationId: string): Promise<string | null> => {
@@ -695,6 +709,49 @@ const Messenger = ({
       }
     },
     []
+  );
+
+  // 🔧 FIX: Refresh a single conversation's avatar signed URL, but only
+  // when we're told it's actually expired/broken (via the <Image>
+  // onError handler below) — never on a timer. This is the "only refresh
+  // if the image URL is about to expire" behavior.
+  const handleAvatarLoadError = useCallback(
+    async (item: Conversation) => {
+      if (!item.avatarStoragePath) return;
+      if (refreshingAvatars.has(item.id)) return;
+      setRefreshingAvatars((prev) => {
+        const next = new Set(prev);
+        next.add(item.id);
+        return next;
+      });
+      try {
+        const freshUrl = await refreshFileUrl(item.avatarStoragePath, item.id);
+        if (freshUrl) {
+          setAvatarCacheBuster(Date.now()); // bump only when we actually got a new URL
+          setConversations((prev) =>
+            prev.map((c) =>
+              c.id === item.id
+                ? { ...c, avatarUrl: freshUrl, avatar: { uri: freshUrl } }
+                : c
+            )
+          );
+          setSelected((prev) =>
+            prev && prev.id === item.id
+              ? { ...prev, avatarUrl: freshUrl, avatar: { uri: freshUrl } }
+              : prev
+          );
+        }
+      } catch (error) {
+        console.error('Refresh avatar URL error:', error);
+      } finally {
+        setRefreshingAvatars((prev) => {
+          const next = new Set(prev);
+          next.delete(item.id);
+          return next;
+        });
+      }
+    },
+    [refreshingAvatars, refreshFileUrl]
   );
 
   const messagesByConversationRef = useRef(messagesByConversation);
@@ -1665,6 +1722,7 @@ const Messenger = ({
                       ? { uri: `${item.avatarUrl}&_cb=${avatarCacheBuster}` }
                       : item.avatar
                   }
+                    onError={() => handleAvatarLoadError(item)}
                     style={{
                       width: sizes.listAvatar,
                       height: sizes.listAvatar,
@@ -1782,6 +1840,7 @@ const Messenger = ({
                       ? { uri: `${item.avatarUrl}&_cb=${avatarCacheBuster}` }
                       : item.avatar
                   }
+                  onError={() => handleAvatarLoadError(item)}
                   style={{
                     width: sizes.listAvatar,
                     height: sizes.listAvatar,
