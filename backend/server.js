@@ -4668,6 +4668,7 @@ if (!isIdentityVerified) {
     });
   }
   
+  // Generic fallback for quota/key issues or other crashes
   return res.status(500).json({
     error: "Unable to verify document identity. Please check your internet connection or try a smaller file."
   });
