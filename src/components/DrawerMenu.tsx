@@ -480,7 +480,7 @@ const DrawerMenu = ({
 
       const data = await response.json();
       
-            if (!response.ok) {
+       if (!response.ok) {
         // Handle Identity Mismatch
         if (response.status === 403) {
           onVerificationFailed?.(data?.error || 'Identity verification failed.');
@@ -490,6 +490,12 @@ const DrawerMenu = ({
         // Handle AI Service Outage (Strict Mode)
         if (response.status === 503) {
           Alert.alert('Service Unavailable', data?.error || 'Please try uploading your grade again in a few minutes.');
+          return;
+        }
+        
+        // Handle Internal Server Errors (500) - Usually means AI Key issue or File Too Large
+        if (response.status === 500) {
+          Alert.alert('Upload Error', data?.error || 'The server encountered an error processing your file. Please try a smaller file or contact support.');
           return;
         }
         
