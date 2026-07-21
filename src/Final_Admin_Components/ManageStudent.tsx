@@ -1178,7 +1178,7 @@ const styles = StyleSheet.create({
 
   emailColumn: {
     width: 300,
-    paddingRight: 12,
+    paddingRight: 8,
   },
 
   actionColumn: {
