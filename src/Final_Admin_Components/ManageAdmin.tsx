@@ -100,6 +100,30 @@ function mapBackendAdmin(item: BackendAdminItem): TableAdminItem {
   };
 }
 
+function getInitials(firstName: string, lastName: string): string {
+  const a = firstName?.trim()?.[0] || "";
+  const b = lastName?.trim()?.[0] || "";
+  return (a + b).toUpperCase() || "?";
+}
+
+// Small deterministic palette so each admin gets a consistent avatar color
+const AVATAR_PALETTE = [
+  { bg: "#FEE2E2", fg: "#DC2626" },
+  { bg: "#FFE8D6", fg: "#C2410C" },
+  { bg: "#FDE68A33", fg: "#B45309" },
+  { bg: "#E0E7FF", fg: "#4338CA" },
+  { bg: "#DCFCE7", fg: "#15803D" },
+  { bg: "#F3E8FF", fg: "#7E22CE" },
+];
+
+function getAvatarColors(seed: string) {
+  let hash = 0;
+  for (let i = 0; i < seed.length; i++) {
+    hash = (hash * 31 + seed.charCodeAt(i)) >>> 0;
+  }
+  return AVATAR_PALETTE[hash % AVATAR_PALETTE.length];
+}
+
 export default function ManageAdmin({ width }: ManageAdminProps) {
   const [admins, setAdmins] = useState<TableAdminItem[]>([]);
   const [rawAdmins, setRawAdmins] = useState<BackendAdminItem[]>([]);
@@ -113,6 +137,7 @@ export default function ManageAdmin({ width }: ManageAdminProps) {
   );
   const [isDeleteModalVisible, setIsDeleteModalVisible] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [hoveredRowId, setHoveredRowId] = useState<string | null>(null);
 
   const [toast, setToast] = useState<{
     visible: boolean;
@@ -348,12 +373,12 @@ export default function ManageAdmin({ width }: ManageAdminProps) {
       <View style={[styles.toolbar, isMobile && styles.toolbarStack]}>
         <View style={styles.searchWrap}>
           <View style={styles.searchField}>
-            <Ionicons name="search-outline" size={18} color="#8A6F6F" />
+            <Ionicons name="search-outline" size={18} color="#A18888" />
             <TextInput
               value={searchText}
               onChangeText={setSearchText}
               placeholder="Search admin ID, name, birthday, or email"
-              placeholderTextColor="#B79A9A"
+              placeholderTextColor="#C2ABAB"
               style={styles.searchInput}
             />
           </View>
@@ -371,129 +396,161 @@ export default function ManageAdmin({ width }: ManageAdminProps) {
             setIsAddModalVisible(true);
           }}
         >
-          <Ionicons name="add-circle-outline" size={18} color="#FFFFFF" />
-          <Text style={styles.primaryActionButtonText}>Add</Text>
+          <Ionicons name="add" size={18} color="#FFFFFF" />
+          <Text style={styles.primaryActionButtonText}>Add Admin</Text>
         </TouchableOpacity>
       </View>
 
       <View style={styles.tableCard}>
-        <ScrollView
-          horizontal
-          nestedScrollEnabled
-          showsHorizontalScrollIndicator={true}
-          contentContainerStyle={styles.tableHorizontalContent}
-        >
+        <View style={styles.tableCardInner}>
+          <View style={styles.tableMetaRow}>
+            <Text style={styles.tableMetaText}>
+              {filteredAdmins.length} {filteredAdmins.length === 1 ? "admin" : "admins"}
+            </Text>
+          </View>
+
           <ScrollView
+            horizontal
             nestedScrollEnabled
-            showsVerticalScrollIndicator={true}
-            style={styles.tableVerticalScroll}
-            contentContainerStyle={styles.tableVerticalContent}
+            showsHorizontalScrollIndicator={true}
+            contentContainerStyle={styles.tableHorizontalContent}
           >
-            <View style={{ minWidth: tableMinWidth }}>
-              <View style={styles.tableHeaderRow}>
-                <Text style={[styles.tableHeaderText, styles.idColumn]}>
-                  Admin ID
-                </Text>
-                <Text style={[styles.tableHeaderText, styles.nameColumn]}>
-                  Full Name
-                </Text>
-                <Text style={[styles.tableHeaderText, styles.birthdayColumn]}>
-                  Birthday
-                </Text>
-                <Text style={[styles.tableHeaderText, styles.emailColumn]}>
-                  Email
-                </Text>
-                <Text style={[styles.tableHeaderText, styles.actionColumn]}>
-                  Action
-                </Text>
+            <ScrollView
+              nestedScrollEnabled
+              showsVerticalScrollIndicator={true}
+              style={styles.tableVerticalScroll}
+              contentContainerStyle={styles.tableVerticalContent}
+            >
+              <View style={{ minWidth: tableMinWidth }}>
+                <View style={styles.tableHeaderRow}>
+                  <Text style={[styles.tableHeaderText, styles.idColumn]}>
+                    Admin ID
+                  </Text>
+                  <Text style={[styles.tableHeaderText, styles.nameColumn]}>
+                    Full Name
+                  </Text>
+                  <Text style={[styles.tableHeaderText, styles.birthdayColumn]}>
+                    Birthday
+                  </Text>
+                  <Text style={[styles.tableHeaderText, styles.emailColumn]}>
+                    Email
+                  </Text>
+                  <Text
+                    style={[
+                      styles.tableHeaderText,
+                      styles.actionColumn,
+                      styles.actionHeaderText,
+                    ]}
+                  >
+                    Action
+                  </Text>
+                </View>
+
+                {isLoading ? (
+                  <View style={styles.emptyState}>
+                    <Ionicons name="sync-outline" size={26} color="#DC2626" />
+                    <Text style={styles.emptyStateTitle}>Loading admins...</Text>
+                    <Text style={styles.emptyStateSubtitle}>
+                      Please wait while administrator records are fetched.
+                    </Text>
+                  </View>
+                ) : filteredAdmins.length === 0 ? (
+                  <View style={styles.emptyState}>
+                    <MaterialCommunityIcons
+                      name="account-cog-outline"
+                      size={26}
+                      color="#DC2626"
+                    />
+                    <Text style={styles.emptyStateTitle}>No admins found</Text>
+                    <Text style={styles.emptyStateSubtitle}>
+                      Try another search or add a new administrator record.
+                    </Text>
+                  </View>
+                ) : (
+                  filteredAdmins.map((item) => {
+                    const avatarColors = getAvatarColors(item.id || item.email);
+                    const isHovered = hoveredRowId === item.id;
+
+                    return (
+                      <Pressable
+                        key={item.id}
+                        onHoverIn={() => setHoveredRowId(item.id)}
+                        onHoverOut={() => setHoveredRowId(null)}
+                        style={[
+                          styles.tableBodyRow,
+                          isHovered && styles.tableBodyRowHovered,
+                        ]}
+                      >
+                        <View style={styles.idColumn}>
+                          <Text style={styles.codeBadge}>{item.adminId}</Text>
+                        </View>
+
+                        <View style={[styles.nameColumn, styles.nameCell]}>
+                          <View
+                            style={[
+                              styles.avatar,
+                              { backgroundColor: avatarColors.bg },
+                            ]}
+                          >
+                            <Text
+                              style={[
+                                styles.avatarText,
+                                { color: avatarColors.fg },
+                              ]}
+                            >
+                              {getInitials(item.firstName, item.lastName)}
+                            </Text>
+                          </View>
+                          <Text style={styles.tablePrimaryText} numberOfLines={1}>
+                            {item.firstName} {item.lastName}
+                          </Text>
+                        </View>
+
+                        <View style={styles.birthdayColumn}>
+                          <Text style={styles.tableSecondaryText}>
+                            {item.birthday || "—"}
+                          </Text>
+                        </View>
+
+                        <View style={styles.emailColumn}>
+                          <Text style={styles.tableSecondaryText} numberOfLines={1}>
+                            {item.email}
+                          </Text>
+                        </View>
+
+                        <View style={[styles.actionColumn, styles.actionCellRow]}>
+                          <TouchableOpacity
+                            style={styles.iconActionButton}
+                            activeOpacity={0.7}
+                            onPress={() => handleEdit(item)}
+                          >
+                            <Ionicons
+                              name="create-outline"
+                              size={16}
+                              color="#57474A"
+                            />
+                          </TouchableOpacity>
+
+                          <TouchableOpacity
+                            style={[styles.iconActionButton, styles.iconActionButtonDanger]}
+                            activeOpacity={0.7}
+                            onPress={() => openDeleteModal(item)}
+                          >
+                            <Ionicons
+                              name="trash-outline"
+                              size={16}
+                              color="#DC2626"
+                            />
+                          </TouchableOpacity>
+                        </View>
+                      </Pressable>
+                    );
+                  })
+                )}
               </View>
-
-              {isLoading ? (
-                <View style={styles.emptyState}>
-                  <Ionicons name="sync-outline" size={28} color="#DC2626" />
-                  <Text style={styles.emptyStateTitle}>Loading admins...</Text>
-                  <Text style={styles.emptyStateSubtitle}>
-                    Please wait while administrator records are fetched.
-                  </Text>
-                </View>
-              ) : filteredAdmins.length === 0 ? (
-                <View style={styles.emptyState}>
-                  <MaterialCommunityIcons
-                    name="account-cog-outline"
-                    size={28}
-                    color="#DC2626"
-                  />
-                  <Text style={styles.emptyStateTitle}>No admins found</Text>
-                  <Text style={styles.emptyStateSubtitle}>
-                    Try another search or add a new administrator record.
-                  </Text>
-                </View>
-              ) : (
-                filteredAdmins.map((item, index) => {
-                  const isLast = index === filteredAdmins.length - 1;
-
-                  return (
-                    <View
-                      key={item.id}
-                      style={[
-                        styles.tableBodyRow,
-                        !isLast && styles.tableRowBorder,
-                      ]}
-                    >
-                      <View style={styles.idColumn}>
-                        <Text style={styles.codeBadge}>{item.adminId}</Text>
-                      </View>
-
-                      <View style={styles.nameColumn}>
-                        <Text style={styles.tablePrimaryText}>
-                          {item.firstName} {item.lastName}
-                        </Text>
-                      </View>
-
-                      <View style={styles.birthdayColumn}>
-                        <Text style={styles.tablePrimaryText}>
-                          {item.birthday}
-                        </Text>
-                      </View>
-
-                      <View style={styles.emailColumn}>
-                        <Text style={styles.tablePrimaryText}>{item.email}</Text>
-                      </View>
-
-                      <View style={[styles.actionColumn, styles.actionCellRow]}>
-                        <TouchableOpacity
-                          style={[styles.rowActionButton, styles.editButton]}
-                          activeOpacity={0.85}
-                          onPress={() => handleEdit(item)}
-                        >
-                          <Ionicons
-                            name="create-outline"
-                            size={15}
-                            color="#7A4A4A"
-                          />
-                          <Text style={styles.rowActionButtonText}>Edit</Text>
-                        </TouchableOpacity>
-
-                        <TouchableOpacity
-                          style={[styles.rowActionButton, styles.deleteButton]}
-                          activeOpacity={0.85}
-                          onPress={() => openDeleteModal(item)}
-                        >
-                          <Ionicons
-                            name="trash-outline"
-                            size={15}
-                            color="#DC2626"
-                          />
-                          <Text style={styles.deleteButtonText}>Delete</Text>
-                        </TouchableOpacity>
-                      </View>
-                    </View>
-                  );
-                })
-              )}
-            </View>
+            </ScrollView>
           </ScrollView>
-        </ScrollView>
+        </View>
       </View>
 
       <AddAdminModal
@@ -637,12 +694,12 @@ const styles = StyleSheet.create({
   },
 
   searchField: {
-    height: 54,
-    borderRadius: 16,
+    height: 50,
+    borderRadius: 14,
     borderWidth: 1,
-    borderColor: "#F1CACA",
-    backgroundColor: "#FFF9F9",
-    paddingHorizontal: 14,
+    borderColor: "#EFE3E3",
+    backgroundColor: "#FFFFFF",
+    paddingHorizontal: 16,
     flexDirection: "row",
     alignItems: "center",
   },
@@ -653,18 +710,23 @@ const styles = StyleSheet.create({
     height: "80%",
     fontSize: 14,
     color: "#2B1111",
-    fontWeight: "600",
+    fontWeight: "500",
   },
 
   primaryActionButton: {
-    height: 54,
-    minWidth: 120,
-    paddingHorizontal: 18,
-    borderRadius: 16,
+    height: 50,
+    minWidth: 140,
+    paddingHorizontal: 20,
+    borderRadius: 14,
     backgroundColor: "#DC2626",
     alignItems: "center",
     justifyContent: "center",
     flexDirection: "row",
+    shadowColor: "#DC2626",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.18,
+    shadowRadius: 12,
+    elevation: 3,
   },
 
   fullWidthButton: {
@@ -673,19 +735,43 @@ const styles = StyleSheet.create({
 
   primaryActionButtonText: {
     fontSize: 14,
-    fontWeight: "800",
+    fontWeight: "700",
     color: "#FFFFFF",
-    marginLeft: 8,
+    marginLeft: 6,
   },
 
   tableCard: {
     backgroundColor: "#FFFFFF",
-    borderRadius: 24,
+    borderRadius: 20,
     borderWidth: 1,
-    borderColor: "#F3D4D4",
+    borderColor: "#F1E4E4",
     overflow: "hidden",
     flex: 1,
     minHeight: 0,
+    shadowColor: "#3B0D0D",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.04,
+    shadowRadius: 24,
+    elevation: 1,
+  },
+
+  tableCardInner: {
+    flex: 1,
+    minHeight: 0,
+  },
+
+  tableMetaRow: {
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 12,
+  },
+
+  tableMetaText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#A88989",
+    letterSpacing: 0.4,
+    textTransform: "uppercase",
   },
 
   tableHorizontalContent: {
@@ -701,42 +787,55 @@ const styles = StyleSheet.create({
   },
 
   tableHeaderRow: {
-    minHeight: 58,
-    backgroundColor: "#FFF5F5",
+    minHeight: 44,
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 16,
+    paddingHorizontal: 20,
     borderBottomWidth: 1,
-    borderBottomColor: "#F8E3E3",
+    borderBottomColor: "#F1E4E4",
   },
 
   tableBodyRow: {
-    minHeight: 82,
+    minHeight: 76,
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 16,
+    paddingHorizontal: 20,
     backgroundColor: "#FFFFFF",
+    borderBottomWidth: 1,
+    borderBottomColor: "#F8F1F1",
   },
 
-  tableRowBorder: {
-    borderBottomWidth: 1,
-    borderBottomColor: "#F8E3E3",
+  tableBodyRowHovered: {
+    backgroundColor: "#FFFAFA",
   },
 
   tableHeaderText: {
-    fontSize: 13,
-    fontWeight: "800",
-    color: "#7A4A4A",
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#B99C9C",
+    letterSpacing: 0.6,
+    textTransform: "uppercase",
+  },
+
+  actionHeaderText: {
+    textAlign: "right",
   },
 
   tablePrimaryText: {
     fontSize: 14,
-    fontWeight: "700",
+    fontWeight: "600",
     color: "#2B1111",
+    flexShrink: 1,
+  },
+
+  tableSecondaryText: {
+    fontSize: 13.5,
+    fontWeight: "500",
+    color: "#8A6F6F",
   },
 
   idColumn: {
-    width: 160,
+    width: 150,
     paddingRight: 12,
   },
 
@@ -745,8 +844,27 @@ const styles = StyleSheet.create({
     paddingRight: 12,
   },
 
+  nameCell: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+
+  avatar: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 10,
+  },
+
+  avatarText: {
+    fontSize: 12,
+    fontWeight: "800",
+  },
+
   birthdayColumn: {
-    width: 180,
+    width: 160,
     paddingRight: 12,
   },
 
@@ -756,62 +874,41 @@ const styles = StyleSheet.create({
   },
 
   actionColumn: {
-    width: 220,
+    width: 100,
   },
 
   codeBadge: {
     alignSelf: "flex-start",
-    backgroundColor: "#FEE2E2",
-    color: "#DC2626",
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 999,
+    backgroundColor: "#FDF2F2",
+    color: "#B5484B",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
     overflow: "hidden",
     fontSize: 12,
-    fontWeight: "800",
+    fontWeight: "700",
+    borderWidth: 1,
+    borderColor: "#F5DEDE",
   },
 
   actionCellRow: {
     flexDirection: "row",
     alignItems: "center",
-    flexWrap: "wrap",
-    paddingVertical: 8,
+    justifyContent: "flex-end",
   },
 
-  rowActionButton: {
-    minHeight: 38,
-    paddingHorizontal: 12,
-    borderRadius: 12,
-    borderWidth: 1,
+  iconActionButton: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
     alignItems: "center",
     justifyContent: "center",
-    flexDirection: "row",
-    marginRight: 8,
-    marginBottom: 8,
-  },
-
-  editButton: {
-    borderColor: "#E7C0C0",
-    backgroundColor: "#FFF7F7",
-  },
-
-  deleteButton: {
-    borderColor: "#F5C2C7",
-    backgroundColor: "#FFF1F2",
-  },
-
-  rowActionButtonText: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: "#7A4A4A",
     marginLeft: 6,
+    backgroundColor: "#F7F3F3",
   },
 
-  deleteButtonText: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: "#DC2626",
-    marginLeft: 6,
+  iconActionButtonDanger: {
+    backgroundColor: "#FEF2F2",
   },
 
   emptyState: {
