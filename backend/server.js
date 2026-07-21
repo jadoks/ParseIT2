@@ -11825,11 +11825,15 @@ function scoreTriggerMatch(message, trigger) {
 
   if (!normalizedMessage || !normalizedTrigger) return 0;
 
+  const triggerWords = normalizedTrigger.split(" ").filter(Boolean);
+
+  // ✅ Require at least 2 meaningful words in the trigger. Single generic
+  // words ("content", "file", "about") are too ambiguous to safely match
+  // an unrelated stored FAQ response.
+  if (triggerWords.length < 2) return 0;
+
   if (normalizedMessage === normalizedTrigger) return 100;
   if (normalizedMessage.includes(normalizedTrigger)) return 80;
-
-  const triggerWords = normalizedTrigger.split(" ").filter(Boolean);
-  if (!triggerWords.length) return 0;
 
   const matchedWords = triggerWords.filter((word) =>
     normalizedMessage.includes(word)
@@ -11844,8 +11848,7 @@ function scoreTriggerMatch(message, trigger) {
 
   return 0;
 }
-
-async function findMatchingChatbotTraining(message, limit = 5) {
+async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TRAINING_MATCH_SCORE) {
   const snapshot = await db.collection("chatbotTraining").get();
   const normalizedMessage = normalizeChatText(message);
 
@@ -11878,7 +11881,8 @@ async function findMatchingChatbotTraining(message, limit = 5) {
         updatedAt: data.updatedAt || null,
       };
     })
-    .filter((item) => item.score > 0 && (item.response || item.file?.url))
+    // ✅ require an actual confident match, not just "matched something"
+    .filter((item) => item.score >= minScore && (item.response || item.file?.url))
     .sort((a, b) => b.score - a.score)
     .slice(0, limit);
 
@@ -12533,7 +12537,9 @@ async function handleAIChat(req, res) {
     
     // If no message text, use a default prompt for file analysis
     const rawMessage = message || "Analyze the content of the attached file.";
-    const matchedTraining = await findMatchingChatbotTraining(rawMessage, 5);
+    const matchedTraining = fileBase64
+      ? []
+      : await findMatchingChatbotTraining(rawMessage, 5);
     const interpretedMessage = expandKeywordPrompt(rawMessage, normalizedMode);
     const bestMatch = matchedTraining[0] || null;
 
@@ -12879,8 +12885,15 @@ In tutor mode, tutor the student step by step and ask a quick check question whe
     // ✅ CONSTRUCT FINAL REPLY: Stored Data (First Paragraph) + General Search (Second Paragraph+)
     let finalReply = aiResult.text;
 
-    // If in assistant mode and we have stored data, prepend it as the first paragraph
-    if (normalizedMode === "assistant" && bestMatch && bestMatch.response) {
+    // Only prepend stored training data when there's no attached file —
+    // file-analysis requests should answer about the file, not blend in
+    // unrelated stored FAQ responses.
+    if (
+      normalizedMode === "assistant" && 
+      bestMatch &&
+      bestMatch.response &&
+      !fileBase64
+    ) {
       finalReply = `${bestMatch.response}\n\n${aiResult.text}`;
     }
 
