@@ -23,22 +23,19 @@ import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityI
 import { auth } from '../../firebaseConfig';
 
 // 🔥 Shared apiFetch — attaches a fresh Firebase Bearer token automatically
-// and retries once on 401. Used here specifically for the signed-URL avatar
-// refresh, mirroring the teacher-side drawer. The rest of this file's calls
-// (change email/password, logout, upload grade) keep using the plain
-// credentials-based fetch below since they already work against session
-// cookies and don't need to change.
+// and retries once on 401. Every network call in this file now goes through
+// this, instead of the old cookie-only fetch, because the backend's
+// /auth/*, /upload-student-grade, etc. routes expect a verified Firebase
+// ID token (req.user from the auth middleware), not a session cookie.
+// Using a cookie-only fetch against those routes meant requests were either
+// silently unauthenticated or rejected before ever reaching the Firestore/
+// Storage validation + write logic — which is why "Upload Grade" appeared
+// to do nothing.
 import { apiFetch as sharedApiFetch } from '../services/api';
 import {
   getCachedUserImageUrl,
   setCachedUserImageUrl,
 } from '../services/userImageUrlCache';
-
-const apiFetch = (url: string, options: any = {}) =>
-  fetch(url, {
-    credentials: 'include',
-    ...options,
-  });
 
 type ScreenType =
   | 'home'
@@ -66,7 +63,7 @@ interface DrawerMenuProps {
   userName?: string;
   userEmail?: string;
   userAvatar?: any;
-  userAvatarStoragePath?: string | null; // 👈 ADDED: enables cached signed-URL refresh
+  userAvatarStoragePath?: string | null; // 👈 enables cached signed-URL refresh
   userId: string;
   userRole: 'student' | 'teacher' | 'admin';
   apiBaseUrl: string;
@@ -212,7 +209,7 @@ const DrawerMenu = ({
   userName = 'Student',
   userEmail = '',
   userAvatar,
-  userAvatarStoragePath, // 👈 ADDED
+  userAvatarStoragePath, // 👈
   userId,
   userRole,
   apiBaseUrl,
@@ -323,7 +320,10 @@ const DrawerMenu = ({
       setSavingEmail(true);
       await reauthenticateCurrentUser(userEmail, trimmedPassword);
 
-      const response = await apiFetch(`${apiBaseUrl}/auth/change-email`, {
+      // 🔥 sharedApiFetch attaches a fresh Firebase Bearer token so the
+      // backend's auth middleware can resolve req.user before touching
+      // Firestore.
+      const response = await sharedApiFetch('/auth/change-email', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -371,7 +371,7 @@ const DrawerMenu = ({
       setSavingPassword(true);
       await reauthenticateCurrentUser(userEmail, trimmedCurrentPassword);
 
-      const response = await apiFetch(`${apiBaseUrl}/auth/change-password`, {
+      const response = await sharedApiFetch('/auth/change-password', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -398,7 +398,7 @@ const DrawerMenu = ({
 
   const handleLogout = async () => {
     try {
-      await apiFetch(`${apiBaseUrl}/auth/session-logout`, {
+      await sharedApiFetch('/auth/session-logout', {
         method: 'POST',
       });
     } catch {}
@@ -459,7 +459,15 @@ const DrawerMenu = ({
         throw new Error('File content is empty or too small.');
       }
 
-      const response = await apiFetch(`${apiBaseUrl}/upload-student-grade`, {
+      // 🔥 FIX: this used to go through the plain cookie-only fetch, which
+      // meant the backend's Firebase auth middleware never saw a verified
+      // ID token for this request. Depending on how that middleware is
+      // wired, the request either got silently treated as unauthenticated
+      // (skipping the Firestore write + grade-file validation entirely) or
+      // was rejected in a way this code didn't clearly surface. Using
+      // sharedApiFetch guarantees a fresh Bearer token is attached (and
+      // retried once on 401), matching every other authenticated call.
+      const response = await sharedApiFetch('/upload-student-grade', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
