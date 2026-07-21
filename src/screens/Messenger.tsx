@@ -502,11 +502,17 @@ const Messenger = ({
           prev.forEach((c) => (prevMap[c.id] = c));
 
           const merged = incoming.map((next) => {
-            const existing = prevMap[next.id];
-            if (existing && !conversationChanged(existing, next))
-              return existing; // same reference → no re-render downstream
-            return next;
-          });
+          const existing = prevMap[next.id];
+          if (!existing) return next;
+          if (!conversationChanged(existing, next)) return existing;
+          // Only adopt avatar fields from `next` if the picture actually changed.
+          const avatarUnchanged = existing.avatarStoragePath === next.avatarStoragePath;
+          return {
+            ...next,
+            avatar: avatarUnchanged ? existing.avatar : next.avatar,
+            avatarUrl: avatarUnchanged ? existing.avatarUrl : next.avatarUrl,
+          };
+        });
 
           // Preserve locally-created rooms that aren't in the server response
           const serverIds = new Set(incoming.map((c) => c.id));
