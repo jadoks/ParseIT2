@@ -4592,28 +4592,22 @@ RULES:
 Return ONLY valid JSON. No markdown.
 `;
 
- // Inside app.post("/upload-student-grade", ...)
-// REPLACE the existing while/for loop with this:
-
-let aiVerificationText = "";
+ let aiVerificationText = "";
 let isIdentityVerified = false;
 let lastError = null;
-const MAX_RETRIES = 3; 
+const MAX_RETRIES = 3;
 
 for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
   try {
     console.log(`[Identity Check] Attempt ${attempt}/${MAX_RETRIES}...`);
     
-    // ⚠️ SAFETY CHECK: If file is > 4MB, inlineData often fails. 
-    // For production, you should use Gemini File API for large files.
-    // For now, we'll just log a warning if it's huge.
     if (cleanedBase64.length > 4 * 1024 * 1024) {
       console.warn("[Identity Check] File is very large (>4MB). Verification may fail due to token limits.");
     }
 
-    const model = geminiGameAI.getGenerativeModel({ 
+    const model = geminiGameAI.getGenerativeModel({
       model: GEMINI_GAME_MODEL,
-      generationConfig: { temperature: 0.1 } 
+      generationConfig: { temperature: 0.1 }
     });
 
     const result = await model.generateContent([
@@ -4623,7 +4617,6 @@ for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
 
     aiVerificationText = result.response.text();
     
-    // ️ CRITICAL FIX: Wrap JSON parsing in try/catch to prevent 500 errors
     let verificationResult;
     try {
       const cleanJson = aiVerificationText.replace(/```json/g, "").replace(/```/g, "").trim();
@@ -4638,7 +4631,6 @@ for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
       console.log("[Identity Check] ✅ Verified:", verificationResult.foundId);
       break; 
     } else {
-      // ID Mismatch - Do NOT retry
       console.warn("[Identity Check] ❌ Mismatch:", verificationResult.reason);
       return res.status(403).json({
         error: `Security Check Failed: The ID in your account (${currentStudentId}) does not match the ID found in the uploaded file (${verificationResult.foundId || 'None'}). Please upload the correct transcript.`
@@ -4649,78 +4641,40 @@ for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     lastError = aiErr;
     console.error(`[Identity Check] Attempt ${attempt} failed:`, aiErr.message);
     
-    // Only retry on transient errors
-    const isTransient = 
-      aiErr.status === 503 || 
+    const isTransient =
+      aiErr.status === 503 ||
       aiErr.message.includes("Service Unavailable") ||
       aiErr.message.includes("timed out") ||
       aiErr.message.includes("rate limit") ||
-      aiErr.message.includes("AI response format error"); // Retry if AI gave bad JSON
-      
+      aiErr.message.includes("AI response format error");
+
     if (!isTransient || attempt === MAX_RETRIES) {
-      break; 
+      break;
     }
-    
+
     const delay = Math.pow(2, attempt) * 1000;
     console.log(`[Identity Check] Retrying in ${delay}ms...`);
     await new Promise(resolve => setTimeout(resolve, delay));
   }
 }
 
-// AFTER THE LOOP: Handle final failure
+// SINGLE ERROR HANDLING BLOCK
 if (!isIdentityVerified) {
-  // Log the specific error for debugging on Render
   console.error("[Identity Check] Final Failure:", lastError?.message || "Unknown error");
   
   if (lastError?.status === 503 || lastError?.message.includes("Service Unavailable")) {
-    return res.status(503).json({ 
-      error: "Identity verification service is currently busy. Please try again in a few minutes." 
+    return res.status(503).json({
+      error: "Identity verification service is currently busy. Please try again in a few minutes."
     });
   }
   
-  // Generic fallback for quota/key issues or other crashes
   return res.status(500).json({
     error: "Unable to verify document identity. Please check your internet connection or try a smaller file."
   });
 }
 
-// AFTER THE LOOP: Handle final failure
-if (!isIdentityVerified) {
-  if (lastError?.status === 503 || lastError?.message.includes("Service Unavailable")) {
-    // Specific message for AI outage
-    return res.status(503).json({ 
-      error: "Identity verification service is currently busy. Please try again in a few minutes." 
-    });
-  }
-  
-  // Generic failure
-  console.error("[Identity Check] All attempts failed.", lastError);
-  return res.status(500).json({ 
-    error: "Unable to verify document identity. Please try again later." 
-  });
-}
-
-    if (!isIdentityVerified) {
-    // STRICT MODE: If verification failed (whether due to mismatch or AI error), block the upload.
-    if (lastError) {
-      console.error("AI Verification service failed:", lastError.message);
-      return res.status(503).json({ 
-        error: "Identity verification service is currently unavailable. Please try again in a few minutes." 
-      });
-    } else {
-      // Verification completed but IDs did not match
-      console.warn("Identity Verification Failed: ID Mismatch.");
-      // The specific error message was already returned inside the loop if it was a mismatch,
-      // but if we reach here without a lastError and !isIdentityVerified, it means 
-      // the AI returned verified: false but didn't throw an error earlier (edge case).
-      return res.status(403).json({
-        error: "Security Check Failed: The Student ID in your account does not match the ID found in the uploaded document. Please upload the correct transcript."
-      });
-    }
-  }
-
-    // 3. Proceed with Grade Parsing (Only if verified)
-    if (isIdentityVerified) {
+// 3. Proceed with Grade Parsing (Only if verified)
+if (isIdentityVerified) {
         const promptText = `
     You are an academic transcript parser.
     IMPORTANT:
