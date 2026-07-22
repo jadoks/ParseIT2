@@ -897,6 +897,10 @@ const TeacherCourseDetail2 = ({
 
   const [numberOfQuestions, setNumberOfQuestions] = useState<string>('10');
   const [isEditingLesson, setIsEditingLesson] = useState(false);
+  
+  // ✅ NEW: Loading state for Export Grades
+  const [isExportingGrades, setIsExportingGrades] = useState(false);
+
   const [dailyGenerationsUsed, setDailyGenerationsUsed] = useState<number>(0);
   
   // Note: showDeleteLessonModal is kept for internal logic but triggered via toast.confirm now
@@ -2242,11 +2246,14 @@ const TeacherCourseDetail2 = ({
     setTimeout(() => setClassCodeCopied(false), 2000);
   };
 
+  // ✅ UPDATED: Added loading state logic
   const downloadClassGradesExcel = async () => {
     if (!course?.id) {
       toast.show('error', 'No Class', 'No class selected.');
       return;
     }
+    
+    setIsExportingGrades(true);
     try {
       const gameResponse = await fetch(`${API_BASE_URL}/class-game-scores/${course.id}`, {
         credentials: 'include',
@@ -2304,6 +2311,8 @@ const TeacherCourseDetail2 = ({
       toast.show('success', 'Export Successful', 'Excel exported successfully.');
     } catch (error: any) {
       toast.show('error', 'Export Failed', error?.message || 'Failed to export Excel.');
+    } finally {
+      setIsExportingGrades(false);
     }
   };
 
@@ -3736,14 +3745,22 @@ const TeacherCourseDetail2 = ({
             >
               {courseName}
             </Text>
+            {/* ✅ UPDATED: Button with Loading State */}
             <TouchableOpacity
-              style={styles.exportGradesButtonInline}
+              style={[styles.exportGradesButtonInline, isExportingGrades && { opacity: 0.7 }]}
               onPress={downloadClassGradesExcel}
+              disabled={isExportingGrades}
               activeOpacity={0.85}
             >
-              <Ionicons name="download-outline" size={18} color="#FFFFFF" />
+              {isExportingGrades ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <Ionicons name="download-outline" size={18} color="#FFFFFF" />
+              )}
               {!isMobile && (
-                <Text style={styles.exportGradesButtonText}>Export Grades Excel</Text>
+                <Text style={styles.exportGradesButtonText}>
+                  {isExportingGrades ? 'Exporting...' : 'Export Grades Excel'}
+                </Text>
               )}
             </TouchableOpacity>
           </View>

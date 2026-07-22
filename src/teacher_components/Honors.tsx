@@ -1,9 +1,16 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Print from 'expo-print';
-import React, { useState } from 'react';
+import React, {
+  createContext,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+} from 'react';
 import {
-  Alert,
+  ActivityIndicator,
+  Animated,
   Image,
   Linking,
   Modal,
@@ -15,7 +22,7 @@ import {
   TextInput,
   TouchableOpacity,
   View,
-  useWindowDimensions,
+  useWindowDimensions
 } from 'react-native';
 import * as XLSX from 'xlsx';
 
@@ -89,6 +96,313 @@ type DropdownProps = {
   onToggle: () => void;
   isMobile: boolean;
 };
+
+// ─── Toast Context & Types (Shared) ──────────────────────────────────────────
+type ToastType = 'success' | 'error' | 'info' | 'warning';
+
+type ToastItem = {
+  id: string;
+  type: ToastType;
+  title: string;
+  message?: string;
+  duration?: number; // ms
+};
+
+type ToastContextType = {
+  show: (type: ToastType, title: string, message?: string, duration?: number) => void;
+  confirm: (
+    title: string,
+    message: string,
+    onConfirm: () => void,
+    onCancel?: () => void
+  ) => void;
+};
+
+const ToastContext = createContext<ToastContextType | null>(null);
+
+const useToast = () => {
+  const context = useContext(ToastContext);
+  if (!context) throw new Error('useToast must be used within a ToastProvider');
+  return context;
+};
+
+// ─── Toast Components (Shared) ───────────────────────────────────────────────
+const ToastItemComponent = ({
+  item,
+  onClose,
+}: {
+  item: ToastItem;
+  onClose: (id: string) => void;
+}) => {
+  const opacity = useRef(new Animated.Value(0)).current;
+  const translateY = useRef(new Animated.Value(-50)).current;
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(opacity, {
+        toValue: 1,
+        duration: 300,
+        useNativeDriver: false,
+      }),
+      Animated.timing(translateY, {
+        toValue: 0,
+        duration: 300,
+        useNativeDriver: false,
+      }),
+    ]).start();
+
+    const timer = setTimeout(() => {
+      Animated.parallel([
+        Animated.timing(opacity, {
+          toValue: 0,
+          duration: 300,
+          useNativeDriver: false,
+        }),
+        Animated.timing(translateY, {
+          toValue: -50,
+          duration: 300,
+          useNativeDriver: false,
+        }),
+      ]).start(() => onClose(item.id));
+    }, item.duration || 3000);
+
+    return () => clearTimeout(timer);
+  }, []);
+
+  const getIcon = () => {
+    switch (item.type) {
+      case 'success': return 'checkmark-circle';
+      case 'error': return 'close-circle';
+      case 'warning': return 'alert-circle';
+      default: return 'information-circle';
+    }
+  };
+
+  const getColor = () => {
+    switch (item.type) {
+      case 'success': return '#10B981';
+      case 'error': return '#EF4444';
+      case 'warning': return '#F59E0B';
+      default: return '#3B82F6';
+    }
+  };
+
+  return (
+    <Animated.View
+      style={[
+        toastStyles.container,
+        {
+          opacity,
+          transform: [{ translateY }],
+          borderColor: getColor(),
+        },
+      ]}
+    >
+      <View style={toastStyles.iconContainer}>
+        <Ionicons name={getIcon()} size={20} color={getColor()} />
+      </View>
+      <View style={toastStyles.textContainer}>
+        <Text style={toastStyles.title}>{item.title}</Text>
+        {item.message ? <Text style={toastStyles.message}>{item.message}</Text> : null}
+      </View>
+      <TouchableOpacity onPress={() => onClose(item.id)} style={toastStyles.closeButton}>
+        <Ionicons name="close" size={16} color="#9CA3AF" />
+      </TouchableOpacity>
+    </Animated.View>
+  );
+};
+
+const ConfirmationModal = ({
+  visible,
+  title,
+  message,
+  onConfirm,
+  onCancel,
+}: {
+  visible: boolean;
+  title: string;
+  message: string;
+  onConfirm: () => void;
+  onCancel?: () => void;
+}) => {
+  if (!visible) return null;
+  return (
+    <Modal visible={visible} transparent animationType="fade">
+      <View style={confirmStyles.overlay}>
+        <View style={confirmStyles.card}>
+          <Text style={confirmStyles.title}>{title}</Text>
+          <Text style={confirmStyles.message}>{message}</Text>
+          <View style={{ flexDirection: 'row', gap: 10 }}>
+            <TouchableOpacity style={confirmStyles.cancelBtn} onPress={() => { onCancel?.(); }}>
+              <Text style={confirmStyles.cancelBtnText}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={confirmStyles.confirmBtn} onPress={onConfirm}>
+              <Text style={confirmStyles.confirmBtnText}>Confirm</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+};
+
+const ToastProvider = ({ children }: { children: React.ReactNode }) => {
+  const [toasts, setToasts] = useState<ToastItem[]>([]);
+  const [confirmation, setConfirmation] = useState<{
+    visible: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+    onCancel?: () => void;
+  } | null>(null);
+
+  const show = (type: ToastType, title: string, message?: string, duration?: number) => {
+    const id = Math.random().toString(36).substr(2, 9);
+    setToasts((prev) => [...prev, { id, type, title, message, duration }]);
+  };
+
+  const confirm = (
+    title: string,
+    message: string,
+    onConfirm: () => void,
+    onCancel?: () => void
+  ) => {
+    setConfirmation({ visible: true, title, message, onConfirm, onCancel });
+  };
+
+  const removeToast = (id: string) => {
+    setToasts((prev) => prev.filter((t) => t.id !== id));
+  };
+
+  const closeConfirmation = () => {
+    setConfirmation(null);
+  };
+
+  return (
+    <ToastContext.Provider value={{ show, confirm }}>
+      {children}
+      <View style={toastStyles.toastContainer}>
+        {toasts.map((toast) => (
+          <ToastItemComponent key={toast.id} item={toast} onClose={removeToast} />
+        ))}
+      </View>
+      {confirmation && (
+        <ConfirmationModal
+          visible={confirmation.visible}
+          title={confirmation.title}
+          message={confirmation.message}
+          onConfirm={() => {
+            confirmation.onConfirm();
+            closeConfirmation();
+          }}
+          onCancel={() => {
+            confirmation.onCancel?.();
+            closeConfirmation();
+          }}
+        />
+      )}
+    </ToastContext.Provider>
+  );
+};
+
+const toastStyles = StyleSheet.create({
+  toastContainer: {
+    position: 'absolute',
+    top: Platform.OS === 'web' ? 20 : 50,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    zIndex: 10000,
+    pointerEvents: 'box-none',
+  },
+  container: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFF',
+    borderRadius: 12,
+    padding: 12,
+    marginHorizontal: 16,
+    marginBottom: 8,
+    shadowColor: '#000',
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 4,
+    borderWidth: 1,
+    minWidth: 300,
+    maxWidth: 400,
+  },
+  iconContainer: {
+    marginRight: 12,
+  },
+  textContainer: {
+    flex: 1,
+  },
+  title: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#111827',
+  },
+  message: {
+    fontSize: 12,
+    color: '#6B7280',
+    marginTop: 2,
+  },
+  closeButton: {
+    padding: 4,
+    marginLeft: 8,
+  },
+});
+
+const confirmStyles = StyleSheet.create({
+  overlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    padding: 20,
+  },
+  card: {
+    width: 330,
+    backgroundColor: '#FFF',
+    borderRadius: 18,
+    padding: 20,
+  },
+  title: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#B71C1C',
+    textAlign: 'center',
+    marginBottom: 10,
+  },
+  message: {
+    fontSize: 14,
+    color: '#555',
+    textAlign: 'center',
+    lineHeight: 22,
+    marginBottom: 20,
+  },
+  cancelBtn: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: '#B71C1C',
+    minHeight: 46,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FFF',
+  },
+  cancelBtnText: { color: '#B71C1C', fontWeight: '800' },
+  confirmBtn: {
+    flex: 1,
+    backgroundColor: '#B71C1C',
+    minHeight: 46,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  confirmBtnText: { color: '#FFF', fontWeight: '800' },
+});
 
 function CustomDropdown({
   value,
@@ -172,6 +486,7 @@ function HonorRollPreviewModal({
   isMobile,
 }: PreviewProps) {
   const { height } = useWindowDimensions();
+  const toast = useToast();
 
   const mobileCardMaxHeight = Math.min(height * 0.68, 760);
   const mobileContentMaxHeight = Math.min(height * 0.56, 620);
@@ -186,7 +501,7 @@ function HonorRollPreviewModal({
     if (supported) {
       Linking.openURL(generatedLink);
     } else {
-      Alert.alert('Link Generated', generatedLink);
+      toast.show('info', 'Link Generated', generatedLink);
     }
   };
 
@@ -336,7 +651,8 @@ function HonorRollPreviewModal({
 }
 
 // UPDATED: Accept apiBaseUrl as a prop
-export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
+function HonorsScreenInner({ apiBaseUrl }: { apiBaseUrl: string }) {
+  const toast = useToast();
   const { width } = useWindowDimensions();
   const isMobile = width < 768;
 
@@ -351,6 +667,8 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
   const [generatedSections, setGeneratedSections] = useState<GeneratedSection[]>([]);
   const [openDropdown, setOpenDropdown] = useState<DropdownName | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
+  // NEW: Loading state for Download Excel button
+  const [isExportingExcel, setIsExportingExcel] = useState(false);
 
   const adviser = 'Tristan Mondisico';
 
@@ -359,7 +677,7 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
     const parsedStartYear = Number(normalizedStartYear);
 
     if (!Number.isInteger(parsedStartYear) || normalizedStartYear.length !== 4) {
-      Alert.alert('Invalid Start Year', 'Please enter a valid 4-digit start year. Example: 2025');
+      toast.show('error', 'Invalid Start Year', 'Please enter a valid 4-digit start year. Example: 2025');
       return;
     }
 
@@ -429,10 +747,10 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
       setOpenDropdown(null);
 
       if (rankedSections.length === 0) {
-        Alert.alert('No Results', `No honor roll students found for ${buildSchoolYear(normalizedStartYear)} - ${semester}.`);
+        toast.show('info', 'No Results', `No honor roll students found for ${buildSchoolYear(normalizedStartYear)} - ${semester}.`);
       }
     } catch (error: any) {
-      Alert.alert('Generate Failed', error?.message || 'Unable to generate honor roll.');
+      toast.show('error', 'Generate Failed', error?.message || 'Unable to generate honor roll.');
     } finally {
       setIsGenerating(false);
     }
@@ -841,7 +1159,7 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
 
   const downloadHonorPdf = async () => {
     if (generatedSections.length === 0) {
-      Alert.alert('No Honor List', 'Please generate the honor list first.');
+      toast.show('error', 'No Honor List', 'Please generate the honor list first.');
       return;
     }
 
@@ -865,7 +1183,7 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
         const permissions = await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync();
 
         if (!permissions.granted) {
-          Alert.alert('Cancelled', 'No folder selected.');
+          toast.show('info', 'Cancelled', 'No folder selected.');
           return;
         }
 
@@ -883,7 +1201,7 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
           encoding: FileSystem.EncodingType.Base64,
         });
 
-        Alert.alert('Downloaded', 'Honor list PDF saved successfully.');
+        toast.show('success', 'Downloaded', 'Honor list PDF saved successfully.');
         return;
       }
 
@@ -894,166 +1212,168 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
         to: savedUri,
       });
 
-      Alert.alert('Downloaded', `Honor list PDF saved successfully.\n${savedUri}`);
+      toast.show('success', 'Downloaded', `Honor list PDF saved successfully.\n${savedUri}`);
     } catch (error: any) {
-      Alert.alert('Download Failed', error?.message || 'Unable to save the PDF file.');
+      toast.show('error', 'Download Failed', error?.message || 'Unable to save the PDF file.');
     }
   };
 
   const downloadHonorExcel = async () => {
     if (generatedSections.length === 0) {
-      Alert.alert('No Honor List', 'Please generate the honor list first.');
+      toast.show('error', 'No Honor List', 'Please generate the honor list first.');
       return;
     }
 
-    const safeSchoolYear = sanitizeFileName(schoolYear.replace(/S\.?Y\.?/gi, '').trim());
-    const safeSemester = sanitizeFileName(semester);
-    const fileName = `honor-list-${safeSchoolYear}-${safeSemester}-${getExportTimestamp()}.xlsx`;
+    setIsExportingExcel(true);
+    try {
+      const safeSchoolYear = sanitizeFileName(schoolYear.replace(/S\.?Y\.?/gi, '').trim());
+      const safeSemester = sanitizeFileName(semester);
+      const fileName = `honor-list-${safeSchoolYear}-${safeSemester}-${getExportTimestamp()}.xlsx`;
 
-    const workbook = XLSX.utils.book_new();
+      const workbook = XLSX.utils.book_new();
 
-    const infoRows = [
-      ['Report', 'Honor List'],
-      ['Academic Year', schoolYear || 'S.Y ---- - ----'],
-      ['Semester', semester],
-      ['Total Sections', generatedSections.length],
-      [
-        'Total Honor Students',
-        generatedSections.reduce((total, section) => total + section.students.length, 0),
-      ],
-      ['Exported At', new Date().toLocaleString()],
-    ];
+      const infoRows = [
+        ['Report', 'Honor List'],
+        ['Academic Year', schoolYear || 'S.Y ---- - ----'],
+        ['Semester', semester],
+        ['Total Sections', generatedSections.length],
+        [
+          'Total Honor Students',
+          generatedSections.reduce((total, section) => total + section.students.length, 0),
+        ],
+        ['Exported At', new Date().toLocaleString()],
+      ];
 
-    const infoSheet = XLSX.utils.aoa_to_sheet(infoRows);
-    infoSheet['!cols'] = [{ wch: 22 }, { wch: 40 }];
-    XLSX.utils.book_append_sheet(workbook, infoSheet, 'Honor Info');
+      const infoSheet = XLSX.utils.aoa_to_sheet(infoRows);
+      infoSheet['!cols'] = [{ wch: 22 }, { wch: 40 }];
+      XLSX.utils.book_append_sheet(workbook, infoSheet, 'Honor Info');
 
-    const summaryRows = generatedSections.map((section, index) => ({
-      No: index + 1,
-      'Year Level': section.yearLevel,
-      Section: section.sectionName,
-      'Honor Students': section.students.length,
-      'Academic Year': schoolYear || 'S.Y ---- - ----',
-      Semester: semester,
-    }));
-
-    const summarySheet = XLSX.utils.json_to_sheet(summaryRows);
-    summarySheet['!cols'] = [
-      { wch: 6 },
-      { wch: 18 },
-      { wch: 18 },
-      { wch: 16 },
-      { wch: 22 },
-      { wch: 18 },
-    ];
-    XLSX.utils.book_append_sheet(workbook, summarySheet, 'Section Summary');
-
-    const honorRows = generatedSections.flatMap((section) =>
-      section.students.map((student, index) => ({
-        Rank: index + 1,
-        'Student ID': student.id,
-        'Student Name': student.name,
-        GWA: student.gpa,
-        Section: section.sectionName,
+      const summaryRows = generatedSections.map((section, index) => ({
+        No: index + 1,
         'Year Level': section.yearLevel,
+        Section: section.sectionName,
+        'Honor Students': section.students.length,
         'Academic Year': schoolYear || 'S.Y ---- - ----',
         Semester: semester,
-      }))
-    );
-
-    const honorSheet = XLSX.utils.json_to_sheet(honorRows);
-    honorSheet['!cols'] = [
-      { wch: 8 },
-      { wch: 18 },
-      { wch: 32 },
-      { wch: 10 },
-      { wch: 18 },
-      { wch: 18 },
-      { wch: 22 },
-      { wch: 18 },
-    ];
-    XLSX.utils.book_append_sheet(workbook, honorSheet, 'Honor List');
-
-    const courseGradeRows: any[] = generatedSections.flatMap((section) =>
-      section.students.flatMap((student) => {
-        if (Array.isArray(student.grades) && student.grades.length > 0) {
-          return student.grades.map((grade) => ({
-            'Student ID': student.id,
-            'Student Name': student.name,
-            GWA: student.gpa,
-            Section: section.sectionName,
-            'Year Level': section.yearLevel,
-            'Course Code': grade.courseCode,
-            'Course Name': grade.courseName,
-            Units: Number(grade.units || 0),
-            Grade: Number(grade.grade || 0),
-          }));
-        }
-
-        return [
-          {
-            'Student ID': student.id,
-            'Student Name': student.name,
-            GWA: student.gpa,
-            Section: section.sectionName,
-            'Year Level': section.yearLevel,
-            'Course Code': '',
-            'Course Name': '',
-            Units: 0,
-            Grade: 0,
-          },
-        ];
-      })
-    );
-
-    const courseGradeSheet = XLSX.utils.json_to_sheet(courseGradeRows);
-    courseGradeSheet['!cols'] = [
-      { wch: 18 },
-      { wch: 32 },
-      { wch: 10 },
-      { wch: 18 },
-      { wch: 18 },
-      { wch: 16 },
-      { wch: 34 },
-      { wch: 10 },
-      { wch: 10 },
-    ];
-    XLSX.utils.book_append_sheet(workbook, courseGradeSheet, 'Course Grades');
-
-    generatedSections.forEach((section, sectionIndex) => {
-      const sectionRows = section.students.map((student, index) => ({
-        Rank: index + 1,
-        'Student ID': student.id,
-        'Student Name': student.name,
-        GWA: student.gpa,
-        Section: section.sectionName,
-        'Year Level': section.yearLevel,
       }));
 
-      const sectionSheet = XLSX.utils.json_to_sheet(sectionRows);
-      sectionSheet['!cols'] = [
+      const summarySheet = XLSX.utils.json_to_sheet(summaryRows);
+      summarySheet['!cols'] = [
+        { wch: 6 },
+        { wch: 18 },
+        { wch: 18 },
+        { wch: 16 },
+        { wch: 22 },
+        { wch: 18 },
+      ];
+      XLSX.utils.book_append_sheet(workbook, summarySheet, 'Section Summary');
+
+      const honorRows = generatedSections.flatMap((section) =>
+        section.students.map((student, index) => ({
+          Rank: index + 1,
+          'Student ID': student.id,
+          'Student Name': student.name,
+          GWA: student.gpa,
+          Section: section.sectionName,
+          'Year Level': section.yearLevel,
+          'Academic Year': schoolYear || 'S.Y ---- - ----',
+          Semester: semester,
+        }))
+      );
+
+      const honorSheet = XLSX.utils.json_to_sheet(honorRows);
+      honorSheet['!cols'] = [
         { wch: 8 },
         { wch: 18 },
         { wch: 32 },
         { wch: 10 },
         { wch: 18 },
         { wch: 18 },
+        { wch: 22 },
+        { wch: 18 },
       ];
+      XLSX.utils.book_append_sheet(workbook, honorSheet, 'Honor List');
 
-      const safeSheetName = sanitizeFileName(
-        `${section.yearLevel}-${section.sectionName}`
-      ).slice(0, 24) || `Section-${sectionIndex + 1}`;
+      const courseGradeRows: any[] = generatedSections.flatMap((section) =>
+        section.students.flatMap((student) => {
+          if (Array.isArray(student.grades) && student.grades.length > 0) {
+            return student.grades.map((grade) => ({
+              'Student ID': student.id,
+              'Student Name': student.name,
+              GWA: student.gpa,
+              Section: section.sectionName,
+              'Year Level': section.yearLevel,
+              'Course Code': grade.courseCode,
+              'Course Name': grade.courseName,
+              Units: Number(grade.units || 0),
+              Grade: Number(grade.grade || 0),
+            }));
+          }
 
-      XLSX.utils.book_append_sheet(
-        workbook,
-        sectionSheet,
-        safeSheetName || `Section-${sectionIndex + 1}`
+          return [
+            {
+              'Student ID': student.id,
+              'Student Name': student.name,
+              GWA: student.gpa,
+              Section: section.sectionName,
+              'Year Level': section.yearLevel,
+              'Course Code': '',
+              'Course Name': '',
+              Units: 0,
+              Grade: 0,
+            },
+          ];
+        })
       );
-    });
 
-    try {
+      const courseGradeSheet = XLSX.utils.json_to_sheet(courseGradeRows);
+      courseGradeSheet['!cols'] = [
+        { wch: 18 },
+        { wch: 32 },
+        { wch: 10 },
+        { wch: 18 },
+        { wch: 18 },
+        { wch: 16 },
+        { wch: 34 },
+        { wch: 10 },
+        { wch: 10 },
+      ];
+      XLSX.utils.book_append_sheet(workbook, courseGradeSheet, 'Course Grades');
+
+      generatedSections.forEach((section, sectionIndex) => {
+        const sectionRows = section.students.map((student, index) => ({
+          Rank: index + 1,
+          'Student ID': student.id,
+          'Student Name': student.name,
+          GWA: student.gpa,
+          Section: section.sectionName,
+          'Year Level': section.yearLevel,
+        }));
+
+        const sectionSheet = XLSX.utils.json_to_sheet(sectionRows);
+        sectionSheet['!cols'] = [
+          { wch: 8 },
+          { wch: 18 },
+          { wch: 32 },
+          { wch: 10 },
+          { wch: 18 },
+          { wch: 18 },
+        ];
+
+        const safeSheetName = sanitizeFileName(
+          `${section.yearLevel}-${section.sectionName}`
+        ).slice(0, 24) || `Section-${sectionIndex + 1}`;
+
+        XLSX.utils.book_append_sheet(
+          workbook,
+          sectionSheet,
+          safeSheetName || `Section-${sectionIndex + 1}`
+        );
+      });
+
       if (Platform.OS === 'web') {
         XLSX.writeFile(workbook, fileName);
+        toast.show('success', 'Downloaded', 'Honor list Excel file downloaded successfully.');
         return;
       }
 
@@ -1066,7 +1386,7 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
         const permissions = await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync();
 
         if (!permissions.granted) {
-          Alert.alert('Cancelled', 'No folder selected.');
+          toast.show('info', 'Cancelled', 'No folder selected.');
           return;
         }
 
@@ -1080,7 +1400,7 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
           encoding: FileSystem.EncodingType.Base64,
         });
 
-        Alert.alert('Downloaded', 'Honor list Excel file saved successfully.');
+        toast.show('success', 'Downloaded', 'Honor list Excel file saved successfully.');
         return;
       }
 
@@ -1090,9 +1410,11 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
         encoding: FileSystem.EncodingType.Base64,
       });
 
-      Alert.alert('Downloaded', `Honor list Excel file saved successfully.\n${savedUri}`);
+      toast.show('success', 'Downloaded', `Honor list Excel file saved successfully.\n${savedUri}`);
     } catch (error: any) {
-      Alert.alert('Download Failed', error?.message || 'Unable to save the Excel file.');
+      toast.show('error', 'Download Failed', error?.message || 'Unable to save the Excel file.');
+    } finally {
+      setIsExportingExcel(false);
     }
   };
 
@@ -1110,14 +1432,20 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
             style={[
               styles.exportHonorBtn,
               isMobile && styles.exportHonorBtnMobile,
-              generatedSections.length === 0 && styles.exportHonorBtnDisabled,
+              (generatedSections.length === 0 || isExportingExcel) && styles.exportHonorBtnDisabled,
             ]}
             onPress={downloadHonorExcel}
-            disabled={generatedSections.length === 0}
+            disabled={generatedSections.length === 0 || isExportingExcel}
             activeOpacity={0.85}
           >
-            <Ionicons name="download-outline" size={18} color="#FFFFFF" />
-            <Text style={styles.exportHonorBtnText}>Download Excel</Text>
+            {isExportingExcel ? (
+              <ActivityIndicator size="small" color="#FFFFFF" />
+            ) : (
+              <Ionicons name="download-outline" size={18} color="#FFFFFF" />
+            )}
+            <Text style={styles.exportHonorBtnText}>
+              {isExportingExcel ? 'Exporting...' : 'Download Excel'}
+            </Text>
           </TouchableOpacity>
         </View>
 
@@ -1285,6 +1613,15 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
 
       </ScrollView>
     </SafeAreaView>
+  );
+}
+
+// Wrap the main component with the shared ToastProvider
+export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
+  return (
+    <ToastProvider>
+      <HonorsScreenInner apiBaseUrl={apiBaseUrl} />
+    </ToastProvider>
   );
 }
 
