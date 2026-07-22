@@ -1231,13 +1231,33 @@ const handleDownloadPreview = async () => {
     );
   };
 
+  // ✅ UPDATED: renderGradePanel now includes real-time score validation
+  // - Input is clamped so a teacher physically can't type past the max
+  // - Save button is disabled whenever the draft score is invalid (empty, negative, non-numeric, or over max)
+  // - An inline red warning shows under the input in addition to the existing Alert-based check in handleSaveScore
   const renderGradePanel = (student: Member) => {
     const status = getStudentSubmissionStatus(student.id);
     const currentScore = getStudentScore(student.id);
     const scoreDraft = scoreDrafts[student.id] ?? String(currentScore ?? "");
-    
+
     const canGrade = status === "submitted" || status === "late" || status === "graded";
     const isSaving = savingSubmissionId === student.id;
+
+    // ✅ NEW: Real-time validation of the typed score against the max
+    const numericDraft = Number(scoreDraft);
+    const isDraftValid =
+      scoreDraft.trim() !== "" &&
+      Number.isFinite(numericDraft) &&
+      numericDraft >= 0 &&
+      (totalScoreValue <= 0 || numericDraft <= totalScoreValue);
+
+    const showExceedsError =
+      scoreDraft.trim() !== "" &&
+      Number.isFinite(numericDraft) &&
+      totalScoreValue > 0 &&
+      numericDraft > totalScoreValue;
+
+    const isSaveDisabled = !canGrade || isSaving || !isDraftValid;
 
     return (
       <View style={styles.gradePanel}>
@@ -1248,12 +1268,24 @@ const handleDownloadPreview = async () => {
 
         <View style={styles.scoreRow}>
           <TextInput
-            style={[styles.scoreInput, !canGrade && styles.inputDisabled]}
+            style={[
+              styles.scoreInput,
+              !canGrade && styles.inputDisabled,
+              showExceedsError && styles.scoreInputError, // ✅ NEW: red border when over the max
+            ]}
             value={scoreDraft}
             onChangeText={(value) => {
+              let cleaned = value.replace(/[^0-9.]/g, "");
+
+              // ✅ NEW: hard-clamp so the teacher physically can't type past the max
+              const numeric = Number(cleaned);
+              if (totalScoreValue > 0 && Number.isFinite(numeric) && numeric > totalScoreValue) {
+                cleaned = String(totalScoreValue);
+              }
+
               setScoreDrafts((prev) => ({
                 ...prev,
-                [student.id]: value.replace(/[^0-9.]/g, ""),
+                [student.id]: cleaned,
               }));
             }}
             editable={canGrade && !isSaving}
@@ -1265,9 +1297,16 @@ const handleDownloadPreview = async () => {
           <Text style={styles.maxScoreText}>/ {totalScoreValue}</Text>
         </View>
 
+        {/* ✅ NEW: Inline error message shown as soon as the score exceeds the max */}
+        {showExceedsError && (
+          <Text style={styles.scoreErrorText}>
+            Score cannot exceed {totalScoreValue} points.
+          </Text>
+        )}
+
         <TouchableOpacity
-          style={[styles.saveScoreButton, (!canGrade || isSaving) && styles.disabledButton]}
-          disabled={!canGrade || isSaving}
+          style={[styles.saveScoreButton, isSaveDisabled && styles.disabledButton]}
+          disabled={isSaveDisabled}
           onPress={() => handleSaveScore(student.id)}
           activeOpacity={0.85}
           accessibilityRole="button"
@@ -2072,6 +2111,18 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     color: "#111827",
     minHeight: 48,
+  },
+  // ✅ NEW: red border shown on the score input when the draft exceeds the max
+  scoreInputError: {
+    borderColor: "#EF4444",
+    borderWidth: 1.5,
+  },
+  // ✅ NEW: inline error text shown under the score input
+  scoreErrorText: {
+    color: "#EF4444",
+    fontSize: 12,
+    fontWeight: "600",
+    marginTop: 6,
   },
   inputDisabled: { backgroundColor: "#F3F4F6", color: "#9CA3AF", borderColor: "#E5E7EB" },
   maxScoreText: { color: "#6B7280", fontWeight: "700", fontSize: 16 },

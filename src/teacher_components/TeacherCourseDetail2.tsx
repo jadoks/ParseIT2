@@ -3,10 +3,10 @@ import Constants from 'expo-constants';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
+  Animated,
   Linking,
   Modal,
   Platform,
@@ -25,11 +25,13 @@ import * as XLSX from 'xlsx';
 import TeacherAssignmentSection from './TeacherAssignmentSection';
 import TeacherMaterialSection from './TeacherMaterialSection';
 import TeacherSubmissionsSection from './TeacherSubmissionsSection';
+
 // ─── Optional WebView ────────────────────────────────────────────────────────
 let WebView: any = null;
 try {
   WebView = require('react-native-webview').WebView;
 } catch (_) {}
+
 // ─── Types ─────────────────────────────────────────────────────────────────
 export type Assignment = {
   id: string;
@@ -52,6 +54,7 @@ export type Assignment = {
   timeLimit?: string;
   customTimeLimit?: string;
 };
+
 export type Material = {
   id: string;
   title: string;
@@ -66,11 +69,13 @@ export type Material = {
   pdfUrl?: string | null;
   pdfStoragePath?: string | null;
 };
+
 export type Member = {
   id: string;
   name: string;
   handle: string;
 };
+
 export type Submission = {
   id: string;
   assignmentId: string;
@@ -83,10 +88,11 @@ export type Submission = {
   fileUrl?: string;
   fileType?: string;
   feedback?: string;
-  linkUrls?: string[]; 
-  storagePath?: string | null;   // ✅ add
-  bucketPath?: string | null;  
+  linkUrls?: string[];
+  storagePath?: string | null;
+  bucketPath?: string | null;
 };
+
 export type CourseDetailData = {
   id: string;
   name: string;
@@ -99,6 +105,7 @@ export type CourseDetailData = {
   semester?: string;
   schoolYear?: string | null;
 };
+
 type SignedInTeacher = {
   teacherId?: string;
   authUid?: string | null;
@@ -108,6 +115,7 @@ type SignedInTeacher = {
   profileImage?: any;
   bannerImage?: any;
 };
+
 type PickedUploadFile = {
   name?: string;
   uri?: string;
@@ -115,6 +123,7 @@ type PickedUploadFile = {
   base64?: string;
   file?: File;
 } | null;
+
 type FormErrors = {
   title?: string;
   instruction?: string;
@@ -129,28 +138,56 @@ type FormErrors = {
   timeLimit?: string;
   customTimeLimit?: string;
 };
+
+// ─── Toast Context & Types ───────────────────────────────────────────────────
+type ToastType = 'success' | 'error' | 'info' | 'warning';
+
+type ToastItem = {
+  id: string;
+  type: ToastType;
+  title: string;
+  message?: string;
+  duration?: number; // ms
+};
+
+type ToastContextType = {
+  show: (type: ToastType, title: string, message?: string, duration?: number) => void;
+  confirm: (
+    title: string,
+    message: string,
+    onConfirm: () => void,
+    onCancel?: () => void
+  ) => void;
+};
+
+const ToastContext = createContext<ToastContextType | null>(null);
+
+const useToast = () => {
+  const context = useContext(ToastContext);
+  if (!context) throw new Error('useToast must be used within a ToastProvider');
+  return context;
+};
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 function getApiBaseUrl() {
   if (Platform.OS === 'web') {
     return process.env.EXPO_PUBLIC_API_URL!;
   }
-
   const possibleHost =
     Constants.expoConfig?.hostUri ||
     Constants.manifest2?.extra?.expoGo?.debuggerHost ||
     '';
-
   const host = possibleHost.split(':')[0];
-
   if (host) {
     return `http://${host}:5000`;
   }
-
   return 'http://192.168.1.5:5000';
 }
+
 const API_BASE_URL = getApiBaseUrl();
 const WEEKDAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const pad = (value: number) => String(value).padStart(2, '0');
+
 const formatDateTime = (value?: any) => {
   if (!value) return '';
   if (typeof value === 'string') return value;
@@ -158,46 +195,44 @@ const formatDateTime = (value?: any) => {
   if (value?.seconds) return new Date(value.seconds * 1000).toLocaleString();
   return '';
 };
+
 const formatSyllabusDate = (value: any): string => {
   if (!value) return 'Recently';
-  // If it's already a valid date string
   if (typeof value === 'string') {
     const d = new Date(value);
     return Number.isNaN(d.getTime()) ? 'Recently' : d.toLocaleDateString();
   }
-  // If it's a Firebase Timestamp object (Client SDK)
   if (typeof value?.toDate === 'function') {
     return value.toDate().toLocaleDateString();
   }
-  // If it's a Firebase Timestamp object (Raw JSON from REST API)
   if (value?._seconds) {
     return new Date(value._seconds * 1000).toLocaleDateString();
   }
-  // If it's a plain object with seconds (common in some serializations)
   if (value?.seconds) {
-    // Check if it's milliseconds (large number) or seconds (smaller number)
-    // Firebase seconds are usually ~10 digits. Milliseconds are ~13 digits.
     const multiplier = value.seconds > 10000000000 ? 1 : 1000;
     return new Date(value.seconds * multiplier).toLocaleDateString();
   }
-  // If it's a Unix timestamp in milliseconds (number)
   if (typeof value === 'number') {
     return new Date(value).toLocaleDateString();
   }
   return 'Recently';
 };
+
 const formatDateOnly = (value?: Date | null) => {
   if (!value) return '';
   return `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(value.getDate())}`;
 };
+
 const formatTimeOnly = (value?: Date | null) => {
   if (!value) return '';
   return `${pad(value.getHours())}:${pad(value.getMinutes())}`;
 };
+
 const formatDueDateTime = (value?: Date | null) => {
   if (!value) return '';
   return `${formatDateOnly(value)} ${formatTimeOnly(value)}`;
 };
+
 const parseDueDateTime = (value?: string) => {
   if (!value?.trim()) return new Date();
   const normalized = value.trim().replace(' ', 'T');
@@ -214,6 +249,7 @@ const parseDueDateTime = (value?: string) => {
     );
   return new Date();
 };
+
 const isSameDate = (a?: Date | null, b?: Date | null) => {
   if (!a || !b) return false;
   return (
@@ -222,56 +258,61 @@ const isSameDate = (a?: Date | null, b?: Date | null) => {
     a.getDate() === b.getDate()
   );
 };
+
 const startOfToday = () => {
   const now = new Date();
   return new Date(now.getFullYear(), now.getMonth(), now.getDate());
 };
+
 const isPastDay = (date: Date) => date.getTime() < startOfToday().getTime();
+
 const getCalendarDays = (visibleMonth: Date) => {
   const year = visibleMonth.getFullYear();
   const month = visibleMonth.getMonth();
   const firstDay = new Date(year, month, 1);
   const startOffset = firstDay.getDay();
   const days: Array<{ key: string; date: Date; inCurrentMonth: boolean }> = [];
+
   for (let i = startOffset; i > 0; i -= 1) {
     const date = new Date(year, month, 1 - i);
     days.push({ key: `prev-${date.toISOString()}`, date, inCurrentMonth: false });
   }
+
   const lastDay = new Date(year, month + 1, 0).getDate();
   for (let day = 1; day <= lastDay; day += 1) {
     const date = new Date(year, month, day);
     days.push({ key: `curr-${date.toISOString()}`, date, inCurrentMonth: true });
   }
+
   let nextDay = 1;
   while (days.length % 7 !== 0) {
     const date = new Date(year, month + 1, nextDay);
     days.push({ key: `next-${date.toISOString()}`, date, inCurrentMonth: false });
     nextDay += 1;
   }
+
   return days;
 };
+
 const monthLabel = (value: Date) =>
   value.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
-// ─── Game Question Generation Limits (per teacher, across ALL classes) ─────
-const DAILY_GENERATION_LIMIT = 30;       // generations/day
-const MAX_QUESTIONS_PER_GENERATION = 45; // questions per generation
 
+// ─── Game Question Generation Limits ────────────────────────────────────────
+const DAILY_GENERATION_LIMIT = 30;
+const MAX_QUESTIONS_PER_GENERATION = 45;
 const GENERATION_USAGE_KEY = 'teacher_question_gen_usage_v1';
+
 const getTodayDateKey = () => {
   const d = new Date();
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 };
 
-// Shape: { [teacherIdentity]: { date: 'YYYY-MM-DD', count: number } }
 type GenerationUsageMap = Record<string, { date: string; count: number }>;
 
 const readGenerationUsage = async (): Promise<GenerationUsageMap> => {
   try {
     if (Platform.OS === 'web') {
-      const raw =
-        typeof window !== 'undefined'
-          ? window.localStorage?.getItem(GENERATION_USAGE_KEY)
-          : null;
+      const raw = typeof window !== 'undefined' ? window.localStorage?.getItem(GENERATION_USAGE_KEY) : null;
       return raw ? JSON.parse(raw) : {};
     }
     const path = `${FileSystem.documentDirectory}${GENERATION_USAGE_KEY}.json`;
@@ -299,9 +340,6 @@ const writeGenerationUsage = async (data: GenerationUsageMap) => {
   }
 };
 
-// Returns today's count for this teacher, auto-resetting if stored date != today.
-// Keyed by teacherIdentity ONLY (not classId), so the cap is shared across
-// every class/course the teacher generates game questions for.
 const getTodayUsageForTeacher = async (
   teacherKey: string
 ): Promise<{ usageMap: GenerationUsageMap; count: number }> => {
@@ -311,11 +349,10 @@ const getTodayUsageForTeacher = async (
   const count = entry && entry.date === todayKey ? entry.count : 0;
   return { usageMap, count };
 };
+
 const mapMaterial = (item: any): Material => {
   const fileName = item.fileName || undefined;
-  const fileType =
-    item.fileType ||
-    (fileName ? getMimeFromFileName(fileName) : undefined);
+  const fileType = item.fileType || (fileName ? getMimeFromFileName(fileName) : undefined);
   return {
     id: item.id,
     title: item.title || '',
@@ -331,6 +368,7 @@ const mapMaterial = (item: any): Material => {
     pdfStoragePath: item.pdfStoragePath || null,
   };
 };
+
 const mapAssignment = (item: any): Assignment => ({
   id: item.id,
   header: item.header || '',
@@ -352,28 +390,28 @@ const mapAssignment = (item: any): Assignment => ({
   customTimeLimit: item.customTimeLimit,
   questions: item.questions || [],
 });
+
 const mapMember = (item: any): Member => ({
   id: item.userId || item.id || '',
   name: item.name || '',
   handle: item.email ? `@${String(item.email).split('@')[0]}` : '@member',
 });
+
 const mapSubmission = (item: any): Submission => ({
   id: item.id,
   assignmentId: item.assignmentId || '',
   studentId: item.studentId || '',
   studentName: item.studentName || '',
   status:
-    item.status === 'submitted' ||
-    item.status === 'graded' ||
-    item.status === 'late'
+    item.status === 'submitted' || item.status === 'graded' || item.status === 'late'
       ? item.status
       : 'pending',
   score:
     typeof item.score === 'number'
       ? item.score
       : item.score === null
-        ? undefined
-        : Number(item.score),
+      ? undefined
+      : Number(item.score),
   submittedAt: formatDateTime(item.submittedAt),
   fileName: item.fileName || undefined,
   fileUrl: item.fileUrl || undefined,
@@ -382,12 +420,13 @@ const mapSubmission = (item: any): Submission => ({
   linkUrls: Array.isArray(item.linkUrls)
     ? item.linkUrls
     : item.linkUrl
-      ? [item.linkUrl] // fallback for legacy single-link field
-      : [],
-       storagePath: item.storagePath || null,   // ✅ add
-  bucketPath: item.bucketPath || null, 
+    ? [item.linkUrl]
+    : [],
+  storagePath: item.storagePath || null,
+  bucketPath: item.bucketPath || null,
 });
-// ─── Viewer URL helpers (mirrors CourseDetail.tsx) ────────────────────────────
+
+// ─── Viewer URL helpers ─────────────────────────────────────────────────────
 function getMimeFromFileName(fileName: string): string {
   const ext = fileName.split('.').pop()?.toLowerCase() || '';
   const map: Record<string, string> = {
@@ -410,6 +449,7 @@ function getMimeFromFileName(fileName: string): string {
   };
   return map[ext] || 'application/octet-stream';
 }
+
 function isPresentationFile(fileName?: string | null, fileType?: string | null): boolean {
   const ext = (fileName || '').split('.').pop()?.toLowerCase() || '';
   const mime = (fileType || '').toLowerCase();
@@ -417,16 +457,18 @@ function isPresentationFile(fileName?: string | null, fileType?: string | null):
     ext === 'ppt' ||
     ext === 'pptx' ||
     mime === 'application/vnd.ms-powerpoint' ||
-    mime ===
-    'application/vnd.openxmlformats-officedocument.presentationml.presentation'
+    mime === 'application/vnd.openxmlformats-officedocument.presentationml.presentation'
   );
 }
+
 function getGoogleDocsViewerUrl(fileUrl: string) {
   return `https://docs.google.com/gview?embedded=true&url=${encodeURIComponent(fileUrl)}`;
 }
+
 function getMicrosoftOfficeViewerUrl(fileUrl: string) {
   return `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(fileUrl)}`;
 }
+
 function getViewerUrl(
   fileUrl: string,
   fileName?: string | null,
@@ -435,6 +477,7 @@ function getViewerUrl(
 ): string {
   return getGoogleDocsViewerUrl(fileUrl);
 }
+
 const renderFormattedText = (text: string, baseStyle: any) => {
   if (!text) return null;
   const lines = text.split("\n");
@@ -447,17 +490,18 @@ const renderFormattedText = (text: string, baseStyle: any) => {
       fontSize: 14,
     },
   ];
+
   return lines.map((line, lineIndex) => {
     const trimmedLine = line.trim();
-    // Empty line spacing
     if (!trimmedLine) {
       return <View key={lineIndex} style={{ height: 8 }} />;
     }
-    // Detect bullets
+
     const isBullet =
       trimmedLine.startsWith("* ") ||
       trimmedLine.startsWith("- ") ||
       trimmedLine.startsWith("• ");
+    
     let contentToParse = trimmedLine;
     if (trimmedLine.startsWith("* ")) {
       contentToParse = trimmedLine.substring(2).trim();
@@ -466,83 +510,40 @@ const renderFormattedText = (text: string, baseStyle: any) => {
     } else if (trimmedLine.startsWith("• ")) {
       contentToParse = trimmedLine.substring(2).trim();
     }
-    // Count markdown bold markers
+
     const boldMarkers = contentToParse.match(/\*\*/g) || [];
     const boldCount = boldMarkers.length;
-    // Detect malformed markdown
     const hasInvalidBold =
       boldCount % 2 !== 0 ||
       /^\*+\s*\*/.test(contentToParse) ||
       /\*\*\*$/.test(contentToParse);
-    // Fallback: render as plain text
+
     if (hasInvalidBold) {
       const cleanedText = contentToParse.replace(/\*/g, "");
       return (
-        <View
-          key={lineIndex}
-          style={{
-            flexDirection: "row",
-            marginBottom: 6,
-          }}
-        >
+        <View key={lineIndex} style={{ flexDirection: "row", marginBottom: 6 }}>
           {isBullet && (
-            <Text
-              style={[
-                justifiedBaseStyle,
-                {
-                  marginRight: 10,
-                  fontWeight: "bold",
-                },
-              ]}
-            >
-              •
-            </Text>
+            <Text style={[justifiedBaseStyle, { marginRight: 10, fontWeight: "bold" }]}>•</Text>
           )}
-          <Text style={justifiedBaseStyle}>
-            {cleanedText}
-          </Text>
+          <Text style={justifiedBaseStyle}>{cleanedText}</Text>
         </View>
       );
     }
-    // Parse valid **bold**
+
     const boldRegex = /(\*\*[^*]+\*\*)/g;
     const parts = contentToParse.split(boldRegex);
     return (
-      <View
-        key={lineIndex}
-        style={{
-          flexDirection: "row",
-          marginBottom: 6,
-        }}
-      >
+      <View key={lineIndex} style={{ flexDirection: "row", marginBottom: 6 }}>
         {isBullet && (
-          <Text
-            style={[
-              justifiedBaseStyle,
-              {
-                marginRight: 10,
-                fontWeight: "bold",
-              },
-            ]}
-          >
-            •
-          </Text>
+          <Text style={[justifiedBaseStyle, { marginRight: 10, fontWeight: "bold" }]}>•</Text>
         )}
         <Text style={{ flex: 1 }}>
           {parts.map((part, partIndex) => {
-            const isBold =
-              part.startsWith("**") &&
-              part.endsWith("**") &&
-              part.length > 4;
+            const isBold = part.startsWith("**") && part.endsWith("**") && part.length > 4;
             return (
               <Text
                 key={`${lineIndex}-${partIndex}`}
-                style={[
-                  justifiedBaseStyle,
-                  isBold && {
-                    fontWeight: "bold",
-                  },
-                ]}
+                style={[justifiedBaseStyle, isBold && { fontWeight: "bold" }]}
               >
                 {isBold ? part.slice(2, -2) : part}
               </Text>
@@ -553,7 +554,8 @@ const renderFormattedText = (text: string, baseStyle: any) => {
     );
   });
 };
-// ─── Inline Viewer ────────────────────────────────────────────────────────────
+
+// ─── Inline Viewer ───────────────────────────────────────────────────────────
 function InlineMaterialViewer({
   viewerUrl,
   height,
@@ -604,6 +606,7 @@ function InlineMaterialViewer({
     </View>
   );
 }
+
 const inlineStyles = StyleSheet.create({
   loadingOverlay: {
     position: 'absolute',
@@ -625,6 +628,240 @@ const inlineStyles = StyleSheet.create({
   },
   noWebViewText: { color: '#888', textAlign: 'center', fontSize: 13, lineHeight: 20 },
 });
+
+// ─── Toast Components ────────────────────────────────────────────────────────
+
+const ToastItemComponent = ({
+  item,
+  onClose,
+}: {
+  item: ToastItem;
+  onClose: (id: string) => void;
+}) => {
+  const opacity = useRef(new Animated.Value(0)).current;
+  const translateY = useRef(new Animated.Value(-50)).current;
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(opacity, {
+        toValue: 1,
+        duration: 300,
+        useNativeDriver: false,
+      }),
+      Animated.timing(translateY, {
+        toValue: 0,
+        duration: 300,
+        useNativeDriver: false,
+      }),
+    ]).start();
+
+    const timer = setTimeout(() => {
+      Animated.parallel([
+        Animated.timing(opacity, {
+          toValue: 0,
+          duration: 300,
+          useNativeDriver: false,
+        }),
+        Animated.timing(translateY, {
+          toValue: -50,
+          duration: 300,
+          useNativeDriver: false,
+        }),
+      ]).start(() => onClose(item.id));
+    }, item.duration || 3000);
+
+    return () => clearTimeout(timer);
+  }, []);
+
+  const getIcon = () => {
+    switch (item.type) {
+      case 'success': return 'checkmark-circle';
+      case 'error': return 'close-circle';
+      case 'warning': return 'alert-circle';
+      default: return 'information-circle';
+    }
+  };
+
+  const getColor = () => {
+    switch (item.type) {
+      case 'success': return '#10B981';
+      case 'error': return '#EF4444';
+      case 'warning': return '#F59E0B';
+      default: return '#3B82F6';
+    }
+  };
+
+  return (
+    <Animated.View
+      style={[
+        toastStyles.container,
+        {
+          opacity,
+          transform: [{ translateY }],
+          borderColor: getColor(),
+        },
+      ]}
+    >
+      <View style={toastStyles.iconContainer}>
+        <Ionicons name={getIcon()} size={20} color={getColor()} />
+      </View>
+      <View style={toastStyles.textContainer}>
+        <Text style={toastStyles.title}>{item.title}</Text>
+        {item.message ? <Text style={toastStyles.message}>{item.message}</Text> : null}
+      </View>
+      <TouchableOpacity onPress={() => onClose(item.id)} style={toastStyles.closeButton}>
+        <Ionicons name="close" size={16} color="#9CA3AF" />
+      </TouchableOpacity>
+    </Animated.View>
+  );
+};
+
+const ConfirmationModal = ({
+  visible,
+  title,
+  message,
+  onConfirm,
+  onCancel,
+}: {
+  visible: boolean;
+  title: string;
+  message: string;
+  onConfirm: () => void;
+  onCancel?: () => void;
+}) => {
+  if (!visible) return null;
+  return (
+    <Modal visible={visible} transparent animationType="fade">
+      <View style={styles.modalOverlayCenter}>
+        <View style={[styles.modalCardElevated, { width: 330 }]}>
+          <Text style={[styles.createTitle, { textAlign: 'center', marginBottom: 10, color: '#D32F2F' }]}>
+            {title}
+          </Text>
+          <Text style={{ fontSize: 14, color: '#555', textAlign: 'center', lineHeight: 22, marginBottom: 20 }}>
+            {message}
+          </Text>
+          <View style={{ flexDirection: 'row', gap: 10 }}>
+            <TouchableOpacity style={styles.secondaryButton} onPress={() => { onCancel?.(); }}>
+              <Text style={styles.secondaryButtonText}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.primaryButton} onPress={onConfirm}>
+              <Text style={styles.primaryButtonText}>Confirm</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+};
+
+const ToastProvider = ({ children }: { children: React.ReactNode }) => {
+  const [toasts, setToasts] = useState<ToastItem[]>([]);
+  const [confirmation, setConfirmation] = useState<{
+    visible: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+    onCancel?: () => void;
+  } | null>(null);
+
+  const show = (type: ToastType, title: string, message?: string, duration?: number) => {
+    const id = Math.random().toString(36).substr(2, 9);
+    setToasts((prev) => [...prev, { id, type, title, message, duration }]);
+  };
+
+  const confirm = (
+    title: string,
+    message: string,
+    onConfirm: () => void,
+    onCancel?: () => void
+  ) => {
+    setConfirmation({ visible: true, title, message, onConfirm, onCancel });
+  };
+
+  const removeToast = (id: string) => {
+    setToasts((prev) => prev.filter((t) => t.id !== id));
+  };
+
+  const closeConfirmation = () => {
+    setConfirmation(null);
+  };
+
+  return (
+    <ToastContext.Provider value={{ show, confirm }}>
+      {children}
+      <View style={toastStyles.toastContainer}>
+        {toasts.map((toast) => (
+          <ToastItemComponent key={toast.id} item={toast} onClose={removeToast} />
+        ))}
+      </View>
+      {confirmation && (
+        <ConfirmationModal
+          visible={confirmation.visible}
+          title={confirmation.title}
+          message={confirmation.message}
+          onConfirm={() => {
+            confirmation.onConfirm();
+            closeConfirmation();
+          }}
+          onCancel={() => {
+            confirmation.onCancel?.();
+            closeConfirmation();
+          }}
+        />
+      )}
+    </ToastContext.Provider>
+  );
+};
+
+const toastStyles = StyleSheet.create({
+  toastContainer: {
+    position: 'absolute',
+    top: Platform.OS === 'web' ? 20 : 50,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    zIndex: 10000,
+    pointerEvents: 'box-none',
+  },
+  container: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFF',
+    borderRadius: 12,
+    padding: 12,
+    marginHorizontal: 16,
+    marginBottom: 8,
+    shadowColor: '#000',
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 4,
+    borderWidth: 1,
+    minWidth: 300,
+    maxWidth: 400,
+  },
+  iconContainer: {
+    marginRight: 12,
+  },
+  textContainer: {
+    flex: 1,
+  },
+  title: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#111827',
+  },
+  message: {
+    fontSize: 12,
+    color: '#6B7280',
+    marginTop: 2,
+  },
+  closeButton: {
+    padding: 4,
+    marginLeft: 8,
+  },
+});
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 const TeacherCourseDetail2 = ({
   onBack,
@@ -637,17 +874,18 @@ const TeacherCourseDetail2 = ({
   currentTeacher: SignedInTeacher;
   availableCourses?: CourseDetailData[];
 }) => {
-
-  
+  const toast = useToast();
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const isSmallPhone = width < 360;
   const isMobile = width < 768;
+
   const teacherFullName = useMemo(() => {
     const first = currentTeacher?.firstName?.trim() || '';
     const last = currentTeacher?.lastName?.trim() || '';
     return `${first} ${last}`.trim() || course?.instructor || 'Teacher';
   }, [currentTeacher, course?.instructor]);
+
   const teacherIdentity = useMemo(
     () =>
       currentTeacher?.teacherId?.trim() ||
@@ -659,51 +897,48 @@ const TeacherCourseDetail2 = ({
 
   const [numberOfQuestions, setNumberOfQuestions] = useState<string>('10');
   const [isEditingLesson, setIsEditingLesson] = useState(false);
-  // ✅ Daily generation usage for THIS teacher, shared across all classes/courses
   const [dailyGenerationsUsed, setDailyGenerationsUsed] = useState<number>(0);
-
-  const [showDeleteLessonModal, setShowDeleteLessonModal] = useState(false);
+  
+  // Note: showDeleteLessonModal is kept for internal logic but triggered via toast.confirm now
+  const [showDeleteLessonModal, setShowDeleteLessonModal] = useState(false); 
   const [isDeletingLesson, setIsDeletingLesson] = useState(false);
 
-  // Helper validation matching Game.tsx logic
   const parsedQuestionCount = parseInt(numberOfQuestions, 10) || 0;
   const isInvalidQuestionCount =
     parsedQuestionCount > MAX_QUESTIONS_PER_GENERATION || parsedQuestionCount < 1;
-  // Add these states near other 'Generate' states
+
   const [pendingGeneratedLessons, setPendingGeneratedLessons] = useState<any[]>([]);
   const [showLessonPreviewModal, setShowLessonPreviewModal] = useState(false);
   const [editingPreviewIndex, setEditingPreviewIndex] = useState<number | null>(null);
   const [isSavingGeneratedLessons, setIsSavingGeneratedLessons] = useState(false);
-  // ── Generate Next Lesson Modal State ────────────────────────────────
+
   const [showNextLessonModal, setShowNextLessonModal] = useState(false);
   const [selectedTopicsForGen, setSelectedTopicsForGen] = useState<string[]>([]);
   const [isGeneratingNextLessons, setIsGeneratingNextLessons] = useState(false);
   const [targetModuleForGen, setTargetModuleForGen] = useState<any>(null);
-  // ── Tab / display state
+
   const [activeTab, setActiveTab] = useState<"materials" | "assignments" | "modules">('modules');
   const [showSubmissions, setShowSubmissions] = useState(false);
+  
   const cleanModuleTitle = (title: string, moduleNumber: number) => {
-    // Remove common prefixes the AI might add
     let cleaned = title.replace(/^Module\s+\d+[:.\s]*/i, '').trim();
-    // If empty after cleaning, fallback to a generic title
     return cleaned || `Module ${moduleNumber}`;
   };
-  // ── Data
+
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [materials, setMaterials] = useState<Material[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
   const [submissions, setSubmissions] = useState<Submission[]>([]);
-  // Add these states inside the component
+
   const [showGenerateModal, setShowGenerateModal] = useState(false);
   const [selectedGenModule, setSelectedGenModule] = useState<any>(null);
   const [selectedGenTopic, setSelectedGenTopic] = useState<any>(null);
   const [selectedGenSubtopic, setSelectedGenSubtopic] = useState<string | null>(null);
-  // Checkboxes state
   const [genDiscussion, setGenDiscussion] = useState(true);
   const [genActivity, setGenActivity] = useState(true);
   const [genSummary, setGenSummary] = useState(true);
   const [isGeneratingContent, setIsGeneratingContent] = useState(false);
-  // ── Module AI Tools State
+
   const [modules, setModules] = useState<any[]>([]);
   const [isLoadingModules, setIsLoadingModules] = useState(false);
   const [selectedModule, setSelectedModule] = useState<any>(null);
@@ -711,11 +946,10 @@ const TeacherCourseDetail2 = ({
   const [aiPreviewType, setAiPreviewType] = useState<string>('');
   const [isAiLoading, setIsAiLoading] = useState(false);
   const [aiLoadingType, setAiLoadingType] = useState<string>('');
-  // ── Syllabus Upload State
+
   const [currentSyllabus, setCurrentSyllabus] = useState<any>(null);
   const [isUploadingSyllabus, setIsUploadingSyllabus] = useState(false);
   const [syllabusViewerUrl, setSyllabusViewerUrl] = useState<string | null>(null);
-  // ✅ NEW: State for pending syllabus file before confirmation
   const [pendingSyllabusFile, setPendingSyllabusFile] = useState<{
     name?: string;
     uri?: string;
@@ -724,35 +958,35 @@ const TeacherCourseDetail2 = ({
     base64?: string;
     file?: File;
   } | null>(null);
-  // ── Course Structure Generation State
+
   const [generatedStructure, setGeneratedStructure] = useState<any>(null);
   const [isGeneratingStructure, setIsGeneratingStructure] = useState(false);
   const [showStructurePreviewModal, setShowStructurePreviewModal] = useState(false);
   const [expandedModules, setExpandedModules] = useState<Record<number, boolean>>({});
-  // ── Lesson Detail View State (NEW)
+
   const [selectedLesson, setSelectedLesson] = useState<any>(null);
   const [isLessonLoading, setIsLessonLoading] = useState(false);
   const [lessonDetailModalVisible, setLessonDetailModalVisible] = useState(false);
-  // ── Manual Creation Modals State
+
   const [showManualModuleModal, setShowManualModuleModal] = useState(false);
   const [showManualLessonModal, setShowManualLessonModal] = useState(false);
   const [selectedModuleForLesson, setSelectedModuleForLesson] = useState<any>(null);
-  // Manual Module Form State
+
   const [newModuleNum, setNewModuleNum] = useState('');
   const [newModuleTitle, setNewModuleTitle] = useState('');
   const [newModuleDesc, setNewModuleDesc] = useState('');
   const [newModuleWeek, setNewModuleWeek] = useState('');
-  // Manual Lesson Form State
+
   const [newLessonTitle, setNewLessonTitle] = useState('');
   const [newLessonDesc, setNewLessonDesc] = useState('');
   const [newLessonDiscussion, setNewLessonDiscussion] = useState('');
   const [newLessonActivity, setNewLessonActivity] = useState('');
   const [newLessonFile, setNewLessonFile] = useState<PickedUploadFile>(null);
   const [lessonMode, setLessonMode] = useState<'text' | 'file'>('text');
-  // ── Material viewer state
+
   const [viewerMaterial, setViewerMaterial] = useState<Material | null>(null);
   const [isDownloading, setIsDownloading] = useState(false);
-  // ── Edit material state
+
   const [showEditMaterialModal, setShowEditMaterialModal] = useState(false);
   const [editingMaterial, setEditingMaterial] = useState<Material | null>(null);
   const [editMatTitle, setEditMatTitle] = useState('');
@@ -761,7 +995,7 @@ const TeacherCourseDetail2 = ({
   const [editMatPickedFile, setEditMatPickedFile] = useState<PickedUploadFile>(null);
   const [isSavingMaterial, setIsSavingMaterial] = useState(false);
   const [isDeletingMaterial, setIsDeletingMaterial] = useState(false);
-  // ── Create / update assignment state
+
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showUpdateModal, setShowUpdateModal] = useState(false);
   const [showMaterialPreviewModal, setShowMaterialPreviewModal] = useState(false);
@@ -781,10 +1015,9 @@ const TeacherCourseDetail2 = ({
   const [draftDueDateTime, setDraftDueDateTime] = useState<Date>(new Date());
   const [visibleCalendarMonth, setVisibleCalendarMonth] = useState<Date>(new Date());
   const [classCodeCopied, setClassCodeCopied] = useState(false);
-  const [resultModalVisible, setResultModalVisible] = useState(false);
-  const [resultModalType, setResultModalType] = useState<'success' | 'error' | 'info'>('success');
-  const [resultModalTitle, setResultModalTitle] = useState('');
-  const [resultModalMessage, setResultModalMessage] = useState('');
+  
+  // Removed resultModal states
+  
   const [errors, setErrors] = useState<FormErrors>({});
   const [isSaving, setIsSaving] = useState(false);
   const [assignmentType, setAssignmentType] = useState<'regular' | 'game_based'>('regular');
@@ -801,51 +1034,52 @@ const TeacherCourseDetail2 = ({
   const [generatedQuestions, setGeneratedQuestions] = useState<any[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
   const [showGeneratedPreview, setShowGeneratedPreview] = useState(false);
+
   const gameOptions = [
     { value: 'quiz_master', label: 'Quiz Master', desc: 'Timed, auto-graded questions from materials' },
     { value: 'memory_match', label: 'Memory Match', desc: 'Match terms ↔ definitions' },
     { value: 'fill_in_blanks', label: 'Fill-in-the-Blanks', desc: 'Complete missing keywords' },
     { value: 'flashcard', label: 'Flashcard Challenge', desc: 'Review flashcards & answer questions' },
   ];
+
+  // Replaced showResultModal with toast.show
+  // Note: We keep the signature for compatibility but it now uses toast
   const showResultModal = (type: 'success' | 'error' | 'info', title: string, message: string) => {
-    setResultModalType(type);
-    setResultModalTitle(title);
-    setResultModalMessage(message);
-    setResultModalVisible(true);
+    const toastType: ToastType = type === 'info' ? 'info' : type;
+    toast.show(toastType, title, message);
   };
+
   const mapModule = (item: any): any => {
     return {
       ...item,
-      moduleNumber: Number(item.moduleNumber) || 0, // ✅ ENSURE NUMBER TYPE
+      moduleNumber: Number(item.moduleNumber) || 0,
       lessons: Array.isArray(item.lessons) ? item.lessons : []
     };
   };
+
   const handleDeleteLesson = async () => {
-  if (!selectedLesson?.id || !course?.id) return;
-  
-  setIsDeletingLesson(true);
-  try {
-    const response = await fetch(`${API_BASE_URL}/course-lessons/${selectedLesson.id}`, {
-      credentials: 'include',
-      method: 'DELETE'
-    });
-    
-    if (!response.ok) {
-      const errData = await response.json();
-      throw new Error(errData.error || 'Failed to delete lesson');
+    if (!selectedLesson?.id || !course?.id) return;
+    setIsDeletingLesson(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/course-lessons/${selectedLesson.id}`, {
+        credentials: 'include',
+        method: 'DELETE'
+      });
+      if (!response.ok) {
+        const errData = await response.json();
+        throw new Error(errData.error || 'Failed to delete lesson');
+      }
+      setLessonDetailModalVisible(false);
+      setShowDeleteLessonModal(false);
+      await loadCourseContent();
+      toast.show('success', 'Deleted', 'Lesson deleted successfully.');
+    } catch (error: any) {
+      toast.show('error', 'Delete Failed', error?.message || 'Unable to delete lesson.');
+    } finally {
+      setIsDeletingLesson(false);
     }
-    
-    setLessonDetailModalVisible(false);
-    setShowDeleteLessonModal(false);
-    await loadCourseContent(); // Refresh modules list
-    showResultModal('success', 'Deleted', 'Lesson deleted successfully.');
-  } catch (error: any) {
-    showResultModal('error', 'Delete Failed', error?.message || 'Unable to delete lesson.');
-  } finally {
-    setIsDeletingLesson(false);
-  }
-};
-  // ─── UPDATE loadCourseContent ────────────────────────────────────────────────
+  };
+
   const loadCourseContent = async () => {
     if (!course?.id) {
       setAssignments([]);
@@ -857,7 +1091,7 @@ const TeacherCourseDetail2 = ({
       setGeneratedStructure(null);
       return;
     }
-    setIsLoadingModules(true); // ✅ START LOADING
+    setIsLoadingModules(true);
     try {
       const [modulesRes, syllabusRes, materialsRes, assignmentsRes, membersRes, submissionsRes] =
         await Promise.all([
@@ -868,6 +1102,7 @@ const TeacherCourseDetail2 = ({
           fetch(`${API_BASE_URL}/class-members/${course.id}`, { credentials: 'include' }),
           fetch(`${API_BASE_URL}/class-submissions/${course.id}`, { credentials: 'include' }),
         ]);
+
       const [modulesData, syllabusData, materialsData, assignmentsData, membersData, submissionsData] =
         await Promise.all([
           modulesRes.json(),
@@ -877,7 +1112,7 @@ const TeacherCourseDetail2 = ({
           membersRes.json(),
           submissionsRes.json(),
         ]);
-      // ✅ ENSURE MODULES ARE MAPPED WITH CORRECT TYPES
+
       setModules(
         modulesRes.ok && Array.isArray(modulesData)
           ? modulesData.map(mapModule)
@@ -911,26 +1146,28 @@ const TeacherCourseDetail2 = ({
       setModules([]);
       setCurrentSyllabus(null);
     } finally {
-    setIsLoadingModules(false); // ✅ STOP LOADING
-  }
+      setIsLoadingModules(false);
+    }
   };
+
   useEffect(() => {
     loadCourseContent();
   }, [course?.id]);
-  // ✅ Load today's cross-class generation usage for this teacher on mount / identity change
+
   useEffect(() => {
     (async () => {
       const { count } = await getTodayUsageForTeacher(teacherIdentity);
       setDailyGenerationsUsed(count);
     })();
   }, [teacherIdentity]);
+
   const handleGenerateLessonContent = async () => {
     if (!selectedGenModule || !selectedGenTopic) {
-      showResultModal('error', 'Error', 'Please select a Module and Topic.');
+      toast.show('error', 'Error', 'Please select a Module and Topic.');
       return;
     }
     if (!genDiscussion && !genActivity && !genSummary) {
-      showResultModal('error', 'Error', 'Please select at least one content type to generate.');
+      toast.show('error', 'Error', 'Please select at least one content type to generate.');
       return;
     }
     setIsGeneratingContent(true);
@@ -941,7 +1178,7 @@ const TeacherCourseDetail2 = ({
         credentials: 'include',
         body: JSON.stringify({
           classId: course?.id,
-          moduleId: selectedGenModule.moduleNumber || selectedGenModule.id, // Use ID if available, else number
+          moduleId: selectedGenModule.moduleNumber || selectedGenModule.id,
           topicTitle: selectedGenTopic.title,
           subtopicTitle: selectedGenSubtopic,
           generateDiscussion: genDiscussion,
@@ -951,22 +1188,20 @@ const TeacherCourseDetail2 = ({
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error);
-      showResultModal('success', 'Generated!', 'Lesson content generated successfully.');
+      toast.show('success', 'Generated!', 'Lesson content generated successfully.');
       setShowGenerateModal(false);
-      // Reset selections
       setSelectedGenModule(null);
       setSelectedGenTopic(null);
       setSelectedGenSubtopic(null);
     } catch (error: any) {
-      showResultModal('error', 'Generation Failed', error?.message || 'Failed to generate content.');
+      toast.show('error', 'Generation Failed', error?.message || 'Failed to generate content.');
     } finally {
       setIsGeneratingContent(false);
     }
   };
+
   const saveModuleLessonsToBackend = async (moduleId: string, lessons: any[]) => {
     try {
-      // We use the existing save endpoint. It merges the moduleData.
-      // By passing the updated lessons array, we persist them.
       const response = await fetch(`${API_BASE_URL}/course-modules/save`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -975,7 +1210,7 @@ const TeacherCourseDetail2 = ({
           moduleData: {
             id: moduleId,
             courseId: course?.id,
-            lessons: lessons // This overwrites/updates the lessons in DB
+            lessons: lessons
           }
         })
       });
@@ -986,77 +1221,55 @@ const TeacherCourseDetail2 = ({
       console.error('Error saving lessons:', error);
     }
   };
-  // ─── UPDATED: Lesson Detail Handler ──────────────────────────────────────────
-  // ─── UPDATED: Lesson Detail Handler with Fresh URL Fetching ──────────────────
-const handleOpenLessonDetail = async (lesson: any) => {
-  // 1. Set loading state and show the modal immediately
-  setSelectedLesson(lesson);
-  setLessonDetailModalVisible(true);
-  setIsLessonLoading(true);
 
-  try {
-    // 2. Fetch full details from backend to get fresh signed URLs
-    const response = await fetch(`${API_BASE_URL}/course-lessons/${lesson.id}`, {
-      credentials: 'include'
-    });
-
-    if (response.ok) {
-      const result = await response.json();
-      
-      // ✅ FIX: Check if the fetched data has a valid fileUrl
-      // If the backend returns a fresh signed URL, use it. 
-      // If not, fallback to the local lesson object's url (if any).
-      const freshData = result.data;
-      
-      // Update state with full data including fresh URL
-      setSelectedLesson({
-        ...freshData,
-        // Ensure fileUrl is present even if backend didn't return it explicitly
-        fileUrl: freshData.fileUrl || lesson.fileUrl 
+  const handleOpenLessonDetail = async (lesson: any) => {
+    setSelectedLesson(lesson);
+    setLessonDetailModalVisible(true);
+    setIsLessonLoading(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/course-lessons/${lesson.id}`, {
+        credentials: 'include'
       });
-    } else {
-      console.warn("Failed to fetch fresh lesson details, using cached data.");
+      if (response.ok) {
+        const result = await response.json();
+        const freshData = result.data;
+        setSelectedLesson({
+          ...freshData,
+          fileUrl: freshData.fileUrl || lesson.fileUrl
+        });
+      } else {
+        console.warn("Failed to fetch fresh lesson details, using cached data.");
+      }
+    } catch (error) {
+      console.error("Failed to load lesson details:", error);
+    } finally {
+      setIsLessonLoading(false);
     }
-  } catch (error) {
-    console.error("Failed to load lesson details:", error);
-  } finally {
-    setIsLessonLoading(false);
-  }
-};
+  };
+
   const handleOpenNextLessonModal = (savedModule: any) => {
-  // ✅ STRICT VALIDATION: Match ONLY by Module Title from Syllabus Structure
-  const syllabusMod = currentSyllabus?.structure?.modules?.find(
-    (m: any) => 
-      // Compare titles case-insensitively and trimmed to avoid whitespace issues
-      String(m.moduleTitle || m.title).trim().toLowerCase() === 
-      String(savedModule.title).trim().toLowerCase()
-  );
-
-  let availableTopics: any[] = [];
-
-  // Only populate topics if we found an EXACT title match in the Syllabus
-  if (syllabusMod && syllabusMod.topics) {
-    // Get existing lesson titles for this specific module to avoid duplicates
-    const existingLessonTitles = new Set(
-      (savedModule.lessons || []).map((l: any) => l.title.toLowerCase().trim())
+    const syllabusMod = currentSyllabus?.structure?.modules?.find(
+      (m: any) =>
+        String(m.moduleTitle || m.title).trim().toLowerCase() ===
+        String(savedModule.title).trim().toLowerCase()
     );
+    let availableTopics: any[] = [];
+    if (syllabusMod && syllabusMod.topics) {
+      const existingLessonTitles = new Set(
+        (savedModule.lessons || []).map((l: any) => l.title.toLowerCase().trim())
+      );
+      availableTopics = syllabusMod.topics.filter(
+        (topic: any) => !existingLessonTitles.has(topic.title.toLowerCase().trim())
+      );
+    }
+    setTargetModuleForGen({
+      ...savedModule,
+      topics: availableTopics
+    });
+    setSelectedTopicsForGen([]);
+    setShowNextLessonModal(true);
+  };
 
-    // Filter out topics that are already generated as lessons
-    availableTopics = syllabusMod.topics.filter(
-      (topic: any) => !existingLessonTitles.has(topic.title.toLowerCase().trim())
-    );
-  } 
-  // ELSE: If syllabusMod is undefined (Manual Module with different title) 
-  // OR has no topics, availableTopics remains an empty array []
-
-  setTargetModuleForGen({
-    ...savedModule,
-    topics: availableTopics // Pass empty array for manual modules
-  });
-  
-  setSelectedTopicsForGen([]);
-  setShowNextLessonModal(true);
-};
   const toggleTopicSelection = (topicTitle: string) => {
     setSelectedTopicsForGen(prev =>
       prev.includes(topicTitle)
@@ -1064,9 +1277,10 @@ const handleOpenLessonDetail = async (lesson: any) => {
         : [...prev, topicTitle]
     );
   };
+
   const handleGenerateNextLessons = async () => {
     if (!targetModuleForGen || selectedTopicsForGen.length === 0 || !course?.id) {
-      showResultModal('error', 'Error', 'Please select at least one topic.');
+      toast.show('error', 'Error', 'Please select at least one topic.');
       return;
     }
     setIsGeneratingNextLessons(true);
@@ -1083,235 +1297,191 @@ const handleOpenLessonDetail = async (lesson: any) => {
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error);
-      // ✅ UPDATED: Store lessons AND open directly in Edit Mode for the first lesson
       if (data.data && data.data.lessons && data.data.lessons.length > 0) {
         setPendingGeneratedLessons(data.data.lessons);
-        setEditingPreviewIndex(0); // 👈 Opens the first lesson in Edit Mode immediately
+        setEditingPreviewIndex(0);
         setShowLessonPreviewModal(true);
-        showResultModal('success', 'Generated!', 'Review and edit the content before saving.');
+        toast.show('success', 'Generated!', 'Review and edit the content before saving.');
       } else {
-        showResultModal('info', 'No New Content', 'No new lessons were generated or they already exist.');
+        toast.show('info', 'No New Content', 'No new lessons were generated or they already exist.');
       }
       setShowNextLessonModal(false);
     } catch (error: any) {
-      showResultModal('error', 'Generation Failed', error?.message || 'Unable to generate lessons.');
+      toast.show('error', 'Generation Failed', error?.message || 'Unable to generate lessons.');
     } finally {
       setIsGeneratingNextLessons(false);
     }
   };
- const handleSavePreviewedLessons = async () => {
-  if (!targetModuleForGen || pendingGeneratedLessons.length === 0) return;
-  
-  setIsSavingGeneratedLessons(true);
-  
-  try {
-    // ✅ STEP 1: Fetch TRUE current max lesson number from backend
-    // This ensures we don't overwrite or duplicate numbers if manual lessons were added recently
-    // or if "Generate Module" previously saved lessons.
-    let currentMax = 0;
+
+  const handleSavePreviewedLessons = async () => {
+    if (!targetModuleForGen || pendingGeneratedLessons.length === 0) return;
+    setIsSavingGeneratedLessons(true);
     try {
-      const modulesRes = await fetch(`${API_BASE_URL}/course-modules/${course?.id}`, {
-        credentials: 'include'
-      });
-      
-      if (modulesRes.ok) {
-        const allModules = await modulesRes.json();
-        // Find the specific module we are adding lessons to
-        const targetMod = allModules.find((m: any) => m.id === targetModuleForGen.id);
-        
-        if (targetMod && Array.isArray(targetMod.lessons)) {
-          currentMax = targetMod.lessons.reduce((max: number, l: any) => 
-            Math.max(max, Number(l.lessonNumber) || 0), 0
-          );
+      let currentMax = 0;
+      try {
+        const modulesRes = await fetch(`${API_BASE_URL}/course-modules/${course?.id}`, {
+          credentials: 'include'
+        });
+        if (modulesRes.ok) {
+          const allModules = await modulesRes.json();
+          const targetMod = allModules.find((m: any) => m.id === targetModuleForGen.id);
+          if (targetMod && Array.isArray(targetMod.lessons)) {
+            currentMax = targetMod.lessons.reduce((max: number, l: any) =>
+              Math.max(max, Number(l.lessonNumber) || 0), 0
+            );
+          }
         }
+      } catch (e) {
+        console.warn("Failed to sync max lesson number for AI save, using local state");
+        currentMax = (targetModuleForGen.lessons || []).reduce((max: number, l: any) =>
+          Math.max(max, Number(l.lessonNumber) || 0), 0
+        );
       }
-    } catch (e) {
-      console.warn("Failed to sync max lesson number for AI save, using local state");
-      // Fallback to local state if network fails, but prefer DB truth
-      currentMax = (targetModuleForGen.lessons || []).reduce((max: number, l: any) => 
-        Math.max(max, Number(l.lessonNumber) || 0), 0
-      );
-    }
 
-    // ✅ STEP 2: Save each lesson with calculated sequential numbers
-    const promises = pendingGeneratedLessons.map(async (lesson, idx) => {
-      const payload = {
-        classId: course?.id,
-        moduleId: targetModuleForGen.id,
-        title: lesson.title,
-        description: lesson.description,
-        discussion: lesson.discussion,
-        activity: lesson.activity,
-        // ✅ CRITICAL: Use fetched max + index offset
-        lessonNumber: currentMax + idx + 1
-      };
-
-      const res = await fetch(`${API_BASE_URL}/course-lessons/create-manual`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify(payload)
+      const promises = pendingGeneratedLessons.map(async (lesson, idx) => {
+        const payload = {
+          classId: course?.id,
+          moduleId: targetModuleForGen.id,
+          title: lesson.title,
+          description: lesson.description,
+          discussion: lesson.discussion,
+          activity: lesson.activity,
+          lessonNumber: currentMax + idx + 1
+        };
+        const res = await fetch(`${API_BASE_URL}/course-lessons/create-manual`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify(payload)
+        });
+        if (!res.ok) {
+          const errData = await res.json();
+          throw new Error(errData.error || `Failed to save lesson: ${lesson.title}`);
+        }
+        return res.json();
       });
-      
-      if (!res.ok) {
-        const errData = await res.json();
-        throw new Error(errData.error || `Failed to save lesson: ${lesson.title}`);
-      }
-      return res.json();
-    });
+      await Promise.all(promises);
+      await loadCourseContent();
+      setShowLessonPreviewModal(false);
+      setPendingGeneratedLessons([]);
+      toast.show('success', 'Saved!', `${pendingGeneratedLessons.length} lesson(s) saved successfully.`);
+    } catch (error: any) {
+      toast.show('error', 'Save Failed', error?.message || 'Failed to save some lessons.');
+    } finally {
+      setIsSavingGeneratedLessons(false);
+    }
+  };
 
-    await Promise.all(promises);
-    
-    // ✅ STEP 3: Refresh UI immediately to reflect new lesson numbers
-    await loadCourseContent(); 
-    
-    setShowLessonPreviewModal(false);
-    setPendingGeneratedLessons([]);
-    
-    showResultModal('success', 'Saved!', `${pendingGeneratedLessons.length} lesson(s) saved successfully.`);
-
-  } catch (error: any) {
-    showResultModal('error', 'Save Failed', error?.message || 'Failed to save some lessons.');
-  } finally {
-    setIsSavingGeneratedLessons(false);
-  }
-};
-    // ─── UPDATE handleCreateManualModule ─────────────────────────────────────────
   const handleCreateManualModule = async () => {
-  // 1. Basic Validation
-  const num = Number(newModuleNum);
-  
-  if (!newModuleTitle.trim() || !course?.id) {
-    showResultModal('error', 'Error', 'Please enter a title.');
-    return;
-  }
-
-  // ✅ Simple check: Ensure the auto-generated number is valid (should always be true)
-  if (isNaN(num) || num < 1) {
-    showResultModal('error', 'Invalid Number', 'Module number generation failed.');
-    return;
-  }
-
-  setIsSaving(true);
-  try {
-    const response = await fetch(`${API_BASE_URL}/course-modules/create-manual`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({
-        classId: course.id,
-        moduleNumber: num,
-        title: newModuleTitle,
-        description: newModuleDesc,
-        weeklySchedule: newModuleWeek,
-        type: "manual"
-      })
-    });
-
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.error || 'Failed to create module.');
-
-    // Success: Reset Form
-    setShowManualModuleModal(false);
-    setNewModuleNum('');
-    setNewModuleTitle('');
-    setNewModuleDesc('');
-    setNewModuleWeek('');
-    
-    // ✅ RELOAD CONTENT to sync state
-    await loadCourseContent();
-    showResultModal('success', 'Success', `Module ${num} created successfully!`);
-
-  } catch (e: any) {
-    console.error("Create Manual Module Error:", e);
-    showResultModal('error', 'Error', e.message);
-  } finally {
-    setIsSaving(false);
-  }
-};
-const handleCreateManualLesson = async () => {
-  // 1. Validation
-  if (!newLessonTitle.trim() || !selectedModuleForLesson?.id || !course?.id) {
-    showResultModal('error', 'Error', 'Please enter a title and select a module.');
-    return;
-  }
-
-  setIsSaving(true);
-
-  try {
-    // Prepare Payload
-    const payload: any = {
-      classId: course.id,
-      moduleId: selectedModuleForLesson.id,
-      title: newLessonTitle.trim(),
-      description: newLessonDesc.trim(),
-      type: lessonMode, // 'text' or 'manual_file'
-    };
-
-    if (lessonMode === 'text') {
-      payload.discussion = newLessonDiscussion.trim();
-      payload.activity = newLessonActivity.trim();
-    } else if (lessonMode === 'file' && newLessonFile) {
-      payload.fileBase64 = newLessonFile.base64;
-      payload.fileName = newLessonFile.name;
-      payload.fileType = newLessonFile.type;
+    const num = Number(newModuleNum);
+    if (!newModuleTitle.trim() || !course?.id) {
+      toast.show('error', 'Error', 'Please enter a title.');
+      return;
     }
-
-    let response;
-    let data;
-
-    // ✅ CHECK IF EDITING OR CREATING
-    if (isEditingLesson && selectedLesson?.id) {
-      // --- UPDATE EXISTING LESSON ---
-      response = await fetch(`${API_BASE_URL}/course-lessons/${selectedLesson.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify(payload),
-      });
-      
-      data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'Failed to update lesson');
-      
-      showResultModal('success', 'Updated', 'Lesson updated successfully.');
-    } else {
-      // --- CREATE NEW LESSON ---
-      response = await fetch(`${API_BASE_URL}/course-lessons/create-manual`, {
+    if (isNaN(num) || num < 1) {
+      toast.show('error', 'Invalid Number', 'Module number generation failed.');
+      return;
+    }
+    setIsSaving(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/course-modules/create-manual`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify(payload),
+        body: JSON.stringify({
+          classId: course.id,
+          moduleNumber: num,
+          title: newModuleTitle,
+          description: newModuleDesc,
+          weeklySchedule: newModuleWeek,
+          type: "manual"
+        })
       });
-
-      data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'Failed to create lesson');
-      
-      showResultModal('success', 'Success', 'Lesson created successfully.');
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Failed to create module.');
+      setShowManualModuleModal(false);
+      setNewModuleNum('');
+      setNewModuleTitle('');
+      setNewModuleDesc('');
+      setNewModuleWeek('');
+      await loadCourseContent();
+      toast.show('success', 'Success', `Module ${num} created successfully!`);
+    } catch (e: any) {
+      console.error("Create Manual Module Error:", e);
+      toast.show('error', 'Error', e.message);
+    } finally {
+      setIsSaving(false);
     }
+  };
 
-    // Cleanup
-    setShowManualLessonModal(false);
-    resetLessonForm();
-    setIsEditingLesson(false); // Reset edit mode
-    await loadCourseContent(); // Refresh UI
+  const handleCreateManualLesson = async () => {
+    if (!newLessonTitle.trim() || !selectedModuleForLesson?.id || !course?.id) {
+      toast.show('error', 'Error', 'Please enter a title and select a module.');
+      return;
+    }
+    setIsSaving(true);
+    try {
+      const payload: any = {
+        classId: course.id,
+        moduleId: selectedModuleForLesson.id,
+        title: newLessonTitle.trim(),
+        description: newLessonDesc.trim(),
+        type: lessonMode,
+      };
+      if (lessonMode === 'text') {
+        payload.discussion = newLessonDiscussion.trim();
+        payload.activity = newLessonActivity.trim();
+      } else if (lessonMode === 'file' && newLessonFile) {
+        payload.fileBase64 = newLessonFile.base64;
+        payload.fileName = newLessonFile.name;
+        payload.fileType = newLessonFile.type;
+      }
 
-  } catch (e: any) {
-    console.error(e);
-    showResultModal('error', 'Error', e.message || 'An unexpected error occurred.');
-  } finally {
-    setIsSaving(false);
-  }
-};
+      let response;
+      let data;
+      if (isEditingLesson && selectedLesson?.id) {
+        response = await fetch(`${API_BASE_URL}/course-lessons/${selectedLesson.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify(payload),
+        });
+        data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Failed to update lesson');
+        toast.show('success', 'Updated', 'Lesson updated successfully.');
+      } else {
+        response = await fetch(`${API_BASE_URL}/course-lessons/create-manual`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify(payload),
+        });
+        data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Failed to create lesson');
+        toast.show('success', 'Success', 'Lesson created successfully.');
+      }
+      setShowManualLessonModal(false);
+      resetLessonForm();
+      setIsEditingLesson(false);
+      await loadCourseContent();
+    } catch (e: any) {
+      console.error(e);
+      toast.show('error', 'Error', e.message || 'An unexpected error occurred.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   const resetLessonForm = () => {
-  setNewLessonTitle('');
-  setNewLessonDesc('');
-  setNewLessonDiscussion('');
-  setNewLessonActivity('');
-  setNewLessonFile(null);
-  setLessonMode('text');
-  setIsEditingLesson(false); // ✅ Reset edit mode here too
-};
-  // ─── Module AI Tool Handlers ──────────────────────────────────────────────
+    setNewLessonTitle('');
+    setNewLessonDesc('');
+    setNewLessonDiscussion('');
+    setNewLessonActivity('');
+    setNewLessonFile(null);
+    setLessonMode('text');
+    setIsEditingLesson(false);
+  };
+
   const handleAiTool = async (tool: string, module: any, extraParams?: any) => {
     setIsAiLoading(true);
     setAiLoadingType(tool);
@@ -1328,12 +1498,13 @@ const handleCreateManualLesson = async () => {
       setAiPreviewType(tool);
       setSelectedModule(module);
     } catch (error: any) {
-      showResultModal('error', 'AI Error', error?.message || 'Failed to generate AI content.');
+      toast.show('error', 'AI Error', error?.message || 'Failed to generate AI content.');
     } finally {
       setIsAiLoading(false);
       setAiLoadingType('');
     }
   };
+
   const handleSaveAiPreview = async () => {
     if (!selectedModule || !aiPreviewData) return;
     let updatedModule = { ...selectedModule };
@@ -1351,13 +1522,12 @@ const handleCreateManualLesson = async () => {
       const modulesRes = await fetch(`${API_BASE_URL}/course-modules/${course?.id}`, { credentials: 'include' });
       setModules(await modulesRes.json());
       setAiPreviewData(null); setAiPreviewType(''); setSelectedModule(null);
-      showResultModal('success', 'Saved', 'Module updated successfully.');
+      toast.show('success', 'Saved', 'Module updated successfully.');
     } catch (error: any) {
-      showResultModal('error', 'Save Failed', error?.message || 'Failed to save module.');
+      toast.show('error', 'Save Failed', error?.message || 'Failed to save module.');
     }
   };
-  // ─── UPDATE handleUploadSyllabus (Split into Pick and Confirm) ─────────────────────────────────────────────
-  // This function now only picks the file and shows the confirmation modal
+
   const handlePickSyllabus = async () => {
     try {
       const result = await DocumentPicker.getDocumentAsync({
@@ -1372,19 +1542,16 @@ const handleCreateManualLesson = async () => {
       });
       if (result.canceled || !result.assets?.[0]) return;
       const asset = result.assets[0];
-      // Validate file size (20MB limit)
       if (asset.size && asset.size > 20 * 1024 * 1024) {
-        showResultModal('error', 'File Too Large', 'File exceeds maximum size of 20 MB.');
+        toast.show('error', 'File Too Large', 'File exceeds maximum size of 20 MB.');
         return;
       }
-      // Validate extension
       const ext = asset.name?.split('.').pop()?.toLowerCase();
       const allowedExts = ['pdf', 'doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx', 'txt', 'csv', 'png', 'jpg', 'jpeg', 'webp'];
       if (!ext || !allowedExts.includes(ext)) {
-        showResultModal('error', 'Unsupported File', 'Please upload a supported file type (PDF, DOCX, PPTX, etc.).');
+        toast.show('error', 'Unsupported File', 'Please upload a supported file type (PDF, DOCX, PPTX, etc.).');
         return;
       }
-      // Store file details in state to show in modal
       setPendingSyllabusFile({
         name: asset.name,
         uri: asset.uri,
@@ -1395,16 +1562,15 @@ const handleCreateManualLesson = async () => {
       });
     } catch (error: any) {
       console.error('Syllabus pick error:', error);
-      showResultModal('error', 'Error', 'Failed to pick file.');
+      toast.show('error', 'Error', 'Failed to pick file.');
     }
   };
-  // ✅ NEW: This function performs the actual upload after confirmation
+
   const confirmAndUploadSyllabus = async () => {
     if (!pendingSyllabusFile || !course?.id) return;
     setIsUploadingSyllabus(true);
-    setPendingSyllabusFile(null); // Clear pending file
+    setPendingSyllabusFile(null);
     try {
-      // Convert file to Base64
       let fileBase64 = '';
       if (Platform.OS === 'web') {
         if (pendingSyllabusFile.base64) {
@@ -1424,7 +1590,6 @@ const handleCreateManualLesson = async () => {
       } else if (pendingSyllabusFile.uri) {
         fileBase64 = await FileSystem.readAsStringAsync(pendingSyllabusFile.uri, { encoding: 'base64' });
       }
-      // Upload to Backend (Backend handles Storage + CloudConvert + Gemini Parsing)
       const response = await fetch(`${API_BASE_URL}/course-syllabus/upload`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1439,187 +1604,147 @@ const handleCreateManualLesson = async () => {
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Upload failed.');
-      // Update Syllabus State
       setCurrentSyllabus(data.syllabus);
       if (data.syllabus?.structure && data.syllabus.structure.modules) {
-        showResultModal('success', 'Syllabus Uploaded', 'Syllabus parsed successfully! Click "Generate Module 1" to create course content.');
+        toast.show('success', 'Syllabus Uploaded', 'Syllabus parsed successfully! Click "Generate Module 1" to create course content.');
       } else {
-        showResultModal('info', 'Upload Complete', 'Syllabus uploaded. Auto-parsing could not extract structure. You can generate modules manually or try uploading a different file.');
+        toast.show('info', 'Upload Complete', 'Syllabus uploaded. Auto-parsing could not extract structure. You can generate modules manually or try uploading a different file.');
       }
     } catch (error: any) {
       console.error('Syllabus upload error:', error);
-      showResultModal('error', 'Upload Failed', error?.message || 'Failed to upload syllabus.');
+      toast.show('error', 'Upload Failed', error?.message || 'Failed to upload syllabus.');
     } finally {
       setIsUploadingSyllabus(false);
     }
   };
-  // ❌ REMOVED: handleReplaceSyllabus
-  // ❌ REMOVED: handleDeleteSyllabus
+
   const handleViewSyllabus = async () => {
     if (!currentSyllabus?.id) return;
     try {
       const res = await fetch(`${API_BASE_URL}/course-syllabus/view/${currentSyllabus.id}`, { credentials: 'include' });
       const data = await res.json();
       if (res.ok && data.url) {
-        // ✅ Use Google Docs Viewer instead of raw download link
         const googleDocsUrl = getGoogleDocsViewerUrl(data.url);
         setSyllabusViewerUrl(googleDocsUrl);
       }
     } catch (e) {
-      showResultModal('error', 'Error', 'Failed to load syllabus preview.');
+      toast.show('error', 'Error', 'Failed to load syllabus preview.');
     }
   };
+
   const handleGenerateStructure = async () => {
-  if (!currentSyllabus || isGeneratingStructure) return;
-  setIsGeneratingStructure(true);
-  setGeneratedStructure(null);
-  
-  try {
-    const modules = currentSyllabus.structure?.modules || [];
-    if (modules.length === 0) {
-      throw new Error("No modules found in syllabus structure.");
+    if (!currentSyllabus || isGeneratingStructure) return;
+    setIsGeneratingStructure(true);
+    setGeneratedStructure(null);
+    try {
+      const modules = currentSyllabus.structure?.modules || [];
+      if (modules.length === 0) {
+        throw new Error("No modules found in syllabus structure.");
+      }
+      const firstModule = modules[0];
+      const moduleTitle = firstModule.moduleTitle || `Module 1`;
+      const response = await fetch(`${API_BASE_URL}/course-syllabus/generate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          classId: course?.id,
+          moduleNumber: 1,
+          cachedModules: modules,
+          title: moduleTitle
+        })
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Generation failed');
+      setGeneratedStructure(data.data);
+      setShowStructurePreviewModal(true);
+    } catch (error: any) {
+      console.error("Generation Error:", error);
+      toast.show('error', 'Generation Failed', error?.message || 'Unable to generate course structure.');
+    } finally {
+      setIsGeneratingStructure(false);
     }
-    
-    // Get the first module's details
-    const firstModule = modules[0];
-    const moduleTitle = firstModule.moduleTitle || `Module 1`;
-    
-    const response = await fetch(`${API_BASE_URL}/course-syllabus/generate`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({
-        classId: course?.id,
-        moduleNumber: 1,
-        cachedModules: modules,
-        title: moduleTitle // ✅ Ensure title is passed
-      })
-    });
-    
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.error || 'Generation failed');
-    setGeneratedStructure(data.data);
-    setShowStructurePreviewModal(true);
-  } catch (error: any) {
-    console.error("Generation Error:", error);
-    showResultModal('error', 'Generation Failed', error?.message || 'Unable to generate course structure.');
-  } finally {
-    setIsGeneratingStructure(false);
-  }
-};
+  };
+
   const handleGenerateAnotherModule = async () => {
-  if (!currentSyllabus || isGeneratingStructure) return;
-
-  setIsGeneratingStructure(true);
-  setGeneratedStructure(null);
-
-  try {
-    // 1. Identify which Syllabus MODULE TITLES have NOT been created yet
-    // We compare by Title (case-insensitive) to see which content is missing.
-    const createdModuleTitles = new Set(
-      modules.map((m: any) => String(m.title).trim().toLowerCase())
-    );
-    
-    // Find all syllabus modules whose TITLES do not exist in the created modules
-    const missingSyllabusModules = currentSyllabus.structure?.modules?.filter(
-      (sylMod: any) => !createdModuleTitles.has(String(sylMod.moduleTitle).trim().toLowerCase())
-    ) || [];
-
-    let targetSyllabusModule: any = null;
-    let nextNum: number = 0;
-
-    if (missingSyllabusModules.length > 0) {
-      // ✅ FIX: Prioritize filling the MISSING SYLLABUS CONTENT first.
-      // Pick the first missing module from the syllabus (usually the lowest original number).
-      targetSyllabusModule = missingSyllabusModules[0];
-      
-      // Decide on the Module Number:
-      // Option A: Use the next sequential number (1, 2, 3...) regardless of syllabus number.
-      const maxExistingNum = modules.length > 0 
-        ? Math.max(...modules.map((m: any) => Number(m.moduleNumber) || 0)) 
-        : 0;
-      nextNum = maxExistingNum + 1;
-
-     
-    } else {
-      // If all syllabus titles are present, just create a new sequential module.
-      const maxExistingNum = modules.length > 0 
-        ? Math.max(...modules.map((m: any) => Number(m.moduleNumber) || 0)) 
-        : 0;
-      
-      nextNum = maxExistingNum + 1;
-      
-      // Try to find a syllabus module for this new number, if it exists (for extra metadata)
-      targetSyllabusModule = currentSyllabus.structure?.modules?.find(
-        (m: any) => Number(m.moduleNumber) === nextNum
+    if (!currentSyllabus || isGeneratingStructure) return;
+    setIsGeneratingStructure(true);
+    setGeneratedStructure(null);
+    try {
+      const createdModuleTitles = new Set(
+        modules.map((m: any) => String(m.title).trim().toLowerCase())
       );
+      const missingSyllabusModules = currentSyllabus.structure?.modules?.filter(
+        (sylMod: any) => !createdModuleTitles.has(String(sylMod.moduleTitle).trim().toLowerCase())
+      ) || [];
+      let targetSyllabusModule: any = null;
+      let nextNum: number = 0;
+      if (missingSyllabusModules.length > 0) {
+        targetSyllabusModule = missingSyllabusModules[0];
+        const maxExistingNum = modules.length > 0
+          ? Math.max(...modules.map((m: any) => Number(m.moduleNumber) || 0))
+          : 0;
+        nextNum = maxExistingNum + 1;
+      } else {
+        const maxExistingNum = modules.length > 0
+          ? Math.max(...modules.map((m: any) => Number(m.moduleNumber) || 0))
+          : 0;
+        nextNum = maxExistingNum + 1;
+        targetSyllabusModule = currentSyllabus.structure?.modules?.find(
+          (m: any) => Number(m.moduleNumber) === nextNum
+        );
+      }
+      const moduleTitle = targetSyllabusModule?.moduleTitle || `Module ${nextNum}`;
+      const weeklySchedule = targetSyllabusModule?.weeklySchedule || '';
+      const description = targetSyllabusModule?.description || '';
+      const response = await fetch(`${API_BASE_URL}/course-modules/create-manual`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          classId: course?.id,
+          moduleNumber: nextNum,
+          title: moduleTitle,
+          description: description,
+          weeklySchedule: weeklySchedule
+        })
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Generation failed');
+      await loadCourseContent();
+      toast.show('success', 'Module Created', `Module ${nextNum} ("${moduleTitle}") has been created.`);
+    } catch (error: any) {
+      toast.show('error', 'Generation Failed', error?.message || 'Unable to generate module.');
+    } finally {
+      setIsGeneratingStructure(false);
     }
+  };
 
-    // Determine the Title: ALWAYS use the Syllabus Title if we found a missing one.
-    // Otherwise, fallback to "Module X".
-    const moduleTitle = targetSyllabusModule?.moduleTitle || `Module ${nextNum}`;
-    const weeklySchedule = targetSyllabusModule?.weeklySchedule || '';
-    const description = targetSyllabusModule?.description || '';
-
-    
-
-    const response = await fetch(`${API_BASE_URL}/course-modules/create-manual`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({
-        classId: course?.id,
-        moduleNumber: nextNum,
-        title: moduleTitle, // ✅ Uses the missing Syllabus Title
-        description: description,
-        weeklySchedule: weeklySchedule
-      })
-    });
-
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.error || 'Generation failed');
-
-    // 2. Reload Course Content to update the 'modules' state
-    await loadCourseContent();
-
-    showResultModal('success', 'Module Created', `Module ${nextNum} ("${moduleTitle}") has been created.`);
-
-  } catch (error: any) {
-    showResultModal('error', 'Generation Failed', error?.message || 'Unable to generate module.');
-  } finally {
-    setIsGeneratingStructure(false);
-  }
-};
   const updateStructureField = (path: string, value: any) => {
     if (!generatedStructure) return;
     const keys = path.split('.');
-    const newStructure = JSON.parse(JSON.stringify(generatedStructure)); // Deep clone
+    const newStructure = JSON.parse(JSON.stringify(generatedStructure));
     let current: any = newStructure;
-    // Navigate to parent and create missing intermediate objects
     for (let i = 0; i < keys.length - 1; i++) {
       const key = keys[i];
       const indexMatch = key.match(/^(\w+)\[(\d+)\]$/);
       if (indexMatch) {
         const arrayKey = indexMatch[1];
         const index = parseInt(indexMatch[2]);
-        // Ensure array exists
         if (!Array.isArray(current[arrayKey])) {
           current[arrayKey] = [];
         }
-        // Ensure index exists in array
         if (!current[arrayKey][index]) {
           current[arrayKey][index] = {};
         }
         current = current[arrayKey][index];
       } else {
-        // Ensure object exists
         if (current[key] === undefined || current[key] === null) {
           current[key] = {};
         }
         current = current[key];
       }
     }
-    // Set the final value
     const lastKey = keys[keys.length - 1];
     const lastIndexMatch = lastKey.match(/^(\w+)\[(\d+)\]$/);
     if (lastIndexMatch) {
@@ -1634,6 +1759,7 @@ const handleCreateManualLesson = async () => {
     }
     setGeneratedStructure(newStructure);
   };
+
   const handleApproveStructure = async () => {
     if (!generatedStructure || !course?.id) return;
     setIsGeneratingStructure(true);
@@ -1651,32 +1777,35 @@ const handleCreateManualLesson = async () => {
       if (!response.ok) throw new Error(data.error || 'Approval failed');
       setShowStructurePreviewModal(false);
       setGeneratedStructure(null);
-      await loadCourseContent(); // Refresh to show newly saved modules
-      showResultModal('success', 'Approved', 'Course structure saved and modules created!');
+      await loadCourseContent();
+      toast.show('success', 'Approved', 'Course structure saved and modules created!');
     } catch (error: any) {
-      showResultModal('error', 'Save Failed', error?.message || 'Unable to save course structure.');
+      toast.show('error', 'Save Failed', error?.message || 'Unable to save course structure.');
     } finally {
       setIsGeneratingStructure(false);
     }
   };
-  // ─── Material viewer helpers ──────────────────────────────────────────────
+
   const getMaterialFileUrl = (material: Material | null) => {
     if (!material) return null;
     const raw = material.fileUri || (material as any).fileUrl || null;
     return typeof raw === 'string' && raw.trim() ? raw.trim() : null;
   };
+
   const getMaterialPdfUrl = (material: Material | null) => {
     if (!material) return null;
     const raw = (material as any).pdfUrl;
     return typeof raw === 'string' && raw.trim() ? raw.trim() : null;
   };
+
   const openMaterialViewer = (material: Material) => {
     setViewerMaterial(material);
   };
+
   const closeMaterialViewer = () => {
     setViewerMaterial(null);
   };
-  // ─── Edit material handlers ───────────────────────────────────────────────
+
   const openEditMaterialModal = (material: Material) => {
     setEditingMaterial(material);
     setEditMatTitle(material.title || '');
@@ -1685,6 +1814,7 @@ const handleCreateManualLesson = async () => {
     setEditMatPickedFile(null);
     setShowEditMaterialModal(true);
   };
+
   const handlePickEditMaterialFile = async () => {
     try {
       const result = await DocumentPicker.getDocumentAsync({
@@ -1702,12 +1832,13 @@ const handleCreateManualLesson = async () => {
         file: (asset as any).file,
       });
     } catch {
-      showResultModal('error', 'Error', 'Failed to pick file.');
+      toast.show('error', 'Error', 'Failed to pick file.');
     }
   };
+
   const handleSaveEditMaterial = async () => {
     if (!editingMaterial || !editMatTitle.trim() || !editMatWeek.trim()) {
-      showResultModal('error', 'Required', 'Title and Week are required.');
+      toast.show('error', 'Required', 'Title and Week are required.');
       return;
     }
     setIsSavingMaterial(true);
@@ -1783,55 +1914,51 @@ const handleCreateManualLesson = async () => {
       await loadCourseContent();
       setShowEditMaterialModal(false);
       setViewerMaterial(null);
-      showResultModal('success', 'Updated', 'Material updated successfully.');
+      toast.show('success', 'Updated', 'Material updated successfully.');
     } catch (error: any) {
-      showResultModal('error', 'Update Failed', error?.message || 'Failed to update material.');
+      toast.show('error', 'Update Failed', error?.message || 'Failed to update material.');
     } finally {
       setIsSavingMaterial(false);
     }
   };
+
   const handleDeleteMaterial = () => {
     if (!editingMaterial) return;
-    Alert.alert(
+    // Replaced Alert.alert with toast.confirm
+    toast.confirm(
       'Delete Material',
       `Are you sure you want to delete "${editingMaterial.title}"? This will remove the file from storage and cannot be undone.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            setIsDeletingMaterial(true);
-            try {
-              const response = await fetch(
-                `${API_BASE_URL}/delete-class-material/${editingMaterial.id}`,
-                { credentials: 'include', method: 'DELETE' }
-              );
-              const data = await response.json();
-              if (!response.ok) throw new Error(data.error || 'Failed to delete material.');
-              await loadCourseContent();
-              setShowEditMaterialModal(false);
-              setViewerMaterial(null);
-              showResultModal('success', 'Deleted', 'Material deleted successfully.');
-            } catch (error: any) {
-              showResultModal('error', 'Delete Failed', error?.message || 'Failed to delete material.');
-            } finally {
-              setIsDeletingMaterial(false);
-            }
-          },
-        },
-      ]
+      async () => {
+        setIsDeletingMaterial(true);
+        try {
+          const response = await fetch(
+            `${API_BASE_URL}/delete-class-material/${editingMaterial.id}`,
+            { credentials: 'include', method: 'DELETE' }
+          );
+          const data = await response.json();
+          if (!response.ok) throw new Error(data.error || 'Failed to delete material.');
+          await loadCourseContent();
+          setShowEditMaterialModal(false);
+          setViewerMaterial(null);
+          toast.show('success', 'Deleted', 'Material deleted successfully.');
+        } catch (error: any) {
+          toast.show('error', 'Delete Failed', error?.message || 'Failed to delete material.');
+        } finally {
+          setIsDeletingMaterial(false);
+        }
+      }
     );
   };
+
   const handleDownloadMaterial = async () => {
     if (!viewerMaterial) {
-      showResultModal('error', 'No File', 'This material has no downloadable file.');
+      toast.show('error', 'No File', 'This material has no downloadable file.');
       return;
     }
     const storagePath = viewerMaterial.storagePath;
     const firebaseUrl = getMaterialFileUrl(viewerMaterial);
     if (!storagePath && !firebaseUrl) {
-      showResultModal('error', 'No File', 'This material has no file to download.');
+      toast.show('error', 'No File', 'This material has no file to download.');
       return;
     }
     const fileName = viewerMaterial.fileName || viewerMaterial.title || 'material';
@@ -1843,12 +1970,12 @@ const handleCreateManualLesson = async () => {
         if (storagePath && course?.id) {
           downloadUrl = `${API_BASE_URL}/course-material-download/${course.id}?storagePath=${encodeURIComponent(storagePath)}`;
         } else {
-          showResultModal('error', 'Download Unavailable', 'This file cannot be downloaded directly.');
+          toast.show('error', 'Download Unavailable', 'This file cannot be downloaded directly.');
           return;
         }
       } else {
         if (!firebaseUrl) {
-          showResultModal('error', 'No File', 'This material has no file to download.');
+          toast.show('error', 'No File', 'This material has no file to download.');
           return;
         }
         downloadUrl = firebaseUrl;
@@ -1873,16 +2000,16 @@ const handleCreateManualLesson = async () => {
         if (canShare) {
           await Sharing.shareAsync(result.uri, { mimeType, dialogTitle: `Save ${fileName}` });
         } else {
-          Alert.alert('Saved', `File downloaded to:\n${result.uri}`);
+          toast.show('info', 'Saved', `File downloaded to:\n${result.uri}`);
         }
       }
     } catch (error: any) {
-      showResultModal('error', 'Download Failed', error?.message || 'Unable to download file.');
+      toast.show('error', 'Download Failed', error?.message || 'Unable to download file.');
     } finally {
       setIsDownloading(false);
     }
   };
-  // ─── Create / update form helpers ─────────────────────────────────────────
+
   const resetCreateForm = () => {
     setFormTitle('');
     setFormDesc('');
@@ -1909,10 +2036,12 @@ const handleCreateManualLesson = async () => {
     setShowGameTypeModal(false);
     setShowClassModal(false);
   };
+
   const openCreateModal = () => {
     resetCreateForm();
     setShowCreateModal(true);
   };
+
   const openUpdateModal = (item: Assignment | undefined) => {
     if (!item) return;
     setSelectedId(item.id);
@@ -1949,12 +2078,14 @@ const handleCreateManualLesson = async () => {
     setShowClassModal(false);
     setShowUpdateModal(true);
   };
+
   const openDateTimePicker = () => {
     const parsed = parseDueDateTime(formDue);
     setDraftDueDateTime(parsed);
     setVisibleCalendarMonth(new Date(parsed.getFullYear(), parsed.getMonth(), 1));
     setShowDateTimeModal(true);
   };
+
   const applyDraftDateTime = () => {
     if (draftDueDateTime.getTime() < startOfToday().getTime()) {
       setErrors((prev) => ({ ...prev, dueDate: 'Past dates are not allowed.' }));
@@ -1964,33 +2095,31 @@ const handleCreateManualLesson = async () => {
     setErrors((prev) => ({ ...prev, dueDate: undefined }));
     setShowDateTimeModal(false);
   };
+
   const selectDraftDate = (date: Date) => {
     const next = new Date(draftDueDateTime);
     next.setFullYear(date.getFullYear(), date.getMonth(), date.getDate());
     setDraftDueDateTime(next);
   };
+
   const updateDraftTime = (field: 'hours' | 'minutes', value: number) => {
     const next = new Date(draftDueDateTime);
     if (field === 'hours') next.setHours(value);
     if (field === 'minutes') next.setMinutes(value);
     setDraftDueDateTime(next);
   };
+
   const toggleRelatedMaterial = (materialId: string) => {
-  setSelectedMaterialIds((prev) => {
-    const isSelected = prev.includes(materialId);
+    setSelectedMaterialIds((prev) => {
+      const isSelected = prev.includes(materialId);
+      if (isSelected) {
+        return prev.filter((id) => id !== materialId);
+      }
+      return [materialId];
+    });
+    setErrors((prev) => ({ ...prev, materials: undefined }));
+  };
 
-    if (isSelected) {
-      // Deselecting: remove it, nothing stays hidden
-      return prev.filter((id) => id !== materialId);
-    }
-
-    // ✅ STRICT MODE FOR ALL TYPES: selecting ANY material or lesson
-    // clears everything else — only this one item remains selected.
-    return [materialId];
-  });
-
-  setErrors((prev) => ({ ...prev, materials: undefined }));
-};
   const handlePickFile = async () => {
     try {
       const result = await DocumentPicker.getDocumentAsync({
@@ -2008,9 +2137,10 @@ const handleCreateManualLesson = async () => {
         file: (asset as any).file,
       });
     } catch {
-      showResultModal('error', 'Error', 'Failed to pick file.');
+      toast.show('error', 'Error', 'Failed to pick file.');
     }
   };
+
   const handlePickAssignmentFile = async () => {
     try {
       const result = await DocumentPicker.getDocumentAsync({
@@ -2028,9 +2158,10 @@ const handleCreateManualLesson = async () => {
         file: (asset as any).file,
       });
     } catch {
-      showResultModal('error', 'Error', 'Failed to pick assignment file.');
+      toast.show('error', 'Error', 'Failed to pick assignment file.');
     }
   };
+
   const uploadPickedFile = async (picked: PickedUploadFile, kind: 'material' | 'assignment') => {
     if (!picked || !course?.id) return null;
     let fileBase64: string | null = null;
@@ -2069,17 +2200,19 @@ const handleCreateManualLesson = async () => {
     if (!response.ok) throw new Error(data.error || 'Failed to upload file.');
     return data.data;
   };
+
   const handleOpenUploadedFile = async (fileUri?: string) => {
     if (!fileUri) {
-      showResultModal('error', 'No File', 'No uploaded file available.');
+      toast.show('error', 'No File', 'No uploaded file available.');
       return;
     }
     try {
       await Linking.openURL(fileUri);
     } catch {
-      showResultModal('error', 'Error', 'Unable to open the file.');
+      toast.show('error', 'Error', 'Unable to open the file.');
     }
   };
+
   const handleGradeSubmission = async (
     submissionId: string,
     score: number,
@@ -2095,11 +2228,12 @@ const handleCreateManualLesson = async () => {
       const data = await response.json();
       if (!response.ok) throw new Error(data?.error || 'Failed to save score.');
       await loadCourseContent();
-      showResultModal('success', 'Score Saved', 'The student submission has been graded.');
+      toast.show('success', 'Score Saved', 'The student submission has been graded.');
     } catch (error: any) {
-      showResultModal('error', 'Grade Failed', error?.message || 'Unable to save score.');
+      toast.show('error', 'Grade Failed', error?.message || 'Unable to save score.');
     }
   };
+
   const handleCopyClassCode = async () => {
     const codeToCopy = course?.classCode || '';
     if (!codeToCopy || codeToCopy === 'No Class Code') return;
@@ -2107,9 +2241,10 @@ const handleCreateManualLesson = async () => {
     setClassCodeCopied(true);
     setTimeout(() => setClassCodeCopied(false), 2000);
   };
+
   const downloadClassGradesExcel = async () => {
     if (!course?.id) {
-      showResultModal('error', 'No Class', 'No class selected.');
+      toast.show('error', 'No Class', 'No class selected.');
       return;
     }
     try {
@@ -2166,11 +2301,12 @@ const handleCreateManualLesson = async () => {
         });
         await Linking.openURL(fileUri);
       }
-      showResultModal('success', 'Export Successful', 'Excel exported successfully.');
+      toast.show('success', 'Export Successful', 'Excel exported successfully.');
     } catch (error: any) {
-      showResultModal('error', 'Export Failed', error?.message || 'Failed to export Excel.');
+      toast.show('error', 'Export Failed', error?.message || 'Failed to export Excel.');
     }
   };
+
   const validateAssignmentForm = () => {
     const nextErrors: FormErrors = {};
     if (!formTitle.trim()) nextErrors.title = 'Header is required.';
@@ -2201,168 +2337,137 @@ const handleCreateManualLesson = async () => {
     }
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length > 0) {
-      showResultModal('error', 'Required', 'Please complete the highlighted assignment fields.');
+      toast.show('error', 'Required', 'Please complete the highlighted assignment fields.');
       return false;
     }
     return true;
   };
- const handleGenerateQuestions = async () => {
-  // ✅ VALIDATION: Match Game.tsx logic strictly
-  if (!gameType) {
-    showResultModal('error', 'Error', 'Please select a game type first.');
-    return;
-  }
-  if (selectedMaterialIds.length === 0) {
-    showResultModal('error', 'Error', 'Please select at least one learning material.');
-    return;
-  }
 
-  // ✅ MAX QUESTIONS PER GENERATION (shared constant)
-  const parsedCount = parseInt(numberOfQuestions, 10) || 0;
-  if (parsedCount < 1 || parsedCount > MAX_QUESTIONS_PER_GENERATION) {
-    showResultModal(
-      'error',
-      'Invalid Count',
-      `Please enter between 1 and ${MAX_QUESTIONS_PER_GENERATION} questions.`
-    );
-    return;
-  }
-
-  // ✅ DAILY GENERATION LIMIT — per teacher, shared across ALL classes/courses.
-  // We re-check the persisted usage right before generating so the limit can't
-  // be bypassed by switching between classes/tabs without refreshing state.
-  const { usageMap, count: usedToday } = await getTodayUsageForTeacher(teacherIdentity);
-  if (usedToday >= DAILY_GENERATION_LIMIT) {
-    setDailyGenerationsUsed(usedToday);
-    showResultModal(
-      'error',
-      'Daily Limit Reached',
-      `You've used all ${DAILY_GENERATION_LIMIT} question generations allowed today across your classes. Please try again tomorrow.`
-    );
-    return;
-  }
-
-  setIsGenerating(true);
-  try {
-    const response = await fetch(`${API_BASE_URL}/game-ai/generate-quiz-materials`, {
-      credentials: 'include',
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        classId: course?.id,
-        materialIds: selectedMaterialIds,
-        studentId: currentTeacher?.teacherId || 'teacher-preview',
-        gameType,
-        numberOfQuestions: parsedCount, // ✅ Send validated number
-      }),
-    });
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.error || 'Failed to generate questions.');
-
-    const questionsArray = Array.isArray(data.questions) ? data.questions : [];
-    
-    const uniqueQuestions = questionsArray.filter((q: any, index: number, self: any[]) => {
-      // Determine the unique identifier based on game type
-      const uniqueKey = gameType === 'fill_in_blanks' 
-        ? q.sentence 
-        : (q.question || q.term || q.front);
-        
-      const answerKey = q.answer || q.definition || q.back;
-
-      // Check for exact duplicates based on the CORRECT field
-      const isDuplicate = index !== self.findIndex((t: any) => {
-         const tKey = gameType === 'fill_in_blanks' ? t.sentence : (t.question || t.term || t.front);
-         return tKey === uniqueKey;
+  const handleGenerateQuestions = async () => {
+    if (!gameType) {
+      toast.show('error', 'Error', 'Please select a game type first.');
+      return;
+    }
+    if (selectedMaterialIds.length === 0) {
+      toast.show('error', 'Error', 'Please select at least one learning material.');
+      return;
+    }
+    const parsedCount = parseInt(numberOfQuestions, 10) || 0;
+    if (parsedCount < 1 || parsedCount > MAX_QUESTIONS_PER_GENERATION) {
+      toast.show(
+        'error',
+        'Invalid Count',
+        `Please enter between 1 and ${MAX_QUESTIONS_PER_GENERATION} questions.`
+      );
+      return;
+    }
+    const { usageMap, count: usedToday } = await getTodayUsageForTeacher(teacherIdentity);
+    if (usedToday >= DAILY_GENERATION_LIMIT) {
+      setDailyGenerationsUsed(usedToday);
+      toast.show(
+        'error',
+        'Daily Limit Reached',
+        `You've used all ${DAILY_GENERATION_LIMIT} question generations allowed today across your classes. Please try again tomorrow.`
+      );
+      return;
+    }
+    setIsGenerating(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/game-ai/generate-quiz-materials`, {
+        credentials: 'include',
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          classId: course?.id,
+          materialIds: selectedMaterialIds,
+          studentId: currentTeacher?.teacherId || 'teacher-preview',
+          gameType,
+          numberOfQuestions: parsedCount,
+        }),
       });
-
-      // Specific check for low-quality placeholders
-      const isPlaceholder = uniqueKey?.toLowerCase().includes("the process of ___ is defined as");
-      
-      return !isDuplicate && !isPlaceholder;
-    });
-
-let finalQuestions = uniqueQuestions;
-    if (uniqueQuestions.length < 3 && questionsArray.length >= 3) {
-      console.warn("Strict filtering removed too many questions. Using relaxed filter.");
-      finalQuestions = questionsArray.filter((q: any, index: number, self: any[]) => {
-         const uniqueKey = gameType === 'fill_in_blanks' ? q.sentence : (q.question || q.term || q.front);
-         return index === self.findIndex((t: any) => {
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Failed to generate questions.');
+      const questionsArray = Array.isArray(data.questions) ? data.questions : [];
+      const uniqueQuestions = questionsArray.filter((q: any, index: number, self: any[]) => {
+        const uniqueKey = gameType === 'fill_in_blanks'
+          ? q.sentence
+          : (q.question || q.term || q.front);
+        const isDuplicate = index !== self.findIndex((t: any) => {
+          const tKey = gameType === 'fill_in_blanks' ? t.sentence : (t.question || t.term || t.front);
+          return tKey === uniqueKey;
+        });
+        const isPlaceholder = uniqueKey?.toLowerCase().includes("the process of ___ is defined as");
+        return !isDuplicate && !isPlaceholder;
+      });
+      let finalQuestions = uniqueQuestions;
+      if (uniqueQuestions.length < 3 && questionsArray.length >= 3) {
+        console.warn("Strict filtering removed too many questions. Using relaxed filter.");
+        finalQuestions = questionsArray.filter((q: any, index: number, self: any[]) => {
+          const uniqueKey = gameType === 'fill_in_blanks' ? q.sentence : (q.question || q.term || q.front);
+          return index === self.findIndex((t: any) => {
             const tKey = gameType === 'fill_in_blanks' ? t.sentence : (t.question || t.term || t.front);
             return tKey === uniqueKey;
-         });
-      });
-    }
-
-
-    if (finalQuestions.length === 0) {
-      throw new Error('AI did not return any valid questions. Please try again.');
-    }
-
-
-   const editableQuestions = finalQuestions.map((q: any, index: number) => {
-    
-    
-    // ✅ FIX: Handle fill_in_blanks specifically
-  if (gameType === 'fill_in_blanks') {
-    return { 
-      id: `gen-${Date.now()}-${index}`, 
-      sentence: q.sentence || '', // ✅ Keep sentence
-      answer: q.answer || '', 
-      // Keep question as fallback just in case
-      question: q.sentence || q.question || '' 
-    };
-  }
-  if (gameType === 'flashcard') {
-        return { 
-          id: `gen-${Date.now()}-${index}`, 
-          question: q.front || '', 
-          answer: q.back || '' 
-        };
+          });
+        });
       }
-      if (gameType === 'memory_match') {
-    return { 
-      id: `gen-${Date.now()}-${index}`, 
-      question: q.term || q.question || '',       // ✅ Map term → question for UI
-      answer: q.definition || q.answer || ''      // ✅ Map definition → answer for UI
-    };
-  }
+      if (finalQuestions.length === 0) {
+        throw new Error('AI did not return any valid questions. Please try again.');
+      }
+      const editableQuestions = finalQuestions.map((q: any, index: number) => {
+        if (gameType === 'fill_in_blanks') {
+          return {
+            id: `gen-${Date.now()}-${index}`,
+            sentence: q.sentence || '',
+            answer: q.answer || '',
+            question: q.sentence || q.question || ''
+          };
+        }
+        if (gameType === 'flashcard') {
+          return {
+            id: `gen-${Date.now()}-${index}`,
+            question: q.front || '',
+            answer: q.back || ''
+          };
+        }
+        if (gameType === 'memory_match') {
+          return {
+            id: `gen-${Date.now()}-${index}`,
+            question: q.term || q.question || '',
+            answer: q.definition || q.answer || ''
+          };
+        }
+        const options = q.options && q.options.length === 4 ? q.options : ['', '', '', ''];
+        const answer = q.answer || options[0] || '';
+        const correctIndex = options.indexOf(answer);
+        return {
+          id: `gen-${Date.now()}-${index}`,
+          question: q.question || '',
+          options,
+          answer,
+          correctIndex: correctIndex !== -1 ? correctIndex : 0
+        };
+      });
+      const nextCount = usedToday + 1;
+      const nextUsageMap: GenerationUsageMap = {
+        ...usageMap,
+        [teacherIdentity]: { date: getTodayDateKey(), count: nextCount },
+      };
+      await writeGenerationUsage(nextUsageMap);
+      setDailyGenerationsUsed(nextCount);
+      setGeneratedQuestions(editableQuestions);
+      setShowGeneratedPreview(true);
+      toast.show(
+        'success',
+        'Generated',
+        `Questions generated successfully! (${nextCount}/${DAILY_GENERATION_LIMIT} generations used today) You can edit them before saving.`
+      );
+    } catch (error: any) {
+      toast.show('error', 'Generation Failed', error?.message || 'Unable to generate questions.');
+    } finally {
+      setIsGenerating(false);
+    }
+  };
 
-    const options = q.options && q.options.length === 4 ? q.options : ['', '', '', ''];
-    const answer = q.answer || options[0] || '';
-    const correctIndex = options.indexOf(answer);
-    return {
-      id: `gen-${Date.now()}-${index}`,
-      question: q.question || '',
-      options,
-      answer,
-      correctIndex: correctIndex !== -1 ? correctIndex : 0
-    };
-  });
-
-    // ✅ Record generation usage — persisted per teacher and shared across
-    // every class/course, resets automatically at the start of a new day.
-    const nextCount = usedToday + 1;
-    const nextUsageMap: GenerationUsageMap = {
-      ...usageMap,
-      [teacherIdentity]: { date: getTodayDateKey(), count: nextCount },
-    };
-    await writeGenerationUsage(nextUsageMap);
-    setDailyGenerationsUsed(nextCount);
-
-    setGeneratedQuestions(editableQuestions);
-    setShowGeneratedPreview(true);
-    showResultModal(
-      'success',
-      'Generated',
-      `Questions generated successfully! (${nextCount}/${DAILY_GENERATION_LIMIT} generations used today) You can edit them before saving.`
-    );
-  } catch (error: any) {
-    showResultModal('error', 'Generation Failed', error?.message || 'Unable to generate questions.');
-  } finally {
-    setIsGenerating(false);
-  }
-};
-  
   const updateGeneratedQuestion = (index: number, field: string, value: string) => {
     setGeneratedQuestions((prev) => {
       const next = [...prev];
@@ -2370,6 +2475,7 @@ let finalQuestions = uniqueQuestions;
       return next;
     });
   };
+
   const updateGeneratedOption = (qIndex: number, oIndex: number, value: string) => {
     setGeneratedQuestions((prev) => {
       const next = [...prev];
@@ -2381,6 +2487,7 @@ let finalQuestions = uniqueQuestions;
       return next;
     });
   };
+
   const toggleCorrectOption = (qIndex: number, oIndex: number) => {
     setGeneratedQuestions((prev) => {
       const next = [...prev];
@@ -2388,18 +2495,20 @@ let finalQuestions = uniqueQuestions;
       return next;
     });
   };
+
   const deleteGeneratedQuestion = (qIndex: number) => {
     setGeneratedQuestions((prev) => prev.filter((_, index) => index !== qIndex));
   };
+
   const handleCreate = async () => {
     if (isSaving) return;
     if (!course?.id) {
-      showResultModal('error', 'Error', 'No class selected.');
+      toast.show('error', 'Error', 'No class selected.');
       return;
     }
     if (activeTab === 'materials') {
       if (!formTitle.trim() || !formPointsOnTime.trim()) {
-        showResultModal('error', 'Required', 'Please enter the title and week.');
+        toast.show('error', 'Required', 'Please enter the title and week.');
         return;
       }
       setIsSaving(true);
@@ -2433,9 +2542,9 @@ let finalQuestions = uniqueQuestions;
         await loadCourseContent();
         setShowCreateModal(false);
         resetCreateForm();
-        showResultModal('success', 'Success', 'Material uploaded successfully.');
+        toast.show('success', 'Success', 'Material uploaded successfully.');
       } catch (error: any) {
-        showResultModal('error', 'Upload Failed', error?.message || 'Failed to create material.');
+        toast.show('error', 'Upload Failed', error?.message || 'Failed to create material.');
       } finally {
         setIsSaving(false);
       }
@@ -2497,13 +2606,14 @@ let finalQuestions = uniqueQuestions;
       await loadCourseContent();
       setShowCreateModal(false);
       resetCreateForm();
-      showResultModal('success', 'Success', 'Assignment uploaded successfully.');
+      toast.show('success', 'Success', 'Assignment uploaded successfully.');
     } catch (error: any) {
-      showResultModal('error', 'Upload Failed', error?.message || 'Failed to create assignment.');
+      toast.show('error', 'Upload Failed', error?.message || 'Failed to create assignment.');
     } finally {
       setIsSaving(false);
     }
   };
+
   const handleUpdate = async () => {
     if (!selectedId || !validateAssignmentForm()) return;
     try {
@@ -2545,29 +2655,37 @@ let finalQuestions = uniqueQuestions;
       if (!response.ok) throw new Error(data.error || 'Failed to update assignment');
       await loadCourseContent();
       setShowUpdateModal(false);
-      showResultModal('success', 'Success', 'Assignment updated.');
+      toast.show('success', 'Success', 'Assignment updated.');
     } catch (error: any) {
-      showResultModal('error', 'Error', error?.message || 'Failed to update assignment.');
+      toast.show('error', 'Error', error?.message || 'Failed to update assignment.');
     }
   };
+
   const handleDelete = async () => {
     if (!selectedId) return;
-    try {
-      const response = await fetch(`${API_BASE_URL}/delete-class-assignment/${selectedId}`, {
-        credentials: 'include',
-        method: 'DELETE',
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'Failed to delete assignment');
-      await loadCourseContent();
-      setShowUpdateModal(false);
-      setShowSubmissions(false);
-      showResultModal('success', 'Success', 'Assignment deleted.');
-    } catch (error: any) {
-      showResultModal('error', 'Error', error?.message || 'Failed to delete assignment.');
-    }
+    // Replaced Alert.alert with toast.confirm
+    toast.confirm(
+      'Delete Assignment',
+      'Are you sure you want to delete this assignment? This action cannot be undone.',
+      async () => {
+        try {
+          const response = await fetch(`${API_BASE_URL}/delete-class-assignment/${selectedId}`, {
+            credentials: 'include',
+            method: 'DELETE',
+          });
+          const data = await response.json();
+          if (!response.ok) throw new Error(data.error || 'Failed to delete assignment');
+          await loadCourseContent();
+          setShowUpdateModal(false);
+          setShowSubmissions(false);
+          toast.show('success', 'Success', 'Assignment deleted.');
+        } catch (error: any) {
+          toast.show('error', 'Error', error?.message || 'Failed to delete assignment.');
+        }
+      }
+    );
   };
-  // ─── Viewer-related computed values ───────────────────────────────────────
+
   const viewerFileUrl = getMaterialFileUrl(viewerMaterial);
   const viewerPdfUrl = getMaterialPdfUrl(viewerMaterial);
   const viewerIsPresentation = isPresentationFile(
@@ -2583,11 +2701,11 @@ let finalQuestions = uniqueQuestions;
   const viewerShouldUseInline = !viewerIsVideo && !!viewerFileUrl;
   const viewerUrl = viewerFileUrl
     ? getViewerUrl(
-      viewerFileUrl,
-      viewerMaterial?.fileName,
-      viewerMaterial?.fileType,
-      viewerPdfUrl
-    )
+        viewerFileUrl,
+        viewerMaterial?.fileName,
+        viewerMaterial?.fileType,
+        viewerPdfUrl
+      )
     : null;
   const viewerHasFile = !!viewerFileUrl;
   const selectedAssignment = assignments.find((a) => a.id === selectedId);
@@ -2601,73 +2719,70 @@ let finalQuestions = uniqueQuestions;
   const calendarDays = getCalendarDays(visibleCalendarMonth);
   const renderInputError = (message?: string) =>
     !!message ? <Text style={styles.errorText}>{message}</Text> : null;
+
   const renderRelatedMaterialsSelector = () => {
-  // Check if ANY item is currently selected (material or lesson)
-  const hasSelection = selectedMaterialIds.length > 0;
-
-  return (
-    <View style={styles.sectionBlock}>
-      <Text style={styles.sectionLabel}>Module Lessons</Text>
-      <Text style={styles.helperText}>
-        Select one lesson the AI should use for follow-up activity generation or game content.
-      </Text>
-      {materials.length === 0 ? (
-        <Text style={styles.emptyMiniText}>No created materials or lessons yet.</Text>
-      ) : (
-        <View
-          style={[styles.materialSelectorWrap, errors.materials ? styles.errorContainer : null]}
-        >
-          {materials.map((material) => {
-            const active = selectedMaterialIds.includes(material.id);
-            const isLesson = (material as any).isLesson === true || (material as any).type === 'module_lesson';
-
-            // ✅ HIDE LOGIC: If anything is selected, hide everything except that item
-            if (hasSelection && !active) {
-              return null;
-            }
-
-            return (
-              <TouchableOpacity
-                key={material.id}
-                style={[
-                  styles.materialChip,
-                  active && styles.materialChipActive,
-                  isLesson && styles.lessonChip
-                ]}
-                onPress={() => toggleRelatedMaterial(material.id)}
-                activeOpacity={0.85}
-                disabled={isSaving}
-              >
-                <Ionicons
-                  name={active ? 'checkmark-circle' : isLesson ? 'book-outline' : 'ellipse-outline'}
-                  size={16}
-                  color={active ? '#FFF' : isLesson ? '#1976D2' : '#D32F2F'}
-                />
-                <View style={{ flex: 1 }}>
-                  <Text style={[
-                    styles.materialChipText,
-                    active && styles.materialChipTextActive,
-                    isLesson && styles.lessonChipText
-                  ]}>
-                    {material.title}
-                  </Text>
-                  {isLesson && (
-                    <Text style={[styles.lessonSubtext, active && styles.lessonSubtextActive]}>
-                      {active 
-                        ? 'Selected' 
-                        : 'Lesson ' + ((material as any).lessonNumber || '')}
+    const hasSelection = selectedMaterialIds.length > 0;
+    return (
+      <View style={styles.sectionBlock}>
+        <Text style={styles.sectionLabel}>Module Lessons</Text>
+        <Text style={styles.helperText}>
+          Select one lesson the AI should use for follow-up activity generation or game content.
+        </Text>
+        {materials.length === 0 ? (
+          <Text style={styles.emptyMiniText}>No created materials or lessons yet.</Text>
+        ) : (
+          <View
+            style={[styles.materialSelectorWrap, errors.materials ? styles.errorContainer : null]}
+          >
+            {materials.map((material) => {
+              const active = selectedMaterialIds.includes(material.id);
+              const isLesson = (material as any).isLesson === true || (material as any).type === 'module_lesson';
+              if (hasSelection && !active) {
+                return null;
+              }
+              return (
+                <TouchableOpacity
+                  key={material.id}
+                  style={[
+                    styles.materialChip,
+                    active && styles.materialChipActive,
+                    isLesson && styles.lessonChip
+                  ]}
+                  onPress={() => toggleRelatedMaterial(material.id)}
+                  activeOpacity={0.85}
+                  disabled={isSaving}
+                >
+                  <Ionicons
+                    name={active ? 'checkmark-circle' : isLesson ? 'book-outline' : 'ellipse-outline'}
+                    size={16}
+                    color={active ? '#FFF' : isLesson ? '#1976D2' : '#D32F2F'}
+                  />
+                  <View style={{ flex: 1 }}>
+                    <Text style={[
+                      styles.materialChipText,
+                      active && styles.materialChipTextActive,
+                      isLesson && styles.lessonChipText
+                    ]}>
+                      {material.title}
                     </Text>
-                  )}
-                </View>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-      )}
-      {renderInputError(errors.materials)}
-    </View>
-  );
-};
+                    {isLesson && (
+                      <Text style={[styles.lessonSubtext, active && styles.lessonSubtextActive]}>
+                        {active
+                          ? 'Selected'
+                          : 'Lesson ' + ((material as any).lessonNumber || '')}
+                      </Text>
+                    )}
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        )}
+        {renderInputError(errors.materials)}
+      </View>
+    );
+  };
+
   const renderDateTimeField = () => (
     <View style={styles.sectionBlock}>
       <Text style={styles.sectionLabel}>Due Date & Time</Text>
@@ -2687,6 +2802,7 @@ let finalQuestions = uniqueQuestions;
       {renderInputError(errors.dueDate)}
     </View>
   );
+
   const renderGameAndClassRow = () => {
     const selectedGame = gameOptions.find((g) => g.value === gameType);
     const selectedClass = availableCourses.find((c) => c.id === selectedClassId);
@@ -2735,6 +2851,7 @@ let finalQuestions = uniqueQuestions;
       </View>
     );
   };
+
   const renderAttemptsSelector = () => (
     <View style={styles.sectionBlock}>
       <Text style={styles.sectionLabel}>Number of Attempts</Text>
@@ -2785,6 +2902,7 @@ let finalQuestions = uniqueQuestions;
       {renderInputError(errors.attempts || errors.customAttempts)}
     </View>
   );
+
   const renderTimeLimitSelector = () => (
     <View style={styles.sectionBlock}>
       <Text style={styles.sectionLabel}>Time Limit</Text>
@@ -2832,6 +2950,7 @@ let finalQuestions = uniqueQuestions;
       {renderInputError(errors.timeLimit || errors.customTimeLimit)}
     </View>
   );
+
   const renderAssignmentFields = () => (
     <View style={[styles.formGrid, !isMobile && styles.formGridDesktop]}>
       <View style={styles.sectionBlock}>
@@ -3025,321 +3144,298 @@ let finalQuestions = uniqueQuestions;
       </View>
     </View>
   );
+
   const renderCreateModalBody = () => {
-  // Helper to validate question count (matches Game.tsx logic)
-  const parsedQuestionCount = parseInt(numberOfQuestions, 10) || 0;
-  const isInvalidQuestionCount =
-    parsedQuestionCount > MAX_QUESTIONS_PER_GENERATION || parsedQuestionCount < 1;
-
-  if (activeTab === 'materials') {
-    return (
-      <>
-        <Text style={styles.sectionLabel}>Title</Text>
-        <TextInput
-          style={styles.inputBox}
-          placeholder="Material Title"
-          placeholderTextColor="#999"
-          value={formTitle}
-          onChangeText={setFormTitle}
-        />
-        <Text style={styles.sectionLabel}>Week</Text>
-        <TextInput
-          style={styles.inputBox}
-          placeholder="Week (example: Week 1)"
-          placeholderTextColor="#999"
-          value={formPointsOnTime}
-          onChangeText={setFormPointsOnTime}
-        />
-        <Text style={styles.sectionLabel}>Description</Text>
-        <TextInput
-          style={styles.textAreaBox}
-          placeholder="Optional description"
-          placeholderTextColor="#999"
-          value={formDesc}
-          onChangeText={setFormDesc}
-          multiline
-        />
-        <Text style={styles.sectionLabel}>Attachment</Text>
-        <TouchableOpacity
-          style={[styles.primaryButtonWide, isSaving ? styles.disabledButton : null]}
-          onPress={handlePickFile}
-          disabled={isSaving}
-        >
-          <Ionicons name="cloud-upload-outline" size={18} color="#FFF" />
-          <Text style={styles.uploadBtnText}>Upload File</Text>
-        </TouchableOpacity>
-        {!!pickedFile?.name && (
-          <View style={styles.filePreviewBox}>
-            <Ionicons name="document-text-outline" size={20} color="#D32F2F" />
-            <Text style={styles.filePreviewText}>{pickedFile.name}</Text>
-          </View>
-        )}
-      </>
-    );
-  }
-
-  // --- GAME-BASED ASSIGNMENT FORM ---
-  return (
-    <View style={[styles.formGrid, !isMobile && styles.formGridDesktop]}>
-      {/* Assignment Type Toggle */}
-      <View style={styles.sectionBlock}>
-        <Text style={styles.sectionLabel}>Assignment Type</Text>
-        <View style={{ flexDirection: 'row', gap: 10, marginTop: 8 }}>
+    const parsedQuestionCount = parseInt(numberOfQuestions, 10) || 0;
+    const isInvalidQuestionCount =
+      parsedQuestionCount > MAX_QUESTIONS_PER_GENERATION || parsedQuestionCount < 1;
+    if (activeTab === 'materials') {
+      return (
+        <>
+          <Text style={styles.sectionLabel}>Title</Text>
+          <TextInput
+            style={styles.inputBox}
+            placeholder="Material Title"
+            placeholderTextColor="#999"
+            value={formTitle}
+            onChangeText={setFormTitle}
+          />
+          <Text style={styles.sectionLabel}>Week</Text>
+          <TextInput
+            style={styles.inputBox}
+            placeholder="Week (example: Week 1)"
+            placeholderTextColor="#999"
+            value={formPointsOnTime}
+            onChangeText={setFormPointsOnTime}
+          />
+          <Text style={styles.sectionLabel}>Description</Text>
+          <TextInput
+            style={styles.textAreaBox}
+            placeholder="Optional description"
+            placeholderTextColor="#999"
+            value={formDesc}
+            onChangeText={setFormDesc}
+            multiline
+          />
+          <Text style={styles.sectionLabel}>Attachment</Text>
           <TouchableOpacity
-            style={[styles.typeChip, assignmentType === 'regular' && styles.typeChipActive]}
-            onPress={() => setAssignmentType('regular')}
+            style={[styles.primaryButtonWide, isSaving ? styles.disabledButton : null]}
+            onPress={handlePickFile}
             disabled={isSaving}
           >
-            <Text
-              style={[
-                styles.typeChipText,
-                assignmentType === 'regular' && styles.typeChipTextActive,
-              ]}
-            >
-              Regular Submission
-            </Text>
+            <Ionicons name="cloud-upload-outline" size={18} color="#FFF" />
+            <Text style={styles.uploadBtnText}>Upload File</Text>
           </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.typeChip, assignmentType === 'game_based' && styles.typeChipActive]}
-            onPress={() => setAssignmentType('game_based')}
-            disabled={isSaving}
-          >
-            <Text
-              style={[
-                styles.typeChipText,
-                assignmentType === 'game_based' && styles.typeChipTextActive,
-              ]}
-            >
-              Game Based Assignment
-            </Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      {assignmentType === 'game_based' && renderGameAndClassRow()}
-
-      <View style={[styles.formColumnLeft, !isMobile && styles.formColumnLeftDesktop]}>
-        <Text style={styles.sectionLabel}>Header</Text>
-        <TextInput
-          style={[styles.inputBox, errors.title ? styles.errorBorder : null]}
-          value={formTitle}
-          onChangeText={(value) => {
-            setFormTitle(value);
-            if (errors.title) setErrors((prev) => ({ ...prev, title: undefined }));
-          }}
-          placeholder="Enter Header"
-          placeholderTextColor="#999"
-          editable={!isSaving}
-        />
-        {renderInputError(errors.title)}
-
-        <Text style={styles.sectionLabel}>Instruction</Text>
-        <TextInput
-          style={[styles.textAreaBox, errors.instruction ? styles.errorBorder : null]}
-          value={formDesc}
-          onChangeText={(value) => {
-            setFormDesc(value);
-            if (errors.instruction) setErrors((prev) => ({ ...prev, instruction: undefined }));
-          }}
-          placeholder="Enter Instruction"
-          placeholderTextColor="#999"
-          multiline
-          editable={!isSaving}
-        />
-        {renderInputError(errors.instruction)}
-
-        {/* ✅ NEW: Number of Questions Input for Game-Based Assignments */}
-{assignmentType === 'game_based' && (
-  <>
-    <Text style={styles.sectionLabel}>
-      Number of Questions (Max {MAX_QUESTIONS_PER_GENERATION})
-    </Text>
-    <TextInput
-      style={[
-        styles.inputBox,
-        isInvalidQuestionCount && styles.errorBorder, // ✅ Show red border if invalid
-      ]}
-      placeholder="e.g., 10"
-      placeholderTextColor="#999"
-      value={numberOfQuestions}
-      onChangeText={(text) => {
-        // ✅ Sanitize input: Only allow numbers (matches Game.tsx UX)
-        setNumberOfQuestions(text.replace(/[^0-9]/g, ''));
-        // Clear error when user starts typing valid input
-        if (errors.totalScore) setErrors((prev) => ({ ...prev, totalScore: undefined }));
-      }}
-      keyboardType="numeric"
-      maxLength={2}
-      editable={!isSaving}
-    />
-    {/* ✅ Display specific error message under input */}
-    {isInvalidQuestionCount && (
-      <Text style={styles.errorText}>
-        {parsedQuestionCount > MAX_QUESTIONS_PER_GENERATION
-          ? `Maximum limit is ${MAX_QUESTIONS_PER_GENERATION} questions.`
-          : 'Please enter at least 1 question.'}
-      </Text>
-    )}
-    {/* ✅ Daily generation usage, shared across ALL of this teacher's classes/courses */}
-    <Text
-      style={{
-        fontSize: 11,
-        color: dailyGenerationsUsed >= DAILY_GENERATION_LIMIT ? '#D32F2F' : '#888',
-        marginTop: -4,
-        marginBottom: 8,
-      }}
-    >
-      {dailyGenerationsUsed}/{DAILY_GENERATION_LIMIT} generations used today across all your classes
-      {dailyGenerationsUsed >= DAILY_GENERATION_LIMIT ? ' — limit reached, try again tomorrow.' : ''}
-    </Text>
-  </>
-)}
-
-        {assignmentType === 'game_based' && renderAttemptsSelector()}
-        {assignmentType === 'game_based' && renderTimeLimitSelector()}
-      </View>
-
-      <View style={[styles.formColumnRight, !isMobile && styles.formColumnRightDesktop]}>
-        {renderDateTimeField()}
-        
-        <View style={styles.scoreStackDesktop}>
-          <View style={styles.scoreFieldFull}>
-            <Text style={styles.sectionLabel}>Total Score</Text>
-            <TextInput
-              style={[
-                styles.inputBox,
-                errors.totalScore ? styles.errorBorder : null,
-                assignmentType === 'game_based' 
-                  ? { backgroundColor: '#F5F5F5', color: '#666' } 
-                  : null,
-              ]}
-              value={
-                assignmentType === 'game_based' 
-                  ? String(generatedQuestions.length) 
-                  : formPoints
-              }
-              onChangeText={(value) => {
-                setFormPoints(value);
-                if (errors.totalScore) setErrors((prev) => ({ ...prev, totalScore: undefined }));
-              }}
-              keyboardType="numeric"
-              placeholder="Total Score"
-              placeholderTextColor="#999"
-              editable={assignmentType !== 'game_based' && !isSaving}
-            />
-            {assignmentType === 'game_based' && (
-              <Text style={{ fontSize: 11, color: '#888', marginTop: -4, marginBottom: 8, marginLeft: 4 }}>
-                * Auto-calculated based on generated questions (1 point per item).
-              </Text>
-            )}
-            {renderInputError(errors.totalScore)}
-          </View>
-
-          {assignmentType !== 'game_based' && (
-            <View style={styles.scoreFieldFull}>
-              <Text style={styles.sectionLabel}>Points On Time</Text>
-              <TextInput
-                style={[styles.inputBox, errors.pointsOnTime ? styles.errorBorder : null]}
-                value={formPointsOnTime}
-                onChangeText={(value) => {
-                  setFormPointsOnTime(value);
-                  if (errors.pointsOnTime)
-                    setErrors((prev) => ({ ...prev, pointsOnTime: undefined }));
-                }}
-                keyboardType="numeric"
-                placeholder="Points On Time"
-                placeholderTextColor="#999"
-                editable={!isSaving}
-              />
-              {renderInputError(errors.pointsOnTime)}
+          {!!pickedFile?.name && (
+            <View style={styles.filePreviewBox}>
+              <Ionicons name="document-text-outline" size={20} color="#D32F2F" />
+              <Text style={styles.filePreviewText}>{pickedFile.name}</Text>
             </View>
           )}
-        </View>
-      </View>
-
-      <View style={styles.fullWidthSection}>
-        {renderRelatedMaterialsSelector()}
-
-        {/* Generate Button for Game-Based */}
-        {assignmentType === 'game_based' && selectedMaterialIds.length > 0 && gameType && (
-          <TouchableOpacity
-            style={[
-              styles.generateButton, 
-              (isGenerating || isInvalidQuestionCount || dailyGenerationsUsed >= DAILY_GENERATION_LIMIT)
-                ? styles.disabledButton
-                : null
-            ]}
-            onPress={handleGenerateQuestions}
-            disabled={
-              isGenerating || isSaving || isInvalidQuestionCount ||
-              dailyGenerationsUsed >= DAILY_GENERATION_LIMIT
-            }
-          >
-            {isGenerating ? (
-              <ActivityIndicator size="small" color="#FFF" />
-            ) : (
-              <Ionicons name="sparkles-outline" size={18} color="#FFF" />
-            )}
-            <Text style={styles.generateButtonText}>
-              {isGenerating
-                ? 'Generating...'
-                : dailyGenerationsUsed >= DAILY_GENERATION_LIMIT
-                  ? 'Daily Limit Reached'
-                  : `Generate ${gameOptions.find((g) => g.value === gameType)?.label || ''} Questions`}
-            </Text>
-          </TouchableOpacity>
-        )}
-
-        {assignmentType === 'game_based' && selectedMaterialIds.length > 0 && !gameType && (
-          <View style={[styles.generateButton, { backgroundColor: '#9E9E9E' }]}>
-            <Ionicons name="alert-circle-outline" size={18} color="#FFF" />
-            <Text style={styles.generateButtonText}>Select a Game Type to Generate Questions</Text>
-          </View>
-        )}
-
-        {/* Attachment for Regular Submission */}
-        {assignmentType === 'regular' && (
-          <>
-            <Text style={styles.sectionLabel}>Attachment</Text>
+        </>
+      );
+    }
+    return (
+      <View style={[styles.formGrid, !isMobile && styles.formGridDesktop]}>
+        <View style={styles.sectionBlock}>
+          <Text style={styles.sectionLabel}>Assignment Type</Text>
+          <View style={{ flexDirection: 'row', gap: 10, marginTop: 8 }}>
             <TouchableOpacity
-              style={[styles.primaryButtonWide, isSaving ? styles.disabledButton : null]}
-              onPress={handlePickAssignmentFile}
+              style={[styles.typeChip, assignmentType === 'regular' && styles.typeChipActive]}
+              onPress={() => setAssignmentType('regular')}
               disabled={isSaving}
             >
-              <Ionicons name="cloud-upload-outline" size={18} color="#FFF" />
-              <Text style={styles.uploadBtnText}>
-                {pickedAssignmentFile?.name ? 'Change File' : 'Upload File'}
+              <Text
+                style={[
+                  styles.typeChipText,
+                  assignmentType === 'regular' && styles.typeChipTextActive,
+                ]}
+              >
+                Regular Submission
               </Text>
             </TouchableOpacity>
-            {!!pickedAssignmentFile?.name && (
-              <View style={styles.filePreviewBox}>
-                <Ionicons name="document-text-outline" size={20} color="#D32F2F" />
-                <Text style={styles.filePreviewText}>{pickedAssignmentFile.name}</Text>
+            <TouchableOpacity
+              style={[styles.typeChip, assignmentType === 'game_based' && styles.typeChipActive]}
+              onPress={() => setAssignmentType('game_based')}
+              disabled={isSaving}
+            >
+              <Text
+                style={[
+                  styles.typeChipText,
+                  assignmentType === 'game_based' && styles.typeChipTextActive,
+                ]}
+              >
+                Game Based Assignment
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+        {assignmentType === 'game_based' && renderGameAndClassRow()}
+        <View style={[styles.formColumnLeft, !isMobile && styles.formColumnLeftDesktop]}>
+          <Text style={styles.sectionLabel}>Header</Text>
+          <TextInput
+            style={[styles.inputBox, errors.title ? styles.errorBorder : null]}
+            value={formTitle}
+            onChangeText={(value) => {
+              setFormTitle(value);
+              if (errors.title) setErrors((prev) => ({ ...prev, title: undefined }));
+            }}
+            placeholder="Enter Header"
+            placeholderTextColor="#999"
+            editable={!isSaving}
+          />
+          {renderInputError(errors.title)}
+          <Text style={styles.sectionLabel}>Instruction</Text>
+          <TextInput
+            style={[styles.textAreaBox, errors.instruction ? styles.errorBorder : null]}
+            value={formDesc}
+            onChangeText={(value) => {
+              setFormDesc(value);
+              if (errors.instruction) setErrors((prev) => ({ ...prev, instruction: undefined }));
+            }}
+            placeholder="Enter Instruction"
+            placeholderTextColor="#999"
+            multiline
+            editable={!isSaving}
+          />
+          {renderInputError(errors.instruction)}
+          {assignmentType === 'game_based' && (
+            <>
+              <Text style={styles.sectionLabel}>
+                Number of Questions (Max {MAX_QUESTIONS_PER_GENERATION})
+              </Text>
+              <TextInput
+                style={[
+                  styles.inputBox,
+                  isInvalidQuestionCount && styles.errorBorder,
+                ]}
+                placeholder="e.g., 10"
+                placeholderTextColor="#999"
+                value={numberOfQuestions}
+                onChangeText={(text) => {
+                  setNumberOfQuestions(text.replace(/[^0-9]/g, ''));
+                  if (errors.totalScore) setErrors((prev) => ({ ...prev, totalScore: undefined }));
+                }}
+                keyboardType="numeric"
+                maxLength={2}
+                editable={!isSaving}
+              />
+              {isInvalidQuestionCount && (
+                <Text style={styles.errorText}>
+                  {parsedQuestionCount > MAX_QUESTIONS_PER_GENERATION
+                    ? `Maximum limit is ${MAX_QUESTIONS_PER_GENERATION} questions.`
+                    : 'Please enter at least 1 question.'}
+                </Text>
+              )}
+              <Text
+                style={{
+                  fontSize: 11,
+                  color: dailyGenerationsUsed >= DAILY_GENERATION_LIMIT ? '#D32F2F' : '#888',
+                  marginTop: -4,
+                  marginBottom: 8,
+                }}
+              >
+                {dailyGenerationsUsed}/{DAILY_GENERATION_LIMIT} generations used today across all your classes
+                {dailyGenerationsUsed >= DAILY_GENERATION_LIMIT ? ' — limit reached, try again tomorrow.' : ''}
+              </Text>
+            </>
+          )}
+          {assignmentType === 'game_based' && renderAttemptsSelector()}
+          {assignmentType === 'game_based' && renderTimeLimitSelector()}
+        </View>
+        <View style={[styles.formColumnRight, !isMobile && styles.formColumnRightDesktop]}>
+          {renderDateTimeField()}
+          <View style={styles.scoreStackDesktop}>
+            <View style={styles.scoreFieldFull}>
+              <Text style={styles.sectionLabel}>Total Score</Text>
+              <TextInput
+                style={[
+                  styles.inputBox,
+                  errors.totalScore ? styles.errorBorder : null,
+                  assignmentType === 'game_based'
+                    ? { backgroundColor: '#F5F5F5', color: '#666' }
+                    : null,
+                ]}
+                value={
+                  assignmentType === 'game_based'
+                    ? String(generatedQuestions.length)
+                    : formPoints
+                }
+                onChangeText={(value) => {
+                  setFormPoints(value);
+                  if (errors.totalScore) setErrors((prev) => ({ ...prev, totalScore: undefined }));
+                }}
+                keyboardType="numeric"
+                placeholder="Total Score"
+                placeholderTextColor="#999"
+                editable={assignmentType !== 'game_based' && !isSaving}
+              />
+              {assignmentType === 'game_based' && (
+                <Text style={{ fontSize: 11, color: '#888', marginTop: -4, marginBottom: 8, marginLeft: 4 }}>
+                  * Auto-calculated based on generated questions (1 point per item).
+                </Text>
+              )}
+              {renderInputError(errors.totalScore)}
+            </View>
+            {assignmentType !== 'game_based' && (
+              <View style={styles.scoreFieldFull}>
+                <Text style={styles.sectionLabel}>Points On Time</Text>
+                <TextInput
+                  style={[styles.inputBox, errors.pointsOnTime ? styles.errorBorder : null]}
+                  value={formPointsOnTime}
+                  onChangeText={(value) => {
+                    setFormPointsOnTime(value);
+                    if (errors.pointsOnTime)
+                      setErrors((prev) => ({ ...prev, pointsOnTime: undefined }));
+                  }}
+                  keyboardType="numeric"
+                  placeholder="Points On Time"
+                  placeholderTextColor="#999"
+                  editable={!isSaving}
+                />
+                {renderInputError(errors.pointsOnTime)}
               </View>
             )}
-          </>
-        )}
-
-        <View style={styles.checkboxRow}>
-          <TouchableOpacity
-            style={[
-              styles.checkboxBox,
-              assignmentDisableRepositoryAfterDue && styles.checkboxBoxChecked,
-            ]}
-            onPress={() =>
-              setAssignmentDisableRepositoryAfterDue(!assignmentDisableRepositoryAfterDue)
-            }
-          >
-            {assignmentDisableRepositoryAfterDue ? (
-              <Ionicons name="checkmark" size={16} color="#FFF" />
-            ) : null}
-          </TouchableOpacity>
-          <Text style={styles.checkboxLabel}>Disable repository after due</Text>
+          </View>
+        </View>
+        <View style={styles.fullWidthSection}>
+          {renderRelatedMaterialsSelector()}
+          {assignmentType === 'game_based' && selectedMaterialIds.length > 0 && gameType && (
+            <TouchableOpacity
+              style={[
+                styles.generateButton,
+                (isGenerating || isInvalidQuestionCount || dailyGenerationsUsed >= DAILY_GENERATION_LIMIT)
+                  ? styles.disabledButton
+                  : null
+              ]}
+              onPress={handleGenerateQuestions}
+              disabled={
+                isGenerating || isSaving || isInvalidQuestionCount ||
+                dailyGenerationsUsed >= DAILY_GENERATION_LIMIT
+              }
+            >
+              {isGenerating ? (
+                <ActivityIndicator size="small" color="#FFF" />
+              ) : (
+                <Ionicons name="sparkles-outline" size={18} color="#FFF" />
+              )}
+              <Text style={styles.generateButtonText}>
+                {isGenerating
+                  ? 'Generating...'
+                  : dailyGenerationsUsed >= DAILY_GENERATION_LIMIT
+                    ? 'Daily Limit Reached'
+                    : `Generate ${gameOptions.find((g) => g.value === gameType)?.label || ''} Questions`}
+              </Text>
+            </TouchableOpacity>
+          )}
+          {assignmentType === 'game_based' && selectedMaterialIds.length > 0 && !gameType && (
+            <View style={[styles.generateButton, { backgroundColor: '#9E9E9E' }]}>
+              <Ionicons name="alert-circle-outline" size={18} color="#FFF" />
+              <Text style={styles.generateButtonText}>Select a Game Type to Generate Questions</Text>
+            </View>
+          )}
+          {assignmentType === 'regular' && (
+            <>
+              <Text style={styles.sectionLabel}>Attachment</Text>
+              <TouchableOpacity
+                style={[styles.primaryButtonWide, isSaving ? styles.disabledButton : null]}
+                onPress={handlePickAssignmentFile}
+                disabled={isSaving}
+              >
+                <Ionicons name="cloud-upload-outline" size={18} color="#FFF" />
+                <Text style={styles.uploadBtnText}>
+                  {pickedAssignmentFile?.name ? 'Change File' : 'Upload File'}
+                </Text>
+              </TouchableOpacity>
+              {!!pickedAssignmentFile?.name && (
+                <View style={styles.filePreviewBox}>
+                  <Ionicons name="document-text-outline" size={20} color="#D32F2F" />
+                  <Text style={styles.filePreviewText}>{pickedAssignmentFile.name}</Text>
+                </View>
+              )}
+            </>
+          )}
+          <View style={styles.checkboxRow}>
+            <TouchableOpacity
+              style={[
+                styles.checkboxBox,
+                assignmentDisableRepositoryAfterDue && styles.checkboxBoxChecked,
+              ]}
+              onPress={() =>
+                setAssignmentDisableRepositoryAfterDue(!assignmentDisableRepositoryAfterDue)
+              }
+            >
+              {assignmentDisableRepositoryAfterDue ? (
+                <Ionicons name="checkmark" size={16} color="#FFF" />
+              ) : null}
+            </TouchableOpacity>
+            <Text style={styles.checkboxLabel}>Disable repository after due</Text>
+          </View>
         </View>
       </View>
-    </View>
-  );
-};
+    );
+  };
+
   const renderQuestionEditor = (q: any, qIndex: number) => {
     const renderHeader = (title: string) => (
       <View
@@ -3419,24 +3515,18 @@ let finalQuestions = uniqueQuestions;
             />
           </View>
         );
-      
-            
       case 'fill_in_blanks':
         return (
           <View key={q.id} style={styles.generatedQuestionBlock}>
             {renderHeader(`Item ${qIndex + 1}`)}
-            
-            {/* ✅ UPDATED: Use q.sentence */}
             <Text style={styles.sectionLabel}>Sentence (Use '___' for the blank)</Text>
             <TextInput
               style={styles.inputBox}
-              // ✅ FIX: Bind to 'sentence' if available, fallback to 'question' for legacy safety
-              value={q.sentence || q.question || ''} 
-              onChangeText={(val) => updateGeneratedQuestion(qIndex, 'sentence', val)} // ✅ SAVE as 'sentence'
+              value={q.sentence || q.question || ''}
+              onChangeText={(val) => updateGeneratedQuestion(qIndex, 'sentence', val)}
               placeholder="The process of ___ is defined as..."
               multiline
             />
-            
             <Text style={styles.sectionLabel}>Missing Word / Correct Answer</Text>
             <TextInput
               style={styles.inputBox}
@@ -3490,7 +3580,7 @@ let finalQuestions = uniqueQuestions;
         );
     }
   };
-  // ─── Structure Preview Modal Renderer ─────────────────────────────────────
+
   const renderStructurePreviewModal = () => {
     if (!showStructurePreviewModal || !generatedStructure) return null;
     return (
@@ -3510,37 +3600,63 @@ let finalQuestions = uniqueQuestions;
               {generatedStructure?.modules?.map((mod: any, mi: number) => (
                 <View key={mi} style={{ marginBottom: 24 }}>
                   <View style={{ backgroundColor: '#D32F2F', padding: 16, borderRadius: 12, marginBottom: 16 }}>
-                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}><Text style={{ fontSize: 18, fontWeight: '800', color: '#FFF' }}>
-                      Module {mod.moduleNumber}: {cleanModuleTitle(mod.title, mod.moduleNumber)}
-                    </Text>
-                      <TouchableOpacity onPress={() => updateStructureField('modules', generatedStructure.modules.filter((_: any, idx: number) => idx !== mi))}><Ionicons name="trash-outline" size={24} color="#FFF" /></TouchableOpacity></View>
-                    
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <Text style={{ fontSize: 18, fontWeight: '800', color: '#FFF' }}>
+                        Module {mod.moduleNumber}: {cleanModuleTitle(mod.title, mod.moduleNumber)}
+                      </Text>
+                      <TouchableOpacity onPress={() => updateStructureField('modules', generatedStructure.modules.filter((_: any, idx: number) => idx !== mi))}>
+                        <Ionicons name="trash-outline" size={24} color="#FFF" />
+                      </TouchableOpacity>
+                    </View>
                   </View>
-                  <View style={{ paddingLeft: 16, marginBottom: 16 }}><Text style={styles.sectionLabel}>Description</Text><TextInput style={styles.textAreaBox} value={mod.description} onChangeText={v => updateStructureField(`modules.${mi}.description`, v)} multiline /></View>
+                  <View style={{ paddingLeft: 16, marginBottom: 16 }}>
+                    <Text style={styles.sectionLabel}>Description</Text>
+                    <TextInput style={styles.textAreaBox} value={mod.description} onChangeText={v => updateStructureField(`modules.${mi}.description`, v)} multiline />
+                  </View>
                   <View style={{ paddingLeft: 16 }}>
                     <Text style={[styles.sectionLabel, { marginBottom: 12 }]}>Lessons ({mod.lessons?.length || 0})</Text>
                     {mod.lessons?.map((l: any, li: number) => (
                       <View key={li} style={{ backgroundColor: '#FFF', borderRadius: 12, padding: 16, marginBottom: 12, borderWidth: 1, borderColor: '#DDD', borderLeftWidth: 4, borderLeftColor: '#1976D2' }}>
-                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}><Text style={{ fontSize: 16, fontWeight: '700', color: '#1976D2' }}>Lesson {li + 1}: {l.title}</Text><TouchableOpacity onPress={() => { const nl = mod.lessons.filter((_: any, idx: number) => idx !== li); updateStructureField(`modules.${mi}.lessons`, nl); }}><Ionicons name="close-circle" size={20} color="#999" /></TouchableOpacity></View>
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                          <Text style={{ fontSize: 16, fontWeight: '700', color: '#1976D2' }}>Lesson {li + 1}: {l.title}</Text>
+                          <TouchableOpacity onPress={() => { const nl = mod.lessons.filter((_: any, idx: number) => idx !== li); updateStructureField(`modules.${mi}.lessons`, nl); }}>
+                            <Ionicons name="close-circle" size={20} color="#999" />
+                          </TouchableOpacity>
+                        </View>
                         <TextInput style={styles.inputBox} placeholder="Title" value={l.title} onChangeText={v => updateStructureField(`modules.${mi}.lessons.${li}.title`, v)} />
                         <TextInput style={[styles.textAreaBox, { minHeight: 60 }]} placeholder="Description" value={l.description} onChangeText={v => updateStructureField(`modules.${mi}.lessons.${li}.description`, v)} multiline />
-            
-                        <View style={{ marginTop: 12 }}><Text style={styles.sectionLabel}>Discussion</Text><TextInput style={[styles.textAreaBox, { minHeight: 300 }]} placeholder="AI content..." value={l.discussion || ''} onChangeText={v => updateStructureField(`modules.${mi}.lessons.${li}.discussion`, v)} multiline /></View>
-                        <View style={{ marginTop: 12 }}><Text style={styles.sectionLabel}>Activity</Text><TextInput style={[styles.textAreaBox, { minHeight: 300 }]} placeholder="Scenario..." value={l.activity || ''} onChangeText={v => updateStructureField(`modules.${mi}.lessons.${li}.activity`, v)} multiline /></View>
+                        <View style={{ marginTop: 12 }}>
+                          <Text style={styles.sectionLabel}>Discussion</Text>
+                          <TextInput style={[styles.textAreaBox, { minHeight: 300 }]} placeholder="AI content..." value={l.discussion || ''} onChangeText={v => updateStructureField(`modules.${mi}.lessons.${li}.discussion`, v)} multiline />
+                        </View>
+                        <View style={{ marginTop: 12 }}>
+                          <Text style={styles.sectionLabel}>Activity</Text>
+                          <TextInput style={[styles.textAreaBox, { minHeight: 300 }]} placeholder="Scenario..." value={l.activity || ''} onChangeText={v => updateStructureField(`modules.${mi}.lessons.${li}.activity`, v)} multiline />
+                        </View>
                       </View>
                     ))}
-                    <TouchableOpacity onPress={() => { const nl = { id: `l-${Date.now()}`, title: '', description: '', discussion: '', activity: '', estimatedHours: 2 }; updateStructureField(`modules.${mi}.lessons`, [...(mod.lessons || []), nl]); }} style={{ marginTop: 8, padding: 12, backgroundColor: '#FFF', borderRadius: 8, borderWidth: 1, borderColor: '#1976D2', alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8 }}><Ionicons name="add-circle-outline" size={20} color="#1976D2" /><Text style={{ color: '#1976D2', fontWeight: '700' }}>Add Lesson</Text></TouchableOpacity>
+                    <TouchableOpacity onPress={() => { const nl = { id: `l-${Date.now()}`, title: '', description: '', discussion: '', activity: '', estimatedHours: 2 }; updateStructureField(`modules.${mi}.lessons`, [...(mod.lessons || []), nl]); }} style={{ marginTop: 8, padding: 12, backgroundColor: '#FFF', borderRadius: 8, borderWidth: 1, borderColor: '#1976D2', alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8 }}>
+                      <Ionicons name="add-circle-outline" size={20} color="#1976D2" />
+                      <Text style={{ color: '#1976D2', fontWeight: '700' }}>Add Lesson</Text>
+                    </TouchableOpacity>
                   </View>
                 </View>
               ))}
             </ScrollView>
-            <View style={styles.buttonRow}><TouchableOpacity style={styles.secondaryButton} onPress={() => setShowStructurePreviewModal(false)} disabled={isGeneratingStructure}><Text style={styles.secondaryButtonText}>Cancel</Text></TouchableOpacity><TouchableOpacity style={styles.primaryButton} onPress={handleApproveStructure} disabled={isGeneratingStructure}>{isGeneratingStructure ? <ActivityIndicator size="small" color="#FFF" /> : <Text style={styles.primaryButtonText}>Approve & Save</Text>}</TouchableOpacity></View>
+            <View style={styles.buttonRow}>
+              <TouchableOpacity style={styles.secondaryButton} onPress={() => setShowStructurePreviewModal(false)} disabled={isGeneratingStructure}>
+                <Text style={styles.secondaryButtonText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.primaryButton} onPress={handleApproveStructure} disabled={isGeneratingStructure}>
+                {isGeneratingStructure ? <ActivityIndicator size="small" color="#FFF" /> : <Text style={styles.primaryButtonText}>Approve & Save</Text>}
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </Modal>
     );
   };
-  // ─── Submissions sub-view ─────────────────────────────────────────────────
+
   if (showSubmissions) {
     return (
       <>
@@ -3591,7 +3707,7 @@ let finalQuestions = uniqueQuestions;
       </>
     );
   }
-  // ─── Main render ─────────────────────────────────────────────────────────
+
   return (
     <View style={styles.container}>
       <ScrollView
@@ -3732,31 +3848,27 @@ let finalQuestions = uniqueQuestions;
         </View>
         {/* ── Tabs ─ */}
         <View style={styles.tabContainer}>
-  {/* ✅ MOVED TO FIRST POSITION (LEFT) */}
-  <TouchableOpacity
-    onPress={() => setActiveTab('modules')}
-    style={[styles.tab, activeTab === 'modules' && styles.tabActive]}
-  >
-    <Text
-      style={[styles.tabText, activeTab === 'modules' && styles.tabTextActive]}
-    >
-      Course Resources ({modules.length})
-    </Text>
-  </TouchableOpacity>
-
-  <TouchableOpacity
-    onPress={() => setActiveTab('assignments')}
-    style={[styles.tab, activeTab === 'assignments' && styles.tabActive]}
-  >
-    <Text
-      style={[styles.tabText, activeTab === 'assignments' && styles.tabTextActive]}
-    >
-      Assignments ({assignments.length})
-    </Text>
-  </TouchableOpacity>
-
-  {/* ❌ REMOVED MATERIALS TAB AS REQUESTED */}
-</View>
+          <TouchableOpacity
+            onPress={() => setActiveTab('modules')}
+            style={[styles.tab, activeTab === 'modules' && styles.tabActive]}
+          >
+            <Text
+              style={[styles.tabText, activeTab === 'modules' && styles.tabTextActive]}
+            >
+              Course Resources ({modules.length})
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => setActiveTab('assignments')}
+            style={[styles.tab, activeTab === 'assignments' && styles.tabActive]}
+          >
+            <Text
+              style={[styles.tabText, activeTab === 'assignments' && styles.tabTextActive]}
+            >
+              Assignments ({assignments.length})
+            </Text>
+          </TouchableOpacity>
+        </View>
         {activeTab === 'materials' ? (
           <TeacherMaterialSection
             materials={materials}
@@ -3781,7 +3893,7 @@ let finalQuestions = uniqueQuestions;
                 <View style={{ alignItems: 'center', paddingVertical: 20 }}>
                   <Text style={{ color: '#888', marginBottom: 12 }}>No syllabus uploaded.</Text>
                   <TouchableOpacity
-                    onPress={handlePickSyllabus} // ✅ Changed to handlePickSyllabus
+                    onPress={handlePickSyllabus}
                     disabled={isUploadingSyllabus}
                     style={{ backgroundColor: '#D32F2F', paddingHorizontal: 20, paddingVertical: 10, borderRadius: 8, flexDirection: 'row', alignItems: 'center', gap: 8 }}
                   >
@@ -3800,7 +3912,6 @@ let finalQuestions = uniqueQuestions;
                       </Text>
                     </View>
                   </View>
-                  {/* Generating State Indicator */}
                   {currentSyllabus.status === 'generating' && (
                     <View style={{ marginTop: 12, padding: 12, backgroundColor: '#FFF8E1', borderRadius: 8, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                       <ActivityIndicator size="small" color="#F57C00" />
@@ -3811,101 +3922,91 @@ let finalQuestions = uniqueQuestions;
                     <TouchableOpacity onPress={handleViewSyllabus} style={{ backgroundColor: '#E3F2FD', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8 }}>
                       <Text style={{ color: '#1565C0', fontWeight: '700', fontSize: 12 }}>View</Text>
                     </TouchableOpacity>
-                    {/* ❌ REMOVED: Replace Button */}
-                    {/* ❌ REMOVED: Delete Button */}
                   </View>
                 </View>
               )}
             </View>
-             {/* ACCORDION MODULES LIST WITH LOADING STATE */}
-    {isLoadingModules ? (
-      <View style={{ padding: 40, alignItems: 'center' }}>
-        <ActivityIndicator size="large" color="#D32F2F" />
-        <Text style={{ marginTop: 12, color: '#666', fontSize: 14 }}>Loading resources...</Text>
-      </View>
-    ) : modules.length === 0 ? (
-      <Text style={{ textAlign: 'center', color: '#888', marginTop: 40 }}>No modules generated yet.</Text>
-    ) : (
-  <>
-    {modules.map((mod: any) => {
-      const isExpanded = expandedModules[mod.moduleNumber] || false;
-      const totalHours = mod.estimatedHours ||
-        (mod.lessons?.reduce((sum: number, l: any) => sum + (l.estimatedHours || 0), 0) || 0);
-      return (
-        <View key={mod.id} style={{ backgroundColor: '#FFF', borderRadius: 12, marginBottom: 16, borderWidth: 1, borderColor: '#EEE', overflow: 'hidden' }}>
-          <TouchableOpacity
-            onPress={() => setExpandedModules(p => ({ ...p, [mod.moduleNumber]: !isExpanded }))}
-            style={{ padding: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: isExpanded ? '#FFF5F5' : '#FFF' }}
-          >
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 }}>
-              <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: '#D32F2F', alignItems: 'center', justifyContent: 'center' }}>
-                <Ionicons name="layers-outline" size={20} color="#FFF" />
+            {/* ACCORDION MODULES LIST WITH LOADING STATE */}
+            {isLoadingModules ? (
+              <View style={{ padding: 40, alignItems: 'center' }}>
+                <ActivityIndicator size="large" color="#D32F2F" />
+                <Text style={{ marginTop: 12, color: '#666', fontSize: 14 }}>Loading resources...</Text>
               </View>
-              <View style={{ flex: 1 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                  <Text style={{ fontSize: 16, fontWeight: '800', color: '#111' }}>
-                    Module {mod.moduleNumber}: {cleanModuleTitle(mod.title, mod.moduleNumber)}
-                  </Text>
-                </View>
-              
-              </View>
-            </View>
-            <Ionicons name={isExpanded ? 'chevron-up' : 'chevron-down'} size={24} color="#D32F2F" />
-          </TouchableOpacity>
-          
-          {isExpanded && (
-            <View style={{ padding: 16, borderTopWidth: 1, borderTopColor: '#EEE', backgroundColor: '#FAFAFA' }}>
-              {mod.lessons && mod.lessons.length > 0 ? (
-                (() => {
-                  // ✅ SORT LESSONS BY LESSON NUMBER BEFORE RENDERING
-                  const sortedLessons = [...mod.lessons].sort((a: any, b: any) => 
-                    (Number(a.lessonNumber) || 0) - (Number(b.lessonNumber) || 0)
+            ) : modules.length === 0 ? (
+              <Text style={{ textAlign: 'center', color: '#888', marginTop: 40 }}>No modules generated yet.</Text>
+            ) : (
+              <>
+                {modules.map((mod: any) => {
+                  const isExpanded = expandedModules[mod.moduleNumber] || false;
+                  const totalHours = mod.estimatedHours ||
+                    (mod.lessons?.reduce((sum: number, l: any) => sum + (l.estimatedHours || 0), 0) || 0);
+                  return (
+                    <View key={mod.id} style={{ backgroundColor: '#FFF', borderRadius: 12, marginBottom: 16, borderWidth: 1, borderColor: '#EEE', overflow: 'hidden' }}>
+                      <TouchableOpacity
+                        onPress={() => setExpandedModules(p => ({ ...p, [mod.moduleNumber]: !isExpanded }))}
+                        style={{ padding: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: isExpanded ? '#FFF5F5' : '#FFF' }}
+                      >
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 }}>
+                          <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: '#D32F2F', alignItems: 'center', justifyContent: 'center' }}>
+                            <Ionicons name="layers-outline" size={20} color="#FFF" />
+                          </View>
+                          <View style={{ flex: 1 }}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                              <Text style={{ fontSize: 16, fontWeight: '800', color: '#111' }}>
+                                Module {mod.moduleNumber}: {cleanModuleTitle(mod.title, mod.moduleNumber)}
+                              </Text>
+                            </View>
+                          </View>
+                        </View>
+                        <Ionicons name={isExpanded ? 'chevron-up' : 'chevron-down'} size={24} color="#D32F2F" />
+                      </TouchableOpacity>
+                      {isExpanded && (
+                        <View style={{ padding: 16, borderTopWidth: 1, borderTopColor: '#EEE', backgroundColor: '#FAFAFA' }}>
+                          {mod.lessons && mod.lessons.length > 0 ? (
+                            (() => {
+                              const sortedLessons = [...mod.lessons].sort((a: any, b: any) =>
+                                (Number(a.lessonNumber) || 0) - (Number(b.lessonNumber) || 0)
+                              );
+                              return sortedLessons.map((lesson: any, li: number) => (
+                                <TouchableOpacity
+                                  key={lesson.id || li}
+                                  onPress={() => handleOpenLessonDetail(lesson)}
+                                  style={{ backgroundColor: '#FFF', borderRadius: 8, padding: 12, marginBottom: 8, borderWidth: 1, borderColor: '#DDD', borderLeftWidth: 3, borderLeftColor: '#1976D2' }}
+                                >
+                                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <Text style={{ fontSize: 14, fontWeight: '700', color: '#1976D2', marginBottom: 4 }}>
+                                      Lesson {lesson.lessonNumber || (li + 1)}: {lesson.title}
+                                    </Text>
+                                    <Ionicons name="chevron-forward" size={16} color="#999" />
+                                  </View>
+                                  <Text style={{ fontSize: 12, color: '#555', lineHeight: 18 }}>{lesson.description}</Text>
+                                </TouchableOpacity>
+                              ));
+                            })()
+                          ) : (
+                            <Text style={{ textAlign: 'center', color: '#999', padding: 12 }}>No lessons added yet.</Text>
+                          )}
+                          <TouchableOpacity
+                            onPress={() => { setSelectedModuleForLesson(mod); setShowManualLessonModal(true); }}
+                            style={{ marginTop: 8, padding: 10, backgroundColor: '#FFF', borderRadius: 8, borderWidth: 1, borderColor: '#1976D2', alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 6 }}
+                          >
+                            <Ionicons name="add-circle-outline" size={16} color="#1976D2" />
+                            <Text style={{ color: '#1976D2', fontWeight: '700', fontSize: 12 }}>Add Lesson (Manual)</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            onPress={() => handleOpenNextLessonModal(mod)}
+                            style={{ marginTop: 8, padding: 16, backgroundColor: '#E3F2FD', borderRadius: 12, borderWidth: 1, borderColor: '#1976D2', alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8 }}
+                          >
+                            <Ionicons name="sparkles-outline" size={24} color="#1976D2" />
+                            <Text style={{ color: '#1976D2', fontWeight: '800', fontSize: 16 }}>Generate Next Lesson</Text>
+                          </TouchableOpacity>
+                        </View>
+                      )}
+                    </View>
                   );
-
-                  return sortedLessons.map((lesson: any, li: number) => (
-                    <TouchableOpacity
-                      key={lesson.id || li}
-                      onPress={() => handleOpenLessonDetail(lesson)}
-                      style={{ backgroundColor: '#FFF', borderRadius: 8, padding: 12, marginBottom: 8, borderWidth: 1, borderColor: '#DDD', borderLeftWidth: 3, borderLeftColor: '#1976D2' }}
-                    >
-                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                        {/* ✅ USE ACTUAL LESSON NUMBER FROM DB INSTEAD OF ARRAY INDEX */}
-                        <Text style={{ fontSize: 14, fontWeight: '700', color: '#1976D2', marginBottom: 4 }}>
-                          Lesson {lesson.lessonNumber || (li + 1)}: {lesson.title}
-                        </Text>
-                        <Ionicons name="chevron-forward" size={16} color="#999" />
-                      </View>
-                      <Text style={{ fontSize: 12, color: '#555', lineHeight: 18 }}>{lesson.description}</Text>
-                    </TouchableOpacity>
-                  ));
-                })()
-              ) : (
-                <Text style={{ textAlign: 'center', color: '#999', padding: 12 }}>No lessons added yet.</Text>
-              )}
-              
-              {/* Add Lesson & Generate buttons remain unchanged below */}
-              <TouchableOpacity
-                onPress={() => { setSelectedModuleForLesson(mod); setShowManualLessonModal(true); }}
-                style={{ marginTop: 8, padding: 10, backgroundColor: '#FFF', borderRadius: 8, borderWidth: 1, borderColor: '#1976D2', alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 6 }}
-              >
-                <Ionicons name="add-circle-outline" size={16} color="#1976D2" />
-                <Text style={{ color: '#1976D2', fontWeight: '700', fontSize: 12 }}>Add Lesson (Manual)</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={() => handleOpenNextLessonModal(mod)}
-                style={{ marginTop: 8, padding: 16, backgroundColor: '#E3F2FD', borderRadius: 12, borderWidth: 1, borderColor: '#1976D2', alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8 }}
-              >
-                <Ionicons name="sparkles-outline" size={24} color="#1976D2" />
-                <Text style={{ color: '#1976D2', fontWeight: '800', fontSize: 16 }}>Generate Next Lesson</Text>
-              </TouchableOpacity>
-            </View>
-          )}
-        </View>
-      );
-    })}
-  </>
-)}
-            {/* ✅ MOVED OUTSIDE THE TERNARY: Always visible when syllabus exists */}
+                })}
+              </>
+            )}
             {currentSyllabus && (
               <>
                 {modules.length === 0 ? (
@@ -3990,22 +4091,21 @@ FULLSCREEN MATERIAL VIEWER MODAL (Teacher Side — mirrors student)
               </View>
             </View>
             <View style={styles.viewerActions}>
-            {/* Edit Button Removed */}
-            {!!viewerFileUrl && !viewerIsVideo && (
-              <TouchableOpacity
-                onPress={handleDownloadMaterial}
-                disabled={isDownloading}
-                style={[styles.viewerActionBtn, isDownloading && { opacity: 0.55 }]}
-                hitSlop={{ top: 10, bottom: 10, left: 6, right: 6 }}
-              >
-                {isDownloading ? (
-                  <ActivityIndicator size="small" color="#FFF" />
-                ) : (
-                  <Ionicons name="download-outline" size={20} color="#FFF" />
-                )}
-              </TouchableOpacity>
-            )}
-          </View>
+              {!!viewerFileUrl && !viewerIsVideo && (
+                <TouchableOpacity
+                  onPress={handleDownloadMaterial}
+                  disabled={isDownloading}
+                  style={[styles.viewerActionBtn, isDownloading && { opacity: 0.55 }]}
+                  hitSlop={{ top: 10, bottom: 10, left: 6, right: 6 }}
+                >
+                  {isDownloading ? (
+                    <ActivityIndicator size="small" color="#FFF" />
+                  ) : (
+                    <Ionicons name="download-outline" size={20} color="#FFF" />
+                  )}
+                </TouchableOpacity>
+              )}
+            </View>
           </View>
           {viewerShouldUseInline && viewerUrl ? (
             <InlineMaterialViewer viewerUrl={viewerUrl} height={height - 62} />
@@ -4618,7 +4718,6 @@ GENERATED QUESTIONS PREVIEW MODAL
                 <Text style={styles.emptyMiniText}>No questions generated yet.</Text>
               )}
               {generatedQuestions.map((q, qIndex) => renderQuestionEditor(q, qIndex))}
-              
             </ScrollView>
             <View style={styles.buttonRow}>
               <TouchableOpacity
@@ -4631,7 +4730,7 @@ GENERATED QUESTIONS PREVIEW MODAL
                 style={styles.primaryButton}
                 onPress={() => {
                   if (generatedQuestions.length === 0) {
-                    showResultModal('error', 'Invalid Questions', 'You must have at least one question.');
+                    toast.show('error', 'Invalid Questions', 'You must have at least one question.');
                     return;
                   }
                   let hasInvalid = false;
@@ -4653,7 +4752,7 @@ GENERATED QUESTIONS PREVIEW MODAL
                     );
                   }
                   if (hasInvalid) {
-                    showResultModal(
+                    toast.show(
                       'error',
                       'Invalid Questions',
                       gameType === 'memory_match'
@@ -4663,7 +4762,7 @@ GENERATED QUESTIONS PREVIEW MODAL
                     return;
                   }
                   setShowGeneratedPreview(false);
-                  showResultModal('success', 'Saved', 'Questions updated and ready to be assigned.');
+                  toast.show('success', 'Saved', 'Questions updated and ready to be assigned.');
                 }}
               >
                 <Text style={styles.primaryButtonText}>Confirm & Keep Questions</Text>
@@ -4725,206 +4824,150 @@ SYLLABUS VIEWER MODAL
       {/* ══════════════════════════════════════════════════════════════════════
 LESSON DETAIL MODAL (UPDATED WITH EDIT & DELETE ACTIONS)
 ════════════════════════════════════════════════════════════════════════ */}
-{/* ══════════════════════════════════════════════════════════════════════
-LESSON DETAIL MODAL (UPDATED WITH EDIT & DELETE ACTIONS)
-════════════════════════════════════════════════════════════════════════ */}
-<Modal
-  visible={lessonDetailModalVisible}
-  transparent
-  animationType="slide"
-  onRequestClose={() => setLessonDetailModalVisible(false)}
->
-  <View style={styles.modalOverlayCenter}>
-    <View style={[styles.modalCardElevated, { width: isMobile ? Math.min(width - 28, 400) : 800, maxHeight: height * 0.9 }]}>
-      <View style={styles.createHeaderRow}>
-        <View style={styles.modalHeaderTextWrap}>
-          <Text style={styles.createTitle}>{selectedLesson?.title || 'Lesson Details'}</Text>
-          <Text style={styles.modalSubtitle}>Module Content & Activities</Text>
-        </View>
-        <TouchableOpacity onPress={() => setLessonDetailModalVisible(false)}>
-          <Ionicons name="close" size={24} color="#111" />
-        </TouchableOpacity>
-      </View>
-      <ScrollView showsVerticalScrollIndicator={true} contentContainerStyle={{ paddingBottom: 20 }}>
-        {isLessonLoading ? (
-          <ActivityIndicator size="large" color="#D32F2F" style={{ marginVertical: 20 }} />
-        ) : selectedLesson ? (
-          <>
-            {/* File Preview Trigger */}
-            {selectedLesson.type === 'manual_file' && selectedLesson.fileUrl ? (
-              <TouchableOpacity
-                onPress={() => {
-                  const materialViewData: Material = {
-                    id: selectedLesson.id,
-                    title: selectedLesson.title,
-                    week: '',
-                    posted: new Date().toLocaleString(),
-                    content: selectedLesson.description || '',
-                    fileName: selectedLesson.fileName,
-                    fileUri: selectedLesson.fileUrl,
-                    fileType: selectedLesson.fileType,
-                    storagePath: selectedLesson.storagePath,
-                    bucketPath: selectedLesson.bucketPath,
-                    pdfUrl: selectedLesson.pdfUrl,
-                    pdfStoragePath: selectedLesson.pdfStoragePath,
-                  };
-                  setLessonDetailModalVisible(false);
-                  setViewerMaterial(materialViewData);
-                }}
-                style={{
-                  backgroundColor: '#FFF5F5',
-                  borderWidth: 2,
-                  borderColor: '#D32F2F',
-                  borderStyle: 'dashed',
-                  borderRadius: 16,
-                  padding: 24,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  marginBottom: 16,
-                  gap: 12,
-                }}
-                activeOpacity={0.8}
-              >
-                <Ionicons name="document-text-outline" size={48} color="#D32F2F" />
-                <Text style={{ fontSize: 16, fontWeight: '800', color: '#D32F2F' }}>
-                  {selectedLesson.fileName || 'View Attached File'}
-                </Text>
-                <Text style={{ fontSize: 13, color: '#666' }}>
-                  Tap to open preview • {selectedLesson.fileType?.split('/')[1]?.toUpperCase() || 'FILE'}
-                </Text>
+      <Modal
+        visible={lessonDetailModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setLessonDetailModalVisible(false)}
+      >
+        <View style={styles.modalOverlayCenter}>
+          <View style={[styles.modalCardElevated, { width: isMobile ? Math.min(width - 28, 400) : 800, maxHeight: height * 0.9 }]}>
+            <View style={styles.createHeaderRow}>
+              <View style={styles.modalHeaderTextWrap}>
+                <Text style={styles.createTitle}>{selectedLesson?.title || 'Lesson Details'}</Text>
+                <Text style={styles.modalSubtitle}>Module Content & Activities</Text>
+              </View>
+              <TouchableOpacity onPress={() => setLessonDetailModalVisible(false)}>
+                <Ionicons name="close" size={24} color="#111" />
               </TouchableOpacity>
-            ) : null}
-            
-            {/* Description */}
-            <View style={{ marginBottom: 16 }}>
-              <Text style={styles.sectionLabel}>Description</Text>
-              <Text style={{ color: '#333', lineHeight: 20 }}>
-                {selectedLesson.description || 'No description available.'}
-              </Text>
             </View>
-            
-            {/* Discussion Content */}
-            {selectedLesson.discussion ? (
-              <View style={{ marginBottom: 16, backgroundColor: '#F9F9F9', padding: 12, borderRadius: 8 }}>
-                <Text style={styles.sectionLabel}>Discussion / Lecture Notes</Text>
-                <Text style={{ color: '#444', lineHeight: 22 }}>
-                  {renderFormattedText(selectedLesson.discussion, { color: '#444', lineHeight: 22 })}
-                </Text>
-              </View>
-            ) : null}
-            
-            {/* Activity */}
-            {selectedLesson.activity ? (
-              <View style={{ marginBottom: 16, backgroundColor: '#E3F2FD', padding: 12, borderRadius: 8 }}>
-                <Text style={[styles.sectionLabel, { color: '#1565C0' }]}>Activity / Scenario</Text>
-                <Text style={{ color: '#0D47A1', lineHeight: 22 }}>
-                  {renderFormattedText(selectedLesson.activity, { color: '#0D47A1', lineHeight: 22 })}
-                </Text>
-              </View>
-            ) : null}
-          </>
-        ) : (
-          <Text style={{ textAlign: 'center', color: '#888' }}>Could not load lesson details.</Text>
-        )}
-      </ScrollView>
-      
-      {/* ✅ NEW: Action Buttons Row */}
-      <View style={styles.modalBottomActions}>
-        <TouchableOpacity 
-          style={styles.deleteMaterialBtn} 
-          onPress={() => setShowDeleteLessonModal(true)}
-          disabled={isDeletingLesson}
-        >
-          <Ionicons name="trash-outline" size={18} color="#D32F2F" />
-          <Text style={styles.deleteMaterialBtnText}>Delete</Text>
-        </TouchableOpacity>
-        
-        <TouchableOpacity 
-  style={[styles.primaryButton, { flex: 2 }]} 
-  onPress={() => {
-    if (!selectedLesson) return;
-
-    // 1. Find parent module
-    const parentModule = modules.find((m: any) => m.id === selectedLesson.moduleId);
-    
-    // 2. Set Edit Mode Flag
-    setIsEditingLesson(true); 
-
-    // 3. Pre-fill form state
-    setSelectedModuleForLesson(parentModule || null);
-    setNewLessonTitle(selectedLesson.title || '');
-    setNewLessonDesc(selectedLesson.description || '');
-    
-    // 4. Lock Mode based on type
-    if (selectedLesson.type === 'manual_file' && selectedLesson.fileUrl) {
-      setLessonMode('file');
-      setNewLessonDiscussion('');
-      setNewLessonActivity('');
-      setNewLessonFile(null); 
-    } else {
-      setLessonMode('text');
-      setNewLessonDiscussion(selectedLesson.discussion || '');
-      setNewLessonActivity(selectedLesson.activity || '');
-      setNewLessonFile(null);
-    }
-    
-    // 5. Switch modals
-    setLessonDetailModalVisible(false);
-    setShowManualLessonModal(true);
-  }}
->
-  <Ionicons name="create-outline" size={18} color="#FFF" />
-  <Text style={styles.primaryButtonText}>Edit Lesson</Text>
-</TouchableOpacity>
-      </View>
-    </View>
-  </View>
-</Modal>
-
-{/* ═════════════════════════════════════════════════════════════════════
+            <ScrollView showsVerticalScrollIndicator={true} contentContainerStyle={{ paddingBottom: 20 }}>
+              {isLessonLoading ? (
+                <ActivityIndicator size="large" color="#D32F2F" style={{ marginVertical: 20 }} />
+              ) : selectedLesson ? (
+                <>
+                  {selectedLesson.type === 'manual_file' && selectedLesson.fileUrl ? (
+                    <TouchableOpacity
+                      onPress={() => {
+                        const materialViewData: Material = {
+                          id: selectedLesson.id,
+                          title: selectedLesson.title,
+                          week: '',
+                          posted: new Date().toLocaleString(),
+                          content: selectedLesson.description || '',
+                          fileName: selectedLesson.fileName,
+                          fileUri: selectedLesson.fileUrl,
+                          fileType: selectedLesson.fileType,
+                          storagePath: selectedLesson.storagePath,
+                          bucketPath: selectedLesson.bucketPath,
+                          pdfUrl: selectedLesson.pdfUrl,
+                          pdfStoragePath: selectedLesson.pdfStoragePath,
+                        };
+                        setLessonDetailModalVisible(false);
+                        setViewerMaterial(materialViewData);
+                      }}
+                      style={{
+                        backgroundColor: '#FFF5F5',
+                        borderWidth: 2,
+                        borderColor: '#D32F2F',
+                        borderStyle: 'dashed',
+                        borderRadius: 16,
+                        padding: 24,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        marginBottom: 16,
+                        gap: 12,
+                      }}
+                      activeOpacity={0.8}
+                    >
+                      <Ionicons name="document-text-outline" size={48} color="#D32F2F" />
+                      <Text style={{ fontSize: 16, fontWeight: '800', color: '#D32F2F' }}>
+                        {selectedLesson.fileName || 'View Attached File'}
+                      </Text>
+                      <Text style={{ fontSize: 13, color: '#666' }}>
+                        Tap to open preview • {selectedLesson.fileType?.split('/')[1]?.toUpperCase() || 'FILE'}
+                      </Text>
+                    </TouchableOpacity>
+                  ) : null}
+                  <View style={{ marginBottom: 16 }}>
+                    <Text style={styles.sectionLabel}>Description</Text>
+                    <Text style={{ color: '#333', lineHeight: 20 }}>
+                      {selectedLesson.description || 'No description available.'}
+                    </Text>
+                  </View>
+                  {selectedLesson.discussion ? (
+                    <View style={{ marginBottom: 16, backgroundColor: '#F9F9F9', padding: 12, borderRadius: 8 }}>
+                      <Text style={styles.sectionLabel}>Discussion / Lecture Notes</Text>
+                      <Text style={{ color: '#444', lineHeight: 22 }}>
+                        {renderFormattedText(selectedLesson.discussion, { color: '#444', lineHeight: 22 })}
+                      </Text>
+                    </View>
+                  ) : null}
+                  {selectedLesson.activity ? (
+                    <View style={{ marginBottom: 16, backgroundColor: '#E3F2FD', padding: 12, borderRadius: 8 }}>
+                      <Text style={[styles.sectionLabel, { color: '#1565C0' }]}>Activity / Scenario</Text>
+                      <Text style={{ color: '#0D47A1', lineHeight: 22 }}>
+                        {renderFormattedText(selectedLesson.activity, { color: '#0D47A1', lineHeight: 22 })}
+                      </Text>
+                    </View>
+                  ) : null}
+                </>
+              ) : (
+                <Text style={{ textAlign: 'center', color: '#888' }}>Could not load lesson details.</Text>
+              )}
+            </ScrollView>
+            <View style={styles.modalBottomActions}>
+              <TouchableOpacity
+                style={styles.deleteMaterialBtn}
+                onPress={() => {
+                  // Use toast.confirm instead of setting state directly
+                  toast.confirm(
+                    'Delete Lesson?',
+                    `Are you sure you want to delete "${selectedLesson?.title}"? This action cannot be undone.`,
+                    handleDeleteLesson
+                  );
+                }}
+                disabled={isDeletingLesson}
+              >
+                <Ionicons name="trash-outline" size={18} color="#D32F2F" />
+                <Text style={styles.deleteMaterialBtnText}>Delete</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.primaryButton, { flex: 2 }]}
+                onPress={() => {
+                  if (!selectedLesson) return;
+                  const parentModule = modules.find((m: any) => m.id === selectedLesson.moduleId);
+                  setIsEditingLesson(true);
+                  setSelectedModuleForLesson(parentModule || null);
+                  setNewLessonTitle(selectedLesson.title || '');
+                  setNewLessonDesc(selectedLesson.description || '');
+                  if (selectedLesson.type === 'manual_file' && selectedLesson.fileUrl) {
+                    setLessonMode('file');
+                    setNewLessonDiscussion('');
+                    setNewLessonActivity('');
+                    setNewLessonFile(null);
+                  } else {
+                    setLessonMode('text');
+                    setNewLessonDiscussion(selectedLesson.discussion || '');
+                    setNewLessonActivity(selectedLesson.activity || '');
+                    setNewLessonFile(null);
+                  }
+                  setLessonDetailModalVisible(false);
+                  setShowManualLessonModal(true);
+                }}
+              >
+                <Ionicons name="create-outline" size={18} color="#FFF" />
+                <Text style={styles.primaryButtonText}>Edit Lesson</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+      {/* ═════════════════════════════════════════════════════════════════════
 DELETE LESSON CONFIRMATION MODAL (Cross-Platform)
 ════════════════════════════════════════════════════════════════════════ */}
-<Modal
-  visible={showDeleteLessonModal}
-  transparent
-  animationType="fade"
-  onRequestClose={() => !isDeletingLesson && setShowDeleteLessonModal(false)}
->
-  <View style={styles.modalOverlayCenter}>
-    <View style={[styles.modalCardElevated, { width: isMobile ? Math.min(width - 28, 330) : 380 }]}>
-      <Text style={[styles.createTitle, { textAlign: 'center', marginBottom: 10, color: '#D32F2F' }]}>
-        Delete Lesson?
-      </Text>
-      <Text style={{ fontSize: 14, color: '#555', textAlign: 'center', lineHeight: 22, marginBottom: 20 }}>
-        Are you sure you want to delete "<Text style={{ fontWeight: '700' }}>{selectedLesson?.title}</Text>"? 
-        This action cannot be undone.
-      </Text>
-      <View style={{ flexDirection: 'row', gap: 10 }}>
-        <TouchableOpacity
-          style={styles.secondaryButton}
-          onPress={() => setShowDeleteLessonModal(false)}
-          disabled={isDeletingLesson}
-        >
-          <Text style={styles.secondaryButtonText}>Cancel</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.primaryButton, isDeletingLesson && styles.disabledButton]}
-          onPress={handleDeleteLesson}
-          disabled={isDeletingLesson}
-        >
-          {isDeletingLesson ? (
-            <ActivityIndicator size="small" color="#FFF" />
-          ) : (
-            <>
-              <Ionicons name="trash-outline" size={18} color="#FFF" />
-              <Text style={styles.primaryButtonText}>Delete</Text>
-            </>
-          )}
-        </TouchableOpacity>
-      </View>
-    </View>
-  </View>
-</Modal>
+      {/* This modal is now handled by ToastProvider's ConfirmationModal, but we keep the state for legacy compatibility if needed, though it's effectively replaced */}
+      
       {/* ══════════════════════════════════════════════════════════════════════
 MANUAL MODULE CREATION MODAL
 ═════════════════════════════════════════════════════════════════════════ */}
@@ -4934,42 +4977,33 @@ MANUAL MODULE CREATION MODAL
             <View style={styles.createHeaderRow}>
               <Text style={styles.createTitle}>Create Module Manually</Text>
               <TouchableOpacity onPress={() => {
-                // ✅ Calculate next available module number
-                const maxExistingNum = modules.length > 0 
-                  ? Math.max(...modules.map((m: any) => Number(m.moduleNumber) || 0)) 
+                const maxExistingNum = modules.length > 0
+                  ? Math.max(...modules.map((m: any) => Number(m.moduleNumber) || 0))
                   : 0;
                 const nextNum = maxExistingNum + 1;
-                
-                setNewModuleNum(String(nextNum)); // Set as string for TextInput
+                setNewModuleNum(String(nextNum));
                 setShowManualModuleModal(true);
               }}><TouchableOpacity onPress={() => setShowManualModuleModal(false)}>
-  <Ionicons name="close" size={24} color="#111" />
-</TouchableOpacity></TouchableOpacity>
+                <Ionicons name="close" size={24} color="#111" />
+              </TouchableOpacity></TouchableOpacity>
             </View>
             <ScrollView contentContainerStyle={{ paddingBottom: 20 }}>
-              {/* --- UPDATED MODULE NUMBER INPUT WITH VALIDATION --- */}
-             
               <Text style={styles.sectionLabel}>Module Number</Text>
-  
-              {/* ✅ UPDATED: Read-Only Input with Automatic Value */}
               <TextInput
-                style={[styles.inputBox, { backgroundColor: '#f5f5f5' }]} // Optional: Grey background to indicate read-only
+                style={[styles.inputBox, { backgroundColor: '#f5f5f5' }]}
                 value={newModuleNum}
-                editable={false} // 🔒 Makes it unchangeable by user
+                editable={false}
                 keyboardType="numeric"
                 placeholder="Auto-generated"
                 placeholderTextColor="#999"
               />
-              {/* --- REST OF THE FORM --- */}
               <Text style={styles.sectionLabel}>Title</Text>
               <TextInput style={styles.inputBox} value={newModuleTitle} onChangeText={setNewModuleTitle} placeholder="Module Title" placeholderTextColor="#999" />
-              
             </ScrollView>
             <View style={styles.buttonRow}>
               <TouchableOpacity style={styles.secondaryButton} onPress={() => setShowManualModuleModal(false)}>
                 <Text style={styles.secondaryButtonText}>Cancel</Text>
               </TouchableOpacity>
-              {/* ✅ DISABLE BUTTON IF DUPLICATE OR EMPTY TITLE */}
               <TouchableOpacity
                 style={[
                   styles.primaryButton,
@@ -4989,136 +5023,90 @@ MANUAL MODULE CREATION MODAL
       {/* ══════════════════════════════════════════════════════════════════════
 MANUAL LESSON CREATION MODAL
 ════════════════════════════════════════════════════════════════════════ */}
-      {/* ══════════════════════════════════════════════════════════════════════
-MANUAL LESSON CREATION MODAL (UPDATED WITH EXISTING FILE DISPLAY)
-════════════════════════════════════════════════════════════════════════ */}
-<Modal visible={showManualLessonModal} transparent animationType="fade">
-  <View style={styles.modalOverlayCenter}>
-    <View style={[styles.modalCardElevated, { width: isMobile ? Math.min(width - 28, 380) : 600, maxHeight: height * 0.9 }]}>
-      <View style={styles.createHeaderRow}>
-        <Text style={styles.createTitle}>
-          {/* Dynamic Title based on context */}
-          {newLessonTitle ? `Edit "${selectedModuleForLesson?.title}" Lesson` : `Add Lesson to "${selectedModuleForLesson?.title}"`}
-        </Text>
-        <TouchableOpacity onPress={() => {
-          setShowManualLessonModal(false);
-          resetLessonForm(); // Reset when closing manually
-        }}>
-          <Ionicons name="close" size={24} color="#111" />
-        </TouchableOpacity>
-      </View>
-
-      {/* ✅ CONDITIONALLY HIDE TOGGLE WHEN EDITING */}
-      {!newLessonTitle && (
-        <View style={{ flexDirection: 'row', gap: 10, marginBottom: 16 }}>
-          <TouchableOpacity onPress={() => setLessonMode('text')} style={[styles.typeChip, lessonMode === 'text' && styles.typeChipActive]}>
-            <Text style={[styles.typeChipText, lessonMode === 'text' && styles.typeChipTextActive]}>Text Content</Text>
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => setLessonMode('file')} style={[styles.typeChip, lessonMode === 'file' && styles.typeChipActive]}>
-            <Text style={[styles.typeChipText, lessonMode === 'file' && styles.typeChipTextActive]}>Upload File</Text>
-          </TouchableOpacity>
-        </View>
-      )}
-
-      <ScrollView contentContainerStyle={{ paddingBottom: 20 }}>
-        <Text style={styles.sectionLabel}>Lesson Title</Text>
-        <TextInput style={styles.inputBox} value={newLessonTitle} onChangeText={setNewLessonTitle} placeholder="Lesson Title" />
-        
-        <Text style={styles.sectionLabel}>Description</Text>
-        <TextInput style={styles.inputBox} value={newLessonDesc} onChangeText={setNewLessonDesc} placeholder="Short summary" />
-
-        {lessonMode === 'text' ? (
-          <>
-            <Text style={styles.sectionLabel}>Discussion / Lecture Notes</Text>
-            <TextInput style={[styles.textAreaBox, { minHeight: 150 }]} value={newLessonDiscussion} onChangeText={setNewLessonDiscussion} multiline placeholder="Enter detailed content..." />
-            
-            <Text style={styles.sectionLabel}>Activity</Text>
-            <TextInput style={[styles.textAreaBox, { minHeight: 100 }]} value={newLessonActivity} onChangeText={setNewLessonActivity} multiline placeholder="Instructions for activity..." />
-          </>
-        ) : (
-          <>
-            <Text style={styles.sectionLabel}>Upload Lesson Material</Text>
-            
-            {/* ✅ SHOW EXISTING FILE IF EDITING A FILE LESSON AND NO NEW FILE PICKED YET */}
-            {!newLessonFile && selectedLesson?.type === 'manual_file' && selectedLesson.fileName ? (
-              <View style={[styles.filePreviewBox, { marginBottom: 10, backgroundColor: '#F9F9F9', borderColor: '#DDD' }]}>
-                <Ionicons name="document-text-outline" size={20} color="#666" />
-                <View style={{ flex: 1 }}>
-                  <Text style={{ fontSize: 11, color: '#888', fontWeight: '700' }}>CURRENT FILE:</Text>
-                  <Text style={styles.filePreviewText}>{selectedLesson.fileName}</Text>
-                </View>
-              </View>
-            ) : null}
-
-            <TouchableOpacity 
-              style={[styles.primaryButtonWide, { marginTop: 0 }]} 
-              onPress={async () => {
-                const res = await DocumentPicker.getDocumentAsync({ type: '*/*', copyToCacheDirectory: true, base64: Platform.OS === 'web' });
-                if (!res.canceled && res.assets?.[0]) setNewLessonFile({ name: res.assets[0].name, uri: res.assets[0].uri, type: res.assets[0].mimeType, base64: (res.assets[0] as any).base64, file: (res.assets[0] as any).file });
-              }}
-            >
-              <Ionicons name="cloud-upload-outline" size={18} color="#FFF" />
-              <Text style={styles.uploadBtnText}>
-                {newLessonFile ? 'Change File' : (selectedLesson?.type === 'manual_file' ? 'Replace File' : 'Choose File')}
+      <Modal visible={showManualLessonModal} transparent animationType="fade">
+        <View style={styles.modalOverlayCenter}>
+          <View style={[styles.modalCardElevated, { width: isMobile ? Math.min(width - 28, 380) : 600, maxHeight: height * 0.9 }]}>
+            <View style={styles.createHeaderRow}>
+              <Text style={styles.createTitle}>
+                {newLessonTitle ? `Edit "${selectedModuleForLesson?.title}" Lesson` : `Add Lesson to "${selectedModuleForLesson?.title}"`}
               </Text>
-            </TouchableOpacity>
-
-            {newLessonFile && <View style={styles.filePreviewBox}><Ionicons name="document-text-outline" size={20} color="#D32F2F" /><Text style={styles.filePreviewText}>{newLessonFile.name}</Text></View>}
-
-            <Text style={{ fontSize: 12, color: '#888', marginTop: 8, textAlign: 'center' }}>
-              {selectedLesson?.type === 'manual_file' 
-                ? "Leave empty to keep the current file. Upload a new file to replace it." 
-                : "Discussion and Activity sections are hidden when uploading a file."}
-            </Text>
-          </>
-        )}
-      </ScrollView>
-
-      <View style={styles.buttonRow}>
-        <TouchableOpacity style={styles.secondaryButton} onPress={() => setShowManualLessonModal(false)}><Text style={styles.secondaryButtonText}>Cancel</Text></TouchableOpacity>
-        <TouchableOpacity style={styles.primaryButton} onPress={handleCreateManualLesson}><Text style={styles.primaryButtonText}>Save Lesson</Text></TouchableOpacity>
-      </View>
-    </View>
-  </View>
-</Modal>
+              <TouchableOpacity onPress={() => {
+                setShowManualLessonModal(false);
+                resetLessonForm();
+              }}>
+                <Ionicons name="close" size={24} color="#111" />
+              </TouchableOpacity>
+            </View>
+            {!newLessonTitle && (
+              <View style={{ flexDirection: 'row', gap: 10, marginBottom: 16 }}>
+                <TouchableOpacity onPress={() => setLessonMode('text')} style={[styles.typeChip, lessonMode === 'text' && styles.typeChipActive]}>
+                  <Text style={[styles.typeChipText, lessonMode === 'text' && styles.typeChipTextActive]}>Text Content</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => setLessonMode('file')} style={[styles.typeChip, lessonMode === 'file' && styles.typeChipActive]}>
+                  <Text style={[styles.typeChipText, lessonMode === 'file' && styles.typeChipTextActive]}>Upload File</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+            <ScrollView contentContainerStyle={{ paddingBottom: 20 }}>
+              <Text style={styles.sectionLabel}>Lesson Title</Text>
+              <TextInput style={styles.inputBox} value={newLessonTitle} onChangeText={setNewLessonTitle} placeholder="Lesson Title" />
+              <Text style={styles.sectionLabel}>Description</Text>
+              <TextInput style={styles.inputBox} value={newLessonDesc} onChangeText={setNewLessonDesc} placeholder="Short summary" />
+              {lessonMode === 'text' ? (
+                <>
+                  <Text style={styles.sectionLabel}>Discussion / Lecture Notes</Text>
+                  <TextInput style={[styles.textAreaBox, { minHeight: 150 }]} value={newLessonDiscussion} onChangeText={setNewLessonDiscussion} multiline placeholder="Enter detailed content..." />
+                  <Text style={styles.sectionLabel}>Activity</Text>
+                  <TextInput style={[styles.textAreaBox, { minHeight: 100 }]} value={newLessonActivity} onChangeText={setNewLessonActivity} multiline placeholder="Instructions for activity..." />
+                </>
+              ) : (
+                <>
+                  <Text style={styles.sectionLabel}>Upload Lesson Material</Text>
+                  {!newLessonFile && selectedLesson?.type === 'manual_file' && selectedLesson.fileName ? (
+                    <View style={[styles.filePreviewBox, { marginBottom: 10, backgroundColor: '#F9F9F9', borderColor: '#DDD' }]}>
+                      <Ionicons name="document-text-outline" size={20} color="#666" />
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ fontSize: 11, color: '#888', fontWeight: '700' }}>CURRENT FILE:</Text>
+                        <Text style={styles.filePreviewText}>{selectedLesson.fileName}</Text>
+                      </View>
+                    </View>
+                  ) : null}
+                  <TouchableOpacity
+                    style={[styles.primaryButtonWide, { marginTop: 0 }]}
+                    onPress={async () => {
+                      const res = await DocumentPicker.getDocumentAsync({ type: '*/*', copyToCacheDirectory: true, base64: Platform.OS === 'web' });
+                      if (!res.canceled && res.assets?.[0]) setNewLessonFile({ name: res.assets[0].name, uri: res.assets[0].uri, type: res.assets[0].mimeType, base64: (res.assets[0] as any).base64, file: (res.assets[0] as any).file });
+                    }}
+                  >
+                    <Ionicons name="cloud-upload-outline" size={18} color="#FFF" />
+                    <Text style={styles.uploadBtnText}>
+                      {newLessonFile ? 'Change File' : (selectedLesson?.type === 'manual_file' ? 'Replace File' : 'Choose File')}
+                    </Text>
+                  </TouchableOpacity>
+                  {newLessonFile && <View style={styles.filePreviewBox}><Ionicons name="document-text-outline" size={20} color="#D32F2F" /><Text style={styles.filePreviewText}>{newLessonFile.name}</Text></View>}
+                  <Text style={{ fontSize: 12, color: '#888', marginTop: 8, textAlign: 'center' }}>
+                    {selectedLesson?.type === 'manual_file'
+                      ? "Leave empty to keep the current file. Upload a new file to replace it."
+                      : "Discussion and Activity sections are hidden when uploading a file."}
+                  </Text>
+                </>
+              )}
+            </ScrollView>
+            <View style={styles.buttonRow}>
+              <TouchableOpacity style={styles.secondaryButton} onPress={() => setShowManualLessonModal(false)}><Text style={styles.secondaryButtonText}>Cancel</Text></TouchableOpacity>
+              <TouchableOpacity style={styles.primaryButton} onPress={handleCreateManualLesson}><Text style={styles.primaryButtonText}>Save Lesson</Text></TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
       {/* ══════════════════════════════════════════════════════════════════════
 COURSE STRUCTURE PREVIEW & APPROVAL MODAL
 ════════════════════════════════════════════════════════════════════════ */}
       {renderStructurePreviewModal()}
       {/* ══════════════════════════════════════════════════════════════════════
-RESULT MODAL
+RESULT MODAL (REMOVED - Replaced by Toast)
 ════════════════════════════════════════════════════════════════════════ */}
-      <Modal
-        visible={resultModalVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setResultModalVisible(false)}
-      >
-        <View style={styles.modalOverlayCenter}>
-          <View
-            style={[
-              styles.modalCardElevated,
-              { width: isMobile ? Math.min(width - 28, 330) : 360 },
-            ]}
-          >
-            <Text
-              style={[
-                styles.createTitle,
-                { color: resultModalType === 'success' ? '#2E7D32' : '#D32F2F' },
-              ]}
-            >
-              {resultModalTitle}
-            </Text>
-            <Text style={styles.previewContent}>{resultModalMessage}</Text>
-            <TouchableOpacity
-              style={styles.primaryButtonWide}
-              onPress={() => setResultModalVisible(false)}
-            >
-              <Text style={styles.uploadBtnText}>OK</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
+      
       {/* ══════════════════════════════════════════════════════════════════════
 GENERATE LESSON CONTENT MODAL
 ═══════════════════════════════════════════════════════════════════════ */}
@@ -5132,7 +5120,6 @@ GENERATE LESSON CONTENT MODAL
               </TouchableOpacity>
             </View>
             <ScrollView contentContainerStyle={{ paddingBottom: 20 }}>
-              {/* Module Selector */}
               <Text style={styles.sectionLabel}>Select Module</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 10 }}>
                 {modules.map((mod) => (
@@ -5151,11 +5138,9 @@ GENERATE LESSON CONTENT MODAL
                   </TouchableOpacity>
                 ))}
               </ScrollView>
-              {/* Topic Selector */}
               {selectedGenModule && (
                 <>
                   <Text style={styles.sectionLabel}>Select Topic</Text>
-                  {/* Note: Assuming modules have a 'topics' array from the syllabus structure */}
                   {(selectedGenModule.topics || []).map((topic: any, idx: number) => (
                     <TouchableOpacity
                       key={idx}
@@ -5173,7 +5158,6 @@ GENERATE LESSON CONTENT MODAL
                   ))}
                 </>
               )}
-              {/* Subtopic Selector (Optional) */}
               {selectedGenTopic && selectedGenTopic.subtopics && selectedGenTopic.subtopics.length > 0 && (
                 <>
                   <Text style={styles.sectionLabel}>Select Subtopic (Optional)</Text>
@@ -5196,7 +5180,6 @@ GENERATE LESSON CONTENT MODAL
                   </ScrollView>
                 </>
               )}
-              {/* Content Checkboxes */}
               <Text style={[styles.sectionLabel, { marginTop: 16 }]}>Content to Generate</Text>
               <TouchableOpacity onPress={() => setGenDiscussion(!genDiscussion)} style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
                 <Ionicons name={genDiscussion ? "checkbox" : "square-outline"} size={24} color="#D32F2F" />
@@ -5248,20 +5231,17 @@ GENERATE NEXT LESSON - MULTI TOPIC SELECTION MODAL
               </TouchableOpacity>
             </View>
             <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 20 }}>
-              {/* ✅ UPDATED: Check if there are any remaining topics after filtering */}
               {!targetModuleForGen?.topics || targetModuleForGen.topics.length === 0 ? (
-              <Text style={{ textAlign: 'center', color: '#888', padding: 20 }}>
-                {/* Check if it's a manual module (no syllabus title match) */}
-                {(!currentSyllabus?.structure?.modules || 
-                !currentSyllabus.structure.modules.some((m: any) => 
-                  // ✅ SAFE: Check if targetModuleForGen and its title exist before comparing
-                  targetModuleForGen?.title && 
-                  String(m.moduleTitle || m.title).trim().toLowerCase() === 
-                  String(targetModuleForGen.title).trim().toLowerCase()
-                ))
-                  ? "This is a manually created module. Topics are only available for modules defined in the uploaded Syllabus."
-                  : "All topics for this module have already been generated!"}
-              </Text>
+                <Text style={{ textAlign: 'center', color: '#888', padding: 20 }}>
+                  {(!currentSyllabus?.structure?.modules ||
+                    !currentSyllabus.structure.modules.some((m: any) =>
+                      targetModuleForGen?.title &&
+                      String(m.moduleTitle || m.title).trim().toLowerCase() ===
+                      String(targetModuleForGen.title).trim().toLowerCase()
+                    ))
+                    ? "This is a manually created module. Topics are only available for modules defined in the uploaded Syllabus."
+                    : "All topics for this module have already been generated!"}
+                </Text>
               ) : (
                 targetModuleForGen.topics.map((topic: any, idx: number) => {
                   const isSelected = selectedTopicsForGen.includes(topic.title);
@@ -5390,11 +5370,9 @@ LESSON EDIT MODAL (Direct Edit - No Preview Toggle)
             <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 20 }}>
               {pendingGeneratedLessons.map((lesson, index) => (
                 <View key={lesson.id || index} style={{ marginBottom: 24, borderBottomWidth: 1, borderBottomColor: '#EEE', paddingBottom: 20 }}>
-                  {/* Lesson Header (No toggle button) */}
                   <Text style={{ fontSize: 16, fontWeight: '800', color: '#D32F2F', marginBottom: 12 }}>
                     Lesson {index + 1}: {lesson.title}
                   </Text>
-                  {/* Always Show Edit Fields */}
                   <View style={{ gap: 12 }}>
                     <Text style={styles.sectionLabel}>Title</Text>
                     <TextInput
@@ -5484,7 +5462,16 @@ LESSON EDIT MODAL (Direct Edit - No Preview Toggle)
     </View>
   );
 };
-export default TeacherCourseDetail2;
+
+// Wrap the main component with the ToastProvider
+const TeacherCourseDetail2Wrapper = (props: any) => (
+  <ToastProvider>
+    <TeacherCourseDetail2 {...props} />
+  </ToastProvider>
+);
+
+export default TeacherCourseDetail2Wrapper;
+
 // ─── Styles ───────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#ffffff' },
@@ -5900,11 +5887,11 @@ const styles = StyleSheet.create({
   materialChipText: { color: '#D32F2F', fontWeight: '700', flex: 1 },
   materialChipTextActive: { color: '#FFF' },
   lessonChip: {
-    backgroundColor: '#E3F2FD', // Light Blue background for lessons
+    backgroundColor: '#E3F2FD',
     borderColor: '#90CAF9',
   },
   lessonChipText: {
-    color: '#1565C0', // Darker blue text
+    color: '#1565C0',
   },
   lessonSubtext: {
     fontSize: 10,
@@ -5968,7 +5955,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  primaryButtonText: { color: '#FFF', fontWeight: '800' , textAlign: 'center'},
+  primaryButtonText: { color: '#FFF', fontWeight: '800', textAlign: 'center' },
   secondaryButton: {
     flex: 1,
     borderWidth: 1,
