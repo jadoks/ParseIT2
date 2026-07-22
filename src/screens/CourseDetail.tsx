@@ -5,7 +5,6 @@ import * as FileSystem from "expo-file-system/legacy";
 import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   FlatList,
   Image,
   Linking,
@@ -35,6 +34,13 @@ import {
   AssignmentFileUpload,
   AssignmentItem,
 } from "./Assignments";
+
+// ✅ Reuses the same Toast component used across the app (SignIn, Community,
+// Dashboard, ClassesScreen) instead of native Alert.alert, so feedback here
+// looks and behaves consistently everywhere.
+import Toast from '../Final_Admin_Components/Toast'; // adjust path if your folder layout differs
+
+type ToastType = 'success' | 'error' | 'info';
 
 let WebView: any = null;
 try {
@@ -678,7 +684,7 @@ const CourseDetail = ({
   const [submissionLink, setSubmissionLink] = useState("");
   const [isUploadingFile, setIsUploadingFile] = useState(false);
   const [isSubmittingAssignment, setIsSubmittingAssignment] = useState(false);
-  
+
   // ── Comment edit / delete state ──
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
   const [editText, setEditText] = useState("");
@@ -686,32 +692,54 @@ const CourseDetail = ({
   const [openMenuCommentId, setOpenMenuCommentId] = useState<string | null>(null);
   const [menuPosition, setMenuPosition] = useState<{ x: number; y: number } | null>(null);
   const buttonRefs = useState<{ [key: string]: any }>({});
-  
+
   // ── Delete confirmation modal states
   const [deleteModalVisible, setDeleteModalVisible] = useState(false);
   const [commentToDeleteId, setCommentToDeleteId] = useState<string | null>(null);
   const [isDeletingComment, setIsDeletingComment] = useState(false);
-  
+
   // ✅ NEW: Inline Preview State
   const [previewFile, setPreviewFile] = useState<AssignmentFileUpload | null>(null);
   const [gameAttempts, setGameAttempts] = useState<Record<string, number>>({});
   const [isLoadingAttempts, setIsLoadingAttempts] = useState<Record<string, boolean>>({});
-  
+
   // ── Modules state
   const [modules, setModules] = useState<any[]>([]);
   const [isLoadingModules, setIsLoadingModules] = useState(false);
   const [expandedModules, setExpandedModules] = useState<Record<number, boolean>>({});
-  
+
   // ── Syllabus state
   const [currentSyllabus, setCurrentSyllabus] = useState<any>(null);
   const [isLoadingSyllabus, setIsLoadingSyllabus] = useState(false);
   const [syllabusViewerUrl, setSyllabusViewerUrl] = useState<string | null>(null);
-  
+
   // ── Lesson Detail State
   const [selectedLesson, setSelectedLesson] = useState<any>(null);
   const [isLessonLoading, setIsLessonLoading] = useState(false);
   const [lessonDetailModalVisible, setLessonDetailModalVisible] = useState(false);
-  
+
+  // ✅ Toast state — same shape/usage as SignIn, Community, Dashboard, ClassesScreen.
+  const [toast, setToast] = useState<{
+    visible: boolean;
+    message: string;
+    type: ToastType;
+  }>({ visible: false, message: '', type: 'success' });
+
+  const showToast = (message: string, type: ToastType = 'success') => {
+    setToast({ visible: true, message, type });
+  };
+
+  const hideToast = () => {
+    setToast((prev) => ({ ...prev, visible: false }));
+  };
+
+  // Thin wrapper matching SignIn.tsx's showFeedback signature, so every
+  // existing "Alert.alert(title, message)" call site below can be swapped
+  // to "showFeedback(type, title, message)" with minimal changes.
+  const showFeedback = (type: ToastType, title: string, message: string) => {
+    showToast(`${title}: ${message}`, type);
+  };
+
   const insets = useSafeAreaInsets();
   const autoHandledRef = useRef<string | null>(null);
   // ✅ NEW: guards autoOpenLessonId the same way autoHandledRef guards
@@ -948,13 +976,13 @@ const CourseDetail = ({
   const handleOpenUploadedFile = async (fileUri?: string | null) => {
     const url = fileUri?.trim();
     if (!url) {
-      Alert.alert("No File", "This file has no URL yet.");
+      showFeedback('error', 'No File', 'This file has no URL yet.');
       return;
     }
     try {
       await Linking.openURL(url);
     } catch {
-      Alert.alert("Open Failed", "Unable to open this file.");
+      showFeedback('error', 'Open Failed', 'Unable to open this file.');
     }
   };
 
@@ -967,7 +995,7 @@ const CourseDetail = ({
     if (file.fileType === 'text/uri-list' || !!file.linkUrl) {
       const url = file.linkUrl?.trim();
       if (!url) {
-        Alert.alert('Invalid Link', 'No URL found for this submission.');
+        showFeedback('error', 'Invalid Link', 'No URL found for this submission.');
         return;
       }
       try {
@@ -975,32 +1003,170 @@ const CourseDetail = ({
         if (!supported && Platform.OS !== 'web') throw new Error('Unsupported URL.');
         await Linking.openURL(url);
       } catch {
-        Alert.alert('Open Failed', 'Unable to open this link.');
+        showFeedback('error', 'Open Failed', 'Unable to open this link.');
       }
       return;
     }
     // 2. CHECK IF IT'S A FILE -> INLINE PREVIEW
     if (!file.fileUrl && !file.storagePath && !file.bucketPath) {
-      Alert.alert('No File', emptyMessage);
+      showFeedback('error', 'No File', emptyMessage);
       return;
     }
     // Set preview state to open the modal
     setPreviewFile(file);
   };
 
+  // ✅ Shared download implementation (used by both the Course Material
+  // viewer and the submitted/lesson-file Inline Preview modal below).
+  const downloadFromUrl = async (
+    downloadUrl: string,
+    fileName: string,
+    mimeType: string
+  ) => {
+    // ── WEB: trigger a real browser download (not just opening a tab) ──
+    if (Platform.OS === "web") {
+      try {
+        const response = await fetch(downloadUrl);
+        const blob = await response.blob();
+        const blobUrl = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = blobUrl;
+        link.download = fileName;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+      } catch (err) {
+        console.error("Web download failed:", err);
+        try {
+          window.open(downloadUrl, "_blank");
+        } catch {
+          showFeedback('error', 'Download Failed', 'Unable to download this file.');
+        }
+      }
+      return;
+    }
+
+    // ── NATIVE (iOS / Android): download to cache, then share/save ──
+    try {
+      const safeFileName = fileName.replace(/[^a-zA-Z0-9._-]/g, "_");
+      const localUri = `${FileSystem.cacheDirectory}${safeFileName}`;
+
+      const downloadResult = await FileSystem.downloadAsync(downloadUrl, localUri);
+
+      if (downloadResult.status !== 200) {
+        throw new Error(`Download failed with status ${downloadResult.status}`);
+      }
+
+      let Sharing: any = null;
+      try {
+        Sharing = require("expo-sharing");
+      } catch (_) {}
+
+      if (Sharing && (await Sharing.isAvailableAsync())) {
+        await Sharing.shareAsync(downloadResult.uri, {
+          mimeType,
+          dialogTitle: fileName,
+          UTI: mimeType,
+        });
+      } else {
+        await Linking.openURL(downloadUrl);
+      }
+    } catch (err) {
+      console.error("Native download failed:", err);
+      showFeedback('error', 'Download Failed', 'Unable to download this file. Opening it instead.');
+      try {
+        await Linking.openURL(downloadUrl);
+      } catch {
+        showFeedback('error', 'Open Failed', 'Unable to open this file.');
+      }
+    }
+  };
+
   const handleDownloadMaterial = async () => {
     const storagePath = (selectedMaterial as any)?.storagePath;
     const firebaseUrl = getMaterialUrl(selectedMaterial);
     const resolvedStoragePath = storagePath || resolveStoragePathFromUrl(firebaseUrl);
+
     if (!resolvedStoragePath && !firebaseUrl) {
-      Alert.alert("No file", "This material has no file to download.");
+      showFeedback('error', 'No file', 'This material has no file to download.');
       return;
     }
+
     const fileName = selectedMaterial?.fileName || selectedMaterial?.title || "material";
     const mimeType = (selectedMaterial as any)?.fileType || getMimeFromFileName(fileName);
-    // Simplified download logic for brevity - reusing existing pattern
-    Alert.alert("Download", "Download started..."); 
-    // In real implementation, call downloadFileToDevice here
+
+    // ✅ Resolve the freshest possible URL first (avoids expired-token 403s),
+    // falling back to whatever URL we already have on the material.
+    let downloadUrl = firebaseUrl;
+    if (resolvedStoragePath) {
+      try {
+        const response = await apiFetch(`${API_BASE_URL}/storage/signed-url`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            storagePath: resolvedStoragePath,
+            classId: course?.id,
+          }),
+        });
+        const data = await response.json();
+        if (response.ok && data?.url) {
+          downloadUrl = data.url;
+        }
+      } catch (err) {
+        console.warn("Failed to refresh signed URL before download, using existing URL:", err);
+      }
+    }
+
+    if (!downloadUrl) {
+      showFeedback('error', 'Download Failed', 'Could not resolve a valid file URL.');
+      return;
+    }
+
+    await downloadFromUrl(downloadUrl, fileName, mimeType);
+  };
+
+  // ✅ NEW: Download handler for the "Preview Inline" modal used for
+  // submitted assignment files AND lesson/material files opened via the
+  // Lesson Detail modal. Mirrors handleDownloadMaterial's signed-URL
+  // refresh logic so downloads don't fail on expired tokens.
+  const handleDownloadSubmittedFile = async (file: AssignmentFileUpload | null) => {
+    if (!file) {
+      showFeedback('error', 'No file', 'This file has no URL to download.');
+      return;
+    }
+    const storagePath = file.storagePath || resolveStoragePathFromUrl(file.fileUrl);
+    const bucketPath = (file as any).bucketPath;
+    const fileName = file.fileName || "file";
+    const mimeType = file.fileType || getMimeFromFileName(fileName);
+
+    let downloadUrl = file.fileUrl || null;
+
+    if (storagePath || bucketPath) {
+      try {
+        const response = await apiFetch(`${API_BASE_URL}/storage/signed-url`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            storagePath: storagePath || bucketPath,
+            classId: course?.id,
+          }),
+        });
+        const data = await response.json();
+        if (response.ok && data?.url) {
+          downloadUrl = data.url;
+        }
+      } catch (err) {
+        console.warn("Failed to refresh signed URL before download, using existing URL:", err);
+      }
+    }
+
+    if (!downloadUrl) {
+      showFeedback('error', 'Download Failed', 'Could not resolve a valid file URL.');
+      return;
+    }
+
+    await downloadFromUrl(downloadUrl, fileName, mimeType);
   };
 
   const handleGenerateActivity = (assignment: AssignmentItem, silent = false) => {
@@ -1009,12 +1175,12 @@ const CourseDetail = ({
       if (!silent) {
         const score = getScorePercent(assignment);
         if (score !== null && score >= 75) {
-          Alert.alert("Not available", "Generate Activity is only available for graded assignments below 75%.");
+          showFeedback('error', 'Not available', 'Generate Activity is only available for graded assignments below 75%.');
         } else if (hasMasteredGeneratedActivity(assignment)) {
           const activityScore = getCompletedActivityScore(assignment);
-          Alert.alert("Already mastered", `You already scored ${activityScore?.scorePercent ?? 75}% or above on the generated follow-up activity for this assignment.`);
+          showFeedback('info', 'Already mastered', `You already scored ${activityScore?.scorePercent ?? 75}% or above on the generated follow-up activity for this assignment.`);
         } else {
-          Alert.alert("Not available", "This assignment needs at least one teacher-selected related material.");
+          showFeedback('error', 'Not available', 'This assignment needs at least one teacher-selected related material.');
         }
       }
       return;
@@ -1027,7 +1193,7 @@ const CourseDetail = ({
       materialIds: relatedMaterials.map((m) => m.id),
     } as any);
     if (!silent) {
-      Alert.alert("Activity Generated", "The activity will be generated from the related materials selected by the teacher.");
+      showFeedback('success', 'Activity Generated', 'The activity will be generated from the related materials selected by the teacher.');
     }
   };
 
@@ -1059,7 +1225,7 @@ const CourseDetail = ({
   const handleEditComment = async (commentId: string) => {
     if (!selectedAssignment || !editText.trim() || savingEdit) return;
     if (!onEditComment) {
-      Alert.alert('Not Available', 'Edit functionality is not available.');
+      showFeedback('error', 'Not Available', 'Edit functionality is not available.');
       return;
     }
     try {
@@ -1068,7 +1234,7 @@ const CourseDetail = ({
       setEditingCommentId(null);
       setEditText('');
     } catch (error: any) {
-      Alert.alert('Edit Failed', error?.message || 'Unable to update comment.');
+      showFeedback('error', 'Edit Failed', error?.message || 'Unable to update comment.');
     } finally {
       setSavingEdit(false);
     }
@@ -1077,7 +1243,7 @@ const CourseDetail = ({
   const handleDeleteComment = (commentId: string) => {
     if (!selectedAssignment) return;
     if (!onDeleteComment) {
-      Alert.alert('Not Available', 'Delete functionality is not available.');
+      showFeedback('error', 'Not Available', 'Delete functionality is not available.');
       return;
     }
     setCommentToDeleteId(commentId);
@@ -1091,7 +1257,7 @@ const CourseDetail = ({
       setIsDeletingComment(true);
       await onDeleteComment(selectedAssignment.id, commentToDeleteId);
     } catch (error: any) {
-      Alert.alert('Delete Failed', error?.message || 'Unable to delete comment.');
+      showFeedback('error', 'Delete Failed', error?.message || 'Unable to delete comment.');
     } finally {
       setIsDeletingComment(false);
       setDeleteModalVisible(false);
@@ -1102,13 +1268,13 @@ const CourseDetail = ({
   const handleFileUpload = async () => {
     if (!selectedAssignment) return;
     if (!course?.id) {
-      Alert.alert("No class", "This assignment is not connected to a class.");
+      showFeedback('error', 'No class', 'This assignment is not connected to a class.');
       return;
     }
     try {
       setIsUploadingFile(true);
       const res = await DocumentPicker.getDocumentAsync({
-        type: "/",
+        type: "*/*",
         copyToCacheDirectory: true,
         base64: Platform.OS === "web",
       });
@@ -1143,7 +1309,7 @@ const CourseDetail = ({
         });
       }
     } catch (error: any) {
-      Alert.alert("Upload failed", error?.message || "Could not upload the selected file.");
+      showFeedback('error', 'Upload failed', error?.message || 'Could not upload the selected file.');
     } finally {
       setIsUploadingFile(false);
     }
@@ -1159,7 +1325,7 @@ const CourseDetail = ({
     if (!selectedAssignment) return;
     const linkUrl = normalizeSubmissionLink(submissionLink);
     if (!linkUrl) {
-      Alert.alert("Missing link", "Please paste a submission link first.");
+      showFeedback('error', 'Missing link', 'Please paste a submission link first.');
       return;
     }
     onAddFile(selectedAssignment.id, {
@@ -1204,7 +1370,6 @@ const CourseDetail = ({
     if (!assignment) return [];
     const mappedFiles = (assignment.files || [])
       .filter((file: any) => {
-        // ✅ Exclude student submissions — only teacher-attached files belong here
         const isStudentSubmission =
           file.source === 'student' ||
           file.submissionId ||
@@ -1219,8 +1384,8 @@ const CourseDetail = ({
         uploadedDate: file.uploadedDate || file.uploadedAt || "Attached by teacher",
         fileUrl: file.fileUrl || file.fileUri || file.uri || file.downloadUrl || null,
         fileType: file.fileType,
-        storagePath: file.storagePath || null,   // ✅ pass through, matches Assignments.tsx
-        bucketPath: file.bucketPath || null,     // ✅ pass through, matches Assignments.tsx
+        storagePath: file.storagePath || null,
+        bucketPath: file.bucketPath || null,
         source: "teacher" as const,
       }));
     const topLevelUrl = getAssignmentFileUrl(assignment);
@@ -1234,8 +1399,8 @@ const CourseDetail = ({
           uploadedDate: "Attached by teacher",
           fileUrl: topLevelUrl,
           fileType: (assignment as any)?.fileType || (assignment as any)?.attachmentType,
-          storagePath: (assignment as any)?.storagePath || null,  // ✅ pass through
-          bucketPath: (assignment as any)?.bucketPath || null,    // ✅ pass through
+          storagePath: (assignment as any)?.storagePath || null,
+          bucketPath: (assignment as any)?.bucketPath || null,
           source: "teacher" as const,
         });
       }
@@ -1254,18 +1419,17 @@ const CourseDetail = ({
     if (!selectedAssignment || !course?.id) return;
     if (isAssignmentSubmitted(selectedAssignment)) return;
     if (!currentStudent?.studentId) {
-      Alert.alert("Missing student", "Student account information is missing. Please sign in again.");
+      showFeedback('error', 'Missing student', 'Student account information is missing. Please sign in again.');
       return;
     }
     const files = assignmentFiles[selectedAssignment.id] || [];
     if (files.length === 0) {
-      Alert.alert("No files", "Please upload at least one file or link before submitting.");
+      showFeedback('error', 'No files', 'Please upload at least one file or link before submitting.');
       return;
     }
     try {
       setIsSubmittingAssignment(true);
       const studentName = `${currentStudent.firstName || ""} ${currentStudent.lastName || ""}`.trim();
-      // Separate regular files from links
       const regularFiles = files.filter(file => {
         const isLink = file.fileType === 'text/uri-list' || !!file.linkUrl;
         return !isLink && (!!file.fileUrl || !!file.storagePath);
@@ -1305,9 +1469,9 @@ const CourseDetail = ({
       syncSelectedAssignmentStatus("submitted");
       await onRefreshSubmissions?.();
       const totalItems = submissionItems.length + (linkUrls.length > 0 ? 1 : 0);
-      Alert.alert("Success", `Submitted ${totalItems} item(s) successfully.`);
+      showFeedback('success', 'Success', `Submitted ${totalItems} item(s) successfully.`);
     } catch (error: any) {
-      Alert.alert("Submit Failed", error?.message || "Unable to submit assignment.");
+      showFeedback('error', 'Submit Failed', error?.message || 'Unable to submit assignment.');
     } finally {
       setIsSubmittingAssignment(false);
     }
@@ -1316,11 +1480,11 @@ const CourseDetail = ({
   const handleUnsubmitAssignment = async () => {
     if (!selectedAssignment || !course?.id) return;
     if (selectedAssignment.status === "graded") {
-      Alert.alert("Already graded", "This assignment has already been graded and cannot be unsubmitted.");
+      showFeedback('error', 'Already graded', 'This assignment has already been graded and cannot be unsubmitted.');
       return;
     }
     if (!currentStudent?.studentId) {
-      Alert.alert("Missing student", "Student account information is missing. Please sign in again.");
+      showFeedback('error', 'Missing student', 'Student account information is missing. Please sign in again.');
       return;
     }
     try {
@@ -1339,9 +1503,9 @@ const CourseDetail = ({
       if (!response.ok) throw new Error(data?.error || "Failed to unsubmit assignment.");
       syncSelectedAssignmentStatus("pending");
       await onRefreshSubmissions?.();
-      Alert.alert("Unsubmitted", "Your file is still attached. You can edit it and submit again.");
+      showFeedback('success', 'Unsubmitted', 'Your file is still attached. You can edit it and submit again.');
     } catch (error: any) {
-      Alert.alert("Unsubmit Failed", error?.message || "Unable to unsubmit assignment.");
+      showFeedback('error', 'Unsubmit Failed', error?.message || 'Unable to unsubmit assignment.');
     } finally {
       setIsSubmittingAssignment(false);
     }
@@ -1380,7 +1544,7 @@ const CourseDetail = ({
 
   const handlePlayGameWithAttemptCheck = (assignment: AssignmentItem) => {
     if (!canPlayGame(assignment)) {
-      Alert.alert("No Attempts Remaining", "You have used all your attempts for this game-based assignment.");
+      showFeedback('error', 'No Attempts Remaining', 'You have used all your attempts for this game-based assignment.');
       return;
     }
     onPlayGame?.(assignment);
@@ -1392,15 +1556,12 @@ const CourseDetail = ({
       const res = await apiFetch(`${API_BASE_URL}/course-syllabus/view/${currentSyllabus.id}`);
       const data = await res.json();
       if (res.ok && data.url) {
-        // ✅ Store the RAW url now — InlineMaterialViewer applies the
-        // Google Docs Viewer transform itself, so wrapping it here too
-        // would double-wrap the link.
         setSyllabusViewerUrl(data.url);
       } else {
-        Alert.alert("Error", "Failed to load syllabus preview.");
+        showFeedback('error', 'Error', 'Failed to load syllabus preview.');
       }
     } catch (e) {
-      Alert.alert("Error", "Failed to load syllabus preview.");
+      showFeedback('error', 'Error', 'Failed to load syllabus preview.');
     }
   };
 
@@ -1427,35 +1588,18 @@ const CourseDetail = ({
     }
   };
 
-  // ✅ NEW: Auto-open a specific Module Lesson's detail modal when requested
-  // by a parent (e.g. tapping "View" on a Related Course Resource inside
-  // the Assignments screen navigates here and asks for this lesson to pop
-  // open automatically). Mirrors the autoOpenAssignmentId effect above.
   useEffect(() => {
     if (!autoOpenLessonId) return;
     if (autoLessonHandledRef.current === autoOpenLessonId) return;
-    
+
     const targetMaterial = safeCourse.materials.find((m) => m.id === autoOpenLessonId);
-    
+
     if (targetMaterial) {
-      // ✅ SUCCESS: Material found
       autoLessonHandledRef.current = autoOpenLessonId;
-      
-      // Ensure we are on the modules tab (in case user was on assignments)
       setActiveTab("modules");
-      
-      // Open the modal
       handleOpenLessonDetail(targetMaterial);
-      
-      // Notify parent to clear the ID
       onConsumedAutoOpenLesson?.();
-    } else {
-      // ⚠️ MATERIAL NOT FOUND YET
-      // Do NOT consume the ID yet. The course data might still be loading 
-      // or updating. The effect will re-run when 'safeCourse.materials' changes.
     }
-    
-    // Dependency array must include safeCourse.materials to catch data loads
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoOpenLessonId, safeCourse.materials]);
 
@@ -1985,7 +2129,6 @@ const CourseDetail = ({
               height={windowHeight - 62}
               fileName={currentSyllabus?.fileName}
               fileType={currentSyllabus?.fileType}
-              // ✅ UPDATED: fall back to a path derived from the signed URL
               storagePath={
                 currentSyllabus?.storagePath ||
                 resolveStoragePathFromUrl(syllabusViewerUrl)
@@ -2423,7 +2566,6 @@ const CourseDetail = ({
                         <View>
                           {getSubmittedFiles(selectedAssignment).map((file) => {
                              const isLink = file.fileType === 'text/uri-list';
-                             // Render Link as Clickable Text
                              if (isLink && file.linkUrl) {
                                return (
                                  <TouchableOpacity 
@@ -2455,7 +2597,6 @@ const CourseDetail = ({
                                  </TouchableOpacity>
                                );
                              }
-                             // Render Regular Files
                              return (
                               <View key={file.id} style={styles.fileItem}>
                                 <Ionicons
@@ -2776,7 +2917,8 @@ const CourseDetail = ({
         )}
       </Modal>
 
-      {/* DELETE CONFIRMATION MODAL */}
+      {/* DELETE CONFIRMATION MODAL — kept as a custom confirm modal (not a toast),
+          since it needs the user's explicit Cancel/Delete choice. */}
       <Modal
         visible={deleteModalVisible}
         transparent
@@ -2852,6 +2994,19 @@ const CourseDetail = ({
                 </Text>
               </View>
             </View>
+            {/* ✅ FIX: Download button now wired to handleDownloadSubmittedFile,
+                which resolves a fresh signed URL (if needed) then downloads
+                via browser download (web) or Share sheet (native) — matching
+                the working logic already used by handleDownloadMaterial. */}
+            {!!previewFile?.fileUrl && previewFile?.fileType !== 'text/uri-list' && (
+              <TouchableOpacity
+                onPress={() => handleDownloadSubmittedFile(previewFile)}
+                style={styles.previewOpenExtBtn}
+                hitSlop={{ top: 10, bottom: 10, left: 6, right: 6 }}
+              >
+                <MaterialCommunityIcons name="download" size={20} color="#FFF" />
+              </TouchableOpacity>
+            )}
           </View>
           {previewFile && (
             <InlineMaterialViewer 
@@ -2865,6 +3020,24 @@ const CourseDetail = ({
             />
           )}
         </SafeAreaView>
+      </Modal>
+
+      {/* ✅ Toast — same portal-based pattern as SignIn/Community/Dashboard/ClassesScreen */}
+      <Modal
+        visible={toast.visible}
+        transparent
+        animationType="fade"
+        onRequestClose={hideToast}
+        statusBarTranslucent
+      >
+        <View style={styles.toastPortal} pointerEvents="box-none">
+          <Toast
+            visible={toast.visible}
+            message={toast.message}
+            type={toast.type}
+            onHide={hideToast}
+          />
+        </View>
       </Modal>
     </ScrollView>
   );
@@ -3758,7 +3931,6 @@ const styles = StyleSheet.create({
   },
   primaryButtonText: { color: '#FFF', fontWeight: '800', textAlign: 'center'},
   removeButton: { color: '#D32F2F', fontWeight: 'bold', paddingLeft: 8 },
-  // ✅ NEW STYLES FOR INLINE PREVIEW MODAL
   previewModalContainer: { flex: 1, backgroundColor: '#3c3c3c87' },
   previewTopBar: {
     height: 62,
@@ -3795,4 +3967,17 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
   },
   previewTypeText: { color: '#D32F2F', fontSize: 10, fontWeight: '800', letterSpacing: 0.5 },
+  previewOpenExtBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.15)',
+  },
+  // ✅ Toast portal — matches SignIn/Community/Dashboard/ClassesScreen; lets
+  // touches pass through to whatever's behind, except the toast itself.
+  toastPortal: {
+    ...StyleSheet.absoluteFillObject,
+  },
 });
