@@ -180,71 +180,43 @@ const getRealMimeType = async (uri: string, fallbackType: string) => {
   return fallbackType;
 };
 
-// ✅ HELPER: Parse basic markdown (bold, italic) into styled React Native Text elements
+// ✅ HELPER: Parse limited markdown — only ** for bold, and a leading * for bullet points
 const renderFormattedText = (text: string, baseStyle: any) => {
   if (!text) return null;
 
-  const regex = /(\*{1,3}[^*\n]+?\*{1,3}|_{1,3}[^_\n]+?_{1,3}|[^*\n\s][^*\n]*?\*{1,2}(?=\s|$))/g;
-  const parts = text.split(regex);
+  const lines = text.split('\n');
 
-  return parts.map((part, index) => {
-    if (!part) return null;
+  return lines.map((line, lineIndex) => {
+    // Detect a bullet line: starts with "* " (single asterisk + space)
+    const bulletMatch = line.match(/^\s*\*\s+(.*)$/);
+    const isBullet = !!bulletMatch;
+    const content = isBullet ? bulletMatch[1] : line;
 
-    const getMarkerCounts = (str: string, marker: string) => {
-      let startCount = 0;
-      let endCount = 0;
-      for (let i = 0; i < str.length; i++) {
-        if (str[i] === marker) startCount++;
-        else break;
-      }
-      for (let i = str.length - 1; i >= 0; i--) {
-        if (str[i] === marker) endCount++;
-        else break;
-      }
-      return { startCount, endCount };
-    };
+    // Split on **bold** segments only — nothing else is treated as special
+    const segments = content.split(/(\*\*[^*]+\*\*)/g).filter((s) => s.length > 0);
 
-    if (part.includes('*')) {
-      const { startCount, endCount } = getMarkerCounts(part, '*');
-      
-      if (startCount > 0 && endCount > 0) {
-        if (startCount === endCount) {
-          if (startCount === 3) return <Text key={index} style={[baseStyle, { fontWeight: 'bold', fontStyle: 'italic' }]}>{part.slice(3, -3)}</Text>;
-          if (startCount === 2) return <Text key={index} style={[baseStyle, { fontWeight: 'bold' }]}>{part.slice(2, -2)}</Text>;
-          if (startCount === 1) return <Text key={index} style={[baseStyle, { fontStyle: 'italic' }]}>{part.slice(1, -1)}</Text>;
-        } else {
-          const cleanText = part.slice(startCount, part.length - endCount);
-          return <Text key={index} style={[baseStyle, { fontWeight: 'bold' }]}>{cleanText}</Text>;
-        }
+    const renderedSegments = segments.map((segment, segIndex) => {
+      if (segment.startsWith('**') && segment.endsWith('**') && segment.length > 4) {
+        return (
+          <Text key={segIndex} style={[baseStyle, { fontWeight: 'bold' }]}>
+            {segment.slice(2, -2)}
+          </Text>
+        );
       }
-      
-      if (startCount === 0 && endCount > 0) {
-        const cleanText = part.slice(0, part.length - endCount);
-        if (cleanText.trim()) return <Text key={index} style={[baseStyle, { fontWeight: 'bold' }]}>{cleanText}</Text>;
-      }
-    }
+      return (
+        <Text key={segIndex} style={baseStyle}>
+          {segment}
+        </Text>
+      );
+    });
 
-    if (part.includes('_')) {
-      const { startCount, endCount } = getMarkerCounts(part, '_');
-      
-      if (startCount > 0 && endCount > 0) {
-        if (startCount === endCount) {
-          if (startCount === 3) return <Text key={index} style={[baseStyle, { fontWeight: 'bold', fontStyle: 'italic' }]}>{part.slice(3, -3)}</Text>;
-          if (startCount === 2) return <Text key={index} style={[baseStyle, { fontWeight: 'bold' }]}>{part.slice(2, -2)}</Text>;
-          if (startCount === 1) return <Text key={index} style={[baseStyle, { fontStyle: 'italic' }]}>{part.slice(1, -1)}</Text>;
-        } else {
-          const cleanText = part.slice(startCount, part.length - endCount);
-          return <Text key={index} style={[baseStyle, { fontWeight: 'bold' }]}>{cleanText}</Text>;
-        }
-      }
-      
-      if (startCount === 0 && endCount > 0) {
-        const cleanText = part.slice(0, part.length - endCount);
-        if (cleanText.trim()) return <Text key={index} style={[baseStyle, { fontWeight: 'bold' }]}>{cleanText}</Text>;
-      }
-    }
-
-    return <Text key={index} style={baseStyle}>{part}</Text>;
+    return (
+      <Text key={lineIndex} style={baseStyle}>
+        {isBullet ? '• ' : ''}
+        {renderedSegments}
+        {lineIndex < lines.length - 1 ? '\n' : ''}
+      </Text>
+    );
   });
 };
 

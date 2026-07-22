@@ -12374,7 +12374,17 @@ function inferProviderFromQuotaMessage(message = "") {
   return null;
 }
 
-
+// ✅ NEW: Strict output-formatting rule shared by every AI call
+const FORMATTING_INSTRUCTION = `
+FORMATTING RULES (strict):
+- Write in plain text only.
+- Do NOT use markdown symbols such as #, _, backticks, tables, or numbered lists (1. 2. 3.).
+- The ONLY formatting allowed is:
+  - Use **text** to make something bold.
+  - Start a line with "* " (a single asterisk followed by a space) to create a bullet point.
+- Do not use single *italic* or ***bold italic*** — only ** is recognized.
+- Do not nest or combine formatting symbols.
+`;
 
 async function callProvider(provider, context) {
   if (provider === "gemini") {
@@ -12670,6 +12680,8 @@ ${materialsText || "No readable materials found."}
           Extract important information.
           If it contains lessons or educational material,
           explain the content clearly.
+
+          ${FORMATTING_INSTRUCTION}
                 `,
               },
               {
@@ -12821,7 +12833,9 @@ In tutor mode, tutor the student step by step and ask a quick check question whe
         ? buildStrictTutorInstruction()
         : "You are ParseIT Assistant. Help users with platform questions, system guidance, and general support.";
 
-    const assistantInstruction = `${modeInstruction}\n${baseInstruction}`;
+    // ✅ FORMATTING_INSTRUCTION appended so every provider (Gemini, OpenAI, Claude, Groq, Mistral, Cohere)
+    // and the vision path below all receive the same plain-text / **bold** / "* bullet" only rule.
+    const assistantInstruction = `${modeInstruction}\n${baseInstruction}\n${FORMATTING_INSTRUCTION}`;
 
     
       let aiResult;
@@ -12919,10 +12933,8 @@ In tutor mode, tutor the student step by step and ask a quick check question whe
 }
 
 
-
 // ====================== AI CHAT HISTORY ROUTES ======================
 
-// Save chat history to Firestore
 app.post("/ai/chat-history/save", requireAuth, async (req, res) => {
   try {
     const { mode, messages } = req.body;
@@ -13009,6 +13021,8 @@ Instructions:
 - If the user asks for a summary, summarize the file.
 - If the user asks for quiz questions, generate them from the file.
 - If the user asks for explanations, explain using the file content.
+
+${FORMATTING_INSTRUCTION}
 `;
 }
 
