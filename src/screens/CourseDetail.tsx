@@ -1025,27 +1025,20 @@ const CourseDetail = ({
   ) => {
     // ── WEB: trigger a real browser download (not just opening a tab) ──
     if (Platform.OS === "web") {
-      try {
-        const response = await fetch(downloadUrl);
-        const blob = await response.blob();
-        const blobUrl = URL.createObjectURL(blob);
-        const link = document.createElement("a");
-        link.href = blobUrl;
-        link.download = fileName;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
-      } catch (err) {
-        console.error("Web download failed:", err);
-        try {
-          window.open(downloadUrl, "_blank");
-        } catch {
-          showFeedback('error', 'Download Failed', 'Unable to download this file.');
-        }
-      }
-      return;
+    try {
+      const link = document.createElement("a");
+      link.href = downloadUrl;
+      link.download = fileName;
+      link.rel = "noopener";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (err) {
+      console.error("Web download failed:", err);
+      showFeedback('error', 'Download Failed', 'Unable to download this file.');
     }
+    return;
+  }
 
     // ── NATIVE (iOS / Android): download to cache, then share/save ──
     try {
