@@ -2098,57 +2098,42 @@ const TeacherCourseDetail2 = ({
     setTimeout(() => setClassCodeCopied(false), 2000);
   };
 
-    const downloadClassGradesExcel = async () => {
+  // ✅ UPDATED: Added loading state logic
+  const downloadClassGradesExcel = async () => {
     if (!course?.id) {
       toast.show('error', 'No Class', 'No class selected.');
       return;
     }
+    
     setIsExportingGrades(true);
     try {
-      // Fetch game scores separately
       const gameResponse = await fetch(`${API_BASE_URL}/class-game-scores/${course.id}`, {
         credentials: 'include',
       });
       const gameScores = gameResponse.ok ? await gameResponse.json() : [];
-
       const workbook = XLSX.utils.book_new();
 
-      // ─── Sheet 1: Assignment Grades ──────────────────────────────────────
-      // 1. Build a lookup map for faster access (optional but cleaner)
-      const submissionMap = new Map<string, Submission[]>();
-      submissions.forEach((s) => {
-        if (!submissionMap.has(s.studentId)) {
-          submissionMap.set(s.studentId, []);
-        }
-        submissionMap.get(s.studentId)?.push(s);
-      });
+      // Build headers explicitly so column order is guaranteed,
+      // regardless of whether assignment titles are numeric strings.
+      const gradeHeaders = ['Student Name', ...assignments.map((a) => a.header)];
 
-      // 2. Construct rows ensuring "Student Name" is ALWAYS first
-      const gradeRows = members.map((member) => {
-        const studentSubs = submissionMap.get(member.id) || [];
-        
-        // Start with Student Name explicitly
-        const row: Record<string, any> = {
-          'Student Name': member.name, 
-        };
+      const gradeAoa = [
+        gradeHeaders,
+        ...members.map((member) => {
+          const studentSubmissions = submissions.filter((s) => s.studentId === member.id);
+          const scores = assignments.map((assignment) => {
+            const submission = studentSubmissions.find((s) => s.assignmentId === assignment.id);
+            return submission?.status === 'graded' ? submission.score : '';
+          });
+          return [member.name, ...scores];
+        }),
+      ];
 
-        // Append assignment scores in order
-        assignments.forEach((assignment) => {
-          const sub = studentSubs.find((s) => s.assignmentId === assignment.id);
-          // Use empty string '' instead of undefined/null to ensure cell exists in Excel
-          row[assignment.header] = sub?.status === 'graded' ? sub.score : '';
-        });
-
-        return row;
-      });
-
-      // 3. Create sheet from JSON
-      // XLSX.utils.json_to_sheet preserves the key order of the FIRST object
-      // Since we constructed 'row' with 'Student Name' first, it will be Column A
-      const wsGrades = XLSX.utils.json_to_sheet(gradeRows);
-      XLSX.utils.book_append_sheet(workbook, wsGrades, 'Assignment Grades');
-
-      // ─── Sheet 2: Quiz Masters Scores ────────────────────────────────────
+      XLSX.utils.book_append_sheet(
+        workbook,
+        XLSX.utils.aoa_to_sheet(gradeAoa),
+        'Assignment Grades'
+      );
       const gameRows = gameScores.map((game: any, index: number) => ({
         No: index + 1,
         'Student ID': game.studentId,
@@ -2157,13 +2142,12 @@ const TeacherCourseDetail2 = ({
         'Total Questions': game.totalQuestions,
         Percentage: `${game.percent}%`,
       }));
-      
-      const wsGames = XLSX.utils.json_to_sheet(gameRows);
-      XLSX.utils.book_append_sheet(workbook, wsGames, 'Quiz Masters Scores');
-
-      // ─── Export File ─────────────────────────────────────────────────────
+      XLSX.utils.book_append_sheet(
+        workbook,
+        XLSX.utils.json_to_sheet(gameRows),
+        'Quiz Masters Scores'
+      );
       const wbout = XLSX.write(workbook, { type: 'array', bookType: 'xlsx' });
-
       if (Platform.OS === 'web') {
         const blob = new Blob([wbout], {
           type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -2171,12 +2155,12 @@ const TeacherCourseDetail2 = ({
         const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
         link.href = url;
-        link.download = `${course.name.replace(/[^a-z0-9]/gi, '_')}_Grades.xlsx`;
+        link.download = `${course.name}_Grades.xlsx`;
         link.click();
         URL.revokeObjectURL(url);
       } else {
         const base64 = XLSX.write(workbook, { type: 'base64', bookType: 'xlsx' });
-        const fileUri = `${FileSystem.documentDirectory}${course.name.replace(/[^a-z0-9]/gi, '_')}_Grades.xlsx`;
+        const fileUri = `${FileSystem.documentDirectory}${course.name}_Grades.xlsx`;
         await FileSystem.writeAsStringAsync(fileUri, base64, {
           encoding: FileSystem.EncodingType.Base64,
         });
@@ -2184,7 +2168,6 @@ const TeacherCourseDetail2 = ({
       }
       toast.show('success', 'Export Successful', 'Excel exported successfully.');
     } catch (error: any) {
-      console.error('Excel Export Error:', error);
       toast.show('error', 'Export Failed', error?.message || 'Failed to export Excel.');
     } finally {
       setIsExportingGrades(false);
