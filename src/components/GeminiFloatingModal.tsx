@@ -180,19 +180,25 @@ const getRealMimeType = async (uri: string, fallbackType: string) => {
   return fallbackType;
 };
 
-// ✅ HELPER: Parse limited markdown — only ** for bold, and a leading * for bullet points
+// ✅ HELPER: Parse limited markdown — only ** for bold, and a leading "* " for bullet points.
+// A "* " at the start of a line (no closing asterisk required) always becomes a bullet "• ".
+// This function is intentionally strict: it does NOT support single *italic* or _underscore_ —
+// any stray single asterisk that ISN'T at the start of a line is left as plain literal text.
 const renderFormattedText = (text: string, baseStyle: any) => {
   if (!text) return null;
 
   const lines = text.split('\n');
 
   return lines.map((line, lineIndex) => {
-    // Detect a bullet line: starts with "* " (single asterisk + space)
+    // Detect a bullet line: optional leading whitespace, one "*", then at least one space.
+    // No closing "*" is required — this is what makes "* item text" become "• item text".
     const bulletMatch = line.match(/^\s*\*\s+(.*)$/);
     const isBullet = !!bulletMatch;
     const content = isBullet ? bulletMatch[1] : line;
 
-    // Split on **bold** segments only — nothing else is treated as special
+    // Within the (possibly bullet-stripped) content, only **double-asterisk** pairs are bold.
+    // Any single "*" left in content (e.g. mid-sentence) is NOT specially handled here on
+    // purpose — it will just render as a literal character, which is intended/expected.
     const segments = content.split(/(\*\*[^*]+\*\*)/g).filter((s) => s.length > 0);
 
     const renderedSegments = segments.map((segment, segIndex) => {
