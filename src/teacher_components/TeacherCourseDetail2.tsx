@@ -2110,7 +2110,7 @@ const TeacherCourseDetail2 = ({
       const gameResponse = await fetch(`${API_BASE_URL}/class-game-scores/${course.id}`, {
         credentials: 'include',
       });
-      const gameScores = gameResponse.ok ? await gameResponse.json() : [];
+      const gameScores = gameResponse.ok ? await gameResponse.json() : []; 
       const workbook = XLSX.utils.book_new();
 
       // Build headers explicitly so column order is guaranteed,
