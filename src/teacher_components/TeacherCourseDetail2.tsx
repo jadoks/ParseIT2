@@ -3,10 +3,9 @@ import Constants from 'expo-constants';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
-import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  Animated,
   Linking,
   Modal,
   Platform,
@@ -17,11 +16,12 @@ import {
   TextInput,
   TouchableOpacity,
   View,
-  useWindowDimensions,
+  useWindowDimensions
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import * as XLSX from 'xlsx';
+import Toast from '../Final_Admin_Components/Toast';
 import TeacherAssignmentSection from './TeacherAssignmentSection';
 import TeacherMaterialSection from './TeacherMaterialSection';
 import TeacherSubmissionsSection from './TeacherSubmissionsSection';
@@ -629,93 +629,7 @@ const inlineStyles = StyleSheet.create({
   noWebViewText: { color: '#888', textAlign: 'center', fontSize: 13, lineHeight: 20 },
 });
 
-// ─── Toast Components ────────────────────────────────────────────────────────
-
-const ToastItemComponent = ({
-  item,
-  onClose,
-}: {
-  item: ToastItem;
-  onClose: (id: string) => void;
-}) => {
-  const opacity = useRef(new Animated.Value(0)).current;
-  const translateY = useRef(new Animated.Value(-50)).current;
-
-  useEffect(() => {
-    Animated.parallel([
-      Animated.timing(opacity, {
-        toValue: 1,
-        duration: 300,
-        useNativeDriver: false,
-      }),
-      Animated.timing(translateY, {
-        toValue: 0,
-        duration: 300,
-        useNativeDriver: false,
-      }),
-    ]).start();
-
-    const timer = setTimeout(() => {
-      Animated.parallel([
-        Animated.timing(opacity, {
-          toValue: 0,
-          duration: 300,
-          useNativeDriver: false,
-        }),
-        Animated.timing(translateY, {
-          toValue: -50,
-          duration: 300,
-          useNativeDriver: false,
-        }),
-      ]).start(() => onClose(item.id));
-    }, item.duration || 3000);
-
-    return () => clearTimeout(timer);
-  }, []);
-
-  const getIcon = () => {
-    switch (item.type) {
-      case 'success': return 'checkmark-circle';
-      case 'error': return 'close-circle';
-      case 'warning': return 'alert-circle';
-      default: return 'information-circle';
-    }
-  };
-
-  const getColor = () => {
-    switch (item.type) {
-      case 'success': return '#10B981';
-      case 'error': return '#EF4444';
-      case 'warning': return '#F59E0B';
-      default: return '#3B82F6';
-    }
-  };
-
-  return (
-    <Animated.View
-      style={[
-        toastStyles.container,
-        {
-          opacity,
-          transform: [{ translateY }],
-          borderColor: getColor(),
-        },
-      ]}
-    >
-      <View style={toastStyles.iconContainer}>
-        <Ionicons name={getIcon()} size={20} color={getColor()} />
-      </View>
-      <View style={toastStyles.textContainer}>
-        <Text style={toastStyles.title}>{item.title}</Text>
-        {item.message ? <Text style={toastStyles.message}>{item.message}</Text> : null}
-      </View>
-      <TouchableOpacity onPress={() => onClose(item.id)} style={toastStyles.closeButton}>
-        <Ionicons name="close" size={16} color="#9CA3AF" />
-      </TouchableOpacity>
-    </Animated.View>
-  );
-};
-
+// ─── Confirmation Modal (used for delete confirmations) ─────────────────────
 const ConfirmationModal = ({
   visible,
   title,
@@ -754,114 +668,6 @@ const ConfirmationModal = ({
   );
 };
 
-const ToastProvider = ({ children }: { children: React.ReactNode }) => {
-  const [toasts, setToasts] = useState<ToastItem[]>([]);
-  const [confirmation, setConfirmation] = useState<{
-    visible: boolean;
-    title: string;
-    message: string;
-    onConfirm: () => void;
-    onCancel?: () => void;
-  } | null>(null);
-
-  const show = (type: ToastType, title: string, message?: string, duration?: number) => {
-    const id = Math.random().toString(36).substr(2, 9);
-    setToasts((prev) => [...prev, { id, type, title, message, duration }]);
-  };
-
-  const confirm = (
-    title: string,
-    message: string,
-    onConfirm: () => void,
-    onCancel?: () => void
-  ) => {
-    setConfirmation({ visible: true, title, message, onConfirm, onCancel });
-  };
-
-  const removeToast = (id: string) => {
-    setToasts((prev) => prev.filter((t) => t.id !== id));
-  };
-
-  const closeConfirmation = () => {
-    setConfirmation(null);
-  };
-
-  return (
-    <ToastContext.Provider value={{ show, confirm }}>
-      {children}
-      <View style={toastStyles.toastContainer}>
-        {toasts.map((toast) => (
-          <ToastItemComponent key={toast.id} item={toast} onClose={removeToast} />
-        ))}
-      </View>
-      {confirmation && (
-        <ConfirmationModal
-          visible={confirmation.visible}
-          title={confirmation.title}
-          message={confirmation.message}
-          onConfirm={() => {
-            confirmation.onConfirm();
-            closeConfirmation();
-          }}
-          onCancel={() => {
-            confirmation.onCancel?.();
-            closeConfirmation();
-          }}
-        />
-      )}
-    </ToastContext.Provider>
-  );
-};
-
-const toastStyles = StyleSheet.create({
-  toastContainer: {
-    position: 'absolute',
-    top: Platform.OS === 'web' ? 20 : 50,
-    left: 0,
-    right: 0,
-    alignItems: 'center',
-    zIndex: 10000,
-    pointerEvents: 'box-none',
-  },
-  container: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#FFF',
-    borderRadius: 12,
-    padding: 12,
-    marginHorizontal: 16,
-    marginBottom: 8,
-    shadowColor: '#000',
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 4,
-    borderWidth: 1,
-    minWidth: 300,
-    maxWidth: 400,
-  },
-  iconContainer: {
-    marginRight: 12,
-  },
-  textContainer: {
-    flex: 1,
-  },
-  title: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#111827',
-  },
-  message: {
-    fontSize: 12,
-    color: '#6B7280',
-    marginTop: 2,
-  },
-  closeButton: {
-    padding: 4,
-    marginLeft: 8,
-  },
-});
-
 // ─── Main Component ───────────────────────────────────────────────────────────
 const TeacherCourseDetail2 = ({
   onBack,
@@ -874,11 +680,57 @@ const TeacherCourseDetail2 = ({
   currentTeacher: SignedInTeacher;
   availableCourses?: CourseDetailData[];
 }) => {
-  const toast = useToast();
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const isSmallPhone = width < 360;
   const isMobile = width < 768;
+
+  // ─── Shared Toast (same component used across Admin/Teacher/Community/
+  // Dashboard/ClassesScreen and SignIn) instead of the old bespoke toast
+  // stack + inline confirmation UI. We keep the same `toast.show(...)` /
+  // `toast.confirm(...)` call sites everywhere below by wrapping the shared
+  // <Toast /> component in a small local object with the same shape as the
+  // old ToastContext value.
+  const [toastState, setToastState] = useState<{
+    visible: boolean;
+    message: string;
+    type: 'success' | 'error' | 'info';
+  }>({ visible: false, message: '', type: 'success' });
+
+  const [confirmation, setConfirmation] = useState<{
+    visible: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+    onCancel?: () => void;
+  } | null>(null);
+
+  const hideToast = () => {
+    setToastState((prev) => ({ ...prev, visible: false }));
+  };
+
+  const toast = {
+    show: (type: 'success' | 'error' | 'info' | 'warning', title: string, message?: string) => {
+      // The shared Toast component supports success/error/info, so a
+      // "warning" is shown using the error styling.
+      const mappedType: 'success' | 'error' | 'info' = type === 'warning' ? 'error' : type;
+      setToastState({
+        visible: true,
+        message: message ? `${title}: ${message}` : title,
+        type: mappedType,
+      });
+    },
+    confirm: (
+      title: string,
+      message: string,
+      onConfirm: () => void,
+      onCancel?: () => void
+    ) => {
+      setConfirmation({ visible: true, title, message, onConfirm, onCancel });
+    },
+  };
+
+  const closeConfirmation = () => setConfirmation(null);
 
   const teacherFullName = useMemo(() => {
     const first = currentTeacher?.firstName?.trim() || '';
@@ -1928,7 +1780,7 @@ const TeacherCourseDetail2 = ({
 
   const handleDeleteMaterial = () => {
     if (!editingMaterial) return;
-    // Replaced Alert.alert with toast.confirm
+    // Uses toast.confirm (backed by the local ConfirmationModal below).
     toast.confirm(
       'Delete Material',
       `Are you sure you want to delete "${editingMaterial.title}"? This will remove the file from storage and cannot be undone.`,
@@ -2672,7 +2524,7 @@ const TeacherCourseDetail2 = ({
 
   const handleDelete = async () => {
     if (!selectedId) return;
-    // Replaced Alert.alert with toast.confirm
+    // Uses toast.confirm (backed by the local ConfirmationModal below).
     toast.confirm(
       'Delete Assignment',
       'Are you sure you want to delete this assignment? This action cannot be undone.',
@@ -3666,6 +3518,44 @@ const TeacherCourseDetail2 = ({
     );
   };
 
+  // ─── Toast + Confirmation modal rendered by the shared component ───────────
+  // Rendered inside both return branches below (submissions view and the
+  // main detail view) so it's always available regardless of which screen
+  // is currently showing.
+  const renderToastAndConfirmation = () => (
+    <>
+      <Modal
+        visible={toastState.visible}
+        transparent
+        animationType="fade"
+        onRequestClose={hideToast}
+        statusBarTranslucent
+      >
+        <View style={styles.toastPortal} pointerEvents="box-none">
+          <Toast
+            visible={toastState.visible}
+            message={toastState.message}
+            type={toastState.type}
+            onHide={hideToast}
+          />
+        </View>
+      </Modal>
+      <ConfirmationModal
+        visible={!!confirmation?.visible}
+        title={confirmation?.title || ''}
+        message={confirmation?.message || ''}
+        onConfirm={() => {
+          confirmation?.onConfirm();
+          closeConfirmation();
+        }}
+        onCancel={() => {
+          confirmation?.onCancel?.();
+          closeConfirmation();
+        }}
+      />
+    </>
+  );
+
   if (showSubmissions) {
     return (
       <>
@@ -3713,6 +3603,7 @@ const TeacherCourseDetail2 = ({
             </View>
           </View>
         </Modal>
+        {renderToastAndConfirmation()}
       </>
     );
   }
@@ -4937,7 +4828,6 @@ LESSON DETAIL MODAL (UPDATED WITH EDIT & DELETE ACTIONS)
               <TouchableOpacity
                 style={styles.deleteMaterialBtn}
                 onPress={() => {
-                  // Use toast.confirm instead of setting state directly
                   toast.confirm(
                     'Delete Lesson?',
                     `Are you sure you want to delete "${selectedLesson?.title}"? This action cannot be undone.`,
@@ -4983,7 +4873,7 @@ LESSON DETAIL MODAL (UPDATED WITH EDIT & DELETE ACTIONS)
       {/* ═════════════════════════════════════════════════════════════════════
 DELETE LESSON CONFIRMATION MODAL (Cross-Platform)
 ════════════════════════════════════════════════════════════════════════ */}
-      {/* This modal is now handled by ToastProvider's ConfirmationModal, but we keep the state for legacy compatibility if needed, though it's effectively replaced */}
+      {/* Confirmations are now shown via toast.confirm + ConfirmationModal above */}
       
       {/* ══════════════════════════════════════════════════════════════════════
 MANUAL MODULE CREATION MODAL
@@ -5476,18 +5366,12 @@ LESSON EDIT MODAL (Direct Edit - No Preview Toggle)
           </View>
         </View>
       )}
+      {renderToastAndConfirmation()}
     </View>
   );
 };
 
-// Wrap the main component with the ToastProvider
-const TeacherCourseDetail2Wrapper = (props: any) => (
-  <ToastProvider>
-    <TeacherCourseDetail2 {...props} />
-  </ToastProvider>
-);
-
-export default TeacherCourseDetail2Wrapper;
+export default TeacherCourseDetail2;
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
@@ -6207,5 +6091,10 @@ const styles = StyleSheet.create({
     gap: 6,
     minWidth: 90,
     justifyContent: 'center',
+  },
+  // Toast portal — matches the pattern used in SignIn.tsx; lets touches
+  // pass through to whatever's behind, except the toast itself.
+  toastPortal: {
+    ...StyleSheet.absoluteFillObject,
   },
 });

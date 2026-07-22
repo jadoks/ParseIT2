@@ -1,16 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Print from 'expo-print';
-import React, {
-  createContext,
-  useContext,
-  useEffect,
-  useRef,
-  useState,
-} from 'react';
+import React, { useState } from 'react';
 import {
   ActivityIndicator,
-  Animated,
   Image,
   Linking,
   Modal,
@@ -25,6 +18,12 @@ import {
   useWindowDimensions
 } from 'react-native';
 import * as XLSX from 'xlsx';
+
+// ✅ Reuses the same Toast component used across the app (Admin/Teacher
+// screens, Community, Dashboard, ClassesScreen, SignIn) instead of the
+// bespoke ToastProvider/context that used to live here, so feedback looks
+// and behaves consistently everywhere.
+import Toast from '../Final_Admin_Components/Toast'; // adjust path if your folder layout differs
 
 const headerImage = require('../../assets/images/myjourney-header-template-1.png');
 
@@ -97,312 +96,8 @@ type DropdownProps = {
   isMobile: boolean;
 };
 
-// ─── Toast Context & Types (Shared) ──────────────────────────────────────────
-type ToastType = 'success' | 'error' | 'info' | 'warning';
-
-type ToastItem = {
-  id: string;
-  type: ToastType;
-  title: string;
-  message?: string;
-  duration?: number; // ms
-};
-
-type ToastContextType = {
-  show: (type: ToastType, title: string, message?: string, duration?: number) => void;
-  confirm: (
-    title: string,
-    message: string,
-    onConfirm: () => void,
-    onCancel?: () => void
-  ) => void;
-};
-
-const ToastContext = createContext<ToastContextType | null>(null);
-
-const useToast = () => {
-  const context = useContext(ToastContext);
-  if (!context) throw new Error('useToast must be used within a ToastProvider');
-  return context;
-};
-
-// ─── Toast Components (Shared) ───────────────────────────────────────────────
-const ToastItemComponent = ({
-  item,
-  onClose,
-}: {
-  item: ToastItem;
-  onClose: (id: string) => void;
-}) => {
-  const opacity = useRef(new Animated.Value(0)).current;
-  const translateY = useRef(new Animated.Value(-50)).current;
-
-  useEffect(() => {
-    Animated.parallel([
-      Animated.timing(opacity, {
-        toValue: 1,
-        duration: 300,
-        useNativeDriver: false,
-      }),
-      Animated.timing(translateY, {
-        toValue: 0,
-        duration: 300,
-        useNativeDriver: false,
-      }),
-    ]).start();
-
-    const timer = setTimeout(() => {
-      Animated.parallel([
-        Animated.timing(opacity, {
-          toValue: 0,
-          duration: 300,
-          useNativeDriver: false,
-        }),
-        Animated.timing(translateY, {
-          toValue: -50,
-          duration: 300,
-          useNativeDriver: false,
-        }),
-      ]).start(() => onClose(item.id));
-    }, item.duration || 3000);
-
-    return () => clearTimeout(timer);
-  }, []);
-
-  const getIcon = () => {
-    switch (item.type) {
-      case 'success': return 'checkmark-circle';
-      case 'error': return 'close-circle';
-      case 'warning': return 'alert-circle';
-      default: return 'information-circle';
-    }
-  };
-
-  const getColor = () => {
-    switch (item.type) {
-      case 'success': return '#10B981';
-      case 'error': return '#EF4444';
-      case 'warning': return '#F59E0B';
-      default: return '#3B82F6';
-    }
-  };
-
-  return (
-    <Animated.View
-      style={[
-        toastStyles.container,
-        {
-          opacity,
-          transform: [{ translateY }],
-          borderColor: getColor(),
-        },
-      ]}
-    >
-      <View style={toastStyles.iconContainer}>
-        <Ionicons name={getIcon()} size={20} color={getColor()} />
-      </View>
-      <View style={toastStyles.textContainer}>
-        <Text style={toastStyles.title}>{item.title}</Text>
-        {item.message ? <Text style={toastStyles.message}>{item.message}</Text> : null}
-      </View>
-      <TouchableOpacity onPress={() => onClose(item.id)} style={toastStyles.closeButton}>
-        <Ionicons name="close" size={16} color="#9CA3AF" />
-      </TouchableOpacity>
-    </Animated.View>
-  );
-};
-
-const ConfirmationModal = ({
-  visible,
-  title,
-  message,
-  onConfirm,
-  onCancel,
-}: {
-  visible: boolean;
-  title: string;
-  message: string;
-  onConfirm: () => void;
-  onCancel?: () => void;
-}) => {
-  if (!visible) return null;
-  return (
-    <Modal visible={visible} transparent animationType="fade">
-      <View style={confirmStyles.overlay}>
-        <View style={confirmStyles.card}>
-          <Text style={confirmStyles.title}>{title}</Text>
-          <Text style={confirmStyles.message}>{message}</Text>
-          <View style={{ flexDirection: 'row', gap: 10 }}>
-            <TouchableOpacity style={confirmStyles.cancelBtn} onPress={() => { onCancel?.(); }}>
-              <Text style={confirmStyles.cancelBtnText}>Cancel</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={confirmStyles.confirmBtn} onPress={onConfirm}>
-              <Text style={confirmStyles.confirmBtnText}>Confirm</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </View>
-    </Modal>
-  );
-};
-
-const ToastProvider = ({ children }: { children: React.ReactNode }) => {
-  const [toasts, setToasts] = useState<ToastItem[]>([]);
-  const [confirmation, setConfirmation] = useState<{
-    visible: boolean;
-    title: string;
-    message: string;
-    onConfirm: () => void;
-    onCancel?: () => void;
-  } | null>(null);
-
-  const show = (type: ToastType, title: string, message?: string, duration?: number) => {
-    const id = Math.random().toString(36).substr(2, 9);
-    setToasts((prev) => [...prev, { id, type, title, message, duration }]);
-  };
-
-  const confirm = (
-    title: string,
-    message: string,
-    onConfirm: () => void,
-    onCancel?: () => void
-  ) => {
-    setConfirmation({ visible: true, title, message, onConfirm, onCancel });
-  };
-
-  const removeToast = (id: string) => {
-    setToasts((prev) => prev.filter((t) => t.id !== id));
-  };
-
-  const closeConfirmation = () => {
-    setConfirmation(null);
-  };
-
-  return (
-    <ToastContext.Provider value={{ show, confirm }}>
-      {children}
-      <View style={toastStyles.toastContainer}>
-        {toasts.map((toast) => (
-          <ToastItemComponent key={toast.id} item={toast} onClose={removeToast} />
-        ))}
-      </View>
-      {confirmation && (
-        <ConfirmationModal
-          visible={confirmation.visible}
-          title={confirmation.title}
-          message={confirmation.message}
-          onConfirm={() => {
-            confirmation.onConfirm();
-            closeConfirmation();
-          }}
-          onCancel={() => {
-            confirmation.onCancel?.();
-            closeConfirmation();
-          }}
-        />
-      )}
-    </ToastContext.Provider>
-  );
-};
-
-const toastStyles = StyleSheet.create({
-  toastContainer: {
-    position: 'absolute',
-    top: Platform.OS === 'web' ? 20 : 50,
-    left: 0,
-    right: 0,
-    alignItems: 'center',
-    zIndex: 10000,
-    pointerEvents: 'box-none',
-  },
-  container: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#FFF',
-    borderRadius: 12,
-    padding: 12,
-    marginHorizontal: 16,
-    marginBottom: 8,
-    shadowColor: '#000',
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 4,
-    borderWidth: 1,
-    minWidth: 300,
-    maxWidth: 400,
-  },
-  iconContainer: {
-    marginRight: 12,
-  },
-  textContainer: {
-    flex: 1,
-  },
-  title: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#111827',
-  },
-  message: {
-    fontSize: 12,
-    color: '#6B7280',
-    marginTop: 2,
-  },
-  closeButton: {
-    padding: 4,
-    marginLeft: 8,
-  },
-});
-
-const confirmStyles = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.35)',
-    padding: 20,
-  },
-  card: {
-    width: 330,
-    backgroundColor: '#FFF',
-    borderRadius: 18,
-    padding: 20,
-  },
-  title: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: '#B71C1C',
-    textAlign: 'center',
-    marginBottom: 10,
-  },
-  message: {
-    fontSize: 14,
-    color: '#555',
-    textAlign: 'center',
-    lineHeight: 22,
-    marginBottom: 20,
-  },
-  cancelBtn: {
-    flex: 1,
-    borderWidth: 1,
-    borderColor: '#B71C1C',
-    minHeight: 46,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#FFF',
-  },
-  cancelBtnText: { color: '#B71C1C', fontWeight: '800' },
-  confirmBtn: {
-    flex: 1,
-    backgroundColor: '#B71C1C',
-    minHeight: 46,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  confirmBtnText: { color: '#FFF', fontWeight: '800' },
-});
+// ─── Toast type (shared shape with SignIn / Toast component) ────────────────
+type ToastType = 'success' | 'error' | 'info';
 
 function CustomDropdown({
   value,
@@ -474,6 +169,9 @@ type PreviewProps = {
   schoolYear: string;
   semester: string;
   isMobile: boolean;
+  // ✅ Replaces the old useToast() context call — the parent screen owns the
+  // single Toast instance, so this just forwards feedback up to it.
+  showFeedback: (type: ToastType, title: string, message: string) => void;
 };
 
 function HonorRollPreviewModal({
@@ -484,9 +182,9 @@ function HonorRollPreviewModal({
   schoolYear,
   semester,
   isMobile,
+  showFeedback,
 }: PreviewProps) {
   const { height } = useWindowDimensions();
-  const toast = useToast();
 
   const mobileCardMaxHeight = Math.min(height * 0.68, 760);
   const mobileContentMaxHeight = Math.min(height * 0.56, 620);
@@ -501,7 +199,7 @@ function HonorRollPreviewModal({
     if (supported) {
       Linking.openURL(generatedLink);
     } else {
-      toast.show('info', 'Link Generated', generatedLink);
+      showFeedback('info', 'Link Generated', generatedLink);
     }
   };
 
@@ -651,8 +349,7 @@ function HonorRollPreviewModal({
 }
 
 // UPDATED: Accept apiBaseUrl as a prop
-function HonorsScreenInner({ apiBaseUrl }: { apiBaseUrl: string }) {
-  const toast = useToast();
+export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
   const { width } = useWindowDimensions();
   const isMobile = width < 768;
 
@@ -670,6 +367,28 @@ function HonorsScreenInner({ apiBaseUrl }: { apiBaseUrl: string }) {
   // NEW: Loading state for Download Excel button
   const [isExportingExcel, setIsExportingExcel] = useState(false);
 
+  // ✅ Toast state — same shape/usage as SignIn, Community, Dashboard,
+  // ClassesScreen, so this screen's feedback looks and behaves identically.
+  const [toast, setToast] = useState<{
+    visible: boolean;
+    message: string;
+    type: ToastType;
+  }>({ visible: false, message: '', type: 'success' });
+
+  const showToast = (message: string, type: ToastType = 'success') => {
+    setToast({ visible: true, message, type });
+  };
+
+  const hideToast = () => {
+    setToast((prev) => ({ ...prev, visible: false }));
+  };
+
+  // Thin wrapper so every existing call site below can keep passing a
+  // title alongside the message — the toast just folds them into one line.
+  const showFeedback = (type: ToastType, title: string, message: string) => {
+    showToast(`${title}: ${message}`, type);
+  };
+
   const adviser = 'Tristan Mondisico';
 
   const handleGenerateHonorRoll = async () => {
@@ -677,7 +396,7 @@ function HonorsScreenInner({ apiBaseUrl }: { apiBaseUrl: string }) {
     const parsedStartYear = Number(normalizedStartYear);
 
     if (!Number.isInteger(parsedStartYear) || normalizedStartYear.length !== 4) {
-      toast.show('error', 'Invalid Start Year', 'Please enter a valid 4-digit start year. Example: 2025');
+      showFeedback('error', 'Invalid Start Year', 'Please enter a valid 4-digit start year. Example: 2025');
       return;
     }
 
@@ -747,10 +466,10 @@ function HonorsScreenInner({ apiBaseUrl }: { apiBaseUrl: string }) {
       setOpenDropdown(null);
 
       if (rankedSections.length === 0) {
-        toast.show('info', 'No Results', `No honor roll students found for ${buildSchoolYear(normalizedStartYear)} - ${semester}.`);
+        showFeedback('info', 'No Results', `No honor roll students found for ${buildSchoolYear(normalizedStartYear)} - ${semester}.`);
       }
     } catch (error: any) {
-      toast.show('error', 'Generate Failed', error?.message || 'Unable to generate honor roll.');
+      showFeedback('error', 'Generate Failed', error?.message || 'Unable to generate honor roll.');
     } finally {
       setIsGenerating(false);
     }
@@ -1159,7 +878,7 @@ function HonorsScreenInner({ apiBaseUrl }: { apiBaseUrl: string }) {
 
   const downloadHonorPdf = async () => {
     if (generatedSections.length === 0) {
-      toast.show('error', 'No Honor List', 'Please generate the honor list first.');
+      showFeedback('error', 'No Honor List', 'Please generate the honor list first.');
       return;
     }
 
@@ -1183,7 +902,7 @@ function HonorsScreenInner({ apiBaseUrl }: { apiBaseUrl: string }) {
         const permissions = await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync();
 
         if (!permissions.granted) {
-          toast.show('info', 'Cancelled', 'No folder selected.');
+          showFeedback('info', 'Cancelled', 'No folder selected.');
           return;
         }
 
@@ -1201,7 +920,7 @@ function HonorsScreenInner({ apiBaseUrl }: { apiBaseUrl: string }) {
           encoding: FileSystem.EncodingType.Base64,
         });
 
-        toast.show('success', 'Downloaded', 'Honor list PDF saved successfully.');
+        showFeedback('success', 'Downloaded', 'Honor list PDF saved successfully.');
         return;
       }
 
@@ -1212,15 +931,15 @@ function HonorsScreenInner({ apiBaseUrl }: { apiBaseUrl: string }) {
         to: savedUri,
       });
 
-      toast.show('success', 'Downloaded', `Honor list PDF saved successfully.\n${savedUri}`);
+      showFeedback('success', 'Downloaded', `Honor list PDF saved successfully.\n${savedUri}`);
     } catch (error: any) {
-      toast.show('error', 'Download Failed', error?.message || 'Unable to save the PDF file.');
+      showFeedback('error', 'Download Failed', error?.message || 'Unable to save the PDF file.');
     }
   };
 
   const downloadHonorExcel = async () => {
     if (generatedSections.length === 0) {
-      toast.show('error', 'No Honor List', 'Please generate the honor list first.');
+      showFeedback('error', 'No Honor List', 'Please generate the honor list first.');
       return;
     }
 
@@ -1373,7 +1092,7 @@ function HonorsScreenInner({ apiBaseUrl }: { apiBaseUrl: string }) {
 
       if (Platform.OS === 'web') {
         XLSX.writeFile(workbook, fileName);
-        toast.show('success', 'Downloaded', 'Honor list Excel file downloaded successfully.');
+        showFeedback('success', 'Downloaded', 'Honor list Excel file downloaded successfully.');
         return;
       }
 
@@ -1386,7 +1105,7 @@ function HonorsScreenInner({ apiBaseUrl }: { apiBaseUrl: string }) {
         const permissions = await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync();
 
         if (!permissions.granted) {
-          toast.show('info', 'Cancelled', 'No folder selected.');
+          showFeedback('info', 'Cancelled', 'No folder selected.');
           return;
         }
 
@@ -1400,7 +1119,7 @@ function HonorsScreenInner({ apiBaseUrl }: { apiBaseUrl: string }) {
           encoding: FileSystem.EncodingType.Base64,
         });
 
-        toast.show('success', 'Downloaded', 'Honor list Excel file saved successfully.');
+        showFeedback('success', 'Downloaded', 'Honor list Excel file saved successfully.');
         return;
       }
 
@@ -1410,9 +1129,9 @@ function HonorsScreenInner({ apiBaseUrl }: { apiBaseUrl: string }) {
         encoding: FileSystem.EncodingType.Base64,
       });
 
-      toast.show('success', 'Downloaded', `Honor list Excel file saved successfully.\n${savedUri}`);
+      showFeedback('success', 'Downloaded', `Honor list Excel file saved successfully.\n${savedUri}`);
     } catch (error: any) {
-      toast.show('error', 'Download Failed', error?.message || 'Unable to save the Excel file.');
+      showFeedback('error', 'Download Failed', error?.message || 'Unable to save the Excel file.');
     } finally {
       setIsExportingExcel(false);
     }
@@ -1612,16 +1331,26 @@ function HonorsScreenInner({ apiBaseUrl }: { apiBaseUrl: string }) {
         )}
 
       </ScrollView>
-    </SafeAreaView>
-  );
-}
 
-// Wrap the main component with the shared ToastProvider
-export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
-  return (
-    <ToastProvider>
-      <HonorsScreenInner apiBaseUrl={apiBaseUrl} />
-    </ToastProvider>
+      {/* Toast — portal-based, matches SignIn/Community/Dashboard/ClassesScreen
+          so feedback here looks and behaves the same as everywhere else. */}
+      <Modal
+        visible={toast.visible}
+        transparent
+        animationType="fade"
+        onRequestClose={hideToast}
+        statusBarTranslucent
+      >
+        <View style={styles.toastPortal} pointerEvents="box-none">
+          <Toast
+            visible={toast.visible}
+            message={toast.message}
+            type={toast.type}
+            onHide={hideToast}
+          />
+        </View>
+      </Modal>
+    </SafeAreaView>
   );
 }
 
@@ -2473,5 +2202,11 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '800',
     textAlign: 'center',
+  },
+
+  // ✅ Toast portal — matches SignIn/Community/Dashboard/ClassesScreen; lets
+  // touches pass through to whatever's behind, except the toast itself.
+  toastPortal: {
+    ...StyleSheet.absoluteFillObject,
   },
 });
