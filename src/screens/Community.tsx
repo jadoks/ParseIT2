@@ -29,7 +29,7 @@ import {
 
 // ✅ Reuses the same Toast component used across the app (Admin/Teacher
 // screens), instead of relying on native Alert popups.
-import Toast from '../Final_Admin_Components/Toast'; // adjust path if your folder layout differs
+import Toast from '../Final_Admin_Components/Toast';
 
 export interface CommunityAnswer {
   id: string;
@@ -1189,23 +1189,32 @@ const styles = StyleSheet.create({
     width: '100%',
   },
 
+  // ✅ Facebook-style post card: white background, subtle 1px hairline
+  // border + soft shadow instead of a colored border, modest corner
+  // radius, and a thin divider separating the content from the
+  // "answers" action row (mirrors the divider FB puts above Like/Comment/Share).
   postContainer: {
-  backgroundColor: '#ffffff',
-  padding: 18,
-  borderRadius: 16,
-  marginBottom: 14,
-  borderColor: '#D32F2F',
-  borderLeftWidth: 5,
-  borderBottomWidth: 1,
-  borderRightWidth: 1,
-  width: '100%',        
-  overflow: 'hidden',   
-},
+    backgroundColor: '#ffffff',
+    borderRadius: 8,
+    marginBottom: 12,
+    width: '100%',
+    borderWidth: 1,
+    borderColor: '#E4E6EB',
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 3,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 1,
+    overflow: 'hidden',
+  },
 
   postHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingTop: 12,
+    paddingBottom: 8,
   },
 
   userRow: {
@@ -1215,31 +1224,41 @@ const styles = StyleSheet.create({
   },
 
   postAvatar: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     overflow: 'hidden',
     aspectRatio: 1,
   },
 
   postUserName: {
-    fontWeight: '700',
-    color: '#222',
+    fontWeight: '600',
+    fontSize: 15,
+    color: '#050505',
   },
 
   postDateTime: {
-    fontSize: 12,
-    color: '#666',
+    fontSize: 13,
+    color: '#65676B',
+    marginTop: 1,
   },
 
   postContent: {
-    color: '#333',
-    marginVertical: 8,
+    fontSize: 15,
+    lineHeight: 20,
+    color: '#050505',
+    paddingHorizontal: 12,
+    marginBottom: 10,
   },
 
   showAnswersBtn: {
-    color: '#1976d2',
-    fontWeight: '400',
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#65676B',
+    textAlign: 'center',
+    paddingVertical: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#CED0D4',
   },
 
   dropdownOverlay: {

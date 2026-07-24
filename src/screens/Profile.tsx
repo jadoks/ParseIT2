@@ -1032,23 +1032,30 @@ const Profile: React.FC<ProfileProps> = ({
               style={[
                 styles.postCard,
                 {
-                  padding: isSmallPhone ? 14 : 18,
-                  borderRadius: isSmallPhone ? 14 : 16,
-                  marginBottom: isSmallPhone ? 12 : 14,
+                  borderRadius: isSmallPhone ? 8 : 8,
+                  marginBottom: isSmallPhone ? 10 : 12,
                 },
                 isLargeScreen && { alignSelf: 'center', maxWidth: contentMaxWidth },
               ]}
             >
-              <View style={styles.postHeader}>
+              <View
+                style={[
+                  styles.postHeader,
+                  {
+                    paddingHorizontal: isSmallPhone ? 12 : 14,
+                    paddingTop: isSmallPhone ? 12 : 14,
+                  },
+                ]}
+              >
                 <View style={styles.userRow}>
                   {renderProfileImage(
                     normalizeImageSource(post.avatar),
                     [
                       styles.postAvatar,
                       {
-                        width: isSmallPhone ? 32 : 35,
-                        height: isSmallPhone ? 32 : 35,
-                        borderRadius: isSmallPhone ? 16 : 20,
+                        width: isSmallPhone ? 36 : 40,
+                        height: isSmallPhone ? 36 : 40,
+                        borderRadius: isSmallPhone ? 18 : 20,
                       },
                     ]
                   )}
@@ -1056,7 +1063,7 @@ const Profile: React.FC<ProfileProps> = ({
                     <Text
                       style={[
                         styles.postName,
-                        { fontSize: isSmallPhone ? 15 : 16 },
+                        { fontSize: isSmallPhone ? 14 : 15 },
                       ]}
                       numberOfLines={1}
                     >
@@ -1065,7 +1072,7 @@ const Profile: React.FC<ProfileProps> = ({
                     <Text
                       style={[
                         styles.postTime,
-                        { fontSize: isSmallPhone ? 11 : 12 },
+                        { fontSize: isSmallPhone ? 12 : 13 },
                       ]}
                       numberOfLines={1}
                     >
@@ -1085,7 +1092,8 @@ const Profile: React.FC<ProfileProps> = ({
                   styles.postText,
                   {
                     fontSize: isSmallPhone ? 14 : 15,
-                    lineHeight: isSmallPhone ? 21 : 23,
+                    lineHeight: isSmallPhone ? 20 : 20,
+                    paddingHorizontal: isSmallPhone ? 12 : 14,
                   },
                 ]}
               >
@@ -1095,7 +1103,7 @@ const Profile: React.FC<ProfileProps> = ({
                 <Text
                   style={[
                     styles.answerLink,
-                    { fontSize: isSmallPhone ? 12 : 13 },
+                    { fontSize: isSmallPhone ? 13 : 14 },
                   ]}
                 >
                   View {post.answers.length} Answer(s)
@@ -1900,18 +1908,27 @@ const styles = StyleSheet.create({
   askText: {
     color: '#999',
   },
+  // ✅ Facebook-style post card: white background, subtle 1px hairline
+  // border + soft shadow instead of a colored border, modest corner
+  // radius, and a thin divider separating the content from the
+  // "answers" action row (matches the Teacher Community post card style).
   postCard: {
-    borderLeftWidth: 5,
-    borderBottomWidth: 1,
-    borderRightWidth: 1,
-    borderColor: '#D32F2F',
+    backgroundColor: '#ffffff',
     width: '100%',
-    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#E4E6EB',
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 3,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 1,
+    overflow: 'hidden',
   },
   postHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    paddingBottom: 8,
   },
   userRow: {
     flexDirection: 'row',
@@ -1923,20 +1940,24 @@ const styles = StyleSheet.create({
     aspectRatio: 1,
   },
   postName: {
-    fontWeight: '700',
-    color: '#111',
+    fontWeight: '600',
+    color: '#050505',
   },
   postTime: {
-    color: '#777',
+    color: '#65676B',
+    marginTop: 1,
   },
   postText: {
-    marginTop: 8,
-    color: '#333',
+    color: '#050505',
+    marginBottom: 10,
   },
   answerLink: {
-    color: '#1976d2',
-    marginTop: 8,
-    fontWeight: '400',
+    color: '#65676B',
+    fontWeight: '600',
+    textAlign: 'center',
+    paddingVertical: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#CED0D4',
   },
   dropdownOverlay: {
     flex: 1,
