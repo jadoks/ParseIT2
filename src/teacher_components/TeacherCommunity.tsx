@@ -1234,7 +1234,7 @@ const styles = StyleSheet.create({
   borderRightWidth: 1,
   width: '100%',        
   overflow: 'hidden',   
-},
+}, 
 
   postHeader: {
     flexDirection: 'row',

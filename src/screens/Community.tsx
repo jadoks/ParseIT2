@@ -1198,8 +1198,8 @@ const styles = StyleSheet.create({
   borderLeftWidth: 5,
   borderBottomWidth: 1,
   borderRightWidth: 1,
-  width: '100%',        // 👈 add this, matches Profile's postCard
-  overflow: 'hidden',   // 👈 add this too, keeps the rounded corner from clipping oddly
+  width: '100%',        
+  overflow: 'hidden',   
 },
 
   postHeader: {
