@@ -1059,8 +1059,6 @@ const Profile: React.FC<ProfileProps> = ({
               style={[
                 styles.postCard,
                 {
-                  padding: isSmallPhone ? 14 : 18,
-                  borderRadius: isSmallPhone ? 14 : 16,
                   marginBottom: isSmallPhone ? 12 : 14,
                 },
                 isLargeScreen && { alignSelf: 'center', maxWidth: contentMaxWidth },
@@ -1070,32 +1068,13 @@ const Profile: React.FC<ProfileProps> = ({
                 <View style={styles.userRow}>
                   {renderProfileImage(
                     normalizeImageSource(refreshedPostAvatars[post.id] || post.avatar),
-                    [
-                      styles.postAvatar,
-                      {
-                        width: isSmallPhone ? 32 : 35,
-                        height: isSmallPhone ? 32 : 35,
-                        borderRadius: isSmallPhone ? 16 : 20,
-                      },
-                    ]
+                    styles.postAvatar
                   )}
                   <View style={{ flex: 1, marginLeft: 8 }}>
-                    <Text
-                      style={[
-                        styles.postName,
-                        { fontSize: isSmallPhone ? 15 : 16 },
-                      ]}
-                      numberOfLines={1}
-                    >
+                    <Text style={styles.postName} numberOfLines={1}>
                       {post.userName}
                     </Text>
-                    <Text
-                      style={[
-                        styles.postTime,
-                        { fontSize: isSmallPhone ? 11 : 12 },
-                      ]}
-                      numberOfLines={1}
-                    >
+                    <Text style={styles.postTime} numberOfLines={1}>
                       {post.dateTime}
                     </Text>
                   </View>
@@ -1107,24 +1086,11 @@ const Profile: React.FC<ProfileProps> = ({
                   <Ionicons name="ellipsis-vertical" size={20} color="#333" />
                 </TouchableOpacity>
               </View>
-              <Text
-                style={[
-                  styles.postText,
-                  {
-                    fontSize: isSmallPhone ? 14 : 15,
-                    lineHeight: isSmallPhone ? 21 : 23,
-                  },
-                ]}
-              >
+              <Text style={styles.postText}>
                 {post.content}
               </Text>
               <TouchableOpacity onPress={() => openAnswersModal(post)}>
-                <Text
-                  style={[
-                    styles.answerLink,
-                    { fontSize: isSmallPhone ? 12 : 13 },
-                  ]}
-                >
+                <Text style={styles.answerLink}>
                   View {post.answers.length} Answer(s)
                 </Text>
               </TouchableOpacity>
@@ -1929,18 +1895,32 @@ const styles = StyleSheet.create({
   askText: {
     color: '#999',
   },
+
+  // ✅ Facebook-style post card — matches TeacherCommunity's postContainer:
+  // white background, hairline border + soft shadow instead of a colored
+  // border, modest 8px corner radius, and the accent-bar removed. Padding
+  // now lives on postHeader / postText / answerLink instead of the card
+  // itself, same as Community.
   postCard: {
-    borderLeftWidth: 5,
-    borderBottomWidth: 1,
-    borderRightWidth: 1,
-    borderColor: '#D32F2F',
+    backgroundColor: '#ffffff',
+    borderRadius: 8,
     width: '100%',
-    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#E4E6EB',
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 3,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 1,
+    overflow: 'hidden',
   },
   postHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingTop: 12,
+    paddingBottom: 8,
   },
   userRow: {
     flexDirection: 'row',
@@ -1948,24 +1928,37 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   postAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     overflow: 'hidden',
     aspectRatio: 1,
   },
   postName: {
-    fontWeight: '700',
-    color: '#111',
+    fontWeight: '600',
+    fontSize: 15,
+    color: '#050505',
   },
   postTime: {
-    color: '#777',
+    fontSize: 13,
+    color: '#65676B',
+    marginTop: 1,
   },
   postText: {
-    marginTop: 8,
-    color: '#333',
+    fontSize: 15,
+    lineHeight: 20,
+    color: '#050505',
+    paddingHorizontal: 12,
+    marginBottom: 10,
   },
   answerLink: {
-    color: '#1976d2',
-    marginTop: 8,
-    fontWeight: '400',
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#65676B',
+    textAlign: 'center',
+    paddingVertical: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#CED0D4',
   },
   dropdownOverlay: {
     flex: 1,
