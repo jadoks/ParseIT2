@@ -1190,15 +1190,17 @@ const styles = StyleSheet.create({
   },
 
   postContainer: {
-    backgroundColor: '#ffffff',
-    padding: 18,
-    borderRadius: 16,
-    marginBottom: 14,
-    borderColor: '#D32F2F',
-    borderLeftWidth: 5,
-    borderBottomWidth: 1,
-    borderRightWidth: 1,
-  },
+  backgroundColor: '#ffffff',
+  padding: 18,
+  borderRadius: 16,
+  marginBottom: 14,
+  borderColor: '#D32F2F',
+  borderLeftWidth: 5,
+  borderBottomWidth: 1,
+  borderRightWidth: 1,
+  width: '100%',        // 👈 add this, matches Profile's postCard
+  overflow: 'hidden',   // 👈 add this too, keeps the rounded corner from clipping oddly
+},
 
   postHeader: {
     flexDirection: 'row',

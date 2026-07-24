@@ -2145,7 +2145,7 @@ const TeacherCourseDetail2 = ({
       XLSX.utils.book_append_sheet(
         workbook,
         XLSX.utils.json_to_sheet(gameRows),
-        'Quiz Masters Scores'
+        'Student Game Scores'
       );
       const wbout = XLSX.write(workbook, { type: 'array', bookType: 'xlsx' });
       if (Platform.OS === 'web') {
