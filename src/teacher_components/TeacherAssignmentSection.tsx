@@ -1,11 +1,10 @@
 import React from 'react';
 import {
-  FlatList,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
-  useWindowDimensions,
+  useWindowDimensions
 } from 'react-native';
 import { heightPercentageToDP as hp } from 'react-native-responsive-screen';
 import Ionicons from 'react-native-vector-icons/Ionicons';
@@ -93,28 +92,26 @@ const TeacherAssignmentSection = ({
   );
 
   return (
-    <View style={[styles.container, { paddingHorizontal: containerPadding }]}>
-      <View style={styles.topActionRow}>
-        <TouchableOpacity style={styles.createButton} onPress={onCreate}>
-          <Ionicons name="add" size={18} color="#FFF" />
-          <Text style={styles.createButtonText}>Create Assignment</Text>
-        </TouchableOpacity>
-      </View>
-      {assignments.length > 0 ? (
-        <FlatList
-          scrollEnabled={false}
-          data={assignments}
-          renderItem={renderAssignmentItem}
-          keyExtractor={(item) => item.id}
-          showsVerticalScrollIndicator={false}
-          ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
-          contentContainerStyle={{ paddingBottom: hp('10') }}
-        />
-      ) : (
-        <Text style={styles.emptyText}>No assignments yet</Text>
-      )}
+  <View style={[styles.container, { paddingHorizontal: containerPadding }]}>
+    <View style={styles.topActionRow}>
+      <TouchableOpacity style={styles.createButton} onPress={onCreate}>
+        <Ionicons name="add" size={18} color="#FFF" />
+        <Text style={styles.createButtonText}>Create Assignment</Text>
+      </TouchableOpacity>
     </View>
-  );
+    {assignments.length > 0 ? (
+      <View style={{ paddingBottom: hp('10') }}>
+        {assignments.map((item, index) => (
+          <View key={item.id} style={index > 0 ? { marginTop: 12 } : undefined}>
+            {renderAssignmentItem({ item })}
+          </View>
+        ))}
+      </View>
+    ) : (
+      <Text style={styles.emptyText}>No assignments yet</Text>
+    )}
+  </View>
+);
 };
 
 export default TeacherAssignmentSection;
