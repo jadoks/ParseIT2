@@ -353,8 +353,8 @@ const Header: React.FC<HeaderProps> = ({
     }
 
     const iconNameMap: Record<'home' | 'game' | 'videos', string> = {
-      home: 'home-outline',
-      game: 'gamepad-variant-outline',
+      home: 'home',
+      game: 'gamepad-variant',
       videos: 'youtube',
     };
 
