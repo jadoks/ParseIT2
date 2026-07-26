@@ -2110,7 +2110,7 @@ const Assignments = ({
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F5F5F5' },
+  container: {  backgroundColor: '#F5F5F5' },
   detailContainer: { padding: 16, paddingBottom: 40, backgroundColor: '#fff', borderRadius: 30 },
   detailContainerMobile: { padding: 12, paddingBottom: 40 },
   detailContent: {},
