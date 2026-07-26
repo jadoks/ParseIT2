@@ -62,7 +62,7 @@ interface HeaderProps {
   onMenuPress?: () => void;
   notificationCount?: number;
   onNotificationPress?: () => void;
-  // ✅ NEW PROP: Unread conversation count
+  // ✅ Unread conversation count
   messengerUnreadCount?: number;
   searchValue?: string;
 }
@@ -87,13 +87,11 @@ const TeacherHeader: React.FC<HeaderProps> = ({
 
   const [isSearchExpanded, setIsSearchExpanded] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [isSearchFocused, setIsSearchFocused] = useState(false);
   const [hoveredNav, setHoveredNav] = useState<ScreenType | null>(null);
   const [isBellHovered, setIsBellHovered] = useState(false);
 
-  // 👇 NEW: focus tracking for the mobile expanded search input, so it gets
-  // the same highlighted-border focus behavior as other inputs in the app,
-  // consistent with isSearchFocused used on desktop/tablet.
+  // 👇 focus tracking for the mobile expanded search input, so it gets
+  // the same highlighted-border focus behavior as other inputs in the app.
   const [isMobileSearchFocused, setIsMobileSearchFocused] = useState(false);
 
   useEffect(() => {
@@ -104,7 +102,7 @@ const TeacherHeader: React.FC<HeaderProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchValue]);
   
-  // 👇 NEW STATE FOR CONTEXTUAL RESULTS
+  // 👇 STATE FOR CONTEXTUAL RESULTS
   const [searchResults, setSearchResults] = useState<SearchFeature[]>([]);
 
   const searchInputRef = useRef<TextInput>(null);
@@ -197,16 +195,17 @@ const TeacherHeader: React.FC<HeaderProps> = ({
 
   const isActive = (screen: ScreenType) => activeScreen === screen;
 
-  const mobileNavScreens: Array<'home' | 'honors' | 'grades' | 'announcement'> = [
-    'home',
-    'honors',
-    'grades',
-    'announcement',
-  ];
+ 
+const mobileNavScreens: ('home' | 'honors' | 'grades' | 'announcement')[] = [
+  'home',
+  'honors',
+  'grades',
+  'announcement',
+];
 
-  const desktopNavScreens: Array<
-    'home' | 'honors' | 'grades' | 'announcement' | 'messenger'
-  > = ['home', 'honors', 'grades', 'announcement', 'messenger'];
+const desktopNavScreens: (
+  'home' | 'honors' | 'grades' | 'announcement' | 'messenger'
+)[] = ['home', 'honors', 'grades', 'announcement', 'messenger'];
 
   const getNavLabel = (screen: ScreenType) => {
     switch (screen) {
@@ -247,7 +246,7 @@ const TeacherHeader: React.FC<HeaderProps> = ({
     return 'Search ParseClass';
   };
 
-  // 👇 UPDATED: mixed icon set — home uses Ionicons (filled), the rest stay
+  // 👇 mixed icon set — home uses Ionicons (filled), the rest stay
   // on MaterialCommunityIcons, matching the pattern in Header.tsx (student).
   const renderNavIcon = (screen: ScreenType, size: number) => {
     const color = getIconColor(screen);
@@ -273,6 +272,10 @@ const TeacherHeader: React.FC<HeaderProps> = ({
     }
   };
 
+  // 👇 UPDATED: Facebook-style active indicator — a colored underline bar
+  // beneath the icon (same #D32F2F as the active icon color) instead of a
+  // background tint. The nav button itself now uses generous horizontal
+  // padding like Facebook's desktop tabs.
   const renderDesktopNavButton = (
     screen: 'home' | 'honors' | 'grades' | 'announcement' | 'messenger',
     size: number,
@@ -282,7 +285,6 @@ const TeacherHeader: React.FC<HeaderProps> = ({
       <Pressable
         style={({ pressed }) => [
           styles.navBtn,
-          isActive(screen) && styles.navBtnActive,
           hoveredNav === screen && !isActive(screen) && styles.navBtnHover,
           pressed && styles.navBtnHover,
           extraStyle,
@@ -309,6 +311,7 @@ const TeacherHeader: React.FC<HeaderProps> = ({
             </View>
           )}
         </View>
+        {isActive(screen) && <View style={styles.activeUnderline} />}
       </Pressable>
       {Platform.OS === 'web' && hoveredNav === screen && (
         <View style={styles.tooltip}>
@@ -460,9 +463,8 @@ const TeacherHeader: React.FC<HeaderProps> = ({
                       height: 40,
                       marginRight: 8,
                     },
-                    // 👇 NEW: same highlighted-border focus behavior as other
-                    // inputs in the app, consistent with isSearchFocused
-                    // used on desktop/tablet.
+                    // 👇 same highlighted-border focus behavior as other
+                    // inputs in the app, consistent with desktop/tablet.
                     isMobileSearchFocused && styles.expandedSearchInputFocused,
                   ]}
                 >
@@ -608,33 +610,31 @@ const TeacherHeader: React.FC<HeaderProps> = ({
             marginRight: isTablet ? 14 : 18,
           }}
         />
+        {/* 👇 UPDATED: Facebook-style flat gray search pill — no border,
+            slightly shorter height, gray placeholder text to match. */}
         <View
           style={[
             styles.searchBar,
             {
               flex: 1,
               maxWidth: isLargeScreenLocal ? 420 : isTablet ? 340 : '100%',
-              height: isTablet ? 46 : 50,
-              paddingHorizontal: isLargeScreenLocal ? 20 : 16,
-              borderWidth: 1,
-              borderBottomWidth: isSearchFocused ? 2 : 1,
+              height: isTablet ? 40 : 44,
+              paddingHorizontal: isLargeScreenLocal ? 16 : 14,
             },
           ]}
         >
           <MaterialCommunityIcons
             name="magnify"
             size={searchIconSize}
-            color="#888"
+            color="#65676B"
             style={{ marginRight: 12 }}
           />
           <TextInput
             ref={searchInputRef}
             placeholder={getSearchPlaceholder()}
-            placeholderTextColor="#888"
+            placeholderTextColor="#65676B"
             value={searchQuery}
             onChangeText={handleSearchChange}
-            onFocus={() => setIsSearchFocused(true)}
-            onBlur={() => setIsSearchFocused(false)}
             style={[styles.searchInput, { fontSize: fontSizeSearch }]}
             returnKeyType="search"
           />
@@ -648,7 +648,7 @@ const TeacherHeader: React.FC<HeaderProps> = ({
           styles.centerSection,
           {
             flex: isLargeScreenLocal ? 1.2 : isTablet ? 1 : 0.8,
-            gap: isTablet ? 24 : 32,
+            gap: isTablet ? 12 : 16,
             maxWidth: isLargeScreenLocal ? 720 : undefined,
           },
         ]}
@@ -662,7 +662,6 @@ const TeacherHeader: React.FC<HeaderProps> = ({
         <Pressable
           style={({ pressed }) => [
             styles.navBtn,
-            isActive('notification') && styles.navBtnActive,
             isBellHovered && !isActive('notification') && styles.navBtnHover,
             pressed && styles.navBtnHover,
           ]}
@@ -689,6 +688,7 @@ const TeacherHeader: React.FC<HeaderProps> = ({
               </View>
             )}
           </View>
+          {isActive('notification') && <View style={styles.activeUnderline} />}
         </Pressable>
 
         {Platform.OS === 'web' && isBellHovered && (
@@ -736,13 +736,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  // 👇 UPDATED: Facebook-style flat gray pill, no border
   searchBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#D32F2F',
     borderRadius: 999,
-    backgroundColor: '#FFF',
+    backgroundColor: '#F0F2F5',
   },
   searchInput: {
     flex: 1,
@@ -763,15 +762,29 @@ const styles = StyleSheet.create({
     position: 'relative',
     alignItems: 'center',
   },
+  // 👇 UPDATED: wider Facebook-style horizontal padding for a bigger tab
+  // zone; the active state background tint (navBtnActive) has been
+  // replaced by the activeUnderline bar below.
   navBtn: {
-    padding: 8,
-    borderRadius: 12,
-  },
-  navBtnActive: {
-    backgroundColor: 'rgba(211,47,47,0.08)',
+    paddingHorizontal: 28,
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   navBtnHover: {
     backgroundColor: 'rgba(0,0,0,0.05)',
+  },
+  // 👇 NEW: Facebook-style active indicator — a colored bar under the
+  // active icon, same color (#D32F2F) as the active icon itself.
+  activeUnderline: {
+    position: 'absolute',
+    bottom: -1,
+    left: '20%',
+    right: '20%',
+    height: 3,
+    borderRadius: 2,
+    backgroundColor: '#D32F2F',
   },
   tooltip: {
     position: 'absolute',
@@ -837,18 +850,18 @@ const styles = StyleSheet.create({
   expandedSearchInput: {
     // Defined inline in component
   },
-  // 👇 NEW: highlighted-border focus state for the mobile expanded search
+  // 👇 highlighted-border focus state for the mobile expanded search
   // input, matching the desktop/tablet focus behavior (red border on focus).
   expandedSearchInputFocused: {
     borderWidth: 1.5,
     borderColor: '#D32F2F',
   },
-  // 👇 NEW: disables the browser's default black focus outline in
+  // 👇 disables the browser's default black focus outline in
   // Chrome/Edge on React Native Web for the mobile expanded search TextInput.
   expandedSearchTextInput: {
     ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : {}),
   },
-  // 👇 NEW STYLES FOR SEARCH RESULTS
+  // 👇 STYLES FOR SEARCH RESULTS
   searchResultsContainer: {
     position: 'absolute',
     top: 54,
