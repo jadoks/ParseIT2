@@ -3172,7 +3172,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFFFFF",
     width: '90%',
     alignSelf: 'center',
-    flex: 1,
+    
   },
   materialCard: {
     flexDirection: "row",
