@@ -6,7 +6,6 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  FlatList,
   Image,
   Linking,
   Modal,
@@ -1329,27 +1328,38 @@ const Assignments = ({
         ))}
       </View>
 
-      <FlatList
-        data={searchedAndFilteredAssignments}
-        renderItem={renderAssignmentItem}
-        keyExtractor={(item) => item.id}
-        scrollEnabled={false}
-        ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
-        ListEmptyComponent={
-          <View style={{ alignItems: 'center', justifyContent: 'center', paddingVertical: 40 }}>
-            <Text style={[styles.emptyText, { fontSize: 16, fontWeight: '700', color: '#333' }]}>
-              {searchQuery.trim()
-                ? `No assignments start with "${searchQuery}"`
-                : 'No assignments found.'}
-            </Text>
-            <Text style={[styles.emptyText, { fontSize: 14, marginTop: 8 }]}>
-              {searchQuery.trim()
-                ? 'Try typing the beginning of the assignment or class name.'
-                : ''}
-            </Text>
-          </View>
-        }
-      />
+      {/* ✅ FIX: replaced a `FlatList` (with scrollEnabled={false}) with a
+          plain mapped `View`. A FlatList/VirtualizedList nested inside a
+          ScrollView is an anti-pattern in React Native — even with
+          scrolling disabled on the list itself, it still tries to manage
+          its own layout/virtualization, which conflicts with the outer
+          ScrollView's height measurement and can prevent the whole screen
+          from scrolling properly on native (iOS/Android), especially on
+          small screens. A plain View + .map() lets the outer ScrollView
+          fully own scrolling, matching the working pattern used elsewhere
+          (e.g. CourseDetail's Course Resources tab). */}
+      {searchedAndFilteredAssignments.length > 0 ? (
+        <View>
+          {searchedAndFilteredAssignments.map((item, index) => (
+            <View key={item.id} style={index > 0 ? { marginTop: 12 } : undefined}>
+              {renderAssignmentItem({ item })}
+            </View>
+          ))}
+        </View>
+      ) : (
+        <View style={{ alignItems: 'center', justifyContent: 'center', paddingVertical: 40 }}>
+          <Text style={[styles.emptyText, { fontSize: 16, fontWeight: '700', color: '#333' }]}>
+            {searchQuery.trim()
+              ? `No assignments start with "${searchQuery}"`
+              : 'No assignments found.'}
+          </Text>
+          <Text style={[styles.emptyText, { fontSize: 14, marginTop: 8 }]}>
+            {searchQuery.trim()
+              ? 'Try typing the beginning of the assignment or class name.'
+              : ''}
+          </Text>
+        </View>
+      )}
       
       <Modal visible={!!selectedAssignment} animationType="slide" transparent onRequestClose={closeModal}>
         <View style={styles.modalOverlay}>
