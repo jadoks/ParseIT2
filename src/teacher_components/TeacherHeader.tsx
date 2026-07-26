@@ -570,24 +570,26 @@ const desktopNavScreens: (
           {/* Mobile Search Results Dropdown */}
           {isSearchExpanded && renderSearchResults()}
 
-          <View style={[styles.mobileNavRow, { paddingHorizontal }]}>
-            {mobileNavScreens.map((screen) => {
-              const active = isActive(screen);
+         
+        <View style={[styles.mobileNavRow, { paddingHorizontal }]}>
+          {mobileNavScreens.map((screen) => {
+            const active = isActive(screen);
 
-              return (
-                <Pressable
-                  key={screen}
-                  style={[styles.mobileNavItem, active && styles.mobileNavItemActive]}
-                  onPress={() => {
-                    toggleSearch(false);
-                    onNavigate?.(screen);
-                  }}
-                >
-                  {renderNavIcon(screen, mobileNavIconSize)}
-                </Pressable>
-              );
-            })}
-          </View>
+            return (
+              <Pressable
+                key={screen}
+                style={styles.mobileNavItem}
+                onPress={() => {
+                  toggleSearch(false);
+                  onNavigate?.(screen);
+                }}
+              >
+                {renderNavIcon(screen, mobileNavIconSize)}
+                {active && <View style={styles.activeUnderline} />}
+              </Pressable>
+            );
+          })}
+        </View>
         </View>
       </TouchableWithoutFeedback>
     );
