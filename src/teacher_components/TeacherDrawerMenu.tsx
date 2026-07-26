@@ -16,6 +16,7 @@ import {
   View,
   ViewStyle,
 } from 'react-native';
+import Ionicons from 'react-native-vector-icons/Ionicons';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { auth } from '../../firebaseConfig';
 // 🔥 Import shared API and Cache utilities
@@ -91,13 +92,13 @@ const normalizeImageSource = (img: any) => {
 };
 
 const MenuItem = ({
-  iconSource,
+  ionIconName,
   iconName,
   label,
   onPress,
   active,
 }: {
-  iconSource?: any;
+  ionIconName?: string;
   iconName?: string;
   label: string;
   onPress?: () => void;
@@ -130,17 +131,19 @@ const MenuItem = ({
         return base;
       }}
     >
-      {iconName ? (
-        <MaterialCommunityIcons
-          name={iconName as any}
+      {ionIconName ? (
+        <Ionicons
+          name={ionIconName as any}
           size={22}
           color={active ? '#D32F2F' : '#444'}
           style={styles.vectorMenuIcon}
         />
       ) : (
-        <Image
-          source={iconSource}
-          style={[styles.menuIcon, active && { tintColor: '#D32F2F' }]}
+        <MaterialCommunityIcons
+          name={iconName as any}
+          size={22}
+          color={active ? '#D32F2F' : '#444'}
+          style={styles.vectorMenuIcon}
         />
       )}
       <Text
@@ -365,10 +368,10 @@ const TeacherDrawerMenu = ({
         onContentSizeChange={handleContentSizeChange}
         onLayout={handleScrollViewLayout}
       >
-        <MenuItem iconSource={require('../../assets/images/person.png')} label="Profile" onPress={() => { onNavigate?.('profile'); if (!isFixed) onClose?.(); }} active={activeScreen === 'profile'} />
-        <MenuItem iconSource={require('../../assets/images/users-solid.png')} label="Community" onPress={() => { onNavigate?.('community'); if (!isFixed) onClose?.(); }} active={activeScreen === 'community'} />
+        <MenuItem ionIconName="person" label="Profile" onPress={() => { onNavigate?.('profile'); if (!isFixed) onClose?.(); }} active={activeScreen === 'profile'} />
+        <MenuItem ionIconName="people" label="Community" onPress={() => { onNavigate?.('community'); if (!isFixed) onClose?.(); }} active={activeScreen === 'community'} />
         <MenuItem iconName="chart-line" label="Academic Analytics" onPress={() => { onNavigate?.('analytics'); if (!isFixed) onClose?.(); }} active={activeScreen === 'analytics'} />
-        <MenuItem iconSource={require('../../assets/images/gear-solid.png')} label="Settings" onPress={() => setSettingsModalVisible(true)} />
+        <MenuItem ionIconName="settings" label="Settings" onPress={() => setSettingsModalVisible(true)} />
       </ScrollView>
       <Pressable style={styles.logoutMenuItem} onPress={() => setLogoutModalVisible(true)}>
         <MaterialCommunityIcons name="logout" size={28} color="#D32F2F" style={{ marginRight: 20 }} />

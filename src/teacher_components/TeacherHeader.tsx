@@ -1,4 +1,4 @@
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import React, { useEffect, useRef, useState } from 'react';
 import {
   Image,
@@ -247,21 +247,13 @@ const TeacherHeader: React.FC<HeaderProps> = ({
     return 'Search ParseClass';
   };
 
+  // 👇 UPDATED: mixed icon set — home uses Ionicons (filled), the rest stay
+  // on MaterialCommunityIcons, matching the pattern in Header.tsx (student).
   const renderNavIcon = (screen: ScreenType, size: number) => {
     const color = getIconColor(screen);
     switch (screen) {
       case 'home':
-        return (
-          <Image
-            source={require('../../assets/images/house-solid.png')}
-            style={{
-              width: size,
-              height: size,
-              tintColor: color,
-              resizeMode: 'contain',
-            }}
-          />
-        );
+        return <Ionicons name="home" size={size} color={color} />;
       case 'honors':
         return <MaterialCommunityIcons name="medal" size={size} color={color} />;
       case 'grades':
