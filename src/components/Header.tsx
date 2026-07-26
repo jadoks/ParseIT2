@@ -15,6 +15,7 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
+import Ionicons from 'react-native-vector-icons/Ionicons';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -352,9 +353,18 @@ const Header: React.FC<HeaderProps> = ({
       );
     }
 
-    const iconNameMap: Record<'home' | 'game' | 'videos', string> = {
-      home: 'home',
-      game: 'gamepad-variant',
+    if (screen === 'home') {
+      return (
+        <Ionicons
+          name="home"
+          size={size}
+          color={getIconColor(screen)}
+        />
+      );
+    }
+
+    const iconNameMap: Record<'game' | 'videos', string> = {
+      game: 'gamepad-variant-outline',
       videos: 'youtube',
     };
 
