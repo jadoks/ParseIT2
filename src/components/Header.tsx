@@ -16,9 +16,6 @@ import {
   View,
 } from 'react-native';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
-import Gamepad from '../../assets/images/gamepad-solid.svg';
-import House from '../../assets/images/house-solid.svg';
-import VideosIcon from '../../assets/images/youtube-brands-solid.svg';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -355,60 +352,19 @@ const Header: React.FC<HeaderProps> = ({
       );
     }
 
-    if (Platform.OS === 'web') {
-      return (
-        <Image
-          source={
-            screen === 'home'
-              ? require('../../assets/images/house-solid.png')
-              : screen === 'game'
-              ? require('../../assets/images/gamepad-solid.png')
-              : require('../../assets/images/youtube-brands-solid.png')
-          }
-          style={{
-            width: size,
-            height: size,
-            resizeMode: 'contain',
-            tintColor: isActive(screen) ? '#D32F2F' : '#000000',
-          }}
-        />
-      );
-    }
+    const iconNameMap: Record<'home' | 'game' | 'videos', string> = {
+      home: 'home-outline',
+      game: 'gamepad-variant-outline',
+      videos: 'youtube',
+    };
 
-    if (screen === 'home') {
-      return (
-        <House
-          width={size}
-          height={size}
-          stroke={getIconColor(screen)}
-          fill={getIconColor(screen)}
-        />
-      );
-    }
-
-    if (screen === 'game') {
-      return (
-        <Gamepad
-          width={size}
-          height={size}
-          stroke={getIconColor(screen)}
-          fill={getIconColor(screen)}
-        />
-      );
-    }
-
-    if (screen === 'videos') {
-      return (
-        <VideosIcon
-          width={size}
-          height={size}
-          stroke={getIconColor(screen)}
-          fill={getIconColor(screen)}
-        />
-      );
-    }
-
-    return null;
+    return (
+      <MaterialCommunityIcons
+        name={iconNameMap[screen]}
+        size={size}
+        color={getIconColor(screen)}
+      />
+    );
   };
 
   const renderNavButton = (
