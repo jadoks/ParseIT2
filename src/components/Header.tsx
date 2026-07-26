@@ -96,17 +96,14 @@ const Header: React.FC<HeaderProps> = ({
 
   const [isSearchExpanded, setIsSearchExpanded] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [isSearchFocused, setIsSearchFocused] = useState(false);
   const [hoveredNav, setHoveredNav] = useState<ScreenType | null>(null);
   const [isBellHovered, setIsBellHovered] = useState(false);
 
-  // 👇 NEW: focus tracking for the mobile expanded search input, so it gets
+  // 👇 focus tracking for the mobile expanded search input, so it gets
   // the same highlighted-border focus behavior as other inputs in the app
-  // (e.g. SignIn.tsx), consistent with isSearchFocused used on desktop/tablet.
+  // (e.g. SignIn.tsx).
   const [isMobileSearchFocused, setIsMobileSearchFocused] = useState(false);
 
-  
-  
   // 👇 NEW STATE FOR CONTEXTUAL RESULTS
   const [searchResults, setSearchResults] = useState<SearchFeature[]>([]);
   const searchInputRef = useRef<TextInput>(null);
@@ -341,7 +338,7 @@ const Header: React.FC<HeaderProps> = ({
             size={size}
             color={getIconColor(screen)}
           />
-          {/* 👇 UPDATED: Show badge if messengerUnreadCount > 0 */}
+          {/* 👇 Show badge if messengerUnreadCount > 0 */}
           {messengerUnreadCount > 0 && (
             <View style={styles.badge}>
               <Text style={styles.badgeText}>
@@ -382,6 +379,10 @@ const Header: React.FC<HeaderProps> = ({
     );
   };
 
+  // 👇 UPDATED: Facebook-style active indicator — a colored underline bar
+  // beneath the icon (same #D32F2F as the active icon color) instead of a
+  // background tint. The nav button itself now uses generous horizontal
+  // padding like Facebook's desktop tabs.
   const renderNavButton = (
     screen: 'home' | 'classes' | 'game' | 'videos' | 'messenger',
     size: number,
@@ -391,7 +392,6 @@ const Header: React.FC<HeaderProps> = ({
       <Pressable
         style={(state: any) => [
           styles.navBtn,
-          isActive(screen) && styles.navBtnActive,
           state.hovered && !isActive(screen) && styles.navBtnHover,
           extraStyle,
         ]}
@@ -411,6 +411,7 @@ const Header: React.FC<HeaderProps> = ({
         }}
       >
         {renderNavIcon(screen, size)}
+        {isActive(screen) && <View style={styles.activeUnderline} />}
       </Pressable>
 
       {Platform.OS === 'web' && hoveredNav === screen && (
@@ -425,7 +426,7 @@ const Header: React.FC<HeaderProps> = ({
 
   // 👇 RENDER GLOBAL SEARCH RESULTS DROPDOWN
 const renderSearchResults = () => {
-  // ✅ UPDATED: Include profile, analytics, and myjourney
+  // ✅ Include profile, analytics, and myjourney
   const isGlobalSearchScreen = 
       activeScreen === 'home' || 
       activeScreen === 'game' || 
@@ -562,7 +563,7 @@ const renderSearchResults = () => {
                       height: 40,
                       marginRight: 8,
                     },
-                    // 👇 NEW: same highlighted-border focus behavior as other
+                    // 👇 same highlighted-border focus behavior as other
                     // inputs in the app (e.g. SignIn.tsx inputWrapperFocused)
                     isMobileSearchFocused && styles.expandedSearchInputFocused,
                   ]}
@@ -620,7 +621,7 @@ const renderSearchResults = () => {
               </View>
             )}
 
-            {/* 👇 UPDATED: Mobile Messenger Icon with Badge */}
+            {/* 👇 Mobile Messenger Icon with Badge */}
             <TouchableOpacity
               style={styles.navBtn}
               onPress={() => {
@@ -699,33 +700,31 @@ const renderSearchResults = () => {
           }}
         />
 
+        {/* 👇 UPDATED: Facebook-style flat gray search pill — no border,
+            slightly shorter height, gray placeholder text to match. */}
         <View
           style={[
             styles.searchBar,
             {
               flex: 1,
               maxWidth: isLargeScreenLocal ? 420 : isTablet ? 340 : '100%',
-              height: isTablet ? 46 : 50,
-              paddingHorizontal: isLargeScreenLocal ? 20 : 16,
-              borderWidth: 1,
-              borderBottomWidth: isSearchFocused ? 2 : 1,
+              height: isTablet ? 40 : 44,
+              paddingHorizontal: isLargeScreenLocal ? 16 : 14,
             },
           ]}
         >
           <MaterialCommunityIcons
             name="magnify"
             size={searchIconSize}
-            color="#888"
+            color="#65676B"
             style={{ marginRight: 12 }}
           />
           <TextInput
             ref={searchInputRef}
             placeholder={getSearchPlaceholder()}
-            placeholderTextColor="#888"
+            placeholderTextColor="#65676B"
             value={searchQuery}
             onChangeText={handleSearchChange}
-            onFocus={() => setIsSearchFocused(true)}
-            onBlur={() => setIsSearchFocused(false)}
             style={[styles.searchInput, { fontSize: fontSizeSearch }]}
             returnKeyType="search"
           />
@@ -740,7 +739,7 @@ const renderSearchResults = () => {
           styles.centerSection,
           {
             flex: isLargeScreenLocal ? 1.2 : isTablet ? 1 : 0.8,
-            gap: isTablet ? 24 : 32,
+            gap: isTablet ? 12 : 16,
             maxWidth: isLargeScreenLocal ? 720 : undefined,
           },
         ]}
@@ -752,7 +751,6 @@ const renderSearchResults = () => {
         <Pressable
           style={(state: any) => [
             styles.navBtn,
-            isActive('notification') && styles.navBtnActive,
             state.hovered && !isActive('notification') && styles.navBtnHover,
           ]}
           onPress={() => {
@@ -782,6 +780,7 @@ const renderSearchResults = () => {
               </View>
             )}
           </View>
+          {isActive('notification') && <View style={styles.activeUnderline} />}
         </Pressable>
 
         {Platform.OS === 'web' && isBellHovered && (
@@ -829,13 +828,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
 
+  // 👇 UPDATED: Facebook-style flat gray pill, no border
   searchBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#D32F2F',
     borderRadius: 999,
-    backgroundColor: '#FFF',
+    backgroundColor: '#F0F2F5',
   },
 
   searchInput: {
@@ -844,7 +842,7 @@ const styles = StyleSheet.create({
     paddingVertical: Platform.select({ ios: 12, default: 8 }),
     borderWidth: 0,
     backgroundColor: 'transparent',
-    // 👇 NEW: disables the browser's default black focus outline in
+    // 👇 disables the browser's default black focus outline in
     // Chrome/Edge on React Native Web (same trick used in SignIn.tsx)
     ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : {}),
   },
@@ -860,17 +858,31 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
 
+  // 👇 UPDATED: wider Facebook-style horizontal padding for a bigger tab
+  // zone; the active state background tint (navBtnActive) has been
+  // replaced by the activeUnderline bar below.
   navBtn: {
-    padding: 8,
-    borderRadius: 12,
-  },
-
-  navBtnActive: {
-    backgroundColor: 'rgba(211,47,47,0.08)',
+    paddingHorizontal: 28,
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 
   navBtnHover: {
     backgroundColor: 'rgba(0,0,0,0.05)',
+  },
+
+  // 👇 NEW: Facebook-style active indicator — a colored bar under the
+  // active icon, same color (#D32F2F) as the active icon itself.
+  activeUnderline: {
+    position: 'absolute',
+    bottom: -1,
+    left: '20%',
+    right: '20%',
+    height: 3,
+    borderRadius: 2,
+    backgroundColor: '#D32F2F',
   },
 
   tooltip: {
@@ -921,7 +933,7 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
 
-  // 👇 NEW STYLES FOR SEARCH RESULTS
+  // 👇 SEARCH RESULTS
   searchResultsContainer: {
     position: 'absolute',
     top: 54,
@@ -975,7 +987,7 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   
-  // 👇 NEW STYLES FOR EXPANDED MOBILE SEARCH
+  // 👇 EXPANDED MOBILE SEARCH
   expandedSearchContainer: {
     // Defined inline in component
   },
@@ -984,7 +996,7 @@ const styles = StyleSheet.create({
     // Defined inline in component
   },
 
-  // 👇 NEW: highlighted-border focus state for the mobile expanded search
+  // 👇 highlighted-border focus state for the mobile expanded search
   // input, matching inputWrapperFocused / passwordContainerFocused in
   // SignIn.tsx (red border + slightly thicker width on focus).
   expandedSearchInputFocused: {
@@ -992,7 +1004,7 @@ const styles = StyleSheet.create({
     borderColor: '#D32F2F',
   },
 
-  // 👇 NEW: disables the browser's default black focus outline in
+  // 👇 disables the browser's default black focus outline in
   // Chrome/Edge on React Native Web for the mobile expanded search TextInput.
   expandedSearchTextInput: {
     ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : {}),
