@@ -2094,8 +2094,9 @@ const styles = StyleSheet.create({
   recommendationBadge: { marginTop: 10, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 7, alignSelf: 'flex-start' },
   recommendationText: { fontWeight: '700', fontSize: 12 },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'center', alignItems: 'center' },
-  modalWrapper: { maxHeight: '92%', maxWidth: 1180, backgroundColor: '#fff', borderRadius: 16, overflow: 'hidden' },
-  modalWrapperMobile: { maxHeight: '94%', borderRadius: 14, overflow: 'hidden' },
+  modalWrapper: { height: '92%', maxWidth: 1180, backgroundColor: '#fff', borderRadius: 16, overflow: 'hidden' },
+  modalWrapperMobile: { height: '94%', borderRadius: 14, overflow: 'hidden' },
+  
   modalCloseFloating: { position: 'absolute', top: -10, left: -10, zIndex: 20, width: 42, height: 42, borderRadius: 999, backgroundColor: '#FFF', justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.12, shadowRadius: 6, elevation: 5 },
   closeButton: { fontSize: 20, color: '#666' },
   infoCard: { position: 'relative', backgroundColor: '#F9F9F9', borderRadius: 12, padding: 22, paddingTop: 28, marginBottom: 16, borderLeftWidth: 4, borderLeftColor: '#D32F2F' },
