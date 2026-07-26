@@ -1337,6 +1337,7 @@ const Assignments = ({
         <View style={styles.modalOverlay}>
           <View style={[styles.modalWrapper, { width: modalWidth }, !isLargeScreen && styles.modalWrapperMobile]}>
             <ScrollView
+              style={{ flex: 1, width: '100%' }}
               contentContainerStyle={[
                 styles.detailContainer,
                 !isLargeScreen && styles.detailContainerMobile,
