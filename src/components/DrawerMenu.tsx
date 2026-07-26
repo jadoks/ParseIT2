@@ -19,6 +19,7 @@ import {
   ViewStyle,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Ionicons from 'react-native-vector-icons/Ionicons';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { auth } from '../../firebaseConfig';
 
@@ -120,14 +121,14 @@ const normalizeImageSource = (img: any) => {
 };
 
 const MenuItem = ({
-  iconSource,
+  ionIconName,
   iconName,
   label,
   onPress,
   active,
   highlighted,
 }: {
-  iconSource?: any;
+  ionIconName?: string;
   iconName?: string;
   label: string;
   onPress?: () => void;
@@ -169,21 +170,19 @@ const MenuItem = ({
         return base;
       }}
     >
-      {iconName ? (
-        <MaterialCommunityIcons
-          name={iconName as any}
+      {ionIconName ? (
+        <Ionicons
+          name={ionIconName as any}
           size={22}
           color={highlighted ? '#FFF' : active ? '#D32F2F' : '#444'}
           style={styles.vectorMenuIcon}
         />
       ) : (
-        <Image
-          source={iconSource}
-          style={[
-            styles.menuIcon, 
-            highlighted && { tintColor: '#FFF' },
-            active && !highlighted && { tintColor: '#D32F2F' }
-          ]}
+        <MaterialCommunityIcons
+          name={iconName as any}
+          size={22}
+          color={highlighted ? '#FFF' : active ? '#D32F2F' : '#444'}
+          style={styles.vectorMenuIcon}
         />
       )}
 
@@ -544,12 +543,12 @@ const DrawerMenu = ({
         onContentSizeChange={handleContentSizeChange}
         onLayout={handleScrollViewLayout}
       >
-        <MenuItem iconSource={require('../../assets/images/person.png')} label="Profile" onPress={() => { onNavigate?.('profile'); if (!isFixed) onClose?.(); }} active={activeScreen === 'profile'} />
-        <MenuItem iconSource={require('../../assets/images/clipboard.png')} label="Assignments" onPress={() => { onNavigate?.('assignments'); if (!isFixed) onClose?.(); }} active={activeScreen === 'assignments'} />
-        <MenuItem iconSource={require('../../assets/images/calendar.png')} label="My Journey" onPress={() => { onNavigate?.('myjourney'); if (!isFixed) onClose?.(); }} active={activeScreen === 'myjourney'} />
+        <MenuItem ionIconName="person" label="Profile" onPress={() => { onNavigate?.('profile'); if (!isFixed) onClose?.(); }} active={activeScreen === 'profile'} />
+        <MenuItem ionIconName="clipboard" label="Assignments" onPress={() => { onNavigate?.('assignments'); if (!isFixed) onClose?.(); }} active={activeScreen === 'assignments'} />
+        <MenuItem ionIconName="calendar" label="My Journey" onPress={() => { onNavigate?.('myjourney'); if (!isFixed) onClose?.(); }} active={activeScreen === 'myjourney'} />
         <MenuItem iconName="chart-line" label="Analytics" onPress={() => { onNavigate?.('analytics'); if (!isFixed) onClose?.(); }} active={activeScreen === 'analytics'} />
-        <MenuItem iconSource={require('../../assets/images/users-solid.png')} label="Community" onPress={() => { onNavigate?.('community'); if (!isFixed) onClose?.(); }} active={activeScreen === 'community'} />
-        <MenuItem iconSource={require('../../assets/images/gear-solid.png')} label="Settings" onPress={() => setSettingsModalVisible(true)} />
+        <MenuItem ionIconName="people" label="Community" onPress={() => { onNavigate?.('community'); if (!isFixed) onClose?.(); }} active={activeScreen === 'community'} />
+        <MenuItem ionIconName="settings" label="Settings" onPress={() => setSettingsModalVisible(true)} />
         
         <MenuItem 
           iconName="file-upload-outline" 

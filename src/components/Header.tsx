@@ -363,14 +363,19 @@ const Header: React.FC<HeaderProps> = ({
       );
     }
 
-    const iconNameMap: Record<'game' | 'videos', string> = {
-      game: 'gamepad-variant-outline',
-      videos: 'youtube',
-    };
+    if (screen === 'game') {
+      return (
+        <Ionicons
+          name="game-controller"
+          size={size}
+          color={getIconColor(screen)}
+        />
+      );
+    }
 
     return (
       <MaterialCommunityIcons
-        name={iconNameMap[screen]}
+        name="youtube"
         size={size}
         color={getIconColor(screen)}
       />
