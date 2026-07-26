@@ -734,6 +734,7 @@ const Community: React.FC<CommunityProps> = ({
               <Text style={styles.title}>ParseIT Community</Text>
             </View>
 
+            <View style={styles.composerCard}>
             <View style={styles.inputRow}>
               <Image
                 source={userAvatarSource}
@@ -744,11 +745,12 @@ const Community: React.FC<CommunityProps> = ({
                 style={styles.inputField}
                 onPress={() => setModalVisible(true)}
               >
-                <Text style={{ color: '#999' }}>
-                  Have a question, {userName}?
+                <Text style={styles.inputPlaceholder}>
+                  What's on your mind, {userName}?
                 </Text>
               </TouchableOpacity>
             </View>
+          </View>
 
             {visiblePosts.length > 0 ? (
               <View style={{ paddingBottom: 50 }}>
@@ -1161,33 +1163,50 @@ const styles = StyleSheet.create({
     color: '#222',
   },
 
-  inputRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 20,
-  },
+  composerCard: {
+  backgroundColor: '#ffffff',
+  borderRadius: 10,
+  borderWidth: 1,
+  borderColor: '#E4E6EB',
+  paddingHorizontal: 14,
+  paddingVertical: 12,
+  marginBottom: 20,
+  shadowColor: '#000',
+  shadowOpacity: 0.05,
+  shadowRadius: 3,
+  shadowOffset: { width: 0, height: 1 },
+  elevation: 1,
+},
 
-  inputAvatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    marginRight: 8,
-    overflow: 'hidden',
-    aspectRatio: 1,
-  },
+inputRow: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  // marginBottom removed — now handled by composerCard
+},
 
-  inputField: {
-    flex: 1,
-    height: 45,
-    borderRadius: 25,
-    paddingHorizontal: 16,
-    backgroundColor: '#fff',
-    borderWidth: 1,
-    borderColor: '#D32F2F',
-    justifyContent: 'center',
-    maxWidth: 400,
-    width: '100%',
-  },
+inputAvatar: {
+  width: 40,
+  height: 40,
+  borderRadius: 20,
+  marginRight: 10,
+  overflow: 'hidden',
+  aspectRatio: 1,
+},
+
+inputField: {
+  flex: 1,                    // fills remaining width, no maxWidth cap
+  height: 44,
+  borderRadius: 999,           // full pill
+  paddingHorizontal: 16,
+  backgroundColor: '#F0F2F5',  // FB gray fill
+  justifyContent: 'center',
+  // borderWidth / borderColor: '#D32F2F' removed
+},
+
+inputPlaceholder: {
+  color: '#65676B',
+  fontSize: 15,
+},
 
   // ✅ Facebook-style post card: white background, subtle 1px hairline
   // border + soft shadow instead of a colored border, modest corner

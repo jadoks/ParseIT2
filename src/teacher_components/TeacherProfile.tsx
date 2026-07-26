@@ -1017,42 +1017,44 @@ const Profile: React.FC<ProfileProps> = ({
             ]}
           />
           <View
-            style={[
-              styles.askContainer,
-              !isLargeScreen && { paddingHorizontal: isSmallPhone ? 4 : 10 },
-              isLargeScreen && { alignSelf: 'center', maxWidth: contentMaxWidth },
-            ]}
-          >
-            {renderProfileImage(
-              profileImageSource,
-              [
-                styles.smallAvatar,
-                {
-                  width: isSmallPhone ? 32 : 35,
-                  height: isSmallPhone ? 32 : 35,
-                  borderRadius: isSmallPhone ? 16 : 20,
-                  marginRight: isSmallPhone ? 10 : 12,
-                },
-              ]
-            )}
-            <TouchableOpacity
-              style={[
-                styles.askInput,
-                {
-                  paddingHorizontal: isSmallPhone ? 14 : 18,
-                  paddingVertical: isSmallPhone ? 9 : 10,
-                },
-              ]}
-              onPress={() => setQueryModalVisible(true)}
-            >
-              <Text
-                style={[styles.askText, { fontSize: isSmallPhone ? 13 : 14 }]}
-                numberOfLines={1}
-              >
-                {safeUserName ? `Have a question, ${safeUserName}?` : 'Have a question?'}
-              </Text>
-            </TouchableOpacity>
-          </View>
+  style={[
+    styles.askCard,
+    !isLargeScreen && { marginHorizontal: isSmallPhone ? 4 : 10 },
+    isLargeScreen && { alignSelf: 'center', maxWidth: contentMaxWidth },
+  ]}
+>
+  <View style={styles.askContainer}>
+    {renderProfileImage(
+      profileImageSource,
+      [
+        styles.smallAvatar,
+        {
+          width: isSmallPhone ? 32 : 35,
+          height: isSmallPhone ? 32 : 35,
+          borderRadius: isSmallPhone ? 16 : 20,
+          marginRight: isSmallPhone ? 10 : 12,
+        },
+      ]
+    )}
+    <TouchableOpacity
+      style={[
+        styles.askInput,
+        {
+          paddingHorizontal: isSmallPhone ? 14 : 18,
+          paddingVertical: isSmallPhone ? 9 : 10,
+        },
+      ]}
+      onPress={() => setQueryModalVisible(true)}
+    >
+      <Text
+        style={[styles.askText, { fontSize: isSmallPhone ? 13 : 14 }]}
+        numberOfLines={1}
+      >
+        {safeUserName ? `What's on your mind, ${safeUserName}?` : "What's on your mind?"}
+      </Text>
+    </TouchableOpacity>
+  </View>
+</View>
           {localPosts.map((post) => (
             <View
               key={post.id}
@@ -1872,30 +1874,47 @@ const styles = StyleSheet.create({
     maxWidth: 700,
     alignSelf: 'center',
   },
-  askContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 25,
-    alignSelf: 'center',
-    width: '100%',
-    maxWidth: 800,
-  },
-  smallAvatar: {
-    overflow: 'hidden',
-    aspectRatio: 1,
-  },
-  askInput: {
-    flex: 1,
-    borderWidth: 1.5,
-    borderColor: '#D32F2F',
-    borderRadius: 25,
-    backgroundColor: '#FFF',
-    justifyContent: 'center',
-  },
-  askText: {
-    color: '#999',
-  },
+  askCard: {
+  backgroundColor: '#ffffff',
+  borderRadius: 10,
+  borderWidth: 1,
+  borderColor: '#E4E6EB',
+  paddingHorizontal: 14,
+  paddingVertical: 12,
+  marginBottom: 25,
+  width: '100%',
+  maxWidth: 800,
+  alignSelf: 'center',
+  shadowColor: '#000',
+  shadowOpacity: 0.05,
+  shadowRadius: 3,
+  shadowOffset: { width: 0, height: 1 },
+  elevation: 1,
+},
 
+askContainer: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  width: '100%',
+  // marginBottom, alignSelf, maxWidth removed — now handled by askCard
+},
+
+smallAvatar: {
+  overflow: 'hidden',
+  aspectRatio: 1,
+},
+
+askInput: {
+  flex: 1,
+  borderRadius: 999,
+  backgroundColor: '#F0F2F5',   // FB gray fill
+  justifyContent: 'center',
+  // borderWidth / borderColor: '#D32F2F' removed — no visible border in FB's version
+},
+
+askText: {
+  color: '#65676B',   // FB's muted placeholder gray, was '#999'
+},
   // ✅ Facebook-style post card — matches TeacherCommunity's postContainer:
   // white background, hairline border + soft shadow instead of a colored
   // border, modest 8px corner radius, and the accent-bar removed. Padding
