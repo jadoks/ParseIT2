@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage'; // Install if missing: npx expo install @react-native-async-storage/async-storage
 import Constants from 'expo-constants';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -29,6 +29,9 @@ type SignedInUser = {
   bannerImage?: any;
 };
 
+const CACHED_USER_KEY = '@cached_user';
+const CACHED_TOKEN_KEY = '@auth_token';
+
 function getApiBaseUrl() {
   if (Platform.OS === "web") {
     return process.env.EXPO_PUBLIC_API_URL;
@@ -48,117 +51,166 @@ function getApiBaseUrl() {
 
 const API_BASE_URL = getApiBaseUrl();
 
+function mapProfileToUser(data: any): SignedInUser {
+  return {
+    role: data.role,
+    id: data.id,
+    email: data.email,
+    authUid: data.uid,
+    studentId: data.role === 'student' ? data.id : undefined,
+    teacherId: data.role === 'teacher' ? data.id : undefined,
+    adminId: data.role === 'admin' ? data.id : undefined,
+    firstName: data.profile?.firstName,
+    lastName: data.profile?.lastName,
+    profileImage: data.profile?.profileImage,
+    bannerImage: data.profile?.bannerImage,
+  };
+}
+
 // 🔥 GLOBAL AUTH STATE MANAGEMENT
 export default function App() {
+  // isCheckingAuth now only blocks the UI until we've checked local cache,
+  // NOT until the network round-trips finish. This is what makes launch feel instant.
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   const [showLanding, setShowLanding] = useState(false);
   const [showRegister, setShowRegister] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [currentUser, setCurrentUser] = useState<SignedInUser | null>(null);
-  
+
   // Store the latest valid ID Token for manual injection
   const [idToken, setIdToken] = useState<string | null>(null);
 
-  // 🔥 REFRESH TOKEN SILENTLY
-  const refreshAuthToken = useCallback(async () => {
+  // Avoid flashing the landing/login screen if we already restored a cached
+  // session and are just waiting on a background verification.
+  const hasCachedSessionRef = useRef(false);
+
+  // 🔥 REFRESH TOKEN — cached/instant by default, only hits network if expired.
+  // Pass forceRefresh=true only when you specifically need a brand-new token
+  // (e.g. right after login, or on the 50-minute interval below).
+  const refreshAuthToken = useCallback(async (forceRefresh = false) => {
     const user = auth.currentUser;
     if (!user) return null;
     try {
-      // Force refresh ensures we get a fresh token even if the old one is technically still valid
-      const freshToken = await user.getIdToken(true);
-      setIdToken(freshToken);
-      
-      // Optional: Persist token for offline resilience or quick re-auth
-      await AsyncStorage.setItem('@auth_token', freshToken);
-      return freshToken;
+      const token = await user.getIdToken(forceRefresh);
+      setIdToken(token);
+      await AsyncStorage.setItem(CACHED_TOKEN_KEY, token);
+      return token;
     } catch (error) {
       console.error("Token refresh failed:", error);
       return null;
     }
   }, []);
 
-  // 🔥 MAIN AUTH CHECKER
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      if (firebaseUser) {
-        try {
-          const token = await refreshAuthToken();
-          if (!token) throw new Error("Failed to retrieve ID token");
+  // Verifies the session against the backend and updates state.
+  // Runs in the background — does NOT gate the UI once a cached user is showing.
+  const verifySessionInBackground = useCallback(async (forceRefresh = false) => {
+    try {
+      const token = await refreshAuthToken(forceRefresh);
+      if (!token) throw new Error("Failed to retrieve ID token");
 
-          // Establish backend session (for web compatibility / future proofing)
-          await fetch(`${API_BASE_URL}/auth/session-login`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
-            body: JSON.stringify({ idToken: token, deviceId: Platform.OS }),
-          });
+      // Establish backend session (for web compatibility / future proofing)
+      fetch(`${API_BASE_URL}/auth/session-login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ idToken: token, deviceId: Platform.OS }),
+      }).catch((e) => console.error("session-login failed:", e));
 
-          // Verify profile using Bearer token instead of relying solely on cookies
-          const response = await fetch(`${API_BASE_URL}/auth/session-me`, {
-            method: 'GET',
-            credentials: 'include',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${token}`, //  INJECT TOKEN HERE
-            },
-          });
+      const response = await fetch(`${API_BASE_URL}/auth/session-me`, {
+        method: 'GET',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+      });
 
-          if (response.ok) {
-            const data = await response.json();
-            if (data.success && data.profile) {
-              const user: SignedInUser = {
-                role: data.role,
-                id: data.id,
-                email: data.email,
-                authUid: data.uid,
-                studentId: data.role === 'student' ? data.id : undefined,
-                teacherId: data.role === 'teacher' ? data.id : undefined,
-                adminId: data.role === 'admin' ? data.id : undefined,
-                firstName: data.profile.firstName,
-                lastName: data.profile.lastName,
-                profileImage: data.profile.profileImage,
-                bannerImage: data.profile.bannerImage,
-              };
-              
-              setCurrentUser(user);
-              setIsLoggedIn(true);
-              setShowLanding(false);
-            } else {
-              setIsLoggedIn(false);
-              setShowLanding(true);
-            }
-          } else {
-            setIsLoggedIn(false);
-            setShowLanding(true);
-          }
-        } catch (error) {
-          console.error("Error checking session:", error);
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success && data.profile) {
+          const user = mapProfileToUser(data);
+          setCurrentUser(user);
+          setIsLoggedIn(true);
+          setShowLanding(false);
+          await AsyncStorage.setItem(CACHED_USER_KEY, JSON.stringify(user));
+        } else if (!hasCachedSessionRef.current) {
+          // Only kick to landing if we weren't already showing a cached session.
           setIsLoggedIn(false);
           setShowLanding(true);
         }
-      } else {
+      } else if (!hasCachedSessionRef.current) {
         setIsLoggedIn(false);
         setShowLanding(true);
       }
+      // If the request fails but we have a cached session on screen, do nothing —
+      // stay on the cached dashboard rather than bouncing the user to login.
+    } catch (error) {
+      console.error("Error checking session:", error);
+      if (!hasCachedSessionRef.current) {
+        setIsLoggedIn(false);
+        setShowLanding(true);
+      }
+    } finally {
       setIsCheckingAuth(false);
+    }
+  }, [refreshAuthToken]);
+
+  // 🔥 MAIN AUTH CHECKER
+  useEffect(() => {
+    let cancelled = false;
+
+    // 1. Instantly restore last-known user from disk so the UI renders
+    //    right away, before any network call resolves.
+    (async () => {
+      try {
+        const cached = await AsyncStorage.getItem(CACHED_USER_KEY);
+        if (cached && !cancelled) {
+          const user: SignedInUser = JSON.parse(cached);
+          hasCachedSessionRef.current = true;
+          setCurrentUser(user);
+          setIsLoggedIn(true);
+          setShowLanding(false);
+          setIsCheckingAuth(false); // render the dashboard now
+        }
+      } catch (e) {
+        console.error("Failed to read cached user:", e);
+      }
+    })();
+
+    // 2. Verify the real session in the background (Firebase + backend).
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      if (cancelled) return;
+
+      if (firebaseUser) {
+        await verifySessionInBackground(false); // non-forced: instant if token still valid
+      } else {
+        hasCachedSessionRef.current = false;
+        await AsyncStorage.removeItem(CACHED_USER_KEY);
+        setIsLoggedIn(false);
+        setShowLanding(true);
+        setIsCheckingAuth(false);
+      }
     });
 
-    // 🔥 AUTO-REFRESH TOKEN EVERY 50 MINUTES (Firebase tokens expire in 1 hour)
-    const interval = setInterval(refreshAuthToken, 50 * 60 * 1000);
+    // 🔥 FORCE-REFRESH TOKEN EVERY 50 MINUTES (Firebase tokens expire in 1 hour)
+    const interval = setInterval(() => refreshAuthToken(true), 50 * 60 * 1000);
 
     return () => {
+      cancelled = true;
       unsubscribe();
       clearInterval(interval);
     };
-  }, [refreshAuthToken]);
+  }, [refreshAuthToken, verifySessionInBackground]);
 
   const handleLogin = async (user: SignedInUser) => {
-    const token = await refreshAuthToken();
+    const token = await refreshAuthToken(true); // force-fresh right after login
     if (token) {
+      hasCachedSessionRef.current = true;
       setCurrentUser(user);
       setIsLoggedIn(true);
       setShowLanding(false);
       setShowRegister(false);
+      await AsyncStorage.setItem(CACHED_USER_KEY, JSON.stringify(user));
     }
   };
 
@@ -168,12 +220,14 @@ export default function App() {
         method: 'POST',
         credentials: 'include',
       });
-      await AsyncStorage.removeItem('@auth_token');
+      await AsyncStorage.removeItem(CACHED_TOKEN_KEY);
+      await AsyncStorage.removeItem(CACHED_USER_KEY);
       await signOut(auth);
     } catch (error) {
       console.error("Sign out error:", error);
     }
-    
+
+    hasCachedSessionRef.current = false;
     setCurrentUser(null);
     setIsLoggedIn(false);
     setShowLanding(true);
@@ -183,7 +237,7 @@ export default function App() {
 
   const handleGetStarted = () => {
     setShowLanding(false);
-    setShowRegister(false); 
+    setShowRegister(false);
   };
 
   const handleRegisterSuccess = () => {
