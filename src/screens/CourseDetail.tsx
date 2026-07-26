@@ -1869,18 +1869,18 @@ const CourseDetail = ({
             <Text style={styles.emptyText}>No materials available yet</Text>
           )
         ) : activeTab === "assignments" ? (
-          safeCourse.assignments.length > 0 ? (
-            <FlatList
-              data={safeCourse.assignments as any[]}
-              renderItem={renderAssignmentItem}
-              keyExtractor={(item) => item.id}
-              scrollEnabled={false}
-              ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
-            />
-          ) : (
-            <Text style={styles.emptyText}>No assignments yet</Text>
-          )
-        ) : activeTab === "modules" ? (
+            safeCourse.assignments.length > 0 ? (
+              <View>
+                {(safeCourse.assignments as any[]).map((item, index) => (
+                  <View key={item.id} style={index > 0 ? { marginTop: 12 } : undefined}>
+                    {renderAssignmentItem({ item })}
+                  </View>
+                ))}
+              </View>
+            ) : (
+              <Text style={styles.emptyText}>No assignments yet</Text>
+            )
+          ) : activeTab === "modules" ? (
           <View>
             {/* Course Resources Container */}
             <View style={{ backgroundColor: '#FFF', borderRadius: 12, padding: 16, marginBottom: 16, borderWidth: 1, borderColor: '#EEE' }}>

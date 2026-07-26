@@ -754,6 +754,19 @@ const Assignments = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoOpenAssignmentId, allAssignments]);
 
+  // ✅ FIX (scroll/drag bug): whenever the selected assignment changes (or the
+  // modal closes), forcibly reset the comment dropdown-menu state. Without
+  // this, if `openMenuCommentId`/`menuPosition` were ever left set from a
+  // previous render, the full-screen transparent `menuBackdrop` Pressable
+  // (rendered as a sibling of the modal content, covering top/left/right/
+  // bottom: 0) would silently sit on top of the ScrollView and swallow every
+  // touch — including drag gestures — making the assignment detail modal
+  // appear completely un-scrollable even though nothing looked wrong visually.
+  useEffect(() => {
+    setOpenMenuCommentId(null);
+    setMenuPosition(null);
+  }, [selectedAssignment?.id]);
+
   const handleAddComment = () => {
     if (!selectedAssignment || !newComment.trim()) return;
     onAddComment(selectedAssignment.id, newComment);
@@ -1212,6 +1225,11 @@ const Assignments = ({
         style={styles.assignmentCard}
         activeOpacity={0.85}
         onPress={() => {
+          // ✅ Always start from a clean menu state when opening a (possibly
+          // different) assignment's detail modal — belt-and-suspenders
+          // alongside the useEffect above.
+          setOpenMenuCommentId(null);
+          setMenuPosition(null);
           setSelectedAssignment(item);
           if (item.assignmentType === 'game_based') {
             fetchGameAttempts(item.id);
@@ -1337,11 +1355,24 @@ const Assignments = ({
         <View style={styles.modalOverlay}>
           <View style={[styles.modalWrapper, { width: modalWidth }, !isLargeScreen && styles.modalWrapperMobile]}>
             <ScrollView
+              // ✅ FIX #1: definite flex context so the ScrollView actually
+              // becomes a bounded, scrollable viewport (see modalWrapper's
+              // `height` — not `maxHeight` — below for the matching half of
+              // this fix).
               style={{ flex: 1, width: '100%' }}
               contentContainerStyle={[
                 styles.detailContainer,
                 !isLargeScreen && styles.detailContainerMobile,
               ]}
+              // ✅ FIX #2: these extra props (mirrored from the working
+              // Community.tsx modal ScrollView) make sure touch/drag
+              // gestures are reliably recognized as scroll gestures,
+              // especially on Android where a ScrollView rendered inside a
+              // Modal portal can otherwise have its gestures swallowed.
+              showsVerticalScrollIndicator={true}
+              nestedScrollEnabled={true}
+              keyboardShouldPersistTaps="handled"
+              scrollEventThrottle={16}
             >
               {selectedAssignment && (
                 <>
@@ -2094,9 +2125,14 @@ const styles = StyleSheet.create({
   recommendationBadge: { marginTop: 10, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 7, alignSelf: 'flex-start' },
   recommendationText: { fontWeight: '700', fontSize: 12 },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'center', alignItems: 'center' },
+  // ✅ FIX: use a DEFINITE `height`, not `maxHeight`. `maxHeight` alone (with
+  // a parent that centers rather than stretches children) leaves this
+  // view's size as "shrink to content, capped at X%", which gives the
+  // inner ScrollView's `flex: 1` nothing concrete to size against — so on
+  // native the ScrollView just grows to fit all its content instead of
+  // clipping/scrolling. A definite height fixes that.
   modalWrapper: { height: '92%', maxWidth: 1180, backgroundColor: '#fff', borderRadius: 16, overflow: 'hidden' },
   modalWrapperMobile: { height: '94%', borderRadius: 14, overflow: 'hidden' },
-  
   modalCloseFloating: { position: 'absolute', top: -10, left: -10, zIndex: 20, width: 42, height: 42, borderRadius: 999, backgroundColor: '#FFF', justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.12, shadowRadius: 6, elevation: 5 },
   closeButton: { fontSize: 20, color: '#666' },
   infoCard: { position: 'relative', backgroundColor: '#F9F9F9', borderRadius: 12, padding: 22, paddingTop: 28, marginBottom: 16, borderLeftWidth: 4, borderLeftColor: '#D32F2F' },
