@@ -39,43 +39,45 @@ function PinInput({ value, onChange, isMobile, disabled }: PinInputProps) {
   const refs = useRef<Array<TextInput | null>>([]);
 
   return (
-    <View style={[styles.pinRow, isMobile && styles.pinRowMobile]}>
-      {value.map((digit, index) => (
-        <TextInput
-          key={index}
-          ref={(ref) => {
-            refs.current[index] = ref;
-          }}
-          value={digit}
-          editable={!disabled}
-          onChangeText={(text) => {
-            const cleanText = text.replace(/[^0-9]/g, "").slice(-1);
-            onChange(index, cleanText);
+    <View style={styles.pinContainer}>
+      <View style={[styles.pinRow, isMobile && styles.pinRowMobile]}>
+        {value.map((digit, index) => (
+          <TextInput
+            key={index}
+            ref={(ref) => {
+              refs.current[index] = ref;
+            }}
+            value={digit}
+            editable={!disabled}
+            onChangeText={(text) => {
+              const cleanText = text.replace(/[^0-9]/g, "").slice(-1);
+              onChange(index, cleanText);
 
-            if (cleanText && index < 3) {
-              refs.current[index + 1]?.focus();
-            }
-          }}
-          onKeyPress={({ nativeEvent }) => {
-            if (
-              nativeEvent.key === "Backspace" &&
-              !value[index] &&
-              index > 0
-            ) {
-              refs.current[index - 1]?.focus();
-            }
-          }}
-          keyboardType="number-pad"
-          maxLength={1}
-          style={[
-            styles.pinBox,
-            isMobile && styles.pinBoxMobile,
-            disabled && styles.inputDisabled,
-          ]}
-          textAlign="center"
-          textAlignVertical="center"
-        />
-      ))}
+              if (cleanText && index < 3) {
+                refs.current[index + 1]?.focus();
+              }
+            }}
+            onKeyPress={({ nativeEvent }) => {
+              if (
+                nativeEvent.key === "Backspace" &&
+                !value[index] &&
+                index > 0
+              ) {
+                refs.current[index - 1]?.focus();
+              }
+            }}
+            keyboardType="number-pad"
+            maxLength={1}
+            style={[
+              styles.pinBox,
+              isMobile && styles.pinBoxMobile,
+              disabled && styles.inputDisabled,
+            ]}
+            textAlign="center"
+            textAlignVertical="center"
+          />
+        ))}
+      </View>
     </View>
   );
 }
@@ -463,7 +465,6 @@ export default function Settings({
                   onClose?.();
                 }}
                 activeOpacity={0.85}
-                
               >
                 <Ionicons name="close" size={20} color="#7A4A4A" />
               </TouchableOpacity>
@@ -1230,21 +1231,34 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
 
+  // ─── PIN input: centered container pattern (matches SignIn.tsx) ────────
+  // A width-capped, self-centered wrapper + flex boxes instead of fixed
+  // widths — this is what actually keeps the PIN boxes centered instead of
+  // hugging the left edge on web where ScrollView content can shrink-wrap.
+  pinContainer: {
+    width: "100%",
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 8,
+  },
+
   pinRow: {
-  flexDirection: "row",
-  justifyContent: "center",
-  gap: 10,
-  marginTop: 8,
-  flexWrap: "wrap",
-  width: "100%",        // 👈 add this
-  alignSelf: "stretch", // 👈 and this, belt-and-suspenders
-},
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    width: "100%",
+    maxWidth: 320,
+    gap: 10,
+  },
+
   pinRowMobile: {
+    maxWidth: 280,
     gap: 10,
   },
 
   pinBox: {
-    width: 58,
+    flex: 1,
+    maxWidth: 58,
     height: 58,
     borderRadius: 16,
     borderWidth: 1,
@@ -1262,7 +1276,7 @@ const styles = StyleSheet.create({
   },
 
   pinBoxMobile: {
-    width: 56,
+    maxWidth: 56,
     height: 56,
     fontSize: 20,
     borderRadius: 14,
