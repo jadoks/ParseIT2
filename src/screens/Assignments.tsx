@@ -11,6 +11,7 @@ import {
   Modal,
   Platform,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -221,6 +222,9 @@ interface AssignmentsProps {
   // inline here — the parent switches to CourseDetail and auto-opens the
   // matching Module Lesson Detail modal there.
   onOpenRelatedMaterial?: (course: AssignmentCourse, material: AssignmentMaterial) => void;
+  // ✅ NEW: how often (ms) to silently poll for new grades/comments while
+  // this screen — or an assignment's detail modal — is open. 0 disables.
+  autoRefreshIntervalMs?: number;
 }
 
 type FilterType = 'all' | 'pending' | 'submitted' | 'graded';
@@ -502,6 +506,7 @@ const Assignments = ({
   autoOpenAssignmentId = null,
   onConsumedAutoOpenAssignment,
   onOpenRelatedMaterial,
+  autoRefreshIntervalMs = 15000,
 }: AssignmentsProps) => {
   const { width, height } = useWindowDimensions();
   const isLargeScreen = width >= 768;
@@ -533,6 +538,10 @@ const Assignments = ({
 
   const [gameAttempts, setGameAttempts] = useState<Record<string, number>>({});
   const [isLoadingAttempts, setIsLoadingAttempts] = useState<Record<string, boolean>>({});
+
+  // ✅ NEW: Refresh state — drives pull-to-refresh UI on the list + detail
+  // modal, and the silent background poller below.
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   const sourceCourses = useMemo(() => {
     if (!selectedCourseId) return courses;
@@ -765,6 +774,43 @@ const Assignments = ({
     setOpenMenuCommentId(null);
     setMenuPosition(null);
   }, [selectedAssignment?.id]);
+
+  // ✅ NEW: Silent background refresh — asks the parent (StudentApp) to
+  // refetch submissions/comments so a new grade or a new teacher comment
+  // shows up automatically while the student is on this screen, without
+  // needing to back out and re-enter.
+  const silentRefresh = async () => {
+    try {
+      await onRefreshSubmissions?.();
+    } catch (error) {
+      console.error('Auto-refresh error:', error);
+    }
+  };
+
+  // ✅ NEW: Poll on an interval while the assignment list (or a specific
+  // assignment's detail modal) is open. Cleared/reset whenever the selected
+  // assignment or the interval prop changes.
+  useEffect(() => {
+    if (!autoRefreshIntervalMs || autoRefreshIntervalMs <= 0) {
+      return;
+    }
+    const intervalId = setInterval(() => {
+      silentRefresh();
+    }, autoRefreshIntervalMs);
+    return () => clearInterval(intervalId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedAssignment?.id, autoRefreshIntervalMs]);
+
+  // ✅ NEW: Manual pull-to-refresh handler shown on the assignment list and
+  // the detail modal's ScrollView.
+  const handlePullToRefresh = async () => {
+    setIsRefreshing(true);
+    try {
+      await silentRefresh();
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
 
   const handleAddComment = () => {
     if (!selectedAssignment || !newComment.trim()) return;
@@ -1307,6 +1353,9 @@ const Assignments = ({
       contentContainerStyle={{
         padding: isLargeScreen ? 24 : 16,
       }}
+      refreshControl={
+        <RefreshControl refreshing={isRefreshing} onRefresh={handlePullToRefresh} colors={['#D32F2F']} tintColor="#D32F2F" />
+      }
     >
       <Text style={styles.title}>Assignments</Text>
       <View style={styles.filterRow}>
@@ -1383,6 +1432,9 @@ const Assignments = ({
               nestedScrollEnabled={true}
               keyboardShouldPersistTaps="handled"
               scrollEventThrottle={16}
+              refreshControl={
+                <RefreshControl refreshing={isRefreshing} onRefresh={handlePullToRefresh} colors={['#D32F2F']} tintColor="#D32F2F" />
+              }
             >
               {selectedAssignment && (
                 <>
