@@ -4,6 +4,7 @@ import React, { useRef, useState } from "react";
 import {
   ActivityIndicator,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -72,6 +73,7 @@ function PinInput({ value, onChange, isMobile, disabled }: PinInputProps) {
             disabled && styles.inputDisabled,
           ]}
           textAlign="center"
+          textAlignVertical="center"
         />
       ))}
     </View>
@@ -1250,6 +1252,12 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: "800",
     color: "#2B1111",
+    paddingVertical: 0,
+    paddingHorizontal: 0,
+    ...Platform.select({
+      web: { lineHeight: 56 } as any,
+      default: {},
+    }),
   },
 
   pinBoxMobile: {
@@ -1257,6 +1265,10 @@ const styles = StyleSheet.create({
     height: 56,
     fontSize: 20,
     borderRadius: 14,
+    ...Platform.select({
+      web: { lineHeight: 54 } as any,
+      default: {},
+    }),
   },
 
   resendLinkWrap: {
