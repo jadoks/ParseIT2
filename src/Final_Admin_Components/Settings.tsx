@@ -2,6 +2,7 @@ import Feather from "@expo/vector-icons/Feather";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import React, { useRef, useState } from "react";
 import {
+  ActivityIndicator,
   Modal,
   Pressable,
   ScrollView,
@@ -12,18 +13,28 @@ import {
   View,
 } from "react-native";
 
+type CurrentAdminInfo = {
+  adminId: string;
+  email: string;
+  firstName?: string;
+};
+
 type SettingsProps = {
   width: number;
-   onClose?: () => void;
+  onClose?: () => void;
+  apiBaseUrl: string;
+  currentAdmin: CurrentAdminInfo;
+  onEmailUpdated?: (newEmail: string) => void;
 };
 
 type PinInputProps = {
   value: string[];
   onChange: (index: number, text: string) => void;
   isMobile: boolean;
+  disabled?: boolean;
 };
 
-function PinInput({ value, onChange, isMobile }: PinInputProps) {
+function PinInput({ value, onChange, isMobile, disabled }: PinInputProps) {
   const refs = useRef<Array<TextInput | null>>([]);
 
   return (
@@ -35,6 +46,7 @@ function PinInput({ value, onChange, isMobile }: PinInputProps) {
             refs.current[index] = ref;
           }}
           value={digit}
+          editable={!disabled}
           onChangeText={(text) => {
             const cleanText = text.replace(/[^0-9]/g, "").slice(-1);
             onChange(index, cleanText);
@@ -54,7 +66,11 @@ function PinInput({ value, onChange, isMobile }: PinInputProps) {
           }}
           keyboardType="number-pad"
           maxLength={1}
-          style={[styles.pinBox, isMobile && styles.pinBoxMobile]}
+          style={[
+            styles.pinBox,
+            isMobile && styles.pinBoxMobile,
+            disabled && styles.inputDisabled,
+          ]}
           textAlign="center"
         />
       ))}
@@ -62,9 +78,54 @@ function PinInput({ value, onChange, isMobile }: PinInputProps) {
   );
 }
 
-export default function Settings({ width, onClose }: SettingsProps) {
+function InlineMessage({
+  type,
+  text,
+}: {
+  type: "error" | "success";
+  text: string;
+}) {
+  if (!text) return null;
+
+  return (
+    <View
+      style={[
+        styles.inlineMessageBox,
+        type === "error" ? styles.inlineMessageError : styles.inlineMessageSuccess,
+      ]}
+    >
+      <Ionicons
+        name={type === "error" ? "alert-circle-outline" : "checkmark-circle-outline"}
+        size={16}
+        color={type === "error" ? "#DC2626" : "#15803D"}
+      />
+      <Text
+        style={[
+          styles.inlineMessageText,
+          type === "error" ? styles.inlineMessageTextError : styles.inlineMessageTextSuccess,
+        ]}
+      >
+        {text}
+      </Text>
+    </View>
+  );
+}
+
+export default function Settings({
+  width,
+  onClose,
+  apiBaseUrl,
+  currentAdmin,
+  onEmailUpdated,
+}: SettingsProps) {
   const isMobile = width < 768;
   const isTablet = width >= 768 && width < 1100;
+
+  const apiFetch = (url: string, options: any = {}) =>
+    fetch(url, {
+      credentials: "include",
+      ...options,
+    });
 
   const [isSettingsModalVisible, setIsSettingsModalVisible] = useState(true);
   const [isChangeEmailModalVisible, setIsChangeEmailModalVisible] =
@@ -72,30 +133,47 @@ export default function Settings({ width, onClose }: SettingsProps) {
   const [isChangePasswordModalVisible, setIsChangePasswordModalVisible] =
     useState(false);
 
+  // ─── Change Email state ───────────────────────────────────────────────
   const [changeEmailStep, setChangeEmailStep] = useState(1);
-  const [changePasswordStep, setChangePasswordStep] = useState(1);
-
   const [changeEmailPin, setChangeEmailPin] = useState(["", "", "", ""]);
   const [newEmail, setNewEmail] = useState("");
+  const [changeEmailLoading, setChangeEmailLoading] = useState(false);
+  const [changeEmailSendingCode, setChangeEmailSendingCode] = useState(false);
+  const [changeEmailCodeSent, setChangeEmailCodeSent] = useState(false);
+  const [changeEmailError, setChangeEmailError] = useState("");
+  const [changeEmailSuccess, setChangeEmailSuccess] = useState("");
 
-  const [passwordEmail, setPasswordEmail] = useState("");
+  // ─── Change Password state ────────────────────────────────────────────
+  const [changePasswordStep, setChangePasswordStep] = useState(1);
+  const [passwordEmail, setPasswordEmail] = useState(currentAdmin?.email || "");
   const [changePasswordPin, setChangePasswordPin] = useState(["", "", "", ""]);
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [changePasswordLoading, setChangePasswordLoading] = useState(false);
+  const [changePasswordError, setChangePasswordError] = useState("");
+  const [changePasswordSuccess, setChangePasswordSuccess] = useState("");
 
   const resetChangeEmailModal = () => {
     setChangeEmailStep(1);
     setChangeEmailPin(["", "", "", ""]);
     setNewEmail("");
+    setChangeEmailLoading(false);
+    setChangeEmailSendingCode(false);
+    setChangeEmailCodeSent(false);
+    setChangeEmailError("");
+    setChangeEmailSuccess("");
     setIsChangeEmailModalVisible(false);
   };
 
   const resetChangePasswordModal = () => {
     setChangePasswordStep(1);
-    setPasswordEmail("");
+    setPasswordEmail(currentAdmin?.email || "");
     setChangePasswordPin(["", "", "", ""]);
     setNewPassword("");
     setConfirmPassword("");
+    setChangePasswordLoading(false);
+    setChangePasswordError("");
+    setChangePasswordSuccess("");
     setIsChangePasswordModalVisible(false);
   };
 
@@ -109,6 +187,226 @@ export default function Settings({ width, onClose }: SettingsProps) {
     const updated = [...changePasswordPin];
     updated[index] = text;
     setChangePasswordPin(updated);
+  };
+
+  // ─── Change Email handlers ────────────────────────────────────────────
+  const openChangeEmailModal = () => {
+    setIsChangeEmailModalVisible(true);
+    void sendChangeEmailPin();
+  };
+
+  const sendChangeEmailPin = async () => {
+    if (!currentAdmin?.email) {
+      setChangeEmailError("Your account has no email on file. Contact support.");
+      return;
+    }
+
+    setChangeEmailSendingCode(true);
+    setChangeEmailError("");
+
+    try {
+      const res = await apiFetch(`${apiBaseUrl}/auth/send-forgot-password-pin`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: currentAdmin.email }),
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data?.error || "Failed to send verification code.");
+      }
+
+      setChangeEmailCodeSent(true);
+    } catch (error: any) {
+      setChangeEmailError(error?.message || "Failed to send verification code.");
+    } finally {
+      setChangeEmailSendingCode(false);
+    }
+  };
+
+  const verifyChangeEmailPin = async () => {
+    const pin = changeEmailPin.join("");
+
+    if (pin.length !== 4) {
+      setChangeEmailError("Please enter the 4-digit code.");
+      return;
+    }
+
+    setChangeEmailLoading(true);
+    setChangeEmailError("");
+
+    try {
+      const res = await apiFetch(`${apiBaseUrl}/auth/verify-forgot-password-pin`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: currentAdmin.email, pin }),
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data?.error || "Invalid or expired code.");
+      }
+
+      setChangeEmailStep(2);
+    } catch (error: any) {
+      setChangeEmailError(error?.message || "Invalid or expired code.");
+    } finally {
+      setChangeEmailLoading(false);
+    }
+  };
+
+  const submitNewEmail = async () => {
+    const trimmedEmail = newEmail.trim();
+
+    if (!trimmedEmail) {
+      setChangeEmailError("Please enter your new email address.");
+      return;
+    }
+
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
+      setChangeEmailError("Please enter a valid email address.");
+      return;
+    }
+
+    setChangeEmailLoading(true);
+    setChangeEmailError("");
+
+    try {
+      const res = await apiFetch(`${apiBaseUrl}/auth/change-email`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: currentAdmin.adminId,
+          role: "admin",
+          newEmail: trimmedEmail,
+        }),
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data?.error || "Failed to update email.");
+      }
+
+      setChangeEmailSuccess("Email updated successfully.");
+      onEmailUpdated?.(data?.data?.email || trimmedEmail);
+
+      setTimeout(() => {
+        resetChangeEmailModal();
+      }, 1200);
+    } catch (error: any) {
+      setChangeEmailError(error?.message || "Failed to update email.");
+    } finally {
+      setChangeEmailLoading(false);
+    }
+  };
+
+  // ─── Change Password handlers ─────────────────────────────────────────
+  const sendChangePasswordPin = async () => {
+    const trimmedEmail = passwordEmail.trim();
+
+    if (!trimmedEmail) {
+      setChangePasswordError("Please enter your email address.");
+      return;
+    }
+
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
+      setChangePasswordError("Please enter a valid email address.");
+      return;
+    }
+
+    setChangePasswordLoading(true);
+    setChangePasswordError("");
+
+    try {
+      const res = await apiFetch(`${apiBaseUrl}/auth/send-forgot-password-pin`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: trimmedEmail }),
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data?.error || "Failed to send verification code.");
+      }
+
+      setChangePasswordStep(2);
+    } catch (error: any) {
+      setChangePasswordError(error?.message || "Failed to send verification code.");
+    } finally {
+      setChangePasswordLoading(false);
+    }
+  };
+
+  const verifyChangePasswordPin = async () => {
+    const pin = changePasswordPin.join("");
+
+    if (pin.length !== 4) {
+      setChangePasswordError("Please enter the 4-digit code.");
+      return;
+    }
+
+    setChangePasswordLoading(true);
+    setChangePasswordError("");
+
+    try {
+      const res = await apiFetch(`${apiBaseUrl}/auth/verify-forgot-password-pin`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: passwordEmail.trim(), pin }),
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data?.error || "Invalid or expired code.");
+      }
+
+      setChangePasswordStep(3);
+    } catch (error: any) {
+      setChangePasswordError(error?.message || "Invalid or expired code.");
+    } finally {
+      setChangePasswordLoading(false);
+    }
+  };
+
+  const submitNewPassword = async () => {
+    if (newPassword.trim().length < 8) {
+      setChangePasswordError("New password must be at least 8 characters.");
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      setChangePasswordError("Passwords do not match.");
+      return;
+    }
+
+    setChangePasswordLoading(true);
+    setChangePasswordError("");
+
+    try {
+      const res = await apiFetch(`${apiBaseUrl}/auth/reset-forgot-password`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: passwordEmail.trim(),
+          newPassword: newPassword.trim(),
+        }),
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data?.error || "Failed to update password.");
+      }
+
+      setChangePasswordSuccess("Password updated successfully.");
+
+      setTimeout(() => {
+        resetChangePasswordModal();
+      }, 1200);
+    } catch (error: any) {
+      setChangePasswordError(error?.message || "Failed to update password.");
+    } finally {
+      setChangePasswordLoading(false);
+    }
   };
 
   const settingsCardWidth = isMobile ? "100%" : isTablet ? "74%" : "42%";
@@ -191,7 +489,7 @@ export default function Settings({ width, onClose }: SettingsProps) {
                 <TouchableOpacity
                   style={styles.actionCard}
                   activeOpacity={0.85}
-                  onPress={() => setIsChangeEmailModalVisible(true)}
+                  onPress={openChangeEmailModal}
                 >
                   <View style={styles.actionCardLeft}>
                     <View style={styles.smallIconBox}>
@@ -260,6 +558,7 @@ export default function Settings({ width, onClose }: SettingsProps) {
         </View>
       </Modal>
 
+      {/* ─── CHANGE EMAIL MODAL ─────────────────────────────────────────── */}
       <Modal
         visible={isChangeEmailModalVisible}
         animationType="fade"
@@ -324,14 +623,35 @@ export default function Settings({ width, onClose }: SettingsProps) {
                   </View>
 
                   <Text style={styles.helperText}>
-                    Enter the 4-digit PIN code sent to your existing email.
+                    {changeEmailSendingCode
+                      ? `Sending a 4-digit code to ${currentAdmin?.email || "your email"}...`
+                      : `Enter the 4-digit PIN code sent to ${currentAdmin?.email || "your existing email"}.`}
                   </Text>
 
                   <PinInput
                     value={changeEmailPin}
                     onChange={handleChangeEmailPinChange}
                     isMobile={isMobile}
+                    disabled={changeEmailSendingCode || changeEmailLoading}
                   />
+
+                  <InlineMessage type="error" text={changeEmailError} />
+                  <InlineMessage type="success" text={changeEmailSuccess} />
+
+                  <TouchableOpacity
+                    onPress={sendChangeEmailPin}
+                    disabled={changeEmailSendingCode}
+                    activeOpacity={0.85}
+                    style={styles.resendLinkWrap}
+                  >
+                    <Text style={styles.resendLinkText}>
+                      {changeEmailSendingCode
+                        ? "Sending code..."
+                        : changeEmailCodeSent
+                        ? "Didn't get a code? Resend"
+                        : "Send verification code"}
+                    </Text>
+                  </TouchableOpacity>
                 </View>
               )}
 
@@ -357,8 +677,12 @@ export default function Settings({ width, onClose }: SettingsProps) {
                       style={styles.textInput}
                       keyboardType="email-address"
                       autoCapitalize="none"
+                      editable={!changeEmailLoading}
                     />
                   </View>
+
+                  <InlineMessage type="error" text={changeEmailError} />
+                  <InlineMessage type="success" text={changeEmailSuccess} />
                 </View>
               )}
             </ScrollView>
@@ -370,8 +694,12 @@ export default function Settings({ width, onClose }: SettingsProps) {
                     styles.modalSecondaryButton,
                     isMobile && styles.modalButtonMobile,
                   ]}
-                  onPress={() => setChangeEmailStep(1)}
+                  onPress={() => {
+                    setChangeEmailError("");
+                    setChangeEmailStep(1);
+                  }}
                   activeOpacity={0.85}
+                  disabled={changeEmailLoading}
                 >
                   <Text style={styles.modalSecondaryButtonText}>Back</Text>
                 </TouchableOpacity>
@@ -382,32 +710,48 @@ export default function Settings({ width, onClose }: SettingsProps) {
                   style={[
                     styles.modalPrimaryButton,
                     isMobile && styles.modalButtonMobile,
+                    (changeEmailLoading || changeEmailSendingCode) && styles.buttonDisabled,
                   ]}
                   activeOpacity={0.85}
-                  onPress={() => setChangeEmailStep(2)}
+                  onPress={verifyChangeEmailPin}
+                  disabled={changeEmailLoading || changeEmailSendingCode}
                 >
-                  <Ionicons
-                    name="arrow-forward-outline"
-                    size={18}
-                    color="#FFFFFF"
-                  />
-                  <Text style={styles.modalPrimaryButtonText}>Next</Text>
+                  {changeEmailLoading ? (
+                    <ActivityIndicator size="small" color="#FFFFFF" />
+                  ) : (
+                    <>
+                      <Ionicons
+                        name="arrow-forward-outline"
+                        size={18}
+                        color="#FFFFFF"
+                      />
+                      <Text style={styles.modalPrimaryButtonText}>Next</Text>
+                    </>
+                  )}
                 </TouchableOpacity>
               ) : (
                 <TouchableOpacity
                   style={[
                     styles.modalPrimaryButton,
                     isMobile && styles.modalButtonMobile,
+                    changeEmailLoading && styles.buttonDisabled,
                   ]}
                   activeOpacity={0.85}
-                  onPress={resetChangeEmailModal}
+                  onPress={submitNewEmail}
+                  disabled={changeEmailLoading}
                 >
-                  <Ionicons
-                    name="checkmark-circle-outline"
-                    size={18}
-                    color="#FFFFFF"
-                  />
-                  <Text style={styles.modalPrimaryButtonText}>Save</Text>
+                  {changeEmailLoading ? (
+                    <ActivityIndicator size="small" color="#FFFFFF" />
+                  ) : (
+                    <>
+                      <Ionicons
+                        name="checkmark-circle-outline"
+                        size={18}
+                        color="#FFFFFF"
+                      />
+                      <Text style={styles.modalPrimaryButtonText}>Save</Text>
+                    </>
+                  )}
                 </TouchableOpacity>
               )}
             </View>
@@ -415,6 +759,7 @@ export default function Settings({ width, onClose }: SettingsProps) {
         </View>
       </Modal>
 
+      {/* ─── CHANGE PASSWORD MODAL ──────────────────────────────────────── */}
       <Modal
         visible={isChangePasswordModalVisible}
         animationType="fade"
@@ -493,8 +838,11 @@ export default function Settings({ width, onClose }: SettingsProps) {
                       style={styles.textInput}
                       keyboardType="email-address"
                       autoCapitalize="none"
+                      editable={!changePasswordLoading}
                     />
                   </View>
+
+                  <InlineMessage type="error" text={changePasswordError} />
                 </View>
               )}
 
@@ -506,14 +854,28 @@ export default function Settings({ width, onClose }: SettingsProps) {
                   </View>
 
                   <Text style={styles.helperText}>
-                    Enter the 4-digit PIN code sent to the email.
+                    Enter the 4-digit PIN code sent to {passwordEmail || "your email"}.
                   </Text>
 
                   <PinInput
                     value={changePasswordPin}
                     onChange={handleChangePasswordPinChange}
                     isMobile={isMobile}
+                    disabled={changePasswordLoading}
                   />
+
+                  <InlineMessage type="error" text={changePasswordError} />
+
+                  <TouchableOpacity
+                    onPress={sendChangePasswordPin}
+                    disabled={changePasswordLoading}
+                    activeOpacity={0.85}
+                    style={styles.resendLinkWrap}
+                  >
+                    <Text style={styles.resendLinkText}>
+                      Didn't get a code? Resend
+                    </Text>
+                  </TouchableOpacity>
                 </View>
               )}
 
@@ -542,6 +904,7 @@ export default function Settings({ width, onClose }: SettingsProps) {
                       placeholderTextColor="#B79A9A"
                       style={styles.textInput}
                       secureTextEntry
+                      editable={!changePasswordLoading}
                     />
                   </View>
 
@@ -561,8 +924,12 @@ export default function Settings({ width, onClose }: SettingsProps) {
                       placeholderTextColor="#B79A9A"
                       style={styles.textInput}
                       secureTextEntry
+                      editable={!changePasswordLoading}
                     />
                   </View>
+
+                  <InlineMessage type="error" text={changePasswordError} />
+                  <InlineMessage type="success" text={changePasswordSuccess} />
                 </View>
               )}
             </ScrollView>
@@ -574,10 +941,12 @@ export default function Settings({ width, onClose }: SettingsProps) {
                     styles.modalSecondaryButton,
                     isMobile && styles.modalButtonMobile,
                   ]}
-                  onPress={() =>
-                    setChangePasswordStep((prev) => Math.max(1, prev - 1))
-                  }
+                  onPress={() => {
+                    setChangePasswordError("");
+                    setChangePasswordStep((prev) => Math.max(1, prev - 1));
+                  }}
                   activeOpacity={0.85}
+                  disabled={changePasswordLoading}
                 >
                   <Text style={styles.modalSecondaryButtonText}>Back</Text>
                 </TouchableOpacity>
@@ -588,34 +957,52 @@ export default function Settings({ width, onClose }: SettingsProps) {
                   style={[
                     styles.modalPrimaryButton,
                     isMobile && styles.modalButtonMobile,
+                    changePasswordLoading && styles.buttonDisabled,
                   ]}
                   activeOpacity={0.85}
-                  onPress={() =>
-                    setChangePasswordStep((prev) => Math.min(3, prev + 1))
+                  onPress={
+                    changePasswordStep === 1
+                      ? sendChangePasswordPin
+                      : verifyChangePasswordPin
                   }
+                  disabled={changePasswordLoading}
                 >
-                  <Ionicons
-                    name="arrow-forward-outline"
-                    size={18}
-                    color="#FFFFFF"
-                  />
-                  <Text style={styles.modalPrimaryButtonText}>Next</Text>
+                  {changePasswordLoading ? (
+                    <ActivityIndicator size="small" color="#FFFFFF" />
+                  ) : (
+                    <>
+                      <Ionicons
+                        name="arrow-forward-outline"
+                        size={18}
+                        color="#FFFFFF"
+                      />
+                      <Text style={styles.modalPrimaryButtonText}>Next</Text>
+                    </>
+                  )}
                 </TouchableOpacity>
               ) : (
                 <TouchableOpacity
                   style={[
                     styles.modalPrimaryButton,
                     isMobile && styles.modalButtonMobile,
+                    changePasswordLoading && styles.buttonDisabled,
                   ]}
                   activeOpacity={0.85}
-                  onPress={resetChangePasswordModal}
+                  onPress={submitNewPassword}
+                  disabled={changePasswordLoading}
                 >
-                  <Ionicons
-                    name="checkmark-circle-outline"
-                    size={18}
-                    color="#FFFFFF"
-                  />
-                  <Text style={styles.modalPrimaryButtonText}>Save</Text>
+                  {changePasswordLoading ? (
+                    <ActivityIndicator size="small" color="#FFFFFF" />
+                  ) : (
+                    <>
+                      <Ionicons
+                        name="checkmark-circle-outline"
+                        size={18}
+                        color="#FFFFFF"
+                      />
+                      <Text style={styles.modalPrimaryButtonText}>Save</Text>
+                    </>
+                  )}
                 </TouchableOpacity>
               )}
             </View>
@@ -829,6 +1216,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
 
+  inputDisabled: {
+    opacity: 0.5,
+  },
+
   textInput: {
     flex: 1,
     marginLeft: 10,
@@ -866,6 +1257,52 @@ const styles = StyleSheet.create({
     height: 56,
     fontSize: 20,
     borderRadius: 14,
+  },
+
+  resendLinkWrap: {
+    marginTop: 14,
+    alignItems: "center",
+  },
+
+  resendLinkText: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#DC2626",
+  },
+
+  inlineMessageBox: {
+    marginTop: 14,
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    borderWidth: 1,
+  },
+
+  inlineMessageError: {
+    backgroundColor: "#FEF2F2",
+    borderColor: "#FECACA",
+  },
+
+  inlineMessageSuccess: {
+    backgroundColor: "#F0FDF4",
+    borderColor: "#BBF7D0",
+  },
+
+  inlineMessageText: {
+    marginLeft: 8,
+    fontSize: 13,
+    fontWeight: "600",
+    flex: 1,
+  },
+
+  inlineMessageTextError: {
+    color: "#B91C1C",
+  },
+
+  inlineMessageTextSuccess: {
+    color: "#15803D",
   },
 
   modalFooter: {
@@ -926,6 +1363,10 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     color: "#FFFFFF",
     marginLeft: 8,
+  },
+
+  buttonDisabled: {
+    opacity: 0.6,
   },
 
   modalButtonMobile: {

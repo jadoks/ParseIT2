@@ -208,7 +208,18 @@ export default function AdminApp({ onLogout, currentAdmin }: Props) {
     }
 
     if (activeSideNav === "Settings") {
-      return <Settings width={width} onClose={handleGoToLastPage} />;
+      return (
+        <Settings
+          width={width}
+          onClose={handleGoToLastPage}
+          apiBaseUrl={API_BASE_URL}
+          currentAdmin={{
+            adminId: currentAdmin.adminId,
+            email: currentAdmin.email,
+            firstName: currentAdmin.firstName,
+          }}
+        />
+      );
     }
 
     if (activeTopNav === "Class" || activeContentScreen === "Class") {

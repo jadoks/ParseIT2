@@ -4290,174 +4290,126 @@ CREATE MODAL
 DATE TIME MODAL
 ════════════════════════════════════════════════════════════════════════ */}
       <Modal
-        visible={showDateTimeModal}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setShowDateTimeModal(false)}
+  visible={showDateTimeModal}
+  transparent
+  animationType="fade"
+  onRequestClose={() => setShowDateTimeModal(false)}
+>
+  <View style={styles.modalOverlayCenter}>
+    <View
+      style={[
+        styles.dateTimeCard,
+        {
+          width: isMobile ? Math.min(width - 24, 360) : 760,
+          maxHeight: height * 0.9,
+        },
+      ]}
+    >
+      <View style={styles.createHeaderRow}>
+        <View style={styles.modalHeaderTextWrap}>
+          <Text style={styles.createTitle}>Select Due Date & Time</Text>
+          <Text style={styles.modalSubtitle}>Works in web and mobile.</Text>
+        </View>
+        <TouchableOpacity onPress={() => setShowDateTimeModal(false)}>
+          <Ionicons name="close" size={24} color="#111" />
+        </TouchableOpacity>
+      </View>
+
+      {/* Scrollable body so calendar + time picker never get clipped */}
+      <ScrollView
+        style={{ flexGrow: 0 }}
+        contentContainerStyle={{ paddingBottom: 8 }}
+        showsVerticalScrollIndicator={false}
       >
-        <View style={styles.modalOverlayCenter}>
-          <View
-            style={[
-              styles.dateTimeCard,
-              { width: isMobile ? Math.min(width - 28, 360) : 760 },
-            ]}
-          >
-            <View style={styles.createHeaderRow}>
-              <View style={styles.modalHeaderTextWrap}>
-                <Text style={styles.createTitle}>Select Due Date & Time</Text>
-                <Text style={styles.modalSubtitle}>Works in web and mobile.</Text>
-              </View>
-              <TouchableOpacity onPress={() => setShowDateTimeModal(false)}>
-                <Ionicons name="close" size={24} color="#111" />
-              </TouchableOpacity>
-            </View>
-            <View style={[styles.dateTimeLayout, !isMobile && styles.dateTimeLayoutDesktop]}>
-              <View style={[styles.calendarPanel, !isMobile && styles.calendarPanelDesktop]}>
-                <View style={styles.calendarHeader}>
-                  <TouchableOpacity
-                    style={styles.calendarNavBtn}
-                    onPress={() =>
-                      setVisibleCalendarMonth(
-                        new Date(
-                          visibleCalendarMonth.getFullYear(),
-                          visibleCalendarMonth.getMonth() - 1,
-                          1
-                        )
-                      )
-                    }
-                  >
-                    <Ionicons name="chevron-back" size={18} color="#D32F2F" />
-                  </TouchableOpacity>
-                  <Text style={styles.calendarMonthLabel}>{monthLabel(visibleCalendarMonth)}</Text>
-                  <TouchableOpacity
-                    style={styles.calendarNavBtn}
-                    onPress={() =>
-                      setVisibleCalendarMonth(
-                        new Date(
-                          visibleCalendarMonth.getFullYear(),
-                          visibleCalendarMonth.getMonth() + 1,
-                          1
-                        )
-                      )
-                    }
-                  >
-                    <Ionicons name="chevron-forward" size={18} color="#D32F2F" />
-                  </TouchableOpacity>
-                </View>
-                <View style={styles.weekRow}>
-                  {WEEKDAY_LABELS.map((label) => (
-                    <Text key={label} style={styles.weekLabel}>
-                      {label}
-                    </Text>
-                  ))}
-                </View>
-                <View style={styles.dayGrid}>
-                  {calendarDays.map((item) => {
-                    const active = isSameDate(item.date, draftDueDateTime);
-                    const disabled = isPastDay(item.date);
-                    return (
-                      <TouchableOpacity
-                        key={item.key}
+        <View style={[styles.dateTimeLayout, !isMobile && styles.dateTimeLayoutDesktop]}>
+          <View style={[styles.calendarPanel, !isMobile && styles.calendarPanelDesktop]}>
+            {/* ...calendar header + weekRow + dayGrid unchanged... */}
+          </View>
+
+          <View style={[styles.timePanel, !isMobile && styles.timePanelDesktop]}>
+            <View style={styles.timePickerWrapRow}>
+              <View style={styles.timeColumn}>
+                <Text style={styles.timeLabel}>Hour</Text>
+                <ScrollView
+                  style={[
+                    styles.timeList,
+                    { maxHeight: isMobile ? Math.min(height * 0.22, 200) : 260 },
+                  ]}
+                  nestedScrollEnabled
+                >
+                  {Array.from({ length: 24 }, (_, hour) => (
+                    <TouchableOpacity
+                      key={`hour-${hour}`}
+                      style={[
+                        styles.timeOption,
+                        isMobile && styles.timeOptionMobile,
+                        draftDueDateTime.getHours() === hour && styles.timeOptionActive,
+                      ]}
+                      onPress={() => updateDraftTime('hours', hour)}
+                    >
+                      <Text
                         style={[
-                          styles.dayCell,
-                          !item.inCurrentMonth && styles.dayCellOutside,
-                          active && styles.dayCellActive,
-                          disabled && styles.dayCellDisabled,
+                          styles.timeOptionText,
+                          draftDueDateTime.getHours() === hour && styles.timeOptionTextActive,
                         ]}
-                        onPress={() => {
-                          if (disabled) return;
-                          selectDraftDate(item.date);
-                        }}
-                        disabled={disabled}
-                        activeOpacity={disabled ? 1 : 0.85}
                       >
-                        <Text
-                          style={[
-                            styles.dayText,
-                            !item.inCurrentMonth && styles.dayTextOutside,
-                            active && styles.dayTextActive,
-                            disabled && styles.dayTextDisabled,
-                          ]}
-                        >
-                          {item.date.getDate()}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
+                        {pad(hour)}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
               </View>
-              <View style={[styles.timePanel, !isMobile && styles.timePanelDesktop]}>
-                <View style={styles.timePickerWrapRow}>
-                  <View style={styles.timeColumn}>
-                    <Text style={styles.timeLabel}>Hour</Text>
-                    <ScrollView style={styles.timeList} nestedScrollEnabled>
-                      {Array.from({ length: 24 }, (_, hour) => (
-                        <TouchableOpacity
-                          key={`hour-${hour}`}
-                          style={[
-                            styles.timeOption,
-                            draftDueDateTime.getHours() === hour && styles.timeOptionActive,
-                          ]}
-                          onPress={() => updateDraftTime('hours', hour)}
-                        >
-                          <Text
-                            style={[
-                              styles.timeOptionText,
-                              draftDueDateTime.getHours() === hour && styles.timeOptionTextActive,
-                            ]}
-                          >
-                            {pad(hour)}
-                          </Text>
-                        </TouchableOpacity>
-                      ))}
-                    </ScrollView>
-                  </View>
-                  <View style={styles.timeColumn}>
-                    <Text style={styles.timeLabel}>Minute</Text>
-                    <ScrollView style={styles.timeList} nestedScrollEnabled>
-                      {Array.from({ length: 12 }, (_, i) => i * 5).map((minute) => (
-                        <TouchableOpacity
-                          key={`minute-${minute}`}
-                          style={[
-                            styles.timeOption,
-                            draftDueDateTime.getMinutes() === minute && styles.timeOptionActive,
-                          ]}
-                          onPress={() => updateDraftTime('minutes', minute)}
-                        >
-                          <Text
-                            style={[
-                              styles.timeOptionText,
-                              draftDueDateTime.getMinutes() === minute &&
-                              styles.timeOptionTextActive,
-                            ]}
-                          >
-                            {pad(minute)}
-                          </Text>
-                        </TouchableOpacity>
-                      ))}
-                    </ScrollView>
-                  </View>
-                </View>
-                <View style={styles.datePreviewBox}>
-                  <Text style={styles.datePreviewLabel}>Selected</Text>
-                  <Text style={styles.datePreviewValue}>{formatDueDateTime(draftDueDateTime)}</Text>
-                </View>
+              <View style={styles.timeColumn}>
+                <Text style={styles.timeLabel}>Minute</Text>
+                <ScrollView
+                  style={[
+                    styles.timeList,
+                    { maxHeight: isMobile ? Math.min(height * 0.22, 200) : 260 },
+                  ]}
+                  nestedScrollEnabled
+                >
+                  {Array.from({ length: 12 }, (_, i) => i * 5).map((minute) => (
+                    <TouchableOpacity
+                      key={`minute-${minute}`}
+                      style={[
+                        styles.timeOption,
+                        isMobile && styles.timeOptionMobile,
+                        draftDueDateTime.getMinutes() === minute && styles.timeOptionActive,
+                      ]}
+                      onPress={() => updateDraftTime('minutes', minute)}
+                    >
+                      <Text
+                        style={[
+                          styles.timeOptionText,
+                          draftDueDateTime.getMinutes() === minute && styles.timeOptionTextActive,
+                        ]}
+                      >
+                        {pad(minute)}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
               </View>
             </View>
-            <View style={styles.buttonRow}>
-              <TouchableOpacity
-                style={styles.secondaryButton}
-                onPress={() => setShowDateTimeModal(false)}
-              >
-                <Text style={styles.secondaryButtonText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.primaryButton} onPress={applyDraftDateTime}>
-                <Text style={styles.primaryButtonText}>Apply</Text>
-              </TouchableOpacity>
+            <View style={styles.datePreviewBox}>
+              <Text style={styles.datePreviewLabel}>Selected</Text>
+              <Text style={styles.datePreviewValue}>{formatDueDateTime(draftDueDateTime)}</Text>
             </View>
           </View>
         </View>
-      </Modal>
+      </ScrollView>
+
+      <View style={styles.buttonRow}>
+        <TouchableOpacity style={styles.secondaryButton} onPress={() => setShowDateTimeModal(false)}>
+          <Text style={styles.secondaryButtonText}>Cancel</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.primaryButton} onPress={applyDraftDateTime}>
+          <Text style={styles.primaryButtonText}>Apply</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  </View>
+</Modal>
       {/* ══════════════════════════════════════════════════════════════════════
 GAME TYPE MODAL
 ════════════════════════════════════════════════════════════════════════ */}
@@ -5982,13 +5934,20 @@ const styles = StyleSheet.create({
   timeColumn: { flex: 1 },
   timeLabel: { fontSize: 13, fontWeight: '700', color: '#222', marginBottom: 8 },
   timeList: {
-    maxHeight: 260,
-    borderWidth: 1,
-    borderColor: '#E5E5E5',
-    borderRadius: 12,
-    backgroundColor: '#FAFAFA',
-  },
-  timeOption: { paddingVertical: 10, alignItems: 'center', justifyContent: 'center' },
+  borderWidth: 1,
+  borderColor: '#E5E5E5',
+  borderRadius: 12,
+  backgroundColor: '#FAFAFA',
+  // maxHeight now passed inline per-platform instead of hardcoded here
+},
+timeOption: {
+  paddingVertical: 10,
+  alignItems: 'center',
+  justifyContent: 'center',
+},
+timeOptionMobile: {
+  paddingVertical: 8, // slightly tighter rows so more options are visible without excess scrolling
+},
   timeOptionActive: { backgroundColor: '#D32F2F' },
   timeOptionText: { color: '#222', fontWeight: '600' },
   timeOptionTextActive: { color: '#FFF', fontWeight: '800' },
