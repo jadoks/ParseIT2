@@ -21,10 +21,6 @@ import multer from "multer";
   const resend = new Resend(process.env.RESEND_API_KEY);
 
 
-brevoClient.setApiKey(
-  brevo.TransactionalEmailsApiApiKeys.apiKey,
-  process.env.BREVO_API_KEY
-);
 
 
   const require = createRequire(import.meta.url);
