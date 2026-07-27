@@ -20,6 +20,14 @@ import multer from "multer";
   import { Resend } from "resend";
   const resend = new Resend(process.env.RESEND_API_KEY);
 
+  import * as brevo from '@getbrevo/brevo';
+
+const brevoClient = new brevo.TransactionalEmailsApi();
+brevoClient.setApiKey(
+  brevo.TransactionalEmailsApiApiKeys.apiKey,
+  process.env.BREVO_API_KEY
+);
+
 
   const require = createRequire(import.meta.url);
   const pdf = require("pdf-parse");
@@ -1835,40 +1843,47 @@ import multer from "multer";
   }
 
   async function sendFirstLoginCodeEmail({ firstName, email, pin }) {
-    await resend.emails.send({
-      from: "ParseIT <onboarding@resend.dev>", // swap to your verified domain later
-      to: email,
-      subject: "Your First Login Verification Code",
-      html: `
-        <h2>Hello ${firstName || "User"},</h2>
-        <p>You requested a first-login verification code.</p>
-        <p><b>Your 4-digit PIN:</b> ${pin}</p>
-        <p>This PIN will expire in 15 minutes.</p>
-      `,
-    });
+  const sendSmtpEmail = new brevo.SendSmtpEmail();
+
+  sendSmtpEmail.sender = { name: "ParseIT", email: "jadokgutz11@gmail.com" };
+  sendSmtpEmail.to = [{ email }];
+  sendSmtpEmail.subject = "Your First Login Verification Code";
+  sendSmtpEmail.htmlContent = `
+    <h2>Hello ${firstName || "User"},</h2>
+    <p>You requested a first-login verification code.</p>
+    <p><b>Your 4-digit PIN:</b> ${pin}</p>
+    <p>This PIN will expire in 15 minutes.</p>
+  `;
+
+  try {
+    await brevoClient.sendTransacEmail(sendSmtpEmail);
+  } catch (error) {
+    console.error("Brevo send error:", error?.response?.body || error);
+    throw new Error("Failed to send first-login email via Brevo.");
   }
+}
 
   async function sendForgotPasswordCodeEmail({ firstName, email, pin }) {
-    const { data, error } = await resend.emails.send({
-      from: "ParseIT <onboarding@resend.dev>",
-      to: email,
-      subject: "Your Password Reset Verification Code",
-      html: `
-        <h2>Hello ${firstName || "User"},</h2>
-        <p>You requested to reset your password.</p>
-        <p><b>Your 4-digit PIN:</b> ${pin}</p>
-        <p>This PIN will expire in 15 minutes.</p>
-        <p>If you did not request this, you can ignore this email.</p>
-      `,
-    });
+  const sendSmtpEmail = new brevo.SendSmtpEmail();
 
-    if (error) {
-      console.error("Resend send error:", error);
-      throw new Error(error.message || "Failed to send email via Resend.");
-    }
+  sendSmtpEmail.sender = { name: "ParseIT", email: "jadokgutz11@gmail.com" };
+  sendSmtpEmail.to = [{ email }];
+  sendSmtpEmail.subject = "Your Password Reset Verification Code";
+  sendSmtpEmail.htmlContent = `
+    <h2>Hello ${firstName || "User"},</h2>
+    <p>You requested to reset your password.</p>
+    <p><b>Your 4-digit PIN:</b> ${pin}</p>
+    <p>This PIN will expire in 15 minutes.</p>
+    <p>If you did not request this, you can ignore this email.</p>
+  `;
 
-    return data;
+  try {
+    await brevoClient.sendTransacEmail(sendSmtpEmail);
+  } catch (error) {
+    console.error("Brevo send error:", error?.response?.body || error);
+    throw new Error("Failed to send forgot-password email via Brevo.");
   }
+}
 
   async function ensureTeacherMemberForClass({
     classId,
