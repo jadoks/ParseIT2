@@ -4226,349 +4226,389 @@ app.post("/auth/send-forgot-password-pin", async (req, res) => {
     }
   });
   /**
-   * ACCOUNT CREATION ROUTES
-   */
+ * ACCOUNT CREATION ROUTES
+ */
 
-  app.post("/create-student", async (req, res) => {
-    try {
-      const {
-        studentId,
-        firstName,
-        lastName,
-        email,
-        birthday,
-      
-      } = req.body;
+app.post("/create-student", async (req, res) => {
+  try {
+    const {
+      studentId,
+      firstName,
+      lastName,
+      email,
+      birthday,
+    } = req.body;
 
-      if (
-        !studentId ||
-        !firstName ||
-        !lastName ||
-        !email ||
-        !birthday 
-        
-      ) {
-        return res.status(400).json({ error: "Missing required fields." });
-      }
+    if (
+      !studentId ||
+      !firstName ||
+      !lastName ||
+      !email ||
+      !birthday
+    ) {
+      return res.status(400).json({ error: "Missing required fields." });
+    }
 
-      const normalizedStudentId = String(studentId).trim();
+    const normalizedStudentId = String(studentId).trim();
 
-      const existingIdMatches = await findUsersByIdAcrossAllRoles(normalizedStudentId);
-      if (existingIdMatches.length > 0) {
-        return res.status(409).json({
-          error: `ID already exists in ${existingIdMatches[0].role} account.`,
-        });
-      }
-
-      const studentRef = db.collection("students").doc(normalizedStudentId);
-
-      const tempPassword = generateTempPassword(8);
-      const firstLoginPin = generateFirstLoginPin(4);
-      const firstLoginPinExpiresAt = buildPinExpiryDate(15);
-
-      const userRecord = await admin.auth().createUser({
-        email,
-        password: tempPassword,
-        displayName: `${firstName} ${lastName}`,
-      });
-
-      await studentRef.set({
-        studentId: normalizedStudentId,
-        firstName,
-        lastName,
-        email,
-        birthday: parseDateValue(birthday),
-        authUid: userRecord.uid,
-
-        profileImage: DEFAULT_PROFILE_IMAGE_URL,
-        bannerImage: DEFAULT_BANNER_IMAGE_URL,
-        profileImageStoragePath: DEFAULT_PROFILE_IMAGE_STORAGE_PATH,
-        bannerImageStoragePath: DEFAULT_BANNER_IMAGE_STORAGE_PATH,
-
-        accountCreated: true,
-        tempPasswordSent: false,
-        mustChangePassword: true,
-        codeVerified: false,
-        firstLoginPin,
-        firstLoginPinExpiresAt,
-        firstLoginPinSentAt: FieldValue.serverTimestamp(),
-        forgotPasswordPin: null,
-        forgotPasswordPinExpiresAt: null,
-        forgotPasswordPinSentAt: null,
-        forgotPasswordCodeVerified: false,
-        lastLoginAt: null,
-        createdAt: FieldValue.serverTimestamp(),
-        updatedAt: FieldValue.serverTimestamp(),
-      });
-
-      try {
-        await resend.emails.send({
-        from: "ParseIT <onboarding@resend.dev>",
-        to: email,
-        subject: "Your Student Account - Temporary Password",
-        html: `
-          <h2>Hello ${firstName},</h2>
-          <p>Your student account has been created.</p>
-          <p><b>Student ID:</b> ${normalizedStudentId}</p>
-          <p><b>Temporary Password:</b> ${tempPassword}</p>
-          <p>Please login and change your password immediately.</p>
-        `,
-      });
-
-        await studentRef.update({
-          tempPasswordSent: true,
-          updatedAt: FieldValue.serverTimestamp(),
-        });
-      } catch (emailError) {
-        console.error("Email failed:", emailError);
-        return res.status(500).json({
-          error: "Student created but email failed to send.",
-        });
-      }
-      await notifyAdmins({
-    type: "new-user",
-    title: `New Student Created`,
-    message: `${firstName} ${lastName} has been added as a new student.`,
-    relatedId: normalizedStudentId, // ✅ Correct variable
-    relatedType: "user",
-    actorId: normalizedStudentId,
-    actorRole: "student", // ✅ Hardcoded role
-    actorName: `${firstName} ${lastName}`,
-  });
-      res.json({
-        success: true,
-        message: "Student created and email sent successfully.",
-      });
-    } catch (error) {
-      console.error(error);
-
-      if (error.code === "auth/email-already-exists") {
-        return res.status(409).json({ error: "Email already exists." });
-      }
-
-      res.status(500).json({
-        error: error.message || "Internal server error.",
+    const existingIdMatches = await findUsersByIdAcrossAllRoles(normalizedStudentId);
+    if (existingIdMatches.length > 0) {
+      return res.status(409).json({
+        error: `ID already exists in ${existingIdMatches[0].role} account.`,
       });
     }
-  });
 
-  app.post("/create-teacher", async (req, res) => {
+    const studentRef = db.collection("students").doc(normalizedStudentId);
+
+    const tempPassword = generateTempPassword(8);
+    const firstLoginPin = generateFirstLoginPin(4);
+    const firstLoginPinExpiresAt = buildPinExpiryDate(15);
+
+    const userRecord = await admin.auth().createUser({
+      email,
+      password: tempPassword,
+      displayName: `${firstName} ${lastName}`,
+    });
+
+    await studentRef.set({
+      studentId: normalizedStudentId,
+      firstName,
+      lastName,
+      email,
+      birthday: parseDateValue(birthday),
+      authUid: userRecord.uid,
+
+      profileImage: DEFAULT_PROFILE_IMAGE_URL,
+      bannerImage: DEFAULT_BANNER_IMAGE_URL,
+      profileImageStoragePath: DEFAULT_PROFILE_IMAGE_STORAGE_PATH,
+      bannerImageStoragePath: DEFAULT_BANNER_IMAGE_STORAGE_PATH,
+
+      accountCreated: true,
+      tempPasswordSent: false,
+      mustChangePassword: true,
+      codeVerified: false,
+      firstLoginPin,
+      firstLoginPinExpiresAt,
+      firstLoginPinSentAt: FieldValue.serverTimestamp(),
+      forgotPasswordPin: null,
+      forgotPasswordPinExpiresAt: null,
+      forgotPasswordPinSentAt: null,
+      forgotPasswordCodeVerified: false,
+      lastLoginAt: null,
+      createdAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+
     try {
-      const { teacherId, firstName, lastName, email, birthday } = req.body;
-
-      if (!teacherId || !firstName || !lastName || !email || !birthday) {
-        return res.status(400).json({ error: "Missing required fields." });
-      }
-
-      const normalizedTeacherId = String(teacherId).trim();
-
-      const existingIdMatches = await findUsersByIdAcrossAllRoles(normalizedTeacherId);
-      if (existingIdMatches.length > 0) {
-        return res.status(409).json({
-          error: `ID already exists in ${existingIdMatches[0].role} account.`,
-        });
-      }
-
-      const teacherRef = db.collection("teachers").doc(normalizedTeacherId);
-
-      const tempPassword = generateTempPassword(8);
-      const firstLoginPin = generateFirstLoginPin(4);
-      const firstLoginPinExpiresAt = buildPinExpiryDate(15);
-
-      const userRecord = await admin.auth().createUser({
-        email,
-        password: tempPassword,
-        displayName: `${firstName} ${lastName}`,
+      const brevoResponse = await fetch("https://api.brevo.com/v3/smtp/email", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "api-key": process.env.BREVO_API_KEY,
+        },
+        body: JSON.stringify({
+          sender: { name: "ParseIT", email: "jadokgutz11@gmail.com" },
+          to: [{ email }],
+          subject: "Your Student Account - Temporary Password",
+          htmlContent: `
+            <h2>Hello ${firstName},</h2>
+            <p>Your student account has been created.</p>
+            <p><b>Student ID:</b> ${normalizedStudentId}</p>
+            <p><b>Temporary Password:</b> ${tempPassword}</p>
+            <p>Please login and change your password immediately.</p>
+          `,
+        }),
       });
 
-      await teacherRef.set({
-        teacherId: normalizedTeacherId,
-        firstName,
-        lastName,
-        email,
-        birthday: parseDateValue(birthday),
-        authUid: userRecord.uid,
+      const brevoData = await brevoResponse.json();
 
-        profileImage: DEFAULT_PROFILE_IMAGE_URL,
-        bannerImage: DEFAULT_BANNER_IMAGE_URL,
-        profileImageStoragePath: DEFAULT_PROFILE_IMAGE_STORAGE_PATH,
-        bannerImageStoragePath: DEFAULT_BANNER_IMAGE_STORAGE_PATH,
+      if (!brevoResponse.ok) {
+        console.error("Brevo send error (student):", brevoData);
+        throw new Error(brevoData?.message || "Failed to send student account email via Brevo.");
+      }
 
-        accountCreated: true,
-        tempPasswordSent: false,
-        mustChangePassword: true,
-        codeVerified: false,
-        firstLoginPin,
-        firstLoginPinExpiresAt,
-        firstLoginPinSentAt: FieldValue.serverTimestamp(),
-        forgotPasswordPin: null,
-        forgotPasswordPinExpiresAt: null,
-        forgotPasswordPinSentAt: null,
-        forgotPasswordCodeVerified: false,
-        lastLoginAt: null,
-        createdAt: FieldValue.serverTimestamp(),
+      await studentRef.update({
+        tempPasswordSent: true,
         updatedAt: FieldValue.serverTimestamp(),
       });
-
-      try {
-        await resend.emails.send({
-        from: "ParseIT <onboarding@resend.dev>",
-        to: email,
-        subject: "Your Teacher Account - Temporary Password",
-        html: `
-          <h2>Hello ${firstName},</h2>
-          <p>Your teacher account has been created.</p>
-          <p><b>Teacher ID:</b> ${normalizedTeacherId}</p>
-          <p><b>Temporary Password:</b> ${tempPassword}</p>
-          <p>Please login and change your password immediately.</p>
-        `,
-      });
-
-        await teacherRef.update({
-          tempPasswordSent: true,
-          updatedAt: FieldValue.serverTimestamp(),
-        });
-      } catch (emailError) {
-        console.error("Email failed:", emailError);
-        return res.status(500).json({
-          error: "Teacher created but email failed to send.",
-        });
-      }
-
-      await notifyAdmins({
-    type: "new-user",
-    title: `New Teacher Created`,
-    message: `${firstName} ${lastName} has been added as a new teacher.`,
-    relatedId: normalizedTeacherId, // ✅ Correct variable
-    relatedType: "user",
-    actorId: normalizedTeacherId,
-    actorRole: "teacher", // ✅ Hardcoded role
-    actorName: `${firstName} ${lastName}`,
-  });
-
-      res.json({
-        success: true,
-        message: "Teacher created and email sent successfully.",
-      });
-
-      
-    } catch (error) {
-      console.error(error);
-
-      if (error.code === "auth/email-already-exists") {
-        return res.status(409).json({ error: "Email already exists." });
-      }
-
-      res.status(500).json({
-        error: error.message || "Internal server error.",
+    } catch (emailError) {
+      console.error("Email failed:", emailError);
+      return res.status(500).json({
+        error: "Student created but email failed to send.",
       });
     }
-  });
 
-  app.post("/create-admin", async (req, res) => {
+    await notifyAdmins({
+      type: "new-user",
+      title: `New Student Created`,
+      message: `${firstName} ${lastName} has been added as a new student.`,
+      relatedId: normalizedStudentId,
+      relatedType: "user",
+      actorId: normalizedStudentId,
+      actorRole: "student",
+      actorName: `${firstName} ${lastName}`,
+    });
+
+    res.json({
+      success: true,
+      message: "Student created and email sent successfully.",
+    });
+  } catch (error) {
+    console.error(error);
+
+    if (error.code === "auth/email-already-exists") {
+      return res.status(409).json({ error: "Email already exists." });
+    }
+
+    res.status(500).json({
+      error: error.message || "Internal server error.",
+    });
+  }
+});
+
+app.post("/create-teacher", async (req, res) => {
+  try {
+    const { teacherId, firstName, lastName, email, birthday } = req.body;
+
+    if (!teacherId || !firstName || !lastName || !email || !birthday) {
+      return res.status(400).json({ error: "Missing required fields." });
+    }
+
+    const normalizedTeacherId = String(teacherId).trim();
+
+    const existingIdMatches = await findUsersByIdAcrossAllRoles(normalizedTeacherId);
+    if (existingIdMatches.length > 0) {
+      return res.status(409).json({
+        error: `ID already exists in ${existingIdMatches[0].role} account.`,
+      });
+    }
+
+    const teacherRef = db.collection("teachers").doc(normalizedTeacherId);
+
+    const tempPassword = generateTempPassword(8);
+    const firstLoginPin = generateFirstLoginPin(4);
+    const firstLoginPinExpiresAt = buildPinExpiryDate(15);
+
+    const userRecord = await admin.auth().createUser({
+      email,
+      password: tempPassword,
+      displayName: `${firstName} ${lastName}`,
+    });
+
+    await teacherRef.set({
+      teacherId: normalizedTeacherId,
+      firstName,
+      lastName,
+      email,
+      birthday: parseDateValue(birthday),
+      authUid: userRecord.uid,
+
+      profileImage: DEFAULT_PROFILE_IMAGE_URL,
+      bannerImage: DEFAULT_BANNER_IMAGE_URL,
+      profileImageStoragePath: DEFAULT_PROFILE_IMAGE_STORAGE_PATH,
+      bannerImageStoragePath: DEFAULT_BANNER_IMAGE_STORAGE_PATH,
+
+      accountCreated: true,
+      tempPasswordSent: false,
+      mustChangePassword: true,
+      codeVerified: false,
+      firstLoginPin,
+      firstLoginPinExpiresAt,
+      firstLoginPinSentAt: FieldValue.serverTimestamp(),
+      forgotPasswordPin: null,
+      forgotPasswordPinExpiresAt: null,
+      forgotPasswordPinSentAt: null,
+      forgotPasswordCodeVerified: false,
+      lastLoginAt: null,
+      createdAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+
     try {
-      const { adminId, firstName, lastName, email, birthday } = req.body;
-
-      if (!adminId || !firstName || !lastName || !email || !birthday) {
-        return res.status(400).json({ error: "Missing required fields." });
-      }
-
-      const normalizedAdminId = String(adminId).trim();
-
-      const existingIdMatches = await findUsersByIdAcrossAllRoles(normalizedAdminId);
-      if (existingIdMatches.length > 0) {
-        return res.status(409).json({
-          error: `ID already exists in ${existingIdMatches[0].role} account.`,
-        });
-      }
-
-      const adminRef = db.collection("admins").doc(normalizedAdminId);
-
-      const tempPassword = generateTempPassword(8);
-      const firstLoginPin = generateFirstLoginPin(4);
-      const firstLoginPinExpiresAt = buildPinExpiryDate(15);
-
-      const userRecord = await admin.auth().createUser({
-        email,
-        password: tempPassword,
-        displayName: `${firstName} ${lastName}`,
+      const brevoResponse = await fetch("https://api.brevo.com/v3/smtp/email", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "api-key": process.env.BREVO_API_KEY,
+        },
+        body: JSON.stringify({
+          sender: { name: "ParseIT", email: "jadokgutz11@gmail.com" },
+          to: [{ email }],
+          subject: "Your Teacher Account - Temporary Password",
+          htmlContent: `
+            <h2>Hello ${firstName},</h2>
+            <p>Your teacher account has been created.</p>
+            <p><b>Teacher ID:</b> ${normalizedTeacherId}</p>
+            <p><b>Temporary Password:</b> ${tempPassword}</p>
+            <p>Please login and change your password immediately.</p>
+          `,
+        }),
       });
 
-      await adminRef.set({
-        adminId: normalizedAdminId,
-        firstName,
-        lastName,
-        email,
-        birthday: parseDateValue(birthday),
-        authUid: userRecord.uid,
-        accountCreated: true,
-        tempPasswordSent: false,
-        mustChangePassword: true,
-        codeVerified: false,
-        firstLoginPin,
-        firstLoginPinExpiresAt,
-        firstLoginPinSentAt: FieldValue.serverTimestamp(),
-        forgotPasswordPin: null,
-        forgotPasswordPinExpiresAt: null,
-        forgotPasswordPinSentAt: null,
-        forgotPasswordCodeVerified: false,
-        lastLoginAt: null,
-        createdAt: FieldValue.serverTimestamp(),
+      const brevoData = await brevoResponse.json();
+
+      if (!brevoResponse.ok) {
+        console.error("Brevo send error (teacher):", brevoData);
+        throw new Error(brevoData?.message || "Failed to send teacher account email via Brevo.");
+      }
+
+      await teacherRef.update({
+        tempPasswordSent: true,
         updatedAt: FieldValue.serverTimestamp(),
       });
+    } catch (emailError) {
+      console.error("Email failed:", emailError);
+      return res.status(500).json({
+        error: "Teacher created but email failed to send.",
+      });
+    }
 
-      try {
-        await resend.emails.send({
-          from: "ParseIT <onboarding@resend.dev>",
-          to: email,
+    await notifyAdmins({
+      type: "new-user",
+      title: `New Teacher Created`,
+      message: `${firstName} ${lastName} has been added as a new teacher.`,
+      relatedId: normalizedTeacherId,
+      relatedType: "user",
+      actorId: normalizedTeacherId,
+      actorRole: "teacher",
+      actorName: `${firstName} ${lastName}`,
+    });
+
+    res.json({
+      success: true,
+      message: "Teacher created and email sent successfully.",
+    });
+  } catch (error) {
+    console.error(error);
+
+    if (error.code === "auth/email-already-exists") {
+      return res.status(409).json({ error: "Email already exists." });
+    }
+
+    res.status(500).json({
+      error: error.message || "Internal server error.",
+    });
+  }
+});
+
+app.post("/create-admin", async (req, res) => {
+  try {
+    const { adminId, firstName, lastName, email, birthday } = req.body;
+
+    if (!adminId || !firstName || !lastName || !email || !birthday) {
+      return res.status(400).json({ error: "Missing required fields." });
+    }
+
+    const normalizedAdminId = String(adminId).trim();
+
+    const existingIdMatches = await findUsersByIdAcrossAllRoles(normalizedAdminId);
+    if (existingIdMatches.length > 0) {
+      return res.status(409).json({
+        error: `ID already exists in ${existingIdMatches[0].role} account.`,
+      });
+    }
+
+    const adminRef = db.collection("admins").doc(normalizedAdminId);
+
+    const tempPassword = generateTempPassword(8);
+    const firstLoginPin = generateFirstLoginPin(4);
+    const firstLoginPinExpiresAt = buildPinExpiryDate(15);
+
+    const userRecord = await admin.auth().createUser({
+      email,
+      password: tempPassword,
+      displayName: `${firstName} ${lastName}`,
+    });
+
+    await adminRef.set({
+      adminId: normalizedAdminId,
+      firstName,
+      lastName,
+      email,
+      birthday: parseDateValue(birthday),
+      authUid: userRecord.uid,
+      accountCreated: true,
+      tempPasswordSent: false,
+      mustChangePassword: true,
+      codeVerified: false,
+      firstLoginPin,
+      firstLoginPinExpiresAt,
+      firstLoginPinSentAt: FieldValue.serverTimestamp(),
+      forgotPasswordPin: null,
+      forgotPasswordPinExpiresAt: null,
+      forgotPasswordPinSentAt: null,
+      forgotPasswordCodeVerified: false,
+      lastLoginAt: null,
+      createdAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+
+    try {
+      const brevoResponse = await fetch("https://api.brevo.com/v3/smtp/email", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "api-key": process.env.BREVO_API_KEY,
+        },
+        body: JSON.stringify({
+          sender: { name: "ParseIT", email: "jadokgutz11@gmail.com" },
+          to: [{ email }],
           subject: "Your Admin Account - Temporary Password",
-          html: `
+          htmlContent: `
             <h2>Hello ${firstName},</h2>
             <p>Your admin account has been created.</p>
             <p><b>Admin ID:</b> ${normalizedAdminId}</p>
             <p><b>Temporary Password:</b> ${tempPassword}</p>
             <p>Please login and change your password immediately.</p>
           `,
-        });
+        }),
+      });
 
-        await adminRef.update({
-          tempPasswordSent: true,
-          updatedAt: FieldValue.serverTimestamp(),
-        });
-      } catch (emailError) {
-        console.error("Email failed:", emailError);
-        return res.status(500).json({
-          error: "Admin created but email failed to send.",
-        });
+      const brevoData = await brevoResponse.json();
+
+      if (!brevoResponse.ok) {
+        console.error("Brevo send error (admin):", brevoData);
+        throw new Error(brevoData?.message || "Failed to send admin account email via Brevo.");
       }
 
-      await notifyAdmins({
+      await adminRef.update({
+        tempPasswordSent: true,
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+    } catch (emailError) {
+      console.error("Email failed:", emailError);
+      return res.status(500).json({
+        error: "Admin created but email failed to send.",
+      });
+    }
+
+    await notifyAdmins({
       type: "new-user",
       title: `New Admin Created`,
       message: `${firstName} ${lastName} has been added as a new admin.`,
-      relatedId: normalizedAdminId, // ✅ Correct variable
+      relatedId: normalizedAdminId,
       relatedType: "user",
       actorId: normalizedAdminId,
-      actorRole: "admin", // ✅ Hardcoded role
+      actorRole: "admin",
       actorName: `${firstName} ${lastName}`,
     });
 
-      res.json({
-        success: true,
-        message: "Admin created and email sent successfully.",
-      });
-    } catch (error) {
-      console.error(error);
+    res.json({
+      success: true,
+      message: "Admin created and email sent successfully.",
+    });
+  } catch (error) {
+    console.error(error);
 
-      if (error.code === "auth/email-already-exists") {
-        return res.status(409).json({ error: "Email already exists." });
-      }
-
-      res.status(500).json({
-        error: error.message || "Internal server error.",
-      });
+    if (error.code === "auth/email-already-exists") {
+      return res.status(409).json({ error: "Email already exists." });
     }
-  });
+
+    res.status(500).json({
+      error: error.message || "Internal server error.",
+    });
+  }
+});
 
 
   app.post("/upload-student-grade", requireAuth, async (req, res) => {
