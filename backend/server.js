@@ -17,6 +17,9 @@ import multer from "multer";
 import nodemailer from "nodemailer";
 import officeparser from "officeparser";
 
+const { Resend } = require("resend");
+const resend = new Resend(process.env.RESEND_API_KEY);
+
 
 const require = createRequire(import.meta.url);
 const pdf = require("pdf-parse");
@@ -1848,8 +1851,8 @@ async function findUserByEmailAcrossRoles(email) {
 }
 
 async function sendFirstLoginCodeEmail({ firstName, email, pin }) {
-  await transporter.sendMail({
-    from: `ParseIT <${process.env.EMAIL_USER}>`,
+  await resend.emails.send({
+    from: "ParseIT <onboarding@resend.dev>", // swap to your verified domain later
     to: email,
     subject: "Your First Login Verification Code",
     html: `
@@ -1862,8 +1865,8 @@ async function sendFirstLoginCodeEmail({ firstName, email, pin }) {
 }
 
 async function sendForgotPasswordCodeEmail({ firstName, email, pin }) {
-  await transporter.sendMail({
-    from: `ParseIT <${process.env.EMAIL_USER}>`,
+  await resend.emails.send({
+    from: "ParseIT <onboarding@resend.dev>",
     to: email,
     subject: "Your Password Reset Verification Code",
     html: `
