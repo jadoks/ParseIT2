@@ -142,6 +142,8 @@ const refreshClassBannerUrl = async (course: any) => {
   }
 };
 
+
+
 type StoredAssignmentScore = {
   points?: number;
   maxPoints?: number;
@@ -576,6 +578,38 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
     timeLimit?: string | null; customTimeLimit?: string | null; numberOfAttempts?: string;
   } | null>(null);
   const [autoOpenAssignmentId, setAutoOpenAssignmentId] = useState<string | null>(null);
+
+  // ✅ NEW: refetch comments for ONE assignment (mirrors TeacherSubmissionsSection's fetchComments)
+const refreshAssignmentComments = useCallback(async (assignmentId: string) => {
+  if (!assignmentId) return;
+  try {
+    const response = await apiFetch(`${API_BASE_URL}/assignment-comments/${assignmentId}`);
+    const data = await response.json();
+    if (!response.ok) return;
+    const mapped = mapCourseCommentsToAssignmentComments(data?.data || []);
+    setSharedAssignmentComments((prev) => ({ ...prev, [assignmentId]: mapped }));
+    // keep joinedCourses in sync too, so re-derivations don't stomp on this
+    setJoinedCourses((prev) =>
+      prev.map((course) => ({
+        ...course,
+        assignments: course.assignments.map((a) =>
+          a.id === assignmentId ? { ...a, comments: data?.data || [] } : a
+        ),
+      }))
+    );
+  } catch (error) {
+    console.log('REFRESH ASSIGNMENT COMMENTS ERROR =>', error);
+  }
+}, []);
+
+// ✅ NEW: refetch the underlying course/assignment CONTENT — title, due date,
+// description, points, materialIds, AND the teacher-uploaded assignment file
+// (fileUrl/storagePath). This just re-runs the same loader used on mount, so
+// it picks up anything the teacher changed (edited assignment, replaced file,
+// changed due date, etc.) while the student had the screen open.
+const refreshAssignmentCourseContent = useCallback(async () => {
+  await loadJoinedClasses();
+}, []);
   
   // ✅ NEW: State to track which lesson should auto-open in CourseDetail
   const [autoOpenLessonId, setAutoOpenLessonId] = useState<string | null>(null);
@@ -2113,29 +2147,31 @@ export default function StudentApp({ onLogout, currentStudent }: Props) {
           completedActivityScores={completedActivityScores} 
         />;
       case 'assignments': 
-        return <Assignments 
-          searchQuery={globalSearchQuery} 
-          courses={joinedAssignmentCourses} 
-          selectedCourseId={selectedCourseIdForAssignments} 
-          assignmentComments={sharedAssignmentComments} 
-          assignmentFiles={sharedAssignmentFiles} 
-          onAddComment={handleAddAssignmentComment}
-          onEditComment={handleEditAssignmentComment}
-          onDeleteComment={handleDeleteAssignmentComment}
-          onAddFile={handleAddAssignmentFile} 
-          onRemoveFile={handleRemoveAssignmentFile} 
-          onUpdateAssignmentStatus={handleUpdateAssignmentStatus} 
-          onRefreshSubmissions={loadStudentSubmissionState} 
-          currentStudent={currentStudent} 
-          isGeneratingActivity={isGeneratingActivity} 
-          completedActivityScores={completedActivityScores} 
-          onOpenGeneratedActivity={(course, assignment) => openGeneratedActivity(course as unknown as CourseDetailData, assignment)} 
-          onPlayGame={handlePlayGame} 
-          autoOpenAssignmentId={autoOpenAssignmentId}
-          onConsumedAutoOpenAssignment={() => setAutoOpenAssignmentId(null)}
-          // ✅ PASS THE NEW HANDLER HERE
-          onOpenRelatedMaterial={handleOpenRelatedMaterialFromAssignment}
-        />;
+      return <Assignments 
+        searchQuery={globalSearchQuery} 
+        courses={joinedAssignmentCourses} 
+        selectedCourseId={selectedCourseIdForAssignments} 
+        assignmentComments={sharedAssignmentComments} 
+        assignmentFiles={sharedAssignmentFiles} 
+        onAddComment={handleAddAssignmentComment}
+        onEditComment={handleEditAssignmentComment}
+        onDeleteComment={handleDeleteAssignmentComment}
+        onAddFile={handleAddAssignmentFile} 
+        onRemoveFile={handleRemoveAssignmentFile} 
+        onUpdateAssignmentStatus={handleUpdateAssignmentStatus} 
+        onRefreshSubmissions={loadStudentSubmissionState} 
+        // ✅ NEW
+        onRefreshComments={refreshAssignmentComments}
+        onRefreshCourseContent={refreshAssignmentCourseContent}
+        currentStudent={currentStudent} 
+        isGeneratingActivity={isGeneratingActivity} 
+        completedActivityScores={completedActivityScores} 
+        onOpenGeneratedActivity={(course, assignment) => openGeneratedActivity(course as unknown as CourseDetailData, assignment)} 
+        onPlayGame={handlePlayGame} 
+        autoOpenAssignmentId={autoOpenAssignmentId}
+        onConsumedAutoOpenAssignment={() => setAutoOpenAssignmentId(null)}
+        onOpenRelatedMaterial={handleOpenRelatedMaterialFromAssignment}
+      />;
       case 'community': 
         return <Community 
           searchQuery={globalSearchQuery} 
