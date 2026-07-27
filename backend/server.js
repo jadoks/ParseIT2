@@ -20,9 +20,9 @@ import multer from "multer";
   import { Resend } from "resend";
   const resend = new Resend(process.env.RESEND_API_KEY);
 
-  import * as brevo from '@getbrevo/brevo';
+import brevo from '@getbrevo/brevo';
 
-const brevoClient = new brevo.TransactionalEmailsApi();
+const brevoClient = new brevo.default.TransactionalEmailsApi();
 brevoClient.setApiKey(
   brevo.TransactionalEmailsApiApiKeys.apiKey,
   process.env.BREVO_API_KEY
@@ -1863,26 +1863,35 @@ brevoClient.setApiKey(
   }
 }
 
-  async function sendForgotPasswordCodeEmail({ firstName, email, pin }) {
-  const sendSmtpEmail = new brevo.SendSmtpEmail();
+async function sendForgotPasswordCodeEmail({ firstName, email, pin }) {
+  const response = await fetch("https://api.brevo.com/v3/smtp/email", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "api-key": process.env.BREVO_API_KEY,
+    },
+    body: JSON.stringify({
+      sender: { name: "ParseIT", email: "jadokgutz11@gmail.com" },
+      to: [{ email }],
+      subject: "Your Password Reset Verification Code",
+      htmlContent: `
+        <h2>Hello ${firstName || "User"},</h2>
+        <p>You requested to reset your password.</p>
+        <p><b>Your 4-digit PIN:</b> ${pin}</p>
+        <p>This PIN will expire in 15 minutes.</p>
+        <p>If you did not request this, you can ignore this email.</p>
+      `,
+    }),
+  });
 
-  sendSmtpEmail.sender = { name: "ParseIT", email: "jadokgutz11@gmail.com" };
-  sendSmtpEmail.to = [{ email }];
-  sendSmtpEmail.subject = "Your Password Reset Verification Code";
-  sendSmtpEmail.htmlContent = `
-    <h2>Hello ${firstName || "User"},</h2>
-    <p>You requested to reset your password.</p>
-    <p><b>Your 4-digit PIN:</b> ${pin}</p>
-    <p>This PIN will expire in 15 minutes.</p>
-    <p>If you did not request this, you can ignore this email.</p>
-  `;
+  const data = await response.json();
 
-  try {
-    await brevoClient.sendTransacEmail(sendSmtpEmail);
-  } catch (error) {
-    console.error("Brevo send error:", error?.response?.body || error);
-    throw new Error("Failed to send forgot-password email via Brevo.");
+  if (!response.ok) {
+    console.error("Brevo send error:", data);
+    throw new Error(data?.message || "Failed to send email via Brevo.");
   }
+
+  return data;
 }
 
   async function ensureTeacherMemberForClass({
