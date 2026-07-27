@@ -17,7 +17,7 @@ import multer from "multer";
 import nodemailer from "nodemailer";
 import officeparser from "officeparser";
 
-const { Resend } = require("resend");
+import { Resend } from "resend";
 const resend = new Resend(process.env.RESEND_API_KEY);
 
 
