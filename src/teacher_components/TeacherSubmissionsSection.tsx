@@ -6,6 +6,7 @@ import {
   Linking,
   Modal,
   Platform,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -198,6 +199,11 @@ type Props = {
     score: number,
     feedback: string
   ) => Promise<void> | void;
+  // ✅ NEW: Let the parent refetch submissions (e.g. re-hit /class-submissions/:classId)
+  // so newly-submitted work from students shows up without leaving this screen.
+  onRefreshSubmissions?: () => Promise<void> | void;
+  // ✅ NEW: How often (ms) to auto-poll for new comments/submissions. Set to 0 to disable.
+  autoRefreshIntervalMs?: number;
 };
 
 type AssignmentComment = {
@@ -239,6 +245,8 @@ const TeacherSubmissionsSection = ({
   classId,
   currentTeacher,
   onGradeSubmission,
+  onRefreshSubmissions,
+  autoRefreshIntervalMs = 15000,
 }: Props) => {
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
@@ -338,6 +346,10 @@ const TeacherSubmissionsSection = ({
   // ✅ NEW: Download State
   const [isDownloading, setIsDownloading] = useState(false);
 
+  // ✅ NEW: Refresh state — used by pull-to-refresh and the background poller so
+  // new student submissions/comments show up without leaving this screen.
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
   const currentTeacherId = useMemo(() => {
     return currentTeacher?.teacherId || currentTeacher?.authUid || currentTeacher?.email || "";
   }, [currentTeacher]);
@@ -398,9 +410,9 @@ const TeacherSubmissionsSection = ({
   const totalScoreValue = Number(currentAssignment?.totalScore || 0);
 
   // ── Comment API Functions ──
-  const fetchComments = async () => {
+  const fetchComments = async (silent = false) => {
     if (!currentAssignment?.id) return;
-    setIsLoadingComments(true);
+    if (!silent) setIsLoadingComments(true);
     try {
       const response = await apiFetch(`${API_BASE_URL}/assignment-comments/${currentAssignment.id}`);
       const data = await response.json();
@@ -410,7 +422,7 @@ const TeacherSubmissionsSection = ({
     } catch (error) {
       console.error("Fetch comments error:", error);
     } finally {
-      setIsLoadingComments(false);
+      if (!silent) setIsLoadingComments(false);
     }
   };
 
@@ -421,6 +433,43 @@ const TeacherSubmissionsSection = ({
       setAllComments([]);
     }
   }, [currentAssignment?.id]);
+
+  // ✅ NEW: Silent background refresh — pulls fresh comments, and asks the parent
+  // to refetch submissions, so a newly-submitted assignment or a new comment from
+  // a student shows up automatically while the teacher is on this screen.
+  const silentRefresh = async (options?: { silent?: boolean }) => {
+    if (!currentAssignment?.id) return;
+    try {
+      await Promise.all([
+        fetchComments(options?.silent ?? true),
+        onRefreshSubmissions?.(),
+      ]);
+    } catch (error) {
+      console.error("Auto-refresh error:", error);
+    }
+  };
+
+  // ✅ NEW: Poll on an interval while an assignment is open. Cleared/reset whenever
+  // the assignment changes or the interval prop changes.
+  useEffect(() => {
+    if (!currentAssignment?.id || !autoRefreshIntervalMs || autoRefreshIntervalMs <= 0) {
+      return;
+    }
+    const intervalId = setInterval(() => {
+      silentRefresh();
+    }, autoRefreshIntervalMs);
+    return () => clearInterval(intervalId);
+  }, [currentAssignment?.id, autoRefreshIntervalMs]);
+
+  // ✅ NEW: Manual pull-to-refresh handler shown on the scroll views below.
+  const handlePullToRefresh = async () => {
+    setIsRefreshing(true);
+    try {
+      await silentRefresh();
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
 
   const getStudentComments = (studentId: string) => {
     return allComments.filter((c) => c.studentId === studentId);
@@ -1639,7 +1688,12 @@ const handleDownloadPreview = async () => {
         <View style={[styles.masterDetailRow, { paddingHorizontal: pagePadding }]}>
           <View style={styles.masterList}>
             <Text style={styles.masterListTitle}>Student List</Text>
-            <ScrollView showsVerticalScrollIndicator={true}>
+            <ScrollView
+              showsVerticalScrollIndicator={true}
+              refreshControl={
+                <RefreshControl refreshing={isRefreshing} onRefresh={handlePullToRefresh} colors={["#D32F2F"]} tintColor="#D32F2F" />
+              }
+            >
               {visibleStudents.map((student) => renderStudentListItem(student, "list"))}
               {visibleStudents.length === 0 && (
                 <Text style={styles.emptyText}>No students match your search.</Text>
@@ -1651,6 +1705,9 @@ const handleDownloadPreview = async () => {
             style={styles.detailScroll}
             contentContainerStyle={{ paddingBottom: Math.max(30, insets.bottom + 20) }}
             showsVerticalScrollIndicator={true}
+            refreshControl={
+              <RefreshControl refreshing={isRefreshing} onRefresh={handlePullToRefresh} colors={["#D32F2F"]} tintColor="#D32F2F" />
+            }
           >
             {selectedStudent ? (
               renderSelectedStudentDetail(selectedStudent)
@@ -1670,6 +1727,9 @@ const handleDownloadPreview = async () => {
             },
           ]}
           showsVerticalScrollIndicator={true}
+          refreshControl={
+            <RefreshControl refreshing={isRefreshing} onRefresh={handlePullToRefresh} colors={["#D32F2F"]} tintColor="#D32F2F" />
+          }
         >
           {visibleStudents.map((student) => {
             const isExpandedOnMobile = isMobile && selectedStudentId === student.id;
