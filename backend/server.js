@@ -14,7 +14,7 @@ import path from "path";
 import mammoth from "mammoth";
 import { createRequire } from "module";
 import multer from "multer";
-import nodemailer from "nodemailer";
+
 import officeparser from "officeparser";
 
 import { Resend } from "resend";
@@ -401,24 +401,8 @@ const DEFAULT_BANNER_IMAGE_URL =
 const DEFAULT_PROFILE_IMAGE_STORAGE_PATH = "defaults/default_profile.png";
 const DEFAULT_BANNER_IMAGE_STORAGE_PATH = "defaults/default_banner.png";
 
-const transporter = nodemailer.createTransport({
-  host: "smtp.gmail.com",
-  port: 465,
-  secure: true,
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
-  },
-  family: 4,
-});
 
-transporter.verify((error) => {
-  if (error) {
-    console.log("SMTP Error:", error);
-  } else {
-    console.log("SMTP Ready");
-  }
-});
+
 
 function generateTempPassword(length = 8) {
   const chars =
