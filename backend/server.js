@@ -4258,18 +4258,18 @@ app.post("/create-student", async (req, res) => {
     });
 
     try {
-      await transporter.sendMail({
-        from: `ParseIT <${process.env.EMAIL_USER}>`,
-        to: email,
-        subject: "Your Student Account - Temporary Password",
-        html: `
-          <h2>Hello ${firstName},</h2>
-          <p>Your student account has been created.</p>
-          <p><b>Student ID:</b> ${normalizedStudentId}</p>
-          <p><b>Temporary Password:</b> ${tempPassword}</p>
-          <p>Please login and change your password immediately.</p>
-        `,
-      });
+      await resend.emails.send({
+      from: "ParseIT <onboarding@resend.dev>",
+      to: email,
+      subject: "Your Student Account - Temporary Password",
+      html: `
+        <h2>Hello ${firstName},</h2>
+        <p>Your student account has been created.</p>
+        <p><b>Student ID:</b> ${normalizedStudentId}</p>
+        <p><b>Temporary Password:</b> ${tempPassword}</p>
+        <p>Please login and change your password immediately.</p>
+      `,
+    });
 
       await studentRef.update({
         tempPasswordSent: true,
@@ -4367,18 +4367,18 @@ app.post("/create-teacher", async (req, res) => {
     });
 
     try {
-      await transporter.sendMail({
-        from: `ParseIT <${process.env.EMAIL_USER}>`,
-        to: email,
-        subject: "Your Teacher Account - Temporary Password",
-        html: `
-          <h2>Hello ${firstName},</h2>
-          <p>Your teacher account has been created.</p>
-          <p><b>Teacher ID:</b> ${normalizedTeacherId}</p>
-          <p><b>Temporary Password:</b> ${tempPassword}</p>
-          <p>Please login and change your password immediately.</p>
-        `,
-      });
+      await resend.emails.send({
+      from: "ParseIT <onboarding@resend.dev>",
+      to: email,
+      subject: "Your Teacher Account - Temporary Password",
+      html: `
+        <h2>Hello ${firstName},</h2>
+        <p>Your teacher account has been created.</p>
+        <p><b>Teacher ID:</b> ${normalizedTeacherId}</p>
+        <p><b>Temporary Password:</b> ${tempPassword}</p>
+        <p>Please login and change your password immediately.</p>
+      `,
+    });
 
       await teacherRef.update({
         tempPasswordSent: true,
@@ -4474,8 +4474,8 @@ app.post("/create-admin", async (req, res) => {
     });
 
     try {
-      await transporter.sendMail({
-        from: `ParseIT <${process.env.EMAIL_USER}>`,
+      await resend.emails.send({
+        from: "ParseIT <onboarding@resend.dev>",
         to: email,
         subject: "Your Admin Account - Temporary Password",
         html: `
