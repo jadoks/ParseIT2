@@ -1849,7 +1849,7 @@ async function sendFirstLoginCodeEmail({ firstName, email, pin }) {
 }
 
 async function sendForgotPasswordCodeEmail({ firstName, email, pin }) {
-  await resend.emails.send({
+  const { data, error } = await resend.emails.send({
     from: "ParseIT <onboarding@resend.dev>",
     to: email,
     subject: "Your Password Reset Verification Code",
@@ -1861,6 +1861,13 @@ async function sendForgotPasswordCodeEmail({ firstName, email, pin }) {
       <p>If you did not request this, you can ignore this email.</p>
     `,
   });
+
+  if (error) {
+    console.error("Resend send error:", error);
+    throw new Error(error.message || "Failed to send email via Resend.");
+  }
+
+  return data;
 }
 
 async function ensureTeacherMemberForClass({
