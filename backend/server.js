@@ -1823,18 +1823,19 @@ async function findUserByEmailAcrossRoles(email) {
     { role: "admin", collection: "admins" },
   ];
 
-  for (const item of roles) {
-    const snapshot = await db
-      .collection(item.collection)
-      .where("email", "==", normalizedEmail)
-      .limit(1)
-      .get();
+  const snapshots = await Promise.all(
+    roles.map((item) =>
+      db.collection(item.collection).where("email", "==", normalizedEmail).limit(1).get()
+    )
+  );
 
+  for (let i = 0; i < roles.length; i++) {
+    const snapshot = snapshots[i];
     if (!snapshot.empty) {
       const doc = snapshot.docs[0];
       return {
-        role: item.role,
-        collection: item.collection,
+        role: roles[i].role,
+        collection: roles[i].collection,
         ref: doc.ref,
         data: doc.data(),
         id: doc.id,
@@ -3028,13 +3029,11 @@ app.post("/auth/complete-first-login", async (req, res) => {
 app.post("/auth/send-forgot-password-pin", async (req, res) => {
   try {
     const { email } = req.body;
-
     if (!email || typeof email !== "string") {
       return res.status(400).json({ error: "Email is required." });
     }
 
     const foundUser = await findUserByEmailAcrossRoles(email);
-
     if (!foundUser) {
       return res.status(404).json({ error: "No account found for this email." });
     }
@@ -3051,31 +3050,26 @@ app.post("/auth/send-forgot-password-pin", async (req, res) => {
       updatedAt: FieldValue.serverTimestamp(),
     });
 
-    await sendForgotPasswordCodeEmail({
-      firstName: userData.firstName,
-      email: userData.email,
-      pin: forgotPasswordPin,
-    });
-
-    return res.json({
+    // Respond immediately — don't make the user wait on the SMTP handshake
+    res.json({
       success: true,
       role: foundUser.role,
-      id:
-        userData.studentId ||
-        userData.teacherId ||
-        userData.adminId ||
-        foundUser.id,
+      id: userData.studentId || userData.teacherId || userData.adminId || foundUser.id,
       email: userData.email,
       message: "Forgot password PIN sent successfully.",
     });
+
+    // Fire-and-forget; log failures instead of blocking the response
+    sendForgotPasswordCodeEmail({
+      firstName: userData.firstName,
+      email: userData.email,
+      pin: forgotPasswordPin,
+    }).catch((err) => console.error("Failed to send forgot password email:", err));
   } catch (error) {
     console.error("Send forgot password PIN error:", error);
-    return res.status(500).json({
-      error: error.message || "Failed to send forgot password PIN.",
-    });
+    return res.status(500).json({ error: error.message || "Failed to send forgot password PIN." });
   }
 });
-
 app.post("/auth/verify-forgot-password-pin", async (req, res) => {
   try {
     const { email, pin } = req.body;
