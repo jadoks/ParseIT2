@@ -1231,13 +1231,14 @@ const styles = StyleSheet.create({
   },
 
   pinRow: {
-    flexDirection: "row",
-    justifyContent: "center",
-    gap: 10,
-    marginTop: 8,
-    flexWrap: "wrap",
-  },
-
+  flexDirection: "row",
+  justifyContent: "center",
+  gap: 10,
+  marginTop: 8,
+  flexWrap: "wrap",
+  width: "100%",        // 👈 add this
+  alignSelf: "stretch", // 👈 and this, belt-and-suspenders
+},
   pinRowMobile: {
     gap: 10,
   },
