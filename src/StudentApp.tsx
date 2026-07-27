@@ -2213,31 +2213,33 @@ const refreshAssignmentCourseContent = useCallback(async () => {
           onNotificationPress={handleNotificationItemClick} 
         />;
       case 'coursedetail': 
-        if (!selectedAssignmentCourse) return <Text style={{ textAlign: 'center', marginTop: 50 }}>No course selected.</Text>;
-        return <CourseDetail 
-          course={selectedAssignmentCourse} 
-          initialTab={'modules'} 
-          autoOpenAssignmentId={autoOpenAssignmentId}
-          onConsumedAutoOpenAssignment={() => setAutoOpenAssignmentId(null)}
-          // ✅ PASS LESSON AUTO-OPEN PROPS
-          autoOpenLessonId={autoOpenLessonId}
-          onConsumedAutoOpenLesson={() => setAutoOpenLessonId(null)}
-          onBack={() => setActiveScreen(lastScreen)} 
-          assignmentComments={sharedAssignmentComments} 
-          assignmentFiles={sharedAssignmentFiles} 
-          onAddComment={handleAddAssignmentComment}
-          onEditComment={handleEditAssignmentComment}
-          onDeleteComment={handleDeleteAssignmentComment} 
-          onAddFile={handleAddAssignmentFile} 
-          onRemoveFile={handleRemoveAssignmentFile} 
-          onUpdateAssignmentStatus={handleUpdateAssignmentStatus} 
-          onRefreshSubmissions={loadStudentSubmissionState} 
-          currentStudent={currentStudent} 
-          isGeneratingActivity={isGeneratingActivity} 
-          completedActivityScores={completedActivityScores} 
-          onGenerateActivity={(assignment) => openGeneratedActivity(selectedAssignmentCourse as unknown as CourseDetailData, assignment)} 
-          onPlayGame={handlePlayGame} 
-        />;
+      if (!selectedAssignmentCourse) return <Text style={{ textAlign: 'center', marginTop: 50 }}>No course selected.</Text>;
+      return <CourseDetail 
+        course={selectedAssignmentCourse} 
+        initialTab={'modules'} 
+        autoOpenAssignmentId={autoOpenAssignmentId}
+        onConsumedAutoOpenAssignment={() => setAutoOpenAssignmentId(null)}
+        autoOpenLessonId={autoOpenLessonId}
+        onConsumedAutoOpenLesson={() => setAutoOpenLessonId(null)}
+        onBack={() => setActiveScreen(lastScreen)} 
+        assignmentComments={sharedAssignmentComments} 
+        assignmentFiles={sharedAssignmentFiles} 
+        onAddComment={handleAddAssignmentComment}
+        onEditComment={handleEditAssignmentComment}
+        onDeleteComment={handleDeleteAssignmentComment} 
+        onAddFile={handleAddAssignmentFile} 
+        onRemoveFile={handleRemoveAssignmentFile} 
+        onUpdateAssignmentStatus={handleUpdateAssignmentStatus} 
+        onRefreshSubmissions={loadStudentSubmissionState} 
+        // ✅ NEW — same as Assignments.tsx
+        onRefreshComments={refreshAssignmentComments}
+        onRefreshCourseContent={refreshAssignmentCourseContent}
+        currentStudent={currentStudent} 
+        isGeneratingActivity={isGeneratingActivity} 
+        completedActivityScores={completedActivityScores} 
+        onGenerateActivity={(assignment) => openGeneratedActivity(selectedAssignmentCourse as unknown as CourseDetailData, assignment)} 
+        onPlayGame={handlePlayGame} 
+      />;
       case 'generateactivity': 
         return <GenerateActivity 
           activity={generatedActivity} 

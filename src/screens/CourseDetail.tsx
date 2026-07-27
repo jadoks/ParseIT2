@@ -11,6 +11,7 @@ import {
   Modal,
   Platform,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -546,6 +547,18 @@ interface CourseDetailProps {
   onPlayGame?: (assignment: AssignmentItem) => void;
   onEditComment?: (assignmentId: string, commentId: string, newContent: string) => Promise<void>;
   onDeleteComment?: (assignmentId: string, commentId: string) => Promise<void>;
+  // ✅ NEW: refetches comments for ONE assignment (mirrors Assignments.tsx /
+  // TeacherSubmissionsSection's fetchComments). Called when an assignment's
+  // detail modal is opened, on the poll interval, and on pull-to-refresh.
+  onRefreshComments?: (assignmentId: string) => Promise<void> | void;
+  // ✅ NEW: refetches the underlying course/assignment CONTENT (title, due
+  // date, description, points, and the teacher-uploaded assignment file/
+  // storagePath) in case the teacher edited or replaced the assignment
+  // while the student had it open.
+  onRefreshCourseContent?: () => Promise<void> | void;
+  // ✅ NEW: how often (ms) to silently poll for new grades/comments/content
+  // while this screen — or an assignment's detail modal — is open. 0 disables.
+  autoRefreshIntervalMs?: number;
 }
 
 const EMPTY_COURSE: AssignmentCourse = {
@@ -654,6 +667,10 @@ const CourseDetail = ({
   onPlayGame,
   onEditComment,
   onDeleteComment,
+  // ✅ NEW
+  onRefreshComments,
+  onRefreshCourseContent,
+  autoRefreshIntervalMs = 15000,
 }: CourseDetailProps) => {
   const formatSafeDate = (value: any) => {
     if (!value) return 'Recently';
@@ -717,6 +734,13 @@ const CourseDetail = ({
   const [selectedLesson, setSelectedLesson] = useState<any>(null);
   const [isLessonLoading, setIsLessonLoading] = useState(false);
   const [lessonDetailModalVisible, setLessonDetailModalVisible] = useState(false);
+
+  // ✅ NEW: Refresh state — drives pull-to-refresh on the main screen scroll
+  // and the assignment detail modal, and the silent background poller below.
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  // ✅ NEW: Tracks a one-off "just opened this assignment" fetch, so a tiny
+  // inline indicator can show inside the modal without the big spinner.
+  const [isRefreshingOpenedAssignment, setIsRefreshingOpenedAssignment] = useState(false);
 
   // ✅ Toast state — same shape/usage as SignIn, Community, Dashboard, ClassesScreen.
   const [toast, setToast] = useState<{
@@ -1190,6 +1214,25 @@ const CourseDetail = ({
     }
   };
 
+  // ✅ NEW: Fires once right when an assignment is opened (auto-open, card
+  // tap, or notification click) so the student immediately sees the latest
+  // teacher comments AND the latest assignment content (in case it was
+  // edited/replaced while they weren't looking), instead of waiting up to
+  // `autoRefreshIntervalMs` for the next poll. Mirrors Assignments.tsx.
+  const refreshOnOpen = async (assignmentId: string) => {
+    setIsRefreshingOpenedAssignment(true);
+    try {
+      await Promise.all([
+        onRefreshComments?.(assignmentId),
+        onRefreshCourseContent?.(),
+      ]);
+    } catch (error) {
+      console.error('Refresh-on-open error:', error);
+    } finally {
+      setIsRefreshingOpenedAssignment(false);
+    }
+  };
+
   useEffect(() => {
     if (!autoOpenAssignmentId) return;
     if (autoHandledRef.current === autoOpenAssignmentId) return;
@@ -1203,11 +1246,81 @@ const CourseDetail = ({
     autoHandledRef.current = autoOpenAssignmentId;
     setActiveTab("assignments");
     setSelectedAssignment(targetAssignment as any);
+    void refreshOnOpen(targetAssignment.id);
     setTimeout(() => {
       handleGenerateActivity(targetAssignment as any, true);
       onConsumedAutoOpenAssignment?.();
     }, 150);
   }, [autoOpenAssignmentId, safeCourse.assignments, completedActivityScores]);
+
+  // ✅ NEW: Whenever `course` (the source of truth from StudentApp) changes —
+  // which happens after onRefreshCourseContent() re-fetches joined classes —
+  // keep the currently-OPEN selectedAssignment's fields (title, dueDate,
+  // description, points, teacher file, etc.) in sync with the fresh data.
+  // Without this, the modal would keep showing the stale snapshot it was
+  // opened with even after a newer version loads in the background.
+  useEffect(() => {
+    if (!selectedAssignment) return;
+    const freshMatch = safeCourse.assignments.find((a) => a.id === selectedAssignment.id);
+    if (!freshMatch) return;
+    setSelectedAssignment((prev) => {
+      if (!prev) return prev;
+      const sameContent =
+        prev.title === (freshMatch as any).title &&
+        prev.dueDate === (freshMatch as any).dueDate &&
+        (prev as any).description === (freshMatch as any).description &&
+        prev.points === (freshMatch as any).points &&
+        prev.maxPoints === (freshMatch as any).maxPoints &&
+        prev.fileUrl === (freshMatch as any).fileUrl &&
+        prev.storagePath === (freshMatch as any).storagePath &&
+        prev.numberOfAttempts === (freshMatch as any).numberOfAttempts &&
+        JSON.stringify(prev.materialIds || []) === JSON.stringify((freshMatch as any).materialIds || []) &&
+        JSON.stringify((prev as any).files || []) === JSON.stringify((freshMatch as any).files || []);
+      if (sameContent) return prev;
+      return { ...(freshMatch as any) };
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [safeCourse.assignments]);
+
+  // ✅ NEW: Silent background refresh — refetches submissions, comments for
+  // the currently-open assignment, AND the underlying course/assignment
+  // content (title, due date, description, points, teacher file) so a
+  // teacher editing the assignment while the student has it open is
+  // reflected automatically.
+  const silentRefresh = async () => {
+    try {
+      await Promise.all([
+        onRefreshSubmissions?.(),
+        onRefreshCourseContent?.(),
+        selectedAssignment ? onRefreshComments?.(selectedAssignment.id) : Promise.resolve(),
+      ]);
+    } catch (error) {
+      console.error('Auto-refresh error:', error);
+    }
+  };
+
+  // ✅ NEW: Poll on an interval while this screen (or a specific assignment's
+  // detail modal) is open. Cleared/reset whenever the selected assignment or
+  // the interval prop changes.
+  useEffect(() => {
+    if (!autoRefreshIntervalMs || autoRefreshIntervalMs <= 0) return;
+    const intervalId = setInterval(() => {
+      silentRefresh();
+    }, autoRefreshIntervalMs);
+    return () => clearInterval(intervalId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedAssignment?.id, autoRefreshIntervalMs]);
+
+  // ✅ NEW: Manual pull-to-refresh handler shown on the main screen scroll
+  // and the assignment detail modal's ScrollView.
+  const handlePullToRefresh = async () => {
+    setIsRefreshing(true);
+    try {
+      await silentRefresh();
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
 
   const handleAddComment = () => {
     if (!selectedAssignment || !newComment.trim()) return;
@@ -1642,6 +1755,9 @@ const CourseDetail = ({
         onPress={() => {
           setSelectedAssignment(item);
           if (item.assignmentType === "game_based") fetchGameAttempts(item.id);
+          // ✅ NEW: immediately pull the latest comments + assignment
+          // content the moment the student opens this assignment.
+          void refreshOnOpen(item.id);
         }}
       >
         <View style={styles.assignmentHeader}>
@@ -1735,6 +1851,9 @@ const CourseDetail = ({
       style={styles.screenScroll}
       contentContainerStyle={styles.screenScrollContent}
       showsVerticalScrollIndicator={false}
+      refreshControl={
+        <RefreshControl refreshing={isRefreshing} onRefresh={handlePullToRefresh} colors={['#D32F2F']} tintColor="#D32F2F" />
+      }
     >
       {/* ── Course Header ── */}
       <View
@@ -2262,7 +2381,12 @@ const CourseDetail = ({
               !isLargeScreen && styles.modalWrapperMobile,
             ]}
           >
-            <ScrollView contentContainerStyle={styles.detailContainer}>
+            <ScrollView
+              contentContainerStyle={styles.detailContainer}
+              refreshControl={
+                <RefreshControl refreshing={isRefreshing} onRefresh={handlePullToRefresh} colors={['#D32F2F']} tintColor="#D32F2F" />
+              }
+            >
               {selectedAssignment && (
                 <>
                   <View style={styles.detailContent}>
@@ -2273,6 +2397,14 @@ const CourseDetail = ({
                       >
                         <Text style={styles.closeButton}>✕</Text>
                       </TouchableOpacity>
+                      {/* ✅ NEW: tiny inline indicator while the just-opened
+                          assignment's comments/content are being refreshed. */}
+                      {isRefreshingOpenedAssignment && (
+                        <View style={styles.openRefreshBadge}>
+                          <ActivityIndicator size="small" color="#D32F2F" />
+                          <Text style={styles.openRefreshBadgeText}>Syncing latest...</Text>
+                        </View>
+                      )}
                       <Text
                         style={[
                           styles.assignmentModalTitle,
@@ -3399,6 +3531,26 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     elevation: 5,
   },
+  // ✅ NEW: small "Syncing latest..." badge shown while refreshOnOpen runs
+  openRefreshBadge: {
+    position: 'absolute',
+    top: -10,
+    right: 6,
+    zIndex: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#FFF',
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.12,
+    shadowRadius: 6,
+    elevation: 5,
+  },
+  openRefreshBadgeText: { fontSize: 11, fontWeight: '700', color: '#D32F2F' },
   infoCardMobile: { padding: 16, paddingTop: 28 },
   assignmentModalTitle: {
     fontSize: 18,
