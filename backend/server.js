@@ -11848,6 +11848,7 @@ function scoreTriggerMatch(message, trigger) {
 
   return 0;
 }
+const MIN_TRAINING_MATCH_SCORE = 60;
 async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TRAINING_MATCH_SCORE) {
   const snapshot = await db.collection("chatbotTraining").get();
   const normalizedMessage = normalizeChatText(message);
