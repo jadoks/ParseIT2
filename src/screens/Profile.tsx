@@ -54,6 +54,14 @@ interface ProfileProps {
   bannerImageStoragePath?: string | null;
   onChangeProfileImage: (image: any) => void;
   onChangeBannerImage: (image: any) => void;
+  // 🔥 NEW — silent background refresh, same pattern as Community.tsx.
+  // Parent should re-fetch posts and update `userPosts` WITHOUT showing any
+  // loading UI. Polled on an interval while this screen is mounted, and
+  // automatically paused whenever the user has a modal/dropdown/crop-editor
+  // open (see isOverlayOpenRef below) so nothing shifts under their tap
+  // mid-interaction.
+  onRefresh?: () => void | Promise<void>;
+  refreshIntervalMs?: number; // default 8s for a "live" feel
 }
 
 interface CropModalState {
@@ -150,6 +158,8 @@ const Profile: React.FC<ProfileProps> = ({
   bannerImageStoragePath,
   onChangeProfileImage,
   onChangeBannerImage,
+  onRefresh,                // 🔥 NEW
+  refreshIntervalMs = 8000, // 🔥 NEW — 8s polling for a "live" feel
 }) => {
   const { width, height } = useWindowDimensions();
   const safeUserName = useMemo(() => normalizeText(userName), [userName]);
@@ -210,9 +220,60 @@ const Profile: React.FC<ProfileProps> = ({
   const animatedPan = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
   const dragStartRef = useRef({ x: 0, y: 0 });
 
-  React.useEffect(() => {
-    setLocalPosts(userPosts);
+  // ✅ Merge instead of overwrite — keeps any locally-created post/answer whose
+  // temp id ("post-<timestamp>" / "answer-<timestamp>") hasn't shown up in the
+  // server payload yet, while adopting everything else (including new answers
+  // from OTHER users arriving via the silent poll below) as the source of
+  // truth. Mirrors the same fix applied to Community.tsx.
+  useEffect(() => {
+    setLocalPosts((prev) => {
+      const incomingIds = new Set(userPosts.map((p) => p.id));
+      const pendingLocalOnly = prev.filter(
+        (p) => !incomingIds.has(p.id) && p.id.startsWith('post-')
+      );
+      return [...pendingLocalOnly, ...userPosts];
+    });
   }, [userPosts]);
+
+  // 🔥 NEW — tracks whether ANY modal/dropdown/crop-editor is currently
+  // open. Kept in a ref (not state) so the polling interval below can read
+  // the latest value without needing to be recreated every time an overlay
+  // opens or closes. Updated on every render — cheap, since it's just a
+  // boolean assignment with no re-render triggered.
+  const isOverlayOpenRef = useRef(false);
+  useEffect(() => {
+    isOverlayOpenRef.current =
+      queryModalVisible ||
+      editMenuVisible ||
+      answersModalVisible ||
+      editPostModalVisible ||
+      editAnswerModalVisible ||
+      deletePostConfirmVisible ||
+      deleteAnswerConfirmVisible ||
+      !!cropModal ||
+      isPickingImage ||
+      isCroppingImage ||
+      !!postDropdownState ||
+      !!answerDropdownState;
+  });
+
+  // 🔥 Silent background refresh — asks the parent to silently re-fetch
+  // posts every `refreshIntervalMs`. New answers from other users on this
+  // student's own posts flow back in through the `userPosts` prop above and
+  // get merged in. Paused while the user has any modal/dropdown/crop-editor
+  // open, so an incoming refresh never shifts a list or dropdown anchor out
+  // from under an in-progress tap — it just resumes on the next tick once
+  // everything is closed again.
+  useEffect(() => {
+    if (!onRefresh) return;
+
+    const interval = setInterval(() => {
+      if (isOverlayOpenRef.current) return; // paused — user has something open
+      onRefresh();
+    }, refreshIntervalMs);
+
+    return () => clearInterval(interval);
+  }, [onRefresh, refreshIntervalMs]);
 
   const selectedPost = useMemo(
     () => localPosts.find((post) => post.id === selectedPostId) || null,

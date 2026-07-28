@@ -2080,24 +2080,26 @@ const refreshAssignmentCourseContent = useCallback(async () => {
   const renderScreen = () => {
     switch (activeScreen) {
       case 'profile':
-        return <Profile
-          searchQuery={globalSearchQuery}
-          userPosts={currentUserPosts}
-          onCreatePost={handleCreateCommunityPost}
-          onAddAnswer={handleAddCommunityAnswer}
-          onEditPost={handleEditCommunityPost}
-          onDeletePost={handleDeleteCommunityPost}
-          onEditAnswer={handleEditCommunityAnswer}
-          onDeleteAnswer={handleDeleteCommunityAnswer}
-          userName={currentUserName}
-          userEmail={currentUserEmail}
-          profileImage={currentUserAvatar}
-          bannerImage={currentUserBanner}
-          profileImageStoragePath={currentUserProfileImageStoragePath}
-          bannerImageStoragePath={currentUserBannerImageStoragePath}
-          onChangeProfileImage={handleChangeProfileImage}
-          onChangeBannerImage={handleChangeBannerImage}
-        />;
+      return <Profile
+        searchQuery={globalSearchQuery}
+        userPosts={currentUserPosts}
+        onCreatePost={handleCreateCommunityPost}
+        onAddAnswer={handleAddCommunityAnswer}
+        onEditPost={handleEditCommunityPost}
+        onDeletePost={handleDeleteCommunityPost}
+        onEditAnswer={handleEditCommunityAnswer}
+        onDeleteAnswer={handleDeleteCommunityAnswer}
+        userName={currentUserName}
+        userEmail={currentUserEmail}
+        profileImage={currentUserAvatar}
+        bannerImage={currentUserBanner}
+        profileImageStoragePath={currentUserProfileImageStoragePath}
+        bannerImageStoragePath={currentUserBannerImageStoragePath}
+        onChangeProfileImage={handleChangeProfileImage}
+        onChangeBannerImage={handleChangeBannerImage}
+        onRefresh={loadCommunityPosts}
+        refreshIntervalMs={8000}
+      />;
       case 'home':
         return <Dashboard
           announcements={studentAnnouncements}
