@@ -220,20 +220,15 @@ const Profile: React.FC<ProfileProps> = ({
   const animatedPan = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
   const dragStartRef = useRef({ x: 0, y: 0 });
 
-  // ✅ Merge instead of overwrite — keeps any locally-created post/answer whose
-  // temp id ("post-<timestamp>" / "answer-<timestamp>") hasn't shown up in the
-  // server payload yet, while adopting everything else (including new answers
-  // from OTHER users arriving via the silent poll below) as the source of
-  // truth. Mirrors the same fix applied to Community.tsx.
-  useEffect(() => {
-    setLocalPosts((prev) => {
-      const incomingIds = new Set(userPosts.map((p) => p.id));
-      const pendingLocalOnly = prev.filter(
-        (p) => !incomingIds.has(p.id) && p.id.startsWith('post-')
-      );
-      return [...pendingLocalOnly, ...userPosts];
-    });
-  }, [userPosts]);
+  // Local posts simply mirror the parent-provided prop. StudentApp is the
+// single source of truth for post/answer creation (including optimistic
+// temp ids and their swap to real ids), so there's no need to preserve
+// "pending" local-only entries here — doing so caused stale temp-id
+// copies to survive forever once their real id landed, showing up as
+// permanent duplicates.
+useEffect(() => {
+  setLocalPosts(userPosts);
+}, [userPosts]);
 
   // 🔥 NEW — tracks whether ANY modal/dropdown/crop-editor is currently
   // open. Kept in a ref (not state) so the polling interval below can read

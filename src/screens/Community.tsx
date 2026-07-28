@@ -187,14 +187,11 @@ const Community: React.FC<CommunityProps> = ({
   // temp id ("post-<timestamp>") hasn't shown up in the server payload yet,
   // while adopting everything else (including new posts from OTHER users
   // arriving via the silent poll below) as the source of truth.
+  // Local posts simply mirror the parent-provided prop — see Profile.tsx
+  // for why the old "pending local-only" merge logic was removed (it left
+  // stale temp-id duplicates behind once the real id arrived).
   useEffect(() => {
-    setLocalPosts((prev) => {
-      const incomingIds = new Set(posts.map((p) => p.id));
-      const pendingLocalOnly = prev.filter(
-        (p) => !incomingIds.has(p.id) && p.id.startsWith('post-')
-      );
-      return [...pendingLocalOnly, ...posts];
-    });
+    setLocalPosts(posts);
   }, [posts]);
 
   // 👇 ROBUST LOCAL SEARCH FILTERING
