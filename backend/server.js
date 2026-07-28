@@ -373,7 +373,7 @@ import multer from "multer";
 
 
   const GEMINI_GAME_MODEL = process.env.GEMINI_GAME_MODEL || "gemini-3.5-flash";
-  const GEMINI_GAME_FALLBACK_MODEL = process.env.GEMINI_GAME_FALLBACK_MODEL || "gemini-1.5-flash";
+  const GEMINI_GAME_FALLBACK_MODEL = process.env.GEMINI_GAME_FALLBACK_MODEL || "gemini-3.1-flash-lite";
   const OPENAI_GAME_MODEL =
     process.env.OPENAI_GAME_MODEL || process.env.OPENAI_MODEL || "gpt-4o-mini";
   const geminiGameAI = process.env.GEMINI_API_KEY
