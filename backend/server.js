@@ -373,6 +373,7 @@ import multer from "multer";
 
 
   const GEMINI_GAME_MODEL = process.env.GEMINI_GAME_MODEL || "gemini-3.5-flash";
+  const GEMINI_GAME_FALLBACK_MODEL = process.env.GEMINI_GAME_FALLBACK_MODEL || "gemini-1.5-flash";
   const OPENAI_GAME_MODEL =
     process.env.OPENAI_GAME_MODEL || process.env.OPENAI_MODEL || "gpt-4o-mini";
   const geminiGameAI = process.env.GEMINI_API_KEY
@@ -3957,11 +3958,34 @@ app.post("/auth/send-forgot-password-pin", async (req, res) => {
     }
   });
   // New function to generate game with Gemini using direct file access
-  async function generateGameWithGeminiDirect({ prompt, files, gameType, numberOfQuestions }) {
-    if (!geminiGameAI) throw new Error("GEMINI_API_KEY is missing.");
-    
+async function generateGameWithGeminiDirect({ prompt, files, gameType, numberOfQuestions }) {
+  if (!geminiGameAI) throw new Error("GEMINI_API_KEY is missing.");
+
+  const contents = [{ text: prompt }, ...files];
+
+  // Primary model, then a fallback if the primary is overloaded/unavailable.
+  // Adjust FALLBACK_MODEL to whatever second model you have access to.
+  const modelsToTry = [GEMINI_GAME_MODEL, GEMINI_GAME_FALLBACK_MODEL].filter(Boolean);
+
+  const isRetryable = (error) => {
+    const msg = (error?.message || "").toLowerCase();
+    return (
+      msg.includes("503") ||
+      msg.includes("overloaded") ||
+      msg.includes("high demand") ||
+      msg.includes("fetch failed") ||
+      msg.includes("timeout") ||
+      msg.includes("429")
+    );
+  };
+
+  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+  let lastError = null;
+
+  for (const modelName of modelsToTry) {
     const model = geminiGameAI.getGenerativeModel({
-      model: GEMINI_GAME_MODEL,
+      model: modelName,
       generationConfig: {
         temperature: 0.3,
         maxOutputTokens: 8192,
@@ -3970,30 +3994,43 @@ app.post("/auth/send-forgot-password-pin", async (req, res) => {
       }
     });
 
-    // files is already an array of parts — either { inlineData: {...} } or { fileData: {...} }
-    const contents = [{ text: prompt }, ...files];
-
-    for (let attempt = 1; attempt <= 3; attempt++) {
+    const MAX_ATTEMPTS = 4;
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
       try {
         const result = await model.generateContent(contents);
         const parsed = parseQuizMastersJsonResponse(result.response.text(), "Gemini");
         const questions = normalizeGameQuestions(parsed, gameType, numberOfQuestions);
-        
+
         if (questions.length >= 1) {
-          return { 
-            questions, 
-            provider: "gemini-direct", 
-            model: GEMINI_GAME_MODEL, 
-            fallbackUsed: false 
+          return {
+            questions,
+            provider: "gemini-direct",
+            model: modelName,
+            fallbackUsed: modelName !== GEMINI_GAME_MODEL
           };
         }
+        lastError = new Error(`Model ${modelName} returned zero valid questions.`);
       } catch (error) {
-        console.log(`Gemini direct attempt ${attempt} failed for ${gameType}:`, error.message);
+        lastError = error;
+        console.log(`Gemini direct attempt ${attempt} (${modelName}) failed for ${gameType}:`, error.message);
+
+        // Don't sleep after the last attempt for this model, and don't
+        // bother retrying at all if the error isn't the kind a retry fixes
+        // (e.g. bad request, auth failure, schema mismatch).
+        if (attempt < MAX_ATTEMPTS && isRetryable(error)) {
+          const backoffMs = Math.min(1000 * 2 ** (attempt - 1), 8000) + Math.random() * 300;
+          await sleep(backoffMs);
+          continue;
+        }
+        if (!isRetryable(error)) break; // move on to fallback model immediately
       }
     }
-    
-    throw new Error("Gemini direct file processing failed after 3 attempts.");
   }
+
+  throw new Error(
+    `Gemini generation failed after retries across ${modelsToTry.length} model(s): ${lastError?.message || "unknown error"}`
+  );
+}
 
   // === NEW: Save quiz score for a class activity ===
   app.post("/game-ai/save-quiz-score", requireAuth, async (req, res) => {
