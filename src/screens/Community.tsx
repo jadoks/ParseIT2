@@ -446,56 +446,26 @@ const Community: React.FC<CommunityProps> = ({
   };
 
   const handleCreatePost = (query: string) => {
-    const trimmed = query.trim();
-    if (!trimmed) {
-      showToast('Please write a question or post first.', 'error');
-      return;
-    }
-
-    // ✅ Optimistic update — add the post to local state immediately instead
-    // of waiting for the parent to refresh the `posts` prop.
-    const newPost: CommunityPost = {
-      id: `post-${Date.now()}`,
-      userName,
-      userEmail,
-      avatar: userAvatarSource,
-      dateTime: new Date().toLocaleString(),
-      content: trimmed,
-      answers: [],
-    };
-    setLocalPosts((prev) => [newPost, ...prev]);
-
-    onCreatePost?.(trimmed);
-    setModalVisible(false);
-    showToast('Post created successfully.', 'success');
-  };
+  const trimmed = query.trim();
+  if (!trimmed) {
+    showToast('Please write a question or post first.', 'error');
+    return;
+  }
+  onCreatePost?.(trimmed);
+  setModalVisible(false);
+  showToast('Post created successfully.', 'success');
+};
 
   const handlePostAnswer = () => {
-    const trimmed = answerText.trim();
-    if (!trimmed || !selectedPostId) {
-      if (!trimmed) showToast('Please write an answer first.', 'error');
-      return;
-    }
-
-    const newAnswer: CommunityAnswer = {
-      id: `answer-${Date.now()}`,
-      userName,
-      avatar: userAvatarSource,
-      answeredAt: new Date().toLocaleString(),
-      message: trimmed,
-    };
-    setLocalPosts((prev) =>
-      prev.map((post) =>
-        post.id === selectedPostId
-          ? { ...post, answers: [...post.answers, newAnswer] }
-          : post
-      )
-    );
-
-    onAddAnswer?.(selectedPostId, trimmed);
-    setAnswerText('');
-    showToast('Answer posted successfully.', 'success');
-  };
+  const trimmed = answerText.trim();
+  if (!trimmed || !selectedPostId) {
+    if (!trimmed) showToast('Please write an answer first.', 'error');
+    return;
+  }
+  onAddAnswer?.(selectedPostId, trimmed);
+  setAnswerText('');
+  showToast('Answer posted successfully.', 'success');
+};
 
   const handleEditPost = (post: CommunityPost) => {
     closePostDropdown();

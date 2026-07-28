@@ -686,56 +686,33 @@ const Profile: React.FC<ProfileProps> = ({
   };
 
   const handleCreatePost = (query: string) => {
-    const trimmed = query.trim();
-    if (!trimmed) {
-      showToast('Please write a question or post first.', 'error');
-      return;
-    }
+  const trimmed = query.trim();
+  if (!trimmed) {
+    showToast('Please write a question or post first.', 'error');
+    return;
+  }
 
-    // ✅ Optimistic update — add the post to local state immediately instead
-    // of waiting for the parent to refresh the `userPosts` prop. This mirrors
-    // the fix applied to the Community screen so post creation feels instant
-    // here too, matching how answers/edits/deletes already behave below.
-    const newPost: CommunityPost = {
-      id: `post-${Date.now()}`,
-      userName: safeUserName,
-      userEmail: safeUserEmail,
-      avatar: profileImageSource,
-      dateTime: new Date().toLocaleString(),
-      content: trimmed,
-      answers: [],
-    };
-    setLocalPosts((prev) => [newPost, ...prev]);
-
-    onCreatePost?.(trimmed);
-    setQueryModalVisible(false);
-    showToast('Post created successfully.', 'success');
-  };
+  // Don't add our own optimistic post here — StudentApp already creates
+  // one (with its own temp id) and passes it back via `userPosts`. Adding
+  // a second, separately-generated temp post caused duplicate posts and
+  // made Delete fail on freshly-created posts (mismatched temp ids).
+  onCreatePost?.(trimmed);
+  setQueryModalVisible(false);
+  showToast('Post created successfully.', 'success');
+};
 
   const handlePostAnswer = () => {
-    const trimmed = answerText.trim();
-    if (!trimmed || !selectedPostId) {
-      if (!trimmed) showToast('Please write an answer first.', 'error');
-      return;
-    }
-    const newAnswer: CommunityAnswer = {
-      id: `answer-${Date.now()}`,
-      userName: safeUserName,
-      avatar: profileImageSource,
-      answeredAt: new Date().toLocaleString(),
-      message: trimmed,
-    };
-    setLocalPosts((prev) =>
-      prev.map((post) =>
-        post.id === selectedPostId
-          ? { ...post, answers: [...post.answers, newAnswer] }
-          : post
-      )
-    );
-    onAddAnswer?.(selectedPostId, trimmed);
-    setAnswerText('');
-    showToast('Answer posted successfully.', 'success');
-  };
+  const trimmed = answerText.trim();
+  if (!trimmed || !selectedPostId) {
+    if (!trimmed) showToast('Please write an answer first.', 'error');
+    return;
+  }
+  // Same reasoning as handleCreatePost — let StudentApp's optimistic
+  // answer flow back down through props instead of adding our own here.
+  onAddAnswer?.(selectedPostId, trimmed);
+  setAnswerText('');
+  showToast('Answer posted successfully.', 'success');
+};
 
   const handleEditPost = (post: CommunityPost) => {
     closePostDropdown();
