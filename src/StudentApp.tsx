@@ -1311,7 +1311,11 @@ const refreshAssignmentCourseContent = useCallback(async () => {
 
   const normalizeCommunityAvatar = (avatar: any) => { if (!avatar) return null; if (typeof avatar === 'string') return avatar; if (avatar?.uri) return avatar.uri; return null; };
 
-  const loadCommunityPosts = async () => {
+  // ✅ NEW: wrapped in useCallback so it's a stable reference — this lets us
+  // pass it straight into Community's `onRefresh` prop (used for the silent
+  // background polling below) without retriggering that effect on every
+  // StudentApp re-render.
+  const loadCommunityPosts = useCallback(async () => {
     try {
       const response = await apiFetch(`${API_BASE_URL}/community-posts`);
       const data = await response.json();
@@ -1320,7 +1324,7 @@ const refreshAssignmentCourseContent = useCallback(async () => {
     } catch (error) {
       console.log('LOAD COMMUNITY POSTS ERROR =>', error);
     }
-  };
+  }, []);
 
   // ---------------------------------------------------------------------
   // ✅ COMMUNITY MUTATIONS — PATCH LOCAL STATE, DON'T RE-FETCH EVERYTHING
@@ -2305,6 +2309,10 @@ const refreshAssignmentCourseContent = useCallback(async () => {
           onEditAnswer={handleEditCommunityAnswer} 
           onDeleteAnswer={handleDeleteCommunityAnswer} 
           initialPostId={communityInitialPostId} 
+          // 🔥 NEW — silent background refresh, polled from inside Community
+          // (paused automatically while a modal/dropdown is open there)
+          onRefresh={loadCommunityPosts}
+          refreshIntervalMs={8000}
         />;
       case 'messenger': 
         return <Messenger 

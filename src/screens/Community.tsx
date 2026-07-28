@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   GestureResponderEvent,
   Image,
@@ -64,6 +64,13 @@ interface CommunityProps {
   onDeleteAnswer?: (postId: string, answerId: string) => void;
   searchQuery?: string; // 👈 To receive global search query
   initialPostId?: string | null; // 👈 To open specific post from notification
+  // 🔥 NEW — silent background refresh. Parent should re-fetch posts and
+  // update the `posts` prop WITHOUT showing any loading UI. Polled on an
+  // interval while this screen is mounted, and automatically paused
+  // whenever the user has a modal/dropdown open (see isOverlayOpenRef
+  // below) so nothing shifts under their tap mid-interaction.
+  onRefresh?: () => void | Promise<void>;
+  refreshIntervalMs?: number; // default 8s for a "live" feel
 }
 
 type PostDropdownState =
@@ -157,6 +164,8 @@ const Community: React.FC<CommunityProps> = ({
   onDeleteAnswer,
   searchQuery = '', // 👈 Default empty string
   initialPostId, // 👈 ADDED
+  onRefresh, // 🔥 NEW
+  refreshIntervalMs = 8000, // 🔥 NEW — 8s polling for a "live" feel
 }) => {
   // ✅ Optimistic local copy of posts — mirrors the pattern used in Profile.
   // Handlers below update this immediately so the UI reacts right away instead
@@ -169,13 +178,23 @@ const Community: React.FC<CommunityProps> = ({
   // optimistic change this component just made locally, so this sync effect
   // becomes a no-op most of the time — it only actually overwrites
   // `localPosts` when the parent's data changes for a genuinely different
-  // reason (e.g. initial load, or another user's action arriving via a
-  // future realtime subscription). This is what keeps things smooth: no
+  // reason (e.g. initial load, or another user's action arriving via the
+  // silent background refresh below). This is what keeps things smooth: no
   // double-update flash on your own actions.
   const [localPosts, setLocalPosts] = useState<CommunityPost[]>(posts);
 
+  // ✅ Merge instead of overwrite — keeps any locally-created post whose
+  // temp id ("post-<timestamp>") hasn't shown up in the server payload yet,
+  // while adopting everything else (including new posts from OTHER users
+  // arriving via the silent poll below) as the source of truth.
   useEffect(() => {
-    setLocalPosts(posts);
+    setLocalPosts((prev) => {
+      const incomingIds = new Set(posts.map((p) => p.id));
+      const pendingLocalOnly = prev.filter(
+        (p) => !incomingIds.has(p.id) && p.id.startsWith('post-')
+      );
+      return [...pendingLocalOnly, ...posts];
+    });
   }, [posts]);
 
   // 👇 ROBUST LOCAL SEARCH FILTERING
@@ -243,6 +262,41 @@ const Community: React.FC<CommunityProps> = ({
   };
 
   const hideToast = () => setToast((prev) => ({ ...prev, visible: false }));
+
+  // 🔥 NEW — tracks whether ANY modal/dropdown/confirmation is currently
+  // open. Kept in a ref (not state) so the polling interval below can read
+  // the latest value without needing to be recreated every time a modal
+  // opens or closes. Updated on every render — cheap, since it's just a
+  // boolean assignment with no re-render triggered.
+  const isOverlayOpenRef = useRef(false);
+  useEffect(() => {
+    isOverlayOpenRef.current =
+      modalVisible ||
+      answersModalVisible ||
+      editPostModalVisible ||
+      editAnswerModalVisible ||
+      deletePostConfirmVisible ||
+      deleteAnswerConfirmVisible ||
+      !!postDropdownState ||
+      !!answerDropdownState;
+  });
+
+  // 🔥 Silent background refresh — asks the parent to silently re-fetch
+  // posts every `refreshIntervalMs`. New posts from other users flow back
+  // in through the `posts` prop above and get merged in. Paused while the
+  // user has any modal/dropdown open, so an incoming refresh never shifts
+  // a list or dropdown anchor out from under an in-progress tap — it just
+  // resumes on the next tick once everything is closed again.
+  useEffect(() => {
+    if (!onRefresh) return;
+
+    const interval = setInterval(() => {
+      if (isOverlayOpenRef.current) return; // paused — user has something open
+      onRefresh();
+    }, refreshIntervalMs);
+
+    return () => clearInterval(interval);
+  }, [onRefresh, refreshIntervalMs]);
 
   useEffect(() => {
     let isMounted = true;
