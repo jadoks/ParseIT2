@@ -124,7 +124,7 @@ const Header: React.FC<HeaderProps> = ({
 
   const logoSize = responsiveSize(28, 38, 48);
   const navIconSize = responsiveSize(22, 28, 34);
-  const mobileNavIconSize = responsiveSize(28, 32, 34);
+  const mobileNavIconSize = responsiveSize(24, 28, 30);
   const searchIconSize = responsiveSize(18, 22, 26);
   const fontSizeSearch = responsiveSize(14, 16, 17);
   const paddingHorizontal = isVerySmall ? 12 : isPhone ? 16 : isTablet ? 24 : 32;
@@ -316,6 +316,8 @@ const Header: React.FC<HeaderProps> = ({
     }
   };
 
+  // 👇 shared icon renderer — used by BOTH the desktop nav buttons and the
+  // mobile fixed-size nav items (mirrors TeacherHeader's renderNavIcon).
   const renderNavIcon = (
     screen: 'home' | 'classes' | 'game' | 'videos' | 'messenger',
     size: number
@@ -382,7 +384,7 @@ const Header: React.FC<HeaderProps> = ({
   // 👇 UPDATED: Facebook-style active indicator — a colored underline bar
   // beneath the icon (same #D32F2F as the active icon color) instead of a
   // background tint. The nav button itself now uses generous horizontal
-  // padding like Facebook's desktop tabs.
+  // padding like Facebook's desktop tabs. (Desktop/tablet only.)
   const renderNavButton = (
     screen: 'home' | 'classes' | 'game' | 'videos' | 'messenger',
     size: number,
@@ -670,10 +672,26 @@ const renderSearchResults = () => {
           {/* Mobile Search Results Dropdown */}
           {isSearchExpanded && renderSearchResults()}
 
+          {/* 👇 UPDATED: fixed-size mobileNavItem buttons in a
+              space-around row — matches TeacherHeader's mobile nav row
+              exactly (padding, spacing, and icon box size). */}
           <View style={[styles.mobileNavRow, { paddingHorizontal }]}>
-            {navScreens.slice(0, 4).map((screen) =>
-              renderNavButton(screen, mobileNavIconSize, { padding: 12 })
-            )}
+            {navScreens.slice(0, 4).map((screen) => {
+              const active = isActive(screen);
+              return (
+                <Pressable
+                  key={screen}
+                  style={styles.mobileNavItem}
+                  onPress={() => {
+                    toggleSearch(false);
+                    onNavigate?.(screen);
+                  }}
+                >
+                  {renderNavIcon(screen, mobileNavIconSize)}
+                  {active && <View style={styles.activeUnderline} />}
+                </Pressable>
+              );
+            })}
           </View>
         </View>
       </TouchableWithoutFeedback>
@@ -855,7 +873,7 @@ const styles = StyleSheet.create({
 
   // 👇 UPDATED: wider Facebook-style horizontal padding for a bigger tab
   // zone; the active state background tint (navBtnActive) has been
-  // replaced by the activeUnderline bar below.
+  // replaced by the activeUnderline bar below. (Desktop/tablet only.)
   navBtn: {
     paddingHorizontal: 28,
     paddingVertical: 12,
@@ -900,16 +918,31 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
 
+  // 👇 UPDATED: matches TeacherHeader's mobile nav row exactly —
+  // space-around spacing + paddingTop/paddingBottom instead of
+  // paddingVertical, plus explicit white background.
   mobileNavRow: {
-  flexDirection: 'row',
-  alignItems: 'center',
-  justifyContent: 'center',
-  paddingTop: 10,
-  paddingBottom: 18,
-  borderTopWidth: 1,
-  borderTopColor: '#EEE',
-  backgroundColor: '#FFF',
-},
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-around',
+    paddingTop: 10,
+    paddingBottom: 18,
+    borderTopWidth: 1,
+    borderTopColor: '#EEE',
+    backgroundColor: '#FFF',
+  },
+
+  // 👇 NEW: fixed-size mobile nav icon box, matching TeacherHeader's
+  // mobileNavItem (54x54) so icon spacing/hit targets are identical.
+  mobileNavItem: {
+    width: 54,
+    height: 54,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 16,
+    position: 'relative',
+    overflow: 'visible',
+  },
 
   badge: {
     position: 'absolute',
