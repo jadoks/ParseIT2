@@ -454,19 +454,24 @@ function ExpiryDateField({
               ]}
             >
               {isMobile ? (
-                // ✅ On mobile, Month/Day/Year stack vertically. Wrapping them
-                // in their own ScrollView (capped height) keeps the footer
-                // (Cancel/Apply) always reachable instead of being pushed
-                // off-screen by three full-height columns.
+                // ✅ On mobile: Month sits full-width on its own row, and
+                // Day + Year sit side by side in the row below. Wrapping
+                // everything in a ScrollView (capped height) keeps the
+                // footer (Cancel/Apply) always reachable instead of being
+                // pushed off-screen.
                 <ScrollView
                   style={styles.mobileColumnsScroll}
-                  contentContainerStyle={styles.modalRowStack}
+                  contentContainerStyle={styles.mobileColumnsStack}
                   showsVerticalScrollIndicator={false}
                   nestedScrollEnabled
                 >
-                  {renderMonthColumn()}
-                  {renderDayColumn()}
-                  {renderYearColumn()}
+                  <View style={styles.mobileMonthRow}>
+                    {renderMonthColumn()}
+                  </View>
+                  <View style={styles.mobileDayYearRow}>
+                    {renderDayColumn()}
+                    {renderYearColumn()}
+                  </View>
                 </ScrollView>
               ) : (
                 <View style={styles.modalRow}>
@@ -1292,6 +1297,12 @@ const styles = StyleSheet.create({
   // ✅ NEW: caps the combined Month/Day/Year stack so the footer
   // (Cancel/Apply) always stays visible instead of being pushed off-screen.
   mobileColumnsScroll: { maxHeight: 380 },
+  // ✅ NEW: outer vertical stack — Month row, then Day/Year row
+  mobileColumnsStack: { flexDirection: 'column', gap: 14 },
+  // ✅ NEW: Month takes the full row on its own
+  mobileMonthRow: { flexDirection: 'row' },
+  // ✅ NEW: Day and Year sit side by side in the same row
+  mobileDayYearRow: { flexDirection: 'row', gap: 14 },
 
   webDateList: { maxHeight: 260, borderRadius: 16, borderWidth: 1, borderColor: '#F1CACA', backgroundColor: '#FFF9F9' },
   // ✅ NEW: shorter individual list height on mobile since 3 lists stack

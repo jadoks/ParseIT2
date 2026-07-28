@@ -2341,35 +2341,37 @@ const refreshAssignmentCourseContent = useCallback(async () => {
           onMarkAllAsRead={handleMarkAllNotificationsAsRead} 
           onNotificationPress={handleNotificationItemClick} 
         />;
-      case 'coursedetail': 
-      if (!selectedAssignmentCourse) return <Text style={{ textAlign: 'center', marginTop: 50 }}>No course selected.</Text>;
-      return <CourseDetail 
-        course={selectedAssignmentCourse} 
-        initialTab={'modules'} 
-        autoOpenAssignmentId={autoOpenAssignmentId}
-        onConsumedAutoOpenAssignment={() => setAutoOpenAssignmentId(null)}
-        autoOpenLessonId={autoOpenLessonId}
-        onConsumedAutoOpenLesson={() => setAutoOpenLessonId(null)}
-        onBack={() => setActiveScreen(lastScreen)} 
-        assignmentComments={sharedAssignmentComments} 
-        assignmentFiles={sharedAssignmentFiles} 
-        onAddComment={handleAddAssignmentComment}
-        onEditComment={handleEditAssignmentComment}
-        onDeleteComment={handleDeleteAssignmentComment} 
-        onAddFile={handleAddAssignmentFile} 
-        onRemoveFile={handleRemoveAssignmentFile} 
-        onUpdateAssignmentStatus={handleUpdateAssignmentStatus} 
-        onRefreshSubmissions={loadStudentSubmissionState} 
-        // ✅ NEW — same as Assignments.tsx
-        onRefreshComments={refreshAssignmentComments}
-        onRefreshCourseContent={refreshAssignmentCourseContent}
-        onLoadClassComments={loadClassComments}
-        currentStudent={currentStudent} 
-        isGeneratingActivity={isGeneratingActivity} 
-        completedActivityScores={completedActivityScores} 
-        onGenerateActivity={(assignment) => openGeneratedActivity(selectedAssignmentCourse as unknown as CourseDetailData, assignment)} 
-        onPlayGame={handlePlayGame} 
-      />;
+        case 'coursedetail': 
+        if (!selectedAssignmentCourse) return <Text style={{ textAlign: 'center', marginTop: 50 }}>No course selected.</Text>;
+        return <CourseDetail 
+          course={selectedAssignmentCourse} 
+          initialTab={'modules'} 
+          autoOpenAssignmentId={autoOpenAssignmentId}
+          onConsumedAutoOpenAssignment={() => setAutoOpenAssignmentId(null)}
+          autoOpenLessonId={autoOpenLessonId}
+          onConsumedAutoOpenLesson={() => setAutoOpenLessonId(null)}
+          onBack={() => setActiveScreen(lastScreen)} 
+          assignmentComments={sharedAssignmentComments} 
+          assignmentFiles={sharedAssignmentFiles} 
+          onAddComment={handleAddAssignmentComment}
+          onEditComment={handleEditAssignmentComment}
+          onDeleteComment={handleDeleteAssignmentComment} 
+          onAddFile={handleAddAssignmentFile} 
+          onRemoveFile={handleRemoveAssignmentFile} 
+          onUpdateAssignmentStatus={handleUpdateAssignmentStatus} 
+          onRefreshSubmissions={loadStudentSubmissionState} 
+          onRefreshComments={refreshAssignmentComments}
+          onRefreshCourseContent={refreshAssignmentCourseContent}
+          onLoadClassComments={loadClassComments}
+          currentStudent={currentStudent} 
+          isGeneratingActivity={isGeneratingActivity} 
+          completedActivityScores={completedActivityScores} 
+          onGenerateActivity={(assignment) => openGeneratedActivity(selectedAssignmentCourse as unknown as CourseDetailData, assignment)} 
+          onPlayGame={handlePlayGame} 
+          // ✅ NEW: match Community's 8s "live" polling cadence, now that
+          // silentRefresh (in CourseDetail) also covers modules/lessons + syllabus.
+          autoRefreshIntervalMs={8000}
+        />;
       case 'generateactivity': 
         return <GenerateActivity 
           activity={generatedActivity} 

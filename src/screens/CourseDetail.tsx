@@ -2,7 +2,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import Constants from "expo-constants";
 import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system/legacy";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -773,59 +773,81 @@ const CourseDetail = ({
   // re-render once a given id has already been auto-opened.
   const autoLessonHandledRef = useRef<string | null>(null);
 
+  // ✅ NEW: true while the student is mid-interaction — typing an edit, has a
+// comment dropdown open, is deleting, or is mid-upload/submit. Background
+// polling checks this before touching state so nothing shifts or resets
+// under an in-progress tap/keystroke. Read from a ref (not state) so the
+// polling interval always sees the latest value without re-subscribing.
+const isOverlayOpenRef = useRef(false);
+useEffect(() => {
+  isOverlayOpenRef.current =
+    !!openMenuCommentId ||
+    !!editingCommentId ||
+    deleteModalVisible ||
+    isUploadingFile ||
+    isSubmittingAssignment ||
+    isDeletingComment ||
+    savingEdit;
+}); 
+
   useEffect(() => {
     setActiveTab(initialTab);
   }, [initialTab]);
 
-  useEffect(() => {
+  // ✅ NEW: silent=true skips the loading spinner/list-clearing so a background
+// poll never flashes the "Loading resources..." state or wipes the list on
+// a transient error — it just quietly swaps in fresh data when it succeeds.
+const fetchModules = useCallback(async (silent = false) => {
     if (!course?.id) {
-      setModules([]);
+      if (!silent) setModules([]);
       return;
     }
-    const fetchModules = async () => {
-      setIsLoadingModules(true);
-      try {
-        const response = await apiFetch(`${API_BASE_URL}/course-modules/${course.id}`);
-        const data = await response.json();
-        if (response.ok && Array.isArray(data)) {
-          setModules(data);
-        } else {
-          setModules([]);
-        }
-      } catch (error) {
-        console.error("Error fetching modules:", error);
+    if (!silent) setIsLoadingModules(true);
+    try {
+      const response = await apiFetch(`${API_BASE_URL}/course-modules/${course.id}`);
+      const data = await response.json();
+      if (response.ok && Array.isArray(data)) {
+        setModules(data);
+      } else if (!silent) {
         setModules([]);
-      } finally {
-        setIsLoadingModules(false);
       }
-    };
-    fetchModules();
+    } catch (error) {
+      console.error("Error fetching modules:", error);
+      if (!silent) setModules([]);
+    } finally {
+      if (!silent) setIsLoadingModules(false);
+    }
   }, [course?.id]);
 
   useEffect(() => {
+    fetchModules(false);
+  }, [course?.id, fetchModules]);
+
+  const fetchSyllabus = useCallback(async (silent = false) => {
     if (!course?.id) {
-      setCurrentSyllabus(null);
+      if (!silent) setCurrentSyllabus(null);
       return;
     }
-    const fetchSyllabus = async () => {
-      setIsLoadingSyllabus(true);
-      try {
-        const response = await apiFetch(`${API_BASE_URL}/course-syllabus/${course.id}`);
-        const data = await response.json();
-        if (response.ok && data) {
-          setCurrentSyllabus(data);
-        } else {
-          setCurrentSyllabus(null);
-        }
-      } catch (error) {
-        console.error("Error fetching syllabus:", error);
+    if (!silent) setIsLoadingSyllabus(true);
+    try {
+      const response = await apiFetch(`${API_BASE_URL}/course-syllabus/${course.id}`);
+      const data = await response.json();
+      if (response.ok && data) {
+        setCurrentSyllabus(data);
+      } else if (!silent) {
         setCurrentSyllabus(null);
-      } finally {
-        setIsLoadingSyllabus(false);
       }
-    };
-    fetchSyllabus();
+    } catch (error) {
+      console.error("Error fetching syllabus:", error);
+      if (!silent) setCurrentSyllabus(null);
+    } finally {
+      if (!silent) setIsLoadingSyllabus(false);
+    }
   }, [course?.id]);
+
+  useEffect(() => {
+    fetchSyllabus(false);
+  }, [course?.id, fetchSyllabus]);
 
   const getScorePercent = (assignment: AssignmentItem) => {
     if (
@@ -1295,23 +1317,26 @@ const CourseDetail = ({
         onRefreshSubmissions?.(),
         onRefreshCourseContent?.(),
         selectedAssignment ? onRefreshComments?.(selectedAssignment.id) : Promise.resolve(),
+        // ✅ NEW: these two were previously fetched only once on mount, so a
+        // teacher adding/editing a module, lesson, or syllabus never showed
+        // up for a student who already had the screen open.
+        fetchModules(true),
+        fetchSyllabus(true),
       ]);
     } catch (error) {
       console.error('Auto-refresh error:', error);
     }
   };
-
-  // ✅ NEW: Poll on an interval while this screen (or a specific assignment's
-  // detail modal) is open. Cleared/reset whenever the selected assignment or
-  // the interval prop changes.
   useEffect(() => {
     if (!autoRefreshIntervalMs || autoRefreshIntervalMs <= 0) return;
     const intervalId = setInterval(() => {
+      if (isOverlayOpenRef.current) return; // paused — mid-interaction
       silentRefresh();
     }, autoRefreshIntervalMs);
     return () => clearInterval(intervalId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedAssignment?.id, autoRefreshIntervalMs]);
+
 
   // ✅ NEW: Manual pull-to-refresh handler shown on the main screen scroll
   // and the assignment detail modal's ScrollView.
