@@ -8702,6 +8702,51 @@ app.get(
     }
   });
 
+  app.post("/remove-submission-item", requireAuth, async (req, res) => {
+  try {
+    const { classId, assignmentId, studentId, isLink, linkUrl } = req.body;
+    if (!classId || !assignmentId || !studentId) {
+      return res.status(400).json({ error: "classId, assignmentId, studentId are required." });
+    }
+
+    const snap = await db.collection("classSubmissions")
+      .where("classId", "==", classId)
+      .where("assignmentId", "==", assignmentId)
+      .where("studentId", "==", studentId)
+      .limit(1)
+      .get();
+
+    if (snap.empty) return res.json({ success: true }); // nothing to remove
+
+    const docRef = snap.docs[0].ref;
+    const data = snap.docs[0].data();
+
+    if (data.status === "graded") {
+      return res.status(409).json({ error: "This assignment has already been graded." });
+    }
+
+    if (isLink) {
+      const nextLinkUrls = (data.linkUrls || []).filter((u) => u !== linkUrl);
+      await docRef.update({ linkUrls: nextLinkUrls, updatedAt: FieldValue.serverTimestamp() });
+    } else {
+      // clear the primary file fields
+      await docRef.update({
+        fileName: null,
+        fileUrl: null,
+        fileType: null,
+        storagePath: null,
+        bucketPath: null,
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+    }
+
+    return res.json({ success: true });
+  } catch (error) {
+    console.error("Remove submission item error:", error);
+    return res.status(500).json({ error: error.message || "Failed to remove submission item." });
+  }
+});
+
   app.get("/student-submissions/:studentId", async (req, res) => {
     try {
       const { studentId } = req.params;

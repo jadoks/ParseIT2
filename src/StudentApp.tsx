@@ -1269,9 +1269,45 @@ const refreshAssignmentCourseContent = useCallback(async () => {
     });
   };
 
-  const handleRemoveAssignmentFile = (assignmentId: string, fileId: string) => {
-    setSharedAssignmentFiles((prev) => ({ ...prev, [assignmentId]: (prev[assignmentId] || []).filter((file) => file.id !== fileId) }));
-  };
+ const handleRemoveAssignmentFile = async (assignmentId: string, fileId: string) => {
+  const target = (sharedAssignmentFiles[assignmentId] || []).find((f) => f.id === fileId);
+
+  // optimistic UI removal
+  setSharedAssignmentFiles((prev) => ({
+    ...prev,
+    [assignmentId]: (prev[assignmentId] || []).filter((file) => file.id !== fileId),
+  }));
+
+  if (!target) return;
+
+  const course = joinedAssignmentCourses.find((c) => c.assignments.some((a) => a.id === assignmentId));
+  const classId = course?.id;
+  if (!classId) return;
+
+  try {
+    const isLink = target.fileType === 'text/uri-list' || !!target.linkUrl;
+    const response = await apiFetch(`${API_BASE_URL}/remove-submission-item`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        classId,
+        assignmentId,
+        studentId: currentStudent.studentId,
+        isLink,
+        linkUrl: target.linkUrl || null,
+      }),
+    });
+    if (!response.ok) throw new Error('Failed to remove item on server.');
+  } catch (error) {
+    console.log('REMOVE SUBMISSION FILE ERROR =>', error);
+    // rollback: put it back since the server didn't actually delete it
+    setSharedAssignmentFiles((prev) => ({
+      ...prev,
+      [assignmentId]: [...(prev[assignmentId] || []), target],
+    }));
+    Alert.alert('Remove Failed', 'Unable to remove this item. Please try again.');
+  }
+};
 
   const handleUpdateAssignmentStatus = (assignmentId: string, status: AssignmentItem['status']) => {
     setSharedAssignmentStatuses((prev) => {
