@@ -171,20 +171,15 @@ const Community: React.FC<CommunityProps> = ({
   // (which is what caused the perceived delay on post/answer/edit/delete).
   const [localPosts, setLocalPosts] = useState<CommunityPost[]>(posts);
 
-  // ✅ Merge instead of overwrite — keeps any locally-created post whose
-  // temp id ("post-<timestamp>") hasn't shown up in the server payload yet,
-  // while adopting everything else (including new posts from OTHER users
-  // arriving via the silent poll below) as the source of truth. Mirrors the
-  // same fix applied to the Student Community screen.
-  useEffect(() => {
-    setLocalPosts((prev) => {
-      const incomingIds = new Set(posts.map((p) => p.id));
-      const pendingLocalOnly = prev.filter(
-        (p) => !incomingIds.has(p.id) && p.id.startsWith('post-')
-      );
-      return [...pendingLocalOnly, ...posts];
-    });
-  }, [posts]);
+  // Local posts simply mirror the parent-provided prop. TeacherApp is the
+// single source of truth (it refetches from the server after every
+// mutation), so there's no need to preserve "pending local-only" entries
+// here — doing so caused stale temp-id copies to survive forever since
+// the temp id never appears in a refetched payload, showing up as
+// permanent duplicates.
+useEffect(() => {
+  setLocalPosts(posts);
+}, [posts]);
 
   // 👇 ROBUST LOCAL SEARCH FILTERING (Same as Student Community)
   const filteredPosts = useMemo(() => {
@@ -436,56 +431,30 @@ const Community: React.FC<CommunityProps> = ({
   };
 
   const handleCreatePost = (query: string) => {
-    const trimmed = query.trim();
-    if (!trimmed) {
-      showToast('Please write a question or post first.', 'error');
-      return;
-    }
-
-    // ✅ Optimistic update — add the post to local state immediately instead
-    // of waiting for the parent to refresh the `posts` prop.
-    const newPost: CommunityPost = {
-      id: `post-${Date.now()}`,
-      userName,
-      userEmail,
-      avatar: userAvatarSource,
-      dateTime: new Date().toLocaleString(),
-      content: trimmed,
-      answers: [],
-    };
-    setLocalPosts((prev) => [newPost, ...prev]);
-
-    onCreatePost?.(trimmed);
-    setModalVisible(false);
-    showToast('Post created successfully.', 'success');
-  };
+  const trimmed = query.trim();
+  if (!trimmed) {
+    showToast('Please write a question or post first.', 'error');
+    return;
+  }
+  // Don't add our own optimistic post — TeacherApp refetches and passes
+  // the real post back down via `posts`. Adding a local temp copy here
+  // caused permanent duplicates once TeacherApp's refetch replaced state.
+  onCreatePost?.(trimmed);
+  setModalVisible(false);
+  showToast('Post created successfully.', 'success');
+};
 
   const handlePostAnswer = () => {
-    const trimmed = answerText.trim();
-    if (!trimmed || !selectedPostId) {
-      if (!trimmed) showToast('Please write an answer first.', 'error');
-      return;
-    }
-
-    const newAnswer: CommunityAnswer = {
-      id: `answer-${Date.now()}`,
-      userName,
-      avatar: userAvatarSource,
-      answeredAt: new Date().toLocaleString(),
-      message: trimmed,
-    };
-    setLocalPosts((prev) =>
-      prev.map((post) =>
-        post.id === selectedPostId
-          ? { ...post, answers: [...post.answers, newAnswer] }
-          : post
-      )
-    );
-
-    onAddAnswer?.(selectedPostId, trimmed);
-    setAnswerText('');
-    showToast('Answer posted successfully.', 'success');
-  };
+  const trimmed = answerText.trim();
+  if (!trimmed || !selectedPostId) {
+    if (!trimmed) showToast('Please write an answer first.', 'error');
+    return;
+  }
+  // Same reasoning as handleCreatePost.
+  onAddAnswer?.(selectedPostId, trimmed);
+  setAnswerText('');
+  showToast('Answer posted successfully.', 'success');
+};
 
   const handleEditPost = (post: CommunityPost) => {
     closePostDropdown();

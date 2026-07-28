@@ -226,14 +226,8 @@ const Profile: React.FC<ProfileProps> = ({
   // from OTHER users arriving via the silent poll below) as the source of
   // truth. Mirrors the same fix applied to Student Profile.
   useEffect(() => {
-    setLocalPosts((prev) => {
-      const incomingIds = new Set(userPosts.map((p) => p.id));
-      const pendingLocalOnly = prev.filter(
-        (p) => !incomingIds.has(p.id) && p.id.startsWith('post-')
-      );
-      return [...pendingLocalOnly, ...userPosts];
-    });
-  }, [userPosts]);
+  setLocalPosts(userPosts);
+}, [userPosts]);
 
   // 🔥 NEW — tracks whether ANY modal/dropdown/crop-editor is currently
   // open. Kept in a ref (not state) so the polling interval below can read
@@ -729,55 +723,26 @@ const Profile: React.FC<ProfileProps> = ({
   };
 
   const handleCreatePost = (query: string) => {
-    const trimmed = query.trim();
-    if (!trimmed) {
-      showToast('Please write a question or post first.', 'error');
-      return;
-    }
-
-    // ✅ Optimistic update — add the post to local state immediately instead
-    // of waiting for the parent to refresh the `userPosts` prop. Mirrors the
-    // fix applied to Student Profile so post creation feels instant here too.
-    const newPost: CommunityPost = {
-      id: `post-${Date.now()}`,
-      userName: safeUserName,
-      userEmail: safeUserEmail,
-      avatar: profileImageSource,
-      dateTime: new Date().toLocaleString(),
-      content: trimmed,
-      answers: [],
-    };
-    setLocalPosts((prev) => [newPost, ...prev]);
-
-    onCreatePost?.(trimmed);
-    setQueryModalVisible(false);
-    showToast('Post created successfully.', 'success');
-  };
+  const trimmed = query.trim();
+  if (!trimmed) {
+    showToast('Please write a question or post first.', 'error');
+    return;
+  }
+  onCreatePost?.(trimmed);
+  setQueryModalVisible(false);
+  showToast('Post created successfully.', 'success');
+};
 
   const handlePostAnswer = () => {
-    const trimmed = answerText.trim();
-    if (!trimmed || !selectedPostId) {
-      if (!trimmed) showToast('Please write an answer first.', 'error');
-      return;
-    }
-    const newAnswer: CommunityAnswer = {
-      id: `answer-${Date.now()}`,
-      userName: safeUserName,
-      avatar: profileImageSource,
-      answeredAt: new Date().toLocaleString(),
-      message: trimmed,
-    };
-    setLocalPosts((prev) =>
-      prev.map((post) =>
-        post.id === selectedPostId
-          ? { ...post, answers: [...post.answers, newAnswer] }
-          : post
-      )
-    );
-    onAddAnswer?.(selectedPostId, trimmed);
-    setAnswerText('');
-    showToast('Answer posted successfully.', 'success');
-  };
+  const trimmed = answerText.trim();
+  if (!trimmed || !selectedPostId) {
+    if (!trimmed) showToast('Please write an answer first.', 'error');
+    return;
+  }
+  onAddAnswer?.(selectedPostId, trimmed);
+  setAnswerText('');
+  showToast('Answer posted successfully.', 'success');
+};
 
   const handleEditPost = (post: CommunityPost) => {
     closePostDropdown();
