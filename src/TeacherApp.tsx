@@ -557,22 +557,18 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
 
 
   useEffect(() => {
-    loadTeacherProfile();
-    loadCommunityPosts();
+  // Run profile + classes together (classes still needs the resolved
+  // teacher identity from currentTeacher directly — it doesn't have to
+  // wait for the *profile fetch* to resolve teacherId/authUid/email
+  // first, since currentTeacher already has those from login).
+  loadTeacherProfile();
+  loadCommunityPosts();
+  loadTeacherClasses();   // now keyed off currentTeacher, not activeProfile
+  loadTeacherAnalytics();
 
-    // 🔥 FIX: keep the CURRENT user's own signed avatar/banner URL fresh.
-    // TeacherCommunity (and other consumers of `currentUserAvatar`) treat
-    // "own" avatars as always up to date and never re-fetch them — they
-    // only refresh OTHER users' avatars on a timer. Without this interval,
-    // once the signed URL returned by /auth/user-profile expires, the
-    // logged-in user's own avatar breaks everywhere until they reload.
-    const profileRefreshInterval = setInterval(
-      loadTeacherProfile,
-      PROFILE_IMAGE_REFRESH_INTERVAL_MS
-    );
-
-    return () => clearInterval(profileRefreshInterval);
-  }, [loadTeacherProfile]);
+  const profileRefreshInterval = setInterval(loadTeacherProfile, PROFILE_IMAGE_REFRESH_INTERVAL_MS);
+  return () => clearInterval(profileRefreshInterval);
+}, []); // run once on mount, not chained to activeProfile changes
 
   useEffect(() => {
     loadTeacherNotifications();

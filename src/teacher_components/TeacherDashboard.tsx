@@ -294,33 +294,38 @@ const Dashboard2 = ({
   const hideToast = () => setToast((prev) => ({ ...prev, visible: false }));
 
   const loadTeacherClasses = async () => {
-    try {
-      const response = await apiFetch('/classes'); 
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'Failed to fetch classes');
-      const classList = Array.isArray(data) ? data : [];
-      const teacherClasses = classList
-        .filter((item) =>
-          (teacherUid && item.assignedTeacherUid === teacherUid) ||
-          (teacherEmail && item.instructorEmail === teacherEmail) ||
-          (teacherId && item.assignedTeacherId === teacherId) ||
-          (teacherUid && item.createdByUid === teacherUid)
-        )
-        .map((item) => mapBackendClass(item, teacherFullName));
-      const normalizedClasses = normalizeCoursePositions(teacherClasses);
-      setLocalCourses(normalizedClasses);
-      return normalizedClasses;
-    } catch (error) {
-      console.error('Error loading teacher classes:', error);
-      showToast('Failed to load classes.', 'error');
-      return [];
-    }
-  };
+  try {
+    const params = new URLSearchParams();
+    if (teacherUid) params.set('teacherUid', teacherUid);
+    if (teacherEmail) params.set('instructorEmail', teacherEmail);
+    if (teacherId) params.set('teacherId', teacherId);
 
-  const refreshClassesAfterStorageWrite = async () => {
-    await loadTeacherClasses();
-    setTimeout(() => loadTeacherClasses(), 800);
-  };
+    const response = await apiFetch(`/classes?${params.toString()}`);
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Failed to fetch classes');
+
+    // ✅ No more client-side filtering — the backend already scoped this
+    // to the current teacher.
+    const teacherClasses = (Array.isArray(data) ? data : []).map((item) =>
+      mapBackendClass(item, teacherFullName)
+    );
+    const normalizedClasses = normalizeCoursePositions(teacherClasses);
+    setLocalCourses(normalizedClasses);
+    return normalizedClasses;
+  } catch (error) {
+    console.error('Error loading teacher classes:', error);
+    showToast('Failed to load classes.', 'error');
+    return [];
+  }
+};
+
+const refreshClassesAfterStorageWrite = async () => {
+  // ✅ One fetch is enough — the backend write already completed by the
+  // time this runs. The old extra setTimeout(...) 800ms re-fetch just
+  // doubled the "fetch everything, filter client-side" cost on every
+  // create/edit/delete for no benefit.
+  await loadTeacherClasses();
+};
 
   useEffect(() => { loadTeacherClasses(); }, [teacherUid, teacherEmail, teacherId, teacherFullName]);
   useEffect(() => {

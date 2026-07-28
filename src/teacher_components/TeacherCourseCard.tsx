@@ -100,64 +100,68 @@ const TeacherCourseCard: React.FC<TeacherCourseCardProps> = ({
   const [signedBannerUrl, setSignedBannerUrl] = useState<string | null>(initialCachedUrl);
 
   useEffect(() => {
-    let isMounted = true;
+  let isMounted = true;
 
-    const refreshSignedBannerUrl = async () => {
-      if (!item.bannerStoragePath) {
-        setSignedBannerUrl(null);
+  const refreshSignedBannerUrl = async () => {
+    if (!item.bannerStoragePath) {
+      setSignedBannerUrl(null);
+      setBannerLoadFailed(false);
+      return;
+    }
+
+    // ✅ If the dashboard's /classes call already gave us a fresh signed
+    // URL (item.bannerUri), just use it — no network call needed at all.
+    if (item.bannerUri) {
+      setCachedBannerUrl(item.id, item.bannerStoragePath, item.bannerUri);
+      if (isMounted) {
+        setSignedBannerUrl(item.bannerUri);
         setBannerLoadFailed(false);
-        return;
       }
+      return;
+    }
 
-      // ---- Cache hit: reuse it, skip the network call entirely. This is
-      // what makes revisiting the Dashboard instant instead of re-fetching
-      // every card's signed URL from the backend again. ----
-      const cached = getCachedBannerUrl(item.id, item.bannerStoragePath);
-      if (cached) {
+    // Cache hit: reuse it, skip the network call entirely.
+    const cached = getCachedBannerUrl(item.id, item.bannerStoragePath);
+    if (cached) {
+      if (isMounted) {
+        setSignedBannerUrl(cached);
+        setBannerLoadFailed(false);
+      }
+      return;
+    }
+
+    // Only fall back to a network fetch if we truly have no URL at all
+    // (e.g. bannerUri was stripped somewhere upstream).
+    try {
+      const response = await apiFetch('/storage/signed-url', {
+        method: 'POST',
+        body: JSON.stringify({
+          storagePath: item.bannerStoragePath,
+          classId: item.id,
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) throw new Error(data?.error || 'Unable to refresh class banner.');
+
+      if (data?.url) {
+        setCachedBannerUrl(item.id, item.bannerStoragePath, data.url);
         if (isMounted) {
-          setSignedBannerUrl(cached);
+          setSignedBannerUrl(data.url);
           setBannerLoadFailed(false);
         }
-        return;
       }
+    } catch {
+      if (isMounted) setBannerLoadFailed(true);
+    }
+  };
 
-      // ---- Cache miss (first time this session, or the cached entry
-      // expired): fetch a fresh signed URL and store it for next time. ----
-      try {
-        const response = await apiFetch('/storage/signed-url', {
-          method: 'POST',
-          body: JSON.stringify({
-            storagePath: item.bannerStoragePath,
-            classId: item.id,
-          }),
-        });
+  refreshSignedBannerUrl();
 
-        const data = await response.json();
-
-        if (!response.ok) {
-          throw new Error(data?.error || 'Unable to refresh class banner.');
-        }
-
-        if (data?.url) {
-          setCachedBannerUrl(item.id, item.bannerStoragePath, data.url);
-          if (isMounted) {
-            setSignedBannerUrl(data.url);
-            setBannerLoadFailed(false);
-          }
-        }
-      } catch {
-        if (isMounted) {
-          setBannerLoadFailed(true);
-        }
-      }
-    };
-
-    refreshSignedBannerUrl();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [item.id, item.bannerUri, item.bannerStoragePath]);
+  return () => {
+    isMounted = false;
+  };
+}, [item.id, item.bannerUri, item.bannerStoragePath]);
 
   const getCourseImage = () => {
     const uri = signedBannerUrl || item.bannerUri;

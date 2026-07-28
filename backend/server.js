@@ -6676,33 +6676,43 @@ app.post("/create-admin", async (req, res) => {
   });
 
 
-  app.get("/classes", async (req, res) => {
-    try {
-      const snapshot = await db
-        .collection("classes")
-        .orderBy("createdAt", "desc")
-        .get();
+ app.get("/classes", async (req, res) => {
+  try {
+    const { teacherId, teacherUid, instructorEmail } = req.query;
 
-      const classes = await Promise.all(
-        snapshot.docs.map(async (doc) => {
-          const classData = doc.data() || {};
-          const hydratedClassData = await hydrateClassBannerUrl(classData);
+    let query = db.collection("classes").orderBy("createdAt", "desc");
 
-          return {
-            id: doc.id,
-            ...hydratedClassData,
-          };
-        })
-      );
+    // Server-side filter when a teacher identity is provided.
+    // (Admin dashboard calls this with no params and still gets everything.)
+    let snapshot;
+    if (teacherId || teacherUid || instructorEmail) {
+      const queries = [];
+      if (teacherId) queries.push(db.collection("classes").where("assignedTeacherId", "==", teacherId).get());
+      if (teacherUid) queries.push(db.collection("classes").where("assignedTeacherUid", "==", teacherUid).get());
+      if (instructorEmail) queries.push(db.collection("classes").where("instructorEmail", "==", instructorEmail).get());
 
-      res.json(classes);
-    } catch (error) {
-      console.error("Fetch classes error:", error);
-      res.status(500).json({
-        error: error.message || "Failed to fetch classes",
-      });
+      const results = await Promise.all(queries);
+      const map = new Map();
+      results.forEach((snap) => snap.docs.forEach((doc) => map.set(doc.id, doc)));
+      snapshot = { docs: Array.from(map.values()) };
+    } else {
+      snapshot = await query.get();
     }
-  });
+
+    const classes = await Promise.all(
+      snapshot.docs.map(async (doc) => {
+        const classData = doc.data() || {};
+        const hydratedClassData = await hydrateClassBannerUrl(classData);
+        return { id: doc.id, ...hydratedClassData };
+      })
+    );
+
+    res.json(classes);
+  } catch (error) {
+    console.error("Fetch classes error:", error);
+    res.status(500).json({ error: error.message || "Failed to fetch classes" });
+  }
+});
 
   app.get("/class-members/:classId", async (req, res) => {
     try {
