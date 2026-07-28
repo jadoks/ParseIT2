@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   GestureResponderEvent,
   Image,
@@ -18,9 +18,7 @@ import Ionicons from 'react-native-vector-icons/Ionicons';
 import PostQueryModal from './TeacherPostQueryModal'; // Ensure this path is correct for your project structure
 
 // 🔥 Use the shared apiFetch — it attaches a fresh Firebase Bearer token
-// automatically and retries once on 401. The old local apiFetch here only
-// sent `credentials: 'include'` with no Authorization header at all, which
-// is why signed-url requests started failing after the session/token aged.
+// automatically and retries once on 401.
 import { apiFetch } from '../services/api'; // adjust path if your folder layout differs
 import {
   getCachedUserImageUrl,
@@ -64,6 +62,13 @@ interface CommunityProps {
   onDeleteAnswer?: (postId: string, answerId: string) => void;
   searchQuery?: string; // 👈 ADDED: To receive global search query
   initialPostId?: string | null; // 👈 ADDED: To open specific post from notification
+  // 🔥 NEW — silent background refresh, same pattern as Student Community.
+  // Parent should re-fetch posts and update the `posts` prop WITHOUT showing
+  // any loading UI. Polled on an interval while this screen is mounted, and
+  // automatically paused whenever the user has a modal/dropdown open (see
+  // isOverlayOpenRef below) so nothing shifts under their tap mid-interaction.
+  onRefresh?: () => void | Promise<void>;
+  refreshIntervalMs?: number; // default 8s for a "live" feel
 }
 
 type PostDropdownState =
@@ -157,6 +162,8 @@ const Community: React.FC<CommunityProps> = ({
   onDeleteAnswer,
   searchQuery = '', // 👈 Default empty string
   initialPostId, // 👈 ADDED
+  onRefresh, // 🔥 NEW
+  refreshIntervalMs = 8000, // 🔥 NEW — 8s polling for a "live" feel
 }) => {
   // ✅ Optimistic local copy of posts — mirrors the pattern used in TeacherProfile.
   // Handlers below update this immediately so the UI reacts right away instead
@@ -164,8 +171,19 @@ const Community: React.FC<CommunityProps> = ({
   // (which is what caused the perceived delay on post/answer/edit/delete).
   const [localPosts, setLocalPosts] = useState<CommunityPost[]>(posts);
 
+  // ✅ Merge instead of overwrite — keeps any locally-created post whose
+  // temp id ("post-<timestamp>") hasn't shown up in the server payload yet,
+  // while adopting everything else (including new posts from OTHER users
+  // arriving via the silent poll below) as the source of truth. Mirrors the
+  // same fix applied to the Student Community screen.
   useEffect(() => {
-    setLocalPosts(posts);
+    setLocalPosts((prev) => {
+      const incomingIds = new Set(posts.map((p) => p.id));
+      const pendingLocalOnly = prev.filter(
+        (p) => !incomingIds.has(p.id) && p.id.startsWith('post-')
+      );
+      return [...pendingLocalOnly, ...posts];
+    });
   }, [posts]);
 
   // 👇 ROBUST LOCAL SEARCH FILTERING (Same as Student Community)
@@ -226,67 +244,79 @@ const Community: React.FC<CommunityProps> = ({
   );
 
   // 🔥 Cache-aware signed-URL refresh for OTHER users' post/answer avatars.
-  // Two fixes applied here:
-  //  1. Skip refreshing entries that belong to the current user — those are
-  //     already fresh via `userAvatarSource` (passed straight from props),
-  //     so hitting the signed-url endpoint for them again was wasted work
-  //     and part of what made this feel slow.
-  //  2. Run every remaining refresh in parallel with Promise.all instead of
-  //     one at a time in a for/await loop, which is what made the refresh
-  //     take noticeably long when there were several posts/answers.
   const [refreshedPostAvatars, setRefreshedPostAvatars] = useState<Record<string, string>>({});
   const [refreshedAnswerAvatars, setRefreshedAnswerAvatars] = useState<Record<string, string>>({});
+
+  const showToast = (message: string, type: ToastType = 'success') => {
+    setToast({ visible: true, message, type });
+  };
+
+  const hideToast = () => setToast((prev) => ({ ...prev, visible: false }));
+
+  // 🔥 NEW — tracks whether ANY modal/dropdown/confirmation is currently
+  // open. Kept in a ref (not state) so the polling interval below can read
+  // the latest value without needing to be recreated every time a modal
+  // opens or closes. Updated on every render — cheap, since it's just a
+  // boolean assignment with no re-render triggered.
+  const isOverlayOpenRef = useRef(false);
+  useEffect(() => {
+    isOverlayOpenRef.current =
+      modalVisible ||
+      answersModalVisible ||
+      editPostModalVisible ||
+      editAnswerModalVisible ||
+      deletePostConfirmVisible ||
+      deleteAnswerConfirmVisible ||
+      !!postDropdownState ||
+      !!answerDropdownState;
+  });
+
+  // 🔥 Silent background refresh — asks the parent to silently re-fetch
+  // posts every `refreshIntervalMs`. New posts/answers from other users flow
+  // back in through the `posts` prop above and get merged in. Paused while
+  // the user has any modal/dropdown open, so an incoming refresh never
+  // shifts a list or dropdown anchor out from under an in-progress tap — it
+  // just resumes on the next tick once everything is closed again.
+  useEffect(() => {
+    if (!onRefresh) return;
+
+    const interval = setInterval(() => {
+      if (isOverlayOpenRef.current) return; // paused — user has something open
+      onRefresh();
+    }, refreshIntervalMs);
+
+    return () => clearInterval(interval);
+  }, [onRefresh, refreshIntervalMs]);
 
   useEffect(() => {
     let isMounted = true;
 
     const refreshAvatars = async () => {
-      const postEntries: Array<[string, string]> = [];
-      const answerEntries: Array<[string, string]> = [];
+      const nextPostAvatars: Record<string, string> = {};
+      const nextAnswerAvatars: Record<string, string> = {};
 
-      localPosts.forEach((post) => {
-        const isOwnPost = post.userName === userName || post.userEmail === userEmail;
-        if (!isOwnPost && post.avatarStoragePath) {
-          postEntries.push([post.id, post.avatarStoragePath]);
-        }
-
-        (post.answers || []).forEach((answer) => {
-          const isOwnAnswer = answer.userName === userName;
-          if (!isOwnAnswer && answer.avatarStoragePath) {
-            answerEntries.push([answer.id, answer.avatarStoragePath]);
+      for (const post of localPosts) {
+        if (post.avatarStoragePath) {
+          const url = await refreshUserImageUrl(post.id, post.avatarStoragePath);
+          if (url) {
+            nextPostAvatars[post.id] = url;
           }
-        });
-      });
-
-      if (!postEntries.length && !answerEntries.length) {
-        if (isMounted) {
-          setRefreshedPostAvatars({});
-          setRefreshedAnswerAvatars({});
         }
-        return;
+
+        for (const answer of post.answers || []) {
+          if (answer.avatarStoragePath) {
+            const url = await refreshUserImageUrl(answer.id, answer.avatarStoragePath);
+            if (url) {
+              nextAnswerAvatars[answer.id] = url;
+            }
+          }
+        }
       }
 
-      const [postResults, answerResults] = await Promise.all([
-        Promise.all(postEntries.map(([id, storagePath]) => refreshUserImageUrl(id, storagePath))),
-        Promise.all(answerEntries.map(([id, storagePath]) => refreshUserImageUrl(id, storagePath))),
-      ]);
-
-      if (!isMounted) return;
-
-      const nextPostAvatars: Record<string, string> = {};
-      postEntries.forEach(([id], idx) => {
-        const url = postResults[idx];
-        if (url) nextPostAvatars[id] = url;
-      });
-
-      const nextAnswerAvatars: Record<string, string> = {};
-      answerEntries.forEach(([id], idx) => {
-        const url = answerResults[idx];
-        if (url) nextAnswerAvatars[id] = url;
-      });
-
-      setRefreshedPostAvatars(nextPostAvatars);
-      setRefreshedAnswerAvatars(nextAnswerAvatars);
+      if (isMounted) {
+        setRefreshedPostAvatars(nextPostAvatars);
+        setRefreshedAnswerAvatars(nextAnswerAvatars);
+      }
     };
 
     refreshAvatars();
@@ -300,7 +330,7 @@ const Community: React.FC<CommunityProps> = ({
       isMounted = false;
       clearInterval(interval);
     };
-  }, [localPosts, userName, userEmail]);
+  }, [localPosts]);
 
   // 👇 ADDED: Automatically open the answers modal if a specific post ID is passed via notification
   useEffect(() => {
@@ -327,18 +357,6 @@ const Community: React.FC<CommunityProps> = ({
       (answer) => !hiddenForSelectedPost.includes(answer.id)
     );
   }, [selectedPost, hiddenAnswersByPost]);
-
-  const getPostAvatarSource = (post: CommunityPost) => {
-    const isOwnPost = post.userName === userName || post.userEmail === userEmail;
-    if (isOwnPost) return userAvatarSource;
-    return normalizeImageSource(refreshedPostAvatars[post.id] || post.avatar);
-  };
-
-  const getAnswerAvatarSource = (answer: CommunityAnswer) => {
-    const isOwnAnswer = answer.userName === userName;
-    if (isOwnAnswer) return userAvatarSource;
-    return normalizeImageSource(refreshedAnswerAvatars[answer.id] || answer.avatar);
-  };
 
   const getPostDropdownPosition = (event: GestureResponderEvent) => {
     const { pageX, pageY } = event.nativeEvent;
@@ -637,19 +655,13 @@ const Community: React.FC<CommunityProps> = ({
     showToast('Answer hidden.', 'info');
   };
 
-  const showToast = (message: string, type: ToastType = 'success') => {
-    setToast({ visible: true, message, type });
-  };
-
-  const hideToast = () => setToast((prev) => ({ ...prev, visible: false }));
-
   const renderPost = ({ item }: { item: CommunityPost }) => {
     return (
       <View style={styles.postContainer}>
         <View style={styles.postHeader}>
           <View style={styles.userRow}>
             <Image
-              source={getPostAvatarSource(item)}
+              source={normalizeImageSource(refreshedPostAvatars[item.id] || item.avatar)}
               style={styles.postAvatar}
               resizeMode="cover"
             />
@@ -736,7 +748,6 @@ const Community: React.FC<CommunityProps> = ({
   };
 
   return (
-    // 1. Moved TouchableWithoutFeedback INSIDE the ScrollView
     <View style={{ flex: 1 }}>
       <ScrollView
         style={styles.container}
@@ -785,7 +796,6 @@ const Community: React.FC<CommunityProps> = ({
             </View>
           </View>
 
-            {/* 👇 2. Replaced FlatList with .map() to prevent nested virtualization conflicts */}
             {visiblePosts.length > 0 ? (
               <View style={{ paddingBottom: 50 }}>
                 {visiblePosts.map((item) => (
@@ -1026,7 +1036,7 @@ const Community: React.FC<CommunityProps> = ({
                           <View style={styles.answerPreviewHeader}>
                             <View style={styles.userRow}>
                               <Image
-                                source={getAnswerAvatarSource(answer)}
+                                source={normalizeImageSource(refreshedAnswerAvatars[answer.id] || answer.avatar)}
                                 style={styles.answerAvatar}
                                 resizeMode="cover"
                               />
@@ -1215,7 +1225,6 @@ const styles = StyleSheet.create({
 inputRow: {
   flexDirection: 'row',
   alignItems: 'center',
-  // marginBottom removed — now handled by composerCard
 },
 
 inputAvatar: {
@@ -1228,24 +1237,19 @@ inputAvatar: {
 },
 
 inputField: {
-  flex: 1,                 // fills all remaining width, no maxWidth cap
+  flex: 1,
   height: 44,
-  borderRadius: 999,        // full pill
+  borderRadius: 999,
   paddingHorizontal: 16,
-  backgroundColor: '#F0F2F5', // FB's light gray, not white
+  backgroundColor: '#F0F2F5',
   justifyContent: 'center',
-  // no borderWidth / borderColor — FB's version has no visible border
 },
 
 inputPlaceholder: {
-  color: '#65676B',   // FB's muted gray placeholder tone
+  color: '#65676B',
   fontSize: 15,
 },
 
-  // ✅ Facebook-style post card: white background, subtle 1px hairline
-  // border + soft shadow instead of a colored border, modest corner
-  // radius, and a thin divider separating the content from the
-  // "answers" action row (mirrors the divider FB puts above Like/Comment/Share).
   postContainer: {
     backgroundColor: '#ffffff',
     borderRadius: 8,
@@ -1593,7 +1597,6 @@ inputPlaceholder: {
     shadowOffset: { width: 0, height: 4 },
   },
 
-  // 👇 NEW STYLES FOR EMPTY STATE
   emptyState: {
     alignItems: 'center',
     justifyContent: 'center',

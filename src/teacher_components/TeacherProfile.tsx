@@ -53,6 +53,14 @@ interface ProfileProps {
   bannerImageStoragePath?: string | null;
   onChangeProfileImage: (image: any) => void;
   onChangeBannerImage: (image: any) => void;
+  // 🔥 NEW — silent background refresh, same pattern as Student Profile.
+  // Parent should re-fetch posts and update `userPosts` WITHOUT showing any
+  // loading UI. Polled on an interval while this screen is mounted, and
+  // automatically paused whenever the user has a modal/dropdown/crop-editor
+  // open (see isOverlayOpenRef below) so nothing shifts under their tap
+  // mid-interaction.
+  onRefresh?: () => void | Promise<void>;
+  refreshIntervalMs?: number; // default 8s for a "live" feel
 }
 
 interface CropModalState {
@@ -150,6 +158,8 @@ const Profile: React.FC<ProfileProps> = ({
   bannerImageStoragePath,
   onChangeProfileImage,
   onChangeBannerImage,
+  onRefresh,                // 🔥 NEW
+  refreshIntervalMs = 8000, // 🔥 NEW — 8s polling for a "live" feel
 }) => {
   const { width, height } = useWindowDimensions();
   const safeUserName = useMemo(() => normalizeText(userName), [userName]);
@@ -210,9 +220,60 @@ const Profile: React.FC<ProfileProps> = ({
   const animatedPan = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
   const dragStartRef = useRef({ x: 0, y: 0 });
 
-  React.useEffect(() => {
-    setLocalPosts(userPosts);
+  // ✅ Merge instead of overwrite — keeps any locally-created post/answer whose
+  // temp id ("post-<timestamp>" / "answer-<timestamp>") hasn't shown up in the
+  // server payload yet, while adopting everything else (including new answers
+  // from OTHER users arriving via the silent poll below) as the source of
+  // truth. Mirrors the same fix applied to Student Profile.
+  useEffect(() => {
+    setLocalPosts((prev) => {
+      const incomingIds = new Set(userPosts.map((p) => p.id));
+      const pendingLocalOnly = prev.filter(
+        (p) => !incomingIds.has(p.id) && p.id.startsWith('post-')
+      );
+      return [...pendingLocalOnly, ...userPosts];
+    });
   }, [userPosts]);
+
+  // 🔥 NEW — tracks whether ANY modal/dropdown/crop-editor is currently
+  // open. Kept in a ref (not state) so the polling interval below can read
+  // the latest value without needing to be recreated every time an overlay
+  // opens or closes. Updated on every render — cheap, since it's just a
+  // boolean assignment with no re-render triggered.
+  const isOverlayOpenRef = useRef(false);
+  useEffect(() => {
+    isOverlayOpenRef.current =
+      queryModalVisible ||
+      editMenuVisible ||
+      answersModalVisible ||
+      editPostModalVisible ||
+      editAnswerModalVisible ||
+      deletePostConfirmVisible ||
+      deleteAnswerConfirmVisible ||
+      !!cropModal ||
+      isPickingImage ||
+      isCroppingImage ||
+      !!postDropdownState ||
+      !!answerDropdownState;
+  });
+
+  // 🔥 Silent background refresh — asks the parent to silently re-fetch
+  // posts every `refreshIntervalMs`. New answers from other users on this
+  // teacher's own posts flow back in through the `userPosts` prop above and
+  // get merged in. Paused while the user has any modal/dropdown/crop-editor
+  // open, so an incoming refresh never shifts a list or dropdown anchor out
+  // from under an in-progress tap — it just resumes on the next tick once
+  // everything is closed again.
+  useEffect(() => {
+    if (!onRefresh) return;
+
+    const interval = setInterval(() => {
+      if (isOverlayOpenRef.current) return; // paused — user has something open
+      onRefresh();
+    }, refreshIntervalMs);
+
+    return () => clearInterval(interval);
+  }, [onRefresh, refreshIntervalMs]);
 
   const selectedPost = useMemo(
     () => localPosts.find((post) => post.id === selectedPostId) || null,
@@ -258,7 +319,7 @@ const Profile: React.FC<ProfileProps> = ({
     [bannerImage, refreshedBannerImageUrl]
   );
 
-  // 🔥 NEW: Cache-aware signed-URL refresh for post/answer avatars — mirrors
+  // 🔥 Cache-aware signed-URL refresh for post/answer avatars — mirrors
   // the exact pattern used in TeacherCommunity so avatars on this teacher's
   // own posts (and any answers left by other users on those posts) keep
   // working even after the signed URL expires, instead of only refreshing
@@ -673,6 +734,21 @@ const Profile: React.FC<ProfileProps> = ({
       showToast('Please write a question or post first.', 'error');
       return;
     }
+
+    // ✅ Optimistic update — add the post to local state immediately instead
+    // of waiting for the parent to refresh the `userPosts` prop. Mirrors the
+    // fix applied to Student Profile so post creation feels instant here too.
+    const newPost: CommunityPost = {
+      id: `post-${Date.now()}`,
+      userName: safeUserName,
+      userEmail: safeUserEmail,
+      avatar: profileImageSource,
+      dateTime: new Date().toLocaleString(),
+      content: trimmed,
+      answers: [],
+    };
+    setLocalPosts((prev) => [newPost, ...prev]);
+
     onCreatePost?.(trimmed);
     setQueryModalVisible(false);
     showToast('Post created successfully.', 'success');
@@ -1896,7 +1972,6 @@ askContainer: {
   flexDirection: 'row',
   alignItems: 'center',
   width: '100%',
-  // marginBottom, alignSelf, maxWidth removed — now handled by askCard
 },
 
 smallAvatar: {
@@ -1907,19 +1982,13 @@ smallAvatar: {
 askInput: {
   flex: 1,
   borderRadius: 999,
-  backgroundColor: '#F0F2F5',   // FB gray fill
+  backgroundColor: '#F0F2F5',
   justifyContent: 'center',
-  // borderWidth / borderColor: '#D32F2F' removed — no visible border in FB's version
 },
 
 askText: {
-  color: '#65676B',   // FB's muted placeholder gray, was '#999'
+  color: '#65676B',
 },
-  // ✅ Facebook-style post card — matches TeacherCommunity's postContainer:
-  // white background, hairline border + soft shadow instead of a colored
-  // border, modest 8px corner radius, and the accent-bar removed. Padding
-  // now lives on postHeader / postText / answerLink instead of the card
-  // itself, same as Community.
   postCard: {
     backgroundColor: '#ffffff',
     borderRadius: 8,

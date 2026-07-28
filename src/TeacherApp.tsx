@@ -138,6 +138,18 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
   const isLargeScreen = width >= 768;
   const isMobile = width < 768;
 
+ const loadCommunityPosts = useCallback(async () => {
+  try {
+    const response = await apiFetch('/community-posts');
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data?.error || 'Failed to load community posts.');
+    }
+    setCommunityPosts(Array.isArray(data?.data) ? data.data : []);
+  } catch (error) {
+    console.log('LOAD TEACHER COMMUNITY POSTS ERROR =>', error);
+  }
+}, []);
   const handleClearGlobalSearch = () => {
     setGlobalSearchQuery('');
   };
@@ -542,18 +554,7 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
     return null;
   };
 
-  const loadCommunityPosts = async () => {
-    try {
-      const response = await apiFetch('/community-posts');
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data?.error || 'Failed to load community posts.');
-      }
-      setCommunityPosts(Array.isArray(data?.data) ? data.data : []);
-    } catch (error) {
-      console.log('LOAD TEACHER COMMUNITY POSTS ERROR =>', error);
-    }
-  };
+
 
   useEffect(() => {
     loadTeacherProfile();
@@ -1052,22 +1053,24 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
           {activeScreen === 'profile' ? (
             /* 🔥 FIX: Pass storage paths to Profile2 */
             <Profile2
-              userPosts={currentUserPosts}
-              onCreatePost={handleCreateCommunityPost}
-              onAddAnswer={handleAddCommunityAnswer}
-              onEditPost={handleEditCommunityPost}
-              onDeletePost={handleDeleteCommunityPost}
-              onEditAnswer={handleEditCommunityAnswer}
-              onDeleteAnswer={handleDeleteCommunityAnswer}
-              userName={teacherFullName}
-              userEmail={teacherEmail}
-              profileImage={currentUserAvatar}
-              bannerImage={currentUserBanner}
-              profileImageStoragePath={activeProfile?.profileImageStoragePath || null}
-              bannerImageStoragePath={activeProfile?.bannerImageStoragePath || null}
-              onChangeProfileImage={handleChangeProfileImage}
-              onChangeBannerImage={handleChangeBannerImage}
-            />
+            userPosts={currentUserPosts}
+            onCreatePost={handleCreateCommunityPost}
+            onAddAnswer={handleAddCommunityAnswer}
+            onEditPost={handleEditCommunityPost}
+            onDeletePost={handleDeleteCommunityPost}
+            onEditAnswer={handleEditCommunityAnswer}
+            onDeleteAnswer={handleDeleteCommunityAnswer}
+            userName={teacherFullName}
+            userEmail={teacherEmail}
+            profileImage={currentUserAvatar}
+            bannerImage={currentUserBanner}
+            profileImageStoragePath={activeProfile?.profileImageStoragePath || null}
+            bannerImageStoragePath={activeProfile?.bannerImageStoragePath || null}
+            onChangeProfileImage={handleChangeProfileImage}
+            onChangeBannerImage={handleChangeBannerImage}
+            onRefresh={loadCommunityPosts}
+            refreshIntervalMs={8000}
+          />
           ) : activeScreen === 'home' ? (
             <Dashboard2
               announcements={teacherAnnouncements}
@@ -1103,18 +1106,20 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
             />
           ) : activeScreen === 'community' ? (
             <Community2
-              searchQuery={globalSearchQuery}
-              posts={hydratedCommunityPosts}
-              userName={teacherFullName}
-              userEmail={teacherEmail}
-              userAvatar={currentUserAvatar}
-              onCreatePost={handleCreateCommunityPost}
-              onAddAnswer={handleAddCommunityAnswer}
-              onEditPost={handleEditCommunityPost}
-              onDeletePost={handleDeleteCommunityPost}
-              onEditAnswer={handleEditCommunityAnswer}
-              onDeleteAnswer={handleDeleteCommunityAnswer}
-            />
+            searchQuery={globalSearchQuery}
+            posts={hydratedCommunityPosts}
+            userName={teacherFullName}
+            userEmail={teacherEmail}
+            userAvatar={currentUserAvatar}
+            onCreatePost={handleCreateCommunityPost}
+            onAddAnswer={handleAddCommunityAnswer}
+            onEditPost={handleEditCommunityPost}
+            onDeletePost={handleDeleteCommunityPost}
+            onEditAnswer={handleEditCommunityAnswer}
+            onDeleteAnswer={handleDeleteCommunityAnswer}
+            onRefresh={loadCommunityPosts}
+            refreshIntervalMs={8000}
+          />
           ) : activeScreen === 'messenger' ? (
             <TeacherMessenger
               onBack={() => setActiveScreen(lastScreen)}
