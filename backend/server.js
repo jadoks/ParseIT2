@@ -7597,138 +7597,67 @@ app.post("/create-admin", async (req, res) => {
     }
   });
 
-  app.get("/student-joined-classes/:studentId", async (req, res) => {
-    try {
-      const { studentId } = req.params;
+  // =====================================================================
+// PATCH: split the old /student-joined-classes/:studentId route into
+// two routes. Drop this into the same file (replacing the old route),
+// assuming `db`, `formatFirestoreDateTime`, and `createReadSignedUrlIfExists`
+// are already imported/available in this file, same as before.
+// =====================================================================
 
-      if (!studentId) {
-        return res.status(400).json({ error: "studentId is required." });
-      }
+// ---------------------------------------------------------------------
+// 1) LIGHTWEIGHT LIST — runs on every app open. No materials query
+//    (that data was being thrown away by the frontend anyway — see note
+//    below), no comments query (moved to /student-class-comments below).
+// ---------------------------------------------------------------------
+app.get("/student-joined-classes/:studentId", async (req, res) => {
+  try {
+    const { studentId } = req.params;
 
-      const normalizedStudentId = String(studentId).trim();
-
-      const membershipSnapshot = await db
-        .collection("classMembers")
-        .where("userId", "==", normalizedStudentId)
-        .where("role", "==", "student")
-        .where("status", "==", "active")
-        .get();
-
-      if (membershipSnapshot.empty) {
-        return res.json([]);
-      }
-
-      const memberships = membershipSnapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      }));
-
-      const classIds = memberships
-        .map((item) => item.classId)
-        .filter(Boolean);
-
-      const uniqueClassIds = [...new Set(classIds)];
-
-      const joinedClasses = await Promise.all(
-        uniqueClassIds.map(async (classId) => {
-          const classSnap = await db.collection("classes").doc(classId).get();
-
-          if (!classSnap.exists) {
-            return null;
-          }
-
-          const classData = classSnap.data() || {};
-
-          const materialsSnapshot = await db
-            .collection("classMaterials")
-            .where("classId", "==", classId)
-            .orderBy("createdAt", "desc")
-            .get();
-
-          const assignmentsSnapshot = await db
-            .collection("classAssignments")
-            .where("classId", "==", classId)
-            .orderBy("createdAt", "desc")
-            .get();
-
-            const commentsSnapshot = await db
-    .collection("assignmentComments")
-    .where("classId", "==", classId)
-    .orderBy("createdAt", "asc")
-    .get();
-
-  // Group comments by assignmentId in memory for fast lookup
-  const commentsByAssignment = {};
-  commentsSnapshot.docs.forEach(doc => {
-    const comment = doc.data();
-    const aId = comment.assignmentId;
-    
-    // 🔒 PRIVACY FILTER: Only return comments authored by THIS student OR by an instructor FOR THIS STUDENT
-      const isByCurrentStudent = comment.authorId === normalizedStudentId;
-      const isInstructorComment = comment.isInstructor === true;
-      const isInstructorCommentForThisStudent = isInstructorComment && comment.studentId === normalizedStudentId;
-
-      if (isByCurrentStudent || isInstructorCommentForThisStudent) {
-        if (!commentsByAssignment[aId]) commentsByAssignment[aId] = [];
-        commentsByAssignment[aId].push({
-          id: doc.id,
-          author: comment.authorName || comment.authorId,
-          authorId: comment.authorId || null,
-          content: comment.content,
-          timestamp: formatFirestoreDateTime(comment.createdAt),
-          isInstructor: !!comment.isInstructor,
-        });
-      }
-  });
-          // In your student-joined-classes route, replace the materials mapping:
-  const materials = await Promise.all(materialsSnapshot.docs.map(async (doc) => {
-    const material = doc.data() || {};
-    let materialType = "document";
-    const rawType = String(material.fileType || "").toLowerCase();
-    
-    // ALWAYS generate fresh signed URL from storagePath
-    let fileUrl = null;
-    if (material.storagePath) {
-      try {
-        fileUrl = await createReadSignedUrlIfExists(material.storagePath);
-      } catch (e) {
-        console.warn(`Failed to refresh material URL:`, e?.message);
-      }
+    if (!studentId) {
+      return res.status(400).json({ error: "studentId is required." });
     }
-    
-    // Fallback to stored fileUrl if refresh failed
-    if (!fileUrl) {
-      fileUrl = material.fileUrl || material.fileUri || null;
+
+    const normalizedStudentId = String(studentId).trim();
+
+    const membershipSnapshot = await db
+      .collection("classMembers")
+      .where("userId", "==", normalizedStudentId)
+      .where("role", "==", "student")
+      .where("status", "==", "active")
+      .get();
+
+    if (membershipSnapshot.empty) {
+      return res.json([]);
     }
-    
-    if (rawType.includes("pdf")) {
-      materialType = "pdf";
-    } else if (rawType.includes("video")) {
-      materialType = "video";
-    } else if (!fileUrl) {
-      materialType = "link";
-    }
-    
-    return {
+
+    const memberships = membershipSnapshot.docs.map((doc) => ({
       id: doc.id,
-      title: material.title || "Untitled Material",
-      type: materialType,
-      uploadedDate: formatFirestoreDateTime(material.createdAt) || "Unknown date",
-      content: material.content || "",
-      fileName: material.fileName || null,
-      fileUrl,
-      fileUri: fileUrl,
-      fileType: material.fileType || null,
-      storagePath: material.storagePath || null,
-      bucketPath: material.bucketPath || null,
-      week: material.week || null,
-      postedByName: material.postedByName || null,
-      createdAt: material.createdAt || null,
-      updatedAt: material.updatedAt || null,
-    };
-  }));
+      ...doc.data(),
+    }));
 
-          const assignments = assignmentsSnapshot.docs.map((doc) => {
+    const classIds = memberships.map((item) => item.classId).filter(Boolean);
+    const uniqueClassIds = [...new Set(classIds)];
+
+    const joinedClasses = await Promise.all(
+      uniqueClassIds.map(async (classId) => {
+        const classSnap = await db.collection("classes").doc(classId).get();
+        if (!classSnap.exists) return null;
+
+        const classData = classSnap.data() || {};
+
+        // ✅ No materials query here anymore. The frontend's
+        // fetchModuleLessonsOnly()/ /class-materials/:classId call is the
+        // real source of truth for materials shown to the student, and it
+        // already ran a second time on top of whatever this route used to
+        // return — this route's materials array was pure wasted work.
+
+        const assignmentsSnapshot = await db
+          .collection("classAssignments")
+          .where("classId", "==", classId)
+          .orderBy("createdAt", "desc")
+          .get();
+
+        const assignments = assignmentsSnapshot.docs.map((doc) => {
           const assignment = doc.data() || {};
           return {
             id: doc.id,
@@ -7736,33 +7665,43 @@ app.post("/create-admin", async (req, res) => {
             dueDate: assignment.dueDate || "",
             status: "pending",
             points: 0,
-            maxPoints: typeof assignment.totalScore === "number" ? assignment.totalScore : Number(assignment.totalScore) || 0,
+            maxPoints:
+              typeof assignment.totalScore === "number"
+                ? assignment.totalScore
+                : Number(assignment.totalScore) || 0,
             topic: assignment.header || "",
-            materialIds: Array.isArray(assignment.materialIds) ? assignment.materialIds : [],
-            
-            // 👇 GAME-BASED ASSIGNMENT FLAGS
+            materialIds: Array.isArray(assignment.materialIds)
+              ? assignment.materialIds
+              : [],
+
             assignmentType: assignment.assignmentType || "regular",
             gameType: assignment.gameType || null,
             numberOfAttempts: assignment.numberOfAttempts || null,
             customAttempts: assignment.customAttempts || null,
             timeLimit: assignment.timeLimit || null,
             customTimeLimit: assignment.customTimeLimit || null,
-            
+
             files:
               assignment.fileName || assignment.fileUrl
                 ? [
                     {
                       id: `file-${doc.id}`,
                       name: assignment.fileName || "attachment",
-                      uploadedAt: formatFirestoreDateTime(assignment.createdAt) || "Unknown date",
+                      uploadedAt:
+                        formatFirestoreDateTime(assignment.createdAt) ||
+                        "Unknown date",
                       uri: assignment.fileUrl || null,
                     },
                   ]
                 : [],
-                
-            // 👇 ATTACH THE FETCHED COMMENTS HERE (Falls back to empty array if none exist)
-            comments: commentsByAssignment[doc.id] || [],
-            
+
+            // ✅ Comments are no longer bundled into the list response.
+            // The frontend seeds this as [] and fills it in via
+            // /student-class-comments/:studentId/:classId (batch, once per
+            // class open) or /assignment-comments/:assignmentId (single
+            // assignment, on demand). See StudentApp changes.
+            comments: [],
+
             instruction: assignment.instruction || "",
             pointsOnTime:
               typeof assignment.pointsOnTime === "number"
@@ -7780,43 +7719,110 @@ app.post("/create-admin", async (req, res) => {
           };
         });
 
-          return {
-            id: classSnap.id,
-            name: classData.name || "Untitled Class",
-            classCode: classData.classCode || "",
-            courseCode: classData.courseCode || classData.classCode || "",
-            instructorName:
-              classData.instructorName || classData.teacherName || "Unknown Instructor",
-            description: classData.description || "No description available.",
-            semester: classData.semester || "",
-            schoolYear: classData.schoolYear || "",
-            section: classData.section || "",
-            year: classData.year || "",
-            units:
-              typeof classData.units === "number"
-                ? classData.units
-                : Number(classData.units) || 0,
-            bannerUrl: classData.bannerUrl || null,
-            bannerStoragePath: classData.bannerStoragePath || null,
-            bannerFileName: classData.bannerFileName || null,
-            bannerMimeType: classData.bannerMimeType || null,
-            memberCount: classData.memberCount || 0,
-            materials,
-            assignments,
-            createdAt: classData.createdAt || null,
-            updatedAt: classData.updatedAt || null,
-          };
-        })
-      );
+        return {
+          id: classSnap.id,
+          name: classData.name || "Untitled Class",
+          classCode: classData.classCode || "",
+          courseCode: classData.courseCode || classData.classCode || "",
+          instructorName:
+            classData.instructorName ||
+            classData.teacherName ||
+            "Unknown Instructor",
+          description: classData.description || "No description available.",
+          semester: classData.semester || "",
+          schoolYear: classData.schoolYear || "",
+          section: classData.section || "",
+          year: classData.year || "",
+          units:
+            typeof classData.units === "number"
+              ? classData.units
+              : Number(classData.units) || 0,
+          bannerUrl: classData.bannerUrl || null,
+          bannerStoragePath: classData.bannerStoragePath || null,
+          bannerFileName: classData.bannerFileName || null,
+          bannerMimeType: classData.bannerMimeType || null,
+          memberCount: classData.memberCount || 0,
+          // ✅ Deliberately empty — filled by fetchModuleLessonsOnly() in
+          // the frontend's per-course enrichment pass, same as before.
+          materials: [],
+          assignments,
+          createdAt: classData.createdAt || null,
+          updatedAt: classData.updatedAt || null,
+        };
+      })
+    );
 
-      return res.json(joinedClasses.filter(Boolean));
+    return res.json(joinedClasses.filter(Boolean));
+  } catch (error) {
+    console.error("Fetch student joined classes error:", error);
+    return res.status(500).json({
+      error: error.message || "Failed to fetch student joined classes.",
+    });
+  }
+});
+
+// ---------------------------------------------------------------------
+// 2) NEW: batch comments for one class, all assignments in one request.
+//    Call this once when a student opens a class's Assignments tab,
+//    instead of N calls to /assignment-comments/:assignmentId, and
+//    instead of the old approach of bundling comments for EVERY class
+//    into every dashboard load.
+// ---------------------------------------------------------------------
+app.get(
+  "/student-class-comments/:studentId/:classId",
+  async (req, res) => {
+    try {
+      const { studentId, classId } = req.params;
+
+      if (!studentId || !classId) {
+        return res
+          .status(400)
+          .json({ error: "studentId and classId are required." });
+      }
+
+      const normalizedStudentId = String(studentId).trim();
+
+      const commentsSnapshot = await db
+        .collection("assignmentComments")
+        .where("classId", "==", classId)
+        .orderBy("createdAt", "asc")
+        .get();
+
+      // Group comments by assignmentId, same privacy filter as before:
+      // only comments authored by this student, or instructor comments
+      // addressed to this student.
+      const commentsByAssignment = {};
+      commentsSnapshot.docs.forEach((doc) => {
+        const comment = doc.data();
+        const aId = comment.assignmentId;
+
+        const isByCurrentStudent = comment.authorId === normalizedStudentId;
+        const isInstructorComment = comment.isInstructor === true;
+        const isInstructorCommentForThisStudent =
+          isInstructorComment && comment.studentId === normalizedStudentId;
+
+        if (isByCurrentStudent || isInstructorCommentForThisStudent) {
+          if (!commentsByAssignment[aId]) commentsByAssignment[aId] = [];
+          commentsByAssignment[aId].push({
+            id: doc.id,
+            author: comment.authorName || comment.authorId,
+            authorId: comment.authorId || null,
+            content: comment.content,
+            timestamp: formatFirestoreDateTime(comment.createdAt),
+            isInstructor: !!comment.isInstructor,
+          });
+        }
+      });
+
+      return res.json({ data: commentsByAssignment });
     } catch (error) {
-      console.error("Fetch student joined classes error:", error);
+      console.error("Fetch student class comments error:", error);
       return res.status(500).json({
-        error: error.message || "Failed to fetch student joined classes.",
+        error: error.message || "Failed to fetch class comments.",
       });
     }
-  });
+  }
+);
 
   app.delete("/remove-class-member/:id", async (req, res) => {
     try {

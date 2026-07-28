@@ -558,6 +558,7 @@ interface CourseDetailProps {
   onRefreshCourseContent?: () => Promise<void> | void;
   // ✅ NEW: how often (ms) to silently poll for new grades/comments/content
   // while this screen — or an assignment's detail modal — is open. 0 disables.
+   onLoadClassComments?: (courseId: string) => Promise<void> | void;
   autoRefreshIntervalMs?: number;
 }
 
@@ -670,6 +671,7 @@ const CourseDetail = ({
   // ✅ NEW
   onRefreshComments,
   onRefreshCourseContent,
+  onLoadClassComments,
   autoRefreshIntervalMs = 15000,
 }: CourseDetailProps) => {
   const formatSafeDate = (value: any) => {
@@ -1957,7 +1959,16 @@ const CourseDetail = ({
           </View>
         </TouchableOpacity>
         <TouchableOpacity
-          onPress={() => setActiveTab("assignments")}
+          onPress={() => {
+            const wasOnAssignments = activeTab === "assignments";
+            setActiveTab("assignments");
+            // ✅ NEW: only the tab press touches this path — pulling this
+            // trigger here closes the gap where switching tabs internally
+            // never loaded comments.
+            if (!wasOnAssignments && course?.id) {
+              void onLoadClassComments?.(course.id);
+            }
+          }}
           style={[styles.tab, activeTab === "assignments" && styles.tabActive]}
         >
           <View style={styles.tabContent}>

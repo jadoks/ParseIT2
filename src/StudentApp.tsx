@@ -439,6 +439,32 @@ const fetchModuleLessonsOnly = async (classId: string) => {
   return [];
 };
 
+// ✅ NEW: Synchronous "shell" mapper — builds everything the initial render
+// needs (name, instructor, assignments, best-guess banner) directly from the
+// /student-joined-classes/:id list response, with ZERO extra network calls.
+// Module lessons and the signed banner URL are filled in afterwards by
+// loadJoinedClasses() as they resolve, per-course, in parallel.
+const mapJoinedClassShell = (item: any): CourseWithBannerFields => ({
+  id: String(item.id || ''),
+  name: item.name || 'Untitled Class',
+  code: item.courseCode || item.classCode || '',
+  instructor: item.instructorName || 'Unknown Instructor',
+  description: item.description || 'No description available.',
+  semester: item.semester || '',
+  schoolYear: item.schoolYear || '',
+  section: item.section || '',
+  bannerUrl: item.bannerStoragePath ? null : item.bannerUrl || item.bannerUri || item.bannerLocalUri || null,
+  bannerStoragePath: item.bannerStoragePath || null,
+  bannerFileName: item.bannerFileName || null,
+  bannerMimeType: item.bannerMimeType || null,
+  units: typeof item.units === 'number' ? item.units : Number(item.units) || 0,
+  // Filled in by the enrichment pass in loadJoinedClasses().
+  materials: [],
+  assignments: Array.isArray(item.assignments)
+    ? item.assignments.map((a: any) => ({ ...a, assignmentType: a.assignmentType || 'regular', gameType: a.gameType || null }))
+    : [],
+});
+
 // Update the existing mapping function
 // Update the existing mapping function
 const mapJoinedClassToCourseDetail = async (item: any): Promise<CourseWithBannerFields> => {
@@ -601,6 +627,49 @@ const refreshAssignmentComments = useCallback(async (assignmentId: string) => {
     console.log('REFRESH ASSIGNMENT COMMENTS ERROR =>', error);
   }
 }, []);
+
+// ✅ NEW: batch-fetch comments for EVERY assignment in ONE class in a single
+// request (backed by /student-class-comments/:studentId/:classId). Call this
+// whenever a student navigates into a class's Assignments view, so comments
+// are populated in one round trip instead of relying on N per-assignment
+// calls, or on stale/empty data from the now-lightweight
+// /student-joined-classes list response.
+const loadClassComments = useCallback(async (classId: string) => {
+  if (!currentStudent?.studentId || !classId) return;
+  try {
+    const response = await apiFetch(
+      `${API_BASE_URL}/student-class-comments/${encodeURIComponent(currentStudent.studentId)}/${encodeURIComponent(classId)}`
+    );
+    const data = await response.json();
+    if (!response.ok) throw new Error(data?.error || 'Failed to load class comments.');
+
+    const commentsByAssignment: Record<string, any[]> = data?.data || {};
+
+    setSharedAssignmentComments((prev) => {
+      const next = { ...prev };
+      Object.entries(commentsByAssignment).forEach(([assignmentId, comments]) => {
+        next[assignmentId] = mapCourseCommentsToAssignmentComments(comments as any);
+      });
+      return next;
+    });
+
+    // Keep joinedCourses in sync too, same pattern as refreshAssignmentComments,
+    // so re-derivations don't stomp on this.
+    setJoinedCourses((prev) =>
+      prev.map((course) => {
+        if (course.id !== classId) return course;
+        return {
+          ...course,
+          assignments: course.assignments.map((a) =>
+            commentsByAssignment[a.id] ? { ...a, comments: commentsByAssignment[a.id] } : a
+          ),
+        };
+      })
+    );
+  } catch (error) {
+    console.log('LOAD CLASS COMMENTS ERROR =>', error);
+  }
+}, [currentStudent?.studentId]);
 
 // ✅ NEW: refetch the underlying course/assignment CONTENT — title, due date,
 // description, points, materialIds, AND the teacher-uploaded assignment file
@@ -848,30 +917,77 @@ const refreshAssignmentCourseContent = useCallback(async () => {
      }
   };
 
+  // ✅ REWRITTEN: no more sequential waves. The initial list request is the
+  // only thing on the critical path — course cards render from the "shell"
+  // mapping immediately after that. Materials, banner URLs, and announcements
+  // are all fetched concurrently afterwards, and each course's card patches
+  // itself in as soon as ITS OWN enrichment resolves (instead of the whole
+  // list waiting on the single slowest course/request).
   const loadJoinedClasses = async () => {
     if (!currentStudent?.studentId) return;
     try {
       setIsLoadingJoinedCourses(true);
+
+      // The only request the initial render needs to wait on.
       const response = await apiFetch(`${API_BASE_URL}/student-joined-classes/${currentStudent.studentId}`);
       const data = await response.json();
       if (!response.ok) throw new Error(data?.error || 'Failed to load joined classes.');
       const classesArray = Array.isArray(data) ? data : data?.data || [];
-      // ✅ MAP ASYNC AND WAIT FOR ALL TO COMPLETE
-      const mappedCourses = await Promise.all(classesArray.map(mapJoinedClassToCourseDetail));
-      const mappedCoursesWithFreshBanners = await Promise.all(mappedCourses.map(refreshClassBannerUrl));
-      setJoinedCourses(mappedCoursesWithFreshBanners);
+
+      // No network needed — name/instructor/assignments are already in the
+      // list response.
+      const shellCourses = classesArray.map(mapJoinedClassShell);
+
+      // Render immediately. Dashboard/ClassesScreen already have enough to
+      // show course cards, due dates, and score averages.
+      setJoinedCourses(shellCourses);
+      setIsLoadingJoinedCourses(false);
+
+      // Announcements only need classIds (already known) — no reason to wait
+      // on materials or banners first.
       setIsLoadingAnnouncements(true);
-      try {
-        await loadStudentAnnouncements(mappedCoursesWithFreshBanners);
-      } finally {
-        setIsLoadingAnnouncements(false);
-      }
+      const announcementsPromise = loadStudentAnnouncements(shellCourses).finally(() =>
+        setIsLoadingAnnouncements(false)
+      );
+
+      // Enrich each course independently and in parallel. Each course's card
+      // updates the moment ITS OWN materials/banner resolve, instead of the
+      // whole list waiting for the single slowest course.
+      const enrichmentPromises = classesArray.map(async (item: any) => {
+        try {
+          const [materials, freshBanner] = await Promise.all([
+            fetchModuleLessonsOnly(item.id),
+            refreshClassBannerUrl({
+              id: item.id,
+              bannerStoragePath: item.bannerStoragePath,
+              bannerUrl: item.bannerStoragePath
+                ? null
+                : item.bannerUrl || item.bannerUri || item.bannerLocalUri || null,
+            }),
+          ]);
+          setJoinedCourses((prev) =>
+            prev.map((course) => {
+              if (course.id !== String(item.id)) return course;
+              const courseWithBanner = course as CourseWithBannerFields;
+              return {
+                ...courseWithBanner,
+                materials,
+                bannerUrl: freshBanner?.bannerUrl ?? courseWithBanner.bannerUrl,
+              };
+            })
+          );
+        } catch (err) {
+          console.log('COURSE ENRICHMENT ERROR =>', item.id, err);
+        }
+      });
+
+      await Promise.all([announcementsPromise, ...enrichmentPromises]);
     } catch (error) {
       console.log('LOAD JOINED CLASSES ERROR =>', error);
       setJoinedCourses([]);
       setStudentAnnouncements([]);
-    } finally {
       setIsLoadingJoinedCourses(false);
+      setIsLoadingAnnouncements(false);
     }
   };
 
@@ -1649,6 +1765,7 @@ const refreshAssignmentCourseContent = useCallback(async () => {
           setActiveScreen('coursedetail');
           setActiveCourseTab('assignments');
           if (targetId) setAutoOpenAssignmentId(targetId);
+          void loadClassComments(course.id);
         }
         break;
       }
@@ -1997,6 +2114,7 @@ const refreshAssignmentCourseContent = useCallback(async () => {
             setIsNotificationOpen(false);
             setAutoOpenAssignmentId(assignment?.id || null);
             setActiveScreen('assignments');
+            void loadClassComments(course.id);
           }}
           onOpenMaterials={(course) => {
             setSelectedCourse(course as unknown as CourseDetailData);
@@ -2034,6 +2152,7 @@ const refreshAssignmentCourseContent = useCallback(async () => {
             setIsNotificationOpen(false); 
             setActiveScreen('coursedetail'); 
             setActiveCourseTab('assignments'); 
+            void loadClassComments(course.id);
           }} 
           onMaterialsPress={(course) => { 
             setSelectedCourse(course as unknown as CourseDetailData); 
@@ -2234,6 +2353,7 @@ const refreshAssignmentCourseContent = useCallback(async () => {
         // ✅ NEW — same as Assignments.tsx
         onRefreshComments={refreshAssignmentComments}
         onRefreshCourseContent={refreshAssignmentCourseContent}
+        onLoadClassComments={loadClassComments}
         currentStudent={currentStudent} 
         isGeneratingActivity={isGeneratingActivity} 
         completedActivityScores={completedActivityScores} 
