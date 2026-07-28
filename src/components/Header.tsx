@@ -670,12 +670,7 @@ const renderSearchResults = () => {
           {/* Mobile Search Results Dropdown */}
           {isSearchExpanded && renderSearchResults()}
 
-          <View
-            style={[
-              styles.mobileNavRow,
-              { paddingHorizontal, gap: isVerySmall ? 10 : 16, justifyContent: 'center' },
-            ]}
-          >
+          <View style={[styles.mobileNavRow, { paddingHorizontal }]}>
             {navScreens.slice(0, 4).map((screen) =>
               renderNavButton(screen, mobileNavIconSize, { padding: 12 })
             )}
@@ -906,13 +901,15 @@ const styles = StyleSheet.create({
   },
 
   mobileNavRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 16,
-    borderTopWidth: 1,
-    borderTopColor: '#EEE',
-  },
+  flexDirection: 'row',
+  alignItems: 'center',
+  justifyContent: 'center',
+  paddingTop: 10,
+  paddingBottom: 18,
+  borderTopWidth: 1,
+  borderTopColor: '#EEE',
+  backgroundColor: '#FFF',
+},
 
   badge: {
     position: 'absolute',

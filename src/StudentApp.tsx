@@ -2370,7 +2370,7 @@ const refreshAssignmentCourseContent = useCallback(async () => {
           onPlayGame={handlePlayGame} 
           // ✅ NEW: match Community's 8s "live" polling cadence, now that
           // silentRefresh (in CourseDetail) also covers modules/lessons + syllabus.
-          autoRefreshIntervalMs={8000}
+          autoRefreshIntervalMs={5000}
         />;
       case 'generateactivity': 
         return <GenerateActivity 

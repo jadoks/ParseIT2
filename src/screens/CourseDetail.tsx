@@ -1814,11 +1814,7 @@ const fetchModules = useCallback(async (silent = false) => {
             </Text>
           ) : null}
         </View>
-        {relatedMaterials.length > 0 && (
-          <Text style={styles.relatedPreviewText}>
-            Based on: {relatedMaterials.map((m) => m.title).join(", ")}
-          </Text>
-        )}
+        
         {hasMasteredGeneratedActivity(item) ? (
           <View style={styles.masteredActivityBadge}>
             <Ionicons name="checkmark-circle" size={14} color="#2E7D32" />
