@@ -3,7 +3,7 @@ import Constants from 'expo-constants';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
-import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Linking,
@@ -936,28 +936,28 @@ const TeacherCourseDetail2 = ({
     }
   };
 
-  const loadCourseContent = async () => {
-    if (!course?.id) {
-      setAssignments([]);
-      setMaterials([]);
-      setMembers([]);
-      setSubmissions([]);
-      setModules([]);
-      setCurrentSyllabus(null);
-      setGeneratedStructure(null);
-      return;
-    }
-    setIsLoadingModules(true);
-    try {
-      const [modulesRes, syllabusRes, materialsRes, assignmentsRes, membersRes, submissionsRes] =
-        await Promise.all([
-          fetch(`${API_BASE_URL}/course-modules/${course.id}`, { credentials: 'include' }),
-          fetch(`${API_BASE_URL}/course-syllabus/${course.id}`, { credentials: 'include' }),
-          fetch(`${API_BASE_URL}/class-materials/${course.id}`, { credentials: 'include' }),
-          fetch(`${API_BASE_URL}/class-assignments/${course.id}`, { credentials: 'include' }),
-          fetch(`${API_BASE_URL}/class-members/${course.id}`, { credentials: 'include' }),
-          fetch(`${API_BASE_URL}/class-submissions/${course.id}`, { credentials: 'include' }),
-        ]);
+  const loadCourseContent = async (silent: boolean = false) => {
+  if (!course?.id) {
+    setAssignments([]);
+    setMaterials([]);
+    setMembers([]);
+    setSubmissions([]);
+    setModules([]);
+    setCurrentSyllabus(null);
+    setGeneratedStructure(null);
+    return;
+  }
+  if (!silent) setIsLoadingModules(true);
+  try {
+    const [modulesRes, syllabusRes, materialsRes, assignmentsRes, membersRes, submissionsRes] =
+      await Promise.all([
+        fetch(`${API_BASE_URL}/course-modules/${course.id}`, { credentials: 'include' }),
+        fetch(`${API_BASE_URL}/course-syllabus/${course.id}`, { credentials: 'include' }),
+        fetch(`${API_BASE_URL}/class-materials/${course.id}`, { credentials: 'include' }),
+        fetch(`${API_BASE_URL}/class-assignments/${course.id}`, { credentials: 'include' }),
+        fetch(`${API_BASE_URL}/class-members/${course.id}`, { credentials: 'include' }),
+        fetch(`${API_BASE_URL}/class-submissions/${course.id}`, { credentials: 'include' }),
+      ]);
 
       const [modulesData, syllabusData, materialsData, assignmentsData, membersData, submissionsData] =
         await Promise.all([
@@ -1002,9 +1002,9 @@ const TeacherCourseDetail2 = ({
       setModules([]);
       setCurrentSyllabus(null);
     } finally {
-      setIsLoadingModules(false);
+      if (!silent) setIsLoadingModules(false);
     }
-  };
+  }
 
   useEffect(() => {
     loadCourseContent();
@@ -1016,6 +1016,44 @@ const TeacherCourseDetail2 = ({
       setDailyGenerationsUsed(count);
     })();
   }, [teacherIdentity]);
+
+  // Tracks whether ANY modal/preview/confirmation is currently open, so the
+// background poller never yanks content out from under an in-progress edit.
+const isOverlayOpenRef = useRef(false);
+useEffect(() => {
+  isOverlayOpenRef.current =
+    showEditMaterialModal ||
+    showCreateModal ||
+    showUpdateModal ||
+    showMaterialPreviewModal ||
+    showDateTimeModal ||
+    showGameTypeModal ||
+    showClassModal ||
+    showGeneratedPreview ||
+    !!aiPreviewData ||
+    !!syllabusViewerUrl ||
+    lessonDetailModalVisible ||
+    showManualModuleModal ||
+    showManualLessonModal ||
+    showStructurePreviewModal ||
+    showGenerateModal ||
+    showNextLessonModal ||
+    !!pendingSyllabusFile ||
+    showLessonPreviewModal ||
+    !!viewerMaterial ||
+    !!confirmation?.visible;
+});
+
+// Silent background refresh — picks up new student submissions, new
+// materials/assignments/modules, etc. while the teacher stays on this screen.
+useEffect(() => {
+  if (!course?.id) return;
+  const intervalId = setInterval(() => {
+    if (isOverlayOpenRef.current) return; // paused — something's open
+    loadCourseContent(true);
+  }, 12000); // every 12s, tweak to taste
+  return () => clearInterval(intervalId);
+}, [course?.id]);
 
   const handleGenerateLessonContent = async () => {
     if (!selectedGenModule || !selectedGenTopic) {
@@ -3566,15 +3604,17 @@ const TeacherCourseDetail2 = ({
     return (
       <>
         <TeacherSubmissionsSection
-          members={members}
-          currentAssignment={selectedAssignment}
-          submissions={submissions}
-          onBack={() => setShowSubmissions(false)}
-          onOpenUpdate={() => openUpdateModal(selectedAssignment)}
-          onGradeSubmission={handleGradeSubmission}
-          classId={course?.id}
-          currentTeacher={currentTeacher}
-        />
+        members={members}
+        currentAssignment={selectedAssignment}
+        submissions={submissions}
+        onBack={() => setShowSubmissions(false)}
+        onOpenUpdate={() => openUpdateModal(selectedAssignment)}
+        onGradeSubmission={handleGradeSubmission}
+        classId={course?.id}
+        currentTeacher={currentTeacher}
+        onRefreshSubmissions={() => loadCourseContent(true)}
+        autoRefreshIntervalMs={10000}
+      />
         <Modal visible={showUpdateModal} transparent animationType="fade">
           <View style={styles.modalOverlayCenter}>
             <View

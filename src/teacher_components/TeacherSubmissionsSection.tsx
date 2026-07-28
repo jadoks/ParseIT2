@@ -1,5 +1,5 @@
 import Constants from "expo-constants";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -426,6 +426,19 @@ const TeacherSubmissionsSection = ({
     }
   };
 
+  // Paused while a preview is open or a comment is being edited/deleted, so a
+// background refresh never resets a modal or interrupts an in-progress edit.
+const isOverlayOpenRef = useRef(false);
+useEffect(() => {
+  isOverlayOpenRef.current =
+    previewVisible ||
+    deleteModalVisible ||
+    !!editingCommentId ||
+    isPostingComment ||
+    savingEdit ||
+    isDeleting;
+});
+
   useEffect(() => {
     if (currentAssignment?.id) {
       fetchComments();
@@ -452,14 +465,15 @@ const TeacherSubmissionsSection = ({
   // ✅ NEW: Poll on an interval while an assignment is open. Cleared/reset whenever
   // the assignment changes or the interval prop changes.
   useEffect(() => {
-    if (!currentAssignment?.id || !autoRefreshIntervalMs || autoRefreshIntervalMs <= 0) {
-      return;
-    }
-    const intervalId = setInterval(() => {
-      silentRefresh();
-    }, autoRefreshIntervalMs);
-    return () => clearInterval(intervalId);
-  }, [currentAssignment?.id, autoRefreshIntervalMs]);
+  if (!currentAssignment?.id || !autoRefreshIntervalMs || autoRefreshIntervalMs <= 0) {
+    return;
+  }
+  const intervalId = setInterval(() => {
+    if (isOverlayOpenRef.current) return; // paused — user has something open
+    silentRefresh();
+  }, autoRefreshIntervalMs);
+  return () => clearInterval(intervalId);
+}, [currentAssignment?.id, autoRefreshIntervalMs]);
 
   // ✅ NEW: Manual pull-to-refresh handler shown on the scroll views below.
   const handlePullToRefresh = async () => {
