@@ -193,6 +193,152 @@ function ExpiryDateField({
     }
   };
 
+  // ─── Reusable column renderers (shared by desktop row / mobile scroll stack) ──
+
+  const renderMonthColumn = () => (
+    <View style={styles.modalCol}>
+      <Text style={styles.fieldLabel}>Month</Text>
+      <ScrollView
+        style={[styles.webDateList, isMobile && styles.webDateListMobile]}
+        showsVerticalScrollIndicator={false}
+        nestedScrollEnabled
+      >
+        {months.map((month, index) => {
+          const active = tempMonth === index;
+          // Disable past months if the current year is the minimum year
+          const disabled = tempYear === minDate.getFullYear() && index < minDate.getMonth();
+
+          return (
+            <TouchableOpacity
+              key={month}
+              style={[
+                styles.dropdownItem,
+                active && styles.dropdownItemActive,
+                styles.dropdownItemBorder,
+                disabled && { opacity: 0.4 },
+              ]}
+              activeOpacity={0.85}
+              disabled={disabled}
+              onPress={() => {
+                if (disabled) return;
+                setTempMonth(index);
+                const maxDay = new Date(tempYear, index + 1, 0).getDate();
+                if (tempDay > maxDay) setTempDay(maxDay);
+              }}
+            >
+              <Text
+                style={[
+                  styles.dropdownItemText,
+                  active && styles.dropdownItemTextActive,
+                  disabled && { color: '#9CA3AF' },
+                ]}
+              >
+                {month}
+              </Text>
+              {active && !disabled && (
+                <Ionicons name="checkmark-circle" size={18} color="#DC2626" />
+              )}
+            </TouchableOpacity>
+          );
+        })}
+      </ScrollView>
+    </View>
+  );
+
+  const renderDayColumn = () => (
+    <View style={styles.modalCol}>
+      <Text style={styles.fieldLabel}>Day</Text>
+      <ScrollView
+        style={[styles.webDateList, isMobile && styles.webDateListMobile]}
+        showsVerticalScrollIndicator={false}
+        nestedScrollEnabled
+      >
+        {days.map((day) => {
+          const active = tempDay === day;
+          // Disable past days and today if the current month/year is the minimum month/year
+          const disabled =
+            tempYear === minDate.getFullYear() &&
+            tempMonth === minDate.getMonth() &&
+            day < minDate.getDate();
+
+          return (
+            <TouchableOpacity
+              key={day}
+              style={[
+                styles.dropdownItem,
+                active && styles.dropdownItemActive,
+                styles.dropdownItemBorder,
+                disabled && { opacity: 0.4 },
+              ]}
+              activeOpacity={0.85}
+              disabled={disabled}
+              onPress={() => {
+                if (disabled) return;
+                setTempDay(day);
+              }}
+            >
+              <Text
+                style={[
+                  styles.dropdownItemText,
+                  active && styles.dropdownItemTextActive,
+                  disabled && { color: '#9CA3AF' },
+                ]}
+              >
+                {day}
+              </Text>
+              {active && !disabled && (
+                <Ionicons name="checkmark-circle" size={18} color="#DC2626" />
+              )}
+            </TouchableOpacity>
+          );
+        })}
+      </ScrollView>
+    </View>
+  );
+
+  const renderYearColumn = () => (
+    <View style={styles.modalCol}>
+      <Text style={styles.fieldLabel}>Year</Text>
+      <ScrollView
+        style={[styles.webDateList, isMobile && styles.webDateListMobile]}
+        showsVerticalScrollIndicator={false}
+        nestedScrollEnabled
+      >
+        {years.map((year) => {
+          const active = tempYear === year;
+          return (
+            <TouchableOpacity
+              key={year}
+              style={[
+                styles.dropdownItem,
+                active && styles.dropdownItemActive,
+                styles.dropdownItemBorder,
+              ]}
+              activeOpacity={0.85}
+              onPress={() => {
+                setTempYear(year);
+                const maxDay = new Date(year, tempMonth + 1, 0).getDate();
+                if (tempDay > maxDay) setTempDay(maxDay);
+              }}
+            >
+              <Text
+                style={[
+                  styles.dropdownItemText,
+                  active && styles.dropdownItemTextActive,
+                ]}
+              >
+                {year}
+              </Text>
+              {active && (
+                <Ionicons name="checkmark-circle" size={18} color="#DC2626" />
+              )}
+            </TouchableOpacity>
+          );
+        })}
+      </ScrollView>
+    </View>
+  );
+
   return (
     <>
       <Text style={styles.fieldLabel}>Expiry Date</Text>
@@ -250,16 +396,42 @@ function ExpiryDateField({
             onPress={() => setShowWebModal(false)}
           />
 
-          <View style={styles.webDateModalCard}>
+          <View
+            style={[
+              styles.webDateModalCard,
+              isMobile && styles.webDateModalCardMobile,
+            ]}
+          >
             {/* Header */}
             <View style={styles.modalHeader}>
               <View style={styles.modalHeaderLeft}>
-                <View style={styles.modalIconBox}>
-                  <Ionicons name="calendar-outline" size={22} color="#DC2626" />
+                <View
+                  style={[
+                    styles.modalIconBox,
+                    isMobile && styles.modalIconBoxMobile,
+                  ]}
+                >
+                  <Ionicons
+                    name="calendar-outline"
+                    size={isMobile ? 18 : 22}
+                    color="#DC2626"
+                  />
                 </View>
                 <View style={styles.modalHeaderTextWrap}>
-                  <Text style={styles.modalTitle}>Select Expiry Date</Text>
-                  <Text style={styles.modalSubtitle}>
+                  <Text
+                    style={[
+                      styles.modalTitle,
+                      isMobile && styles.modalTitleMobile,
+                    ]}
+                  >
+                    Select Expiry Date
+                  </Text>
+                  <Text
+                    style={[
+                      styles.modalSubtitle,
+                      isMobile && styles.modalSubtitleMobile,
+                    ]}
+                  >
                     Choose month, day, and year.
                   </Text>
                 </View>
@@ -275,146 +447,34 @@ function ExpiryDateField({
             </View>
 
             {/* Scrollable columns */}
-            <View style={styles.webDateContent}>
-              <View style={[styles.modalRow, isMobile && styles.modalRowStack]}>
-                {/* Month */}
-                <View style={styles.modalCol}>
-                  <Text style={styles.fieldLabel}>Month</Text>
-                  <ScrollView
-                    style={styles.webDateList}
-                    showsVerticalScrollIndicator={false}
-                  >
-                    {months.map((month, index) => {
-                      const active = tempMonth === index;
-                      // Disable past months if the current year is the minimum year
-                      const disabled = tempYear === minDate.getFullYear() && index < minDate.getMonth();
-
-                      return (
-                        <TouchableOpacity
-                          key={month}
-                          style={[
-                            styles.dropdownItem,
-                            active && styles.dropdownItemActive,
-                            styles.dropdownItemBorder,
-                            disabled && { opacity: 0.4 },
-                          ]}
-                          activeOpacity={0.85}
-                          disabled={disabled}
-                          onPress={() => {
-                            if (disabled) return;
-                            setTempMonth(index);
-                            const maxDay = new Date(tempYear, index + 1, 0).getDate();
-                            if (tempDay > maxDay) setTempDay(maxDay);
-                          }}
-                        >
-                          <Text
-                            style={[
-                              styles.dropdownItemText,
-                              active && styles.dropdownItemTextActive,
-                              disabled && { color: '#9CA3AF' },
-                            ]}
-                          >
-                            {month}
-                          </Text>
-                          {active && !disabled && (
-                            <Ionicons name="checkmark-circle" size={18} color="#DC2626" />
-                          )}
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </ScrollView>
+            <View
+              style={[
+                styles.webDateContent,
+                isMobile && styles.webDateContentMobile,
+              ]}
+            >
+              {isMobile ? (
+                // ✅ On mobile, Month/Day/Year stack vertically. Wrapping them
+                // in their own ScrollView (capped height) keeps the footer
+                // (Cancel/Apply) always reachable instead of being pushed
+                // off-screen by three full-height columns.
+                <ScrollView
+                  style={styles.mobileColumnsScroll}
+                  contentContainerStyle={styles.modalRowStack}
+                  showsVerticalScrollIndicator={false}
+                  nestedScrollEnabled
+                >
+                  {renderMonthColumn()}
+                  {renderDayColumn()}
+                  {renderYearColumn()}
+                </ScrollView>
+              ) : (
+                <View style={styles.modalRow}>
+                  {renderMonthColumn()}
+                  {renderDayColumn()}
+                  {renderYearColumn()}
                 </View>
-
-                {/* Day */}
-                <View style={styles.modalCol}>
-                  <Text style={styles.fieldLabel}>Day</Text>
-                  <ScrollView
-                    style={styles.webDateList}
-                    showsVerticalScrollIndicator={false}
-                  >
-                    {days.map((day) => {
-                      const active = tempDay === day;
-                      // Disable past days and today if the current month/year is the minimum month/year
-                      const disabled =
-                        tempYear === minDate.getFullYear() &&
-                        tempMonth === minDate.getMonth() &&
-                        day < minDate.getDate();
-
-                      return (
-                        <TouchableOpacity
-                          key={day}
-                          style={[
-                            styles.dropdownItem,
-                            active && styles.dropdownItemActive,
-                            styles.dropdownItemBorder,
-                            disabled && { opacity: 0.4 },
-                          ]}
-                          activeOpacity={0.85}
-                          disabled={disabled}
-                          onPress={() => {
-                            if (disabled) return;
-                            setTempDay(day);
-                          }}
-                        >
-                          <Text
-                            style={[
-                              styles.dropdownItemText,
-                              active && styles.dropdownItemTextActive,
-                              disabled && { color: '#9CA3AF' },
-                            ]}
-                          >
-                            {day}
-                          </Text>
-                          {active && !disabled && (
-                            <Ionicons name="checkmark-circle" size={18} color="#DC2626" />
-                          )}
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </ScrollView>
-                </View>
-
-                {/* Year */}
-                <View style={styles.modalCol}>
-                  <Text style={styles.fieldLabel}>Year</Text>
-                  <ScrollView
-                    style={styles.webDateList}
-                    showsVerticalScrollIndicator={false}
-                  >
-                    {years.map((year) => {
-                      const active = tempYear === year;
-                      return (
-                        <TouchableOpacity
-                          key={year}
-                          style={[
-                            styles.dropdownItem,
-                            active && styles.dropdownItemActive,
-                            styles.dropdownItemBorder,
-                          ]}
-                          activeOpacity={0.85}
-                          onPress={() => {
-                            setTempYear(year);
-                            const maxDay = new Date(year, tempMonth + 1, 0).getDate();
-                            if (tempDay > maxDay) setTempDay(maxDay);
-                          }}
-                        >
-                          <Text
-                            style={[
-                              styles.dropdownItemText,
-                              active && styles.dropdownItemTextActive,
-                            ]}
-                          >
-                            {year}
-                          </Text>
-                          {active && (
-                            <Ionicons name="checkmark-circle" size={18} color="#DC2626" />
-                          )}
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </ScrollView>
-                </View>
-              </View>
+              )}
             </View>
 
             {/* Footer */}
@@ -1205,20 +1265,37 @@ const styles = StyleSheet.create({
   pickerModalOverlay: { flex: 1, backgroundColor: 'rgba(43, 17, 17, 0.45)', justifyContent: 'center', alignItems: 'center', padding: 20 },
 
   webDateModalCard: { width: '100%', maxWidth: 860, maxHeight: '88%', backgroundColor: '#FFFFFF', borderRadius: 28, borderWidth: 1, borderColor: '#F3D4D4', overflow: 'hidden' },
+  // ✅ NEW: mobile card sizing for the Date picker modal
+  webDateModalCardMobile: { maxWidth: '100%', maxHeight: '92%', borderRadius: 20 },
+
   modalHeader: { paddingHorizontal: 24, paddingTop: 22, paddingBottom: 18, borderBottomWidth: 1, borderBottomColor: '#F8E3E3', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
   modalHeaderLeft: { flex: 1, flexDirection: 'row', paddingRight: 16 },
   modalHeaderTextWrap: { flex: 1 },
   modalIconBox: { width: 52, height: 52, borderRadius: 18, backgroundColor: '#FEE2E2', alignItems: 'center', justifyContent: 'center', marginRight: 14 },
+  // ✅ NEW: smaller icon box on mobile
+  modalIconBoxMobile: { width: 40, height: 40, borderRadius: 12, marginRight: 10 },
   modalTitle: { fontSize: 22, fontWeight: '800', color: '#2B1111', marginBottom: 4 },
+  // ✅ NEW: smaller title on mobile
+  modalTitleMobile: { fontSize: 17, marginBottom: 2 },
   modalSubtitle: { fontSize: 14, lineHeight: 21, color: '#8A6F6F' },
+  // ✅ NEW: smaller subtitle on mobile
+  modalSubtitleMobile: { fontSize: 12.5, lineHeight: 17 },
   modalCloseButton: { width: 40, height: 40, borderRadius: 14, backgroundColor: '#FFF5F5', alignItems: 'center', justifyContent: 'center' },
 
   webDateContent: { paddingHorizontal: 24, paddingTop: 20, paddingBottom: 8 },
+  // ✅ NEW: tighter padding on mobile
+  webDateContentMobile: { paddingHorizontal: 16, paddingTop: 14 },
   modalRow: { flexDirection: 'row', gap: 14, marginBottom: 22, zIndex: 20 },
   modalRowStack: { flexDirection: 'column', gap: 14 },
   modalCol: { flex: 1 },
 
+  // ✅ NEW: caps the combined Month/Day/Year stack so the footer
+  // (Cancel/Apply) always stays visible instead of being pushed off-screen.
+  mobileColumnsScroll: { maxHeight: 380 },
+
   webDateList: { maxHeight: 260, borderRadius: 16, borderWidth: 1, borderColor: '#F1CACA', backgroundColor: '#FFF9F9' },
+  // ✅ NEW: shorter individual list height on mobile since 3 lists stack
+  webDateListMobile: { maxHeight: 150 },
   dropdownItem: { minHeight: 52, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   dropdownItemBorder: { borderBottomWidth: 1, borderBottomColor: '#FAE9E9' },
   dropdownItemActive: { backgroundColor: '#FFF7F7' },
