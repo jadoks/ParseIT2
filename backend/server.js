@@ -12058,7 +12058,7 @@ app.get(
 // which is a realistic bar for real student phrasing rather than requiring
 // a near-exact match.
 const MIN_TRAINING_MATCH_SCORE = 40;
-  const MIN_TRAINING_MATCH_SCORE = 60;
+
 async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TRAINING_MATCH_SCORE) {
   const snapshot = await db.collection("chatbotTraining").get();
   const normalizedMessage = normalizeChatText(message);
