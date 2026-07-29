@@ -138,8 +138,10 @@ const MenuItem = ({
   const { width } = useWindowDimensions();
   const isMobile = width < 768;
   const isLargeScreen = width >= 1024;
-  const menuItemVerticalMargin = isMobile ? 12 : isLargeScreen ? 14.5 : 16;
-  const menuLabelFontSize = isMobile ? 15 : 17;
+  // 👇 Facebook-style compact spacing on all screen sizes: rows sit close
+  // together (small vertical margin) instead of being spread out.
+  const menuItemVerticalMargin = isMobile ? 4 : isLargeScreen ? 4 : 6;
+  const menuLabelFontSize = isMobile ? 15 : 15;
 
   return (
     <Pressable
@@ -149,7 +151,7 @@ const MenuItem = ({
           styles.menuItem,
           { 
             marginVertical: menuItemVerticalMargin, 
-            borderRadius: 14, 
+            borderRadius: 8, // 👈 tighter radius, matches FB's pill rows
           },
           highlighted && {
             backgroundColor: '#D32F2F',
@@ -267,6 +269,11 @@ const DrawerMenu = ({
   const isMobile = width < 768;
   const isTablet = width >= 768 && width < 1024;
   const isSmallMobile = width < 380;
+  const isLargeScreen = width >= 1024;
+
+  // 👇 Facebook-style outer drawer padding: tight (~12px) on large screens
+  // instead of the more spread-out 25px used on smaller layouts.
+  const drawerPadding = isLargeScreen ? 12 : 25;
 
   const hasOverflow = contentHeight > scrollViewHeight && scrollViewHeight > 0;
   const shouldShowScrollBar = (isMobile || isTablet) && hasOverflow;
@@ -520,12 +527,12 @@ const DrawerMenu = ({
     <View 
       style={[
         styles.drawerContainer, 
-        { width: drawerWidth },
+        { width: drawerWidth, padding: drawerPadding }, // 👈 responsive padding (tight on large screens)
         isMobile && {
-          paddingTop: insets.top + 25,
-          paddingBottom: insets.bottom + 25,
-          paddingLeft: insets.left + 25,
-          paddingRight: insets.right + 25,
+          paddingTop: insets.top + 12,
+          paddingBottom: insets.bottom + 12,
+          paddingLeft: insets.left + 12,
+          paddingRight: insets.right + 12,
         }
       ]}
     > 
@@ -664,14 +671,15 @@ const DrawerMenu = ({
 export default DrawerMenu;
 
 const styles = StyleSheet.create({
-  drawerContainer: { height: '100%', padding: 25, backgroundColor: '#FFF', borderColor: 'transparent' },
+  // 👇 padding is now applied dynamically inline (responsive), removed static 25 here
+  drawerContainer: { height: '100%', backgroundColor: '#FFF', borderColor: 'transparent' },
   profileSection: { flexDirection: 'row', alignItems: 'center', marginBottom: 30 },
   avatar: { width: 50, height: 50, borderRadius: 25, marginRight: 15, overflow: 'hidden', aspectRatio: 1 },
   userName: { fontWeight: '700', fontSize: 18 },
   userEmail: { marginTop: 2, fontSize: 12, color: '#777' },
-  menuItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, paddingHorizontal: 10 },
+  menuItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8, paddingHorizontal: 8 },
   menuIcon: { width: 22, height: 22, marginRight: 20, resizeMode: 'contain' },
-  vectorMenuIcon: { width: 22, marginRight: 20, textAlign: 'center' },
+  vectorMenuIcon: { width: 22, marginRight: 12, textAlign: 'center' },
   menuLabel: { color: '#444', fontWeight: '500' },
   logoutMenuItem: { flexDirection: 'row', alignItems: 'center', marginTop: 20, borderTopWidth: 1, borderTopColor: '#EEE', paddingTop: 15 },
   logoutLabel: { fontSize: 16, color: '#D32F2F', fontWeight: '600' },
