@@ -1331,4 +1331,4 @@ const styles = StyleSheet.create({
     paddingVertical: 12, borderRadius: 12, backgroundColor: "#F3D4D4", alignItems: "center",
   },
   modalCancelText: { fontSize: 14, fontWeight: "800", color: "#7A4A4A" },
-});
+}); 
