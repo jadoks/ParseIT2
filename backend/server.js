@@ -5242,15 +5242,33 @@ app.post("/create-admin", async (req, res) => {
   });
 
   app.delete("/delete-admin/:id", async (req, res) => {
-    try {
-      const { id } = req.params;
-      await db.collection("admins").doc(id).delete();
-      res.json({ success: true, message: "Admin deleted successfully." });
-    } catch (error) {
-      console.error("Delete admin error:", error);
-      res.status(500).json({ error: error.message || "Failed to delete admin." });
+  try {
+    const { id } = req.params;
+    const docRef = db.collection("admins").doc(id);
+    const doc = await docRef.get();
+    const data = doc.data();
+
+    // Delete Firestore record
+    await docRef.delete();
+
+    // Delete the corresponding Firebase Auth user
+    if (data?.authUid) {
+      try {
+        await admin.auth().deleteUser(data.authUid);
+      } catch (authError) {
+        console.error("Auth deletion failed (admin):", authError.message);
+        // Firestore doc is already gone — don't fail the whole request
+      }
+    } else {
+      console.warn(`No authUid found for admin doc ${id}; Auth user not deleted.`);
     }
-  });
+
+    res.json({ success: true, message: "Admin deleted successfully." });
+  } catch (error) {
+    console.error("Delete admin error:", error);
+    res.status(500).json({ error: error.message || "Failed to delete admin." });
+  }
+});
 
   app.put("/update-teacher/:id", async (req, res) => {
     try {
@@ -5308,16 +5326,31 @@ app.post("/create-admin", async (req, res) => {
     }
   });
 
-  app.delete("/delete-teacher/:id", async (req, res) => {
-    try {
-      const { id } = req.params;
-      await db.collection("teachers").doc(id).delete();
-      res.json({ success: true, message: "Teacher deleted successfully." });
-    } catch (error) {
-      console.error("Delete teacher error:", error);
-      res.status(500).json({ error: error.message || "Failed to delete teacher." });
+ app.delete("/delete-teacher/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const docRef = db.collection("teachers").doc(id);
+    const doc = await docRef.get();
+    const data = doc.data();
+
+    await docRef.delete();
+
+    if (data?.authUid) {
+      try {
+        await admin.auth().deleteUser(data.authUid);
+      } catch (authError) {
+        console.error("Auth deletion failed (teacher):", authError.message);
+      }
+    } else {
+      console.warn(`No authUid found for teacher doc ${id}; Auth user not deleted.`);
     }
-  });
+
+    res.json({ success: true, message: "Teacher deleted successfully." });
+  } catch (error) {
+    console.error("Delete teacher error:", error);
+    res.status(500).json({ error: error.message || "Failed to delete teacher." });
+  }
+});
 
   app.put("/update-student/:id", async (req, res) => {
     try {
@@ -5378,16 +5411,31 @@ app.post("/create-admin", async (req, res) => {
     }
   });
 
-  app.delete("/delete-student/:id", async (req, res) => {
-    try {
-      const { id } = req.params;
-      await db.collection("students").doc(id).delete();
-      res.json({ success: true, message: "Student deleted successfully." });
-    } catch (error) {
-      console.error("Delete student error:", error);
-      res.status(500).json({ error: error.message || "Failed to delete student." });
+ app.delete("/delete-student/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const docRef = db.collection("students").doc(id);
+    const doc = await docRef.get();
+    const data = doc.data();
+
+    await docRef.delete();
+
+    if (data?.authUid) {
+      try {
+        await admin.auth().deleteUser(data.authUid);
+      } catch (authError) {
+        console.error("Auth deletion failed (student):", authError.message);
+      }
+    } else {
+      console.warn(`No authUid found for student doc ${id}; Auth user not deleted.`);
     }
-  });
+
+    res.json({ success: true, message: "Student deleted successfully." });
+  } catch (error) {
+    console.error("Delete student error:", error);
+    res.status(500).json({ error: error.message || "Failed to delete student." });
+  }
+});
 
   app.post("/create-class", async (req, res) => {
     try {
