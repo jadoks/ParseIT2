@@ -597,29 +597,41 @@ function EmptyState({ text }: { text: string }) {
   );
 }
 
-// ===== NEW DROPDOWN MODAL COMPONENT =====
+// ===== DROPDOWN MODAL COMPONENT =====
 function DropdownModal({
   label,
   selectedValue,
   options,
   onSelect,
   isMobile,
+  onOpenChange, // 🔥 NEW — lets the parent know when this dropdown opens/closes
 }: {
   label: string;
   selectedValue: string;
   options: string[];
   onSelect: (value: string) => void;
   isMobile: boolean;
+  onOpenChange?: (isOpen: boolean) => void;
 }) {
   const [visible, setVisible] = useState(false);
   const displayValue = selectedValue || `All ${label}`;
+
+  const open = () => {
+    setVisible(true);
+    onOpenChange?.(true);
+  };
+
+  const close = () => {
+    setVisible(false);
+    onOpenChange?.(false);
+  };
 
   return (
     <View style={[styles.filterGroup, isMobile && styles.filterGroupMobile]}>
       <Text style={styles.filterLabel}>{label}</Text>
       <Pressable
         style={styles.dropdownButton}
-        onPress={() => setVisible(true)}
+        onPress={open}
       >
         <Text style={styles.dropdownButtonText} numberOfLines={1}>
           {displayValue}
@@ -631,7 +643,7 @@ function DropdownModal({
         visible={visible}
         transparent
         animationType="fade"
-        onRequestClose={() => setVisible(false)}
+        onRequestClose={close}
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
@@ -642,7 +654,7 @@ function DropdownModal({
                 style={[styles.modalOption, !selectedValue && styles.modalOptionActive]}
                 onPress={() => {
                   onSelect("");
-                  setVisible(false);
+                  close();
                 }}
               >
                 <Text style={[styles.modalOptionText, !selectedValue && styles.modalOptionTextActive]}>
@@ -657,7 +669,7 @@ function DropdownModal({
                   style={[styles.modalOption, selectedValue === item && styles.modalOptionActive]}
                   onPress={() => {
                     onSelect(item);
-                    setVisible(false);
+                    close();
                   }}
                 >
                   <Text style={[styles.modalOptionText, selectedValue === item && styles.modalOptionTextActive]} numberOfLines={1}>
@@ -668,7 +680,7 @@ function DropdownModal({
               ))}
             </ScrollView>
 
-            <Pressable style={styles.modalCancelButton} onPress={() => setVisible(false)}>
+            <Pressable style={styles.modalCancelButton} onPress={close}>
               <Text style={styles.modalCancelText}>Close</Text>
             </Pressable>
           </View>
@@ -700,6 +712,11 @@ export default function Analytics({ width, apiBaseUrl }: AnalyticsProps) {
   const [availableSchoolYears, setAvailableSchoolYears] = useState<string[]>([]);
   const [availableSemesters, setAvailableSemesters] = useState<string[]>([]);
 
+  // 🔥 Tracks whether either filter dropdown is open, so the silent poll
+  // below doesn't refresh (and reset scroll/selection) mid-pick.
+  const isSchoolYearDropdownOpenRef = React.useRef(false);
+  const isSemesterDropdownOpenRef = React.useRef(false);
+
   const summaryWidth: DimensionValue = isMobile
     ? "100%"
     : isTablet
@@ -708,11 +725,14 @@ export default function Analytics({ width, apiBaseUrl }: AnalyticsProps) {
 
   const halfWidth: DimensionValue = isMobile ? "100%" : "48.7%";
 
-  const loadAdminAnalytics = async () => {
+  const loadAdminAnalytics = async (opts?: { silent?: boolean }) => {
     const resolvedApiBaseUrl = apiBaseUrl || "http://localhost:5000";
+    const silent = opts?.silent ?? false;
 
-    setIsLoading(true);
-    setLoadError("");
+    if (!silent) {
+      setIsLoading(true);
+      setLoadError("");
+    }
 
     try {
       const params = new URLSearchParams();
@@ -741,16 +761,36 @@ export default function Analytics({ width, apiBaseUrl }: AnalyticsProps) {
         );
       }
     } catch (error: any) {
-      console.log("LOAD ADMIN ANALYTICS ERROR =>", error);
-      setLoadError(error?.message || "Failed to load admin analytics.");
-      setAnalytics(emptyAnalytics);
+      console.log(
+        silent ? "SILENT REFRESH ANALYTICS ERROR =>" : "LOAD ADMIN ANALYTICS ERROR =>",
+        error
+      );
+      if (!silent) {
+        setLoadError(error?.message || "Failed to load admin analytics.");
+        setAnalytics(emptyAnalytics);
+      }
     } finally {
-      setIsLoading(false);
+      if (!silent) setIsLoading(false);
     }
   };
 
   useEffect(() => {
     loadAdminAnalytics();
+  }, [apiBaseUrl, selectedSchoolYear, selectedSemester]);
+
+  // 🔥 Silent background refresh — keeps the dashboard's numbers current
+  // without flashing the loading/refresh-button state. Paused while either
+  // filter dropdown is open, so a refresh never scrolls/reorders options
+  // mid-pick.
+  useEffect(() => {
+    const REFRESH_INTERVAL_MS = 15000; // dashboards can afford a slower cadence than tables
+
+    const interval = setInterval(() => {
+      if (isSchoolYearDropdownOpenRef.current || isSemesterDropdownOpenRef.current) return;
+      loadAdminAnalytics({ silent: true });
+    }, REFRESH_INTERVAL_MS);
+
+    return () => clearInterval(interval);
   }, [apiBaseUrl, selectedSchoolYear, selectedSemester]);
 
   const topSections = useMemo(
@@ -789,7 +829,7 @@ export default function Analytics({ width, apiBaseUrl }: AnalyticsProps) {
 
           <Pressable
             style={styles.refreshButton}
-            onPress={loadAdminAnalytics}
+            onPress={() => loadAdminAnalytics()}
             disabled={isLoading}
           >
             {isLoading ? (
@@ -804,7 +844,7 @@ export default function Analytics({ width, apiBaseUrl }: AnalyticsProps) {
         </View>
       </View>
 
-      {/* UPDATED: FILTER ROW WITH DROPDOWN MODALS */}
+      {/* FILTER ROW WITH DROPDOWN MODALS */}
       <View style={[styles.filterRow, isMobile && styles.filterRowMobile]}>
         <DropdownModal
           label="School Year"
@@ -812,6 +852,7 @@ export default function Analytics({ width, apiBaseUrl }: AnalyticsProps) {
           options={availableSchoolYears}
           onSelect={setSelectedSchoolYear}
           isMobile={isMobile}
+          onOpenChange={(isOpen) => { isSchoolYearDropdownOpenRef.current = isOpen; }}
         />
         <DropdownModal
           label="Semester"
@@ -819,6 +860,7 @@ export default function Analytics({ width, apiBaseUrl }: AnalyticsProps) {
           options={availableSemesters}
           onSelect={setSelectedSemester}
           isMobile={isMobile}
+          onOpenChange={(isOpen) => { isSemesterDropdownOpenRef.current = isOpen; }}
         />
       </View>
 

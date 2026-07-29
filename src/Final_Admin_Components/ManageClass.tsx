@@ -246,6 +246,22 @@ export default function ManageClass({ width, currentAdmin }: ManageClassProps) {
   const [isRemoveMemberErrorModalVisible, setIsRemoveMemberErrorModalVisible] = useState(false);
   const [removeMemberErrorMessage, setRemoveMemberErrorMessage] = useState('');
 
+  // 🔥 Tracks whether ANY modal/menu/sheet is open, so the silent poll below
+  // can skip a tick without needing to be recreated every time something
+  // opens or closes.
+  const isOverlayOpenRef = React.useRef(false);
+  useEffect(() => {
+    isOverlayOpenRef.current =
+      isAddModalVisible ||
+      isDeleteModalVisible ||
+      !!rowMenu ||
+      isMemberModalVisible ||
+      isAddMemberModalVisible ||
+      isRemoveMemberConfirmModalVisible ||
+      isRemoveMemberSuccessModalVisible ||
+      isRemoveMemberErrorModalVisible;
+  });
+
   const isMobile = width < 768;
   const isTablet = width >= 768 && width < 1100;
   const tableMinWidth = isMobile ? 1000 : isTablet ? 1080 : 1160;
@@ -293,9 +309,44 @@ export default function ManageClass({ width, currentAdmin }: ManageClassProps) {
     }
   }, []);
 
+  // 🔥 Same fetch as loadClasses, but never toggles isLoading — runs quietly
+  // in the background so browsing/searching/sorting is never interrupted by
+  // a flash of the loading state.
+  const loadClassesSilently = useCallback(async () => {
+    try {
+      const response = await apiFetch(`${API_BASE_URL}/classes`, {
+        method: "GET",
+        headers: { "Content-Type": "application/json" },
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Failed to fetch classes");
+      const raw = Array.isArray(data) ? data : [];
+      setRawClasses(raw);
+      setClasses(raw.map(mapBackendClassToTable));
+    } catch (error) {
+      console.log("SILENT REFRESH CLASSES ERROR =>", error);
+    }
+  }, []);
+
   useEffect(() => {
     loadClasses();
   }, [loadClasses]);
+
+  // 🔥 Silent background refresh — keeps class list/member counts current if
+  // another admin/teacher changes something elsewhere. Paused whenever any
+  // modal, the row menu, or the members bottom sheet is open, so nothing
+  // shifts under the user's tap mid-interaction; it just resumes on the
+  // next tick once everything's closed again.
+  useEffect(() => {
+    const REFRESH_INTERVAL_MS = 8000;
+
+    const interval = setInterval(() => {
+      if (isOverlayOpenRef.current) return; // something's open — skip this tick
+      loadClassesSilently();
+    }, REFRESH_INTERVAL_MS);
+
+    return () => clearInterval(interval);
+  }, [loadClassesSilently]);
 
   const filteredClasses = useMemo(() => {
     const keyword = searchText.trim().toLowerCase();
@@ -576,6 +627,53 @@ export default function ManageClass({ width, currentAdmin }: ManageClassProps) {
       setIsLoadingMembers(false);
     }
   };
+
+  // 🔥 Same fetch as fetchClassMembers, but never toggles isLoadingMembers —
+  // used by the live-poll effect below so an open members sheet doesn't
+  // flash "Loading members..." every tick.
+  const fetchClassMembersSilently = useCallback(async (classId: string) => {
+    try {
+      const response = await apiFetch(`${API_BASE_URL}/class-members/${classId}`, {
+        method: "GET",
+        headers: { "Content-Type": "application/json" },
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Failed to fetch members");
+      setClassMembers(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.log("SILENT REFRESH CLASS MEMBERS ERROR =>", error);
+    }
+  }, []);
+
+  // 🔥 While the members sheet is open, keep ITS data live too — independent
+  // interval so opening the sheet doesn't just freeze under the outer pause.
+  // Still skips a tick if the add-member or remove-member modals are layered
+  // on top, for the same "don't shift things mid-tap" reasoning.
+  useEffect(() => {
+    if (!isMemberModalVisible || !selectedClassForMembers) return;
+
+    const interval = setInterval(() => {
+      if (
+        isAddMemberModalVisible ||
+        isRemoveMemberConfirmModalVisible ||
+        isRemoveMemberSuccessModalVisible ||
+        isRemoveMemberErrorModalVisible
+      ) {
+        return;
+      }
+      fetchClassMembersSilently(selectedClassForMembers.id);
+    }, 8000);
+
+    return () => clearInterval(interval);
+  }, [
+    isMemberModalVisible,
+    selectedClassForMembers,
+    isAddMemberModalVisible,
+    isRemoveMemberConfirmModalVisible,
+    isRemoveMemberSuccessModalVisible,
+    isRemoveMemberErrorModalVisible,
+    fetchClassMembersSilently,
+  ]);
 
   const handleAddMember = async () => {
     if (!selectedClassForMembers) return;

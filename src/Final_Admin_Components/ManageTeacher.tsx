@@ -232,6 +232,13 @@ export default function ManageTeacher({ width }: ManageTeacherProps) {
   } | null>(null);
   const rowMenuButtonRefs = React.useRef<Record<string, View | null>>({});
 
+  // 🔥 Tracks whether ANY modal/menu is open, so the silent poll below can
+  // skip a tick without needing to be recreated every time something opens.
+  const isOverlayOpenRef = React.useRef(false);
+  useEffect(() => {
+    isOverlayOpenRef.current = isAddModalVisible || isDeleteModalVisible || !!rowMenu;
+  });
+
   const [toast, setToast] = useState<{
     visible: boolean;
     message: string;
@@ -276,9 +283,47 @@ export default function ManageTeacher({ width }: ManageTeacherProps) {
     }
   }, []);
 
+  // 🔥 Same fetch as loadTeachers, but never toggles isLoading and never
+  // shows a toast on failure — runs quietly in the background so an
+  // in-progress edit/search/scroll never gets interrupted.
+  const loadTeachersSilently = useCallback(async () => {
+    try {
+      const response = await apiFetch(`${API_BASE_URL}/teachers`, {
+        method: "GET",
+        headers: { "Content-Type": "application/json" },
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to fetch teachers");
+      }
+
+      const raw = Array.isArray(data) ? data : [];
+      setRawTeachers(raw);
+      setTeachers(raw.map(mapTeacher));
+    } catch (error) {
+      console.log("SILENT REFRESH TEACHERS ERROR =>", error);
+    }
+  }, []);
+
   useEffect(() => {
     loadTeachers();
   }, [loadTeachers]);
+
+  // 🔥 Silent background refresh — keeps the table current if another admin
+  // adds/edits/deletes a teacher elsewhere. Paused whenever the add/edit
+  // modal, delete-confirm modal, or a row's "⋯" menu is open.
+  useEffect(() => {
+    const REFRESH_INTERVAL_MS = 8000;
+
+    const interval = setInterval(() => {
+      if (isOverlayOpenRef.current) return;
+      loadTeachersSilently();
+    }, REFRESH_INTERVAL_MS);
+
+    return () => clearInterval(interval);
+  }, [loadTeachersSilently]);
 
   const filteredTeachers = useMemo(() => {
     const keyword = searchText.trim().toLowerCase();
