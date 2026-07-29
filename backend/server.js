@@ -12000,75 +12000,113 @@ app.get(
   }
 
   function scoreTriggerMatch(message, trigger) {
-    const normalizedMessage = normalizeChatText(message);
-    const normalizedTrigger = normalizeChatText(trigger);
+  const normalizedMessage = normalizeChatText(message);
+  const normalizedTrigger = normalizeChatText(trigger);
 
-    if (!normalizedMessage || !normalizedTrigger) return 0;
+  if (!normalizedMessage || !normalizedTrigger) return 0;
 
-    const triggerWords = normalizedTrigger.split(" ").filter(Boolean);
+  // Exact match or trigger appearing verbatim in the message are still the
+  // strongest, safest signals — keep these as fast-path high scores.
+  if (normalizedMessage === normalizedTrigger) return 100;
+  if (normalizedMessage.includes(normalizedTrigger)) return 85;
 
-    // ✅ Require at least 2 meaningful words in the trigger. Single generic
-    // words ("content", "file", "about") are too ambiguous to safely match
-    // an unrelated stored FAQ response.
-    if (triggerWords.length < 2) return 0;
+  const triggerWords = normalizedTrigger.split(" ").filter(Boolean);
+  const messageWords = normalizedMessage.split(" ").filter(Boolean);
 
-    if (normalizedMessage === normalizedTrigger) return 100;
-    if (normalizedMessage.includes(normalizedTrigger)) return 80;
+  const triggerWordSet = new Set(triggerWords);
+  const messageWordSet = new Set(messageWords);
 
-    const matchedWords = triggerWords.filter((word) =>
-      normalizedMessage.includes(word)
-    );
+  const overlap = [...triggerWordSet].filter((word) => messageWordSet.has(word));
 
-    const ratio = matchedWords.length / triggerWords.length;
-
-    if (ratio === 1) return 60;
-    if (ratio >= 0.75) return 45;
-    if (ratio >= 0.5) return 30;
-    if (ratio >= 0.34) return 15;
-
-    return 0;
+  // ✅ Single-word triggers: previously hard-excluded (return 0 no matter what).
+  // Now allowed, but only score high if the word is a *whole-word* match —
+  // this avoids "in", "the", "on" style words matching everything while still
+  // letting distinctive single-word triggers ("enrollment", "grades") work.
+  if (triggerWords.length === 1) {
+    const word = triggerWords[0];
+    if (word.length < 4) return 0; // too short/generic to trust alone
+    return messageWordSet.has(word) ? 55 : 0;
   }
+
+  if (overlap.length === 0) return 0;
+
+  // Symmetric overlap (Jaccard-style): matched words divided by the union of
+  // trigger + message words, rather than only dividing by trigger length.
+  // This rewards messages that closely paraphrase the trigger without
+  // requiring every single trigger word to be present verbatim.
+  const unionSize = new Set([...triggerWordSet, ...messageWordSet]).size;
+  const jaccard = overlap.length / unionSize;
+
+  // Also compute the original "how much of the trigger did we cover" ratio,
+  // since a short user message hitting all trigger words is a strong signal
+  // even if the union is large because the user added extra words.
+  const triggerCoverage = overlap.length / triggerWords.length;
+
+  // Take the more generous of the two signals, then map to a 0-100 scale.
+  const bestRatio = Math.max(jaccard, triggerCoverage * 0.85);
+
+  if (bestRatio >= 0.9) return 70;
+  if (bestRatio >= 0.7) return 55;
+  if (bestRatio >= 0.5) return 40;
+  if (bestRatio >= 0.34) return 25;
+
+  return 0;
+}
+
+// Lowered from 60 → 40: with the new symmetric scoring, 40 corresponds to
+// roughly "half the trigger's meaningful words showed up in the message,"
+// which is a realistic bar for real student phrasing rather than requiring
+// a near-exact match.
+const MIN_TRAINING_MATCH_SCORE = 40;
   const MIN_TRAINING_MATCH_SCORE = 60;
-  async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TRAINING_MATCH_SCORE) {
-    const snapshot = await db.collection("chatbotTraining").get();
-    const normalizedMessage = normalizeChatText(message);
+async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TRAINING_MATCH_SCORE) {
+  const snapshot = await db.collection("chatbotTraining").get();
+  const normalizedMessage = normalizeChatText(message);
 
-    if (!normalizedMessage) return [];
+  if (!normalizedMessage) return [];
 
-    const scoredItems = snapshot.docs
-      .map((doc) => {
-        const data = doc.data() || {};
-        const triggers = Array.isArray(data.triggers) ? data.triggers : [];
+  const scoredItems = snapshot.docs
+    .map((doc) => {
+      const data = doc.data() || {};
+      const triggers = Array.isArray(data.triggers) ? data.triggers : [];
 
-        let bestScore = 0;
-        let bestTrigger = null;
+      let bestScore = 0;
+      let bestTrigger = null;
 
-        for (const trigger of triggers) {
-          const score = scoreTriggerMatch(normalizedMessage, trigger);
-          if (score > bestScore) {
-            bestScore = score;
-            bestTrigger = trigger;
-          }
+      for (const trigger of triggers) {
+        const score = scoreTriggerMatch(normalizedMessage, trigger);
+        if (score > bestScore) {
+          bestScore = score;
+          bestTrigger = trigger;
         }
+      }
 
-        return {
-          id: doc.id,
-          response: data.response || "",
-          triggers,
-          file: data.file || null,
-          bestTrigger,
-          score: bestScore,
-          createdAt: data.createdAt || null,
-          updatedAt: data.updatedAt || null,
-        };
-      })
-      // ✅ require an actual confident match, not just "matched something"
-      .filter((item) => item.score >= minScore && (item.response || item.file?.url))
-      .sort((a, b) => b.score - a.score)
-      .slice(0, limit);
+      return {
+        id: doc.id,
+        response: data.response || "",
+        triggers,
+        file: data.file || null,
+        bestTrigger,
+        score: bestScore,
+        createdAt: data.createdAt || null,
+        updatedAt: data.updatedAt || null,
+      };
+    })
+    .filter((item) => item.score > 0) // keep everything with a nonzero score for logging
+    .sort((a, b) => b.score - a.score);
 
-    return scoredItems;
+  // ✅ TEMP DEBUG: remove once threshold is confirmed to be working well
+  if (scoredItems.length) {
+    console.log(
+      `[TRAINING MATCH] "${message}" → top candidates:`,
+      scoredItems.slice(0, 3).map((i) => `${i.score} ("${i.bestTrigger}")`)
+    );
+  } else {
+    console.log(`[TRAINING MATCH] "${message}" → no candidates scored above 0`);
   }
+
+  return scoredItems.filter((item) => item.score >= minScore && (item.response || item.file?.url)).slice(0, limit);
+}
 
   function buildTrainingContextBlock(trainingItems = []) {
     if (!Array.isArray(trainingItems) || !trainingItems.length) {
