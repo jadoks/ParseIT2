@@ -231,7 +231,13 @@ export default function ManageStudent({ width }: ManageStudentProps) {
     y: number;
   } | null>(null);
   const rowMenuButtonRefs = React.useRef<Record<string, View | null>>({});
-
+  // 🔥 Tracks whether ANY modal/menu is open, so the silent poll below can
+// skip a tick without needing to be recreated every time something opens.
+const isOverlayOpenRef = React.useRef(false);
+useEffect(() => {
+  isOverlayOpenRef.current =
+    isAddModalVisible || isDeleteModalVisible || !!rowMenu;
+});
   const [toast, setToast] = useState<{
     visible: boolean;
     message: string;
@@ -276,10 +282,50 @@ export default function ManageStudent({ width }: ManageStudentProps) {
     }
   }, []);
 
+  // 🔥 Same fetch as loadStudents, but never toggles isLoading and never
+// shows a toast on failure — this runs quietly in the background so an
+// in-progress edit/search/scroll never gets interrupted by a flash of
+// the loading state.
+const loadStudentsSilently = useCallback(async () => {
+  try {
+    const response = await apiFetch(`${API_BASE_URL}/students`, {
+      method: "GET",
+      headers: { "Content-Type": "application/json" },
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.error || "Failed to fetch students");
+    }
+
+    const raw = Array.isArray(data) ? data : [];
+    setRawStudents(raw);
+    setStudents(raw.map(mapStudent));
+  } catch (error) {
+    console.log("SILENT REFRESH STUDENTS ERROR =>", error);
+  }
+}, []);
+
   useEffect(() => {
     loadStudents();
   }, [loadStudents]);
 
+  // 🔥 Silent background refresh — keeps the table current if another admin
+// adds/edits/deletes a student elsewhere. Paused whenever the add/edit
+// modal, delete-confirm modal, or a row's "⋯" menu is open, so nothing
+// shifts under the user's tap mid-interaction; it just resumes on the
+// next tick once everything's closed again.
+useEffect(() => {
+  const REFRESH_INTERVAL_MS = 8000; // matches Community's "live" cadence
+
+  const interval = setInterval(() => {
+    if (isOverlayOpenRef.current) return; // something's open — skip this tick
+    loadStudentsSilently();
+  }, REFRESH_INTERVAL_MS);
+
+  return () => clearInterval(interval);
+}, [loadStudentsSilently]);
   const filteredStudents = useMemo(() => {
     const keyword = searchText.trim().toLowerCase();
 
