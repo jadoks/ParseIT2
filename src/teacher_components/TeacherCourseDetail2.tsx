@@ -738,6 +738,7 @@ const TeacherCourseDetail2 = ({
     return `${first} ${last}`.trim() || course?.instructor || 'Teacher';
   }, [currentTeacher, course?.instructor]);
 
+
   const teacherIdentity = useMemo(
     () =>
       currentTeacher?.teacherId?.trim() ||
@@ -747,6 +748,7 @@ const TeacherCourseDetail2 = ({
     [currentTeacher, teacherFullName]
   );
 
+  
   const [numberOfQuestions, setNumberOfQuestions] = useState<string>('10');
   const [isEditingLesson, setIsEditingLesson] = useState(false);
   
@@ -858,6 +860,10 @@ const TeacherCourseDetail2 = ({
   const [selectedMaterialPreview, setSelectedMaterialPreview] = useState<Material | null>(null);
   const [showDateTimeModal, setShowDateTimeModal] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const hasSubmissionsForSelected = useMemo(() => {
+    if (!selectedId) return false;
+    return submissions.some((s) => s.assignmentId === selectedId);
+  }, [selectedId, submissions]);
   const [formTitle, setFormTitle] = useState('');
   const [formDesc, setFormDesc] = useState('');
   const [formPoints, setFormPoints] = useState('');
@@ -2862,9 +2868,13 @@ useEffect(() => {
         <Text style={styles.sectionLabel}>Assignment Type</Text>
         <View style={{ flexDirection: 'row', gap: 10, marginTop: 8 }}>
           <TouchableOpacity
-            style={[styles.typeChip, assignmentType === 'regular' && styles.typeChipActive]}
+            style={[
+              styles.typeChip,
+              assignmentType === 'regular' && styles.typeChipActive,
+              hasSubmissionsForSelected && styles.disabledButton,
+            ]}
             onPress={() => setAssignmentType('regular')}
-            disabled={isSaving}
+            disabled={isSaving || hasSubmissionsForSelected}
           >
             <Text
               style={[
@@ -2876,9 +2886,13 @@ useEffect(() => {
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.typeChip, assignmentType === 'game_based' && styles.typeChipActive]}
+            style={[
+              styles.typeChip,
+              assignmentType === 'game_based' && styles.typeChipActive,
+              hasSubmissionsForSelected && styles.disabledButton,
+            ]}
             onPress={() => setAssignmentType('game_based')}
-            disabled={isSaving}
+            disabled={isSaving || hasSubmissionsForSelected}
           >
             <Text
               style={[
@@ -2890,6 +2904,11 @@ useEffect(() => {
             </Text>
           </TouchableOpacity>
         </View>
+        {hasSubmissionsForSelected && (
+          <Text style={{ fontSize: 12, color: '#D32F2F', marginTop: 8, lineHeight: 17 }}>
+            Type is locked because students have already submitted work for this assignment.
+          </Text>
+        )}
       </View>
       {assignmentType === 'game_based' && renderGameAndClassRow()}
       <View style={[styles.formColumnLeft, !isMobile && styles.formColumnLeftDesktop]}>

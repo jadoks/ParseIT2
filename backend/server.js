@@ -13033,13 +13033,29 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
         `;
         
       } else {
-        contextualPrompt += `
-  No strong stored training matched.
-  Do not tell the user that the answer is not in storage.
-  In assistant mode, answer helpfully in a natural assistant way.
-  In tutor mode, tutor the student step by step and ask a quick check question when appropriate.
-  `;
-      }
+          contextualPrompt += `
+        No strong stored training matched.
+
+        If the user's question is a specific factual or directory-style lookup — such as
+        asking for a person's name/title (e.g. "who is the dean/director of X"), a phone
+        number, an office location, a policy detail, a deadline, or any other fact that
+        would normally live in an official school record — do NOT guess, infer, or
+        generate a plausible-sounding answer. Instead, say you don't have that specific
+        information on hand, and direct them to the CTU-AC registrar's office, the
+        official CTU website, or the appropriate department for the accurate answer.
+        Do not describe organizational structure or general context as a substitute for
+        naming the actual person or fact requested.
+
+        For all other questions (general explanations, how-to questions, conceptual
+        questions, platform/system help), answer naturally and helpfully as before.
+
+        In assistant mode: answer helpfully in a natural assistant way, following the
+        rule above for factual/directory lookups.
+        In tutor mode: tutor the student step by step and ask a quick check question
+        when appropriate, following the same rule above if the question is a factual
+        lookup rather than a learning topic.
+        `;
+        }
 
       const baseInstruction =
         "Use extracted document content when available. " +
