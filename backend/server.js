@@ -2971,79 +2971,79 @@ async function sendForgotPasswordCodeEmail({ firstName, email, pin }) {
   });
 
   app.post("/auth/complete-first-login", async (req, res) => {
-    try {
-      const { id, role, newPassword } = req.body;
+  try {
+    const { id, role, newPassword } = req.body;
 
-      if (!id || !role || !newPassword) {
-        return res.status(400).json({
-          error: "ID, role, and newPassword are required.",
-        });
-      }
-
-      if (String(newPassword).trim().length < 8) {
-        return res.status(400).json({
-          error: "New password must be at least 8 characters long.",
-        });
-      }
-
-      const collectionName = getCollectionNameByRole(role);
-
-      if (!collectionName) {
-        return res.status(400).json({ error: "Invalid role." });
-      }
-
-      const userRef = db.collection(collectionName).doc(id);
-      const userSnap = await userRef.get();
-
-      if (!userSnap.exists) {
-        return res.status(404).json({ error: "User not found." });
-      }
-
-      const userData = userSnap.data();
-
-      if (!userData?.authUid) {
-        return res.status(400).json({
-          error: "User auth UID is missing.",
-        });
-      }
-
-      if (!userData?.mustChangePassword) {
-        return res.status(400).json({
-          error: "This account does not require first login setup.",
-        });
-      }
-
-      if (!userData?.codeVerified) {
-        return res.status(400).json({
-          error: "PIN must be verified before setting a new password.",
-        });
-      }
-
-      await admin.auth().updateUser(userData.authUid, {
-        password: String(newPassword).trim(),
-      });
-
-      await userRef.update({
-        mustChangePassword: false,
-        codeVerified: true,
-        firstLoginPin: null,
-        firstLoginPinExpiresAt: null,
-        firstLoginPinSentAt: null,
-        lastLoginAt: FieldValue.serverTimestamp(),
-        updatedAt: FieldValue.serverTimestamp(),
-      });
-
-      return res.json({
-        success: true,
-        message: "First login completed successfully.",
-      });
-    } catch (error) {
-      console.error("Complete first login error:", error);
-      return res.status(500).json({
-        error: error.message || "Failed to complete first login.",
+    if (!id || !role || !newPassword) {
+      return res.status(400).json({
+        error: "ID, role, and newPassword are required.",
       });
     }
-  });
+
+    if (String(newPassword).trim().length < 8) {
+      return res.status(400).json({
+        error: "New password must be at least 8 characters long.",
+      });
+    }
+
+    const collectionName = getCollectionNameByRole(role);
+    if (!collectionName) {
+      return res.status(400).json({ error: "Invalid role." });
+    }
+
+    const userRef = db.collection(collectionName).doc(id);
+    const userSnap = await userRef.get();
+
+    if (!userSnap.exists) {
+      return res.status(404).json({ error: "User not found." });
+    }
+
+    const userData = userSnap.data();
+
+    if (!userData?.authUid) {
+      return res.status(400).json({
+        error: "User auth UID is missing.",
+      });
+    }
+
+    if (!userData?.mustChangePassword) {
+      return res.status(400).json({
+        error: "This account does not require first login setup.",
+      });
+    }
+
+    // ❌ REMOVED: codeVerified check — PIN step is no longer required.
+    // if (!userData?.codeVerified) {
+    //   return res.status(400).json({
+    //     error: "PIN must be verified before setting a new password.",
+    //   });
+    // }
+
+    await admin.auth().updateUser(userData.authUid, {
+      password: String(newPassword).trim(),
+    });
+
+    await userRef.update({
+      mustChangePassword: false,
+      codeVerified: true,
+      firstLoginPin: null,
+      firstLoginPinExpiresAt: null,
+      firstLoginPinSentAt: null,
+      lastLoginAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+
+    return res.json({
+      success: true,
+      message: "First login completed successfully.",
+    });
+  } catch (error) {
+    console.error("Complete first login error:", error);
+    return res.status(500).json({
+      error: error.message || "Failed to complete first login.",
+    });
+  }
+});
 
   /**
    * FORGOT PASSWORD ROUTES

@@ -509,58 +509,50 @@ const SignIn = ({ onLogIn, onGoToLanding, onGoToRegister }: SignInProps) => {
     }
   };
 
-  // ✅ UPDATED: Removed success modal, directly proceeds to dashboard
   const handleLogIn = async () => {
-    if (!id.trim() || !password.trim()) {
-      showFeedback('error', 'Missing Fields', 'Please enter your ID and password.');
+  if (!id.trim() || !password.trim()) {
+    showFeedback('error', 'Missing Fields', 'Please enter your ID and password.');
+    return;
+  }
+
+  const enteredId = id.trim();
+  const enteredPassword = password.trim();
+
+  try {
+    setIsLoading(true);
+
+    const user = await lookupUserById(enteredId);
+
+    if (!user.email) {
+      throw new Error('This account has no email assigned.');
+    }
+
+    await firebasePasswordSignIn(user.email, enteredPassword);
+
+    if (user.mustChangePassword) {
+      // ✅ Skip the PIN step entirely — jump straight to setting a real password.
+      setPendingRole(user.role);
+      setPendingUserId(user.id);
+      setPendingEmail(user.email);
+      setFirstLoginStep(2); // was: setFirstLoginStep(1) + sendFirstLoginPin(...)
+      resetSharedPasswordState();
+      setFirstLoginVisible(true);
       return;
     }
 
-    const enteredId = id.trim();
-    const enteredPassword = password.trim();
+    // ✅ DIRECTLY PROCEED TO DASHBOARD (No success modal)
+    await completeLogin(user.id, user.role);
 
+  } catch (error: any) {
     try {
-      setIsLoading(true);
+      await signOut(auth);
+    } catch {}
 
-      const user = await lookupUserById(enteredId);
-
-      if (!user.email) {
-        throw new Error('This account has no email assigned.');
-      }
-
-      await firebasePasswordSignIn(user.email, enteredPassword);
-
-      if (user.mustChangePassword) {
-        await sendFirstLoginPin(user.id, user.role);
-
-        setPendingRole(user.role);
-        setPendingUserId(user.id);
-        setPendingEmail(user.email);
-        setFirstLoginStep(1);
-        resetSharedPasswordState();
-        setFirstLoginVisible(true);
-
-        showFeedback(
-          'success',
-          'Verification Code Sent',
-          `A fresh 4-digit verification code was sent to ${user.email}.`
-        );
-        return;
-      }
-
-      // ✅ DIRECTLY PROCEED TO DASHBOARD (No success modal)
-      await completeLogin(user.id, user.role);
-
-    } catch (error: any) {
-      try {
-        await signOut(auth);
-      } catch {}
-
-      showFeedback('error', 'Login Failed', error?.message || 'Invalid ID or password.');
-    } finally {
-      setIsLoading(false);
-    }
-  };
+    showFeedback('error', 'Login Failed', error?.message || 'Invalid ID or password.');
+  } finally {
+    setIsLoading(false);
+  }
+};
 
   const handleEmailVerification = async () => {
     if (!recoveryEmail.trim()) {
@@ -848,65 +840,19 @@ const SignIn = ({ onLogIn, onGoToLanding, onGoToRegister }: SignInProps) => {
     );
   };
 
-  const renderFirstLoginStepIndicator = () => {
-    const steps = [
-      { key: 1, label: 'PIN' },
-      { key: 2, label: 'Password' },
-    ];
-
-    return (
-      <View style={styles.stepperContainer}>
-        {steps.map((step, index) => {
-          const isActive = firstLoginStep === step.key;
-          const isCompleted = firstLoginStep > step.key;
-
-          return (
-            <React.Fragment key={step.key}>
-              <View style={styles.stepItem}>
-                <View
-                  style={[
-                    styles.stepCircle,
-                    isActive && styles.stepCircleActive,
-                    isCompleted && styles.stepCircleCompleted,
-                  ]}
-                >
-                  {isCompleted ? (
-                    <Icon name="checkmark" size={16} color="#FFF" />
-                  ) : (
-                    <Text
-                      style={[
-                        styles.stepNumber,
-                        (isActive || isCompleted) && styles.stepNumberActive,
-                      ]}
-                    >
-                      {step.key}
-                    </Text>
-                  )}
-                </View>
-                <Text
-                  style={[
-                    styles.stepLabel,
-                    (isActive || isCompleted) && styles.stepLabelActive,
-                  ]}
-                >
-                  {step.label}
-                </Text>
-              </View>
-
-              {index < steps.length - 1 && (
-                <View
-                  style={[
-                    styles.stepLine,
-                    firstLoginStep > step.key && styles.stepLineActive,
-                  ]}
-                />
-              )}
-            </React.Fragment>
-          );
-        })}
+ const renderFirstLoginStepIndicator = () => {
+  // Only one step now: setting the real password.
+  return (
+    <View style={styles.stepperContainer}>
+      <View style={styles.stepItem}>
+        <View style={[styles.stepCircle, styles.stepCircleActive]}>
+          <Text style={[styles.stepNumber, styles.stepNumberActive]}>1</Text>
+        </View>
+        <Text style={[styles.stepLabel, styles.stepLabelActive]}>Password</Text>
       </View>
-    );
-  };
+    </View>
+  );
+};
 
   // ── Shared sign-in fields (rendered inside either layout) ────────────────
   const FormFields = (
