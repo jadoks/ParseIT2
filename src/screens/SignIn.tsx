@@ -817,19 +817,6 @@ const SignIn = ({
     );
   };
 
-  // ✅ Only one step now: setting the real password. No PIN indicator.
-  const renderFirstLoginStepIndicator = () => {
-    return (
-      <View style={styles.stepperContainer}>
-        <View style={styles.stepItem}>
-          <View style={[styles.stepCircle, styles.stepCircleActive]}>
-            <Text style={[styles.stepNumber, styles.stepNumberActive]}>1</Text>
-          </View>
-          <Text style={[styles.stepLabel, styles.stepLabelActive]}>Password</Text>
-        </View>
-      </View>
-    );
-  };
 
   // ── Shared sign-in fields (rendered inside either layout) ────────────────
   const FormFields = (
@@ -1303,7 +1290,7 @@ const SignIn = ({
                 </View>
               </View>
 
-              {renderFirstLoginStepIndicator()}
+              
 
               <View style={styles.stepContent}>
                 <View style={styles.modalIconWrapper}>
