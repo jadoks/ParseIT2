@@ -84,6 +84,12 @@ export default function App() {
   // session and are just waiting on a background verification.
   const hasCachedSessionRef = useRef(false);
 
+  // ✅ NEW: while true, onAuthStateChanged should NOT auto-navigate to the
+  // dashboard, even though Firebase already has a signed-in user — this is
+  // the window between "temp password accepted" and "real password set"
+  // during first-login setup in SignIn.
+  const suppressAutoLoginRef = useRef(false);
+
   // 🔥 REFRESH TOKEN — cached/instant by default, only hits network if expired.
   // Pass forceRefresh=true only when you specifically need a brand-new token
   // (e.g. right after login, or on the 50-minute interval below).
@@ -182,6 +188,16 @@ export default function App() {
       if (cancelled) return;
 
       if (firebaseUser) {
+        // ✅ NEW: if SignIn is currently in the middle of a first-login
+        // password-setup flow, don't auto-verify/navigate — Firebase Auth
+        // already has a session (from the temp-password sign-in check),
+        // but the account isn't "really" logged in until the new password
+        // has been set.
+        if (suppressAutoLoginRef.current) {
+          setIsCheckingAuth(false);
+          return;
+        }
+
         await verifySessionInBackground(false); // non-forced: instant if token still valid
       } else {
         hasCachedSessionRef.current = false;
@@ -213,6 +229,20 @@ export default function App() {
       await AsyncStorage.setItem(CACHED_USER_KEY, JSON.stringify(user));
     }
   };
+
+  // ✅ NEW: called by SignIn right before it signs in with a temp password
+  // for an account that still needs first-login setup. Tells the auth
+  // listener above to hold off on auto-navigating to the dashboard.
+  const handleFirstLoginPending = useCallback(() => {
+    suppressAutoLoginRef.current = true;
+  }, []);
+
+  // ✅ NEW: called by SignIn once first-login setup is fully resolved
+  // (password successfully set, OR the user backed out / an error occurred).
+  // Lets the auth listener resume normal behavior.
+  const handleFirstLoginResolved = useCallback(() => {
+    suppressAutoLoginRef.current = false;
+  }, []);
 
   const handleLogout = async () => {
     try {
@@ -279,6 +309,8 @@ export default function App() {
           onLogIn={handleLogin}
           onGoToLanding={() => setShowLanding(true)}
           onGoToRegister={() => setShowRegister(true)}
+          onFirstLoginPending={handleFirstLoginPending}
+          onFirstLoginResolved={handleFirstLoginResolved}
         />
       </SafeAreaView>
     );

@@ -1,6 +1,6 @@
 import Constants from 'expo-constants';
 import { signInWithEmailAndPassword, signOut } from 'firebase/auth';
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Animated,
   Easing,
@@ -28,7 +28,6 @@ import Toast from '../Final_Admin_Components/Toast'; // adjust path if your fold
 
 type UserRole = 'student' | 'teacher' | 'admin';
 type ForgotStep = 1 | 2 | 3;
-type FirstLoginStep = 1 | 2;
 type ToastType = 'success' | 'error' | 'info';
 
 interface SignedInUser {
@@ -49,6 +48,11 @@ interface SignInProps {
   onLogIn?: (user: SignedInUser) => void;
   onGoToLanding?: () => void;
   onGoToRegister?: () => void;
+  // ✅ NEW: let App.tsx know when a first-login (temp password) flow starts
+  // and ends, so its global auth listener doesn't race the "set new
+  // password" modal below and jump to the dashboard early.
+  onFirstLoginPending?: () => void;
+  onFirstLoginResolved?: () => void;
 }
 
 type LookupUserResponse = {
@@ -99,7 +103,13 @@ const API_BASE_URL = getApiBaseUrl();
 const SCREEN_TRANSITION_DURATION = 280;
 const SCREEN_SLIDE_DISTANCE = 24;
 
-const SignIn = ({ onLogIn, onGoToLanding, onGoToRegister }: SignInProps) => {
+const SignIn = ({
+  onLogIn,
+  onGoToLanding,
+  onGoToRegister,
+  onFirstLoginPending,
+  onFirstLoginResolved,
+}: SignInProps) => {
   const [id, setId] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -116,8 +126,9 @@ const SignIn = ({ onLogIn, onGoToLanding, onGoToRegister }: SignInProps) => {
   const [forgotPasswordVerifiedEmail, setForgotPasswordVerifiedEmail] = useState('');
   const [isRecoveryEmailFocused, setIsRecoveryEmailFocused] = useState(false);
 
+  // ✅ First-login setup is now a single-step flow: set a new real password
+  // using the temp password as proof of ownership. No PIN step.
   const [firstLoginVisible, setFirstLoginVisible] = useState(false);
-  const [firstLoginStep, setFirstLoginStep] = useState<FirstLoginStep>(1);
   const [pendingRole, setPendingRole] = useState<UserRole | null>(null);
   const [pendingUserId, setPendingUserId] = useState('');
   const [pendingEmail, setPendingEmail] = useState('');
@@ -129,7 +140,7 @@ const SignIn = ({ onLogIn, onGoToLanding, onGoToRegister }: SignInProps) => {
   const [confirmNewPassword, setConfirmNewPassword] = useState('');
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showConfirmNewPassword, setShowConfirmNewPassword] = useState(false);
-  // Shared by both the "forgot password" step 3 and "first login" step 2
+  // Shared by both the "forgot password" step 3 and the first-login
   // password fields, since only one of those modals is ever visible at once.
   const [isNewPasswordFocused, setIsNewPasswordFocused] = useState(false);
   const [isConfirmNewPasswordFocused, setIsConfirmNewPasswordFocused] = useState(false);
@@ -238,7 +249,7 @@ const SignIn = ({ onLogIn, onGoToLanding, onGoToRegister }: SignInProps) => {
   };
 
   const otpValue = verificationPin.join('');
-  const isPinValid = useMemo(() => /^\d{4}$/.test(otpValue), [otpValue]);
+  const isPinValid = /^\d{4}$/.test(otpValue);
 
   const showToast = (
     message: string,
@@ -285,7 +296,6 @@ const SignIn = ({ onLogIn, onGoToLanding, onGoToRegister }: SignInProps) => {
 
   const resetFirstLoginState = () => {
     setFirstLoginVisible(false);
-    setFirstLoginStep(1);
     setPendingRole(null);
     setPendingUserId('');
     setPendingEmail('');
@@ -418,25 +428,6 @@ const SignIn = ({ onLogIn, onGoToLanding, onGoToRegister }: SignInProps) => {
     onLogIn?.(signedInUser);
   };
 
-  const sendFirstLoginPin = async (userId: string, role: UserRole) => {
-    const response = await fetch(`${API_BASE_URL}/auth/send-first-login-pin`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        id: userId,
-        role,
-      }),
-    });
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      throw new Error(data?.error || 'Failed to send first login PIN.');
-    }
-
-    return data;
-  };
-
   const sendForgotPasswordPin = async (
     email: string
   ): Promise<SendForgotPasswordPinResponse> => {
@@ -510,49 +501,62 @@ const SignIn = ({ onLogIn, onGoToLanding, onGoToRegister }: SignInProps) => {
   };
 
   const handleLogIn = async () => {
-  if (!id.trim() || !password.trim()) {
-    showFeedback('error', 'Missing Fields', 'Please enter your ID and password.');
-    return;
-  }
-
-  const enteredId = id.trim();
-  const enteredPassword = password.trim();
-
-  try {
-    setIsLoading(true);
-
-    const user = await lookupUserById(enteredId);
-
-    if (!user.email) {
-      throw new Error('This account has no email assigned.');
-    }
-
-    await firebasePasswordSignIn(user.email, enteredPassword);
-
-    if (user.mustChangePassword) {
-      // ✅ Skip the PIN step entirely — jump straight to setting a real password.
-      setPendingRole(user.role);
-      setPendingUserId(user.id);
-      setPendingEmail(user.email);
-      setFirstLoginStep(2); // was: setFirstLoginStep(1) + sendFirstLoginPin(...)
-      resetSharedPasswordState();
-      setFirstLoginVisible(true);
+    if (!id.trim() || !password.trim()) {
+      showFeedback('error', 'Missing Fields', 'Please enter your ID and password.');
       return;
     }
 
-    // ✅ DIRECTLY PROCEED TO DASHBOARD (No success modal)
-    await completeLogin(user.id, user.role);
+    const enteredId = id.trim();
+    const enteredPassword = password.trim();
 
-  } catch (error: any) {
     try {
-      await signOut(auth);
-    } catch {}
+      setIsLoading(true);
 
-    showFeedback('error', 'Login Failed', error?.message || 'Invalid ID or password.');
-  } finally {
-    setIsLoading(false);
-  }
-};
+      const user = await lookupUserById(enteredId);
+
+      if (!user.email) {
+        throw new Error('This account has no email assigned.');
+      }
+
+      // ✅ NEW: if this account still needs first-login setup, tell App.tsx
+      // to hold off on auto-navigating BEFORE we sign in with the temp
+      // password — signing in fires Firebase's onAuthStateChanged listener
+      // immediately, and without this flag App.tsx would race ahead to the
+      // dashboard before the "set new password" modal below even opens.
+      if (user.mustChangePassword) {
+        onFirstLoginPending?.();
+      }
+
+      await firebasePasswordSignIn(user.email, enteredPassword);
+
+      if (user.mustChangePassword) {
+        // ✅ Skip the PIN step entirely — jump straight to setting a real
+        // password using the temp password as proof of ownership.
+        setPendingRole(user.role);
+        setPendingUserId(user.id);
+        setPendingEmail(user.email);
+        resetSharedPasswordState();
+        setFirstLoginVisible(true);
+        return;
+      }
+
+      // ✅ DIRECTLY PROCEED TO DASHBOARD (No success modal)
+      await completeLogin(user.id, user.role);
+
+    } catch (error: any) {
+      // ✅ NEW: make sure App.tsx doesn't stay stuck suppressing auto-login
+      // if anything failed before the first-login modal could take over.
+      onFirstLoginResolved?.();
+
+      try {
+        await signOut(auth);
+      } catch {}
+
+      showFeedback('error', 'Login Failed', error?.message || 'Invalid ID or password.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const handleEmailVerification = async () => {
     if (!recoveryEmail.trim()) {
@@ -662,50 +666,6 @@ const SignIn = ({ onLogIn, onGoToLanding, onGoToRegister }: SignInProps) => {
     }
   };
 
-  const handleFirstLoginPinVerification = async () => {
-    if (!pendingUserId || !pendingRole) {
-      showFeedback('error', 'Missing User', 'Unable to verify this account right now.');
-      return;
-    }
-
-    if (!otpValue) {
-      showFeedback('error', 'PIN Required', 'Please enter your 4-digit PIN.');
-      return;
-    }
-
-    if (!isPinValid) {
-      showFeedback('error', 'Invalid PIN', 'The PIN must be exactly 4 digits.');
-      return;
-    }
-
-    try {
-      setIsLoading(true);
-
-      const response = await fetch(`${API_BASE_URL}/auth/verify-first-login-pin`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          id: pendingUserId,
-          role: pendingRole,
-          pin: otpValue,
-        }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data?.error || 'Invalid PIN.');
-      }
-
-      setFirstLoginStep(2);
-    } catch (error: any) {
-      showFeedback('error', 'PIN Verification Failed', error?.message || 'Invalid PIN.');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  // ✅ UPDATED: Removed success modal, directly proceeds to dashboard
   const handleFirstLoginPasswordSetup = async () => {
     if (!pendingUserId || !pendingRole || !pendingEmail) {
       showFeedback('error', 'Missing User', 'Unable to complete setup right now.');
@@ -765,6 +725,11 @@ const SignIn = ({ onLogIn, onGoToLanding, onGoToRegister }: SignInProps) => {
 
       resetFirstLoginState();
 
+      // ✅ NEW: only now is it safe for App.tsx to resume normal auto-login
+      // handling — the account is fully set up and we're about to navigate
+      // to the dashboard ourselves via completeLogin below.
+      onFirstLoginResolved?.();
+
       // ✅ DIRECTLY PROCEED TO DASHBOARD (No success modal)
       await completeLogin(userId, role);
 
@@ -777,6 +742,18 @@ const SignIn = ({ onLogIn, onGoToLanding, onGoToRegister }: SignInProps) => {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  // ✅ NEW: used when the user backs out of first-login setup without
+  // finishing it (closes the modal). Signs out of the dangling
+  // temp-password Firebase session and lets App.tsx resume normal handling
+  // so they land back on a clean sign-in screen instead of getting stuck.
+  const handleAbandonFirstLoginSetup = async () => {
+    try {
+      await signOut(auth);
+    } catch {}
+    onFirstLoginResolved?.();
+    resetFirstLoginState();
   };
 
   const renderForgotStepIndicator = () => {
@@ -840,19 +817,19 @@ const SignIn = ({ onLogIn, onGoToLanding, onGoToRegister }: SignInProps) => {
     );
   };
 
- const renderFirstLoginStepIndicator = () => {
-  // Only one step now: setting the real password.
-  return (
-    <View style={styles.stepperContainer}>
-      <View style={styles.stepItem}>
-        <View style={[styles.stepCircle, styles.stepCircleActive]}>
-          <Text style={[styles.stepNumber, styles.stepNumberActive]}>1</Text>
+  // ✅ Only one step now: setting the real password. No PIN indicator.
+  const renderFirstLoginStepIndicator = () => {
+    return (
+      <View style={styles.stepperContainer}>
+        <View style={styles.stepItem}>
+          <View style={[styles.stepCircle, styles.stepCircleActive]}>
+            <Text style={[styles.stepNumber, styles.stepNumberActive]}>1</Text>
+          </View>
+          <Text style={[styles.stepLabel, styles.stepLabelActive]}>Password</Text>
         </View>
-        <Text style={[styles.stepLabel, styles.stepLabelActive]}>Password</Text>
       </View>
-    </View>
-  );
-};
+    );
+  };
 
   // ── Shared sign-in fields (rendered inside either layout) ────────────────
   const FormFields = (
@@ -1297,12 +1274,12 @@ const SignIn = ({ onLogIn, onGoToLanding, onGoToRegister }: SignInProps) => {
         </View>
       </Modal>
 
-      {/* First-login setup modal */}
+      {/* First-login setup modal — single step: set a new real password. */}
       <Modal
         visible={firstLoginVisible}
         transparent
         animationType="fade"
-        onRequestClose={resetFirstLoginState}
+        onRequestClose={handleAbandonFirstLoginSetup}
       >
         <View style={styles.modalOverlay}>
           <KeyboardAvoidingView
@@ -1311,7 +1288,7 @@ const SignIn = ({ onLogIn, onGoToLanding, onGoToRegister }: SignInProps) => {
           >
             <View style={styles.modalCard}>
               <TouchableOpacity
-                onPress={resetFirstLoginState}
+                onPress={handleAbandonFirstLoginSetup}
                 style={styles.modalCloseButton}
               >
                 <Icon name="close-outline" size={24} color="#444" />
@@ -1321,178 +1298,100 @@ const SignIn = ({ onLogIn, onGoToLanding, onGoToRegister }: SignInProps) => {
                 <View style={styles.modalHeaderText}>
                   <Text style={styles.modalTitle}>First-Time Setup</Text>
                   <Text style={styles.modalSubtitle}>
-                    Enter your 4-digit PIN, then set your real password.
+                    Set a new password to finish setting up your account.
                   </Text>
                 </View>
               </View>
 
               {renderFirstLoginStepIndicator()}
 
-              {firstLoginStep === 1 && (
-                <View style={styles.stepContent}>
-                  <View style={styles.modalIconWrapper}>
-                    <Icon name="key-outline" size={28} color="#D32F2F" />
-                  </View>
+              <View style={styles.stepContent}>
+                <View style={styles.modalIconWrapper}>
+                  <Icon name="lock-closed-outline" size={28} color="#D32F2F" />
+                </View>
 
-                  <Text style={styles.stepTitle}>Enter your first-login PIN</Text>
-                  <Text style={styles.stepDescription}>
-                    Type the 4-digit PIN sent to your email.
-                  </Text>
+                <Text style={styles.stepTitle}>Set your new password</Text>
+                <Text style={styles.stepDescription}>
+                  Create a secure password to finish setting up your account.
+                </Text>
 
-                  {!!pendingEmail && (
-                    <Text style={styles.stepDescription}>Account email: {pendingEmail}</Text>
-                  )}
-
-                  <View style={styles.otpContainer}>
-                    <View
-                      style={[
-                        styles.otpWrapper,
-                        {
-                          columnGap: isSmallScreen ? 8 : isTablet ? 10 : 12,
-                        },
-                      ]}
-                    >
-                      {verificationPin.map((digit, index) => (
-                        <TextInput
-                          key={index}
-                          ref={(ref) => {
-                            otpRefs.current[index] = ref;
-                          }}
-                          style={[
-                            styles.otpInput,
-                            {
-                              flex: 1,
-                              maxWidth: isSmallScreen ? 52 : isTablet ? 70 : 64,
-                              height: isSmallScreen ? 52 : isTablet ? 64 : 58,
-                              fontSize: isSmallScreen ? 20 : isTablet ? 24 : 22,
-                              lineHeight: isSmallScreen ? 20 : isTablet ? 24 : 22,
-                              borderRadius: isSmallScreen ? 12 : 14,
-                            },
-                            digit && styles.otpInputFilled,
-                          ]}
-                          value={digit}
-                          onChangeText={(text) => handleOtpChange(text, index)}
-                          onKeyPress={(e) => handleOtpKeyPress(e, index)}
-                          keyboardType="number-pad"
-                          maxLength={1}
-                          autoFocus={index === 0}
-                          editable={!isLoading}
-                        />
-                      ))}
-                    </View>
-                  </View>
-
+                <View style={[styles.passwordFieldWrapper, isNewPasswordFocused && styles.passwordFieldWrapperFocused]}>
+                  <Icon
+                    name="lock-closed-outline"
+                    size={18}
+                    color="#888"
+                    style={styles.inputIcon}
+                  />
+                  <TextInput
+                    style={styles.passwordFieldInput}
+                    placeholder="New password"
+                    placeholderTextColor="#9E9E9E"
+                    value={newPassword}
+                    onChangeText={setNewPassword}
+                    secureTextEntry={!showNewPassword}
+                    autoCapitalize="none"
+                    editable={!isLoading}
+                    onFocus={() => setIsNewPasswordFocused(true)}
+                    onBlur={() => setIsNewPasswordFocused(false)}
+                  />
                   <TouchableOpacity
-                    style={[styles.primaryButton, isLoading && styles.disabledButton]}
-                    onPress={handleFirstLoginPinVerification}
-                    activeOpacity={0.85}
+                    onPress={() => setShowNewPassword(!showNewPassword)}
+                    style={styles.iconButton}
                     disabled={isLoading}
                   >
-                    <Text style={styles.primaryButtonText}>
-                      {isLoading ? 'Verifying...' : 'Verify PIN'}
-                    </Text>
+                    <Icon
+                      name={showNewPassword ? 'eye-off-outline' : 'eye-outline'}
+                      size={20}
+                      color="#888"
+                    />
                   </TouchableOpacity>
                 </View>
-              )}
 
-              {firstLoginStep === 2 && (
-                <View style={styles.stepContent}>
-                  <View style={styles.modalIconWrapper}>
-                    <Icon name="lock-closed-outline" size={28} color="#D32F2F" />
-                  </View>
-
-                  <Text style={styles.stepTitle}>Set your new password</Text>
-                  <Text style={styles.stepDescription}>
-                    Create a secure password to finish setting up your account.
-                  </Text>
-
-                  <View style={[styles.passwordFieldWrapper, isNewPasswordFocused && styles.passwordFieldWrapperFocused]}>
+                <View style={[styles.passwordFieldWrapper, isConfirmNewPasswordFocused && styles.passwordFieldWrapperFocused]}>
+                  <Icon
+                    name="lock-closed-outline"
+                    size={18}
+                    color="#888"
+                    style={styles.inputIcon}
+                  />
+                  <TextInput
+                    style={styles.passwordFieldInput}
+                    placeholder="Confirm new password"
+                    placeholderTextColor="#9E9E9E"
+                    value={confirmNewPassword}
+                    onChangeText={setConfirmNewPassword}
+                    secureTextEntry={!showConfirmNewPassword}
+                    autoCapitalize="none"
+                    editable={!isLoading}
+                     returnKeyType="done"
+                    onSubmitEditing={handleFirstLoginPasswordSetup}
+                    onFocus={() => setIsConfirmNewPasswordFocused(true)}
+                    onBlur={() => setIsConfirmNewPasswordFocused(false)}
+                  />
+                  <TouchableOpacity
+                    onPress={() => setShowConfirmNewPassword(!showConfirmNewPassword)}
+                    style={styles.iconButton}
+                    disabled={isLoading}
+                  >
                     <Icon
-                      name="lock-closed-outline"
-                      size={18}
+                      name={showConfirmNewPassword ? 'eye-off-outline' : 'eye-outline'}
+                      size={20}
                       color="#888"
-                      style={styles.inputIcon}
                     />
-                    <TextInput
-                      style={styles.passwordFieldInput}
-                      placeholder="New password"
-                      placeholderTextColor="#9E9E9E"
-                      value={newPassword}
-                      onChangeText={setNewPassword}
-                      secureTextEntry={!showNewPassword}
-                      autoCapitalize="none"
-                      editable={!isLoading}
-                      onFocus={() => setIsNewPasswordFocused(true)}
-                      onBlur={() => setIsNewPasswordFocused(false)}
-                    />
-                    <TouchableOpacity
-                      onPress={() => setShowNewPassword(!showNewPassword)}
-                      style={styles.iconButton}
-                      disabled={isLoading}
-                    >
-                      <Icon
-                        name={showNewPassword ? 'eye-off-outline' : 'eye-outline'}
-                        size={20}
-                        color="#888"
-                      />
-                    </TouchableOpacity>
-                  </View>
-
-                  <View style={[styles.passwordFieldWrapper, isConfirmNewPasswordFocused && styles.passwordFieldWrapperFocused]}>
-                    <Icon
-                      name="lock-closed-outline"
-                      size={18}
-                      color="#888"
-                      style={styles.inputIcon}
-                    />
-                    <TextInput
-                      style={styles.passwordFieldInput}
-                      placeholder="Confirm new password"
-                      placeholderTextColor="#9E9E9E"
-                      value={confirmNewPassword}
-                      onChangeText={setConfirmNewPassword}
-                      secureTextEntry={!showConfirmNewPassword}
-                      autoCapitalize="none"
-                      editable={!isLoading}
-                       returnKeyType="done"
-                      onSubmitEditing={handlePasswordReset}
-                      onFocus={() => setIsConfirmNewPasswordFocused(true)}
-                      onBlur={() => setIsConfirmNewPasswordFocused(false)}
-                    />
-                    <TouchableOpacity
-                      onPress={() => setShowConfirmNewPassword(!showConfirmNewPassword)}
-                      style={styles.iconButton}
-                      disabled={isLoading}
-                    >
-                      <Icon
-                        name={showConfirmNewPassword ? 'eye-off-outline' : 'eye-outline'}
-                        size={20}
-                        color="#888"
-                      />
-                    </TouchableOpacity>
-                  </View>
-
-                  <View style={styles.modalActionRow}>
-                    <TouchableOpacity
-                      style={styles.secondaryButton}
-                      onPress={() => setFirstLoginStep(1)}
-                      disabled={isLoading}
-                    >
-                      <Text style={styles.secondaryButtonText}>Back</Text>
-                    </TouchableOpacity>
-
-                    <TouchableOpacity
-                      style={[styles.primaryButtonCompact, isLoading && styles.disabledButton]}
-                      onPress={handleFirstLoginPasswordSetup}
-                      disabled={isLoading}
-                    >
-                      <Text style={styles.primaryButtonText}>
-                        {isLoading ? 'Saving...' : 'Save Password'}
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
+                  </TouchableOpacity>
                 </View>
-              )}
+
+                <TouchableOpacity
+                  style={[styles.primaryButton, isLoading && styles.disabledButton]}
+                  onPress={handleFirstLoginPasswordSetup}
+                  activeOpacity={0.85}
+                  disabled={isLoading}
+                >
+                  <Text style={styles.primaryButtonText}>
+                    {isLoading ? 'Saving...' : 'Save Password'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
             </View>
           </KeyboardAvoidingView>
         </View>
