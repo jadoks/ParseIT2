@@ -1,5 +1,4 @@
-
-  import { GoogleGenerativeAI, SchemaType } from "@google/generative-ai";
+import { GoogleGenerativeAI, SchemaType } from "@google/generative-ai";
 import cookieParser from "cookie-parser";
 import cors from "cors";
 import dotenv from "dotenv";
@@ -26,6 +25,62 @@ import multer from "multer";
   const require = createRequire(import.meta.url);
   const pdf = require("pdf-parse");
   const vision = require("@google-cloud/vision");
+
+  // ============================================================
+  // PERFORMANCE / COST OPTIMIZATION LAYER
+  // ============================================================
+  // Short-lived, in-memory caches used across the file to cut down on
+  // duplicate Firestore reads and Firebase Storage operations
+  // (file.exists() / getSignedUrl()) without changing any endpoint's
+  // URL, request/response shape, or auth behavior.
+  //
+  // TTLs are intentionally short (seconds) rather than long-lived,
+  // since these cover user profiles and lookups that can change at
+  // any time. The goal is to dedupe the handful of repeated lookups
+  // that happen within a single request (or a tight burst of
+  // requests, e.g. a dashboard firing several endpoints back to
+  // back), not to serve stale data for minutes.
+  function createShortTTLCache(ttlMs) {
+    const store = new Map(); // key -> { value, expiresAt }
+
+    return {
+      get(key) {
+        const entry = store.get(key);
+        if (!entry) return undefined;
+        if (Date.now() > entry.expiresAt) {
+          store.delete(key);
+          return undefined;
+        }
+        return entry.value;
+      },
+      set(key, value) {
+        store.set(key, { value, expiresAt: Date.now() + ttlMs });
+      },
+      delete(key) {
+        store.delete(key);
+      },
+      clear() {
+        store.clear();
+      },
+    };
+  }
+
+  const USER_PROFILE_CACHE_TTL_MS = 8_000;
+  const userProfileByAuthUidCache = createShortTTLCache(USER_PROFILE_CACHE_TTL_MS);
+  const usersByIdCache = createShortTTLCache(USER_PROFILE_CACHE_TTL_MS);
+  const userByEmailCache = createShortTTLCache(USER_PROFILE_CACHE_TTL_MS);
+
+  function invalidateUserProfileCache(authUid) {
+    if (authUid) userProfileByAuthUidCache.delete(authUid);
+  }
+
+  function invalidateUserLookupCaches({ id, email } = {}) {
+    if (id) usersByIdCache.delete(String(id).trim());
+    if (email) userByEmailCache.delete(String(email).trim().toLowerCase());
+  }
+  // ============================================================
+  // END PERFORMANCE / COST OPTIMIZATION LAYER (utilities)
+  // ============================================================
 
   // ✅ CORRECTED INITIALIZATION BLOCK
   let client;
@@ -208,11 +263,20 @@ import multer from "multer";
   async function findUserProfileByAuthUid(authUid) {
     if (!authUid) return null;
 
+    // ✅ OPTIMIZATION: short-TTL cache. This function is called from many
+    // route handlers (often more than once per request via requireClassAccess),
+    // so caching it here removes duplicate Firestore reads without needing to
+    // touch every call site.
+    const cached = userProfileByAuthUidCache.get(authUid);
+    if (cached !== undefined) return cached;
+
     const roles = [
       { role: "student", collection: "students" },
       { role: "teacher", collection: "teachers" },
       { role: "admin", collection: "admins" },
     ];
+
+    let result = null;
 
     for (const item of roles) {
       const snapshot = await db
@@ -223,17 +287,19 @@ import multer from "multer";
 
       if (!snapshot.empty) {
         const doc = snapshot.docs[0];
-        return {
+        result = {
           id: doc.id,
           role: item.role,
           collection: item.collection,
           ref: doc.ref,
           data: doc.data() || {},
         };
+        break;
       }
     }
 
-    return null;
+    userProfileByAuthUidCache.set(authUid, result);
+    return result;
   }
 
   async function requireClassAccess({ authUid, classId, allowedRoles = [] }) {
@@ -309,34 +375,121 @@ import multer from "multer";
 
     return allowedPrefixes.some((prefix) => storagePath.startsWith(prefix));
   }
+// How much buffer to leave before a cached URL's real expiry
+// before we consider it stale and regenerate. Keeps clients from
+// ever being handed a URL that expires mid-download.
+const CACHE_SAFETY_MARGIN_MS = 5 * 60 * 1000; // 5 minutes
+ 
+// storagePath -> { url, expiresAt, existsChecked }
+const signedUrlCache = new Map();
+ 
+// Separate, smaller cache just for existence checks, so
+// createReadSignedUrlIfExists doesn't re-run file.exists() every
+// time either, once we already know the file exists this session.
+// (We deliberately do NOT cache "does not exist" — if a file gets
+// uploaded a moment after a miss, we want the next call to see it.)
+const EXISTENCE_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
+const existenceCache = new Map(); // storagePath -> { exists: true, checkedAt }
+ 
+function getCachedEntry(storagePath) {
+  const entry = signedUrlCache.get(storagePath);
+  if (!entry) return null;
+ 
+  const stillFresh = entry.expiresAt - Date.now() > CACHE_SAFETY_MARGIN_MS;
+  if (!stillFresh) {
+    signedUrlCache.delete(storagePath);
+    return null;
+  }
+ 
+  return entry;
+}
+ 
+function setCachedEntry(storagePath, url) {
+  signedUrlCache.set(storagePath, {
+    url,
+    expiresAt: Date.now() + SIGNED_URL_EXPIRES_IN_MS,
+  });
+}
 
-  async function createReadSignedUrl(storagePath) {
-    const [url] = await bucket.file(storagePath).getSignedUrl({
-      version: "v4",
+// ✅ OPTIMIZATION: explicit invalidation so replacing or deleting a file at
+// a known storage path never leaves a stale cached signed URL / stale
+// "exists" result behind for that path. Wired into deleteStorageFileIfExists
+// below, which is already the single choke point almost every route in this
+// file goes through when a banner/material/assignment/image file changes.
+function invalidateSignedUrlCache(storagePath) {
+  if (!storagePath) return;
+  signedUrlCache.delete(storagePath);
+  existenceCache.delete(storagePath);
+}
+ 
+/**
+ * Cached replacement for createReadSignedUrl(storagePath).
+ * Same signature and behavior as before (throws if the file
+ * doesn't exist / signing fails), but reuses a cached URL when
+ * one is still valid instead of hitting Storage every call.
+ */
+async function createReadSignedUrl(storagePath) {
+  const cached = getCachedEntry(storagePath);
+  if (cached) return cached.url;
+ 
+  const [url] = await bucket.file(storagePath).getSignedUrl({
+    version: "v4",
+    action: "read",
+    expires: Date.now() + SIGNED_URL_EXPIRES_IN_MS,
+  });
+ 
+  setCachedEntry(storagePath, url);
+  return url;
+}
+ 
+/**
+ * Cached replacement for createReadSignedUrlIfExists(storagePath).
+ * Same signature and behavior as before (returns null instead of
+ * throwing), but:
+ *   1. Skips getSignedUrl() entirely if we have a fresh cached URL.
+ *   2. Skips the extra file.exists() Storage call once we've
+ *      confirmed a file exists within the last EXISTENCE_CACHE_TTL_MS,
+ *      since getSignedUrl() itself will surface a clean failure if
+ *      the file is somehow gone by then.
+ */
+async function createReadSignedUrlIfExists(storagePath) {
+  if (!storagePath) return null;
+ 
+  const cached = getCachedEntry(storagePath);
+  if (cached) return cached.url;
+ 
+  try {
+    const existenceEntry = existenceCache.get(storagePath);
+    const existenceStillFresh =
+      existenceEntry &&
+      Date.now() - existenceEntry.checkedAt < EXISTENCE_CACHE_TTL_MS;
+ 
+    const file = bucket.file(storagePath);
+ 
+    if (!existenceStillFresh) {
+      const [exists] = await file.exists();
+      if (!exists) {
+        // Don't cache negative results — a file may be uploaded
+        // moments later (e.g. right after a class banner upload).
+        existenceCache.delete(storagePath);
+        return null;
+      }
+      existenceCache.set(storagePath, { exists: true, checkedAt: Date.now() });
+    }
+ 
+    const [url] = await file.getSignedUrl({
       action: "read",
       expires: Date.now() + SIGNED_URL_EXPIRES_IN_MS,
     });
-
+ 
+    setCachedEntry(storagePath, url);
     return url;
+  } catch (e) {
+    console.warn("createReadSignedUrlIfExists error:", e?.message);
+    return null;
   }
-
-
-  async function createReadSignedUrlIfExists(storagePath) {
-    if (!storagePath) return null;
-    try {
-      const file = bucket.file(storagePath);
-      const [exists] = await file.exists();
-      if (!exists) return null;
-      const [url] = await file.getSignedUrl({
-        action: 'read',
-        expires: Date.now() + 60 * 60 * 1000, // 1 hour
-      });
-      return url;
-    } catch (e) {
-      console.warn('createReadSignedUrlIfExists error:', e?.message);
-      return null;
-    }
-  }
+}
+ 
 
   async function hydrateClassBannerUrl(classData = {}) {
     const refreshedBannerUrl = await createReadSignedUrlIfExists(
@@ -1546,6 +1699,12 @@ import multer from "multer";
       await bucket.file(storagePath).delete();
     } catch (error) {
       console.warn("Storage delete skipped:", error?.message || error);
+    } finally {
+      // ✅ OPTIMIZATION: always evict cached signed URL / existence entries
+      // for this path, even if the delete itself failed/no-op'd (e.g. the
+      // file was already gone) — a path we're actively deleting should
+      // never be served from cache afterward.
+      invalidateSignedUrlCache(storagePath);
     }
   }
 
@@ -1779,6 +1938,14 @@ import multer from "multer";
     const normalizedId = normalizeOptionalText(id);
     if (!normalizedId) return [];
 
+    // ✅ OPTIMIZATION: cache only positive results. Negative results
+    // ("no matches") are intentionally never cached because this function
+    // is also used for duplicate-ID checks before creating new accounts —
+    // caching a stale "not found" could let a duplicate ID slip through
+    // for the length of the TTL. Caching a found record is always safe.
+    const cached = usersByIdCache.get(normalizedId);
+    if (cached !== undefined) return cached;
+
     const roles = [
       { role: "student", collection: "students" },
       { role: "teacher", collection: "teachers" },
@@ -1801,12 +1968,21 @@ import multer from "multer";
       }
     }
 
+    if (matches.length > 0) {
+      usersByIdCache.set(normalizedId, matches);
+    }
+
     return matches;
   }
 
   async function findUserByEmailAcrossRoles(email) {
     const normalizedEmail = normalizeOptionalText(email);
     if (!normalizedEmail) return null;
+
+    // ✅ OPTIMIZATION: same positive-only caching rationale as
+    // findUsersByIdAcrossAllRoles above (used for duplicate-email checks).
+    const cached = userByEmailCache.get(normalizedEmail);
+    if (cached !== undefined) return cached;
 
     const roles = [
       { role: "student", collection: "students" },
@@ -1824,13 +2000,15 @@ import multer from "multer";
       const snapshot = snapshots[i];
       if (!snapshot.empty) {
         const doc = snapshot.docs[0];
-        return {
+        const result = {
           role: roles[i].role,
           collection: roles[i].collection,
           ref: doc.ref,
           data: doc.data(),
           id: doc.id,
         };
+        userByEmailCache.set(normalizedEmail, result);
+        return result;
       }
     }
 
@@ -5234,6 +5412,13 @@ app.post("/create-admin", async (req, res) => {
         });
       }
 
+      // ✅ OPTIMIZATION: this record's data (and possibly its doc ID/email)
+      // just changed, so evict every cache it could be sitting in.
+      invalidateUserProfileCache(existingData?.authUid);
+      invalidateUserLookupCaches({ id, email: existingData?.email });
+      if (adminId && adminId !== id) invalidateUserLookupCaches({ id: adminId });
+      if (email) invalidateUserLookupCaches({ email });
+
       res.json({ success: true, message: "Admin updated successfully." });
     } catch (error) {
       console.error("Update admin error:", error);
@@ -5262,6 +5447,10 @@ app.post("/create-admin", async (req, res) => {
     } else {
       console.warn(`No authUid found for admin doc ${id}; Auth user not deleted.`);
     }
+
+    // ✅ OPTIMIZATION: evict any cached lookups for the deleted account.
+    invalidateUserProfileCache(data?.authUid);
+    invalidateUserLookupCaches({ id, email: data?.email });
 
     res.json({ success: true, message: "Admin deleted successfully." });
   } catch (error) {
@@ -5319,6 +5508,12 @@ app.post("/create-admin", async (req, res) => {
         });
       }
 
+      // ✅ OPTIMIZATION: evict every cache this record could be sitting in.
+      invalidateUserProfileCache(existingData?.authUid);
+      invalidateUserLookupCaches({ id, email: existingData?.email });
+      if (teacherId && teacherId !== id) invalidateUserLookupCaches({ id: teacherId });
+      if (email) invalidateUserLookupCaches({ email });
+
       res.json({ success: true, message: "Teacher updated successfully." });
     } catch (error) {
       console.error("Update teacher error:", error);
@@ -5344,6 +5539,10 @@ app.post("/create-admin", async (req, res) => {
     } else {
       console.warn(`No authUid found for teacher doc ${id}; Auth user not deleted.`);
     }
+
+    // ✅ OPTIMIZATION: evict any cached lookups for the deleted account.
+    invalidateUserProfileCache(data?.authUid);
+    invalidateUserLookupCaches({ id, email: data?.email });
 
     res.json({ success: true, message: "Teacher deleted successfully." });
   } catch (error) {
@@ -5404,6 +5603,12 @@ app.post("/create-admin", async (req, res) => {
         });
       }
 
+      // ✅ OPTIMIZATION: evict every cache this record could be sitting in.
+      invalidateUserProfileCache(existingData?.authUid);
+      invalidateUserLookupCaches({ id, email: existingData?.email });
+      if (studentId && studentId !== id) invalidateUserLookupCaches({ id: studentId });
+      if (email) invalidateUserLookupCaches({ email });
+
       res.json({ success: true, message: "Student updated successfully." });
     } catch (error) {
       console.error("Update student error:", error);
@@ -5429,6 +5634,10 @@ app.post("/create-admin", async (req, res) => {
     } else {
       console.warn(`No authUid found for student doc ${id}; Auth user not deleted.`);
     }
+
+    // ✅ OPTIMIZATION: evict any cached lookups for the deleted account.
+    invalidateUserProfileCache(data?.authUid);
+    invalidateUserLookupCaches({ id, email: data?.email });
 
     res.json({ success: true, message: "Student deleted successfully." });
   } catch (error) {
@@ -13433,6 +13642,13 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
       await admin.auth().updateUser(userData.authUid, { email: normalizedEmail });
       await userRef.update({ email: normalizedEmail, updatedAt: FieldValue.serverTimestamp() });
 
+      // ✅ OPTIMIZATION: the cached profile (keyed by authUid) now has a
+      // stale email; evict it immediately rather than waiting out the TTL.
+      // Also drop any cached email lookups for the old/new address.
+      invalidateUserProfileCache(userData.authUid);
+      invalidateUserLookupCaches({ email: userData.email });
+      invalidateUserLookupCaches({ email: normalizedEmail });
+
       return res.json({
         success: true,
         message: "Email updated successfully.",
@@ -13464,6 +13680,10 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
         updatedAt: FieldValue.serverTimestamp(),
         lastPasswordChangeAt: FieldValue.serverTimestamp(),
       });
+
+      // ✅ OPTIMIZATION: evict the cached profile so the next read reflects
+      // updatedAt/lastPasswordChangeAt immediately instead of after the TTL.
+      invalidateUserProfileCache(userData.authUid);
 
       return res.json({ success: true, message: "Password updated successfully." });
     } catch (error) {
@@ -14074,6 +14294,11 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
       }
 
       await profile.ref.update(updates);
+
+      // ✅ OPTIMIZATION: evict the cached profile immediately — otherwise a
+      // request that runs within the TTL window right after this upload
+      // could still see the old profileImage/bannerImage paths.
+      invalidateUserProfileCache(req.user.uid);
 
       const updatedSnap = await profile.ref.get();
       const updatedData = updatedSnap.data() || {};
@@ -16754,4 +16979,3 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
     console.log(`Server running on http://localhost:${PORT}`);
     console.log(`Health check: http://localhost:${PORT}/health`);
   });
-  
