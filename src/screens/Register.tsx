@@ -879,6 +879,12 @@ export default function Register({
   // Drives the inline hint under the Password field below.
   const isPasswordLongEnough = password.length >= MIN_PASSWORD_LENGTH;
 
+  // Whether Confirm Password currently matches Password. Drives the inline
+  // match indicator under that field below. Only shown once the user has
+  // actually typed something into Confirm Password.
+  const isConfirmPasswordMatching =
+    confirmPassword.length > 0 && confirmPassword === password;
+
   useEffect(() => {
   if (Platform.OS === 'web') {
     const style = document.createElement('style');
@@ -1257,6 +1263,11 @@ export default function Register({
               <Ionicons name={showConfirmPassword ? 'eye-off-outline' : 'eye-outline'} size={20} color="#7A7A7A" />
             </TouchableOpacity>
           </View>
+          {confirmPassword.length > 0 && (
+            <Text style={[styles.passwordHint, isConfirmPasswordMatching && styles.passwordHintValid]}>
+              {isConfirmPasswordMatching ? '✓ Passwords match' : 'Passwords do not match'}
+            </Text>
+          )}
         </View>
       </View>
     </>
@@ -1377,6 +1388,11 @@ export default function Register({
             <Ionicons name={showConfirmPassword ? 'eye-off-outline' : 'eye-outline'} size={20} color="#7A7A7A" />
           </TouchableOpacity>
         </View>
+        {confirmPassword.length > 0 && (
+          <Text style={[styles.passwordHint, isConfirmPasswordMatching && styles.passwordHintValid]}>
+            {isConfirmPasswordMatching ? '✓ Passwords match' : 'Passwords do not match'}
+          </Text>
+        )}
       </View>
     </>
   );
