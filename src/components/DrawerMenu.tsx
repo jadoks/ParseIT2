@@ -78,6 +78,11 @@ interface DrawerMenuProps {
 
 const DEFAULT_AVATAR = require('../../assets/images/default_profile.png');
 
+// Single source of truth for the minimum new-password length, used both by
+// the inline hint under "New Password" and by handleChangePassword's
+// validation below, so the two can't drift out of sync.
+const MIN_PASSWORD_LENGTH = 8;
+
 // ---- Cache-aware signed-URL refresh for the drawer avatar. ----
 // Mirrors the teacher-side pattern: check the cache first, only hit the
 // network when the cached signed URL is missing or expired.
@@ -239,8 +244,24 @@ const DrawerMenu = ({
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
 
+  // 👁 Per-field visibility toggles for the Change Password modal, mirroring
+  // the show/hide eye icon behavior used on the Password fields in Register.
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+
   // 👇 State for the cached/refreshed avatar signed URL
   const [refreshedAvatarUrl, setRefreshedAvatarUrl] = useState<string | null>(null);
+
+  // Whether the "New Password" field currently meets the minimum length
+  // requirement. Drives the inline hint under that field below.
+  const isNewPasswordLongEnough = newPassword.length >= MIN_PASSWORD_LENGTH;
+
+  // Whether "Confirm Password" currently matches "New Password". Drives the
+  // inline match indicator under that field below. Only shown once the user
+  // has actually typed something into Confirm Password.
+  const isConfirmPasswordMatching =
+    confirmPassword.length > 0 && confirmPassword === newPassword;
 
   useEffect(() => {
     setEmail(userEmail || '');
@@ -356,8 +377,11 @@ const DrawerMenu = ({
       return;
     }
 
-    if (trimmedNewPassword.length < 8) {
-      Alert.alert('Weak Password', 'Your new password must be at least 8 characters long.');
+    if (trimmedNewPassword.length < MIN_PASSWORD_LENGTH) {
+      Alert.alert(
+        'Weak Password',
+        `Your new password must be at least ${MIN_PASSWORD_LENGTH} characters long.`
+      );
       return;
     }
 
@@ -583,7 +607,7 @@ const DrawerMenu = ({
               </View>
             </Pressable>
 
-            <Pressable style={(state) => [styles.settingsOptionButton, pressableWebHover(state)]} onPress={() => { setSettingsModalVisible(false); setCurrentPassword(''); setNewPassword(''); setConfirmPassword(''); setChangePasswordModalVisible(true); }}>
+            <Pressable style={(state) => [styles.settingsOptionButton, pressableWebHover(state)]} onPress={() => { setSettingsModalVisible(false); setCurrentPassword(''); setNewPassword(''); setConfirmPassword(''); setShowCurrentPassword(false); setShowNewPassword(false); setShowConfirmPassword(false); setChangePasswordModalVisible(true); }}>
               <View style={styles.settingsOptionContent}>
                 <View style={styles.settingsOptionIconWrap}><MaterialCommunityIcons name="lock-outline" size={22} color="#D32F2F" /></View>
                 <View style={styles.settingsOptionTextWrap}>
@@ -627,15 +651,77 @@ const DrawerMenu = ({
             <Text style={styles.formModalSubtitle}>Update your password to keep your account secure.</Text>
             <View style={styles.inputGroup}>
               <Text style={styles.inputLabel}>Current Password</Text>
-              <TextInput value={currentPassword} onChangeText={setCurrentPassword} placeholder="Enter current password" placeholderTextColor="#999" style={styles.textInput} secureTextEntry editable={!savingPassword} />
+              <View style={styles.passwordFieldContainer}>
+                <TextInput
+                  value={currentPassword}
+                  onChangeText={setCurrentPassword}
+                  placeholder="Enter current password"
+                  placeholderTextColor="#999"
+                  style={styles.passwordFieldInput}
+                  secureTextEntry={!showCurrentPassword}
+                  autoCapitalize="none"
+                  editable={!savingPassword}
+                />
+                <Pressable
+                  onPress={() => setShowCurrentPassword(!showCurrentPassword)}
+                  style={styles.eyeIconButton}
+                  disabled={savingPassword}
+                >
+                  <Ionicons name={showCurrentPassword ? 'eye-off-outline' : 'eye-outline'} size={20} color="#7A7A7A" />
+                </Pressable>
+              </View>
             </View>
             <View style={styles.inputGroup}>
               <Text style={styles.inputLabel}>New Password</Text>
-              <TextInput value={newPassword} onChangeText={setNewPassword} placeholder="Enter new password" placeholderTextColor="#999" style={styles.textInput} secureTextEntry editable={!savingPassword} />
+              <View style={styles.passwordFieldContainer}>
+                <TextInput
+                  value={newPassword}
+                  onChangeText={setNewPassword}
+                  placeholder="Enter new password"
+                  placeholderTextColor="#999"
+                  style={styles.passwordFieldInput}
+                  secureTextEntry={!showNewPassword}
+                  autoCapitalize="none"
+                  editable={!savingPassword}
+                />
+                <Pressable
+                  onPress={() => setShowNewPassword(!showNewPassword)}
+                  style={styles.eyeIconButton}
+                  disabled={savingPassword}
+                >
+                  <Ionicons name={showNewPassword ? 'eye-off-outline' : 'eye-outline'} size={20} color="#7A7A7A" />
+                </Pressable>
+              </View>
+              <Text style={[styles.passwordHint, isNewPasswordLongEnough && styles.passwordHintValid]}>
+                {isNewPasswordLongEnough ? '✓ ' : ''}Must be at least {MIN_PASSWORD_LENGTH} characters
+              </Text>
             </View>
             <View style={styles.inputGroup}>
               <Text style={styles.inputLabel}>Confirm Password</Text>
-              <TextInput value={confirmPassword} onChangeText={setConfirmPassword} placeholder="Confirm new password" placeholderTextColor="#999" style={styles.textInput} secureTextEntry editable={!savingPassword} />
+              <View style={styles.passwordFieldContainer}>
+                <TextInput
+                  value={confirmPassword}
+                  onChangeText={setConfirmPassword}
+                  placeholder="Confirm new password"
+                  placeholderTextColor="#999"
+                  style={styles.passwordFieldInput}
+                  secureTextEntry={!showConfirmPassword}
+                  autoCapitalize="none"
+                  editable={!savingPassword}
+                />
+                <Pressable
+                  onPress={() => setShowConfirmPassword(!showConfirmPassword)}
+                  style={styles.eyeIconButton}
+                  disabled={savingPassword}
+                >
+                  <Ionicons name={showConfirmPassword ? 'eye-off-outline' : 'eye-outline'} size={20} color="#7A7A7A" />
+                </Pressable>
+              </View>
+              {confirmPassword.length > 0 && (
+                <Text style={[styles.passwordHint, isConfirmPasswordMatching && styles.passwordHintValid]}>
+                  {isConfirmPasswordMatching ? '✓ Passwords match' : 'Passwords do not match'}
+                </Text>
+              )}
             </View>
             <View style={styles.formButtonsRow}>
               <Pressable style={styles.formCancelBtn} onPress={() => { setChangePasswordModalVisible(false); setSettingsModalVisible(true); }} disabled={savingPassword}><Text style={styles.formCancelText}>Back</Text></Pressable>
@@ -694,6 +780,32 @@ const styles = StyleSheet.create({
   inputGroup: { marginBottom: 14 },
   inputLabel: { fontSize: 13, fontWeight: '600', color: '#555', marginBottom: 8 },
   textInput: { borderWidth: 1, borderColor: '#DDD', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: 15, color: '#111', backgroundColor: '#FFF' },
+  // Password fields with a trailing show/hide eye icon (Current/New/Confirm
+  // Password in the Change Password modal), styled to match textInput.
+  passwordFieldContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#DDD',
+    borderRadius: 12,
+    backgroundColor: '#FFF',
+    paddingLeft: 14,
+  },
+  passwordFieldInput: {
+    flex: 1,
+    paddingVertical: 12,
+    fontSize: 15,
+    color: '#111',
+  },
+  eyeIconButton: {
+    paddingHorizontal: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  // Inline hint shown under "New Password", telling the user the minimum
+  // length requirement. Turns green with a checkmark once met.
+  passwordHint: { fontSize: 12, fontWeight: '600', color: '#9CA3AF', marginTop: 6, marginLeft: 2 },
+  passwordHintValid: { color: '#16A34A' },
   formButtonsRow: { flexDirection: 'row', justifyContent: 'flex-end', marginTop: 8 },
   formCancelBtn: { paddingVertical: 12, paddingHorizontal: 16, marginRight: 10, borderRadius: 10, backgroundColor: '#F3F4F6' },
   formCancelText: { color: '#444', fontWeight: '600' },

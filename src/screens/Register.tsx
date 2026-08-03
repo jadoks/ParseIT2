@@ -74,6 +74,12 @@ const API_BASE_URL = getApiBaseUrl();
 const SCREEN_TRANSITION_DURATION = 280;
 const SCREEN_SLIDE_DISTANCE = 24;
 
+// ─── Password rules ───────────────────────────────────────────────────────────
+// Single source of truth for the minimum password length, used both by the
+// inline hint under the Password field and by the handleRegister validation
+// below, so the two can never drift out of sync.
+const MIN_PASSWORD_LENGTH = 8;
+
 // ─── BirthdayField (matches AddStudentModal exactly) ─────────────────────────
 
 function BirthdayField({
@@ -869,6 +875,10 @@ export default function Register({
   // auto-dismisses, so we run that follow-up when it hides instead.
   const [toastOnHide, setToastOnHide] = useState<(() => void) | null>(null);
 
+  // Whether the password currently meets the minimum length requirement.
+  // Drives the inline hint under the Password field below.
+  const isPasswordLongEnough = password.length >= MIN_PASSWORD_LENGTH;
+
   useEffect(() => {
   if (Platform.OS === 'web') {
     const style = document.createElement('style');
@@ -1017,8 +1027,12 @@ export default function Register({
       return;
     }
 
-    if (password.length < 8) {
-      showFeedback('error', 'Weak Password', 'Password must be at least 8 characters.');
+    if (password.length < MIN_PASSWORD_LENGTH) {
+      showFeedback(
+        'error',
+        'Weak Password',
+        `Password must be at least ${MIN_PASSWORD_LENGTH} characters.`
+      );
       return;
     }
 
@@ -1219,6 +1233,9 @@ export default function Register({
               <Ionicons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={20} color="#7A7A7A" />
             </TouchableOpacity>
           </View>
+          <Text style={[styles.passwordHint, isPasswordLongEnough && styles.passwordHintValid]}>
+            {isPasswordLongEnough ? '✓ ' : ''}Must be at least {MIN_PASSWORD_LENGTH} characters
+          </Text>
         </View>
 
         <View style={[styles.formColumn, { flex: 1 }]}>
@@ -1336,6 +1353,9 @@ export default function Register({
             <Ionicons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={20} color="#7A7A7A" />
           </TouchableOpacity>
         </View>
+        <Text style={[styles.passwordHint, isPasswordLongEnough && styles.passwordHintValid]}>
+          {isPasswordLongEnough ? '✓ ' : ''}Must be at least {MIN_PASSWORD_LENGTH} characters
+        </Text>
       </View>
 
       <View style={styles.formGroup}>
@@ -1810,6 +1830,18 @@ const styles = StyleSheet.create({
   typeText: { fontWeight: '700', fontSize: 15, color: '#374151' },
   typeTextCompact: { fontWeight: '700', fontSize: 13, color: '#374151' },
   activeTypeText: { color: '#FFF' },
+  // Inline hint shown under the Password field, telling the user the
+  // minimum length requirement. Turns green with a checkmark once met.
+  passwordHint: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#9CA3AF',
+    marginTop: 6,
+    marginLeft: 2,
+  },
+  passwordHintValid: {
+    color: '#16A34A',
+  },
   termsLabel: {
     fontSize: 13,
     lineHeight: 19,
