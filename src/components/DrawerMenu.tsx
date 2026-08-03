@@ -250,6 +250,14 @@ const DrawerMenu = ({
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
+  // Focus tracking for the Settings modals (Change Email / Change Password),
+  // mirroring the highlighted-border focus behavior used in Register.tsx.
+  const [isNewEmailFocused, setIsNewEmailFocused] = useState(false);
+  const [isEmailPasswordFocused, setIsEmailPasswordFocused] = useState(false);
+  const [isCurrentPasswordFocused, setIsCurrentPasswordFocused] = useState(false);
+  const [isNewPasswordFocused, setIsNewPasswordFocused] = useState(false);
+  const [isConfirmPasswordFocused, setIsConfirmPasswordFocused] = useState(false);
+
   // 👇 State for the cached/refreshed avatar signed URL
   const [refreshedAvatarUrl, setRefreshedAvatarUrl] = useState<string | null>(null);
 
@@ -266,6 +274,43 @@ const DrawerMenu = ({
   useEffect(() => {
     setEmail(userEmail || '');
   }, [userEmail]);
+
+  // Hide the browser's default focus ring and built-in password
+  // reveal/autofill icons so our custom red focus border and eye icon are
+  // the only visible affordances — mirrors the same effect in Register.tsx.
+  useEffect(() => {
+    if (Platform.OS === 'web') {
+      const style = document.createElement('style');
+      style.innerHTML = `
+        /* Hide Edge/IE's built-in "reveal password" eye icon */
+        input::-ms-reveal, input::-ms-clear { display: none !important; }
+
+        /* Hide Chrome's autofill "key" icon inside password fields */
+        input::-webkit-credentials-auto-fill-button {
+          display: none !important;
+          visibility: hidden;
+          pointer-events: none;
+          position: absolute;
+          right: 0;
+        }
+
+        /* Hide Safari's "strong password" suggestion icon */
+        input::-webkit-strong-password-auto-fill-button {
+          display: none !important;
+          visibility: hidden;
+        }
+
+        /* Disable default browser focus outline (black ring) to allow custom red border */
+        input:focus, textarea:focus, select:focus {
+          outline: none !important;
+        }
+      `;
+      document.head.appendChild(style);
+      return () => {
+        document.head.removeChild(style);
+      };
+    }
+  }, []);
 
   // 👇 Fetch (and periodically refresh) the signed URL for the drawer avatar
   useEffect(() => {

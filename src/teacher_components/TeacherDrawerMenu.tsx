@@ -218,6 +218,44 @@ const TeacherDrawerMenu = ({
     setEmail(userEmail || '');
   }, [userEmail]);
 
+  // 🧹 Web-only: hide the browser's native password reveal/autofill icons
+  // and default focus outline so our custom eye icons and red focus borders
+  // (Change Password modal fields) are the only ones the user sees. This is
+  // the same injection used in Register.tsx, kept in sync here.
+  useEffect(() => {
+    if (Platform.OS === 'web') {
+      const style = document.createElement('style');
+      style.innerHTML = `
+        /* Hide Edge/IE's built-in "reveal password" eye icon */
+        input::-ms-reveal, input::-ms-clear { display: none !important; }
+
+        /* Hide Chrome's autofill "key" icon inside password fields */
+        input::-webkit-credentials-auto-fill-button {
+          display: none !important;
+          visibility: hidden;
+          pointer-events: none;
+          position: absolute;
+          right: 0;
+        }
+
+        /* Hide Safari's "strong password" suggestion icon */
+        input::-webkit-strong-password-auto-fill-button {
+          display: none !important;
+          visibility: hidden;
+        }
+
+        /* Disable default browser focus outline (black ring) to allow custom red border */
+        input:focus, textarea:focus, select:focus {
+          outline: none !important;
+        }
+      `;
+      document.head.appendChild(style);
+      return () => {
+        document.head.removeChild(style);
+      };
+    }
+  }, []);
+
   // 👇 Fetch signed URL for drawer avatar
   useEffect(() => {
     let isMounted = true;
