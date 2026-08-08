@@ -619,7 +619,7 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
             <SectionHeader scrollY={scrollY} isMobile={isMobile} isSmall={isSmall} title="Built for Modern Education" subtitle="Tailored experiences for students, teachers, and administrators" />
             <View style={[styles.userGrid, isMobile && styles.userGridMobile, isSmall && styles.userGridSmall]}>
               {userCards.map((card, index) => (
-                <UserTile key={card.eyebrow} card={card} index={index} isSmall={isSmall} />
+                <UserTile key={card.eyebrow} card={card} index={index} isSmall={isSmall} isMobile={isMobile} />
               ))}
             </View>
           </SectionWrapper>
@@ -1128,10 +1128,10 @@ function ModuleTile({ module, index }: { module: ModuleCard; index: number }) {
   );
 }
 
-function UserTile({ card, index, isSmall }: { card: UserCard; index: number; isSmall?: boolean }) {
+function UserTile({ card, index, isSmall, isMobile }: { card: UserCard; index: number; isSmall?: boolean; isMobile?: boolean }) {
   const direction: RevealDirection = index % 2 === 0 ? "left" : "right";
   return (
-    <ContainerReveal direction={direction} distance={34} style={[styles.userCard, isSmall && styles.userCardSmall]}>
+    <ContainerReveal direction={direction} distance={34} style={[styles.userCard, isMobile && styles.userCardMobile, isSmall && styles.userCardSmall]}>
       <LinearGradient colors={card.color} style={[styles.userIcon, isSmall && styles.userIconSmall]}>
         {card.icon}
       </LinearGradient>
@@ -1812,6 +1812,7 @@ const styles = StyleSheet.create({
   userGridMobile: { flexDirection: "column" },
   userGridSmall: { gap: 16 },
   userCard: { flex: 1, borderRadius: 16, padding: 40, backgroundColor: "rgba(26,30,48,0.82)", borderWidth: 1, borderColor: "rgba(255,255,255,0.12)" },
+  userCardMobile: { flex: 0, alignSelf: "stretch", width: "100%" },
   userCardSmall: { padding: 16 },
   userIcon: { width: 80, height: 80, borderRadius: 17, alignItems: "center", justifyContent: "center", marginBottom: 36 },
   userIconSmall: { width: 52, height: 52, borderRadius: 12, marginBottom: 16 },
