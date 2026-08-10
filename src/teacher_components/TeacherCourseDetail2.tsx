@@ -674,11 +674,18 @@ const TeacherCourseDetail2 = ({
   course,
   currentTeacher,
   availableCourses = [],
+  initialAssignmentId,
+  onInitialAssignmentHandled,
 }: {
   onBack?: () => void;
   course?: CourseDetailData;
   currentTeacher: SignedInTeacher;
   availableCourses?: CourseDetailData[];
+  // 👇 ADDED: Deep-link support — when set, automatically jump to the
+  // Assignments tab and open the submissions screen for this assignment
+  // (used when a teacher taps a "submitted-assignment" notification).
+  initialAssignmentId?: string | null;
+  onInitialAssignmentHandled?: () => void;
 }) => {
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
@@ -864,6 +871,34 @@ const TeacherCourseDetail2 = ({
     if (!selectedId) return false;
     return submissions.some((s) => s.assignmentId === selectedId);
   }, [selectedId, submissions]);
+
+  // 👇 ADDED: Deep-link handling — when navigated here from a
+  // "submitted-assignment" notification, jump straight to the Assignments
+  // tab and open the submissions screen for that assignment as soon as it
+  // shows up in the loaded `assignments` list.
+  //
+  // NOTE: the backend is inconsistent about what it puts in `relatedId` for
+  // this notification type — most submission paths store the *submission*
+  // id (relatedType "class-submission"), but the stackable game-assignment
+  // path stores the *assignment* id directly. So we try both: look it up as
+  // a submission first (and resolve its assignmentId), then fall back to
+  // treating it as an assignment id.
+  useEffect(() => {
+    if (!initialAssignmentId) return;
+
+    const matchingSubmission = submissions.find((s) => s.id === initialAssignmentId);
+    const resolvedAssignmentId = matchingSubmission
+      ? matchingSubmission.assignmentId
+      : initialAssignmentId;
+
+    const target = assignments.find((a) => a.id === resolvedAssignmentId);
+    if (!target) return;
+
+    setActiveTab('assignments');
+    setSelectedId(target.id);
+    setShowSubmissions(true);
+    onInitialAssignmentHandled?.();
+  }, [initialAssignmentId, assignments, submissions, onInitialAssignmentHandled]);
   const [formTitle, setFormTitle] = useState('');
   const [formDesc, setFormDesc] = useState('');
   const [formPoints, setFormPoints] = useState('');

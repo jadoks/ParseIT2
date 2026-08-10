@@ -215,6 +215,11 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
   const [currentUserBanner, setCurrentUserBanner] = useState<any>(initialBanner);
   const [communityPosts, setCommunityPosts] = useState<CommunityPost[]>([]);
 
+  // 👇 ADDED: Deep-link targets set when a notification is tapped, so the
+  // destination screen knows exactly what to open once it mounts/loads.
+  const [pendingAssignmentId, setPendingAssignmentId] = useState<string | null>(null);
+  const [pendingCommunityPostId, setPendingCommunityPostId] = useState<string | null>(null);
+
   const isProfileScreen = activeScreen === 'profile';
 
   const unreadNotificationCount = useMemo(
@@ -907,6 +912,71 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
     setIsNotificationOpen(false);
   };
 
+  // 👇 ADDED: Route a tapped notification to wherever it actually happened —
+  // mirrors the "tap a Facebook notification -> jump to that post/comment"
+  // pattern. Uses the notification's relatedId/relatedType/classId to decide
+  // the destination screen and what to auto-open once there.
+  const handleNotificationNavigate = (item: NotificationItem) => {
+    setIsNotificationOpen(false);
+
+    switch (item.type) {
+      case 'submitted-assignment': {
+        const targetClassId = item.classId;
+        const course = targetClassId
+          ? effectiveCourses.find((c) => c.id === targetClassId)
+          : undefined;
+
+        if (!course) {
+          Alert.alert(
+            'Class not found',
+            'This class is no longer available.'
+          );
+          return;
+        }
+
+        setPendingAssignmentId(item.relatedId || null);
+        handleOpenCourse(course);
+        break;
+      }
+
+      case 'class-assigned': {
+        const targetClassId = item.classId || item.relatedId;
+        const course = targetClassId
+          ? effectiveCourses.find((c) => c.id === targetClassId)
+          : undefined;
+
+        if (!course) {
+          Alert.alert(
+            'Class not found',
+            'This class is no longer available.'
+          );
+          return;
+        }
+
+        handleOpenCourse(course);
+        break;
+      }
+
+      case 'community-answer': {
+        setPendingCommunityPostId(item.relatedId || null);
+        navigateTo('community');
+        break;
+      }
+
+      case 'student-at-risk': {
+        const course = item.classId
+          ? effectiveCourses.find((c) => c.id === item.classId)
+          : undefined;
+        setSelectedAnalyticsClass(course?.name || 'All');
+        navigateTo('analytics');
+        break;
+      }
+
+      default:
+        break;
+    }
+  };
+
   const handleCreateClass = (newCourse: CourseDetailData) => {
     const getCourseIcon = (courseName: string) => {
       const normalized = courseName.toLowerCase();
@@ -1012,6 +1082,7 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
               userId={teacherIdentity}
               role="teacher"
               onNotificationsUpdated={setTeacherNotifications}
+              onNavigate={handleNotificationNavigate}
               onClosePopover={() => setIsNotificationOpen(false)}
               onBack={() => {
                 setIsNotificationOpen(false);
@@ -1115,6 +1186,8 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
             onDeleteAnswer={handleDeleteCommunityAnswer}
             onRefresh={loadCommunityPosts}
             refreshIntervalMs={8000}
+            initialPostId={pendingCommunityPostId}
+            onInitialPostHandled={() => setPendingCommunityPostId(null)}
           />
           ) : activeScreen === 'messenger' ? (
             <TeacherMessenger
@@ -1133,6 +1206,8 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
               course={selectedCourse || undefined}
               currentTeacher={activeProfile}
               availableCourses={effectiveCourses}
+              initialAssignmentId={pendingAssignmentId}
+              onInitialAssignmentHandled={() => setPendingAssignmentId(null)}
             />
           ) : activeScreen === 'notification' ? (
             <TeacherNotification
@@ -1142,6 +1217,7 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
               userId={teacherIdentity}
               role="teacher"
               onNotificationsUpdated={setTeacherNotifications}
+              onNavigate={handleNotificationNavigate}
               onBack={() => setActiveScreen(lastScreen)}
             />
           ) : activeScreen === 'analytics' ? (

@@ -62,6 +62,10 @@ interface CommunityProps {
   onDeleteAnswer?: (postId: string, answerId: string) => void;
   searchQuery?: string; // 👈 ADDED: To receive global search query
   initialPostId?: string | null; // 👈 ADDED: To open specific post from notification
+  // 👇 ADDED: Called once the deep-linked post has actually been opened,
+  // so the parent can clear its "pending" post id and this effect won't
+  // keep reopening the modal on every future posts refresh.
+  onInitialPostHandled?: () => void;
   // 🔥 NEW — silent background refresh, same pattern as Student Community.
   // Parent should re-fetch posts and update the `posts` prop WITHOUT showing
   // any loading UI. Polled on an interval while this screen is mounted, and
@@ -162,6 +166,7 @@ const Community: React.FC<CommunityProps> = ({
   onDeleteAnswer,
   searchQuery = '', // 👈 Default empty string
   initialPostId, // 👈 ADDED
+  onInitialPostHandled, // 👈 ADDED
   onRefresh, // 🔥 NEW
   refreshIntervalMs = 8000, // 🔥 NEW — 8s polling for a "live" feel
 }) => {
@@ -335,9 +340,10 @@ useEffect(() => {
         setSelectedPostId(post.id);
         setAnswerText('');
         setAnswersModalVisible(true);
+        onInitialPostHandled?.();
       }
     }
-  }, [initialPostId, localPosts]);
+  }, [initialPostId, localPosts, onInitialPostHandled]);
 
   // Use filteredPosts instead of raw posts for visibility logic
   const visiblePosts = useMemo(

@@ -46,6 +46,10 @@ interface NotificationScreenProps {
   userId: string;
   role?: 'teacher' | 'student' | 'admin';
   onNotificationsUpdated?: (notifications: NotificationItem[]) => void;
+  // 👇 ADDED: Fired when the user taps a notification card (after it's
+  // marked as read), so the parent can navigate to the related
+  // assignment/submission, community post, class, etc.
+  onNavigate?: (item: NotificationItem) => void;
 }
 
 const TeacherNotification: React.FC<NotificationScreenProps> = ({
@@ -57,6 +61,7 @@ const TeacherNotification: React.FC<NotificationScreenProps> = ({
   userId,
   role = 'teacher',
   onNotificationsUpdated,
+  onNavigate,
 }) => {
   const [notifications, setNotifications] =
     useState<NotificationItem[]>(incomingNotifications);
@@ -248,7 +253,13 @@ const TeacherNotification: React.FC<NotificationScreenProps> = ({
 
     return (
       <Pressable
-        onPress={() => markAsRead(item.id)}
+        onPress={() => {
+          // Mark it read, then let the parent decide where this
+          // notification should take the teacher (assignment
+          // submissions, community post, class, etc).
+          markAsRead(item.id);
+          onNavigate?.(item);
+        }}
         style={[styles.card, !item.read && styles.unreadCard]}
       >
         <View style={styles.iconWrapper}>
