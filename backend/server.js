@@ -7627,11 +7627,11 @@ app.post("/create-admin", async (req, res) => {
         createdAt: FieldValue.serverTimestamp(),
       });
 
-      // 👇 ADDED: notify the student when a teacher/admin comments on their
-      // assignment. Skip if the comment has no target student (e.g. a
-      // teacher commenting before any student is selected) or if a student
-      // is just commenting on their own submission.
+      // 👇 Notify the OTHER party in the comment thread:
+      // - teacher/admin comments  -> notify the student the thread belongs to
+      // - student comments        -> notify the class's assigned teacher
       const normalizedStudentIdForNotif = normalizeOptionalText(studentId);
+
       if (isInstructor && normalizedStudentIdForNotif) {
         try {
           const [classSnapForNotif, assignmentSnapForNotif] = await Promise.all([
@@ -7642,20 +7642,49 @@ app.post("/create-admin", async (req, res) => {
           const assignmentDataForNotif = assignmentSnapForNotif.exists ? assignmentSnapForNotif.data() || {} : {};
 
           await createNotification({
-          userId: normalizedStudentIdForNotif,
-          role: "student",
-          type: "assignment-comment",
-          title: "New Comment on Your Assignment",
-          message: `${authorName || "Your teacher"} commented on ${assignmentDataForNotif.header || "your assignment"} in ${classDataForNotif.name || "your class"}.`,
-          relatedId: assignmentId,
-          relatedType: "class-assignment-comment",
-          classId,
-          actorId: authorId,
-          actorRole: authorRole,   // fixed: was `actorRole` (undefined shorthand)
-          actorName,
-        });
+            userId: normalizedStudentIdForNotif,
+            role: "student",
+            type: "assignment-comment",
+            title: "New Comment on Your Assignment",
+            message: `${authorName || "Your teacher"} commented on ${assignmentDataForNotif.header || "your assignment"} in ${classDataForNotif.name || "your class"}.`,
+            relatedId: assignmentId,
+            relatedType: "class-assignment-comment",
+            classId,
+            actorId: authorId,
+            actorRole: authorRole,
+            actorName,
+          });
         } catch (notifyError) {
           console.error("Create assignment comment notification error:", notifyError);
+        }
+      } else if (!isInstructor) {
+        // A student commented — notify the class's assigned teacher.
+        try {
+          const [classSnapForNotif, assignmentSnapForNotif] = await Promise.all([
+            db.collection("classes").doc(classId).get(),
+            db.collection("classAssignments").doc(assignmentId).get(),
+          ]);
+          const classDataForNotif = classSnapForNotif.exists ? classSnapForNotif.data() || {} : {};
+          const assignmentDataForNotif = assignmentSnapForNotif.exists ? assignmentSnapForNotif.data() || {} : {};
+          const teacherIdForNotif = normalizeOptionalText(classDataForNotif.assignedTeacherId);
+
+          if (teacherIdForNotif) {
+            await createNotification({
+              userId: teacherIdForNotif,
+              role: "teacher",
+              type: "assignment-comment",
+              title: "New Assignment Comment",
+              message: `${authorName || "A student"} commented on ${assignmentDataForNotif.header || "an assignment"} in ${classDataForNotif.name || "your class"}.`,
+              relatedId: assignmentId,
+              relatedType: "class-assignment-comment",
+              classId,
+              actorId: authorId,
+              actorRole: authorRole,
+              actorName,
+            });
+          }
+        } catch (notifyError) {
+          console.error("Create assignment comment notification error (teacher):", notifyError);
         }
       }
 
