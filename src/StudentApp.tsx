@@ -1643,6 +1643,21 @@ const refreshAssignmentCourseContent = useCallback(async () => {
 
   useEffect(() => { void loadStudentNotifications(); }, [loadStudentNotifications]);
 
+  // 🔥 Silent background refresh — same "live" polling pattern used in
+  // TeacherCommunity: silently re-fetch notifications on an interval so new
+  // ones (e.g. a teacher's assignment comment) show up without the student
+  // needing to navigate away and back. Paused while the notification
+  // popover/screen is actually open so an incoming refresh never resets
+  // scroll position or collapses "see all" mid-read.
+  const isNotificationViewOpen = isNotificationOpen || activeScreen === 'notification';
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (isNotificationViewOpen) return; // paused — user is looking at it
+      void loadStudentNotifications();
+    }, 8000);
+    return () => clearInterval(interval);
+  }, [loadStudentNotifications, isNotificationViewOpen]);
+
   const handleMarkNotificationAsRead = async (notificationId: string) => {
     const response = await apiFetch(`${API_BASE_URL}/notifications/${notificationId}/read`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' } });
     const data = await response.json();

@@ -583,6 +583,21 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
     loadTeacherNotifications();
   }, [loadTeacherNotifications]);
 
+  // 🔥 Silent background refresh — same "live" polling pattern used in
+  // TeacherCommunity: silently re-fetch notifications on an interval so new
+  // ones (e.g. a student's assignment comment) show up without the teacher
+  // needing to navigate away and back. Paused while the notification
+  // popover/screen is actually open so an incoming refresh never resets
+  // scroll position or collapses "see all" mid-read.
+  const isNotificationViewOpen = isNotificationOpen || activeScreen === 'notification';
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (isNotificationViewOpen) return; // paused — user is looking at it
+      loadTeacherNotifications();
+    }, 8000);
+    return () => clearInterval(interval);
+  }, [loadTeacherNotifications, isNotificationViewOpen]);
+
   useEffect(() => {
     loadTeacherClasses();
   }, [loadTeacherClasses]);
