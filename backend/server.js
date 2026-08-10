@@ -7642,18 +7642,18 @@ app.post("/create-admin", async (req, res) => {
           const assignmentDataForNotif = assignmentSnapForNotif.exists ? assignmentSnapForNotif.data() || {} : {};
 
           await createNotification({
-            userId: normalizedStudentIdForNotif,
-            role: "student",
-            type: "assignment-comment",
-            title: "New Comment on Your Assignment",
-            message: `${authorName || "Your teacher"} commented on ${assignmentDataForNotif.header || "your assignment"} in ${classDataForNotif.name || "your class"}.`,
-            relatedId: assignmentId,
-            relatedType: "class-assignment-comment",
-            classId,
-            actorId: authorId,
-            actorRole,
-            actorName,
-          });
+          userId: normalizedStudentIdForNotif,
+          role: "student",
+          type: "assignment-comment",
+          title: "New Comment on Your Assignment",
+          message: `${authorName || "Your teacher"} commented on ${assignmentDataForNotif.header || "your assignment"} in ${classDataForNotif.name || "your class"}.`,
+          relatedId: assignmentId,
+          relatedType: "class-assignment-comment",
+          classId,
+          actorId: authorId,
+          actorRole: authorRole,   // fixed: was `actorRole` (undefined shorthand)
+          actorName,
+        });
         } catch (notifyError) {
           console.error("Create assignment comment notification error:", notifyError);
         }
