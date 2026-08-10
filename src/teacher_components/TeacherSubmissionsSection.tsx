@@ -204,6 +204,11 @@ type Props = {
   onRefreshSubmissions?: () => Promise<void> | void;
   // ✅ NEW: How often (ms) to auto-poll for new comments/submissions. Set to 0 to disable.
   autoRefreshIntervalMs?: number;
+  // 👇 ADDED: Deep-link support — when set, auto-selects this student and
+  // expands their comment thread (used when opened from an
+  // "assignment-comment" notification).
+  initialStudentId?: string | null;
+  onInitialStudentHandled?: () => void;
 };
 
 type AssignmentComment = {
@@ -247,6 +252,8 @@ const TeacherSubmissionsSection = ({
   onGradeSubmission,
   onRefreshSubmissions,
   autoRefreshIntervalMs = 15000,
+  initialStudentId,
+  onInitialStudentHandled,
 }: Props) => {
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
@@ -1146,6 +1153,19 @@ const handleDownloadPreview = async () => {
       }
     }
   }, [isLargeScreen, visibleStudents, selectedStudentId]);
+
+  // 👇 ADDED: Deep-link handling — when navigated here from an
+  // "assignment-comment" notification, auto-select the commenting student
+  // and expand their comment thread so the teacher lands right on it.
+  useEffect(() => {
+    if (!initialStudentId) return;
+    const target = studentMembers.find((s) => s.id === initialStudentId);
+    if (!target) return;
+
+    setSelectedStudentId(initialStudentId);
+    setCommentsExpanded((prev) => ({ ...prev, [initialStudentId]: true }));
+    onInitialStudentHandled?.();
+  }, [initialStudentId, studentMembers, onInitialStudentHandled]);
 
   const selectedStudent = useMemo(() => {
     if (!selectedStudentId) return null;

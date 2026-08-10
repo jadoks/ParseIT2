@@ -7626,7 +7626,39 @@ app.post("/create-admin", async (req, res) => {
         isInstructor,
         createdAt: FieldValue.serverTimestamp(),
       });
-      
+
+      // 👇 ADDED: notify the student when a teacher/admin comments on their
+      // assignment. Skip if the comment has no target student (e.g. a
+      // teacher commenting before any student is selected) or if a student
+      // is just commenting on their own submission.
+      const normalizedStudentIdForNotif = normalizeOptionalText(studentId);
+      if (isInstructor && normalizedStudentIdForNotif) {
+        try {
+          const [classSnapForNotif, assignmentSnapForNotif] = await Promise.all([
+            db.collection("classes").doc(classId).get(),
+            db.collection("classAssignments").doc(assignmentId).get(),
+          ]);
+          const classDataForNotif = classSnapForNotif.exists ? classSnapForNotif.data() || {} : {};
+          const assignmentDataForNotif = assignmentSnapForNotif.exists ? assignmentSnapForNotif.data() || {} : {};
+
+          await createNotification({
+            userId: normalizedStudentIdForNotif,
+            role: "student",
+            type: "assignment-comment",
+            title: "New Comment on Your Assignment",
+            message: `${authorName || "Your teacher"} commented on ${assignmentDataForNotif.header || "your assignment"} in ${classDataForNotif.name || "your class"}.`,
+            relatedId: assignmentId,
+            relatedType: "class-assignment-comment",
+            classId,
+            actorId: authorId,
+            actorRole,
+            actorName,
+          });
+        } catch (notifyError) {
+          console.error("Create assignment comment notification error:", notifyError);
+        }
+      }
+
       return res.json({
         success: true,
         message: "Comment added successfully.",
@@ -16708,6 +16740,32 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
         updatedAt: FieldValue.serverTimestamp()
       });
 
+      // 👇 ADDED: notify every enrolled student that a new module lesson was published
+      try {
+        const [classSnapForNotif, teacherProfile] = await Promise.all([
+          db.collection("classes").doc(classId).get(),
+          findUserProfileByAuthUid(req.user.uid).catch(() => null),
+        ]);
+        const classDataForNotif = classSnapForNotif.exists ? classSnapForNotif.data() || {} : {};
+        const teacherName = teacherProfile
+          ? `${teacherProfile.data.firstName || ""} ${teacherProfile.data.lastName || ""}`.trim()
+          : "";
+
+        await createNotificationsForClassStudents({
+          classId,
+          type: "module-lesson",
+          title: "New Lesson Available",
+          messageBuilder: () => `${classDataForNotif.name || "Your class"}: a new lesson "${title}" was added to your modules.`,
+          relatedId: lessonRef.id,
+          relatedType: "course-lesson",
+          actorId: req.user.uid,
+          actorRole: "teacher",
+          actorName: teacherName || classDataForNotif.instructorName || "Teacher",
+        });
+      } catch (notifyError) {
+        console.error("Create module lesson notification error:", notifyError);
+      }
+
       res.json({ 
         success: true, 
         lessonId: lessonRef.id,
@@ -16793,6 +16851,37 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
       }
 
       await batch.commit();
+
+      // 👇 ADDED: notify every enrolled student once that new module lessons
+      // are available, rather than one notification per lesson.
+      try {
+        const totalLessons = Array.isArray(curriculum.modules)
+          ? curriculum.modules.reduce((sum, mod) => sum + (Array.isArray(mod.lessons) ? mod.lessons.length : 0), 0)
+          : 0;
+
+        if (totalLessons > 0) {
+          const classSnapForNotif = await db.collection("classes").doc(classId).get();
+          const classDataForNotif = classSnapForNotif.exists ? classSnapForNotif.data() || {} : {};
+          const teacherProfile = await findUserProfileByAuthUid(req.user.uid).catch(() => null);
+          const teacherName = teacherProfile
+            ? `${teacherProfile.data.firstName || ""} ${teacherProfile.data.lastName || ""}`.trim()
+            : "";
+
+          await createNotificationsForClassStudents({
+            classId,
+            type: "module-lesson",
+            title: "New Lessons Available",
+            messageBuilder: () => `${classDataForNotif.name || "Your class"}: ${totalLessons} new lesson${totalLessons === 1 ? "" : "s"} ${totalLessons === 1 ? "was" : "were"} added to your modules.`,
+            relatedId: structureRef.id,
+            relatedType: "course-structure",
+            actorId: req.user.uid,
+            actorRole: "teacher",
+            actorName: teacherName || classDataForNotif.instructorName || "Teacher",
+          });
+        }
+      } catch (notifyError) {
+        console.error("Approve structure notification error:", notifyError);
+      }
 
       res.json({
         success: true,

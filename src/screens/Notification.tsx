@@ -15,7 +15,11 @@ export type NotificationType =
   | 'material'
   | 'community-answer'
   | 'support-activity'
-  | 'game-assignment';
+  | 'game-assignment'
+  // 👇 ADDED: new module lesson published by the teacher
+  | 'module-lesson'
+  // 👇 ADDED: teacher left a comment on the student's assignment submission
+  | 'assignment-comment';
 
 export type NotificationItem = {
   id: string;
@@ -159,6 +163,24 @@ const Notification: React.FC<NotificationScreenProps> = ({
         return (
           <MaterialCommunityIcons
             name="gamepad-variant-outline"
+            size={22}
+            color={color}
+          />
+        );
+      // 👇 ADDED: icon for new module lesson notifications
+      case 'module-lesson':
+        return (
+          <MaterialCommunityIcons
+            name="book-education-outline"
+            size={22}
+            color={color}
+          />
+        );
+      // 👇 ADDED: icon for teacher-comment-on-assignment notifications
+      case 'assignment-comment':
+        return (
+          <MaterialCommunityIcons
+            name="comment-text-outline"
             size={22}
             color={color}
           />

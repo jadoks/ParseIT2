@@ -123,6 +123,7 @@ const TEACHER_ALLOWED_NOTIFICATION_TYPES = new Set([
   'community-answer',
   'student-at-risk',
   'class-assigned',
+  'assignment-comment', // 👈 ADDED
 ]);
 
 // 🔥 How often to re-pull the teacher profile purely to refresh the signed
@@ -218,6 +219,9 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
   // 👇 ADDED: Deep-link targets set when a notification is tapped, so the
   // destination screen knows exactly what to open once it mounts/loads.
   const [pendingAssignmentId, setPendingAssignmentId] = useState<string | null>(null);
+  // 👇 ADDED: which student's comment thread to auto-open once the
+  // submissions screen for the related assignment is showing.
+  const [pendingCommentStudentId, setPendingCommentStudentId] = useState<string | null>(null);
   const [pendingCommunityPostId, setPendingCommunityPostId] = useState<string | null>(null);
 
   const isProfileScreen = activeScreen === 'profile';
@@ -939,6 +943,30 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
         break;
       }
 
+      // 👇 ADDED: a student commented on their own assignment — jump to
+      // that assignment's submissions view and auto-open their thread.
+      case 'assignment-comment': {
+        const targetClassId = item.classId;
+        const course = targetClassId
+          ? effectiveCourses.find((c) => c.id === targetClassId)
+          : undefined;
+
+        if (!course) {
+          Alert.alert(
+            'Class not found',
+            'This class is no longer available.'
+          );
+          return;
+        }
+
+        setPendingAssignmentId(item.relatedId || null);
+        // The comment author (actorId) is the student whose thread we
+        // want auto-expanded once the submissions screen opens.
+        setPendingCommentStudentId(item.actorId || null);
+        handleOpenCourse(course);
+        break;
+      }
+
       case 'class-assigned': {
         const targetClassId = item.classId || item.relatedId;
         const course = targetClassId
@@ -1212,6 +1240,8 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
               availableCourses={effectiveCourses}
               initialAssignmentId={pendingAssignmentId}
               onInitialAssignmentHandled={() => setPendingAssignmentId(null)}
+              initialCommentStudentId={pendingCommentStudentId}
+              onInitialCommentStudentHandled={() => setPendingCommentStudentId(null)}
             />
           ) : activeScreen === 'notification' ? (
             <TeacherNotification

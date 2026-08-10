@@ -1794,9 +1794,14 @@ const refreshAssignmentCourseContent = useCallback(async () => {
     const targetId = notification.targetId;
     const courseId = notification.courseId;
     setAutoOpenAssignmentId(null);
+    setAutoOpenLessonId(null); // 👈 ADDED: clear any stale auto-open lesson before routing
     switch (notification.type) {
       case 'assignment':
-      case 'game-assignment': {
+      case 'game-assignment':
+      // 👇 ADDED: teacher-comment notifications open the same assignment
+      // modal (assignments tab), which already contains the Comments
+      // section, so the student lands directly on the new comment.
+      case 'assignment-comment': {
         const course = joinedAssignmentCourses.find(c => c.id === courseId);
         if (course) {
           setSelectedCourse(course as unknown as CourseDetailData);
@@ -1816,6 +1821,21 @@ const refreshAssignmentCourseContent = useCallback(async () => {
           setLastScreen(previousScreen);
           setActiveScreen('coursedetail');
           setActiveCourseTab('materials');
+        }
+        break;
+      }
+      // 👇 ADDED: new module lesson notifications open the Modules tab
+      // and auto-open the specific lesson (reuses the autoOpenLessonId
+      // plumbing already wired into CourseDetail).
+      case 'module-lesson': {
+        const course = joinedAssignmentCourses.find(c => c.id === courseId);
+        if (course) {
+          setSelectedCourse(course as unknown as CourseDetailData);
+          setSelectedCourseIdForAssignments(course.id);
+          setLastScreen(previousScreen);
+          setActiveScreen('coursedetail');
+          setActiveCourseTab('modules');
+          if (targetId) setAutoOpenLessonId(targetId);
         }
         break;
       }

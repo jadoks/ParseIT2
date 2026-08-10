@@ -676,6 +676,8 @@ const TeacherCourseDetail2 = ({
   availableCourses = [],
   initialAssignmentId,
   onInitialAssignmentHandled,
+  initialCommentStudentId,
+  onInitialCommentStudentHandled,
 }: {
   onBack?: () => void;
   course?: CourseDetailData;
@@ -686,6 +688,11 @@ const TeacherCourseDetail2 = ({
   // (used when a teacher taps a "submitted-assignment" notification).
   initialAssignmentId?: string | null;
   onInitialAssignmentHandled?: () => void;
+  // 👇 ADDED: Deep-link support — when set (alongside initialAssignmentId),
+  // auto-selects this student and expands their comment thread once the
+  // submissions screen opens (used for "assignment-comment" notifications).
+  initialCommentStudentId?: string | null;
+  onInitialCommentStudentHandled?: () => void;
 }) => {
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
@@ -3668,6 +3675,8 @@ useEffect(() => {
         currentTeacher={currentTeacher}
         onRefreshSubmissions={() => loadCourseContent(true)}
         autoRefreshIntervalMs={10000}
+        initialStudentId={initialCommentStudentId}
+        onInitialStudentHandled={onInitialCommentStudentHandled}
       />
         <Modal visible={showUpdateModal} transparent animationType="fade">
           <View style={styles.modalOverlayCenter}>

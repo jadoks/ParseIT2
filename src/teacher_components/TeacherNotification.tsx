@@ -15,7 +15,9 @@ export type NotificationType =
   | 'submitted-assignment'
   | 'community-answer'
   | 'student-at-risk'
-  | 'class-assigned';
+  | 'class-assigned'
+  // 👇 ADDED: a student commented on their own assignment submission
+  | 'assignment-comment';
 
 export type NotificationItem = {
   id: string;
@@ -83,6 +85,7 @@ const TeacherNotification: React.FC<NotificationScreenProps> = ({
     'community-answer',
     'student-at-risk',
     'class-assigned',
+    'assignment-comment', // 👈 ADDED
   ];
 
   const filteredNotifications = useMemo(() => {
@@ -233,6 +236,15 @@ const TeacherNotification: React.FC<NotificationScreenProps> = ({
         return (
           <MaterialCommunityIcons
             name="google-classroom"
+            size={22}
+            color={color}
+          />
+        );
+      // 👇 ADDED: icon for student-comment notifications
+      case 'assignment-comment':
+        return (
+          <MaterialCommunityIcons
+            name="comment-text-outline"
             size={22}
             color={color}
           />
