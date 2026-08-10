@@ -7652,7 +7652,7 @@ app.post("/create-admin", async (req, res) => {
             classId,
             actorId: authorId,
             actorRole: authorRole,
-            actorName,
+            actorName: authorName,
           });
         } catch (notifyError) {
           console.error("Create assignment comment notification error:", notifyError);
@@ -7680,7 +7680,7 @@ app.post("/create-admin", async (req, res) => {
               classId,
               actorId: authorId,
               actorRole: authorRole,
-              actorName,
+              actorName: authorName,
             });
           }
         } catch (notifyError) {
