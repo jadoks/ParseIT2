@@ -61,6 +61,12 @@ interface ProfileProps {
   // mid-interaction.
   onRefresh?: () => void | Promise<void>;
   refreshIntervalMs?: number; // default 8s for a "live" feel
+  // 👇 ADDED: Deep-link support — when set, automatically opens the
+  // answers modal for this post (used when a teacher taps a
+  // "community-answer" notification, which now routes to Profile since
+  // that's where a teacher's own posts live).
+  initialPostId?: string | null;
+  onInitialPostHandled?: () => void;
 }
 
 interface CropModalState {
@@ -160,6 +166,8 @@ const Profile: React.FC<ProfileProps> = ({
   onChangeBannerImage,
   onRefresh,                // 🔥 NEW
   refreshIntervalMs = 8000, // 🔥 NEW — 8s polling for a "live" feel
+  initialPostId,            // 👈 ADDED
+  onInitialPostHandled,     // 👈 ADDED
 }) => {
   const { width, height } = useWindowDimensions();
   const safeUserName = useMemo(() => normalizeText(userName), [userName]);
@@ -273,6 +281,20 @@ const Profile: React.FC<ProfileProps> = ({
     () => localPosts.find((post) => post.id === selectedPostId) || null,
     [localPosts, selectedPostId]
   );
+
+  // 👇 ADDED: Deep-link handling — when navigated here from a
+  // "community-answer" notification, auto-open the answers modal for that
+  // post as soon as it shows up in `localPosts`.
+  useEffect(() => {
+    if (!initialPostId) return;
+    const post = localPosts.find((p) => p.id === initialPostId);
+    if (post) {
+      setSelectedPostId(post.id);
+      setAnswerText('');
+      setAnswersModalVisible(true);
+      onInitialPostHandled?.();
+    }
+  }, [initialPostId, localPosts, onInitialPostHandled]);
 
   const [refreshedProfileImageUrl, setRefreshedProfileImageUrl] = useState<string | null>(null);
   const [refreshedBannerImageUrl, setRefreshedBannerImageUrl] = useState<string | null>(null);

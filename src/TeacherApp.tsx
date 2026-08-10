@@ -958,8 +958,12 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
       }
 
       case 'community-answer': {
+        // A teacher's own posts live on their Profile screen (not the
+        // Community feed), so "someone answered your post" routes there —
+        // mirrors tapping a Facebook notification and landing on the post
+        // itself rather than the general feed.
         setPendingCommunityPostId(item.relatedId || null);
-        navigateTo('community');
+        navigateTo('profile');
         break;
       }
 
@@ -1137,6 +1141,8 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
             onChangeBannerImage={handleChangeBannerImage}
             onRefresh={loadCommunityPosts}
             refreshIntervalMs={8000}
+            initialPostId={pendingCommunityPostId}
+            onInitialPostHandled={() => setPendingCommunityPostId(null)}
           />
           ) : activeScreen === 'home' ? (
             <Dashboard2
@@ -1186,8 +1192,6 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
             onDeleteAnswer={handleDeleteCommunityAnswer}
             onRefresh={loadCommunityPosts}
             refreshIntervalMs={8000}
-            initialPostId={pendingCommunityPostId}
-            onInitialPostHandled={() => setPendingCommunityPostId(null)}
           />
           ) : activeScreen === 'messenger' ? (
             <TeacherMessenger
