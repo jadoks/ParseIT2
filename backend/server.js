@@ -546,6 +546,7 @@ async function createReadSignedUrlIfExists(storagePath) {
     "community-answer",
     "student-at-risk",
     "class-assigned",
+    "assignment-comment", // 👈 ADDED: student comments on their assignment
   ]);
 
   const DEFAULT_PROFILE_IMAGE_URL =
@@ -644,15 +645,24 @@ async function createReadSignedUrlIfExists(storagePath) {
     return null;
   }
 
+  // 👇 FIXED: .toLocaleString() with no options uses the SERVER's local
+  // timezone. Render's servers run in UTC, so a comment posted at 8:00 PM
+  // Philippine time (UTC+8) was being displayed as 12:00 PM — an 8-hour
+  // offset. Force Asia/Manila explicitly so timestamps are always shown in
+  // Philippine time regardless of what timezone the server itself runs in.
+  const DISPLAY_TIME_ZONE = "Asia/Manila";
+
   function formatFirestoreDateTime(value) {
     if (!value) return "";
 
     if (typeof value?.toDate === "function") {
-      return value.toDate().toLocaleString();
+      return value.toDate().toLocaleString("en-US", { timeZone: DISPLAY_TIME_ZONE });
     }
 
     const parsed = new Date(value);
-    return Number.isNaN(parsed.getTime()) ? "" : parsed.toLocaleString();
+    return Number.isNaN(parsed.getTime())
+      ? ""
+      : parsed.toLocaleString("en-US", { timeZone: DISPLAY_TIME_ZONE });
   }
 
   function getFileExtensionFromMimeType(mimeType) {
@@ -7699,7 +7709,7 @@ app.post("/create-admin", async (req, res) => {
           authorName,
           content: content.trim(),
           isInstructor,
-          timestamp: new Date().toLocaleString(),
+          timestamp: new Date().toLocaleString("en-US", { timeZone: DISPLAY_TIME_ZONE }),
         }
       });
     } catch (error) {
@@ -14016,7 +14026,7 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
           userEmail: createdData.userEmail || userEmail || "",
           avatar: createdData.avatar || null,
           avatarStoragePath: createdData.avatarStoragePath || null,
-          dateTime: new Date().toLocaleString(),
+          dateTime: new Date().toLocaleString("en-US", { timeZone: DISPLAY_TIME_ZONE }),
           content: createdData.content || content,
           answers: [],
         },
@@ -14109,7 +14119,7 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
           userName,
           avatar: authorAvatar.avatar || null,
           avatarStoragePath: authorAvatar.avatarStoragePath || null,
-          answeredAt: new Date().toLocaleString(),
+          answeredAt: new Date().toLocaleString("en-US", { timeZone: DISPLAY_TIME_ZONE }),
           message: String(message).trim(),
         },
       });
