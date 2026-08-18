@@ -94,6 +94,7 @@ type DropdownProps = {
   visible: boolean;
   onToggle: () => void;
   isMobile: boolean;
+  label?: string;
 };
 
 // ─── Toast type (shared shape with SignIn / Toast component) ────────────────
@@ -106,7 +107,12 @@ function CustomDropdown({
   visible,
   onToggle,
   isMobile,
+  label,
 }: DropdownProps) {
+  const handleSelect = (option: string) => {
+    onSelect(option);
+  };
+
   return (
     <View
       style={[
@@ -132,17 +138,80 @@ function CustomDropdown({
         />
       </TouchableOpacity>
 
-      {visible ? (
-        <View
-          style={[
-            styles.inlineDropdownMenu,
-            isMobile && styles.inlineDropdownMenuMobile,
-          ]}
+      {/* ✅ On mobile the options list opens in a real top-level Modal (bottom
+          sheet) instead of an inline absolutely-positioned View. The inline
+          version sits inside the screen's ScrollView, which clips/covers it
+          on small screens so it can't be tapped. A Modal renders above the
+          entire app, so it's always on top and always tappable. */}
+      {isMobile ? (
+        <Modal
+          visible={visible}
+          transparent
+          animationType="fade"
+          onRequestClose={onToggle}
+          statusBarTranslucent
         >
+          <TouchableOpacity
+            style={styles.dropdownModalOverlay}
+            activeOpacity={1}
+            onPress={onToggle}
+          >
+            {/* Swallow taps on the sheet itself so they don't close the modal */}
+            <TouchableOpacity
+              style={styles.dropdownModalSheet}
+              activeOpacity={1}
+              onPress={() => {}}
+            >
+              <View style={styles.dropdownModalHandle} />
+
+              <View style={styles.dropdownModalHeader}>
+                <Text style={styles.dropdownModalTitle}>
+                  {label || 'Select an option'}
+                </Text>
+                <TouchableOpacity onPress={onToggle} hitSlop={8}>
+                  <Ionicons name="close" size={22} color="#3B332E" />
+                </TouchableOpacity>
+              </View>
+
+              <ScrollView
+                style={styles.dropdownModalScroll}
+                showsVerticalScrollIndicator={false}
+              >
+                {options.map((option) => {
+                  const isSelected = option === value;
+                  return (
+                    <TouchableOpacity
+                      key={option}
+                      style={[
+                        styles.dropdownModalItem,
+                        isSelected && styles.dropdownModalItemSelected,
+                      ]}
+                      onPress={() => handleSelect(option)}
+                      activeOpacity={0.8}
+                    >
+                      <Text
+                        style={[
+                          styles.dropdownModalItemText,
+                          isSelected && styles.dropdownModalItemTextSelected,
+                        ]}
+                      >
+                        {option}
+                      </Text>
+                      {isSelected ? (
+                        <Ionicons name="checkmark" size={18} color="#B71C1C" />
+                      ) : null}
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            </TouchableOpacity>
+          </TouchableOpacity>
+        </Modal>
+      ) : visible ? (
+        <View style={styles.inlineDropdownMenu}>
           <ScrollView
             nestedScrollEnabled
             showsVerticalScrollIndicator={false}
-            style={isMobile ? styles.dropdownScrollMobile : undefined}
           >
             {options.map((option) => (
               <TouchableOpacity
@@ -1205,6 +1274,7 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
                     visible={openDropdown === 'semester'}
                     onToggle={() => handleDropdownToggle('semester')}
                     isMobile={isMobile}
+                    label="Select Semester"
                   />
                 </View>
               </View>
@@ -1239,6 +1309,7 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
                     visible={openDropdown === 'semester'}
                     onToggle={() => handleDropdownToggle('semester')}
                     isMobile={isMobile}
+                    label="Select Semester"
                   />
                 </View>
               </>
@@ -1621,6 +1692,71 @@ const styles = StyleSheet.create({
   dropdownItemText: {
     fontSize: 13,
     color: '#000',
+  },
+
+  // ✅ Mobile "Select Semester" bottom-sheet Modal. Rendered by RN's Modal
+  // component, so it always sits above the screen's ScrollView / cards —
+  // fixes the dropdown being un-tappable ("behind other layer") on small
+  // screens.
+  dropdownModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'flex-end',
+  },
+  dropdownModalSheet: {
+    width: '100%',
+    maxHeight: '70%',
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingHorizontal: 18,
+    paddingTop: 10,
+    paddingBottom: 24,
+  },
+  dropdownModalHandle: {
+    alignSelf: 'center',
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#DDD6CE',
+    marginBottom: 12,
+  },
+  dropdownModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+    paddingBottom: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F0EBE4',
+  },
+  dropdownModalTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#3B332E',
+  },
+  dropdownModalScroll: {
+    maxHeight: 320,
+  },
+  dropdownModalItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 14,
+    paddingHorizontal: 10,
+    borderRadius: 10,
+  },
+  dropdownModalItemSelected: {
+    backgroundColor: '#FDECEC',
+  },
+  dropdownModalItemText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#111',
+  },
+  dropdownModalItemTextSelected: {
+    color: '#B71C1C',
+    fontWeight: '800',
   },
 
   generateBtn: {

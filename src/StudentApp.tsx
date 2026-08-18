@@ -1768,17 +1768,25 @@ const refreshAssignmentCourseContent = useCallback(async () => {
   const messengerCourses = useMemo(() => joinedCourses.map((course) => ({ id: course.id, name: course.name, instructor: course.instructor, semester: course.semester, schoolYear: course.schoolYear, section: course.section })), [joinedCourses]);
 
   const handleNavigate = (screen: ScreenType) => {
-    if (activeScreen !== screen) setLastScreen(activeScreen);
+    if (activeScreen !== screen) {
+      setLastScreen(activeScreen);
+      // ✅ The search bar/search term is contextual to whichever screen is
+      // active (Videos searches YouTube, Messenger searches conversations,
+      // Classes filters enrolled courses, etc). Previously this only reset
+      // for a hardcoded subset of screens, so a term like "MrBeast" typed
+      // on Videos stayed active after switching to Messenger/Classes, which
+      // have nothing matching it and appeared empty. Clear it on every
+      // screen change, and bump searchResetKey so Header's own input (and
+      // its quick-action results) clears in sync.
+      setGlobalSearchQuery('');
+      setSearchResetKey((prev) => prev + 1);
+    }
     if (screen === 'assignments') setSelectedCourseIdForAssignments(null);
     if (screen !== 'generateactivity') setGeneratedActivity(null);
     setIsNotificationOpen(false);
     setIsChatOpen(false);
     setMobileDrawerOpen(false);
     setActiveScreen(screen);
-    const searchableScreens: ScreenType[] = ['home', 'classes', 'game', 'videos', 'messenger', 'flipit', 'fruitmania', 'quizmasters', 'profile', 'analytics', 'myjourney'];
-    if (!searchableScreens.includes(screen)) {
-      setGlobalSearchQuery('');
-    }
   };
 
   const exitFullscreenGameToGames = () => {
@@ -1790,6 +1798,7 @@ const refreshAssignmentCourseContent = useCallback(async () => {
     setMobileDrawerOpen(false);
     setActiveScreen('game');
     setGlobalSearchQuery('');
+    setSearchResetKey((prev) => prev + 1);
   };
 
   const handleNotificationPress = () => {
