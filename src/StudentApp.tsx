@@ -64,6 +64,9 @@ interface CurrentStudent {
 interface Props {
   onLogout: () => void;
   currentStudent: CurrentStudent;
+  // 👇 NEW: navigates back to the public Landing Page without logging out
+  // (tapped from the Header logo).
+  onGoToLanding?: () => void;
 }
 
 interface RemoteStudentProfile {
@@ -543,7 +546,7 @@ const mapCourseDetailToAssignmentCourse = (course: CourseDetailData): Assignment
   })),
 });
 
-export default function StudentApp({ onLogout, currentStudent }: Props) {
+export default function StudentApp({ onLogout, currentStudent, onGoToLanding }: Props) {
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const isLargeScreen = width >= 768;
@@ -2493,6 +2496,7 @@ const refreshAssignmentCourseContent = useCallback(async () => {
               onNotificationPress={handleNotificationPress}
               onMenuPress={() => setMobileDrawerOpen((prev) => !prev)}
               resetSearchKey={searchResetKey}
+              onLogoPress={onGoToLanding}
             />
           </View>
         )}

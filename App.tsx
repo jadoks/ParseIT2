@@ -270,6 +270,16 @@ export default function App() {
     setShowRegister(false);
   };
 
+  // ✅ NEW: called when the logo in StudentApp/TeacherApp's header is
+  // tapped. Unlike handleLogout, this does NOT sign the user out — it just
+  // shows the public Landing Page on top of the still-active session, so
+  // "Sign In" can be swapped for "Dashboard" and tapping it (via
+  // handleGetStarted) simply returns to the dashboard that was already
+  // loaded.
+  const handleGoToLanding = useCallback(() => {
+    setShowLanding(true);
+  }, []);
+
   const handleRegisterSuccess = () => {
     setShowRegister(false);
   };
@@ -285,7 +295,7 @@ export default function App() {
   if (showLanding) {
     return (
       <SafeAreaView style={{ flex: 1 }}>
-        <LandingPage onGetStarted={handleGetStarted} />
+        <LandingPage onGetStarted={handleGetStarted} isSignedIn={isLoggedIn} />
       </SafeAreaView>
     );
   }
@@ -320,6 +330,7 @@ export default function App() {
   const commonProps = {
     onLogout: handleLogout,
     idToken: idToken, // Pass this to StudentApp, TeacherApp, AdminApp
+    onGoToLanding: handleGoToLanding, // Lets the header logo open the Landing Page
   };
 
   if (currentUser?.role === 'teacher') {

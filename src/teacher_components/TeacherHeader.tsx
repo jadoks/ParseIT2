@@ -65,6 +65,8 @@ interface HeaderProps {
   // ✅ Unread conversation count
   messengerUnreadCount?: number;
   searchValue?: string;
+  // 👇 NEW: tapping the logo navigates to the public Landing Page
+  onLogoPress?: () => void;
 }
 
 const TeacherHeader: React.FC<HeaderProps> = ({
@@ -77,6 +79,7 @@ const TeacherHeader: React.FC<HeaderProps> = ({
   onNotificationPress,
   messengerUnreadCount = 0,
   searchValue,
+  onLogoPress,
 }) => {
   const { width } = useWindowDimensions();
   const isVerySmall = width < 360;
@@ -390,15 +393,23 @@ const desktopNavScreens: (
               >
                 <MaterialCommunityIcons name="menu" size={24} color="#000" />
               </TouchableOpacity>
-              <Image
-                source={require('../../assets/images/logo.png')}
-                style={{
-                  width: logoSize,
-                  height: logoSize,
-                  resizeMode: 'contain',
-                  marginRight: isVerySmall ? 8 : 10,
-                }}
-              />
+              <TouchableOpacity
+                onPress={onLogoPress}
+                activeOpacity={0.7}
+                disabled={!onLogoPress}
+                accessibilityRole="button"
+                accessibilityLabel="Go to landing page"
+              >
+                <Image
+                  source={require('../../assets/images/logo.png')}
+                  style={{
+                    width: logoSize,
+                    height: logoSize,
+                    resizeMode: 'contain',
+                    marginRight: isVerySmall ? 8 : 10,
+                  }}
+                />
+              </TouchableOpacity>
             </View>
 
             {!isSearchExpanded ? (
@@ -603,15 +614,23 @@ const desktopNavScreens: (
       ]}
     >
       <View style={[styles.leftSection, { flex: isLargeScreenLocal ? 0.3 : 0.4, position: 'relative' }]}>
-        <Image
-          source={require('../../assets/images/logo.png')}
-          style={{
-            width: logoSize,
-            height: logoSize,
-            resizeMode: 'contain',
-            marginRight: isTablet ? 14 : 18,
-          }}
-        />
+        <TouchableOpacity
+          onPress={onLogoPress}
+          activeOpacity={0.7}
+          disabled={!onLogoPress}
+          accessibilityRole="button"
+          accessibilityLabel="Go to landing page"
+        >
+          <Image
+            source={require('../../assets/images/logo.png')}
+            style={{
+              width: logoSize,
+              height: logoSize,
+              resizeMode: 'contain',
+              marginRight: isTablet ? 14 : 18,
+            }}
+          />
+        </TouchableOpacity>
         {/* 👇 UPDATED: Facebook-style flat gray search pill — no border,
             slightly shorter height, gray placeholder text to match. */}
         <View

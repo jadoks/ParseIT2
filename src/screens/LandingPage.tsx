@@ -26,6 +26,9 @@ import Svg, { Circle, Defs, Line, Polygon, Polyline, Rect, Stop, LinearGradient 
 
 type LandingPageProps = {
   onGetStarted?: () => void;
+  // 👇 NEW: when true (user already has an active session), the
+  // "Sign In" button/label is swapped for "Dashboard".
+  isSignedIn?: boolean;
 };
 
 type SectionKey = "features" | "how" | "modules" | "users" | "analytics" | "architecture" | "contact";
@@ -287,7 +290,7 @@ const RevealSectionContext = React.createContext<RevealSectionContextValue>({
   sectionY: 0,
 });
 
-export default function LandingPage({ onGetStarted }: LandingPageProps) {
+export default function LandingPage({ onGetStarted, isSignedIn = false }: LandingPageProps) {
   const { width } = useWindowDimensions();
   const scrollRef = useRef<ScrollView | null>(null);
   const scrollY = useRef(new Animated.Value(0)).current;
@@ -547,6 +550,7 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
               onGetStarted={goToSignIn}
               menuOpen={menuOpen}
               setMenuOpen={setMenuOpen}
+              isSignedIn={isSignedIn}
             />
 
             <View style={[styles.hero, isDesktop ? styles.heroDesktop : styles.heroStack]}>
@@ -766,7 +770,8 @@ function Header({
   scrollToSection, 
   onGetStarted,
   menuOpen,
-  setMenuOpen
+  setMenuOpen,
+  isSignedIn = false,
 }: { 
   isMobile: boolean; 
   isSmall: boolean; 
@@ -775,6 +780,7 @@ function Header({
   onGetStarted: () => void;
   menuOpen: boolean;
   setMenuOpen: (open: boolean) => void;
+  isSignedIn?: boolean;
 }) {
   return (
     <View style={[styles.header, isMobile && styles.headerMobile]}>
@@ -801,7 +807,7 @@ function Header({
             </TouchableOpacity>
           ))}
           <TouchableOpacity onPress={onGetStarted} style={styles.signInButton}>
-            <Text style={styles.signInText}>Sign In</Text>
+            <Text style={styles.signInText}>{isSignedIn ? 'Dashboard' : 'Sign In'}</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -810,7 +816,7 @@ function Header({
       {isMobile && (
         <View style={styles.mobileHeaderRight}>
           <TouchableOpacity onPress={onGetStarted} style={styles.signInButtonMobile}>
-            <Text style={styles.signInText}>Sign In</Text>
+            <Text style={styles.signInText}>{isSignedIn ? 'Dashboard' : 'Sign In'}</Text>
           </TouchableOpacity>
           <TouchableOpacity 
             onPress={() => setMenuOpen(!menuOpen)} 

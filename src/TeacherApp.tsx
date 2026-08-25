@@ -52,6 +52,9 @@ interface Props {
   onLogout: () => void;
   currentTeacher: SignedInTeacher;
   idToken?: string | null;
+  // 👇 NEW: navigates back to the public Landing Page without logging out
+  // (tapped from the TeacherHeader logo).
+  onGoToLanding?: () => void;
 }
 
 type AppScreenType =
@@ -133,7 +136,7 @@ const TEACHER_ALLOWED_NOTIFICATION_TYPES = new Set([
 // avatars (it assumes the `userAvatar` prop is always fresh).
 const PROFILE_IMAGE_REFRESH_INTERVAL_MS = 5 * 60 * 1000; // every 5 min
 
-export default function TeacherApp({ onLogout, currentTeacher }: Props) {
+export default function TeacherApp({ onLogout, currentTeacher, onGoToLanding }: Props) {
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const isLargeScreen = width >= 768;
@@ -1111,6 +1114,7 @@ export default function TeacherApp({ onLogout, currentTeacher }: Props) {
             notificationCount={unreadNotificationCount}
             messengerUnreadCount={messengerUnreadCount}
             onNotificationPress={handleNotificationPress}
+            onLogoPress={onGoToLanding}
           />
         </View>
       )}
