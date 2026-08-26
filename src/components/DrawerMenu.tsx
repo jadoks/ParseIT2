@@ -73,6 +73,14 @@ interface DrawerMenuProps {
   onFilePickerOpen?: () => void;
   onVerificationFailed?: (errorMessage: string) => void;
   onUploadSuccess?: () => void; 
+  // 👇 NEW: lets the parent drive a floating progress toast while a grade
+  // file is uploading. `onUploadProgress` fires with 0-100 while the file
+  // is actively being sent; `onUploadStageChange` fires when we move from
+  // "uploading" to "verifying" (waiting on the backend's identity check +
+  // grade parsing) and finally to `null` once the request settles either
+  // way (success, failure, or error) so the toast can be dismissed.
+  onUploadProgress?: (percent: number) => void;
+  onUploadStageChange?: (stage: 'uploading' | 'verifying' | 'processing' | null) => void;
   setIsLoggedIn: React.Dispatch<React.SetStateAction<boolean>>;
 }
 
@@ -205,6 +213,61 @@ const MenuItem = ({
   );
 };
 
+// 🔥 XHR-based POST that reports real upload progress (fetch has no upload
+// progress event). Mirrors sharedApiFetch's behavior: attaches a fresh
+// Firebase Bearer token, sends cookies, and retries once on 401 with a
+// force-refreshed token.
+const uploadJsonWithProgress = (
+  apiBaseUrl: string,
+  path: string,
+  body: Record<string, any>,
+  onProgress?: (percent: number) => void
+): Promise<{ status: number; ok: boolean; data: any }> => {
+  const send = (token: string | null) =>
+    new Promise<{ status: number; ok: boolean; data: any }>((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', `${apiBaseUrl}${path}`);
+      xhr.withCredentials = true;
+      xhr.setRequestHeader('Content-Type', 'application/json');
+      if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+
+      xhr.upload.onprogress = (event) => {
+        if (!event.lengthComputable) return;
+        // Cap at 99% here — 100% is reserved for once the server actually
+        // responds, so the bar doesn't sit "done" while we're still
+        // waiting on identity verification / grade parsing.
+        const percent = Math.min(99, Math.round((event.loaded / event.total) * 100));
+        onProgress?.(percent);
+      };
+
+      xhr.onload = () => {
+        let data: any = null;
+        try {
+          data = JSON.parse(xhr.responseText);
+        } catch {
+          data = null;
+        }
+        resolve({ status: xhr.status, ok: xhr.status >= 200 && xhr.status < 300, data });
+      };
+
+      xhr.onerror = () => reject(new Error('Network error while uploading grade file.'));
+      xhr.ontimeout = () => reject(new Error('Upload timed out. Please try again.'));
+
+      xhr.send(JSON.stringify(body));
+    });
+
+  return (async () => {
+    const initialToken = await auth.currentUser?.getIdToken().catch(() => null);
+    const first = await send(initialToken || null);
+    if (first.status !== 401) return first;
+
+    // Retry once with a force-refreshed token, same as sharedApiFetch.
+    const refreshedToken = await auth.currentUser?.getIdToken(true).catch(() => null);
+    if (!refreshedToken) return first;
+    return send(refreshedToken);
+  })();
+};
+
 const DrawerMenu = ({
   isFixed,
   onClose,
@@ -222,6 +285,8 @@ const DrawerMenu = ({
   onFilePickerOpen,
   onVerificationFailed,
   onUploadSuccess, 
+  onUploadProgress,
+  onUploadStageChange,
   setIsLoggedIn,
 }: DrawerMenuProps) => {
   const { width } = useWindowDimensions();
@@ -504,7 +569,9 @@ const DrawerMenu = ({
       }
 
       setIsUploadingGrade(true);
-      
+      onUploadStageChange?.('uploading');
+      onUploadProgress?.(0);
+
       let base64Data = '';
       if (Platform.OS === 'web') {
         const response = await fetch(asset.uri);
@@ -532,44 +599,63 @@ const DrawerMenu = ({
       // ID token for this request. Depending on how that middleware is
       // wired, the request either got silently treated as unauthenticated
       // (skipping the Firestore write + grade-file validation entirely) or
-      // was rejected in a way this code didn't clearly surface. Using
-      // sharedApiFetch guarantees a fresh Bearer token is attached (and
-      // retried once on 401), matching every other authenticated call.
-      const response = await sharedApiFetch('/upload-student-grade', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      // was rejected in a way this code didn't clearly surface. Now using
+      // an XHR-based helper that attaches a fresh Bearer token (retried
+      // once on 401, matching sharedApiFetch) while ALSO reporting real
+      // upload progress, since plain fetch has no upload progress event.
+      let processingTimer: ReturnType<typeof setTimeout> | null = null;
+
+      const { status, ok, data } = await uploadJsonWithProgress(
+        apiBaseUrl,
+        '/upload-student-grade',
+        {
           fileBase64: base64Data,
           fileName: asset.name,
           fileType: asset.mimeType || 'application/octet-stream',
           studentId: userId,
-        }),
-      });
+        },
+        (percent) => {
+          onUploadProgress?.(percent);
+          // Once the bytes have actually finished sending, hand off to the
+          // "checking identity" stage while we wait on the server's AI
+          // verification + grade-parsing calls (there's no server-sent
+          // progress for that part, so this is purely a stage indicator).
+          if (percent >= 99) {
+            onUploadStageChange?.('verifying');
+            if (!processingTimer) {
+              processingTimer = setTimeout(() => {
+                onUploadStageChange?.('processing');
+              }, 4000);
+            }
+          }
+        }
+      );
 
-      const data = await response.json();
-      
-       if (!response.ok) {
+      if (processingTimer) clearTimeout(processingTimer);
+
+      if (!ok) {
         // Handle Identity Mismatch
-        if (response.status === 403) {
+        if (status === 403) {
           onVerificationFailed?.(data?.error || 'Identity verification failed.');
           return;
         }
-        
+
         // Handle AI Service Outage (Strict Mode)
-        if (response.status === 503) {
+        if (status === 503) {
           Alert.alert('Service Unavailable', data?.error || 'Please try uploading your grade again in a few minutes.');
           return;
         }
-        
+
         // Handle Internal Server Errors (500) - Usually means AI Key issue or File Too Large
-        if (response.status === 500) {
+        if (status === 500) {
           Alert.alert('Upload Error', data?.error || 'The server encountered an error processing your file. Please try a smaller file or contact support.');
           return;
         }
-        
+
         throw new Error(data?.error || 'Failed to upload grade file.');
       }
 
+      onUploadProgress?.(100);
       onUploadSuccess?.();
 
     } catch (error: any) {
@@ -577,6 +663,7 @@ const DrawerMenu = ({
       Alert.alert('Upload Failed', error?.message || 'Unable to upload grade file.');
     } finally {
       setIsUploadingGrade(false);
+      onUploadStageChange?.(null);
     }
   };
 

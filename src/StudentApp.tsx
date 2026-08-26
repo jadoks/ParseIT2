@@ -21,6 +21,7 @@ import { Announcement } from './components/AnnouncementModal';
 import DrawerMenu from './components/DrawerMenu';
 import GeminiFloatingModal from './components/GeminiFloatingModal';
 import Header from './components/Header';
+import UploadProgressToast, { UploadToastStage } from './components/UploadProgressToast';
 import Analytics from './screens/Analytics';
 import Assignments, {
   AssignmentComment,
@@ -594,6 +595,10 @@ export default function StudentApp({ onLogout, currentStudent, onGoToLanding }: 
   const [isVerificationErrorModalVisible, setVerificationErrorModalVisible] = useState(false);
   const [verificationErrorMessage, setVerificationErrorMessage] = useState('');
   const [isUploadSuccessModalVisible, setUploadSuccessModalVisible] = useState(false);
+  // 👇 NEW: drives the floating "Uploading… / Checking identity… / Processing…"
+  // toast shown while a grade file upload is in flight.
+  const [uploadToastStage, setUploadToastStage] = useState<UploadToastStage>(null);
+  const [uploadToastProgress, setUploadToastProgress] = useState(0);
   const [isLeaveConfirmModalVisible, setLeaveConfirmModalVisible] = useState(false);
   const [courseToLeave, setCourseToLeave] = useState<any>(null);
   const [isLeavingCourse, setIsLeavingCourse] = useState(false);
@@ -2060,6 +2065,15 @@ const refreshAssignmentCourseContent = useCallback(async () => {
     setUploadSuccessModalVisible(true);
   };
 
+  const handleUploadProgress = useCallback((percent: number) => {
+    setUploadToastProgress(percent);
+  }, []);
+
+  const handleUploadStageChange = useCallback((stage: UploadToastStage) => {
+    setUploadToastStage(stage);
+    if (stage === 'uploading') setUploadToastProgress(0);
+  }, []);
+
   const handleLeaveCourse = useCallback((course: any) => {
     setCourseToLeave(course);
     setLeaveConfirmModalVisible(true);
@@ -2548,6 +2562,8 @@ const refreshAssignmentCourseContent = useCallback(async () => {
               onFilePickerOpen={() => setHasImageChanged(true)}
               onVerificationFailed={handleVerificationFailed}
               onUploadSuccess={handleUploadSuccess}
+              onUploadProgress={handleUploadProgress}
+              onUploadStageChange={handleUploadStageChange}
             />
           )}
           <View style={{ flex: 1 }}>{renderScreen()}</View>
@@ -2593,6 +2609,8 @@ const refreshAssignmentCourseContent = useCallback(async () => {
                   onFilePickerOpen={() => setHasImageChanged(true)}
                   onVerificationFailed={handleVerificationFailed}
                   onUploadSuccess={handleUploadSuccess}
+                  onUploadProgress={handleUploadProgress}
+                  onUploadStageChange={handleUploadStageChange}
                 />
               </View>
             </View>
@@ -2664,6 +2682,11 @@ const refreshAssignmentCourseContent = useCallback(async () => {
             </View>
           </View>
         )}
+        <UploadProgressToast
+          visible={!!uploadToastStage}
+          stage={uploadToastStage}
+          progress={uploadToastProgress}
+        />
         <Modal 
           animationType="fade" 
           transparent 
