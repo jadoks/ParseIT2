@@ -1,5 +1,5 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Animated, Easing, StyleSheet, Text, View } from 'react-native';
 
 export type UploadToastStage = 'uploading' | 'verifying' | 'processing' | null;
@@ -34,7 +34,11 @@ const STAGE_COPY: Record<
 export default function UploadProgressToast({ visible, stage, progress }: UploadProgressToastProps) {
   const slideAnim = useRef(new Animated.Value(0)).current;
   const progressAnim = useRef(new Animated.Value(0)).current;
-  const spinAnim = useRef(new Animated.Value(0)).current;
+  const sweepAnim = useRef(new Animated.Value(0)).current;
+  const pulseAnim = useRef(new Animated.Value(0)).current;
+  const [trackWidth, setTrackWidth] = useState(0);
+
+  const isIndeterminate = stage === 'verifying' || stage === 'processing';
 
   // Slide/fade the toast in and out.
   useEffect(() => {
@@ -56,34 +60,70 @@ export default function UploadProgressToast({ visible, stage, progress }: Upload
     }).start();
   }, [progress, progressAnim]);
 
-  // Gentle looping spin for the icon while we're in an indeterminate stage.
+  // Indeterminate sweep + icon pulse. Both loops are keyed off the boolean
+  // `isIndeterminate` (not the specific stage string), so flipping between
+  // "verifying" and "processing" never tears down and restarts the
+  // animation — it just keeps sweeping continuously until the upload
+  // actually resolves (success, error, or back to null).
   useEffect(() => {
-    let loop: Animated.CompositeAnimation | undefined;
-    if (stage === 'verifying' || stage === 'processing') {
-      spinAnim.setValue(0);
-      loop = Animated.loop(
-        Animated.timing(spinAnim, {
+    if (!isIndeterminate) {
+      sweepAnim.setValue(0);
+      pulseAnim.setValue(0);
+      return;
+    }
+
+    const sweepLoop = Animated.loop(
+      Animated.timing(sweepAnim, {
+        toValue: 1,
+        duration: 1200,
+        easing: Easing.inOut(Easing.ease),
+        useNativeDriver: true,
+        isInteraction: false,
+      }),
+      { iterations: -1 }
+    );
+    const pulseLoop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, {
           toValue: 1,
-          duration: 1100,
+          duration: 600,
           easing: Easing.inOut(Easing.ease),
           useNativeDriver: true,
-        })
-      );
-      loop.start();
-    } else {
-      spinAnim.setValue(0);
-    }
-    return () => loop?.stop();
-  }, [stage, spinAnim]);
+          isInteraction: false,
+        }),
+        Animated.timing(pulseAnim, {
+          toValue: 0,
+          duration: 600,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+          isInteraction: false,
+        }),
+      ]),
+      { iterations: -1 }
+    );
+
+    sweepLoop.start();
+    pulseLoop.start();
+
+    return () => {
+      sweepLoop.stop();
+      pulseLoop.stop();
+    };
+  }, [isIndeterminate, sweepAnim, pulseAnim]);
 
   if (!visible && !stage) return null;
 
   const copy = STAGE_COPY[stage || 'uploading'];
-  const isIndeterminate = stage === 'verifying' || stage === 'processing';
+  const barWidth = Math.max(60, trackWidth * 0.32);
 
-  const pulse = spinAnim.interpolate({
-    inputRange: [0, 0.5, 1],
-    outputRange: [1, 0.55, 1],
+  const pulse = pulseAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [1, 0.5],
+  });
+
+  const sweepTranslate = sweepAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [-barWidth, trackWidth || 260],
   });
 
   return (
@@ -120,7 +160,10 @@ export default function UploadProgressToast({ visible, stage, progress }: Upload
           {stage === 'uploading' && <Text style={styles.percentText}>{Math.round(progress)}%</Text>}
         </View>
 
-        <View style={styles.progressTrack}>
+        <View
+          style={styles.progressTrack}
+          onLayout={(e) => setTrackWidth(e.nativeEvent.layout.width)}
+        >
           {stage === 'uploading' ? (
             <Animated.View
               style={[
@@ -134,23 +177,12 @@ export default function UploadProgressToast({ visible, stage, progress }: Upload
               ]}
             />
           ) : (
-            <View style={styles.indeterminateTrack}>
-              <Animated.View
-                style={[
-                  styles.indeterminateFill,
-                  {
-                    transform: [
-                      {
-                        translateX: spinAnim.interpolate({
-                          inputRange: [0, 1],
-                          outputRange: [-80, 220],
-                        }),
-                      },
-                    ],
-                  },
-                ]}
-              />
-            </View>
+            <Animated.View
+              style={[
+                styles.indeterminateFill,
+                { width: barWidth, transform: [{ translateX: sweepTranslate }] },
+              ]}
+            />
           )}
         </View>
       </View>
@@ -222,14 +254,12 @@ const styles = StyleSheet.create({
     borderRadius: 3,
     backgroundColor: '#D32F2F',
   },
-  indeterminateTrack: {
-    flex: 1,
-    overflow: 'hidden',
-  },
   indeterminateFill: {
-    width: 80,
     height: '100%',
     borderRadius: 3,
     backgroundColor: '#D32F2F',
+    position: 'absolute',
+    left: 0,
+    top: 0,
   },
 });
