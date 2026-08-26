@@ -3524,78 +3524,6 @@ app.post("/auth/send-forgot-password-pin", async (req, res) => {
     
     return res.json({ success: true, score: scaledScore, maxPoints, attemptNumber: 1 });
   }
-  // In Pasted_Text_1780565987839.txt inside app.post("/game-ai/submit-game-assignment", ...)
-
-  // ... [Existing submission grading logic remains unchanged] ...
-
-  if (!existingSubmissions.empty) {
-      // ... [Existing update logic for keeping highest score] ...
-  } else {
-      // ... [Existing create logic] ...
-  }
-
-  // === NEW STACKABLE NOTIFICATION LOGIC ===
-  const teacherId = normalizeOptionalText(classData.assignedTeacherId);
-  if (teacherId) {
-      const assignmentHeader = assignmentData.header || "an assignment";
-      const className = classData.name || "your class";
-      
-      // Check if there is already a pending notification for this assignment in this class
-      const existingNotifSnap = await db.collection("notifications")
-          .where("userId", "==", teacherId)
-          .where("role", "==", "teacher")
-          .where("type", "==", "submitted-assignment")
-          .where("relatedId", "==", assignmentId)
-          .where("classId", "==", classId)
-          .where("read", "==", false)
-          .limit(1)
-          .get();
-
-      if (!existingNotifSnap.empty) {
-          // Merge with existing notification
-          const notifDoc = existingNotifSnap.docs[0];
-          const notifData = notifDoc.data() || {};
-          const currentCount = typeof notifData.submissionCount === 'number' ? notifData.submissionCount : 1;
-          const newCount = currentCount + 1;
-          
-          // Format: "Latest Student + X others submitted..."
-          const latestName = `${profile.data.firstName || ''} ${profile.data.lastName || ''}`.trim() || studentId;
-          const prevActorName = notifData.actorName || "A student";
-          
-          let newMessage = "";
-          if (currentCount === 1) {
-              newMessage = `${prevActorName} and ${latestName} submitted ${assignmentHeader} in ${className}.`;
-          } else {
-              newMessage = `${latestName} + ${currentCount} others submitted ${assignmentHeader} in ${className}.`;
-          }
-
-          await notifDoc.ref.update({
-              message: newMessage,
-              actorId: studentId,
-              actorName: latestName,
-              submissionCount: newCount,
-              updatedAt: FieldValue.serverTimestamp(),
-          });
-      } else {
-          // Create new initial notification
-          await createNotification({
-              userId: teacherId,
-              role: "teacher",
-              type: "submitted-assignment",
-              title: "Game Assignment Submitted",
-              message: `${studentName || "A student"} submitted ${assignmentHeader} in ${className}.`,
-              relatedId: assignmentId, // Using assignmentId as relatedId allows grouping by assignment
-              relatedType: "class-submission",
-              classId,
-              actorId: studentId,
-              actorRole: "student",
-              actorName: studentName || studentId,
-              submissionCount: 1, // Track count explicitly
-          });
-      }
-  }
-
-  return res.json({ success: true, score: finalScore, maxPoints, attemptNumber: nextAttemptNumber });
     } catch (error) {
       console.error("Submit game assignment error:", error);
       return res.status(500).json({ error: error.message || "Failed to submit game score." });
@@ -11977,7 +11905,8 @@ app.get(
    * - System builds school year automatically: S.Y 2025 - 2026.
    * - Student must be enrolled in at least 18 units for that school year + semester.
    * - Student must have a submitted final grade for every enrolled class in that term.
-   * - Student must NOT have any final grade of 2.6 or above.
+   * - Student must NOT have any final grade above 2.5 (all grades must be 2.5 or lower).
+   * - Student's GWA must be at least 1.0 and up to 1.75 (i.e. 1.0 <= GWA <= 1.75).
    * 
    */
   app.get("/honor-roll", async (req, res) => {
@@ -12069,13 +11998,13 @@ app.get(
         const hasEnoughUnits = student.totalUnits >= 18;
         const hasAtLeastOneCourse = student.courses.length > 0;
         const hasCompleteFinalGrades = student.courses.every((course) => course.hasFinalGrade);
-        const hasNoGrade26Above = student.courses.every((course) => Number(course.grade) < 2.6);
+        const hasNoGradeAbove25 = student.courses.every((course) => Number(course.grade) <= 2.5);
 
         if (
           !hasEnoughUnits ||
           !hasAtLeastOneCourse ||
           !hasCompleteFinalGrades ||
-          !hasNoGrade26Above
+          !hasNoGradeAbove25
         ) {
           continue;
         }
@@ -12092,8 +12021,8 @@ app.get(
           gwa = student.totalUnits > 0 ? weightedGradeTotal / student.totalUnits : 0;
         }
 
-        // --- ADDED VALIDATION: GWA must not be greater than 1.75 to qualify ---
-        if (gwa > 1.75) {
+        // --- ADDED VALIDATION: GWA must be at least 1.0 and up to 1.75 to qualify ---
+        if (gwa < 1.0 || gwa > 1.75) {
           continue;
         }
 
