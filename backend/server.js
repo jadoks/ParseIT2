@@ -5719,7 +5719,6 @@ app.post("/create-admin", async (req, res) => {
 
       if (
         !name ||
-        !courseCode ||
         !section ||
         !semester ||
         !createdByUid ||

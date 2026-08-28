@@ -1983,35 +1983,35 @@ const fetchModules = useCallback(async (silent = false) => {
                 </View>
               </View>
             )}
-            <View style={[styles.classCodeBox, isLargeScreen && styles.headerDetailItemDesktop]}>
-              <Ionicons name="copy-outline" size={14} color="#D32F2F" />
-              <View style={styles.classCodeTextWrap}>
-                <Text style={styles.classCodeLabel}>
-                  {(safeCourse as any).classCode ? "CLASS CODE" : "COURSE CODE"}
-                </Text>
-                <Text style={styles.classCodeValue} numberOfLines={1}>{classCode}</Text>
+          </View>
+          {courseSchedule.length > 0 && (
+            <View style={styles.scheduleDisplayCard}>
+              <View style={styles.scheduleDisplayHeader}>
+                <Ionicons name="calendar-outline" size={16} color="#D32F2F" />
+                <Text style={styles.scheduleDisplayTitle}>Class Schedule</Text>
               </View>
+              {courseSchedule.map((entry, index) => {
+                const { days, time, room } = formatScheduleBlock(entry);
+                return (
+                  <View key={`schedule-${index}`} style={styles.scheduleDisplayRow}>
+                    <Text style={styles.scheduleDisplayDays}>{days}</Text>
+                    <Text style={styles.scheduleDisplayTime}>{time}</Text>
+                    {!!room && <Text style={styles.scheduleDisplayRoom}>{room}</Text>}
+                  </View>
+                );
+              })}
             </View>
+          )}
+        </View>
+        <View style={[styles.classCodeBox, styles.classCodeStandalone]}>
+          <Ionicons name="copy-outline" size={14} color="#D32F2F" />
+          <View style={styles.classCodeTextWrap}>
+            <Text style={styles.classCodeLabel}>
+              {(safeCourse as any).classCode ? "CLASS CODE" : "COURSE CODE"}
+            </Text>
+            <Text style={styles.classCodeValue} numberOfLines={1}>{classCode}</Text>
           </View>
         </View>
-        {courseSchedule.length > 0 && (
-          <View style={styles.scheduleDisplayCard}>
-            <View style={styles.scheduleDisplayHeader}>
-              <Ionicons name="calendar-outline" size={16} color="#D32F2F" />
-              <Text style={styles.scheduleDisplayTitle}>Class Schedule</Text>
-            </View>
-            {courseSchedule.map((entry, index) => {
-              const { days, time, room } = formatScheduleBlock(entry);
-              return (
-                <View key={`schedule-${index}`} style={styles.scheduleDisplayRow}>
-                  <Text style={styles.scheduleDisplayDays}>{days}</Text>
-                  <Text style={styles.scheduleDisplayTime}>{time}</Text>
-                  {!!room && <Text style={styles.scheduleDisplayRoom}>{room}</Text>}
-                </View>
-              );
-            })}
-          </View>
-        )}
       </View>
 
       {/* ── Tabs ── */}
@@ -3402,6 +3402,13 @@ const styles = StyleSheet.create({
     minWidth: 132,
     flexGrow: 1,
     flexBasis: "100%",
+  },
+  classCodeStandalone: {
+    flexGrow: 0,
+    flexBasis: "auto",
+    alignSelf: "flex-start",
+    minWidth: 0,
+    marginTop: 12,
   },
   classCodeTextWrap: { flex: 1 },
   classCodeLabel: { color: "#8A8A8A", fontSize: 10, fontWeight: "800", letterSpacing: 0.6 },

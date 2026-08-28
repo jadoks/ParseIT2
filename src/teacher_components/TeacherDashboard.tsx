@@ -166,6 +166,120 @@ function DashboardTextArea({
 const DAY_OPTIONS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const TIME_24H_REGEX = /^([01]\d|2[0-3]):([0-5]\d)$/;
 
+// ── Google-Classroom-style time input helpers ──────────────────────────
+// The user types plain digits (e.g. "0930"); we auto-insert the ":" once
+// the hour (first 2 digits) is entered, and clamp to a valid 12-hour time.
+// A separate AM/PM toggle sits next to the field. Internally everything is
+// still stored/validated as 24-hour 'HH:MM', so nothing downstream changes.
+const pad2 = (n: number) => String(n).padStart(2, '0');
+
+const clampTimeDigits = (raw: string): string => {
+  let out = raw.replace(/[^0-9]/g, '').slice(0, 4);
+  if (out.length >= 2) {
+    let hh = parseInt(out.slice(0, 2), 10);
+    if (Number.isNaN(hh)) hh = 0;
+    if (hh > 12) hh = 12;
+    if (hh === 0) hh = 1;
+    out = pad2(hh) + out.slice(2);
+  }
+  if (out.length === 4) {
+    let mm = parseInt(out.slice(2, 4), 10);
+    if (Number.isNaN(mm)) mm = 0;
+    if (mm > 59) mm = 59;
+    out = out.slice(0, 2) + pad2(mm);
+  }
+  return out;
+};
+
+const formatTimeDigitsForDisplay = (digits: string): string =>
+  digits.length <= 2 ? digits : `${digits.slice(0, 2)}:${digits.slice(2)}`;
+
+const timeDigitsAndMeridiemTo24h = (digits: string, meridiem: 'AM' | 'PM'): string => {
+  if (digits.length !== 4) return '';
+  const hour12 = parseInt(digits.slice(0, 2), 10);
+  const minute = parseInt(digits.slice(2, 4), 10);
+  if (Number.isNaN(hour12) || Number.isNaN(minute) || hour12 < 1 || hour12 > 12 || minute > 59) return '';
+  let hour24 = hour12 % 12;
+  if (meridiem === 'PM') hour24 += 12;
+  return `${pad2(hour24)}:${pad2(minute)}`;
+};
+
+// Converts a stored 24-hour 'HH:MM' value back into typed digits + AM/PM,
+// so editing an existing schedule shows the right starting values.
+// Defaults to 'AM' when there's no value yet to store it will AM.
+const parse24hToTimeDigits = (time24: string): { digits: string; meridiem: 'AM' | 'PM' } => {
+  const match = TIME_24H_REGEX.exec((time24 || '').trim());
+  if (!match) return { digits: '', meridiem: 'AM' };
+  const hour24 = parseInt(match[1], 10);
+  const minute = parseInt(match[2], 10);
+  const meridiem: 'AM' | 'PM' = hour24 >= 12 ? 'PM' : 'AM';
+  let hour12 = hour24 % 12;
+  if (hour12 === 0) hour12 = 12;
+  return { digits: `${pad2(hour12)}${pad2(minute)}`, meridiem };
+};
+
+function TimeInputField({
+  value,
+  onChangeValue,
+  placeholder,
+}: {
+  value: string; // 24-hour 'HH:MM' or ''
+  onChangeValue: (value24h: string) => void;
+  placeholder?: string;
+}) {
+  const initial = useMemo(() => parse24hToTimeDigits(value), []); // eslint-disable-line react-hooks/exhaustive-deps
+  const [digits, setDigits] = useState(initial.digits);
+  const [meridiem, setMeridiem] = useState<'AM' | 'PM'>(initial.meridiem);
+  const [isFocused, setIsFocused] = useState(false);
+
+  const commit = (nextDigits: string, nextMeridiem: 'AM' | 'PM') => {
+    onChangeValue(timeDigitsAndMeridiemTo24h(nextDigits, nextMeridiem));
+  };
+
+  const handleChangeText = (text: string) => {
+    const clamped = clampTimeDigits(text);
+    setDigits(clamped);
+    commit(clamped, meridiem);
+  };
+
+  const handleMeridiemPress = (nextMeridiem: 'AM' | 'PM') => {
+    setMeridiem(nextMeridiem);
+    commit(digits, nextMeridiem);
+  };
+
+  return (
+    <View style={styles.timeInputRow}>
+      <View style={[styles.yearInputWrap, styles.timeInputWrap, isFocused && styles.yearInputWrapFocused]}>
+        <TextInput
+          value={formatTimeDigitsForDisplay(digits)}
+          onChangeText={handleChangeText}
+          placeholder={placeholder || '09:30'}
+          placeholderTextColor="#9AA0A6"
+          keyboardType="number-pad"
+          maxLength={5}
+          style={styles.yearInput}
+          onFocus={() => setIsFocused(true)}
+          onBlur={() => setIsFocused(false)}
+        />
+      </View>
+      <View style={styles.meridiemToggle}>
+        <TouchableOpacity
+          style={[styles.meridiemBtn, meridiem === 'AM' && styles.meridiemBtnActive]}
+          onPress={() => handleMeridiemPress('AM')}
+        >
+          <Text style={[styles.meridiemBtnText, meridiem === 'AM' && styles.meridiemBtnTextActive]}>AM</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.meridiemBtn, meridiem === 'PM' && styles.meridiemBtnActive]}
+          onPress={() => handleMeridiemPress('PM')}
+        >
+          <Text style={[styles.meridiemBtnText, meridiem === 'PM' && styles.meridiemBtnTextActive]}>PM</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+}
+
 const createEmptyScheduleBlock = (): ClassScheduleFormBlock => ({
   id: `sched-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
   days: [],
@@ -304,7 +418,6 @@ const Dashboard2 = ({
   const [classBannerMimeType, setClassBannerMimeType] = useState<string | null>(null);
   const [description, setDescription] = useState('');
   const [startYear, setStartYear] = useState('2025');
-  const [courseCodeInput, setCourseCodeInput] = useState('');
   const [courseNameInput, setCourseNameInput] = useState('');
   const [courseUnitsInput, setCourseUnitsInput] = useState('');
   const [scheduleBlocks, setScheduleBlocks] = useState<ClassScheduleFormBlock[]>([createEmptyScheduleBlock()]);
@@ -316,7 +429,6 @@ const Dashboard2 = ({
   const [editClassBannerMimeType, setEditClassBannerMimeType] = useState<string | null>(null);
   const [editDescription, setEditDescription] = useState('');
   const [editStartYear, setEditStartYear] = useState('2025');
-  const [editCourseCodeInput, setEditCourseCodeInput] = useState('');
   const [editCourseNameInput, setEditCourseNameInput] = useState('');
   const [editCourseUnitsInput, setEditCourseUnitsInput] = useState('');
   const [editScheduleBlocks, setEditScheduleBlocks] = useState<ClassScheduleFormBlock[]>([createEmptyScheduleBlock()]);
@@ -421,14 +533,14 @@ const refreshClassesAfterStorageWrite = async () => {
   const resetCreateForm = () => {
     setIsCreatingClass(false); setSelectedYear(null); setSelectedSemester(null); setSelectedSection(null);
     setClassBanner(''); setClassBannerFileName(null); setClassBannerMimeType(null); setDescription('');
-    setStartYear('2025'); setSemesterDropdownVisible(false); setCourseCodeInput(''); setCourseNameInput(''); setCourseUnitsInput('');
+    setStartYear('2025'); setSemesterDropdownVisible(false); setCourseNameInput(''); setCourseUnitsInput('');
     setScheduleBlocks([createEmptyScheduleBlock()]);
   };
 
   const resetEditForm = () => {
     setEditSelectedSemester(null); setEditSelectedSection(null); setEditClassBanner(''); setEditClassBannerFileName(null);
     setEditClassBannerMimeType(null); setEditDescription(''); setEditStartYear('2025'); setEditSemesterDropdownVisible(false);
-    setEditingCourse(null); setEditCourseCodeInput(''); setEditCourseNameInput(''); setEditCourseUnitsInput('');
+    setEditingCourse(null); setEditCourseNameInput(''); setEditCourseUnitsInput('');
     setEditScheduleBlocks([createEmptyScheduleBlock()]);
   };
 
@@ -492,7 +604,6 @@ const refreshClassesAfterStorageWrite = async () => {
     if (!activeYear) { showToast('Please select a year.', 'error'); return; }
     if (!activeSemester) { showToast('Please select a semester.', 'error'); return; }
     if (!selectedSection) { showToast('Please select a section.', 'error'); return; }
-    if (!courseCodeInput.trim()) { showToast('Please enter a course code.', 'error'); return; }
     if (!courseNameInput.trim()) { showToast('Please enter a course name.', 'error'); return; }
     if (!startYear.trim() || !endYear) { showToast('Please enter a valid start year.', 'error'); return; }
     if (!classBanner) { showToast('Please upload a class banner.', 'error'); return; }
@@ -501,7 +612,7 @@ const refreshClassesAfterStorageWrite = async () => {
 
     const yearLabel = YEAR_OPTIONS.find((year) => year.id === activeYear)?.label || '';
     const sectionLabel = SECTION_OPTIONS[activeYear]?.find((section: SectionOption) => section.id === selectedSection)?.label || '';
-    const courseCode = courseCodeInput.trim(); const courseLabel = courseNameInput.trim(); const units = parseFloat(courseUnitsInput) || 0;
+    const courseLabel = courseNameInput.trim(); const units = parseFloat(courseUnitsInput) || 0;
     setIsCreatingClass(true);
 
     const schedule = serializeScheduleBlocks(scheduleBlocks);
@@ -513,7 +624,7 @@ const refreshClassesAfterStorageWrite = async () => {
       const response = await apiFetch('/create-class', {
         method: 'POST',
         body: JSON.stringify({
-          name: courseLabel, courseCode, section: sectionLabel, semester: selectedSemesterLabel,
+          name: courseLabel, section: sectionLabel, semester: selectedSemesterLabel,
           schoolYear: `${startYear.trim()}-${endYear}`, description: description.trim() ? description.trim() : null,
           bannerBase64, bannerFileName: classBanner ? classBannerFileName || 'teacher-banner.jpg' : null,
           bannerMimeType: classBanner ? classBannerMimeType || 'image/jpeg' : null, instructorName: teacherFullName,
@@ -529,7 +640,7 @@ const refreshClassesAfterStorageWrite = async () => {
       }
 
       const createdCourse: TeacherCourseData = {
-        id: data?.data?.id || Date.now().toString(), name: courseLabel, courseCode, classCode: data?.data?.classCode || '',
+        id: data?.data?.id || Date.now().toString(), name: courseLabel, courseCode: data?.data?.courseCode || '', classCode: data?.data?.classCode || '',
         section: sectionLabel, instructor: teacherFullName, bannerUri: data?.data?.bannerUrl || undefined,
         bannerStoragePath: data?.data?.bannerStoragePath || null, bannerFileName: data?.data?.bannerFileName || null,
         bannerMimeType: data?.data?.bannerMimeType || null, year: yearLabel, yearSection: sectionLabel,
@@ -564,7 +675,7 @@ const refreshClassesAfterStorageWrite = async () => {
     const schoolYearParts = (menuCourse.schoolYear || '2025-2026').split('-');
 
     setEditingCourse(menuCourse); setEditSelectedYear(matchedYear); setEditSelectedSection(matchedSection); setEditSelectedSemester(matchedSemester);
-    setEditCourseCodeInput(menuCourse.courseCode || ''); setEditCourseNameInput(menuCourse.name || ''); setEditCourseUnitsInput(menuCourse.units?.toString() || '');
+    setEditCourseNameInput(menuCourse.name || ''); setEditCourseUnitsInput(menuCourse.units?.toString() || '');
     setEditClassBanner(menuCourse.bannerUri || ''); setEditClassBannerFileName(menuCourse.bannerFileName || null); setEditClassBannerMimeType(menuCourse.bannerMimeType || null);
     setEditDescription(menuCourse.description || ''); setEditStartYear(schoolYearParts[0] || '2025');
     setEditScheduleBlocks(
@@ -581,7 +692,6 @@ const refreshClassesAfterStorageWrite = async () => {
     if (!activeEditYear) { showToast('Please select a year.', 'error'); return; }
     if (!activeEditSemester) { showToast('Please select a semester.', 'error'); return; }
     if (!editSelectedSection) { showToast('Please select a section.', 'error'); return; }
-    if (!editCourseCodeInput.trim()) { showToast('Please enter a course code.', 'error'); return; }
     if (!editCourseNameInput.trim()) { showToast('Please enter a course name.', 'error'); return; }
     if (!editStartYear.trim() || !editEndYear) { showToast('Please enter a valid start year.', 'error'); return; }
     if (!editClassBanner) { showToast('Please upload a class banner.', 'error'); return; }
@@ -590,7 +700,7 @@ const refreshClassesAfterStorageWrite = async () => {
 
     const yearLabel = YEAR_OPTIONS.find((year) => year.id === activeEditYear)?.label || '';
     const sectionLabel = SECTION_OPTIONS[activeEditYear]?.find((section: SectionOption) => section.id === editSelectedSection)?.label || '';
-    const courseCode = editCourseCodeInput.trim(); const courseLabel = editCourseNameInput.trim(); const units = parseFloat(editCourseUnitsInput) || 0;
+    const courseLabel = editCourseNameInput.trim(); const units = parseFloat(editCourseUnitsInput) || 0;
 
     setIsSavingEdit(true);
     const schedule = serializeScheduleBlocks(editScheduleBlocks);
@@ -605,7 +715,7 @@ const refreshClassesAfterStorageWrite = async () => {
       const response = await apiFetch(`/update-class/${editingCourse.id}`, {
         method: 'PUT',
         body: JSON.stringify({
-          name: courseLabel, courseCode, section: sectionLabel, semester: editSelectedSemesterLabel,
+          name: courseLabel, section: sectionLabel, semester: editSelectedSemesterLabel,
           schoolYear: `${editStartYear.trim()}-${editEndYear}`, description: editDescription.trim() ? editDescription.trim() : null,
           bannerBase64, bannerFileName: editClassBanner ? editClassBannerFileName || 'teacher-banner.jpg' : null,
           bannerMimeType: editClassBanner ? editClassBannerMimeType || 'image/jpeg' : null, instructorName: teacherFullName,
@@ -621,7 +731,7 @@ const refreshClassesAfterStorageWrite = async () => {
       }
 
       const updatedCourse: TeacherCourseData = {
-        ...editingCourse, name: courseLabel, courseCode, year: yearLabel, yearSection: sectionLabel, section: sectionLabel,
+        ...editingCourse, name: courseLabel, year: yearLabel, yearSection: sectionLabel, section: sectionLabel,
         semester: editSelectedSemesterLabel, schoolYear: `${editStartYear.trim()}-${editEndYear}`,
         description: editDescription.trim() ? editDescription.trim() : null,
         bannerUri: data?.data?.bannerUrl || editClassBanner || undefined,
@@ -715,28 +825,44 @@ const refreshClassesAfterStorageWrite = async () => {
                 </View>
               </View>
               {selectedYear && (
-                <View style={styles.semesterFieldWrap}>
-                  <Text style={styles.inputLabel}>Semester Selection</Text>
-                  <TouchableOpacity style={styles.dropdownTrigger} onPress={() => setSemesterDropdownVisible((prev) => !prev)}>
-                    <Text style={styles.dropdownTriggerText}>{selectedSemesterLabel}</Text>
-                    <MaterialCommunityIcons name="chevron-down" size={20} color="#666" />
-                  </TouchableOpacity>
-                  {isSemesterDropdownVisible && (
-                    <>
-                      <Pressable style={styles.floatingDropdownDismiss} onPress={() => setSemesterDropdownVisible(false)} />
-                      <View style={styles.floatingDropdownMenu}>
-                        {SEMESTER_OPTIONS.map((semester, index) => {
-                          const isActive = selectedSemester === semester.id;
-                          const isLast = index === SEMESTER_OPTIONS.length - 1;
-                          return (
-                            <TouchableOpacity key={semester.id} style={[styles.floatingDropdownItem, isActive && styles.floatingDropdownItemActive, !isLast && styles.floatingDropdownItemBorder]} onPress={() => { setSelectedSemester(semester.id); setSelectedSection(null); setSemesterDropdownVisible(false); }}>
-                              <Text style={[styles.floatingDropdownItemText, isActive && styles.floatingDropdownItemTextActive]}>{semester.label}</Text>
-                              {isActive && <Ionicons name="checkmark-circle" size={18} color="#D32F2F" />}
-                            </TouchableOpacity>
-                          );
-                        })}
+                <View style={[styles.modalSection, !isMobile && styles.formGridRow]}>
+                  <View style={[styles.semesterFieldWrap, !isMobile && styles.formGridCol]}>
+                    <Text style={styles.inputLabel}>Semester Selection</Text>
+                    <TouchableOpacity style={styles.dropdownTrigger} onPress={() => setSemesterDropdownVisible((prev) => !prev)}>
+                      <Text style={styles.dropdownTriggerText}>{selectedSemesterLabel}</Text>
+                      <MaterialCommunityIcons name="chevron-down" size={20} color="#666" />
+                    </TouchableOpacity>
+                    {isSemesterDropdownVisible && (
+                      <>
+                        <Pressable style={styles.floatingDropdownDismiss} onPress={() => setSemesterDropdownVisible(false)} />
+                        <View style={styles.floatingDropdownMenu}>
+                          {SEMESTER_OPTIONS.map((semester, index) => {
+                            const isActive = selectedSemester === semester.id;
+                            const isLast = index === SEMESTER_OPTIONS.length - 1;
+                            return (
+                              <TouchableOpacity key={semester.id} style={[styles.floatingDropdownItem, isActive && styles.floatingDropdownItemActive, !isLast && styles.floatingDropdownItemBorder]} onPress={() => { setSelectedSemester(semester.id); setSelectedSection(null); setSemesterDropdownVisible(false); }}>
+                                <Text style={[styles.floatingDropdownItemText, isActive && styles.floatingDropdownItemTextActive]}>{semester.label}</Text>
+                                {isActive && <Ionicons name="checkmark-circle" size={18} color="#D32F2F" />}
+                              </TouchableOpacity>
+                            );
+                          })}
+                        </View>
+                      </>
+                    )}
+                  </View>
+                  {selectedSemester && (
+                    <View style={!isMobile ? styles.formGridCol : undefined}>
+                      <View style={styles.modalSectionHeaderRow}>
+                        <Ionicons name="book-outline" size={18} color="#D32F2F" />
+                        <Text style={styles.modalSectionTitle}>Course Details</Text>
                       </View>
-                    </>
+                      <Text style={styles.inputLabel}>Course Name</Text>
+                      <DashboardTextArea
+                        value={courseNameInput}
+                        onChangeText={setCourseNameInput}
+                        placeholder="e.g., INTRODUCTION TO COMPUTING"
+                      />
+                    </View>
                   )}
                 </View>
               )}
@@ -758,27 +884,6 @@ const refreshClassesAfterStorageWrite = async () => {
                       </View>
                     ))}
                   </View>
-                </View>
-              )}
-              {selectedYear && selectedSemester && (
-                <View style={styles.modalSection}>
-                  <View style={styles.modalSectionHeaderRow}>
-                    <Ionicons name="book-outline" size={18} color="#D32F2F" />
-                    <Text style={styles.modalSectionTitle}>Course Details</Text>
-                  </View>
-                  <Text style={styles.inputLabel}>Course Code</Text>
-                  <DashboardTextField
-                    value={courseCodeInput}
-                    onChangeText={setCourseCodeInput}
-                    placeholder="e.g., CC 111"
-                  />
-                  <Text style={styles.inputLabel}>Course Name</Text>
-                  <DashboardTextArea
-                    value={courseNameInput}
-                    onChangeText={setCourseNameInput}
-                    placeholder="e.g., INTRODUCTION TO COMPUTING"
-                  />
-                  
                 </View>
               )}
               {selectedYear && selectedSemester && (
@@ -811,11 +916,11 @@ const refreshClassesAfterStorageWrite = async () => {
                       <View style={styles.scheduleTimeRow}>
                         <View style={styles.scheduleTimeCol}>
                           <Text style={styles.inputLabel}>Start Time</Text>
-                          <DashboardTextField value={block.startTime} onChangeText={(text) => updateScheduleField(block.id, 'startTime', text)} placeholder="e.g., 08:00" maxLength={5} />
+                          <TimeInputField value={block.startTime} onChangeValue={(text) => updateScheduleField(block.id, 'startTime', text)} placeholder="09:00" />
                         </View>
                         <View style={styles.scheduleTimeCol}>
                           <Text style={styles.inputLabel}>End Time</Text>
-                          <DashboardTextField value={block.endTime} onChangeText={(text) => updateScheduleField(block.id, 'endTime', text)} placeholder="e.g., 09:30" maxLength={5} />
+                          <TimeInputField value={block.endTime} onChangeValue={(text) => updateScheduleField(block.id, 'endTime', text)} placeholder="10:30" />
                         </View>
                       </View>
                       <Text style={styles.inputLabel}>Room (Optional)</Text>
@@ -913,28 +1018,51 @@ const refreshClassesAfterStorageWrite = async () => {
                 </View>
               </View>
               {editSelectedYear && (
-                <View style={styles.semesterFieldWrap}>
-                  <Text style={styles.inputLabel}>Semester Selection</Text>
-                  <TouchableOpacity style={styles.dropdownTrigger} onPress={() => setEditSemesterDropdownVisible((prev) => !prev)}>
-                    <Text style={styles.dropdownTriggerText}>{editSelectedSemesterLabel}</Text>
-                    <MaterialCommunityIcons name="chevron-down" size={20} color="#666" />
-                  </TouchableOpacity>
-                  {isEditSemesterDropdownVisible && (
-                    <>
-                      <Pressable style={styles.floatingDropdownDismiss} onPress={() => setEditSemesterDropdownVisible(false)} />
-                      <View style={styles.floatingDropdownMenu}>
-                        {SEMESTER_OPTIONS.map((semester, index) => {
-                          const isActive = editSelectedSemester === semester.id;
-                          const isLast = index === SEMESTER_OPTIONS.length - 1;
-                          return (
-                            <TouchableOpacity key={semester.id} style={[styles.floatingDropdownItem, isActive && styles.floatingDropdownItemActive, !isLast && styles.floatingDropdownItemBorder]} onPress={() => { setEditSelectedSemester(semester.id); setEditSelectedSection(null); setEditSemesterDropdownVisible(false); }}>
-                              <Text style={[styles.floatingDropdownItemText, isActive && styles.floatingDropdownItemTextActive]}>{semester.label}</Text>
-                              {isActive && <Ionicons name="checkmark-circle" size={18} color="#D32F2F" />}
-                            </TouchableOpacity>
-                          );
-                        })}
+                <View style={[styles.modalSection, !isMobile && styles.formGridRow]}>
+                  <View style={[styles.semesterFieldWrap, !isMobile && styles.formGridCol]}>
+                    <Text style={styles.inputLabel}>Semester Selection</Text>
+                    <TouchableOpacity style={styles.dropdownTrigger} onPress={() => setEditSemesterDropdownVisible((prev) => !prev)}>
+                      <Text style={styles.dropdownTriggerText}>{editSelectedSemesterLabel}</Text>
+                      <MaterialCommunityIcons name="chevron-down" size={20} color="#666" />
+                    </TouchableOpacity>
+                    {isEditSemesterDropdownVisible && (
+                      <>
+                        <Pressable style={styles.floatingDropdownDismiss} onPress={() => setEditSemesterDropdownVisible(false)} />
+                        <View style={styles.floatingDropdownMenu}>
+                          {SEMESTER_OPTIONS.map((semester, index) => {
+                            const isActive = editSelectedSemester === semester.id;
+                            const isLast = index === SEMESTER_OPTIONS.length - 1;
+                            return (
+                              <TouchableOpacity key={semester.id} style={[styles.floatingDropdownItem, isActive && styles.floatingDropdownItemActive, !isLast && styles.floatingDropdownItemBorder]} onPress={() => { setEditSelectedSemester(semester.id); setEditSelectedSection(null); setEditSemesterDropdownVisible(false); }}>
+                                <Text style={[styles.floatingDropdownItemText, isActive && styles.floatingDropdownItemTextActive]}>{semester.label}</Text>
+                                {isActive && <Ionicons name="checkmark-circle" size={18} color="#D32F2F" />}
+                              </TouchableOpacity>
+                            );
+                          })}
+                        </View>
+                      </>
+                    )}
+                  </View>
+                  {editSelectedSemester && (
+                    <View style={!isMobile ? styles.formGridCol : undefined}>
+                      <View style={styles.modalSectionHeaderRow}>
+                        <Ionicons name="book-outline" size={18} color="#D32F2F" />
+                        <Text style={styles.modalSectionTitle}>Course Details</Text>
                       </View>
-                    </>
+                      <Text style={styles.inputLabel}>Units</Text>
+                      <DashboardTextField
+                        value={editCourseUnitsInput}
+                        onChangeText={setEditCourseUnitsInput}
+                        placeholder="e.g., 3.0"
+                        keyboardType="numeric"
+                      />
+                      <Text style={styles.inputLabel}>Course Name</Text>
+                      <DashboardTextArea
+                        value={editCourseNameInput}
+                        onChangeText={setEditCourseNameInput}
+                        placeholder="e.g., INTRODUCTION TO COMPUTING"
+                      />
+                    </View>
                   )}
                 </View>
               )}
@@ -956,39 +1084,6 @@ const refreshClassesAfterStorageWrite = async () => {
                       </View>
                     ))}
                   </View>
-                </View>
-              )}
-              {editSelectedYear && editSelectedSemester && (
-                <View style={styles.modalSection}>
-                  <View style={styles.modalSectionHeaderRow}>
-                    <Ionicons name="book-outline" size={18} color="#D32F2F" />
-                    <Text style={styles.modalSectionTitle}>Course Details</Text>
-                  </View>
-                  <View style={!isMobile ? styles.formGridRow : undefined}>
-                    <View style={!isMobile ? styles.formGridCol : undefined}>
-                      <Text style={styles.inputLabel}>Course Code</Text>
-                      <DashboardTextField
-                        value={editCourseCodeInput}
-                        onChangeText={setEditCourseCodeInput}
-                        placeholder="e.g., CC 111"
-                      />
-                    </View>
-                    <View style={!isMobile ? styles.formGridCol : undefined}>
-                      <Text style={styles.inputLabel}>Units</Text>
-                      <DashboardTextField
-                        value={editCourseUnitsInput}
-                        onChangeText={setEditCourseUnitsInput}
-                        placeholder="e.g., 3.0"
-                        keyboardType="numeric"
-                      />
-                    </View>
-                  </View>
-                  <Text style={styles.inputLabel}>Course Name</Text>
-                  <DashboardTextArea
-                    value={editCourseNameInput}
-                    onChangeText={setEditCourseNameInput}
-                    placeholder="e.g., INTRODUCTION TO COMPUTING"
-                  />
                 </View>
               )}
               {editSelectedYear && editSelectedSemester && (
@@ -1021,11 +1116,11 @@ const refreshClassesAfterStorageWrite = async () => {
                       <View style={styles.scheduleTimeRow}>
                         <View style={styles.scheduleTimeCol}>
                           <Text style={styles.inputLabel}>Start Time</Text>
-                          <DashboardTextField value={block.startTime} onChangeText={(text) => updateEditScheduleField(block.id, 'startTime', text)} placeholder="e.g., 08:00" maxLength={5} />
+                          <TimeInputField value={block.startTime} onChangeValue={(text) => updateEditScheduleField(block.id, 'startTime', text)} placeholder="09:00" />
                         </View>
                         <View style={styles.scheduleTimeCol}>
                           <Text style={styles.inputLabel}>End Time</Text>
-                          <DashboardTextField value={block.endTime} onChangeText={(text) => updateEditScheduleField(block.id, 'endTime', text)} placeholder="e.g., 09:30" maxLength={5} />
+                          <TimeInputField value={block.endTime} onChangeValue={(text) => updateEditScheduleField(block.id, 'endTime', text)} placeholder="10:30" />
                         </View>
                       </View>
                       <Text style={styles.inputLabel}>Room (Optional)</Text>
@@ -1378,6 +1473,20 @@ const styles = StyleSheet.create({
   dayChipTextActive: { color: '#FFFFFF' },
   scheduleTimeRow: { flexDirection: 'row', gap: 12, marginBottom: 14 },
   scheduleTimeCol: { flex: 1 },
+  timeInputRow: { flexDirection: 'row', alignItems: 'stretch', gap: 8 },
+  timeInputWrap: { flex: 1 },
+  meridiemToggle: {
+    flexDirection: 'row',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    borderRadius: 14,
+    backgroundColor: '#F9FAFB',
+    overflow: 'hidden',
+  },
+  meridiemBtn: { paddingHorizontal: 12, justifyContent: 'center', alignItems: 'center' },
+  meridiemBtnActive: { backgroundColor: '#D32F2F' },
+  meridiemBtnText: { fontSize: 12, fontWeight: '800', color: '#9AA0A6' },
+  meridiemBtnTextActive: { color: '#FFFFFF' },
   addScheduleBtn: { minHeight: 44, borderWidth: 1, borderStyle: 'dashed', borderColor: '#D32F2F', borderRadius: 14, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 6, marginBottom: 4 },
   addScheduleBtnText: { color: '#D32F2F', fontWeight: '700', fontSize: 13 },
   uploadBtn: { minHeight: 48, borderWidth: 1, borderColor: '#F4B4B4', borderRadius: 14, backgroundColor: '#FFF7F7', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 14 },
