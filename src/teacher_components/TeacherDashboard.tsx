@@ -323,6 +323,11 @@ const Dashboard2 = ({
 
   const isMobile = width < 768;
   const isLargeScreen = width >= 1200;
+  const optionGridItemStyle = isMobile
+    ? styles.optionGridItemMobile
+    : isLargeScreen
+    ? styles.optionGridItemLarge
+    : styles.optionGridItemTablet;
 
   const teacherFullName = useMemo(() => {
     const first = currentTeacher?.firstName?.trim() || '';
@@ -532,7 +537,15 @@ const refreshClassesAfterStorageWrite = async () => {
         description: description.trim() ? description.trim() : null, units, schedule: data?.data?.schedule || schedule,
       };
 
-      setLocalCourses((prev) => normalizeCoursePositions([createdCourse, ...prev.filter((item) => item.id !== createdCourse.id)]));
+      setLocalCourses((prev) => {
+        const filtered = prev.filter((item) => item.id !== createdCourse.id);
+        // ✅ Force the just-created class to the front regardless of any
+        // stale `position` values on existing items — without this, the
+        // new course (no `position` yet) sorts to the END, since
+        // normalizeCoursePositions treats a missing position as "last".
+        const minPosition = filtered.reduce((min, item) => Math.min(min, item.position ?? 0), 0);
+        return normalizeCoursePositions([{ ...createdCourse, position: minPosition - 1 }, ...filtered]);
+      });
       onCreateClass?.(createdCourse);
       await refreshClassesAfterStorageWrite();
       resetCreateForm(); setCreateModalVisible(false);
@@ -677,7 +690,7 @@ const refreshClassesAfterStorageWrite = async () => {
       <Modal visible={isCreateModalVisible} transparent animationType="fade" onRequestClose={() => setCreateModalVisible(false)}>
         <View style={styles.modalOverlay}>
           <Pressable style={StyleSheet.absoluteFill} onPress={() => { if (isCreatingClass) return; resetCreateForm(); setCreateModalVisible(false); }} />
-          <View style={styles.createModalContainerWide}>
+          <View style={[styles.createModalContainerWide, isLargeScreen && styles.createModalContainerLarge]}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Create Class</Text>
               <TouchableOpacity disabled={isCreatingClass} onPress={() => { if (isCreatingClass) return; resetCreateForm(); setCreateModalVisible(false); }}>
@@ -697,7 +710,9 @@ const refreshClassesAfterStorageWrite = async () => {
                   <MaterialCommunityIcons name="google-classroom" size={18} color="#D32F2F" />
                   <Text style={styles.modalSectionTitle}>Select Year</Text>
                 </View>
-                {YEAR_OPTIONS.map((year) => (<View key={year.id}>{renderCheckboxRow(year.label, selectedYear === year.id, () => toggleYear(year.id), styles.checkRowActive)}</View>))}
+                <View style={styles.optionsGrid}>
+                  {YEAR_OPTIONS.map((year) => (<View key={year.id} style={optionGridItemStyle}>{renderCheckboxRow(year.label, selectedYear === year.id, () => toggleYear(year.id), styles.checkRowActive)}</View>))}
+                </View>
               </View>
               {selectedYear && (
                 <View style={styles.semesterFieldWrap}>
@@ -731,14 +746,18 @@ const refreshClassesAfterStorageWrite = async () => {
                     <Ionicons name="layers-outline" size={18} color="#D32F2F" />
                     <Text style={styles.modalSectionTitle}>Select Section</Text>
                   </View>
-                  {(selectedYear ? SECTION_OPTIONS[selectedYear] || [] : []).map((section: SectionOption) => (
-                    <TouchableOpacity key={section.id} style={[styles.sectionRow, selectedSection === section.id && styles.sectionRowActive]} activeOpacity={0.85} onPress={() => toggleSection(section.id)}>
-                      <View style={[styles.checkboxBase, selectedSection === section.id && styles.checkboxChecked]}>
-                        {selectedSection === section.id && <Ionicons name="checkmark" size={12} color="#FFFFFF" />}
+                  <View style={styles.optionsGrid}>
+                    {(selectedYear ? SECTION_OPTIONS[selectedYear] || [] : []).map((section: SectionOption) => (
+                      <View key={section.id} style={optionGridItemStyle}>
+                        <TouchableOpacity style={[styles.sectionRow, selectedSection === section.id && styles.sectionRowActive]} activeOpacity={0.85} onPress={() => toggleSection(section.id)}>
+                          <View style={[styles.checkboxBase, selectedSection === section.id && styles.checkboxChecked]}>
+                            {selectedSection === section.id && <Ionicons name="checkmark" size={12} color="#FFFFFF" />}
+                          </View>
+                          <Text style={styles.checkText}>{section.label}</Text>
+                        </TouchableOpacity>
                       </View>
-                      <Text style={styles.checkText}>{section.label}</Text>
-                    </TouchableOpacity>
-                  ))}
+                    ))}
+                  </View>
                 </View>
               )}
               {selectedYear && selectedSemester && (
@@ -869,7 +888,7 @@ const refreshClassesAfterStorageWrite = async () => {
       <Modal visible={isEditModalVisible} transparent animationType="fade" onRequestClose={() => setEditModalVisible(false)}>
         <View style={styles.modalOverlay}>
           <Pressable style={StyleSheet.absoluteFill} onPress={() => { if (isSavingEdit) return; resetEditForm(); setEditModalVisible(false); }} />
-          <View style={styles.createModalContainerWide}>
+          <View style={[styles.createModalContainerWide, isLargeScreen && styles.createModalContainerLarge]}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Edit Class</Text>
               <TouchableOpacity disabled={isSavingEdit} onPress={() => { if (isSavingEdit) return; resetEditForm(); setEditModalVisible(false); }}>
@@ -889,7 +908,9 @@ const refreshClassesAfterStorageWrite = async () => {
                   <MaterialCommunityIcons name="google-classroom" size={18} color="#D32F2F" />
                   <Text style={styles.modalSectionTitle}>Select Year</Text>
                 </View>
-                {YEAR_OPTIONS.map((year) => (<View key={year.id}>{renderCheckboxRow(year.label, editSelectedYear === year.id, () => toggleEditYear(year.id), styles.checkRowActive)}</View>))}
+                <View style={styles.optionsGrid}>
+                  {YEAR_OPTIONS.map((year) => (<View key={year.id} style={optionGridItemStyle}>{renderCheckboxRow(year.label, editSelectedYear === year.id, () => toggleEditYear(year.id), styles.checkRowActive)}</View>))}
+                </View>
               </View>
               {editSelectedYear && (
                 <View style={styles.semesterFieldWrap}>
@@ -923,14 +944,18 @@ const refreshClassesAfterStorageWrite = async () => {
                     <Ionicons name="layers-outline" size={18} color="#D32F2F" />
                     <Text style={styles.modalSectionTitle}>Select Section</Text>
                   </View>
-                  {(editSelectedYear ? SECTION_OPTIONS[editSelectedYear] || [] : []).map((section: SectionOption) => (
-                    <TouchableOpacity key={section.id} style={[styles.sectionRow, editSelectedSection === section.id && styles.sectionRowActive]} activeOpacity={0.85} onPress={() => toggleEditSection(section.id)}>
-                      <View style={[styles.checkboxBase, editSelectedSection === section.id && styles.checkboxChecked]}>
-                        {editSelectedSection === section.id && <Ionicons name="checkmark" size={12} color="#FFFFFF" />}
+                  <View style={styles.optionsGrid}>
+                    {(editSelectedYear ? SECTION_OPTIONS[editSelectedYear] || [] : []).map((section: SectionOption) => (
+                      <View key={section.id} style={optionGridItemStyle}>
+                        <TouchableOpacity style={[styles.sectionRow, editSelectedSection === section.id && styles.sectionRowActive]} activeOpacity={0.85} onPress={() => toggleEditSection(section.id)}>
+                          <View style={[styles.checkboxBase, editSelectedSection === section.id && styles.checkboxChecked]}>
+                            {editSelectedSection === section.id && <Ionicons name="checkmark" size={12} color="#FFFFFF" />}
+                          </View>
+                          <Text style={styles.checkText}>{section.label}</Text>
+                        </TouchableOpacity>
                       </View>
-                      <Text style={styles.checkText}>{section.label}</Text>
-                    </TouchableOpacity>
-                  ))}
+                    ))}
+                  </View>
                 </View>
               )}
               {editSelectedYear && editSelectedSemester && (
@@ -939,24 +964,30 @@ const refreshClassesAfterStorageWrite = async () => {
                     <Ionicons name="book-outline" size={18} color="#D32F2F" />
                     <Text style={styles.modalSectionTitle}>Course Details</Text>
                   </View>
-                  <Text style={styles.inputLabel}>Course Code</Text>
-                  <DashboardTextField
-                    value={editCourseCodeInput}
-                    onChangeText={setEditCourseCodeInput}
-                    placeholder="e.g., CC 111"
-                  />
+                  <View style={!isMobile ? styles.formGridRow : undefined}>
+                    <View style={!isMobile ? styles.formGridCol : undefined}>
+                      <Text style={styles.inputLabel}>Course Code</Text>
+                      <DashboardTextField
+                        value={editCourseCodeInput}
+                        onChangeText={setEditCourseCodeInput}
+                        placeholder="e.g., CC 111"
+                      />
+                    </View>
+                    <View style={!isMobile ? styles.formGridCol : undefined}>
+                      <Text style={styles.inputLabel}>Units</Text>
+                      <DashboardTextField
+                        value={editCourseUnitsInput}
+                        onChangeText={setEditCourseUnitsInput}
+                        placeholder="e.g., 3.0"
+                        keyboardType="numeric"
+                      />
+                    </View>
+                  </View>
                   <Text style={styles.inputLabel}>Course Name</Text>
                   <DashboardTextArea
                     value={editCourseNameInput}
                     onChangeText={setEditCourseNameInput}
                     placeholder="e.g., INTRODUCTION TO COMPUTING"
-                  />
-                  <Text style={styles.inputLabel}>Units</Text>
-                  <DashboardTextField
-                    value={editCourseUnitsInput}
-                    onChangeText={setEditCourseUnitsInput}
-                    placeholder="e.g., 3.0"
-                    keyboardType="numeric"
                   />
                 </View>
               )}
@@ -1283,6 +1314,7 @@ const styles = StyleSheet.create({
   menuText: { fontSize: 14, fontWeight: '600' },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(15, 23, 42, 0.28)', justifyContent: 'center', alignItems: 'center', paddingHorizontal: 12 },
   createModalContainerWide: { width: '100%', maxWidth: 700, maxHeight: '90%', backgroundColor: '#fff', borderRadius: 22, overflow: 'hidden' },
+  createModalContainerLarge: { maxWidth: 960 },
   modalHeader: { paddingHorizontal: 20, paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: '#F1F1F1', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   modalTitle: { fontSize: 20, fontWeight: '800', color: '#202124' },
   transparentScroll: { flexGrow: 0 },
@@ -1294,6 +1326,14 @@ const styles = StyleSheet.create({
   checkRowActive: { backgroundColor: '#FFF4F4', borderColor: '#F4B4B4' },
   sectionRow: { minHeight: 46, borderWidth: 1, borderColor: '#E7E7E7', borderRadius: 14, paddingHorizontal: 14, marginBottom: 10, flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff' },
   sectionRowActive: { backgroundColor: '#FFF4F4', borderColor: '#F4B4B4' },
+  // ✅ Grid wrapper for Select Year / Select Section so large screens use
+  // the extra horizontal room instead of stacking every option full-width.
+  optionsGrid: { flexDirection: 'row', flexWrap: 'wrap', columnGap: 12 },
+  optionGridItemMobile: { width: '100%' },
+  optionGridItemTablet: { width: '48%' },
+  optionGridItemLarge: { width: '31.5%' },
+  formGridRow: { flexDirection: 'row', gap: 16 },
+  formGridCol: { flex: 1 },
   checkboxBase: { width: 18, height: 18, borderRadius: 6, borderWidth: 1.5, borderColor: '#C9CDD2', alignItems: 'center', justifyContent: 'center', marginRight: 10, backgroundColor: '#fff' },
   checkboxChecked: { backgroundColor: '#D32F2F', borderColor: '#D32F2F' },
   checkText: { flex: 1, color: '#202124', fontSize: 14, fontWeight: '500' },
