@@ -15960,14 +15960,22 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
         structure: parsedData.structure || { weeks: [] }, // Store the hierarchical structure
       });
 
-      // Mark other syllabi as not current
+      // Mark other syllabi as not current.
+      // NOTE: Firestore documents don't have a queryable "id" field by default,
+      // so filtering with .where("id", "!=", ...) never matches anything and
+      // previously left old syllabi stuck as isCurrent: true. We instead fetch
+      // every syllabus currently flagged as current for this class and demote
+      // any that aren't the one we just created (filtering out the new doc by
+      // its actual document ID, client-side).
       await db.collection("courseSyllabi")
         .where("classId", "==", classId)
-        .where("id", "!=", syllabusRef.id)
+        .where("isCurrent", "==", true)
         .get()
         .then(snapshot => {
+          const staleDocs = snapshot.docs.filter(doc => doc.id !== syllabusRef.id);
+          if (staleDocs.length === 0) return null;
           const batch = db.batch();
-          snapshot.forEach(doc => batch.update(doc.ref, { isCurrent: false }));
+          staleDocs.forEach(doc => batch.update(doc.ref, { isCurrent: false }));
           return batch.commit();
         });
 
@@ -17097,10 +17105,18 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
       
       const data = doc.data();
       
-      // Delete from Firebase Storage
-      if (data.storagePath) {
-        await deleteStorageFileIfExists(data.storagePath);
-      }
+      // Delete from Firebase Storage (syllabi store their files under
+      // originalStoragePath / convertedStoragePath, not storagePath).
+      const storagePathsToDelete = [
+        data.originalStoragePath,
+        data.convertedStoragePath,
+        data.storagePath,
+      ].filter(Boolean);
+      await Promise.all(
+        storagePathsToDelete.map((p) => deleteStorageFileIfExists(p).catch((e) => {
+          console.warn(`Failed to delete syllabus storage file at ${p}:`, e.message);
+        }))
+      );
       
       // Delete from Firestore
       await doc.ref.delete();

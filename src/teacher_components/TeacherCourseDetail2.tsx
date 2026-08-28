@@ -830,6 +830,8 @@ const TeacherCourseDetail2 = ({
 
   const [currentSyllabus, setCurrentSyllabus] = useState<any>(null);
   const [isUploadingSyllabus, setIsUploadingSyllabus] = useState(false);
+  const [isDeletingSyllabus, setIsDeletingSyllabus] = useState(false);
+  const [isEditingSyllabus, setIsEditingSyllabus] = useState(false); // true = replacing an existing syllabus (vs. first upload)
   const [syllabusViewerUrl, setSyllabusViewerUrl] = useState<string | null>(null);
   const [pendingSyllabusFile, setPendingSyllabusFile] = useState<{
     name?: string;
@@ -1491,16 +1493,21 @@ useEffect(() => {
         copyToCacheDirectory: true,
         base64: Platform.OS === 'web',
       });
-      if (result.canceled || !result.assets?.[0]) return;
+      if (result.canceled || !result.assets?.[0]) {
+        setIsEditingSyllabus(false);
+        return;
+      }
       const asset = result.assets[0];
       if (asset.size && asset.size > 20 * 1024 * 1024) {
         toast.show('error', 'File Too Large', 'File exceeds maximum size of 20 MB.');
+        setIsEditingSyllabus(false);
         return;
       }
       const ext = asset.name?.split('.').pop()?.toLowerCase();
       const allowedExts = ['pdf', 'doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx', 'txt', 'csv', 'png', 'jpg', 'jpeg', 'webp'];
       if (!ext || !allowedExts.includes(ext)) {
         toast.show('error', 'Unsupported File', 'Please upload a supported file type (PDF, DOCX, PPTX, etc.).');
+        setIsEditingSyllabus(false);
         return;
       }
       setPendingSyllabusFile({
@@ -1514,6 +1521,7 @@ useEffect(() => {
     } catch (error: any) {
       console.error('Syllabus pick error:', error);
       toast.show('error', 'Error', 'Failed to pick file.');
+      setIsEditingSyllabus(false);
     }
   };
 
@@ -1556,17 +1564,65 @@ useEffect(() => {
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Upload failed.');
       setCurrentSyllabus(data.syllabus);
+      const wasEdit = isEditingSyllabus;
       if (data.syllabus?.structure && data.syllabus.structure.modules) {
-        toast.show('success', 'Syllabus Uploaded', 'Syllabus parsed successfully! Click "Generate Module 1" to create course content.');
+        toast.show(
+          'success',
+          wasEdit ? 'Syllabus Replaced' : 'Syllabus Uploaded',
+          wasEdit
+            ? 'Syllabus updated successfully! New "Generate Module" clicks will use the updated syllabus.'
+            : 'Syllabus parsed successfully! Click "Generate Module 1" to create course content.'
+        );
       } else {
-        toast.show('info', 'Upload Complete', 'Syllabus uploaded. Auto-parsing could not extract structure. You can generate modules manually or try uploading a different file.');
+        toast.show(
+          'info',
+          'Upload Complete',
+          wasEdit
+            ? 'Syllabus replaced. Auto-parsing could not extract structure. You can generate modules manually or try uploading a different file.'
+            : 'Syllabus uploaded. Auto-parsing could not extract structure. You can generate modules manually or try uploading a different file.'
+        );
       }
     } catch (error: any) {
       console.error('Syllabus upload error:', error);
       toast.show('error', 'Upload Failed', error?.message || 'Failed to upload syllabus.');
     } finally {
       setIsUploadingSyllabus(false);
+      setIsEditingSyllabus(false);
     }
+  };
+
+  // Edit = replace the current syllabus file with an updated one (e.g. after CTU
+  // standards revise the course syllabus). Reuses the same picker/upload flow as
+  // the initial upload, just flagged so we can tailor the confirmation copy.
+  const handleEditSyllabus = () => {
+    setIsEditingSyllabus(true);
+    handlePickSyllabus();
+  };
+
+  const handleDeleteSyllabus = () => {
+    if (!currentSyllabus?.id) return;
+    toast.confirm(
+      'Delete Syllabus',
+      `Are you sure you want to delete "${currentSyllabus.fileName}"? This will remove the file and its parsed structure. Modules and lessons already generated will not be deleted.`,
+      async () => {
+        setIsDeletingSyllabus(true);
+        try {
+          const response = await fetch(`${API_BASE_URL}/course-syllabus/${currentSyllabus.id}`, {
+            method: 'DELETE',
+            credentials: 'include',
+          });
+          const data = await response.json();
+          if (!response.ok) throw new Error(data.error || 'Failed to delete syllabus.');
+          setCurrentSyllabus(null);
+          toast.show('success', 'Deleted', 'Syllabus deleted successfully.');
+        } catch (error: any) {
+          console.error('Syllabus delete error:', error);
+          toast.show('error', 'Delete Failed', error?.message || 'Failed to delete syllabus.');
+        } finally {
+          setIsDeletingSyllabus(false);
+        }
+      }
+    );
   };
 
   const handleViewSyllabus = async () => {
@@ -1583,41 +1639,13 @@ useEffect(() => {
     }
   };
 
-  const handleGenerateStructure = async () => {
-    if (!currentSyllabus || isGeneratingStructure) return;
-    setIsGeneratingStructure(true);
-    setGeneratedStructure(null);
-    try {
-      const modules = currentSyllabus.structure?.modules || [];
-      if (modules.length === 0) {
-        throw new Error("No modules found in syllabus structure.");
-      }
-      const firstModule = modules[0];
-      const moduleTitle = firstModule.moduleTitle || `Module 1`;
-      const response = await fetch(`${API_BASE_URL}/course-syllabus/generate`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
-          classId: course?.id,
-          moduleNumber: 1,
-          cachedModules: modules,
-          title: moduleTitle
-        })
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'Generation failed');
-      setGeneratedStructure(data.data);
-      setShowStructurePreviewModal(true);
-    } catch (error: any) {
-      console.error("Generation Error:", error);
-      toast.show('error', 'Generation Failed', error?.message || 'Unable to generate course structure.');
-    } finally {
-      setIsGeneratingStructure(false);
-    }
-  };
-
-  const handleGenerateAnotherModule = async () => {
+  // Generates the next module (whether it's Module 1 or Module N) as a BARE
+  // module — no lesson/discussion/activity content is auto-generated. This is
+  // intentional: the syllabus can be edited/replaced (e.g. after CTU standards
+  // are revised) at any time, so module creation is kept independent from
+  // lesson content. Once the module exists, the teacher chooses per-lesson
+  // whether to use "Generate Next Lesson" (AI) or "Add Lesson (Manual)".
+  const handleGenerateModule = async () => {
     if (!currentSyllabus || isGeneratingStructure) return;
     setIsGeneratingStructure(true);
     setGeneratedStructure(null);
@@ -3952,7 +3980,34 @@ useEffect(() => {
                     <TouchableOpacity onPress={handleViewSyllabus} style={{ backgroundColor: '#E3F2FD', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8 }}>
                       <Text style={{ color: '#1565C0', fontWeight: '700', fontSize: 12 }}>View</Text>
                     </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={handleEditSyllabus}
+                      disabled={isUploadingSyllabus || isDeletingSyllabus}
+                      style={{ backgroundColor: '#FFF3E0', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, flexDirection: 'row', alignItems: 'center', gap: 4, opacity: (isUploadingSyllabus || isDeletingSyllabus) ? 0.5 : 1 }}
+                    >
+                      {isUploadingSyllabus && isEditingSyllabus ? (
+                        <ActivityIndicator color="#EF6C00" size="small" />
+                      ) : (
+                        <Ionicons name="create-outline" size={14} color="#EF6C00" />
+                      )}
+                      <Text style={{ color: '#EF6C00', fontWeight: '700', fontSize: 12 }}>Edit</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={handleDeleteSyllabus}
+                      disabled={isUploadingSyllabus || isDeletingSyllabus}
+                      style={{ backgroundColor: '#FFEBEE', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, flexDirection: 'row', alignItems: 'center', gap: 4, opacity: (isUploadingSyllabus || isDeletingSyllabus) ? 0.5 : 1 }}
+                    >
+                      {isDeletingSyllabus ? (
+                        <ActivityIndicator color="#D32F2F" size="small" />
+                      ) : (
+                        <Ionicons name="trash-outline" size={14} color="#D32F2F" />
+                      )}
+                      <Text style={{ color: '#D32F2F', fontWeight: '700', fontSize: 12 }}>Delete</Text>
+                    </TouchableOpacity>
                   </View>
+                  <Text style={{ fontSize: 11, color: '#999', marginTop: 8, lineHeight: 15 }}>
+                    Updated to new CTU standards? Tap "Edit" to replace this file — module and lesson generation will use the new syllabus.
+                  </Text>
                 </View>
               )}
             </View>
@@ -4041,7 +4096,7 @@ useEffect(() => {
               <>
                 {modules.length === 0 ? (
                   <TouchableOpacity
-                    onPress={handleGenerateStructure}
+                    onPress={handleGenerateModule}
                     disabled={isGeneratingStructure}
                     style={{ marginTop: 8, padding: 16, backgroundColor: '#FFF', borderRadius: 12, borderWidth: 2, borderColor: '#D32F2F', borderStyle: 'dashed', alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8 }}
                   >
@@ -4050,7 +4105,7 @@ useEffect(() => {
                   </TouchableOpacity>
                 ) : (
                   <TouchableOpacity
-                    onPress={handleGenerateAnotherModule}
+                    onPress={handleGenerateModule}
                     disabled={isGeneratingStructure}
                     style={{ marginTop: 8, padding: 16, backgroundColor: '#FFF', borderRadius: 12, borderWidth: 2, borderColor: '#D32F2F', borderStyle: 'dashed', alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8 }}
                   >
@@ -5375,7 +5430,9 @@ SYLLABUS UPLOAD CONFIRMATION MODAL
       >
         <View style={styles.modalOverlayCenter}>
           <View style={[styles.modalCardElevated, { width: isMobile ? Math.min(width - 28, 330) : 360 }]}>
-            <Text style={[styles.createTitle, { textAlign: 'center', marginBottom: 10 }]}>Confirm Upload</Text>
+            <Text style={[styles.createTitle, { textAlign: 'center', marginBottom: 10 }]}>
+              {isEditingSyllabus ? 'Confirm Replacement' : 'Confirm Upload'}
+            </Text>
             <View style={{ backgroundColor: '#F5F5F5', padding: 12, borderRadius: 8, marginBottom: 16, alignItems: 'center' }}>
               <Ionicons name="document-text-outline" size={32} color="#D32F2F" style={{ marginBottom: 8 }} />
               <Text style={{ fontSize: 14, fontWeight: '700', color: '#333', textAlign: 'center' }} numberOfLines={2}>
@@ -5388,13 +5445,22 @@ SYLLABUS UPLOAD CONFIRMATION MODAL
               )}
             </View>
             <Text style={{ fontSize: 13, color: '#555', textAlign: 'center', lineHeight: 20, marginBottom: 20 }}>
-              Please verify that this is the correct syllabus file.
-              <Text style={{ fontWeight: '700', color: '#D32F2F' }}> Once uploaded, it cannot be replaced or deleted.</Text>
+              {isEditingSyllabus ? (
+                <>
+                  This will replace the current syllabus{currentSyllabus?.fileName ? ` ("${currentSyllabus.fileName}")` : ''}.
+                  <Text style={{ fontWeight: '700', color: '#D32F2F' }}> New "Generate Module" runs will use this updated file. Modules already generated are not changed.</Text>
+                </>
+              ) : (
+                <>
+                  Please verify that this is the correct syllabus file.
+                  <Text style={{ fontWeight: '700', color: '#D32F2F' }}> You can replace or delete it later using Edit / Delete.</Text>
+                </>
+              )}
             </Text>
             <View style={{ flexDirection: 'row', gap: 10 }}>
               <TouchableOpacity
                 style={styles.secondaryButton}
-                onPress={() => setPendingSyllabusFile(null)}
+                onPress={() => { setPendingSyllabusFile(null); setIsEditingSyllabus(false); }}
               >
                 <Text style={styles.secondaryButtonText}>Cancel</Text>
               </TouchableOpacity>
@@ -5406,7 +5472,7 @@ SYLLABUS UPLOAD CONFIRMATION MODAL
                 {isUploadingSyllabus ? (
                   <ActivityIndicator size="small" color="#FFF" />
                 ) : (
-                  <Text style={styles.primaryButtonText}>Confirm & Upload</Text>
+                  <Text style={styles.primaryButtonText}>{isEditingSyllabus ? 'Confirm & Replace' : 'Confirm & Upload'}</Text>
                 )}
               </TouchableOpacity>
             </View>
