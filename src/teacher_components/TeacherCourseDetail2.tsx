@@ -1206,14 +1206,28 @@ useEffect(() => {
         String(m.moduleTitle || m.title).trim().toLowerCase() ===
         String(savedModule.title).trim().toLowerCase()
     );
+    // Each syllabus "topic" can bundle several subtopics (e.g. "Course
+    // Orientation and SQA Fundamentals" -> VMGO, Intro to Testing, Intro to
+    // SQA...). We want the teacher to pick individual SUBTOPICS to generate —
+    // each selected subtopic becomes its own lesson — rather than one lesson
+    // per bundled topic. Topics without explicit subtopics fall back to using
+    // the topic title itself as a single selectable item.
     let availableTopics: any[] = [];
     if (syllabusMod && syllabusMod.topics) {
       const existingLessonTitles = new Set(
         (savedModule.lessons || []).map((l: any) => l.title.toLowerCase().trim())
       );
-      availableTopics = syllabusMod.topics.filter(
-        (topic: any) => !existingLessonTitles.has(topic.title.toLowerCase().trim())
-      );
+      availableTopics = syllabusMod.topics
+        .map((topic: any) => {
+          const rawSubtopics = Array.isArray(topic.subtopics) && topic.subtopics.length > 0
+            ? topic.subtopics
+            : [topic.title];
+          const remainingSubtopics = rawSubtopics.filter(
+            (sub: string) => !existingLessonTitles.has(String(sub).toLowerCase().trim())
+          );
+          return { ...topic, subtopics: remainingSubtopics };
+        })
+        .filter((topic: any) => topic.subtopics.length > 0);
     }
     setTargetModuleForGen({
       ...savedModule,
@@ -1223,11 +1237,11 @@ useEffect(() => {
     setShowNextLessonModal(true);
   };
 
-  const toggleTopicSelection = (topicTitle: string) => {
+  const toggleTopicSelection = (subtopicTitle: string) => {
     setSelectedTopicsForGen(prev =>
-      prev.includes(topicTitle)
-        ? prev.filter(t => t !== topicTitle)
-        : [...prev, topicTitle]
+      prev.includes(subtopicTitle)
+        ? prev.filter(t => t !== subtopicTitle)
+        : [...prev, subtopicTitle]
     );
   };
 
@@ -5344,7 +5358,7 @@ GENERATE NEXT LESSON - MULTI TOPIC SELECTION MODAL
               <View style={styles.modalHeaderTextWrap}>
                 <Text style={styles.createTitle}>Generate Next Lessons</Text>
                 <Text style={styles.modalSubtitle}>
-                  Select one or more topics from "{targetModuleForGen?.title}" to generate content.
+                  Select one or more subtopics from "{targetModuleForGen?.title}" to generate content. Each subtopic becomes its own lesson.
                 </Text>
               </View>
               <TouchableOpacity onPress={() => setShowNextLessonModal(false)}>
@@ -5364,35 +5378,46 @@ GENERATE NEXT LESSON - MULTI TOPIC SELECTION MODAL
                     : "All topics for this module have already been generated!"}
                 </Text>
               ) : (
-                targetModuleForGen.topics.map((topic: any, idx: number) => {
-                  const isSelected = selectedTopicsForGen.includes(topic.title);
+                targetModuleForGen.topics.map((topic: any, tIdx: number) => {
+                  // If this topic has no distinct subtopics of its own (the
+                  // fallback case is a single-item array equal to the topic
+                  // title), skip the redundant header and just show the item.
+                  const isFallbackSingleItem =
+                    topic.subtopics.length === 1 &&
+                    String(topic.subtopics[0]).trim().toLowerCase() === String(topic.title).trim().toLowerCase();
                   return (
-                    <TouchableOpacity
-                      key={idx}
-                      onPress={() => toggleTopicSelection(topic.title)}
-                      style={[
-                        styles.materialChip,
-                        { marginBottom: 8, minHeight: 50 },
-                        isSelected && styles.materialChipActive
-                      ]}
-                    >
-                      <Ionicons
-                        name={isSelected ? "checkbox" : "square-outline"}
-                        size={22}
-                        color={isSelected ? "#FFF" : "#D32F2F"}
-                      />
-                      <View style={{ flex: 1, marginLeft: 8 }}>
-                        <Text style={[styles.materialChipText, isSelected && styles.materialChipTextActive]}>
+                    <View key={tIdx} style={{ marginBottom: 14 }}>
+                      {!isFallbackSingleItem && (
+                        <Text style={{ fontSize: 13, fontWeight: '800', color: '#D32F2F', marginBottom: 6 }}>
                           {topic.title}
                         </Text>
-                        {topic.subtopics && topic.subtopics.length > 0 && (
-                          <Text style={{ fontSize: 11, color: isSelected ? '#FFE0E0' : '#888', marginTop: 2 }}>
-                            {topic.subtopics.length} subtopic(s): {topic.subtopics.slice(0, 3).join(', ')}
-                            {topic.subtopics.length > 3 ? '...' : ''}
-                          </Text>
-                        )}
-                      </View>
-                    </TouchableOpacity>
+                      )}
+                      {topic.subtopics.map((subtopicTitle: string, sIdx: number) => {
+                        const isSelected = selectedTopicsForGen.includes(subtopicTitle);
+                        return (
+                          <TouchableOpacity
+                            key={sIdx}
+                            onPress={() => toggleTopicSelection(subtopicTitle)}
+                            style={[
+                              styles.materialChip,
+                              { marginBottom: 8, minHeight: 44 },
+                              isSelected && styles.materialChipActive
+                            ]}
+                          >
+                            <Ionicons
+                              name={isSelected ? "checkbox" : "square-outline"}
+                              size={22}
+                              color={isSelected ? "#FFF" : "#D32F2F"}
+                            />
+                            <View style={{ flex: 1, marginLeft: 8 }}>
+                              <Text style={[styles.materialChipText, isSelected && styles.materialChipTextActive]}>
+                                {subtopicTitle}
+                              </Text>
+                            </View>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
                   );
                 })
               )}
