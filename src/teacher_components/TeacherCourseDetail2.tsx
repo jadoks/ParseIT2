@@ -2,6 +2,7 @@ import * as Clipboard from 'expo-clipboard';
 import Constants from 'expo-constants';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
+import { Image } from 'expo-image'; // class banner photo, same caching/fade-in as the course cards
 import * as Sharing from 'expo-sharing';
 import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -2671,6 +2672,7 @@ useEffect(() => {
   const viewerHasFile = !!viewerFileUrl;
   const selectedAssignment = assignments.find((a) => a.id === selectedId);
   const courseName = course?.name || 'Untitled Course';
+  const courseBannerUri = course?.bannerUri || null;
   const courseYear = course?.year || '';
   const courseSection = course?.section || '';
   const courseInstructor = course?.instructor || 'No Instructor';
@@ -3754,30 +3756,27 @@ useEffect(() => {
         contentContainerStyle={styles.screenScrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* ── Course Header ── */}
-        <View
-          style={[
-            styles.courseHeader,
-            {
-              paddingHorizontal: isMobile ? 16 : 60,
-              paddingTop: isMobile ? 16 : 20,
-              paddingBottom: isMobile ? 18 : 24,
-            },
-          ]}
-        >
-          <TouchableOpacity onPress={onBack} style={styles.backButton}>
-            <Ionicons name="arrow-back" size={24} color="#FFF" />
-          </TouchableOpacity>
-          <View style={styles.headerTopRow}>
-            <Text
-              style={[styles.courseName, { fontSize: isSmallPhone ? 20 : 24, flex: 1 }]}
-              numberOfLines={1}
-            >
-              {courseName}
-            </Text>
-            {/* ✅ UPDATED: Button with Loading State */}
+        {/* ── Course Header (Google Classroom–style banner) ── */}
+        <View style={styles.courseHeaderWrap}>
+          <View style={[styles.bannerBox, { height: isMobile ? 168 : 224 }]}>
+            {courseBannerUri ? (
+              <Image
+                source={{ uri: courseBannerUri }}
+                style={StyleSheet.absoluteFillObject}
+                contentFit="cover"
+                transition={200}
+              />
+            ) : (
+              <View style={[StyleSheet.absoluteFillObject, styles.bannerFallback]} />
+            )}
+            <View style={styles.bannerScrim} />
+
+            <TouchableOpacity onPress={onBack} style={styles.backButtonOnBanner}>
+              <Ionicons name="arrow-back" size={22} color="#FFF" />
+            </TouchableOpacity>
+
             <TouchableOpacity
-              style={[styles.exportGradesButtonInline, isExportingGrades && { opacity: 0.7 }]}
+              style={[styles.exportGradesButtonOnBanner, isExportingGrades && { opacity: 0.7 }]}
               onPress={downloadClassGradesExcel}
               disabled={isExportingGrades}
               activeOpacity={0.85}
@@ -3785,136 +3784,97 @@ useEffect(() => {
               {isExportingGrades ? (
                 <ActivityIndicator size="small" color="#FFFFFF" />
               ) : (
-                <Ionicons name="download-outline" size={18} color="#FFFFFF" />
+                <Ionicons name="download-outline" size={16} color="#FFFFFF" />
               )}
               {!isMobile && (
                 <Text style={styles.exportGradesButtonText}>
-                  {isExportingGrades ? 'Exporting...' : 'Export Grades Excel'}
+                  {isExportingGrades ? 'Exporting...' : 'Export Grades'}
                 </Text>
               )}
             </TouchableOpacity>
-          </View>
-          <View style={styles.headerInfoCard}>
-            <View style={styles.headerInfoRow}>
-              <Text style={styles.headerInfoLabel}>INSTRUCTOR</Text>
-              <Text style={styles.headerInfoValue} numberOfLines={1}>
+
+            <View style={[styles.bannerTextBlock, { paddingHorizontal: isMobile ? 16 : 60 }]}>
+              <Text
+                style={[styles.courseNameOnBanner, { fontSize: isSmallPhone ? 22 : 30 }]}
+                numberOfLines={2}
+              >
+                {courseName}
+              </Text>
+              <Text style={styles.courseInstructorOnBanner} numberOfLines={1}>
                 {courseInstructor}
               </Text>
             </View>
-            <View
-              style={[
-                styles.headerDetailsGrid,
-                !isMobile && styles.headerDetailsGridDesktop,
-              ]}
-            >
+          </View>
+
+          {/* Thin meta strip directly under the banner, Classroom-style */}
+          <View style={[styles.metaStrip, { paddingHorizontal: isMobile ? 16 : 60 }]}>
+            <View style={styles.metaChipsRow}>
               {!!courseYear && (
-                <View
-                  style={[
-                    styles.academicInfoPill,
-                    !isMobile && styles.headerDetailItemDesktop,
-                  ]}
-                >
-                  <Ionicons name="school-outline" size={14} color="#D32F2F" />
-                  <View style={styles.academicInfoTextWrap}>
-                    <Text style={styles.academicInfoLabel}>Year</Text>
-                    <Text style={styles.academicInfoValue} numberOfLines={1}>
-                      {courseYear}
-                    </Text>
-                  </View>
+                <View style={styles.metaChip}>
+                  <Ionicons name="school-outline" size={13} color="#5F6368" />
+                  <Text style={styles.metaChipText} numberOfLines={1}>{courseYear}</Text>
                 </View>
               )}
               {!!courseSection && (
-                <View
-                  style={[
-                    styles.academicInfoPill,
-                    !isMobile && styles.headerDetailItemDesktop,
-                  ]}
-                >
-                  <Ionicons name="people-outline" size={14} color="#D32F2F" />
-                  <View style={styles.academicInfoTextWrap}>
-                    <Text style={styles.academicInfoLabel}>Section</Text>
-                    <Text style={styles.academicInfoValue} numberOfLines={1}>
-                      {courseSection}
-                    </Text>
-                  </View>
+                <View style={styles.metaChip}>
+                  <Ionicons name="people-outline" size={13} color="#5F6368" />
+                  <Text style={styles.metaChipText} numberOfLines={1}>{courseSection}</Text>
                 </View>
               )}
               {!!courseSemester && (
-                <View
-                  style={[
-                    styles.academicInfoPill,
-                    !isMobile && styles.headerDetailItemDesktop,
-                  ]}
-                >
-                  <Ionicons name="calendar-outline" size={14} color="#D32F2F" />
-                  <View style={styles.academicInfoTextWrap}>
-                    <Text style={styles.academicInfoLabel}>Semester</Text>
-                    <Text style={styles.academicInfoValue} numberOfLines={1}>
-                      {courseSemester}
-                    </Text>
-                  </View>
+                <View style={styles.metaChip}>
+                  <Ionicons name="calendar-outline" size={13} color="#5F6368" />
+                  <Text style={styles.metaChipText} numberOfLines={1}>{courseSemester}</Text>
                 </View>
               )}
               {!!schoolYear && (
-                <View
-                  style={[
-                    styles.academicInfoPill,
-                    !isMobile && styles.headerDetailItemDesktop,
-                  ]}
-                >
-                  <Ionicons name="time-outline" size={14} color="#D32F2F" />
-                  <View style={styles.academicInfoTextWrap}>
-                    <Text style={styles.academicInfoLabel}>School Year</Text>
-                    <Text style={styles.academicInfoValue} numberOfLines={1}>
-                      {schoolYear}
-                    </Text>
-                  </View>
+                <View style={styles.metaChip}>
+                  <Ionicons name="time-outline" size={13} color="#5F6368" />
+                  <Text style={styles.metaChipText} numberOfLines={1}>S.Y. {schoolYear}</Text>
                 </View>
               )}
             </View>
-            {courseSchedule.length > 0 && (
-              <View style={styles.scheduleDisplayCard}>
-                <View style={styles.scheduleDisplayHeader}>
-                  <Ionicons name="calendar-outline" size={16} color="#D32F2F" />
-                  <Text style={styles.scheduleDisplayTitle}>Class Schedule</Text>
+
+            <View style={styles.classCodeInline}>
+              <Ionicons name="key-outline" size={14} color="#D32F2F" />
+              <Text style={styles.classCodeInlineValue} numberOfLines={1}>{classCode}</Text>
+              <TouchableOpacity
+                onPress={handleCopyClassCode}
+                style={styles.copyCodeInlineButton}
+                activeOpacity={0.7}
+              >
+                <Ionicons
+                  name={classCodeCopied ? 'checkmark-outline' : 'copy-outline'}
+                  size={14}
+                  color="#D32F2F"
+                />
+                <Text style={styles.copyCodeInlineText}>{classCodeCopied ? 'Copied' : 'Copy'}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          {courseSchedule.length > 0 && (
+            <View style={[styles.scheduleStripWrap, { paddingHorizontal: isMobile ? 16 : 60 }]}>
+              <View style={styles.scheduleStripCard}>
+                <Ionicons name="calendar-outline" size={15} color="#D32F2F" />
+                <View style={styles.scheduleStripTextWrap}>
+                  {courseSchedule.map((entry, index) => {
+                    const { days, time, room } = formatScheduleBlock(entry);
+                    return (
+                      <View key={`schedule-${index}`} style={styles.scheduleStripRow}>
+                        <Text style={styles.scheduleStripDays}>{days}</Text>
+                        <Text style={styles.scheduleStripTime}>{time}</Text>
+                        {!!room && <Text style={styles.scheduleStripRoom}>{room}</Text>}
+                      </View>
+                    );
+                  })}
                 </View>
-                {courseSchedule.map((entry, index) => {
-                  const { days, time, room } = formatScheduleBlock(entry);
-                  return (
-                    <View key={`schedule-${index}`} style={styles.scheduleDisplayRow}>
-                      <Text style={styles.scheduleDisplayDays}>{days}</Text>
-                      <Text style={styles.scheduleDisplayTime}>{time}</Text>
-                      {!!room && <Text style={styles.scheduleDisplayRoom}>{room}</Text>}
-                    </View>
-                  );
-                })}
               </View>
-            )}
-          </View>
-          <View style={[styles.classCodeBox, styles.classCodeStandalone]}>
-            <View style={styles.classCodeIconBadge}>
-              <Ionicons name="key-outline" size={15} color="#D32F2F" />
             </View>
-            <View style={styles.classCodeTextWrap}>
-              <Text style={styles.classCodeLabel}>CLASS CODE</Text>
-              <Text style={styles.classCodeValue} numberOfLines={1}>
-                {classCode}
-              </Text>
-            </View>
-            <View style={styles.classCodeDivider} />
-            <TouchableOpacity
-              style={styles.copyCodeButton}
-              onPress={handleCopyClassCode}
-              activeOpacity={0.85}
-            >
-              <Ionicons
-                name={classCodeCopied ? 'checkmark-outline' : 'copy-outline'}
-                size={14}
-                color="#FFFFFF"
-              />
-              <Text style={styles.copyCodeText}>{classCodeCopied ? 'Copied' : 'Copy'}</Text>
-            </TouchableOpacity>
-          </View>
+          )}
+
+          {/* Divider before the Stream/Classwork/People tabs */}
+          <View style={[styles.headerBottomDivider, { marginHorizontal: isMobile ? 16 : 60 }]} />
         </View>
         {/* ── Tabs ─ */}
         <View style={styles.tabContainer}>
@@ -5584,6 +5544,145 @@ const styles = StyleSheet.create({
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 4 },
     elevation: 6,
+  },
+  // ── Google Classroom–style banner header ──
+  courseHeaderWrap: {
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 4,
+  },
+  bannerBox: {
+    width: '100%',
+    overflow: 'hidden',
+    backgroundColor: '#D32F2F',
+  },
+  bannerFallback: {
+    backgroundColor: '#D32F2F',
+  },
+  bannerScrim: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.32)',
+  },
+  backButtonOnBanner: {
+    position: 'absolute',
+    top: 16,
+    left: 16,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: 'rgba(0,0,0,0.32)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  exportGradesButtonOnBanner: {
+    position: 'absolute',
+    top: 16,
+    right: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(0,0,0,0.32)',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+  },
+  bannerTextBlock: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 16,
+  },
+  courseNameOnBanner: {
+    color: '#FFFFFF',
+    fontWeight: '900',
+    letterSpacing: 0.2,
+    textShadowColor: 'rgba(0,0,0,0.35)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4,
+  },
+  courseInstructorOnBanner: {
+    color: 'rgba(255,255,255,0.9)',
+    fontSize: 13,
+    fontWeight: '700',
+    marginTop: 4,
+  },
+  metaStrip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: 10,
+    paddingTop: 14,
+    paddingBottom: 12,
+  },
+  metaChipsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    flexShrink: 1,
+  },
+  metaChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#F1F3F4',
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+  },
+  metaChipText: { color: '#3C4043', fontSize: 12, fontWeight: '700' },
+  classCodeInline: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#FDEAEA',
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+  },
+  classCodeInlineValue: {
+    color: '#D32F2F',
+    fontSize: 13,
+    fontWeight: '900',
+    letterSpacing: 1,
+    fontFamily: Platform.select({ ios: 'Courier', android: 'monospace', default: 'monospace' }),
+  },
+  copyCodeInlineButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    marginLeft: 4,
+    paddingLeft: 8,
+    borderLeftWidth: 1,
+    borderLeftColor: 'rgba(211,47,47,0.25)',
+  },
+  copyCodeInlineText: { color: '#D32F2F', fontSize: 12, fontWeight: '800' },
+  scheduleStripWrap: { paddingBottom: 14 },
+  scheduleStripCard: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    backgroundColor: '#F8F9FA',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  scheduleStripTextWrap: { flex: 1, gap: 3 },
+  scheduleStripRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  scheduleStripDays: { color: '#202124', fontSize: 12, fontWeight: '800', minWidth: 80 },
+  scheduleStripTime: { color: '#5F6368', fontSize: 12, fontWeight: '600' },
+  scheduleStripRoom: { color: '#80868B', fontSize: 12, fontStyle: 'italic' },
+  headerBottomDivider: {
+    height: 1,
+    backgroundColor: '#E8EAED',
   },
   backButton: {
     width: 38,
