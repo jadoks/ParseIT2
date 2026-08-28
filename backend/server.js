@@ -2125,6 +2125,7 @@ async function sendForgotPasswordCodeEmail({ firstName, email, pin }) {
     semester,
     schoolYear,
     section,
+    schedule,
     teacherUid,
     teacherId,
     teacherName,
@@ -2149,6 +2150,8 @@ async function sendForgotPasswordCodeEmail({ firstName, email, pin }) {
       semester: normalizeOptionalText(semester),
       schoolYear: normalizeOptionalText(schoolYear),
       section: normalizeOptionalText(section),
+      schedule: Array.isArray(schedule) ? schedule : [],
+
 
       type: "class",
       ownerRole: "teacher",
@@ -5860,6 +5863,7 @@ app.post("/create-admin", async (req, res) => {
         semester,
         schoolYear,
         section,
+        schedule: normalizedSchedule,
         teacherUid: resolvedAssignedTeacherUid,
         teacherId: resolvedAssignedTeacherId,
         teacherName: resolvedInstructorName,
@@ -6083,6 +6087,7 @@ app.post("/create-admin", async (req, res) => {
             semester: normalizeOptionalText(mergedClassData.semester),
             schoolYear: normalizeOptionalText(mergedClassData.schoolYear),
             section: normalizeOptionalText(mergedClassData.section),
+            ...(schedule !== undefined ? { schedule: normalizedSchedule } : {}),
             ownerUid: normalizeOptionalText(mergedClassData.assignedTeacherUid),
             ownerId: normalizeOptionalText(mergedClassData.assignedTeacherId),
             ownerName: normalizeOptionalText(mergedClassData.instructorName),
@@ -8222,7 +8227,6 @@ app.get("/student-joined-classes/:studentId", async (req, res) => {
           bannerFileName: classData.bannerFileName || null,
           bannerMimeType: classData.bannerMimeType || null,
           memberCount: classData.memberCount || 0,
-          schedule: Array.isArray(classData.schedule) ? classData.schedule : [],
           // ✅ Deliberately empty — filled by fetchModuleLessonsOnly() in
           // the frontend's per-course enrichment pass, same as before.
           materials: [],

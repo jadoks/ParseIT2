@@ -72,6 +72,13 @@ type MessengerCourse = {
   section?: string;
 };
 
+type ClassScheduleEntry = {
+  days: string[];
+  startTime: string;
+  endTime: string;
+  room?: string;
+};
+
 type Conversation = {
   id: string;
   name: string;
@@ -86,6 +93,7 @@ type Conversation = {
   admin?: string;
   classId?: string;
   section?: string;
+  schedule?: ClassScheduleEntry[];
   lastMessageAt?: any;
   updatedAt?: any;
   createdAt?: any;
@@ -123,6 +131,27 @@ const toMillis = (value: any): number => {
     return Number.isNaN(parsed) ? 0 : parsed;
   }
   return 0;
+};
+
+const SCHEDULE_DAY_ABBREVIATIONS: Record<string, string> = {
+  Monday: 'Mon', Tuesday: 'Tue', Wednesday: 'Wed', Thursday: 'Thu',
+  Friday: 'Fri', Saturday: 'Sat', Sunday: 'Sun',
+};
+
+const formatScheduleTime = (time: string) => {
+  if (!time) return '';
+  const [hourStr, minuteStr] = time.split(':');
+  let hour = parseInt(hourStr, 10);
+  if (Number.isNaN(hour)) return time;
+  const period = hour >= 12 ? 'PM' : 'AM';
+  hour = hour % 12 || 12;
+  return `${hour}:${(minuteStr || '00').padStart(2, '0')} ${period}`;
+};
+
+const formatScheduleBlock = (entry: ClassScheduleEntry) => {
+  const days = (entry.days || []).map((d) => SCHEDULE_DAY_ABBREVIATIONS[d] || d).join(', ');
+  const time = `${formatScheduleTime(entry.startTime)} - ${formatScheduleTime(entry.endTime)}`;
+  return { days, time, room: entry.room || '' };
 };
 
 const formatConversationTime = (timestamp?: any) => {
@@ -513,6 +542,7 @@ const Messenger = ({
               })).filter((p: { name: string }) => p.name)
             : [],
           section: item.section,
+          schedule: Array.isArray(item.schedule) ? item.schedule : [],
         }));
 
         setConversations((prev) => {
@@ -1572,6 +1602,7 @@ const Messenger = ({
       admin: currentUserName,
       classId: selected.classId,
       section: selected.section,
+      schedule: selected.schedule,
     };
 
     setConversations((prev) => [newConversation, ...prev]);
@@ -2701,6 +2732,21 @@ const Messenger = ({
                     <Text style={styles.conversationMetaText}>
                       Section: {selected.section}
                     </Text>
+                  ) : null}
+                  {Array.isArray(selected.schedule) && selected.schedule.length > 0 ? (
+                    <View style={{ marginTop: 6 }}>
+                      <Text style={[styles.conversationMetaText, { fontWeight: '700', marginBottom: 2 }]}>
+                        Schedule
+                      </Text>
+                      {selected.schedule.map((entry, index) => {
+                        const { days, time, room } = formatScheduleBlock(entry);
+                        return (
+                          <Text key={`sched-${index}`} style={styles.conversationMetaText}>
+                            {days} · {time}{room ? ` · ${room}` : ''}
+                          </Text>
+                        );
+                      })}
+                    </View>
                   ) : null}
                 </View>
               )}
