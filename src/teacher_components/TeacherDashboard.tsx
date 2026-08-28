@@ -458,7 +458,7 @@ const Dashboard2 = ({
 
   const hideToast = () => setToast((prev) => ({ ...prev, visible: false }));
 
-  const loadTeacherClasses = async () => {
+  const loadTeacherClasses = async (pinFrontId?: string) => {
   try {
     const params = new URLSearchParams();
     if (teacherUid) params.set('teacherUid', teacherUid);
@@ -474,7 +474,24 @@ const Dashboard2 = ({
     const teacherClasses = (Array.isArray(data) ? data : []).map((item) =>
       mapBackendClass(item, teacherFullName)
     );
-    const normalizedClasses = normalizeCoursePositions(teacherClasses);
+
+    // 🔥 The backend doesn't reliably hand back a `position` that reflects
+    // "just created → show first". Left alone, this refetch was silently
+    // undoing the optimistic front-pin from handleCreateClass the moment
+    // it ran, so the newest class snapped back to the end of the list.
+    // If the caller tells us which id was just created, force it back to
+    // the front here too, regardless of what order/position the backend
+    // returned it with.
+    let orderedClasses = teacherClasses;
+    if (pinFrontId) {
+      const pinned = teacherClasses.find((item) => item.id === pinFrontId);
+      if (pinned) {
+        const rest = teacherClasses.filter((item) => item.id !== pinFrontId);
+        orderedClasses = [pinned, ...rest];
+      }
+    }
+
+    const normalizedClasses = normalizeCoursePositions(orderedClasses);
     setLocalCourses(normalizedClasses);
     return normalizedClasses;
   } catch (error) {
@@ -484,12 +501,12 @@ const Dashboard2 = ({
   }
 };
 
-const refreshClassesAfterStorageWrite = async () => {
+const refreshClassesAfterStorageWrite = async (pinFrontId?: string) => {
   // ✅ One fetch is enough — the backend write already completed by the
   // time this runs. The old extra setTimeout(...) 800ms re-fetch just
   // doubled the "fetch everything, filter client-side" cost on every
   // create/edit/delete for no benefit.
-  await loadTeacherClasses();
+  await loadTeacherClasses(pinFrontId);
 };
 
   useEffect(() => { loadTeacherClasses(); }, [teacherUid, teacherEmail, teacherId, teacherFullName]);
@@ -658,7 +675,9 @@ const refreshClassesAfterStorageWrite = async () => {
         return normalizeCoursePositions([{ ...createdCourse, position: minPosition - 1 }, ...filtered]);
       });
       onCreateClass?.(createdCourse);
-      await refreshClassesAfterStorageWrite();
+      // Pin this exact class back to the front once the refetch below
+      // comes back, so the backend's own ordering can't bump it down.
+      await refreshClassesAfterStorageWrite(createdCourse.id);
       resetCreateForm(); setCreateModalVisible(false);
       showToast(`Class created successfully. Class Code: ${data?.data?.classCode || ''}`, 'success');
     } catch (error: any) {
