@@ -15995,6 +15995,86 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
     }
   });
 
+  // ─── COURSE TEMPLATE ROUTES (school-wide header/footer, used by "Manage Template") ──
+  // Single global document — not tied to any one class/course.
+  const COURSE_TEMPLATE_DOC = db.collection("settings").doc("courseTemplate");
+
+  app.get("/course-template", requireAuth, async (req, res) => {
+    try {
+      const snap = await COURSE_TEMPLATE_DOC.get();
+      const data = snap.exists ? snap.data() : {};
+
+      const [headerUrl, footerUrl] = await Promise.all([
+        createReadSignedUrlIfExists(data?.headerStoragePath),
+        createReadSignedUrlIfExists(data?.footerStoragePath),
+      ]);
+
+      res.json({ success: true, data: { headerUrl, footerUrl } });
+    } catch (error) {
+      console.error("course-template fetch error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post("/course-template/save", requireAuth, async (req, res) => {
+    try {
+      const {
+        headerBase64,
+        headerMimeType,
+        headerFileName,
+        footerBase64,
+        footerMimeType,
+        footerFileName,
+      } = req.body;
+
+      if (!headerBase64 && !footerBase64) {
+        return res.status(400).json({ error: "Provide a header or footer image to save." });
+      }
+
+      const existingSnap = await COURSE_TEMPLATE_DOC.get();
+      const existing = existingSnap.exists ? existingSnap.data() : {};
+
+      const updates = { updatedAt: FieldValue.serverTimestamp() };
+
+      if (headerBase64) {
+        const cleaned = headerBase64.includes(",") ? headerBase64.split(",")[1] : headerBase64;
+        const buffer = Buffer.from(cleaned, "base64");
+        const path = `course-template/header_${Date.now()}_${headerFileName || "header"}`;
+        await bucket.file(path).save(buffer, {
+          metadata: { contentType: headerMimeType || "image/png" },
+          public: false,
+        });
+        await deleteStorageFileIfExists(existing?.headerStoragePath);
+        updates.headerStoragePath = path;
+      }
+
+      if (footerBase64) {
+        const cleaned = footerBase64.includes(",") ? footerBase64.split(",")[1] : footerBase64;
+        const buffer = Buffer.from(cleaned, "base64");
+        const path = `course-template/footer_${Date.now()}_${footerFileName || "footer"}`;
+        await bucket.file(path).save(buffer, {
+          metadata: { contentType: footerMimeType || "image/png" },
+          public: false,
+        });
+        await deleteStorageFileIfExists(existing?.footerStoragePath);
+        updates.footerStoragePath = path;
+      }
+
+      await COURSE_TEMPLATE_DOC.set(updates, { merge: true });
+
+      const merged = { ...existing, ...updates };
+      const [headerUrl, footerUrl] = await Promise.all([
+        createReadSignedUrlIfExists(merged.headerStoragePath),
+        createReadSignedUrlIfExists(merged.footerStoragePath),
+      ]);
+
+      res.json({ success: true, data: { headerUrl, footerUrl } });
+    } catch (error) {
+      console.error("course-template save error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   // ─── COURSE SYLLABUS ROUTES ───────────────────────────────────────────────────
   const SYLLABUS_MAX_SIZE = 20 * 1024 * 1024; // 20MB
 

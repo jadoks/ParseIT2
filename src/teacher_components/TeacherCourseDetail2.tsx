@@ -27,6 +27,11 @@ import TeacherAssignmentSection from './TeacherAssignmentSection';
 import TeacherMaterialSection from './TeacherMaterialSection';
 import TeacherSubmissionsSection from './TeacherSubmissionsSection';
 
+// Same school letterhead assets used in Grades.tsx — shown as the default
+// header/footer until an admin uploads a custom pair via "Manage Template".
+const DefaultTemplateHeader = require('../../assets/images/myjourney-header-template-1.png');
+const DefaultTemplateFooter = require('../../assets/images/footer.png');
+
 // ─── Optional WebView ────────────────────────────────────────────────────────
 let WebView: any = null;
 try {
@@ -2907,10 +2912,12 @@ useEffect(() => {
   // Wraps lesson content (Edit Lesson, AI-generated, or manually created) with
   // the school-wide header/footer banner set via "Manage Template".
   const renderTemplateHeaderBanner = () => {
-    if (!courseTemplate.headerUrl) return null;
+    // Falls back to the same CTU Argao letterhead used in Grades.tsx until
+    // an admin uploads a custom header via "Manage Template".
+    const source = courseTemplate.headerUrl ? { uri: courseTemplate.headerUrl } : DefaultTemplateHeader;
     return (
       <Image
-        source={{ uri: courseTemplate.headerUrl }}
+        source={source}
         style={styles.templateHeaderImage}
         contentFit="contain"
       />
@@ -2918,10 +2925,12 @@ useEffect(() => {
   };
 
   const renderTemplateFooterBanner = () => {
-    if (!courseTemplate.footerUrl) return null;
+    // Falls back to the same accreditation-logos footer used in Grades.tsx
+    // until an admin uploads a custom footer via "Manage Template".
+    const source = courseTemplate.footerUrl ? { uri: courseTemplate.footerUrl } : DefaultTemplateFooter;
     return (
       <Image
-        source={{ uri: courseTemplate.footerUrl }}
+        source={source}
         style={styles.templateFooterImage}
         contentFit="contain"
       />
