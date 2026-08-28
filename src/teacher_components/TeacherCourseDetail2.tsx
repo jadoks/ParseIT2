@@ -867,6 +867,19 @@ const TeacherCourseDetail2 = ({
   const [newLessonFile, setNewLessonFile] = useState<PickedUploadFile>(null);
   const [lessonMode, setLessonMode] = useState<'text' | 'file'>('text');
 
+  // ─── Course Template (school-wide header/footer) ───────────────────────────
+  // One global template shared by every teacher/course. Fetched once on
+  // mount and reused wherever a lesson is previewed, edited, or generated.
+  const [courseTemplate, setCourseTemplate] = useState<{ headerUrl: string | null; footerUrl: string | null }>({
+    headerUrl: null,
+    footerUrl: null,
+  });
+  const [isLoadingCourseTemplate, setIsLoadingCourseTemplate] = useState(false);
+  const [showManageTemplateModal, setShowManageTemplateModal] = useState(false);
+  const [templateHeaderPick, setTemplateHeaderPick] = useState<PickedUploadFile>(null);
+  const [templateFooterPick, setTemplateFooterPick] = useState<PickedUploadFile>(null);
+  const [isSavingTemplate, setIsSavingTemplate] = useState(false);
+
   const [viewerMaterial, setViewerMaterial] = useState<Material | null>(null);
   const [isDownloading, setIsDownloading] = useState(false);
 
@@ -1069,6 +1082,30 @@ const TeacherCourseDetail2 = ({
     loadCourseContent();
   }, [course?.id]);
 
+  // Course template is global/school-wide, so it only needs to be fetched
+  // once — it isn't tied to this particular course.
+  const loadCourseTemplate = async () => {
+    setIsLoadingCourseTemplate(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/course-template`, { credentials: 'include' });
+      const data = await response.json();
+      if (response.ok && data?.success) {
+        setCourseTemplate({
+          headerUrl: data.data?.headerUrl || null,
+          footerUrl: data.data?.footerUrl || null,
+        });
+      }
+    } catch (error) {
+      console.error('Failed to load course template:', error);
+    } finally {
+      setIsLoadingCourseTemplate(false);
+    }
+  };
+
+  useEffect(() => {
+    loadCourseTemplate();
+  }, []);
+
   useEffect(() => {
     (async () => {
       const { count } = await getTodayUsageForTeacher(teacherIdentity);
@@ -1099,6 +1136,7 @@ useEffect(() => {
     showNextLessonModal ||
     !!pendingSyllabusFile ||
     showLessonPreviewModal ||
+    showManageTemplateModal ||
     !!viewerMaterial ||
     !!confirmation?.visible;
 });
@@ -2226,6 +2264,95 @@ useEffect(() => {
     return data.data;
   };
 
+  // ─── Course Template (Manage Template) ─────────────────────────────────────
+  const handlePickTemplateImage = async (slot: 'header' | 'footer') => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: 'image/*',
+        copyToCacheDirectory: true,
+        base64: Platform.OS === 'web',
+      });
+      if (result.canceled || !result.assets?.[0]) return;
+      const asset = result.assets[0];
+      const picked: PickedUploadFile = {
+        name: asset.name,
+        uri: asset.uri,
+        type: asset.mimeType,
+        base64: (asset as any).base64,
+        file: (asset as any).file,
+      };
+      if (slot === 'header') setTemplateHeaderPick(picked);
+      else setTemplateFooterPick(picked);
+    } catch {
+      toast.show('error', 'Error', 'Failed to pick image.');
+    }
+  };
+
+  const readPickedFileAsBase64 = async (picked: PickedUploadFile) => {
+    if (!picked) return null;
+    if (Platform.OS === 'web') {
+      if (picked.base64) return picked.base64;
+      if (picked.file) {
+        return await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => {
+            const result = reader.result;
+            if (typeof result === 'string') resolve(result.includes(',') ? result.split(',')[1] : result);
+            else reject(new Error('Failed to read file on web.'));
+          };
+          reader.onerror = () => reject(new Error('Failed to read file on web.'));
+          reader.readAsDataURL(picked.file as File);
+        });
+      }
+      return null;
+    }
+    if (picked.uri) return FileSystem.readAsStringAsync(picked.uri, { encoding: 'base64' as any });
+    return null;
+  };
+
+  const handleSaveCourseTemplate = async () => {
+    if (!templateHeaderPick && !templateFooterPick) {
+      toast.show('info', 'Nothing to Save', 'Choose a new header or footer image first.');
+      return;
+    }
+    setIsSavingTemplate(true);
+    try {
+      const [headerBase64, footerBase64] = await Promise.all([
+        readPickedFileAsBase64(templateHeaderPick),
+        readPickedFileAsBase64(templateFooterPick),
+      ]);
+
+      const response = await fetch(`${API_BASE_URL}/course-template/save`, {
+        credentials: 'include',
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          headerBase64,
+          headerMimeType: templateHeaderPick?.type,
+          headerFileName: templateHeaderPick?.name,
+          footerBase64,
+          footerMimeType: templateFooterPick?.type,
+          footerFileName: templateFooterPick?.name,
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok || !data?.success) throw new Error(data?.error || 'Failed to save template.');
+
+      setCourseTemplate({
+        headerUrl: data.data?.headerUrl || courseTemplate.headerUrl,
+        footerUrl: data.data?.footerUrl || courseTemplate.footerUrl,
+      });
+      setTemplateHeaderPick(null);
+      setTemplateFooterPick(null);
+      setShowManageTemplateModal(false);
+      toast.show('success', 'Template Updated', 'The school-wide header & footer are now live for every class.');
+    } catch (error: any) {
+      toast.show('error', 'Save Failed', error?.message || 'Unable to save the template.');
+    } finally {
+      setIsSavingTemplate(false);
+    }
+  };
+
   const handleOpenUploadedFile = async (fileUri?: string) => {
     if (!fileUri) {
       toast.show('error', 'No File', 'No uploaded file available.');
@@ -2776,6 +2903,31 @@ useEffect(() => {
     return { days, time, room: entry.room || '' };
   };
   const calendarDays = getCalendarDays(visibleCalendarMonth);
+  // ─── Course Template header/footer frame ───────────────────────────────────
+  // Wraps lesson content (Edit Lesson, AI-generated, or manually created) with
+  // the school-wide header/footer banner set via "Manage Template".
+  const renderTemplateHeaderBanner = () => {
+    if (!courseTemplate.headerUrl) return null;
+    return (
+      <Image
+        source={{ uri: courseTemplate.headerUrl }}
+        style={styles.templateHeaderImage}
+        contentFit="contain"
+      />
+    );
+  };
+
+  const renderTemplateFooterBanner = () => {
+    if (!courseTemplate.footerUrl) return null;
+    return (
+      <Image
+        source={{ uri: courseTemplate.footerUrl }}
+        style={styles.templateFooterImage}
+        contentFit="contain"
+      />
+    );
+  };
+
   const renderInputError = (message?: string) =>
     !!message ? <Text style={styles.errorText}>{message}</Text> : null;
 
@@ -3990,6 +4142,20 @@ useEffect(() => {
           />
         ) : (
           <View style={{ padding: 16 }}>
+            {/* Header/Footer Template controls — one school-wide template shared by every teacher/class */}
+            <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginBottom: 12 }}>
+              <TouchableOpacity
+                style={styles.manageTemplateButton}
+                onPress={() => {
+                  setTemplateHeaderPick(null);
+                  setTemplateFooterPick(null);
+                  setShowManageTemplateModal(true);
+                }}
+              >
+                <Ionicons name="image-outline" size={16} color="#D32F2F" />
+                <Text style={styles.manageTemplateButtonText}>Manage Template</Text>
+              </TouchableOpacity>
+            </View>
             {/* AI Course Builder / Syllabus Section */}
             <View style={{ backgroundColor: '#FFF', borderRadius: 12, padding: 16, marginBottom: 16, borderWidth: 1, borderColor: '#EEE' }}>
               <Text style={{ fontSize: 16, fontWeight: '800', color: '#111', marginBottom: 12 }}>AI Course Builder</Text>
@@ -4988,6 +5154,97 @@ SYLLABUS VIEWER MODAL
           </View>
           {syllabusViewerUrl && <InlineMaterialViewer viewerUrl={syllabusViewerUrl} height={height - 62} />}
         </SafeAreaView>
+      </Modal>
+      {/* ══════════════════════════════════════════════════════════════════════
+MANAGE TEMPLATE MODAL (school-wide header/footer — saved to Firebase)
+════════════════════════════════════════════════════════════════════════ */}
+      <Modal visible={showManageTemplateModal} transparent animationType="fade">
+        <View style={styles.modalOverlayCenter}>
+          <View style={[styles.modalCardElevated, { width: isMobile ? Math.min(width - 28, 400) : 560, maxHeight: height * 0.9 }]}>
+            <View style={styles.createHeaderRow}>
+              <View style={styles.modalHeaderTextWrap}>
+                <Text style={styles.createTitle}>Manage Template</Text>
+                <Text style={styles.modalSubtitle}>
+                  This header & footer is shared by every class in the school. Updating it here applies everywhere.
+                </Text>
+              </View>
+              <TouchableOpacity onPress={() => setShowManageTemplateModal(false)} disabled={isSavingTemplate}>
+                <Ionicons name="close" size={24} color="#111" />
+              </TouchableOpacity>
+            </View>
+            <ScrollView contentContainerStyle={{ paddingBottom: 20 }}>
+              <View style={styles.templateSlotCard}>
+                <Text style={styles.sectionLabel}>Header Image</Text>
+                <View style={styles.templateSlotPreviewBox}>
+                  {templateHeaderPick?.uri || courseTemplate.headerUrl ? (
+                    <Image
+                      source={{ uri: templateHeaderPick?.uri || courseTemplate.headerUrl! }}
+                      style={styles.templateSlotPreviewImage}
+                      contentFit="contain"
+                    />
+                  ) : (
+                    <Text style={{ color: '#999', fontSize: 12 }}>No header set yet</Text>
+                  )}
+                </View>
+                <TouchableOpacity
+                  style={[styles.primaryButtonWide, { marginTop: 0 }]}
+                  onPress={() => handlePickTemplateImage('header')}
+                  disabled={isSavingTemplate}
+                >
+                  <Ionicons name="cloud-upload-outline" size={18} color="#FFF" />
+                  <Text style={styles.uploadBtnText}>
+                    {templateHeaderPick ? 'Change Header Image' : 'Upload New Header Image'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.templateSlotCard}>
+                <Text style={styles.sectionLabel}>Footer Image</Text>
+                <View style={styles.templateSlotPreviewBox}>
+                  {templateFooterPick?.uri || courseTemplate.footerUrl ? (
+                    <Image
+                      source={{ uri: templateFooterPick?.uri || courseTemplate.footerUrl! }}
+                      style={styles.templateSlotPreviewImage}
+                      contentFit="contain"
+                    />
+                  ) : (
+                    <Text style={{ color: '#999', fontSize: 12 }}>No footer set yet</Text>
+                  )}
+                </View>
+                <TouchableOpacity
+                  style={[styles.primaryButtonWide, { marginTop: 0 }]}
+                  onPress={() => handlePickTemplateImage('footer')}
+                  disabled={isSavingTemplate}
+                >
+                  <Ionicons name="cloud-upload-outline" size={18} color="#FFF" />
+                  <Text style={styles.uploadBtnText}>
+                    {templateFooterPick ? 'Change Footer Image' : 'Upload New Footer Image'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              <Text style={{ fontSize: 11, color: '#999', lineHeight: 15 }}>
+                Saved images are stored in Firebase and are automatically used as the header/footer on lesson previews, edited lessons, and newly generated or manually created lessons.
+              </Text>
+            </ScrollView>
+            <View style={styles.buttonRow}>
+              <TouchableOpacity
+                style={styles.secondaryButton}
+                onPress={() => setShowManageTemplateModal(false)}
+                disabled={isSavingTemplate}
+              >
+                <Text style={styles.secondaryButtonText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.primaryButton, (isSavingTemplate || (!templateHeaderPick && !templateFooterPick)) && styles.disabledButton]}
+                onPress={handleSaveCourseTemplate}
+                disabled={isSavingTemplate || (!templateHeaderPick && !templateFooterPick)}
+              >
+                {isSavingTemplate ? <ActivityIndicator size="small" color="#FFF" /> : <Text style={styles.primaryButtonText}>Save Template</Text>}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
       </Modal>
       {/* ══════════════════════════════════════════════════════════════════════
 LESSON DETAIL MODAL (UPDATED WITH EDIT & DELETE ACTIONS)
@@ -6632,4 +6889,49 @@ const styles = StyleSheet.create({
   toastPortal: {
     ...StyleSheet.absoluteFillObject,
   },
+  // ── Course Template (school-wide header/footer) ──
+  templateHeaderImage: {
+    width: '100%',
+    height: 90,
+    marginBottom: 14,
+  },
+  templateFooterImage: {
+    width: '100%',
+    height: 70,
+    marginTop: 18,
+  },
+  manageTemplateButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#FFF',
+    borderWidth: 1,
+    borderColor: '#D32F2F',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  manageTemplateButtonText: { color: '#D32F2F', fontWeight: '700', fontSize: 12 },
+  templateSlotCard: {
+    backgroundColor: '#F9F9F9',
+    borderWidth: 1,
+    borderColor: '#EEE',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 16,
+  },
+  templateSlotPreviewBox: {
+    width: '100%',
+    height: 100,
+    borderRadius: 8,
+    backgroundColor: '#FFF',
+    borderWidth: 1,
+    borderColor: '#DDD',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 10,
+    marginBottom: 10,
+    overflow: 'hidden',
+  },
+  templateSlotPreviewImage: { width: '100%', height: '100%' },
 });
