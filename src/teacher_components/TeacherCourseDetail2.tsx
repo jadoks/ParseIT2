@@ -1201,7 +1201,15 @@ useEffect(() => {
   };
 
   const handleOpenNextLessonModal = (savedModule: any) => {
+    // Match primarily by moduleNumber: it's stable across syllabus
+    // re-uploads/re-parses, whereas the AI-generated title text can shift
+    // slightly (casing, wording) each time the syllabus is re-parsed, which
+    // would otherwise cause an already-generated module to look "manual".
     const syllabusMod = currentSyllabus?.structure?.modules?.find(
+      (m: any) =>
+        savedModule.moduleNumber != null &&
+        Number(m.moduleNumber) === Number(savedModule.moduleNumber)
+    ) || currentSyllabus?.structure?.modules?.find(
       (m: any) =>
         String(m.moduleTitle || m.title).trim().toLowerCase() ===
         String(savedModule.title).trim().toLowerCase()
@@ -1679,11 +1687,20 @@ useEffect(() => {
     setIsGeneratingStructure(true);
     setGeneratedStructure(null);
     try {
+      const createdModuleNumbers = new Set(
+        modules.map((m: any) => Number(m.moduleNumber))
+      );
       const createdModuleTitles = new Set(
         modules.map((m: any) => String(m.title).trim().toLowerCase())
       );
+      // A syllabus module counts as "already created" if either its number
+      // or its title matches an existing courseModule. Number is checked
+      // first since it stays stable across syllabus re-uploads/re-parses,
+      // while the AI-generated title text can shift slightly each time.
       const missingSyllabusModules = currentSyllabus.structure?.modules?.filter(
-        (sylMod: any) => !createdModuleTitles.has(String(sylMod.moduleTitle).trim().toLowerCase())
+        (sylMod: any) =>
+          !createdModuleNumbers.has(Number(sylMod.moduleNumber)) &&
+          !createdModuleTitles.has(String(sylMod.moduleTitle).trim().toLowerCase())
       ) || [];
       let targetSyllabusModule: any = null;
       let nextNum: number = 0;
@@ -5383,13 +5400,17 @@ GENERATE NEXT LESSON - MULTI TOPIC SELECTION MODAL
             <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 20 }}>
               {!targetModuleForGen?.topics || targetModuleForGen.topics.length === 0 ? (
                 <Text style={{ textAlign: 'center', color: '#888', padding: 20 }}>
-                  {(!currentSyllabus?.structure?.modules ||
-                    !currentSyllabus.structure.modules.some((m: any) =>
-                      targetModuleForGen?.title &&
-                      String(m.moduleTitle || m.title).trim().toLowerCase() ===
-                      String(targetModuleForGen.title).trim().toLowerCase()
-                    ))
+                  {targetModuleForGen?.type === 'manual'
                     ? "This is a manually created module. Topics are only available for modules defined in the uploaded Syllabus."
+                    : !currentSyllabus?.structure?.modules ||
+                      !currentSyllabus.structure.modules.some((m: any) =>
+                        (targetModuleForGen?.moduleNumber != null &&
+                          Number(m.moduleNumber) === Number(targetModuleForGen.moduleNumber)) ||
+                        (targetModuleForGen?.title &&
+                          String(m.moduleTitle || m.title).trim().toLowerCase() ===
+                          String(targetModuleForGen.title).trim().toLowerCase())
+                      )
+                    ? "This module no longer matches a module in the current Syllabus (it may have been removed, renumbered, or renamed since this module was generated). Update the syllabus mapping or add lessons manually."
                     : "All topics for this module have already been generated!"}
                 </Text>
               ) : (
