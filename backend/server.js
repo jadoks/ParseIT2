@@ -16220,57 +16220,62 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
         return res.status(404).json({ error: "Syllabus module not found." });
       }
 
-      // 3. Generate content for each selected topic WITH correct starting number
-      const newLessonObjectsForPreview = [];
-      let currentLessonNum = nextLessonNumber;
+      // 3. Generate content for EACH selected topic/subtopic. This route is
+      // built to receive and process an arbitrary NUMBER of topicTitles at
+      // once (one lesson per title) — we fetch all existing lesson titles for
+      // this module up front (one query instead of one-per-topic), then run
+      // all the AI generations for the still-needed topics IN PARALLEL so a
+      // batch of several lessons doesn't take several times as long or risk
+      // timing out. Lesson numbers are assigned deterministically by each
+      // topic's position in the (de-duplicated) request, not by mutating a
+      // shared counter inside the async calls.
+      const existingLessonsSnap = await db.collection("courseLessons")
+        .where("moduleId", "==", moduleId)
+        .get();
+      const existingLessonTitles = new Set(
+        existingLessonsSnap.docs.map(doc => String(doc.data().title || "").toLowerCase().trim())
+      );
 
-      for (const topicTitle of topicTitles) {
-        // Skip if already exists (your existing logic)
-        const existingCheck = await db.collection("courseLessons")
-          .where("moduleId", "==", moduleId)
-          .where("title", "==", topicTitle)
-          .limit(1)
-          .get();
-        
-        if (!existingCheck.empty) {
-          console.log(`Skipping topic "${topicTitle}" because it already exists.`);
-          continue;
-        }
+      const requestedTitles = [...new Set(topicTitles.map(t => String(t).trim()).filter(Boolean))];
+      const skippedTopics = requestedTitles.filter(t => existingLessonTitles.has(t.toLowerCase()));
+      const topicsToGenerate = requestedTitles.filter(t => !existingLessonTitles.has(t.toLowerCase()));
 
-        try {
-          console.log(`Generating next lesson for Module ${moduleNumber}, Topic: "${topicTitle}", Lesson #: ${currentLessonNum}...`);
-          
-          // ✅ STEP 2: PASS currentLessonNum as the 4th parameter
-          const content = await generateTopicContent(
-            targetSyllabusModule, 
-            moduleNumber, 
-            topicTitle, 
-            currentLessonNum // <-- THIS WAS MISSING
-          );
-
-          if (content.modules && content.modules.length > 0 && content.modules[0].lessons) {
-            const generatedLesson = content.modules[0].lessons[0];
-            if (generatedLesson) {
-              // Ensure the lesson number is explicitly set on the preview object
-              generatedLesson.lessonNumber = currentLessonNum;
-              generatedLesson.id = `preview-${moduleId}-${currentLessonNum}`;
-              newLessonObjectsForPreview.push(generatedLesson);
-              
-              // Increment for the next topic in this batch
-              currentLessonNum++;
+      const failedTopics = [];
+      const generationResults = await Promise.all(
+        topicsToGenerate.map(async (topicTitle, idx) => {
+          const lessonNum = nextLessonNumber + idx;
+          try {
+            console.log(`Generating next lesson for Module ${moduleNumber}, Topic: "${topicTitle}", Lesson #: ${lessonNum}...`);
+            const content = await generateTopicContent(
+              targetSyllabusModule,
+              moduleNumber,
+              topicTitle,
+              lessonNum
+            );
+            const generatedLesson = content?.modules?.[0]?.lessons?.[0];
+            if (!generatedLesson) {
+              failedTopics.push(topicTitle);
+              return null;
             }
+            generatedLesson.lessonNumber = lessonNum;
+            generatedLesson.id = `preview-${moduleId}-${lessonNum}`;
+            return generatedLesson;
+          } catch (genError) {
+            console.error(`Failed to generate content for ${topicTitle}:`, genError);
+            failedTopics.push(topicTitle);
+            return null;
           }
-        } catch (genError) {
-          console.error(`Failed to generate content for ${topicTitle}:`, genError);
-          // Continue with next topic instead of failing entire batch
-        }
-      }
+        })
+      );
+
+      const newLessonObjectsForPreview = generationResults.filter(Boolean);
 
       if (newLessonObjectsForPreview.length === 0) {
         return res.json({
           success: true,
           message: "No new lessons generated or all selected topics already exist.",
-          data: { lessons: [] }
+          data: { lessons: [] },
+          meta: { requested: requestedTitles.length, generated: 0, skipped: skippedTopics, failed: failedTopics }
         });
       }
 
@@ -16281,6 +16286,14 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
           moduleId: moduleId,
           moduleNumber: moduleNumber,
           lessons: newLessonObjectsForPreview
+        },
+        // Lets the frontend tell the teacher e.g. "5 of 6 lessons generated —
+        // 1 failed, 0 already existed" instead of silently dropping topics.
+        meta: {
+          requested: requestedTitles.length,
+          generated: newLessonObjectsForPreview.length,
+          skipped: skippedTopics,
+          failed: failedTopics
         }
       });
 

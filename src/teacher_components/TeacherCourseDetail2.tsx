@@ -1264,11 +1264,26 @@ useEffect(() => {
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error);
+      const meta = data.meta || null;
       if (data.data && data.data.lessons && data.data.lessons.length > 0) {
         setPendingGeneratedLessons(data.data.lessons);
         setEditingPreviewIndex(0);
         setShowLessonPreviewModal(true);
-        toast.show('success', 'Generated!', 'Review and edit the content before saving.');
+        const generatedCount = data.data.lessons.length;
+        const failedCount = meta?.failed?.length || 0;
+        const skippedCount = meta?.skipped?.length || 0;
+        if (failedCount > 0 || skippedCount > 0) {
+          const parts = [`${generatedCount} lesson(s) generated`];
+          if (skippedCount > 0) parts.push(`${skippedCount} already existed`);
+          if (failedCount > 0) parts.push(`${failedCount} failed — you can retry those individually`);
+          toast.show('info', 'Generated with some issues', `${parts.join(', ')}. Review and edit before saving.`);
+        } else {
+          toast.show(
+            'success',
+            'Generated!',
+            generatedCount > 1 ? `${generatedCount} lessons generated. Review and edit before saving.` : 'Review and edit the content before saving.'
+          );
+        }
       } else {
         toast.show('info', 'No New Content', 'No new lessons were generated or they already exist.');
       }
@@ -5517,8 +5532,14 @@ LESSON EDIT MODAL (Direct Edit - No Preview Toggle)
           <View style={[styles.modalCardElevated, { width: isMobile ? Math.min(width - 28, 400) : 800, maxHeight: height * 0.9 }]}>
             <View style={styles.createHeaderRow}>
               <View style={styles.modalHeaderTextWrap}>
-                <Text style={styles.createTitle}>Edit Generated Lessons</Text>
-                <Text style={styles.modalSubtitle}>Review and modify content before saving.</Text>
+                <Text style={styles.createTitle}>
+                  Edit Generated Lessons{pendingGeneratedLessons.length > 0 ? ` (${pendingGeneratedLessons.length})` : ''}
+                </Text>
+                <Text style={styles.modalSubtitle}>
+                  {pendingGeneratedLessons.length > 1
+                    ? 'Review, edit, or remove each lesson before saving them all.'
+                    : 'Review and modify content before saving.'}
+                </Text>
               </View>
               <TouchableOpacity onPress={() => setShowLessonPreviewModal(false)}>
                 <Ionicons name="close" size={24} color="#111" />
@@ -5527,9 +5548,23 @@ LESSON EDIT MODAL (Direct Edit - No Preview Toggle)
             <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 20 }}>
               {pendingGeneratedLessons.map((lesson, index) => (
                 <View key={lesson.id || index} style={{ marginBottom: 24, borderBottomWidth: 1, borderBottomColor: '#EEE', paddingBottom: 20 }}>
-                  <Text style={{ fontSize: 16, fontWeight: '800', color: '#D32F2F', marginBottom: 12 }}>
-                    Lesson {index + 1}: {lesson.title}
-                  </Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                    <Text style={{ fontSize: 16, fontWeight: '800', color: '#D32F2F', flex: 1, marginRight: 8 }}>
+                      Lesson {index + 1}: {lesson.title}
+                    </Text>
+                    {pendingGeneratedLessons.length > 1 && (
+                      <TouchableOpacity
+                        onPress={() => {
+                          const updated = pendingGeneratedLessons.filter((_, i) => i !== index);
+                          setPendingGeneratedLessons(updated);
+                        }}
+                        style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, backgroundColor: '#FFEBEE' }}
+                      >
+                        <Ionicons name="trash-outline" size={14} color="#D32F2F" />
+                        <Text style={{ color: '#D32F2F', fontWeight: '700', fontSize: 12 }}>Remove</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
                   <View style={{ gap: 12 }}>
                     <Text style={styles.sectionLabel}>Title</Text>
                     <TextInput
@@ -5579,6 +5614,11 @@ LESSON EDIT MODAL (Direct Edit - No Preview Toggle)
                   </View>
                 </View>
               ))}
+              {pendingGeneratedLessons.length === 0 && (
+                <Text style={{ textAlign: 'center', color: '#888', padding: 20 }}>
+                  All generated lessons were removed. Close this and generate again if needed.
+                </Text>
+              )}
             </ScrollView>
             <View style={styles.buttonRow}>
               <TouchableOpacity
@@ -5588,14 +5628,16 @@ LESSON EDIT MODAL (Direct Edit - No Preview Toggle)
                 <Text style={styles.secondaryButtonText}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.primaryButton, isSavingGeneratedLessons && styles.disabledButton]}
+                style={[styles.primaryButton, (isSavingGeneratedLessons || pendingGeneratedLessons.length === 0) && styles.disabledButton]}
                 onPress={handleSavePreviewedLessons}
-                disabled={isSavingGeneratedLessons}
+                disabled={isSavingGeneratedLessons || pendingGeneratedLessons.length === 0}
               >
                 {isSavingGeneratedLessons ? (
                   <ActivityIndicator size="small" color="#FFF" />
                 ) : (
-                  <Text style={styles.primaryButtonText}>Save Lesson</Text>
+                  <Text style={styles.primaryButtonText}>
+                    {pendingGeneratedLessons.length > 1 ? `Save All Lessons (${pendingGeneratedLessons.length})` : 'Save Lesson'}
+                  </Text>
                 )}
               </TouchableOpacity>
             </View>
