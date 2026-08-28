@@ -5272,31 +5272,69 @@ MANAGE TEMPLATE MODAL (school-wide header/footer — saved to Firebase)
         </View>
       </Modal>
       {/* ══════════════════════════════════════════════════════════════════════
-LESSON DETAIL MODAL (UPDATED WITH EDIT & DELETE ACTIONS)
+LESSON DETAIL MODAL — FULL-SCREEN "GOOGLE CLASSROOM"-STYLE DOCUMENT VIEWER
+Full-screen presentation: fixed top bar (title/back), a scrollable
+letterhead "page" using the same school-wide header/footer banner as
+Grades' Official Grade Report, and a fixed bottom action bar (Delete /
+Edit Lesson) — like opening a Doc/PDF attachment in Google Classroom.
 ════════════════════════════════════════════════════════════════════════ */}
       <Modal
         visible={lessonDetailModalVisible}
-        transparent
         animationType="slide"
+        presentationStyle={Platform.OS === 'ios' ? 'fullScreen' : undefined}
         onRequestClose={() => setLessonDetailModalVisible(false)}
       >
-        <View style={styles.modalOverlayCenter}>
-          <View style={[styles.modalCardElevated, { width: isMobile ? Math.min(width - 28, 400) : 800, maxHeight: height * 0.9 }]}>
-            <View style={styles.createHeaderRow}>
-              <View style={styles.modalHeaderTextWrap}>
-                <Text style={styles.createTitle}>{selectedLesson?.title || 'Lesson Details'}</Text>
-                <Text style={styles.modalSubtitle}>Module Content & Activities</Text>
-              </View>
-              <TouchableOpacity onPress={() => setLessonDetailModalVisible(false)}>
-                <Ionicons name="close" size={24} color="#111" />
-              </TouchableOpacity>
+        <SafeAreaView style={styles.lessonPreviewScreen} edges={['top', 'left', 'right']}>
+          {/* Fixed top bar */}
+          <View style={styles.lessonPreviewTopBar}>
+            <TouchableOpacity
+              onPress={() => setLessonDetailModalVisible(false)}
+              style={styles.lessonPreviewBackBtn}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <Ionicons name={Platform.OS === 'web' ? 'close' : 'arrow-back'} size={22} color="#111" />
+            </TouchableOpacity>
+            <View style={styles.lessonPreviewTopBarTextWrap}>
+              <Text style={styles.lessonPreviewTopBarTitle} numberOfLines={1}>
+                {selectedLesson?.title || 'Lesson Details'}
+              </Text>
+              <Text style={styles.lessonPreviewTopBarSubtitle} numberOfLines={1}>
+                Module Content &amp; Activities
+              </Text>
             </View>
-            <ScrollView showsVerticalScrollIndicator={true} contentContainerStyle={{ paddingBottom: 20 }}>
-              {isLessonLoading ? (
-                <ActivityIndicator size="large" color="#D32F2F" style={{ marginVertical: 20 }} />
-              ) : selectedLesson ? (
-                renderDocPage(
-                <>
+          </View>
+
+          {/* Scrollable document */}
+          <ScrollView
+            style={styles.flexOne}
+            showsVerticalScrollIndicator={true}
+            contentContainerStyle={styles.lessonPreviewScrollContent}
+          >
+            {isLessonLoading ? (
+              <ActivityIndicator size="large" color="#D32F2F" style={{ marginVertical: 40 }} />
+            ) : selectedLesson ? (
+              <View style={styles.lessonPreviewPageWrap}>
+                <View style={[styles.lessonPreviewPage, !isMobile && styles.lessonPreviewPageWeb]}>
+                  {renderTemplateHeaderBanner()}
+
+                  <View style={styles.lessonPreviewTitleBlock}>
+                    <View style={styles.docPageBadge}>
+                      <Ionicons
+                        name={selectedLesson.isGenerated ? 'sparkles-outline' : 'create-outline'}
+                        size={11}
+                        color="#D32F2F"
+                      />
+                      <Text style={styles.docPageBadgeText}>
+                        {selectedLesson.isGenerated
+                          ? 'AI Generated'
+                          : (selectedLesson.type === 'manual_file' || selectedLesson.type === 'manual'
+                              ? 'Manually Created'
+                              : 'Lesson Preview')}
+                      </Text>
+                    </View>
+                    <Text style={styles.lessonPreviewPageTitle}>{selectedLesson.title}</Text>
+                  </View>
+
                   {selectedLesson.type === 'manual_file' && selectedLesson.fileUrl ? (
                     <TouchableOpacity
                       onPress={() => {
@@ -5362,58 +5400,62 @@ LESSON DETAIL MODAL (UPDATED WITH EDIT & DELETE ACTIONS)
                       </Text>
                     </View>
                   ) : null}
-                </>,
-                selectedLesson.isGenerated ? 'AI Generated' : (selectedLesson.type === 'manual_file' || selectedLesson.type === 'manual' ? 'Manually Created' : 'Lesson Preview')
-                )
-              ) : (
-                <Text style={{ textAlign: 'center', color: '#888' }}>Could not load lesson details.</Text>
-              )}
-            </ScrollView>
-            <View style={styles.modalBottomActions}>
-              <TouchableOpacity
-                style={styles.deleteMaterialBtn}
-                onPress={() => {
-                  toast.confirm(
-                    'Delete Lesson?',
-                    `Are you sure you want to delete "${selectedLesson?.title}"? This action cannot be undone.`,
-                    handleDeleteLesson
-                  );
-                }}
-                disabled={isDeletingLesson}
-              >
-                <Ionicons name="trash-outline" size={18} color="#D32F2F" />
-                <Text style={styles.deleteMaterialBtnText}>Delete</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.primaryButton, { flex: 2 }]}
-                onPress={() => {
-                  if (!selectedLesson) return;
-                  const parentModule = modules.find((m: any) => m.id === selectedLesson.moduleId);
-                  setIsEditingLesson(true);
-                  setSelectedModuleForLesson(parentModule || null);
-                  setNewLessonTitle(selectedLesson.title || '');
-                  setNewLessonDesc(selectedLesson.description || '');
-                  if (selectedLesson.type === 'manual_file' && selectedLesson.fileUrl) {
-                    setLessonMode('file');
-                    setNewLessonDiscussion('');
-                    setNewLessonActivity('');
-                    setNewLessonFile(null);
-                  } else {
-                    setLessonMode('text');
-                    setNewLessonDiscussion(selectedLesson.discussion || '');
-                    setNewLessonActivity(selectedLesson.activity || '');
-                    setNewLessonFile(null);
-                  }
-                  setLessonDetailModalVisible(false);
-                  setShowManualLessonModal(true);
-                }}
-              >
-                <Ionicons name="create-outline" size={18} color="#FFF" />
-                <Text style={styles.primaryButtonText}>Edit Lesson</Text>
-              </TouchableOpacity>
-            </View>
+
+                  {renderTemplateFooterBanner()}
+                </View>
+              </View>
+            ) : (
+              <Text style={{ textAlign: 'center', color: '#888', marginTop: 40 }}>
+                Could not load lesson details.
+              </Text>
+            )}
+          </ScrollView>
+
+          {/* Fixed bottom action bar */}
+          <View style={styles.lessonPreviewBottomBar}>
+            <TouchableOpacity
+              style={styles.deleteMaterialBtn}
+              onPress={() => {
+                toast.confirm(
+                  'Delete Lesson?',
+                  `Are you sure you want to delete "${selectedLesson?.title}"? This action cannot be undone.`,
+                  handleDeleteLesson
+                );
+              }}
+              disabled={isDeletingLesson}
+            >
+              <Ionicons name="trash-outline" size={18} color="#D32F2F" />
+              <Text style={styles.deleteMaterialBtnText}>Delete</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.primaryButton, { flex: 2 }]}
+              onPress={() => {
+                if (!selectedLesson) return;
+                const parentModule = modules.find((m: any) => m.id === selectedLesson.moduleId);
+                setIsEditingLesson(true);
+                setSelectedModuleForLesson(parentModule || null);
+                setNewLessonTitle(selectedLesson.title || '');
+                setNewLessonDesc(selectedLesson.description || '');
+                if (selectedLesson.type === 'manual_file' && selectedLesson.fileUrl) {
+                  setLessonMode('file');
+                  setNewLessonDiscussion('');
+                  setNewLessonActivity('');
+                  setNewLessonFile(null);
+                } else {
+                  setLessonMode('text');
+                  setNewLessonDiscussion(selectedLesson.discussion || '');
+                  setNewLessonActivity(selectedLesson.activity || '');
+                  setNewLessonFile(null);
+                }
+                setLessonDetailModalVisible(false);
+                setShowManualLessonModal(true);
+              }}
+            >
+              <Ionicons name="create-outline" size={18} color="#FFF" />
+              <Text style={styles.primaryButtonText}>Edit Lesson</Text>
+            </TouchableOpacity>
           </View>
-        </View>
+        </SafeAreaView>
       </Modal>
       {/* ═════════════════════════════════════════════════════════════════════
 DELETE LESSON CONFIRMATION MODAL (Cross-Platform)
@@ -7025,4 +7067,97 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   templateSlotPreviewImage: { width: '100%', height: '100%' },
+
+  // ── Lesson Preview — full-screen "Google Classroom" document viewer ──
+  // Outer screen behind the "page" is a soft neutral gray (same idea as a
+  // PDF/Docs viewer canvas) so the white letterhead page reads as a sheet
+  // of paper, mirroring the Official Grade Report look used in Grades.
+  lessonPreviewScreen: {
+    flex: 1,
+    backgroundColor: '#ECECEC',
+  },
+  lessonPreviewTopBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E5E5',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
+    shadowRadius: 3,
+    elevation: 2,
+    zIndex: 5,
+  },
+  lessonPreviewBackBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 8,
+  },
+  lessonPreviewTopBarTextWrap: { flex: 1 },
+  lessonPreviewTopBarTitle: { fontSize: 16, fontWeight: '800', color: '#111' },
+  lessonPreviewTopBarSubtitle: { fontSize: 12, color: '#777', marginTop: 1 },
+  lessonPreviewScrollContent: {
+    flexGrow: 1,
+    alignItems: 'center',
+    paddingVertical: 24,
+    paddingHorizontal: 16,
+  },
+  flexOne: {
+  flex: 1,
+},
+  lessonPreviewPageWrap: {
+    width: '100%',
+    alignItems: 'center',
+  },
+  // The "page" itself — same letterhead-card treatment (white sheet, subtle
+  // border + shadow, rounded corners) as Grades' reportCard.
+  lessonPreviewPage: {
+    width: '100%',
+    maxWidth: 900,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 2,
+    marginBottom: 24,
+  },
+  lessonPreviewPageWeb: {
+    padding: 40,
+  },
+  lessonPreviewTitleBlock: {
+    marginBottom: 18,
+    paddingBottom: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: '#EEE',
+  },
+  lessonPreviewPageTitle: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: '#111',
+    marginTop: 6,
+  },
+  lessonPreviewBottomBar: {
+    flexDirection: 'row',
+    gap: 10,
+    padding: 14,
+    backgroundColor: '#FFFFFF',
+    borderTopWidth: 1,
+    borderTopColor: '#EEE',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 4,
+    elevation: 4,
+  },
 });
