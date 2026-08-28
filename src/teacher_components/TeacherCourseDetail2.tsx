@@ -2928,6 +2928,31 @@ useEffect(() => {
     );
   };
 
+  // Wraps lesson content in a Word/PDF-style "page" — school-wide header
+  // banner on top, footer banner on bottom — so Lesson Preview, Edit Lesson,
+  // and manually created lessons all share one consistent letterhead layout.
+  // `label` shows a small badge (e.g. "AI Generated" / "Manually Created")
+  // so it's clear which template is being applied.
+  const renderDocPage = (children: React.ReactNode, label?: string, key?: string | number) => (
+    <View key={key} style={styles.docPageOuter}>
+      <View style={styles.docPage}>
+        {renderTemplateHeaderBanner()}
+        {label ? (
+          <View style={styles.docPageBadge}>
+            <Ionicons
+              name={label === 'AI Generated' ? 'sparkles-outline' : 'create-outline'}
+              size={11}
+              color="#D32F2F"
+            />
+            <Text style={styles.docPageBadgeText}>{label}</Text>
+          </View>
+        ) : null}
+        {children}
+        {renderTemplateFooterBanner()}
+      </View>
+    </View>
+  );
+
   const renderInputError = (message?: string) =>
     !!message ? <Text style={styles.errorText}>{message}</Text> : null;
 
@@ -5270,6 +5295,7 @@ LESSON DETAIL MODAL (UPDATED WITH EDIT & DELETE ACTIONS)
               {isLessonLoading ? (
                 <ActivityIndicator size="large" color="#D32F2F" style={{ marginVertical: 20 }} />
               ) : selectedLesson ? (
+                renderDocPage(
                 <>
                   {selectedLesson.type === 'manual_file' && selectedLesson.fileUrl ? (
                     <TouchableOpacity
@@ -5336,7 +5362,9 @@ LESSON DETAIL MODAL (UPDATED WITH EDIT & DELETE ACTIONS)
                       </Text>
                     </View>
                   ) : null}
-                </>
+                </>,
+                selectedLesson.isGenerated ? 'AI Generated' : (selectedLesson.type === 'manual_file' || selectedLesson.type === 'manual' ? 'Manually Created' : 'Lesson Preview')
+                )
               ) : (
                 <Text style={{ textAlign: 'center', color: '#888' }}>Could not load lesson details.</Text>
               )}
@@ -5472,48 +5500,53 @@ MANUAL LESSON CREATION MODAL
               </View>
             )}
             <ScrollView contentContainerStyle={{ paddingBottom: 20 }}>
-              <Text style={styles.sectionLabel}>Lesson Title</Text>
-              <TextInput style={styles.inputBox} value={newLessonTitle} onChangeText={setNewLessonTitle} placeholder="Lesson Title" />
-              <Text style={styles.sectionLabel}>Description</Text>
-              <TextInput style={styles.inputBox} value={newLessonDesc} onChangeText={setNewLessonDesc} placeholder="Short summary" />
-              {lessonMode === 'text' ? (
+              {renderDocPage(
                 <>
-                  <Text style={styles.sectionLabel}>Discussion / Lecture Notes</Text>
-                  <TextInput style={[styles.textAreaBox, { minHeight: 150 }]} value={newLessonDiscussion} onChangeText={setNewLessonDiscussion} multiline placeholder="Enter detailed content..." />
-                  <Text style={styles.sectionLabel}>Activity</Text>
-                  <TextInput style={[styles.textAreaBox, { minHeight: 100 }]} value={newLessonActivity} onChangeText={setNewLessonActivity} multiline placeholder="Instructions for activity..." />
-                </>
-              ) : (
-                <>
-                  <Text style={styles.sectionLabel}>Upload Lesson Material</Text>
-                  {!newLessonFile && selectedLesson?.type === 'manual_file' && selectedLesson.fileName ? (
-                    <View style={[styles.filePreviewBox, { marginBottom: 10, backgroundColor: '#F9F9F9', borderColor: '#DDD' }]}>
-                      <Ionicons name="document-text-outline" size={20} color="#666" />
-                      <View style={{ flex: 1 }}>
-                        <Text style={{ fontSize: 11, color: '#888', fontWeight: '700' }}>CURRENT FILE:</Text>
-                        <Text style={styles.filePreviewText}>{selectedLesson.fileName}</Text>
-                      </View>
-                    </View>
-                  ) : null}
-                  <TouchableOpacity
-                    style={[styles.primaryButtonWide, { marginTop: 0 }]}
-                    onPress={async () => {
-                      const res = await DocumentPicker.getDocumentAsync({ type: '*/*', copyToCacheDirectory: true, base64: Platform.OS === 'web' });
-                      if (!res.canceled && res.assets?.[0]) setNewLessonFile({ name: res.assets[0].name, uri: res.assets[0].uri, type: res.assets[0].mimeType, base64: (res.assets[0] as any).base64, file: (res.assets[0] as any).file });
-                    }}
-                  >
-                    <Ionicons name="cloud-upload-outline" size={18} color="#FFF" />
-                    <Text style={styles.uploadBtnText}>
-                      {newLessonFile ? 'Change File' : (selectedLesson?.type === 'manual_file' ? 'Replace File' : 'Choose File')}
-                    </Text>
-                  </TouchableOpacity>
-                  {newLessonFile && <View style={styles.filePreviewBox}><Ionicons name="document-text-outline" size={20} color="#D32F2F" /><Text style={styles.filePreviewText}>{newLessonFile.name}</Text></View>}
-                  <Text style={{ fontSize: 12, color: '#888', marginTop: 8, textAlign: 'center' }}>
-                    {selectedLesson?.type === 'manual_file'
-                      ? "Leave empty to keep the current file. Upload a new file to replace it."
-                      : "Discussion and Activity sections are hidden when uploading a file."}
-                  </Text>
-                </>
+                  <Text style={styles.sectionLabel}>Lesson Title</Text>
+                  <TextInput style={styles.inputBox} value={newLessonTitle} onChangeText={setNewLessonTitle} placeholder="Lesson Title" />
+                  <Text style={styles.sectionLabel}>Description</Text>
+                  <TextInput style={styles.inputBox} value={newLessonDesc} onChangeText={setNewLessonDesc} placeholder="Short summary" />
+                  {lessonMode === 'text' ? (
+                    <>
+                      <Text style={styles.sectionLabel}>Discussion / Lecture Notes</Text>
+                      <TextInput style={[styles.textAreaBox, { minHeight: 150 }]} value={newLessonDiscussion} onChangeText={setNewLessonDiscussion} multiline placeholder="Enter detailed content..." />
+                      <Text style={styles.sectionLabel}>Activity</Text>
+                      <TextInput style={[styles.textAreaBox, { minHeight: 100 }]} value={newLessonActivity} onChangeText={setNewLessonActivity} multiline placeholder="Instructions for activity..." />
+                    </>
+                  ) : (
+                    <>
+                      <Text style={styles.sectionLabel}>Upload Lesson Material</Text>
+                      {!newLessonFile && selectedLesson?.type === 'manual_file' && selectedLesson.fileName ? (
+                        <View style={[styles.filePreviewBox, { marginBottom: 10, backgroundColor: '#F9F9F9', borderColor: '#DDD' }]}>
+                          <Ionicons name="document-text-outline" size={20} color="#666" />
+                          <View style={{ flex: 1 }}>
+                            <Text style={{ fontSize: 11, color: '#888', fontWeight: '700' }}>CURRENT FILE:</Text>
+                            <Text style={styles.filePreviewText}>{selectedLesson.fileName}</Text>
+                          </View>
+                        </View>
+                      ) : null}
+                      <TouchableOpacity
+                        style={[styles.primaryButtonWide, { marginTop: 0 }]}
+                        onPress={async () => {
+                          const res = await DocumentPicker.getDocumentAsync({ type: '*/*', copyToCacheDirectory: true, base64: Platform.OS === 'web' });
+                          if (!res.canceled && res.assets?.[0]) setNewLessonFile({ name: res.assets[0].name, uri: res.assets[0].uri, type: res.assets[0].mimeType, base64: (res.assets[0] as any).base64, file: (res.assets[0] as any).file });
+                        }}
+                      >
+                        <Ionicons name="cloud-upload-outline" size={18} color="#FFF" />
+                        <Text style={styles.uploadBtnText}>
+                          {newLessonFile ? 'Change File' : (selectedLesson?.type === 'manual_file' ? 'Replace File' : 'Choose File')}
+                        </Text>
+                      </TouchableOpacity>
+                      {newLessonFile && <View style={styles.filePreviewBox}><Ionicons name="document-text-outline" size={20} color="#D32F2F" /><Text style={styles.filePreviewText}>{newLessonFile.name}</Text></View>}
+                      <Text style={{ fontSize: 12, color: '#888', marginTop: 8, textAlign: 'center' }}>
+                        {selectedLesson?.type === 'manual_file'
+                          ? "Leave empty to keep the current file. Upload a new file to replace it."
+                          : "Discussion and Activity sections are hidden when uploading a file."}
+                      </Text>
+                    </>
+                  )}
+                </>,
+                newLessonTitle && selectedLesson ? 'Edit Lesson' : 'Manually Created'
               )}
             </ScrollView>
             <View style={styles.buttonRow}>
@@ -5824,74 +5857,78 @@ LESSON EDIT MODAL (Direct Edit - No Preview Toggle)
               </TouchableOpacity>
             </View>
             <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 20 }}>
-              {pendingGeneratedLessons.map((lesson, index) => (
-                <View key={lesson.id || index} style={{ marginBottom: 24, borderBottomWidth: 1, borderBottomColor: '#EEE', paddingBottom: 20 }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-                    <Text style={{ fontSize: 16, fontWeight: '800', color: '#D32F2F', flex: 1, marginRight: 8 }}>
-                      Lesson {index + 1}: {lesson.title}
-                    </Text>
-                    {pendingGeneratedLessons.length > 1 && (
-                      <TouchableOpacity
-                        onPress={() => {
-                          const updated = pendingGeneratedLessons.filter((_, i) => i !== index);
+              {pendingGeneratedLessons.map((lesson, index) =>
+                renderDocPage(
+                  <View style={{ marginBottom: 24 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                      <Text style={{ fontSize: 16, fontWeight: '800', color: '#D32F2F', flex: 1, marginRight: 8 }}>
+                        Lesson {index + 1}: {lesson.title}
+                      </Text>
+                      {pendingGeneratedLessons.length > 1 && (
+                        <TouchableOpacity
+                          onPress={() => {
+                            const updated = pendingGeneratedLessons.filter((_, i) => i !== index);
+                            setPendingGeneratedLessons(updated);
+                          }}
+                          style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, backgroundColor: '#FFEBEE' }}
+                        >
+                          <Ionicons name="trash-outline" size={14} color="#D32F2F" />
+                          <Text style={{ color: '#D32F2F', fontWeight: '700', fontSize: 12 }}>Remove</Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                    <View style={{ gap: 12 }}>
+                      <Text style={styles.sectionLabel}>Title</Text>
+                      <TextInput
+                        style={styles.inputBox}
+                        value={lesson.title}
+                        onChangeText={(text) => {
+                          const updated = [...pendingGeneratedLessons];
+                          updated[index] = { ...updated[index], title: text };
                           setPendingGeneratedLessons(updated);
                         }}
-                        style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, backgroundColor: '#FFEBEE' }}
-                      >
-                        <Ionicons name="trash-outline" size={14} color="#D32F2F" />
-                        <Text style={{ color: '#D32F2F', fontWeight: '700', fontSize: 12 }}>Remove</Text>
-                      </TouchableOpacity>
-                    )}
-                  </View>
-                  <View style={{ gap: 12 }}>
-                    <Text style={styles.sectionLabel}>Title</Text>
-                    <TextInput
-                      style={styles.inputBox}
-                      value={lesson.title}
-                      onChangeText={(text) => {
-                        const updated = [...pendingGeneratedLessons];
-                        updated[index] = { ...updated[index], title: text };
-                        setPendingGeneratedLessons(updated);
-                      }}
-                    />
-                    <Text style={styles.sectionLabel}>Description</Text>
-                    <TextInput
-                      style={[styles.textAreaBox, { minHeight: 60 }]}
-                      value={lesson.description || ''}
-                      onChangeText={(text) => {
-                        const updated = [...pendingGeneratedLessons];
-                        updated[index] = { ...updated[index], description: text };
-                        setPendingGeneratedLessons(updated);
-                      }}
-                      multiline
-                    />
-                    <Text style={styles.sectionLabel}>Discussion</Text>
-                    <TextInput
-                      style={[styles.textAreaBox, { minHeight: 300 }]}
-                      value={lesson.discussion || ''}
-                      onChangeText={(text) => {
-                        const updated = [...pendingGeneratedLessons];
-                        updated[index] = { ...updated[index], discussion: text };
-                        setPendingGeneratedLessons(updated);
-                      }}
-                      multiline
-                      textAlignVertical="top"
-                    />
-                    <Text style={styles.sectionLabel}>Activity</Text>
-                    <TextInput
-                      style={[styles.textAreaBox, { minHeight: 300 }]}
-                      value={lesson.activity || ''}
-                      onChangeText={(text) => {
-                        const updated = [...pendingGeneratedLessons];
-                        updated[index] = { ...updated[index], activity: text };
-                        setPendingGeneratedLessons(updated);
-                      }}
-                      multiline
-                      textAlignVertical="top"
-                    />
-                  </View>
-                </View>
-              ))}
+                      />
+                      <Text style={styles.sectionLabel}>Description</Text>
+                      <TextInput
+                        style={[styles.textAreaBox, { minHeight: 60 }]}
+                        value={lesson.description || ''}
+                        onChangeText={(text) => {
+                          const updated = [...pendingGeneratedLessons];
+                          updated[index] = { ...updated[index], description: text };
+                          setPendingGeneratedLessons(updated);
+                        }}
+                        multiline
+                      />
+                      <Text style={styles.sectionLabel}>Discussion</Text>
+                      <TextInput
+                        style={[styles.textAreaBox, { minHeight: 300 }]}
+                        value={lesson.discussion || ''}
+                        onChangeText={(text) => {
+                          const updated = [...pendingGeneratedLessons];
+                          updated[index] = { ...updated[index], discussion: text };
+                          setPendingGeneratedLessons(updated);
+                        }}
+                        multiline
+                        textAlignVertical="top"
+                      />
+                      <Text style={styles.sectionLabel}>Activity</Text>
+                      <TextInput
+                        style={[styles.textAreaBox, { minHeight: 300 }]}
+                        value={lesson.activity || ''}
+                        onChangeText={(text) => {
+                          const updated = [...pendingGeneratedLessons];
+                          updated[index] = { ...updated[index], activity: text };
+                          setPendingGeneratedLessons(updated);
+                        }}
+                        multiline
+                        textAlignVertical="top"
+                      />
+                    </View>
+                  </View>,
+                  'AI Generated',
+                  lesson.id || index
+                )
+              )}
               {pendingGeneratedLessons.length === 0 && (
                 <Text style={{ textAlign: 'center', color: '#888', padding: 20 }}>
                   All generated lessons were removed. Close this and generate again if needed.
@@ -6899,6 +6936,60 @@ const styles = StyleSheet.create({
     width: '100%',
     height: 70,
     marginTop: 18,
+  },
+  // "Word/PDF"-style document page used to frame lesson content (Lesson
+  // Preview, Edit Lesson, and manually created lessons) with the
+  // school-wide header/footer banner, like a letterhead.
+  docPageOuter: {
+    backgroundColor: '#ECECEC',
+    borderRadius: 10,
+    padding: 16,
+    marginBottom: 18,
+  },
+  docPage: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 4,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  docPageHeaderImage: {
+    width: '100%',
+    height: 90,
+    marginBottom: 16,
+  },
+  docPageFooterImage: {
+    width: '100%',
+    height: 64,
+    marginTop: 20,
+  },
+  docPageDivider: {
+    borderTopWidth: 1,
+    borderTopColor: '#EEE',
+    marginBottom: 16,
+  },
+  docPageBadge: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#FCE8E8',
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    marginBottom: 10,
+  },
+  docPageBadgeText: {
+    color: '#D32F2F',
+    fontWeight: '700',
+    fontSize: 10,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
   },
   manageTemplateButton: {
     flexDirection: 'row',
