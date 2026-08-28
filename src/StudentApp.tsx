@@ -18,6 +18,13 @@ import {
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Announcement } from './components/AnnouncementModal';
+// Same cache CourseCard uses for its banner. Without it, every 5s poll in
+// loadJoinedClasses() below fetched a BRAND NEW signed banner URL (different
+// token each time), which changed the `bannerUrl` string on every refresh
+// and made CourseDetail's banner Image treat it as a new image and
+// flicker/reload every few seconds. Reusing the cached URL keeps the string
+// stable between polls, so the banner only actually reloads when it expires.
+import { getCachedBannerUrl, setCachedBannerUrl } from '../src/components/Bannerurlcache'; // adjust path if your folder layout differs
 import DrawerMenu from './components/DrawerMenu';
 import GeminiFloatingModal from './components/GeminiFloatingModal';
 import Header from './components/Header';
@@ -131,6 +138,13 @@ const apiFetch = (url: string, options: any = {}) =>
 
 const refreshClassBannerUrl = async (course: any) => {
   if (!course?.bannerStoragePath || !course?.id) return course;
+
+  // Cache hit: reuse it, skip the network call entirely. This is what stops
+  // the 5s auto-refresh in loadJoinedClasses() from handing CourseDetail a
+  // freshly-signed (but functionally identical) URL on every poll.
+  const cached = getCachedBannerUrl(course.id, course.bannerStoragePath);
+  if (cached) return { ...course, bannerUrl: cached };
+
   try {
     const response = await apiFetch(`${API_BASE_URL}/storage/signed-url`, {
       method: 'POST',
@@ -139,6 +153,7 @@ const refreshClassBannerUrl = async (course: any) => {
     });
     const data = await response.json();
     if (!response.ok) throw new Error(data?.error || 'Unable to refresh class banner.');
+    if (data?.url) setCachedBannerUrl(course.id, course.bannerStoragePath, data.url);
     return { ...course, bannerUrl: data?.url || course.bannerUrl || null };
   } catch (error) {
     

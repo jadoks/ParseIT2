@@ -1,9 +1,13 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import * as Clipboard from 'expo-clipboard';
 import Constants from "expo-constants";
 import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system/legacy";
 import { Image as ExpoImage } from 'expo-image'; // class banner photo — same caching/fade-in as CourseCard; RN's Image below is left untouched for everything else in this file
+// Same cache-first signed URL lookup CourseCard uses for its banner — skips
+// the network call on a cache hit, and lets a stable cached URL survive the
+// silentRefresh poll below instead of being replaced by a freshly-signed
+// (but functionally identical) URL every cycle, which was what caused the
+// banner to visibly reload every few seconds.
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -31,6 +35,7 @@ import {
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
 import Ionicons from "react-native-vector-icons/Ionicons";
+import { getCachedBannerUrl, setCachedBannerUrl } from '../components/Bannerurlcache'; // adjust path if your folder layout differs
 import {
   AssignmentComment,
   AssignmentCourse,
@@ -704,7 +709,65 @@ const CourseDetail = ({
   const isSmallPhone = width < 360;
   const isLargeScreen = width >= 768;
   const safeCourse = course ?? EMPTY_COURSE;
-  const [classCodeCopied, setClassCodeCopied] = useState(false);
+  // ── Banner (same cache-first pattern as CourseCard) ──────────────────
+  // Seed straight from cache so the very first frame already has the right
+  // image with no blank/fallback flash.
+  const bannerStoragePath = (safeCourse as any).bannerStoragePath || null;
+  const initialCachedBannerUrl = bannerStoragePath
+    ? getCachedBannerUrl(safeCourse.id, bannerStoragePath)
+    : null;
+  const [signedBannerUrl, setSignedBannerUrl] = useState<string | null>(initialCachedBannerUrl);
+  const [bannerLoadFailed, setBannerLoadFailed] = useState(false);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const refreshSignedBannerUrl = async () => {
+      if (!bannerStoragePath) {
+        setSignedBannerUrl(null);
+        setBannerLoadFailed(false);
+        return;
+      }
+
+      // Cache hit: reuse it, skip the network call entirely. This is what
+      // keeps the banner stable across the 5s silentRefresh poll instead of
+      // fetching (and rendering) a brand new signed URL every cycle.
+      const cached = getCachedBannerUrl(safeCourse.id, bannerStoragePath);
+      if (cached) {
+        if (isMounted) {
+          setSignedBannerUrl(cached);
+          setBannerLoadFailed(false);
+        }
+        return;
+      }
+
+      // Cache miss (first time this session, or the cached entry expired):
+      // fetch a fresh signed URL and store it for next time.
+      try {
+        const response = await apiFetch(`${API_BASE_URL}/storage/signed-url`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ storagePath: bannerStoragePath, classId: safeCourse.id }),
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data?.error || 'Unable to refresh class banner.');
+        if (isMounted && data?.url) {
+          setCachedBannerUrl(safeCourse.id, bannerStoragePath, data.url);
+          setSignedBannerUrl(data.url);
+          setBannerLoadFailed(false);
+        }
+      } catch {
+        if (isMounted) setBannerLoadFailed(true);
+      }
+    };
+
+    refreshSignedBannerUrl();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [safeCourse.id, bannerStoragePath]);
+
   const [activeTab, setActiveTab] = useState<"materials" | "assignments" | "modules">('modules');
   const [selectedAssignment, setSelectedAssignment] = useState<AssignmentItem | null>(null);
   const [selectedMaterial, setSelectedMaterial] = useState<
@@ -1854,20 +1917,13 @@ const fetchModules = useCallback(async (silent = false) => {
   const courseSemester = safeCourse.semester || "";
   const courseSchoolYear = safeCourse.schoolYear || "";
   const courseCode = safeCourse.code || (safeCourse as any).courseCode || "";
-  const classCode = (safeCourse as any).classCode || (safeCourse as any).joinCode || courseCode || "No Code";
-  const courseBannerUri = (safeCourse as any).bannerUrl || (safeCourse as any).bannerUri || null;
+  const courseBannerUri =
+    !bannerLoadFailed
+      ? signedBannerUrl || (safeCourse as any).bannerUrl || (safeCourse as any).bannerUri || null
+      : null;
   const courseSchedule: ClassScheduleEntry[] = Array.isArray((safeCourse as any).schedule)
     ? (safeCourse as any).schedule
     : [];
-
-  const handleCopyClassCode = async () => {
-    if (!classCode || classCode === "No Code") return;
-    try {
-      await Clipboard.setStringAsync(classCode);
-      setClassCodeCopied(true);
-      setTimeout(() => setClassCodeCopied(false), 1500);
-    } catch {}
-  };
 
   const pad = (n: number) => String(n).padStart(2, "0");
 
@@ -1934,6 +1990,7 @@ const fetchModules = useCallback(async (silent = false) => {
               style={StyleSheet.absoluteFillObject}
               contentFit="cover"
               transition={200}
+              onError={() => setBannerLoadFailed(true)}
             />
           ) : (
             <View style={[StyleSheet.absoluteFillObject, styles.bannerFallback]} />
@@ -1987,36 +2044,7 @@ const fetchModules = useCallback(async (silent = false) => {
               </View>
             )}
           </View>
-
-          <View style={styles.classCodeInline}>
-            <Ionicons name="key-outline" size={14} color="#D32F2F" />
-            <Text style={styles.classCodeInlineValue} numberOfLines={1}>{classCode}</Text>
-            <TouchableOpacity
-              onPress={handleCopyClassCode}
-              style={styles.copyCodeInlineButton}
-              activeOpacity={0.7}
-            >
-              <Ionicons
-                name={classCodeCopied ? "checkmark-outline" : "copy-outline"}
-                size={14}
-                color="#D32F2F"
-              />
-              <Text style={styles.copyCodeInlineText}>{classCodeCopied ? "Copied" : "Copy"}</Text>
-            </TouchableOpacity>
-          </View>
         </View>
-
-        {!!safeCourse.description && (
-          <Text
-            style={[
-              styles.description,
-              { fontSize: isSmallPhone ? 12 : 13, paddingHorizontal: isLargeScreen ? 60 : 16 },
-            ]}
-            numberOfLines={isLargeScreen ? 2 : 3}
-          >
-            {safeCourse.description}
-          </Text>
-        )}
 
         {courseSchedule.length > 0 && (
           <View style={[styles.scheduleStripWrap, { paddingHorizontal: isLargeScreen ? 60 : 16 }]}>
@@ -3394,32 +3422,6 @@ const styles = StyleSheet.create({
     paddingVertical: 7,
   },
   metaChipText: { color: "#3C4043", fontSize: 12, fontWeight: "700" },
-  classCodeInline: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    backgroundColor: "#FDEAEA",
-    borderRadius: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 7,
-  },
-  classCodeInlineValue: {
-    color: "#D32F2F",
-    fontSize: 13,
-    fontWeight: "900",
-    letterSpacing: 1,
-    fontFamily: Platform.select({ ios: "Courier", android: "monospace", default: "monospace" }),
-  },
-  copyCodeInlineButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 3,
-    marginLeft: 4,
-    paddingLeft: 8,
-    borderLeftWidth: 1,
-    borderLeftColor: "rgba(211,47,47,0.25)",
-  },
-  copyCodeInlineText: { color: "#D32F2F", fontSize: 12, fontWeight: "800" },
   scheduleStripWrap: { paddingBottom: 14 },
   scheduleStripCard: {
     flexDirection: "row",
