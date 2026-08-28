@@ -3892,18 +3892,25 @@ useEffect(() => {
             )}
           </View>
           <View style={[styles.classCodeBox, styles.classCodeStandalone]}>
-            <Ionicons name="copy-outline" size={14} color="#D32F2F" />
+            <View style={styles.classCodeIconBadge}>
+              <Ionicons name="key-outline" size={15} color="#D32F2F" />
+            </View>
             <View style={styles.classCodeTextWrap}>
               <Text style={styles.classCodeLabel}>CLASS CODE</Text>
               <Text style={styles.classCodeValue} numberOfLines={1}>
                 {classCode}
               </Text>
             </View>
-            <TouchableOpacity style={styles.copyCodeButton} onPress={handleCopyClassCode}>
+            <View style={styles.classCodeDivider} />
+            <TouchableOpacity
+              style={styles.copyCodeButton}
+              onPress={handleCopyClassCode}
+              activeOpacity={0.85}
+            >
               <Ionicons
                 name={classCodeCopied ? 'checkmark-outline' : 'copy-outline'}
-                size={15}
-                color="#D32F2F"
+                size={14}
+                color="#FFFFFF"
               />
               <Text style={styles.copyCodeText}>{classCodeCopied ? 'Copied' : 'Copy'}</Text>
             </TouchableOpacity>
@@ -5680,36 +5687,61 @@ const styles = StyleSheet.create({
   classCodeBox: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
     backgroundColor: '#FFFFFF',
     borderRadius: 14,
-    paddingHorizontal: 10,
-    paddingVertical: 9,
-    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 10,
     minWidth: 132,
     flexGrow: 1,
     flexBasis: '100%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 3,
   },
   classCodeStandalone: {
     flexGrow: 0,
     flexBasis: 'auto',
     alignSelf: 'flex-start',
     minWidth: 0,
-    marginTop: 12,
+    marginTop: 14,
+  },
+  classCodeIconBadge: {
+    width: 30,
+    height: 30,
+    borderRadius: 10,
+    backgroundColor: '#FDEAEA',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   classCodeTextWrap: { flex: 1 },
-  classCodeLabel: { color: '#8A8A8A', fontSize: 10, fontWeight: '800', letterSpacing: 0.6 },
-  classCodeValue: { color: '#202124', fontSize: 13, fontWeight: '900', marginTop: 2 },
+  classCodeLabel: { color: '#9AA0A6', fontSize: 10, fontWeight: '800', letterSpacing: 0.8 },
+  classCodeValue: {
+    color: '#202124',
+    fontSize: 15,
+    fontWeight: '900',
+    marginTop: 2,
+    letterSpacing: 1.2,
+    fontFamily: Platform.select({ ios: 'Courier', android: 'monospace', default: 'monospace' }),
+  },
+  classCodeDivider: {
+    width: 1,
+    alignSelf: 'stretch',
+    backgroundColor: '#EEEEEE',
+    marginVertical: 2,
+  },
   copyCodeButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
-    backgroundColor: '#FFF4F4',
-    borderRadius: 12,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
+    gap: 6,
+    backgroundColor: '#D32F2F',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
   },
-  copyCodeText: { color: '#D32F2F', fontWeight: '900', fontSize: 12 },
+  copyCodeText: { color: '#FFFFFF', fontWeight: '800', fontSize: 12 },
   exportGradesButtonInline: {
     flexDirection: 'row',
     alignItems: 'center',
