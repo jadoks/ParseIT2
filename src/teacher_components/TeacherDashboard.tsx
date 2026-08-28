@@ -29,6 +29,19 @@ import TeacherCourseCard from './TeacherCourseCard';
 // ✅ Reuses the same Toast component used in the Admin ManageStudent screen.
 import Toast from '../Final_Admin_Components/Toast';
 
+// One recurring weekly time block for a class (e.g. "Mon/Wed 08:00-09:30, Room 301").
+// A class can have several of these (e.g. a lecture block + a separate lab block).
+export type ClassScheduleEntry = {
+  days: string[]; // subset of DAY_OPTIONS, e.g. ['Mon', 'Wed']
+  startTime: string; // 24-hour 'HH:MM'
+  endTime: string; // 24-hour 'HH:MM'
+  room?: string | null;
+};
+
+// Same shape as ClassScheduleEntry, plus a local `id` used only for
+// React keys / editing state in the create & edit forms.
+type ClassScheduleFormBlock = ClassScheduleEntry & { id: string };
+
 export type TeacherCourseData = {
   id: string;
   name: string;
@@ -47,6 +60,7 @@ export type TeacherCourseData = {
   description?: string | null;
   position?: number;
   units?: number;
+  schedule?: ClassScheduleEntry[];
 };
 
 export interface DashboardAssignment {
@@ -149,6 +163,37 @@ function DashboardTextArea({
   );
 }
 
+const DAY_OPTIONS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+const TIME_24H_REGEX = /^([01]\d|2[0-3]):([0-5]\d)$/;
+
+const createEmptyScheduleBlock = (): ClassScheduleFormBlock => ({
+  id: `sched-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+  days: [],
+  startTime: '',
+  endTime: '',
+  room: '',
+});
+
+// Returns an error message for the first invalid block, or null if all blocks are valid.
+const validateScheduleBlocks = (blocks: ClassScheduleFormBlock[]): string | null => {
+  for (const block of blocks) {
+    if (block.days.length === 0) return 'Select at least one day for each schedule block.';
+    if (!TIME_24H_REGEX.test(block.startTime.trim())) return 'Enter a valid start time (e.g., 08:00) for each schedule block.';
+    if (!TIME_24H_REGEX.test(block.endTime.trim())) return 'Enter a valid end time (e.g., 09:30) for each schedule block.';
+    if (block.startTime.trim() >= block.endTime.trim()) return 'End time must be after start time for each schedule block.';
+  }
+  return null;
+};
+
+// Strips the local `id` and trims text fields before sending to the backend / storing.
+const serializeScheduleBlocks = (blocks: ClassScheduleFormBlock[]): ClassScheduleEntry[] =>
+  blocks.map(({ days, startTime, endTime, room }) => ({
+    days,
+    startTime: startTime.trim(),
+    endTime: endTime.trim(),
+    room: room && room.trim() ? room.trim() : null,
+  }));
+
 const YEAR_OPTIONS: YearOption[] = [
   { id: '1st', label: '1st Year' }, { id: '2nd', label: '2nd Year' },
   { id: '3rd', label: '3rd Year' }, { id: '4th', label: '4th Year' },
@@ -213,6 +258,7 @@ const mapBackendClass = (item: any, fallbackInstructor: string): TeacherCourseDa
   bannerMimeType: item.bannerMimeType || null, year: item.year || '', yearSection: item.yearSection || item.section || '',
   semester: item.semester || '', schoolYear: item.schoolYear || null, description: item.description || null,
   position: item.position, units: typeof item.units === 'number' ? item.units : undefined,
+  schedule: Array.isArray(item.schedule) ? item.schedule : [],
 });
 
 const Dashboard2 = ({
@@ -261,6 +307,7 @@ const Dashboard2 = ({
   const [courseCodeInput, setCourseCodeInput] = useState('');
   const [courseNameInput, setCourseNameInput] = useState('');
   const [courseUnitsInput, setCourseUnitsInput] = useState('');
+  const [scheduleBlocks, setScheduleBlocks] = useState<ClassScheduleFormBlock[]>([createEmptyScheduleBlock()]);
   const [editSelectedYear, setEditSelectedYear] = useState<string | null>(null);
   const [editSelectedSection, setEditSelectedSection] = useState<string | null>(null);
   const [editSelectedSemester, setEditSelectedSemester] = useState<string | null>(null);
@@ -272,6 +319,7 @@ const Dashboard2 = ({
   const [editCourseCodeInput, setEditCourseCodeInput] = useState('');
   const [editCourseNameInput, setEditCourseNameInput] = useState('');
   const [editCourseUnitsInput, setEditCourseUnitsInput] = useState('');
+  const [editScheduleBlocks, setEditScheduleBlocks] = useState<ClassScheduleFormBlock[]>([createEmptyScheduleBlock()]);
 
   const isMobile = width < 768;
   const isLargeScreen = width >= 1200;
@@ -369,12 +417,14 @@ const refreshClassesAfterStorageWrite = async () => {
     setIsCreatingClass(false); setSelectedYear(null); setSelectedSemester(null); setSelectedSection(null);
     setClassBanner(''); setClassBannerFileName(null); setClassBannerMimeType(null); setDescription('');
     setStartYear('2025'); setSemesterDropdownVisible(false); setCourseCodeInput(''); setCourseNameInput(''); setCourseUnitsInput('');
+    setScheduleBlocks([createEmptyScheduleBlock()]);
   };
 
   const resetEditForm = () => {
     setEditSelectedSemester(null); setEditSelectedSection(null); setEditClassBanner(''); setEditClassBannerFileName(null);
     setEditClassBannerMimeType(null); setEditDescription(''); setEditStartYear('2025'); setEditSemesterDropdownVisible(false);
     setEditingCourse(null); setEditCourseCodeInput(''); setEditCourseNameInput(''); setEditCourseUnitsInput('');
+    setEditScheduleBlocks([createEmptyScheduleBlock()]);
   };
 
   const handlePickBanner = async () => {
@@ -419,6 +469,18 @@ const refreshClassesAfterStorageWrite = async () => {
     setEditSelectedSection(sectionId);
   };
 
+  // ── Class schedule block editors (Create modal) ──────────────────────
+  const addScheduleBlock = () => setScheduleBlocks((prev) => [...prev, createEmptyScheduleBlock()]);
+  const removeScheduleBlock = (blockId: string) => setScheduleBlocks((prev) => (prev.length > 1 ? prev.filter((b) => b.id !== blockId) : prev));
+  const toggleScheduleDay = (blockId: string, day: string) => setScheduleBlocks((prev) => prev.map((b) => (b.id === blockId ? { ...b, days: b.days.includes(day) ? b.days.filter((d) => d !== day) : [...b.days, day] } : b)));
+  const updateScheduleField = (blockId: string, field: 'startTime' | 'endTime' | 'room', value: string) => setScheduleBlocks((prev) => prev.map((b) => (b.id === blockId ? { ...b, [field]: value } : b)));
+
+  // ── Class schedule block editors (Edit modal) ─────────────────────────
+  const addEditScheduleBlock = () => setEditScheduleBlocks((prev) => [...prev, createEmptyScheduleBlock()]);
+  const removeEditScheduleBlock = (blockId: string) => setEditScheduleBlocks((prev) => (prev.length > 1 ? prev.filter((b) => b.id !== blockId) : prev));
+  const toggleEditScheduleDay = (blockId: string, day: string) => setEditScheduleBlocks((prev) => prev.map((b) => (b.id === blockId ? { ...b, days: b.days.includes(day) ? b.days.filter((d) => d !== day) : [...b.days, day] } : b)));
+  const updateEditScheduleField = (blockId: string, field: 'startTime' | 'endTime' | 'room', value: string) => setEditScheduleBlocks((prev) => prev.map((b) => (b.id === blockId ? { ...b, [field]: value } : b)));
+
   const handleCreateClass = async () => {
     if (isCreatingClass) return;
     const activeYear = selectedYear; const activeSemester = selectedSemester;
@@ -429,11 +491,15 @@ const refreshClassesAfterStorageWrite = async () => {
     if (!courseNameInput.trim()) { showToast('Please enter a course name.', 'error'); return; }
     if (!startYear.trim() || !endYear) { showToast('Please enter a valid start year.', 'error'); return; }
     if (!classBanner) { showToast('Please upload a class banner.', 'error'); return; }
+    const scheduleError = validateScheduleBlocks(scheduleBlocks);
+    if (scheduleError) { showToast(scheduleError, 'error'); return; }
 
     const yearLabel = YEAR_OPTIONS.find((year) => year.id === activeYear)?.label || '';
     const sectionLabel = SECTION_OPTIONS[activeYear]?.find((section: SectionOption) => section.id === selectedSection)?.label || '';
     const courseCode = courseCodeInput.trim(); const courseLabel = courseNameInput.trim(); const units = parseFloat(courseUnitsInput) || 0;
     setIsCreatingClass(true);
+
+    const schedule = serializeScheduleBlocks(scheduleBlocks);
 
     try {
       let bannerBase64: string | null = null;
@@ -447,12 +513,15 @@ const refreshClassesAfterStorageWrite = async () => {
           bannerBase64, bannerFileName: classBanner ? classBannerFileName || 'teacher-banner.jpg' : null,
           bannerMimeType: classBanner ? classBannerMimeType || 'image/jpeg' : null, instructorName: teacherFullName,
           instructorEmail: teacherEmail || null, instructorIdentifier: teacherId || null, createdByUid: teacherUid,
-          createdByRole: 'teacher', createdByName: teacherFullName, year: yearLabel, units,
+          createdByRole: 'teacher', createdByName: teacherFullName, year: yearLabel, units, schedule,
         }),
       });
 
       const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'Failed to create class');
+      if (!response.ok) {
+        // 409 = duplicate class (same name + code + section + semester + school year)
+        throw new Error(data.error || 'Failed to create class');
+      }
 
       const createdCourse: TeacherCourseData = {
         id: data?.data?.id || Date.now().toString(), name: courseLabel, courseCode, classCode: data?.data?.classCode || '',
@@ -460,7 +529,7 @@ const refreshClassesAfterStorageWrite = async () => {
         bannerStoragePath: data?.data?.bannerStoragePath || null, bannerFileName: data?.data?.bannerFileName || null,
         bannerMimeType: data?.data?.bannerMimeType || null, year: yearLabel, yearSection: sectionLabel,
         semester: selectedSemesterLabel, schoolYear: `${startYear.trim()}-${endYear}`,
-        description: description.trim() ? description.trim() : null, units,
+        description: description.trim() ? description.trim() : null, units, schedule: data?.data?.schedule || schedule,
       };
 
       setLocalCourses((prev) => normalizeCoursePositions([createdCourse, ...prev.filter((item) => item.id !== createdCourse.id)]));
@@ -468,9 +537,9 @@ const refreshClassesAfterStorageWrite = async () => {
       await refreshClassesAfterStorageWrite();
       resetCreateForm(); setCreateModalVisible(false);
       showToast(`Class created successfully. Class Code: ${data?.data?.classCode || ''}`, 'success');
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error creating class:', error);
-      showToast('Failed to create class.', 'error');
+      showToast(error?.message || 'Failed to create class.', 'error');
     } finally { setIsCreatingClass(false); }
   };
 
@@ -485,6 +554,11 @@ const refreshClassesAfterStorageWrite = async () => {
     setEditCourseCodeInput(menuCourse.courseCode || ''); setEditCourseNameInput(menuCourse.name || ''); setEditCourseUnitsInput(menuCourse.units?.toString() || '');
     setEditClassBanner(menuCourse.bannerUri || ''); setEditClassBannerFileName(menuCourse.bannerFileName || null); setEditClassBannerMimeType(menuCourse.bannerMimeType || null);
     setEditDescription(menuCourse.description || ''); setEditStartYear(schoolYearParts[0] || '2025');
+    setEditScheduleBlocks(
+      menuCourse.schedule && menuCourse.schedule.length > 0
+        ? menuCourse.schedule.map((entry) => ({ ...entry, room: entry.room || '', id: `sched-${Math.random().toString(36).slice(2, 8)}` }))
+        : [createEmptyScheduleBlock()]
+    );
     closeMenu(); setEditModalVisible(true);
   };
 
@@ -498,12 +572,15 @@ const refreshClassesAfterStorageWrite = async () => {
     if (!editCourseNameInput.trim()) { showToast('Please enter a course name.', 'error'); return; }
     if (!editStartYear.trim() || !editEndYear) { showToast('Please enter a valid start year.', 'error'); return; }
     if (!editClassBanner) { showToast('Please upload a class banner.', 'error'); return; }
+    const editScheduleError = validateScheduleBlocks(editScheduleBlocks);
+    if (editScheduleError) { showToast(editScheduleError, 'error'); return; }
 
     const yearLabel = YEAR_OPTIONS.find((year) => year.id === activeEditYear)?.label || '';
     const sectionLabel = SECTION_OPTIONS[activeEditYear]?.find((section: SectionOption) => section.id === editSelectedSection)?.label || '';
     const courseCode = editCourseCodeInput.trim(); const courseLabel = editCourseNameInput.trim(); const units = parseFloat(editCourseUnitsInput) || 0;
 
     setIsSavingEdit(true);
+    const schedule = serializeScheduleBlocks(editScheduleBlocks);
 
     try {
       let bannerBase64: string | null | undefined = undefined;
@@ -520,12 +597,15 @@ const refreshClassesAfterStorageWrite = async () => {
           bannerBase64, bannerFileName: editClassBanner ? editClassBannerFileName || 'teacher-banner.jpg' : null,
           bannerMimeType: editClassBanner ? editClassBannerMimeType || 'image/jpeg' : null, instructorName: teacherFullName,
           instructorEmail: teacherEmail || null, instructorIdentifier: teacherId || null, updatedByUid: teacherUid,
-          updatedByRole: 'teacher', year: yearLabel, units,
+          updatedByRole: 'teacher', year: yearLabel, units, schedule,
         }),
       });
 
       const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'Failed to update class');
+      if (!response.ok) {
+        // 409 = duplicate class (same name + code + section + semester + school year)
+        throw new Error(data.error || 'Failed to update class');
+      }
 
       const updatedCourse: TeacherCourseData = {
         ...editingCourse, name: courseLabel, courseCode, year: yearLabel, yearSection: sectionLabel, section: sectionLabel,
@@ -535,7 +615,7 @@ const refreshClassesAfterStorageWrite = async () => {
         bannerStoragePath: data?.data?.bannerStoragePath || editingCourse.bannerStoragePath || null,
         bannerFileName: data?.data?.bannerFileName || editClassBannerFileName || editingCourse.bannerFileName || null,
         bannerMimeType: data?.data?.bannerMimeType || editClassBannerMimeType || editingCourse.bannerMimeType || null,
-        instructor: teacherFullName, units,
+        instructor: teacherFullName, units, schedule,
       };
 
       setLocalCourses((prev) => normalizeCoursePositions(prev.map((item) => (item.id === updatedCourse.id ? updatedCourse : item))));
@@ -543,9 +623,9 @@ const refreshClassesAfterStorageWrite = async () => {
       await refreshClassesAfterStorageWrite();
       resetEditForm(); setEditModalVisible(false);
       showToast('Class updated successfully.', 'success');
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error updating class:', error);
-      showToast('Failed to update class.', 'error');
+      showToast(error?.message || 'Failed to update class.', 'error');
     } finally { 
       setIsSavingEdit(false);
     }
@@ -680,6 +760,53 @@ const refreshClassesAfterStorageWrite = async () => {
                     placeholder="e.g., INTRODUCTION TO COMPUTING"
                   />
                   
+                </View>
+              )}
+              {selectedYear && selectedSemester && (
+                <View style={styles.modalSection}>
+                  <View style={styles.modalSectionHeaderRow}>
+                    <Ionicons name="time-outline" size={18} color="#D32F2F" />
+                    <Text style={styles.modalSectionTitle}>Class Schedule</Text>
+                  </View>
+                  {scheduleBlocks.map((block, index) => (
+                    <View key={block.id} style={styles.scheduleBlockCard}>
+                      <View style={styles.scheduleBlockHeaderRow}>
+                        <Text style={styles.scheduleBlockTitle}>Schedule {index + 1}</Text>
+                        {scheduleBlocks.length > 1 && (
+                          <TouchableOpacity style={styles.scheduleRemoveBtn} onPress={() => removeScheduleBlock(block.id)}>
+                            <MaterialCommunityIcons name="trash-can-outline" size={18} color="#D32F2F" />
+                          </TouchableOpacity>
+                        )}
+                      </View>
+                      <Text style={styles.inputLabel}>Days</Text>
+                      <View style={styles.dayChipRow}>
+                        {DAY_OPTIONS.map((day) => {
+                          const isActive = block.days.includes(day);
+                          return (
+                            <TouchableOpacity key={day} style={[styles.dayChip, isActive && styles.dayChipActive]} onPress={() => toggleScheduleDay(block.id, day)}>
+                              <Text style={[styles.dayChipText, isActive && styles.dayChipTextActive]}>{day}</Text>
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </View>
+                      <View style={styles.scheduleTimeRow}>
+                        <View style={styles.scheduleTimeCol}>
+                          <Text style={styles.inputLabel}>Start Time</Text>
+                          <DashboardTextField value={block.startTime} onChangeText={(text) => updateScheduleField(block.id, 'startTime', text)} placeholder="e.g., 08:00" maxLength={5} />
+                        </View>
+                        <View style={styles.scheduleTimeCol}>
+                          <Text style={styles.inputLabel}>End Time</Text>
+                          <DashboardTextField value={block.endTime} onChangeText={(text) => updateScheduleField(block.id, 'endTime', text)} placeholder="e.g., 09:30" maxLength={5} />
+                        </View>
+                      </View>
+                      <Text style={styles.inputLabel}>Room (Optional)</Text>
+                      <DashboardTextField value={block.room || ''} onChangeText={(text) => updateScheduleField(block.id, 'room', text)} placeholder="e.g., Room 301" />
+                    </View>
+                  ))}
+                  <TouchableOpacity style={styles.addScheduleBtn} onPress={addScheduleBlock}>
+                    <Ionicons name="add-circle-outline" size={18} color="#D32F2F" />
+                    <Text style={styles.addScheduleBtnText}>Add another schedule</Text>
+                  </TouchableOpacity>
                 </View>
               )}
               <View style={styles.yearRow}>
@@ -831,6 +958,53 @@ const refreshClassesAfterStorageWrite = async () => {
                     placeholder="e.g., 3.0"
                     keyboardType="numeric"
                   />
+                </View>
+              )}
+              {editSelectedYear && editSelectedSemester && (
+                <View style={styles.modalSection}>
+                  <View style={styles.modalSectionHeaderRow}>
+                    <Ionicons name="time-outline" size={18} color="#D32F2F" />
+                    <Text style={styles.modalSectionTitle}>Class Schedule</Text>
+                  </View>
+                  {editScheduleBlocks.map((block, index) => (
+                    <View key={block.id} style={styles.scheduleBlockCard}>
+                      <View style={styles.scheduleBlockHeaderRow}>
+                        <Text style={styles.scheduleBlockTitle}>Schedule {index + 1}</Text>
+                        {editScheduleBlocks.length > 1 && (
+                          <TouchableOpacity style={styles.scheduleRemoveBtn} onPress={() => removeEditScheduleBlock(block.id)}>
+                            <MaterialCommunityIcons name="trash-can-outline" size={18} color="#D32F2F" />
+                          </TouchableOpacity>
+                        )}
+                      </View>
+                      <Text style={styles.inputLabel}>Days</Text>
+                      <View style={styles.dayChipRow}>
+                        {DAY_OPTIONS.map((day) => {
+                          const isActive = block.days.includes(day);
+                          return (
+                            <TouchableOpacity key={day} style={[styles.dayChip, isActive && styles.dayChipActive]} onPress={() => toggleEditScheduleDay(block.id, day)}>
+                              <Text style={[styles.dayChipText, isActive && styles.dayChipTextActive]}>{day}</Text>
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </View>
+                      <View style={styles.scheduleTimeRow}>
+                        <View style={styles.scheduleTimeCol}>
+                          <Text style={styles.inputLabel}>Start Time</Text>
+                          <DashboardTextField value={block.startTime} onChangeText={(text) => updateEditScheduleField(block.id, 'startTime', text)} placeholder="e.g., 08:00" maxLength={5} />
+                        </View>
+                        <View style={styles.scheduleTimeCol}>
+                          <Text style={styles.inputLabel}>End Time</Text>
+                          <DashboardTextField value={block.endTime} onChangeText={(text) => updateEditScheduleField(block.id, 'endTime', text)} placeholder="e.g., 09:30" maxLength={5} />
+                        </View>
+                      </View>
+                      <Text style={styles.inputLabel}>Room (Optional)</Text>
+                      <DashboardTextField value={block.room || ''} onChangeText={(text) => updateEditScheduleField(block.id, 'room', text)} placeholder="e.g., Room 301" />
+                    </View>
+                  ))}
+                  <TouchableOpacity style={styles.addScheduleBtn} onPress={addEditScheduleBlock}>
+                    <Ionicons name="add-circle-outline" size={18} color="#D32F2F" />
+                    <Text style={styles.addScheduleBtnText}>Add another schedule</Text>
+                  </TouchableOpacity>
                 </View>
               )}
               <View style={styles.yearRow}>
@@ -1153,6 +1327,19 @@ const styles = StyleSheet.create({
     color: '#111827',
     ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : {}),
   },
+  scheduleBlockCard: { borderWidth: 1, borderColor: '#E7E7E7', borderRadius: 16, padding: 14, marginBottom: 12, backgroundColor: '#FAFAFA' },
+  scheduleBlockHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
+  scheduleBlockTitle: { fontSize: 13, fontWeight: '700', color: '#202124' },
+  scheduleRemoveBtn: { padding: 4 },
+  dayChipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 14 },
+  dayChip: { minWidth: 42, paddingVertical: 8, paddingHorizontal: 10, borderRadius: 10, borderWidth: 1, borderColor: '#E5E7EB', backgroundColor: '#fff', alignItems: 'center' },
+  dayChipActive: { backgroundColor: '#D32F2F', borderColor: '#D32F2F' },
+  dayChipText: { fontSize: 12, fontWeight: '700', color: '#374151' },
+  dayChipTextActive: { color: '#FFFFFF' },
+  scheduleTimeRow: { flexDirection: 'row', gap: 12, marginBottom: 14 },
+  scheduleTimeCol: { flex: 1 },
+  addScheduleBtn: { minHeight: 44, borderWidth: 1, borderStyle: 'dashed', borderColor: '#D32F2F', borderRadius: 14, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 6, marginBottom: 4 },
+  addScheduleBtnText: { color: '#D32F2F', fontWeight: '700', fontSize: 13 },
   uploadBtn: { minHeight: 48, borderWidth: 1, borderColor: '#F4B4B4', borderRadius: 14, backgroundColor: '#FFF7F7', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 14 },
   uploadBtnText: { color: '#D32F2F', fontWeight: '700', fontSize: 14 },
   bannerPreview: { height: 150, borderRadius: 16, overflow: 'hidden', marginBottom: 14, position: 'relative' },

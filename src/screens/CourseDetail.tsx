@@ -498,6 +498,13 @@ export interface CourseAssignment {
   gameType?: string;
 }
 
+export type ClassScheduleEntry = {
+  days: string[];
+  startTime: string;
+  endTime: string;
+  room?: string;
+};
+
 export interface CourseDetailData {
   id: string;
   name: string;
@@ -509,6 +516,7 @@ export interface CourseDetailData {
   section: string;
   materials: Material[];
   assignments: CourseAssignment[];
+  schedule?: ClassScheduleEntry[];
 }
 
 interface CourseDetailProps {
@@ -1844,6 +1852,32 @@ const fetchModules = useCallback(async (silent = false) => {
   const courseSchoolYear = safeCourse.schoolYear || "";
   const courseCode = safeCourse.code || (safeCourse as any).courseCode || "";
   const classCode = (safeCourse as any).classCode || (safeCourse as any).joinCode || courseCode || "No Code";
+  const courseSchedule: ClassScheduleEntry[] = Array.isArray((safeCourse as any).schedule)
+    ? (safeCourse as any).schedule
+    : [];
+
+  const pad = (n: number) => String(n).padStart(2, "0");
+
+  const formatScheduleTime = (time: string) => {
+    if (!time) return "";
+    const [hourStr, minuteStr] = time.split(":");
+    let hour = parseInt(hourStr, 10);
+    if (Number.isNaN(hour)) return time;
+    const period = hour >= 12 ? "PM" : "AM";
+    hour = hour % 12 || 12;
+    return `${hour}:${pad(parseInt(minuteStr, 10) || 0)} ${period}`;
+  };
+
+  const DAY_ABBREVIATIONS: Record<string, string> = {
+    Monday: "Mon", Tuesday: "Tue", Wednesday: "Wed", Thursday: "Thu",
+    Friday: "Fri", Saturday: "Sat", Sunday: "Sun",
+  };
+
+  const formatScheduleBlock = (entry: ClassScheduleEntry) => {
+    const days = (entry.days || []).map((d) => DAY_ABBREVIATIONS[d] || d).join(", ");
+    const time = `${formatScheduleTime(entry.startTime)} - ${formatScheduleTime(entry.endTime)}`;
+    return { days, time, room: entry.room || "" };
+  };
   const selectedMaterialUrl = getMaterialUrl(selectedMaterial);
   const selectedMaterialPdfUrl = getMaterialPdfPreviewUrl(selectedMaterial);
   const useInlineViewer = shouldUseInlineViewer(selectedMaterial);
@@ -1960,6 +1994,24 @@ const fetchModules = useCallback(async (silent = false) => {
             </View>
           </View>
         </View>
+        {courseSchedule.length > 0 && (
+          <View style={styles.scheduleDisplayCard}>
+            <View style={styles.scheduleDisplayHeader}>
+              <Ionicons name="calendar-outline" size={16} color="#D32F2F" />
+              <Text style={styles.scheduleDisplayTitle}>Class Schedule</Text>
+            </View>
+            {courseSchedule.map((entry, index) => {
+              const { days, time, room } = formatScheduleBlock(entry);
+              return (
+                <View key={`schedule-${index}`} style={styles.scheduleDisplayRow}>
+                  <Text style={styles.scheduleDisplayDays}>{days}</Text>
+                  <Text style={styles.scheduleDisplayTime}>{time}</Text>
+                  {!!room && <Text style={styles.scheduleDisplayRoom}>{room}</Text>}
+                </View>
+              );
+            })}
+          </View>
+        )}
       </View>
 
       {/* ── Tabs ── */}
@@ -3254,6 +3306,47 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
   },
   courseName: { fontWeight: "900", color: "#FFF", marginBottom: 10, letterSpacing: 0.2 },
+  scheduleDisplayCard: {
+    backgroundColor: "rgba(255,255,255,0.12)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.18)",
+    borderRadius: 18,
+    padding: 14,
+    marginTop: 12,
+  },
+  scheduleDisplayHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginBottom: 8,
+  },
+  scheduleDisplayTitle: {
+    color: "#FFF",
+    fontSize: 13,
+    fontWeight: "800",
+  },
+  scheduleDisplayRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: 8,
+    paddingVertical: 4,
+  },
+  scheduleDisplayDays: {
+    color: "#FFF",
+    fontSize: 13,
+    fontWeight: "700",
+    minWidth: 90,
+  },
+  scheduleDisplayTime: {
+    color: "rgba(255,255,255,0.9)",
+    fontSize: 13,
+  },
+  scheduleDisplayRoom: {
+    color: "rgba(255,255,255,0.75)",
+    fontSize: 12,
+    fontStyle: "italic",
+  },
   instructor: { color: "rgba(255,255,255,0.92)", marginBottom: 6, fontWeight: "600" },
   metaText: { color: "rgba(255,255,255,0.88)", marginBottom: 4, fontWeight: "500" },
   description: { color: "rgba(255,255,255,0.82)", lineHeight: 20, marginBottom: 14, fontWeight: "500" },

@@ -93,6 +93,13 @@ export type Submission = {
   bucketPath?: string | null;
 };
 
+export type ClassScheduleEntry = {
+  days: string[];
+  startTime: string;
+  endTime: string;
+  room?: string;
+};
+
 export type CourseDetailData = {
   id: string;
   name: string;
@@ -104,6 +111,7 @@ export type CourseDetailData = {
   year?: string;
   semester?: string;
   schoolYear?: string | null;
+  schedule?: ClassScheduleEntry[];
 };
 
 type SignedInTeacher = {
@@ -2669,6 +2677,28 @@ useEffect(() => {
   const classCode = course?.classCode || 'No Class Code';
   const courseSemester = course?.semester || '';
   const schoolYear = course?.schoolYear || '';
+  const courseSchedule: ClassScheduleEntry[] = Array.isArray(course?.schedule) ? course.schedule : [];
+
+  const DAY_ABBREVIATIONS: Record<string, string> = {
+    Monday: 'Mon', Tuesday: 'Tue', Wednesday: 'Wed', Thursday: 'Thu',
+    Friday: 'Fri', Saturday: 'Sat', Sunday: 'Sun',
+  };
+
+  const formatScheduleTime = (time: string) => {
+    if (!time) return '';
+    const [hourStr, minuteStr] = time.split(':');
+    let hour = parseInt(hourStr, 10);
+    if (Number.isNaN(hour)) return time;
+    const period = hour >= 12 ? 'PM' : 'AM';
+    hour = hour % 12 || 12;
+    return `${hour}:${(minuteStr || '00').padStart(2, '0')} ${period}`;
+  };
+
+  const formatScheduleBlock = (entry: ClassScheduleEntry) => {
+    const days = (entry.days || []).map((d) => DAY_ABBREVIATIONS[d] || d).join(', ');
+    const time = `${formatScheduleTime(entry.startTime)} - ${formatScheduleTime(entry.endTime)}`;
+    return { days, time, room: entry.room || '' };
+  };
   const calendarDays = getCalendarDays(visibleCalendarMonth);
   const renderInputError = (message?: string) =>
     !!message ? <Text style={styles.errorText}>{message}</Text> : null;
@@ -3862,6 +3892,24 @@ useEffect(() => {
               </View>
             </View>
           </View>
+          {courseSchedule.length > 0 && (
+            <View style={styles.scheduleDisplayCard}>
+              <View style={styles.scheduleDisplayHeader}>
+                <Ionicons name="calendar-outline" size={16} color="#D32F2F" />
+                <Text style={styles.scheduleDisplayTitle}>Class Schedule</Text>
+              </View>
+              {courseSchedule.map((entry, index) => {
+                const { days, time, room } = formatScheduleBlock(entry);
+                return (
+                  <View key={`schedule-${index}`} style={styles.scheduleDisplayRow}>
+                    <Text style={styles.scheduleDisplayDays}>{days}</Text>
+                    <Text style={styles.scheduleDisplayTime}>{time}</Text>
+                    {!!room && <Text style={styles.scheduleDisplayRoom}>{room}</Text>}
+                  </View>
+                );
+              })}
+            </View>
+          )}
         </View>
         {/* ── Tabs ─ */}
         <View style={styles.tabContainer}>
@@ -5550,6 +5598,47 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
   courseName: { color: '#FFF', fontWeight: '900', letterSpacing: 0.2 },
+  scheduleDisplayCard: {
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.18)',
+    borderRadius: 18,
+    padding: 14,
+    marginTop: 12,
+  },
+  scheduleDisplayHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 8,
+  },
+  scheduleDisplayTitle: {
+    color: '#FFF',
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  scheduleDisplayRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 8,
+    paddingVertical: 4,
+  },
+  scheduleDisplayDays: {
+    color: '#FFF',
+    fontSize: 13,
+    fontWeight: '700',
+    minWidth: 90,
+  },
+  scheduleDisplayTime: {
+    color: 'rgba(255,255,255,0.9)',
+    fontSize: 13,
+  },
+  scheduleDisplayRoom: {
+    color: 'rgba(255,255,255,0.75)',
+    fontSize: 12,
+    fontStyle: 'italic',
+  },
   headerInfoCard: {
     backgroundColor: 'rgba(255,255,255,0.12)',
     borderWidth: 1,

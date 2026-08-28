@@ -5584,6 +5584,113 @@ app.post("/create-admin", async (req, res) => {
   }
 });
 
+  // ── Class schedule + duplicate-class helpers ──────────────────────────
+  const CLASS_SCHEDULE_DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+  const TIME_24H_REGEX = /^([01]\d|2[0-3]):([0-5]\d)$/;
+
+  // Normalizes + validates the `schedule` array sent from the client.
+  // Returns { schedule, error } — `error` is a user-facing string, or null.
+  function normalizeClassSchedule(rawSchedule) {
+    if (rawSchedule === undefined || rawSchedule === null) {
+      return { schedule: [], error: null };
+    }
+    if (!Array.isArray(rawSchedule)) {
+      return { schedule: null, error: "Schedule must be a list of time blocks." };
+    }
+
+    const normalized = [];
+
+    for (const block of rawSchedule) {
+      if (!block || typeof block !== "object") {
+        return { schedule: null, error: "Each schedule block must be an object." };
+      }
+
+      const days = Array.isArray(block.days)
+        ? [...new Set(block.days.map((d) => String(d || "").trim()))]
+        : [];
+
+      if (days.length === 0) {
+        return { schedule: null, error: "Select at least one day for each schedule block." };
+      }
+      if (days.some((d) => !CLASS_SCHEDULE_DAYS.includes(d))) {
+        return {
+          schedule: null,
+          error: `Days must be one of: ${CLASS_SCHEDULE_DAYS.join(", ")}.`,
+        };
+      }
+
+      const startTime = String(block.startTime || "").trim();
+      const endTime = String(block.endTime || "").trim();
+
+      if (!TIME_24H_REGEX.test(startTime) || !TIME_24H_REGEX.test(endTime)) {
+        return {
+          schedule: null,
+          error: "Start and end time must be in 24-hour HH:MM format.",
+        };
+      }
+      if (startTime >= endTime) {
+        return { schedule: null, error: "End time must be after start time." };
+      }
+
+      // Sort days into a consistent Mon→Sun order for display/comparison.
+      const sortedDays = CLASS_SCHEDULE_DAYS.filter((d) => days.includes(d));
+
+      normalized.push({
+        days: sortedDays,
+        startTime,
+        endTime,
+        room: normalizeOptionalText(block.room),
+      });
+    }
+
+    return { schedule: normalized, error: null };
+  }
+
+  function normalizeMatchText(value) {
+    return String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
+  }
+
+  // Looks for an active class belonging to the same teacher with the same
+  // name + course code + section + semester + school year (case/whitespace
+  // insensitive). `excludeClassId` lets /update-class skip the doc being edited.
+  async function findDuplicateClass({
+    assignedTeacherUid,
+    name,
+    courseCode,
+    section,
+    semester,
+    schoolYear,
+    excludeClassId,
+  }) {
+    if (!assignedTeacherUid || !semester) return null;
+
+    // All three filters are plain equality (==), so Firestore can serve this
+    // without needing a composite index.
+    const snapshot = await db
+      .collection("classes")
+      .where("assignedTeacherUid", "==", assignedTeacherUid)
+      .where("semester", "==", semester)
+      .where("schoolYear", "==", normalizeOptionalText(schoolYear))
+      .get();
+
+    const targetName = normalizeMatchText(name);
+    const targetCode = normalizeMatchText(courseCode);
+    const targetSection = normalizeMatchText(section);
+
+    const match = snapshot.docs.find((doc) => {
+      if (doc.id === excludeClassId) return false;
+      const data = doc.data();
+      if (data.status === "archived") return false;
+      return (
+        normalizeMatchText(data.name) === targetName &&
+        normalizeMatchText(data.courseCode) === targetCode &&
+        normalizeMatchText(data.section) === targetSection
+      );
+    });
+
+    return match || null;
+  }
+
   app.post("/create-class", async (req, res) => {
     try {
       const {
@@ -5604,6 +5711,7 @@ app.post("/create-admin", async (req, res) => {
         createdByName,
         year,
         units,
+        schedule,
       } = req.body;
 
       if (
@@ -5619,6 +5727,12 @@ app.post("/create-admin", async (req, res) => {
 
       if (!["teacher", "admin"].includes(createdByRole)) {
         return res.status(400).json({ error: "Invalid createdByRole." });
+      }
+
+      const { schedule: normalizedSchedule, error: scheduleError } =
+        normalizeClassSchedule(schedule);
+      if (scheduleError) {
+        return res.status(400).json({ error: scheduleError });
       }
 
       let assignedTeacher = null;
@@ -5639,6 +5753,30 @@ app.post("/create-admin", async (req, res) => {
             error: "Assigned teacher not found. Use a valid teacher ID.",
           });
         }
+      }
+
+      // 🚫 Prevent duplicate classes: same teacher + name + course code +
+      // section + semester + school year. Checked before the (expensive)
+      // banner upload / class-code generation so we fail fast.
+      const teacherUidForDuplicateCheck =
+        createdByRole === "teacher"
+          ? createdByUid
+          : normalizeOptionalText(assignedTeacher?.authUid);
+
+      const duplicateClass = await findDuplicateClass({
+        assignedTeacherUid: teacherUidForDuplicateCheck,
+        name,
+        courseCode,
+        section,
+        semester,
+        schoolYear,
+      });
+
+      if (duplicateClass) {
+        return res.status(409).json({
+          error:
+            "A class with the same name, course code, section, semester, and school year already exists.",
+        });
       }
 
       const classCode = await generateUniqueClassCode();
@@ -5683,6 +5821,7 @@ app.post("/create-admin", async (req, res) => {
         description: normalizeOptionalText(description),
         year: normalizeOptionalText(year),
         units: typeof units === "number" ? units : Number(units) || 0,
+        schedule: normalizedSchedule,
 
         bannerUrl: null,
         bannerStoragePath: uploadedBanner.bannerStoragePath,
@@ -5749,6 +5888,7 @@ app.post("/create-admin", async (req, res) => {
           bannerFileName: uploadedBanner.bannerFileName,
           bannerMimeType: uploadedBanner.bannerMimeType,
           conversationId,
+          schedule: normalizedSchedule,
         },
       });
     } catch (error) {
@@ -5780,6 +5920,7 @@ app.post("/create-admin", async (req, res) => {
         updatedByRole,
         year,
         units,
+        schedule,
       } = req.body;
 
       const classRef = db.collection("classes").doc(id);
@@ -5790,6 +5931,41 @@ app.post("/create-admin", async (req, res) => {
       }
 
       const existingClass = classSnap.data();
+
+      const { schedule: normalizedSchedule, error: scheduleError } =
+        normalizeClassSchedule(schedule);
+      if (scheduleError) {
+        return res.status(400).json({ error: scheduleError });
+      }
+
+      // 🚫 Same duplicate check as /create-class, but excluding this doc
+      // itself. Only re-check when a field that affects the dedup key is
+      // actually being changed.
+      if (
+        name !== undefined ||
+        courseCode !== undefined ||
+        section !== undefined ||
+        semester !== undefined ||
+        schoolYear !== undefined
+      ) {
+        const duplicateClass = await findDuplicateClass({
+          assignedTeacherUid: existingClass.assignedTeacherUid,
+          name: name ?? existingClass.name,
+          courseCode: courseCode ?? existingClass.courseCode,
+          section: section ?? existingClass.section,
+          semester: semester ?? existingClass.semester,
+          schoolYear: schoolYear ?? existingClass.schoolYear,
+          excludeClassId: id,
+        });
+
+        if (duplicateClass) {
+          return res.status(409).json({
+            error:
+              "A class with the same name, course code, section, semester, and school year already exists.",
+          });
+        }
+      }
+
       let nextBannerFields = {};
       let nextTeacherFields = {};
 
@@ -5863,6 +6039,7 @@ app.post("/create-admin", async (req, res) => {
         ...(typeof memberCount === "number" ? { memberCount } : {}),
         ...(updatedByUid ? { updatedByUid } : {}),
         ...(updatedByRole ? { updatedByRole } : {}),
+        ...(schedule !== undefined ? { schedule: normalizedSchedule } : {}),
         ...nextTeacherFields,
         ...nextBannerFields,
         updatedAt: FieldValue.serverTimestamp(),
@@ -8045,6 +8222,7 @@ app.get("/student-joined-classes/:studentId", async (req, res) => {
           bannerFileName: classData.bannerFileName || null,
           bannerMimeType: classData.bannerMimeType || null,
           memberCount: classData.memberCount || 0,
+          schedule: Array.isArray(classData.schedule) ? classData.schedule : [],
           // ✅ Deliberately empty — filled by fetchModuleLessonsOnly() in
           // the frontend's per-course enrichment pass, same as before.
           materials: [],
@@ -17036,4 +17214,3 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
     console.log(`Server running on http://localhost:${PORT}`);
     console.log(`Health check: http://localhost:${PORT}/health`);
   });
-  

@@ -372,7 +372,7 @@ const mapCoursesToAssignmentCourses = (courses: CourseDetailData[]): AssignmentC
   }));
 
 type CourseWithBannerFields = CourseDetailData & { units?: number; bannerUrl?: string | null; bannerStoragePath?: string | null; bannerFileName?: string | null; bannerMimeType?: string | null };
-type AssignmentCourseWithBannerFields = AssignmentCourse & { bannerUrl?: string | null; bannerStoragePath?: string | null; bannerFileName?: string | null; bannerMimeType?: string | null };
+type AssignmentCourseWithBannerFields = AssignmentCourse & { bannerUrl?: string | null; bannerStoragePath?: string | null; bannerFileName?: string | null; bannerMimeType?: string | null; schedule?: any[] };
 
 // In StudentApp.tsx - Replace the existing fetchCombinedMaterials function
 const fetchCombinedMaterials = async (classId: string) => {
@@ -462,6 +462,7 @@ const mapJoinedClassShell = (item: any): CourseWithBannerFields => ({
   bannerFileName: item.bannerFileName || null,
   bannerMimeType: item.bannerMimeType || null,
   units: typeof item.units === 'number' ? item.units : Number(item.units) || 0,
+  schedule: Array.isArray(item.schedule) ? item.schedule : [],
   // Filled in by the enrichment pass in loadJoinedClasses().
   materials: [],
   assignments: Array.isArray(item.assignments)
@@ -488,6 +489,7 @@ const mapJoinedClassToCourseDetail = async (item: any): Promise<CourseWithBanner
     bannerFileName: item.bannerFileName || null,
     bannerMimeType: item.bannerMimeType || null,
     units: typeof item.units === 'number' ? item.units : Number(item.units) || 0,
+    schedule: Array.isArray(item.schedule) ? item.schedule : [],
     // ✅ USE ONLY MODULE LESSONS HERE
     materials: moduleLessons,
     assignments: Array.isArray(item.assignments) ? item.assignments.map((a: any) => ({ ...a, assignmentType: a.assignmentType || 'regular', gameType: a.gameType || null })) : [],
@@ -508,6 +510,7 @@ const mapCourseDetailToAssignmentCourse = (course: CourseDetailData): Assignment
   bannerStoragePath: (course as any).bannerStoragePath || null,
   bannerFileName: (course as any).bannerFileName || null,
   bannerMimeType: (course as any).bannerMimeType || null,
+  schedule: Array.isArray((course as any).schedule) ? (course as any).schedule : [],
   // ✅ CRITICAL: Ensure materials passed here are the filtered Module Lessons
   materials: (course.materials || []).map((material) => ({
     id: material.id,
