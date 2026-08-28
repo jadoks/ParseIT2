@@ -7107,7 +7107,26 @@ app.post("/create-admin", async (req, res) => {
       const results = await Promise.all(queries);
       const map = new Map();
       results.forEach((snap) => snap.docs.forEach((doc) => map.set(doc.id, doc)));
-      snapshot = { docs: Array.from(map.values()) };
+
+      // 🔥 Each `.where(...)` query above has no `.orderBy()`, and merging
+      // them into a Map relies on whatever order Firestore/Promise.all
+      // happened to resolve in — NOT creation time. That's why the newest
+      // class would land in a different spot every time this endpoint was
+      // hit (e.g. teacher dashboard preview vs. "See All"), instead of
+      // consistently sorting newest-first like the unfiltered branch below
+      // already does via `.orderBy("createdAt", "desc")`. Sort explicitly
+      // here so both branches behave the same way.
+      const docs = Array.from(map.values()).sort((a, b) => {
+        const toMillis = (value) => {
+          if (!value) return 0;
+          if (typeof value.toMillis === "function") return value.toMillis();
+          if (typeof value._seconds === "number") return value._seconds * 1000;
+          const parsed = new Date(value).getTime();
+          return Number.isNaN(parsed) ? 0 : parsed;
+        };
+        return toMillis(b.data()?.createdAt) - toMillis(a.data()?.createdAt);
+      });
+      snapshot = { docs };
     } else {
       snapshot = await query.get();
     }
