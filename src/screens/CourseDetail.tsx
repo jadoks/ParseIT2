@@ -1,7 +1,9 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import * as Clipboard from 'expo-clipboard';
 import Constants from "expo-constants";
 import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system/legacy";
+import { Image as ExpoImage } from 'expo-image'; // class banner photo — same caching/fade-in as CourseCard; RN's Image below is left untouched for everything else in this file
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -702,6 +704,7 @@ const CourseDetail = ({
   const isSmallPhone = width < 360;
   const isLargeScreen = width >= 768;
   const safeCourse = course ?? EMPTY_COURSE;
+  const [classCodeCopied, setClassCodeCopied] = useState(false);
   const [activeTab, setActiveTab] = useState<"materials" | "assignments" | "modules">('modules');
   const [selectedAssignment, setSelectedAssignment] = useState<AssignmentItem | null>(null);
   const [selectedMaterial, setSelectedMaterial] = useState<
@@ -1852,9 +1855,19 @@ const fetchModules = useCallback(async (silent = false) => {
   const courseSchoolYear = safeCourse.schoolYear || "";
   const courseCode = safeCourse.code || (safeCourse as any).courseCode || "";
   const classCode = (safeCourse as any).classCode || (safeCourse as any).joinCode || courseCode || "No Code";
+  const courseBannerUri = (safeCourse as any).bannerUrl || (safeCourse as any).bannerUri || null;
   const courseSchedule: ClassScheduleEntry[] = Array.isArray((safeCourse as any).schedule)
     ? (safeCourse as any).schedule
     : [];
+
+  const handleCopyClassCode = async () => {
+    if (!classCode || classCode === "No Code") return;
+    try {
+      await Clipboard.setStringAsync(classCode);
+      setClassCodeCopied(true);
+      setTimeout(() => setClassCodeCopied(false), 1500);
+    } catch {}
+  };
 
   const pad = (n: number) => String(n).padStart(2, "0");
 
@@ -1912,111 +1925,125 @@ const fetchModules = useCallback(async (silent = false) => {
         <RefreshControl refreshing={isRefreshing} onRefresh={handlePullToRefresh} colors={['#D32F2F']} tintColor="#D32F2F" />
       }
     >
-      {/* ── Course Header ── */}
-      <View
-        style={[
-          styles.courseHeader,
-          {
-            paddingHorizontal: isLargeScreen ? 60 : 16,
-            paddingTop: isLargeScreen ? 20 : 16,
-            paddingBottom: isLargeScreen ? 24 : 18,
-          },
-        ]}
-      >
-        {onBack && (
-          <TouchableOpacity onPress={onBack} style={styles.backButton}>
-            <Ionicons name="arrow-back" size={24} color="#FFF" />
-          </TouchableOpacity>
-        )}
-        <Text style={[styles.courseName, { fontSize: isSmallPhone ? 20 : 24 }]}>
-          {safeCourse.name}
-        </Text>
+      {/* ── Course Header (Google Classroom–style banner) ── */}
+      <View style={styles.courseHeaderWrap}>
+        <View style={[styles.bannerBox, { height: isLargeScreen ? 224 : 168 }]}>
+          {courseBannerUri ? (
+            <ExpoImage
+              source={{ uri: courseBannerUri }}
+              style={StyleSheet.absoluteFillObject}
+              contentFit="cover"
+              transition={200}
+            />
+          ) : (
+            <View style={[StyleSheet.absoluteFillObject, styles.bannerFallback]} />
+          )}
+          <View style={styles.bannerScrim} />
+
+          {onBack && (
+            <TouchableOpacity onPress={onBack} style={styles.backButtonOnBanner}>
+              <Ionicons name="arrow-back" size={22} color="#FFF" />
+            </TouchableOpacity>
+          )}
+
+          <View style={[styles.bannerTextBlock, { paddingHorizontal: isLargeScreen ? 60 : 16 }]}>
+            <Text
+              style={[styles.courseNameOnBanner, { fontSize: isSmallPhone ? 22 : 30 }]}
+              numberOfLines={2}
+            >
+              {safeCourse.name}
+            </Text>
+            <Text style={styles.courseInstructorOnBanner} numberOfLines={1}>
+              {safeCourse.instructor || "No Instructor"}
+            </Text>
+          </View>
+        </View>
+
+        {/* Thin meta strip directly under the banner, Classroom-style */}
+        <View style={[styles.metaStrip, { paddingHorizontal: isLargeScreen ? 60 : 16 }]}>
+          <View style={styles.metaChipsRow}>
+            {!!courseYear && (
+              <View style={styles.metaChip}>
+                <Ionicons name="school-outline" size={13} color="#5F6368" />
+                <Text style={styles.metaChipText} numberOfLines={1}>{courseYear}</Text>
+              </View>
+            )}
+            {!!courseSection && (
+              <View style={styles.metaChip}>
+                <Ionicons name="people-outline" size={13} color="#5F6368" />
+                <Text style={styles.metaChipText} numberOfLines={1}>{courseSection}</Text>
+              </View>
+            )}
+            {!!courseSemester && (
+              <View style={styles.metaChip}>
+                <Ionicons name="calendar-outline" size={13} color="#5F6368" />
+                <Text style={styles.metaChipText} numberOfLines={1}>{courseSemester}</Text>
+              </View>
+            )}
+            {!!courseSchoolYear && (
+              <View style={styles.metaChip}>
+                <Ionicons name="time-outline" size={13} color="#5F6368" />
+                <Text style={styles.metaChipText} numberOfLines={1}>S.Y. {courseSchoolYear}</Text>
+              </View>
+            )}
+          </View>
+
+          <View style={styles.classCodeInline}>
+            <Ionicons name="key-outline" size={14} color="#D32F2F" />
+            <Text style={styles.classCodeInlineValue} numberOfLines={1}>{classCode}</Text>
+            <TouchableOpacity
+              onPress={handleCopyClassCode}
+              style={styles.copyCodeInlineButton}
+              activeOpacity={0.7}
+            >
+              <Ionicons
+                name={classCodeCopied ? "checkmark-outline" : "copy-outline"}
+                size={14}
+                color="#D32F2F"
+              />
+              <Text style={styles.copyCodeInlineText}>{classCodeCopied ? "Copied" : "Copy"}</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
         {!!safeCourse.description && (
           <Text
-            style={[styles.description, { fontSize: isSmallPhone ? 12 : 13 }]}
+            style={[
+              styles.description,
+              { fontSize: isSmallPhone ? 12 : 13, paddingHorizontal: isLargeScreen ? 60 : 16 },
+            ]}
             numberOfLines={isLargeScreen ? 2 : 3}
           >
             {safeCourse.description}
           </Text>
         )}
-        <View style={styles.headerInfoCard}>
-          <View style={styles.headerInfoRow}>
-            <Text style={styles.headerInfoLabel}>INSTRUCTOR</Text>
-            <Text style={styles.headerInfoValue} numberOfLines={1}>
-              {safeCourse.instructor || "No Instructor"}
-            </Text>
-          </View>
-          <View style={[styles.headerDetailsGrid, isLargeScreen && styles.headerDetailsGridDesktop]}>
-            {!!courseYear && (
-              <View style={[styles.academicInfoPill, isLargeScreen && styles.headerDetailItemDesktop]}>
-                <Ionicons name="school-outline" size={14} color="#D32F2F" />
-                <View style={styles.academicInfoTextWrap}>
-                  <Text style={styles.academicInfoLabel}>Year</Text>
-                  <Text style={styles.academicInfoValue} numberOfLines={1}>{courseYear}</Text>
-                </View>
+
+        {courseSchedule.length > 0 && (
+          <View style={[styles.scheduleStripWrap, { paddingHorizontal: isLargeScreen ? 60 : 16 }]}>
+            <View style={styles.scheduleStripCard}>
+              <Ionicons name="calendar-outline" size={15} color="#5F6368" />
+              <View style={styles.scheduleStripTextWrap}>
+                {courseSchedule.map((entry, index) => {
+                  const { days, time, room } = formatScheduleBlock(entry);
+                  return (
+                    <View key={`schedule-${index}`} style={styles.scheduleStripRow}>
+                      <Text style={styles.scheduleStripDays}>{days}</Text>
+                      <Text style={styles.scheduleStripTime}>{time}</Text>
+                      {!!room && <Text style={styles.scheduleStripRoom}>{room}</Text>}
+                    </View>
+                  );
+                })}
               </View>
-            )}
-            {!!courseSection && (
-              <View style={[styles.academicInfoPill, isLargeScreen && styles.headerDetailItemDesktop]}>
-                <Ionicons name="people-outline" size={14} color="#D32F2F" />
-                <View style={styles.academicInfoTextWrap}>
-                  <Text style={styles.academicInfoLabel}>Section</Text>
-                  <Text style={styles.academicInfoValue} numberOfLines={1}>{courseSection}</Text>
-                </View>
-              </View>
-            )}
-            {!!courseSemester && (
-              <View style={[styles.academicInfoPill, isLargeScreen && styles.headerDetailItemDesktop]}>
-                <Ionicons name="calendar-outline" size={14} color="#D32F2F" />
-                <View style={styles.academicInfoTextWrap}>
-                  <Text style={styles.academicInfoLabel}>Semester</Text>
-                  <Text style={styles.academicInfoValue} numberOfLines={1}>{courseSemester}</Text>
-                </View>
-              </View>
-            )}
-            {!!courseSchoolYear && (
-              <View style={[styles.academicInfoPill, isLargeScreen && styles.headerDetailItemDesktop]}>
-                <Ionicons name="time-outline" size={14} color="#D32F2F" />
-                <View style={styles.academicInfoTextWrap}>
-                  <Text style={styles.academicInfoLabel}>School Year</Text>
-                  <Text style={styles.academicInfoValue} numberOfLines={1}>{courseSchoolYear}</Text>
-                </View>
-              </View>
-            )}
-          </View>
-          {courseSchedule.length > 0 && (
-            <View style={styles.scheduleDisplayCard}>
-              <View style={styles.scheduleDisplayHeader}>
-                <Ionicons name="calendar-outline" size={16} color="#D32F2F" />
-                <Text style={styles.scheduleDisplayTitle}>Class Schedule</Text>
-              </View>
-              {courseSchedule.map((entry, index) => {
-                const { days, time, room } = formatScheduleBlock(entry);
-                return (
-                  <View key={`schedule-${index}`} style={styles.scheduleDisplayRow}>
-                    <Text style={styles.scheduleDisplayDays}>{days}</Text>
-                    <Text style={styles.scheduleDisplayTime}>{time}</Text>
-                    {!!room && <Text style={styles.scheduleDisplayRoom}>{room}</Text>}
-                  </View>
-                );
-              })}
             </View>
-          )}
-        </View>
-        <View style={[styles.classCodeBox, styles.classCodeStandalone]}>
-          <View style={styles.classCodeIconBadge}>
-            <Ionicons name="key-outline" size={15} color="#D32F2F" />
           </View>
-          <View style={styles.classCodeTextWrap}>
-            <Text style={styles.classCodeLabel}>
-              {(safeCourse as any).classCode ? "CLASS CODE" : "COURSE CODE"}
-            </Text>
-            <Text style={styles.classCodeValue} numberOfLines={1}>{classCode}</Text>
-          </View>
-        </View>
+        )}
+
+        {/* Divider before the Modules/Assignments tabs */}
+        <View style={[styles.headerBottomDivider, { marginHorizontal: isLargeScreen ? 60 : 16 }]} />
       </View>
 
       {/* ── Tabs ── */}
+
       <View style={styles.tabContainer}>
         <TouchableOpacity
           onPress={() => setActiveTab("modules")}
@@ -3290,6 +3317,133 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     elevation: 6,
   },
+  // ── Google Classroom–style banner header ──
+  courseHeaderWrap: {
+    backgroundColor: "#FFFFFF",
+    shadowColor: "#000",
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 4,
+  },
+  bannerBox: {
+    width: "100%",
+    overflow: "hidden",
+    backgroundColor: "#D32F2F",
+  },
+  bannerFallback: {
+    backgroundColor: "#D32F2F",
+  },
+  bannerScrim: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0,0,0,0.32)",
+  },
+  backButtonOnBanner: {
+    position: "absolute",
+    top: 16,
+    left: 16,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: "rgba(0,0,0,0.32)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  bannerTextBlock: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 16,
+  },
+  courseNameOnBanner: {
+    color: "#FFFFFF",
+    fontWeight: "900",
+    letterSpacing: 0.2,
+    textShadowColor: "rgba(0,0,0,0.35)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4,
+  },
+  courseInstructorOnBanner: {
+    color: "rgba(255,255,255,0.9)",
+    fontSize: 13,
+    fontWeight: "700",
+    marginTop: 4,
+  },
+  metaStrip: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    flexWrap: "wrap",
+    gap: 10,
+    paddingTop: 14,
+    paddingBottom: 12,
+  },
+  metaChipsRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    flexShrink: 1,
+  },
+  metaChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "#F1F3F4",
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+  },
+  metaChipText: { color: "#3C4043", fontSize: 12, fontWeight: "700" },
+  classCodeInline: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "#FDEAEA",
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+  },
+  classCodeInlineValue: {
+    color: "#D32F2F",
+    fontSize: 13,
+    fontWeight: "900",
+    letterSpacing: 1,
+    fontFamily: Platform.select({ ios: "Courier", android: "monospace", default: "monospace" }),
+  },
+  copyCodeInlineButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+    marginLeft: 4,
+    paddingLeft: 8,
+    borderLeftWidth: 1,
+    borderLeftColor: "rgba(211,47,47,0.25)",
+  },
+  copyCodeInlineText: { color: "#D32F2F", fontSize: 12, fontWeight: "800" },
+  scheduleStripWrap: { paddingBottom: 14 },
+  scheduleStripCard: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 10,
+    backgroundColor: "#F8F9FA",
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  scheduleStripTextWrap: { flex: 1, gap: 3 },
+  scheduleStripRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  scheduleStripDays: { color: "#202124", fontSize: 12, fontWeight: "800", minWidth: 80 },
+  scheduleStripTime: { color: "#5F6368", fontSize: 12, fontWeight: "600" },
+  scheduleStripRoom: { color: "#80868B", fontSize: 12, fontStyle: "italic" },
+  headerBottomDivider: {
+    height: 1,
+    backgroundColor: "#E8EAED",
+  },
   backButton: {
     width: 38,
     height: 38,
@@ -3351,7 +3505,7 @@ const styles = StyleSheet.create({
   },
   instructor: { color: "rgba(255,255,255,0.92)", marginBottom: 6, fontWeight: "600" },
   metaText: { color: "rgba(255,255,255,0.88)", marginBottom: 4, fontWeight: "500" },
-  description: { color: "rgba(255,255,255,0.82)", lineHeight: 20, marginBottom: 14, fontWeight: "500" },
+  description: { color: "#5F6368", lineHeight: 20, marginBottom: 14, fontWeight: "500" },
   headerInfoCard: {
     backgroundColor: "rgba(255,255,255,0.12)",
     borderWidth: 1,

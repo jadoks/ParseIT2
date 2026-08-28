@@ -416,7 +416,6 @@ const Dashboard2 = ({
   const [classBanner, setClassBanner] = useState('');
   const [classBannerFileName, setClassBannerFileName] = useState<string | null>(null);
   const [classBannerMimeType, setClassBannerMimeType] = useState<string | null>(null);
-  const [description, setDescription] = useState('');
   const [startYear, setStartYear] = useState('2025');
   const [courseNameInput, setCourseNameInput] = useState('');
   const [courseUnitsInput, setCourseUnitsInput] = useState('');
@@ -549,7 +548,7 @@ const refreshClassesAfterStorageWrite = async (pinFrontId?: string) => {
 
   const resetCreateForm = () => {
     setIsCreatingClass(false); setSelectedYear(null); setSelectedSemester(null); setSelectedSection(null);
-    setClassBanner(''); setClassBannerFileName(null); setClassBannerMimeType(null); setDescription('');
+    setClassBanner(''); setClassBannerFileName(null); setClassBannerMimeType(null);
     setStartYear('2025'); setSemesterDropdownVisible(false); setCourseNameInput(''); setCourseUnitsInput('');
     setScheduleBlocks([createEmptyScheduleBlock()]);
   };
@@ -642,7 +641,7 @@ const refreshClassesAfterStorageWrite = async (pinFrontId?: string) => {
         method: 'POST',
         body: JSON.stringify({
           name: courseLabel, section: sectionLabel, semester: selectedSemesterLabel,
-          schoolYear: `${startYear.trim()}-${endYear}`, description: description.trim() ? description.trim() : null,
+          schoolYear: `${startYear.trim()}-${endYear}`, description: null,
           bannerBase64, bannerFileName: classBanner ? classBannerFileName || 'teacher-banner.jpg' : null,
           bannerMimeType: classBanner ? classBannerMimeType || 'image/jpeg' : null, instructorName: teacherFullName,
           instructorEmail: teacherEmail || null, instructorIdentifier: teacherId || null, createdByUid: teacherUid,
@@ -662,7 +661,7 @@ const refreshClassesAfterStorageWrite = async (pinFrontId?: string) => {
         bannerStoragePath: data?.data?.bannerStoragePath || null, bannerFileName: data?.data?.bannerFileName || null,
         bannerMimeType: data?.data?.bannerMimeType || null, year: yearLabel, yearSection: sectionLabel,
         semester: selectedSemesterLabel, schoolYear: `${startYear.trim()}-${endYear}`,
-        description: description.trim() ? description.trim() : null, units, schedule: data?.data?.schedule || schedule,
+        description: null, units, schedule: data?.data?.schedule || schedule,
       };
 
       setLocalCourses((prev) => {
@@ -844,7 +843,7 @@ const refreshClassesAfterStorageWrite = async (pinFrontId?: string) => {
                 </View>
               </View>
               {selectedYear && (
-                <View style={[styles.modalSection, !isMobile && styles.formGridRow]}>
+                <View style={[styles.modalSection, !isMobile && styles.formGridRow, styles.semesterRowWrap]}>
                   <View style={[styles.semesterFieldWrap, !isMobile && styles.formGridCol]}>
                     <Text style={styles.inputLabel}>Semester Selection</Text>
                     <TouchableOpacity style={styles.dropdownTrigger} onPress={() => setSemesterDropdownVisible((prev) => !prev)}>
@@ -869,24 +868,18 @@ const refreshClassesAfterStorageWrite = async (pinFrontId?: string) => {
                       </>
                     )}
                   </View>
-                  {selectedSemester && (
-                    <View style={!isMobile ? styles.formGridCol : undefined}>
-                      <View style={styles.modalSectionHeaderRow}>
-                        <Ionicons name="book-outline" size={18} color="#D32F2F" />
-                        <Text style={styles.modalSectionTitle}>Course Details</Text>
-                      </View>
-                      <Text style={styles.inputLabel}>Course Name</Text>
-                      <DashboardTextArea
-                        value={courseNameInput}
-                        onChangeText={setCourseNameInput}
-                        placeholder="e.g., INTRODUCTION TO COMPUTING"
-                      />
-                    </View>
-                  )}
+                  <View style={!isMobile ? styles.formGridCol : undefined}>
+                    <Text style={styles.inputLabel}>Course Name</Text>
+                    <DashboardTextField
+                      value={courseNameInput}
+                      onChangeText={setCourseNameInput}
+                      placeholder="e.g., INTRODUCTION TO COMPUTING"
+                    />
+                  </View>
                 </View>
               )}
               {selectedYear && selectedSemester && (
-                <View style={styles.modalSection}>
+                <View style={[styles.modalSection, styles.sectionBelowDropdown]}>
                   <View style={styles.modalSectionHeaderRow}>
                     <Ionicons name="layers-outline" size={18} color="#D32F2F" />
                     <Text style={styles.modalSectionTitle}>Select Section</Text>
@@ -906,7 +899,7 @@ const refreshClassesAfterStorageWrite = async (pinFrontId?: string) => {
                 </View>
               )}
               {selectedYear && selectedSemester && (
-                <View style={styles.modalSection}>
+                <View style={[styles.modalSection, styles.sectionBelowDropdown]}>
                   <View style={styles.modalSectionHeaderRow}>
                     <Ionicons name="time-outline" size={18} color="#D32F2F" />
                     <Text style={styles.modalSectionTitle}>Class Schedule</Text>
@@ -968,12 +961,6 @@ const refreshClassesAfterStorageWrite = async (pinFrontId?: string) => {
                   <View style={styles.yearInputWrap}><Text style={styles.autoYearText}>{endYear || 'Auto'}</Text></View>
                 </View>
               </View>
-              <Text style={styles.inputLabel}>Description (Optional)</Text>
-              <DashboardTextArea
-                value={description}
-                onChangeText={setDescription}
-                placeholder="Enter class description"
-              />
               <Text style={styles.inputLabel}>Class Banner / Background Photo</Text>
               <TouchableOpacity style={[styles.uploadBtn, isCreatingClass && styles.disabledBtn]} onPress={handlePickBanner} disabled={isCreatingClass}>
                 <MaterialCommunityIcons name="image-plus" size={20} color="#D32F2F" />
@@ -1037,7 +1024,7 @@ const refreshClassesAfterStorageWrite = async (pinFrontId?: string) => {
                 </View>
               </View>
               {editSelectedYear && (
-                <View style={[styles.modalSection, !isMobile && styles.formGridRow]}>
+                <View style={[styles.modalSection, !isMobile && styles.formGridRow, styles.semesterRowWrap]}>
                   <View style={[styles.semesterFieldWrap, !isMobile && styles.formGridCol]}>
                     <Text style={styles.inputLabel}>Semester Selection</Text>
                     <TouchableOpacity style={styles.dropdownTrigger} onPress={() => setEditSemesterDropdownVisible((prev) => !prev)}>
@@ -1062,31 +1049,18 @@ const refreshClassesAfterStorageWrite = async (pinFrontId?: string) => {
                       </>
                     )}
                   </View>
-                  {editSelectedSemester && (
-                    <View style={!isMobile ? styles.formGridCol : undefined}>
-                      <View style={styles.modalSectionHeaderRow}>
-                        <Ionicons name="book-outline" size={18} color="#D32F2F" />
-                        <Text style={styles.modalSectionTitle}>Course Details</Text>
-                      </View>
-                      <Text style={styles.inputLabel}>Units</Text>
-                      <DashboardTextField
-                        value={editCourseUnitsInput}
-                        onChangeText={setEditCourseUnitsInput}
-                        placeholder="e.g., 3.0"
-                        keyboardType="numeric"
-                      />
-                      <Text style={styles.inputLabel}>Course Name</Text>
-                      <DashboardTextArea
-                        value={editCourseNameInput}
-                        onChangeText={setEditCourseNameInput}
-                        placeholder="e.g., INTRODUCTION TO COMPUTING"
-                      />
-                    </View>
-                  )}
+                  <View style={!isMobile ? styles.formGridCol : undefined}>
+                    <Text style={styles.inputLabel}>Course Name</Text>
+                    <DashboardTextField
+                      value={editCourseNameInput}
+                      onChangeText={setEditCourseNameInput}
+                      placeholder="e.g., INTRODUCTION TO COMPUTING"
+                    />
+                  </View>
                 </View>
               )}
               {editSelectedYear && editSelectedSemester && (
-                <View style={styles.modalSection}>
+                <View style={[styles.modalSection, styles.sectionBelowDropdown]}>
                   <View style={styles.modalSectionHeaderRow}>
                     <Ionicons name="layers-outline" size={18} color="#D32F2F" />
                     <Text style={styles.modalSectionTitle}>Select Section</Text>
@@ -1106,7 +1080,7 @@ const refreshClassesAfterStorageWrite = async (pinFrontId?: string) => {
                 </View>
               )}
               {editSelectedYear && editSelectedSemester && (
-                <View style={styles.modalSection}>
+                <View style={[styles.modalSection, styles.sectionBelowDropdown]}>
                   <View style={styles.modalSectionHeaderRow}>
                     <Ionicons name="time-outline" size={18} color="#D32F2F" />
                     <Text style={styles.modalSectionTitle}>Class Schedule</Text>
@@ -1451,6 +1425,10 @@ const styles = StyleSheet.create({
   checkboxBase: { width: 18, height: 18, borderRadius: 6, borderWidth: 1.5, borderColor: '#C9CDD2', alignItems: 'center', justifyContent: 'center', marginRight: 10, backgroundColor: '#fff' },
   checkboxChecked: { backgroundColor: '#D32F2F', borderColor: '#D32F2F' },
   checkText: { flex: 1, color: '#202124', fontSize: 14, fontWeight: '500' },
+  // ✅ Ensures the Semester Selection dropdown menu (which floats absolutely)
+  // stacks above later sections like "Select Section" instead of behind them.
+  semesterRowWrap: { zIndex: 30, position: 'relative' },
+  sectionBelowDropdown: { zIndex: 1, position: 'relative' },
   semesterFieldWrap: { marginBottom: 16, zIndex: 20 },
   inputLabel: { fontSize: 13, fontWeight: '700', color: '#374151', marginBottom: 8 },
   dropdownTrigger: { minHeight: 48, borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 14, backgroundColor: '#F9FAFB', paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },

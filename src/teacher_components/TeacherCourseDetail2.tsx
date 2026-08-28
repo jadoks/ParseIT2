@@ -3856,7 +3856,7 @@ useEffect(() => {
           {courseSchedule.length > 0 && (
             <View style={[styles.scheduleStripWrap, { paddingHorizontal: isMobile ? 16 : 60 }]}>
               <View style={styles.scheduleStripCard}>
-                <Ionicons name="calendar-outline" size={15} color="#D32F2F" />
+                <Ionicons name="calendar-outline" size={15} color="#5F6368" />
                 <View style={styles.scheduleStripTextWrap}>
                   {courseSchedule.map((entry, index) => {
                     const { days, time, room } = formatScheduleBlock(entry);
