@@ -1058,8 +1058,11 @@ export default function AddClassModal({
                     <FormInput
                       icon="card-outline"
                       value={instructorIdentifier}
-                      onChangeText={setInstructorIdentifier}
+                      onChangeText={(text) =>
+                        setInstructorIdentifier(text.replace(/[^0-9]/g, ""))
+                      }
                       placeholder="Enter teacher ID"
+                      keyboardType="number-pad"
                       autoCapitalize="none"
                     />
                   </View>
@@ -1069,7 +1072,9 @@ export default function AddClassModal({
                     <FormInput
                       icon="calendar-outline"
                       value={startYear}
-                      onChangeText={setStartYear}
+                      onChangeText={(text) =>
+                        setStartYear(text.replace(/[^0-9]/g, ""))
+                      }
                       placeholder="2025"
                       keyboardType="number-pad"
                       maxLength={4}

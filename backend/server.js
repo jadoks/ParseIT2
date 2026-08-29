@@ -6015,27 +6015,35 @@ app.post("/create-admin", async (req, res) => {
         };
       }
 
-      if (instructorIdentifier || instructorEmail || instructorName) {
-        const teacherLookupValue =
-          instructorIdentifier || instructorEmail || instructorName;
+      // Only trigger a teacher re-lookup when the admin is actually changing
+      // the assignment via identifier. instructorName/instructorEmail alone
+      // (without an identifier) are treated as display-only and don't
+      // re-trigger a lookup, since the admin UI only ever sends
+      // instructorIdentifier for reassignment.
+      if (instructorIdentifier) {
+        const matchedTeacher = await findTeacherByIdentifier(
+          instructorIdentifier
+        );
 
-        const matchedTeacher = await findTeacherByIdentifier(teacherLookupValue);
-
-        if (matchedTeacher) {
-          nextTeacherFields = {
-            instructorName: `${matchedTeacher.firstName || ""} ${
-              matchedTeacher.lastName || ""
-            }`.trim(),
-            instructorEmail: normalizeOptionalText(matchedTeacher.email),
-            assignedTeacherUid: normalizeOptionalText(matchedTeacher.authUid),
-            assignedTeacherId: matchedTeacher.teacherId || matchedTeacher.id,
-          };
-        } else {
-          nextTeacherFields = {
-            ...(instructorName ? { instructorName } : {}),
-            ...(instructorEmail ? { instructorEmail } : {}),
-          };
+        if (!matchedTeacher) {
+          return res.status(400).json({
+            error: "Assigned teacher not found. Use a valid teacher ID.",
+          });
         }
+
+        nextTeacherFields = {
+          instructorName: `${matchedTeacher.firstName || ""} ${
+            matchedTeacher.lastName || ""
+          }`.trim(),
+          instructorEmail: normalizeOptionalText(matchedTeacher.email),
+          assignedTeacherUid: normalizeOptionalText(matchedTeacher.authUid),
+          assignedTeacherId: matchedTeacher.teacherId || matchedTeacher.id,
+        };
+      } else if (instructorEmail || instructorName) {
+        nextTeacherFields = {
+          ...(instructorName ? { instructorName } : {}),
+          ...(instructorEmail ? { instructorEmail } : {}),
+        };
       }
 
       await classRef.update({
