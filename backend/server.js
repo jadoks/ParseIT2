@@ -1510,7 +1510,8 @@ async function createReadSignedUrlIfExists(storagePath) {
   - Return exactly ${count} items in the "questions" array.
   Uploaded file name: ${fileName || "uploaded-file"}
   Learning content:
-  ${hasInlineData ? "(Please read and analyze the attached file directly to generate the questions.)" : limitText(extractedText, 12000)}
+  ${hasInlineData ? "(One or more files are attached directly below — please read and analyze them as part of the learning content.)" : ""}
+  ${extractedText && extractedText.trim() ? limitText(extractedText, 12000) : (hasInlineData ? "" : "(No text content available.)")}
   Return ONLY valid JSON in this exact format:
   ${formatExample}
   `;
