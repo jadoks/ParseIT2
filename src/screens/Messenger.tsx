@@ -6,6 +6,7 @@ import * as Sharing from 'expo-sharing';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { DimensionValue } from 'react-native';
 import {
+  Alert,
   FlatList,
   Image,
   Keyboard,
@@ -524,8 +525,8 @@ const Messenger = ({
           lastMessageAt: item.lastMessageAt || null,
           updatedAt: item.updatedAt || null,
           createdAt: item.createdAt || null,
-          isRoom: true,
-          isCreatedRoom: false,
+          isRoom: item.type === 'room',
+          isCreatedRoom: item.type === 'room',
           admin:
             item.instructorName ||
             item.ownerName ||
@@ -1575,11 +1576,11 @@ const Messenger = ({
     setShowMembersModal(true);
   };
 
-  const handleCreateRoom = () => {
+  const handleCreateRoom = async () => {
     const trimmedRoomName = roomName.trim();
     if (!trimmedRoomName || !selected) return;
+
     const conversationName = `${trimmedRoomName} - ${selected.name}`;
-    const newConversationId = `room-${Date.now()}`;
     const nowLabel = formatConversationTime(Date.now());
     const roomMembers = Array.from(
       new Set([...checkedMembers, currentUserName].filter(Boolean))
@@ -1593,34 +1594,65 @@ const Messenger = ({
       type: 'system',
     };
 
-    const newConversation: Conversation = {
-      id: newConversationId,
-      name: conversationName,
-      last: systemMessage.text,
-      avatar: DEFAULT_AVATAR,
-      time: nowLabel,
-      unreadCount: 0,
-      lastMessageAt: Date.now(),
-      createdAt: Date.now(),
-      isRoom: true,
-      isCreatedRoom: true,
-      members: roomMembers,
-      admin: currentUserName,
-      classId: selected.classId,
-      section: selected.section,
-      schedule: selected.schedule,
-    };
-
-    setConversations((prev) => sortByRecency([newConversation, ...prev]));
-    setMessagesByConversation((prev) => ({
-      ...prev,
-      [newConversationId]: [systemMessage],
-    }));
-    setSelected(newConversation);
-    onConversationActiveChange?.(true);
+    // Close the modal immediately for snappy UX, but don't touch
+    // conversations/messages state until Firestore confirms creation.
     setShowCreateRoomModal(false);
-    setRoomName('');
-    setCheckedMembers(currentUserName ? [currentUserName] : []);
+
+    try {
+      const response = await apiFetch(`${API_BASE_URL}/messenger-create-room`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          classId: selected.classId,
+          roomName: trimmedRoomName,
+          memberNames: roomMembers,
+          createdByRole: 'student',
+          createdById: currentUser,
+          createdByUid: currentUser,
+          createdByName: currentUserName,
+        }),
+      });
+
+      const result = await response.json();
+      if (!response.ok || !result?.data?.id) {
+        throw new Error(result?.error || 'Failed to create discussion room.');
+      }
+
+      const newConversationId: string = result.data.id;
+
+      const newConversation: Conversation = {
+        id: newConversationId,
+        name: conversationName,
+        last: systemMessage.text,
+        avatar: DEFAULT_AVATAR,
+        time: nowLabel,
+        unreadCount: 0,
+        lastMessageAt: Date.now(),
+        createdAt: Date.now(),
+        isRoom: true,
+        isCreatedRoom: true,
+        members: roomMembers,
+        admin: currentUserName,
+        classId: selected.classId,
+        section: selected.section,
+        schedule: selected.schedule,
+      };
+
+      setConversations((prev) => sortByRecency([newConversation, ...prev]));
+      setMessagesByConversation((prev) => ({
+        ...prev,
+        [newConversationId]: [systemMessage],
+      }));
+      setSelected(newConversation);
+      onConversationActiveChange?.(true);
+      setRoomName('');
+      setCheckedMembers(currentUserName ? [currentUserName] : []);
+    } catch (error) {
+      console.error('Create room error:', error);
+      // Re-open the modal so the student knows it didn't go through and can retry.
+      setShowCreateRoomModal(true);
+      Alert.alert('Could not create room', 'Please check your connection and try again.');
+    }
   };
 
   // ---------------------------------------------------------------------------
