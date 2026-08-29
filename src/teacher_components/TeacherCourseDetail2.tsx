@@ -492,6 +492,17 @@ function getViewerUrl(
   return getGoogleDocsViewerUrl(fileUrl);
 }
 
+// Strips markdown asterisks (bold "**text**", italics "*text*", and
+// "* " bullet markers) so AI-generated content shows as plain text in the
+// editable "Edit Generated Lessons" preview before it's saved.
+const stripAsterisks = (text?: string | null): string => {
+  if (!text) return '';
+  return text
+    .split('\n')
+    .map((line) => line.replace(/\*/g, '').replace(/^[ \t]+/, ''))
+    .join('\n');
+};
+
 const renderFormattedText = (text: string, baseStyle: any) => {
   if (!text) return null;
   const lines = text.split("\n");
@@ -1317,7 +1328,14 @@ useEffect(() => {
       if (!response.ok) throw new Error(data.error);
       const meta = data.meta || null;
       if (data.data && data.data.lessons && data.data.lessons.length > 0) {
-        setPendingGeneratedLessons(data.data.lessons);
+        const plainTextLessons = data.data.lessons.map((l: any) => ({
+          ...l,
+          title: stripAsterisks(l.title),
+          description: stripAsterisks(l.description),
+          discussion: stripAsterisks(l.discussion),
+          activity: stripAsterisks(l.activity),
+        }));
+        setPendingGeneratedLessons(plainTextLessons);
         setEditingPreviewIndex(0);
         setShowLessonPreviewModal(true);
         const generatedCount = data.data.lessons.length;
@@ -2942,6 +2960,56 @@ useEffect(() => {
   // and manually created lessons all share one consistent letterhead layout.
   // `label` shows a small badge (e.g. "AI Generated" / "Manually Created")
   // so it's clear which template is being applied.
+  // Shared form fields for the "Add/Edit Lesson" modal, used by both the
+  // compact popup (Add Lesson) and the full-screen editor (Edit Lesson).
+  const renderLessonFormFields = () => (
+    <>
+      <Text style={styles.sectionLabel}>Lesson Title</Text>
+      <TextInput style={styles.inputBox} value={newLessonTitle} onChangeText={setNewLessonTitle} placeholder="Lesson Title" />
+      <Text style={styles.sectionLabel}>Description</Text>
+      <TextInput style={styles.inputBox} value={newLessonDesc} onChangeText={setNewLessonDesc} placeholder="Short summary" />
+      {lessonMode === 'text' ? (
+        <>
+          <Text style={styles.sectionLabel}>Discussion / Lecture Notes</Text>
+          <TextInput style={[styles.textAreaBox, { minHeight: 150 }]} value={newLessonDiscussion} onChangeText={setNewLessonDiscussion} multiline placeholder="Enter detailed content..." />
+          <Text style={styles.sectionLabel}>Activity</Text>
+          <TextInput style={[styles.textAreaBox, { minHeight: 100 }]} value={newLessonActivity} onChangeText={setNewLessonActivity} multiline placeholder="Instructions for activity..." />
+        </>
+      ) : (
+        <>
+          <Text style={styles.sectionLabel}>Upload Lesson Material</Text>
+          {!newLessonFile && selectedLesson?.type === 'manual_file' && selectedLesson.fileName ? (
+            <View style={[styles.filePreviewBox, { marginBottom: 10, backgroundColor: '#F9F9F9', borderColor: '#DDD' }]}>
+              <Ionicons name="document-text-outline" size={20} color="#666" />
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 11, color: '#888', fontWeight: '700' }}>CURRENT FILE:</Text>
+                <Text style={styles.filePreviewText}>{selectedLesson.fileName}</Text>
+              </View>
+            </View>
+          ) : null}
+          <TouchableOpacity
+            style={[styles.primaryButtonWide, { marginTop: 0 }]}
+            onPress={async () => {
+              const res = await DocumentPicker.getDocumentAsync({ type: '*/*', copyToCacheDirectory: true, base64: Platform.OS === 'web' });
+              if (!res.canceled && res.assets?.[0]) setNewLessonFile({ name: res.assets[0].name, uri: res.assets[0].uri, type: res.assets[0].mimeType, base64: (res.assets[0] as any).base64, file: (res.assets[0] as any).file });
+            }}
+          >
+            <Ionicons name="cloud-upload-outline" size={18} color="#FFF" />
+            <Text style={styles.uploadBtnText}>
+              {newLessonFile ? 'Change File' : (selectedLesson?.type === 'manual_file' ? 'Replace File' : 'Choose File')}
+            </Text>
+          </TouchableOpacity>
+          {newLessonFile && <View style={styles.filePreviewBox}><Ionicons name="document-text-outline" size={20} color="#D32F2F" /><Text style={styles.filePreviewText}>{newLessonFile.name}</Text></View>}
+          <Text style={{ fontSize: 12, color: '#888', marginTop: 8, textAlign: 'center' }}>
+            {selectedLesson?.type === 'manual_file'
+              ? "Leave empty to keep the current file. Upload a new file to replace it."
+              : "Discussion and Activity sections are hidden when uploading a file."}
+          </Text>
+        </>
+      )}
+    </>
+  );
+
   const renderDocPage = (children: React.ReactNode, label?: string, key?: string | number) => (
     <View key={key} style={styles.docPageOuter}>
       <View style={styles.docPage}>
@@ -5326,22 +5394,67 @@ Edit Lesson) — like opening a Doc/PDF attachment in Google Classroom.
                 <View style={[styles.lessonPreviewPage, !isMobile && styles.lessonPreviewPageWeb]}>
                   {renderTemplateHeaderBanner()}
 
-                  <View style={styles.lessonPreviewTitleBlock}>
-                    <View style={styles.docPageBadge}>
-                      <Ionicons
-                        name={selectedLesson.isGenerated ? 'sparkles-outline' : 'create-outline'}
-                        size={11}
-                        color="#D32F2F"
-                      />
-                      <Text style={styles.docPageBadgeText}>
-                        {selectedLesson.isGenerated
-                          ? 'AI Generated'
-                          : (selectedLesson.type === 'manual_file' || selectedLesson.type === 'manual'
-                              ? 'Manually Created'
-                              : 'Lesson Preview')}
-                      </Text>
+                  <View style={[styles.lessonPreviewTitleBlock, { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' }]}>
+                    <View style={{ flex: 1, marginRight: 12 }}>
+                      <View style={styles.docPageBadge}>
+                        <Ionicons
+                          name={selectedLesson.isGenerated ? 'sparkles-outline' : 'create-outline'}
+                          size={11}
+                          color="#D32F2F"
+                        />
+                        <Text style={styles.docPageBadgeText}>
+                          {selectedLesson.isGenerated
+                            ? 'AI Generated'
+                            : (selectedLesson.type === 'manual_file' || selectedLesson.type === 'manual'
+                                ? 'Manually Created'
+                                : 'Lesson Preview')}
+                        </Text>
+                      </View>
+                      <Text style={styles.lessonPreviewPageTitle}>{selectedLesson.title}</Text>
                     </View>
-                    <Text style={styles.lessonPreviewPageTitle}>{selectedLesson.title}</Text>
+                    <View style={{ flexDirection: 'row', gap: 8, marginTop: 6 }}>
+                      <TouchableOpacity
+                        onPress={() => {
+                          if (!selectedLesson) return;
+                          const parentModule = modules.find((m: any) => m.id === selectedLesson.moduleId);
+                          setIsEditingLesson(true);
+                          setSelectedModuleForLesson(parentModule || null);
+                          setNewLessonTitle(selectedLesson.title || '');
+                          setNewLessonDesc(selectedLesson.description || '');
+                          if (selectedLesson.type === 'manual_file' && selectedLesson.fileUrl) {
+                            setLessonMode('file');
+                            setNewLessonDiscussion('');
+                            setNewLessonActivity('');
+                            setNewLessonFile(null);
+                          } else {
+                            setLessonMode('text');
+                            setNewLessonDiscussion(selectedLesson.discussion || '');
+                            setNewLessonActivity(selectedLesson.activity || '');
+                            setNewLessonFile(null);
+                          }
+                          setLessonDetailModalVisible(false);
+                          setShowManualLessonModal(true);
+                        }}
+                        style={styles.lessonPreviewIconBtn}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      >
+                        <Ionicons name="create-outline" size={19} color="#1976D2" />
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={() => {
+                          toast.confirm(
+                            'Delete Lesson?',
+                            `Are you sure you want to delete "${selectedLesson?.title}"? This action cannot be undone.`,
+                            handleDeleteLesson
+                          );
+                        }}
+                        disabled={isDeletingLesson}
+                        style={[styles.lessonPreviewIconBtn, { backgroundColor: '#FFEBEE' }]}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      >
+                        <Ionicons name="trash-outline" size={19} color="#D32F2F" />
+                      </TouchableOpacity>
+                    </View>
                   </View>
 
                   {selectedLesson.type === 'manual_file' && selectedLesson.fileUrl ? (
@@ -5394,18 +5507,18 @@ Edit Lesson) — like opening a Doc/PDF attachment in Google Classroom.
                     </Text>
                   </View>
                   {selectedLesson.discussion ? (
-                    <View style={{ marginBottom: 16, backgroundColor: '#F9F9F9', padding: 12, borderRadius: 8 }}>
+                    <View style={{ marginBottom: 16, backgroundColor: '#FFF', padding: 12, borderRadius: 8 }}>
                       <Text style={styles.sectionLabel}>Discussion / Lecture Notes</Text>
-                      <Text style={{ color: '#444', lineHeight: 22 }}>
-                        {renderFormattedText(selectedLesson.discussion, { color: '#444', lineHeight: 22 })}
+                      <Text style={{ color: '#000', lineHeight: 22 }}>
+                        {renderFormattedText(selectedLesson.discussion, { color: '#000', lineHeight: 22 })}
                       </Text>
                     </View>
                   ) : null}
                   {selectedLesson.activity ? (
-                    <View style={{ marginBottom: 16, backgroundColor: '#E3F2FD', padding: 12, borderRadius: 8 }}>
-                      <Text style={[styles.sectionLabel, { color: '#1565C0' }]}>Activity / Scenario</Text>
-                      <Text style={{ color: '#0D47A1', lineHeight: 22 }}>
-                        {renderFormattedText(selectedLesson.activity, { color: '#0D47A1', lineHeight: 22 })}
+                    <View style={{ marginBottom: 16, backgroundColor: '#FFF', padding: 12, borderRadius: 8 }}>
+                      <Text style={styles.sectionLabel}>Activity / Scenario</Text>
+                      <Text style={{ color: '#000', lineHeight: 22 }}>
+                        {renderFormattedText(selectedLesson.activity, { color: '#000', lineHeight: 22 })}
                       </Text>
                     </View>
                   ) : null}
@@ -5420,50 +5533,6 @@ Edit Lesson) — like opening a Doc/PDF attachment in Google Classroom.
             )}
           </ScrollView>
 
-          {/* Fixed bottom action bar */}
-          <View style={styles.lessonPreviewBottomBar}>
-            <TouchableOpacity
-              style={styles.deleteMaterialBtn}
-              onPress={() => {
-                toast.confirm(
-                  'Delete Lesson?',
-                  `Are you sure you want to delete "${selectedLesson?.title}"? This action cannot be undone.`,
-                  handleDeleteLesson
-                );
-              }}
-              disabled={isDeletingLesson}
-            >
-              <Ionicons name="trash-outline" size={18} color="#D32F2F" />
-              <Text style={styles.deleteMaterialBtnText}>Delete</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.primaryButton, { flex: 2 }]}
-              onPress={() => {
-                if (!selectedLesson) return;
-                const parentModule = modules.find((m: any) => m.id === selectedLesson.moduleId);
-                setIsEditingLesson(true);
-                setSelectedModuleForLesson(parentModule || null);
-                setNewLessonTitle(selectedLesson.title || '');
-                setNewLessonDesc(selectedLesson.description || '');
-                if (selectedLesson.type === 'manual_file' && selectedLesson.fileUrl) {
-                  setLessonMode('file');
-                  setNewLessonDiscussion('');
-                  setNewLessonActivity('');
-                  setNewLessonFile(null);
-                } else {
-                  setLessonMode('text');
-                  setNewLessonDiscussion(selectedLesson.discussion || '');
-                  setNewLessonActivity(selectedLesson.activity || '');
-                  setNewLessonFile(null);
-                }
-                setLessonDetailModalVisible(false);
-                setShowManualLessonModal(true);
-              }}
-            >
-              <Ionicons name="create-outline" size={18} color="#FFF" />
-              <Text style={styles.primaryButtonText}>Edit Lesson</Text>
-            </TouchableOpacity>
-          </View>
         </SafeAreaView>
       </Modal>
       {/* ═════════════════════════════════════════════════════════════════════
@@ -5526,21 +5595,81 @@ MANUAL MODULE CREATION MODAL
       {/* ══════════════════════════════════════════════════════════════════════
 MANUAL LESSON CREATION MODAL
 ════════════════════════════════════════════════════════════════════════ */}
-      <Modal visible={showManualLessonModal} transparent animationType="fade">
-        <View style={styles.modalOverlayCenter}>
-          <View style={[styles.modalCardElevated, { width: isMobile ? Math.min(width - 28, 380) : 600, maxHeight: height * 0.9 }]}>
-            <View style={styles.createHeaderRow}>
-              <Text style={styles.createTitle}>
-                {newLessonTitle ? `Edit "${selectedModuleForLesson?.title}" Lesson` : `Add Lesson to "${selectedModuleForLesson?.title}"`}
-              </Text>
-              <TouchableOpacity onPress={() => {
-                setShowManualLessonModal(false);
-                resetLessonForm();
-              }}>
-                <Ionicons name="close" size={24} color="#111" />
+      {isEditingLesson ? (
+        // Full-screen editor — same "Google Classroom" document-viewer layout
+        // as the Lesson Preview modal (fixed top bar, scrollable letterhead
+        // page, fixed bottom action bar).
+        <Modal
+          visible={showManualLessonModal}
+          animationType="slide"
+          presentationStyle={Platform.OS === 'ios' ? 'fullScreen' : undefined}
+          onRequestClose={() => { setShowManualLessonModal(false); resetLessonForm(); }}
+        >
+          <SafeAreaView style={styles.lessonPreviewScreen} edges={['top', 'left', 'right']}>
+            <View style={styles.lessonPreviewTopBar}>
+              <TouchableOpacity
+                onPress={() => { setShowManualLessonModal(false); resetLessonForm(); }}
+                style={styles.lessonPreviewBackBtn}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              >
+                <Ionicons name={Platform.OS === 'web' ? 'close' : 'arrow-back'} size={22} color="#111" />
+              </TouchableOpacity>
+              <View style={styles.lessonPreviewTopBarTextWrap}>
+                <Text style={styles.lessonPreviewTopBarTitle} numberOfLines={1}>Edit Lesson</Text>
+                <Text style={styles.lessonPreviewTopBarSubtitle} numberOfLines={1}>
+                  {selectedModuleForLesson?.title || 'Module Content'}
+                </Text>
+              </View>
+            </View>
+            <ScrollView
+              style={styles.flexOne}
+              showsVerticalScrollIndicator={true}
+              contentContainerStyle={styles.lessonPreviewScrollContent}
+            >
+              <View style={styles.lessonPreviewPageWrap}>
+                <View style={[styles.lessonPreviewPage, !isMobile && styles.lessonPreviewPageWeb]}>
+                  {renderTemplateHeaderBanner()}
+                  <View style={styles.docPageBadge}>
+                    <Ionicons name="create-outline" size={11} color="#D32F2F" />
+                    <Text style={styles.docPageBadgeText}>Edit Lesson</Text>
+                  </View>
+                  {renderLessonFormFields()}
+                  {renderTemplateFooterBanner()}
+                </View>
+              </View>
+            </ScrollView>
+            <View style={styles.lessonPreviewBottomBar}>
+              <TouchableOpacity
+                style={styles.secondaryButton}
+                onPress={() => { setShowManualLessonModal(false); resetLessonForm(); }}
+              >
+                <Text style={styles.secondaryButtonText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.primaryButton, { flex: 2 }]}
+                onPress={handleCreateManualLesson}
+                disabled={isSaving}
+              >
+                {isSaving ? <ActivityIndicator size="small" color="#FFF" /> : <Text style={styles.primaryButtonText}>Save Changes</Text>}
               </TouchableOpacity>
             </View>
-            {!newLessonTitle && (
+          </SafeAreaView>
+        </Modal>
+      ) : (
+        <Modal visible={showManualLessonModal} transparent animationType="fade">
+          <View style={styles.modalOverlayCenter}>
+            <View style={[styles.modalCardElevated, { width: isMobile ? Math.min(width - 28, 380) : 600, maxHeight: height * 0.9 }]}>
+              <View style={styles.createHeaderRow}>
+                <Text style={styles.createTitle}>
+                  {`Add Lesson to "${selectedModuleForLesson?.title}"`}
+                </Text>
+                <TouchableOpacity onPress={() => {
+                  setShowManualLessonModal(false);
+                  resetLessonForm();
+                }}>
+                  <Ionicons name="close" size={24} color="#111" />
+                </TouchableOpacity>
+              </View>
               <View style={{ flexDirection: 'row', gap: 10, marginBottom: 16 }}>
                 <TouchableOpacity onPress={() => setLessonMode('text')} style={[styles.typeChip, lessonMode === 'text' && styles.typeChipActive]}>
                   <Text style={[styles.typeChipText, lessonMode === 'text' && styles.typeChipTextActive]}>Text Content</Text>
@@ -5549,64 +5678,17 @@ MANUAL LESSON CREATION MODAL
                   <Text style={[styles.typeChipText, lessonMode === 'file' && styles.typeChipTextActive]}>Upload File</Text>
                 </TouchableOpacity>
               </View>
-            )}
-            <ScrollView contentContainerStyle={{ paddingBottom: 20 }}>
-              {renderDocPage(
-                <>
-                  <Text style={styles.sectionLabel}>Lesson Title</Text>
-                  <TextInput style={styles.inputBox} value={newLessonTitle} onChangeText={setNewLessonTitle} placeholder="Lesson Title" />
-                  <Text style={styles.sectionLabel}>Description</Text>
-                  <TextInput style={styles.inputBox} value={newLessonDesc} onChangeText={setNewLessonDesc} placeholder="Short summary" />
-                  {lessonMode === 'text' ? (
-                    <>
-                      <Text style={styles.sectionLabel}>Discussion / Lecture Notes</Text>
-                      <TextInput style={[styles.textAreaBox, { minHeight: 150 }]} value={newLessonDiscussion} onChangeText={setNewLessonDiscussion} multiline placeholder="Enter detailed content..." />
-                      <Text style={styles.sectionLabel}>Activity</Text>
-                      <TextInput style={[styles.textAreaBox, { minHeight: 100 }]} value={newLessonActivity} onChangeText={setNewLessonActivity} multiline placeholder="Instructions for activity..." />
-                    </>
-                  ) : (
-                    <>
-                      <Text style={styles.sectionLabel}>Upload Lesson Material</Text>
-                      {!newLessonFile && selectedLesson?.type === 'manual_file' && selectedLesson.fileName ? (
-                        <View style={[styles.filePreviewBox, { marginBottom: 10, backgroundColor: '#F9F9F9', borderColor: '#DDD' }]}>
-                          <Ionicons name="document-text-outline" size={20} color="#666" />
-                          <View style={{ flex: 1 }}>
-                            <Text style={{ fontSize: 11, color: '#888', fontWeight: '700' }}>CURRENT FILE:</Text>
-                            <Text style={styles.filePreviewText}>{selectedLesson.fileName}</Text>
-                          </View>
-                        </View>
-                      ) : null}
-                      <TouchableOpacity
-                        style={[styles.primaryButtonWide, { marginTop: 0 }]}
-                        onPress={async () => {
-                          const res = await DocumentPicker.getDocumentAsync({ type: '*/*', copyToCacheDirectory: true, base64: Platform.OS === 'web' });
-                          if (!res.canceled && res.assets?.[0]) setNewLessonFile({ name: res.assets[0].name, uri: res.assets[0].uri, type: res.assets[0].mimeType, base64: (res.assets[0] as any).base64, file: (res.assets[0] as any).file });
-                        }}
-                      >
-                        <Ionicons name="cloud-upload-outline" size={18} color="#FFF" />
-                        <Text style={styles.uploadBtnText}>
-                          {newLessonFile ? 'Change File' : (selectedLesson?.type === 'manual_file' ? 'Replace File' : 'Choose File')}
-                        </Text>
-                      </TouchableOpacity>
-                      {newLessonFile && <View style={styles.filePreviewBox}><Ionicons name="document-text-outline" size={20} color="#D32F2F" /><Text style={styles.filePreviewText}>{newLessonFile.name}</Text></View>}
-                      <Text style={{ fontSize: 12, color: '#888', marginTop: 8, textAlign: 'center' }}>
-                        {selectedLesson?.type === 'manual_file'
-                          ? "Leave empty to keep the current file. Upload a new file to replace it."
-                          : "Discussion and Activity sections are hidden when uploading a file."}
-                      </Text>
-                    </>
-                  )}
-                </>,
-                newLessonTitle && selectedLesson ? 'Edit Lesson' : 'Manually Created'
-              )}
-            </ScrollView>
-            <View style={styles.buttonRow}>
-              <TouchableOpacity style={styles.secondaryButton} onPress={() => setShowManualLessonModal(false)}><Text style={styles.secondaryButtonText}>Cancel</Text></TouchableOpacity>
-              <TouchableOpacity style={styles.primaryButton} onPress={handleCreateManualLesson}><Text style={styles.primaryButtonText}>Save Lesson</Text></TouchableOpacity>
+              <ScrollView contentContainerStyle={{ paddingBottom: 20 }}>
+                {renderDocPage(renderLessonFormFields(), 'Manually Created')}
+              </ScrollView>
+              <View style={styles.buttonRow}>
+                <TouchableOpacity style={styles.secondaryButton} onPress={() => setShowManualLessonModal(false)}><Text style={styles.secondaryButtonText}>Cancel</Text></TouchableOpacity>
+                <TouchableOpacity style={styles.primaryButton} onPress={handleCreateManualLesson}><Text style={styles.primaryButtonText}>Save Lesson</Text></TouchableOpacity>
+              </View>
             </View>
           </View>
-        </View>
-      </Modal>
+        </Modal>
+      )}
       {/* ══════════════════════════════════════════════════════════════════════
 COURSE STRUCTURE PREVIEW & APPROVAL MODAL
 ════════════════════════════════════════════════════════════════════════ */}
@@ -7155,6 +7237,14 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: '#111',
     marginTop: 6,
+  },
+  lessonPreviewIconBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#F5F5F5',
   },
   lessonPreviewBottomBar: {
     flexDirection: 'row',
