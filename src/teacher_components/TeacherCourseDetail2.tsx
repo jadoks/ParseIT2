@@ -882,6 +882,7 @@ const TeacherCourseDetail2 = ({
   const [newLessonActivity, setNewLessonActivity] = useState('');
   const [newLessonFile, setNewLessonFile] = useState<PickedUploadFile>(null);
   const [lessonMode, setLessonMode] = useState<'text' | 'file'>('text');
+  const [showLessonModeDropdown, setShowLessonModeDropdown] = useState(false);
 
   // ─── Course Template (school-wide header/footer) ───────────────────────────
   // One global template shared by every teacher/course. Fetched once on
@@ -1514,6 +1515,7 @@ useEffect(() => {
       setShowManualLessonModal(false);
       resetLessonForm();
       setIsEditingLesson(false);
+      setSelectedLesson(null);
       await loadCourseContent();
     } catch (e: any) {
       console.error(e);
@@ -1531,6 +1533,7 @@ useEffect(() => {
     setNewLessonFile(null);
     setLessonMode('text');
     setIsEditingLesson(false);
+    setShowLessonModeDropdown(false);
   };
 
   const handleAiTool = async (tool: string, module: any, extraParams?: any) => {
@@ -4386,7 +4389,12 @@ useEffect(() => {
                             <Text style={{ textAlign: 'center', color: '#999', padding: 12 }}>No lessons added yet.</Text>
                           )}
                           <TouchableOpacity
-                            onPress={() => { setSelectedModuleForLesson(mod); setShowManualLessonModal(true); }}
+                            onPress={() => {
+                              resetLessonForm();
+                              setSelectedLesson(null);
+                              setSelectedModuleForLesson(mod);
+                              setShowManualLessonModal(true);
+                            }}
                             style={{ marginTop: 8, padding: 10, backgroundColor: '#FFF', borderRadius: 8, borderWidth: 1, borderColor: '#1976D2', alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 6 }}
                           >
                             <Ionicons name="add-circle-outline" size={16} color="#1976D2" />
@@ -5649,37 +5657,97 @@ MANUAL LESSON CREATION MODAL
           </SafeAreaView>
         </Modal>
       ) : (
-        <Modal visible={showManualLessonModal} transparent animationType="fade">
-          <View style={styles.modalOverlayCenter}>
-            <View style={[styles.modalCardElevated, { width: isMobile ? Math.min(width - 28, 380) : 600, maxHeight: height * 0.9 }]}>
-              <View style={styles.createHeaderRow}>
-                <Text style={styles.createTitle}>
-                  {`Add Lesson to "${selectedModuleForLesson?.title}"`}
-                </Text>
-                <TouchableOpacity onPress={() => {
-                  setShowManualLessonModal(false);
-                  resetLessonForm();
-                }}>
-                  <Ionicons name="close" size={24} color="#111" />
-                </TouchableOpacity>
+        // Full-screen "Add Lesson" editor — same document-viewer layout as
+        // Edit Lesson, but with a Text Content / Upload File dropdown at the
+        // left of the top bar (in place of the title) and Save at the right.
+        <Modal
+          visible={showManualLessonModal}
+          animationType="slide"
+          presentationStyle={Platform.OS === 'ios' ? 'fullScreen' : undefined}
+          onRequestClose={() => { setShowManualLessonModal(false); resetLessonForm(); }}
+        >
+          <SafeAreaView style={styles.lessonPreviewScreen} edges={['top', 'left', 'right']}>
+            <View style={[styles.lessonPreviewTopBar, { zIndex: 20 }]}>
+              <TouchableOpacity
+                onPress={() => { setShowManualLessonModal(false); resetLessonForm(); }}
+                style={styles.lessonPreviewBackBtn}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              >
+                <Ionicons name={Platform.OS === 'web' ? 'close' : 'arrow-back'} size={22} color="#111" />
+              </TouchableOpacity>
+              <View style={{ flex: 1 }}>
+                <View style={styles.lessonModeDropdownWrap}>
+                  <TouchableOpacity
+                    style={styles.lessonModeDropdownTrigger}
+                    onPress={() => setShowLessonModeDropdown((v) => !v)}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={styles.lessonModeDropdownText} numberOfLines={1}>
+                      {lessonMode === 'file' ? 'Upload File' : 'Text Content'}
+                    </Text>
+                    <Ionicons name={showLessonModeDropdown ? 'chevron-up' : 'chevron-down'} size={16} color="#D32F2F" />
+                  </TouchableOpacity>
+                  {showLessonModeDropdown && (
+                    <View style={styles.lessonModeDropdownMenu}>
+                      <TouchableOpacity
+                        style={[styles.lessonModeDropdownItem, lessonMode === 'text' && styles.lessonModeDropdownItemActive]}
+                        onPress={() => { setLessonMode('text'); setShowLessonModeDropdown(false); }}
+                      >
+                        <Text style={[styles.lessonModeDropdownItemText, lessonMode === 'text' && styles.lessonModeDropdownItemTextActive]}>
+                          Text Content
+                        </Text>
+                        {lessonMode === 'text' && <Ionicons name="checkmark" size={16} color="#D32F2F" />}
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.lessonModeDropdownItem, lessonMode === 'file' && styles.lessonModeDropdownItemActive]}
+                        onPress={() => { setLessonMode('file'); setShowLessonModeDropdown(false); }}
+                      >
+                        <Text style={[styles.lessonModeDropdownItemText, lessonMode === 'file' && styles.lessonModeDropdownItemTextActive]}>
+                          Upload File
+                        </Text>
+                        {lessonMode === 'file' && <Ionicons name="checkmark" size={16} color="#D32F2F" />}
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                </View>
               </View>
-              <View style={{ flexDirection: 'row', gap: 10, marginBottom: 16 }}>
-                <TouchableOpacity onPress={() => setLessonMode('text')} style={[styles.typeChip, lessonMode === 'text' && styles.typeChipActive]}>
-                  <Text style={[styles.typeChipText, lessonMode === 'text' && styles.typeChipTextActive]}>Text Content</Text>
-                </TouchableOpacity>
-                <TouchableOpacity onPress={() => setLessonMode('file')} style={[styles.typeChip, lessonMode === 'file' && styles.typeChipActive]}>
-                  <Text style={[styles.typeChipText, lessonMode === 'file' && styles.typeChipTextActive]}>Upload File</Text>
-                </TouchableOpacity>
-              </View>
-              <ScrollView contentContainerStyle={{ paddingBottom: 20 }}>
-                {renderDocPage(renderLessonFormFields(), 'Manually Created')}
-              </ScrollView>
-              <View style={styles.buttonRow}>
-                <TouchableOpacity style={styles.secondaryButton} onPress={() => setShowManualLessonModal(false)}><Text style={styles.secondaryButtonText}>Cancel</Text></TouchableOpacity>
-                <TouchableOpacity style={styles.primaryButton} onPress={handleCreateManualLesson}><Text style={styles.primaryButtonText}>Save Lesson</Text></TouchableOpacity>
-              </View>
+              <TouchableOpacity
+                onPress={handleCreateManualLesson}
+                disabled={isSaving}
+                style={[styles.lessonPreviewIconBtn, { backgroundColor: '#D32F2F' }]}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                {isSaving ? <ActivityIndicator size="small" color="#FFF" /> : <Ionicons name="checkmark" size={20} color="#FFF" />}
+              </TouchableOpacity>
             </View>
-          </View>
+            {showLessonModeDropdown && (
+              <TouchableOpacity
+                style={styles.lessonModeDropdownBackdrop}
+                activeOpacity={1}
+                onPress={() => setShowLessonModeDropdown(false)}
+              />
+            )}
+            <ScrollView
+              style={styles.flexOne}
+              showsVerticalScrollIndicator={true}
+              contentContainerStyle={styles.lessonPreviewScrollContent}
+            >
+              <View style={styles.lessonPreviewPageWrap}>
+                <View style={[styles.lessonPreviewPage, !isMobile && styles.lessonPreviewPageWeb]}>
+                  {renderTemplateHeaderBanner()}
+                  <View style={styles.docPageBadge}>
+                    <Ionicons name="add-circle-outline" size={11} color="#D32F2F" />
+                    <Text style={styles.docPageBadgeText}>Manually Created</Text>
+                  </View>
+                  <Text style={styles.lessonPreviewTopBarSubtitle}>
+                    Adding to "{selectedModuleForLesson?.title}"
+                  </Text>
+                  {renderLessonFormFields()}
+                  {renderTemplateFooterBanner()}
+                </View>
+              </View>
+            </ScrollView>
+          </SafeAreaView>
         </Modal>
       )}
       {/* ══════════════════════════════════════════════════════════════════════
@@ -7238,6 +7306,72 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: '#F5F5F5',
+  },
+  lessonModeDropdownWrap: {
+    alignSelf: 'flex-start',
+    position: 'relative',
+  },
+  lessonModeDropdownTrigger: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#F5F5F5',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    maxWidth: 180,
+  },
+  lessonModeDropdownText: {
+    color: '#111',
+    fontWeight: '700',
+    fontSize: 13,
+  },
+  lessonModeDropdownBackdrop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 10,
+  },
+  lessonModeDropdownMenu: {
+    position: 'absolute',
+    top: '100%',
+    left: 0,
+    marginTop: 6,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+    minWidth: 190,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 10,
+    elevation: 10,
+    zIndex: 30,
+    overflow: 'hidden',
+  },
+  lessonModeDropdownItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F0F0F0',
+  },
+  lessonModeDropdownItemActive: {
+    backgroundColor: '#FFF5F5',
+  },
+  lessonModeDropdownItemText: {
+    color: '#333',
+    fontWeight: '600',
+    fontSize: 13,
+  },
+  lessonModeDropdownItemTextActive: {
+    color: '#D32F2F',
+    fontWeight: '800',
   },
   lessonPreviewBottomBar: {
     flexDirection: 'row',
