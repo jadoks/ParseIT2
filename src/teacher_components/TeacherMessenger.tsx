@@ -133,6 +133,12 @@ const toMillis = (value: any): number => {
   return 0;
 };
 
+const conversationActivityTime = (c: Conversation): number =>
+  Math.max(toMillis(c.lastMessageAt), toMillis(c.updatedAt), toMillis(c.createdAt));
+
+const sortByRecency = (list: Conversation[]): Conversation[] =>
+  [...list].sort((a, b) => conversationActivityTime(b) - conversationActivityTime(a));
+
 const SCHEDULE_DAY_ABBREVIATIONS: Record<string, string> = {
   Monday: 'Mon', Tuesday: 'Tue', Wednesday: 'Wed', Thursday: 'Thu',
   Friday: 'Fri', Saturday: 'Sat', Sunday: 'Sun',
@@ -567,13 +573,19 @@ const Messenger = ({
             .filter((c) => c.isCreatedRoom && !serverIds.has(c.id))
             .forEach((c) => merged.push(c));
 
+          // Sort by most recent activity (last message, then updated, then created)
+          // so rooms with new messages or that were just created float to the top
+          // instead of sticking wherever the API happened to return them / getting
+          // appended to the end.
+          const sortedMerged = sortByRecency(merged);
+
           if (
-            merged.length === prev.length &&
-            merged.every((c, i) => c === prev[i])
+            sortedMerged.length === prev.length &&
+            sortedMerged.every((c, i) => c === prev[i])
           )
             return prev;
 
-          return merged;
+          return sortedMerged;
         });
 
         setMessagesByConversation((prev) => {
@@ -671,18 +683,19 @@ const Messenger = ({
 
         const allNormalized = normalizeMessages(backendRows);
 
-         const lastMessage = allNormalized.length > 0 ? allNormalized[allNormalized.length - 1] : null;
+        const lastMessage = allNormalized.length > 0 ? allNormalized[allNormalized.length - 1] : null;
         if (lastMessage) {
-          setConversations((prev) =>
-            prev.map((c) => {
+          setConversations((prev) => {
+            const newLast =
+              lastMessage.type === 'system'
+                ? lastMessage.text
+                : lastMessage.type === 'file'
+                ? `Sent a file: ${lastMessage.fileName}`
+                : lastMessage.text || 'Sent a message';
+            const newLastAt = lastMessage.createdAt;
+
+            const mapped = prev.map((c) => {
               if (c.id !== selected.id) return c;
-              const newLast =
-                lastMessage.type === 'system'
-                  ? lastMessage.text
-                  : lastMessage.type === 'file'
-                  ? `Sent a file: ${lastMessage.fileName}`
-                  : lastMessage.text || 'Sent a message';
-              const newLastAt = lastMessage.createdAt;
               if (
                 c.last === newLast &&
                 toMillis(c.lastMessageAt) === toMillis(newLastAt)
@@ -694,8 +707,11 @@ const Messenger = ({
                 time: formatConversationTime(newLastAt),
                 lastMessageAt: newLastAt,
               };
-            })
-          );
+            });
+
+            if (mapped.every((c, i) => c === prev[i])) return prev;
+            return sortByRecency(mapped);
+          });
         }
 
         setMessagesByConversation((prev) => {
@@ -1188,15 +1204,17 @@ const Messenger = ({
           [selected.id]: [...(prev[selected.id] || []), optimisticFileMsg],
         }));
         setConversations((prev) =>
-          prev.map((c) =>
-            c.id === selected.id
-              ? {
-                  ...c,
-                  last: optimisticFileMsg.text,
-                  time: formatConversationTime(createdAt),
-                  lastMessageAt: createdAt,
-                }
-              : c
+          sortByRecency(
+            prev.map((c) =>
+              c.id === selected.id
+                ? {
+                    ...c,
+                    last: optimisticFileMsg.text,
+                    time: formatConversationTime(createdAt),
+                    lastMessageAt: createdAt,
+                  }
+                : c
+            )
           )
         );
 
@@ -1258,15 +1276,17 @@ const Messenger = ({
         [selected.id]: [...(prev[selected.id] || []), optimisticTextMsg],
       }));
       setConversations((prev) =>
-        prev.map((c) =>
-          c.id === selected.id
-            ? {
-                ...c,
-                last: trimmed,
-                time: formatConversationTime(textCreatedAt),
-                lastMessageAt: textCreatedAt,
-              }
-            : c
+        sortByRecency(
+          prev.map((c) =>
+            c.id === selected.id
+              ? {
+                  ...c,
+                  last: trimmed,
+                  time: formatConversationTime(textCreatedAt),
+                  lastMessageAt: textCreatedAt,
+                }
+              : c
+          )
         )
       );
       setSelected((prev) =>
@@ -1605,7 +1625,7 @@ const Messenger = ({
       schedule: selected.schedule,
     };
 
-    setConversations((prev) => [newConversation, ...prev]);
+    setConversations((prev) => sortByRecency([newConversation, ...prev]));
     setMessagesByConversation((prev) => ({
       ...prev,
       [newConversationId]: [systemMessage],
