@@ -3702,7 +3702,11 @@ useEffect(() => {
           {renderInputError(errors.title)}
           <Text style={styles.sectionLabel}>Instruction</Text>
           <TextInput
-            style={[styles.textAreaBox, errors.instruction ? styles.errorBorder : null]}
+            style={[
+              styles.textAreaBox,
+              styles.instructionBoxGameBased,
+              errors.instruction ? styles.errorBorder : null,
+            ]}
             value={formDesc}
             onChangeText={(value) => {
               setFormDesc(value);
@@ -3722,6 +3726,7 @@ useEffect(() => {
               <TextInput
                 style={[
                   styles.inputBox,
+                  styles.numberOfQuestionsInput,
                   isInvalidQuestionCount && styles.errorBorder,
                 ]}
                 placeholder="e.g., 10"
@@ -6909,6 +6914,13 @@ const styles = StyleSheet.create({
   formColumnLeftDesktop: { width: '58%' },
   formColumnRight: {},
   formColumnRightDesktop: { width: '40%' },
+  // Matches the rendered width of the "Total Score" field (which sits in the
+  // 40%-wide right column, split in half by dropdownWrapHalf) so Instruction
+  // lines up with it instead of stretching across the full left column.
+  instructionBoxGameBased: { width: '100%', maxWidth: 220, alignSelf: 'flex-start' },
+  // Number of Questions only ever holds up to 2 digits (maxLength={2}), so it
+  // doesn't need to span the full column width like a text field would.
+  numberOfQuestionsInput: { width: '100%', maxWidth: 100 },
   fullWidthSection: { width: '100%' },
   sectionLabel: {
     fontSize: 13,
