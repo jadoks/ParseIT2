@@ -2204,7 +2204,7 @@ useEffect(() => {
       if (isSelected) {
         return prev.filter((id) => id !== materialId);
       }
-      return [materialId];
+      return [...prev, materialId];
     });
     setErrors((prev) => ({ ...prev, materials: undefined }));
   };
@@ -3040,9 +3040,16 @@ useEffect(() => {
     const hasSelection = selectedMaterialIds.length > 0;
     return (
       <View style={styles.sectionBlock}>
-        <Text style={styles.sectionLabel}>Module Lessons</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+          <Text style={styles.sectionLabel}>Module Lessons</Text>
+          {hasSelection && (
+            <TouchableOpacity onPress={() => setSelectedMaterialIds([])} hitSlop={8}>
+              <Text style={styles.clearSelectionText}>Clear ({selectedMaterialIds.length})</Text>
+            </TouchableOpacity>
+          )}
+        </View>
         <Text style={styles.helperText}>
-          Select one lesson the AI should use for follow-up activity generation or game content.
+          Select one or more lessons the AI should use for follow-up activity generation or game content.
         </Text>
         {materials.length === 0 ? (
           <Text style={styles.emptyMiniText}>No created materials or lessons yet.</Text>
@@ -3053,9 +3060,6 @@ useEffect(() => {
             {materials.map((material) => {
               const active = selectedMaterialIds.includes(material.id);
               const isLesson = (material as any).isLesson === true || (material as any).type === 'module_lesson';
-              if (hasSelection && !active) {
-                return null;
-              }
               return (
                 <TouchableOpacity
                   key={material.id}
@@ -6787,6 +6791,11 @@ const styles = StyleSheet.create({
   },
   dateButtonText: { color: '#222', fontWeight: '600', flex: 1 },
   sectionBlock: { marginTop: 0 },
+  clearSelectionText: {
+    color: '#D32F2F',
+    fontSize: 13,
+    fontWeight: '700',
+  },
   materialSelectorWrap: { gap: 8, marginTop: 4 },
   materialChip: {
     flexDirection: 'row',

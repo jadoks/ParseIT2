@@ -451,10 +451,10 @@ const Game = ({ onNavigate, enrolledCourses = [], studentId, onSaveQuizScore }: 
         {selectedClassId !== '' && (
   <View style={styles.materialsSection}>
     <View style={styles.materialsHeaderRow}>
-      <Text style={styles.inputLabel}>Select one Lesson</Text>
+      <Text style={styles.inputLabel}>Select one or more Lessons</Text>
       {selectedMaterialIds.length > 0 && (
         <TouchableOpacity onPress={() => setSelectedMaterialIds([])} hitSlop={8}>
-          <Text style={styles.clearSelectionText}>Show all ({availableMaterials.length})</Text>
+          <Text style={styles.clearSelectionText}>Clear ({selectedMaterialIds.length})</Text>
         </TouchableOpacity>
       )}
     </View>
@@ -465,10 +465,7 @@ const Game = ({ onNavigate, enrolledCourses = [], studentId, onSaveQuizScore }: 
       </View>
     ) : (
       <View style={styles.materialsGrid}>
-        {(selectedMaterialIds.length > 0
-          ? availableMaterials.filter(mat => selectedMaterialIds.includes(mat.id))
-          : availableMaterials
-        ).map(mat => {
+        {availableMaterials.map(mat => {
           const isSelected = selectedMaterialIds.includes(mat.id);
           return (
             <Pressable
