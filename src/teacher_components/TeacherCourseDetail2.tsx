@@ -5379,6 +5379,51 @@ Edit Lesson) — like opening a Doc/PDF attachment in Google Classroom.
                 Module Content &amp; Activities
               </Text>
             </View>
+            {selectedLesson ? (
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                <TouchableOpacity
+                  onPress={() => {
+                    if (!selectedLesson) return;
+                    const parentModule = modules.find((m: any) => m.id === selectedLesson.moduleId);
+                    setIsEditingLesson(true);
+                    setSelectedModuleForLesson(parentModule || null);
+                    setNewLessonTitle(selectedLesson.title || '');
+                    setNewLessonDesc(selectedLesson.description || '');
+                    if (selectedLesson.type === 'manual_file' && selectedLesson.fileUrl) {
+                      setLessonMode('file');
+                      setNewLessonDiscussion('');
+                      setNewLessonActivity('');
+                      setNewLessonFile(null);
+                    } else {
+                      setLessonMode('text');
+                      setNewLessonDiscussion(selectedLesson.discussion || '');
+                      setNewLessonActivity(selectedLesson.activity || '');
+                      setNewLessonFile(null);
+                    }
+                    setLessonDetailModalVisible(false);
+                    setShowManualLessonModal(true);
+                  }}
+                  style={styles.lessonPreviewIconBtn}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <Ionicons name="create-outline" size={19} color="#1976D2" />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => {
+                    toast.confirm(
+                      'Delete Lesson?',
+                      `Are you sure you want to delete "${selectedLesson?.title}"? This action cannot be undone.`,
+                      handleDeleteLesson
+                    );
+                  }}
+                  disabled={isDeletingLesson}
+                  style={[styles.lessonPreviewIconBtn, { backgroundColor: '#FFEBEE' }]}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <Ionicons name="trash-outline" size={19} color="#D32F2F" />
+                </TouchableOpacity>
+              </View>
+            ) : null}
           </View>
 
           {/* Scrollable document */}
@@ -5394,67 +5439,22 @@ Edit Lesson) — like opening a Doc/PDF attachment in Google Classroom.
                 <View style={[styles.lessonPreviewPage, !isMobile && styles.lessonPreviewPageWeb]}>
                   {renderTemplateHeaderBanner()}
 
-                  <View style={[styles.lessonPreviewTitleBlock, { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' }]}>
-                    <View style={{ flex: 1, marginRight: 12 }}>
-                      <View style={styles.docPageBadge}>
-                        <Ionicons
-                          name={selectedLesson.isGenerated ? 'sparkles-outline' : 'create-outline'}
-                          size={11}
-                          color="#D32F2F"
-                        />
-                        <Text style={styles.docPageBadgeText}>
-                          {selectedLesson.isGenerated
-                            ? 'AI Generated'
-                            : (selectedLesson.type === 'manual_file' || selectedLesson.type === 'manual'
-                                ? 'Manually Created'
-                                : 'Lesson Preview')}
-                        </Text>
-                      </View>
-                      <Text style={styles.lessonPreviewPageTitle}>{selectedLesson.title}</Text>
+                  <View style={styles.lessonPreviewTitleBlock}>
+                    <View style={styles.docPageBadge}>
+                      <Ionicons
+                        name={selectedLesson.isGenerated ? 'sparkles-outline' : 'create-outline'}
+                        size={11}
+                        color="#D32F2F"
+                      />
+                      <Text style={styles.docPageBadgeText}>
+                        {selectedLesson.isGenerated
+                          ? 'AI Generated'
+                          : (selectedLesson.type === 'manual_file' || selectedLesson.type === 'manual'
+                              ? 'Manually Created'
+                              : 'Lesson Preview')}
+                      </Text>
                     </View>
-                    <View style={{ flexDirection: 'row', gap: 8, marginTop: 6 }}>
-                      <TouchableOpacity
-                        onPress={() => {
-                          if (!selectedLesson) return;
-                          const parentModule = modules.find((m: any) => m.id === selectedLesson.moduleId);
-                          setIsEditingLesson(true);
-                          setSelectedModuleForLesson(parentModule || null);
-                          setNewLessonTitle(selectedLesson.title || '');
-                          setNewLessonDesc(selectedLesson.description || '');
-                          if (selectedLesson.type === 'manual_file' && selectedLesson.fileUrl) {
-                            setLessonMode('file');
-                            setNewLessonDiscussion('');
-                            setNewLessonActivity('');
-                            setNewLessonFile(null);
-                          } else {
-                            setLessonMode('text');
-                            setNewLessonDiscussion(selectedLesson.discussion || '');
-                            setNewLessonActivity(selectedLesson.activity || '');
-                            setNewLessonFile(null);
-                          }
-                          setLessonDetailModalVisible(false);
-                          setShowManualLessonModal(true);
-                        }}
-                        style={styles.lessonPreviewIconBtn}
-                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                      >
-                        <Ionicons name="create-outline" size={19} color="#1976D2" />
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        onPress={() => {
-                          toast.confirm(
-                            'Delete Lesson?',
-                            `Are you sure you want to delete "${selectedLesson?.title}"? This action cannot be undone.`,
-                            handleDeleteLesson
-                          );
-                        }}
-                        disabled={isDeletingLesson}
-                        style={[styles.lessonPreviewIconBtn, { backgroundColor: '#FFEBEE' }]}
-                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                      >
-                        <Ionicons name="trash-outline" size={19} color="#D32F2F" />
-                      </TouchableOpacity>
-                    </View>
+                    <Text style={styles.lessonPreviewPageTitle}>{selectedLesson.title}</Text>
                   </View>
 
                   {selectedLesson.type === 'manual_file' && selectedLesson.fileUrl ? (
@@ -5620,6 +5620,14 @@ MANUAL LESSON CREATION MODAL
                   {selectedModuleForLesson?.title || 'Module Content'}
                 </Text>
               </View>
+              <TouchableOpacity
+                onPress={handleCreateManualLesson}
+                disabled={isSaving}
+                style={[styles.lessonPreviewIconBtn, { backgroundColor: '#D32F2F' }]}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                {isSaving ? <ActivityIndicator size="small" color="#FFF" /> : <Ionicons name="checkmark" size={20} color="#FFF" />}
+              </TouchableOpacity>
             </View>
             <ScrollView
               style={styles.flexOne}
@@ -5638,21 +5646,6 @@ MANUAL LESSON CREATION MODAL
                 </View>
               </View>
             </ScrollView>
-            <View style={styles.lessonPreviewBottomBar}>
-              <TouchableOpacity
-                style={styles.secondaryButton}
-                onPress={() => { setShowManualLessonModal(false); resetLessonForm(); }}
-              >
-                <Text style={styles.secondaryButtonText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.primaryButton, { flex: 2 }]}
-                onPress={handleCreateManualLesson}
-                disabled={isSaving}
-              >
-                {isSaving ? <ActivityIndicator size="small" color="#FFF" /> : <Text style={styles.primaryButtonText}>Save Changes</Text>}
-              </TouchableOpacity>
-            </View>
           </SafeAreaView>
         </Modal>
       ) : (
