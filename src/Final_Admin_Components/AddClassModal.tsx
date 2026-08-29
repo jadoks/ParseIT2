@@ -14,6 +14,7 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
+  useWindowDimensions,
   View,
 } from "react-native";
 
@@ -38,6 +39,21 @@ type BannerFile = {
   mimeType: string | null;
 };
 
+// One recurring weekly time block for a class (e.g. "Mon/Wed 08:00-09:30, Room 301").
+// A class can have several of these (e.g. a lecture block + a separate lab block).
+// Mirrors the shape used by the Teacher Dashboard's Create Class flow so the
+// same `schedule` array can be sent straight to the backend.
+export type ClassScheduleEntry = {
+  days: string[]; // subset of DAY_OPTIONS, e.g. ['Mon', 'Wed']
+  startTime: string; // 24-hour 'HH:MM'
+  endTime: string; // 24-hour 'HH:MM'
+  room?: string | null;
+};
+
+// Same shape as ClassScheduleEntry, plus a local `id` used only for
+// React keys / editing state in this form.
+type ClassScheduleFormBlock = ClassScheduleEntry & { id: string };
+
 export type AddClassModalPayload = {
   classCode: string;
   className: string;
@@ -53,6 +69,7 @@ export type AddClassModalPayload = {
   bannerFileName: string | null;
   bannerMimeType: string | null;
   units: number;
+  schedule: ClassScheduleEntry[];
 };
 
 export type AddClassModalInitialData = {
@@ -70,6 +87,7 @@ export type AddClassModalInitialData = {
   bannerFileName?: string | null;
   bannerMimeType?: string | null;
   units?: number | null;
+  schedule?: ClassScheduleEntry[] | null;
 };
 
 /**
@@ -163,6 +181,204 @@ function FormTextArea({
   );
 }
 
+/**
+ * Icon-less sibling of FormInput, used for fields that sit right next to
+ * a dropdown trigger or inside a schedule block (Course Name, Room, the
+ * digit-only time fields) — mirrors the Teacher Dashboard's plain
+ * "DashboardTextField" look instead of the icon-prefixed inputs above.
+ */
+function PlainField({
+  value,
+  onChangeText,
+  placeholder,
+  keyboardType,
+  maxLength,
+  editable,
+}: {
+  value: string;
+  onChangeText?: (text: string) => void;
+  placeholder: string;
+  keyboardType?: "default" | "number-pad" | "numeric";
+  maxLength?: number;
+  editable?: boolean;
+}) {
+  const [isFocused, setIsFocused] = useState(false);
+
+  return (
+    <View style={[styles.plainInputWrap, isFocused && styles.plainInputWrapFocused]}>
+      <TextInput
+        value={value}
+        onChangeText={onChangeText}
+        placeholder={placeholder}
+        placeholderTextColor="#B79A9A"
+        keyboardType={keyboardType}
+        maxLength={maxLength}
+        editable={editable}
+        style={styles.plainInput}
+        onFocus={() => setIsFocused(true)}
+        onBlur={() => setIsFocused(false)}
+      />
+    </View>
+  );
+}
+
+const DAY_OPTIONS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+const TIME_24H_REGEX = /^([01]\d|2[0-3]):([0-5]\d)$/;
+
+// ── Google-Classroom-style time input helpers (matches Teacher Dashboard) ──
+// The user types plain digits (e.g. "0930"); we auto-insert the ":" once
+// the hour (first 2 digits) is entered, and clamp to a valid 12-hour time.
+// A separate AM/PM toggle sits next to the field. Internally everything is
+// still stored/validated as 24-hour 'HH:MM'.
+const pad2 = (n: number) => String(n).padStart(2, "0");
+
+const clampTimeDigits = (raw: string): string => {
+  let out = raw.replace(/[^0-9]/g, "").slice(0, 4);
+  if (out.length >= 2) {
+    let hh = parseInt(out.slice(0, 2), 10);
+    if (Number.isNaN(hh)) hh = 0;
+    if (hh > 12) hh = 12;
+    if (hh === 0) hh = 1;
+    out = pad2(hh) + out.slice(2);
+  }
+  if (out.length === 4) {
+    let mm = parseInt(out.slice(2, 4), 10);
+    if (Number.isNaN(mm)) mm = 0;
+    if (mm > 59) mm = 59;
+    out = out.slice(0, 2) + pad2(mm);
+  }
+  return out;
+};
+
+const formatTimeDigitsForDisplay = (digits: string): string =>
+  digits.length <= 2 ? digits : `${digits.slice(0, 2)}:${digits.slice(2)}`;
+
+const timeDigitsAndMeridiemTo24h = (digits: string, meridiem: "AM" | "PM"): string => {
+  if (digits.length !== 4) return "";
+  const hour12 = parseInt(digits.slice(0, 2), 10);
+  const minute = parseInt(digits.slice(2, 4), 10);
+  if (Number.isNaN(hour12) || Number.isNaN(minute) || hour12 < 1 || hour12 > 12 || minute > 59) return "";
+  let hour24 = hour12 % 12;
+  if (meridiem === "PM") hour24 += 12;
+  return `${pad2(hour24)}:${pad2(minute)}`;
+};
+
+// Converts a stored 24-hour 'HH:MM' value back into typed digits + AM/PM,
+// so editing an existing schedule shows the right starting values.
+const parse24hToTimeDigits = (time24: string): { digits: string; meridiem: "AM" | "PM" } => {
+  const match = TIME_24H_REGEX.exec((time24 || "").trim());
+  if (!match) return { digits: "", meridiem: "AM" };
+  const hour24 = parseInt(match[1], 10);
+  const minute = parseInt(match[2], 10);
+  const meridiem: "AM" | "PM" = hour24 >= 12 ? "PM" : "AM";
+  let hour12 = hour24 % 12;
+  if (hour12 === 0) hour12 = 12;
+  return { digits: `${pad2(hour12)}${pad2(minute)}`, meridiem };
+};
+
+function TimeInputField({
+  value,
+  onChangeValue,
+  placeholder,
+}: {
+  value: string; // 24-hour 'HH:MM' or ''
+  onChangeValue: (value24h: string) => void;
+  placeholder?: string;
+}) {
+  const initial = useMemo(() => parse24hToTimeDigits(value), []); // eslint-disable-line react-hooks/exhaustive-deps
+  const [digits, setDigits] = useState(initial.digits);
+  const [meridiem, setMeridiem] = useState<"AM" | "PM">(initial.meridiem);
+  const [isFocused, setIsFocused] = useState(false);
+
+  const commit = (nextDigits: string, nextMeridiem: "AM" | "PM") => {
+    onChangeValue(timeDigitsAndMeridiemTo24h(nextDigits, nextMeridiem));
+  };
+
+  const handleChangeText = (text: string) => {
+    const clamped = clampTimeDigits(text);
+    setDigits(clamped);
+    commit(clamped, meridiem);
+  };
+
+  const handleMeridiemPress = (nextMeridiem: "AM" | "PM") => {
+    setMeridiem(nextMeridiem);
+    commit(digits, nextMeridiem);
+  };
+
+  return (
+    <View style={styles.timeInputRow}>
+      <View style={[styles.plainInputWrap, styles.timeInputWrap, isFocused && styles.plainInputWrapFocused]}>
+        <TextInput
+          value={formatTimeDigitsForDisplay(digits)}
+          onChangeText={handleChangeText}
+          placeholder={placeholder || "09:30"}
+          placeholderTextColor="#B79A9A"
+          keyboardType="number-pad"
+          maxLength={5}
+          style={styles.plainInput}
+          onFocus={() => setIsFocused(true)}
+          onBlur={() => setIsFocused(false)}
+        />
+      </View>
+      <View style={styles.meridiemToggle}>
+        <TouchableOpacity
+          style={[styles.meridiemBtn, meridiem === "AM" && styles.meridiemBtnActive]}
+          onPress={() => handleMeridiemPress("AM")}
+        >
+          <Text style={[styles.meridiemBtnText, meridiem === "AM" && styles.meridiemBtnTextActive]}>AM</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.meridiemBtn, meridiem === "PM" && styles.meridiemBtnActive]}
+          onPress={() => handleMeridiemPress("PM")}
+        >
+          <Text style={[styles.meridiemBtnText, meridiem === "PM" && styles.meridiemBtnTextActive]}>PM</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+}
+
+const createEmptyScheduleBlock = (): ClassScheduleFormBlock => ({
+  id: `sched-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+  days: [],
+  startTime: "",
+  endTime: "",
+  room: "",
+});
+
+// Returns an error message for the first invalid block, or null if all blocks are valid.
+const validateScheduleBlocks = (blocks: ClassScheduleFormBlock[]): string | null => {
+  for (const block of blocks) {
+    if (block.days.length === 0) return "Select at least one day for each schedule block.";
+    if (!TIME_24H_REGEX.test(block.startTime.trim())) return "Enter a valid start time (e.g., 08:00) for each schedule block.";
+    if (!TIME_24H_REGEX.test(block.endTime.trim())) return "Enter a valid end time (e.g., 09:30) for each schedule block.";
+    if (block.startTime.trim() >= block.endTime.trim()) return "End time must be after start time for each schedule block.";
+  }
+  return null;
+};
+
+// Strips the local `id` and trims text fields before sending to the backend.
+const serializeScheduleBlocks = (blocks: ClassScheduleFormBlock[]): ClassScheduleEntry[] =>
+  blocks.map(({ days, startTime, endTime, room }) => ({
+    days,
+    startTime: startTime.trim(),
+    endTime: endTime.trim(),
+    room: room && room.trim() ? room.trim() : null,
+  }));
+
+// Converts stored ClassScheduleEntry[] (from initialData, edit mode) back into
+// form blocks with local ids for React keys / editing state.
+const hydrateScheduleBlocks = (entries?: ClassScheduleEntry[] | null): ClassScheduleFormBlock[] => {
+  if (!entries || entries.length === 0) return [createEmptyScheduleBlock()];
+  return entries.map((entry) => ({
+    id: `sched-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    days: Array.isArray(entry.days) ? entry.days : [],
+    startTime: entry.startTime || "",
+    endTime: entry.endTime || "",
+    room: entry.room || "",
+  }));
+};
+
 const YEAR_OPTIONS: YearOption[] = [
   { id: "1st", label: "1st Year" },
   { id: "2nd", label: "2nd Year" },
@@ -215,10 +431,22 @@ export default function AddClassModal({
   isEditMode?: boolean;
   isSubmitting?: boolean;
 }) {
+  const { width } = useWindowDimensions();
+  const isLargeScreen = width >= 1200;
+  const isTabletUp = width >= 768;
+  const optionGridItemStyle = !isTabletUp
+    ? styles.optionGridItemMobile
+    : isLargeScreen
+    ? styles.optionGridItemLarge
+    : styles.optionGridItemTablet;
+
   const [selectedYear, setSelectedYear] = useState<string | null>(null);
   const [selectedSection, setSelectedSection] = useState<string | null>(null);
   const [selectedSemester, setSelectedSemester] = useState<string | null>(null);
-  const [isSemesterModalVisible, setIsSemesterModalVisible] = useState(false);
+  const [isSemesterDropdownVisible, setIsSemesterDropdownVisible] = useState(false);
+  const [scheduleBlocks, setScheduleBlocks] = useState<ClassScheduleFormBlock[]>([
+    createEmptyScheduleBlock(),
+  ]);
 
   const [instructorIdentifier, setInstructorIdentifier] = useState("");
 
@@ -231,7 +459,6 @@ export default function AddClassModal({
   const [startYear, setStartYear] = useState("2025");
   const [endYear, setEndYear] = useState("2026");
   const [bannerFile, setBannerFile] = useState<BannerFile | null>(null);
-  const [isBannerHovered, setIsBannerHovered] = useState(false);
 
   const selectedSemesterLabel = useMemo(() => {
     return (
@@ -239,9 +466,6 @@ export default function AddClassModal({
       "Select semester"
     );
   }, [selectedSemester]);
-
-  const shouldShowBannerOverlay =
-    !bannerFile?.uri || isMobile || Platform.OS !== "web" || isBannerHovered;
 
   useEffect(() => {
     const parsedStartYear = Number(startYear.trim());
@@ -264,12 +488,12 @@ export default function AddClassModal({
     return result;
   };
 
-  const openSemesterDropdown = () => {
-    setIsSemesterModalVisible(true);
+  const toggleSemesterDropdown = () => {
+    setIsSemesterDropdownVisible((prev) => !prev);
   };
 
   const closeSemesterDropdown = () => {
-    setIsSemesterModalVisible(false);
+    setIsSemesterDropdownVisible(false);
   };
 
   const handleSelectSemester = (semesterId: string) => {
@@ -277,6 +501,21 @@ export default function AddClassModal({
     setSelectedSection(null);
     closeSemesterDropdown();
   };
+
+  // ── Class schedule block editors ──────────────────────────────────────
+  const addScheduleBlock = () => setScheduleBlocks((prev) => [...prev, createEmptyScheduleBlock()]);
+  const removeScheduleBlock = (blockId: string) =>
+    setScheduleBlocks((prev) => (prev.length > 1 ? prev.filter((b) => b.id !== blockId) : prev));
+  const toggleScheduleDay = (blockId: string, day: string) =>
+    setScheduleBlocks((prev) =>
+      prev.map((b) =>
+        b.id === blockId
+          ? { ...b, days: b.days.includes(day) ? b.days.filter((d) => d !== day) : [...b.days, day] }
+          : b
+      )
+    );
+  const updateScheduleField = (blockId: string, field: "startTime" | "endTime" | "room", value: string) =>
+    setScheduleBlocks((prev) => prev.map((b) => (b.id === blockId ? { ...b, [field]: value } : b)));
 
   const toggleYear = (yearId: string) => {
     if (selectedYear === yearId) {
@@ -329,7 +568,6 @@ export default function AddClassModal({
 
   const clearBanner = () => {
     setBannerFile(null);
-    setIsBannerHovered(false);
   };
 
   const resetForm = () => {
@@ -344,7 +582,7 @@ export default function AddClassModal({
     setCourseNameInput("");
     setCourseUnitsInput("");
     setBannerFile(null);
-    setIsBannerHovered(false);
+    setScheduleBlocks([createEmptyScheduleBlock()]);
     closeSemesterDropdown();
   };
 
@@ -402,6 +640,8 @@ export default function AddClassModal({
       typeof initialData.units === "number" ? String(initialData.units) : ""
     );
 
+    setScheduleBlocks(hydrateScheduleBlocks(initialData.schedule));
+
     if (initialData.bannerFileName || initialData.bannerUrl) {
       setBannerFile({
         uri: initialData.bannerUrl || "",
@@ -411,8 +651,6 @@ export default function AddClassModal({
     } else {
       setBannerFile(null);
     }
-
-    setIsBannerHovered(false);
   }, [visible, isEditMode, initialData]);
 
   const handleClose = () => {
@@ -459,6 +697,12 @@ export default function AddClassModal({
       return;
     }
 
+    const scheduleError = validateScheduleBlocks(scheduleBlocks);
+    if (scheduleError) {
+      Alert.alert("Missing Field", scheduleError);
+      return;
+    }
+
     const selectedYearLabel =
       YEAR_OPTIONS.find((year) => year.id === selectedYear)?.label || null;
 
@@ -490,6 +734,7 @@ export default function AddClassModal({
       bannerFileName: bannerFile?.name ?? null,
       bannerMimeType: bannerFile?.mimeType ?? null,
       units,
+      schedule: serializeScheduleBlocks(scheduleBlocks),
     });
 
     handleClose();
@@ -548,75 +793,130 @@ export default function AddClassModal({
                     <Text style={styles.modalSectionTitle}>Select Year</Text>
                   </View>
 
-                  {(selectedYear
-                    ? YEAR_OPTIONS.filter((year) => year.id === selectedYear)
-                    : YEAR_OPTIONS
-                  ).map((year) => {
-                    const isChecked = selectedYear === year.id;
+                  <View style={styles.optionsGrid}>
+                    {YEAR_OPTIONS.map((year) => {
+                      const isChecked = selectedYear === year.id;
 
-                    return (
-                      <TouchableOpacity
-                        key={year.id}
-                        style={[
-                          styles.checkRow,
-                          isChecked && styles.checkRowActive,
-                        ]}
-                        activeOpacity={0.85}
-                        onPress={() => toggleYear(year.id)}
-                      >
-                        <View
-                          style={[
-                            styles.checkboxBase,
-                            isChecked && styles.checkboxChecked,
-                          ]}
-                        >
-                          {isChecked && (
-                            <Ionicons
-                              name="checkmark"
-                              size={14}
-                              color="#FFFFFF"
-                            />
-                          )}
+                      return (
+                        <View key={year.id} style={optionGridItemStyle}>
+                          <TouchableOpacity
+                            style={[
+                              styles.checkRow,
+                              isChecked && styles.checkRowActive,
+                            ]}
+                            activeOpacity={0.85}
+                            onPress={() => toggleYear(year.id)}
+                          >
+                            <View
+                              style={[
+                                styles.checkboxBase,
+                                isChecked && styles.checkboxChecked,
+                              ]}
+                            >
+                              {isChecked && (
+                                <Ionicons
+                                  name="checkmark"
+                                  size={12}
+                                  color="#FFFFFF"
+                                />
+                              )}
+                            </View>
+
+                            <Text style={styles.checkText}>{year.label}</Text>
+                          </TouchableOpacity>
                         </View>
-
-                        <Text style={styles.checkText}>{year.label}</Text>
-                      </TouchableOpacity>
-                    );
-                  })}
+                      );
+                    })}
+                  </View>
                 </View>
 
                 {selectedYear && (
-                  <View style={styles.modalSection}>
-                    <View style={styles.modalSectionHeaderRow}>
-                      <Ionicons
-                        name="calendar-outline"
-                        size={18}
-                        color="#DC2626"
-                      />
-                      <Text style={styles.modalSectionTitle}>
-                        Select Semester
-                      </Text>
+                  <View
+                    style={[
+                      styles.modalSection,
+                      isTabletUp && styles.formGridRow,
+                      styles.semesterRowWrap,
+                    ]}
+                  >
+                    <View
+                      style={[
+                        styles.semesterFieldWrap,
+                        isTabletUp && styles.formGridCol,
+                      ]}
+                    >
+                      <Text style={styles.fieldLabel}>Semester Selection</Text>
+                      <TouchableOpacity
+                        style={styles.selectField}
+                        activeOpacity={0.85}
+                        onPress={toggleSemesterDropdown}
+                      >
+                        <Text style={styles.selectFieldText}>
+                          {selectedSemesterLabel}
+                        </Text>
+                        <Ionicons
+                          name="chevron-down"
+                          size={18}
+                          color="#8A6F6F"
+                        />
+                      </TouchableOpacity>
+
+                      {isSemesterDropdownVisible && (
+                        <>
+                          <Pressable
+                            style={styles.floatingDropdownDismiss}
+                            onPress={closeSemesterDropdown}
+                          />
+                          <View style={styles.floatingDropdownMenu}>
+                            {SEMESTER_OPTIONS.map((semester, index) => {
+                              const isActive = selectedSemester === semester.id;
+                              const isLast = index === SEMESTER_OPTIONS.length - 1;
+
+                              return (
+                                <TouchableOpacity
+                                  key={semester.id}
+                                  style={[
+                                    styles.dropdownItem,
+                                    isActive && styles.dropdownItemActive,
+                                    !isLast && styles.dropdownItemBorder,
+                                  ]}
+                                  onPress={() => handleSelectSemester(semester.id)}
+                                >
+                                  <Text
+                                    style={[
+                                      styles.dropdownItemText,
+                                      isActive && styles.dropdownItemTextActive,
+                                    ]}
+                                  >
+                                    {semester.label}
+                                  </Text>
+                                  {isActive && (
+                                    <Ionicons
+                                      name="checkmark-circle"
+                                      size={18}
+                                      color="#DC2626"
+                                    />
+                                  )}
+                                </TouchableOpacity>
+                              );
+                            })}
+                          </View>
+                        </>
+                      )}
                     </View>
 
-                    <TouchableOpacity
-                      style={styles.selectField}
-                      activeOpacity={0.85}
-                      onPress={openSemesterDropdown}
-                    >
-                      <Text style={styles.selectFieldText}>
-                        {selectedSemesterLabel}
-                      </Text>
-                      <Ionicons
-                        name={isMobile ? "chevron-forward" : "chevron-down"}
-                        size={18}
-                        color="#8A6F6F"
+                    <View style={isTabletUp ? styles.formGridCol : undefined}>
+                      <Text style={styles.fieldLabel}>Course Name</Text>
+                      <PlainField
+                        value={courseNameInput}
+                        onChangeText={setCourseNameInput}
+                        placeholder="e.g., INTRODUCTION TO COMPUTING"
                       />
-                    </TouchableOpacity>
+                    </View>
                   </View>
                 )}
 
                 {selectedYear && selectedSemester && (
-                  <View style={styles.modalSection}>
+                  <View style={[styles.modalSection, styles.sectionBelowDropdown]}>
                     <View style={styles.modalSectionHeaderRow}>
                       <Ionicons
                         name="layers-outline"
@@ -628,50 +928,137 @@ export default function AddClassModal({
                       </Text>
                     </View>
 
-                    {SECTION_OPTIONS[selectedYear].map((section) => {
-                      const isChecked = selectedSection === section.id;
+                    <View style={styles.optionsGrid}>
+                      {SECTION_OPTIONS[selectedYear].map((section) => {
+                        const isChecked = selectedSection === section.id;
 
-                      return (
-                        <TouchableOpacity
-                          key={section.id}
-                          style={[
-                            styles.sectionRow,
-                            isChecked && styles.sectionRowActive,
-                          ]}
-                          activeOpacity={0.85}
-                          onPress={() => toggleSection(section.id)}
-                        >
-                          <View
-                            style={[
-                              styles.checkboxBase,
-                              isChecked && styles.checkboxChecked,
-                            ]}
-                          >
-                            {isChecked && (
-                              <Ionicons
-                                name="checkmark"
-                                size={14}
-                                color="#FFFFFF"
-                              />
-                            )}
+                        return (
+                          <View key={section.id} style={optionGridItemStyle}>
+                            <TouchableOpacity
+                              style={[
+                                styles.sectionRow,
+                                isChecked && styles.sectionRowActive,
+                              ]}
+                              activeOpacity={0.85}
+                              onPress={() => toggleSection(section.id)}
+                            >
+                              <View
+                                style={[
+                                  styles.checkboxBase,
+                                  isChecked && styles.checkboxChecked,
+                                ]}
+                              >
+                                {isChecked && (
+                                  <Ionicons
+                                    name="checkmark"
+                                    size={12}
+                                    color="#FFFFFF"
+                                  />
+                                )}
+                              </View>
+
+                              <Text style={styles.checkText}>{section.label}</Text>
+                            </TouchableOpacity>
                           </View>
-
-                          <Text style={styles.checkText}>{section.label}</Text>
-                        </TouchableOpacity>
-                      );
-                    })}
+                        );
+                      })}
+                    </View>
                   </View>
                 )}
 
                 {selectedYear && selectedSemester && (
-                  <View style={styles.modalSection}>
+                  <View style={[styles.modalSection, styles.sectionBelowDropdown]}>
                     <View style={styles.modalSectionHeaderRow}>
-                      <Ionicons name="book-outline" size={18} color="#DC2626" />
-                      <Text style={styles.modalSectionTitle}>
-                        Course Details
-                      </Text>
+                      <Ionicons name="time-outline" size={18} color="#DC2626" />
+                      <Text style={styles.modalSectionTitle}>Class Schedule</Text>
                     </View>
 
+                    {scheduleBlocks.map((block, index) => (
+                      <View key={block.id} style={styles.scheduleBlockCard}>
+                        <View style={styles.scheduleBlockHeaderRow}>
+                          <Text style={styles.scheduleBlockTitle}>
+                            Schedule {index + 1}
+                          </Text>
+                          {scheduleBlocks.length > 1 && (
+                            <TouchableOpacity
+                              style={styles.scheduleRemoveBtn}
+                              onPress={() => removeScheduleBlock(block.id)}
+                            >
+                              <MaterialCommunityIcons
+                                name="trash-can-outline"
+                                size={18}
+                                color="#DC2626"
+                              />
+                            </TouchableOpacity>
+                          )}
+                        </View>
+
+                        <Text style={styles.fieldLabel}>Days</Text>
+                        <View style={styles.dayChipRow}>
+                          {DAY_OPTIONS.map((day) => {
+                            const isActive = block.days.includes(day);
+                            return (
+                              <TouchableOpacity
+                                key={day}
+                                style={[styles.dayChip, isActive && styles.dayChipActive]}
+                                onPress={() => toggleScheduleDay(block.id, day)}
+                              >
+                                <Text
+                                  style={[
+                                    styles.dayChipText,
+                                    isActive && styles.dayChipTextActive,
+                                  ]}
+                                >
+                                  {day}
+                                </Text>
+                              </TouchableOpacity>
+                            );
+                          })}
+                        </View>
+
+                        <View style={styles.scheduleTimeRow}>
+                          <View style={styles.scheduleTimeCol}>
+                            <Text style={styles.fieldLabel}>Start Time</Text>
+                            <TimeInputField
+                              value={block.startTime}
+                              onChangeValue={(text) =>
+                                updateScheduleField(block.id, "startTime", text)
+                              }
+                              placeholder="09:00"
+                            />
+                          </View>
+                          <View style={styles.scheduleTimeCol}>
+                            <Text style={styles.fieldLabel}>End Time</Text>
+                            <TimeInputField
+                              value={block.endTime}
+                              onChangeValue={(text) =>
+                                updateScheduleField(block.id, "endTime", text)
+                              }
+                              placeholder="10:30"
+                            />
+                          </View>
+                        </View>
+
+                        <Text style={styles.fieldLabel}>Room (Optional)</Text>
+                        <PlainField
+                          value={block.room || ""}
+                          onChangeText={(text) => updateScheduleField(block.id, "room", text)}
+                          placeholder="e.g., Room 301"
+                        />
+                      </View>
+                    ))}
+
+                    <TouchableOpacity style={styles.addScheduleBtn} onPress={addScheduleBlock}>
+                      <Ionicons name="add-circle-outline" size={18} color="#DC2626" />
+                      <Text style={styles.addScheduleBtnText}>Add another schedule</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+
+                <View
+                  style={[styles.modalRow, isMobile && styles.modalRowStack]}
+                >
+                  <View style={styles.modalCol}>
                     <Text style={styles.fieldLabel}>Course Code</Text>
                     <FormInput
                       icon="pricetag-outline"
@@ -679,22 +1066,8 @@ export default function AddClassModal({
                       onChangeText={setCourseCodeInput}
                       placeholder="e.g., CC 111"
                     />
-
-                    <Text style={[styles.fieldLabel, { marginTop: 16 }]}>
-                      Course Name
-                    </Text>
-                    <FormTextArea
-                      value={courseNameInput}
-                      onChangeText={setCourseNameInput}
-                      placeholder="e.g., INTRODUCTION TO COMPUTING"
-                      minHeight={60}
-                    />
                   </View>
-                )}
 
-                <View
-                  style={[styles.modalRow, isMobile && styles.modalRowStack]}
-                >
                   <View style={styles.modalCol}>
                     <Text style={styles.fieldLabel}>Instructor ID</Text>
                     <Text style={styles.helperText}>
@@ -766,62 +1139,29 @@ export default function AddClassModal({
                     </Text>
                   </View>
 
-                  <Pressable
-                    style={({ pressed }) => [
-                      styles.bannerUpload,
-                      bannerFile && styles.bannerUploadSelected,
-                      pressed && styles.bannerUploadPressed,
-                    ]}
+                  <TouchableOpacity
+                    style={styles.uploadBtn}
+                    activeOpacity={0.85}
                     onPress={handlePickBanner}
-                    onHoverIn={() => {
-                      if (Platform.OS === "web") setIsBannerHovered(true);
-                    }}
-                    onHoverOut={() => {
-                      if (Platform.OS === "web") setIsBannerHovered(false);
-                    }}
                   >
-                    {bannerFile?.uri ? (
+                    <Ionicons name="image-outline" size={20} color="#DC2626" />
+                    <Text style={styles.uploadBtnText}>
+                      {bannerFile ? "Change Banner Photo" : "Upload Banner Photo"}
+                    </Text>
+                  </TouchableOpacity>
+
+                  {bannerFile?.uri ? (
+                    <View style={styles.bannerPreview}>
                       <Image
                         source={{ uri: bannerFile.uri }}
-                        style={styles.bannerUploadBackgroundImage}
+                        style={StyleSheet.absoluteFillObject}
                         resizeMode="cover"
                       />
-                    ) : null}
-
-                    {shouldShowBannerOverlay ? (
-                      <View style={styles.bannerUploadOverlay} />
-                    ) : null}
-
-                    {shouldShowBannerOverlay ? (
-                      <View style={styles.bannerUploadContent}>
-                        <View style={styles.bannerUploadIcon}>
-                          <Ionicons
-                            name="cloud-upload-outline"
-                            size={24}
-                            color="#DC2626"
-                          />
-                        </View>
-
-                        <Text style={styles.bannerUploadTitle}>
-                          {bannerFile
-                            ? "Change Class Banner"
-                            : "Upload Class Banner"}
-                        </Text>
-
-                        <Text style={styles.bannerUploadSubtitle}>
-                          {bannerFile?.name
-                            ? bannerFile.name
-                            : "Tap to open your device file explorer"}
-                        </Text>
-
-                        {!!bannerFile?.mimeType && (
-                          <Text style={styles.bannerMetaText}>
-                            {bannerFile.mimeType}
-                          </Text>
-                        )}
+                      <View style={styles.previewOverlay}>
+                        <Text style={styles.previewText}>Banner Preview</Text>
                       </View>
-                    ) : null}
-                  </Pressable>
+                    </View>
+                  ) : null}
 
                   {bannerFile && (
                     <TouchableOpacity
@@ -882,70 +1222,6 @@ export default function AddClassModal({
                 </Text>
               </TouchableOpacity>
             </View>
-          </View>
-        </View>
-      </Modal>
-
-      <Modal
-        visible={isSemesterModalVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={closeSemesterDropdown}
-      >
-        <View style={styles.dropdownModalOverlay}>
-          <Pressable
-            style={StyleSheet.absoluteFill}
-            onPress={closeSemesterDropdown}
-          />
-
-          <View style={styles.dropdownModalCard}>
-            <View style={styles.optionModalHeader}>
-              <Text style={styles.optionModalTitle}>Select Semester</Text>
-              <TouchableOpacity
-                onPress={closeSemesterDropdown}
-                activeOpacity={0.85}
-                style={styles.optionModalCloseButton}
-              >
-                <Ionicons name="close" size={20} color="#7A4A4A" />
-              </TouchableOpacity>
-            </View>
-
-            <ScrollView showsVerticalScrollIndicator={true}>
-              {SEMESTER_OPTIONS.map((semester, index) => {
-                const isActive = selectedSemester === semester.id;
-                const isLast = index === SEMESTER_OPTIONS.length - 1;
-
-                return (
-                  <TouchableOpacity
-                    key={semester.id}
-                    style={[
-                      styles.optionModalItem,
-                      isActive && styles.dropdownItemActive,
-                      !isLast && styles.dropdownItemBorder,
-                    ]}
-                    activeOpacity={0.85}
-                    onPress={() => handleSelectSemester(semester.id)}
-                  >
-                    <Text
-                      style={[
-                        styles.dropdownItemText,
-                        isActive && styles.dropdownItemTextActive,
-                      ]}
-                    >
-                      {semester.label}
-                    </Text>
-
-                    {isActive && (
-                      <Ionicons
-                        name="checkmark-circle"
-                        size={18}
-                        color="#DC2626"
-                      />
-                    )}
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
           </View>
         </View>
       </Modal>
@@ -1039,16 +1315,28 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     color: "#2B1111",
   },
+  // ✅ Grid wrapper for Select Year / Select Section so large screens use
+  // the extra horizontal room instead of stacking every option full-width
+  // (matches TeacherDashboard's Create Class layout).
+  optionsGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    columnGap: 12,
+  },
+  optionGridItemMobile: { width: "100%" },
+  optionGridItemTablet: { width: "48%" },
+  optionGridItemLarge: { width: "31.5%" },
+  formGridRow: { flexDirection: "row", gap: 16 },
+  formGridCol: { flex: 1 },
   checkRow: {
-    minHeight: 62,
-    borderRadius: 18,
+    minHeight: 50,
+    borderRadius: 14,
     borderWidth: 1,
     borderColor: "#F3D4D4",
     backgroundColor: "#FFFFFF",
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 14,
+    paddingHorizontal: 14,
     marginBottom: 10,
   },
   checkRowActive: {
@@ -1056,9 +1344,9 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFF7F7",
   },
   checkboxBase: {
-    width: 22,
-    height: 22,
-    borderRadius: 7,
+    width: 18,
+    height: 18,
+    borderRadius: 6,
     borderWidth: 1.5,
     borderColor: "#D8B4B4",
     backgroundColor: "#FFFFFF",
@@ -1077,15 +1365,14 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   sectionRow: {
-    minHeight: 54,
-    borderRadius: 16,
+    minHeight: 50,
+    borderRadius: 14,
     borderWidth: 1,
     borderColor: "#F3D4D4",
     backgroundColor: "#FFFFFF",
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: 14,
-    paddingVertical: 12,
     marginBottom: 10,
   },
   sectionRowActive: {
@@ -1162,6 +1449,127 @@ const styles = StyleSheet.create({
     color: "#DC2626",
     fontWeight: "700",
   },
+  // ✅ Ensures the Semester Selection dropdown menu (which floats absolutely)
+  // stacks above later sections like "Select Section" instead of behind them.
+  semesterRowWrap: { zIndex: 30, position: "relative" },
+  sectionBelowDropdown: { zIndex: 1, position: "relative" },
+  semesterFieldWrap: { marginBottom: 16, zIndex: 20 },
+  floatingDropdownDismiss: { ...StyleSheet.absoluteFillObject, zIndex: 25 },
+  floatingDropdownMenu: {
+    position: "absolute",
+    top: 84,
+    left: 0,
+    right: 0,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "#F3D4D4",
+    shadowColor: "#2B1111",
+    shadowOpacity: 0.12,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 14,
+    zIndex: 30,
+    overflow: "hidden",
+  },
+  // Icon-less field style (Course Name, Room, schedule time digits) —
+  // mirrors TeacherDashboard's plain "DashboardTextField" look.
+  plainInputWrap: {
+    minHeight: 54,
+    borderWidth: 1,
+    borderColor: "#F1CACA",
+    borderRadius: 16,
+    backgroundColor: "#FFF9F9",
+    paddingHorizontal: 14,
+    justifyContent: "center",
+  },
+  plainInputWrapFocused: {
+    borderColor: "#DC2626",
+    borderWidth: 1.5,
+  },
+  plainInput: {
+    fontSize: 14,
+    color: "#2B1111",
+    fontWeight: "600",
+    paddingVertical: 10,
+    ...(Platform.OS === "web" ? ({ outlineStyle: "none" } as any) : {}),
+  },
+  // ── Class Schedule section ────────────────────────────────────────────
+  scheduleBlockCard: {
+    borderWidth: 1,
+    borderColor: "#F3D4D4",
+    borderRadius: 16,
+    padding: 14,
+    marginBottom: 12,
+    backgroundColor: "#FFFBFB",
+  },
+  scheduleBlockHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 10,
+  },
+  scheduleBlockTitle: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#2B1111",
+  },
+  scheduleRemoveBtn: { padding: 4 },
+  dayChipRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginBottom: 14,
+  },
+  dayChip: {
+    minWidth: 42,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#F1CACA",
+    backgroundColor: "#FFFFFF",
+    alignItems: "center",
+  },
+  dayChipActive: {
+    backgroundColor: "#DC2626",
+    borderColor: "#DC2626",
+  },
+  dayChipText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#7A4A4A",
+  },
+  dayChipTextActive: { color: "#FFFFFF" },
+  scheduleTimeRow: { flexDirection: "row", gap: 12, marginBottom: 14 },
+  scheduleTimeCol: { flex: 1 },
+  timeInputRow: { flexDirection: "row", alignItems: "stretch", gap: 8 },
+  timeInputWrap: { flex: 1 },
+  meridiemToggle: {
+    flexDirection: "row",
+    borderWidth: 1,
+    borderColor: "#F1CACA",
+    borderRadius: 14,
+    backgroundColor: "#FFF9F9",
+    overflow: "hidden",
+  },
+  meridiemBtn: { paddingHorizontal: 12, justifyContent: "center", alignItems: "center" },
+  meridiemBtnActive: { backgroundColor: "#DC2626" },
+  meridiemBtnText: { fontSize: 12, fontWeight: "800", color: "#B79A9A" },
+  meridiemBtnTextActive: { color: "#FFFFFF" },
+  addScheduleBtn: {
+    minHeight: 44,
+    borderWidth: 1,
+    borderStyle: "dashed",
+    borderColor: "#DC2626",
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    flexDirection: "row",
+    gap: 6,
+    marginBottom: 4,
+  },
+  addScheduleBtnText: { color: "#DC2626", fontWeight: "700", fontSize: 13 },
   inputField: {
     height: 54,
     borderRadius: 16,
@@ -1213,69 +1621,33 @@ const styles = StyleSheet.create({
     fontWeight: "500",
     ...(Platform.OS === "web" ? ({ outlineStyle: "none" } as any) : {}),
   },
-  bannerUpload: {
-    minHeight: 220,
-    borderRadius: 22,
-    borderWidth: 1.5,
-    borderStyle: "dashed",
-    borderColor: "#E7B8B8",
+  uploadBtn: {
+    minHeight: 54,
+    borderWidth: 1,
+    borderColor: "#F1CACA",
+    borderRadius: 16,
     backgroundColor: "#FFF9F9",
+    flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: 20,
-    overflow: "hidden",
-    position: "relative",
-  },
-  bannerUploadPressed: {
-    backgroundColor: "#FFF7F7",
-  },
-  bannerUploadSelected: {
-    borderColor: "#DC2626",
-    backgroundColor: "#FFF7F7",
-  },
-  bannerUploadBackgroundImage: {
-    ...StyleSheet.absoluteFillObject,
-    width: "100%",
-    height: "100%",
-  },
-  bannerUploadOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(255, 249, 249, 0.58)",
-  },
-  bannerUploadContent: {
-    position: "relative",
-    zIndex: 2,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  bannerUploadIcon: {
-    width: 56,
-    height: 56,
-    borderRadius: 18,
-    backgroundColor: "rgba(254, 226, 226, 0.95)",
-    alignItems: "center",
-    justifyContent: "center",
+    gap: 8,
     marginBottom: 14,
   },
-  bannerUploadTitle: {
-    fontSize: 16,
-    fontWeight: "800",
-    color: "#2B1111",
-    marginBottom: 6,
-    textAlign: "center",
+  uploadBtnText: { color: "#DC2626", fontWeight: "700", fontSize: 14 },
+  bannerPreview: {
+    height: 150,
+    borderRadius: 16,
+    overflow: "hidden",
+    marginBottom: 14,
+    position: "relative",
   },
-  bannerUploadSubtitle: {
-    fontSize: 13,
-    color: "#8A6F6F",
-    textAlign: "center",
+  previewOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(43, 17, 17, 0.28)",
+    alignItems: "center",
+    justifyContent: "center",
   },
-  bannerMetaText: {
-    marginTop: 8,
-    fontSize: 12,
-    color: "#A05A5A",
-    fontWeight: "600",
-    textAlign: "center",
-  },
+  previewText: { color: "#FFFFFF", fontWeight: "700", fontSize: 14 },
   removeBannerButton: {
     marginTop: 12,
     alignSelf: "flex-start",
@@ -1333,62 +1705,5 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     color: "#FFFFFF",
     marginLeft: 8,
-  },
-  dropdownModalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(43, 17, 17, 0.18)",
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 20,
-  },
-  dropdownModalCard: {
-    width: "100%",
-    maxWidth: 360,
-    maxHeight: 320,
-    backgroundColor: "#FFFFFF",
-    borderRadius: 24,
-    borderWidth: 1,
-    borderColor: "#F3D4D4",
-    overflow: "hidden",
-    shadowColor: "#2B1111",
-    shadowOpacity: 0.14,
-    shadowRadius: 16,
-    shadowOffset: {
-      width: 0,
-      height: 8,
-    },
-    elevation: 12,
-  },
-  optionModalHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 0,
-    paddingHorizontal: 20,
-    paddingTop: 18,
-    paddingBottom: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: "#F8E3E3",
-  },
-  optionModalTitle: {
-    fontSize: 18,
-    fontWeight: "800",
-    color: "#2B1111",
-  },
-  optionModalCloseButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 14,
-    backgroundColor: "#FFF5F5",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  optionModalItem: {
-    minHeight: 56,
-    paddingHorizontal: 16,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    backgroundColor: "#FFFFFF",
   },
 });

@@ -16,6 +16,7 @@ import {
 import AddClassModal, {
   AddClassModalInitialData,
   AddClassModalPayload,
+  ClassScheduleEntry,
 } from "./AddClassModal";
 import Toast from "./Toast";
 
@@ -51,6 +52,7 @@ type BackendClassItem = {
   assignedTeacherId?: string;
   assignedTeacherUid?: string;
   status?: "active" | "archived";
+  schedule?: ClassScheduleEntry[];
 };
 
 type TableClassItem = {
@@ -460,6 +462,7 @@ export default function ManageClass({ width, currentAdmin }: ManageClassProps) {
         bannerMimeType: payload.bannerMimeType,
         assignedTeacherId: payload.instructorIdentifier,
         status: "active",
+        schedule: payload.schedule,
       };
 
       // 2. Show it in the table immediately
@@ -499,6 +502,7 @@ export default function ManageClass({ width, currentAdmin }: ManageClassProps) {
             bannerMimeType: payload.bannerMimeType,
             instructorIdentifier: payload.instructorIdentifier,
             memberCount: payload.classMembers,
+            schedule: payload.schedule,
           }),
         });
         const data = await response.json();
@@ -526,6 +530,7 @@ export default function ManageClass({ width, currentAdmin }: ManageClassProps) {
           createdByUid: currentAdmin?.authUid || currentAdmin?.adminId || "admin_uid_001",
           createdByRole: "admin",
           createdByName: `${currentAdmin?.firstName || ""} ${currentAdmin?.lastName || ""}`.trim() || "Admin",
+          schedule: payload.schedule,
         }),
       });
       const data = await response.json();
@@ -570,6 +575,7 @@ export default function ManageClass({ width, currentAdmin }: ManageClassProps) {
       bannerUrl: fullClass.bannerUrl ?? null,
       bannerFileName: fullClass.bannerFileName ?? null,
       bannerMimeType: fullClass.bannerMimeType ?? null,
+      schedule: fullClass.schedule ?? null,
     });
     setIsEditMode(true);
     setIsAddModalVisible(true);
