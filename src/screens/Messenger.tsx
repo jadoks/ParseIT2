@@ -6,7 +6,6 @@ import * as Sharing from 'expo-sharing';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { DimensionValue } from 'react-native';
 import {
-  Alert,
   FlatList,
   Image,
   Keyboard,
@@ -338,6 +337,10 @@ const Messenger = ({
   const [showInfoMenu, setShowInfoMenu] = useState(false);
   const [roomName, setRoomName] = useState('');
   const [roomNameError, setRoomNameError] = useState('');
+  // Tracks the room name the student already saw a "similar room exists"
+  // warning for. If they submit again with that exact name unchanged, it's
+  // treated as confirmation to create it anyway (see handleCreateRoom).
+  const [pendingDuplicateRoomName, setPendingDuplicateRoomName] = useState<string | null>(null);
   const [checkedMembers, setCheckedMembers] = useState<string[]>([]);
   const [anchor, setAnchor] = useState({ x: 0, y: 0 });
   const [hoveredMessageId, setHoveredMessageId] = useState<string | null>(null);
@@ -1572,6 +1575,7 @@ const Messenger = ({
     setCheckedMembers(currentUserName ? [currentUserName] : []);
     setRoomName('');
     setRoomNameError('');
+    setPendingDuplicateRoomName(null);
     setShowCreateRoomModal(true);
   };
 
@@ -1580,11 +1584,18 @@ const Messenger = ({
     setShowMembersModal(true);
   };
 
-  const handleCreateRoom = async (force: boolean = false) => {
+  const handleCreateRoom = async () => {
     const trimmedRoomName = roomName.trim();
     if (!trimmedRoomName || !selected) return;
 
     setRoomNameError('');
+
+    // If the student already saw the "similar room exists" warning for this
+    // exact name and tapped Create again without changing it, treat that as
+    // confirmation to create it anyway.
+    const confirmingPendingDuplicate =
+      pendingDuplicateRoomName !== null &&
+      pendingDuplicateRoomName.toLowerCase() === trimmedRoomName.toLowerCase();
 
     const conversationName = `${trimmedRoomName} - ${selected.name}`;
     const nowLabel = formatConversationTime(Date.now());
@@ -1616,33 +1627,23 @@ const Messenger = ({
           createdById: currentUser,
           createdByUid: currentUser,
           createdByName: currentUserName,
-          force,
+          force: confirmingPendingDuplicate,
         }),
       });
 
       const result = await response.json();
 
-      // The server only blocks with a warning when a same-named room also
-      // has mostly the same members — a genuine mix-up risk. Same name with
-      // a clearly different group is created silently. Let the student
-      // decide whether to proceed instead of hard-blocking them.
-      if (response.status === 409 && result?.warning && !force) {
-        Alert.alert(
-          'Similar room already exists',
-          result?.error ||
-            'A room with this name and mostly the same members already exists in this class. Create it anyway?',
-          [
-            {
-              text: 'Cancel',
-              style: 'cancel',
-              onPress: () => setShowCreateRoomModal(true),
-            },
-            {
-              text: 'Create Anyway',
-              onPress: () => handleCreateRoom(true),
-            },
-          ]
+      // The server only warns when a same-named room also has mostly the
+      // same members — a genuine mix-up risk. Same name with a clearly
+      // different group is created silently. Reopen the modal and let the
+      // student tap Create again to proceed, instead of hard-blocking them.
+      if (response.status === 409 && result?.warning && !confirmingPendingDuplicate) {
+        setPendingDuplicateRoomName(trimmedRoomName);
+        setShowCreateRoomModal(true);
+        setRoomNameError(
+          `${result?.error || 'A similar room already exists.'} Tap Create again to add it anyway.`
         );
+        showToast(result?.error || 'A similar room already exists.', 'error');
         return;
       }
 
@@ -1680,6 +1681,7 @@ const Messenger = ({
       onConversationActiveChange?.(true);
       setRoomName('');
       setRoomNameError('');
+      setPendingDuplicateRoomName(null);
       setCheckedMembers(currentUserName ? [currentUserName] : []);
     } catch (error: any) {
       console.error('Create room error:', error);
@@ -1687,10 +1689,9 @@ const Messenger = ({
       setShowCreateRoomModal(true);
       const message =
         error?.message || 'Please check your connection and try again.';
+      showToast(message, 'error');
       if (message.toLowerCase().includes('already exists')) {
         setRoomNameError(message);
-      } else {
-        Alert.alert('Could not create room', message);
       }
     }
   };
@@ -2656,6 +2657,12 @@ const Messenger = ({
                     onChangeText={(text) => {
                       setRoomName(text);
                       if (roomNameError) setRoomNameError('');
+                      if (
+                        pendingDuplicateRoomName &&
+                        text.trim().toLowerCase() !== pendingDuplicateRoomName.toLowerCase()
+                      ) {
+                        setPendingDuplicateRoomName(null);
+                      }
                     }}
                     placeholder="Enter room name"
                     placeholderTextColor="#9a9a9a"
@@ -2683,7 +2690,10 @@ const Messenger = ({
                       color="#fff"
                     />
                     <Text style={styles.professionalPrimaryButtonText}>
-                      Create
+                      {pendingDuplicateRoomName &&
+                      pendingDuplicateRoomName.toLowerCase() === roomName.trim().toLowerCase()
+                        ? 'Create Anyway'
+                        : 'Create'}
                     </Text>
                   </TouchableOpacity>
                 </View>
