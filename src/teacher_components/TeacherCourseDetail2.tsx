@@ -3700,24 +3700,60 @@ useEffect(() => {
             editable={!isSaving}
           />
           {renderInputError(errors.title)}
-          <Text style={styles.sectionLabel}>Instruction</Text>
-          <TextInput
-            style={[
-              styles.textAreaBox,
-              styles.instructionBoxGameBased,
-              errors.instruction ? styles.errorBorder : null,
-            ]}
-            value={formDesc}
-            onChangeText={(value) => {
-              setFormDesc(value);
-              if (errors.instruction) setErrors((prev) => ({ ...prev, instruction: undefined }));
-            }}
-            placeholder="Enter Instruction"
-            placeholderTextColor="#999"
-            multiline
-            editable={!isSaving}
-          />
-          {renderInputError(errors.instruction)}
+          <View style={styles.instructionScoreRow}>
+            <View style={styles.instructionScoreLeft}>
+              <Text style={styles.sectionLabel}>Instruction</Text>
+              <TextInput
+                style={[
+                  styles.inputBox,
+                  styles.instructionBoxGameBased,
+                  errors.instruction ? styles.errorBorder : null,
+                ]}
+                value={formDesc}
+                onChangeText={(value) => {
+                  setFormDesc(value);
+                  if (errors.instruction) setErrors((prev) => ({ ...prev, instruction: undefined }));
+                }}
+                placeholder="Enter Instruction"
+                placeholderTextColor="#999"
+                multiline
+                textAlignVertical="top"
+                editable={!isSaving}
+              />
+              {renderInputError(errors.instruction)}
+            </View>
+            <View style={styles.instructionScoreRight}>
+              <Text style={styles.sectionLabel}>Total Score</Text>
+              <TextInput
+                style={[
+                  styles.inputBox,
+                  errors.totalScore ? styles.errorBorder : null,
+                  assignmentType === 'game_based'
+                    ? { backgroundColor: '#F5F5F5', color: '#666' }
+                    : null,
+                ]}
+                value={
+                  assignmentType === 'game_based'
+                    ? String(generatedQuestions.length)
+                    : formPoints
+                }
+                onChangeText={(value) => {
+                  setFormPoints(value);
+                  if (errors.totalScore) setErrors((prev) => ({ ...prev, totalScore: undefined }));
+                }}
+                keyboardType="numeric"
+                placeholder="Total Score"
+                placeholderTextColor="#999"
+                editable={assignmentType !== 'game_based' && !isSaving}
+              />
+              {assignmentType === 'game_based' && (
+                <Text style={{ fontSize: 11, color: '#888', marginTop: -4, marginBottom: 8, marginLeft: 4 }}>
+                  * Auto-calculated based on generated questions (1 point per item).
+                </Text>
+              )}
+              {renderInputError(errors.totalScore)}
+            </View>
+          </View>
           {assignmentType === 'game_based' && (
             <>
               <Text style={styles.sectionLabel}>
@@ -3764,42 +3800,7 @@ useEffect(() => {
           {assignmentType === 'game_based' && renderTimeLimitSelector()}
         </View>
         <View style={[styles.formColumnRight, !isMobile && styles.formColumnRightDesktop]}>
-          <View style={[styles.gameAndClassRow, isMobile && styles.gameAndClassRowMobile]}>
-            <View style={[styles.dropdownWrap, !isMobile && styles.dropdownWrapHalf]}>
-              {renderDateTimeField()}
-            </View>
-            <View style={[styles.dropdownWrap, !isMobile && styles.dropdownWrapHalf]}>
-              <Text style={styles.sectionLabel}>Total Score</Text>
-              <TextInput
-                style={[
-                  styles.inputBox,
-                  errors.totalScore ? styles.errorBorder : null,
-                  assignmentType === 'game_based'
-                    ? { backgroundColor: '#F5F5F5', color: '#666' }
-                    : null,
-                ]}
-                value={
-                  assignmentType === 'game_based'
-                    ? String(generatedQuestions.length)
-                    : formPoints
-                }
-                onChangeText={(value) => {
-                  setFormPoints(value);
-                  if (errors.totalScore) setErrors((prev) => ({ ...prev, totalScore: undefined }));
-                }}
-                keyboardType="numeric"
-                placeholder="Total Score"
-                placeholderTextColor="#999"
-                editable={assignmentType !== 'game_based' && !isSaving}
-              />
-              {assignmentType === 'game_based' && (
-                <Text style={{ fontSize: 11, color: '#888', marginTop: -4, marginBottom: 8, marginLeft: 4 }}>
-                  * Auto-calculated based on generated questions (1 point per item).
-                </Text>
-              )}
-              {renderInputError(errors.totalScore)}
-            </View>
-          </View>
+          {renderDateTimeField()}
         </View>
         <View style={styles.fullWidthSection}>
           {renderRelatedMaterialsSelector()}
@@ -6914,9 +6915,13 @@ const styles = StyleSheet.create({
   formColumnLeftDesktop: { width: '58%' },
   formColumnRight: {},
   formColumnRightDesktop: { width: '40%' },
-  // Matches the rendered width of the "Total Score" field (which sits in the
-  // 40%-wide right column, split in half by dropdownWrapHalf) so Instruction
-  // lines up with it instead of stretching across the full left column.
+  // Instruction + Total Score now sit side by side in one row (see
+  // instructionScoreRow below). Instruction is built on styles.inputBox
+  // (not styles.textAreaBox) so it renders at the same single-line height
+  // as the Total Score field instead of the taller textarea height.
+  instructionScoreRow: { flexDirection: 'row', gap: 16, alignItems: 'flex-start' },
+  instructionScoreLeft: { flex: 1 },
+  instructionScoreRight: { width: 140 },
   instructionBoxGameBased: { width: '100%', alignSelf: 'flex-start' },
   // Number of Questions only ever holds up to 2 digits (maxLength={2}), so it
   // doesn't need to span the full column width like a text field would.
