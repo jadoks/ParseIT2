@@ -3198,6 +3198,7 @@ useEffect(() => {
                   key={material.id}
                   style={[
                     styles.materialChip,
+                    { width: isMobile ? '48%' : '32%' },
                     active && styles.materialChipActive,
                     isLesson && styles.lessonChip
                   ]}
@@ -3210,16 +3211,22 @@ useEffect(() => {
                     size={16}
                     color={active ? '#FFF' : isLesson ? '#1976D2' : '#D32F2F'}
                   />
-                  <View style={{ flex: 1 }}>
-                    <Text style={[
-                      styles.materialChipText,
-                      active && styles.materialChipTextActive,
-                      isLesson && styles.lessonChipText
-                    ]}>
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text
+                      style={[
+                        styles.materialChipText,
+                        active && styles.materialChipTextActive,
+                        isLesson && styles.lessonChipText
+                      ]}
+                      numberOfLines={2}
+                    >
                       {material.title}
                     </Text>
                     {isLesson && (
-                      <Text style={[styles.lessonSubtext, active && styles.lessonSubtextActive]}>
+                      <Text
+                        style={[styles.lessonSubtext, active && styles.lessonSubtextActive]}
+                        numberOfLines={1}
+                      >
                         {active
                           ? 'Selected'
                           : 'Lesson ' + ((material as any).lessonNumber || '')}
@@ -5263,156 +5270,160 @@ GENERATED QUESTIONS PREVIEW MODAL
 ════════════════════════════════════════════════════════════════════════ */}
       <Modal
         visible={showGeneratedPreview}
-        transparent
-        animationType="fade"
+        animationType="slide"
+        presentationStyle={Platform.OS === 'ios' ? 'fullScreen' : undefined}
         onRequestClose={() => setShowGeneratedPreview(false)}
       >
-        <View style={styles.modalOverlayCenter}>
-          <View
-            style={[
-              styles.modalCardElevated,
-              { width: isMobile ? Math.min(width - 28, 380) : 700, maxHeight: height * 0.9 },
-            ]}
-          >
-            <View style={styles.createHeaderRow}>
-              <View style={styles.modalHeaderTextWrap}>
-                <Text style={styles.createTitle}>Preview & Edit Generated Questions</Text>
-                <Text style={styles.modalSubtitle}>
-                  {gameType === 'memory_match'
-                    ? 'Review terms and definitions for Memory Match.'
-                    : gameType === 'fill_in_blanks'
-                      ? 'Review sentences and missing words for Fill-in-the-Blanks.'
-                      : gameType === 'flashcard'
-                        ? 'Review front and back of cards for Flashcard Challenge.'
-                        : 'Review and tweak the AI-generated questions before saving.'}
-                </Text>
-              </View>
-              <TouchableOpacity onPress={() => setShowGeneratedPreview(false)}>
-                <Ionicons name="close" size={24} color="#111" />
-              </TouchableOpacity>
-            </View>
-            <ScrollView
-              showsVerticalScrollIndicator={false}
-              contentContainerStyle={styles.modalScrollContent}
+        <SafeAreaView style={styles.lessonPreviewScreen} edges={['top', 'left', 'right']}>
+          {/* Fixed top bar — same "Google Classroom" document-editor chrome as
+              Edit Lesson: back button on the left, title/subtitle in the
+              middle, and the primary save action as an icon button on the
+              right (instead of a bottom button row). */}
+          <View style={styles.lessonPreviewTopBar}>
+            <TouchableOpacity
+              onPress={() => setShowGeneratedPreview(false)}
+              style={styles.lessonPreviewBackBtn}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             >
-              {generatedQuestions.length === 0 && (
-                <Text style={styles.emptyMiniText}>No questions generated yet.</Text>
-              )}
-              {generatedQuestions.map((q, qIndex) => renderQuestionEditor(q, qIndex))}
-            </ScrollView>
+              <Ionicons name={Platform.OS === 'web' ? 'close' : 'arrow-back'} size={22} color="#111" />
+            </TouchableOpacity>
+            <View style={styles.lessonPreviewTopBarTextWrap}>
+              <Text style={styles.lessonPreviewTopBarTitle} numberOfLines={1}>
+                Preview &amp; Edit Questions
+              </Text>
+              <Text style={styles.lessonPreviewTopBarSubtitle} numberOfLines={1}>
+                {gameType === 'memory_match'
+                  ? 'Review terms and definitions for Memory Match.'
+                  : gameType === 'fill_in_blanks'
+                    ? 'Review sentences and missing words for Fill-in-the-Blanks.'
+                    : gameType === 'flashcard'
+                      ? 'Review front and back of cards for Flashcard Challenge.'
+                      : 'Review and tweak the AI-generated questions before saving.'}
+              </Text>
+            </View>
+            <TouchableOpacity
+              onPress={() => {
+                if (generatedQuestions.length === 0) {
+                  toast.show('error', 'Invalid Questions', 'You must have at least one question.');
+                  return;
+                }
+                let hasInvalid = false;
+                if (gameType === 'fill_in_blanks' || gameType === 'flashcard') {
+                  hasInvalid = generatedQuestions.some(
+                    (q) => !q.question.trim() || !q.answer.trim()
+                  );
+                } else if (gameType === 'memory_match') {
+                  hasInvalid = generatedQuestions.some(
+                    (q) => !q.question?.trim() || !q.answer?.trim()
+                  );
+                } else {
+                  hasInvalid = generatedQuestions.some(
+                    (q) =>
+                      q.correctIndex === undefined ||
+                      q.correctIndex === -1 ||
+                      !q.options[q.correctIndex]?.trim() ||
+                      !q.question.trim()
+                  );
+                }
+                if (hasInvalid) {
+                  toast.show(
+                    'error',
+                    'Invalid Questions',
+                    gameType === 'memory_match'
+                      ? 'Please ensure every term and definition has text.'
+                      : 'Please ensure all items have text and a correct option is selected.'
+                  );
+                  return;
+                }
+                setShowGeneratedPreview(false);
+                toast.show('success', 'Saved', 'Questions updated and ready to be assigned.');
+              }}
+              style={[styles.lessonPreviewIconBtn, { backgroundColor: '#D32F2F' }]}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Ionicons name="checkmark" size={20} color="#FFF" />
+            </TouchableOpacity>
+          </View>
 
-            {/* Add more questions: manual or AI */}
-            <View style={{ paddingHorizontal: 4, paddingTop: 8, paddingBottom: 4 }}>
-              <View
-                style={{
-                  flexDirection: isMobile ? 'column' : 'row',
-                  gap: 8,
-                  alignItems: isMobile ? 'stretch' : 'center',
-                }}
+          {/* Scrollable question list — full-width document-style page, same
+              treatment as the Edit Lesson editor, so there's much more room
+              to review and edit each generated question. */}
+          <ScrollView
+            style={styles.flexOne}
+            showsVerticalScrollIndicator={true}
+            contentContainerStyle={styles.lessonPreviewScrollContent}
+          >
+            <View style={styles.lessonPreviewPageWrap}>
+              <View style={[styles.lessonPreviewPage, !isMobile && styles.lessonPreviewPageWeb]}>
+                {generatedQuestions.length === 0 && (
+                  <Text style={styles.emptyMiniText}>No questions generated yet.</Text>
+                )}
+                {generatedQuestions.map((q, qIndex) => renderQuestionEditor(q, qIndex))}
+              </View>
+            </View>
+          </ScrollView>
+
+          {/* Fixed bottom toolbar: add more questions, manually or with AI */}
+          <View style={styles.lessonPreviewBottomToolbar}>
+            <View
+              style={{
+                flexDirection: isMobile ? 'column' : 'row',
+                gap: 8,
+                alignItems: isMobile ? 'stretch' : 'center',
+              }}
+            >
+              <TouchableOpacity
+                style={[
+                  styles.secondaryButton,
+                  { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
+                ]}
+                onPress={addManualQuestion}
               >
+                <Ionicons name="add" size={16} color="#4B6BFB" />
+                <Text style={styles.secondaryButtonText}>Add Manually</Text>
+              </TouchableOpacity>
+
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: isMobile ? undefined : 1 }}>
+                <TextInput
+                  value={extraQuestionsCount}
+                  onChangeText={(v) => setExtraQuestionsCount(v.replace(/[^0-9]/g, ''))}
+                  keyboardType="number-pad"
+                  maxLength={2}
+                  style={{
+                    borderWidth: 1,
+                    borderColor: '#DDD',
+                    borderRadius: 8,
+                    paddingHorizontal: 10,
+                    paddingVertical: 8,
+                    width: 56,
+                    textAlign: 'center',
+                  }}
+                />
                 <TouchableOpacity
                   style={[
                     styles.secondaryButton,
-                    { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
+                    { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, flex: 1 },
+                    (isGeneratingMore || dailyGenerationsUsed >= DAILY_GENERATION_LIMIT) && { opacity: 0.5 },
                   ]}
-                  onPress={addManualQuestion}
+                  disabled={isGeneratingMore || dailyGenerationsUsed >= DAILY_GENERATION_LIMIT}
+                  onPress={handleGenerateMoreQuestions}
                 >
-                  <Ionicons name="add" size={16} color="#4B6BFB" />
-                  <Text style={styles.secondaryButtonText}>Add Manually</Text>
+                  {isGeneratingMore ? (
+                    <ActivityIndicator size="small" color="#4B6BFB" />
+                  ) : (
+                    <>
+                      <Ionicons name="sparkles" size={16} color="#4B6BFB" />
+                      <Text style={styles.secondaryButtonText}>Generate More with AI</Text>
+                    </>
+                  )}
                 </TouchableOpacity>
-
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: isMobile ? undefined : 1 }}>
-                  <TextInput
-                    value={extraQuestionsCount}
-                    onChangeText={(v) => setExtraQuestionsCount(v.replace(/[^0-9]/g, ''))}
-                    keyboardType="number-pad"
-                    maxLength={2}
-                    style={{
-                      borderWidth: 1,
-                      borderColor: '#DDD',
-                      borderRadius: 8,
-                      paddingHorizontal: 10,
-                      paddingVertical: 8,
-                      width: 56,
-                      textAlign: 'center',
-                    }}
-                  />
-                  <TouchableOpacity
-                    style={[
-                      styles.secondaryButton,
-                      { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, flex: 1 },
-                      (isGeneratingMore || dailyGenerationsUsed >= DAILY_GENERATION_LIMIT) && { opacity: 0.5 },
-                    ]}
-                    disabled={isGeneratingMore || dailyGenerationsUsed >= DAILY_GENERATION_LIMIT}
-                    onPress={handleGenerateMoreQuestions}
-                  >
-                    {isGeneratingMore ? (
-                      <ActivityIndicator size="small" color="#4B6BFB" />
-                    ) : (
-                      <>
-                        <Ionicons name="sparkles" size={16} color="#4B6BFB" />
-                        <Text style={styles.secondaryButtonText}>Generate More with AI</Text>
-                      </>
-                    )}
-                  </TouchableOpacity>
-                </View>
               </View>
-              <Text style={{ fontSize: 11, color: '#888', marginTop: 4 }}>
-                {dailyGenerationsUsed}/{DAILY_GENERATION_LIMIT} AI generations used today
-              </Text>
             </View>
-
-            <View style={styles.buttonRow}>
-              <TouchableOpacity
-                style={styles.secondaryButton}
-                onPress={() => setShowGeneratedPreview(false)}
-              >
-                <Text style={styles.secondaryButtonText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.primaryButton}
-                onPress={() => {
-                  if (generatedQuestions.length === 0) {
-                    toast.show('error', 'Invalid Questions', 'You must have at least one question.');
-                    return;
-                  }
-                  let hasInvalid = false;
-                  if (gameType === 'fill_in_blanks' || gameType === 'flashcard') {
-                    hasInvalid = generatedQuestions.some(
-                      (q) => !q.question.trim() || !q.answer.trim()
-                    );
-                  } else if (gameType === 'memory_match') {
-                    hasInvalid = generatedQuestions.some(
-                      (q) => !q.question?.trim() || !q.answer?.trim()
-                    );
-                  } else {
-                    hasInvalid = generatedQuestions.some(
-                      (q) =>
-                        q.correctIndex === undefined ||
-                        q.correctIndex === -1 ||
-                        !q.options[q.correctIndex]?.trim() ||
-                        !q.question.trim()
-                    );
-                  }
-                  if (hasInvalid) {
-                    toast.show(
-                      'error',
-                      'Invalid Questions',
-                      gameType === 'memory_match'
-                        ? 'Please ensure every term and definition has text.'
-                        : 'Please ensure all items have text and a correct option is selected.'
-                    );
-                    return;
-                  }
-                  setShowGeneratedPreview(false);
-                  toast.show('success', 'Saved', 'Questions updated and ready to be assigned.');
-                }}
-              >
-                <Text style={styles.primaryButtonText}>Confirm & Keep Questions</Text>
-              </TouchableOpacity>
-            </View>
+            <Text style={{ fontSize: 11, color: '#888', marginTop: 4 }}>
+              {dailyGenerationsUsed}/{DAILY_GENERATION_LIMIT} AI generations used today
+            </Text>
           </View>
-        </View>
+        </SafeAreaView>
       </Modal>
       {/* ══════════════════════════════════════════════════════════════════════
 AI PREVIEW & APPROVAL MODAL
@@ -6991,7 +7002,12 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
   },
-  materialSelectorWrap: { gap: 8, marginTop: 4 },
+  materialSelectorWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 4,
+  },
   materialChip: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -7446,6 +7462,19 @@ const styles = StyleSheet.create({
     shadowRadius: 3,
     elevation: 2,
     zIndex: 5,
+  },
+  lessonPreviewBottomToolbar: {
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 16,
+    paddingTop: 10,
+    paddingBottom: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#E5E5E5',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -1 },
+    shadowOpacity: 0.06,
+    shadowRadius: 3,
+    elevation: 4,
   },
   lessonPreviewBackBtn: {
     width: 38,
