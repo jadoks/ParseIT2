@@ -6917,7 +6917,7 @@ const styles = StyleSheet.create({
   // Matches the rendered width of the "Total Score" field (which sits in the
   // 40%-wide right column, split in half by dropdownWrapHalf) so Instruction
   // lines up with it instead of stretching across the full left column.
-  instructionBoxGameBased: { width: '100%', maxWidth: 220, alignSelf: 'flex-start' },
+  instructionBoxGameBased: { width: '100%', alignSelf: 'flex-start' },
   // Number of Questions only ever holds up to 2 digits (maxLength={2}), so it
   // doesn't need to span the full column width like a text field would.
   numberOfQuestionsInput: { width: '100%', maxWidth: 100 },
