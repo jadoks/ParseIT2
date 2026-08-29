@@ -3600,7 +3600,7 @@ useEffect(() => {
       </View>
       <View style={styles.fullWidthSection}>
         {renderRelatedMaterialsSelector()}
-        {assignmentType === 'game_based' && selectedMaterialIds.length > 0 && gameType && (
+        {assignmentType === 'game_based' && selectedMaterialIds.length > 0 && gameType && generatedQuestions.length === 0 && (
           <TouchableOpacity
             style={[
               styles.generateButton,
@@ -3627,7 +3627,7 @@ useEffect(() => {
             </Text>
           </TouchableOpacity>
         )}
-        {assignmentType === 'game_based' && selectedMaterialIds.length > 0 && !gameType && (
+        {assignmentType === 'game_based' && selectedMaterialIds.length > 0 && !gameType && generatedQuestions.length === 0 && (
           <View style={[styles.generateButton, { backgroundColor: '#9E9E9E' }]}>
             <Ionicons name="alert-circle-outline" size={18} color="#FFF" />
             <Text style={styles.generateButtonText}>Select a Game Type to Generate Questions</Text>
@@ -3867,7 +3867,7 @@ useEffect(() => {
         </View>
         <View style={styles.fullWidthSection}>
           {renderRelatedMaterialsSelector()}
-          {assignmentType === 'game_based' && selectedMaterialIds.length > 0 && gameType && (
+          {assignmentType === 'game_based' && selectedMaterialIds.length > 0 && gameType && generatedQuestions.length === 0 && (
             <TouchableOpacity
               style={[
                 styles.generateButton,
@@ -3895,7 +3895,7 @@ useEffect(() => {
               </Text>
             </TouchableOpacity>
           )}
-          {assignmentType === 'game_based' && selectedMaterialIds.length > 0 && !gameType && (
+          {assignmentType === 'game_based' && selectedMaterialIds.length > 0 && !gameType && generatedQuestions.length === 0 && (
             <View style={[styles.generateButton, { backgroundColor: '#9E9E9E' }]}>
               <Ionicons name="alert-circle-outline" size={18} color="#FFF" />
               <Text style={styles.generateButtonText}>Select a Game Type to Generate Questions</Text>
