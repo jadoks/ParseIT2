@@ -89,6 +89,7 @@ type Conversation = {
   unreadCount: number;
   isRoom?: boolean;
   isCreatedRoom?: boolean;
+  roomName?: string | null;
   members?: string[];
   memberDetails?: { name: string; studentId?: string }[];
   admin?: string;
@@ -378,6 +379,7 @@ const Messenger = ({
   const [showMembersModal, setShowMembersModal] = useState(false);
   const [showInfoMenu, setShowInfoMenu] = useState(false);
   const [roomName, setRoomName] = useState('');
+  const [roomNameError, setRoomNameError] = useState('');
   const [checkedMembers, setCheckedMembers] = useState<string[]>([]);
   const [anchor, setAnchor] = useState({ x: 0, y: 0 });
   const [hoveredMessageId, setHoveredMessageId] = useState<string | null>(null);
@@ -540,6 +542,7 @@ const Messenger = ({
           createdAt: item.createdAt || null,
           isRoom: item.type === 'room',
           isCreatedRoom: item.type === 'room',
+          roomName: item.roomName || null,
           admin:
             item.instructorName ||
             item.ownerName ||
@@ -1588,6 +1591,7 @@ const Messenger = ({
     setShowInfoMenu(false);
     setCheckedMembers(currentUserName ? [currentUserName] : []);
     setRoomName('');
+    setRoomNameError('');
     setShowCreateRoomModal(true);
   };
 
@@ -1596,9 +1600,11 @@ const Messenger = ({
     setShowMembersModal(true);
   };
 
-  const handleCreateRoom = async () => {
+  const handleCreateRoom = async (force: boolean = false) => {
     const trimmedRoomName = roomName.trim();
     if (!trimmedRoomName || !selected) return;
+
+    setRoomNameError('');
 
     const conversationName = `${trimmedRoomName} - ${selected.name}`;
     const nowLabel = formatConversationTime(Date.now());
@@ -1630,10 +1636,36 @@ const Messenger = ({
           createdById: currentUser,
           createdByUid: currentUserUid,
           createdByName: currentUserName,
+          force,
         }),
       });
 
       const result = await response.json();
+
+      // The server only blocks with a warning when a same-named room also
+      // has mostly the same members — a genuine mix-up risk. Same name with
+      // a clearly different group is created silently. Let the teacher
+      // decide whether to proceed instead of hard-blocking them.
+      if (response.status === 409 && result?.warning && !force) {
+        Alert.alert(
+          'Similar room already exists',
+          result?.error ||
+            'A room with this name and mostly the same members already exists in this class. Create it anyway?',
+          [
+            {
+              text: 'Cancel',
+              style: 'cancel',
+              onPress: () => setShowCreateRoomModal(true),
+            },
+            {
+              text: 'Create Anyway',
+              onPress: () => handleCreateRoom(true),
+            },
+          ]
+        );
+        return;
+      }
+
       if (!response.ok || !result?.data?.id) {
         throw new Error(result?.error || 'Failed to create discussion room.');
       }
@@ -1651,6 +1683,7 @@ const Messenger = ({
         createdAt: Date.now(),
         isRoom: true,
         isCreatedRoom: true,
+        roomName: trimmedRoomName,
         members: roomMembers,
         admin: currentUserName,
         classId: selected.classId,
@@ -1666,12 +1699,19 @@ const Messenger = ({
       setSelected(newConversation);
       onConversationActiveChange?.(true);
       setRoomName('');
+      setRoomNameError('');
       setCheckedMembers(currentUserName ? [currentUserName] : []);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Create room error:', error);
       // Re-open the modal so the teacher knows it didn't go through and can retry.
       setShowCreateRoomModal(true);
-      Alert.alert('Could not create room', 'Please check your connection and try again.');
+      const message =
+        error?.message || 'Please check your connection and try again.';
+      if (message.toLowerCase().includes('already exists')) {
+        setRoomNameError(message);
+      } else {
+        Alert.alert('Could not create room', message);
+      }
     }
   };
 
@@ -2623,7 +2663,10 @@ const Messenger = ({
                 >
                   <TextInput
                     value={roomName}
-                    onChangeText={setRoomName}
+                    onChangeText={(text) => {
+                      setRoomName(text);
+                      if (roomNameError) setRoomNameError('');
+                    }}
                     placeholder="Enter room name"
                     placeholderTextColor="#9a9a9a"
                     style={[
@@ -2637,7 +2680,7 @@ const Messenger = ({
                       isTinyPhone && styles.professionalPrimaryButtonStack,
                     ]}
                     activeOpacity={0.9}
-                    onPress={handleCreateRoom}
+                    onPress={() => handleCreateRoom()}
                   >
                     <MaterialCommunityIcons
                       name="plus"
@@ -2649,6 +2692,11 @@ const Messenger = ({
                     </Text>
                   </TouchableOpacity>
                 </View>
+                {!!roomNameError && (
+                  <Text style={styles.professionalErrorText}>
+                    {roomNameError}
+                  </Text>
+                )}
               </View>
               <View style={styles.professionalSection}>
                 <Text style={styles.professionalLabel}>Members</Text>
@@ -3383,6 +3431,12 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     color: '#777',
     marginBottom: 12,
+  },
+  professionalErrorText: {
+    fontSize: 12,
+    lineHeight: 16,
+    color: '#c62828',
+    marginTop: 6,
   },
   professionalInputRow: {
     flexDirection: 'row',

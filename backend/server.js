@@ -629,6 +629,21 @@ async function createReadSignedUrlIfExists(storagePath) {
     return trimmed ? trimmed : null;
   }
 
+  // Used by /messenger-create-room to decide whether a same-named room
+  // conflicts enough to warn about. Returns the fraction of the smaller
+  // group that's also present in the larger group (0 = no overlap,
+  // 1 = one group is a subset of the other / identical membership).
+  function calculateMemberOverlapRatio(namesA, namesB) {
+    const setA = new Set((namesA || []).map((n) => (n || "").trim().toLowerCase()).filter(Boolean));
+    const setB = new Set((namesB || []).map((n) => (n || "").trim().toLowerCase()).filter(Boolean));
+    if (setA.size === 0 || setB.size === 0) return 0;
+    let overlapCount = 0;
+    setA.forEach((name) => {
+      if (setB.has(name)) overlapCount += 1;
+    });
+    return overlapCount / Math.min(setA.size, setB.size);
+  }
+
   function normalizeAvatarValue(value) {
     if (!value) return null;
 
@@ -8611,6 +8626,7 @@ app.get(
         createdById,
         createdByUid,
         createdByName,
+        force,
       } = req.body;
 
       const trimmedRoomName = normalizeOptionalText(roomName);
@@ -8620,6 +8636,64 @@ app.get(
         return res.status(400).json({
           error: "classId, roomName, and createdByName are required.",
         });
+      }
+
+      // Names requested for the new room (used both for the overlap check
+      // below and, later, to resolve each member's roster record). Computed
+      // up front so the duplicate-name check can compare membership too.
+      const requestedNames = Array.from(
+        new Set(
+          [...(Array.isArray(memberNames) ? memberNames : []), trimmedCreatedByName]
+            .map((n) => normalizeOptionalText(n))
+            .filter(Boolean)
+        )
+      );
+
+      // Same-named rooms (case/whitespace-insensitive) inside the same
+      // class. Firestore can't do a case-insensitive query, so pull existing
+      // rooms for this class and compare in memory.
+      const existingRoomsSnapshot = await db
+        .collection("messengerConversations")
+        .where("classId", "==", classId)
+        .where("type", "==", "room")
+        .get();
+
+      const normalizedNewName = trimmedRoomName.toLowerCase();
+      const duplicateNameRooms = existingRoomsSnapshot.docs.filter((doc) => {
+        const existingRoomName = normalizeOptionalText(doc.data()?.roomName);
+        return existingRoomName && existingRoomName.toLowerCase() === normalizedNewName;
+      });
+
+      // A same-named room only counts as a real conflict if it's mostly the
+      // same crowd — two rooms called "Q&A" with different members are a
+      // normal, legitimate reuse of a label. `force` lets the caller
+      // (after seeing the warning) create it anyway.
+      const MEMBER_OVERLAP_WARNING_THRESHOLD = 0.5;
+      if (duplicateNameRooms.length > 0 && !force) {
+        let mostOverlappingRoom = null;
+        let highestOverlapRatio = 0;
+
+        duplicateNameRooms.forEach((doc) => {
+          const existingParticipants = Array.isArray(doc.data()?.participants)
+            ? doc.data().participants
+            : [];
+          const existingNames = existingParticipants.map((p) => p?.name).filter(Boolean);
+          const overlapRatio = calculateMemberOverlapRatio(requestedNames, existingNames);
+          if (overlapRatio > highestOverlapRatio) {
+            highestOverlapRatio = overlapRatio;
+            mostOverlappingRoom = doc;
+          }
+        });
+
+        if (mostOverlappingRoom && highestOverlapRatio >= MEMBER_OVERLAP_WARNING_THRESHOLD) {
+          return res.status(409).json({
+            error: `A room named "${trimmedRoomName}" with mostly the same members already exists in this class.`,
+            warning: true,
+            conflictingRoomId: mostOverlappingRoom.id,
+          });
+        }
+        // Otherwise: same name, but a clearly different group of members —
+        // fall through and create the room without interrupting the user.
       }
 
       // Mirror the parent class conversation's display info (course code,
@@ -8659,14 +8733,8 @@ app.get(
         .get();
       const roster = rosterSnapshot.docs.map((doc) => doc.data());
 
-      const requestedNames = Array.from(
-        new Set(
-          [...(Array.isArray(memberNames) ? memberNames : []), trimmedCreatedByName]
-            .map((n) => normalizeOptionalText(n))
-            .filter(Boolean)
-        )
-      );
-
+      // requestedNames was already computed above (used for the duplicate-
+      // name/overlap check) and is reused here to build participants.
       const participants = requestedNames.map((name) => {
         if (name === trimmedCreatedByName) {
           return {
