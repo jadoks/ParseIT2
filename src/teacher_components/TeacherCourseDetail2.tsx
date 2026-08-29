@@ -2507,7 +2507,6 @@ useEffect(() => {
         nextErrors.totalScore = 'Please generate at least one question for the game.';
     } else {
       if (!formPoints.trim()) nextErrors.totalScore = 'Total score is required.';
-      if (!formPointsOnTime.trim()) nextErrors.pointsOnTime = 'Points on time is required.';
     }
     if (!formDue.trim()) nextErrors.dueDate = 'Due date and time is required.';
     if (selectedMaterialIds.length === 0)
@@ -2893,7 +2892,7 @@ useEffect(() => {
           totalScore:
             assignmentType === 'game_based' ? generatedQuestions.length : Number(formPoints),
           pointsOnTime:
-            assignmentType === 'game_based' ? generatedQuestions.length : Number(formPointsOnTime),
+            assignmentType === 'game_based' ? generatedQuestions.length : Number(formPoints),
           repositoryDisabledAfterDue: assignmentDisableRepositoryAfterDue,
           materialIds: selectedMaterialIds,
           assignmentType,
@@ -2949,7 +2948,7 @@ useEffect(() => {
           totalScore:
             assignmentType === 'game_based' ? generatedQuestions.length : Number(formPoints),
           pointsOnTime:
-            assignmentType === 'game_based' ? generatedQuestions.length : Number(formPointsOnTime),
+            assignmentType === 'game_based' ? generatedQuestions.length : Number(formPoints),
           dueDate: formDue.trim(),
           repositoryDisabledAfterDue: assignmentDisableRepositoryAfterDue,
           materialIds: selectedMaterialIds,
@@ -3492,9 +3491,11 @@ useEffect(() => {
         {assignmentType === 'game_based' && renderTimeLimitSelector()}
       </View>
       <View style={[styles.formColumnRight, !isMobile && styles.formColumnRightDesktop]}>
-        {renderDateTimeField()}
-        <View style={styles.scoreStackDesktop}>
-          <View style={styles.scoreFieldFull}>
+        <View style={[styles.gameAndClassRow, isMobile && styles.gameAndClassRowMobile]}>
+          <View style={[styles.dropdownWrap, !isMobile && styles.dropdownWrapHalf]}>
+            {renderDateTimeField()}
+          </View>
+          <View style={[styles.dropdownWrap, !isMobile && styles.dropdownWrapHalf]}>
             <Text style={styles.sectionLabel}>Total Score</Text>
             <TextInput
               style={[
@@ -3521,25 +3522,6 @@ useEffect(() => {
             )}
             {renderInputError(errors.totalScore)}
           </View>
-          {assignmentType !== 'game_based' && (
-            <View style={styles.scoreFieldFull}>
-              <Text style={styles.sectionLabel}>Points On Time</Text>
-              <TextInput
-                style={[styles.inputBox, errors.pointsOnTime ? styles.errorBorder : null]}
-                value={formPointsOnTime}
-                onChangeText={(value) => {
-                  setFormPointsOnTime(value);
-                  if (errors.pointsOnTime)
-                    setErrors((prev) => ({ ...prev, pointsOnTime: undefined }));
-                }}
-                keyboardType="numeric"
-                placeholder="Points On Time"
-                placeholderTextColor="#999"
-                editable={!isSaving}
-              />
-              {renderInputError(errors.pointsOnTime)}
-            </View>
-          )}
         </View>
       </View>
       <View style={styles.fullWidthSection}>
@@ -3777,9 +3759,11 @@ useEffect(() => {
           {assignmentType === 'game_based' && renderTimeLimitSelector()}
         </View>
         <View style={[styles.formColumnRight, !isMobile && styles.formColumnRightDesktop]}>
-          {renderDateTimeField()}
-          <View style={styles.scoreStackDesktop}>
-            <View style={styles.scoreFieldFull}>
+          <View style={[styles.gameAndClassRow, isMobile && styles.gameAndClassRowMobile]}>
+            <View style={[styles.dropdownWrap, !isMobile && styles.dropdownWrapHalf]}>
+              {renderDateTimeField()}
+            </View>
+            <View style={[styles.dropdownWrap, !isMobile && styles.dropdownWrapHalf]}>
               <Text style={styles.sectionLabel}>Total Score</Text>
               <TextInput
                 style={[
@@ -3810,25 +3794,6 @@ useEffect(() => {
               )}
               {renderInputError(errors.totalScore)}
             </View>
-            {assignmentType !== 'game_based' && (
-              <View style={styles.scoreFieldFull}>
-                <Text style={styles.sectionLabel}>Points On Time</Text>
-                <TextInput
-                  style={[styles.inputBox, errors.pointsOnTime ? styles.errorBorder : null]}
-                  value={formPointsOnTime}
-                  onChangeText={(value) => {
-                    setFormPointsOnTime(value);
-                    if (errors.pointsOnTime)
-                      setErrors((prev) => ({ ...prev, pointsOnTime: undefined }));
-                  }}
-                  keyboardType="numeric"
-                  placeholder="Points On Time"
-                  placeholderTextColor="#999"
-                  editable={!isSaving}
-                />
-                {renderInputError(errors.pointsOnTime)}
-              </View>
-            )}
           </View>
         </View>
         <View style={styles.fullWidthSection}>
@@ -6981,8 +6946,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#111',
   },
-  scoreStackDesktop: { gap: 2 },
-  scoreFieldFull: { width: '100%' },
   dateButton: {
     borderWidth: 1,
     borderColor: '#DDD',
