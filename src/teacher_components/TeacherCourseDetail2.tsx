@@ -979,6 +979,8 @@ const TeacherCourseDetail2 = ({
   const [generatedQuestions, setGeneratedQuestions] = useState<any[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
   const [showGeneratedPreview, setShowGeneratedPreview] = useState(false);
+  const [extraQuestionsCount, setExtraQuestionsCount] = useState<string>('5');
+  const [isGeneratingMore, setIsGeneratingMore] = useState(false);
 
   const gameOptions = [
     { value: 'quiz_master', label: 'Quiz Master', desc: 'Timed, auto-graded questions from materials' },
@@ -2687,6 +2689,137 @@ useEffect(() => {
 
   const deleteGeneratedQuestion = (qIndex: number) => {
     setGeneratedQuestions((prev) => prev.filter((_, index) => index !== qIndex));
+  };
+
+  const createBlankQuestion = () => {
+    const id = `manual-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    if (gameType === 'fill_in_blanks') {
+      return { id, sentence: '', answer: '', question: '' };
+    }
+    if (gameType === 'flashcard' || gameType === 'memory_match') {
+      return { id, question: '', answer: '' };
+    }
+    return { id, question: '', options: ['', '', '', ''], answer: '', correctIndex: -1 };
+  };
+
+  const addManualQuestion = () => {
+    setGeneratedQuestions((prev) => [...prev, createBlankQuestion()]);
+  };
+
+  const handleGenerateMoreQuestions = async () => {
+    if (selectedMaterialIds.length === 0) {
+      toast.show('error', 'Error', 'Please select at least one learning material.');
+      return;
+    }
+    const parsedCount = parseInt(extraQuestionsCount, 10) || 0;
+    if (parsedCount < 1 || parsedCount > MAX_QUESTIONS_PER_GENERATION) {
+      toast.show(
+        'error',
+        'Invalid Count',
+        `Please enter between 1 and ${MAX_QUESTIONS_PER_GENERATION} questions.`
+      );
+      return;
+    }
+    const { usageMap, count: usedToday } = await getTodayUsageForTeacher(teacherIdentity);
+    if (usedToday >= DAILY_GENERATION_LIMIT) {
+      setDailyGenerationsUsed(usedToday);
+      toast.show(
+        'error',
+        'Daily Limit Reached',
+        `You've used all ${DAILY_GENERATION_LIMIT} question generations allowed today across your classes. Please try again tomorrow.`
+      );
+      return;
+    }
+    setIsGeneratingMore(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/game-ai/generate-quiz-materials`, {
+        credentials: 'include',
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          classId: course?.id,
+          materialIds: selectedMaterialIds,
+          studentId: currentTeacher?.teacherId || 'teacher-preview',
+          gameType,
+          numberOfQuestions: parsedCount,
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Failed to generate questions.');
+      const questionsArray = Array.isArray(data.questions) ? data.questions : [];
+
+      // Key existing questions so we don't add duplicates of what's already in the list
+      const keyOf = (q: any) =>
+        (gameType === 'fill_in_blanks' ? q.sentence : (q.question || q.term || q.front))
+          ?.trim()
+          .toLowerCase();
+      const existingKeys = new Set(generatedQuestions.map(keyOf));
+
+      const mappedNew = questionsArray.map((q: any, index: number) => {
+        if (gameType === 'fill_in_blanks') {
+          return {
+            id: `gen-more-${Date.now()}-${index}`,
+            sentence: q.sentence || '',
+            answer: q.answer || '',
+            question: q.sentence || q.question || '',
+          };
+        }
+        if (gameType === 'flashcard') {
+          return { id: `gen-more-${Date.now()}-${index}`, question: q.front || '', answer: q.back || '' };
+        }
+        if (gameType === 'memory_match') {
+          return {
+            id: `gen-more-${Date.now()}-${index}`,
+            question: q.term || q.question || '',
+            answer: q.definition || q.answer || '',
+          };
+        }
+        const options = q.options && q.options.length === 4 ? q.options : ['', '', '', ''];
+        const answer = q.answer || options[0] || '';
+        const correctIndex = options.indexOf(answer);
+        return {
+          id: `gen-more-${Date.now()}-${index}`,
+          question: q.question || '',
+          options,
+          answer,
+          correctIndex: correctIndex !== -1 ? correctIndex : 0,
+        };
+      });
+
+      const newUnique = mappedNew.filter((q: any) => {
+        const key = keyOf(q);
+        const isPlaceholder = key?.includes('the process of ___ is defined as');
+        if (!key || isPlaceholder || existingKeys.has(key)) return false;
+        existingKeys.add(key);
+        return true;
+      });
+
+      if (newUnique.length === 0) {
+        toast.show(
+          'error',
+          'No New Questions',
+          'The AI only returned duplicates of what you already have. Try again or add one manually.'
+        );
+        return;
+      }
+
+      const nextCount = usedToday + 1;
+      await writeGenerationUsage({
+        ...usageMap,
+        [teacherIdentity]: { date: getTodayDateKey(), count: nextCount },
+      });
+      setDailyGenerationsUsed(nextCount);
+      setGeneratedQuestions((prev) => [...prev, ...newUnique]);
+      toast.show(
+        'success',
+        'Added',
+        `${newUnique.length} new question(s) added. (${nextCount}/${DAILY_GENERATION_LIMIT} generations used today)`
+      );
+    } catch (error: any) {
+      toast.show('error', 'Generation Failed', error?.message || 'Unable to generate more questions.');
+    } finally {
+      setIsGeneratingMore(false);
+    }
   };
 
   const handleCreate = async () => {
@@ -5167,6 +5300,68 @@ GENERATED QUESTIONS PREVIEW MODAL
               )}
               {generatedQuestions.map((q, qIndex) => renderQuestionEditor(q, qIndex))}
             </ScrollView>
+
+            {/* Add more questions: manual or AI */}
+            <View style={{ paddingHorizontal: 4, paddingTop: 8, paddingBottom: 4 }}>
+              <View
+                style={{
+                  flexDirection: isMobile ? 'column' : 'row',
+                  gap: 8,
+                  alignItems: isMobile ? 'stretch' : 'center',
+                }}
+              >
+                <TouchableOpacity
+                  style={[
+                    styles.secondaryButton,
+                    { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
+                  ]}
+                  onPress={addManualQuestion}
+                >
+                  <Ionicons name="add" size={16} color="#4B6BFB" />
+                  <Text style={styles.secondaryButtonText}>Add Manually</Text>
+                </TouchableOpacity>
+
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: isMobile ? undefined : 1 }}>
+                  <TextInput
+                    value={extraQuestionsCount}
+                    onChangeText={(v) => setExtraQuestionsCount(v.replace(/[^0-9]/g, ''))}
+                    keyboardType="number-pad"
+                    maxLength={2}
+                    style={{
+                      borderWidth: 1,
+                      borderColor: '#DDD',
+                      borderRadius: 8,
+                      paddingHorizontal: 10,
+                      paddingVertical: 8,
+                      width: 56,
+                      textAlign: 'center',
+                    }}
+                  />
+                  <TouchableOpacity
+                    style={[
+                      styles.secondaryButton,
+                      { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, flex: 1 },
+                      (isGeneratingMore || dailyGenerationsUsed >= DAILY_GENERATION_LIMIT) && { opacity: 0.5 },
+                    ]}
+                    disabled={isGeneratingMore || dailyGenerationsUsed >= DAILY_GENERATION_LIMIT}
+                    onPress={handleGenerateMoreQuestions}
+                  >
+                    {isGeneratingMore ? (
+                      <ActivityIndicator size="small" color="#4B6BFB" />
+                    ) : (
+                      <>
+                        <Ionicons name="sparkles" size={16} color="#4B6BFB" />
+                        <Text style={styles.secondaryButtonText}>Generate More with AI</Text>
+                      </>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              </View>
+              <Text style={{ fontSize: 11, color: '#888', marginTop: 4 }}>
+                {dailyGenerationsUsed}/{DAILY_GENERATION_LIMIT} AI generations used today
+              </Text>
+            </View>
+
             <View style={styles.buttonRow}>
               <TouchableOpacity
                 style={styles.secondaryButton}
