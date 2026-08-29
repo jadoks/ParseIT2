@@ -8601,6 +8601,141 @@ app.get(
     }
   });
 
+  app.post("/messenger-create-room", async (req, res) => {
+    try {
+      const {
+        classId,
+        roomName,
+        memberNames,
+        createdByRole,
+        createdById,
+        createdByUid,
+        createdByName,
+      } = req.body;
+
+      const trimmedRoomName = normalizeOptionalText(roomName);
+      const trimmedCreatedByName = normalizeOptionalText(createdByName);
+
+      if (!classId || !trimmedRoomName || !trimmedCreatedByName) {
+        return res.status(400).json({
+          error: "classId, roomName, and createdByName are required.",
+        });
+      }
+
+      // Mirror the parent class conversation's display info (course code,
+      // section, semester, school year) so the room's name reads the same
+      // way it always has on the client: "Room Name - CCC111 (Section) - ...".
+      const parentQuery = await db
+        .collection("messengerConversations")
+        .where("classId", "==", classId)
+        .where("type", "==", "class")
+        .limit(1)
+        .get();
+
+      const parentDoc = parentQuery.empty ? null : parentQuery.docs[0];
+      const parentConversation = parentDoc ? parentDoc.data() : null;
+
+      function formatParentDisplayName(conversation) {
+        if (!conversation) return "Class";
+        const shortName = normalizeOptionalText(conversation.className) || "Class";
+        const section = normalizeOptionalText(conversation.section);
+        const subjectWithSection = section ? `${shortName} (${section})` : shortName;
+        const semester = normalizeOptionalText(conversation.semester);
+        const schoolYear = normalizeOptionalText(conversation.schoolYear);
+        if (semester && schoolYear)
+          return `${subjectWithSection} - ${semester} (${schoolYear})`;
+        if (semester) return `${subjectWithSection} - ${semester}`;
+        if (schoolYear) return `${subjectWithSection} (${schoolYear})`;
+        return subjectWithSection;
+      }
+
+      // Best-effort: resolve each requested member's real userId/userUid from
+      // the class roster so unread tracking and identity stay accurate. Any
+      // name that can't be matched (typo, member left the class, etc.) is
+      // still added to the room by name only rather than dropped.
+      const rosterSnapshot = await db
+        .collection("classMembers")
+        .where("classId", "==", classId)
+        .get();
+      const roster = rosterSnapshot.docs.map((doc) => doc.data());
+
+      const requestedNames = Array.from(
+        new Set(
+          [...(Array.isArray(memberNames) ? memberNames : []), trimmedCreatedByName]
+            .map((n) => normalizeOptionalText(n))
+            .filter(Boolean)
+        )
+      );
+
+      const participants = requestedNames.map((name) => {
+        if (name === trimmedCreatedByName) {
+          return {
+            userUid: normalizeOptionalText(createdByUid),
+            userId: normalizeOptionalText(createdById),
+            name,
+            role: createdByRole === "teacher" ? "teacher" : "student",
+          };
+        }
+        const match = roster.find(
+          (m) => (m.name || "").trim().toLowerCase() === name.toLowerCase()
+        );
+        return {
+          userUid: match?.userUid || null,
+          userId: match?.userId || null,
+          name,
+          role: match?.role || "student",
+        };
+      });
+
+      const roomDisplayName = `${trimmedRoomName} - ${formatParentDisplayName(parentConversation)}`;
+
+      const conversationRef = await db.collection("messengerConversations").add({
+        type: "room",
+        classId,
+        parentConversationId: parentDoc ? parentDoc.id : null,
+
+        name: roomDisplayName,
+        roomName: trimmedRoomName,
+        section: parentConversation?.section || null,
+        schedule: Array.isArray(parentConversation?.schedule)
+          ? parentConversation.schedule
+          : [],
+
+        ownerRole: createdByRole === "teacher" ? "teacher" : "student",
+        ownerUid: normalizeOptionalText(createdByUid),
+        ownerId: normalizeOptionalText(createdById),
+        ownerName: trimmedCreatedByName,
+        instructorName: trimmedCreatedByName,
+
+        participants,
+
+        lastMessage: "Discussion room created.",
+        lastMessageSender: "system",
+        lastMessageAt: FieldValue.serverTimestamp(),
+        createdAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+
+      await conversationRef.collection("messages").add({
+        type: "system",
+        text: "Discussion room created.",
+        classId,
+        createdAt: FieldValue.serverTimestamp(),
+        createdByRole: "system",
+      });
+
+      res.json({
+        success: true,
+        data: { id: conversationRef.id },
+      });
+    } catch (error) {
+      console.error("Create messenger room error:", error);
+      res.status(500).json({
+        error: error.message || "Failed to create discussion room.",
+      });
+    }
+  });
+
   // Update your /class-materials/:classId route
   app.get("/class-materials/:classId", requireAuth, async (req, res) => {
     try {
@@ -12329,6 +12464,7 @@ app.get(
         "GET /messenger-conversations",
         "GET /messenger-messages/:conversationId",
         "POST /messenger-send-message",
+        "POST /messenger-create-room",
 
         "GET /notifications",
         "PATCH /notifications/:id/read",

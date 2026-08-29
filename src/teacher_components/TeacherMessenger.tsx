@@ -233,6 +233,12 @@ const getShortCourseName = (value?: string) => {
 };
 
 const formatConversationName = (item: any) => {
+  // Discussion rooms carry their own precomputed display name from the
+  // server (e.g. "Study Group - CCC111 (1A) - 1st Semester (2026-2027)").
+  // Running that through the class-name formatter below would truncate it
+  // at the first " - ", so use it as-is instead.
+  if (item.type === 'room' && item.name) return String(item.name);
+
   const shortName = getShortCourseName(item.className || item.name);
   const section = String(item.section || '').trim();
   const subjectWithSection = section
