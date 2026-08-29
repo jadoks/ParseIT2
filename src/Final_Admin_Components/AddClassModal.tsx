@@ -677,11 +677,6 @@ export default function AddClassModal({
       return;
     }
 
-    if (!courseCodeInput.trim()) {
-      Alert.alert("Missing Field", "Please enter a course code.");
-      return;
-    }
-
     if (!courseNameInput.trim()) {
       Alert.alert("Missing Field", "Please enter a course name.");
       return;
@@ -1059,21 +1054,7 @@ export default function AddClassModal({
                   style={[styles.modalRow, isMobile && styles.modalRowStack]}
                 >
                   <View style={styles.modalCol}>
-                    <Text style={styles.fieldLabel}>Course Code</Text>
-                    <FormInput
-                      icon="pricetag-outline"
-                      value={courseCodeInput}
-                      onChangeText={setCourseCodeInput}
-                      placeholder="e.g., CC 111"
-                    />
-                  </View>
-
-                  <View style={styles.modalCol}>
                     <Text style={styles.fieldLabel}>Instructor ID</Text>
-                    <Text style={styles.helperText}>
-                      Enter only the teacher ID. The system will automatically fetch
-                      the teacher name and email.
-                    </Text>
                     <FormInput
                       icon="card-outline"
                       value={instructorIdentifier}
@@ -1082,11 +1063,7 @@ export default function AddClassModal({
                       autoCapitalize="none"
                     />
                   </View>
-                </View>
 
-                <View
-                  style={[styles.modalRow, isMobile && styles.modalRowStack]}
-                >
                   <View style={styles.modalCol}>
                     <Text style={styles.fieldLabel}>Start Year</Text>
                     <FormInput
@@ -1391,13 +1368,6 @@ const styles = StyleSheet.create({
   },
   modalCol: {
     flex: 1,
-  },
-  helperText: {
-    fontSize: 13,
-    lineHeight: 19,
-    color: "#8A6F6F",
-    marginTop: -2,
-    marginBottom: 10,
   },
 
   fieldLabel: {
