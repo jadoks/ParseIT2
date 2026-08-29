@@ -3168,8 +3168,82 @@ useEffect(() => {
   const renderInputError = (message?: string) =>
     !!message ? <Text style={styles.errorText}>{message}</Text> : null;
 
+  // Once questions have been generated for a game-based assignment, the
+  // lesson selection is "locked": we show a read-only summary of what the
+  // questions were generated from instead of the live pickable grid, so a
+  // teacher can't silently change lessons out from under a question set
+  // that's already been reviewed/saved. They can still get back to an
+  // editable selector via "Change Lessons", which warns that doing so
+  // discards the current questions.
+  const handleChangeLessonsAfterGeneration = () => {
+    toast.confirm(
+      'Change Module Lessons?',
+      "These questions were generated from the lessons currently selected. Changing your selection will discard them, and you'll need to generate again.",
+      () => {
+        setGeneratedQuestions([]);
+        setShowGeneratedPreview(false);
+      }
+    );
+  };
+
   const renderRelatedMaterialsSelector = () => {
     const hasSelection = selectedMaterialIds.length > 0;
+    const isLockedByGeneration = assignmentType === 'game_based' && generatedQuestions.length > 0;
+
+    if (isLockedByGeneration) {
+      const selectedLessonMaterials = materials.filter((material) =>
+        selectedMaterialIds.includes(material.id)
+      );
+      return (
+        <View style={styles.sectionBlock}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+            <Text style={styles.sectionLabel}>Module Lessons</Text>
+            <TouchableOpacity
+              onPress={handleChangeLessonsAfterGeneration}
+              hitSlop={8}
+              disabled={isSaving}
+            >
+              <Text style={styles.clearSelectionText}>Change Lessons</Text>
+            </TouchableOpacity>
+          </View>
+          <Text style={styles.helperText}>
+            Questions were generated from the lessons below. Changing your selection will discard them.
+          </Text>
+          <View style={styles.materialSelectorWrap}>
+            {selectedLessonMaterials.map((material) => (
+              <View
+                key={material.id}
+                style={[
+                  styles.materialChip,
+                  styles.materialChipLocked,
+                  { width: isMobile ? '48%' : '32%' },
+                ]}
+              >
+                <Ionicons name="lock-closed" size={14} color="#9E9E9E" />
+                <Text
+                  style={[styles.materialChipText, styles.materialChipTextLocked]}
+                  numberOfLines={2}
+                >
+                  {material.title}
+                </Text>
+              </View>
+            ))}
+          </View>
+          <TouchableOpacity
+            style={styles.reviewQuestionsButton}
+            onPress={() => setShowGeneratedPreview(true)}
+            disabled={isSaving}
+          >
+            <Ionicons name="eye-outline" size={16} color="#D32F2F" />
+            <Text style={styles.reviewQuestionsButtonText}>
+              Review {generatedQuestions.length} Generated Question{generatedQuestions.length === 1 ? '' : 's'}
+            </Text>
+          </TouchableOpacity>
+          {renderInputError(errors.materials)}
+        </View>
+      );
+    }
+
     return (
       <View style={styles.sectionBlock}>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -6983,6 +7057,25 @@ const styles = StyleSheet.create({
   materialChipActive: { backgroundColor: '#D32F2F', borderColor: '#D32F2F' },
   materialChipText: { color: '#D32F2F', fontWeight: '700', flex: 1 },
   materialChipTextActive: { color: '#FFF' },
+  // Read-only chip shown once questions have been generated — lesson
+  // selection is locked until the teacher explicitly chooses to change it.
+  materialChipLocked: {
+    backgroundColor: '#F5F5F5',
+    borderColor: '#E0E0E0',
+  },
+  materialChipTextLocked: { color: '#888' },
+  reviewQuestionsButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    borderWidth: 1,
+    borderColor: '#D32F2F',
+    borderRadius: 10,
+    paddingVertical: 10,
+    marginTop: 12,
+  },
+  reviewQuestionsButtonText: { color: '#D32F2F', fontWeight: '700', fontSize: 13 },
   lessonChip: {
     backgroundColor: '#E3F2FD',
     borderColor: '#90CAF9',
