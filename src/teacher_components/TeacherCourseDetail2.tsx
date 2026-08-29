@@ -6921,7 +6921,7 @@ const styles = StyleSheet.create({
   // as the Total Score field instead of the taller textarea height.
   instructionScoreRow: { flexDirection: 'row', gap: 16, alignItems: 'flex-start' },
   instructionScoreLeft: { flex: 1 },
-  instructionScoreRight: { width: 140 },
+  instructionScoreRight: { width: 90 },
   instructionBoxGameBased: { width: '100%', alignSelf: 'flex-start' },
   // Number of Questions only ever holds up to 2 digits (maxLength={2}), so it
   // doesn't need to span the full column width like a text field would.
