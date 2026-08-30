@@ -317,13 +317,7 @@ const Game = ({ onNavigate, enrolledCourses = [], studentId, onSaveQuizScore }: 
   const selectedClassName = enrolledCourses.find(c => c.id === selectedClassId)?.name;
 
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={[
-        styles.contentContainer,
-        isLargeScreen && styles.contentContainerLarge,
-      ]}
-    >
+    <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
       <View style={styles.headerRow}>
         <View style={styles.titleWrap}>
           <Text style={styles.pageTitle}>Games</Text>
@@ -387,7 +381,11 @@ const Game = ({ onNavigate, enrolledCourses = [], studentId, onSaveQuizScore }: 
         <View>
           <Text style={styles.inputLabel}>Number of Questions / Items (Max {MAX_QUESTIONS_PER_GENERATION})</Text>
           <TextInput
-            style={[styles.questionsInput, isInvalidCount && styles.questionsInputError]}
+            style={[
+              styles.questionsInput,
+              isLargeScreen && styles.inputLarge,
+              isInvalidCount && styles.questionsInputError,
+            ]}
             placeholder="e.g., 10"
             placeholderTextColor="#999"
             value={numberOfQuestions}
@@ -426,7 +424,11 @@ const Game = ({ onNavigate, enrolledCourses = [], studentId, onSaveQuizScore }: 
         <Text style={styles.selectorTitle}>Choose class & lesson</Text>
         <View style={{ marginBottom: 20 }}>
           <Text style={styles.inputLabel}>Select Class</Text>
-          <TouchableOpacity style={styles.dropdownTrigger} onPress={() => setIsClassDropdownOpen(true)} activeOpacity={0.7}>
+          <TouchableOpacity
+            style={[styles.dropdownTrigger, isLargeScreen && styles.inputLarge]}
+            onPress={() => setIsClassDropdownOpen(true)}
+            activeOpacity={0.7}
+          >
             <Text style={[styles.dropdownTriggerText, !selectedClassName && styles.placeholderText]}>
               {selectedClassName || '-- Select a class --'}
             </Text>
@@ -511,7 +513,11 @@ const Game = ({ onNavigate, enrolledCourses = [], studentId, onSaveQuizScore }: 
 )}
 
         <Pressable
-          style={[styles.generateButton, (!selectedClassId || selectedMaterialIds.length === 0 || isGenerating || isInvalidCount || !gameType || hasReachedDailyLimit) && styles.generateButtonDisabled]}
+          style={[
+            styles.generateButton,
+            isLargeScreen && styles.inputLarge,
+            (!selectedClassId || selectedMaterialIds.length === 0 || isGenerating || isInvalidCount || !gameType || hasReachedDailyLimit) && styles.generateButtonDisabled,
+          ]}
           onPress={generateFromMaterials}
           disabled={!selectedClassId || selectedMaterialIds.length === 0 || isGenerating || isInvalidCount || !gameType || hasReachedDailyLimit}
         >
@@ -543,14 +549,6 @@ const Game = ({ onNavigate, enrolledCourses = [], studentId, onSaveQuizScore }: 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#FAFAFA' },
   contentContainer: { padding: 24, paddingBottom: 40 },
-  // 🌟 On tablet/web/desktop, cap the content width and center it so the
-  // class selector, questions input, and generate button don't stretch
-  // edge-to-edge across the whole screen.
-  contentContainerLarge: {
-    maxWidth: 640,
-    width: '100%',
-    alignSelf: 'center',
-  },
   headerRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -651,6 +649,12 @@ const styles = StyleSheet.create({
   selectorTitle: { fontSize: 20, fontWeight: '800', marginBottom: 24, color: '#111' },
   
   inputLabel: { fontSize: 13, fontWeight: '700', color: '#444', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 },
+
+  // 🌟 On tablet/web/desktop, cap the width of the class dropdown, questions
+  // input, and generate button so they don't stretch full width of the card.
+  inputLarge: {
+    maxWidth: 360,
+  },
   
   dropdownTrigger: {
     flexDirection: 'row',
