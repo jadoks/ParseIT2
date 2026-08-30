@@ -154,15 +154,25 @@ const Game = ({ onNavigate, enrolledCourses = [], studentId, onSaveQuizScore }: 
     }
   };
 
+  const previousClassIdRef = React.useRef<string>('');
+
   useEffect(() => {
+    const classChanged = previousClassIdRef.current !== selectedClassId;
+    previousClassIdRef.current = selectedClassId;
+
     if (!selectedClassId) {
       setAvailableMaterials([]);
-      setSelectedMaterialIds([]);
+      if (classChanged) setSelectedMaterialIds([]);
       return;
     }
     const course = enrolledCourses.find(c => c.id === selectedClassId);
     setAvailableMaterials(course?.materials || []);
-    setSelectedMaterialIds([]);
+    // 🐛 FIX: only clear the user's checked materials when they actually
+    // switch classes. Previously this ran on every `enrolledCourses` change
+    // (e.g. a parent re-fetch/poll creating a new array reference), which
+    // silently unchecked materials the user had already selected while they
+    // were still picking, before hitting "Generate".
+    if (classChanged) setSelectedMaterialIds([]);
   }, [selectedClassId, enrolledCourses]);
 
   const handleClassSelect = (classId: string) => {
