@@ -86,6 +86,7 @@ function getGenerationLimitStorageKey(studentId?: string) {
 
 const Game = ({ onNavigate, enrolledCourses = [], studentId, onSaveQuizScore }: Props) => {
   const { width } = useWindowDimensions();
+  const isLargeScreen = width >= 768; // tablet / web / desktop breakpoint
   const [uploadStage, setUploadStage] = useState<string>('');
   const [mode, setMode] = useState<GameScreen>('menu');
   const [generatedQuestions, setGeneratedQuestions] = useState<QuizQuestion[] | null>(null);
@@ -316,7 +317,13 @@ const Game = ({ onNavigate, enrolledCourses = [], studentId, onSaveQuizScore }: 
   const selectedClassName = enrolledCourses.find(c => c.id === selectedClassId)?.name;
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={[
+        styles.contentContainer,
+        isLargeScreen && styles.contentContainerLarge,
+      ]}
+    >
       <View style={styles.headerRow}>
         <View style={styles.titleWrap}>
           <Text style={styles.pageTitle}>Games</Text>
@@ -536,6 +543,14 @@ const Game = ({ onNavigate, enrolledCourses = [], studentId, onSaveQuizScore }: 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#FAFAFA' },
   contentContainer: { padding: 24, paddingBottom: 40 },
+  // 🌟 On tablet/web/desktop, cap the content width and center it so the
+  // class selector, questions input, and generate button don't stretch
+  // edge-to-edge across the whole screen.
+  contentContainerLarge: {
+    maxWidth: 640,
+    width: '100%',
+    alignSelf: 'center',
+  },
   headerRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
