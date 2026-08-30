@@ -60,7 +60,7 @@ function FormInput({
   value: string;
   onChangeText: (text: string) => void;
   placeholder: string;
-  keyboardType?: "default" | "email-address";
+  keyboardType?: "default" | "email-address" | "numeric";
   autoCapitalize?: "none" | "sentences" | "words" | "characters";
 }) {
   const [isFocused, setIsFocused] = useState(false);
@@ -535,8 +535,9 @@ export default function AddStudentModal({
                   <FormInput
                     icon="card-outline"
                     value={studentId}
-                    onChangeText={setStudentId}
+                    onChangeText={(text) => setStudentId(text.replace(/[^0-9]/g, ""))}
                     placeholder="Enter student ID"
+                    keyboardType="numeric"
                   />
                 </View>
 

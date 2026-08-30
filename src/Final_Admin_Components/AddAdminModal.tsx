@@ -64,7 +64,7 @@ function FormInput({
   value: string;
   onChangeText: (text: string) => void;
   placeholder: string;
-  keyboardType?: "default" | "email-address";
+  keyboardType?: "default" | "email-address" | "numeric";
   autoCapitalize?: "none" | "sentences" | "words" | "characters";
 }) {
   const [isFocused, setIsFocused] = useState(false);
@@ -543,8 +543,9 @@ export default function AddAdminModal({
                   <FormInput
                     icon="card-outline"
                     value={adminId}
-                    onChangeText={setAdminId}
+                    onChangeText={(text) => setAdminId(text.replace(/[^0-9]/g, ""))}
                     placeholder="Enter admin ID"
+                    keyboardType="numeric"
                   />
                 </View>
 
