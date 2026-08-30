@@ -50,6 +50,12 @@ import Toast from '../Final_Admin_Components/Toast'; // adjust path if your fold
 
 type ToastType = 'success' | 'error' | 'info';
 
+// Same school-wide letterhead fallbacks used in the teacher's Lesson Preview
+// / Grades' Official Grade Report, shown until an admin/teacher uploads a
+// custom header/footer via "Manage Template".
+const DefaultTemplateHeader = require('../../assets/images/myjourney-header-template-1.png');
+const DefaultTemplateFooter = require('../../assets/images/footer.png');
+
 let WebView: any = null;
 try {
   WebView = require("react-native-webview").WebView;
@@ -811,6 +817,14 @@ const CourseDetail = ({
   const [isLessonLoading, setIsLessonLoading] = useState(false);
   const [lessonDetailModalVisible, setLessonDetailModalVisible] = useState(false);
 
+  // ── Course Template (school-wide letterhead header/footer) — read-only
+  // here; mirrors the teacher's Lesson Preview so the Lesson Detail modal
+  // frames content with the same letterhead used across the app.
+  const [courseTemplate, setCourseTemplate] = useState<{ headerUrl: string | null; footerUrl: string | null }>({
+    headerUrl: null,
+    footerUrl: null,
+  });
+
   // ✅ NEW: Refresh state — drives pull-to-refresh on the main screen scroll
   // and the assignment detail modal, and the silent background poller below.
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -922,6 +936,53 @@ const fetchModules = useCallback(async (silent = false) => {
   useEffect(() => {
     fetchSyllabus(false);
   }, [course?.id, fetchSyllabus]);
+
+  // Course template is global/school-wide (set by admins/teachers via
+  // "Manage Template"), so it only needs to be fetched once — it isn't tied
+  // to this particular course. Read-only here; students never edit it.
+  useEffect(() => {
+    (async () => {
+      try {
+        const response = await apiFetch(`${API_BASE_URL}/course-template`);
+        const data = await response.json();
+        if (response.ok && data?.success) {
+          setCourseTemplate({
+            headerUrl: data.data?.headerUrl || null,
+            footerUrl: data.data?.footerUrl || null,
+          });
+        }
+      } catch (error) {
+        console.error('Failed to load course template:', error);
+      }
+    })();
+  }, []);
+
+  // ─── Course Template header/footer frame ───────────────────────────────────
+  // Wraps the Lesson Detail content with the same school-wide letterhead
+  // banner used in the teacher's Lesson Preview / Grades' Official Grade
+  // Report. Falls back to the default CTU Argao letterhead until an
+  // admin/teacher uploads a custom header/footer via "Manage Template".
+  const renderTemplateHeaderBanner = () => {
+    const source = courseTemplate.headerUrl ? { uri: courseTemplate.headerUrl } : DefaultTemplateHeader;
+    return (
+      <ExpoImage
+        source={source}
+        style={styles.templateHeaderImage}
+        contentFit="contain"
+      />
+    );
+  };
+
+  const renderTemplateFooterBanner = () => {
+    const source = courseTemplate.footerUrl ? { uri: courseTemplate.footerUrl } : DefaultTemplateFooter;
+    return (
+      <ExpoImage
+        source={source}
+        style={styles.templateFooterImage}
+        contentFit="contain"
+      />
+    );
+  };
 
   const getScorePercent = (assignment: AssignmentItem) => {
     if (
@@ -2393,39 +2454,71 @@ const fetchModules = useCallback(async (silent = false) => {
         </SafeAreaView>
       </Modal>
 
-      {/* LESSON DETAIL MODAL */}
+      {/* ═════════════════════════════════════════════════════════════════════
+          LESSON DETAIL MODAL — full-screen "Google Classroom" document
+          viewer, matching the teacher's Lesson Preview: fixed top bar
+          (title/back), a scrollable letterhead "page" using the same
+          school-wide header/footer banner as Grades' Official Grade Report,
+          like opening a Doc/PDF attachment. Read-only here — no edit/delete
+          actions, since students don't manage lesson content.
+      ═════════════════════════════════════════════════════════════════════ */}
       <Modal
         visible={lessonDetailModalVisible}
-        transparent
         animationType="slide"
+        presentationStyle={Platform.OS === 'ios' ? 'fullScreen' : undefined}
         onRequestClose={() => setLessonDetailModalVisible(false)}
       >
-        <View style={styles.modalOverlayCenter}>
-          <View
-            style={[
-              styles.modalCardElevated,
-              {
-                width: isLargeScreen ? Math.min(width * 0.85, 900) : '92%',
-                maxWidth: 900,
-                maxHeight: height * 0.9,
-                alignSelf: 'center'
-              }
-            ]}
-          >
-            <View style={styles.createHeaderRow}>
-              <View style={styles.modalHeaderTextWrap}>
-                <Text style={styles.sectionTitle}>{selectedLesson?.title || 'Lesson Details'}</Text>
-                <Text style={styles.modalSubtitle}>Module Content & Activities</Text>
-              </View>
-              <TouchableOpacity onPress={() => setLessonDetailModalVisible(false)}>
-                <Ionicons name="close" size={24} color="#111" />
-              </TouchableOpacity>
+        <SafeAreaView style={styles.lessonPreviewScreen} edges={['top', 'left', 'right']}>
+          {/* Fixed top bar */}
+          <View style={styles.lessonPreviewTopBar}>
+            <TouchableOpacity
+              onPress={() => setLessonDetailModalVisible(false)}
+              style={styles.lessonPreviewBackBtn}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <Ionicons name={Platform.OS === 'web' ? 'close' : 'arrow-back'} size={22} color="#111" />
+            </TouchableOpacity>
+            <View style={styles.lessonPreviewTopBarTextWrap}>
+              <Text style={styles.lessonPreviewTopBarTitle} numberOfLines={1}>
+                {selectedLesson?.title || 'Lesson Details'}
+              </Text>
+              <Text style={styles.lessonPreviewTopBarSubtitle} numberOfLines={1}>
+                Module Content &amp; Activities
+              </Text>
             </View>
-            <ScrollView showsVerticalScrollIndicator={true} contentContainerStyle={{ paddingBottom: 20 }}>
-              {isLessonLoading ? (
-                <ActivityIndicator size="large" color="#D32F2F" style={{ marginVertical: 20 }} />
-              ) : selectedLesson ? (
-                <>
+          </View>
+
+          {/* Scrollable document */}
+          <ScrollView
+            style={styles.flexOne}
+            showsVerticalScrollIndicator={true}
+            contentContainerStyle={styles.lessonPreviewScrollContent}
+          >
+            {isLessonLoading ? (
+              <ActivityIndicator size="large" color="#D32F2F" style={{ marginVertical: 40 }} />
+            ) : selectedLesson ? (
+              <View style={styles.lessonPreviewPageWrap}>
+                <View style={[styles.lessonPreviewPage, isLargeScreen && styles.lessonPreviewPageWeb]}>
+                  {renderTemplateHeaderBanner()}
+
+                  <View style={styles.lessonPreviewTitleBlock}>
+                    <View style={styles.docPageBadge}>
+                      <Ionicons
+                        name={selectedLesson.isGenerated ? 'sparkles-outline' : 'create-outline'}
+                        size={11}
+                        color="#D32F2F"
+                      />
+                      <Text style={styles.docPageBadgeText}>
+                        {selectedLesson.isGenerated
+                          ? 'AI Generated'
+                          : (selectedLesson.type === 'manual_file' || selectedLesson.type === 'manual'
+                              ? 'Manually Created'
+                              : 'Lesson Preview')}
+                      </Text>
+                    </View>
+                    <Text style={styles.lessonPreviewPageTitle}>{selectedLesson.title}</Text>
+                  </View>
+
                   {selectedLesson.type === 'manual_file' && selectedLesson.fileUrl ? (
                     <TouchableOpacity
                       onPress={() => {
@@ -2476,33 +2569,32 @@ const fetchModules = useCallback(async (silent = false) => {
                     </Text>
                   </View>
                   {selectedLesson.discussion ? (
-                    <View style={{ marginBottom: 16, backgroundColor: '#F9F9F9', padding: 12, borderRadius: 8 }}>
+                    <View style={{ marginBottom: 16, backgroundColor: '#FFF', padding: 12, borderRadius: 8 }}>
                       <Text style={styles.sectionLabel}>Discussion / Lecture Notes</Text>
-                      <Text style={{ color: '#444', lineHeight: 22 }}>
-                        {renderFormattedText(selectedLesson.discussion, { color: '#444', lineHeight: 22 })}
+                      <Text style={{ color: '#000', lineHeight: 22 }}>
+                        {renderFormattedText(selectedLesson.discussion, { color: '#000', lineHeight: 22 })}
                       </Text>
                     </View>
                   ) : null}
                   {selectedLesson.activity ? (
-                    <View style={{ marginBottom: 16, backgroundColor: '#E3F2FD', padding: 12, borderRadius: 8 }}>
-                      <Text style={[styles.sectionLabel, { color: '#1565C0' }]}>Activity / Scenario</Text>
-                      <Text style={{ color: '#0D47A1', lineHeight: 22 }}>
-                        {renderFormattedText(selectedLesson.activity, { color: '#0D47A1', lineHeight: 22 })}
+                    <View style={{ marginBottom: 16, backgroundColor: '#FFF', padding: 12, borderRadius: 8 }}>
+                      <Text style={styles.sectionLabel}>Activity / Scenario</Text>
+                      <Text style={{ color: '#000', lineHeight: 22 }}>
+                        {renderFormattedText(selectedLesson.activity, { color: '#000', lineHeight: 22 })}
                       </Text>
                     </View>
                   ) : null}
-                </>
-              ) : (
-                <Text style={{ textAlign: 'center', color: '#888' }}>Could not load lesson details.</Text>
-              )}
-            </ScrollView>
-            <View style={styles.buttonRow}>
-              <TouchableOpacity style={styles.primaryButton} onPress={() => setLessonDetailModalVisible(false)}>
-                <Text style={styles.primaryButtonText}>Close</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
+
+                  {renderTemplateFooterBanner()}
+                </View>
+              </View>
+            ) : (
+              <Text style={{ textAlign: 'center', color: '#888', marginTop: 40 }}>
+                Could not load lesson details.
+              </Text>
+            )}
+          </ScrollView>
+        </SafeAreaView>
       </Modal>
 
       {/* ═══════════════════════════════════════════════════════════════════
@@ -4433,5 +4525,115 @@ const styles = StyleSheet.create({
   // touches pass through to whatever's behind, except the toast itself.
   toastPortal: {
     ...StyleSheet.absoluteFillObject,
+  },
+
+  // ── Course Template (school-wide header/footer) ──
+  templateHeaderImage: {
+    width: '100%',
+    height: 90,
+    marginBottom: 14,
+  },
+  templateFooterImage: {
+    width: '100%',
+    height: 70,
+    marginTop: 18,
+  },
+  docPageBadge: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#FCE8E8',
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    marginBottom: 10,
+  },
+  docPageBadgeText: {
+    color: '#D32F2F',
+    fontWeight: '700',
+    fontSize: 10,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
+
+  // ── Lesson Preview — full-screen "Google Classroom" document viewer,
+  // matching TeacherCourseDetail2's Lesson Preview. Outer screen behind the
+  // "page" is a soft neutral gray so the white letterhead page reads as a
+  // sheet of paper, mirroring the Official Grade Report look used in Grades.
+  lessonPreviewScreen: {
+    flex: 1,
+    backgroundColor: '#ECECEC',
+  },
+  lessonPreviewTopBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E5E5',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
+    shadowRadius: 3,
+    elevation: 2,
+    zIndex: 5,
+  },
+  lessonPreviewBackBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 8,
+  },
+  lessonPreviewTopBarTextWrap: { flex: 1 },
+  lessonPreviewTopBarTitle: { fontSize: 16, fontWeight: '800', color: '#111' },
+  lessonPreviewTopBarSubtitle: { fontSize: 12, color: '#777', marginTop: 1 },
+  lessonPreviewScrollContent: {
+    flexGrow: 1,
+    alignItems: 'center',
+    paddingVertical: 24,
+    paddingHorizontal: 16,
+  },
+  flexOne: {
+    flex: 1,
+  },
+  lessonPreviewPageWrap: {
+    width: '100%',
+    alignItems: 'center',
+  },
+  // The "page" itself — same letterhead-card treatment (white sheet, subtle
+  // border + shadow, rounded corners) as Grades' reportCard.
+  lessonPreviewPage: {
+    width: '100%',
+    maxWidth: 900,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 2,
+    marginBottom: 24,
+  },
+  lessonPreviewPageWeb: {
+    padding: 40,
+  },
+  lessonPreviewTitleBlock: {
+    marginBottom: 18,
+    paddingBottom: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: '#EEE',
+  },
+  lessonPreviewPageTitle: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: '#111',
+    marginTop: 6,
   },
 });
