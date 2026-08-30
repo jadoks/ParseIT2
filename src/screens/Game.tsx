@@ -355,7 +355,7 @@ const Game = ({ onNavigate, enrolledCourses = [], studentId, onSaveQuizScore }: 
 
       {/* 🌟 NEW: Daily AI generation usage banner */}
       {isLimitLoaded && (
-        <View style={[styles.limitBanner, hasReachedDailyLimit && styles.limitBannerReached]}>
+        <View style={[styles.limitBanner, isLargeScreen && styles.inputLarge, hasReachedDailyLimit && styles.limitBannerReached]}>
           <Ionicons
             name={hasReachedDailyLimit ? 'alert-circle' : 'sparkles'}
             size={18}
