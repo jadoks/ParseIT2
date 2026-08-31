@@ -623,6 +623,31 @@ async function createReadSignedUrlIfExists(storagePath) {
     return code;
   }
 
+  // Shared password policy for every endpoint that sets/resets a password
+  // (registration, first-login setup, forgot-password reset, admin change
+  // password, etc.). Length alone let weak passwords like "password" or
+  // "12345678" through — this now also requires at least one uppercase
+  // letter, one lowercase letter, one number, and one special character.
+  // Returns an error message string if the password is too weak, or null
+  // if it passes.
+  function getPasswordPolicyError(password) {
+    const value = typeof password === "string" ? password.trim() : "";
+    const REQUIREMENT_MESSAGE =
+      "Password must be at least 8 characters, and include an uppercase letter, a lowercase letter, a number, and a special character.";
+
+    if (
+      value.length < 8 ||
+      !/[A-Z]/.test(value) ||
+      !/[a-z]/.test(value) ||
+      !/[0-9]/.test(value) ||
+      !/[^A-Za-z0-9]/.test(value)
+    ) {
+      return REQUIREMENT_MESSAGE;
+    }
+
+    return null;
+  }
+
   function normalizeOptionalText(value) {
     if (typeof value !== "string") return null;
     const trimmed = value.trim();
@@ -2580,9 +2605,10 @@ async function sendForgotPasswordCodeEmail({ firstName, email, pin }) {
         });
       }
 
-      if (password.length < 8) {
+      const passwordPolicyError = getPasswordPolicyError(password);
+      if (passwordPolicyError) {
         return res.status(400).json({
-          error: "Password must be at least 8 characters.",
+          error: passwordPolicyError,
         });
       }
 
@@ -3231,9 +3257,10 @@ async function sendForgotPasswordCodeEmail({ firstName, email, pin }) {
       });
     }
 
-    if (String(newPassword).trim().length < 8) {
+    const passwordPolicyError = getPasswordPolicyError(newPassword);
+    if (passwordPolicyError) {
       return res.status(400).json({
-        error: "New password must be at least 8 characters long.",
+        error: passwordPolicyError,
       });
     }
 
@@ -3447,9 +3474,10 @@ app.post("/auth/send-forgot-password-pin", async (req, res) => {
         });
       }
 
-      if (String(newPassword).trim().length < 8) {
+      const passwordPolicyError = getPasswordPolicyError(newPassword);
+      if (passwordPolicyError) {
         return res.status(400).json({
-          error: "New password must be at least 8 characters long.",
+          error: passwordPolicyError,
         });
       }
 
@@ -14126,8 +14154,9 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
       }
 
       const normalizedPassword = String(newPassword).trim();
-      if (normalizedPassword.length < 8) {
-        return res.status(400).json({ error: "New password must be at least 8 characters long." });
+      const passwordPolicyError = getPasswordPolicyError(normalizedPassword);
+      if (passwordPolicyError) {
+        return res.status(400).json({ error: passwordPolicyError });
       }
 
       const { userRef, userData } = await getManagedUserRecord(id, role);

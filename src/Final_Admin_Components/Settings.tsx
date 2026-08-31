@@ -14,6 +14,14 @@ import {
   View,
 } from "react-native";
 
+// ✅ Reuses the same Toast component used across the app (Chatbot/Register/
+// Admin/Teacher screens, Community, Dashboard, ClassesScreen, SignIn)
+// instead of inline alert-style banners, so feedback looks and behaves
+// consistently.
+import Toast from "../Final_Admin_Components/Toast"; // adjust path if your folder layout differs
+
+type ToastType = "success" | "error" | "info";
+
 type CurrentAdminInfo = {
   adminId: string;
   email: string;
@@ -34,6 +42,29 @@ type PinInputProps = {
   isMobile: boolean;
   disabled?: boolean;
 };
+
+// Keep in sync with getPasswordPolicyError in server.js — length alone let
+// weak passwords like "password" or "12345678" through. Requires at least
+// one uppercase letter, one lowercase letter, one number, and one special
+// character on top of the 8-character minimum. Returns an error message if
+// the password is too weak, or null if it passes.
+function getPasswordPolicyError(password: string): string | null {
+  const value = (password || "").trim();
+  const REQUIREMENT_MESSAGE =
+    "Password must be at least 8 characters, and include an uppercase letter, a lowercase letter, a number, and a special character.";
+
+  if (
+    value.length < 8 ||
+    !/[A-Z]/.test(value) ||
+    !/[a-z]/.test(value) ||
+    !/[0-9]/.test(value) ||
+    !/[^A-Za-z0-9]/.test(value)
+  ) {
+    return REQUIREMENT_MESSAGE;
+  }
+
+  return null;
+}
 
 function PinInput({ value, onChange, isMobile, disabled }: PinInputProps) {
   const refs = useRef<Array<TextInput | null>>([]);
@@ -82,39 +113,6 @@ function PinInput({ value, onChange, isMobile, disabled }: PinInputProps) {
   );
 }
 
-function InlineMessage({
-  type,
-  text,
-}: {
-  type: "error" | "success";
-  text: string;
-}) {
-  if (!text) return null;
-
-  return (
-    <View
-      style={[
-        styles.inlineMessageBox,
-        type === "error" ? styles.inlineMessageError : styles.inlineMessageSuccess,
-      ]}
-    >
-      <Ionicons
-        name={type === "error" ? "alert-circle-outline" : "checkmark-circle-outline"}
-        size={16}
-        color={type === "error" ? "#DC2626" : "#15803D"}
-      />
-      <Text
-        style={[
-          styles.inlineMessageText,
-          type === "error" ? styles.inlineMessageTextError : styles.inlineMessageTextSuccess,
-        ]}
-      >
-        {text}
-      </Text>
-    </View>
-  );
-}
-
 export default function Settings({
   width,
   onClose,
@@ -137,6 +135,22 @@ export default function Settings({
   const [isChangePasswordModalVisible, setIsChangePasswordModalVisible] =
     useState(false);
 
+  // ✅ Toast state — same shape/usage as Chatbot/Register/SignIn/Community/
+  // Dashboard, replacing the old inline alert-style banners.
+  const [toast, setToast] = useState<{
+    visible: boolean;
+    message: string;
+    type: ToastType;
+  }>({ visible: false, message: "", type: "success" });
+
+  const showToast = (message: string, type: ToastType = "info") => {
+    setToast({ visible: true, message, type });
+  };
+
+  const hideToast = () => {
+    setToast((prev) => ({ ...prev, visible: false }));
+  };
+
   // ─── Change Email state ───────────────────────────────────────────────
   const [changeEmailStep, setChangeEmailStep] = useState(1);
   const [changeEmailPin, setChangeEmailPin] = useState(["", "", "", ""]);
@@ -144,8 +158,6 @@ export default function Settings({
   const [changeEmailLoading, setChangeEmailLoading] = useState(false);
   const [changeEmailSendingCode, setChangeEmailSendingCode] = useState(false);
   const [changeEmailCodeSent, setChangeEmailCodeSent] = useState(false);
-  const [changeEmailError, setChangeEmailError] = useState("");
-  const [changeEmailSuccess, setChangeEmailSuccess] = useState("");
 
   // ─── Change Password state ────────────────────────────────────────────
   const [changePasswordStep, setChangePasswordStep] = useState(1);
@@ -154,8 +166,6 @@ export default function Settings({
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [changePasswordLoading, setChangePasswordLoading] = useState(false);
-  const [changePasswordError, setChangePasswordError] = useState("");
-  const [changePasswordSuccess, setChangePasswordSuccess] = useState("");
 
   const resetChangeEmailModal = () => {
     setChangeEmailStep(1);
@@ -164,8 +174,6 @@ export default function Settings({
     setChangeEmailLoading(false);
     setChangeEmailSendingCode(false);
     setChangeEmailCodeSent(false);
-    setChangeEmailError("");
-    setChangeEmailSuccess("");
     setIsChangeEmailModalVisible(false);
   };
 
@@ -176,8 +184,6 @@ export default function Settings({
     setNewPassword("");
     setConfirmPassword("");
     setChangePasswordLoading(false);
-    setChangePasswordError("");
-    setChangePasswordSuccess("");
     setIsChangePasswordModalVisible(false);
   };
 
@@ -201,12 +207,11 @@ export default function Settings({
 
   const sendChangeEmailPin = async () => {
     if (!currentAdmin?.email) {
-      setChangeEmailError("Your account has no email on file. Contact support.");
+      showToast("Your account has no email on file. Contact support.", "error");
       return;
     }
 
     setChangeEmailSendingCode(true);
-    setChangeEmailError("");
 
     try {
       const res = await apiFetch(`${apiBaseUrl}/auth/send-forgot-password-pin`, {
@@ -222,7 +227,7 @@ export default function Settings({
 
       setChangeEmailCodeSent(true);
     } catch (error: any) {
-      setChangeEmailError(error?.message || "Failed to send verification code.");
+      showToast(error?.message || "Failed to send verification code.", "error");
     } finally {
       setChangeEmailSendingCode(false);
     }
@@ -232,12 +237,11 @@ export default function Settings({
     const pin = changeEmailPin.join("");
 
     if (pin.length !== 4) {
-      setChangeEmailError("Please enter the 4-digit code.");
+      showToast("Please enter the 4-digit code.", "error");
       return;
     }
 
     setChangeEmailLoading(true);
-    setChangeEmailError("");
 
     try {
       const res = await apiFetch(`${apiBaseUrl}/auth/verify-forgot-password-pin`, {
@@ -253,7 +257,7 @@ export default function Settings({
 
       setChangeEmailStep(2);
     } catch (error: any) {
-      setChangeEmailError(error?.message || "Invalid or expired code.");
+      showToast(error?.message || "Invalid or expired code.", "error");
     } finally {
       setChangeEmailLoading(false);
     }
@@ -263,17 +267,16 @@ export default function Settings({
     const trimmedEmail = newEmail.trim();
 
     if (!trimmedEmail) {
-      setChangeEmailError("Please enter your new email address.");
+      showToast("Please enter your new email address.", "error");
       return;
     }
 
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
-      setChangeEmailError("Please enter a valid email address.");
+      showToast("Please enter a valid email address.", "error");
       return;
     }
 
     setChangeEmailLoading(true);
-    setChangeEmailError("");
 
     try {
       const res = await apiFetch(`${apiBaseUrl}/auth/change-email`, {
@@ -291,14 +294,14 @@ export default function Settings({
         throw new Error(data?.error || "Failed to update email.");
       }
 
-      setChangeEmailSuccess("Email updated successfully.");
+      showToast("Email updated successfully.", "success");
       onEmailUpdated?.(data?.data?.email || trimmedEmail);
 
       setTimeout(() => {
         resetChangeEmailModal();
       }, 1200);
     } catch (error: any) {
-      setChangeEmailError(error?.message || "Failed to update email.");
+      showToast(error?.message || "Failed to update email.", "error");
     } finally {
       setChangeEmailLoading(false);
     }
@@ -309,17 +312,16 @@ export default function Settings({
     const trimmedEmail = passwordEmail.trim();
 
     if (!trimmedEmail) {
-      setChangePasswordError("Please enter your email address.");
+      showToast("Please enter your email address.", "error");
       return;
     }
 
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
-      setChangePasswordError("Please enter a valid email address.");
+      showToast("Please enter a valid email address.", "error");
       return;
     }
 
     setChangePasswordLoading(true);
-    setChangePasswordError("");
 
     try {
       const res = await apiFetch(`${apiBaseUrl}/auth/send-forgot-password-pin`, {
@@ -335,7 +337,7 @@ export default function Settings({
 
       setChangePasswordStep(2);
     } catch (error: any) {
-      setChangePasswordError(error?.message || "Failed to send verification code.");
+      showToast(error?.message || "Failed to send verification code.", "error");
     } finally {
       setChangePasswordLoading(false);
     }
@@ -345,12 +347,11 @@ export default function Settings({
     const pin = changePasswordPin.join("");
 
     if (pin.length !== 4) {
-      setChangePasswordError("Please enter the 4-digit code.");
+      showToast("Please enter the 4-digit code.", "error");
       return;
     }
 
     setChangePasswordLoading(true);
-    setChangePasswordError("");
 
     try {
       const res = await apiFetch(`${apiBaseUrl}/auth/verify-forgot-password-pin`, {
@@ -366,25 +367,25 @@ export default function Settings({
 
       setChangePasswordStep(3);
     } catch (error: any) {
-      setChangePasswordError(error?.message || "Invalid or expired code.");
+      showToast(error?.message || "Invalid or expired code.", "error");
     } finally {
       setChangePasswordLoading(false);
     }
   };
 
   const submitNewPassword = async () => {
-    if (newPassword.trim().length < 8) {
-      setChangePasswordError("New password must be at least 8 characters.");
+    const passwordPolicyError = getPasswordPolicyError(newPassword);
+    if (passwordPolicyError) {
+      showToast(passwordPolicyError, "error");
       return;
     }
 
     if (newPassword !== confirmPassword) {
-      setChangePasswordError("Passwords do not match.");
+      showToast("Passwords do not match.", "error");
       return;
     }
 
     setChangePasswordLoading(true);
-    setChangePasswordError("");
 
     try {
       const res = await apiFetch(`${apiBaseUrl}/auth/reset-forgot-password`, {
@@ -401,13 +402,13 @@ export default function Settings({
         throw new Error(data?.error || "Failed to update password.");
       }
 
-      setChangePasswordSuccess("Password updated successfully.");
+      showToast("Password updated successfully.", "success");
 
       setTimeout(() => {
         resetChangePasswordModal();
       }, 1200);
     } catch (error: any) {
-      setChangePasswordError(error?.message || "Failed to update password.");
+      showToast(error?.message || "Failed to update password.", "error");
     } finally {
       setChangePasswordLoading(false);
     }
@@ -638,9 +639,6 @@ export default function Settings({
                     disabled={changeEmailSendingCode || changeEmailLoading}
                   />
 
-                  <InlineMessage type="error" text={changeEmailError} />
-                  <InlineMessage type="success" text={changeEmailSuccess} />
-
                   <TouchableOpacity
                     onPress={sendChangeEmailPin}
                     disabled={changeEmailSendingCode}
@@ -683,9 +681,6 @@ export default function Settings({
                       editable={!changeEmailLoading}
                     />
                   </View>
-
-                  <InlineMessage type="error" text={changeEmailError} />
-                  <InlineMessage type="success" text={changeEmailSuccess} />
                 </View>
               )}
             </ScrollView>
@@ -698,7 +693,6 @@ export default function Settings({
                     isMobile && styles.modalButtonMobile,
                   ]}
                   onPress={() => {
-                    setChangeEmailError("");
                     setChangeEmailStep(1);
                   }}
                   activeOpacity={0.85}
@@ -844,8 +838,6 @@ export default function Settings({
                       editable={!changePasswordLoading}
                     />
                   </View>
-
-                  <InlineMessage type="error" text={changePasswordError} />
                 </View>
               )}
 
@@ -866,8 +858,6 @@ export default function Settings({
                     isMobile={isMobile}
                     disabled={changePasswordLoading}
                   />
-
-                  <InlineMessage type="error" text={changePasswordError} />
 
                   <TouchableOpacity
                     onPress={sendChangePasswordPin}
@@ -910,6 +900,9 @@ export default function Settings({
                       editable={!changePasswordLoading}
                     />
                   </View>
+                  <Text style={styles.helperText}>
+                    At least 8 characters, with an uppercase letter, a lowercase letter, a number, and a special character.
+                  </Text>
 
                   <Text style={[styles.fieldLabel, styles.fieldLabelTop]}>
                     Confirm Password
@@ -930,9 +923,6 @@ export default function Settings({
                       editable={!changePasswordLoading}
                     />
                   </View>
-
-                  <InlineMessage type="error" text={changePasswordError} />
-                  <InlineMessage type="success" text={changePasswordSuccess} />
                 </View>
               )}
             </ScrollView>
@@ -945,7 +935,6 @@ export default function Settings({
                     isMobile && styles.modalButtonMobile,
                   ]}
                   onPress={() => {
-                    setChangePasswordError("");
                     setChangePasswordStep((prev) => Math.max(1, prev - 1));
                   }}
                   activeOpacity={0.85}
@@ -1010,6 +999,26 @@ export default function Settings({
               )}
             </View>
           </View>
+        </View>
+      </Modal>
+
+      {/* Toast — portal-based, matches Chatbot/Register/Community/Dashboard/
+          ClassesScreen/SignIn so feedback looks and behaves the same
+          everywhere. */}
+      <Modal
+        visible={toast.visible}
+        transparent
+        animationType="fade"
+        onRequestClose={hideToast}
+        statusBarTranslucent
+      >
+        <View style={styles.toastPortal} pointerEvents="box-none">
+          <Toast
+            visible={toast.visible}
+            message={toast.message}
+            type={toast.type}
+            onHide={hideToast}
+          />
         </View>
       </Modal>
     </>
@@ -1297,39 +1306,10 @@ const styles = StyleSheet.create({
     color: "#DC2626",
   },
 
-  inlineMessageBox: {
-    marginTop: 14,
-    borderRadius: 14,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    flexDirection: "row",
-    alignItems: "center",
-    borderWidth: 1,
-  },
-
-  inlineMessageError: {
-    backgroundColor: "#FEF2F2",
-    borderColor: "#FECACA",
-  },
-
-  inlineMessageSuccess: {
-    backgroundColor: "#F0FDF4",
-    borderColor: "#BBF7D0",
-  },
-
-  inlineMessageText: {
-    marginLeft: 8,
-    fontSize: 13,
-    fontWeight: "600",
-    flex: 1,
-  },
-
-  inlineMessageTextError: {
-    color: "#B91C1C",
-  },
-
-  inlineMessageTextSuccess: {
-    color: "#15803D",
+  // Toast — portal-based, matches Chatbot/Register/Community/Dashboard/
+  // ClassesScreen/SignIn.
+  toastPortal: {
+    ...StyleSheet.absoluteFillObject,
   },
 
   modalFooter: {
