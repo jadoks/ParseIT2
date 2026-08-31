@@ -14916,6 +14916,23 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
 
       // If no file was split, and no manual response/triggers were provided, return error
       if (splitTrainingData.length === 0 && !cleanedResponse && cleanedTriggers.length === 0) {
+        if (fileBase64) {
+          // A file was uploaded but AI couldn't extract any usable content
+          // from it (empty/unsupported file, extraction failure, etc.).
+          // Clean up the file we already saved to storage so it doesn't sit
+          // around unreferenced by any training entry.
+          if (uploadedFile?.storagePath) {
+            try {
+              await bucket.file(uploadedFile.storagePath).delete();
+            } catch (cleanupError) {
+              console.error("Failed to clean up orphaned training file:", cleanupError);
+            }
+          }
+          return res.status(400).json({
+            error:
+              "Could not generate a chatbot response or triggers from the uploaded file. Please try a different file, or enter the response and triggers manually.",
+          });
+        }
         return res.status(400).json({ error: "Please provide a chatbot response, triggers, or upload a file." });
       }
 

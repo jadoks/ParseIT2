@@ -87,6 +87,12 @@ export default function Chatbot({
   onClose,
   isMobile,
 }: ChatbotModalProps) {
+  // Two mutually exclusive ways to train the chatbot:
+  // - "manual": admin types the response and triggers themselves.
+  // - "upload": admin just picks a file; the backend reads its content and
+  //   has AI generate the response(s) and triggers from it.
+  const [inputMode, setInputMode] = useState<"manual" | "upload">("manual");
+
   const [chatbotResponse, setChatbotResponse] = useState("");
   const [triggerInput, setTriggerInput] = useState("");
   const [triggers, setTriggers] = useState<TriggerItem[]>([]);
@@ -133,10 +139,25 @@ export default function Chatbot({
   };
 
   const resetForm = () => {
+    setInputMode("manual");
     setChatbotResponse("");
     setTriggerInput("");
     setTriggers([]);
     setSelectedFile(null);
+  };
+
+  const handleSwitchMode = (mode: "manual" | "upload") => {
+    if (mode === inputMode || saving || uploadingFile) return;
+    // Clear whichever fields belong to the mode being left, so switching
+    // back and forth can't accidentally mix manual entries with a file.
+    if (mode === "manual") {
+      setSelectedFile(null);
+    } else {
+      setChatbotResponse("");
+      setTriggerInput("");
+      setTriggers([]);
+    }
+    setInputMode(mode);
   };
 
   const handleAddTrigger = () => {
@@ -199,24 +220,34 @@ export default function Chatbot({
   const handleAddData = async () => {
     const cleanedResponse = chatbotResponse.trim();
     const triggerValues = triggers.map((item) => item.value.trim()).filter(Boolean);
-    
-    // Chatbot response is a required field — triggers and an uploaded file
-    // are optional extras, not substitutes for it.
-    if (!cleanedResponse) {
-      showToast("Chatbot response is required.", "error");
-      return;
-    }
 
-    if (triggerValues.length === 0) {
-      showToast("At least one trigger is required.", "error");
-      return;
+    if (inputMode === "manual") {
+      // Manual entry: response and at least one trigger are required —
+      // there's no file for the AI to fall back on in this mode.
+      if (!cleanedResponse) {
+        showToast("Chatbot response is required.", "error");
+        return;
+      }
+
+      if (triggerValues.length === 0) {
+        showToast("At least one trigger is required.", "error");
+        return;
+      }
+    } else {
+      // Upload mode: the admin just needs to provide a file — the backend
+      // extracts its content and has AI generate the response(s) and
+      // triggers automatically.
+      if (!selectedFile) {
+        showToast("Please upload a file to train the chatbot from.", "error");
+        return;
+      }
     }
 
     try {
       setSaving(true);
       let fileBase64: string | null = null;
 
-      if (selectedFile?.uri) {
+      if (inputMode === "upload" && selectedFile?.uri) {
         fileBase64 = await fileUriToBase64(selectedFile.uri);
       }
 
@@ -226,11 +257,11 @@ export default function Chatbot({
           "Content-Type": "application/json", // FIXED: Removed trailing spaces
         },
         body: JSON.stringify({
-          response: cleanedResponse || null,
-          triggers: triggerValues,
+          response: inputMode === "manual" ? cleanedResponse : null,
+          triggers: inputMode === "manual" ? triggerValues : [],
           fileBase64,
-          fileName: selectedFile?.name || null, // FIXED TYPO: "sel ectedFile"
-          fileType: selectedFile?.mimeType || null,
+          fileName: inputMode === "upload" ? selectedFile?.name || null : null,
+          fileType: inputMode === "upload" ? selectedFile?.mimeType || null : null,
           source: "admin-panel", // FIXED: Removed trailing space
         }),
       });
@@ -242,7 +273,10 @@ export default function Chatbot({
       }
 
       showToast(
-        data?.message || "Chatbot training data saved successfully. AI has processed and split the file.",
+        data?.message ||
+          (inputMode === "upload"
+            ? "File uploaded. AI has generated chatbot responses and triggers from its content."
+            : "Chatbot training data saved successfully."),
         "success",
         () => {
           resetForm();
@@ -270,7 +304,7 @@ export default function Chatbot({
               <View style={styles.modalHeaderTextWrap}>
                 <Text style={styles.modalTitle}>Train Chatbot</Text>
                 <Text style={styles.modalSubtitle}>
-                  Upload a file, and AI will automatically split its information into multiple chatbot responses and triggers. You can also add manual entries.
+                  Type a response and triggers manually, or upload a file and let AI generate them from its content.
                 </Text>
               </View>
             </View>
@@ -291,94 +325,152 @@ export default function Chatbot({
                 <Text style={styles.modalSectionTitle}>Training Details</Text>
               </View>
 
-              <View style={styles.fieldBlock}>
-                <Text style={styles.fieldLabel}>Chatbot Response</Text>
-                <View
+              {/* Mode toggle: manual entry vs. upload-and-let-AI-generate. */}
+              <View style={styles.modeToggleRow}>
+                <TouchableOpacity
                   style={[
-                    styles.inputField,
-                    styles.textAreaField,
-                    isResponseFocused && styles.inputFieldFocused,
+                    styles.modeToggleButton,
+                    inputMode === "manual" && styles.modeToggleButtonActive,
                   ]}
+                  activeOpacity={0.85}
+                  onPress={() => handleSwitchMode("manual")}
+                  disabled={saving || uploadingFile}
                 >
-                  <TextInput
-                    value={chatbotResponse}
-                    onChangeText={setChatbotResponse}
-                    placeholder="Enter chatbot response"
-                    placeholderTextColor="#B79A9A"
-                    style={styles.textAreaInput}
-                    multiline
-                    textAlignVertical="top"
-                    onFocus={() => setIsResponseFocused(true)}
-                    onBlur={() => setIsResponseFocused(false)}
+                  <Ionicons
+                    name="create-outline"
+                    size={16}
+                    color={inputMode === "manual" ? "#FFFFFF" : "#8A6F6F"}
                   />
-                </View>
+                  <Text
+                    style={[
+                      styles.modeToggleButtonText,
+                      inputMode === "manual" && styles.modeToggleButtonTextActive,
+                    ]}
+                  >
+                    Manual Input
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.modeToggleButton,
+                    inputMode === "upload" && styles.modeToggleButtonActive,
+                  ]}
+                  activeOpacity={0.85}
+                  onPress={() => handleSwitchMode("upload")}
+                  disabled={saving || uploadingFile}
+                >
+                  <Ionicons
+                    name="cloud-upload-outline"
+                    size={16}
+                    color={inputMode === "upload" ? "#FFFFFF" : "#8A6F6F"}
+                  />
+                  <Text
+                    style={[
+                      styles.modeToggleButtonText,
+                      inputMode === "upload" && styles.modeToggleButtonTextActive,
+                    ]}
+                  >
+                    Upload File
+                  </Text>
+                </TouchableOpacity>
               </View>
 
-              <View style={styles.fieldBlock}>
-                <Text style={styles.fieldLabel}>Trigger Input</Text>
-                <View style={[styles.modalRow, isMobile && styles.modalRowStack]}>
-                  <View style={styles.triggerInputWrap}>
+              {inputMode === "manual" ? (
+                <>
+                  <View style={styles.fieldBlock}>
+                    <Text style={styles.fieldLabel}>Chatbot Response</Text>
                     <View
                       style={[
                         styles.inputField,
-                        isTriggerFocused && styles.inputFieldFocused,
+                        styles.textAreaField,
+                        isResponseFocused && styles.inputFieldFocused,
                       ]}
                     >
-                      <Ionicons name="flash-outline" size={18} color="#8A6F6F" />
                       <TextInput
-                        value={triggerInput}
-                        onChangeText={setTriggerInput}
-                        placeholder="Enter trigger input"
+                        value={chatbotResponse}
+                        onChangeText={setChatbotResponse}
+                        placeholder="Enter chatbot response"
                         placeholderTextColor="#B79A9A"
-                        style={styles.textInput}
-                        onSubmitEditing={handleAddTrigger}
-                        returnKeyType="done"
-                        onFocus={() => setIsTriggerFocused(true)}
-                        onBlur={() => setIsTriggerFocused(false)}
+                        style={styles.textAreaInput}
+                        multiline
+                        textAlignVertical="top"
+                        onFocus={() => setIsResponseFocused(true)}
+                        onBlur={() => setIsResponseFocused(false)}
                       />
                     </View>
                   </View>
-                  <TouchableOpacity style={styles.addTriggerButton} activeOpacity={0.85} onPress={handleAddTrigger}>
-                    <Ionicons name="add" size={18} color="#FFFFFF" />
-                    <Text style={styles.addTriggerButtonText}>Add</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
 
-              {triggers.length > 0 && (
-                <View style={styles.tagsWrap}>
-                  {triggers.map((item) => (
-                    <View key={item.id} style={styles.tagChip}>
-                      <Text style={styles.tagText}>{item.value}</Text>
-                      <TouchableOpacity
-                        onPress={() => handleRemoveTrigger(item.id)}
-                        activeOpacity={0.85}
-                        style={styles.tagRemoveButton}
-                      >
-                        <Ionicons name="close" size={14} color="#DC2626" />
+                  <View style={styles.fieldBlock}>
+                    <Text style={styles.fieldLabel}>Trigger Input</Text>
+                    <View style={[styles.modalRow, isMobile && styles.modalRowStack]}>
+                      <View style={styles.triggerInputWrap}>
+                        <View
+                          style={[
+                            styles.inputField,
+                            isTriggerFocused && styles.inputFieldFocused,
+                          ]}
+                        >
+                          <Ionicons name="flash-outline" size={18} color="#8A6F6F" />
+                          <TextInput
+                            value={triggerInput}
+                            onChangeText={setTriggerInput}
+                            placeholder="Enter trigger input"
+                            placeholderTextColor="#B79A9A"
+                            style={styles.textInput}
+                            onSubmitEditing={handleAddTrigger}
+                            returnKeyType="done"
+                            onFocus={() => setIsTriggerFocused(true)}
+                            onBlur={() => setIsTriggerFocused(false)}
+                          />
+                        </View>
+                      </View>
+                      <TouchableOpacity style={styles.addTriggerButton} activeOpacity={0.85} onPress={handleAddTrigger}>
+                        <Ionicons name="add" size={18} color="#FFFFFF" />
+                        <Text style={styles.addTriggerButtonText}>Add</Text>
                       </TouchableOpacity>
                     </View>
-                  ))}
+                  </View>
+
+                  {triggers.length > 0 && (
+                    <View style={styles.tagsWrap}>
+                      {triggers.map((item) => (
+                        <View key={item.id} style={styles.tagChip}>
+                          <Text style={styles.tagText}>{item.value}</Text>
+                          <TouchableOpacity
+                            onPress={() => handleRemoveTrigger(item.id)}
+                            activeOpacity={0.85}
+                            style={styles.tagRemoveButton}
+                          >
+                            <Ionicons name="close" size={14} color="#DC2626" />
+                          </TouchableOpacity>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+                </>
+              ) : (
+                <View style={styles.fieldBlock}>
+                  <Text style={styles.fieldLabel}>Training File</Text>
+                  <Text style={styles.fieldHelperText}>
+                    AI will read the file's content and automatically generate the
+                    chatbot response(s) and triggers — no manual typing needed.
+                  </Text>
+                  <TouchableOpacity
+                    style={styles.uploadButton}
+                    activeOpacity={0.85}
+                    onPress={handlePickTrainingFile}
+                    disabled={uploadingFile || saving}
+                  >
+                    <Ionicons name="cloud-upload-outline" size={18} color="#FFFFFF" />
+                    <Text style={styles.uploadButtonText}>
+                      {uploadingFile ? "Selecting..." : "Upload File"}
+                    </Text>
+                  </TouchableOpacity>
+                  {selectedFile && (
+                    <Text style={styles.uploadedFileText}>Selected: {selectedFile.name}</Text>
+                  )}
                 </View>
               )}
-
-              <View style={styles.fieldBlock}>
-                <Text style={styles.fieldLabel}>Optional Training File</Text>
-                <TouchableOpacity
-                  style={styles.uploadButton}
-                  activeOpacity={0.85}
-                  onPress={handlePickTrainingFile}
-                  disabled={uploadingFile || saving}
-                >
-                  <Ionicons name="cloud-upload-outline" size={18} color="#FFFFFF" />
-                  <Text style={styles.uploadButtonText}>
-                    {uploadingFile ? "Selecting..." : "Upload File"}
-                  </Text>
-                </TouchableOpacity>
-                {selectedFile && (
-                  <Text style={styles.uploadedFileText}>Selected: {selectedFile.name}</Text>
-                )}
-              </View>
             </View>
           </ScrollView>
 
@@ -399,7 +491,11 @@ export default function Chatbot({
             >
               <Ionicons name="add-circle-outline" size={18} color="#FFFFFF" />
               <Text style={styles.modalPrimaryButtonText}>
-                {saving ? "Saving..." : "Add Data"}
+                {saving
+                  ? inputMode === "upload"
+                    ? "Generating..."
+                    : "Saving..."
+                  : "Add Data"}
               </Text>
             </TouchableOpacity>
           </View>
@@ -522,6 +618,40 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: "#5F3B3B",
     marginBottom: 10,
+  },
+  fieldHelperText: {
+    fontSize: 12.5,
+    fontWeight: "500",
+    color: "#8A6F6F",
+    marginBottom: 12,
+    lineHeight: 17,
+  },
+  modeToggleRow: {
+    flexDirection: "row",
+    backgroundColor: "#FFF3F3",
+    borderRadius: 14,
+    padding: 4,
+    marginBottom: 18,
+  },
+  modeToggleButton: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 10,
+    borderRadius: 11,
+    gap: 6,
+  },
+  modeToggleButtonActive: {
+    backgroundColor: "#DC2626",
+  },
+  modeToggleButtonText: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#8A6F6F",
+  },
+  modeToggleButtonTextActive: {
+    color: "#FFFFFF",
   },
   modalRow: {
     flexDirection: "row",
