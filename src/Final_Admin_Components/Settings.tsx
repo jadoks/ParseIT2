@@ -1238,6 +1238,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: "#2B1111",
     fontWeight: "600",
+    ...(Platform.OS === "web" ? ({ outlineStyle: "none" } as any) : {}),
   },
 
   // ─── PIN input: centered container pattern (matches SignIn.tsx) ────────
@@ -1279,7 +1280,7 @@ const styles = StyleSheet.create({
     paddingVertical: 0,
     paddingHorizontal: 0,
     ...Platform.select({
-      web: { lineHeight: 56 } as any,
+      web: { lineHeight: 56, outlineStyle: "none" } as any,
       default: {},
     }),
   },
