@@ -414,6 +414,20 @@ export default function Settings({
     }
   };
 
+  // Live password strength checks — mirrors getPasswordPolicyError's rules,
+  // broken out per-requirement so each one can show its own checkmark as
+  // the admin types instead of only surfacing a single pass/fail message
+  // on submit.
+  const passwordChecks = [
+    { label: "At least 8 characters", passed: newPassword.trim().length >= 8 },
+    { label: "One uppercase letter", passed: /[A-Z]/.test(newPassword) },
+    { label: "One lowercase letter", passed: /[a-z]/.test(newPassword) },
+    { label: "One number", passed: /[0-9]/.test(newPassword) },
+    { label: "One special character", passed: /[^A-Za-z0-9]/.test(newPassword) },
+  ];
+  const isNewPasswordValid = passwordChecks.every((check) => check.passed);
+  const passwordsMatch = confirmPassword.length > 0 && newPassword === confirmPassword;
+
   const settingsCardWidth = isMobile ? "100%" : isTablet ? "74%" : "42%";
   const childModalWidth = isMobile ? "100%" : isTablet ? "68%" : "36%";
 
@@ -899,10 +913,34 @@ export default function Settings({
                       secureTextEntry
                       editable={!changePasswordLoading}
                     />
+                    {newPassword.length > 0 && (
+                      <Ionicons
+                        name={isNewPasswordValid ? "checkmark-circle" : "alert-circle-outline"}
+                        size={18}
+                        color={isNewPasswordValid ? "#15803D" : "#DC2626"}
+                      />
+                    )}
                   </View>
-                  <Text style={styles.helperText}>
-                    At least 8 characters, with an uppercase letter, a lowercase letter, a number, and a special character.
-                  </Text>
+
+                  <View style={styles.passwordChecklist}>
+                    {passwordChecks.map((check) => (
+                      <View key={check.label} style={styles.passwordCheckRow}>
+                        <Ionicons
+                          name={check.passed ? "checkmark-circle" : "ellipse-outline"}
+                          size={15}
+                          color={check.passed ? "#15803D" : "#B79A9A"}
+                        />
+                        <Text
+                          style={[
+                            styles.passwordCheckText,
+                            check.passed && styles.passwordCheckTextPassed,
+                          ]}
+                        >
+                          {check.label}
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
 
                   <Text style={[styles.fieldLabel, styles.fieldLabelTop]}>
                     Confirm Password
@@ -922,7 +960,33 @@ export default function Settings({
                       secureTextEntry
                       editable={!changePasswordLoading}
                     />
+                    {confirmPassword.length > 0 && (
+                      <Ionicons
+                        name={passwordsMatch ? "checkmark-circle" : "close-circle"}
+                        size={18}
+                        color={passwordsMatch ? "#15803D" : "#DC2626"}
+                      />
+                    )}
                   </View>
+                  {confirmPassword.length > 0 && (
+                    <View style={[styles.passwordCheckRow, styles.passwordMatchRow]}>
+                      <Ionicons
+                        name={passwordsMatch ? "checkmark-circle" : "close-circle"}
+                        size={15}
+                        color={passwordsMatch ? "#15803D" : "#DC2626"}
+                      />
+                      <Text
+                        style={[
+                          styles.passwordCheckText,
+                          passwordsMatch
+                            ? styles.passwordCheckTextPassed
+                            : styles.passwordCheckTextError,
+                        ]}
+                      >
+                        {passwordsMatch ? "Passwords match" : "Passwords do not match"}
+                      </Text>
+                    </View>
+                  )}
                 </View>
               )}
             </ScrollView>
@@ -1158,6 +1222,36 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
 
+  passwordChecklist: {
+    marginTop: 10,
+    marginBottom: 16,
+  },
+
+  passwordCheckRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 6,
+  },
+
+  passwordCheckText: {
+    marginLeft: 8,
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#8A6F6F",
+  },
+
+  passwordCheckTextPassed: {
+    color: "#15803D",
+  },
+
+  passwordCheckTextError: {
+    color: "#DC2626",
+  },
+
+  passwordMatchRow: {
+    marginTop: 10,
+  },
+
   actionCard: {
     minHeight: 70,
     borderRadius: 18,
@@ -1279,8 +1373,9 @@ const styles = StyleSheet.create({
     color: "#2B1111",
     paddingVertical: 0,
     paddingHorizontal: 0,
+    textAlign: "center",
     ...Platform.select({
-      web: { lineHeight: 56, outlineStyle: "none" } as any,
+      web: { lineHeight: 56, outlineStyle: "none", textAlign: "center" } as any,
       default: {},
     }),
   },
@@ -1290,8 +1385,9 @@ const styles = StyleSheet.create({
     height: 56,
     fontSize: 20,
     borderRadius: 14,
+    textAlign: "center",
     ...Platform.select({
-      web: { lineHeight: 54 } as any,
+      web: { lineHeight: 54, textAlign: "center" } as any,
       default: {},
     }),
   },
