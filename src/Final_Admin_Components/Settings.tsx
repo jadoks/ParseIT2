@@ -166,6 +166,8 @@ export default function Settings({
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [changePasswordLoading, setChangePasswordLoading] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   const resetChangeEmailModal = () => {
     setChangeEmailStep(1);
@@ -184,6 +186,8 @@ export default function Settings({
     setNewPassword("");
     setConfirmPassword("");
     setChangePasswordLoading(false);
+    setShowNewPassword(false);
+    setShowConfirmPassword(false);
     setIsChangePasswordModalVisible(false);
   };
 
@@ -910,9 +914,21 @@ export default function Settings({
                       placeholder="Enter new password"
                       placeholderTextColor="#B79A9A"
                       style={styles.textInput}
-                      secureTextEntry
+                      secureTextEntry={!showNewPassword}
                       editable={!changePasswordLoading}
                     />
+                    <TouchableOpacity
+                      onPress={() => setShowNewPassword((prev) => !prev)}
+                      disabled={changePasswordLoading}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      style={styles.passwordEyeButton}
+                    >
+                      <Ionicons
+                        name={showNewPassword ? "eye-off-outline" : "eye-outline"}
+                        size={18}
+                        color="#8A6F6F"
+                      />
+                    </TouchableOpacity>
                     {newPassword.length > 0 && (
                       <Ionicons
                         name={isNewPasswordValid ? "checkmark-circle" : "alert-circle-outline"}
@@ -957,9 +973,21 @@ export default function Settings({
                       placeholder="Confirm new password"
                       placeholderTextColor="#B79A9A"
                       style={styles.textInput}
-                      secureTextEntry
+                      secureTextEntry={!showConfirmPassword}
                       editable={!changePasswordLoading}
                     />
+                    <TouchableOpacity
+                      onPress={() => setShowConfirmPassword((prev) => !prev)}
+                      disabled={changePasswordLoading}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      style={styles.passwordEyeButton}
+                    >
+                      <Ionicons
+                        name={showConfirmPassword ? "eye-off-outline" : "eye-outline"}
+                        size={18}
+                        color="#8A6F6F"
+                      />
+                    </TouchableOpacity>
                     {confirmPassword.length > 0 && (
                       <Ionicons
                         name={passwordsMatch ? "checkmark-circle" : "close-circle"}
@@ -1333,6 +1361,12 @@ const styles = StyleSheet.create({
     color: "#2B1111",
     fontWeight: "600",
     ...(Platform.OS === "web" ? ({ outlineStyle: "none" } as any) : {}),
+  },
+
+  passwordEyeButton: {
+    paddingHorizontal: 6,
+    justifyContent: "center",
+    alignItems: "center",
   },
 
   // ─── PIN input: centered container pattern (matches SignIn.tsx) ────────
