@@ -184,6 +184,8 @@ export default function Settings({
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [changePasswordLoading, setChangePasswordLoading] = useState(false);
+  const [changePasswordSendingCode, setChangePasswordSendingCode] = useState(false);
+  const [changePasswordCodeSent, setChangePasswordCodeSent] = useState(false);
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
@@ -204,6 +206,8 @@ export default function Settings({
     setNewPassword("");
     setConfirmPassword("");
     setChangePasswordLoading(false);
+    setChangePasswordSendingCode(false);
+    setChangePasswordCodeSent(false);
     setShowNewPassword(false);
     setShowConfirmPassword(false);
     setIsChangePasswordModalVisible(false);
@@ -330,26 +334,24 @@ export default function Settings({
   };
 
   // ─── Change Password handlers ─────────────────────────────────────────
+  const openChangePasswordModal = () => {
+    setIsChangePasswordModalVisible(true);
+    void sendChangePasswordPin();
+  };
+
   const sendChangePasswordPin = async () => {
-    const trimmedEmail = passwordEmail.trim();
-
-    if (!trimmedEmail) {
-      showToast("Please enter your email address.", "error");
+    if (!currentAdmin?.email) {
+      showToast("Your account has no email on file. Contact support.", "error");
       return;
     }
 
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
-      showToast("Please enter a valid email address.", "error");
-      return;
-    }
-
-    setChangePasswordLoading(true);
+    setChangePasswordSendingCode(true);
 
     try {
       const res = await apiFetch(`${apiBaseUrl}/auth/send-forgot-password-pin`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: trimmedEmail }),
+        body: JSON.stringify({ email: currentAdmin.email }),
       });
       const data = await res.json();
 
@@ -357,11 +359,11 @@ export default function Settings({
         throw new Error(data?.error || "Failed to send verification code.");
       }
 
-      setChangePasswordStep(2);
+      setChangePasswordCodeSent(true);
     } catch (error: any) {
       showToast(error?.message || "Failed to send verification code.", "error");
     } finally {
-      setChangePasswordLoading(false);
+      setChangePasswordSendingCode(false);
     }
   };
 
@@ -387,7 +389,7 @@ export default function Settings({
         throw new Error(data?.error || "Invalid or expired code.");
       }
 
-      setChangePasswordStep(3);
+      setChangePasswordStep(2);
     } catch (error: any) {
       showToast(error?.message || "Invalid or expired code.", "error");
     } finally {
@@ -550,7 +552,7 @@ export default function Settings({
                 <TouchableOpacity
                   style={styles.actionCard}
                   activeOpacity={0.85}
-                  onPress={() => setIsChangePasswordModalVisible(true)}
+                  onPress={openChangePasswordModal}
                 >
                   <View style={styles.actionCardLeft}>
                     <View style={styles.smallIconBox}>
@@ -832,7 +834,7 @@ export default function Settings({
                     Change Password
                   </Text>
                   <Text style={styles.modalSubtitle}>
-                    Step {changePasswordStep} of 3
+                    Step {changePasswordStep} of 2
                   </Text>
                 </View>
               </View>
@@ -856,53 +858,41 @@ export default function Settings({
               {changePasswordStep === 1 && (
                 <View style={styles.modalSection}>
                   <View style={styles.modalSectionHeaderRow}>
-                    <Ionicons name="mail-outline" size={18} color="#DC2626" />
-                    <Text style={styles.modalSectionTitle}>Enter Email</Text>
-                  </View>
-
-                  <Text style={styles.fieldLabel}>Email Address</Text>
-                  <View style={[styles.inputField, styles.inputFieldReadOnly]}>
-                    <Ionicons name="mail-outline" size={18} color="#8A6F6F" />
-                    <Text style={styles.readOnlyFieldText} numberOfLines={1}>
-                      {maskEmail(passwordEmail) || "No email on file"}
-                    </Text>
-                    <Ionicons name="lock-closed-outline" size={16} color="#B79A9A" />
-                  </View>
-                </View>
-              )}
-
-              {changePasswordStep === 2 && (
-                <View style={styles.modalSection}>
-                  <View style={styles.modalSectionHeaderRow}>
                     <Ionicons name="key-outline" size={18} color="#DC2626" />
                     <Text style={styles.modalSectionTitle}>Enter PIN Code</Text>
                   </View>
 
                   <Text style={styles.helperText}>
-                    Enter the 4-digit PIN code sent to {maskEmail(passwordEmail) || "your email"}.
+                    {changePasswordSendingCode
+                      ? `Sending a 4-digit code to ${maskEmail(currentAdmin?.email || "") || "your email"}...`
+                      : `Enter the 4-digit PIN code sent to ${maskEmail(currentAdmin?.email || "") || "your existing email"}.`}
                   </Text>
 
                   <PinInput
                     value={changePasswordPin}
                     onChange={handleChangePasswordPinChange}
                     isMobile={isMobile}
-                    disabled={changePasswordLoading}
+                    disabled={changePasswordSendingCode || changePasswordLoading}
                   />
 
                   <TouchableOpacity
                     onPress={sendChangePasswordPin}
-                    disabled={changePasswordLoading}
+                    disabled={changePasswordSendingCode}
                     activeOpacity={0.85}
                     style={styles.resendLinkWrap}
                   >
                     <Text style={styles.resendLinkText}>
-                      Didn't get a code? Resend
+                      {changePasswordSendingCode
+                        ? "Sending code..."
+                        : changePasswordCodeSent
+                        ? "Didn't get a code? Resend"
+                        : "Send verification code"}
                     </Text>
                   </TouchableOpacity>
                 </View>
               )}
 
-              {changePasswordStep === 3 && (
+              {changePasswordStep === 2 && (
                 <View style={styles.modalSection}>
                   <View style={styles.modalSectionHeaderRow}>
                     <Ionicons
@@ -1048,20 +1038,17 @@ export default function Settings({
                 </TouchableOpacity>
               )}
 
-              {changePasswordStep < 3 ? (
+              {changePasswordStep < 2 ? (
                 <TouchableOpacity
                   style={[
                     styles.modalPrimaryButton,
                     isMobile && styles.modalButtonMobile,
-                    changePasswordLoading && styles.buttonDisabled,
+                    (changePasswordLoading || changePasswordSendingCode) &&
+                      styles.buttonDisabled,
                   ]}
                   activeOpacity={0.85}
-                  onPress={
-                    changePasswordStep === 1
-                      ? sendChangePasswordPin
-                      : verifyChangePasswordPin
-                  }
-                  disabled={changePasswordLoading}
+                  onPress={verifyChangePasswordPin}
+                  disabled={changePasswordLoading || changePasswordSendingCode}
                 >
                   {changePasswordLoading ? (
                     <ActivityIndicator size="small" color="#FFFFFF" />
