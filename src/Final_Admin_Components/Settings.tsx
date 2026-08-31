@@ -664,8 +664,8 @@ export default function Settings({
 
                   <Text style={styles.helperText}>
                     {changeEmailSendingCode
-                      ? `Sending a 4-digit code to ${currentAdmin?.email || "your email"}...`
-                      : `Enter the 4-digit PIN code sent to ${currentAdmin?.email || "your existing email"}.`}
+                      ? `Sending a 4-digit code to ${maskEmail(currentAdmin?.email || "") || "your email"}...`
+                      : `Enter the 4-digit PIN code sent to ${maskEmail(currentAdmin?.email || "") || "your existing email"}.`}
                   </Text>
 
                   <PinInput
