@@ -527,7 +527,12 @@ export default function ModifyChatbotModal({
               </View>
             </View>
 
-            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.modalContent}>
+            <ScrollView
+              showsVerticalScrollIndicator
+              indicatorStyle="black"
+              persistentScrollbar={Platform.OS === "android"}
+              contentContainerStyle={styles.modalContent}
+            >
               {loading ? (
                 <View style={styles.centerState}>
                   <ActivityIndicator size="large" color="#DC2626" />
