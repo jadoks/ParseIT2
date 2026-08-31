@@ -566,7 +566,7 @@ export default function Settings({
                     <View style={styles.actionCardTextWrap}>
                       <Text style={styles.actionCardTitle}>Change Password</Text>
                       <Text style={styles.actionCardSubtitle}>
-                        Enter email, verify PIN, then set a new password.
+                        Verify PIN, then set a new password.
                       </Text>
                     </View>
                   </View>
