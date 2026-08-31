@@ -58,6 +58,18 @@ function getApiBaseUrl() {
 
 const API_BASE_URL = getApiBaseUrl();
 
+// Keep in sync with server.js's MAX_TRAINING_FILE_SIZE_BYTES — this is a
+// UX guard so admins get instant feedback instead of waiting through a
+// base64 conversion + upload just to hit the server-side limit. The server
+// enforces the real limit regardless of this check.
+const MAX_TRAINING_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10MB
+
+function formatFileSize(bytes: number) {
+  if (!Number.isFinite(bytes) || bytes < 0) return "unknown size";
+  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))}KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
+}
+
 const apiFetch = (url: string, options: any = {}) =>
   fetch(url, {
     credentials: "include",
@@ -201,6 +213,16 @@ export default function Chatbot({
       }
 
       const file = result.assets[0];
+
+      if (typeof file.size === "number" && file.size > MAX_TRAINING_FILE_SIZE_BYTES) {
+        showToast(
+          `File is too large (${formatFileSize(file.size)}). Max size is ${formatFileSize(
+            MAX_TRAINING_FILE_SIZE_BYTES
+          )}.`,
+          "error"
+        );
+        return;
+      }
 
       setSelectedFile({
         uri: file.uri,

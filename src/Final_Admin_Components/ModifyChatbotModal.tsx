@@ -67,6 +67,17 @@ function getApiBaseUrl() {
 
 const API_BASE_URL = getApiBaseUrl();
 
+// Keep in sync with server.js's MAX_TRAINING_FILE_SIZE_BYTES and with
+// Chatbot.tsx's copy of this constant — instant client-side feedback,
+// enforced for real on the server regardless of this check.
+const MAX_TRAINING_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10MB
+
+function formatFileSize(bytes: number) {
+  if (!Number.isFinite(bytes) || bytes < 0) return "unknown size";
+  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))}KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
+}
+
 const apiFetch = (url: string, options: any = {}) =>
   fetch(url, {
     credentials: "include",
@@ -118,6 +129,17 @@ export default function ModifyChatbotModal({
   const [newTriggerText, setNewTriggerText] = useState("");
   const [searchText, setSearchText] = useState("");
   const [confirmDeleteItem, setConfirmDeleteItem] = useState<ChatbotTrainingItem | null>(null);
+
+  // Holds a picked-but-not-yet-uploaded replacement file while we ask the
+  // admin whether response/triggers should be regenerated from it. Nothing
+  // is sent to the server until that choice is made.
+  const [pendingFileReplace, setPendingFileReplace] = useState<{
+    item: ChatbotTrainingItem;
+    fileBase64: string;
+    fileName: string;
+    fileType: string;
+  } | null>(null);
+  const [applyingRegenerateChoice, setApplyingRegenerateChoice] = useState(false);
 
   // Focus tracking so these fields get the same highlighted-border
   // behavior as inputs elsewhere in the app (matches Chatbot.tsx) instead
@@ -306,7 +328,50 @@ export default function ModifyChatbotModal({
       }
 
       const file = result.assets[0];
+
+      if (typeof file.size === "number" && file.size > MAX_TRAINING_FILE_SIZE_BYTES) {
+        showToast(
+          `File is too large (${formatFileSize(file.size)}). Max size is ${formatFileSize(
+            MAX_TRAINING_FILE_SIZE_BYTES
+          )}.`,
+          "error"
+        );
+        setReplacingFileId(null);
+        return;
+      }
+
       const fileBase64 = await fileUriToBase64(file.uri);
+
+      // Don't upload yet — ask the admin whether the response/triggers
+      // should be regenerated from this new file's content. Entries created
+      // via "Upload File" have AI-generated response/triggers tied to the
+      // old file's content, so silently swapping the file would leave them
+      // stale; entries typed manually shouldn't be touched without asking.
+      setPendingFileReplace({
+        item,
+        fileBase64,
+        fileName: file.name,
+        fileType: file.mimeType || "application/octet-stream",
+      });
+    } catch (error: any) {
+      console.error("Failed to select training file: ", error);
+      showToast(error?.message || "Failed to select training file.", "error");
+      setReplacingFileId(null);
+    }
+  };
+
+  const handleCancelFileReplace = () => {
+    if (applyingRegenerateChoice) return;
+    setPendingFileReplace(null);
+    setReplacingFileId(null);
+  };
+
+  const performFileReplace = async (regenerate: boolean) => {
+    if (!pendingFileReplace) return;
+    const { item, fileBase64, fileName, fileType } = pendingFileReplace;
+
+    try {
+      setApplyingRegenerateChoice(true);
 
       const response = await apiFetch(`${API_BASE_URL}/chatbot-training/${item.id}/file`, {
         method: "PATCH",
@@ -315,8 +380,9 @@ export default function ModifyChatbotModal({
         },
         body: JSON.stringify({
           fileBase64,
-          fileName: file.name,
-          fileType: file.mimeType || "application/octet-stream",
+          fileName,
+          fileType,
+          regenerate,
         }),
       });
 
@@ -338,11 +404,13 @@ export default function ModifyChatbotModal({
         )
       );
 
-      showToast("Training file replaced successfully.", "success");
+      showToast(data?.message || "Training file replaced successfully.", "success");
+      setPendingFileReplace(null);
     } catch (error: any) {
       console.error("Failed to replace training file: ", error);
       showToast(error?.message || "Failed to replace training file.", "error");
     } finally {
+      setApplyingRegenerateChoice(false);
       setReplacingFileId(null);
     }
   };
@@ -724,6 +792,63 @@ export default function ModifyChatbotModal({
                 <Ionicons name="trash-outline" size={16} color="#FFFFFF" />
                 <Text style={styles.confirmDeleteButtonText}>
                   {deletingId ? "Deleting..." : "Yes, Delete"}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={!!pendingFileReplace}
+        animationType="fade"
+        transparent
+        onRequestClose={handleCancelFileReplace}
+      >
+        <View style={styles.confirmOverlay}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={handleCancelFileReplace} />
+          <View style={styles.confirmCard}>
+            <View style={styles.confirmIconBox}>
+              <Ionicons name="sparkles-outline" size={24} color="#DC2626" />
+            </View>
+            <Text style={styles.confirmTitle}>Regenerate Response & Triggers?</Text>
+            <Text style={styles.confirmMessage}>
+              You're replacing the attached file with "{pendingFileReplace?.fileName}". If this
+              entry's response and triggers were generated from the old file, they may no longer
+              match. Regenerate them from the new file using AI, or keep them as they are?
+            </Text>
+            {pendingFileReplace?.item.response ? (
+              <View style={styles.confirmPreviewBox}>
+                <Text style={styles.confirmPreviewLabel}>Current Response</Text>
+                <Text style={styles.confirmPreviewText} numberOfLines={3}>
+                  {pendingFileReplace.item.response}
+                </Text>
+              </View>
+            ) : null}
+            <View style={[styles.confirmActions, isMobile && styles.confirmActionsStack]}>
+              <TouchableOpacity
+                style={[
+                  styles.confirmCancelButton,
+                  isMobile && styles.confirmCancelButtonStack,
+                  applyingRegenerateChoice && styles.disabledButton,
+                ]}
+                activeOpacity={0.85}
+                onPress={() => performFileReplace(false)}
+                disabled={applyingRegenerateChoice}
+              >
+                <Text style={styles.confirmCancelButtonText}>
+                  {applyingRegenerateChoice ? "Please wait..." : "No, Keep Current"}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.confirmDeleteButton, applyingRegenerateChoice && styles.disabledButton]}
+                activeOpacity={0.85}
+                onPress={() => performFileReplace(true)}
+                disabled={applyingRegenerateChoice}
+              >
+                <Ionicons name="sparkles-outline" size={16} color="#FFFFFF" />
+                <Text style={styles.confirmDeleteButtonText}>
+                  {applyingRegenerateChoice ? "Regenerating..." : "Yes, Regenerate"}
                 </Text>
               </TouchableOpacity>
             </View>

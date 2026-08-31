@@ -975,6 +975,33 @@ async function createReadSignedUrlIfExists(storagePath) {
     };
   }
 
+  // Keep in sync with MAX_TRAINING_FILE_SIZE_BYTES in Chatbot.tsx and
+  // ModifyChatbotModal.tsx.
+  const MAX_TRAINING_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10MB
+
+  function assertTrainingFileWithinSizeLimit(fileBase64) {
+    if (!fileBase64) return;
+    const cleanedBase64 = fileBase64.includes(",")
+      ? fileBase64.split(",")[1]
+      : fileBase64;
+
+    // Decoded byte length from a base64 string, without allocating a
+    // Buffer just to measure it: 4 base64 chars -> 3 bytes, minus any
+    // trailing '=' padding.
+    const padding = (cleanedBase64.match(/=+$/) || [""])[0].length;
+    const approxBytes = Math.floor((cleanedBase64.length * 3) / 4) - padding;
+
+    if (approxBytes > MAX_TRAINING_FILE_SIZE_BYTES) {
+      const error = new Error(
+        `File is too large (${(approxBytes / (1024 * 1024)).toFixed(
+          1
+        )}MB). Max size is ${(MAX_TRAINING_FILE_SIZE_BYTES / (1024 * 1024)).toFixed(0)}MB.`
+      );
+      error.statusCode = 400;
+      throw error;
+    }
+  }
+
   async function uploadChatbotTrainingFileToStorage({
     fileBase64,
     fileMimeType,
@@ -983,6 +1010,15 @@ async function createReadSignedUrlIfExists(storagePath) {
     if (!fileBase64) {
       throw new Error("File data is required.");
     }
+
+    // Hard server-side cap — mirrors MAX_TRAINING_FILE_SIZE_BYTES in
+    // Chatbot.tsx and ModifyChatbotModal.tsx. The frontend check is just a
+    // UX nicety; this is what actually stops an oversized file (or a direct
+    // API call bypassing the app) from being written to storage. Kept well
+    // under the global express.json 50mb body limit so this returns a clean
+    // 400 with a real message instead of a generic PayloadTooLarge error.
+    assertTrainingFileWithinSizeLimit(fileBase64);
+
     const cleanedBase64 = fileBase64.includes(",")
       ? fileBase64.split(",")[1]
       : fileBase64;
@@ -15002,7 +15038,7 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
       });
     } catch (error) {
       console.error("Create chatbot training error:", error);
-      return res.status(500).json({
+      return res.status(error.statusCode || 500).json({
         error: error.message || "Failed to create chatbot training.",
       });
     }
@@ -15076,7 +15112,7 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
   app.patch("/chatbot-training/:id/file", async (req, res) => {
     try {
       const { id } = req.params;
-      const { fileBase64, fileName, fileType } = req.body || {};
+      const { fileBase64, fileName, fileType, regenerate } = req.body || {};
       if (!fileBase64) {
         return res.status(400).json({ error: "fileBase64 is required." });
       }
@@ -15094,12 +15130,13 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
         fileName,
       });
 
+      let extractedText = null;
       let extractedTextPreview = existingData.extractedTextPreview || null;
 
       try {
         const cleanedBase64 = fileBase64.includes(",") ? fileBase64.split(",")[1] : fileBase64;
         const buffer = Buffer.from(cleanedBase64, "base64");
-        const extractedText = await extractTextFromFile(buffer, fileType, fileName);
+        extractedText = await extractTextFromFile(buffer, fileType, fileName);
         if (typeof extractedText === "string" && extractedText.trim()) {
           extractedTextPreview = limitText(extractedText.trim(), 2000);
         }
@@ -15107,7 +15144,31 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
         console.error("File extraction error during file replace:", extractError);
       }
 
-      await ref.update({
+      // The admin explicitly opts in (via a confirm step on the frontend) to
+      // whether response/triggers should be regenerated with AI from the new
+      // file's content. This matters most for entries whose response/
+      // triggers were originally AI-generated from the OLD file (Upload File
+      // mode) — silently leaving them as-is would point them at content that
+      // no longer matches the attachment. We never regenerate unless asked,
+      // so manually-written entries are never clobbered by surprise.
+      const wantsRegeneration = regenerate === true;
+      let regeneratedResponse = null;
+      let regeneratedTriggers = null;
+
+      if (wantsRegeneration && typeof extractedText === "string" && extractedText.trim()) {
+        regeneratedResponse = await generateSummaryResponseFromFileContent(extractedText);
+        regeneratedTriggers = await generateTriggersFromFileContent(
+          extractedText,
+          existingData.response || ""
+        );
+      }
+
+      const didRegenerate =
+        !!regeneratedResponse &&
+        Array.isArray(regeneratedTriggers) &&
+        regeneratedTriggers.length > 0;
+
+      const updatePayload = {
         file: {
           name: uploadedFile.fileName,
           url: uploadedFile.fileUrl,
@@ -15117,7 +15178,14 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
         },
         extractedTextPreview: extractedTextPreview,
         updatedAt: FieldValue.serverTimestamp(),
-      });
+      };
+
+      if (didRegenerate) {
+        updatePayload.response = regeneratedResponse;
+        updatePayload.triggers = regeneratedTriggers;
+      }
+
+      await ref.update(updatePayload);
 
       if (existingFile?.storagePath) {
         await deleteStorageFileIfExists(existingFile.storagePath);
@@ -15125,9 +15193,18 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
       
       const updatedSnap = await ref.get();
       const updatedData = updatedSnap.data() || {};
+
+      let message = "Chatbot training file replaced successfully.";
+      if (wantsRegeneration) {
+        message = didRegenerate
+          ? "File replaced and response/triggers regenerated from the new file."
+          : "File replaced, but the response/triggers could not be regenerated from this file, so they were left unchanged.";
+      }
+
       return res.json({
         success: true,
-        message: "Chatbot training file replaced successfully.",
+        message,
+        regenerated: didRegenerate,
         data: {
           id: updatedSnap.id,
           ...updatedData,
@@ -15137,7 +15214,7 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
       });
     } catch (error) {
       console.error("Replace chatbot training file error:", error);
-      return res.status(500).json({
+      return res.status(error.statusCode || 500).json({
         error: error.message || "Failed to replace chatbot training file.",
       });
     }
