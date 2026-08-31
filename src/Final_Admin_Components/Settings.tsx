@@ -48,6 +48,24 @@ type PinInputProps = {
 // one uppercase letter, one lowercase letter, one number, and one special
 // character on top of the 8-character minimum. Returns an error message if
 // the password is too weak, or null if it passes.
+// Masks an email for display, e.g. "jadwiga@gmail.com" -> "jad******@gmail.com".
+// Keeps the first 3 characters of the local part visible, replaces the rest
+// with a fixed run of asterisks, and leaves the domain untouched.
+function maskEmail(email: string): string {
+  const trimmed = (email || "").trim();
+  const atIndex = trimmed.indexOf("@");
+
+  if (atIndex <= 0) {
+    return trimmed;
+  }
+
+  const localPart = trimmed.slice(0, atIndex);
+  const domainPart = trimmed.slice(atIndex);
+  const visible = localPart.slice(0, 3);
+
+  return `${visible}${"*".repeat(6)}${domainPart}`;
+}
+
 function getPasswordPolicyError(password: string): string | null {
   const value = (password || "").trim();
   const REQUIREMENT_MESSAGE =
@@ -843,18 +861,12 @@ export default function Settings({
                   </View>
 
                   <Text style={styles.fieldLabel}>Email Address</Text>
-                  <View style={styles.inputField}>
+                  <View style={[styles.inputField, styles.inputFieldReadOnly]}>
                     <Ionicons name="mail-outline" size={18} color="#8A6F6F" />
-                    <TextInput
-                      value={passwordEmail}
-                      onChangeText={setPasswordEmail}
-                      placeholder="Enter your email address"
-                      placeholderTextColor="#B79A9A"
-                      style={styles.textInput}
-                      keyboardType="email-address"
-                      autoCapitalize="none"
-                      editable={!changePasswordLoading}
-                    />
+                    <Text style={styles.readOnlyFieldText} numberOfLines={1}>
+                      {maskEmail(passwordEmail) || "No email on file"}
+                    </Text>
+                    <Ionicons name="lock-closed-outline" size={16} color="#B79A9A" />
                   </View>
                 </View>
               )}
@@ -867,7 +879,7 @@ export default function Settings({
                   </View>
 
                   <Text style={styles.helperText}>
-                    Enter the 4-digit PIN code sent to {passwordEmail || "your email"}.
+                    Enter the 4-digit PIN code sent to {maskEmail(passwordEmail) || "your email"}.
                   </Text>
 
                   <PinInput
@@ -1348,6 +1360,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     flexDirection: "row",
     alignItems: "center",
+  },
+
+  inputFieldReadOnly: {
+    backgroundColor: "#F5EFEF",
+  },
+
+  readOnlyFieldText: {
+    flex: 1,
+    marginLeft: 10,
+    fontSize: 14,
+    color: "#5C4747",
+    fontWeight: "600",
   },
 
   inputDisabled: {
