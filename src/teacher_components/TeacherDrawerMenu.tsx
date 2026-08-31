@@ -1,7 +1,7 @@
-import { EmailAuthProvider, reauthenticateWithCredential, signOut } from 'firebase/auth';
-import React, { useEffect, useState } from 'react';
+import { signOut } from 'firebase/auth';
+import React, { useEffect, useRef, useState } from 'react';
 import {
-  Alert,
+  ActivityIndicator,
   Image,
   LayoutChangeEvent,
   Modal,
@@ -16,6 +16,7 @@ import {
   View,
   ViewStyle,
 } from 'react-native';
+import Feather from 'react-native-vector-icons/Feather';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { auth } from '../../firebaseConfig';
@@ -25,6 +26,13 @@ import {
   getCachedUserImageUrl,
   setCachedUserImageUrl,
 } from '../services/userImageUrlCache';
+
+// ✅ Reuses the same Toast component used across the app (Admin Settings,
+// Chatbot/Register/Community/Dashboard/ClassesScreen/SignIn) instead of
+// Alert, so feedback looks and behaves consistently across roles.
+import Toast from '../Final_Admin_Components/Toast'; // adjust path if your folder layout differs
+
+type ToastType = 'success' | 'error' | 'info';
 
 export type DrawerScreenType =
   | 'home'
@@ -57,10 +65,48 @@ interface DrawerMenuProps {
 
 const DEFAULT_AVATAR = require('../../assets/images/pogi.jpg');
 
-// Single source of truth for the minimum new-password length, used both by
-// the inline hint under "New Password" and by handleChangePassword's
-// validation below, so the two can't drift out of sync.
-const MIN_PASSWORD_LENGTH = 8;
+// Masks an email for display, e.g. "jadwiga@gmail.com" -> "jad******@gmail.com".
+// Keeps the first 3 characters of the local part visible, replaces the rest
+// with a fixed run of asterisks, and leaves the domain untouched. Mirrors
+// the same helper used in the Admin Settings flow.
+function maskEmail(email: string): string {
+  const trimmed = (email || '').trim();
+  const atIndex = trimmed.indexOf('@');
+
+  if (atIndex <= 0) {
+    return trimmed;
+  }
+
+  const localPart = trimmed.slice(0, atIndex);
+  const domainPart = trimmed.slice(atIndex);
+  const visible = localPart.slice(0, 3);
+
+  return `${visible}${'*'.repeat(6)}${domainPart}`;
+}
+
+// Keep in sync with getPasswordPolicyError in server.js — length alone lets
+// weak passwords like "password" or "12345678" through. Requires at least
+// one uppercase letter, one lowercase letter, one number, and one special
+// character on top of the 8-character minimum. Mirrors the Admin Settings
+// flow's password policy. Returns an error message if the password is too
+// weak, or null if it passes.
+function getPasswordPolicyError(password: string): string | null {
+  const value = (password || '').trim();
+  const REQUIREMENT_MESSAGE =
+    'Password must be at least 8 characters, and include an uppercase letter, a lowercase letter, a number, and a special character.';
+
+  if (
+    value.length < 8 ||
+    !/[A-Z]/.test(value) ||
+    !/[a-z]/.test(value) ||
+    !/[0-9]/.test(value) ||
+    !/[^A-Za-z0-9]/.test(value)
+  ) {
+    return REQUIREMENT_MESSAGE;
+  }
+
+  return null;
+}
 
 // 👇 Helper to refresh signed URL for the drawer avatar
 const refreshUserImageUrl = async (
@@ -164,6 +210,61 @@ const MenuItem = ({
   );
 };
 
+// ─── PIN Input — mirrors the Admin Settings flow's 4-digit code entry ─────
+type PinInputProps = {
+  value: string[];
+  onChange: (index: number, text: string) => void;
+  isMobile: boolean;
+  disabled?: boolean;
+};
+
+function PinInput({ value, onChange, isMobile, disabled }: PinInputProps) {
+  const refs = useRef<Array<TextInput | null>>([]);
+
+  return (
+    <View style={styles.pinContainer}>
+      <View style={[styles.pinRow, isMobile && styles.pinRowMobile]}>
+        {value.map((digit, index) => (
+          <TextInput
+            key={index}
+            ref={(ref) => {
+              refs.current[index] = ref;
+            }}
+            value={digit}
+            editable={!disabled}
+            onChangeText={(text) => {
+              const cleanText = text.replace(/[^0-9]/g, '').slice(-1);
+              onChange(index, cleanText);
+
+              if (cleanText && index < 3) {
+                refs.current[index + 1]?.focus();
+              }
+            }}
+            onKeyPress={({ nativeEvent }) => {
+              if (
+                nativeEvent.key === 'Backspace' &&
+                !value[index] &&
+                index > 0
+              ) {
+                refs.current[index - 1]?.focus();
+              }
+            }}
+            keyboardType="number-pad"
+            maxLength={1}
+            style={[
+              styles.pinBox,
+              isMobile && styles.pinBoxMobile,
+              disabled && styles.inputDisabled,
+            ]}
+            textAlign="center"
+            textAlignVertical="center"
+          />
+        ))}
+      </View>
+    </View>
+  );
+}
+
 const TeacherDrawerMenu = ({
   isFixed,
   onClose,
@@ -187,35 +288,48 @@ const TeacherDrawerMenu = ({
   const [isLogoutModalVisible, setLogoutModalVisible] = useState(false);
   const [isChangeEmailModalVisible, setChangeEmailModalVisible] = useState(false);
   const [isChangePasswordModalVisible, setChangePasswordModalVisible] = useState(false);
-  const [savingEmail, setSavingEmail] = useState(false);
-  const [savingPassword, setSavingPassword] = useState(false);
-  const [email, setEmail] = useState(userEmail || '');
-  const [emailPassword, setEmailPassword] = useState('');
-  const [currentPassword, setCurrentPassword] = useState('');
-  const [newPassword, setNewPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-
-  // 👁 Per-field visibility toggles for the Change Password modal, mirroring
-  // the show/hide eye icon behavior used on the Password fields in Register.
-  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
-  const [showNewPassword, setShowNewPassword] = useState(false);
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   // 👇 State for refreshed avatar URL
   const [refreshedAvatarUrl, setRefreshedAvatarUrl] = useState<string | null>(null);
 
-  // Whether the "New Password" field currently meets the minimum length
-  // requirement. Drives the inline hint under that field below.
-  const isNewPasswordLongEnough = newPassword.length >= MIN_PASSWORD_LENGTH;
+  // ✅ Toast state — same shape/usage as the Admin Settings flow, replacing
+  // Alert.alert everywhere in this file.
+  const [toast, setToast] = useState<{
+    visible: boolean;
+    message: string;
+    type: ToastType;
+  }>({ visible: false, message: '', type: 'success' });
 
-  // Whether "Confirm Password" currently matches "New Password". Drives the
-  // inline match indicator under that field below. Only shown once the user
-  // has actually typed something into Confirm Password.
-  const isConfirmPasswordMatching =
-    confirmPassword.length > 0 && confirmPassword === newPassword;
+  const showToast = (message: string, type: ToastType = 'info') => {
+    setToast({ visible: true, message, type });
+  };
+
+  const hideToast = () => {
+    setToast((prev) => ({ ...prev, visible: false }));
+  };
+
+  // ─── Change Email state (PIN-verify flow, mirrors Admin) ───────────────
+  const [changeEmailStep, setChangeEmailStep] = useState(1);
+  const [changeEmailPin, setChangeEmailPin] = useState(['', '', '', '']);
+  const [newEmail, setNewEmail] = useState('');
+  const [changeEmailLoading, setChangeEmailLoading] = useState(false);
+  const [changeEmailSendingCode, setChangeEmailSendingCode] = useState(false);
+  const [changeEmailCodeSent, setChangeEmailCodeSent] = useState(false);
+
+  // ─── Change Password state (PIN-verify flow, mirrors Admin) ────────────
+  const [changePasswordStep, setChangePasswordStep] = useState(1);
+  const [passwordEmail, setPasswordEmail] = useState(userEmail || '');
+  const [changePasswordPin, setChangePasswordPin] = useState(['', '', '', '']);
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [changePasswordLoading, setChangePasswordLoading] = useState(false);
+  const [changePasswordSendingCode, setChangePasswordSendingCode] = useState(false);
+  const [changePasswordCodeSent, setChangePasswordCodeSent] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   useEffect(() => {
-    setEmail(userEmail || '');
+    setPasswordEmail(userEmail || '');
   }, [userEmail]);
 
   // 🧹 Web-only: hide the browser's native password reveal/autofill icons
@@ -281,6 +395,10 @@ const TeacherDrawerMenu = ({
   const shouldShowScrollBar = (isMobile || isTablet) && hasOverflow;
   const drawerWidth = isMobile ? (isSmallMobile ? '85%' : 280) : isTablet ? 300 : 260;
 
+  // Settings dialog sizing — mirrors the Admin Settings flow's breakpoints.
+  const settingsCardWidth = isMobile ? '100%' : isTablet ? '74%' : '42%';
+  const childModalWidth = isMobile ? '100%' : isTablet ? '68%' : '36%';
+
   const handleContentSizeChange = (_contentW: number, contentH: number) => {
     setContentHeight(contentH);
   };
@@ -289,44 +407,114 @@ const TeacherDrawerMenu = ({
     setScrollViewHeight(e.nativeEvent.layout.height);
   };
 
-  const modalButtonHover = {
-    backgroundColor: 'rgba(130,129,129,0.08)',
-    borderRadius: 8,
+  // Raw fetch helper (mirrors the local `apiFetch` used in the Admin
+  // Settings flow) — kept distinct from the imported `apiFetch` above,
+  // which targets a different base URL convention.
+  const apiFetchRaw = (url: string, options: any = {}) =>
+    fetch(url, {
+      credentials: 'include',
+      ...options,
+    });
+
+  // ─── Change Email handlers (PIN-verify, mirrors Admin) ──────────────────
+  const resetChangeEmailModal = () => {
+    setChangeEmailStep(1);
+    setChangeEmailPin(['', '', '', '']);
+    setNewEmail('');
+    setChangeEmailLoading(false);
+    setChangeEmailSendingCode(false);
+    setChangeEmailCodeSent(false);
+    setChangeEmailModalVisible(false);
   };
 
-  const pressableWebHover = (state: any) =>
-    Platform.OS === 'web' && state.hovered ? modalButtonHover : {};
-
-  const reauthenticateCurrentUser = async (emailValue: string, passwordValue: string) => {
-    const firebaseUser = auth.currentUser;
-    if (!firebaseUser) throw new Error('No authenticated user found. Please sign in again.');
-    const credential = EmailAuthProvider.credential(emailValue.trim(), passwordValue);
-    await reauthenticateWithCredential(firebaseUser, credential);
+  const handleChangeEmailPinChange = (index: number, text: string) => {
+    const updated = [...changeEmailPin];
+    updated[index] = text;
+    setChangeEmailPin(updated);
   };
 
-  const handleChangeEmail = async () => {
-    const trimmedEmail = email.trim().toLowerCase();
-    const trimmedPassword = emailPassword.trim();
+  const openChangeEmailModal = () => {
+    setSettingsModalVisible(false);
+    setChangeEmailModalVisible(true);
+    void sendChangeEmailPin();
+  };
 
-    if (!trimmedEmail) {
-      Alert.alert('Required', 'Please enter a new email address.');
+  const sendChangeEmailPin = async () => {
+    if (!userEmail) {
+      showToast('Your account has no email on file. Contact support.', 'error');
       return;
     }
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
-      Alert.alert('Invalid Email', 'Please enter a valid email address.');
-      return;
-    }
-    if (!trimmedPassword) {
-      Alert.alert('Required', 'Please enter your current password.');
-      return;
-    }
+
+    setChangeEmailSendingCode(true);
 
     try {
-      setSavingEmail(true);
-      await reauthenticateCurrentUser(userEmail, trimmedPassword);
-      const response = await fetch(`${apiBaseUrl}/auth/change-email`, {
+      const res = await apiFetchRaw(`${apiBaseUrl}/auth/send-forgot-password-pin`, {
         method: 'POST',
-        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: userEmail }),
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data?.error || 'Failed to send verification code.');
+      }
+
+      setChangeEmailCodeSent(true);
+    } catch (error: any) {
+      showToast(error?.message || 'Failed to send verification code.', 'error');
+    } finally {
+      setChangeEmailSendingCode(false);
+    }
+  };
+
+  const verifyChangeEmailPin = async () => {
+    const pin = changeEmailPin.join('');
+
+    if (pin.length !== 4) {
+      showToast('Please enter the 4-digit code.', 'error');
+      return;
+    }
+
+    setChangeEmailLoading(true);
+
+    try {
+      const res = await apiFetchRaw(`${apiBaseUrl}/auth/verify-forgot-password-pin`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: userEmail, pin }),
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data?.error || 'Invalid or expired code.');
+      }
+
+      setChangeEmailStep(2);
+    } catch (error: any) {
+      showToast(error?.message || 'Invalid or expired code.', 'error');
+    } finally {
+      setChangeEmailLoading(false);
+    }
+  };
+
+  const submitNewEmail = async () => {
+    const trimmedEmail = newEmail.trim();
+
+    if (!trimmedEmail) {
+      showToast('Please enter your new email address.', 'error');
+      return;
+    }
+
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
+      showToast('Please enter a valid email address.', 'error');
+      return;
+    }
+
+    setChangeEmailLoading(true);
+
+    try {
+      const res = await apiFetchRaw(`${apiBaseUrl}/auth/change-email`, {
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           id: userId,
@@ -334,66 +522,163 @@ const TeacherDrawerMenu = ({
           newEmail: trimmedEmail,
         }),
       });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data?.error || 'Failed to update email.');
-      onEmailUpdated?.(trimmedEmail);
-      setEmailPassword('');
-      setChangeEmailModalVisible(false);
-      Alert.alert('Success', 'Your email has been updated successfully.');
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data?.error || 'Failed to update email.');
+      }
+
+      showToast('Email updated successfully.', 'success');
+      onEmailUpdated?.(data?.data?.email || trimmedEmail);
+
+      setTimeout(() => {
+        resetChangeEmailModal();
+      }, 1200);
     } catch (error: any) {
-      Alert.alert('Update Failed', error?.message || 'Unable to update email.');
+      showToast(error?.message || 'Failed to update email.', 'error');
     } finally {
-      setSavingEmail(false);
+      setChangeEmailLoading(false);
     }
   };
 
-  const handleChangePassword = async () => {
-    const trimmedCurrentPassword = currentPassword.trim();
-    const trimmedNewPassword = newPassword.trim();
-    const trimmedConfirmPassword = confirmPassword.trim();
+  // ─── Change Password handlers (PIN-verify, mirrors Admin) ───────────────
+  const resetChangePasswordModal = () => {
+    setChangePasswordStep(1);
+    setPasswordEmail(userEmail || '');
+    setChangePasswordPin(['', '', '', '']);
+    setNewPassword('');
+    setConfirmPassword('');
+    setChangePasswordLoading(false);
+    setChangePasswordSendingCode(false);
+    setChangePasswordCodeSent(false);
+    setShowNewPassword(false);
+    setShowConfirmPassword(false);
+    setChangePasswordModalVisible(false);
+  };
 
-    if (!trimmedCurrentPassword || !trimmedNewPassword || !trimmedConfirmPassword) {
-      Alert.alert('Required', 'Please fill in all password fields.');
+  const handleChangePasswordPinChange = (index: number, text: string) => {
+    const updated = [...changePasswordPin];
+    updated[index] = text;
+    setChangePasswordPin(updated);
+  };
+
+  const openChangePasswordModal = () => {
+    setSettingsModalVisible(false);
+    setChangePasswordModalVisible(true);
+    void sendChangePasswordPin();
+  };
+
+  const sendChangePasswordPin = async () => {
+    if (!userEmail) {
+      showToast('Your account has no email on file. Contact support.', 'error');
       return;
     }
-    if (trimmedNewPassword.length < MIN_PASSWORD_LENGTH) {
-      Alert.alert(
-        'Weak Password',
-        `Your new password must be at least ${MIN_PASSWORD_LENGTH} characters long.`
-      );
-      return;
-    }
-    if (trimmedNewPassword !== trimmedConfirmPassword) {
-      Alert.alert('Mismatch', 'New password and confirm password do not match.');
-      return;
-    }
+
+    setChangePasswordSendingCode(true);
 
     try {
-      setSavingPassword(true);
-      await reauthenticateCurrentUser(userEmail, trimmedCurrentPassword);
-      const response = await fetch(`${apiBaseUrl}/auth/change-password`, {
+      const res = await apiFetchRaw(`${apiBaseUrl}/auth/send-forgot-password-pin`, {
         method: 'POST',
-        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          id: userId,
-          role: userRole,
-          newPassword: trimmedNewPassword,
-        }),
+        body: JSON.stringify({ email: userEmail }),
       });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data?.error || 'Failed to update password.');
-      setCurrentPassword('');
-      setNewPassword('');
-      setConfirmPassword('');
-      setChangePasswordModalVisible(false);
-      Alert.alert('Success', 'Your password has been updated successfully.');
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data?.error || 'Failed to send verification code.');
+      }
+
+      setChangePasswordCodeSent(true);
     } catch (error: any) {
-      Alert.alert('Update Failed', error?.message || 'Unable to update password.');
+      showToast(error?.message || 'Failed to send verification code.', 'error');
     } finally {
-      setSavingPassword(false);
+      setChangePasswordSendingCode(false);
     }
   };
+
+  const verifyChangePasswordPin = async () => {
+    const pin = changePasswordPin.join('');
+
+    if (pin.length !== 4) {
+      showToast('Please enter the 4-digit code.', 'error');
+      return;
+    }
+
+    setChangePasswordLoading(true);
+
+    try {
+      const res = await apiFetchRaw(`${apiBaseUrl}/auth/verify-forgot-password-pin`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: passwordEmail.trim(), pin }),
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data?.error || 'Invalid or expired code.');
+      }
+
+      setChangePasswordStep(2);
+    } catch (error: any) {
+      showToast(error?.message || 'Invalid or expired code.', 'error');
+    } finally {
+      setChangePasswordLoading(false);
+    }
+  };
+
+  const submitNewPassword = async () => {
+    const passwordPolicyError = getPasswordPolicyError(newPassword);
+    if (passwordPolicyError) {
+      showToast(passwordPolicyError, 'error');
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      showToast('Passwords do not match.', 'error');
+      return;
+    }
+
+    setChangePasswordLoading(true);
+
+    try {
+      const res = await apiFetchRaw(`${apiBaseUrl}/auth/reset-forgot-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: passwordEmail.trim(),
+          newPassword: newPassword.trim(),
+        }),
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data?.error || 'Failed to update password.');
+      }
+
+      showToast('Password updated successfully.', 'success');
+
+      setTimeout(() => {
+        resetChangePasswordModal();
+      }, 1200);
+    } catch (error: any) {
+      showToast(error?.message || 'Failed to update password.', 'error');
+    } finally {
+      setChangePasswordLoading(false);
+    }
+  };
+
+  // Live password strength checks — mirrors getPasswordPolicyError's rules,
+  // broken out per-requirement so each one can show its own checkmark as
+  // the teacher types, same as the Admin Settings flow.
+  const passwordChecks = [
+    { label: 'At least 8 characters', passed: newPassword.trim().length >= 8 },
+    { label: 'One uppercase letter', passed: /[A-Z]/.test(newPassword) },
+    { label: 'One lowercase letter', passed: /[a-z]/.test(newPassword) },
+    { label: 'One number', passed: /[0-9]/.test(newPassword) },
+    { label: 'One special character', passed: /[^A-Za-z0-9]/.test(newPassword) },
+  ];
+  const isNewPasswordValid = passwordChecks.every((check) => check.passed);
+  const passwordsMatch = confirmPassword.length > 0 && newPassword === confirmPassword;
 
   const handleLogout = async () => {
     try {
@@ -439,143 +724,611 @@ const TeacherDrawerMenu = ({
         <MaterialCommunityIcons name="logout" size={28} color="#D32F2F" style={{ marginRight: 20 }} />
         <Text style={styles.logoutLabel}>Logout</Text>
       </Pressable>
-      <Modal animationType="fade" transparent visible={isSettingsModalVisible} onRequestClose={() => setSettingsModalVisible(false)}>
-        <View style={styles.modalOverlay}>
-          <View style={styles.settingsModalContainer}>
-            <View style={styles.settingsHeader}>
-              <Text style={styles.settingsTitle}>Settings</Text>
-              <Text style={styles.settingsSubtitle}>Manage your account preferences</Text>
+
+      {/* ─── SETTINGS MODAL — mirrors the Admin Settings flow's layout ────── */}
+      <Modal
+        visible={isSettingsModalVisible}
+        animationType="fade"
+        transparent
+        onRequestClose={() => setSettingsModalVisible(false)}
+      >
+        <View style={styles.settingsModalOverlay}>
+          <Pressable
+            style={StyleSheet.absoluteFill}
+            onPress={() => setSettingsModalVisible(false)}
+          />
+
+          <View
+            style={[
+              styles.modalCard,
+              { width: settingsCardWidth },
+              isMobile && styles.modalCardMobile,
+            ]}
+          >
+            <View style={styles.settingsModalHeader}>
+              <View style={styles.modalHeaderLeft}>
+                <View
+                  style={[
+                    styles.modalIconBox,
+                    isMobile && styles.modalIconBoxMobile,
+                  ]}
+                >
+                  <Feather name="settings" size={22} color="#DC2626" />
+                </View>
+
+                <View style={styles.modalHeaderTextWrap}>
+                  <Text style={[styles.settingsModalTitle, isMobile && styles.modalTitleMobile]}>
+                    Settings
+                  </Text>
+                  <Text style={styles.settingsModalSubtitle}>
+                    Manage your account settings and security options.
+                  </Text>
+                </View>
+              </View>
+
+              <Pressable
+                style={styles.modalCloseButton}
+                onPress={() => setSettingsModalVisible(false)}
+              >
+                <Ionicons name="close" size={20} color="#7A4A4A" />
+              </Pressable>
             </View>
-            <Pressable style={(state) => [styles.settingsOptionButton, pressableWebHover(state)]} onPress={() => { setSettingsModalVisible(false); setEmail(userEmail || ''); setChangeEmailModalVisible(true); }}>
-              <View style={styles.settingsOptionContent}>
-                <View style={styles.settingsOptionIconWrap}><MaterialCommunityIcons name="email-outline" size={22} color="#D32F2F" /></View>
-                <View style={styles.settingsOptionTextWrap}>
-                  <Text style={styles.settingsOptionTitle}>Change Email</Text>
-                  <Text style={styles.settingsOptionSubtitle}>Update your registered email address</Text>
+
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={[
+                styles.modalContent,
+                isMobile && styles.modalContentMobile,
+              ]}
+            >
+              <View style={styles.modalSection}>
+                <View style={styles.modalSectionHeaderRow}>
+                  <Ionicons
+                    name="shield-checkmark-outline"
+                    size={18}
+                    color="#DC2626"
+                  />
+                  <Text style={styles.modalSectionTitle}>
+                    Account & Security
+                  </Text>
                 </View>
-                <MaterialCommunityIcons name="chevron-right" size={24} color="#999" />
+
+                <Pressable style={styles.actionCard} onPress={openChangeEmailModal}>
+                  <View style={styles.actionCardLeft}>
+                    <View style={styles.smallIconBox}>
+                      <Ionicons name="mail-outline" size={18} color="#DC2626" />
+                    </View>
+
+                    <View style={styles.actionCardTextWrap}>
+                      <Text style={styles.actionCardTitle}>Change Email</Text>
+                      <Text style={styles.actionCardSubtitle}>
+                        Verify PIN first, then update your email address.
+                      </Text>
+                    </View>
+                  </View>
+
+                  <Ionicons name="chevron-forward" size={18} color="#98A2B3" />
+                </Pressable>
+
+                <Pressable style={styles.actionCard} onPress={openChangePasswordModal}>
+                  <View style={styles.actionCardLeft}>
+                    <View style={styles.smallIconBox}>
+                      <Ionicons
+                        name="lock-closed-outline"
+                        size={18}
+                        color="#DC2626"
+                      />
+                    </View>
+
+                    <View style={styles.actionCardTextWrap}>
+                      <Text style={styles.actionCardTitle}>Change Password</Text>
+                      <Text style={styles.actionCardSubtitle}>
+                        Verify PIN, then set a new password.
+                      </Text>
+                    </View>
+                  </View>
+
+                  <Ionicons name="chevron-forward" size={18} color="#98A2B3" />
+                </Pressable>
               </View>
-            </Pressable>
-            <Pressable style={(state) => [styles.settingsOptionButton, pressableWebHover(state)]} onPress={() => { setSettingsModalVisible(false); setCurrentPassword(''); setNewPassword(''); setConfirmPassword(''); setShowCurrentPassword(false); setShowNewPassword(false); setShowConfirmPassword(false); setChangePasswordModalVisible(true); }}>
-              <View style={styles.settingsOptionContent}>
-                <View style={styles.settingsOptionIconWrap}><MaterialCommunityIcons name="lock-outline" size={22} color="#D32F2F" /></View>
-                <View style={styles.settingsOptionTextWrap}>
-                  <Text style={styles.settingsOptionTitle}>Change Password</Text>
-                  <Text style={styles.settingsOptionSubtitle}>Create a new secure password</Text>
-                </View>
-                <MaterialCommunityIcons name="chevron-right" size={24} color="#999" />
-              </View>
-            </Pressable>
-            <Pressable style={styles.settingsCloseBtn} onPress={() => setSettingsModalVisible(false)}><Text style={styles.settingsCloseText}>Close</Text></Pressable>
+            </ScrollView>
+
+            <View
+              style={[
+                styles.modalFooter,
+                isMobile && styles.modalFooterMobileSingle,
+              ]}
+            >
+              <Pressable
+                style={[
+                  styles.modalSecondaryButton,
+                  isMobile && styles.fullWidthButton,
+                ]}
+                onPress={() => setSettingsModalVisible(false)}
+              >
+                <Text style={styles.modalSecondaryButtonText}>Close</Text>
+              </Pressable>
+            </View>
           </View>
         </View>
       </Modal>
-      <Modal animationType="fade" transparent visible={isChangeEmailModalVisible} onRequestClose={() => setChangeEmailModalVisible(false)}>
-        <View style={styles.modalOverlay}>
-          <View style={styles.formModalContainer}>
-            <Text style={styles.formModalTitle}>Change Email</Text>
-            <Text style={styles.formModalSubtitle}>Enter your new email and your current password.</Text>
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>New Email Address</Text>
-              <TextInput value={email} onChangeText={setEmail} placeholder="Enter new email" placeholderTextColor="#999" style={styles.textInput} keyboardType="email-address" autoCapitalize="none" editable={!savingEmail} />
-            </View>
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Current Password</Text>
-              <TextInput value={emailPassword} onChangeText={setEmailPassword} placeholder="Enter current password" placeholderTextColor="#999" style={styles.textInput} secureTextEntry editable={!savingEmail} />
-            </View>
-            <View style={styles.formButtonsRow}>
-              <Pressable style={styles.formCancelBtn} onPress={() => { setChangeEmailModalVisible(false); setSettingsModalVisible(true); }} disabled={savingEmail}><Text style={styles.formCancelText}>Back</Text></Pressable>
-              <Pressable style={styles.formSaveBtn} onPress={handleChangeEmail} disabled={savingEmail}><Text style={styles.formSaveText}>{savingEmail ? 'Saving...' : 'Save'}</Text></Pressable>
-            </View>
-          </View>
-        </View>
-      </Modal>
-      <Modal animationType="fade" transparent visible={isChangePasswordModalVisible} onRequestClose={() => setChangePasswordModalVisible(false)}>
-        <View style={styles.modalOverlay}>
-          <View style={styles.formModalContainer}>
-            <Text style={styles.formModalTitle}>Change Password</Text>
-            <Text style={styles.formModalSubtitle}>Update your password to keep your account secure.</Text>
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Current Password</Text>
-              <View style={styles.passwordFieldContainer}>
-                <TextInput
-                  value={currentPassword}
-                  onChangeText={setCurrentPassword}
-                  placeholder="Enter current password"
-                  placeholderTextColor="#999"
-                  style={styles.passwordFieldInput}
-                  secureTextEntry={!showCurrentPassword}
-                  autoCapitalize="none"
-                  editable={!savingPassword}
-                />
-                <Pressable
-                  onPress={() => setShowCurrentPassword(!showCurrentPassword)}
-                  style={styles.eyeIconButton}
-                  disabled={savingPassword}
+
+      {/* ─── CHANGE EMAIL MODAL — mirrors the Admin Settings flow ─────────── */}
+      <Modal
+        visible={isChangeEmailModalVisible}
+        animationType="fade"
+        transparent
+        onRequestClose={resetChangeEmailModal}
+      >
+        <View style={styles.settingsModalOverlay}>
+          <Pressable
+            style={StyleSheet.absoluteFill}
+            onPress={resetChangeEmailModal}
+          />
+
+          <View
+            style={[
+              styles.modalCardSmall,
+              { width: childModalWidth },
+              isMobile && styles.modalCardMobile,
+            ]}
+          >
+            <View style={styles.settingsModalHeader}>
+              <View style={styles.modalHeaderLeft}>
+                <View
+                  style={[
+                    styles.modalIconBox,
+                    isMobile && styles.modalIconBoxMobile,
+                  ]}
                 >
-                  <Ionicons name={showCurrentPassword ? 'eye-off-outline' : 'eye-outline'} size={20} color="#7A7A7A" />
-                </Pressable>
+                  <Ionicons name="mail-outline" size={22} color="#DC2626" />
+                </View>
+
+                <View style={styles.modalHeaderTextWrap}>
+                  <Text style={[styles.settingsModalTitle, isMobile && styles.modalTitleMobile]}>
+                    Change Email
+                  </Text>
+                  <Text style={styles.settingsModalSubtitle}>
+                    Step {changeEmailStep} of 2
+                  </Text>
+                </View>
               </View>
+
+              <Pressable style={styles.modalCloseButton} onPress={resetChangeEmailModal}>
+                <Ionicons name="close" size={20} color="#7A4A4A" />
+              </Pressable>
             </View>
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>New Password</Text>
-              <View style={styles.passwordFieldContainer}>
-                <TextInput
-                  value={newPassword}
-                  onChangeText={setNewPassword}
-                  placeholder="Enter new password"
-                  placeholderTextColor="#999"
-                  style={styles.passwordFieldInput}
-                  secureTextEntry={!showNewPassword}
-                  autoCapitalize="none"
-                  editable={!savingPassword}
-                />
+
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={[
+                styles.modalContent,
+                isMobile && styles.modalContentMobile,
+              ]}
+            >
+              {changeEmailStep === 1 && (
+                <View style={styles.modalSection}>
+                  <View style={styles.modalSectionHeaderRow}>
+                    <Ionicons name="key-outline" size={18} color="#DC2626" />
+                    <Text style={styles.modalSectionTitle}>Enter PIN Code</Text>
+                  </View>
+
+                  <Text style={styles.helperText}>
+                    {changeEmailSendingCode
+                      ? `Sending a 4-digit code to ${maskEmail(userEmail || '') || 'your email'}...`
+                      : `Enter the 4-digit PIN code sent to ${maskEmail(userEmail || '') || 'your existing email'}.`}
+                  </Text>
+
+                  <PinInput
+                    value={changeEmailPin}
+                    onChange={handleChangeEmailPinChange}
+                    isMobile={isMobile}
+                    disabled={changeEmailSendingCode || changeEmailLoading}
+                  />
+
+                  <Pressable
+                    onPress={sendChangeEmailPin}
+                    disabled={changeEmailSendingCode}
+                    style={styles.resendLinkWrap}
+                  >
+                    <Text style={styles.resendLinkText}>
+                      {changeEmailSendingCode
+                        ? 'Sending code...'
+                        : changeEmailCodeSent
+                        ? "Didn't get a code? Resend"
+                        : 'Send verification code'}
+                    </Text>
+                  </Pressable>
+                </View>
+              )}
+
+              {changeEmailStep === 2 && (
+                <View style={styles.modalSection}>
+                  <View style={styles.modalSectionHeaderRow}>
+                    <Ionicons
+                      name="mail-open-outline"
+                      size={18}
+                      color="#DC2626"
+                    />
+                    <Text style={styles.modalSectionTitle}>New Email</Text>
+                  </View>
+
+                  <Text style={styles.fieldLabel}>Email Address</Text>
+                  <View style={styles.inputField}>
+                    <Ionicons name="mail-outline" size={18} color="#8A6F6F" />
+                    <TextInput
+                      value={newEmail}
+                      onChangeText={setNewEmail}
+                      placeholder="Enter new email address"
+                      placeholderTextColor="#B79A9A"
+                      style={styles.settingsTextInput}
+                      keyboardType="email-address"
+                      autoCapitalize="none"
+                      editable={!changeEmailLoading}
+                    />
+                  </View>
+                </View>
+              )}
+            </ScrollView>
+
+            <View style={[styles.modalFooter, isMobile && styles.modalFooterMobile]}>
+              {changeEmailStep > 1 && (
                 <Pressable
-                  onPress={() => setShowNewPassword(!showNewPassword)}
-                  style={styles.eyeIconButton}
-                  disabled={savingPassword}
+                  style={[
+                    styles.modalSecondaryButton,
+                    isMobile && styles.modalButtonMobile,
+                  ]}
+                  onPress={() => setChangeEmailStep(1)}
+                  disabled={changeEmailLoading}
                 >
-                  <Ionicons name={showNewPassword ? 'eye-off-outline' : 'eye-outline'} size={20} color="#7A7A7A" />
+                  <Text style={styles.modalSecondaryButtonText}>Back</Text>
                 </Pressable>
-              </View>
-              <Text style={[styles.passwordHint, isNewPasswordLongEnough && styles.passwordHintValid]}>
-                {isNewPasswordLongEnough ? '✓ ' : ''}Must be at least {MIN_PASSWORD_LENGTH} characters
-              </Text>
-            </View>
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Confirm Password</Text>
-              <View style={styles.passwordFieldContainer}>
-                <TextInput
-                  value={confirmPassword}
-                  onChangeText={setConfirmPassword}
-                  placeholder="Confirm new password"
-                  placeholderTextColor="#999"
-                  style={styles.passwordFieldInput}
-                  secureTextEntry={!showConfirmPassword}
-                  autoCapitalize="none"
-                  editable={!savingPassword}
-                />
+              )}
+
+              {changeEmailStep === 1 ? (
                 <Pressable
-                  onPress={() => setShowConfirmPassword(!showConfirmPassword)}
-                  style={styles.eyeIconButton}
-                  disabled={savingPassword}
+                  style={[
+                    styles.modalPrimaryButton,
+                    isMobile && styles.modalButtonMobile,
+                    (changeEmailLoading || changeEmailSendingCode) && styles.buttonDisabled,
+                  ]}
+                  onPress={verifyChangeEmailPin}
+                  disabled={changeEmailLoading || changeEmailSendingCode}
                 >
-                  <Ionicons name={showConfirmPassword ? 'eye-off-outline' : 'eye-outline'} size={20} color="#7A7A7A" />
+                  {changeEmailLoading ? (
+                    <ActivityIndicator size="small" color="#FFFFFF" />
+                  ) : (
+                    <>
+                      <Ionicons
+                        name="arrow-forward-outline"
+                        size={18}
+                        color="#FFFFFF"
+                      />
+                      <Text style={styles.modalPrimaryButtonText}>Next</Text>
+                    </>
+                  )}
                 </Pressable>
-              </View>
-              {confirmPassword.length > 0 && (
-                <Text style={[styles.passwordHint, isConfirmPasswordMatching && styles.passwordHintValid]}>
-                  {isConfirmPasswordMatching ? '✓ Passwords match' : 'Passwords do not match'}
-                </Text>
+              ) : (
+                <Pressable
+                  style={[
+                    styles.modalPrimaryButton,
+                    isMobile && styles.modalButtonMobile,
+                    changeEmailLoading && styles.buttonDisabled,
+                  ]}
+                  onPress={submitNewEmail}
+                  disabled={changeEmailLoading}
+                >
+                  {changeEmailLoading ? (
+                    <ActivityIndicator size="small" color="#FFFFFF" />
+                  ) : (
+                    <>
+                      <Ionicons
+                        name="checkmark-circle-outline"
+                        size={18}
+                        color="#FFFFFF"
+                      />
+                      <Text style={styles.modalPrimaryButtonText}>Save</Text>
+                    </>
+                  )}
+                </Pressable>
               )}
             </View>
-            <View style={styles.formButtonsRow}>
-              <Pressable style={styles.formCancelBtn} onPress={() => { setChangePasswordModalVisible(false); setSettingsModalVisible(true); }} disabled={savingPassword}><Text style={styles.formCancelText}>Back</Text></Pressable>
-              <Pressable style={styles.formSaveBtn} onPress={handleChangePassword} disabled={savingPassword}><Text style={styles.formSaveText}>{savingPassword ? 'Saving...' : 'Save'}</Text></Pressable>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ─── CHANGE PASSWORD MODAL — mirrors the Admin Settings flow ──────── */}
+      <Modal
+        visible={isChangePasswordModalVisible}
+        animationType="fade"
+        transparent
+        onRequestClose={resetChangePasswordModal}
+      >
+        <View style={styles.settingsModalOverlay}>
+          <Pressable
+            style={StyleSheet.absoluteFill}
+            onPress={resetChangePasswordModal}
+          />
+
+          <View
+            style={[
+              styles.modalCardSmall,
+              { width: childModalWidth },
+              isMobile && styles.modalCardMobile,
+            ]}
+          >
+            <View style={styles.settingsModalHeader}>
+              <View style={styles.modalHeaderLeft}>
+                <View
+                  style={[
+                    styles.modalIconBox,
+                    isMobile && styles.modalIconBoxMobile,
+                  ]}
+                >
+                  <Ionicons
+                    name="lock-closed-outline"
+                    size={22}
+                    color="#DC2626"
+                  />
+                </View>
+
+                <View style={styles.modalHeaderTextWrap}>
+                  <Text style={[styles.settingsModalTitle, isMobile && styles.modalTitleMobile]}>
+                    Change Password
+                  </Text>
+                  <Text style={styles.settingsModalSubtitle}>
+                    Step {changePasswordStep} of 2
+                  </Text>
+                </View>
+              </View>
+
+              <Pressable style={styles.modalCloseButton} onPress={resetChangePasswordModal}>
+                <Ionicons name="close" size={20} color="#7A4A4A" />
+              </Pressable>
+            </View>
+
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={[
+                styles.modalContent,
+                isMobile && styles.modalContentMobile,
+              ]}
+            >
+              {changePasswordStep === 1 && (
+                <View style={styles.modalSection}>
+                  <View style={styles.modalSectionHeaderRow}>
+                    <Ionicons name="key-outline" size={18} color="#DC2626" />
+                    <Text style={styles.modalSectionTitle}>Enter PIN Code</Text>
+                  </View>
+
+                  <Text style={styles.helperText}>
+                    {changePasswordSendingCode
+                      ? `Sending a 4-digit code to ${maskEmail(userEmail || '') || 'your email'}...`
+                      : `Enter the 4-digit PIN code sent to ${maskEmail(userEmail || '') || 'your existing email'}.`}
+                  </Text>
+
+                  <PinInput
+                    value={changePasswordPin}
+                    onChange={handleChangePasswordPinChange}
+                    isMobile={isMobile}
+                    disabled={changePasswordSendingCode || changePasswordLoading}
+                  />
+
+                  <Pressable
+                    onPress={sendChangePasswordPin}
+                    disabled={changePasswordSendingCode}
+                    style={styles.resendLinkWrap}
+                  >
+                    <Text style={styles.resendLinkText}>
+                      {changePasswordSendingCode
+                        ? 'Sending code...'
+                        : changePasswordCodeSent
+                        ? "Didn't get a code? Resend"
+                        : 'Send verification code'}
+                    </Text>
+                  </Pressable>
+                </View>
+              )}
+
+              {changePasswordStep === 2 && (
+                <View style={styles.modalSection}>
+                  <View style={styles.modalSectionHeaderRow}>
+                    <Ionicons
+                      name="lock-closed-outline"
+                      size={18}
+                      color="#DC2626"
+                    />
+                    <Text style={styles.modalSectionTitle}>Set New Password</Text>
+                  </View>
+
+                  <Text style={styles.fieldLabel}>New Password</Text>
+                  <View style={styles.inputField}>
+                    <Ionicons
+                      name="lock-closed-outline"
+                      size={18}
+                      color="#8A6F6F"
+                    />
+                    <TextInput
+                      value={newPassword}
+                      onChangeText={setNewPassword}
+                      placeholder="Enter new password"
+                      placeholderTextColor="#B79A9A"
+                      style={styles.settingsTextInput}
+                      secureTextEntry={!showNewPassword}
+                      autoCapitalize="none"
+                      editable={!changePasswordLoading}
+                    />
+                    <Pressable
+                      onPress={() => setShowNewPassword((prev) => !prev)}
+                      disabled={changePasswordLoading}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      style={styles.passwordEyeButton}
+                    >
+                      <Ionicons
+                        name={showNewPassword ? 'eye-off-outline' : 'eye-outline'}
+                        size={18}
+                        color="#8A6F6F"
+                      />
+                    </Pressable>
+                    {newPassword.length > 0 && (
+                      <Ionicons
+                        name={isNewPasswordValid ? 'checkmark-circle' : 'alert-circle-outline'}
+                        size={18}
+                        color={isNewPasswordValid ? '#15803D' : '#DC2626'}
+                      />
+                    )}
+                  </View>
+
+                  <View style={styles.passwordChecklist}>
+                    {passwordChecks.map((check) => (
+                      <View key={check.label} style={styles.passwordCheckRow}>
+                        <Ionicons
+                          name={check.passed ? 'checkmark-circle' : 'ellipse-outline'}
+                          size={15}
+                          color={check.passed ? '#15803D' : '#B79A9A'}
+                        />
+                        <Text
+                          style={[
+                            styles.passwordCheckText,
+                            check.passed && styles.passwordCheckTextPassed,
+                          ]}
+                        >
+                          {check.label}
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
+
+                  <Text style={[styles.fieldLabel, styles.fieldLabelTop]}>
+                    Confirm Password
+                  </Text>
+                  <View style={styles.inputField}>
+                    <Ionicons
+                      name="lock-closed-outline"
+                      size={18}
+                      color="#8A6F6F"
+                    />
+                    <TextInput
+                      value={confirmPassword}
+                      onChangeText={setConfirmPassword}
+                      placeholder="Confirm new password"
+                      placeholderTextColor="#B79A9A"
+                      style={styles.settingsTextInput}
+                      secureTextEntry={!showConfirmPassword}
+                      autoCapitalize="none"
+                      editable={!changePasswordLoading}
+                    />
+                    <Pressable
+                      onPress={() => setShowConfirmPassword((prev) => !prev)}
+                      disabled={changePasswordLoading}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      style={styles.passwordEyeButton}
+                    >
+                      <Ionicons
+                        name={showConfirmPassword ? 'eye-off-outline' : 'eye-outline'}
+                        size={18}
+                        color="#8A6F6F"
+                      />
+                    </Pressable>
+                    {confirmPassword.length > 0 && (
+                      <Ionicons
+                        name={passwordsMatch ? 'checkmark-circle' : 'close-circle'}
+                        size={18}
+                        color={passwordsMatch ? '#15803D' : '#DC2626'}
+                      />
+                    )}
+                  </View>
+                  {confirmPassword.length > 0 && (
+                    <View style={[styles.passwordCheckRow, styles.passwordMatchRow]}>
+                      <Ionicons
+                        name={passwordsMatch ? 'checkmark-circle' : 'close-circle'}
+                        size={15}
+                        color={passwordsMatch ? '#15803D' : '#DC2626'}
+                      />
+                      <Text
+                        style={[
+                          styles.passwordCheckText,
+                          passwordsMatch
+                            ? styles.passwordCheckTextPassed
+                            : styles.passwordCheckTextError,
+                        ]}
+                      >
+                        {passwordsMatch ? 'Passwords match' : 'Passwords do not match'}
+                      </Text>
+                    </View>
+                  )}
+                </View>
+              )}
+            </ScrollView>
+
+            <View style={[styles.modalFooter, isMobile && styles.modalFooterMobile]}>
+              {changePasswordStep > 1 && (
+                <Pressable
+                  style={[
+                    styles.modalSecondaryButton,
+                    isMobile && styles.modalButtonMobile,
+                  ]}
+                  onPress={() => setChangePasswordStep((prev) => Math.max(1, prev - 1))}
+                  disabled={changePasswordLoading}
+                >
+                  <Text style={styles.modalSecondaryButtonText}>Back</Text>
+                </Pressable>
+              )}
+
+              {changePasswordStep < 2 ? (
+                <Pressable
+                  style={[
+                    styles.modalPrimaryButton,
+                    isMobile && styles.modalButtonMobile,
+                    (changePasswordLoading || changePasswordSendingCode) &&
+                      styles.buttonDisabled,
+                  ]}
+                  onPress={verifyChangePasswordPin}
+                  disabled={changePasswordLoading || changePasswordSendingCode}
+                >
+                  {changePasswordLoading ? (
+                    <ActivityIndicator size="small" color="#FFFFFF" />
+                  ) : (
+                    <>
+                      <Ionicons
+                        name="arrow-forward-outline"
+                        size={18}
+                        color="#FFFFFF"
+                      />
+                      <Text style={styles.modalPrimaryButtonText}>Next</Text>
+                    </>
+                  )}
+                </Pressable>
+              ) : (
+                <Pressable
+                  style={[
+                    styles.modalPrimaryButton,
+                    isMobile && styles.modalButtonMobile,
+                    changePasswordLoading && styles.buttonDisabled,
+                  ]}
+                  onPress={submitNewPassword}
+                  disabled={changePasswordLoading}
+                >
+                  {changePasswordLoading ? (
+                    <ActivityIndicator size="small" color="#FFFFFF" />
+                  ) : (
+                    <>
+                      <Ionicons
+                        name="checkmark-circle-outline"
+                        size={18}
+                        color="#FFFFFF"
+                      />
+                      <Text style={styles.modalPrimaryButtonText}>Save</Text>
+                    </>
+                  )}
+                </Pressable>
+              )}
             </View>
           </View>
         </View>
       </Modal>
+
+      {/* ─── LOGOUT MODAL (unchanged) ──────────────────────────────────────── */}
       <Modal animationType="fade" transparent visible={isLogoutModalVisible} onRequestClose={() => setLogoutModalVisible(false)}>
         <View style={styles.modalOverlay}>
           <View style={styles.logoutModalContainer}>
@@ -586,6 +1339,26 @@ const TeacherDrawerMenu = ({
               <Pressable style={styles.logoutConfirmBtn} onPress={handleLogout}><Text style={styles.logoutConfirmText}>Logout</Text></Pressable>
             </View>
           </View>
+        </View>
+      </Modal>
+
+      {/* Toast — same portal-based component used by the Admin Settings flow
+          (and Chatbot/Register/Community/Dashboard/ClassesScreen/SignIn), so
+          feedback looks and behaves the same across roles. Replaces Alert. */}
+      <Modal
+        visible={toast.visible}
+        transparent
+        animationType="fade"
+        onRequestClose={hideToast}
+        statusBarTranslucent
+      >
+        <View style={styles.toastPortal} pointerEvents="box-none">
+          <Toast
+            visible={toast.visible}
+            message={toast.message}
+            type={toast.type}
+            onHide={hideToast}
+          />
         </View>
       </Modal>
     </View>
@@ -606,56 +1379,9 @@ const styles = StyleSheet.create({
   menuLabel: { color: '#444', fontWeight: '500' },
   logoutMenuItem: { flexDirection: 'row', alignItems: 'center', marginTop: 20, borderTopWidth: 1, borderTopColor: '#EEE', paddingTop: 15 },
   logoutLabel: { fontSize: 16, color: '#D32F2F', fontWeight: '600' },
+
+  // Generic overlay, kept for the Logout modal (unchanged from before).
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center' },
-  settingsModalContainer: { backgroundColor: '#FFF', borderRadius: 18, padding: 20, width: '88%', maxWidth: 380 },
-  settingsHeader: { marginBottom: 18 },
-  settingsTitle: { fontSize: 22, fontWeight: '700', color: '#222', textAlign: 'center' },
-  settingsSubtitle: { fontSize: 14, color: '#777', textAlign: 'center', marginTop: 6 },
-  settingsOptionButton: { backgroundColor: '#FAFAFA', borderRadius: 14, paddingVertical: 14, paddingHorizontal: 14, marginTop: 12, borderWidth: 1, borderColor: '#EEE' },
-  settingsOptionContent: { flexDirection: 'row', alignItems: 'center' },
-  settingsOptionIconWrap: { width: 42, height: 42, borderRadius: 21, backgroundColor: 'rgba(211,47,47,0.10)', justifyContent: 'center', alignItems: 'center', marginRight: 12 },
-  settingsOptionTextWrap: { flex: 1 },
-  settingsOptionTitle: { fontSize: 15, fontWeight: '700', color: '#222' },
-  settingsOptionSubtitle: { fontSize: 13, color: '#777', marginTop: 2 },
-  settingsCloseBtn: { alignSelf: 'center', marginTop: 18, paddingVertical: 10, paddingHorizontal: 18 },
-  settingsCloseText: { color: '#888', fontWeight: '600', fontSize: 15 },
-  formModalContainer: { backgroundColor: '#FFF', borderRadius: 18, padding: 20, width: '88%', maxWidth: 380 },
-  formModalTitle: { fontSize: 22, fontWeight: '700', color: '#222', textAlign: 'center' },
-  formModalSubtitle: { fontSize: 14, color: '#777', textAlign: 'center', marginTop: 6, marginBottom: 20 },
-  inputGroup: { marginBottom: 14 },
-  inputLabel: { fontSize: 13, fontWeight: '600', color: '#555', marginBottom: 8 },
-  textInput: { borderWidth: 1, borderColor: '#DDD', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: 15, color: '#111', backgroundColor: '#FFF' },
-  // Password fields with a trailing show/hide eye icon (Current/New/Confirm
-  // Password in the Change Password modal), styled to match textInput.
-  passwordFieldContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#DDD',
-    borderRadius: 12,
-    backgroundColor: '#FFF',
-    paddingLeft: 14,
-  },
-  passwordFieldInput: {
-    flex: 1,
-    paddingVertical: 12,
-    fontSize: 15,
-    color: '#111',
-  },
-  eyeIconButton: {
-    paddingHorizontal: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  // Inline hint shown under "New Password" (min length) and "Confirm
-  // Password" (match status). Turns green with a checkmark once satisfied.
-  passwordHint: { fontSize: 12, fontWeight: '600', color: '#9CA3AF', marginTop: 6, marginLeft: 2 },
-  passwordHintValid: { color: '#16A34A' },
-  formButtonsRow: { flexDirection: 'row', justifyContent: 'flex-end', marginTop: 8 },
-  formCancelBtn: { paddingVertical: 12, paddingHorizontal: 16, marginRight: 10, borderRadius: 10, backgroundColor: '#F3F4F6' },
-  formCancelText: { color: '#444', fontWeight: '600' },
-  formSaveBtn: { paddingVertical: 12, paddingHorizontal: 16, borderRadius: 10, backgroundColor: '#D32F2F' },
-  formSaveText: { color: '#FFF', fontWeight: '700' },
   logoutModalContainer: { backgroundColor: '#FFF', borderRadius: 18, padding: 20, width: '88%', maxWidth: 360 },
   logoutModalTitle: { fontSize: 20, fontWeight: '700', color: '#222', textAlign: 'center' },
   logoutModalSubtitle: { fontSize: 14, color: '#777', textAlign: 'center', marginTop: 8 },
@@ -664,4 +1390,405 @@ const styles = StyleSheet.create({
   modalCancelText: { color: '#444', fontWeight: '600' },
   logoutConfirmBtn: { paddingVertical: 12, paddingHorizontal: 16, borderRadius: 10, backgroundColor: '#D32F2F' },
   logoutConfirmText: { color: '#FFF', fontWeight: '700' },
+
+  // ─── Settings / Change Email / Change Password — mirrors the Admin
+  // Settings flow's layout and color palette exactly. ─────────────────────
+  settingsModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(43, 17, 17, 0.45)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 24,
+  },
+
+  modalCard: {
+    maxWidth: 560,
+    maxHeight: '92%',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 28,
+    borderWidth: 1,
+    borderColor: '#F3D4D4',
+    overflow: 'hidden',
+  },
+
+  modalCardSmall: {
+    maxWidth: 480,
+    maxHeight: '92%',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 28,
+    borderWidth: 1,
+    borderColor: '#F3D4D4',
+    overflow: 'hidden',
+  },
+
+  modalCardMobile: {
+    maxWidth: '100%',
+    borderRadius: 22,
+  },
+
+  settingsModalHeader: {
+    paddingHorizontal: 24,
+    paddingTop: 22,
+    paddingBottom: 18,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F8E3E3',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+  },
+
+  modalHeaderLeft: {
+    flex: 1,
+    flexDirection: 'row',
+    paddingRight: 16,
+  },
+
+  modalHeaderTextWrap: {
+    flex: 1,
+  },
+
+  modalIconBox: {
+    width: 52,
+    height: 52,
+    borderRadius: 18,
+    backgroundColor: '#FEE2E2',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 14,
+  },
+
+  modalIconBoxMobile: {
+    width: 46,
+    height: 46,
+    borderRadius: 16,
+    marginRight: 12,
+  },
+
+  settingsModalTitle: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: '#2B1111',
+    marginBottom: 4,
+  },
+
+  modalTitleMobile: {
+    fontSize: 20,
+  },
+
+  settingsModalSubtitle: {
+    fontSize: 14,
+    lineHeight: 21,
+    color: '#8A6F6F',
+  },
+
+  modalCloseButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 14,
+    backgroundColor: '#FFF5F5',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  modalContent: {
+    padding: 24,
+    paddingBottom: 12,
+  },
+
+  modalContentMobile: {
+    padding: 18,
+    paddingBottom: 10,
+  },
+
+  modalSection: {
+    marginBottom: 22,
+  },
+
+  modalSectionHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 14,
+  },
+
+  modalSectionTitle: {
+    marginLeft: 8,
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#2B1111',
+  },
+
+  helperText: {
+    fontSize: 14,
+    color: '#8A6F6F',
+    lineHeight: 21,
+    marginBottom: 16,
+  },
+
+  passwordChecklist: {
+    marginTop: 10,
+    marginBottom: 16,
+  },
+
+  passwordCheckRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+
+  passwordCheckText: {
+    marginLeft: 8,
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#8A6F6F',
+  },
+
+  passwordCheckTextPassed: {
+    color: '#15803D',
+  },
+
+  passwordCheckTextError: {
+    color: '#DC2626',
+  },
+
+  passwordMatchRow: {
+    marginTop: 10,
+  },
+
+  actionCard: {
+    minHeight: 70,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: '#F3D4D4',
+    backgroundColor: '#FFFFFF',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    marginBottom: 12,
+  },
+
+  actionCardLeft: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingRight: 10,
+  },
+
+  smallIconBox: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: '#FEE2E2',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+
+  actionCardTextWrap: {
+    flex: 1,
+  },
+
+  actionCardTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#2B1111',
+    marginBottom: 4,
+  },
+
+  actionCardSubtitle: {
+    fontSize: 13,
+    color: '#8A6F6F',
+    lineHeight: 19,
+  },
+
+  fieldLabel: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#5F3B3B',
+    marginBottom: 10,
+  },
+
+  fieldLabelTop: {
+    marginTop: 18,
+  },
+
+  inputField: {
+    height: 54,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#F1CACA',
+    backgroundColor: '#FFF9F9',
+    paddingHorizontal: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+
+  inputDisabled: {
+    opacity: 0.5,
+  },
+
+  settingsTextInput: {
+    flex: 1,
+    marginLeft: 10,
+    fontSize: 14,
+    color: '#2B1111',
+    fontWeight: '600',
+    ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : {}),
+  },
+
+  passwordEyeButton: {
+    paddingHorizontal: 6,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+
+  // ─── PIN input: centered container pattern (matches Admin Settings /
+  // SignIn.tsx) — a width-capped, self-centered wrapper + flex boxes
+  // instead of fixed widths, keeping the PIN boxes centered instead of
+  // hugging the left edge on web where ScrollView content can shrink-wrap.
+  pinContainer: {
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 8,
+  },
+
+  pinRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    width: '100%',
+    maxWidth: 320,
+    gap: 10,
+  },
+
+  pinRowMobile: {
+    maxWidth: 280,
+    gap: 10,
+  },
+
+  pinBox: {
+    flex: 1,
+    maxWidth: 58,
+    height: 58,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#F1CACA',
+    backgroundColor: '#FFF9F9',
+    fontSize: 22,
+    fontWeight: '800',
+    color: '#2B1111',
+    paddingVertical: 0,
+    paddingHorizontal: 0,
+    textAlign: 'center',
+    ...Platform.select({
+      web: { lineHeight: 56, outlineStyle: 'none', textAlign: 'center' } as any,
+      default: {},
+    }),
+  },
+
+  pinBoxMobile: {
+    maxWidth: 56,
+    height: 56,
+    fontSize: 20,
+    borderRadius: 14,
+    textAlign: 'center',
+    ...Platform.select({
+      web: { lineHeight: 54, textAlign: 'center' } as any,
+      default: {},
+    }),
+  },
+
+  resendLinkWrap: {
+    marginTop: 14,
+    alignItems: 'center',
+  },
+
+  resendLinkText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#DC2626',
+  },
+
+  // Toast — portal-based, matches the Admin Settings flow.
+  toastPortal: {
+    ...StyleSheet.absoluteFillObject,
+  },
+
+  modalFooter: {
+    paddingHorizontal: 24,
+    paddingTop: 16,
+    paddingBottom: 22,
+    borderTopWidth: 1,
+    borderTopColor: '#F8E3E3',
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+  },
+
+  modalFooterMobile: {
+    paddingHorizontal: 18,
+    paddingBottom: 18,
+    gap: 10,
+    flexWrap: 'wrap',
+  },
+
+  modalFooterMobileSingle: {
+    paddingHorizontal: 18,
+    paddingBottom: 18,
+  },
+
+  modalSecondaryButton: {
+    height: 48,
+    paddingHorizontal: 18,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#E7C0C0',
+    backgroundColor: '#FFF7F7',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+    minWidth: 110,
+  },
+
+  modalSecondaryButtonText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#7A4A4A',
+  },
+
+  modalPrimaryButton: {
+    height: 48,
+    paddingHorizontal: 18,
+    borderRadius: 14,
+    backgroundColor: '#DC2626',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    minWidth: 110,
+  },
+
+  modalPrimaryButtonText: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    marginLeft: 8,
+  },
+
+  buttonDisabled: {
+    opacity: 0.6,
+  },
+
+  modalButtonMobile: {
+    flex: 1,
+    minWidth: '47%',
+    marginRight: 0,
+  },
+
+  fullWidthButton: {
+    width: '100%',
+    marginRight: 0,
+  },
 });
