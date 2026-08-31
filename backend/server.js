@@ -1119,9 +1119,14 @@ async function createReadSignedUrlIfExists(storagePath) {
         `PDF extracted successfully (${text.length} chars)`
       );
 
-      // If PDF already contains enough text,
-      // return it immediately.
-      if (text.length > 500) {
+      // If PDF already contains enough text, return it immediately.
+      // NOTE: this used to require > 500 chars, which wrongly flagged
+      // short-but-genuine PDFs (e.g. a one-page bio/résumé) as
+      // "scanned/image-based" and sent them through the slower Gemini
+      // Vision fallback for no reason. A scanned/image PDF with no OCR
+      // layer extracts to ~0 chars via pdf-parse, so a much lower bar is
+      // enough to distinguish "no real text" from "short real text."
+      if (text.length > 20) {
         return text;
       }
 
@@ -1249,8 +1254,11 @@ async function createReadSignedUrlIfExists(storagePath) {
         `Office extracted (${text?.length || 0} chars)`
       );
 
-      // If extraction contains enough content
-      if (text && text.length > 500) {
+      // If extraction contains any real content — same reasoning as the
+      // PDF branch above: a low bar is enough to tell "no real text" (an
+      // image-only slide deck, for instance) apart from a short-but-real
+      // document, without unnecessarily falling back to Gemini.
+      if (text && text.length > 20) {
         return text;
       }
 
