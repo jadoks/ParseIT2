@@ -4,7 +4,6 @@ import Constants from "expo-constants";
 import * as DocumentPicker from "expo-document-picker";
 import React, { useState } from "react";
 import {
-  Alert,
   Modal,
   Platform,
   Pressable,
@@ -15,6 +14,13 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+
+// ✅ Reuses the same Toast component used across the app (Register/Admin/
+// Teacher screens, Community, Dashboard, ClassesScreen, SignIn) instead of
+// a native Alert, so feedback looks and behaves consistently.
+import Toast from "../Final_Admin_Components/Toast"; // adjust path if your folder layout differs
+
+type ToastType = "success" | "error" | "info";
 
 type TriggerItem = {
   id: string;
@@ -93,6 +99,34 @@ export default function Chatbot({
   const [isResponseFocused, setIsResponseFocused] = useState(false);
   const [isTriggerFocused, setIsTriggerFocused] = useState(false);
 
+  // ✅ Toast state — same shape/usage as Register/SignIn/Community/Dashboard.
+  const [toast, setToast] = useState<{
+    visible: boolean;
+    message: string;
+    type: ToastType;
+  }>({ visible: false, message: "", type: "success" });
+
+  // Some feedback calls (e.g. successful save) should close the modal only
+  // after the user has seen the toast, since the toast portal lives inside
+  // this component and would disappear if we closed immediately.
+  const [toastOnHide, setToastOnHide] = useState<(() => void) | null>(null);
+
+  const showToast = (
+    message: string,
+    type: ToastType = "info",
+    onHide?: () => void
+  ) => {
+    setToast({ visible: true, message, type });
+    setToastOnHide(() => onHide || null);
+  };
+
+  const hideToast = () => {
+    setToast((prev) => ({ ...prev, visible: false }));
+    const callback = toastOnHide;
+    setToastOnHide(null);
+    if (callback) callback();
+  };
+
   const handleClose = () => {
     if (saving || uploadingFile) return;
     onClose();
@@ -153,10 +187,10 @@ export default function Chatbot({
         mimeType: file.mimeType || "application/octet-stream", // FIXED TYPO
       });
 
-      Alert.alert("Success", "Training file selected successfully.");
+      showToast("Training file selected successfully.", "success");
     } catch (error: any) {
       console.error("Training file select failed: ", error);
-      Alert.alert("Error", error?.message || "Failed to select training file.");
+      showToast(error?.message || "Failed to select training file.", "error");
     } finally {
       setUploadingFile(false);
     }
@@ -166,9 +200,15 @@ export default function Chatbot({
     const cleanedResponse = chatbotResponse.trim();
     const triggerValues = triggers.map((item) => item.value.trim()).filter(Boolean);
     
-    // UPDATED: Allow submission if a file is provided, even without manual response/triggers
-    if (!cleanedResponse && triggerValues.length === 0 && !selectedFile) {
-      Alert.alert("Required", "Please enter a chatbot response, add triggers, or upload a file.");
+    // Chatbot response is a required field — triggers and an uploaded file
+    // are optional extras, not substitutes for it.
+    if (!cleanedResponse) {
+      showToast("Chatbot response is required.", "error");
+      return;
+    }
+
+    if (triggerValues.length === 0) {
+      showToast("At least one trigger is required.", "error");
       return;
     }
 
@@ -201,12 +241,17 @@ export default function Chatbot({
         throw new Error(data?.error || "Failed to save training data.");
       }
 
-      Alert.alert("Success", data?.message || "Chatbot training data saved successfully. AI has processed and split the file.");
-      resetForm();
-      onClose();
+      showToast(
+        data?.message || "Chatbot training data saved successfully. AI has processed and split the file.",
+        "success",
+        () => {
+          resetForm();
+          onClose();
+        }
+      );
     } catch (error: any) {
       console.error("Failed to save chatbot training: ", error);
-      Alert.alert("Error", error?.message || "Failed to save training data.");
+      showToast(error?.message || "Failed to save training data.", "error");
     } finally {
       setSaving(false);
     }
@@ -258,7 +303,7 @@ export default function Chatbot({
                   <TextInput
                     value={chatbotResponse}
                     onChangeText={setChatbotResponse}
-                    placeholder="Enter chatbot response (or leave blank for AI to generate from file)"
+                    placeholder="Enter chatbot response"
                     placeholderTextColor="#B79A9A"
                     style={styles.textAreaInput}
                     multiline
@@ -360,11 +405,34 @@ export default function Chatbot({
           </View>
         </View>
       </View>
+
+      {/* Toast — portal-based, matches Register/Community/Dashboard/
+          ClassesScreen/SignIn so feedback looks and behaves the same
+          everywhere. */}
+      <Modal
+        visible={toast.visible}
+        transparent
+        animationType="fade"
+        onRequestClose={hideToast}
+        statusBarTranslucent
+      >
+        <View style={styles.toastPortal} pointerEvents="box-none">
+          <Toast
+            visible={toast.visible}
+            message={toast.message}
+            type={toast.type}
+            onHide={hideToast}
+          />
+        </View>
+      </Modal>
     </Modal>
   );
 }
 
 const styles = StyleSheet.create({
+  toastPortal: {
+    ...StyleSheet.absoluteFillObject,
+  },
   modalOverlay: {
     flex: 1,
     backgroundColor: "rgba(43, 17, 17, 0.45)",

@@ -5,7 +5,6 @@ import * as DocumentPicker from "expo-document-picker";
 import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   Modal,
   Platform,
   Pressable,
@@ -16,6 +15,13 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+
+// ✅ Reuses the same Toast component used across the app (Register/Admin/
+// Teacher screens, Community, Dashboard, ClassesScreen, SignIn) instead of
+// a native Alert, so feedback looks and behaves consistently.
+import Toast from "../Final_Admin_Components/Toast"; // adjust path if your folder layout differs
+
+type ToastType = "success" | "error" | "info";
 
 type ModifyChatbotModalProps = {
   visible: boolean;
@@ -120,6 +126,34 @@ export default function ModifyChatbotModal({
   const [isNewTriggerFocused, setIsNewTriggerFocused] = useState(false);
   const [isSearchFocused, setIsSearchFocused] = useState(false);
 
+  // ✅ Toast state — same shape/usage as Register/SignIn/Community/Dashboard.
+  const [toast, setToast] = useState<{
+    visible: boolean;
+    message: string;
+    type: ToastType;
+  }>({ visible: false, message: "", type: "success" });
+
+  // Some feedback calls (e.g. successful delete) should run a follow-up
+  // only after the user has seen the toast, since the toast portal lives
+  // inside this component and would disappear if we acted immediately.
+  const [toastOnHide, setToastOnHide] = useState<(() => void) | null>(null);
+
+  const showToast = (
+    message: string,
+    type: ToastType = "info",
+    onHide?: () => void
+  ) => {
+    setToast({ visible: true, message, type });
+    setToastOnHide(() => onHide || null);
+  };
+
+  const hideToast = () => {
+    setToast((prev) => ({ ...prev, visible: false }));
+    const callback = toastOnHide;
+    setToastOnHide(null);
+    if (callback) callback();
+  };
+
   const filteredItems = useMemo(() => {
     const keyword = searchText.trim().toLowerCase();
     if (!keyword) return items;
@@ -147,7 +181,7 @@ export default function ModifyChatbotModal({
       setItems(Array.isArray(data?.data) ? data.data : []);
     } catch (error: any) {
       console.error("Failed to load chatbot training:", error);
-      Alert.alert("Error", error?.message || "Failed to load training data.");
+      showToast(error?.message || "Failed to load training data.", "error");
     } finally {
       setLoading(false);
     }
@@ -179,7 +213,7 @@ export default function ModifyChatbotModal({
   const handleAddTrigger = () => {
     const cleaned = newTriggerText.trim();
     if (!cleaned) {
-      Alert.alert("Required", "Please enter a trigger.");
+      showToast("Please enter a trigger.", "error");
       return;
     }
 
@@ -188,7 +222,7 @@ export default function ModifyChatbotModal({
     );
 
     if (alreadyExists) {
-      Alert.alert("Duplicate", "That trigger already exists.");
+      showToast("That trigger already exists.", "error");
       return;
     }
 
@@ -207,12 +241,12 @@ export default function ModifyChatbotModal({
     const cleanedTriggers = editedTriggers.map((entry) => entry.trim()).filter(Boolean);
 
     if (!cleanedResponse) {
-      Alert.alert("Required", "Response cannot be empty.");
+      showToast("Chatbot response is required.", "error");
       return;
     }
 
     if (cleanedTriggers.length === 0) {
-      Alert.alert("Required", "Please add at least one trigger.");
+      showToast("At least one trigger is required.", "error");
       return;
     }
 
@@ -248,11 +282,11 @@ export default function ModifyChatbotModal({
         )
       );
 
-      Alert.alert("Success", "Training data updated successfully.");
+      showToast("Training data updated successfully.", "success");
       resetEditState();
     } catch (error: any) {
       console.error("Failed to update chatbot training: ", error);
-      Alert.alert("Error", error?.message || "Failed to update training data.");
+      showToast(error?.message || "Failed to update training data.", "error");
     } finally {
       setSavingId(null);
     }
@@ -304,10 +338,10 @@ export default function ModifyChatbotModal({
         )
       );
 
-      Alert.alert("Success", "Training file replaced successfully.");
+      showToast("Training file replaced successfully.", "success");
     } catch (error: any) {
       console.error("Failed to replace training file: ", error);
-      Alert.alert("Error", error?.message || "Failed to replace training file.");
+      showToast(error?.message || "Failed to replace training file.", "error");
     } finally {
       setReplacingFileId(null);
     }
@@ -338,10 +372,10 @@ export default function ModifyChatbotModal({
         )
       );
 
-      Alert.alert("Success", "Training file removed successfully.");
+      showToast("Training file removed successfully.", "success");
     } catch (error: any) {
       console.error("Failed to remove training file: ", error);
-      Alert.alert("Error", error?.message || "Failed to remove training file.");
+      showToast(error?.message || "Failed to remove training file.", "error");
     } finally {
       setRemovingFileId(null);
     }
@@ -373,10 +407,10 @@ export default function ModifyChatbotModal({
 
       setItems((prev) => prev.filter((entry) => entry.id !== confirmDeleteItem.id));
       setConfirmDeleteItem(null);
-      Alert.alert("Success", "Training data deleted successfully.");
+      showToast("Training data deleted successfully.", "success");
     } catch (error: any) {
       console.error("Delete error: ", error);
-      Alert.alert("Error", error?.message || "Failed to delete.");
+      showToast(error?.message || "Failed to delete.", "error");
     } finally {
       setDeletingId(null);
     }
@@ -696,11 +730,34 @@ export default function ModifyChatbotModal({
           </View>
         </View>
       </Modal>
+
+      {/* Toast — portal-based, matches Register/Chatbot/Community/Dashboard/
+          ClassesScreen/SignIn so feedback looks and behaves the same
+          everywhere. */}
+      <Modal
+        visible={toast.visible}
+        transparent
+        animationType="fade"
+        onRequestClose={hideToast}
+        statusBarTranslucent
+      >
+        <View style={styles.toastPortal} pointerEvents="box-none">
+          <Toast
+            visible={toast.visible}
+            message={toast.message}
+            type={toast.type}
+            onHide={hideToast}
+          />
+        </View>
+      </Modal>
     </>
   );
 }
 
 const styles = StyleSheet.create({
+  toastPortal: {
+    ...StyleSheet.absoluteFillObject,
+  },
   modalOverlay: {
     flex: 1,
     backgroundColor: "rgba(43, 17, 17, 0.45)",
