@@ -983,7 +983,7 @@ export default function Register({
   };
 
   const isValidEmail = (value: string) =>
-    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+    /^[^\s@]+@gmail\.com$/i.test(value.trim());
 
   const showToast = (
     message: string,
@@ -1029,7 +1029,7 @@ export default function Register({
     }
 
     if (!isValidEmail(email)) {
-      showFeedback('error', 'Invalid Email', 'Please enter a valid email address.');
+      showFeedback('error', 'Invalid Email', 'Please enter a valid @gmail.com email address.');
       return;
     }
 
