@@ -832,7 +832,7 @@ const refreshClassesAfterStorageWrite = async (pinFrontId?: string) => {
                 <Text style={styles.creatingSubtitle}>Please wait while the class is being saved</Text>
               </View>
             )}
-            <ScrollView style={styles.transparentScroll} contentContainerStyle={styles.modalInnerContent} showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false}>
+            <ScrollView style={styles.transparentScroll} contentContainerStyle={styles.modalInnerContent} showsVerticalScrollIndicator={true} showsHorizontalScrollIndicator={false}>
               <View style={styles.modalSection}>
                 <View style={styles.modalSectionHeaderRow}>
                   <MaterialCommunityIcons name="google-classroom" size={18} color="#D32F2F" />
@@ -1013,7 +1013,7 @@ const refreshClassesAfterStorageWrite = async (pinFrontId?: string) => {
                 <Text style={styles.creatingSubtitle}>Please wait while the class is being updated</Text>
               </View>
             )}
-            <ScrollView style={styles.transparentScroll} contentContainerStyle={styles.modalInnerContent} showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false}>
+            <ScrollView style={styles.transparentScroll} contentContainerStyle={styles.modalInnerContent} showsVerticalScrollIndicator={true} showsHorizontalScrollIndicator={false}>
               <View style={styles.modalSection}>
                 <View style={styles.modalSectionHeaderRow}>
                   <MaterialCommunityIcons name="google-classroom" size={18} color="#D32F2F" />
@@ -1254,7 +1254,7 @@ const refreshClassesAfterStorageWrite = async (pinFrontId?: string) => {
       </Modal>
 
       {/* Main Dashboard Content */}
-      <ScrollView style={styles.container} contentContainerStyle={[styles.scrollPadding, { paddingHorizontal: isMobile ? 14 : 20 }]} showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false}>
+      <ScrollView style={styles.container} contentContainerStyle={[styles.scrollPadding, { paddingHorizontal: isMobile ? 14 : 20 }]} showsVerticalScrollIndicator={true} showsHorizontalScrollIndicator={false}>
         <View style={styles.mainWrapper}>
           <View style={styles.headerRow}>
             <Text style={styles.sectionHeader}>Announcements</Text>

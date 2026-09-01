@@ -200,7 +200,7 @@ function ExpiryDateField({
       <Text style={styles.fieldLabel}>Month</Text>
       <ScrollView
         style={[styles.webDateList, isMobile && styles.webDateListMobile]}
-        showsVerticalScrollIndicator={false}
+        showsVerticalScrollIndicator={true}
         nestedScrollEnabled
       >
         {months.map((month, index) => {
@@ -250,7 +250,7 @@ function ExpiryDateField({
       <Text style={styles.fieldLabel}>Day</Text>
       <ScrollView
         style={[styles.webDateList, isMobile && styles.webDateListMobile]}
-        showsVerticalScrollIndicator={false}
+        showsVerticalScrollIndicator={true}
         nestedScrollEnabled
       >
         {days.map((day) => {
@@ -301,7 +301,7 @@ function ExpiryDateField({
       <Text style={styles.fieldLabel}>Year</Text>
       <ScrollView
         style={[styles.webDateList, isMobile && styles.webDateListMobile]}
-        showsVerticalScrollIndicator={false}
+        showsVerticalScrollIndicator={true}
         nestedScrollEnabled
       >
         {years.map((year) => {
@@ -462,7 +462,7 @@ function ExpiryDateField({
                 <ScrollView
                   style={styles.mobileColumnsScroll}
                   contentContainerStyle={styles.mobileColumnsStack}
-                  showsVerticalScrollIndicator={false}
+                  showsVerticalScrollIndicator={true}
                   nestedScrollEnabled
                 >
                   <View style={styles.mobileMonthRow}>
@@ -660,7 +660,7 @@ function ExpiryTimeField({
                   <Text style={styles.fieldLabel}>Hour</Text>
                   <ScrollView
                     style={styles.webDateList}
-                    showsVerticalScrollIndicator={false}
+                    showsVerticalScrollIndicator={true}
                   >
                     {hours.map((hour) => {
                       const active = tempHour === hour;
@@ -697,7 +697,7 @@ function ExpiryTimeField({
                   <Text style={styles.fieldLabel}>Minute</Text>
                   <ScrollView
                     style={styles.webDateList}
-                    showsVerticalScrollIndicator={false}
+                    showsVerticalScrollIndicator={true}
                   >
                     {minutes.map((minute) => {
                       const active = tempMinute === minute;
@@ -985,7 +985,7 @@ export default function ShareAnnouncement({
               ? styles.mobileContentContainer
               : styles.webContentContainer
           }
-          showsVerticalScrollIndicator={false}
+          showsVerticalScrollIndicator={true}
         >
           <View style={styles.headerSpacer} />
 
@@ -1123,7 +1123,7 @@ export default function ShareAnnouncement({
             </View>
 
             <ScrollView
-              showsVerticalScrollIndicator={false}
+              showsVerticalScrollIndicator={true}
               contentContainerStyle={styles.targetModalScrollContent}
             >
               <View style={styles.targetSection}>
