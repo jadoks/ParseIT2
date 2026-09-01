@@ -78,6 +78,29 @@ import multer from "multer";
     if (id) usersByIdCache.delete(String(id).trim());
     if (email) userByEmailCache.delete(String(email).trim().toLowerCase());
   }
+
+  // ------------------------------------------------------------
+  // Shared-data caches: unlike the caches above (which just dedupe
+  // reads within one request/burst), these cover data that's the
+  // SAME for every student in a class and only changes when a
+  // teacher edits it. Longer TTL is safe here because we also
+  // proactively invalidate on every write path that touches the
+  // underlying data (see invalidate* calls below, wired into the
+  // relevant endpoints further down this file).
+  // ------------------------------------------------------------
+  const COURSE_STRUCTURE_CACHE_TTL_MS = 5 * 60_000; // 5 min — course structure rarely changes
+  const courseStructureByClassIdCache = createShortTTLCache(COURSE_STRUCTURE_CACHE_TTL_MS);
+
+  const STUDENT_JOINED_CLASSES_CACHE_TTL_MS = 60_000; // 1 min — membership changes more often
+  const studentJoinedClassesCache = createShortTTLCache(STUDENT_JOINED_CLASSES_CACHE_TTL_MS);
+
+  function invalidateCourseStructureCache(classId) {
+    if (classId) courseStructureByClassIdCache.delete(String(classId).trim());
+  }
+
+  function invalidateStudentJoinedClassesCache(studentId) {
+    if (studentId) studentJoinedClassesCache.delete(String(studentId).trim());
+  }
   // ============================================================
   // END PERFORMANCE / COST OPTIMIZATION LAYER (utilities)
   // ============================================================
@@ -7328,6 +7351,9 @@ app.post("/create-admin", async (req, res) => {
       // 1. Delete the member document
       await memberRef.delete();
 
+      // Student's class list just changed — their cached joined-classes is stale now.
+      invalidateStudentJoinedClassesCache(memberData.userId);
+
       // 2. Decrement class memberCount & Clean up Messenger
       if (targetClassId) {
         const classRef = db.collection("classes").doc(targetClassId);
@@ -7600,6 +7626,8 @@ app.post("/create-admin", async (req, res) => {
         updatedAt: FieldValue.serverTimestamp(),
       });
 
+      // Student's class list just changed — their cached joined-classes is stale now.
+      invalidateStudentJoinedClassesCache(student.studentId || normalizedStudentId);
 
       const conversationSnapshot = await db
         .collection("messengerConversations")
@@ -8218,6 +8246,16 @@ app.get("/student-joined-classes/:studentId", async (req, res) => {
 
     const normalizedStudentId = String(studentId).trim();
 
+    // ✅ OPTIMIZATION: this list is re-fetched on every app open/focus,
+    // but only actually changes when the student joins/leaves a class or
+    // a teacher edits class/assignment data. Serve repeat requests within
+    // the TTL from cache — invalidated on join/leave via
+    // invalidateStudentJoinedClassesCache calls at those write endpoints.
+    const cachedJoinedClasses = studentJoinedClassesCache.get(normalizedStudentId);
+    if (cachedJoinedClasses !== undefined) {
+      return res.json(cachedJoinedClasses);
+    }
+
     const membershipSnapshot = await db
       .collection("classMembers")
       .where("userId", "==", normalizedStudentId)
@@ -8226,6 +8264,7 @@ app.get("/student-joined-classes/:studentId", async (req, res) => {
       .get();
 
     if (membershipSnapshot.empty) {
+      studentJoinedClassesCache.set(normalizedStudentId, []);
       return res.json([]);
     }
 
@@ -8237,10 +8276,53 @@ app.get("/student-joined-classes/:studentId", async (req, res) => {
     const classIds = memberships.map((item) => item.classId).filter(Boolean);
     const uniqueClassIds = [...new Set(classIds)];
 
-    const joinedClasses = await Promise.all(
-      uniqueClassIds.map(async (classId) => {
-        const classSnap = await db.collection("classes").doc(classId).get();
-        if (!classSnap.exists) return null;
+    // ✅ OPTIMIZATION: fetch all class docs in one batched round trip
+    // (db.getAll) instead of one .get() per class, and fetch all
+    // assignments across all classes with chunked `in` queries instead of
+    // one query per class. This cuts N+N round trips down to ~1 + ceil(N/30),
+    // and avoids paying the ~1-read minimum charge on every class that
+    // happens to have zero assignments yet.
+    const classRefs = uniqueClassIds.map((classId) => db.collection("classes").doc(classId));
+    const classSnaps = classRefs.length ? await db.getAll(...classRefs) : [];
+    const classSnapById = {};
+    classSnaps.forEach((snap) => {
+      if (snap.exists) classSnapById[snap.id] = snap;
+    });
+
+    const CHUNK_SIZE = 30;
+    const classIdChunks = [];
+    for (let i = 0; i < uniqueClassIds.length; i += CHUNK_SIZE) {
+      classIdChunks.push(uniqueClassIds.slice(i, i + CHUNK_SIZE));
+    }
+
+    const assignmentSnapshots = await Promise.all(
+      classIdChunks.map((chunk) =>
+        chunk.length
+          ? db.collection("classAssignments").where("classId", "in", chunk).get()
+          : Promise.resolve({ docs: [] })
+      )
+    );
+
+    const assignmentDocsByClassId = {};
+    assignmentSnapshots.forEach((snap) => {
+      snap.docs.forEach((doc) => {
+        const cid = doc.data()?.classId;
+        (assignmentDocsByClassId[cid] ||= []).push(doc);
+      });
+    });
+    // Preserve the original per-class ordering (createdAt desc) since the
+    // batched query doesn't guarantee cross-chunk order the same way.
+    Object.keys(assignmentDocsByClassId).forEach((cid) => {
+      assignmentDocsByClassId[cid].sort((a, b) => {
+        const aTime = a.data()?.createdAt?.toMillis?.() ?? 0;
+        const bTime = b.data()?.createdAt?.toMillis?.() ?? 0;
+        return bTime - aTime;
+      });
+    });
+
+    const joinedClasses = uniqueClassIds.map((classId) => {
+        const classSnap = classSnapById[classId];
+        if (!classSnap) return null;
 
         const classData = classSnap.data() || {};
 
@@ -8250,13 +8332,9 @@ app.get("/student-joined-classes/:studentId", async (req, res) => {
         // already ran a second time on top of whatever this route used to
         // return — this route's materials array was pure wasted work.
 
-        const assignmentsSnapshot = await db
-          .collection("classAssignments")
-          .where("classId", "==", classId)
-          .orderBy("createdAt", "desc")
-          .get();
+        const assignmentDocs = assignmentDocsByClassId[classId] || [];
 
-        const assignments = assignmentsSnapshot.docs.map((doc) => {
+        const assignments = assignmentDocs.map((doc) => {
           const assignment = doc.data() || {};
           return {
             id: doc.id,
@@ -8348,10 +8426,11 @@ app.get("/student-joined-classes/:studentId", async (req, res) => {
           createdAt: classData.createdAt || null,
           updatedAt: classData.updatedAt || null,
         };
-      })
-    );
+    });
 
-    return res.json(joinedClasses.filter(Boolean));
+    const filteredJoinedClasses = joinedClasses.filter(Boolean);
+    studentJoinedClassesCache.set(normalizedStudentId, filteredJoinedClasses);
+    return res.json(filteredJoinedClasses);
   } catch (error) {
     console.error("Fetch student joined classes error:", error);
     return res.status(500).json({
@@ -8436,6 +8515,9 @@ app.get(
 
       const memberData = memberSnap.data();
       await memberRef.delete();
+
+      // Student's class list just changed — their cached joined-classes is stale now.
+      invalidateStudentJoinedClassesCache(memberData?.userId);
 
       if (memberData?.classId) {
         await db.collection("classes").doc(memberData.classId).update({
@@ -15989,7 +16071,10 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
         updatedAt: FieldValue.serverTimestamp(),
         createdAt: moduleData.id ? undefined : FieldValue.serverTimestamp()
       }, { merge: true });
-      
+
+      // Module content changed — students' cached course structure is stale now.
+      invalidateCourseStructureCache(moduleData.classId || moduleData.courseId);
+
       res.json({ success: true, id: ref.id });
     } catch (error) {
       res.status(500).json({ error: error.message || "Failed to save module." });
@@ -17235,6 +17320,9 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
         updatedAt: admin.firestore.FieldValue.serverTimestamp()
       });
       
+      // Module content changed — students' cached course structure is stale now.
+      invalidateCourseStructureCache(classId);
+
       res.json({ 
         success: true, 
         moduleId: moduleRef.id,
@@ -17379,6 +17467,9 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
         console.error("Create module lesson notification error:", notifyError);
       }
 
+      // Lesson content changed — students' cached course structure is stale now.
+      invalidateCourseStructureCache(classId);
+
       res.json({ 
         success: true, 
         lessonId: lessonRef.id,
@@ -17496,6 +17587,10 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
         console.error("Approve structure notification error:", notifyError);
       }
 
+      // Whole course structure (modules + lessons) was just (re)created —
+      // students' cached course structure is stale now.
+      invalidateCourseStructureCache(classId);
+
       res.json({
         success: true,
         message: "Course structure approved and modules created.",
@@ -17513,21 +17608,65 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
   app.get("/student-course-structure/:classId", requireAuth, async (req, res) => {
     try {
       const { classId } = req.params;
-      
+
+      // ✅ OPTIMIZATION: this data is identical for every student in the
+      // class and only changes when a teacher edits the structure/modules/
+      // lessons (which invalidates this key — see invalidateCourseStructureCache
+      // calls at those write endpoints). Serving from cache means N students
+      // opening the page within the TTL window cost 1 Firestore read instead
+      // of N reads.
+      const cacheKey = String(classId).trim();
+      const cached = courseStructureByClassIdCache.get(cacheKey);
+      if (cached !== undefined) {
+        return res.json({ success: true, data: cached });
+      }
+
       const structureSnap = await db.collection("courseStructures").where("classId", "==", classId).limit(1).get();
-      if (structureSnap.empty) return res.json({ success: true, data: null });
+      if (structureSnap.empty) {
+        courseStructureByClassIdCache.set(cacheKey, null);
+        return res.json({ success: true, data: null });
+      }
       
       const structure = { id: structureSnap.docs[0].id, ...structureSnap.docs[0].data() };
       
       const modulesSnap = await db.collection("courseModules").where("classId", "==", classId).orderBy("moduleNumber", "asc").get();
-      const modules = await Promise.all(modulesSnap.docs.map(async (doc) => {
-        const mod = { id: doc.id, ...doc.data() };
-        const lessonsSnap = await db.collection("courseLessons").where("moduleId", "==", doc.id).get();
-        mod.lessons = lessonsSnap.docs.map(l => ({ id: l.id, ...l.data() }));
-        return mod;
+
+      // ✅ OPTIMIZATION: fetch all lessons for all modules in a single batched
+      // query instead of one query per module. This avoids N separate round
+      // trips and, importantly, avoids paying the ~1-read minimum charge on
+      // every module that happens to have zero lessons yet. Firestore's
+      // `in` operator supports up to 30 values per query, so we chunk.
+      const moduleIds = modulesSnap.docs.map((doc) => doc.id);
+      const lessonsByModuleId = {};
+
+      const CHUNK_SIZE = 30;
+      const moduleIdChunks = [];
+      for (let i = 0; i < moduleIds.length; i += CHUNK_SIZE) {
+        moduleIdChunks.push(moduleIds.slice(i, i + CHUNK_SIZE));
+      }
+
+      const lessonSnapshots = await Promise.all(
+        moduleIdChunks.map((chunk) =>
+          db.collection("courseLessons").where("moduleId", "in", chunk).get()
+        )
+      );
+
+      lessonSnapshots.forEach((snap) => {
+        snap.docs.forEach((l) => {
+          const lessonData = { id: l.id, ...l.data() };
+          (lessonsByModuleId[lessonData.moduleId] ||= []).push(lessonData);
+        });
+      });
+
+      const modules = modulesSnap.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+        lessons: lessonsByModuleId[doc.id] || [],
       }));
 
-      res.json({ success: true, data: { ...structure, modules } });
+      const responseData = { ...structure, modules };
+      courseStructureByClassIdCache.set(cacheKey, responseData);
+      res.json({ success: true, data: responseData });
     } catch (error) {
       res.status(500).json({ error: error.message || "Failed to fetch course structure." });
     }
@@ -17636,6 +17775,9 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
         returnUrl = await createReadSignedUrlIfExists(finalData.storagePath);
       }
 
+      // Lesson content changed — students' cached course structure is stale now.
+      invalidateCourseStructureCache(currentData.classId || finalData.classId);
+
       res.json({
         success: true,
         message: "Lesson updated successfully.",
@@ -17671,6 +17813,9 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
 
       // Delete document from Firestore
       await lessonRef.delete();
+
+      // Lesson content changed — students' cached course structure is stale now.
+      invalidateCourseStructureCache(lessonData.classId);
 
       res.json({
         success: true,
