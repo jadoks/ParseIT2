@@ -379,6 +379,41 @@ const mapBackendClass = (item: any, fallbackInstructor: string): TeacherCourseDa
   schedule: Array.isArray(item.schedule) ? item.schedule : [],
 });
 
+// ── Web-only: force a visible, styled vertical scrollbar ──────────────────
+// RN's `showsVerticalScrollIndicator` only controls the native OS-drawn
+// indicator on iOS/Android. On React Native Web, ScrollView renders as a
+// plain <div style="overflow:auto">, so that prop is a no-op there — the
+// browser/OS decides scrollbar visibility (and on macOS trackpads, that
+// usually means "hidden until scrolling"). To get a persistent indicator
+// on web, we inject real CSS once and tag the ScrollView's div with a
+// className so the CSS can target it.
+const DASHBOARD_SCROLL_CLASS = 'teacher-dashboard-scroll';
+let dashboardScrollCssInjected = false;
+const ensureDashboardScrollCss = () => {
+  if (Platform.OS !== 'web' || dashboardScrollCssInjected) return;
+  dashboardScrollCssInjected = true;
+  const styleTag = document.createElement('style');
+  styleTag.setAttribute('data-teacher-dashboard-scroll', 'true');
+  styleTag.textContent = `
+    .${DASHBOARD_SCROLL_CLASS} {
+      scrollbar-width: thin; /* Firefox */
+      scrollbar-color: #D32F2F #F1F1F1;
+    }
+    .${DASHBOARD_SCROLL_CLASS}::-webkit-scrollbar {
+      width: 10px;
+    }
+    .${DASHBOARD_SCROLL_CLASS}::-webkit-scrollbar-track {
+      background: #F1F1F1;
+    }
+    .${DASHBOARD_SCROLL_CLASS}::-webkit-scrollbar-thumb {
+      background-color: #D32F2F;
+      border-radius: 8px;
+      border: 2px solid #F1F1F1;
+    }
+  `;
+  document.head.appendChild(styleTag);
+};
+
 const Dashboard2 = ({
   announcements = [],
   courses = [],
@@ -390,6 +425,7 @@ const Dashboard2 = ({
   isLoading = false,
   showVerticalIndicator = true,
 }: DashboardProps) => {
+  useEffect(() => { ensureDashboardScrollCss(); }, []);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [showAllClasses, setShowAllClasses] = useState(false);
   const { width } = useWindowDimensions();
@@ -1259,7 +1295,15 @@ const refreshClassesAfterStorageWrite = async (pinFrontId?: string) => {
       </Modal>
 
       {/* Main Dashboard Content */}
-      <ScrollView style={styles.container} contentContainerStyle={[styles.scrollPadding, { paddingHorizontal: isMobile ? 14 : 20 }]} showsVerticalScrollIndicator={showVerticalIndicator} showsHorizontalScrollIndicator={false}>
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={[styles.scrollPadding, { paddingHorizontal: isMobile ? 14 : 20 }]}
+        showsVerticalScrollIndicator={showVerticalIndicator}
+        showsHorizontalScrollIndicator={false}
+        {...(Platform.OS === 'web' && showVerticalIndicator
+          ? ({ className: DASHBOARD_SCROLL_CLASS } as any)
+          : {})}
+      >
         <View style={styles.mainWrapper}>
           <View style={styles.headerRow}>
             <Text style={styles.sectionHeader}>Announcements</Text>
