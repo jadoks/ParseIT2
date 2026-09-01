@@ -103,7 +103,7 @@ export type ClassScheduleEntry = {
   days: string[];
   startTime: string;
   endTime: string;
-  room?: string;
+  room?: string | null;
 };
 
 export type CourseDetailData = {

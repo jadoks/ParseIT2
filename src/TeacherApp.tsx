@@ -1200,6 +1200,7 @@ export default function TeacherApp({ onLogout, currentTeacher, onGoToLanding }: 
               onDeleteCourse={handleDeleteCourse}
               currentTeacher={activeProfile}
               isLoading={isLoadingClasses || isLoadingAnnouncements}
+              showVerticalIndicator={true}
             />
           ) : activeScreen === 'honors' ? (
             <Honors apiBaseUrl={API_BASE_URL} />

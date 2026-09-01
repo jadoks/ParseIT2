@@ -93,6 +93,10 @@ interface DashboardProps {
   onEditCourse?: (course: TeacherCourseData) => void;
   currentTeacher: SignedInTeacher;
   isLoading?: boolean;
+  // Controls the native vertical scrollbar on the dashboard's ScrollView.
+  // Note: on React Native Web, browsers/OS control scrollbar visibility,
+  // so this prop has no visible effect there — it only applies on iOS/Android.
+  showVerticalIndicator?: boolean;
 }
 
 type YearOption = { id: string; label: string; };
@@ -384,6 +388,7 @@ const Dashboard2 = ({
   onEditCourse,
   currentTeacher,
   isLoading = false,
+  showVerticalIndicator = true,
 }: DashboardProps) => {
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [showAllClasses, setShowAllClasses] = useState(false);
@@ -1254,7 +1259,7 @@ const refreshClassesAfterStorageWrite = async (pinFrontId?: string) => {
       </Modal>
 
       {/* Main Dashboard Content */}
-      <ScrollView style={styles.container} contentContainerStyle={[styles.scrollPadding, { paddingHorizontal: isMobile ? 14 : 20 }]} showsVerticalScrollIndicator={true} showsHorizontalScrollIndicator={false}>
+      <ScrollView style={styles.container} contentContainerStyle={[styles.scrollPadding, { paddingHorizontal: isMobile ? 14 : 20 }]} showsVerticalScrollIndicator={showVerticalIndicator} showsHorizontalScrollIndicator={false}>
         <View style={styles.mainWrapper}>
           <View style={styles.headerRow}>
             <Text style={styles.sectionHeader}>Announcements</Text>
