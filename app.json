@@ -16,6 +16,12 @@
       "expo-web-browser",
       "expo-font",
       "expo-router"
-    ]
+    ],
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "0ecbb5d7-7ab4-425e-b384-c10ef658ffe4"
+      }
+    }
   }
 }

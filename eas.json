@@ -1,0 +1,30 @@
+{
+  "cli": {
+    "version": ">= 23.2.0",
+    "appVersionSource": "remote"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://parseit-backend.onrender.com"
+      }
+    },
+    "preview": {
+      "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://parseit-backend.onrender.com"
+      }
+    },
+    "production": {
+      "autoIncrement": true,
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://parseit-backend.onrender.com"
+      }
+    }
+  },
+  "submit": {
+    "production": {}
+  }
+}

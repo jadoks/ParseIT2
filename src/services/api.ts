@@ -3,8 +3,14 @@ import { Platform } from 'react-native';
 import { auth } from '../../firebaseConfig'; // adjust path if your folder structure differs
 
 function getApiBaseUrl() {
-  if (Platform.OS === "web") {
+  // EXPO_PUBLIC_ vars are inlined at build time for native builds too,
+  // not just web — always prefer the deployed backend URL when it's set.
+  if (process.env.EXPO_PUBLIC_API_URL) {
     return process.env.EXPO_PUBLIC_API_URL;
+  }
+
+  if (Platform.OS === 'web') {
+    console.warn('EXPO_PUBLIC_API_URL is not set; API calls will fail.');
   }
 
   const possibleHost =
@@ -67,4 +73,3 @@ export async function apiFetch(url: string, options: RequestInit = {}) {
 }
 
 export { API_BASE_URL };
-
