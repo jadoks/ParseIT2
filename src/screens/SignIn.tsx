@@ -79,8 +79,17 @@ type UserProfileResponse = {
 };
 
 function getApiBaseUrl() {
+  // Prefer the deployed backend URL on every platform — including native /
+  // Expo Go — since EXPO_PUBLIC_ vars are inlined for native builds too, not
+  // just web. Only fall back to guessing a local dev server's LAN IP when
+  // no URL has been configured (e.g. testing against a backend running on
+  // your own machine during local dev).
+  if (process.env.EXPO_PUBLIC_API_URL) {
+    return process.env.EXPO_PUBLIC_API_URL;
+  }
+
   if (Platform.OS === 'web') {
-    return process.env.EXPO_PUBLIC_API_URL!;
+    console.warn('EXPO_PUBLIC_API_URL is not set; API calls will fail.');
   }
 
   const possibleHost =
