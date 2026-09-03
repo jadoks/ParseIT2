@@ -4253,6 +4253,348 @@ useEffect(() => {
             </View>
           </View>
         </Modal>
+        {/* ══════════════════════════════════════════════════════════════════════
+DATE TIME MODAL
+════════════════════════════════════════════════════════════════════════ */}
+        <Modal
+          visible={showDateTimeModal}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setShowDateTimeModal(false)}
+        >
+          <View style={styles.modalOverlayCenter}>
+            <View
+              style={[
+                styles.dateTimeCard,
+                {
+                  width: isMobile ? Math.min(width - 28, 360) : 760,
+                  maxHeight: height * 0.92,
+                },
+              ]}
+            >
+              <View style={styles.createHeaderRow}>
+                <View style={styles.modalHeaderTextWrap}>
+                  <Text style={styles.createTitle}>Select Due Date & Time</Text>
+                  <Text style={styles.modalSubtitle}>Works in web and mobile.</Text>
+                </View>
+                <TouchableOpacity onPress={() => setShowDateTimeModal(false)}>
+                  <Ionicons name="close" size={24} color="#111" />
+                </TouchableOpacity>
+              </View>
+              <ScrollView
+                showsVerticalScrollIndicator={false}
+                nestedScrollEnabled
+                contentContainerStyle={styles.dateTimeScrollContent}
+                style={styles.dateTimeScroll}
+              >
+                <View style={[styles.dateTimeLayout, !isMobile && styles.dateTimeLayoutDesktop]}>
+                  <View style={[styles.calendarPanel, !isMobile && styles.calendarPanelDesktop]}>
+                    <View style={styles.calendarHeader}>
+                      <TouchableOpacity
+                        style={styles.calendarNavBtn}
+                        onPress={() =>
+                          setVisibleCalendarMonth(
+                            new Date(
+                              visibleCalendarMonth.getFullYear(),
+                              visibleCalendarMonth.getMonth() - 1,
+                              1
+                            )
+                          )
+                        }
+                      >
+                        <Ionicons name="chevron-back" size={18} color="#D32F2F" />
+                      </TouchableOpacity>
+                      <Text
+                        style={[styles.calendarMonthLabel, isSmallPhone && styles.calendarMonthLabelCompact]}
+                        numberOfLines={1}
+                      >
+                        {monthLabel(visibleCalendarMonth)}
+                      </Text>
+                      <TouchableOpacity
+                        style={styles.calendarNavBtn}
+                        onPress={() =>
+                          setVisibleCalendarMonth(
+                            new Date(
+                              visibleCalendarMonth.getFullYear(),
+                              visibleCalendarMonth.getMonth() + 1,
+                              1
+                            )
+                          )
+                        }
+                      >
+                        <Ionicons name="chevron-forward" size={18} color="#D32F2F" />
+                      </TouchableOpacity>
+                    </View>
+                    <View style={styles.weekRow}>
+                      {WEEKDAY_LABELS.map((label) => (
+                        <Text
+                          key={label}
+                          style={[styles.weekLabel, isSmallPhone && styles.weekLabelCompact]}
+                        >
+                          {isSmallPhone ? label.slice(0, 1) : label}
+                        </Text>
+                      ))}
+                    </View>
+                    <View style={styles.dayGrid}>
+                      {calendarDays.map((item) => {
+                        const active = isSameDate(item.date, draftDueDateTime);
+                        const disabled = isPastDay(item.date);
+                        return (
+                          <TouchableOpacity
+                            key={item.key}
+                            style={[
+                              styles.dayCell,
+                              !item.inCurrentMonth && styles.dayCellOutside,
+                              active && styles.dayCellActive,
+                              disabled && styles.dayCellDisabled,
+                            ]}
+                            onPress={() => {
+                              if (disabled) return;
+                              selectDraftDate(item.date);
+                            }}
+                            disabled={disabled}
+                            activeOpacity={disabled ? 1 : 0.85}
+                          >
+                            <Text
+                              style={[
+                                styles.dayText,
+                                isSmallPhone && styles.dayTextCompact,
+                                !item.inCurrentMonth && styles.dayTextOutside,
+                                active && styles.dayTextActive,
+                                disabled && styles.dayTextDisabled,
+                              ]}
+                            >
+                              {item.date.getDate()}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  </View>
+                  <View style={[styles.timePanel, !isMobile && styles.timePanelDesktop]}>
+                    <View style={styles.timePickerWrapRow}>
+                      <View style={styles.timeColumn}>
+                        <Text style={styles.timeLabel}>Hour</Text>
+                        <ScrollView
+                          style={[styles.timeList, isSmallPhone && styles.timeListCompact]}
+                          nestedScrollEnabled
+                          showsVerticalScrollIndicator={false}
+                        >
+                          {Array.from({ length: 24 }, (_, hour) => (
+                            <TouchableOpacity
+                              key={`hour-${hour}`}
+                              style={[
+                                styles.timeOption,
+                                isSmallPhone && styles.timeOptionCompact,
+                                draftDueDateTime.getHours() === hour && styles.timeOptionActive,
+                              ]}
+                              onPress={() => updateDraftTime('hours', hour)}
+                            >
+                              <Text
+                                style={[
+                                  styles.timeOptionText,
+                                  isSmallPhone && styles.timeOptionTextCompact,
+                                  draftDueDateTime.getHours() === hour && styles.timeOptionTextActive,
+                                ]}
+                              >
+                                {pad(hour)}
+                              </Text>
+                            </TouchableOpacity>
+                          ))}
+                        </ScrollView>
+                      </View>
+                      <View style={styles.timeColumn}>
+                        <Text style={styles.timeLabel}>Minute</Text>
+                        <ScrollView
+                          style={[styles.timeList, isSmallPhone && styles.timeListCompact]}
+                          nestedScrollEnabled
+                          showsVerticalScrollIndicator={false}
+                        >
+                          {Array.from({ length: 12 }, (_, i) => i * 5).map((minute) => (
+                            <TouchableOpacity
+                              key={`minute-${minute}`}
+                              style={[
+                                styles.timeOption,
+                                isSmallPhone && styles.timeOptionCompact,
+                                draftDueDateTime.getMinutes() === minute && styles.timeOptionActive,
+                              ]}
+                              onPress={() => updateDraftTime('minutes', minute)}
+                            >
+                              <Text
+                                style={[
+                                  styles.timeOptionText,
+                                  isSmallPhone && styles.timeOptionTextCompact,
+                                  draftDueDateTime.getMinutes() === minute &&
+                                  styles.timeOptionTextActive,
+                                ]}
+                              >
+                                {pad(minute)}
+                              </Text>
+                            </TouchableOpacity>
+                          ))}
+                        </ScrollView>
+                      </View>
+                    </View>
+                    <View style={styles.datePreviewBox}>
+                      <Text style={styles.datePreviewLabel}>Selected</Text>
+                      <Text
+                        style={[styles.datePreviewValue, isSmallPhone && styles.datePreviewValueCompact]}
+                        numberOfLines={1}
+                        adjustsFontSizeToFit
+                      >
+                        {formatDueDateTime(draftDueDateTime)}
+                      </Text>
+                    </View>
+                  </View>
+                </View>
+              </ScrollView>
+              <View style={styles.buttonRow}>
+                <TouchableOpacity
+                  style={styles.secondaryButton}
+                  onPress={() => setShowDateTimeModal(false)}
+                >
+                  <Text style={styles.secondaryButtonText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.primaryButton} onPress={applyDraftDateTime}>
+                  <Text style={styles.primaryButtonText}>Apply</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
+        {/* ══════════════════════════════════════════════════════════════════════
+GAME TYPE MODAL
+════════════════════════════════════════════════════════════════════════ */}
+        <Modal
+          visible={showGameTypeModal}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setShowGameTypeModal(false)}
+        >
+          <Pressable style={styles.modalOverlayCenter} onPress={() => setShowGameTypeModal(false)}>
+            <Pressable
+              style={[
+                styles.modalCardElevated,
+                { width: isMobile ? Math.min(width - 28, 360) : 450, maxHeight: height * 0.8 },
+              ]}
+            >
+              <View style={styles.createHeaderRow}>
+                <View style={styles.modalHeaderTextWrap}>
+                  <Text style={styles.createTitle}>Select Game Type</Text>
+                  <Text style={styles.modalSubtitle}>
+                    Choose the interactive format for this assignment.
+                  </Text>
+                </View>
+                <TouchableOpacity onPress={() => setShowGameTypeModal(false)}>
+                  <Ionicons name="close" size={24} color="#111" />
+                </TouchableOpacity>
+              </View>
+              <ScrollView showsVerticalScrollIndicator={false} nestedScrollEnabled>
+                {gameOptions.map((opt) => (
+                  <TouchableOpacity
+                    key={opt.value}
+                    style={[
+                      styles.dropdownItem,
+                      gameType === opt.value && styles.dropdownItemActive,
+                    ]}
+                    onPress={() => {
+                      setGameType(opt.value as any);
+                      setShowGameTypeModal(false);
+                      if (errors.gameType) setErrors((prev) => ({ ...prev, gameType: undefined }));
+                    }}
+                  >
+                    <Ionicons
+                      name={gameType === opt.value ? 'radio-button-on' : 'radio-button-off'}
+                      size={18}
+                      color={gameType === opt.value ? '#FFF' : '#D32F2F'}
+                      style={{ marginRight: 12 }}
+                    />
+                    <View style={{ flex: 1 }}>
+                      <Text
+                        style={[
+                          styles.dropdownItemText,
+                          gameType === opt.value && styles.dropdownItemTextActive,
+                        ]}
+                      >
+                        {opt.label}
+                      </Text>
+                      {!!opt.desc && (
+                        <Text
+                          style={[
+                            styles.dropdownItemDesc,
+                            gameType === opt.value && styles.dropdownItemDescActive,
+                          ]}
+                        >
+                          {opt.desc}
+                        </Text>
+                      )}
+                    </View>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </Pressable>
+          </Pressable>
+        </Modal>
+        {/* ══════════════════════════════════════════════════════════════════════
+CLASS MODAL
+════════════════════════════════════════════════════════════════════════ */}
+        <Modal
+          visible={showClassModal}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setShowClassModal(false)}
+        >
+          <Pressable style={styles.modalOverlayCenter} onPress={() => setShowClassModal(false)}>
+            <Pressable
+              style={[
+                styles.modalCardElevated,
+                { width: isMobile ? Math.min(width - 28, 360) : 450, maxHeight: height * 0.8 },
+              ]}
+            >
+              <View style={styles.createHeaderRow}>
+                <View style={styles.modalHeaderTextWrap}>
+                  <Text style={styles.createTitle}>Select Course / Class</Text>
+                  <Text style={styles.modalSubtitle}>Assign this game to a specific class.</Text>
+                </View>
+                <TouchableOpacity onPress={() => setShowClassModal(false)}>
+                  <Ionicons name="close" size={24} color="#111" />
+                </TouchableOpacity>
+              </View>
+              <ScrollView showsVerticalScrollIndicator={false} nestedScrollEnabled>
+                {availableCourses.map((c) => (
+                  <TouchableOpacity
+                    key={c.id}
+                    style={[
+                      styles.dropdownItem,
+                      selectedClassId === c.id && styles.dropdownItemActive,
+                    ]}
+                    onPress={() => {
+                      setSelectedClassId(c.id);
+                      setShowClassModal(false);
+                      if (errors.classId) setErrors((prev) => ({ ...prev, classId: undefined }));
+                    }}
+                  >
+                    <Ionicons
+                      name={selectedClassId === c.id ? 'radio-button-on' : 'radio-button-off'}
+                      size={18}
+                      color={selectedClassId === c.id ? '#FFF' : '#D32F2F'}
+                      style={{ marginRight: 12 }}
+                    />
+                    <Text
+                      style={[
+                        styles.dropdownItemText,
+                        selectedClassId === c.id && styles.dropdownItemTextActive,
+                      ]}
+                      numberOfLines={1}
+                    >
+                      {c.courseCode} - {c.name}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </Pressable>
+          </Pressable>
+        </Modal>
         {renderToastAndConfirmation()}
       </>
     );

@@ -1075,11 +1075,18 @@ export default function Register({
         }, 50);
       });
     } catch (error: any) {
-      showFeedback(
-        'error',
-        'Registration Failed',
-        error?.message || 'Unable to create account.'
-      );
+      const errorMessage: string = error?.message || 'Unable to create account.';
+
+      // Give the duplicate-ID case (and duplicate-email, same pattern) a more
+      // specific toast title instead of the generic "Registration Failed",
+      // while still reusing the exact same Toast component/flow.
+      if (/id already exists/i.test(errorMessage)) {
+        showFeedback('error', 'ID Already Exists', 'This User ID is already registered. Please use a different one.');
+      } else if (/email already exists/i.test(errorMessage)) {
+        showFeedback('error', 'Email Already Exists', 'This email is already registered. Please use a different one.');
+      } else {
+        showFeedback('error', 'Registration Failed', errorMessage);
+      }
     } finally {
       setIsLoading(false);
     }

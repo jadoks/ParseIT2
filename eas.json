@@ -8,19 +8,37 @@
       "developmentClient": true,
       "distribution": "internal",
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://parseit-backend.onrender.com"
+        "EXPO_PUBLIC_API_URL": "https://parseit-backend.onrender.com",
+        "EXPO_PUBLIC_FIREBASE_API_KEY": "AIzaSyBbAofFm_8ncGMRB0X2szfKC9TMvmcrzXo",
+        "EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN": "parseit2-4b26d.firebaseapp.com",
+        "EXPO_PUBLIC_FIREBASE_PROJECT_ID": "parseit2-4b26d",
+        "EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET": "parseit2-4b26d.firebasestorage.app",
+        "EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID": "808675748328",
+        "EXPO_PUBLIC_FIREBASE_APP_ID": "1:808675748328:web:040c0b704a93716ec79c5d"
       }
     },
     "preview": {
       "distribution": "internal",
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://parseit-backend.onrender.com"
+        "EXPO_PUBLIC_API_URL": "https://parseit-backend.onrender.com",
+        "EXPO_PUBLIC_FIREBASE_API_KEY": "AIzaSyBbAofFm_8ncGMRB0X2szfKC9TMvmcrzXo",
+        "EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN": "parseit2-4b26d.firebaseapp.com",
+        "EXPO_PUBLIC_FIREBASE_PROJECT_ID": "parseit2-4b26d",
+        "EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET": "parseit2-4b26d.firebasestorage.app",
+        "EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID": "808675748328",
+        "EXPO_PUBLIC_FIREBASE_APP_ID": "1:808675748328:web:040c0b704a93716ec79c5d"
       }
     },
     "production": {
       "autoIncrement": true,
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://parseit-backend.onrender.com"
+        "EXPO_PUBLIC_API_URL": "https://parseit-backend.onrender.com",
+        "EXPO_PUBLIC_FIREBASE_API_KEY": "AIzaSyBbAofFm_8ncGMRB0X2szfKC9TMvmcrzXo",
+        "EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN": "parseit2-4b26d.firebaseapp.com",
+        "EXPO_PUBLIC_FIREBASE_PROJECT_ID": "parseit2-4b26d",
+        "EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET": "parseit2-4b26d.firebasestorage.app",
+        "EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID": "808675748328",
+        "EXPO_PUBLIC_FIREBASE_APP_ID": "1:808675748328:web:040c0b704a93716ec79c5d"
       }
     }
   },
