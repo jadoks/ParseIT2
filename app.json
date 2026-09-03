@@ -8,7 +8,8 @@
       "favicon": "./public/logo.png"
     },
     "android": {
-      "softwareKeyboardLayoutMode": "pan"
+      "softwareKeyboardLayoutMode": "pan",
+      "package": "com.bsit.parseit"
     },
     "plugins": [
       "@react-native-community/datetimepicker",
@@ -21,6 +22,12 @@
       "router": {},
       "eas": {
         "projectId": "0ecbb5d7-7ab4-425e-b384-c10ef658ffe4"
+      }
+    },
+    "ios": {
+      "bundleIdentifier": "com.bsit.parseit",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
       }
     }
   }
