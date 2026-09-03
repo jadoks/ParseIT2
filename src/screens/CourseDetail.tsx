@@ -8,7 +8,7 @@ import { Image as ExpoImage } from 'expo-image'; // class banner photo — same 
 // silentRefresh poll below instead of being replaced by a freshly-signed
 // (but functionally identical) URL every cycle, which was what caused the
 // banner to visibly reload every few seconds.
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -1440,6 +1440,21 @@ const fetchModules = useCallback(async (silent = false) => {
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [safeCourse.assignments]);
+
+  // ✅ NEW: Freeze the Related Course Resources list for the OPEN assignment
+  // modal to a memoized snapshot, keyed off the assignment's id + materialIds
+  // — NOT off `safeCourse.materials` directly. `onRefreshCourseContent()`
+  // (fired every `autoRefreshIntervalMs`, plus alongside fetchModules/
+  // fetchSyllabus) hands back a brand-new `materials` array each poll even
+  // when nothing actually changed, which made this section recompute and
+  // visibly flash/reshuffle on every background refresh. Mirrors how
+  // Assignments.tsx sources this list from the already-guarded
+  // `selectedAssignment` snapshot instead of the live course data.
+  const selectedAssignmentRelatedMaterials = useMemo(() => {
+    if (!selectedAssignment) return [];
+    return getRelatedMaterials(selectedAssignment);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedAssignment?.id, JSON.stringify(selectedAssignment?.materialIds || [])]);
 
   // ✅ NEW: Silent background refresh — refetches submissions, comments for
   // the currently-open assignment, AND the underlying course/assignment
@@ -2883,8 +2898,8 @@ const fetchModules = useCallback(async (silent = false) => {
                     {/* Related Materials */}
                     <View style={styles.section}>
                       <Text style={styles.sectionTitle}>📚 Related Course Resources</Text>
-                      {getRelatedMaterials(selectedAssignment).length > 0 ? (
-                        getRelatedMaterials(selectedAssignment).map((material) => (
+                      {selectedAssignmentRelatedMaterials.length > 0 ? (
+                        selectedAssignmentRelatedMaterials.map((material) => (
                           <TouchableOpacity
                             key={material.id}
                             style={styles.relatedMaterialItem}

@@ -1399,11 +1399,7 @@ const Assignments = ({
             </Text>
           ) : null}
         </View>
-        {relatedMaterials.length > 0 && (
-          <Text style={styles.relatedPreviewText}>
-            Based on: {relatedMaterials.map((m) => m.title).join(', ')}
-          </Text>
-        )}
+        
         {recommendationLabel && (
           <View
             style={[
