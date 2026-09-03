@@ -1114,7 +1114,7 @@ export default function TeacherApp({ onLogout, currentTeacher, onGoToLanding }: 
             notificationCount={unreadNotificationCount}
             messengerUnreadCount={messengerUnreadCount}
             onNotificationPress={handleNotificationPress}
-            onLogoPress={onGoToLanding}
+            onLogoPress={() => navigateTo('home')}
           />
         </View>
       )}

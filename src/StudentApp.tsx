@@ -2537,7 +2537,7 @@ const refreshAssignmentCourseContent = useCallback(async () => {
               onNotificationPress={handleNotificationPress}
               onMenuPress={() => setMobileDrawerOpen((prev) => !prev)}
               resetSearchKey={searchResetKey}
-              onLogoPress={onGoToLanding}
+              onLogoPress={() => handleNavigate('home')}
             />
           </View>
         )}
