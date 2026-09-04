@@ -1270,31 +1270,29 @@ useEffect(() => {
     }
   };
 
+  // A saved courseModule is only eligible for "Generate Next Lesson" if it
+  // genuinely corresponds to a module in the uploaded syllabus. We can't rely
+  // on the stored `type` field for this: every module — whether created via
+  // "Generate Module" (syllabus-sourced) or "Create Module Manually"
+  // (teacher-typed) — goes through the same backend endpoint, which always
+  // stamps type: "manual". So instead we require BOTH the module number AND
+  // the title to match a real syllabus module. Number alone isn't enough —
+  // that's what previously let a manually-created "Module 3" pick up an
+  // unrelated syllabus Module 3's subtopics just because the numbers lined
+  // up; title alone isn't enough either, since two unrelated modules could
+  // share a generic title.
+  const findMatchingSyllabusModule = (savedModule: any) => {
+    if (!currentSyllabus?.structure?.modules || savedModule?.moduleNumber == null) return null;
+    return currentSyllabus.structure.modules.find(
+      (m: any) =>
+        Number(m.moduleNumber) === Number(savedModule.moduleNumber) &&
+        String(m.moduleTitle || m.title || '').trim().toLowerCase() ===
+          String(savedModule.title || '').trim().toLowerCase()
+    ) || null;
+  };
+
   const handleOpenNextLessonModal = (savedModule: any) => {
-    // Manually-created modules (type: "manual") have no relationship to the
-    // uploaded syllabus, even if they happen to share a module number with a
-    // syllabus module. Never let them pick up that syllabus module's
-    // subtopics — only AI-generated modules (type: "ai_generated") are
-    // eligible for "Generate Next Lesson" subtopic suggestions.
-    if (savedModule.type === 'manual') {
-      setTargetModuleForGen({ ...savedModule, topics: [] });
-      setSelectedTopicsForGen([]);
-      setShowNextLessonModal(true);
-      return;
-    }
-    // Match primarily by moduleNumber: it's stable across syllabus
-    // re-uploads/re-parses, whereas the AI-generated title text can shift
-    // slightly (casing, wording) each time the syllabus is re-parsed, which
-    // would otherwise cause an already-generated module to look "manual".
-    const syllabusMod = currentSyllabus?.structure?.modules?.find(
-      (m: any) =>
-        savedModule.moduleNumber != null &&
-        Number(m.moduleNumber) === Number(savedModule.moduleNumber)
-    ) || currentSyllabus?.structure?.modules?.find(
-      (m: any) =>
-        String(m.moduleTitle || m.title).trim().toLowerCase() ===
-        String(savedModule.title).trim().toLowerCase()
-    );
+    const syllabusMod = findMatchingSyllabusModule(savedModule);
     // Each syllabus "topic" can bundle several subtopics (e.g. "Course
     // Orientation and SQA Fundamentals" -> VMGO, Intro to Testing, Intro to
     // SQA...). We want the teacher to pick individual SUBTOPICS to generate —
@@ -4954,7 +4952,7 @@ CLASS MODAL
                             <Ionicons name="add-circle-outline" size={16} color="#1976D2" />
                             <Text style={{ color: '#1976D2', fontWeight: '700', fontSize: 12 }}>Add Lesson (Manual)</Text>
                           </TouchableOpacity>
-                          {mod.type !== 'manual' && (
+                          {findMatchingSyllabusModule(mod) && (
                             <TouchableOpacity
                               onPress={() => handleOpenNextLessonModal(mod)}
                               style={{ marginTop: 8, padding: 16, backgroundColor: '#E3F2FD', borderRadius: 12, borderWidth: 1, borderColor: '#1976D2', alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8 }}

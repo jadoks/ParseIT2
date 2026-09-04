@@ -16772,16 +16772,6 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
       const moduleId = moduleSnap.docs[0].id;
       const moduleData = moduleSnap.docs[0].data();
 
-      // Manually-created modules aren't tied to the syllabus, even if they
-      // happen to share a module number with a real syllabus module. Block
-      // this server-side too so a manual module can never be matched against
-      // (and pull subtopics from) an unrelated syllabus module.
-      if (moduleData.type === "manual") {
-        return res.status(400).json({
-          error: "This module was created manually and has no syllabus subtopics to generate lessons from. Use \"Add Lesson (Manual)\" instead.",
-        });
-      }
-
       // ✅ STEP 1: Fetch TRUE current max lesson number from DB
       let nextLessonNumber = 1;
       const lessonsSnap = await db.collection("courseLessons")
@@ -16806,11 +16796,20 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
       let targetSyllabusModule = null;
       if (!syllabusSnap.empty) {
         const modules = syllabusSnap.docs[0].data().structure?.modules || [];
-        targetSyllabusModule = modules.find(m => m.moduleNumber === moduleNumber);
+        // Require the title to match too, not just the number — matching by
+        // number alone let a manually-created module (which coincidentally
+        // reused a syllabus module's number) generate lessons from that
+        // unrelated syllabus module's subtopics.
+        targetSyllabusModule = modules.find(
+          m =>
+            m.moduleNumber === moduleNumber &&
+            String(m.moduleTitle || "").trim().toLowerCase() ===
+              String(moduleData.title || "").trim().toLowerCase()
+        );
       }
 
       if (!targetSyllabusModule) {
-        return res.status(404).json({ error: "Syllabus module not found." });
+        return res.status(404).json({ error: "This module doesn't match a module in the syllabus, so there are no subtopics to generate from. Use \"Add Lesson (Manual)\" instead." });
       }
 
       // 3. Generate content for EACH selected topic/subtopic. This route is
