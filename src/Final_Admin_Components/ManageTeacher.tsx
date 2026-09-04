@@ -480,7 +480,10 @@ export default function ManageTeacher({ width }: ManageTeacherProps) {
 
       // 4. Swap the temp row for the real backend data
       await loadTeachers();
-      showToast("Teacher created successfully.", "success");
+      showToast(
+        `Teacher account created successfully. A temporary password was sent to ${payload.email}.`,
+        "success"
+      );
     } catch (error) {
       console.error("Error saving teacher:", error);
 

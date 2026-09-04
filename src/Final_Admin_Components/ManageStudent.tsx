@@ -481,7 +481,10 @@ useEffect(() => {
 
       // 4. Swap the temp row for the real backend data
       await loadStudents();
-      showToast("Student created successfully.", "success");
+      showToast(
+        `Student account created successfully. A temporary password was sent to ${payload.email}.`,
+        "success"
+      );
     } catch (error) {
       console.error("Error saving student:", error);
 

@@ -472,7 +472,10 @@ export default function ManageAdmin({ width }: ManageAdminProps) {
 
       // 4. Swap the temp row for the real backend data
       await loadAdmins();
-      showToast("Admin created successfully.", "success");
+      showToast(
+        `Admin account created successfully. A temporary password was sent to ${(payload as any).email || "the registered email address"}.`,
+        "success"
+      );
     } catch (error) {
       console.error("Error saving admin:", error);
 

@@ -4,7 +4,6 @@ import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import Constants from "expo-constants";
 import React, { useEffect, useState } from "react";
 import {
-  Alert,
   DimensionValue,
   Platform,
   StyleSheet,
@@ -19,6 +18,7 @@ import AddStudentModal from "./AddStudentModal";
 import AddTeacherModal from "./AddTeacherModal";
 import Chatbot from "./Chatbot";
 import ModifyChatbotModal from "./ModifyChatbotModal";
+import Toast from "./Toast";
 
 import type { AdminFormPayload } from "./adminTypes";
 import type { StudentFormPayload } from "./studentTypes";
@@ -186,6 +186,18 @@ export default function AdminDashboard({
   const [adminCount, setAdminCount] = useState(0);
   const [studentCount, setStudentCount] = useState(0);
 
+  const [toast, setToast] = useState<{
+    visible: boolean;
+    message: string;
+    type: "success" | "error" | "info";
+  }>({ visible: false, message: "", type: "success" });
+
+  const showToast = (message: string, type: "success" | "error" | "info" = "success") => {
+    setToast({ visible: true, message, type });
+  };
+
+  const hideToast = () => setToast((prev) => ({ ...prev, visible: false }));
+
   const isMobile = width < 768;
   const isTablet = width >= 768 && width < 1100;
 
@@ -261,9 +273,16 @@ export default function AdminDashboard({
 
       await loadDashboardCounts();
       setIsAddTeacherModalVisible(false);
-      console.log("Teacher saved to Firebase:", data);
+      showToast(
+        `Teacher account created successfully. A temporary password was sent to ${payload.email}.`,
+        "success"
+      );
     } catch (error) {
       console.error("Error saving teacher:", error);
+      showToast(
+        error instanceof Error ? error.message : "Failed to create teacher.",
+        "error"
+      );
     }
   };
 
@@ -308,16 +327,16 @@ export default function AdminDashboard({
       await loadDashboardCounts();
       setIsAddClassModalVisible(false);
 
-      Alert.alert(
-        "Success",
-        `Class created successfully.
-Class Code: ${
-          data?.data?.classCode || payload.classCode
-        }`
+      showToast(
+        `Class created successfully. Class Code: ${data?.data?.classCode || payload.classCode}`,
+        "success"
       );
     } catch (error) {
       console.error("Error saving class:", error);
-      Alert.alert("Error", "Failed to create class.");
+      showToast(
+        error instanceof Error ? error.message : "Something went wrong. Please try again.",
+        "error"
+      );
     }
   };
 
@@ -339,9 +358,16 @@ Class Code: ${
 
       await loadDashboardCounts();
       setIsAddAdminModalVisible(false);
-      console.log("Admin saved to Firebase:", data);
+      showToast(
+        `Admin account created successfully. A temporary password was sent to ${payload.email}.`,
+        "success"
+      );
     } catch (error) {
       console.error("Error saving admin:", error);
+      showToast(
+        error instanceof Error ? error.message : "Failed to create admin.",
+        "error"
+      );
     }
   };
 
@@ -363,9 +389,16 @@ Class Code: ${
 
       await loadDashboardCounts();
       setIsAddStudentModalVisible(false);
-      console.log("Student saved to Firebase:", data);
+      showToast(
+        `Student account created successfully. A temporary password was sent to ${payload.email}.`,
+        "success"
+      );
     } catch (error) {
       console.error("Error saving student:", error);
+      showToast(
+        error instanceof Error ? error.message : "Failed to create student.",
+        "error"
+      );
     }
   };
 
@@ -574,6 +607,13 @@ Class Code: ${
         visible={isModifyChatbotModalVisible}
         onClose={() => setIsModifyChatbotModalVisible(false)}
         isMobile={isMobile}
+      />
+
+      <Toast
+        visible={toast.visible}
+        message={toast.message}
+        type={toast.type}
+        onHide={hideToast}
       />
     </View>
   );

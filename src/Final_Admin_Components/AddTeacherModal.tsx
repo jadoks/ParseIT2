@@ -46,6 +46,53 @@ function parseDateString(value?: string | null): Date | null {
   return new Date(year, month - 1, day);
 }
 
+// Teachers must be adults, and the date of birth can never be today
+// or in the future, nor implausibly far in the past.
+const MIN_TEACHER_AGE = 18;
+const MAX_AGE = 100;
+
+function startOfToday(): Date {
+  const now = new Date();
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate());
+}
+
+function latestBirthdayFor(minAge: number): Date {
+  const today = startOfToday();
+  return new Date(today.getFullYear() - minAge, today.getMonth(), today.getDate());
+}
+
+function calculateAge(birthDate: Date, on: Date = startOfToday()): number {
+  let age = on.getFullYear() - birthDate.getFullYear();
+  const monthDiff = on.getMonth() - birthDate.getMonth();
+  if (monthDiff < 0 || (monthDiff === 0 && on.getDate() < birthDate.getDate())) {
+    age -= 1;
+  }
+  return age;
+}
+
+/** Returns a user-facing error message, or null if the birthday is valid. */
+function getBirthdayError(date: Date | null): string | null {
+  if (!date) {
+    return "Please select a birthday.";
+  }
+
+  if (date.getTime() >= startOfToday().getTime()) {
+    return "Birthday cannot be today or a future date.";
+  }
+
+  const age = calculateAge(date);
+
+  if (age < MIN_TEACHER_AGE) {
+    return `Teacher must be at least ${MIN_TEACHER_AGE} years old.`;
+  }
+
+  if (age > MAX_AGE) {
+    return "Please enter a realistic date of birth.";
+  }
+
+  return null;
+}
+
 export type AddTeacherModalInitialData = {
   id?: string;
   teacherId?: string;
@@ -101,10 +148,13 @@ function BirthdayField({
   value,
   onChange,
   isMobile,
+  maxDate,
 }: {
   value: Date | null;
   onChange: (date: Date) => void;
   isMobile: boolean;
+  /** Latest selectable date (e.g. the date that satisfies the minimum age). */
+  maxDate: Date;
 }) {
   const [showNativePicker, setShowNativePicker] = useState(false);
   const [showWebModal, setShowWebModal] = useState(false);
@@ -114,7 +164,7 @@ function BirthdayField({
 
   const years = Array.from(
     { length: 100 },
-    (_, i) => new Date().getFullYear() - i
+    (_, i) => maxDate.getFullYear() - i
   );
 
   const months = [
@@ -165,7 +215,10 @@ function BirthdayField({
   };
 
   const confirmWebBirthday = () => {
-    onChange(new Date(tempYear, tempMonth, tempDay));
+    const selected = new Date(tempYear, tempMonth, tempDay);
+    // Guard against edge cases (e.g. picking today's date/month/year before
+    // the year list re-renders) by clamping to the latest allowed date.
+    onChange(selected > maxDate ? maxDate : selected);
     setShowWebModal(false);
   };
 
@@ -194,7 +247,7 @@ function BirthdayField({
             value={value || new Date(2000, 0, 1)}
             mode="date"
             display={Platform.OS === "ios" ? "spinner" : "default"}
-            maximumDate={new Date()}
+            maximumDate={maxDate}
             onChange={handleNativeChange}
           />
 
@@ -487,6 +540,12 @@ export default function AddTeacherModal({
   };
 
   const handleSubmit = async () => {
+    const birthdayError = getBirthdayError(birthday);
+    if (birthdayError) {
+      showToast(birthdayError, "error");
+      return;
+    }
+
     if (!isValidGmail(email)) {
       showToast("Please enter a valid email address ending in @gmail.com.", "error");
       return;
@@ -620,6 +679,7 @@ export default function AddTeacherModal({
                   <BirthdayField
                     value={birthday}
                     onChange={setBirthday}
+                    maxDate={latestBirthdayFor(MIN_TEACHER_AGE)}
                     isMobile={isMobile}
                   />
                 </View>
