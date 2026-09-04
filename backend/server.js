@@ -16770,6 +16770,17 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
       }
 
       const moduleId = moduleSnap.docs[0].id;
+      const moduleData = moduleSnap.docs[0].data();
+
+      // Manually-created modules aren't tied to the syllabus, even if they
+      // happen to share a module number with a real syllabus module. Block
+      // this server-side too so a manual module can never be matched against
+      // (and pull subtopics from) an unrelated syllabus module.
+      if (moduleData.type === "manual") {
+        return res.status(400).json({
+          error: "This module was created manually and has no syllabus subtopics to generate lessons from. Use \"Add Lesson (Manual)\" instead.",
+        });
+      }
 
       // ✅ STEP 1: Fetch TRUE current max lesson number from DB
       let nextLessonNumber = 1;

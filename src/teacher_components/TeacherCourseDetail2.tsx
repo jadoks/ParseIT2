@@ -1271,6 +1271,17 @@ useEffect(() => {
   };
 
   const handleOpenNextLessonModal = (savedModule: any) => {
+    // Manually-created modules (type: "manual") have no relationship to the
+    // uploaded syllabus, even if they happen to share a module number with a
+    // syllabus module. Never let them pick up that syllabus module's
+    // subtopics — only AI-generated modules (type: "ai_generated") are
+    // eligible for "Generate Next Lesson" subtopic suggestions.
+    if (savedModule.type === 'manual') {
+      setTargetModuleForGen({ ...savedModule, topics: [] });
+      setSelectedTopicsForGen([]);
+      setShowNextLessonModal(true);
+      return;
+    }
     // Match primarily by moduleNumber: it's stable across syllabus
     // re-uploads/re-parses, whereas the AI-generated title text can shift
     // slightly (casing, wording) each time the syllabus is re-parsed, which
@@ -4943,13 +4954,15 @@ CLASS MODAL
                             <Ionicons name="add-circle-outline" size={16} color="#1976D2" />
                             <Text style={{ color: '#1976D2', fontWeight: '700', fontSize: 12 }}>Add Lesson (Manual)</Text>
                           </TouchableOpacity>
-                          <TouchableOpacity
-                            onPress={() => handleOpenNextLessonModal(mod)}
-                            style={{ marginTop: 8, padding: 16, backgroundColor: '#E3F2FD', borderRadius: 12, borderWidth: 1, borderColor: '#1976D2', alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8 }}
-                          >
-                            <Ionicons name="sparkles-outline" size={24} color="#1976D2" />
-                            <Text style={{ color: '#1976D2', fontWeight: '800', fontSize: 16 }}>Generate Next Lesson</Text>
-                          </TouchableOpacity>
+                          {mod.type !== 'manual' && (
+                            <TouchableOpacity
+                              onPress={() => handleOpenNextLessonModal(mod)}
+                              style={{ marginTop: 8, padding: 16, backgroundColor: '#E3F2FD', borderRadius: 12, borderWidth: 1, borderColor: '#1976D2', alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8 }}
+                            >
+                              <Ionicons name="sparkles-outline" size={24} color="#1976D2" />
+                              <Text style={{ color: '#1976D2', fontWeight: '800', fontSize: 16 }}>Generate Next Lesson</Text>
+                            </TouchableOpacity>
+                          )}
                         </View>
                       )}
                     </View>
