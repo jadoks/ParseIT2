@@ -16796,15 +16796,18 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
       let targetSyllabusModule = null;
       if (!syllabusSnap.empty) {
         const modules = syllabusSnap.docs[0].data().structure?.modules || [];
-        // Require the title to match too, not just the number — matching by
-        // number alone let a manually-created module (which coincidentally
-        // reused a syllabus module's number) generate lessons from that
-        // unrelated syllabus module's subtopics.
+        // Match by TITLE ALONE. moduleNumber is just a sequential slot
+        // position in courseModules, so once a teacher manually creates a
+        // module in between two AI-generated ones, a later syllabus module's
+        // number stops lining up with the saved module's number even though
+        // the title (copied verbatim from the syllabus at creation time)
+        // still matches perfectly. Requiring the number to match too caused
+        // that correctly-generated module to be rejected here as
+        // "unmatched", so no subtopics could be found for it.
         targetSyllabusModule = modules.find(
           m =>
-            m.moduleNumber === moduleNumber &&
             String(m.moduleTitle || "").trim().toLowerCase() ===
-              String(moduleData.title || "").trim().toLowerCase()
+            String(moduleData.title || "").trim().toLowerCase()
         );
       }
 

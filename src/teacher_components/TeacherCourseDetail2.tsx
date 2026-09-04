@@ -1275,19 +1275,22 @@ useEffect(() => {
   // on the stored `type` field for this: every module — whether created via
   // "Generate Module" (syllabus-sourced) or "Create Module Manually"
   // (teacher-typed) — goes through the same backend endpoint, which always
-  // stamps type: "manual". So instead we require BOTH the module number AND
-  // the title to match a real syllabus module. Number alone isn't enough —
-  // that's what previously let a manually-created "Module 3" pick up an
-  // unrelated syllabus Module 3's subtopics just because the numbers lined
-  // up; title alone isn't enough either, since two unrelated modules could
-  // share a generic title.
+  // stamps type: "manual". So instead we match on TITLE ALONE: a saved
+  // module's title is copied verbatim from the syllabus module's title at
+  // creation time, so a 100% (case-insensitive, trimmed) title match reliably
+  // identifies the source syllabus module. We deliberately do NOT also
+  // require moduleNumber to match — moduleNumber is just a sequential slot
+  // position, and once a teacher manually creates a module in between two
+  // AI-generated ones, a later syllabus module's number stops lining up with
+  // the saved module's number even though the title still matches perfectly.
+  // Requiring both caused correctly-generated modules to be treated as
+  // "unmatched" and lose access to their syllabus subtopics.
   const findMatchingSyllabusModule = (savedModule: any) => {
-    if (!currentSyllabus?.structure?.modules || savedModule?.moduleNumber == null) return null;
+    if (!currentSyllabus?.structure?.modules || !savedModule?.title) return null;
+    const savedTitle = String(savedModule.title).trim().toLowerCase();
     return currentSyllabus.structure.modules.find(
       (m: any) =>
-        Number(m.moduleNumber) === Number(savedModule.moduleNumber) &&
-        String(m.moduleTitle || m.title || '').trim().toLowerCase() ===
-          String(savedModule.title || '').trim().toLowerCase()
+        String(m.moduleTitle || m.title || '').trim().toLowerCase() === savedTitle
     ) || null;
   };
 
