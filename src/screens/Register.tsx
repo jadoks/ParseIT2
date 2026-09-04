@@ -49,6 +49,55 @@ function formatDate(date: Date) {
   return `${month}/${day}/${year}`;
 }
 
+// Birthday can never be today or in the future, nor implausibly far in the
+// past. The minimum age depends on which role is selected (student vs
+// teacher), so getBirthdayError takes it as a parameter.
+const MIN_STUDENT_AGE = 3;
+const MIN_TEACHER_AGE = 18;
+const MAX_AGE = 100;
+
+function startOfToday(): Date {
+  const now = new Date();
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate());
+}
+
+function latestBirthdayFor(minAge: number): Date {
+  const today = startOfToday();
+  return new Date(today.getFullYear() - minAge, today.getMonth(), today.getDate());
+}
+
+function calculateAge(birthDate: Date, on: Date = startOfToday()): number {
+  let age = on.getFullYear() - birthDate.getFullYear();
+  const monthDiff = on.getMonth() - birthDate.getMonth();
+  if (monthDiff < 0 || (monthDiff === 0 && on.getDate() < birthDate.getDate())) {
+    age -= 1;
+  }
+  return age;
+}
+
+/** Returns a user-facing error message, or null if the birthday is valid. */
+function getBirthdayError(date: Date | null, minAge: number): string | null {
+  if (!date) {
+    return 'Please select a birthday.';
+  }
+
+  if (date.getTime() >= startOfToday().getTime()) {
+    return 'Birthday cannot be today or a future date.';
+  }
+
+  const age = calculateAge(date);
+
+  if (age < minAge) {
+    return `You must be at least ${minAge} years old to register.`;
+  }
+
+  if (age > MAX_AGE) {
+    return 'Please enter a realistic date of birth.';
+  }
+
+  return null;
+}
+
 function getApiBaseUrl() {
   // Prefer the deployed backend URL on every platform — including native /
   // Expo Go — since EXPO_PUBLIC_ vars are inlined for native builds too, not
@@ -95,10 +144,13 @@ function BirthdayField({
   value,
   onChange,
   isMobile,
+  maxDate,
 }: {
   value: Date | null;
   onChange: (date: Date) => void;
   isMobile: boolean;
+  /** Latest selectable date (e.g. the date that satisfies the minimum age). */
+  maxDate: Date;
 }) {
   const [showNativePicker, setShowNativePicker] = useState(false);
   const [showWebModal, setShowWebModal] = useState(false);
@@ -108,7 +160,7 @@ function BirthdayField({
 
   const years = Array.from(
     { length: 100 },
-    (_, i) => new Date().getFullYear() - i
+    (_, i) => maxDate.getFullYear() - i
   );
 
   const months = [
@@ -148,7 +200,10 @@ function BirthdayField({
   };
 
   const confirmWebBirthday = () => {
-    onChange(new Date(tempYear, tempMonth, tempDay));
+    const selected = new Date(tempYear, tempMonth, tempDay);
+    // Guard against edge cases (e.g. picking today's date/month/year before
+    // the year list re-renders) by clamping to the latest allowed date.
+    onChange(selected > maxDate ? maxDate : selected);
     setShowWebModal(false);
   };
 
@@ -178,7 +233,7 @@ function BirthdayField({
             value={value || new Date(2000, 0, 1)}
             mode="date"
             display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-            maximumDate={new Date()}
+            maximumDate={maxDate}
             onChange={handleNativeChange}
           />
 
@@ -1037,6 +1092,13 @@ export default function Register({
       return;
     }
 
+    const minBirthdayAge = userType === 'teacher' ? MIN_TEACHER_AGE : MIN_STUDENT_AGE;
+    const birthdayError = getBirthdayError(birthday, minBirthdayAge);
+    if (birthdayError) {
+      showFeedback('error', 'Invalid Birthday', birthdayError);
+      return;
+    }
+
     if (!isValidEmail(email)) {
       showFeedback('error', 'Invalid Email', 'Please enter a valid @gmail.com email address.');
       return;
@@ -1103,6 +1165,11 @@ export default function Register({
 
   // isMobile used by BirthdayField to stack columns inside the picker modal
   const isMobile = width < 600;
+
+  // The minimum age (and therefore the latest selectable birthday) depends
+  // on which role is currently selected.
+  const minBirthdayAge = userType === 'teacher' ? MIN_TEACHER_AGE : MIN_STUDENT_AGE;
+  const birthdayMaxDate = latestBirthdayFor(minBirthdayAge);
 
   // ── Shared form fields (used inside either layout) ─────────────────────────
   const RoleSelector = (
@@ -1231,7 +1298,7 @@ export default function Register({
 
       <View style={styles.formRow}>
         <View style={[styles.formColumn, { flex: 2 }]}>
-          <BirthdayField value={birthday} onChange={setBirthday} isMobile={isMobile} />
+          <BirthdayField value={birthday} onChange={setBirthday} isMobile={isMobile} maxDate={birthdayMaxDate} />
         </View>
       </View>
 
@@ -1358,7 +1425,7 @@ export default function Register({
       </View>
 
       <View style={styles.formGroup}>
-        <BirthdayField value={birthday} onChange={setBirthday} isMobile={isMobile} />
+        <BirthdayField value={birthday} onChange={setBirthday} isMobile={isMobile} maxDate={birthdayMaxDate} />
       </View>
 
       <View style={styles.formGroup}>

@@ -1678,7 +1678,17 @@ useEffect(() => {
         }),
       });
       const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'Upload failed.');
+      if (!response.ok) {
+        if (data.code === 'INVALID_SYLLABUS') {
+          toast.show(
+            'error',
+            'Invalid Syllabus',
+            data.error || 'This file doesn\'t look like a valid syllabus — no "Week No." or weekly schedule was found. Please upload the actual course syllabus.'
+          );
+          return;
+        }
+        throw new Error(data.error || 'Upload failed.');
+      }
       setCurrentSyllabus(data.syllabus);
       const wasEdit = isEditingSyllabus;
       if (data.syllabus?.structure && data.syllabus.structure.modules) {

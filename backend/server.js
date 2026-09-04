@@ -16192,6 +16192,10 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
         // Pass the CLEAN PDF buffer to Gemini
         parsedData = await extractSyllabusStructure(processBuffer, processMimeType, fileName);
       } catch (parseError) {
+        if (parseError instanceof InvalidSyllabusError) {
+          console.warn("Rejected invalid syllabus:", parseError.message);
+          return res.status(400).json({ error: parseError.message, code: parseError.code });
+        }
         console.warn("Auto-parse failed:", parseError.message);
         // If parsing fails, it might be because the PDF is still unreadable.
         // You might want to return an error here instead of saving incomplete data.
@@ -16330,8 +16334,46 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
       const bucket = admin.storage().bucket();
       const cleanedBase64 = fileBase64.includes(",") ? fileBase64.split(",")[1] : fileBase64;
       const buffer = Buffer.from(cleanedBase64, 'base64');
-      
-      // 1. Upload Original File
+
+      let processBuffer = buffer;
+      let processMimeType = fileType;
+
+      // 1. Convert in-memory if needed (DOCX/PPTX/etc -> PDF). Nothing is written to
+      //    storage yet — we don't want to persist anything until we know the file is
+      //    actually a valid syllabus.
+      if (needsConversion(fileType, fileName)) {
+        console.log(`Converting ${fileName} to PDF via CloudConvert...`);
+        try {
+          processBuffer = await convertPPTXtoPDFViaCloudConverter(buffer, fileName);
+          processMimeType = "application/pdf";
+        } catch (convertError) {
+          console.warn("Conversion failed, falling back to original file:", convertError.message);
+          // Fallback: Use original buffer if conversion fails
+        }
+      }
+
+      // 2. Parse & validate structure using Gemini BEFORE saving anything. This is
+      //    what prevents a random/non-syllabus file (one with no "Week No.") from
+      //    ever being uploaded and saved.
+      console.log("Parsing syllabus structure with Gemini...");
+      let parsedData = {};
+      try {
+        parsedData = await extractSyllabusStructure(processBuffer, processMimeType, fileName);
+      } catch (parseError) {
+        if (parseError instanceof InvalidSyllabusError) {
+          console.warn("Rejected invalid syllabus upload:", parseError.message);
+          return res.status(400).json({
+            error: parseError.message,
+            code: parseError.code,
+          });
+        }
+        console.warn("Auto-parse failed:", parseError.message);
+        // Non-validation failures (e.g. unreadable scans) still allow the teacher to
+        // save the file and fill in the structure manually.
+      }
+
+      // 3. Now that the file has passed validation (or failed only in a recoverable
+      //    way), persist the original file to storage.
       const originalPath = `syllabi/${classId}/original/${Date.now()}_${fileName}`;
       const originalFile = bucket.file(originalPath);
       await originalFile.save(buffer, {
@@ -16339,41 +16381,23 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
         public: false,
       });
 
-      let processBuffer = buffer;
-      let processMimeType = fileType;
+      // 4. Save the converted PDF too, if a conversion actually happened.
       let convertedPath = null;
-
-      // 2. Check if Conversion is Needed
-      if (needsConversion(fileType, fileName)) {
-        console.log(`Converting ${fileName} to PDF via CloudConvert...`);
+      if (processMimeType === "application/pdf" && fileType !== "application/pdf" && !fileName.toLowerCase().endsWith(".pdf")) {
         try {
-          processBuffer = await convertPPTXtoPDFViaCloudConverter(buffer, fileName);
-          processMimeType = "application/pdf";
-          
-          // Optional: Save converted PDF to storage if you want to keep it
           convertedPath = `syllabi/${classId}/converted/${Date.now()}_${fileName.replace(/\.\w+$/, '.pdf')}`;
           const convertedFile = bucket.file(convertedPath);
           await convertedFile.save(processBuffer, {
             metadata: { contentType: "application/pdf" },
             public: false,
           });
-        } catch (convertError) {
-          console.warn("Conversion failed, falling back to original file:", convertError.message);
-          // Fallback: Use original buffer if conversion fails
+        } catch (saveConvertedError) {
+          console.warn("Failed to save converted PDF, continuing with original only:", saveConvertedError.message);
+          convertedPath = null;
         }
       }
 
-      // 3. Parse Structure using Gemini
-      console.log("Parsing syllabus structure with Gemini...");
-      let parsedData = {};
-      try {
-        parsedData = await extractSyllabusStructure(processBuffer, processMimeType, fileName);
-      } catch (parseError) {
-        console.warn("Auto-parse failed:", parseError.message);
-        // Continue saving metadata even if parsing fails
-      }
-
-      // 4. Save Metadata and Structure to Firestore
+      // 5. Save Metadata and Structure to Firestore
       const syllabusRef = await db.collection("courseSyllabi").add({
         classId,
         fileName,
@@ -16581,6 +16605,24 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
   }
 
 
+  // Thrown when Gemini determines the uploaded file is not a genuine syllabus
+  // (specifically: it has no "Week No." / weekly schedule anywhere in it).
+  // Kept distinct from generic parse failures (e.g. unreadable scans) so callers
+  // can reject the upload outright instead of silently saving a bad file.
+  class InvalidSyllabusError extends Error {
+    constructor(message) {
+      super(message);
+      this.name = "InvalidSyllabusError";
+      this.code = "INVALID_SYLLABUS";
+    }
+  }
+
+  // A genuine academic syllabus always has some form of week numbering next to
+  // its topics/modules (e.g. "Week 1", "Week No. 3", "Weeks 1-2", "Wk 4").
+  // Used as a programmatic backstop in case the model's own isValidSyllabus
+  // flag is wrong or missing.
+  const WEEK_NUMBER_PATTERN = /\bwk\.?\s*no\.?|\bweek\s*no\.?|\bweeks?\b/i;
+
   // REPLACE the existing extractSyllabusStructure function with this:
   async function extractSyllabusStructure(buffer, mimeType, fileName) {
     if (!geminiGameAI) throw new Error("GEMINI_API_KEY is missing.");
@@ -16597,9 +16639,19 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
     You are an expert Academic Syllabus Parser.
     Your task is to extract ONLY the structural hierarchy from the uploaded syllabus file.
 
-    CRITICAL RULES FOR MAPPING:
+    VALIDATION RULE (apply this FIRST, before extracting anything else):
+    A genuine academic syllabus always lists a "Week No." / weekly schedule next to its
+    topics or modules (e.g. "Week 1", "Week No. 3", "Weeks 1-2", "Wk 4", "Week 1-2: ...").
+    - Scan the ENTIRE document for any such week numbering.
+    - If you cannot find ANY explicit week numbering anywhere in the document, this is NOT
+      a valid syllabus. Set "isValidSyllabus": false, fill "validationMessage" with a short
+      reason (e.g. "No 'Week No.' or weekly schedule found in the document."), and return
+      "structure": { "modules": [] }. Do NOT invent week numbers that are not in the file.
+    - Only set "isValidSyllabus": true if you actually found week numbering in the source text.
+
+    CRITICAL RULES FOR MAPPING (only apply once the file passes the validation rule above):
     1. "moduleTitle": Must be the MAIN TOPIC or SUBJECT NAME for that period (e.g., "Introduction to Networking", "Physical Layer"). DO NOT use "Week 1" or "Week 1-2" as the title.
-    2. "weeklySchedule": Must be the exact time frame (e.g., "Week 1", "Weeks 1-2", "Aug 20-24").
+    2. "weeklySchedule": Must be the exact time frame (e.g., "Week 1", "Weeks 1-2", "Aug 20-24"), and MUST include the week number exactly as written in the file.
     3. "topics": Extract the specific sub-topics listed under that module.
 
     IGNORE: Discussions, Activities, Assessments, Quizzes, Reflections, Summaries, Faculty Info, Policies.
@@ -16607,6 +16659,8 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
 
     Return ONLY valid JSON in this exact format:
     {
+    "isValidSyllabus": true,
+    "validationMessage": "",
     "courseInformation": {
     "title": "String",
     "code": "String",
@@ -16619,7 +16673,7 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
     {
     "moduleNumber": 1,
     "moduleTitle": "The Main Topic Name (NOT the Week Number)", 
-    "weeklySchedule": "Exact Week Range from File",
+    "weeklySchedule": "Exact Week Range from File (must include the week number)",
     "topics": [
     {
     "title": "Subtopic 1",
@@ -16670,11 +16724,30 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
     
     const rawText = result.response.text().replace(/^```json\s*/i, "").replace(/```$/i, "").trim();
     const parsed = JSON.parse(rawText);
-    
-    if (!parsed.structure || !parsed.structure.modules) {
+
+    // Gemini explicitly flagged this file as not a real syllabus (no Week No. found).
+    if (parsed.isValidSyllabus === false) {
+      throw new InvalidSyllabusError(
+        parsed.validationMessage ||
+        "This file doesn't look like a valid syllabus — no 'Week No.' or weekly schedule was found."
+      );
+    }
+
+    if (!parsed.structure || !parsed.structure.modules || parsed.structure.modules.length === 0) {
       throw new Error("AI failed to extract valid module structure from syllabus.");
     }
-    
+
+    // Programmatic backstop: even if Gemini said isValidSyllabus: true, make sure at
+    // least one module actually carries a "Week No." style label before trusting it.
+    const hasWeekNumbering = parsed.structure.modules.some(
+      (m) => typeof m?.weeklySchedule === "string" && WEEK_NUMBER_PATTERN.test(m.weeklySchedule)
+    );
+    if (!hasWeekNumbering) {
+      throw new InvalidSyllabusError(
+        "This file doesn't look like a valid syllabus — no 'Week No.' or weekly schedule was found."
+      );
+    }
+
     return parsed;
   }
 
