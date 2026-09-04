@@ -2538,31 +2538,67 @@ useEffect(() => {
 
   const validateAssignmentForm = () => {
     const nextErrors: FormErrors = {};
-    if (!formTitle.trim()) nextErrors.title = 'Header is required.';
-    if (!formDesc.trim()) nextErrors.instruction = 'Instruction is required.';
+
+    const trimmedTitle = formTitle.trim();
+    if (!trimmedTitle) nextErrors.title = 'Header is required.';
+    else if (trimmedTitle.length > 150)
+      nextErrors.title = 'Header must be 150 characters or fewer.';
+
+    const trimmedDesc = formDesc.trim();
+    if (!trimmedDesc) nextErrors.instruction = 'Instruction is required.';
+    else if (trimmedDesc.length > 5000)
+      nextErrors.instruction = 'Instruction must be 5000 characters or fewer.';
+
     if (assignmentType === 'game_based') {
       if (generatedQuestions.length === 0)
         nextErrors.totalScore = 'Please generate at least one question for the game.';
     } else {
-      if (!formPoints.trim()) nextErrors.totalScore = 'Total score is required.';
+      const trimmedPoints = formPoints.trim();
+      const numericPoints = Number(trimmedPoints);
+      if (!trimmedPoints) nextErrors.totalScore = 'Total score is required.';
+      else if (!/^\d+(\.\d+)?$/.test(trimmedPoints) || Number.isNaN(numericPoints))
+        nextErrors.totalScore = 'Total score must be a valid number.';
+      else if (numericPoints <= 0) nextErrors.totalScore = 'Total score must be greater than 0.';
+      else if (numericPoints > 1000) nextErrors.totalScore = 'Total score cannot exceed 1000.';
     }
+
     if (!formDue.trim()) nextErrors.dueDate = 'Due date and time is required.';
+    else if (parseDueDateTime(formDue).getTime() < startOfToday().getTime())
+      nextErrors.dueDate = 'Past dates are not allowed.';
+
     if (selectedMaterialIds.length === 0)
       nextErrors.materials = 'Select at least one related material.';
+
     if (assignmentType === 'game_based') {
       if (!gameType) nextErrors.gameType = 'Please select a game type.';
       if (availableCourses.length > 1 && !selectedClassId)
         nextErrors.classId = 'Please select a class.';
+
       if (!numberOfAttempts) nextErrors.attempts = 'Please select number of attempts.';
-      else if (
-        numberOfAttempts === 'custom' &&
-        (!customAttempts.trim() || Number(customAttempts) < 1)
-      )
-        nextErrors.customAttempts = 'Custom attempts must be at least 1.';
+      else if (numberOfAttempts === 'custom') {
+        const trimmedAttempts = customAttempts.trim();
+        const numericAttempts = Number(trimmedAttempts);
+        if (!trimmedAttempts || !/^\d+$/.test(trimmedAttempts) || Number.isNaN(numericAttempts))
+          nextErrors.customAttempts = 'Enter a whole number of attempts.';
+        else if (numericAttempts < 1)
+          nextErrors.customAttempts = 'Custom attempts must be at least 1.';
+        else if (numericAttempts > 50)
+          nextErrors.customAttempts = 'Custom attempts cannot exceed 50.';
+      }
+
       if (!timeLimit) nextErrors.timeLimit = 'Please select a time limit.';
-      if (timeLimit === 'custom' && !customTimeLimit.trim())
-        nextErrors.customTimeLimit = 'Please enter custom time limit.';
+      else if (timeLimit === 'custom') {
+        const trimmedTimeLimit = customTimeLimit.trim();
+        const numericTimeLimit = Number(trimmedTimeLimit);
+        if (!trimmedTimeLimit || !/^\d+$/.test(trimmedTimeLimit) || Number.isNaN(numericTimeLimit))
+          nextErrors.customTimeLimit = 'Enter a whole number of minutes.';
+        else if (numericTimeLimit < 1)
+          nextErrors.customTimeLimit = 'Time limit must be at least 1 minute.';
+        else if (numericTimeLimit > 480)
+          nextErrors.customTimeLimit = 'Time limit cannot exceed 480 minutes.';
+      }
     }
+
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length > 0) {
       toast.show('error', 'Required', 'Please complete the highlighted assignment fields.');
