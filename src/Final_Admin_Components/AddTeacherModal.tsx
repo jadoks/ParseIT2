@@ -1047,4 +1047,4 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     marginLeft: 8,
   },
-});
+}); 
