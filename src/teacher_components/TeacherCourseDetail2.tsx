@@ -1785,19 +1785,22 @@ useEffect(() => {
     setIsGeneratingStructure(true);
     setGeneratedStructure(null);
     try {
-      const createdModuleNumbers = new Set(
-        modules.map((m: any) => Number(m.moduleNumber))
-      );
       const createdModuleTitles = new Set(
         modules.map((m: any) => String(m.title).trim().toLowerCase())
       );
-      // A syllabus module counts as "already created" if either its number
-      // or its title matches an existing courseModule. Number is checked
-      // first since it stays stable across syllabus re-uploads/re-parses,
-      // while the AI-generated title text can shift slightly each time.
+      // A syllabus module counts as "already created" ONLY if its title has
+      // a 100% (case-insensitive, trimmed) match with a module title already
+      // stored in Firebase. We intentionally do NOT compare moduleNumber
+      // here: numbers are just sequential slot positions, so once a teacher
+      // manually inserts a module in between AI-generated ones, a later
+      // syllabus module's number can collide with an unrelated created
+      // module's number. Matching on number in that case falsely marks the
+      // syllabus module as "already created" and causes the generator to
+      // skip it. Title is the reliable source of truth since it's copied
+      // verbatim from the syllabus module into the created module's title
+      // at creation time (see `title: moduleTitle` below).
       const missingSyllabusModules = currentSyllabus.structure?.modules?.filter(
         (sylMod: any) =>
-          !createdModuleNumbers.has(Number(sylMod.moduleNumber)) &&
           !createdModuleTitles.has(String(sylMod.moduleTitle).trim().toLowerCase())
       ) || [];
       let targetSyllabusModule: any = null;
