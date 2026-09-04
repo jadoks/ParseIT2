@@ -22,6 +22,14 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+// ✅ NEW: same pattern as CourseDetail.tsx — try to load react-native-webview
+// so document files can be rendered inline on native (Android/iOS) instead
+// of just showing a "Preview not available on this device" message.
+let WebView: any = null;
+try {
+  WebView = require('react-native-webview').WebView;
+} catch (_) {}
+
 /* =========================
    TYPES
 ========================= */
@@ -468,7 +476,38 @@ function InlineMaterialViewer({
     );
   }
 
-  // Fallback for native document preview (since WebView might not be installed or configured for all docs)
+  // ✅ UPDATED: Native document preview — render inline with WebView (same
+  // as CourseDetail's InlineMaterialViewer) instead of showing a
+  // "Preview not available" message. Only falls back to the old
+  // download/open-externally UI if react-native-webview isn't installed.
+  if (WebView) {
+    return (
+      <View style={{ flex: 1, width: '100%', height }}>
+        <RefreshBar />
+        <WebView
+          key={resolvedUrl}
+          source={{ uri: displayUrl }}
+          style={{ flex: 1, width: '100%', height: canRefresh ? height - 34 : height }}
+          startInLoadingState
+          renderLoading={() => (
+            <View style={styles.previewLoadingOverlay}>
+              <ActivityIndicator size="large" color="#D32F2F" />
+              <Text style={styles.previewLoadingText}>Loading document...</Text>
+            </View>
+          )}
+          javaScriptEnabled
+          domStorageEnabled
+          allowsFullscreenVideo={true}
+          mediaPlaybackRequiresUserAction={false}
+          originWhitelist={['*']}
+          mixedContentMode="always"
+        />
+      </View>
+    );
+  }
+
+  // Fallback for native document preview when react-native-webview is not
+  // installed/available.
   return (
     <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 20 }}>
       <MaterialCommunityIcons name="file-document-outline" size={48} color="#CCC" />
@@ -2602,6 +2641,20 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#D32F2F',
   },
+
+  // ✅ NEW: loading overlay shown by WebView while a native document preview
+  // is first loading (mirrors CourseDetail's inlineViewerStyles.loadingOverlay).
+  previewLoadingOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FFF',
+  },
+  previewLoadingText: { marginTop: 12, color: '#666', fontSize: 14 },
 });
 
 export default Assignments;
