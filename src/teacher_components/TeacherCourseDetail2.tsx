@@ -4979,7 +4979,15 @@ CLASS MODAL
                   </TouchableOpacity>
                 )}
                 <TouchableOpacity
-                  onPress={() => setShowManualModuleModal(true)}
+                  onPress={() => {
+                    const maxExistingNum = modules.length > 0
+                      ? Math.max(...modules.map((m: any) => Number(m.moduleNumber) || 0))
+                      : 0;
+                    const nextNum = maxExistingNum + 1;
+                    setNewModuleNum(String(nextNum));
+                    setNewModuleTitle('');
+                    setShowManualModuleModal(true);
+                  }}
                   style={{ marginTop: 16, padding: 16, backgroundColor: '#FFF', borderRadius: 12, borderWidth: 1, borderColor: '#D32F2F', alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8 }}
                 >
                   <Ionicons name="create-outline" size={24} color="#D32F2F" />
@@ -6165,16 +6173,9 @@ MANUAL MODULE CREATION MODAL
           <View style={[styles.modalCardElevated, { width: isMobile ? Math.min(width - 28, 360) : 500 }]}>
             <View style={styles.createHeaderRow}>
               <Text style={styles.createTitle}>Create Module Manually</Text>
-              <TouchableOpacity onPress={() => {
-                const maxExistingNum = modules.length > 0
-                  ? Math.max(...modules.map((m: any) => Number(m.moduleNumber) || 0))
-                  : 0;
-                const nextNum = maxExistingNum + 1;
-                setNewModuleNum(String(nextNum));
-                setShowManualModuleModal(true);
-              }}><TouchableOpacity onPress={() => setShowManualModuleModal(false)}>
+              <TouchableOpacity onPress={() => setShowManualModuleModal(false)}>
                 <Ionicons name="close" size={24} color="#111" />
-              </TouchableOpacity></TouchableOpacity>
+              </TouchableOpacity>
             </View>
             <ScrollView contentContainerStyle={{ paddingBottom: 20 }}>
               <Text style={styles.sectionLabel}>Module Number</Text>
