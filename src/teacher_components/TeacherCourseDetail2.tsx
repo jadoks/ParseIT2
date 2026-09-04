@@ -828,6 +828,18 @@ const TeacherCourseDetail2 = ({
   const [targetModuleForGen, setTargetModuleForGen] = useState<any>(null);
 
   const [activeTab, setActiveTab] = useState<"materials" | "assignments" | "modules">('modules');
+  // Tabs are mounted lazily (only once first visited) and then kept alive and
+  // simply hidden/shown via `display` instead of being unmounted on every
+  // switch. Swapping between conditional JSX trees (as this screen used to
+  // do) forces React to tear down and rebuild the whole subtree — including
+  // re-laying-out every nested ScrollView and re-decoding any images — which
+  // is what made tapping "Course Resources" / "Assignments" feel janky even
+  // though the content itself was correct. Keeping the mounted tabs alive
+  // avoids that remount cost on every tap.
+  const [mountedTabs, setMountedTabs] = useState<Record<string, boolean>>({ modules: true });
+  useEffect(() => {
+    setMountedTabs((prev) => (prev[activeTab] ? prev : { ...prev, [activeTab]: true }));
+  }, [activeTab]);
   const [showSubmissions, setShowSubmissions] = useState(false);
   
   const cleanModuleTitle = (title: string, moduleNumber: number) => {
@@ -4824,22 +4836,33 @@ CLASS MODAL
             </Text>
           </TouchableOpacity>
         </View>
-        {activeTab === 'materials' ? (
-          <TeacherMaterialSection
-            materials={materials}
-            onCreate={openCreateModal}
-            onOpenMaterial={openMaterialViewer}
-          />
-        ) : activeTab === 'assignments' ? (
-          <TeacherAssignmentSection
-            assignments={assignments}
-            onCreate={openCreateModal}
-            onOpenMembers={(id) => {
-              setSelectedId(id);
-              setShowSubmissions(true);
-            }}
-          />
-        ) : (
+        {/* Each tab panel is kept mounted (once first visited) and toggled
+            with `display` rather than being conditionally unmounted, so
+            switching tabs is a cheap style flip instead of a full
+            teardown/rebuild of a large subtree. */}
+        <View style={activeTab === 'materials' ? styles.flexOne : styles.hiddenTabPanel}>
+          {!!mountedTabs.materials && (
+            <TeacherMaterialSection
+              materials={materials}
+              onCreate={openCreateModal}
+              onOpenMaterial={openMaterialViewer}
+            />
+          )}
+        </View>
+        <View style={activeTab === 'assignments' ? styles.flexOne : styles.hiddenTabPanel}>
+          {!!mountedTabs.assignments && (
+            <TeacherAssignmentSection
+              assignments={assignments}
+              onCreate={openCreateModal}
+              onOpenMembers={(id) => {
+                setSelectedId(id);
+                setShowSubmissions(true);
+              }}
+            />
+          )}
+        </View>
+        <View style={activeTab === 'modules' ? styles.flexOne : styles.hiddenTabPanel}>
+          {!!mountedTabs.modules && (
           <View style={{ padding: 16 }}>
             {/* Header/Footer Template controls — one school-wide template shared by every teacher/class */}
             <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginBottom: 12 }}>
@@ -5049,7 +5072,8 @@ CLASS MODAL
               </>
             )}
           </View>
-        )}
+          )}
+        </View>
       </ScrollView>
       {/* ══════════════════════════════════════════════════════════════════════
 FULLSCREEN MATERIAL VIEWER MODAL (Teacher Side — mirrors student)
@@ -7969,6 +7993,11 @@ const styles = StyleSheet.create({
   flexOne: {
   flex: 1,
 },
+  // Used to keep an inactive tab panel mounted (so switching tabs doesn't
+  // pay a full unmount/remount cost) while removing it from layout/paint.
+  hiddenTabPanel: {
+    display: 'none',
+  },
   lessonPreviewPageWrap: {
     width: '100%',
     alignItems: 'center',
