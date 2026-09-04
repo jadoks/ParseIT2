@@ -4189,7 +4189,7 @@ useEffect(() => {
                 <Ionicons name="close" size={24} color="#111" />
               </TouchableOpacity>
             </View>
-            <ScrollView showsVerticalScrollIndicator={true} contentContainerStyle={{ paddingBottom: 50 }}>
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 50 }}>
               {generatedStructure?.modules?.map((mod: any, mi: number) => (
                 <View key={mi} style={{ marginBottom: 24 }}>
                   <View style={{ backgroundColor: '#D32F2F', padding: 16, borderRadius: 12, marginBottom: 16 }}>
@@ -4323,7 +4323,7 @@ useEffect(() => {
                 </TouchableOpacity>
               </View>
               <ScrollView
-                showsVerticalScrollIndicator={true}
+                showsVerticalScrollIndicator={false}
                 contentContainerStyle={styles.modalScrollContent}
               >
                 {renderAssignmentFields()}
@@ -4368,7 +4368,7 @@ DATE TIME MODAL
                 </TouchableOpacity>
               </View>
               <ScrollView
-                showsVerticalScrollIndicator={true}
+                showsVerticalScrollIndicator={false}
                 nestedScrollEnabled
                 contentContainerStyle={styles.dateTimeScrollContent}
                 style={styles.dateTimeScroll}
@@ -4464,7 +4464,7 @@ DATE TIME MODAL
                         <ScrollView
                           style={[styles.timeList, isSmallPhone && styles.timeListCompact]}
                           nestedScrollEnabled
-                          showsVerticalScrollIndicator={true}
+                          showsVerticalScrollIndicator={false}
                         >
                           {Array.from({ length: 24 }, (_, hour) => (
                             <TouchableOpacity
@@ -4494,7 +4494,7 @@ DATE TIME MODAL
                         <ScrollView
                           style={[styles.timeList, isSmallPhone && styles.timeListCompact]}
                           nestedScrollEnabled
-                          showsVerticalScrollIndicator={true}
+                          showsVerticalScrollIndicator={false}
                         >
                           {Array.from({ length: 12 }, (_, i) => i * 5).map((minute) => (
                             <TouchableOpacity
@@ -4575,7 +4575,7 @@ GAME TYPE MODAL
                   <Ionicons name="close" size={24} color="#111" />
                 </TouchableOpacity>
               </View>
-              <ScrollView showsVerticalScrollIndicator={true} nestedScrollEnabled>
+              <ScrollView showsVerticalScrollIndicator={false} nestedScrollEnabled>
                 {gameOptions.map((opt) => (
                   <TouchableOpacity
                     key={opt.value}
@@ -4646,7 +4646,7 @@ CLASS MODAL
                   <Ionicons name="close" size={24} color="#111" />
                 </TouchableOpacity>
               </View>
-              <ScrollView showsVerticalScrollIndicator={true} nestedScrollEnabled>
+              <ScrollView showsVerticalScrollIndicator={false} nestedScrollEnabled>
                 {availableCourses.map((c) => (
                   <TouchableOpacity
                     key={c.id}

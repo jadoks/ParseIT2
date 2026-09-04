@@ -939,30 +939,31 @@ const Profile: React.FC<ProfileProps> = ({
   };
 
   return (
-    <TouchableWithoutFeedback
-      onPress={() => {
-        if (
-          !queryModalVisible &&
-          !answersModalVisible &&
-          !isPickingImage &&
-          !cropModal &&
-          !editPostModalVisible &&
-          !editAnswerModalVisible &&
-          !deletePostConfirmVisible &&
-          !deleteAnswerConfirmVisible &&
-          !postDropdownState &&
-          !answerDropdownState
-        ) {
-          Keyboard.dismiss();
-        }
-      }}
-    >
-      <View style={{ flex: 1 }}>
-        <ScrollView
-          style={[styles.container, { paddingHorizontal: horizontalPadding }]}
-          contentContainerStyle={{ paddingBottom: isSmallPhone ? 28 : 40 }}
-          keyboardShouldPersistTaps="handled"
+    <View style={{ flex: 1 }}>
+      <ScrollView
+        style={[styles.container, { paddingHorizontal: horizontalPadding }]}
+        contentContainerStyle={{ paddingBottom: isSmallPhone ? 28 : 40 }}
+        keyboardShouldPersistTaps="handled"
+      >
+        <TouchableWithoutFeedback
+          onPress={() => {
+            if (
+              !queryModalVisible &&
+              !answersModalVisible &&
+              !isPickingImage &&
+              !cropModal &&
+              !editPostModalVisible &&
+              !editAnswerModalVisible &&
+              !deletePostConfirmVisible &&
+              !deleteAnswerConfirmVisible &&
+              !postDropdownState &&
+              !answerDropdownState
+            ) {
+              Keyboard.dismiss();
+            }
+          }}
         >
+          <View>
           <View style={[styles.bannerContainer, { marginTop: isSmallPhone ? 14 : 20 }]}>
             {renderBannerImage(
               bannerImageSource,
@@ -1161,9 +1162,11 @@ const Profile: React.FC<ProfileProps> = ({
               </TouchableOpacity>
             </View>
           ))}
-        </ScrollView>
-        <Modal
-          visible={editMenuVisible}
+          </View>
+        </TouchableWithoutFeedback>
+      </ScrollView>
+      <Modal
+        visible={editMenuVisible}
           transparent
           animationType="fade"
           onRequestClose={() => setEditMenuVisible(false)}
@@ -1862,7 +1865,6 @@ const Profile: React.FC<ProfileProps> = ({
           </View>
         </Modal>
       </View>
-    </TouchableWithoutFeedback>
   );
 };
 

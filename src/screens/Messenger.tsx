@@ -403,7 +403,6 @@ const Messenger = ({
   } | null>(null);
 
   // 3. STATE TO TRACK FILE INTERACTION (Like hasImageChanged in Profile)
-  const [hasFileInteraction, setHasFileInteraction] = useState(false);
 
   // 👇 NEW STATES FOR MOBILE SEARCH
   const [isMobileSearchExpanded, setIsMobileSearchExpanded] = useState(false);
@@ -997,8 +996,6 @@ const Messenger = ({
 
   const handlePickFile = async () => {
     if (!selected) return;
-    // 4. SET FLAG WHEN PICKING FILE
-    setHasFileInteraction(true);
     try {
       const result = await DocumentPicker.getDocumentAsync({
         type: ['*/*'],
@@ -3045,16 +3042,14 @@ const Messenger = ({
   // Root render
   // ---------------------------------------------------------------------------
   
-  // 5. DETERMINE SAFE AREA EDGES BASED ON INTERACTION
-  // If user has interacted with files, we apply full safe area padding to prevent UI shift
-  const safeAreaEdges = hasFileInteraction 
-    ? (['top', 'right', 'bottom', 'left'] as const) 
-    : (['right', 'left'] as const);
+  // Fixed edges — matches Profile's screen (no top/bottom safe-area padding),
+  // so opening the file picker and returning to the app never adds extra
+  // top/bottom padding that wasn't there before.
+  const safeAreaEdges = ['right', 'left'] as const;
 
   if (isMobile) {
     if (selected) {
       return (
-        // 6. APPLY EDGES PROP
         <SafeAreaView style={styles.mobileScreen} edges={safeAreaEdges}>
           <View style={styles.mobileContent}>{renderChatPane()}</View>
           {renderToast()}
@@ -3062,7 +3057,6 @@ const Messenger = ({
       );
     }
     return (
-      // 6. APPLY EDGES PROP
       <SafeAreaView style={styles.mobileScreen} edges={safeAreaEdges}>
         <View style={styles.mobileContent}>{renderConversationList()}</View>
         {renderToast()}
@@ -3071,7 +3065,6 @@ const Messenger = ({
   }
 
   return (
-    // 6. APPLY EDGES PROP
     <SafeAreaView style={styles.desktopScreen} edges={safeAreaEdges}>
       <View style={styles.splitLayout}>
         {renderConversationList()}
