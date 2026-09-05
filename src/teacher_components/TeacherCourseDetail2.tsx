@@ -3978,9 +3978,6 @@ useEffect(() => {
                 (isGenerating || isInvalidQuestionCount || dailyGenerationsUsed >= DAILY_GENERATION_LIMIT)
                   ? styles.disabledButton
                   : null,
-                !isMobile && regularSubmissionChipWidth
-                  ? { width: regularSubmissionChipWidth, alignSelf: 'flex-start' }
-                  : null,
               ]}
               onPress={handleGenerateQuestions}
               disabled={
@@ -4007,9 +4004,6 @@ useEffect(() => {
               style={[
                 styles.generateButton,
                 { backgroundColor: '#9E9E9E' },
-                !isMobile && regularSubmissionChipWidth
-                  ? { width: regularSubmissionChipWidth, alignSelf: 'flex-start' }
-                  : null,
               ]}
             >
               <Ionicons name="alert-circle-outline" size={18} color="#FFF" />
