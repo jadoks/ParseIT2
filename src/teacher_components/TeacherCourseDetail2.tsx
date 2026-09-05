@@ -990,6 +990,11 @@ const TeacherCourseDetail2 = ({
   
   const [errors, setErrors] = useState<FormErrors>({});
   const [isSaving, setIsSaving] = useState(false);
+  // Measured width of the "Regular Submission" type chip in the Create
+  // Assignment modal (desktop only), so the Upload File and Save buttons
+  // there can match it exactly instead of stretching full-width. The chip
+  // itself has no fixed width (flex: 1), so we read it via onLayout.
+  const [regularSubmissionChipWidth, setRegularSubmissionChipWidth] = useState<number | null>(null);
   const [assignmentType, setAssignmentType] = useState<'regular' | 'game_based'>('regular');
   const [gameType, setGameType] = useState<
     'quiz_master' | 'memory_match' | 'fill_in_blanks' | 'flashcard' | 'boss_battle' | ''
@@ -3341,7 +3346,9 @@ useEffect(() => {
           )}
         </View>
         <Text style={styles.helperText}>
-          Select one or more lessons the AI should use for follow-up activity generation or game content.
+          {assignmentType === 'game_based'
+            ? 'Select one or more lessons the AI should use for follow-up activity generation or game content.'
+            : "Select one or more lessons to link as this assignment's Related Lesson. If a student scores below 75%, these will be used to generate a Review Activity under Suggested Learning Actions."}
         </Text>
         {materials.length === 0 ? (
           <Text style={styles.emptyMiniText}>No created materials or lessons yet.</Text>
@@ -3818,6 +3825,9 @@ useEffect(() => {
             <TouchableOpacity
               style={[styles.typeChip, assignmentType === 'regular' && styles.typeChipActive]}
               onPress={() => setAssignmentType('regular')}
+              onLayout={(e) => {
+                if (!isMobile) setRegularSubmissionChipWidth(e.nativeEvent.layout.width);
+              }}
               disabled={isSaving}
             >
               <Text
@@ -3989,9 +3999,15 @@ useEffect(() => {
           )}
           {assignmentType === 'regular' && (
             <>
-              <Text style={styles.sectionLabel}>Attachment</Text>
+              <Text style={styles.sectionLabel}>Attachment (Optional)</Text>
               <TouchableOpacity
-                style={[styles.primaryButtonWide, isSaving ? styles.disabledButton : null]}
+                style={[
+                  styles.primaryButtonWide,
+                  !isMobile && regularSubmissionChipWidth
+                    ? { width: regularSubmissionChipWidth, alignSelf: 'flex-start' }
+                    : null,
+                  isSaving ? styles.disabledButton : null,
+                ]}
                 onPress={handlePickAssignmentFile}
                 disabled={isSaving}
               >
@@ -5383,6 +5399,9 @@ CREATE MODAL
               style={[
                 styles.floatingSaveWrap,
                 isMobile && styles.floatingSaveWrapMobile,
+                !isMobile && activeTab === 'assignments' && assignmentType === 'regular'
+                  ? { alignItems: 'center' }
+                  : null,
               ]}
             >
               <TouchableOpacity
@@ -5392,6 +5411,9 @@ CREATE MODAL
                     ? styles.floatingSaveButtonWarn
                     : null,
                   isSaving ? styles.floatingSaveButtonDisabled : null,
+                  !isMobile && activeTab === 'assignments' && assignmentType === 'regular' && regularSubmissionChipWidth
+                    ? { width: regularSubmissionChipWidth }
+                    : null,
                 ]}
                 onPress={handleCreate}
                 disabled={isSaving}
