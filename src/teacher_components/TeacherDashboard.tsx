@@ -312,6 +312,60 @@ const serializeScheduleBlocks = (blocks: ClassScheduleFormBlock[]): ClassSchedul
     room: room && room.trim() ? room.trim() : null,
   }));
 
+// 'HH:MM' is already zero-padded 24h, so plain string comparison gives the
+// right ordering — no need to parse into minutes.
+const timeRangesOverlap = (aStart: string, aEnd: string, bStart: string, bEnd: string) =>
+  aStart < bEnd && bStart < aEnd;
+
+const daysShareOverlap = (daysA: string[], daysB: string[]) => daysA.some((day) => daysB.includes(day));
+
+const entriesConflict = (
+  a: { days: string[]; startTime: string; endTime: string },
+  b: { days: string[]; startTime: string; endTime: string }
+) => daysShareOverlap(a.days, b.days) && timeRangesOverlap(a.startTime.trim(), a.endTime.trim(), b.startTime.trim(), b.endTime.trim());
+
+// Checks the schedule blocks being submitted for a single class against each
+// other, so a class can't be saved with two of its own schedule rows
+// double-booking the same day/time (e.g. Mon 9–10 and Mon 9:30–10:30).
+const validateNoInternalScheduleOverlap = (blocks: ClassScheduleFormBlock[]): string | null => {
+  for (let i = 0; i < blocks.length; i++) {
+    for (let j = i + 1; j < blocks.length; j++) {
+      if (entriesConflict(blocks[i], blocks[j])) {
+        return `Schedule ${i + 1} and Schedule ${j + 1} overlap. Each schedule block for a class must have distinct days/times.`;
+      }
+    }
+  }
+  return null;
+};
+
+// Checks the schedule being submitted against every other class this same
+// teacher already teaches in the same school year + semester (schedules in
+// different terms never actually collide), so one teacher can't end up
+// double-booked across two classes. `excludeCourseId` lets edit-mode skip
+// comparing a class against its own previous schedule.
+const findTeacherScheduleConflict = (
+  newBlocks: ClassScheduleFormBlock[],
+  existingCourses: TeacherCourseData[],
+  schoolYear: string,
+  semesterLabel: string,
+  excludeCourseId?: string | null
+): string | null => {
+  for (const course of existingCourses) {
+    if (excludeCourseId && course.id === excludeCourseId) continue;
+    if ((course.schoolYear || '') !== schoolYear) continue;
+    if ((course.semester || '') !== semesterLabel) continue;
+    const otherSchedule = Array.isArray(course.schedule) ? course.schedule : [];
+    for (const newBlock of newBlocks) {
+      for (const otherBlock of otherSchedule) {
+        if (entriesConflict(newBlock, otherBlock)) {
+          return `This schedule conflicts with "${course.name}" (${course.section || course.yearSection || ''}), which you already teach at an overlapping day/time.`;
+        }
+      }
+    }
+  }
+  return null;
+};
+
 const YEAR_OPTIONS: YearOption[] = [
   { id: '1st', label: '1st Year' }, { id: '2nd', label: '2nd Year' },
   { id: '3rd', label: '3rd Year' }, { id: '4th', label: '4th Year' },
@@ -557,7 +611,19 @@ const refreshClassesAfterStorageWrite = async (pinFrontId?: string) => {
   }, [courses, localCourses.length]);
 
   const processedCourses = useMemo(() => {
-    return [...localCourses].sort((a, b) => (a.position ?? 0) - (b.position ?? 0)).map((course) => ({ ...course, themeColor: '#2E7D32' }));
+    return [...localCourses]
+      .sort((a, b) => (a.position ?? 0) - (b.position ?? 0))
+      .map((course) => ({
+        ...course,
+        themeColor: '#2E7D32',
+        // TeacherCourseCard's schedule type only accepts `room: string | undefined`
+        // (no `null`), so normalize it here at the boundary before handing
+        // courses to the card.
+        schedule: course.schedule?.map((entry) => ({
+          ...entry,
+          room: entry.room ?? undefined,
+        })),
+      }));
   }, [localCourses]);
 
   const visibleCourses = useMemo(() => showAllClasses ? processedCourses : processedCourses.slice(0, 6), [processedCourses, showAllClasses]);
@@ -666,6 +732,11 @@ const refreshClassesAfterStorageWrite = async (pinFrontId?: string) => {
     if (!classBanner) { showToast('Please upload a class banner.', 'error'); return; }
     const scheduleError = validateScheduleBlocks(scheduleBlocks);
     if (scheduleError) { showToast(scheduleError, 'error'); return; }
+    const internalOverlapError = validateNoInternalScheduleOverlap(scheduleBlocks);
+    if (internalOverlapError) { showToast(internalOverlapError, 'error'); return; }
+    const newSchoolYear = `${startYear.trim()}-${endYear}`;
+    const conflictError = findTeacherScheduleConflict(scheduleBlocks, localCourses, newSchoolYear, selectedSemesterLabel);
+    if (conflictError) { showToast(conflictError, 'error'); return; }
 
     const yearLabel = YEAR_OPTIONS.find((year) => year.id === activeYear)?.label || '';
     const sectionLabel = SECTION_OPTIONS[activeYear]?.find((section: SectionOption) => section.id === selectedSection)?.label || '';
@@ -756,6 +827,13 @@ const refreshClassesAfterStorageWrite = async (pinFrontId?: string) => {
     if (!editClassBanner) { showToast('Please upload a class banner.', 'error'); return; }
     const editScheduleError = validateScheduleBlocks(editScheduleBlocks);
     if (editScheduleError) { showToast(editScheduleError, 'error'); return; }
+    const editInternalOverlapError = validateNoInternalScheduleOverlap(editScheduleBlocks);
+    if (editInternalOverlapError) { showToast(editInternalOverlapError, 'error'); return; }
+    const editSchoolYear = `${editStartYear.trim()}-${editEndYear}`;
+    const editConflictError = findTeacherScheduleConflict(
+      editScheduleBlocks, localCourses, editSchoolYear, editSelectedSemesterLabel, editingCourse.id
+    );
+    if (editConflictError) { showToast(editConflictError, 'error'); return; }
 
     const yearLabel = YEAR_OPTIONS.find((year) => year.id === activeEditYear)?.label || '';
     const sectionLabel = SECTION_OPTIONS[activeEditYear]?.find((section: SectionOption) => section.id === editSelectedSection)?.label || '';

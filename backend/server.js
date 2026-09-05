@@ -5757,7 +5757,95 @@ app.post("/create-admin", async (req, res) => {
       });
     }
 
+    // 🚫 Reject a class whose own schedule blocks double-book each other
+    // (e.g. Mon 9:00–10:00 and Mon 9:30–10:30 in the same class).
+    const internalOverlapError = findInternalScheduleOverlap(normalized);
+    if (internalOverlapError) {
+      return { schedule: null, error: internalOverlapError };
+    }
+
     return { schedule: normalized, error: null };
+  }
+
+  // 'HH:MM' strings are already zero-padded 24h, so plain string comparison
+  // gives the correct ordering — no need to parse into minutes.
+  function timeRangesOverlap(aStart, aEnd, bStart, bEnd) {
+    return aStart < bEnd && bStart < aEnd;
+  }
+
+  function daysShareOverlap(daysA, daysB) {
+    return daysA.some((day) => daysB.includes(day));
+  }
+
+  function scheduleEntriesConflict(a, b) {
+    return (
+      daysShareOverlap(a.days, b.days) &&
+      timeRangesOverlap(a.startTime, a.endTime, b.startTime, b.endTime)
+    );
+  }
+
+  // Returns a user-facing error string if any two blocks in the same
+  // schedule array conflict (share a day + overlapping time), else null.
+  function findInternalScheduleOverlap(schedule) {
+    for (let i = 0; i < schedule.length; i++) {
+      for (let j = i + 1; j < schedule.length; j++) {
+        if (scheduleEntriesConflict(schedule[i], schedule[j])) {
+          return `Schedule ${i + 1} and Schedule ${j + 1} overlap. Each schedule block for a class must have distinct days/times.`;
+        }
+      }
+    }
+    return null;
+  }
+
+  // Looks for another active class taught by the same teacher, in the same
+  // semester + school year (different terms never run concurrently), whose
+  // schedule overlaps the given schedule. `excludeClassId` lets
+  // /update-class skip comparing a class against its own previous schedule.
+  async function findTeacherScheduleConflict({
+    assignedTeacherUid,
+    semester,
+    schoolYear,
+    schedule,
+    excludeClassId,
+  }) {
+    if (
+      !assignedTeacherUid ||
+      !semester ||
+      !Array.isArray(schedule) ||
+      schedule.length === 0
+    ) {
+      return null;
+    }
+
+    // All three filters are plain equality (==), so Firestore can serve this
+    // without needing a composite index — same pattern as findDuplicateClass.
+    const snapshot = await db
+      .collection("classes")
+      .where("assignedTeacherUid", "==", assignedTeacherUid)
+      .where("semester", "==", semester)
+      .where("schoolYear", "==", normalizeOptionalText(schoolYear))
+      .get();
+
+    for (const doc of snapshot.docs) {
+      if (doc.id === excludeClassId) continue;
+      const data = doc.data();
+      if (data.status === "archived") continue;
+
+      const otherSchedule = Array.isArray(data.schedule) ? data.schedule : [];
+      for (const newBlock of schedule) {
+        for (const otherBlock of otherSchedule) {
+          if (scheduleEntriesConflict(newBlock, otherBlock)) {
+            return `This schedule conflicts with the class "${
+              data.name || "another class"
+            }"${
+              data.section ? ` (${data.section})` : ""
+            }, which you already teach at an overlapping day/time.`;
+          }
+        }
+      }
+    }
+
+    return null;
   }
 
   function normalizeMatchText(value) {
@@ -5890,6 +5978,20 @@ app.post("/create-admin", async (req, res) => {
           error:
             "A class with the same name, course code, section, semester, and school year already exists.",
         });
+      }
+
+      // 🚫 Prevent one teacher from ending up double-booked: reject a new
+      // class whose schedule overlaps a day/time on another active class
+      // they already teach in the same semester + school year.
+      const scheduleConflictError = await findTeacherScheduleConflict({
+        assignedTeacherUid: teacherUidForDuplicateCheck,
+        semester,
+        schoolYear,
+        schedule: normalizedSchedule,
+      });
+
+      if (scheduleConflictError) {
+        return res.status(409).json({ error: scheduleConflictError });
       }
 
       const classCode = await generateUniqueClassCode();
@@ -6139,6 +6241,29 @@ app.post("/create-admin", async (req, res) => {
           ...(instructorName ? { instructorName } : {}),
           ...(instructorEmail ? { instructorEmail } : {}),
         };
+      }
+
+      // 🚫 Same overlap check as /create-class, but excluding this doc
+      // itself. Uses the final resolved teacher/semester/schoolYear/schedule
+      // (accounting for a possible reassignment above), so it still catches
+      // a conflict even if only one of those fields is actually changing.
+      const resolvedAssignedTeacherUidForConflict =
+        nextTeacherFields.assignedTeacherUid ?? existingClass.assignedTeacherUid;
+      const resolvedSemesterForConflict = semester ?? existingClass.semester;
+      const resolvedSchoolYearForConflict = schoolYear ?? existingClass.schoolYear;
+      const resolvedScheduleForConflict =
+        schedule !== undefined ? normalizedSchedule : existingClass.schedule;
+
+      const scheduleConflictError = await findTeacherScheduleConflict({
+        assignedTeacherUid: resolvedAssignedTeacherUidForConflict,
+        semester: resolvedSemesterForConflict,
+        schoolYear: resolvedSchoolYearForConflict,
+        schedule: resolvedScheduleForConflict,
+        excludeClassId: id,
+      });
+
+      if (scheduleConflictError) {
+        return res.status(409).json({ error: scheduleConflictError });
       }
 
       await classRef.update({
