@@ -3979,7 +3979,7 @@ useEffect(() => {
                   ? styles.disabledButton
                   : null,
                 !isMobile && regularSubmissionChipWidth
-                  ? { width: regularSubmissionChipWidth * 2 + 10, alignSelf: 'center' }
+                  ? { width: regularSubmissionChipWidth, alignSelf: 'flex-start' }
                   : null,
               ]}
               onPress={handleGenerateQuestions}
@@ -4008,7 +4008,7 @@ useEffect(() => {
                 styles.generateButton,
                 { backgroundColor: '#9E9E9E' },
                 !isMobile && regularSubmissionChipWidth
-                  ? { width: regularSubmissionChipWidth * 2 + 10, alignSelf: 'center' }
+                  ? { width: regularSubmissionChipWidth, alignSelf: 'flex-start' }
                   : null,
               ]}
             >
