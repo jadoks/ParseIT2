@@ -102,6 +102,37 @@ const API_BASE_URL = getApiBaseUrl();
 const apiFetch = (url: string, options: any = {}) =>
   fetch(url, { credentials: "include", ...options });
 
+// Mirrors parseDueDateTime in TeacherCourseDetail2.tsx / Assignments.tsx so
+// "past due" reads exactly the same way everywhere: accepts a
+// "YYYY-MM-DDTHH:MM" (or space-separated) datetime string, or falls back to
+// end-of-day (23:59) for a date-only "YYYY-MM-DD" string.
+const parseDueDateTime = (value?: string) => {
+  if (!value?.trim()) return null;
+  const normalized = value.trim().replace(" ", "T");
+  const parsed = new Date(normalized);
+  if (!Number.isNaN(parsed.getTime())) return parsed;
+  const dateOnly = value.trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (dateOnly) {
+    return new Date(
+      Number(dateOnly[1]),
+      Number(dateOnly[2]) - 1,
+      Number(dateOnly[3]),
+      23,
+      59
+    );
+  }
+  return null;
+};
+
+// Null due date (or one that fails to parse) is treated as "no deadline" —
+// same permissive fallback the create/edit form uses — rather than
+// silently blocking play with an unparsable date.
+const isPastDueDate = (dueDate?: string) => {
+  const parsed = parseDueDateTime(dueDate);
+  if (!parsed) return false;
+  return parsed.getTime() < Date.now();
+};
+
 const getDisplayFileSize = (bytes?: number | null) => {
   if (!bytes || !Number.isFinite(bytes)) return "Uploaded file";
   if (bytes < 1024) return `${bytes} B`;
@@ -1832,10 +1863,27 @@ const fetchModules = useCallback(async (silent = false) => {
     return max - used;
   };
 
-  const canPlayGame = (assignment: AssignmentItem) => getRemainingAttempts(assignment) > 0;
+  const canPlayGame = (assignment: AssignmentItem) => {
+    if (isPastDueDate(assignment.dueDate)) return false;
+    return getRemainingAttempts(assignment) > 0;
+  };
+
+  // Distinguishes *why* play is blocked so the feedback/button can say the
+  // right thing — "past due" vs "no attempts left" — instead of always
+  // reporting the same generic reason.
+  const getPlayGameBlockedReason = (assignment: AssignmentItem): 'past_due' | 'no_attempts' | null => {
+    if (isPastDueDate(assignment.dueDate)) return 'past_due';
+    if (getRemainingAttempts(assignment) <= 0) return 'no_attempts';
+    return null;
+  };
 
   const handlePlayGameWithAttemptCheck = (assignment: AssignmentItem) => {
-    if (!canPlayGame(assignment)) {
+    const blockedReason = getPlayGameBlockedReason(assignment);
+    if (blockedReason === 'past_due') {
+      showFeedback('error', 'Assignment Past Due', 'This game-based assignment is past its due date and can no longer be played.');
+      return;
+    }
+    if (blockedReason === 'no_attempts') {
       showFeedback('error', 'No Attempts Remaining', 'You have used all your attempts for this game-based assignment.');
       return;
     }
@@ -2905,7 +2953,11 @@ const fetchModules = useCallback(async (silent = false) => {
                               disabled={!canPlayGame(selectedAssignment)}
                             >
                               <Text style={styles.uploadButtonText}>
-                                {canPlayGame(selectedAssignment) ? "Start Game" : "No Attempts Remaining"}
+                                {canPlayGame(selectedAssignment)
+                                  ? "Start Game"
+                                  : getPlayGameBlockedReason(selectedAssignment) === "past_due"
+                                    ? "Past Due"
+                                    : "No Attempts Remaining"}
                               </Text>
                             </TouchableOpacity>
                           </>

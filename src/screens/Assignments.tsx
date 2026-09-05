@@ -22,6 +22,13 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+// ✅ Reuses the same Toast component used across the app (Register/SignIn/
+// Community/Dashboard/ClassesScreen/CourseDetail) — swapped in below for the
+// Play Game feedback instead of the native Alert.
+import Toast from '../Final_Admin_Components/Toast'; // adjust path if your folder layout differs
+
+type ToastType = 'success' | 'error' | 'info';
+
 // ✅ NEW: same pattern as CourseDetail.tsx — try to load react-native-webview
 // so document files can be rendered inline on native (Android/iOS) instead
 // of just showing a "Preview not available on this device" message.
@@ -156,6 +163,37 @@ const apiFetch = (url: string, options: any = {}) =>
     credentials: 'include',
     ...options,
   });
+
+// Mirrors parseDueDateTime in TeacherCourseDetail2.tsx so "past due" reads
+// exactly the same way here as it does on the teacher side: accepts a
+// "YYYY-MM-DDTHH:MM" (or space-separated) datetime string, or falls back to
+// end-of-day (23:59) for a date-only "YYYY-MM-DD" string.
+const parseDueDateTime = (value?: string) => {
+  if (!value?.trim()) return null;
+  const normalized = value.trim().replace(' ', 'T');
+  const parsed = new Date(normalized);
+  if (!Number.isNaN(parsed.getTime())) return parsed;
+  const dateOnly = value.trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (dateOnly) {
+    return new Date(
+      Number(dateOnly[1]),
+      Number(dateOnly[2]) - 1,
+      Number(dateOnly[3]),
+      23,
+      59
+    );
+  }
+  return null;
+};
+
+// Null due date (or one that fails to parse) is treated as "no deadline" —
+// same permissive fallback the create/edit form uses — rather than
+// silently blocking play with an unparsable date.
+const isPastDueDate = (dueDate?: string) => {
+  const parsed = parseDueDateTime(dueDate);
+  if (!parsed) return false;
+  return parsed.getTime() < Date.now();
+};
 
 const getDisplayFileSize = (bytes?: number | null) => {
   if (!bytes || !Number.isFinite(bytes)) return 'Uploaded file';
@@ -599,6 +637,28 @@ const Assignments = ({
 
   const [gameAttempts, setGameAttempts] = useState<Record<string, number>>({});
   const [isLoadingAttempts, setIsLoadingAttempts] = useState<Record<string, boolean>>({});
+
+  // ✅ Toast state — same shape/usage as Register/SignIn/Community/Dashboard.
+  // Used for Play Game feedback (past due / no attempts) instead of Alert.
+  const [toast, setToast] = useState<{
+    visible: boolean;
+    message: string;
+    type: ToastType;
+  }>({ visible: false, message: '', type: 'success' });
+
+  const showToast = (message: string, type: ToastType = 'success') => {
+    setToast({ visible: true, message, type });
+  };
+
+  const hideToast = () => {
+    setToast((prev) => ({ ...prev, visible: false }));
+  };
+
+  // Thin wrapper matching Register.tsx/CourseDetail.tsx so a title can be
+  // passed alongside the message — the toast just folds them into one line.
+  const showFeedback = (type: ToastType, title: string, message: string) => {
+    showToast(`${title}: ${message}`, type);
+  };
 
   // ✅ NEW: Refresh state — drives pull-to-refresh UI on the list + detail
   // modal, and the silent background poller below.
@@ -1360,13 +1420,32 @@ const Assignments = ({
   };
 
   const canPlayGame = (assignment: AssignmentItem) => {
+    if (isPastDueDate(assignment.dueDate)) return false;
     const remaining = getRemainingAttempts(assignment);
     return remaining > 0;
   };
 
+  // Distinguishes *why* play is blocked so the UI/alert can say the right
+  // thing — "past due" vs "no attempts left" — instead of a generic message.
+  const getPlayGameBlockedReason = (assignment: AssignmentItem): 'past_due' | 'no_attempts' | null => {
+    if (isPastDueDate(assignment.dueDate)) return 'past_due';
+    if (getRemainingAttempts(assignment) <= 0) return 'no_attempts';
+    return null;
+  };
+
   const handlePlayGameWithAttemptCheck = async (assignment: AssignmentItem) => {
-    if (!canPlayGame(assignment)) {
-      Alert.alert(
+    const blockedReason = getPlayGameBlockedReason(assignment);
+    if (blockedReason === 'past_due') {
+      showFeedback(
+        'error',
+        'Assignment Past Due',
+        'This game-based assignment is past its due date and can no longer be played.'
+      );
+      return;
+    }
+    if (blockedReason === 'no_attempts') {
+      showFeedback(
+        'error',
         'No Attempts Remaining',
         'You have used all your attempts for this game-based assignment.'
       );
@@ -1786,7 +1865,11 @@ const Assignments = ({
                               disabled={!canPlayGame(selectedAssignment)}
                             >
                               <Text style={styles.uploadButtonText}>
-                                {canPlayGame(selectedAssignment) ? 'Start Game' : 'No Attempts Remaining'}
+                                {canPlayGame(selectedAssignment)
+                                  ? 'Start Game'
+                                  : getPlayGameBlockedReason(selectedAssignment) === 'past_due'
+                                    ? 'Past Due'
+                                    : 'No Attempts Remaining'}
                               </Text>
                             </TouchableOpacity>
                           </>
@@ -2288,6 +2371,26 @@ const Assignments = ({
         </SafeAreaView>
       </Modal>
 
+      {/* Toast — portal-based, matches Register/SignIn/Community/Dashboard/
+          CourseDetail so Play Game feedback looks and behaves the same
+          everywhere. */}
+      <Modal
+        visible={toast.visible}
+        transparent
+        animationType="fade"
+        onRequestClose={hideToast}
+        statusBarTranslucent
+      >
+        <View style={styles.toastPortal} pointerEvents="box-none">
+          <Toast
+            visible={toast.visible}
+            message={toast.message}
+            type={toast.type}
+            onHide={hideToast}
+          />
+        </View>
+      </Modal>
+
     </ScrollView>
   );
 };
@@ -2655,6 +2758,12 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFF',
   },
   previewLoadingText: { marginTop: 12, color: '#666', fontSize: 14 },
+
+  // ✅ Toast portal — matches Register/SignIn/Community/Dashboard/CourseDetail;
+  // lets touches pass through to whatever's behind, except the toast itself.
+  toastPortal: {
+    ...StyleSheet.absoluteFillObject,
+  },
 });
 
 export default Assignments;

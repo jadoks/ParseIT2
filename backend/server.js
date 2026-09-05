@@ -677,6 +677,38 @@ async function createReadSignedUrlIfExists(storagePath) {
     return trimmed ? trimmed : null;
   }
 
+  // Mirrors parseDueDateTime in TeacherCourseDetail2.tsx / Assignments.tsx /
+  // CourseDetail.tsx so "past due" means exactly the same thing here as it
+  // does on every client: accepts a "YYYY-MM-DDTHH:MM" (or space-separated)
+  // datetime string, or falls back to end-of-day (23:59) for a date-only
+  // "YYYY-MM-DD" string.
+  function parseDueDateTime(value) {
+    if (typeof value !== "string" || !value.trim()) return null;
+    const normalized = value.trim().replace(" ", "T");
+    const parsed = new Date(normalized);
+    if (!Number.isNaN(parsed.getTime())) return parsed;
+    const dateOnly = value.trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (dateOnly) {
+      return new Date(
+        Number(dateOnly[1]),
+        Number(dateOnly[2]) - 1,
+        Number(dateOnly[3]),
+        23,
+        59
+      );
+    }
+    return null;
+  }
+
+  // Null/unparsable due date is treated as "no deadline" — same permissive
+  // fallback the create/edit form and every client-side check use — rather
+  // than silently blocking play with a bad date.
+  function isPastDueDate(dueDate) {
+    const parsed = parseDueDateTime(dueDate);
+    if (!parsed) return false;
+    return parsed.getTime() < Date.now();
+  }
+
   // Used by /messenger-create-room to decide whether a same-named room
   // conflicts enough to warn about. Returns the fraction of the smaller
   // group that's also present in the larger group (0 = no overlap,
@@ -4393,6 +4425,16 @@ async function generateGameWithGeminiDirect({ prompt, files, gameType, numberOfQ
       
       if (assignment.assignmentType !== "game_based") {
         return res.status(400).json({ error: "This is not a game-based assignment." });
+      }
+
+      // 🚫 Block starting/reloading the game once the assignment is past its
+      // due date — matches the client-side canPlayGame() check in
+      // Assignments.tsx / CourseDetail.tsx, enforced here so it can't be
+      // bypassed by calling this endpoint directly.
+      if (isPastDueDate(assignment.dueDate)) {
+        return res.status(403).json({
+          error: "This game-based assignment is past its due date and can no longer be played.",
+        });
       }
 
       // Verify student is enrolled in the class
