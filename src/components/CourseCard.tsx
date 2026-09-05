@@ -445,10 +445,9 @@ const CourseCard: React.FC<CourseCardProps> = ({
           <View style={styles.overlay} />
           <View style={styles.bannerTextContainer}>
             <Text style={styles.bannerTitle}>{course.name}</Text>
-            <Text style={styles.sectionLabel}>
-              {course.code}
-              {course.section ? ` • ${course.section}` : ''}
-            </Text>
+            {course.section ? (
+              <Text style={styles.sectionLabel}>{course.section}</Text>
+            ) : null}
             <Text style={styles.bannerMeta}>
               {course.semester} ({course.schoolYear})
             </Text>
