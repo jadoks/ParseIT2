@@ -1468,10 +1468,21 @@ useEffect(() => {
     }
   };
 
+  // A module title counts as a duplicate regardless of whether the existing
+  // module was AI-generated or manually created — normalized (trimmed,
+  // case-insensitive) so "javascript design patterns" === "JavaScript Design Patterns".
+  const isDuplicateModuleTitle = modules.some(
+    (m) => (m.title || '').trim().toLowerCase() === newModuleTitle.trim().toLowerCase() && newModuleTitle.trim() !== ''
+  );
+
   const handleCreateManualModule = async () => {
     const num = Number(newModuleNum);
     if (!newModuleTitle.trim() || !course?.id) {
       toast.show('error', 'Error', 'Please enter a title.');
+      return;
+    }
+    if (isDuplicateModuleTitle) {
+      toast.show('error', 'Duplicate Title', 'A module with this title already exists (generated or manual). Please use a different title.');
       return;
     }
     if (isNaN(num) || num < 1) {
@@ -3654,41 +3665,43 @@ useEffect(() => {
         )}
       </View>
       {assignmentType === 'game_based' && renderGameAndClassRow()}
-      <View style={[styles.formColumnLeft, !isMobile && styles.formColumnLeftDesktop]}>
-        <Text style={styles.sectionLabel}>Header</Text>
-        <TextInput
-          style={[styles.inputBox, errors.title ? styles.errorBorder : null]}
-          value={formTitle}
-          onChangeText={(value) => {
-            setFormTitle(value);
-            if (errors.title) setErrors((prev) => ({ ...prev, title: undefined }));
-          }}
-          placeholder="Enter Header"
-          placeholderTextColor="#999"
-          editable={!isSaving}
-        />
-        {renderInputError(errors.title)}
-        <Text style={styles.sectionLabel}>Instruction</Text>
-        <TextInput
-          style={[styles.textAreaBox, errors.instruction ? styles.errorBorder : null]}
-          value={formDesc}
-          onChangeText={(value) => {
-            setFormDesc(value);
-            if (errors.instruction) setErrors((prev) => ({ ...prev, instruction: undefined }));
-          }}
-          placeholder="Enter Instruction"
-          placeholderTextColor="#999"
-          multiline
-          editable={!isSaving}
-        />
-        {renderInputError(errors.instruction)}
-        {assignmentType === 'game_based' && renderAttemptsSelector()}
-        {assignmentType === 'game_based' && renderTimeLimitSelector()}
-      </View>
-      <View style={[styles.formColumnRight, !isMobile && styles.formColumnRightDesktop]}>
+      <View style={styles.fullWidthSection}>
         <View style={[styles.gameAndClassRow, isMobile && styles.gameAndClassRowMobile]}>
           <View style={[styles.dropdownWrap, !isMobile && styles.dropdownWrapHalf]}>
+            <Text style={styles.sectionLabel}>Header</Text>
+            <TextInput
+              style={[styles.inputBox, errors.title ? styles.errorBorder : null]}
+              value={formTitle}
+              onChangeText={(value) => {
+                setFormTitle(value);
+                if (errors.title) setErrors((prev) => ({ ...prev, title: undefined }));
+              }}
+              placeholder="Enter Header"
+              placeholderTextColor="#999"
+              editable={!isSaving}
+            />
+            {renderInputError(errors.title)}
+          </View>
+          <View style={[styles.dropdownWrap, !isMobile && styles.dropdownWrapHalf]}>
             {renderDateTimeField()}
+          </View>
+        </View>
+        <View style={[styles.gameAndClassRow, isMobile && styles.gameAndClassRowMobile]}>
+          <View style={[styles.dropdownWrap, !isMobile && styles.dropdownWrapHalf]}>
+            <Text style={styles.sectionLabel}>Instruction</Text>
+            <TextInput
+              style={[styles.textAreaBox, errors.instruction ? styles.errorBorder : null]}
+              value={formDesc}
+              onChangeText={(value) => {
+                setFormDesc(value);
+                if (errors.instruction) setErrors((prev) => ({ ...prev, instruction: undefined }));
+              }}
+              placeholder="Enter Instruction"
+              placeholderTextColor="#999"
+              multiline
+              editable={!isSaving}
+            />
+            {renderInputError(errors.instruction)}
           </View>
           <View style={[styles.dropdownWrap, !isMobile && styles.dropdownWrapHalf]}>
             <Text style={styles.sectionLabel}>Total Score</Text>
@@ -3718,6 +3731,8 @@ useEffect(() => {
             {renderInputError(errors.totalScore)}
           </View>
         </View>
+        {assignmentType === 'game_based' && renderAttemptsSelector()}
+        {assignmentType === 'game_based' && renderTimeLimitSelector()}
       </View>
       <View style={styles.fullWidthSection}>
         {renderRelatedMaterialsSelector()}
@@ -4425,15 +4440,28 @@ useEffect(() => {
               <ScrollView
                 showsVerticalScrollIndicator={false}
                 contentContainerStyle={styles.modalScrollContent}
+                keyboardShouldPersistTaps="handled"
               >
                 {renderAssignmentFields()}
               </ScrollView>
               <View style={styles.modalBottomActions}>
-                <TouchableOpacity style={styles.secondaryButton} onPress={handleDelete}>
+                <TouchableOpacity
+                  style={[styles.secondaryButton, isSaving && styles.disabledButton]}
+                  onPress={handleDelete}
+                  disabled={isSaving}
+                >
                   <Text style={styles.secondaryButtonText}>Delete</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={styles.primaryButton} onPress={handleUpdate}>
-                  <Text style={styles.primaryButtonText}>Update</Text>
+                <TouchableOpacity
+                  style={[styles.primaryButton, isSaving && styles.disabledButton]}
+                  onPress={handleUpdate}
+                  disabled={isSaving}
+                >
+                  {isSaving ? (
+                    <ActivityIndicator size="small" color="#FFF" />
+                  ) : (
+                    <Text style={styles.primaryButtonText}>Update</Text>
+                  )}
                 </TouchableOpacity>
               </View>
             </View>
@@ -5476,6 +5504,7 @@ CREATE MODAL
             <ScrollView
               showsVerticalScrollIndicator={false}
               contentContainerStyle={styles.modalScrollContent}
+              keyboardShouldPersistTaps="handled"
             >
               {renderCreateModalBody()}
             </ScrollView>
@@ -5941,6 +5970,7 @@ GENERATED QUESTIONS PREVIEW MODAL
             style={styles.flexOne}
             showsVerticalScrollIndicator={true}
             contentContainerStyle={styles.lessonPreviewScrollContent}
+            keyboardShouldPersistTaps="handled"
           >
             <View style={styles.lessonPreviewPageWrap}>
               <View style={[styles.lessonPreviewPage, !isMobile && styles.lessonPreviewPageWeb]}>
@@ -6376,7 +6406,15 @@ MANUAL MODULE CREATION MODAL
                 placeholderTextColor="#999"
               />
               <Text style={styles.sectionLabel}>Title</Text>
-              <TextInput style={styles.inputBox} value={newModuleTitle} onChangeText={setNewModuleTitle} placeholder="Module Title" placeholderTextColor="#999" />
+              <TextInput
+                style={[styles.inputBox, isDuplicateModuleTitle && styles.errorBorder]}
+                value={newModuleTitle}
+                onChangeText={setNewModuleTitle}
+                placeholder="Module Title"
+                placeholderTextColor="#999"
+              />
+              {isDuplicateModuleTitle &&
+                renderInputError('A module with this title already exists (generated or manual). Please use a different title.')}
             </ScrollView>
             <View style={styles.buttonRow}>
               <TouchableOpacity style={styles.secondaryButton} onPress={() => setShowManualModuleModal(false)}>
@@ -6385,12 +6423,18 @@ MANUAL MODULE CREATION MODAL
               <TouchableOpacity
                 style={[
                   styles.primaryButton,
-                  (modules.some(m => Number(m.moduleNumber) === Number(newModuleNum)) || !newModuleTitle.trim())
+                  (modules.some(m => Number(m.moduleNumber) === Number(newModuleNum)) ||
+                    !newModuleTitle.trim() ||
+                    isDuplicateModuleTitle)
                     ? styles.disabledButton
                     : null
                 ]}
                 onPress={handleCreateManualModule}
-                disabled={modules.some(m => Number(m.moduleNumber) === Number(newModuleNum)) || !newModuleTitle.trim()}
+                disabled={
+                  modules.some(m => Number(m.moduleNumber) === Number(newModuleNum)) ||
+                  !newModuleTitle.trim() ||
+                  isDuplicateModuleTitle
+                }
               >
                 <Text style={styles.primaryButtonText}>Create</Text>
               </TouchableOpacity>

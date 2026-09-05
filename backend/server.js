@@ -17605,7 +17605,7 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
         return res.status(400).json({ error: "Invalid module number." });
       }
       
-      // Backend duplicate check
+      // Backend duplicate check (module number)
       const existing = await db.collection("courseModules")
         .where("classId", "==", classId)
         .where("moduleNumber", "==", moduleNum) // Stored as number
@@ -17615,6 +17615,23 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
       if (!existing.empty) {
         return res.status(409).json({ 
           error: `Module ${moduleNum} already exists.` 
+        });
+      }
+
+      // Backend duplicate check (title) — must be unique across ALL modules
+      // in this class, whether they were AI-generated or manually created.
+      // Normalized (trimmed, case-insensitive) so casing/whitespace can't
+      // sneak a duplicate past this check.
+      const normalizedTitle = title.trim().toLowerCase();
+      const existingTitlesSnap = await db.collection("courseModules")
+        .where("classId", "==", classId)
+        .get();
+      const titleAlreadyExists = existingTitlesSnap.docs.some(
+        (doc) => (doc.data()?.title || "").trim().toLowerCase() === normalizedTitle
+      );
+      if (titleAlreadyExists) {
+        return res.status(409).json({
+          error: `A module titled "${title.trim()}" already exists.`
         });
       }
 
