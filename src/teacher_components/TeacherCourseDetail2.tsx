@@ -3606,7 +3606,10 @@ useEffect(() => {
               assignmentType === 'game_based' && styles.typeChipActive,
               hasSubmissionsForSelected && styles.disabledButton,
             ]}
-            onPress={() => setAssignmentType('game_based')}
+            onPress={() => {
+              setAssignmentType('game_based');
+              setAssignmentDisableRepositoryAfterDue(false);
+            }}
             disabled={isSaving || hasSubmissionsForSelected}
           >
             <Text
@@ -3747,22 +3750,24 @@ useEffect(() => {
             )}
           </>
         )}
-        <View style={styles.checkboxRow}>
-          <TouchableOpacity
-            style={[
-              styles.checkboxBox,
-              assignmentDisableRepositoryAfterDue && styles.checkboxBoxChecked,
-            ]}
-            onPress={() =>
-              setAssignmentDisableRepositoryAfterDue(!assignmentDisableRepositoryAfterDue)
-            }
-          >
-            {assignmentDisableRepositoryAfterDue ? (
-              <Ionicons name="checkmark" size={16} color="#FFF" />
-            ) : null}
-          </TouchableOpacity>
-          <Text style={styles.checkboxLabel}>Disable repository after due</Text>
-        </View>
+        {assignmentType === 'regular' && (
+          <View style={styles.checkboxRow}>
+            <TouchableOpacity
+              style={[
+                styles.checkboxBox,
+                assignmentDisableRepositoryAfterDue && styles.checkboxBoxChecked,
+              ]}
+              onPress={() =>
+                setAssignmentDisableRepositoryAfterDue(!assignmentDisableRepositoryAfterDue)
+              }
+            >
+              {assignmentDisableRepositoryAfterDue ? (
+                <Ionicons name="checkmark" size={16} color="#FFF" />
+              ) : null}
+            </TouchableOpacity>
+            <Text style={styles.checkboxLabel}>Disable repository after due</Text>
+          </View>
+        )}
       </View>
     </View>
   );
@@ -3841,7 +3846,10 @@ useEffect(() => {
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.typeChip, assignmentType === 'game_based' && styles.typeChipActive]}
-              onPress={() => setAssignmentType('game_based')}
+              onPress={() => {
+                setAssignmentType('game_based');
+                setAssignmentDisableRepositoryAfterDue(false);
+              }}
               disabled={isSaving}
             >
               <Text
@@ -4024,22 +4032,24 @@ useEffect(() => {
               )}
             </>
           )}
-          <View style={styles.checkboxRow}>
-            <TouchableOpacity
-              style={[
-                styles.checkboxBox,
-                assignmentDisableRepositoryAfterDue && styles.checkboxBoxChecked,
-              ]}
-              onPress={() =>
-                setAssignmentDisableRepositoryAfterDue(!assignmentDisableRepositoryAfterDue)
-              }
-            >
-              {assignmentDisableRepositoryAfterDue ? (
-                <Ionicons name="checkmark" size={16} color="#FFF" />
-              ) : null}
-            </TouchableOpacity>
-            <Text style={styles.checkboxLabel}>Disable repository after due</Text>
-          </View>
+          {assignmentType === 'regular' && (
+            <View style={styles.checkboxRow}>
+              <TouchableOpacity
+                style={[
+                  styles.checkboxBox,
+                  assignmentDisableRepositoryAfterDue && styles.checkboxBoxChecked,
+                ]}
+                onPress={() =>
+                  setAssignmentDisableRepositoryAfterDue(!assignmentDisableRepositoryAfterDue)
+                }
+              >
+                {assignmentDisableRepositoryAfterDue ? (
+                  <Ionicons name="checkmark" size={16} color="#FFF" />
+                ) : null}
+              </TouchableOpacity>
+              <Text style={styles.checkboxLabel}>Disable repository after due</Text>
+            </View>
+          )}
           <View
             style={[
               styles.inlineSaveWrap,
