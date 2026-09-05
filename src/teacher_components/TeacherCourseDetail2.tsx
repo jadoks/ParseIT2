@@ -4809,6 +4809,179 @@ CLASS MODAL
             </Pressable>
           </Pressable>
         </Modal>
+      {/* ══════════════════════════════════════════════════════════════════════
+GENERATED QUESTIONS PREVIEW MODAL (Submissions-screen entry point)
+────────────────────────────────────────────────────────────────────────
+Duplicated from the main return below. This modal was missing from this
+early-return branch, so tapping "Review N Generated Questions" after
+opening Update Assignment from the Submissions screen set
+showGeneratedPreview=true with no matching <Modal> mounted to show it —
+the button looked completely dead.
+════════════════════════════════════════════════════════════════════════ */}
+      <Modal
+        visible={showGeneratedPreview}
+        animationType="slide"
+        presentationStyle={Platform.OS === 'ios' ? 'fullScreen' : undefined}
+        onRequestClose={() => setShowGeneratedPreview(false)}
+      >
+        <SafeAreaView style={styles.lessonPreviewScreen} edges={['top', 'left', 'right']}>
+          {/* Fixed top bar — same "Google Classroom" document-editor chrome as
+              Edit Lesson: back button on the left, title/subtitle in the
+              middle, and the primary save action as an icon button on the
+              right (instead of a bottom button row). */}
+          <View style={styles.lessonPreviewTopBar}>
+            <TouchableOpacity
+              onPress={() => setShowGeneratedPreview(false)}
+              style={styles.lessonPreviewBackBtn}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <Ionicons name={Platform.OS === 'web' ? 'close' : 'arrow-back'} size={22} color="#111" />
+            </TouchableOpacity>
+            <View style={styles.lessonPreviewTopBarTextWrap}>
+              <Text style={styles.lessonPreviewTopBarTitle} numberOfLines={1}>
+                Preview &amp; Edit Questions
+              </Text>
+              <Text style={styles.lessonPreviewTopBarSubtitle} numberOfLines={1}>
+                {gameType === 'memory_match'
+                  ? 'Review terms and definitions for Memory Match.'
+                  : gameType === 'fill_in_blanks'
+                    ? 'Review sentences and missing words for Fill-in-the-Blanks.'
+                    : gameType === 'flashcard'
+                      ? 'Review front and back of cards for Flashcard Challenge.'
+                      : 'Review and tweak the AI-generated questions before saving.'}
+              </Text>
+            </View>
+            <TouchableOpacity
+              onPress={() => {
+                if (generatedQuestions.length === 0) {
+                  toast.show('error', 'Invalid Questions', 'You must have at least one question.');
+                  return;
+                }
+                let hasInvalid = false;
+                if (gameType === 'fill_in_blanks' || gameType === 'flashcard') {
+                  hasInvalid = generatedQuestions.some(
+                    (q) => !q.question.trim() || !q.answer.trim()
+                  );
+                } else if (gameType === 'memory_match') {
+                  hasInvalid = generatedQuestions.some(
+                    (q) => !q.question?.trim() || !q.answer?.trim()
+                  );
+                } else {
+                  hasInvalid = generatedQuestions.some(
+                    (q) =>
+                      q.correctIndex === undefined ||
+                      q.correctIndex === -1 ||
+                      !q.options[q.correctIndex]?.trim() ||
+                      !q.question.trim()
+                  );
+                }
+                if (hasInvalid) {
+                  toast.show(
+                    'error',
+                    'Invalid Questions',
+                    gameType === 'memory_match'
+                      ? 'Please ensure every term and definition has text.'
+                      : 'Please ensure all items have text and a correct option is selected.'
+                  );
+                  return;
+                }
+                setShowGeneratedPreview(false);
+                toast.show('success', 'Saved', 'Questions updated and ready to be assigned.');
+              }}
+              style={[styles.lessonPreviewIconBtn, { backgroundColor: '#D32F2F' }]}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Ionicons name="checkmark" size={20} color="#FFF" />
+            </TouchableOpacity>
+          </View>
+
+          {/* Scrollable question list — full-width document-style page, same
+              treatment as the Edit Lesson editor, so there's much more room
+              to review and edit each generated question. */}
+          <ScrollView
+            style={styles.flexOne}
+            showsVerticalScrollIndicator={true}
+            contentContainerStyle={styles.lessonPreviewScrollContent}
+            keyboardShouldPersistTaps="handled"
+          >
+            <View style={styles.lessonPreviewPageWrap}>
+              <View style={[styles.lessonPreviewPage, !isMobile && styles.lessonPreviewPageWeb]}>
+                {generatedQuestions.length === 0 && (
+                  <Text style={styles.emptyMiniText}>No questions generated yet.</Text>
+                )}
+                {generatedQuestions.map((q, qIndex) => renderQuestionEditor(q, qIndex))}
+              </View>
+            </View>
+          </ScrollView>
+
+          {/* Fixed bottom toolbar: add more questions, manually or with AI */}
+          <View style={styles.lessonPreviewBottomToolbar}>
+            <View
+              style={{
+                flexDirection: isMobile ? 'column' : 'row',
+                gap: 8,
+                alignItems: isMobile ? 'stretch' : 'center',
+              }}
+            >
+              <TouchableOpacity
+                style={[
+                  styles.secondaryButton,
+                  { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
+                ]}
+                onPress={addManualQuestion}
+              >
+                <Ionicons name="add" size={16} color="#4B6BFB" />
+                <Text style={styles.secondaryButtonText}>Add Manually</Text>
+              </TouchableOpacity>
+
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: isMobile ? undefined : 1 }}>
+                <View style={{ alignItems: 'center' }}>
+                  <Text style={{ fontSize: 10, color: '#888', fontWeight: '700', marginBottom: 3 }} numberOfLines={1}>
+                    To Generate w/ AI
+                  </Text>
+                  <TextInput
+                    value={extraQuestionsCount}
+                    onChangeText={(v) => setExtraQuestionsCount(v.replace(/[^0-9]/g, ''))}
+                    keyboardType="number-pad"
+                    maxLength={2}
+                    accessibilityLabel="Number of questions to generate with AI (used by Generate More with AI)"
+                    style={{
+                      borderWidth: 1,
+                      borderColor: '#DDD',
+                      borderRadius: 8,
+                      paddingHorizontal: 10,
+                      paddingVertical: 8,
+                      width: 56,
+                      textAlign: 'center',
+                    }}
+                  />
+                </View>
+                <TouchableOpacity
+                  style={[
+                    styles.secondaryButton,
+                    { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, flex: 1 },
+                    (isGeneratingMore || dailyGenerationsUsed >= DAILY_GENERATION_LIMIT) && { opacity: 0.5 },
+                  ]}
+                  disabled={isGeneratingMore || dailyGenerationsUsed >= DAILY_GENERATION_LIMIT}
+                  onPress={handleGenerateMoreQuestions}
+                >
+                  {isGeneratingMore ? (
+                    <ActivityIndicator size="small" color="#4B6BFB" />
+                  ) : (
+                    <>
+                      <Ionicons name="sparkles" size={16} color="#4B6BFB" />
+                      <Text style={styles.secondaryButtonText}>Generate More with AI</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </View>
+            <Text style={{ fontSize: 11, color: '#888', marginTop: 4 }}>
+              {dailyGenerationsUsed}/{DAILY_GENERATION_LIMIT} AI generations used today
+            </Text>
+          </View>
+        </SafeAreaView>
+      </Modal>
         {renderToastAndConfirmation()}
       </>
     );
