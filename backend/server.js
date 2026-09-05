@@ -8419,6 +8419,12 @@ app.get("/student-joined-classes/:studentId", async (req, res) => {
           bannerFileName: classData.bannerFileName || null,
           bannerMimeType: classData.bannerMimeType || null,
           memberCount: classData.memberCount || 0,
+          // 🔥 FIX: this hand-picked response object never included the
+          // class's `schedule` (unlike /classes, which spreads the whole
+          // doc for teachers), so the student app's CourseDetail always saw
+          // schedule === undefined and never rendered the schedule strip —
+          // even after the client-side mapping in StudentApp.tsx was fixed.
+          schedule: Array.isArray(classData.schedule) ? classData.schedule : [],
           // ✅ Deliberately empty — filled by fetchModuleLessonsOnly() in
           // the frontend's per-course enrichment pass, same as before.
           materials: [],
