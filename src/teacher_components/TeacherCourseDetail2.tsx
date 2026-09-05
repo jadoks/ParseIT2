@@ -4040,6 +4040,36 @@ useEffect(() => {
             </TouchableOpacity>
             <Text style={styles.checkboxLabel}>Disable repository after due</Text>
           </View>
+          <View
+            style={[
+              styles.inlineSaveWrap,
+              isMobile ? { justifyContent: 'center' } : { justifyContent: 'flex-end' },
+            ]}
+          >
+            <TouchableOpacity
+              style={[
+                styles.inlineSaveButton,
+                Object.keys(errors).length > 0 ? styles.floatingSaveButtonWarn : null,
+                isSaving ? styles.floatingSaveButtonDisabled : null,
+                !isMobile && regularSubmissionChipWidth ? { width: regularSubmissionChipWidth } : null,
+              ]}
+              onPress={handleCreate}
+              disabled={isSaving}
+              activeOpacity={isSaving ? 1 : 0.85}
+            >
+              {isSaving ? (
+                <>
+                  <ActivityIndicator size="small" color="#FFF" />
+                  <Text style={styles.floatingSaveButtonText}>Saving Assignment...</Text>
+                </>
+              ) : (
+                <>
+                  <Ionicons name="save-outline" size={18} color="#FFF" />
+                  <Text style={styles.floatingSaveButtonText}>Save</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          </View>
         </View>
       </View>
     );
@@ -5395,45 +5425,36 @@ CREATE MODAL
             >
               {renderCreateModalBody()}
             </ScrollView>
-            <View
-              style={[
-                styles.floatingSaveWrap,
-                isMobile && styles.floatingSaveWrapMobile,
-                !isMobile && activeTab === 'assignments' && assignmentType === 'regular'
-                  ? { alignItems: 'center' }
-                  : null,
-              ]}
-            >
-              <TouchableOpacity
+            {activeTab === 'materials' && (
+              <View
                 style={[
-                  styles.floatingSaveButton,
-                  activeTab === 'assignments' && Object.keys(errors).length > 0
-                    ? styles.floatingSaveButtonWarn
-                    : null,
-                  isSaving ? styles.floatingSaveButtonDisabled : null,
-                  !isMobile && activeTab === 'assignments' && assignmentType === 'regular' && regularSubmissionChipWidth
-                    ? { width: regularSubmissionChipWidth }
-                    : null,
+                  styles.floatingSaveWrap,
+                  isMobile && styles.floatingSaveWrapMobile,
                 ]}
-                onPress={handleCreate}
-                disabled={isSaving}
-                activeOpacity={isSaving ? 1 : 0.85}
               >
-                {isSaving ? (
-                  <>
-                    <ActivityIndicator size="small" color="#FFF" />
-                    <Text style={styles.floatingSaveButtonText}>
-                      {activeTab === 'materials' ? 'Saving Material...' : 'Saving Assignment...'}
-                    </Text>
-                  </>
-                ) : (
-                  <>
-                    <Ionicons name="save-outline" size={18} color="#FFF" />
-                    <Text style={styles.floatingSaveButtonText}>Save</Text>
-                  </>
-                )}
-              </TouchableOpacity>
-            </View>
+                <TouchableOpacity
+                  style={[
+                    styles.floatingSaveButton,
+                    isSaving ? styles.floatingSaveButtonDisabled : null,
+                  ]}
+                  onPress={handleCreate}
+                  disabled={isSaving}
+                  activeOpacity={isSaving ? 1 : 0.85}
+                >
+                  {isSaving ? (
+                    <>
+                      <ActivityIndicator size="small" color="#FFF" />
+                      <Text style={styles.floatingSaveButtonText}>Saving Material...</Text>
+                    </>
+                  ) : (
+                    <>
+                      <Ionicons name="save-outline" size={18} color="#FFF" />
+                      <Text style={styles.floatingSaveButtonText}>Save</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              </View>
+            )}
           </View>
         </View>
       </Modal>
@@ -5898,21 +5919,27 @@ GENERATED QUESTIONS PREVIEW MODAL
               </TouchableOpacity>
 
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: isMobile ? undefined : 1 }}>
-                <TextInput
-                  value={extraQuestionsCount}
-                  onChangeText={(v) => setExtraQuestionsCount(v.replace(/[^0-9]/g, ''))}
-                  keyboardType="number-pad"
-                  maxLength={2}
-                  style={{
-                    borderWidth: 1,
-                    borderColor: '#DDD',
-                    borderRadius: 8,
-                    paddingHorizontal: 10,
-                    paddingVertical: 8,
-                    width: 56,
-                    textAlign: 'center',
-                  }}
-                />
+                <View style={{ alignItems: 'center' }}>
+                  <Text style={{ fontSize: 10, color: '#888', fontWeight: '700', marginBottom: 3 }} numberOfLines={1}>
+                    To Generate w/ AI
+                  </Text>
+                  <TextInput
+                    value={extraQuestionsCount}
+                    onChangeText={(v) => setExtraQuestionsCount(v.replace(/[^0-9]/g, ''))}
+                    keyboardType="number-pad"
+                    maxLength={2}
+                    accessibilityLabel="Number of questions to generate with AI (used by Generate More with AI)"
+                    style={{
+                      borderWidth: 1,
+                      borderColor: '#DDD',
+                      borderRadius: 8,
+                      paddingHorizontal: 10,
+                      paddingVertical: 8,
+                      width: 56,
+                      textAlign: 'center',
+                    }}
+                  />
+                </View>
                 <TouchableOpacity
                   style={[
                     styles.secondaryButton,
@@ -7649,6 +7676,28 @@ const styles = StyleSheet.create({
   floatingSaveButtonWarn: { backgroundColor: '#C62828' },
   floatingSaveButtonDisabled: { opacity: 0.72 },
   floatingSaveButtonText: { color: '#FFF', fontWeight: '800', fontSize: 14 },
+  // Non-floating version of the Save button used inside the Create
+  // Assignment form (both Regular Submission and Game Based): sits in the
+  // normal document flow at the bottom, right-aligned, instead of an
+  // always-visible overlay covering the scrollable content.
+  inlineSaveWrap: {
+    flexDirection: 'row',
+    marginTop: 20,
+  },
+  inlineSaveButton: {
+    backgroundColor: '#D32F2F',
+    borderRadius: 12,
+    minHeight: 48,
+    paddingHorizontal: 24,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    shadowColor: '#000',
+    shadowOpacity: 0.18,
+    shadowRadius: 8,
+    elevation: 8,
+  },
   disabledButton: { opacity: 0.65 },
   disabledInput: { opacity: 0.65, backgroundColor: '#F8F8F8' },
   savingOverlay: {
