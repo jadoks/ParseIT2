@@ -5051,7 +5051,7 @@ the button looked completely dead.
               )}
               {!isMobile && (
                 <Text style={styles.exportGradesButtonText}>
-                  {isExportingGrades ? 'Exporting...' : 'Export Grades'}
+                  {isExportingGrades ? 'Exporting...' : 'Export Scores'}
                 </Text>
               )}
             </TouchableOpacity>
