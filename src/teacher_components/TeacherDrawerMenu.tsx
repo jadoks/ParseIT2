@@ -111,11 +111,14 @@ function getPasswordPolicyError(password: string): string | null {
 // 👇 Helper to refresh signed URL for the drawer avatar
 const refreshUserImageUrl = async (
   entityId: string,
-  storagePath?: string | null
+  storagePath?: string | null,
+  bypassCache: boolean = false
 ): Promise<string | null> => {
   if (!storagePath) return null;
-  const cached = getCachedUserImageUrl(entityId, storagePath);
-  if (cached) return cached;
+  if (!bypassCache) {
+    const cached = getCachedUserImageUrl(entityId, storagePath);
+    if (cached) return cached;
+  }
   try {
     const response = await apiFetch('/storage/user-image-signed-url', {
       method: 'POST',
@@ -373,15 +376,20 @@ const TeacherDrawerMenu = ({
   // 👇 Fetch signed URL for drawer avatar
   useEffect(() => {
     let isMounted = true;
-    const fetchAvatar = async () => {
-      const url = await refreshUserImageUrl(userId, userAvatarStoragePath);
+    // First load can use the cache (fast path if another screen already
+    // fetched a fresh URL for this user recently).
+    const fetchAvatar = async (bypassCache: boolean = false) => {
+      const url = await refreshUserImageUrl(userId, userAvatarStoragePath, bypassCache);
       if (isMounted && url) {
         setRefreshedAvatarUrl(url);
       }
     };
-    fetchAvatar();
-    // Refresh every 5 minutes to keep URL valid if drawer stays open
-    const interval = setInterval(fetchAvatar, 5 * 60 * 1000);
+    fetchAvatar(false);
+    // Refresh every 5 minutes to keep URL valid if drawer stays open.
+    // 🔥 FIX: bypass the cache here — otherwise this just re-reads the same
+    // (possibly now-expired) URL from cache and never actually hits the API,
+    // so the avatar goes stale forever once the signed URL expires.
+    const interval = setInterval(() => fetchAvatar(true), 5 * 60 * 1000);
     return () => {
       isMounted = false;
       clearInterval(interval);
@@ -703,7 +711,24 @@ const TeacherDrawerMenu = ({
   return (
     <View style={[styles.drawerContainer, { width: drawerWidth }]}>
       <Pressable style={styles.profileSection} onPress={onAvatarPress}>
-        <Image source={finalAvatarSource} style={styles.avatar} resizeMode="cover" />
+        <Image
+          source={finalAvatarSource}
+          style={styles.avatar}
+          resizeMode="cover"
+          onError={() => {
+            // 🔥 FIX: if the signed URL expired before the next 5-minute
+            // refresh tick (e.g. the tab was backgrounded/throttled), force
+            // a fresh one immediately instead of showing a broken image
+            // until the interval eventually fires.
+            if (refreshedAvatarUrl) {
+              refreshUserImageUrl(userId, userAvatarStoragePath, true).then(
+                (url) => {
+                  if (url) setRefreshedAvatarUrl(url);
+                }
+              );
+            }
+          }}
+        />
         <View style={{ flex: 1 }}>
           <Text style={styles.userName}>{userName}</Text>
           {!!userEmail && <Text style={styles.userEmail}>{userEmail}</Text>}
