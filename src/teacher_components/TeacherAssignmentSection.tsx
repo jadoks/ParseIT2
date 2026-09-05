@@ -68,13 +68,15 @@ const TeacherAssignmentSection = ({
         </Text>
       )}
 
-      <View style={styles.recommendationBadge}>
-        <Text style={styles.recommendationText}>
-          {item.repositoryDisabledAfterDue
-            ? 'Repository disabled after due'
-            : 'Open submissions'}
-        </Text>
-      </View>
+      {item.assignmentType !== 'game_based' && (
+        <View style={styles.recommendationBadge}>
+          <Text style={styles.recommendationText}>
+            {item.repositoryDisabledAfterDue
+              ? 'Repository disabled after due'
+              : 'Open submissions'}
+          </Text>
+        </View>
+      )}
 
       {/* NEW: Game-Based Badge */}
       {!!item.assignmentType && item.assignmentType === 'game_based' && (
