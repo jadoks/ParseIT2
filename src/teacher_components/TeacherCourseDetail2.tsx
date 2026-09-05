@@ -3977,7 +3977,10 @@ useEffect(() => {
                 styles.generateButton,
                 (isGenerating || isInvalidQuestionCount || dailyGenerationsUsed >= DAILY_GENERATION_LIMIT)
                   ? styles.disabledButton
-                  : null
+                  : null,
+                !isMobile && regularSubmissionChipWidth
+                  ? { width: regularSubmissionChipWidth * 2 + 10, alignSelf: 'center' }
+                  : null,
               ]}
               onPress={handleGenerateQuestions}
               disabled={
@@ -4000,7 +4003,15 @@ useEffect(() => {
             </TouchableOpacity>
           )}
           {assignmentType === 'game_based' && selectedMaterialIds.length > 0 && !gameType && generatedQuestions.length === 0 && (
-            <View style={[styles.generateButton, { backgroundColor: '#9E9E9E' }]}>
+            <View
+              style={[
+                styles.generateButton,
+                { backgroundColor: '#9E9E9E' },
+                !isMobile && regularSubmissionChipWidth
+                  ? { width: regularSubmissionChipWidth * 2 + 10, alignSelf: 'center' }
+                  : null,
+              ]}
+            >
               <Ionicons name="alert-circle-outline" size={18} color="#FFF" />
               <Text style={styles.generateButtonText}>Select a Game Type to Generate Questions</Text>
             </View>
@@ -4053,7 +4064,7 @@ useEffect(() => {
           <View
             style={[
               styles.inlineSaveWrap,
-              isMobile ? { justifyContent: 'center' } : { justifyContent: 'flex-end' },
+              { justifyContent: 'center' },
             ]}
           >
             <TouchableOpacity
@@ -4061,7 +4072,14 @@ useEffect(() => {
                 styles.inlineSaveButton,
                 Object.keys(errors).length > 0 ? styles.floatingSaveButtonWarn : null,
                 isSaving ? styles.floatingSaveButtonDisabled : null,
-                !isMobile && regularSubmissionChipWidth ? { width: regularSubmissionChipWidth } : null,
+                isMobile
+                  ? { width: '100%' }
+                  // Wider than a single type chip — roughly the width of both
+                  // chips plus the gap between them — so it reads as a
+                  // deliberate, prominent action rather than a narrow button.
+                  : regularSubmissionChipWidth
+                    ? { width: regularSubmissionChipWidth * 2 + 10 }
+                    : null,
               ]}
               onPress={handleCreate}
               disabled={isSaving}
