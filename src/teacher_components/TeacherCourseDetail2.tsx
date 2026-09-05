@@ -4055,25 +4055,13 @@ useEffect(() => {
               <Text style={styles.checkboxLabel}>Disable repository after due</Text>
             </View>
           )}
-          <View
-            style={[
-              styles.inlineSaveWrap,
-              { justifyContent: 'center' },
-            ]}
-          >
+          <View style={styles.inlineSaveWrap}>
             <TouchableOpacity
               style={[
                 styles.inlineSaveButton,
                 Object.keys(errors).length > 0 ? styles.floatingSaveButtonWarn : null,
                 isSaving ? styles.floatingSaveButtonDisabled : null,
-                isMobile
-                  ? { width: '100%' }
-                  // Wider than a single type chip — roughly the width of both
-                  // chips plus the gap between them — so it reads as a
-                  // deliberate, prominent action rather than a narrow button.
-                  : regularSubmissionChipWidth
-                    ? { width: regularSubmissionChipWidth * 2 + 10 }
-                    : null,
+                { width: '100%' },
               ]}
               onPress={handleCreate}
               disabled={isSaving}
