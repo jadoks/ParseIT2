@@ -2322,6 +2322,15 @@ const fetchModules = useCallback(async (silent = false) => {
                                     </Text>
                                     <Ionicons name="chevron-forward" size={16} color="#999" />
                                   </View>
+                                  {!!lesson.description && (
+                                    <Text
+                                      style={{ fontSize: 12, color: '#555', lineHeight: 18 }}
+                                      numberOfLines={1}
+                                      ellipsizeMode="tail"
+                                    >
+                                      {lesson.description}
+                                    </Text>
+                                  )}
                                 </TouchableOpacity>
                               ));
                             })()
