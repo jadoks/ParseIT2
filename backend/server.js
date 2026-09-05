@@ -8273,6 +8273,23 @@ app.get("/student-joined-classes/:studentId", async (req, res) => {
       ...doc.data(),
     }));
 
+    // 🔥 FIX: give the joined-classes list a real, predictable order —
+    // most-recently-joined class first — instead of whatever arbitrary
+    // order Firestore happened to return for this equality-only query
+    // (no `.orderBy()` was specified, so nothing guaranteed the order
+    // before). Both Dashboard's "top 6" preview and ClassesScreen's full
+    // list render this array as-is with no sorting of their own, so
+    // ordering it once here is enough to make both screens consistent.
+    const toMillis = (value) => {
+      if (!value) return 0;
+      if (typeof value.toMillis === "function") return value.toMillis();
+      if (typeof value._seconds === "number") return value._seconds * 1000;
+      if (typeof value.seconds === "number") return value.seconds * 1000;
+      const parsed = new Date(value).getTime();
+      return Number.isNaN(parsed) ? 0 : parsed;
+    };
+    memberships.sort((a, b) => toMillis(b.joinedAt) - toMillis(a.joinedAt));
+
     const classIds = memberships.map((item) => item.classId).filter(Boolean);
     const uniqueClassIds = [...new Set(classIds)];
 
