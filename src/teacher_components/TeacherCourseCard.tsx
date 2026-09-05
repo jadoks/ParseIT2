@@ -18,6 +18,15 @@ import {
 // came back 401.
 import { apiFetch } from '../services/api'; // adjust path if your folder layout differs
 
+// Mirrors ClassScheduleEntry from CourseDetail.tsx / TeacherCourseDetail2.tsx —
+// kept as a local type here to avoid a cross-screen import for a small shape.
+export type TeacherCourseScheduleEntry = {
+  days: string[];
+  startTime: string;
+  endTime: string;
+  room?: string;
+};
+
 // ---- Matches the TeacherCourseData shape used in TeacherDashboard.tsx ----
 export type TeacherCourseData = {
   id: string;
@@ -38,6 +47,7 @@ export type TeacherCourseData = {
   position?: number;
   units?: number;
   themeColor?: string;
+  schedule?: TeacherCourseScheduleEntry[];
 };
 
 interface TeacherCourseCardProps {
@@ -78,6 +88,31 @@ const getSemesterSchoolYearLabel = (course: TeacherCourseData) => {
   if (semester) return semester;
   if (schoolYear) return `S.Y. ${schoolYear}`;
   return 'Semester and school year not set';
+};
+
+// Mirrors the formatting helpers in CourseDetail.tsx / TeacherCourseDetail2.tsx
+// so schedule text reads the same way everywhere it's shown.
+const pad = (n: number) => String(n).padStart(2, '0');
+
+const formatScheduleTime = (time: string) => {
+  if (!time) return '';
+  const [hourStr, minuteStr] = time.split(':');
+  let hour = parseInt(hourStr, 10);
+  if (Number.isNaN(hour)) return time;
+  const period = hour >= 12 ? 'PM' : 'AM';
+  hour = hour % 12 || 12;
+  return `${hour}:${pad(parseInt(minuteStr, 10) || 0)} ${period}`;
+};
+
+const SCHEDULE_DAY_ABBREVIATIONS: Record<string, string> = {
+  Monday: 'Mon', Tuesday: 'Tue', Wednesday: 'Wed', Thursday: 'Thu',
+  Friday: 'Fri', Saturday: 'Sat', Sunday: 'Sun',
+};
+
+const formatScheduleBlock = (entry: TeacherCourseScheduleEntry) => {
+  const days = (entry.days || []).map((d) => SCHEDULE_DAY_ABBREVIATIONS[d] || d).join(', ');
+  const time = `${formatScheduleTime(entry.startTime)} - ${formatScheduleTime(entry.endTime)}`;
+  return { days, time, room: entry.room || '' };
 };
 
 const TeacherCourseCard: React.FC<TeacherCourseCardProps> = ({
@@ -177,6 +212,10 @@ const TeacherCourseCard: React.FC<TeacherCourseCardProps> = ({
 
   const resolvedImage = getCourseImage();
 
+  const courseSchedule: TeacherCourseScheduleEntry[] = Array.isArray(item.schedule)
+    ? item.schedule
+    : [];
+
   return (
     <TouchableOpacity
       style={[styles.card, { width: cardWidth as any }]}
@@ -226,6 +265,18 @@ const TeacherCourseCard: React.FC<TeacherCourseCardProps> = ({
               {getSemesterSchoolYearLabel(item)}
             </Text>
           </View>
+          {courseSchedule.map((entry, index) => {
+            const { days, time, room } = formatScheduleBlock(entry);
+            return (
+              <View key={`schedule-${index}`} style={styles.classMetaPill}>
+                <Ionicons name="time-outline" size={14} color="#D32F2F" />
+                <Text style={styles.classMetaText} numberOfLines={1}>
+                  {days} · {time}
+                  {room ? ` · ${room}` : ''}
+                </Text>
+              </View>
+            );
+          })}
         </View>
 
         <View style={styles.classCodeRow}>

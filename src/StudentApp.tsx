@@ -392,6 +392,10 @@ const mapCoursesToAssignmentCourses = (courses: CourseDetailData[]): AssignmentC
     bannerUrl: (course as any).bannerUrl || (course as any).bannerUri || null,
     bannerStoragePath: (course as any).bannerStoragePath || null, bannerFileName: (course as any).bannerFileName || null,
     bannerMimeType: (course as any).bannerMimeType || null,
+    // 🔥 FIX: this mapper was dropping `schedule`, so CourseDetail's
+    // `courseSchedule.length > 0` check was always false and the schedule
+    // strip never rendered for students, even when the class had one.
+    schedule: Array.isArray((course as any).schedule) ? (course as any).schedule : [],
     materials: course.materials.map((material) => ({ id: material.id, title: material.title, type: material.type, uploadedDate: material.uploadedDate, content: material.content, fileName: material.fileName, fileUrl: material.fileUrl || material.fileUri, fileUri: material.fileUri || material.fileUrl, fileType: material.fileType })),
     assignments: mapCourseAssignmentsToAssignmentItems(course.assignments),
   }));

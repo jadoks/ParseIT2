@@ -41,6 +41,15 @@ export interface CourseCardAssignment {
   materialIds?: string[];
 }
 
+// Mirrors ClassScheduleEntry from CourseDetail.tsx — kept as a local type
+// here to avoid a cross-screen import for a small shape.
+export type CourseCardScheduleEntry = {
+  days: string[];
+  startTime: string;
+  endTime: string;
+  room?: string;
+};
+
 export interface CourseCardCourse {
   id: string;
   name: string;
@@ -56,6 +65,7 @@ export interface CourseCardCourse {
   bannerStoragePath?: string | null;
   bannerFileName?: string | null;
   bannerMimeType?: string | null;
+  schedule?: CourseCardScheduleEntry[];
 }
 
 interface CourseCardProps {
@@ -97,6 +107,31 @@ type DropdownState =
   | null;
 
 const DROPDOWN_WIDTH = 170;
+
+// Mirrors the formatting helpers in CourseDetail.tsx so schedule text reads
+// the same way everywhere it's shown.
+const pad = (n: number) => String(n).padStart(2, '0');
+
+const formatScheduleTime = (time: string) => {
+  if (!time) return '';
+  const [hourStr, minuteStr] = time.split(':');
+  let hour = parseInt(hourStr, 10);
+  if (Number.isNaN(hour)) return time;
+  const period = hour >= 12 ? 'PM' : 'AM';
+  hour = hour % 12 || 12;
+  return `${hour}:${pad(parseInt(minuteStr, 10) || 0)} ${period}`;
+};
+
+const SCHEDULE_DAY_ABBREVIATIONS: Record<string, string> = {
+  Monday: 'Mon', Tuesday: 'Tue', Wednesday: 'Wed', Thursday: 'Thu',
+  Friday: 'Fri', Saturday: 'Sat', Sunday: 'Sun',
+};
+
+const formatScheduleBlock = (entry: CourseCardScheduleEntry) => {
+  const days = (entry.days || []).map((d) => SCHEDULE_DAY_ABBREVIATIONS[d] || d).join(', ');
+  const time = `${formatScheduleTime(entry.startTime)} - ${formatScheduleTime(entry.endTime)}`;
+  return { days, time, room: entry.room || '' };
+};
 
 const CourseCard: React.FC<CourseCardProps> = ({
   course,
@@ -254,6 +289,10 @@ const CourseCard: React.FC<CourseCardProps> = ({
   const recommendedRecommendation = analytics.recommendedAssignment
     ? getRecommendationType(analytics.recommendedAssignment)
     : null;
+
+  const courseSchedule: CourseCardScheduleEntry[] = Array.isArray(course.schedule)
+    ? course.schedule
+    : [];
 
   const topColor = recommendedRecommendation
     ? getRecommendationColor(recommendedRecommendation)
@@ -440,6 +479,23 @@ const CourseCard: React.FC<CourseCardProps> = ({
             </View>
           )}
 
+          {courseSchedule.length > 0 && (
+            <View style={styles.scheduleRow}>
+              <MaterialCommunityIcons name="calendar-clock" size={14} color="#5f6368" />
+              <View style={styles.scheduleTextWrap}>
+                {courseSchedule.map((entry, index) => {
+                  const { days, time, room } = formatScheduleBlock(entry);
+                  return (
+                    <Text key={`schedule-${index}`} style={styles.scheduleText} numberOfLines={1}>
+                      {days} · {time}
+                      {room ? ` · ${room}` : ''}
+                    </Text>
+                  );
+                })}
+              </View>
+            </View>
+          )}
+
           <View style={styles.metaBlockRow}>
             <View style={styles.metaBlockHalf}>
               <Text style={styles.metaLabel}>Average</Text>
@@ -615,6 +671,21 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 12,
     marginBottom: 10,
+  },
+  scheduleRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 6,
+    marginBottom: 10,
+  },
+  scheduleTextWrap: {
+    flex: 1,
+    gap: 2,
+  },
+  scheduleText: {
+    fontSize: 12,
+    color: '#5f6368',
+    fontWeight: '600',
   },
   metaBlockHalf: {
     flex: 1,

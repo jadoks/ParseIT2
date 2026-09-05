@@ -42,6 +42,14 @@ export interface DashboardAssignment {
   materialIds?: string[];
 }
 
+// Mirrors ClassScheduleEntry from CourseDetail.tsx.
+export type DashboardScheduleEntry = {
+  days: string[];
+  startTime: string;
+  endTime: string;
+  room?: string;
+};
+
 export interface DashboardCourse {
   id: string;
   name: string;
@@ -53,6 +61,7 @@ export interface DashboardCourse {
   section: string;
   materials: DashboardMaterial[];
   assignments: DashboardAssignment[];
+  schedule?: DashboardScheduleEntry[];
 }
 
 interface DashboardProps {
@@ -80,6 +89,31 @@ interface DashboardProps {
 
 type RecommendationType = 'review' | 'practice';
 type ToastType = 'success' | 'error' | 'info';
+
+// Mirrors the formatting helpers in CourseDetail.tsx so schedule text reads
+// the same way everywhere it's shown.
+const pad = (n: number) => String(n).padStart(2, '0');
+
+const formatScheduleTime = (time: string) => {
+  if (!time) return '';
+  const [hourStr, minuteStr] = time.split(':');
+  let hour = parseInt(hourStr, 10);
+  if (Number.isNaN(hour)) return time;
+  const period = hour >= 12 ? 'PM' : 'AM';
+  hour = hour % 12 || 12;
+  return `${hour}:${pad(parseInt(minuteStr, 10) || 0)} ${period}`;
+};
+
+const SCHEDULE_DAY_ABBREVIATIONS: Record<string, string> = {
+  Monday: 'Mon', Tuesday: 'Tue', Wednesday: 'Wed', Thursday: 'Thu',
+  Friday: 'Fri', Saturday: 'Sat', Sunday: 'Sun',
+};
+
+const formatScheduleBlock = (entry: DashboardScheduleEntry) => {
+  const days = (entry.days || []).map((d) => SCHEDULE_DAY_ABBREVIATIONS[d] || d).join(', ');
+  const time = `${formatScheduleTime(entry.startTime)} - ${formatScheduleTime(entry.endTime)}`;
+  return { days, time, room: entry.room || '' };
+};
 
 const Dashboard = ({
   announcements = [],
@@ -832,6 +866,27 @@ const Dashboard = ({
                     </Text>
                     <Text style={styles.courseSubMeta}>{item.course.section}</Text>
 
+                    {Array.isArray(item.course.schedule) && item.course.schedule.length > 0 && (
+                      <View style={styles.courseScheduleRow}>
+                        <Ionicons name="calendar-outline" size={13} color="#5F6368" />
+                        <View style={styles.courseScheduleTextWrap}>
+                          {item.course.schedule.map((entry, index) => {
+                            const { days, time, room } = formatScheduleBlock(entry);
+                            return (
+                              <Text
+                                key={`schedule-${index}`}
+                                style={styles.courseScheduleText}
+                                numberOfLines={1}
+                              >
+                                {days} · {time}
+                                {room ? ` · ${room}` : ''}
+                              </Text>
+                            );
+                          })}
+                        </View>
+                      </View>
+                    )}
+
                     <View style={styles.courseMetaGrid}>
                       <View style={styles.courseMiniStat}>
                         <Text style={styles.courseMetaLabel}>Assignments</Text>
@@ -1221,6 +1276,22 @@ const styles = StyleSheet.create({
     color: '#777',
     marginBottom: 2,
     fontWeight: '500',
+  },
+  courseScheduleRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 6,
+    marginTop: 4,
+    marginBottom: 6,
+  },
+  courseScheduleTextWrap: {
+    flex: 1,
+    gap: 2,
+  },
+  courseScheduleText: {
+    fontSize: 12,
+    color: '#5F6368',
+    fontWeight: '600',
   },
   courseMetaBlock: {
     marginBottom: 10,

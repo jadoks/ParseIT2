@@ -95,6 +95,8 @@ type Conversation = {
   avatar: any;
   time: string;
   unreadCount: number;
+  isClassChat?: boolean;
+  isNewClassChat?: boolean;
   isRoom?: boolean;
   isCreatedRoom?: boolean;
   roomName?: string | null;
@@ -301,6 +303,7 @@ const conversationChanged = (a: Conversation, b: Conversation): boolean => {
     a.name !== b.name ||
     a.last !== b.last ||
     a.unreadCount !== b.unreadCount ||
+    a.isNewClassChat !== b.isNewClassChat ||
     toMillis(a.lastMessageAt) !== toMillis(b.lastMessageAt) ||
     a.avatarStoragePath !== b.avatarStoragePath  // 👈 ADD THIS
   );
@@ -465,7 +468,7 @@ const Messenger = ({
     async (conversationId: string) => {
       if (!conversationId || (!currentUser && !currentUserUid)) return;
       try {
-        await apiFetch(`${API_BASE_URL}/messenger-mark-read`, {
+        const response = await apiFetch(`${API_BASE_URL}/messenger-mark-read`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -474,6 +477,22 @@ const Messenger = ({
             userUid: currentUserUid || undefined,
           }),
         });
+        if (response.ok) {
+          // Clear the "new class chat" dot immediately on open, without
+          // waiting for the next poll — it's independent of unreadCount.
+          setConversations((prev) =>
+            prev.map((c) =>
+              c.id === conversationId && c.isNewClassChat
+                ? { ...c, isNewClassChat: false }
+                : c
+            )
+          );
+          setSelected((prev) =>
+            prev && prev.id === conversationId && prev.isNewClassChat
+              ? { ...prev, isNewClassChat: false }
+              : prev
+          );
+        }
       } catch (error) {
         console.warn('Mark conversation as read error:', error);
       }
@@ -554,6 +573,8 @@ const Messenger = ({
           createdAt: item.createdAt || null,
           isRoom: item.type === 'room',
           isCreatedRoom: item.type === 'room',
+          isClassChat: item.type === 'class',
+          isNewClassChat: !!item.isNewClassChat,
           roomName: item.roomName || null,
           admin:
             item.instructorName ||
@@ -1863,20 +1884,24 @@ const Messenger = ({
                   }}
                   activeOpacity={0.88}
                 >
-                  <Image
-                    source={
-                      item.avatarUrl
-                        ? { uri: `${item.avatarUrl}&_cb=${avatarCacheBuster}` }
-                        : item.avatar
-                    }
-                    onError={() => handleAvatarLoadError(item)}
-                    style={{
-                      width: sizes.listAvatar,
-                      height: sizes.listAvatar,
-                      borderRadius: sizes.listAvatar / 2,
-                      marginRight: isTinyPhone ? 8 : 12,
-                    }}
-                  />
+                  <View style={{ marginRight: isTinyPhone ? 8 : 12 }}>
+                    <Image
+                      source={
+                        item.avatarUrl
+                          ? { uri: `${item.avatarUrl}&_cb=${avatarCacheBuster}` }
+                          : item.avatar
+                      }
+                      onError={() => handleAvatarLoadError(item)}
+                      style={{
+                        width: sizes.listAvatar,
+                        height: sizes.listAvatar,
+                        borderRadius: sizes.listAvatar / 2,
+                      }}
+                    />
+                    {item.isClassChat && item.isNewClassChat && (
+                      <View style={styles.newClassChatDot} />
+                    )}
+                  </View>
                   <View style={styles.convContent}>
                     <View style={styles.convTopRow}>
                       <Text
@@ -1981,20 +2006,24 @@ const Messenger = ({
                 onPress={() => handleSelectConversation(item)}
                 activeOpacity={0.88}
               >
-                <Image
-                  source={
-                    item.avatarUrl
-                      ? { uri: `${item.avatarUrl}&_cb=${avatarCacheBuster}` }
-                      : item.avatar
-                  }
-                  onError={() => handleAvatarLoadError(item)}
-                  style={{
-                    width: sizes.listAvatar,
-                    height: sizes.listAvatar,
-                    borderRadius: sizes.listAvatar / 2,
-                    marginRight: isTinyPhone ? 8 : 12,
-                  }}
-                />
+                <View style={{ marginRight: isTinyPhone ? 8 : 12 }}>
+                  <Image
+                    source={
+                      item.avatarUrl
+                        ? { uri: `${item.avatarUrl}&_cb=${avatarCacheBuster}` }
+                        : item.avatar
+                    }
+                    onError={() => handleAvatarLoadError(item)}
+                    style={{
+                      width: sizes.listAvatar,
+                      height: sizes.listAvatar,
+                      borderRadius: sizes.listAvatar / 2,
+                    }}
+                  />
+                  {item.isClassChat && item.isNewClassChat && (
+                    <View style={styles.newClassChatDot} />
+                  )}
+                </View>
                 <View style={styles.convContent}>
                   <View style={styles.convTopRow}>
                     <Text
@@ -3186,6 +3215,21 @@ const styles = StyleSheet.create({
     paddingHorizontal: 5,
   },
   unreadBadgeText: { color: '#fff', fontSize: 10, fontWeight: '700' },
+  // Small "brand new" indicator for class chats that were just created or
+  // that the teacher just got added to, kept visually separate from the
+  // numbered unread badge above — it lives on the avatar corner instead of
+  // the text row.
+  newClassChatDot: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: '#2E7DFF',
+    borderWidth: 2,
+    borderColor: '#fff',
+  },
   convTime: { color: '#888', flexShrink: 0 },
   convLast: { color: '#666', marginTop: 4 },
   convSemester: {
