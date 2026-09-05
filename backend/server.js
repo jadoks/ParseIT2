@@ -17681,6 +17681,22 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
         return res.status(400).json({ error: "Missing required fields." });
       }
 
+      // Duplicate title check — must be unique among all lessons already in
+      // this module (AI-generated or manually created). Normalized
+      // (trimmed, case-insensitive) to match the frontend's check.
+      const normalizedLessonTitle = title.trim().toLowerCase();
+      const existingLessonsForTitleSnap = await db.collection("courseLessons")
+        .where("moduleId", "==", moduleId)
+        .get();
+      const lessonTitleAlreadyExists = existingLessonsForTitleSnap.docs.some(
+        (doc) => (doc.data()?.title || "").trim().toLowerCase() === normalizedLessonTitle
+      );
+      if (lessonTitleAlreadyExists) {
+        return res.status(409).json({
+          error: `A lesson titled "${title.trim()}" already exists in this module.`
+        });
+      }
+
       // ✅ ROBUST AUTO-CALCULATION LOGIC
       let finalLessonNumber = lessonNumber;
       
@@ -18052,7 +18068,27 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
       };
 
       // Update text fields if provided
-      if (title !== undefined) updatePayload.title = title.trim();
+      if (title !== undefined) {
+        const trimmedTitle = title.trim();
+        // Duplicate title check — only when the title is actually changing,
+        // must be unique among the OTHER lessons in this same module
+        // (AI-generated or manually created).
+        if (trimmedTitle.toLowerCase() !== (currentData.title || "").trim().toLowerCase()) {
+          const normalizedLessonTitle = trimmedTitle.toLowerCase();
+          const siblingLessonsSnap = await db.collection("courseLessons")
+            .where("moduleId", "==", currentData.moduleId)
+            .get();
+          const lessonTitleAlreadyExists = siblingLessonsSnap.docs.some(
+            (doc) => doc.id !== lessonId && (doc.data()?.title || "").trim().toLowerCase() === normalizedLessonTitle
+          );
+          if (lessonTitleAlreadyExists) {
+            return res.status(409).json({
+              error: `A lesson titled "${trimmedTitle}" already exists in this module.`
+            });
+          }
+        }
+        updatePayload.title = trimmedTitle;
+      }
       if (description !== undefined) updatePayload.description = description.trim();
       if (discussion !== undefined) updatePayload.discussion = discussion.trim() || null;
       if (activity !== undefined) updatePayload.activity = activity.trim() || null;

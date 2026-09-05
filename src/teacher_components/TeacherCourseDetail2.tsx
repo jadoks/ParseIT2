@@ -1475,6 +1475,20 @@ useEffect(() => {
     (m) => (m.title || '').trim().toLowerCase() === newModuleTitle.trim().toLowerCase() && newModuleTitle.trim() !== ''
   );
 
+  // A lesson title counts as a duplicate against any other lesson already in
+  // the SAME module (AI-generated or manually created), normalized the same
+  // way as module titles. When editing an existing lesson, that lesson's own
+  // (unchanged) title doesn't count against itself.
+  const isDuplicateLessonTitle = (() => {
+    const trimmedTitle = newLessonTitle.trim();
+    if (!trimmedTitle || !selectedModuleForLesson) return false;
+    const lessons = Array.isArray(selectedModuleForLesson.lessons) ? selectedModuleForLesson.lessons : [];
+    return lessons.some((l: any) => {
+      if (isEditingLesson && selectedLesson?.id && l.id === selectedLesson.id) return false;
+      return (l.title || '').trim().toLowerCase() === trimmedTitle.toLowerCase();
+    });
+  })();
+
   const handleCreateManualModule = async () => {
     const num = Number(newModuleNum);
     if (!newModuleTitle.trim() || !course?.id) {
@@ -1524,6 +1538,10 @@ useEffect(() => {
   const handleCreateManualLesson = async () => {
     if (!newLessonTitle.trim() || !selectedModuleForLesson?.id || !course?.id) {
       toast.show('error', 'Error', 'Please enter a title and select a module.');
+      return;
+    }
+    if (isDuplicateLessonTitle) {
+      toast.show('error', 'Duplicate Title', 'A lesson with this title already exists in this module (generated or manual). Please use a different title.');
       return;
     }
     setIsSaving(true);
@@ -3227,7 +3245,14 @@ useEffect(() => {
   const renderLessonFormFields = () => (
     <>
       <Text style={styles.sectionLabel}>Lesson Title</Text>
-      <TextInput style={styles.inputBox} value={newLessonTitle} onChangeText={setNewLessonTitle} placeholder="Lesson Title" />
+      <TextInput
+        style={[styles.inputBox, isDuplicateLessonTitle && styles.errorBorder]}
+        value={newLessonTitle}
+        onChangeText={setNewLessonTitle}
+        placeholder="Lesson Title"
+      />
+      {isDuplicateLessonTitle &&
+        renderInputError('A lesson with this title already exists in this module (generated or manual). Please use a different title.')}
       <Text style={styles.sectionLabel}>Description</Text>
       <TextInput style={styles.inputBox} value={newLessonDesc} onChangeText={setNewLessonDesc} placeholder="Short summary" />
       {lessonMode === 'text' ? (
@@ -6645,8 +6670,12 @@ MANUAL LESSON CREATION MODAL
               </View>
               <TouchableOpacity
                 onPress={handleCreateManualLesson}
-                disabled={isSaving}
-                style={[styles.lessonPreviewIconBtn, { backgroundColor: '#D32F2F' }]}
+                disabled={isSaving || isDuplicateLessonTitle || !newLessonTitle.trim()}
+                style={[
+                  styles.lessonPreviewIconBtn,
+                  { backgroundColor: '#D32F2F' },
+                  (isSaving || isDuplicateLessonTitle || !newLessonTitle.trim()) && { opacity: 0.5 },
+                ]}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               >
                 {isSaving ? <ActivityIndicator size="small" color="#FFF" /> : <Ionicons name="checkmark" size={20} color="#FFF" />}
@@ -6728,8 +6757,12 @@ MANUAL LESSON CREATION MODAL
               </View>
               <TouchableOpacity
                 onPress={handleCreateManualLesson}
-                disabled={isSaving}
-                style={[styles.lessonPreviewIconBtn, { backgroundColor: '#D32F2F' }]}
+                disabled={isSaving || isDuplicateLessonTitle || !newLessonTitle.trim()}
+                style={[
+                  styles.lessonPreviewIconBtn,
+                  { backgroundColor: '#D32F2F' },
+                  (isSaving || isDuplicateLessonTitle || !newLessonTitle.trim()) && { opacity: 0.5 },
+                ]}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               >
                 {isSaving ? <ActivityIndicator size="small" color="#FFF" /> : <Ionicons name="checkmark" size={20} color="#FFF" />}
