@@ -1,7 +1,8 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
 import Constants from "expo-constants";
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
+  BackHandler,
   Modal,
   Platform,
   Pressable,
@@ -120,6 +121,83 @@ export default function AdminApp({ onLogout, currentAdmin }: Props) {
     setActiveContentScreen(snapshot.activeContentScreen);
     setSidebarVisible(false);
   };
+
+  // 👇 BACK BUTTON HISTORY: independent of `previousScreen` above (which is
+  // only used for the single-level Settings/Analytics "close" action), this
+  // keeps a full stack of every screen we've passed through so the Android
+  // hardware back button can step back through them one at a time instead
+  // of immediately exiting to the phone's home screen.
+  const screenHistoryRef = useRef<ScreenSnapshot[]>([]);
+  const prevSnapshotRef = useRef<ScreenSnapshot>(captureCurrentScreen());
+
+  useEffect(() => {
+    const current: ScreenSnapshot = {
+      activeTopNav,
+      activeSideNav,
+      activeContentScreen,
+    };
+    const prev = prevSnapshotRef.current;
+
+    if (
+      prev.activeTopNav !== current.activeTopNav ||
+      prev.activeSideNav !== current.activeSideNav ||
+      prev.activeContentScreen !== current.activeContentScreen
+    ) {
+      screenHistoryRef.current.push(prev);
+      // Cap the stack so it can't grow forever on a long session.
+      if (screenHistoryRef.current.length > 20) {
+        screenHistoryRef.current.shift();
+      }
+      prevSnapshotRef.current = current;
+    }
+  }, [activeTopNav, activeSideNav, activeContentScreen]);
+
+  useEffect(() => {
+    if (Platform.OS !== "android") return;
+
+    const onHardwareBackPress = () => {
+      // Close whatever overlay is open first, tap by tap.
+      if (isLogoutModalVisible) {
+        setIsLogoutModalVisible(false);
+        return true;
+      }
+      if (sidebarVisible) {
+        setSidebarVisible(false);
+        return true;
+      }
+
+      // Step back through the in-app navigation history.
+      if (screenHistoryRef.current.length > 0) {
+        const previous = screenHistoryRef.current.pop() as ScreenSnapshot;
+        prevSnapshotRef.current = previous;
+        restoreScreen(previous);
+        return true;
+      }
+
+      // No history left — fall back to Dashboard instead of exiting.
+      if (activeContentScreen !== "Dashboard") {
+        const dashboardSnapshot: ScreenSnapshot = {
+          activeTopNav: "Dashboard",
+          activeSideNav: null,
+          activeContentScreen: "Dashboard",
+        };
+        prevSnapshotRef.current = dashboardSnapshot;
+        restoreScreen(dashboardSnapshot);
+        return true;
+      }
+
+      // Already on Dashboard with nothing to go back to: let the system
+      // handle it (this exits the app), matching normal Android behavior.
+      return false;
+    };
+
+    const subscription = BackHandler.addEventListener(
+      "hardwareBackPress",
+      onHardwareBackPress
+    );
+
+    return () => subscription.remove();
+  }, [isLogoutModalVisible, sidebarVisible, activeContentScreen]);
 
   const handleTopNavChange = (item: string) => {
     setPreviousScreen(captureCurrentScreen());

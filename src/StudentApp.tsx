@@ -2,10 +2,11 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import Constants from 'expo-constants';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as NavigationBar from 'expo-navigation-bar';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  BackHandler,
   Image,
   Modal,
   Platform,
@@ -1843,6 +1844,106 @@ const refreshAssignmentCourseContent = useCallback(async () => {
       setActiveScreen('notification');
     }
   };
+
+  // 👇 BACK BUTTON HISTORY: keeps a stack of every screen we've navigated
+  // away from, so the Android hardware back button can step back through
+  // them one at a time instead of immediately exiting the app.
+  const screenHistoryRef = useRef<ScreenType[]>([]);
+  const prevScreenRef = useRef<ScreenType>(activeScreen);
+
+  useEffect(() => {
+    if (prevScreenRef.current !== activeScreen) {
+      screenHistoryRef.current.push(prevScreenRef.current);
+      // Cap the stack so it can't grow forever on a long session.
+      if (screenHistoryRef.current.length > 20) {
+        screenHistoryRef.current.shift();
+      }
+      prevScreenRef.current = activeScreen;
+    }
+  }, [activeScreen]);
+
+  useEffect(() => {
+    if (Platform.OS !== 'android') return;
+
+    const onHardwareBackPress = () => {
+      // Close whatever overlay/modal is open first, tap by tap, before
+      // touching the underlying screen stack — highest priority ones first.
+      if (isVerificationErrorModalVisible) {
+        setVerificationErrorModalVisible(false);
+        return true;
+      }
+      if (isUploadSuccessModalVisible) {
+        setUploadSuccessModalVisible(false);
+        return true;
+      }
+      if (isLeaveSuccessModalVisible) {
+        setLeaveSuccessModalVisible(false);
+        return true;
+      }
+      if (isLeaveErrorModalVisible) {
+        setLeaveErrorModalVisible(false);
+        return true;
+      }
+      if (isLeaveConfirmModalVisible) {
+        setLeaveConfirmModalVisible(false);
+        return true;
+      }
+      if (isChatOpen) {
+        setIsChatOpen(false);
+        return true;
+      }
+      if (isNotificationOpen) {
+        setIsNotificationOpen(false);
+        return true;
+      }
+      if (isMobileDrawerOpen) {
+        setMobileDrawerOpen(false);
+        return true;
+      }
+      if (isFullscreenScreen) {
+        exitFullscreenGameToGames();
+        return true;
+      }
+
+      // Step back through the in-app navigation history.
+      if (screenHistoryRef.current.length > 0) {
+        const previous = screenHistoryRef.current.pop() as ScreenType;
+        prevScreenRef.current = previous;
+        setLastScreen(activeScreen);
+        setActiveScreen(previous);
+        return true;
+      }
+
+      // No history left — fall back to Home instead of exiting.
+      if (activeScreen !== 'home') {
+        prevScreenRef.current = 'home';
+        setActiveScreen('home');
+        return true;
+      }
+
+      // Already on Home with nothing to go back to: let the system handle
+      // it (this exits the app), matching normal Android behavior.
+      return false;
+    };
+
+    const subscription = BackHandler.addEventListener(
+      'hardwareBackPress',
+      onHardwareBackPress
+    );
+
+    return () => subscription.remove();
+  }, [
+    activeScreen,
+    isVerificationErrorModalVisible,
+    isUploadSuccessModalVisible,
+    isLeaveSuccessModalVisible,
+    isLeaveErrorModalVisible,
+    isLeaveConfirmModalVisible,
+    isChatOpen,
+    isNotificationOpen,
+    isMobileDrawerOpen,
+    isFullscreenScreen,
+  ]);
 
   const handleNotificationItemClick = (notification: NotificationItem) => {
     setIsNotificationOpen(false);
