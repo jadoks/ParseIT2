@@ -1594,7 +1594,7 @@ function Footer({
                 accessibilityLabel="Go to Contact Us section"
               >
                 <Feather name="mail" size={14} color="#ffb7bf" />
-                <Text style={styles.footerNavButtonText}>Contact Us</Text>
+                <Text style={styles.footerNavButtonText} numberOfLines={1}>Contact Us</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -1605,7 +1605,7 @@ function Footer({
                 accessibilityLabel="View Terms of Service"
               >
                 <Feather name="file-text" size={14} color="#ffb7bf" />
-                <Text style={styles.footerNavButtonText}>Terms of Service</Text>
+                <Text style={styles.footerNavButtonText} numberOfLines={1}>Terms of Service</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -1616,7 +1616,7 @@ function Footer({
                 accessibilityLabel="View Privacy Policy"
               >
                 <Feather name="shield" size={14} color="#ffb7bf" />
-                <Text style={styles.footerNavButtonText}>Privacy Policy</Text>
+                <Text style={styles.footerNavButtonText} numberOfLines={1}>Privacy Policy</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -1995,6 +1995,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(255,95,110,0.35)",
     backgroundColor: "rgba(255,40,70,0.12)",
+    flexShrink: 0,
+    alignSelf: "flex-start",
   },
   footerNavButtonText: { color: "#ffb7bf", fontSize: 13, fontWeight: "700" },
 
