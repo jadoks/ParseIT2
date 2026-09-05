@@ -77,6 +77,7 @@ type CourseWithIcon = CourseDetailData & {
   instructorEmail?: string;
 };
 
+
 type MessengerCourse = {
   id: string;
   name: string;
@@ -120,6 +121,37 @@ const normalizeText = (value?: string | null) => {
   if (typeof value !== 'string') return '';
   return value.trim();
 };
+
+// 🔥 FIX: The backend's /classes response uses `instructorName` / `bannerUrl`,
+// not `instructor` / `bannerUri`. TeacherDashboard already renames these on
+// its own separate copy of the class list (see its local `mapBackendClass`),
+// but this component's `teacherClasses` state was storing the raw response
+// unmapped. Anything that read a course from THIS state (e.g. notification
+// deep-links via `effectiveCourses.find(...)`) ended up with an undefined
+// `instructor`/`bannerUri`, showing "No Instructor" and a blank banner even
+// though the same course opened fine from a Dashboard card. Mapping here
+// keeps every consumer of `effectiveCourses` consistent with Dashboard.
+const mapBackendClass = (item: any, fallbackInstructor: string): CourseWithIcon => ({
+  ...item,
+  id: item.id,
+  name: item.name || '',
+  courseCode: item.courseCode || '',
+  classCode: item.classCode || '',
+  instructor: item.instructorName || fallbackInstructor,
+  section: item.section || '',
+  bannerUri: item.bannerUrl || item.bannerUri || item.bannerLocalUri || undefined,
+  bannerStoragePath: item.bannerStoragePath || null,
+  bannerFileName: item.bannerFileName || null,
+  bannerMimeType: item.bannerMimeType || null,
+  year: item.year || '',
+  yearSection: item.yearSection || item.section || '',
+  semester: item.semester || '',
+  schoolYear: item.schoolYear || null,
+  description: item.description || null,
+  position: item.position,
+  units: typeof item.units === 'number' ? item.units : undefined,
+  schedule: Array.isArray(item.schedule) ? item.schedule : [],
+});
 
 const TEACHER_ALLOWED_NOTIFICATION_TYPES = new Set([
   'submitted-assignment',
@@ -372,7 +404,17 @@ export default function TeacherApp({ onLogout, currentTeacher, onGoToLanding }: 
         );
       });
 
-      setTeacherClasses(filteredClasses);
+      // 🔥 FIX: normalize raw backend fields (instructorName/bannerUrl, etc.)
+      // into the instructor/bannerUri shape the rest of the app expects —
+      // matches TeacherDashboard's own mapBackendClass so every consumer of
+      // `effectiveCourses` (notification deep-links, messenger, analytics,
+      // announcements) sees the same fully-populated course objects that
+      // Dashboard cards already show.
+      const mappedClasses = filteredClasses.map((item: any) =>
+        mapBackendClass(item, teacherFullName)
+      );
+
+      setTeacherClasses(mappedClasses);
     } catch (error) {
       console.log('LOAD TEACHER CLASSES ERROR =>', error);
       setTeacherClasses([]);
@@ -383,6 +425,7 @@ export default function TeacherApp({ onLogout, currentTeacher, onGoToLanding }: 
     activeProfile?.teacherId,
     activeProfile?.authUid,
     activeProfile?.email,
+    teacherFullName,
   ]);
 
   const loadTeacherAnalytics = useCallback(async () => {
