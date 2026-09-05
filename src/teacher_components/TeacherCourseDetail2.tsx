@@ -4998,7 +4998,6 @@ CLASS MODAL
                                     </Text>
                                     <Ionicons name="chevron-forward" size={16} color="#999" />
                                   </View>
-                                  <Text style={{ fontSize: 12, color: '#555', lineHeight: 18 }}>{lesson.description}</Text>
                                 </TouchableOpacity>
                               ));
                             })()

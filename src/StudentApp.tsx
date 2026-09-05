@@ -2604,17 +2604,7 @@ const refreshAssignmentCourseContent = useCallback(async () => {
                 style={styles.mobileBackdrop}
                 onPress={() => setMobileDrawerOpen(false)}
               />
-              <View
-                style={[
-                  styles.mobileOverlay,
-                  hasImageChanged && {
-                    paddingTop: insets.top,
-                    paddingBottom: insets.bottom,
-                    paddingLeft: insets.left,
-                    paddingRight: insets.right,
-                  },
-                ]}
-              >
+              <View style={styles.mobileOverlay}>
                 <DrawerMenu
                   isFixed={false}
                   onClose={() => setMobileDrawerOpen(false)}
