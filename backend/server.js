@@ -9632,6 +9632,8 @@ app.get(
         fileName,
         fileUrl,
         fileType,
+        storagePath,
+        bucketPath,
         questions,
         assignmentType,
         gameType,
@@ -9641,7 +9643,24 @@ app.get(
         customTimeLimit,
       } = req.body;
 
-      await db.collection("classAssignments").doc(id).update({
+      const assignmentRef = db.collection("classAssignments").doc(id);
+
+      // ✅ NEW: When the teacher replaces the attachment (a new storagePath
+      // is sent), clean up the previously-uploaded file from Storage so we
+      // don't leak an orphaned file every time an assignment's attachment
+      // is swapped out.
+      const isReplacingFile = typeof storagePath === "string" && storagePath;
+      if (isReplacingFile) {
+        const existingSnap = await assignmentRef.get();
+        const existingStoragePath = existingSnap.exists
+          ? existingSnap.data()?.storagePath
+          : null;
+        if (existingStoragePath && existingStoragePath !== storagePath) {
+          await deleteStorageFileIfExists(existingStoragePath);
+        }
+      }
+
+      await assignmentRef.update({
         ...(header ? { header } : {}),
         ...(instruction ? { instruction } : {}),
         ...(dueDate ? { dueDate } : {}),
@@ -9658,6 +9677,11 @@ app.get(
         ...(typeof fileName === "string" || fileName === null ? { fileName } : {}),
         ...(typeof fileUrl === "string" || fileUrl === null ? { fileUrl } : {}),
         ...(typeof fileType === "string" || fileType === null ? { fileType } : {}),
+        // ✅ NEW: persist storagePath/bucketPath so replaced attachments get
+        // fresh signed URLs later (mirrors create-class-assignment) and so
+        // the old file can be identified/cleaned up on the next replace.
+        ...(typeof storagePath === "string" || storagePath === null ? { storagePath } : {}),
+        ...(typeof bucketPath === "string" || bucketPath === null ? { bucketPath } : {}),
           ...(questions !== undefined ? { questions: Array.isArray(questions) ? questions : [] } : {}),
           ...(assignmentType !== undefined ? { assignmentType: assignmentType || 'regular' } : {}),
         ...(gameType !== undefined ? { gameType: gameType || null } : {}),

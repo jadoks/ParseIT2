@@ -740,6 +740,29 @@ const mapSubmissionToItems = (submission: any): any[] => {
   return null;
 };
 
+// ✅ NEW: Same idea as fetchFreshSubmissionFile, but for the assignment's own
+// attachment (the file the teacher uploaded when creating/updating the
+// assignment). Re-hits /class-assignments/:classId, which always returns a
+// freshly-signed fileUrl, and picks out the matching assignment.
+const fetchFreshAssignmentFile = async (
+  classIdForLookup: string | undefined,
+  assignmentId: string
+): Promise<string | null> => {
+  if (!classIdForLookup) return null;
+  try {
+    const response = await apiFetch(`${API_BASE_URL}/class-assignments/${classIdForLookup}`);
+    if (!response.ok) return null;
+    const data = await response.json();
+    if (Array.isArray(data)) {
+      const match = data.find((item: any) => item.id === assignmentId);
+      if (match?.fileUrl) return match.fileUrl as string;
+    }
+  } catch (error) {
+    console.error("Failed to refresh assignment attachment URL:", error);
+  }
+  return null;
+};
+
 // ✅ FIXED DOWNLOAD FUNCTION: Routes through backend to avoid CORS and preserve filenames
 const downloadFileToDevice = async (
   fileUrl: string,
@@ -925,6 +948,62 @@ const handleDownloadPreview = async () => {
     setPreviewLoading(false);
   }
 };
+  // ✅ NEW: Preview the assignment's own attachment (the file the teacher
+  // uploaded when creating/updating the assignment) — separate from student
+  // submission files, but reuses the same inline Preview Modal.
+  const handlePreviewAssignmentAttachment = async () => {
+    // Assignment objects store the attachment URL under `fileUri` (see
+    // mapAssignment() in TeacherCourseDetail2.tsx, which maps the API's
+    // `fileUrl` field into `fileUri`). Fall back to `fileUrl` too in case
+    // that ever changes.
+    const assignmentFileUrl =
+      currentAssignment?.fileUri || (currentAssignment as any)?.fileUrl;
+
+    if (!assignmentFileUrl || !currentAssignment?.fileName) {
+      Alert.alert("No file", "This assignment has no attachment to preview.");
+      return;
+    }
+
+    setPreviewItem({
+      fileName: currentAssignment.fileName,
+      url: assignmentFileUrl,
+      isLink: false,
+      submissionId: "",
+      fileType: currentAssignment.fileType,
+      storagePath: (currentAssignment as any).storagePath || null,
+    });
+    setPreviewVisible(true);
+    setPreviewLoading(true);
+    setPreviewViewerUrl(null);
+
+    try {
+      let resolvedUrl = assignmentFileUrl;
+
+      if (isTokenExpired(resolvedUrl) && currentAssignment.id) {
+        const freshUrl = await fetchFreshAssignmentFile(classId, currentAssignment.id);
+        if (freshUrl) {
+          resolvedUrl = freshUrl;
+          setPreviewItem((prev) => (prev ? { ...prev, url: freshUrl } : prev));
+        }
+      }
+
+      const viewerUrl = isImageFile(currentAssignment.fileName, currentAssignment.fileType)
+        ? resolvedUrl
+        : getGoogleDocsViewerUrl(resolvedUrl);
+
+      setPreviewViewerUrl(viewerUrl);
+    } catch (error) {
+      console.error("Assignment attachment preview error:", error);
+      Alert.alert(
+        "Preview failed",
+        "Unable to load a preview for this attachment. It may no longer be available."
+      );
+      setPreviewVisible(false);
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
+
   const closePreviewModal = () => {
     setPreviewVisible(false);
     setPreviewItem(null);
@@ -1642,6 +1721,34 @@ const handleDownloadPreview = async () => {
           )}
         </View>
 
+        {/* ✅ NEW: Assignment attachment — the file the teacher uploaded when
+            creating/updating the assignment. Lets the teacher preview it
+            right from the submissions screen, and reminds them it can be
+            swapped out via "Update Assignment". */}
+        {!!currentAssignment?.fileName && (
+          <TouchableOpacity
+            style={styles.assignmentAttachmentCard}
+            onPress={handlePreviewAssignmentAttachment}
+            activeOpacity={0.8}
+            accessibilityRole="button"
+            accessibilityLabel={`Preview assignment attachment ${currentAssignment.fileName}`}
+          >
+            <View style={styles.assignmentAttachmentIconWrap}>
+              <MaterialCommunityIcons name="paperclip" size={16} color="#D32F2F" />
+            </View>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={styles.assignmentAttachmentLabel}>Assignment Attachment</Text>
+              <Text style={styles.assignmentAttachmentName} numberOfLines={1}>
+                {currentAssignment.fileName}
+              </Text>
+            </View>
+            <View style={styles.assignmentAttachmentPreviewBtn}>
+              <MaterialCommunityIcons name="eye-outline" size={14} color="#D32F2F" />
+              <Text style={styles.assignmentAttachmentPreviewText}>Preview</Text>
+            </View>
+          </TouchableOpacity>
+        )}
+
         <View style={styles.progressBarTrack}>
           <View style={[styles.progressBarFill, { width: `${completionPercent}%` }]} />
         </View>
@@ -1999,6 +2106,54 @@ const styles = StyleSheet.create({
   progressBarFill: { height: "100%", borderRadius: 16, backgroundColor: "#D32F2F" },
   progressPercentLabel: { fontSize: 12, fontWeight: "700", color: "#6B7280", marginTop: 6 },
   chipsRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 12 },
+  // ── ✅ NEW: Assignment Attachment card (header) ──
+  assignmentAttachmentCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    backgroundColor: "#FFF5F5",
+    borderWidth: 1,
+    borderColor: "#FECACA",
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    marginBottom: 12,
+  },
+  assignmentAttachmentIconWrap: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: "#FFFFFF",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  assignmentAttachmentLabel: {
+    fontSize: 10,
+    fontWeight: "700",
+    color: "#9CA3AF",
+    textTransform: "uppercase",
+    letterSpacing: 0.3,
+  },
+  assignmentAttachmentName: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#111827",
+    marginTop: 1,
+  },
+  assignmentAttachmentPreviewBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  assignmentAttachmentPreviewText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#D32F2F",
+  },
   smallChip: { borderRadius: 999, paddingHorizontal: 10, paddingVertical: 6 },
   smallChipText: { fontSize: 11, fontWeight: "700" },
   // ── Progress Summary ──

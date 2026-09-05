@@ -2198,6 +2198,10 @@ useEffect(() => {
     setFormPointsOnTime(item.pointsOnTime);
     setSelectedMaterialIds(item.materialIds || []);
     setAssignmentDisableRepositoryAfterDue(item.repositoryDisabledAfterDue);
+    // ✅ NEW: Clear any stale picked replacement file from a previous
+    // edit/create session so the "Replace File" flow starts clean and shows
+    // this assignment's own current attachment (via selectedAssignment).
+    setPickedAssignmentFile(null);
     setErrors({});
     const parsed = parseDueDateTime(item.dueDate);
     setDraftDueDateTime(parsed);
@@ -3028,7 +3032,14 @@ useEffect(() => {
 
   const handleUpdate = async () => {
     if (!selectedId || !validateAssignmentForm()) return;
+    setIsSaving(true);
     try {
+      // ✅ NEW: Only upload if the teacher actually picked a replacement
+      // file — otherwise leave the assignment's existing attachment as-is.
+      let uploadedFile: any = null;
+      if (pickedAssignmentFile?.uri || pickedAssignmentFile?.base64 || pickedAssignmentFile?.file) {
+        uploadedFile = await uploadPickedFile(pickedAssignmentFile, 'assignment');
+      }
       const response = await fetch(`${API_BASE_URL}/update-class-assignment/${selectedId}`, {
         credentials: 'include',
         method: 'PUT',
@@ -3061,15 +3072,29 @@ useEffect(() => {
               ? customTimeLimit
               : undefined,
           questions: assignmentType === 'game_based' ? generatedQuestions : undefined,
+          // ✅ NEW: Only sent when a replacement file was uploaded above, so
+          // the existing attachment is preserved untouched otherwise.
+          ...(uploadedFile
+            ? {
+                fileName: uploadedFile.fileName ?? null,
+                fileUrl: uploadedFile.fileUrl ?? null,
+                fileType: uploadedFile.fileType ?? null,
+                storagePath: uploadedFile.storagePath ?? null,
+                bucketPath: uploadedFile.bucketPath ?? null,
+              }
+            : {}),
         }),
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Failed to update assignment');
       await loadCourseContent();
       setShowUpdateModal(false);
+      setPickedAssignmentFile(null);
       toast.show('success', 'Success', 'Assignment updated.');
     } catch (error: any) {
       toast.show('error', 'Error', error?.message || 'Failed to update assignment.');
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -3732,6 +3757,21 @@ useEffect(() => {
         {assignmentType === 'regular' && (
           <>
             <Text style={styles.sectionLabel}>Attachment</Text>
+            {/* ✅ NEW: Show the assignment's already-uploaded file (if any)
+                so the teacher can see what's currently attached before
+                deciding to replace it. Hidden once a new file is picked,
+                since the preview box below already shows that instead. */}
+            {!!selectedAssignment?.fileName && !pickedAssignmentFile?.name && (
+              <View style={styles.currentFileBox}>
+                <Ionicons name="document-text-outline" size={20} color="#D32F2F" />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.currentFileLabel}>Current File</Text>
+                  <Text style={styles.currentFileName} numberOfLines={1}>
+                    {selectedAssignment.fileName}
+                  </Text>
+                </View>
+              </View>
+            )}
             <TouchableOpacity
               style={[styles.primaryButtonWide, isSaving ? styles.disabledButton : null]}
               onPress={handlePickAssignmentFile}
@@ -3739,7 +3779,11 @@ useEffect(() => {
             >
               <Ionicons name="cloud-upload-outline" size={18} color="#FFF" />
               <Text style={styles.uploadBtnText}>
-                {pickedAssignmentFile?.name ? 'Change File' : 'Upload File'}
+                {pickedAssignmentFile?.name
+                  ? 'Change File'
+                  : selectedAssignment?.fileName
+                    ? 'Replace File'
+                    : 'Upload File'}
               </Text>
             </TouchableOpacity>
             {!!pickedAssignmentFile?.name && (
