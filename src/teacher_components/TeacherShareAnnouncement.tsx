@@ -110,10 +110,28 @@ const buildExpiryIso = (dateValue: Date | null, timeValue: Date | null) => {
   return merged.toISOString();
 };
 
-// ✅ Safely turns a Firestore Timestamp (has .toDate()) or an ISO string into a Date.
+// ✅ Safely turns an expiresAt value into a Date, handling every shape it
+// can arrive in:
+//  - a real Firestore Timestamp instance (has .toDate()) — e.g. server-side
+//  - the JSON-serialized form of a Firestore Timestamp once it's crossed
+//    res.json(): { _seconds, _nanoseconds } (or { seconds, nanoseconds })
+//  - a plain ISO string / number
 const toDateSafe = (value?: any): Date | null => {
   if (!value) return null;
-  const parsed = typeof value?.toDate === 'function' ? value.toDate() : new Date(value);
+
+  if (typeof value?.toDate === 'function') {
+    const parsed = value.toDate();
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+
+  const seconds = value?._seconds ?? value?.seconds;
+  if (typeof seconds === 'number') {
+    const nanoseconds = value?._nanoseconds ?? value?.nanoseconds ?? 0;
+    const parsed = new Date(seconds * 1000 + Math.round(nanoseconds / 1e6));
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+
+  const parsed = new Date(value);
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 };
 
