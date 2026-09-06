@@ -218,22 +218,31 @@ const GameBasedAssignment: React.FC<GameBasedAssignmentProps> = ({
     }
   }, [timeLimitMinutes]);
 
-  // Handle Time Up Force Submit
-  // 🌟 UPDATED: Immediately finishes game AND submits score
+  // Handle Time Up
+  // 🌟 UPDATED: Only finalizes local state and shows the Review screen.
+  // It does NOT call onComplete anymore — onComplete is what triggers the
+  // parent's submit-to-backend + navigate-away flow, and that should only
+  // happen once the student actively taps "Done" / "Return Home" on the
+  // Review screen below, not automatically a few seconds after time runs out.
   const handleTimeUp = () => {
     setIsTimeUp(true);
 
-    // 1. Force switch to Summary screen immediately
+    // If the student was mid-way through a Memory Match round, grade
+    // whatever pairs they had selected so the Review screen has results
+    // to show (mirrors the logic in handleSubmitMatching, minus the
+    // auto-advance timeout since we're forcing completion here anyway).
+    if (gameType === 'memory_match' && !matchingSubmitted) {
+      finalizeMatchingResults();
+    }
+
+    // Force switch to Summary/Review screen
     setGameFinished(true);
 
-    // 2. Submit current score to parent/backend immediately
-    onComplete(scoreRef.current, questions.length);
-
-    // 3. Show alert over the summary screen
+    // Show alert over the summary screen — score is NOT submitted yet.
     Alert.alert(
       "Time's Up!",
-      'Your time limit has expired. Your current score has been automatically submitted.',
-      [{ text: 'View Results', onPress: () => {} }]
+      'Your time limit has expired. Review your answers below, then tap Done to submit your score.',
+      [{ text: 'OK', onPress: () => {} }]
     );
   };
 
@@ -360,7 +369,10 @@ const GameBasedAssignment: React.FC<GameBasedAssignmentProps> = ({
   };
 
   // UPDATED: Capture both Letter AND Full Sentence text
-  const handleSubmitMatching = () => {
+  // Shared grading logic used both by the manual "Submit" button and by
+  // handleTimeUp (when the timer runs out mid-match). Returns nothing —
+  // it commits the graded results into state.
+  const finalizeMatchingResults = () => {
     const defs = memoryCards.filter(c => c.type === 'def');
 
     let correctCount = 0;
@@ -418,6 +430,10 @@ const GameBasedAssignment: React.FC<GameBasedAssignmentProps> = ({
     setUserAnswers(reviewAnswers);
     setScore(correctCount);
     setMatchingSubmitted(true);
+  };
+
+  const handleSubmitMatching = () => {
+    finalizeMatchingResults();
 
     setTimeout(() => {
       handleFinishGame();
@@ -579,9 +595,17 @@ const GameBasedAssignment: React.FC<GameBasedAssignmentProps> = ({
           })}
         </ScrollView>
 
-        {/* CHANGED: Button now says "Return Home" as it submits and exits */}
+        {isTimeUp && (
+          <Text style={styles.timeUpNotice}>
+            ⏱ Time's up — tap Done when you're ready to submit your score.
+          </Text>
+        )}
+
+        {/* This button is the ONLY thing that submits the score and exits.
+            It stays here until the student actively taps it — nothing
+            navigates away automatically, even after a timeout. */}
         <TouchableOpacity style={styles.nextButton} onPress={handleSubmitGame}>
-          <Text style={styles.nextButtonText}>Return Home</Text>
+          <Text style={styles.nextButtonText}>{isTimeUp ? 'Done' : 'Return Home'}</Text>
         </TouchableOpacity>
       </View>
     );
@@ -1253,6 +1277,14 @@ const createStyles = (r: ResponsiveInfo) => {
       width: '100%',
     },
     reviewList: { width: '100%', marginBottom: r.spacing.md },
+    timeUpNotice: {
+      fontSize: r.font.caption + 1,
+      color: '#D32F2F',
+      fontWeight: '700',
+      textAlign: 'center',
+      marginBottom: r.spacing.sm,
+      width: '100%',
+    },
     reviewItem: {
       backgroundColor: '#FFF',
       borderRadius: 12,
