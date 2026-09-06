@@ -4031,6 +4031,198 @@ app.post("/auth/send-forgot-password-pin", async (req, res) => {
 
   // === UPDATED: Generate quiz from selected class materials AND module lessons ===
   // === UPDATED: Generate quiz from selected class materials AND module lessons ===
+  // ✅ Unified resource resolver used by every AI generation flow that reads
+  // "Related Course Resources": Module Lessons (courseLessons) are the
+  // primary/current resource type teachers create, with legacy classMaterials
+  // still supported for backward compatibility. Given one or more IDs, this
+  // downloads each resource's uploaded file (if any) — PDFs, images, PPTX,
+  // DOCX, etc. — for direct multimodal reading by Gemini, AND/OR collects any
+  // plain Text Content (a material's `content` or a lesson's `discussion` /
+  // `description`), so a single generation request can mix File Uploaded
+  // content and Text Content across One or More selected lessons/materials.
+  async function fetchAIContentForMaterialIds(materialIds = []) {
+    const ids = Array.isArray(materialIds) ? materialIds.filter(Boolean) : [];
+    const contentsData = [];
+
+    for (const id of ids) {
+      // 1. Try fetching from classMaterials first (legacy resource type)
+      let docSnap = await db.collection("classMaterials").doc(id).get();
+
+      if (docSnap.exists) {
+        const data = docSnap.data();
+        contentsData.push({
+          id,
+          type: 'standard_material',
+          title: data.title || "Material",
+          fileName: data.fileName,
+          fileType: data.fileType,
+          storagePath: data.storagePath,
+          pdfStoragePath: data.pdfStoragePath,
+          fileUrl: data.fileUrl,
+          content: data.content, // Text-based material content
+        });
+      } else {
+        // 2. If not found, try fetching from courseLessons — the current
+        // "Module Lessons" resource teachers now generate content with.
+        docSnap = await db.collection("courseLessons").doc(id).get();
+
+        if (docSnap.exists) {
+          const data = docSnap.data();
+          contentsData.push({
+            id,
+            type: 'module_lesson',
+            title: data.title || "Lesson",
+            fileName: data.fileName,
+            fileType: data.fileType,
+            storagePath: data.storagePath,
+            pdfStoragePath: data.pdfStoragePath,
+            fileUrl: data.fileUrl,
+            content: data.discussion || data.description, // Lesson text content
+          });
+        }
+      }
+    }
+
+    return resolveAIContentFromContentsData(contentsData);
+  }
+
+  // Takes an already-assembled list of resource descriptors (either resolved
+  // from Firestore above, or handed to us directly by the client as a
+  // fallback) and turns them into Gemini-ready inline file parts plus any
+  // combined plain text, downloading files and converting/extracting as
+  // needed. Kept separate from fetchAIContentForMaterialIds so callers that
+  // already have material objects in hand (no ID lookup available) can reuse
+  // the exact same file/text handling.
+  async function resolveAIContentFromContentsData(contentsData = []) {
+    // MIME types Gemini's inlineData actually supports natively.
+    const GEMINI_INLINE_SUPPORTED = /^(application\/pdf|image\/|audio\/|video\/|text\/plain)/;
+
+    const geminiContents = [];
+    const extractionStatus = [];
+    let combinedExtractedText = "";
+
+    for (const item of contentsData) {
+      const matFileName = item.fileName || item.title || "content";
+      let mimeType = item.fileType || "application/octet-stream";
+      let buffer = null;
+      let usedPreConvertedPdf = false;
+      let status = "unreadable";
+
+      // ✅ PRIORITY 1: Check if we have a pre-converted PDF path stored in the database
+      if (item.pdfStoragePath) {
+        try {
+          console.log(`Using pre-converted PDF for AI: ${matFileName}`);
+          const pdfFile = bucket.file(item.pdfStoragePath);
+          [buffer] = await pdfFile.download();
+          mimeType = "application/pdf"; // Force PDF mime type for Gemini
+          usedPreConvertedPdf = true;
+        } catch (downloadError) {
+          console.warn(`Failed to download converted PDF for "${matFileName}", falling back to original:`, downloadError.message);
+          // Fallback to original file logic below if PDF download fails
+          buffer = null;
+        }
+      }
+
+      // ✅ PRIORITY 2: If no pre-converted PDF or download failed, process original file
+      if (!buffer && item.storagePath) {
+        try {
+          const file = bucket.file(item.storagePath);
+          [buffer] = await file.download();
+        } catch (downloadError) {
+          console.warn(`Failed to download original file "${matFileName}":`, downloadError.message);
+        }
+      }
+
+      // ✅ PRIORITY 3: No storagePath on record (e.g. a material handed to us
+      // directly by the client) — fall back to fetching straight from its
+      // public/download URL so File Uploaded content still gets read.
+      if (!buffer && !usedPreConvertedPdf && item.fileUrl && !(item.content && item.content.trim())) {
+        try {
+          const response = await fetch(item.fileUrl);
+          if (response.ok) {
+            const arrayBuffer = await response.arrayBuffer();
+            buffer = Buffer.from(arrayBuffer);
+          }
+        } catch (fetchError) {
+          console.warn(`Failed to fetch file URL for "${matFileName}":`, fetchError.message);
+        }
+      }
+
+      // Handle Text-Based Content (Standard Material Text or Lesson Discussion)
+      // Only if we haven't already processed a file
+      if (!buffer && item.content && item.content.trim()) {
+        combinedExtractedText += `\n[${matFileName}]\n${limitText(item.content, 12000)}`;
+        status = "readable";
+        extractionStatus.push({ id: item.id, title: item.title, fileName: item.fileName, fileType: item.fileType, status });
+        continue; // Skip file processing for pure text items
+      }
+
+      if (!buffer) {
+        extractionStatus.push({ id: item.id, title: item.title, fileName: item.fileName, fileType: item.fileType, status });
+        continue;
+      }
+
+      // ✅ If using original file (not pre-converted), check if it needs conversion
+      if (!usedPreConvertedPdf) {
+        // Check if file is PowerPoint and needs conversion
+        const isPowerPoint = matFileName.toLowerCase().endsWith('.pptx') ||
+                            matFileName.toLowerCase().endsWith('.ppt') ||
+                            mimeType.includes('presentationml');
+
+        if (isPowerPoint) {
+          try {
+            console.log(`Converting PowerPoint "${matFileName}" to PDF...`);
+            buffer = await convertPPTXtoPDFViaCloudConverter(buffer, matFileName);
+            mimeType = "application/pdf";
+          } catch (convertError) {
+            console.error(`PowerPoint conversion failed for "${matFileName}":`, convertError.message);
+            // Continue with original buffer if conversion fails
+          }
+        }
+      }
+
+      // Send supported files directly to Gemini
+      if (GEMINI_INLINE_SUPPORTED.test(mimeType)) {
+        geminiContents.push({
+          inlineData: { mimeType, data: buffer.toString("base64") },
+        });
+        status = "readable";
+      } else {
+        // Extract text from unsupported formats (DOCX, XLSX, etc.)
+        // Note: If we used a pre-converted PDF, this block is skipped because mimeType is application/pdf
+        try {
+          const extracted = await extractTextFromFile(buffer, mimeType, matFileName);
+          if (typeof extracted === "string" && extracted.trim()) {
+            combinedExtractedText += `\n[${matFileName}]\n${extracted}`;
+            status = "readable";
+          } else if (extracted && typeof extracted === "object") {
+            if (extracted.imagePdf && extracted.pdfBase64) {
+              geminiContents.push({ inlineData: { mimeType: "application/pdf", data: extracted.pdfBase64 } });
+              status = "readable";
+            }
+            if (extracted.extractedText) {
+              combinedExtractedText += `\n[${matFileName}]\n${extracted.extractedText}`;
+              status = "readable";
+            }
+          }
+        } catch (extractError) {
+          console.warn(`Text extraction failed for "${matFileName}":`, extractError.message);
+        }
+      }
+
+      extractionStatus.push({ id: item.id, title: item.title, fileName: item.fileName, fileType: item.fileType, status });
+    }
+
+    return {
+      contentsData,
+      geminiContents,
+      combinedExtractedText,
+      extractionStatus,
+      fileName: contentsData.map(m => m.fileName || m.title || "content").join(", "),
+      materialTitles: contentsData.map(m => m.title).filter(Boolean),
+    };
+  }
+
   app.post("/game-ai/generate-quiz-materials", requireAuth, async (req, res) => {
     try {
       const { classId, materialIds, gameType, authUid, numberOfQuestions } = req.body;
@@ -4041,144 +4233,14 @@ app.post("/auth/send-forgot-password-pin", async (req, res) => {
       if (!gameType) return res.status(400).json({ error: "gameType is required." });
 
       // Unified fetching logic for both Class Materials and Module Lessons
-      const contentsData = [];
-      for (const id of materialIds) {
-        // 1. Try fetching from classMaterials first
-        let docSnap = await db.collection("classMaterials").doc(id).get();
-        
-        if (docSnap.exists) {
-          const data = docSnap.data();
-          contentsData.push({ 
-            id, 
-            type: 'standard_material',
-            title: data.title || "Material",
-            fileName: data.fileName,
-            fileType: data.fileType,
-            storagePath: data.storagePath,
-            pdfStoragePath: data.pdfStoragePath, // ✅ NEW: Fetch pre-converted PDF path
-            fileUrl: data.fileUrl,
-            content: data.content // Text-based material content
-          });
-        } else {
-          // 2. If not found, try fetching from courseLessons
-          docSnap = await db.collection("courseLessons").doc(id).get();
-          
-          if (docSnap.exists) {
-            const data = docSnap.data();
-            contentsData.push({ 
-              id, 
-              type: 'module_lesson',
-              title: data.title || "Lesson",
-              fileName: data.fileName,
-              fileType: data.fileType,
-              storagePath: data.storagePath,
-              pdfStoragePath: data.pdfStoragePath, // ✅ NEW: Fetch pre-converted PDF path
-              fileUrl: data.fileUrl,
-              content: data.discussion || data.description // Lesson text content
-            });
-          }
-        }
-      }
+      const { contentsData, geminiContents, combinedExtractedText, fileName } =
+        await fetchAIContentForMaterialIds(materialIds);
 
       if (contentsData.length === 0) {
         return res.status(404).json({ error: "No materials or lessons found for the provided IDs." });
       }
 
       const resolvedGameType = gameType === "quiz_master" ? "quiz_master" : gameType;
-      const fileName = contentsData.map(m => m.fileName || m.title || "content").join(", ");
-      
-      // MIME types Gemini's inlineData actually supports natively.
-      const GEMINI_INLINE_SUPPORTED = /^(application\/pdf|image\/|audio\/|video\/|text\/plain)/;
-      
-      // Prepare files for Gemini
-      const geminiContents = [];
-      let combinedExtractedText = "";
-
-      for (const item of contentsData) {
-        const matFileName = item.fileName || item.title || "content";
-        let mimeType = item.fileType || "application/octet-stream";
-        let buffer = null;
-        let usedPreConvertedPdf = false;
-
-        // ✅ PRIORITY 1: Check if we have a pre-converted PDF path stored in the database
-        if (item.pdfStoragePath) {
-          try {
-            console.log(`Using pre-converted PDF for AI: ${matFileName}`);
-            const pdfFile = bucket.file(item.pdfStoragePath);
-            [buffer] = await pdfFile.download();
-            mimeType = "application/pdf"; // Force PDF mime type for Gemini
-            usedPreConvertedPdf = true;
-          } catch (downloadError) {
-            console.warn(`Failed to download converted PDF for "${matFileName}", falling back to original:`, downloadError.message);
-            // Fallback to original file logic below if PDF download fails
-            buffer = null; 
-          }
-        }
-
-        // ✅ PRIORITY 2: If no pre-converted PDF or download failed, process original file
-        if (!buffer && item.storagePath) {
-          try {
-            const file = bucket.file(item.storagePath);
-            [buffer] = await file.download();
-          } catch (downloadError) {
-            console.warn(`Failed to download original file "${matFileName}":`, downloadError.message);
-            continue;
-          }
-        } 
-        
-        // Handle Text-Based Content (Standard Material Text or Lesson Discussion)
-        // Only if we haven't already processed a file
-        if (!buffer && item.content && item.content.trim()) {
-          combinedExtractedText += `\n[${matFileName}]\n${limitText(item.content, 12000)}`;
-          continue; // Skip file processing for pure text items
-        }
-
-        if (!buffer) continue;
-
-        // ✅ PRIORITY 3: If using original file (not pre-converted), check if it needs conversion
-        if (!usedPreConvertedPdf) {
-          // Check if file is PowerPoint and needs conversion
-          const isPowerPoint = matFileName.toLowerCase().endsWith('.pptx') || 
-                              matFileName.toLowerCase().endsWith('.ppt') || 
-                              mimeType.includes('presentationml');
-          
-          if (isPowerPoint) {
-            try {
-              console.log(`Converting PowerPoint "${matFileName}" to PDF...`);
-              buffer = await convertPPTXtoPDFViaCloudConverter(buffer, matFileName);
-              mimeType = "application/pdf";
-            } catch (convertError) {
-              console.error(`PowerPoint conversion failed for "${matFileName}":`, convertError.message);
-              // Continue with original buffer if conversion fails
-            }
-          }
-        }
-
-        // Send supported files directly to Gemini
-        if (GEMINI_INLINE_SUPPORTED.test(mimeType)) {
-          geminiContents.push({
-            inlineData: { mimeType, data: buffer.toString("base64") },
-          });
-        } else {
-          // Extract text from unsupported formats (DOCX, XLSX, etc.)
-          // Note: If we used a pre-converted PDF, this block is skipped because mimeType is application/pdf
-          try {
-            const extracted = await extractTextFromFile(buffer, mimeType, matFileName);
-            if (typeof extracted === "string" && extracted.trim()) {
-              combinedExtractedText += `\n[${matFileName}]\n${extracted}`;
-            } else if (extracted && typeof extracted === "object") {
-              if (extracted.imagePdf && extracted.pdfBase64) {
-                geminiContents.push({ inlineData: { mimeType: "application/pdf", data: extracted.pdfBase64 } });
-              }
-              if (extracted.extractedText) {
-                combinedExtractedText += `\n[${matFileName}]\n${extracted.extractedText}`;
-              }
-            }
-          } catch (extractError) {
-            console.warn(`Text extraction failed for "${matFileName}":`, extractError.message);
-          }
-        }
-      }
 
       if (geminiContents.length === 0 && !combinedExtractedText.trim()) {
         return res.status(400).json({
@@ -10810,6 +10872,7 @@ app.get(
     generated,
     readableMaterials,
     materialTitles,
+    materialExtractionStatus,
     resolvedScore,
     courseId,
     courseName,
@@ -10820,6 +10883,22 @@ app.get(
     context,
   }) {
     if (!generated || typeof generated !== "object") return null;
+
+    // `context` (from the legacy classMaterials-only lookup) is optional now
+    // that resources are resolved via the unified Module Lessons / Class
+    // Materials fetcher — fall back to safe defaults when it isn't provided.
+    const safeContext = context || { classInfo: {}, assignment: {}, materials: [] };
+    const extractionStatusList = Array.isArray(materialExtractionStatus)
+      ? materialExtractionStatus
+      : Array.isArray(safeContext.materials)
+      ? safeContext.materials.map((material) => ({
+          id: material.id,
+          title: material.title,
+          fileName: material.fileName,
+          fileType: material.fileType,
+          status: material.extractionStatus || "unknown",
+        }))
+      : [];
 
     const assessmentItems = normalizeAssessmentItems(generated.assessmentItems, generated.quiz);
     if (!assessmentItems) return null;
@@ -10841,24 +10920,18 @@ app.get(
 
     return {
       schemaVersion: GENERATED_ACTIVITY_SCHEMA_VERSION,
-      courseId: normalizeOptionalText(courseId || context.classInfo.id),
-      courseName: normalizeOptionalText(courseName || context.classInfo.name) || "Class",
-      courseCode: normalizeOptionalText(courseCode || context.classInfo.courseCode) || "",
+      courseId: normalizeOptionalText(courseId || safeContext.classInfo?.id),
+      courseName: normalizeOptionalText(courseName || safeContext.classInfo?.name) || "Class",
+      courseCode: normalizeOptionalText(courseCode || safeContext.classInfo?.courseCode) || "",
       assignmentId: String(assignmentId).trim(),
-      assignmentTitle: normalizeOptionalText(assignmentTitle || context.assignment.title) || "Assignment",
-      topic: normalizeOptionalText(generated.topic || readableMaterials[0]?.title || topic || context.assignment.title) || "Related Material Review",
+      assignmentTitle: normalizeOptionalText(assignmentTitle || safeContext.assignment?.title) || "Assignment",
+      topic: normalizeOptionalText(generated.topic || readableMaterials[0]?.title || topic || safeContext.assignment?.title) || "Related Material Review",
       score: resolvedScore,
       recommendationType,
       difficulty,
       estimatedMinutes: clampNumber(generated.estimatedMinutes, 5, 60, 20),
       basedOnMaterials: materialTitles,
-      materialExtractionStatus: context.materials.map((material) => ({
-        id: material.id,
-        title: material.title,
-        fileName: material.fileName,
-        fileType: material.fileType,
-        status: material.extractionStatus || "unknown",
-      })),
+      materialExtractionStatus: extractionStatusList,
       learningObjectives: Array.isArray(generated.learningObjectives)
         ? generated.learningObjectives.map(String).filter(Boolean).slice(0, 5)
         : [`Review key ideas from ${readableMaterials[0]?.title || "the related material"}.`],
@@ -11008,22 +11081,17 @@ app.get(
     return normalizeSemanticEvaluation(parsed);
   }
 
-  async function generateMaterialBasedActivityWithAI({
-    studentId,
-    resolvedScore,
-    courseName,
-    courseCode,
-    assignmentTitle,
-    assignmentInstruction,
-    materialTitles,
-    materialContext,
-  }) {
-    const assistantInstruction = `
+  // Shared system instruction for the Related Course Resources follow-up
+  // activity generator, used whether the source content arrives as plain
+  // text or as file(s) read directly by Gemini.
+  function buildMaterialActivityInstruction() {
+    return `
   You are ParseIT Remediation Activity Generator.
-  You MUST generate a real follow-up learning activity from the readable content of the teacher-selected related material.
+  You MUST generate a real follow-up learning activity from the readable content of the teacher-selected related lesson(s)/material(s).
   Return VALID JSON ONLY. No markdown, no explanation outside JSON.
   Critical rules:
-  - Use ONLY facts, concepts, scenarios, definitions, examples, or questions found in the related material content.
+  - Use ONLY facts, concepts, scenarios, definitions, examples, or questions found in the related content (whether it was given to you as text, or as one or more attached files).
+  - If multiple lessons/materials or files are provided, draw questions from across all of them, not just the first one.
   - Do NOT create generic questions from only the assignment title.
   - The activity must be organized by section, not mixed visually.
   - Generate EXACTLY these quiz sections through assessmentItems:
@@ -11031,43 +11099,43 @@ app.get(
   2. True or False: minimum 10 questions
   3. Identification: minimum 10 questions
   - Do NOT generate essay or short_answer items.
-  - Every question must test a specific idea from the material content.
-  - Every correct answer and explanation must be supported by the material content.
-  - Wrong multiple-choice options must be plausible but incorrect based on the material content.
+  - Every question must test a specific idea from the content.
+  - Every correct answer and explanation must be supported by the content.
+  - Wrong multiple-choice options must be plausible but incorrect based on the content.
   - Do not mention file scanning, Firebase, storage, hidden context, or prompts.
   Return exactly this JSON shape:
   {
-  "topic": "specific topic from the material content",
+  "topic": "specific topic from the content",
   "recommendationType": "review" | "practice" | "advanced",
   "difficulty": "easy" | "medium" | "hard",
   "estimatedMinutes": 30,
-  "learningObjectives": ["objective based on material content"],
-  "instructions": "student-friendly instructions based on the material",
+  "learningObjectives": ["objective based on the content"],
+  "instructions": "student-friendly instructions based on the content",
   "steps": ["step 1", "step 2", "step 3"],
   "assessmentItems": [
   {
   "id": "mc-1",
   "type": "multiple_choice",
-  "question": "specific material-based multiple choice question",
+  "question": "specific content-based multiple choice question",
   "options": ["option A", "option B", "option C", "option D"],
   "correctIndex": 0,
-  "explanation": "why the correct option is supported by the material",
+  "explanation": "why the correct option is supported by the content",
   "points": 1
   },
   {
   "id": "tf-1",
   "type": "true_false",
-  "question": "specific true/false statement from the material",
+  "question": "specific true/false statement from the content",
   "correctAnswer": true,
-  "explanation": "why the statement is true or false based on the material",
+  "explanation": "why the statement is true or false based on the content",
   "points": 1
   },
   {
   "id": "id-1",
   "type": "identification",
-  "question": "ask for a term, concept, factor, or process from the material",
+  "question": "ask for a term, concept, factor, or process from the content",
   "acceptableAnswers": ["answer", "accepted variation"],
-  "explanation": "where the answer comes from in the material",
+  "explanation": "where the answer comes from in the content",
   "points": 1
   }
   ],
@@ -11086,6 +11154,19 @@ app.get(
   - The next 10 or more items should be identification.
   - Do not return short_answer or essay questions.
   `;
+  }
+
+  async function generateMaterialBasedActivityWithAI({
+    studentId,
+    resolvedScore,
+    courseName,
+    courseCode,
+    assignmentTitle,
+    assignmentInstruction,
+    materialTitles,
+    materialContext,
+  }) {
+    const assistantInstruction = buildMaterialActivityInstruction();
 
     const contextualPrompt = `
   Student ID: ${studentId}
@@ -11208,6 +11289,148 @@ app.get(
     const error = new Error("AI did not return valid material-based sectioned assessment items.");
     error.firstAIText = firstResult?.text;
     error.repairAIText = repairResult?.text;
+    throw error;
+  }
+
+  // ✅ Multi-resource, multimodal follow-up activity generator: same job as
+  // generateMaterialBasedActivityWithAI above, but — mirroring the Game Based
+  // Assignment generator in TeacherCourseDetail2 — it can read File Uploaded
+  // content (PDF, images, PPTX, DOCX, etc.) directly via Gemini AND/OR plain
+  // Text Content, combined across One or More selected Module Lessons /
+  // Class Materials in a single call.
+  async function generateMaterialBasedActivityWithGeminiDirect({
+    studentId,
+    resolvedScore,
+    courseName,
+    courseCode,
+    assignmentTitle,
+    assignmentInstruction,
+    materialTitles,
+    materialContext,
+    geminiContents = [],
+  }) {
+    const assistantInstruction = buildMaterialActivityInstruction();
+
+    const contextualPrompt = `
+  Student ID: ${studentId}
+  Previous score percent: ${resolvedScore ?? "Unknown"}
+  Course: ${courseName || "N/A"} (${courseCode || "N/A"})
+  Assignment: ${assignmentTitle || "N/A"}
+  Assignment instruction: ${assignmentInstruction || "N/A"}
+  Teacher-selected related lessons/materials: ${materialTitles.join(", ") || "N/A"}
+  ${geminiContents.length ? `${geminiContents.length} file(s) are attached below — read them directly as an additional source of truth.` : ""}
+  RELATED CONTENT TEXT (if any):
+  ${materialContext && materialContext.trim() ? materialContext : "(no extracted text — rely on the attached file(s) above)"}
+  `;
+
+    if (!geminiGameAI) {
+      throw new Error("GEMINI_API_KEY is missing, so attached files cannot be read directly.");
+    }
+
+    const modelsToTry = [GEMINI_GAME_MODEL, GEMINI_GAME_FALLBACK_MODEL].filter(Boolean);
+    const isRetryable = (error) => {
+      const msg = (error?.message || "").toLowerCase();
+      return (
+        msg.includes("503") ||
+        msg.includes("overloaded") ||
+        msg.includes("high demand") ||
+        msg.includes("fetch failed") ||
+        msg.includes("timeout") ||
+        msg.includes("429")
+      );
+    };
+    const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+    const contents = [{ text: `${assistantInstruction}\n\n${contextualPrompt}` }, ...geminiContents];
+
+    let lastError = null;
+    let lastText = "";
+
+    for (const modelName of modelsToTry) {
+      const model = geminiGameAI.getGenerativeModel({
+        model: modelName,
+        generationConfig: {
+          temperature: 0.4,
+          maxOutputTokens: 8192,
+          responseMimeType: "application/json",
+        },
+      });
+
+      const MAX_ATTEMPTS = 3;
+      for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+        try {
+          const result = await model.generateContent(contents);
+          const text = result.response.text();
+          lastText = text || lastText;
+          const generated = extractJsonObjectFromText(text);
+          if (generated && normalizeAssessmentItems(generated.assessmentItems, generated.quiz)) {
+            return generated;
+          }
+          lastError = new Error(`Model ${modelName} returned an invalid or incomplete activity JSON.`);
+        } catch (error) {
+          lastError = error;
+          console.warn(`[Activity Gen] Gemini attempt ${attempt} (${modelName}) failed:`, error.message);
+          if (attempt < MAX_ATTEMPTS && isRetryable(error)) {
+            await sleep(Math.min(1000 * 2 ** (attempt - 1), 8000) + Math.random() * 300);
+            continue;
+          }
+          if (!isRetryable(error)) break;
+        }
+      }
+    }
+
+    // One repair attempt — same idea as the text-only generator's repair
+    // step — re-sending the attached files alongside stricter instructions
+    // before giving up.
+    const repairInstruction = `
+  You are a strict JSON repair and real quiz generation assistant.
+  The previous output was invalid, incomplete, or generic.
+  Generate a NEW activity JSON using ONLY the related content (text and/or attached files) below.
+  Return JSON only.
+  Required output:
+  - At least 10 multiple_choice items.
+  - At least 10 true_false items.
+  - At least 10 identification items.
+  - No short_answer or essay items.
+  - Every item must be specific to the content.
+  `;
+    const repairPrompt = `
+  Previous invalid output:
+  ${limitText(lastText || "", 4000)}
+  Content evidence sentences:
+  ${getMaterialKeywordEvidence(materialContext)}
+  Full readable text content (if any):
+  ${limitText(materialContext, 12000)}
+  Generate the required JSON now with assessmentItems. Do not return generic questions.
+  `;
+
+    try {
+      const repairModel = geminiGameAI.getGenerativeModel({
+        model: modelsToTry[0],
+        generationConfig: {
+          temperature: 0.4,
+          maxOutputTokens: 8192,
+          responseMimeType: "application/json",
+        },
+      });
+      const repairResult = await repairModel.generateContent([
+        { text: `${repairInstruction}\n\n${repairPrompt}` },
+        ...geminiContents,
+      ]);
+      const repairText = repairResult.response.text();
+      const generated = extractJsonObjectFromText(repairText);
+      if (generated && normalizeAssessmentItems(generated.assessmentItems, generated.quiz)) {
+        return generated;
+      }
+      lastText = repairText || lastText;
+    } catch (repairError) {
+      lastError = repairError;
+    }
+
+    const error = new Error(
+      `AI did not return valid material-based sectioned assessment items: ${lastError?.message || "unknown error"}`
+    );
+    error.firstAIText = lastText;
     throw error;
   }
 
@@ -12073,103 +12296,83 @@ app.get(
         return res.status(400).json({ error: "studentId and assignmentId are required." });
       }
 
-      // ✅ NEW: Use materials sent from frontend if available (supports Module Lessons)
-      let materialsToProcess = [];
-      
-      if (Array.isArray(relatedMaterials) && relatedMaterials.length > 0) {
-        // If frontend sent pre-fetched materials (like Module Lessons), use them directly
-        materialsToProcess = relatedMaterials.map(m => ({
+      // ✅ Related Course Resources resolution — mirrors the Game Based
+      // Assignment generator: resolve One or More selected resources by ID
+      // straight from Firestore (Module Lessons in courseLessons are the
+      // current/primary resource type teachers create; legacy classMaterials
+      // are still supported), reading both File Uploaded content (PDF,
+      // images, PPTX, DOCX, etc. — sent to Gemini directly) and Text Content
+      // (a lesson's Discussion or a material's text).
+      const cleanMaterialIds = Array.isArray(materialIds) ? materialIds.filter(Boolean) : [];
+
+      let aiContent = cleanMaterialIds.length
+        ? await fetchAIContentForMaterialIds(cleanMaterialIds)
+        : { contentsData: [], geminiContents: [], combinedExtractedText: "", extractionStatus: [], materialTitles: [] };
+
+      // Fallback: if none of the IDs resolved against Firestore (e.g. a
+      // preview/mock ID), fall back to whatever material objects the client
+      // already sent us directly so generation can still proceed.
+      if (!aiContent.contentsData.length && Array.isArray(relatedMaterials) && relatedMaterials.length > 0) {
+        const clientContentsData = relatedMaterials.map((m) => ({
           id: m.id,
-          title: m.title,
-          fileName: m.fileName,
-          fileType: m.fileType,
-          storagePath: m.storagePath,
-          // For Module Lessons, 'content' usually holds the discussion/text
-          extractedText: m.content || m.discussion || "", 
-          content: m.content || m.discussion || ""
+          type: m.type === 'module_lesson' || m.isLesson ? 'module_lesson' : 'standard_material',
+          title: m.title || 'Untitled',
+          fileName: m.fileName || null,
+          fileType: m.fileType || null,
+          storagePath: m.storagePath || null,
+          pdfStoragePath: null,
+          fileUrl: m.fileUrl || m.fileUri || null,
+          content: m.content || m.discussion || null,
         }));
-      } else {
-        // Fallback: Try to fetch from backend if not provided (legacy support)
-        const context = await getAssignmentLearningContext({
-          assignmentId,
-          classId: classId || courseId,
-        });
-        
-        // Also check for Module Lessons in courseLessons collection if standard materials are empty
-        if (!context.materials.length && Array.isArray(materialIds)) {
-          for (const id of materialIds) {
-            const lessonSnap = await db.collection("courseLessons").doc(id).get();
-            if (lessonSnap.exists) {
-              const data = lessonSnap.data();
-              materialsToProcess.push({
-                id: lessonSnap.id,
-                title: data.title || "Lesson",
-                fileName: data.fileName,
-                fileType: data.fileType,
-                storagePath: data.storagePath,
-                extractedText: data.discussion || data.description || "",
-                content: data.discussion || data.description || ""
-              });
-            }
-          }
-        } else {
-          materialsToProcess = context.materials;
-        }
+        aiContent = await resolveAIContentFromContentsData(clientContentsData);
       }
 
       let resolvedScore = typeof score === "number" ? score : Number(score);
       if (!Number.isFinite(resolvedScore)) resolvedScore = null;
 
-      // Filter for readable content (text-based lessons or extracted files)
-      const readableMaterials = materialsToProcess.filter((material) =>
-        normalizeOptionalText(material.extractedText || material.content)
-      );
-
-      if (!materialsToProcess.length) {
+      if (!aiContent.contentsData.length) {
         return res.status(400).json({
-          error: "No related materials found. Please ensure the assignment has linked Module Lessons or Class Materials.",
+          error: "No related materials found. Please ensure the assignment has linked one or more Module Lessons or Class Materials.",
         });
       }
 
-      if (!readableMaterials.length) {
+      if (!aiContent.geminiContents.length && !aiContent.combinedExtractedText.trim()) {
         return res.status(422).json({
-          error: "No readable content found in the selected materials. Module Lessons must have 'Discussion' text, or files must be PDF/DOCX.",
+          error: "No readable content found in the selected lessons/materials. Module Lessons must have 'Discussion' text, or an uploaded file that can be read (PDF, image, DOCX, PPTX, etc.).",
         });
       }
 
-      const materialContext = readableMaterials
-        .map((material, index) => `
-  Material ${index + 1}: ${material.title}
-  Content:
-  ${limitText([material.content, material.extractedText].filter(Boolean).join("\n\n"), 12000)}
-  `)
-        .join("\n---\n");
+      const materialTitles = aiContent.materialTitles.length
+        ? aiContent.materialTitles
+        : aiContent.contentsData.map((m) => m.title).filter(Boolean);
 
       let generated;
 
       try {
-        generated = await generateMaterialBasedActivityWithAI({
+        generated = await generateMaterialBasedActivityWithGeminiDirect({
           studentId,
           resolvedScore,
           courseName: courseName || "Course",
           courseCode: courseCode || "",
           assignmentTitle: assignmentTitle || "Assignment",
           assignmentInstruction: "", // Can be fetched from assignment if needed
-          materialTitles: readableMaterials.map(m => m.title),
-          materialContext,
+          materialTitles,
+          materialContext: aiContent.combinedExtractedText,
+          geminiContents: aiContent.geminiContents,
         });
       } catch (aiError) {
         console.error("Material-based AI activity generation failed:", aiError?.message || aiError);
         return res.status(502).json({
-          error: "AI failed to generate a valid quiz from the related material content.",
+          error: "AI failed to generate a valid quiz from the related lesson/material content.",
           details: aiError?.message || "Invalid AI output",
         });
       }
 
       const activity = normalizeGeneratedActivityFromAI({
         generated,
-        readableMaterials,
-        materialTitles: readableMaterials.map(m => m.title),
+        readableMaterials: aiContent.contentsData,
+        materialTitles,
+        materialExtractionStatus: aiContent.extractionStatus,
         resolvedScore,
         courseId,
         courseName,
@@ -12177,7 +12380,6 @@ app.get(
         assignmentId,
         assignmentTitle,
         topic,
-        context: { materials: readableMaterials }, // Mock context for normalizer
       });
 
       if (!activity?.quiz) {

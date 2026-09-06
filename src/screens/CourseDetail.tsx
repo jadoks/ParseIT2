@@ -1516,6 +1516,29 @@ const fetchModules = useCallback(async (silent = false) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedAssignment?.id, JSON.stringify(selectedAssignment?.materialIds || [])]);
 
+  // ✅ NEW: Same "freeze it to the open assignment" fix as
+  // `selectedAssignmentRelatedMaterials` above, applied to the Follow-Up
+  // Activity button's enabled/disabled state. `canGenerateActivity()` calls
+  // `getRelatedMaterials()`, which filters the ever-changing `safeCourse.materials`
+  // reference handed back by every `autoRefreshIntervalMs` poll — recomputing
+  // that live on every render made the button (and its "must link related
+  // materials" warning) flicker on/off every few seconds even when the
+  // related materials hadn't actually changed. Deriving it from the already-
+  // stable `selectedAssignmentRelatedMaterials` snapshot instead keeps it
+  // steady, matching Assignments.tsx (which reads related materials off a
+  // frozen per-assignment snapshot rather than the live course object).
+  const canGenerateSelectedActivity = useMemo(() => {
+    if (!selectedAssignment) return false;
+    const score = getScorePercent(selectedAssignment);
+    return (
+      score !== null &&
+      score < 75 &&
+      selectedAssignmentRelatedMaterials.length > 0 &&
+      !hasMasteredGeneratedActivity(selectedAssignment)
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedAssignment, selectedAssignmentRelatedMaterials]);
+
   // ✅ NEW: Silent background refresh — refetches submissions, comments for
   // the currently-open assignment, AND the underlying course/assignment
   // content (title, due date, description, points, teacher file) so a
@@ -2963,18 +2986,18 @@ const fetchModules = useCallback(async (silent = false) => {
                     {getRecommendationType(selectedAssignment) && (
                       <View style={styles.section}>
                         <Text style={styles.sectionTitle}>🎯 Follow-Up Activity</Text>
-                        {!canGenerateActivity(selectedAssignment) && (
+                        {!canGenerateSelectedActivity && (
                           <Text style={styles.materialWarningText}>
                             The teacher must link related materials first. AI will generate this activity from those related materials only.
                           </Text>
                         )}
                         <TouchableOpacity
                           onPress={() => handleGenerateActivity(selectedAssignment)}
-                          disabled={!canGenerateActivity(selectedAssignment) || isGeneratingActivity}
+                          disabled={!canGenerateSelectedActivity || isGeneratingActivity}
                           style={[
                             styles.uploadButtonWide,
                             {
-                              backgroundColor: canGenerateActivity(selectedAssignment)
+                              backgroundColor: canGenerateSelectedActivity
                                 ? getRecommendationColor(selectedAssignment)
                                 : "#CCC",
                               opacity: isGeneratingActivity ? 0.75 : 1,
