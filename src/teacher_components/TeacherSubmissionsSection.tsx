@@ -522,24 +522,52 @@ const mapSubmissionToItems = (submission: any): any[] => {
   const items: any[] = [];
   const baseDate = formatRemoteDateTime(submission?.submittedAt || submission?.createdAt);
   
-  // 1. Map the Primary File (if exists)
-  const fileUrl = submission?.fileUrl || submission?.url || submission?.downloadUrl;
-  if (fileUrl && submission?.fileName) {
-    items.push({
-      id: `${submission.id}-file`,
-      submissionId: submission.id,
-      fileName: submission.fileName,
-      fileSize: 'Submitted file',
-      uploadedDate: baseDate,
-      submittedAt: baseDate,
-      fileUrl: fileUrl,
-      fileType: submission.fileType || 'application/octet-stream',
-      storagePath: submission.storagePath,
-      bucketPath: submission.bucketPath,
-      isSubmitted: true,
-      source: 'student',
-      type: 'file' // Explicit type for rendering
+  // 1. Map EVERY file the student attached (source of truth: submission.files).
+  // ✅ FIXED: this used to only look at the legacy singular submission.fileUrl,
+  // which only ever holds the *first* file — additional files the student
+  // added via "+ Add Another File" were silently dropped from the teacher's
+  // view even though they were saved in Firestore.
+  const filesArray = Array.isArray(submission?.files) ? submission.files : [];
+  if (filesArray.length > 0) {
+    filesArray.forEach((file: any, index: number) => {
+      const itemFileUrl = file?.fileUrl || file?.url || file?.downloadUrl;
+      if (!itemFileUrl || !file?.fileName) return;
+      items.push({
+        id: file.id || `${submission.id}-file-${index}`,
+        submissionId: submission.id,
+        fileName: file.fileName,
+        fileSize: 'Submitted file',
+        uploadedDate: baseDate,
+        submittedAt: baseDate,
+        fileUrl: itemFileUrl,
+        fileType: file.fileType || 'application/octet-stream',
+        storagePath: file.storagePath,
+        bucketPath: file.bucketPath,
+        isSubmitted: true,
+        source: 'student',
+        type: 'file' // Explicit type for rendering
+      });
     });
+  } else {
+    // Fallback for legacy submission docs that predate the "files" array.
+    const fileUrl = submission?.fileUrl || submission?.url || submission?.downloadUrl;
+    if (fileUrl && submission?.fileName) {
+      items.push({
+        id: `${submission.id}-file`,
+        submissionId: submission.id,
+        fileName: submission.fileName,
+        fileSize: 'Submitted file',
+        uploadedDate: baseDate,
+        submittedAt: baseDate,
+        fileUrl: fileUrl,
+        fileType: submission.fileType || 'application/octet-stream',
+        storagePath: submission.storagePath,
+        bucketPath: submission.bucketPath,
+        isSubmitted: true,
+        source: 'student',
+        type: 'file' // Explicit type for rendering
+      });
+    }
   }
 
   // 2. Map ALL Link URLs from the array
@@ -604,8 +632,29 @@ const mapSubmissionToItems = (submission: any): any[] => {
 
   const items: SubmissionPreviewSource[] = [];
 
-  // 1. Handle Primary File Upload
-  if (sub.fileUrl && sub.fileName) {
+  // 1. Handle EVERY file the student attached (source of truth: sub.files).
+  // ✅ FIXED: this used to only look at the legacy singular sub.fileUrl,
+  // which only ever holds the *first* file — additional files added via
+  // "+ Add Another File" were silently dropped from the teacher's view even
+  // though they were saved in Firestore.
+  const subFiles = Array.isArray((sub as any).files) ? (sub as any).files : [];
+  if (subFiles.length > 0) {
+    subFiles.forEach((file: any, index: number) => {
+      if (!file?.fileUrl || !file?.fileName) return;
+      items.push({
+        id: file.id || `${sub.id}-file-${index}`,
+        type: 'file' as const,
+        submissionId: sub.id,
+        url: file.fileUrl,
+        fileName: file.fileName,
+        fileType: file.fileType || 'application/octet-stream',
+        submittedAt: sub.submittedAt,
+        status: sub.status,
+        storagePath: file.storagePath || null,
+      });
+    });
+  } else if (sub.fileUrl && sub.fileName) {
+    // Fallback for legacy submission docs that predate the "files" array.
     items.push({
       id: `${sub.id}-file`,
       type: 'file' as const,

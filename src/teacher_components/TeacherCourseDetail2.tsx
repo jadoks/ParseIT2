@@ -97,6 +97,18 @@ export type Submission = {
   linkUrls?: string[];
   storagePath?: string | null;
   bucketPath?: string | null;
+  // ✅ FIXED: full list of every file the student attached (source of truth).
+  // fileName/fileUrl/fileType above are kept only as legacy mirrors of the
+  // first file for backward compatibility — always read `files` for the
+  // complete attachment list.
+  files?: Array<{
+    id?: string;
+    fileName?: string;
+    fileUrl?: string;
+    fileType?: string;
+    storagePath?: string | null;
+    bucketPath?: string | null;
+  }>;
 };
 
 export type ClassScheduleEntry = {
@@ -451,6 +463,9 @@ const mapSubmission = (item: any): Submission => ({
     : [],
   storagePath: item.storagePath || null,
   bucketPath: item.bucketPath || null,
+  // ✅ FIXED: carry through every attached file, not just the legacy
+  // singular fileUrl/fileName mirror of the first one.
+  files: Array.isArray(item.files) ? item.files : [],
 });
 
 // ─── Viewer URL helpers ─────────────────────────────────────────────────────
