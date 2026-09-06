@@ -2796,10 +2796,10 @@ const refreshAssignmentCourseContent = useCallback(async () => {
           <View style={styles.generatingOverlay} pointerEvents="auto">
             <View style={styles.generatingCard}>
               <ActivityIndicator size="large" color="#D32F2F" />
-              <Text style={styles.generatingTitle}>Generating activity...</Text>
+              <Text style={styles.generatingTitle}>Generating Follow-Up Activity...</Text>
               <Text style={styles.generatingText}>
-                AI is reading the related material file and creating 10 mixed
-                quiz/activity questions.
+                AI is reading your teacher's related course resources and creating
+                10 Multiple Choice, 10 True or False, and 10 Identification questions.
               </Text>
             </View>
           </View>

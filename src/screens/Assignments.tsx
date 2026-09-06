@@ -890,6 +890,14 @@ const Assignments = ({
     }
     const course = courses.find((c) => c.id === assignment.courseId);
     if (course && onOpenGeneratedActivity) {
+      // ✅ NEW: Close this assignment detail modal first — mirrors
+      // CourseDetail.tsx's handleGenerateActivity, which calls
+      // setSelectedAssignment(null) before handing off to the parent. That
+      // way the student sees a single, clean loading state (the shared
+      // full-screen "Generating Follow-Up Activity..." overlay in
+      // StudentApp.tsx) instead of this modal's own disabled/spinning
+      // button state showing underneath it at the same time.
+      setSelectedAssignment(null);
       onOpenGeneratedActivity(course, {
         ...assignment,
         relatedMaterials,
