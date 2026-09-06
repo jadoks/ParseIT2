@@ -264,23 +264,47 @@ const mapSubmissionToFile = (submission: any): AssignmentFileUpload[] => {
   const items: AssignmentFileUpload[] = [];
   const baseDate = formatRemoteDateTime(submission?.submittedAt || submission?.createdAt);
 
-  // 1. Map the Primary File (if exists)
-  const fileUrl = submission?.fileUrl || submission?.url || submission?.downloadUrl;
-  if (fileUrl && submission?.fileName) {
-    items.push({
-      id: `${submission.id}-file`,
-      submissionId: submission.id,
-      fileName: submission.fileName,
-      fileSize: 'Submitted file',
-      uploadedDate: baseDate,
-      submittedAt: baseDate,
-      fileUrl: fileUrl,
-      fileType: submission.fileType || 'application/octet-stream',
-      storagePath: submission.storagePath,
-      bucketPath: submission.bucketPath,
-      isSubmitted: true,
-      source: 'student',
+  // 1. Map EVERY file in the "files" array (source of truth written by the server).
+  const filesArray = Array.isArray(submission?.files) ? submission.files : [];
+  if (filesArray.length > 0) {
+    filesArray.forEach((file: any, index: number) => {
+      const fileUrl = file?.fileUrl || file?.url || file?.downloadUrl;
+      if (!fileUrl && !file?.storagePath) return;
+      items.push({
+        id: file?.id || `${submission.id}-file-${index}`,
+        submissionId: submission.id,
+        fileName: file?.fileName || 'Submitted file',
+        fileSize: 'Submitted file',
+        uploadedDate: baseDate,
+        submittedAt: baseDate,
+        fileUrl: fileUrl,
+        fileType: file?.fileType || 'application/octet-stream',
+        storagePath: file?.storagePath,
+        bucketPath: file?.bucketPath,
+        isSubmitted: true,
+        source: 'student',
+      });
     });
+  } else {
+    // Fallback for older submission docs that predate the "files" array and
+    // only have the single legacy fileUrl/fileName fields.
+    const fileUrl = submission?.fileUrl || submission?.url || submission?.downloadUrl;
+    if (fileUrl && submission?.fileName) {
+      items.push({
+        id: `${submission.id}-file`,
+        submissionId: submission.id,
+        fileName: submission.fileName,
+        fileSize: 'Submitted file',
+        uploadedDate: baseDate,
+        submittedAt: baseDate,
+        fileUrl: fileUrl,
+        fileType: submission.fileType || 'application/octet-stream',
+        storagePath: submission.storagePath,
+        bucketPath: submission.bucketPath,
+        isSubmitted: true,
+        source: 'student',
+      });
+    }
   }
 
   // 2. Map ALL Link URLs from the array
