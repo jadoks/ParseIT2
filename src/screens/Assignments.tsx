@@ -56,6 +56,7 @@ export interface AssignmentFileUpload {
   uploadedDate: string;
   fileUrl?: string;
   linkUrl?: string; 
+  linkId?: string; // ✅ Stable server-issued id for a link, round-tripped through submit/remove so a link's identity never changes across unsubmit/resubmit cycles (mirrors how a file's own `id` already works).
   fileType?: string;
   storagePath?: string; // ✅ CRITICAL FOR REFRESH
   bucketPath?: string;  // ✅ CRITICAL FOR REFRESH
@@ -1335,11 +1336,18 @@ const Assignments = ({
         return !isLink && (!!file.fileUrl || !!file.storagePath);
       });
 
-      const linkUrls = files
+      const linkItems = files
         .filter(file => (file.fileType === 'text/uri-list' || !!file.linkUrl) && !!file.linkUrl)
-        .map(file => file.linkUrl!.trim());
+        .map(file => ({
+          // Reuse the server's own id for an already-confirmed link so it
+          // keeps the exact same identity on resubmit. Only a brand-new,
+          // never-yet-submitted link falls back to its local id; the server
+          // will treat that as the seed for a new persistent id.
+          id: file.linkId || file.id,
+          url: file.linkUrl!.trim(),
+        }));
 
-      if (regularFiles.length === 0 && linkUrls.length === 0) {
+      if (regularFiles.length === 0 && linkItems.length === 0) {
         throw new Error('No valid items were found. Please check your uploads.');
       }
 
@@ -1353,7 +1361,7 @@ const Assignments = ({
         bucketPath: file.bucketPath || null,
       }));
 
-      console.log('[SUBMIT] Files:', submissionItems.length, 'Links:', linkUrls.length);
+      console.log('[SUBMIT] Files:', submissionItems.length, 'Links:', linkItems.length);
 
       const response = await apiFetch(`${API_BASE_URL}/create-submission`, {
         method: 'POST',
@@ -1368,7 +1376,7 @@ const Assignments = ({
           score: null,
           feedback: null,
           submissions: submissionItems,
-          linkUrls: linkUrls.length > 0 ? linkUrls : undefined,
+          linkUrls: linkItems.length > 0 ? linkItems : undefined,
         }),
       });
 
@@ -1380,7 +1388,7 @@ const Assignments = ({
       syncSelectedAssignmentStatus('submitted');
       await onRefreshSubmissions?.();
       
-      const totalItems = submissionItems.length + (linkUrls.length > 0 ? 1 : 0);
+      const totalItems = submissionItems.length + linkItems.length;
       Alert.alert('Success', `Submitted ${totalItems} item(s) successfully.`);
     } catch (error: any) {
       console.error('[SUBMIT ERROR]', error);

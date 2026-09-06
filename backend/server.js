@@ -9874,7 +9874,7 @@ app.get(
 
   app.post("/remove-submission-item", requireAuth, async (req, res) => {
   try {
-    const { classId, assignmentId, studentId, isLink, linkUrl, fileId, storagePath } = req.body;
+    const { classId, assignmentId, studentId, isLink, linkUrl, linkId, fileId, storagePath } = req.body;
     if (!classId || !assignmentId || !studentId) {
       return res.status(400).json({ error: "classId, assignmentId, studentId are required." });
     }
@@ -9896,7 +9896,17 @@ app.get(
     }
 
     if (isLink) {
-      const nextLinkUrls = (data.linkUrls || []).filter((u) => u !== linkUrl);
+      // Links may be stored either as the new { id, url } objects (preferred —
+      // gives each link a stable identity, mirroring how files already work)
+      // or as legacy bare strings (older submissions predating this format).
+      // Match by id first when we have one; fall back to matching by url.
+      const nextLinkUrls = (data.linkUrls || []).filter((entry) => {
+        if (entry && typeof entry === "object") {
+          if (linkId && entry.id) return entry.id !== linkId;
+          return entry.url !== linkUrl;
+        }
+        return entry !== linkUrl; // legacy bare-string entry
+      });
       await docRef.update({ linkUrls: nextLinkUrls, updatedAt: FieldValue.serverTimestamp() });
     } else {
       // Remove just the targeted file from the "files" array. Match by id first
@@ -10015,7 +10025,7 @@ app.get(
         bucketPath,
         // New batch fields
         submissions, // Array of file objects
-        linkUrls,    // Array of string URLs
+        linkUrls,    // Array of { id, url } objects (or legacy plain strings)
       } = req.body;
 
       if (!classId || !assignmentId || !studentId) {
@@ -10071,12 +10081,28 @@ app.get(
         ];
       }
 
-      // Merge legacy single linkUrl into the new linkUrls array structure
+      // Merge legacy single linkUrl into the new linkUrls array structure.
+      // Each link is stored as { id, url } — mirroring how files already carry
+      // a stable, client-generated id — rather than a bare URL string. Without
+      // an id, the only way to identify a link on refetch is by its position
+      // in the array, which breaks (and can duplicate in the UI) the moment a
+      // link is removed/re-added or the array order shifts across an
+      // unsubmit/resubmit cycle. A persistent id makes a link's identity
+      // permanent and content-independent, just like a file's.
       let finalLinkUrls = [];
       if (Array.isArray(linkUrls)) {
-        finalLinkUrls = linkUrls.map(url => normalizeOptionalText(url)).filter(Boolean);
+        finalLinkUrls = linkUrls
+          .map((entry, index) => {
+            const url = normalizeOptionalText(typeof entry === "string" ? entry : entry?.url);
+            if (!url) return null;
+            const id =
+              (typeof entry === "object" && normalizeOptionalText(entry?.id)) ||
+              `link-${Date.now()}-${index}`;
+            return { id, url };
+          })
+          .filter(Boolean);
       } else if (linkUrl) {
-        finalLinkUrls = [normalizeOptionalText(linkUrl)];
+        finalLinkUrls = [{ id: `link-${Date.now()}-0`, url: normalizeOptionalText(linkUrl) }];
       }
 
       // Mirror the first file into the legacy singular fields for backward compatibility.

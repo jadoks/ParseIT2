@@ -1800,10 +1800,18 @@ const fetchModules = useCallback(async (silent = false) => {
         const isLink = file.fileType === 'text/uri-list' || !!file.linkUrl;
         return !isLink && (!!file.fileUrl || !!file.storagePath);
       });
-      const linkUrls = files
+      const linkItems = files
         .filter(file => (file.fileType === 'text/uri-list' || !!file.linkUrl) && !!file.linkUrl)
-        .map(file => file.linkUrl!.trim());
-      if (regularFiles.length === 0 && linkUrls.length === 0) {
+        .map(file => ({
+          // Reuse the server's own id for an already-confirmed link so it
+          // keeps the exact same identity on resubmit; a brand-new link
+          // falls back to its local id, which the server treats as the seed
+          // for a new persistent id. See Assignments.tsx for the full
+          // explanation of why links need a stable id the same way files do.
+          id: file.linkId || file.id,
+          url: file.linkUrl!.trim(),
+        }));
+      if (regularFiles.length === 0 && linkItems.length === 0) {
         throw new Error('No valid items were found. Please check your uploads.');
       }
       const submissionItems = regularFiles.map(file => ({
@@ -1828,14 +1836,14 @@ const fetchModules = useCallback(async (silent = false) => {
           score: null,
           feedback: null,
           submissions: submissionItems,
-          linkUrls: linkUrls.length > 0 ? linkUrls : undefined,
+          linkUrls: linkItems.length > 0 ? linkItems : undefined,
         }),
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data?.error || "Failed to submit assignment.");
       syncSelectedAssignmentStatus("submitted");
       await onRefreshSubmissions?.();
-      const totalItems = submissionItems.length + (linkUrls.length > 0 ? 1 : 0);
+      const totalItems = submissionItems.length + linkItems.length;
       showFeedback('success', 'Success', `Submitted ${totalItems} item(s) successfully.`);
     } catch (error: any) {
       showFeedback('error', 'Submit Failed', error?.message || 'Unable to submit assignment.');

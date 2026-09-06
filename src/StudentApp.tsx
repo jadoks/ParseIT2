@@ -307,23 +307,30 @@ const mapSubmissionToFile = (submission: any): AssignmentFileUpload[] => {
     }
   }
 
-  // 2. Map ALL Link URLs from the array
+  // 2. Map ALL Link URLs from the array.
+  // Preferred shape is { id, url } — a link carries its own persistent id
+  // (round-tripped from the server) the same way a file does, so its identity
+  // never changes across submit/unsubmit/resubmit. Older docs may still have
+  // a flat array of plain strings; for those we fall back to a positional id
+  // (best-effort only — see note below on why that's fragile).
   const linkUrls = Array.isArray(submission.linkUrls) ? submission.linkUrls : [];
-  linkUrls.forEach((url: string, index: number) => {
-    if (url && typeof url === 'string') {
-      items.push({
-        id: `${submission.id}-link-${index}`,
-        submissionId: submission.id,
-        fileName: 'Submitted link',
-        fileSize: 'Link submission',
-        uploadedDate: baseDate,
-        submittedAt: baseDate,
-        linkUrl: url.trim(),
-        fileType: 'text/uri-list',
-        isSubmitted: true,
-        source: 'student',
-      });
-    }
+  linkUrls.forEach((entry: any, index: number) => {
+    const isLegacyString = typeof entry === 'string';
+    const url = isLegacyString ? entry : entry?.url;
+    if (!url || typeof url !== 'string') return;
+    items.push({
+      id: (!isLegacyString && entry?.id) || `${submission.id}-link-${index}`,
+      linkId: (!isLegacyString && entry?.id) || undefined,
+      submissionId: submission.id,
+      fileName: 'Submitted link',
+      fileSize: 'Link submission',
+      uploadedDate: baseDate,
+      submittedAt: baseDate,
+      linkUrl: url.trim(),
+      fileType: 'text/uri-list',
+      isSubmitted: true,
+      source: 'student',
+    });
   });
 
   // Fallback for legacy single linkUrl field
@@ -1434,6 +1441,7 @@ const refreshAssignmentCourseContent = useCallback(async () => {
         studentId: currentStudent.studentId,
         isLink,
         linkUrl: target.linkUrl || null,
+        linkId: isLink ? target.linkId || null : null,
         fileId: !isLink ? target.id : null,
         storagePath: !isLink ? target.storagePath || null : null,
       }),
