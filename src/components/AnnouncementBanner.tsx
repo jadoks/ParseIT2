@@ -17,9 +17,24 @@ import {
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { Announcement } from '../components/AnnouncementModal';
 
+// 👇 ADDED: local extension so the banner can show who posted the
+// announcement and for which class/subject, without needing to touch the
+// shared Announcement type in AnnouncementModal.tsx. Both fields are
+// optional, so plain Announcement objects remain fully compatible.
+type AnnouncementWithMeta = Announcement & {
+  postedByName?: string | null;
+  courseNames?: string[];
+};
+
 interface AnnouncementBannerProps {
-  announcements: Announcement[];
+  announcements: AnnouncementWithMeta[];
   isLoading?: boolean; // Added to handle initial data fetching gracefully
+  // 👇 ADDED: when set, jump the carousel to the announcement with this id
+  // (e.g. opened from an announcement notification), then report back via
+  // onConsumedFocus so the parent can clear it and normal auto-slide/manual
+  // navigation resumes.
+  focusAnnouncementId?: string | null;
+  onConsumedFocus?: () => void;
 }
 
 const AUTO_SLIDE_MS = 5000;
@@ -37,7 +52,9 @@ const isAnnouncementActive = (value?: any) => {
 
 const AnnouncementBanner = ({ 
   announcements = [], // Safe default to prevent undefined errors
-  isLoading = false 
+  isLoading = false,
+  focusAnnouncementId = null,
+  onConsumedFocus,
 }: AnnouncementBannerProps) => {
   const { width, height } = useWindowDimensions();
 
@@ -58,6 +75,21 @@ const AnnouncementBanner = ({
 
   const hasAnnouncements = activeAnnouncements.length > 0;
   const currentAnnouncement = hasAnnouncements ? activeAnnouncements[currentIndex] : null;
+
+  // 👇 ADDED: "Posted by <teacher> • <course/subject>" label so students can
+  // see who made the announcement and for which class, instead of a bare
+  // title/message with no attribution.
+  const announcementMetaLabel = useMemo(() => {
+    if (!currentAnnouncement) return '';
+    const parts: string[] = [];
+    if (currentAnnouncement.courseNames?.length) {
+      parts.push(currentAnnouncement.courseNames.join(', '));
+    }
+    if (currentAnnouncement.postedByName) {
+      parts.push(currentAnnouncement.postedByName);
+    }
+    return parts.join(' • ');
+  }, [currentAnnouncement]);
 
   const bannerHeight = isMobile
     ? Math.max(180, Math.min(height * 0.24, 240))
@@ -93,6 +125,22 @@ const AnnouncementBanner = ({
       setCurrentIndex(0);
     }
   }, [activeAnnouncements.length, currentIndex, hasAnnouncements]);
+
+  // 👇 ADDED: jump to the requested announcement (e.g. from a notification
+  // tap) once its data has loaded, then let the parent clear the request so
+  // it doesn't keep overriding manual swipes/auto-slide afterwards. If the
+  // announcement can't be found (already expired/removed), consume the
+  // request anyway rather than getting stuck waiting for it.
+  useEffect(() => {
+    if (!focusAnnouncementId) return;
+    const targetIndex = activeAnnouncements.findIndex(
+      (item) => item?.id === focusAnnouncementId
+    );
+    if (targetIndex !== -1) {
+      setCurrentIndex(targetIndex);
+    }
+    onConsumedFocus?.();
+  }, [focusAnnouncementId, activeAnnouncements, onConsumedFocus]);
 
   const handlePrev = () => {
     if (!hasAnnouncements) return;
@@ -198,6 +246,12 @@ const AnnouncementBanner = ({
             )}
 
             <View style={styles.contentText}>
+              {!!announcementMetaLabel && (
+                <Text style={styles.announceMeta} numberOfLines={1}>
+                  {announcementMetaLabel}
+                </Text>
+              )}
+
               <Text
                 style={[styles.announceTitle, { fontSize: titleFontSize }]}
                 numberOfLines={2}
@@ -347,6 +401,15 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: wp('2'),
+  },
+  announceMeta: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.88)',
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+    marginBottom: 6,
+    textAlign: 'center',
   },
   announceTitle: {
     fontWeight: '800',

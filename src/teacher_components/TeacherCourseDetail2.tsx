@@ -1005,7 +1005,6 @@ const TeacherCourseDetail2 = ({
   const [timeLimit, setTimeLimit] = useState<string>('');
   const [customTimeLimit, setCustomTimeLimit] = useState<string>('');
   const [showGameTypeModal, setShowGameTypeModal] = useState(false);
-  const [showClassModal, setShowClassModal] = useState(false);
   const [generatedQuestions, setGeneratedQuestions] = useState<any[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
   const [showGeneratedPreview, setShowGeneratedPreview] = useState(false);
@@ -1173,7 +1172,6 @@ useEffect(() => {
     showMaterialPreviewModal ||
     showDateTimeModal ||
     showGameTypeModal ||
-    showClassModal ||
     showGeneratedPreview ||
     !!aiPreviewData ||
     !!syllabusViewerUrl ||
@@ -2209,7 +2207,6 @@ useEffect(() => {
     setGeneratedQuestions([]);
     setShowGeneratedPreview(false);
     setShowGameTypeModal(false);
-    setShowClassModal(false);
   };
 
   const openCreateModal = () => {
@@ -2254,7 +2251,6 @@ useEffect(() => {
     });
     setGeneratedQuestions(mappedQuestions);
     setShowGameTypeModal(false);
-    setShowClassModal(false);
     setShowUpdateModal(true);
   };
 
@@ -2621,8 +2617,6 @@ useEffect(() => {
 
     if (assignmentType === 'game_based') {
       if (!gameType) nextErrors.gameType = 'Please select a game type.';
-      if (availableCourses.length > 1 && !selectedClassId)
-        nextErrors.classId = 'Please select a class.';
 
       if (!numberOfAttempts) nextErrors.attempts = 'Please select number of attempts.';
       else if (numberOfAttempts === 'custom') {
@@ -3492,10 +3486,14 @@ useEffect(() => {
 
   const renderGameAndClassRow = () => {
     const selectedGame = gameOptions.find((g) => g.value === gameType);
-    const selectedClass = availableCourses.find((c) => c.id === selectedClassId);
+    // This form always creates the game-based assignment for the class whose
+    // detail page it was opened from — selectedClassId is initialized to,
+    // and reset to, course.id (see resetCreateForm). There's nothing to
+    // pick, so no Course/Class selector is rendered here; the assignment is
+    // implicitly scoped to the current class.
     return (
       <View style={[styles.gameAndClassRow, isMobile && styles.gameAndClassRowMobile]}>
-        <View style={[styles.dropdownWrap, !isMobile && styles.dropdownWrapHalf]}>
+        <View style={styles.dropdownWrap}>
           <Text style={styles.sectionLabel}>Select Game</Text>
           <TouchableOpacity
             style={[styles.dropdownTrigger, errors.gameType ? styles.errorBorder : null]}
@@ -3513,28 +3511,6 @@ useEffect(() => {
           </TouchableOpacity>
           {renderInputError(errors.gameType)}
         </View>
-        {availableCourses.length > 1 && (
-          <View style={[styles.dropdownWrap, !isMobile && styles.dropdownWrapHalf]}>
-            <Text style={styles.sectionLabel}>Course / Class</Text>
-            <TouchableOpacity
-              style={[styles.dropdownTrigger, errors.classId ? styles.errorBorder : null]}
-              onPress={() => setShowClassModal(true)}
-              disabled={isSaving}
-              activeOpacity={0.8}
-            >
-              <Text
-                style={[styles.dropdownText, !selectedClass && styles.dropdownPlaceholder]}
-                numberOfLines={1}
-              >
-                {selectedClass
-                  ? `${selectedClass.courseCode} - ${selectedClass.name}`
-                  : 'Select a class'}
-              </Text>
-              <Ionicons name="chevron-down" size={18} color="#D32F2F" />
-            </TouchableOpacity>
-            {renderInputError(errors.classId)}
-          </View>
-        )}
       </View>
     );
   };
@@ -4774,66 +4750,6 @@ GAME TYPE MODAL
             </Pressable>
           </Pressable>
         </Modal>
-        {/* ══════════════════════════════════════════════════════════════════════
-CLASS MODAL
-════════════════════════════════════════════════════════════════════════ */}
-        <Modal
-          visible={showClassModal}
-          transparent
-          animationType="fade"
-          onRequestClose={() => setShowClassModal(false)}
-        >
-          <Pressable style={styles.modalOverlayCenter} onPress={() => setShowClassModal(false)}>
-            <Pressable
-              style={[
-                styles.modalCardElevated,
-                { width: isMobile ? Math.min(width - 28, 360) : 450, maxHeight: height * 0.8 },
-              ]}
-            >
-              <View style={styles.createHeaderRow}>
-                <View style={styles.modalHeaderTextWrap}>
-                  <Text style={styles.createTitle}>Select Course / Class</Text>
-                  <Text style={styles.modalSubtitle}>Assign this game to a specific class.</Text>
-                </View>
-                <TouchableOpacity onPress={() => setShowClassModal(false)}>
-                  <Ionicons name="close" size={24} color="#111" />
-                </TouchableOpacity>
-              </View>
-              <ScrollView showsVerticalScrollIndicator={false} nestedScrollEnabled>
-                {availableCourses.map((c) => (
-                  <TouchableOpacity
-                    key={c.id}
-                    style={[
-                      styles.dropdownItem,
-                      selectedClassId === c.id && styles.dropdownItemActive,
-                    ]}
-                    onPress={() => {
-                      setSelectedClassId(c.id);
-                      setShowClassModal(false);
-                      if (errors.classId) setErrors((prev) => ({ ...prev, classId: undefined }));
-                    }}
-                  >
-                    <Ionicons
-                      name={selectedClassId === c.id ? 'radio-button-on' : 'radio-button-off'}
-                      size={18}
-                      color={selectedClassId === c.id ? '#FFF' : '#D32F2F'}
-                      style={{ marginRight: 12 }}
-                    />
-                    <Text
-                      style={[
-                        styles.dropdownItemText,
-                        selectedClassId === c.id && styles.dropdownItemTextActive,
-                      ]}
-                      numberOfLines={1}
-                    >
-                      {c.courseCode} - {c.name}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-            </Pressable>
-          </Pressable>
-        </Modal>
       {/* ══════════════════════════════════════════════════════════════════════
 GENERATED QUESTIONS PREVIEW MODAL (Submissions-screen entry point)
 ────────────────────────────────────────────────────────────────────────
@@ -6015,66 +5931,6 @@ GAME TYPE MODAL
                       </Text>
                     )}
                   </View>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-          </Pressable>
-        </Pressable>
-      </Modal>
-      {/* ══════════════════════════════════════════════════════════════════════
-CLASS MODAL
-════════════════════════════════════════════════════════════════════════ */}
-      <Modal
-        visible={showClassModal}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setShowClassModal(false)}
-      >
-        <Pressable style={styles.modalOverlayCenter} onPress={() => setShowClassModal(false)}>
-          <Pressable
-            style={[
-              styles.modalCardElevated,
-              { width: isMobile ? Math.min(width - 28, 360) : 450, maxHeight: height * 0.8 },
-            ]}
-          >
-            <View style={styles.createHeaderRow}>
-              <View style={styles.modalHeaderTextWrap}>
-                <Text style={styles.createTitle}>Select Course / Class</Text>
-                <Text style={styles.modalSubtitle}>Assign this game to a specific class.</Text>
-              </View>
-              <TouchableOpacity onPress={() => setShowClassModal(false)}>
-                <Ionicons name="close" size={24} color="#111" />
-              </TouchableOpacity>
-            </View>
-            <ScrollView showsVerticalScrollIndicator={false} nestedScrollEnabled>
-              {availableCourses.map((c) => (
-                <TouchableOpacity
-                  key={c.id}
-                  style={[
-                    styles.dropdownItem,
-                    selectedClassId === c.id && styles.dropdownItemActive,
-                  ]}
-                  onPress={() => {
-                    setSelectedClassId(c.id);
-                    setShowClassModal(false);
-                    if (errors.classId) setErrors((prev) => ({ ...prev, classId: undefined }));
-                  }}
-                >
-                  <Ionicons
-                    name={selectedClassId === c.id ? 'radio-button-on' : 'radio-button-off'}
-                    size={18}
-                    color={selectedClassId === c.id ? '#FFF' : '#D32F2F'}
-                    style={{ marginRight: 12 }}
-                  />
-                  <Text
-                    style={[
-                      styles.dropdownItemText,
-                      selectedClassId === c.id && styles.dropdownItemTextActive,
-                    ]}
-                    numberOfLines={1}
-                  >
-                    {c.courseCode} - {c.name}
-                  </Text>
                 </TouchableOpacity>
               ))}
             </ScrollView>

@@ -19,7 +19,9 @@ export type NotificationType =
   // 👇 ADDED: new module lesson published by the teacher
   | 'module-lesson'
   // 👇 ADDED: teacher left a comment on the student's assignment submission
-  | 'assignment-comment';
+  | 'assignment-comment'
+  // 👇 ADDED: teacher published a new class announcement
+  | 'announcement';
 
 export type NotificationItem = {
   id: string;
@@ -181,6 +183,15 @@ const Notification: React.FC<NotificationScreenProps> = ({
         return (
           <MaterialCommunityIcons
             name="comment-text-outline"
+            size={22}
+            color={color}
+          />
+        );
+      // 👇 ADDED: icon for new class announcement notifications
+      case 'announcement':
+        return (
+          <MaterialCommunityIcons
+            name="bullhorn-outline"
             size={22}
             color={color}
           />

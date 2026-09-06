@@ -66,6 +66,12 @@ export interface DashboardCourse {
 
 interface DashboardProps {
   announcements?: Announcement[];
+  // 👇 ADDED: when set, the announcement banner carousel jumps to the
+  // announcement with this id (e.g. after tapping an announcement
+  // notification). onConsumedInitialAnnouncement lets the parent clear it
+  // once it's been applied, so it doesn't keep pinning the carousel.
+  initialAnnouncementId?: string | null;
+  onConsumedInitialAnnouncement?: () => void;
   courses?: DashboardCourse[];
   onOpenCourse?: (course: DashboardCourse) => void;
   onOpenAssignments?: (course: DashboardCourse, assignment?: DashboardAssignment) => void;
@@ -117,6 +123,8 @@ const formatScheduleBlock = (entry: DashboardScheduleEntry) => {
 
 const Dashboard = ({
   announcements = [],
+  initialAnnouncementId = null,
+  onConsumedInitialAnnouncement,
   courses = [],
   onOpenCourse,
   onOpenAssignments,
@@ -457,7 +465,11 @@ const Dashboard = ({
           {isLoading ? (
             <AnnouncementBanner announcements={[]} isLoading={true} />
           ) : announcements.length > 0 ? (
-            <AnnouncementBanner announcements={announcements} />
+            <AnnouncementBanner
+              announcements={announcements}
+              focusAnnouncementId={initialAnnouncementId}
+              onConsumedFocus={onConsumedInitialAnnouncement}
+            />
           ) : (
             <View style={[styles.banner, { height: bannerHeight }]}>
               <View style={styles.bannerContent}>

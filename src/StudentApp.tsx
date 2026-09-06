@@ -113,6 +113,11 @@ type StudentClassAnnouncement = Announcement & {
   expiresAt?: any;
   createdAt?: any;
   updatedAt?: any;
+  // 👇 ADDED: who posted it and which of the student's own classes it
+  // applies to, so the banner can show "Posted by <teacher> • <course>"
+  // instead of a bare title/message with no attribution.
+  postedByName?: string | null;
+  courseNames?: string[];
 };
 
 function getApiBaseUrl() {
@@ -722,7 +727,11 @@ const refreshAssignmentCourseContent = useCallback(async () => {
   
   // ✅ NEW: State to track which lesson should auto-open in CourseDetail
   const [autoOpenLessonId, setAutoOpenLessonId] = useState<string | null>(null);
-  
+
+  // 👇 ADDED: State to track which announcement the Dashboard's banner
+  // carousel should jump to when opened from an announcement notification.
+  const [autoOpenAnnouncementId, setAutoOpenAnnouncementId] = useState<string | null>(null);
+
   const [communityInitialPostId, setCommunityInitialPostId] = useState<string | null>(null);
 
   const isFullscreenScreen = activeScreen === 'flipit' || activeScreen === 'fruitmania' || activeScreen === 'quizmasters' || activeScreen === 'gamebasedassignment';
@@ -930,6 +939,10 @@ const refreshAssignmentCourseContent = useCallback(async () => {
     try {
       const classIds = courses.map((item) => item.id).filter(Boolean);
       if (!classIds.length) { if (!silent) setStudentAnnouncements([]); return; }
+      // 👇 ADDED: lookup so each announcement can be labeled with the name(s)
+      // of the student's own enrolled class(es) it was posted to — the
+      // backend only stores raw classIds on the announcement, not names.
+      const courseById = new Map(courses.map((item) => [item.id, item] as const));
       const groupedAnnouncements = await Promise.all(classIds.map(async (classId) => {
         const response = await apiFetch(`${API_BASE_URL}/class-announcements/${classId}`);
         const data = await response.json();
@@ -943,17 +956,29 @@ const refreshAssignmentCourseContent = useCallback(async () => {
          const key = `${item.title}-${item.message}-${item.expiresAt}-${item.bannerKey}`; 
          if (!uniqueMap.has(key)) uniqueMap.set(key, item); 
        });
-       const mappedAnnouncements: StudentClassAnnouncement[] = Array.from(uniqueMap.values()).map((item: any) => ({ 
-         id: item.id, 
-         classIds: Array.isArray(item.classIds) ? item.classIds : [], 
-         title: item.title || '', 
-         message: item.message || '', 
-         bannerKey: typeof item.bannerKey === 'number' ? item.bannerKey : 4, 
-         bannerImage: ANNOUNCEMENT_BANNERS[typeof item.bannerKey === 'number' ? item.bannerKey : 4], 
-         expiresAt: item.expiresAt || null, 
-         createdAt: item.createdAt || null, 
-         updatedAt: item.updatedAt || null 
-       })).sort((a, b) => toMillis(b.createdAt) - toMillis(a.createdAt));
+       const mappedAnnouncements: StudentClassAnnouncement[] = Array.from(uniqueMap.values()).map((item: any) => {
+         const itemClassIds: string[] = Array.isArray(item.classIds) ? item.classIds : [];
+         // Only label with the student's own classes — an announcement may
+         // also target other classes/sections the student isn't part of.
+         const courseNames = itemClassIds
+           .map((cid) => courseById.get(cid)?.name)
+           .filter((name): name is string => !!name);
+         return {
+           id: item.id,
+           classIds: itemClassIds,
+           title: item.title || '',
+           message: item.message || '',
+           bannerKey: typeof item.bannerKey === 'number' ? item.bannerKey : 4,
+           bannerImage: ANNOUNCEMENT_BANNERS[typeof item.bannerKey === 'number' ? item.bannerKey : 4],
+           expiresAt: item.expiresAt || null,
+           createdAt: item.createdAt || null,
+           updatedAt: item.updatedAt || null,
+           // 👇 ADDED: instructor + course label data (was previously
+           // dropped here even though the backend already returns it).
+           postedByName: item.postedByName || 'Teacher',
+           courseNames: courseNames.length ? courseNames : undefined,
+         };
+       }).sort((a, b) => toMillis(b.createdAt) - toMillis(a.createdAt));
        setStudentAnnouncements(mappedAnnouncements);
      } catch (error) { 
        console.log('LOAD STUDENT ANNOUNCEMENTS ERROR =>', error); 
@@ -1986,6 +2011,7 @@ const refreshAssignmentCourseContent = useCallback(async () => {
     const courseId = notification.courseId;
     setAutoOpenAssignmentId(null);
     setAutoOpenLessonId(null); // 👈 ADDED: clear any stale auto-open lesson before routing
+    setAutoOpenAnnouncementId(null); // 👈 ADDED: clear any stale auto-open announcement before routing
     switch (notification.type) {
       case 'assignment':
       case 'game-assignment':
@@ -2034,6 +2060,15 @@ const refreshAssignmentCourseContent = useCallback(async () => {
         setLastScreen(previousScreen);
         setActiveScreen('community');
         setCommunityInitialPostId(targetId || null);
+        break;
+      }
+      // 👇 ADDED: new announcement notifications open the Dashboard (Home)
+      // and jump the announcement banner carousel to the specific
+      // announcement that was published (matched by id via targetId).
+      case 'announcement': {
+        setLastScreen(previousScreen);
+        setActiveScreen('home');
+        if (targetId) setAutoOpenAnnouncementId(targetId);
         break;
       }
       case 'support-activity': {
@@ -2359,6 +2394,11 @@ const refreshAssignmentCourseContent = useCallback(async () => {
       case 'home':
         return <Dashboard
           announcements={studentAnnouncements}
+          // 👇 ADDED: lets the announcement banner carousel jump straight to
+          // the announcement a notification pointed at, then clear it so it
+          // doesn't keep forcing that slide on later visits to Home.
+          initialAnnouncementId={autoOpenAnnouncementId}
+          onConsumedInitialAnnouncement={() => setAutoOpenAnnouncementId(null)}
           courses={dashboardCourses}
           onOpenCourse={(course) => {
             setSelectedCourse(course as unknown as CourseDetailData);

@@ -10289,6 +10289,33 @@ app.get(
         updatedAt: FieldValue.serverTimestamp(),
       });
 
+      // 👇 ADDED: notify every enrolled student in each targeted class that a
+      // new announcement was posted, so it shows up in their notification
+      // bell (previously this endpoint only wrote the announcement doc and
+      // never touched the "notifications" collection at all).
+      const classDataById = new Map(
+        classIds.map((id, idx) => [id, classChecks[idx].data() || {}])
+      );
+
+      await Promise.all(
+        classIds.map((classId) =>
+          createNotificationsForClassStudents({
+            classId,
+            type: "announcement",
+            title: "New Announcement",
+            messageBuilder: () => {
+              const className = classDataById.get(classId)?.name || "your class";
+              return `${postedByName || "Your teacher"} posted a new announcement in ${className}: ${String(title).trim()}`;
+            },
+            relatedId: ref.id,
+            relatedType: "announcement",
+            actorId: postedByUid,
+            actorRole: "teacher",
+            actorName: postedByName || "Teacher",
+          })
+        )
+      );
+
       res.json({
         success: true,
         id: ref.id,
