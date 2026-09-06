@@ -1451,9 +1451,33 @@ const refreshAssignmentCourseContent = useCallback(async () => {
 };
 
   const handleUpdateAssignmentStatus = (assignmentId: string, status: AssignmentItem['status']) => {
+    // ✅ FIX: the double-display-after-unsubmit bug. This is only ever called
+    // with 'pending' right after a successful Unsubmit. At that moment,
+    // every item in sharedAssignmentFiles[assignmentId] is isSubmitted:true —
+    // it came from the last server-confirmed submission (mapSubmissionToFile
+    // in loadStudentSubmissionState). Once unsubmitted, that submission no
+    // longer exists, so those items are stale and must be dropped from local
+    // state right now, instead of waiting for the next
+    // loadStudentSubmissionState() merge. That merge (see
+    // applySavedAssignmentState) only ever overwrites assignmentIds it gets
+    // back from the server — if the server now reports no submission at all
+    // for this assignment, the merge never touches this assignmentId's key
+    // and the old array is left completely untouched. Without this explicit
+    // clear, the stale isSubmitted:true items stuck around forever, so any
+    // link/file the student added after unsubmitting just got appended on
+    // top of them — showing duplicated entries in "Your Uploads" even though
+    // what actually reaches the teacher (a fresh submission) was correct.
+    let clearedFiles = sharedAssignmentFiles;
+    if (status === 'pending') {
+      setSharedAssignmentFiles((prev) => {
+        const remaining = (prev[assignmentId] || []).filter((file) => file.isSubmitted !== true);
+        clearedFiles = { ...prev, [assignmentId]: remaining };
+        return clearedFiles;
+      });
+    }
     setSharedAssignmentStatuses((prev) => {
       const next = { ...prev, [assignmentId]: status };
-      void writeStoredAssignmentState(currentStudent.studentId, { files: sharedAssignmentFiles, statuses: next, scores: sharedAssignmentScores });
+      void writeStoredAssignmentState(currentStudent.studentId, { files: clearedFiles, statuses: next, scores: sharedAssignmentScores });
       return next;
     });
     setJoinedCourses((prev) => prev.map((course) => ({ ...course, assignments: course.assignments.map((assignment) => assignment.id === assignmentId ? { ...assignment, status } : assignment) })));
