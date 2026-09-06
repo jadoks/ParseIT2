@@ -94,7 +94,7 @@ export type Submission = {
   fileUrl?: string;
   fileType?: string;
   feedback?: string;
-  linkUrls?: string[];
+  linkUrls?: Array<{ id: string; url: string } | string>;
   storagePath?: string | null;
   bucketPath?: string | null;
   // ✅ FIXED: full list of every file the student attached (source of truth).

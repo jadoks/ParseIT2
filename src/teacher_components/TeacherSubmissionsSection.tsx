@@ -570,24 +570,29 @@ const mapSubmissionToItems = (submission: any): any[] => {
     }
   }
 
-  // 2. Map ALL Link URLs from the array
+  // 2. Map ALL Link URLs from the array.
+  // Preferred shape is { id, url } — a link carries its own persistent id the
+  // same way a file does, round-tripped from the server, so it isn't
+  // misidentified across resubmits. Older docs may still have a flat array
+  // of plain strings; those fall back to a positional id.
   const linkUrls = Array.isArray(submission.linkUrls) ? submission.linkUrls : [];
-  linkUrls.forEach((url: string, index: number) => {
-    if (url && typeof url === 'string') {
-      items.push({
-        id: `${submission.id}-link-${index}`,
-        submissionId: submission.id,
-        fileName: 'Submitted link',
-        fileSize: 'Link submission',
-        uploadedDate: baseDate,
-        submittedAt: baseDate,
-        linkUrl: url.trim(),
-        fileType: 'text/uri-list',
-        isSubmitted: true,
-        source: 'student',
-        type: 'link' // Explicit type for rendering
-      });
-    }
+  linkUrls.forEach((entry: any, index: number) => {
+    const isLegacyString = typeof entry === 'string';
+    const url = isLegacyString ? entry : entry?.url;
+    if (!url || typeof url !== 'string') return;
+    items.push({
+      id: (!isLegacyString && entry?.id) || `${submission.id}-link-${index}`,
+      submissionId: submission.id,
+      fileName: 'Submitted link',
+      fileSize: 'Link submission',
+      uploadedDate: baseDate,
+      submittedAt: baseDate,
+      linkUrl: url.trim(),
+      fileType: 'text/uri-list',
+      isSubmitted: true,
+      source: 'student',
+      type: 'link' // Explicit type for rendering
+    });
   });
 
   // Fallback for legacy single linkUrl field
@@ -668,22 +673,24 @@ const mapSubmissionToItems = (submission: any): any[] => {
     });
   }
 
-  // 2. Handle Link URLs Array
-  // Note: If sub.linkUrls is undefined, this block won't run.
+  // 2. Handle Link URLs Array.
+  // Preferred shape is { id, url } (see mapSubmissionToItems above for why);
+  // legacy plain-string entries still fall back to a positional id.
   if (Array.isArray(sub.linkUrls) && sub.linkUrls.length > 0) {
-    sub.linkUrls.forEach((url: string, index: number) => {
-      if (url && typeof url === 'string' && url.trim()) {
-        items.push({
-          id: `${sub.id}-link-${index}`,
-          type: 'link' as const,
-          submissionId: sub.id,
-          url: url.trim(),
-          fileName: url.trim(),
-          fileType: 'text/uri-list',
-          submittedAt: sub.submittedAt,
-          status: sub.status
-        });
-      }
+    sub.linkUrls.forEach((entry: any, index: number) => {
+      const isLegacyString = typeof entry === 'string';
+      const url = isLegacyString ? entry : entry?.url;
+      if (!url || typeof url !== 'string' || !url.trim()) return;
+      items.push({
+        id: (!isLegacyString && entry?.id) || `${sub.id}-link-${index}`,
+        type: 'link' as const,
+        submissionId: sub.id,
+        url: url.trim(),
+        fileName: url.trim(),
+        fileType: 'text/uri-list',
+        submittedAt: sub.submittedAt,
+        status: sub.status
+      });
     });
   }
 
