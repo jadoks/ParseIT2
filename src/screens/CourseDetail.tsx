@@ -1261,6 +1261,17 @@ const fetchModules = useCallback(async (silent = false) => {
 
   // ✅ Shared download implementation (used by both the Course Material
   // viewer and the submitted/lesson-file Inline Preview modal below).
+  // ✅ CHANGED: on web, force a real "Save As" download instead of just
+  // navigating the anchor's href. A plain `<a download>` only forces a
+  // download when the browser treats it as same-origin (or the response has
+  // a Content-Disposition: attachment header) — for a cross-origin storage
+  // URL without that header, Chrome/Firefox just open the file in a viewer
+  // tab instead (which is what was happening for the Syllabus preview,
+  // since that signed URL doesn't set the header, unlike the material one).
+  // Fetching the bytes ourselves and downloading from a same-origin blob:
+  // URL sidesteps that entirely, so every download button (Syllabus,
+  // Module Lesson material, submitted file) behaves identically regardless
+  // of what headers the underlying storage URL happens to return.
   const downloadFromUrl = async (
     downloadUrl: string,
     fileName: string,
@@ -1268,20 +1279,40 @@ const fetchModules = useCallback(async (silent = false) => {
   ) => {
     // ── WEB: trigger a real browser download (not just opening a tab) ──
     if (Platform.OS === "web") {
-    try {
-      const link = document.createElement("a");
-      link.href = downloadUrl;
-      link.download = fileName;
-      link.rel = "noopener";
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-    } catch (err) {
-      console.error("Web download failed:", err);
-      showFeedback('error', 'Download Failed', 'Unable to download this file.');
+      try {
+        const response = await fetch(downloadUrl);
+        if (!response.ok) throw new Error(`Fetch failed with status ${response.status}`);
+        const blob = await response.blob();
+        const blobUrl = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = blobUrl;
+        link.download = fileName;
+        link.rel = "noopener";
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        // Give the browser a moment to pick up the download before revoking.
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+      } catch (err) {
+        console.error("Web download failed, falling back to direct link:", err);
+        // Fallback: some storage URLs block cross-origin fetch (CORS) even
+        // though the browser can still navigate to them directly, so try
+        // the old direct-link approach rather than failing outright.
+        try {
+          const link = document.createElement("a");
+          link.href = downloadUrl;
+          link.download = fileName;
+          link.rel = "noopener";
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+        } catch (fallbackErr) {
+          console.error("Fallback web download failed:", fallbackErr);
+          showFeedback('error', 'Download Failed', 'Unable to download this file.');
+        }
+      }
+      return;
     }
-    return;
-  }
 
     // ── NATIVE (iOS / Android): download to cache, then share/save ──
     try {
