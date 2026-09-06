@@ -1190,7 +1190,30 @@ const refreshAssignmentCourseContent = useCallback(async () => {
   }, [joinedAssignmentCourses, selectedCourse?.id]);
 
   const applySavedAssignmentState = (state: StoredAssignmentState) => {
-    setSharedAssignmentFiles((prev) => ({ ...prev, ...state.files }));
+    // ✅ FIXED: this used to do `setSharedAssignmentFiles(prev => ({...prev, ...state.files}))`,
+    // which fully REPLACES an assignment's file list with whatever the server
+    // currently has. That's correct for items the server already knows about,
+    // but it silently erased any file/link the student had just added locally
+    // (isSubmitted: false) and hadn't submitted yet — e.g. Unsubmit → remove
+    // the old file → pick a new one → wait a few seconds for the 15s
+    // silentRefresh poll to fire → the new file vanished because the server's
+    // submission doc still showed the old (now-empty) list.
+    //
+    // Fix: for each assignment, keep the server's items (source of truth for
+    // anything already submitted) PLUS any local-only items (isSubmitted ===
+    // false) that the server doesn't know about yet, deduping by id so an
+    // item that just finished submitting isn't shown twice.
+    setSharedAssignmentFiles((prev) => {
+      const merged = { ...prev };
+      Object.entries(state.files || {}).forEach(([assignmentId, serverFiles]) => {
+        const knownIds = new Set(serverFiles.map((f) => f.id));
+        const localOnly = (prev[assignmentId] || []).filter(
+          (f) => f.isSubmitted === false && !knownIds.has(f.id)
+        );
+        merged[assignmentId] = [...serverFiles, ...localOnly];
+      });
+      return merged;
+    });
     setSharedAssignmentStatuses((prev) => ({ ...prev, ...state.statuses }));
     setSharedAssignmentScores((prev) => ({ ...prev, ...(state.scores || {}) }));
   };
