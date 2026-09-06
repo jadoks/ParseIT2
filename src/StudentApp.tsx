@@ -1034,15 +1034,37 @@ const refreshAssignmentCourseContent = useCallback(async () => {
       const response = await apiFetch(`${API_BASE_URL}/student-joined-classes/${currentStudent.studentId}`);
       const data = await response.json();
       if (!response.ok) throw new Error(data?.error || 'Failed to load joined classes.');
-      const classesArray = Array.isArray(data) ? data : data?.data || [];
+      const classesArray: any[] = Array.isArray(data) ? data : data?.data || [];
 
       // No network needed — name/instructor/assignments are already in the
       // list response.
-      const shellCourses = classesArray.map(mapJoinedClassShell);
+      const shellCourses: CourseWithBannerFields[] = classesArray.map(mapJoinedClassShell);
 
       // Render immediately. Dashboard/ClassesScreen already have enough to
       // show course cards, due dates, and score averages.
-      setJoinedCourses(shellCourses);
+      // ✅ FIX: mapJoinedClassShell always sets `materials: []` (it doesn't
+      // know the materials yet — they're filled in below by the enrichment
+      // pass). On the VERY FIRST load that's fine since there's nothing to
+      // lose. But loadJoinedClasses() also runs on every later background/
+      // manual refresh (see refreshAssignmentCourseContent, which
+      // Assignments.tsx calls every `autoRefreshIntervalMs`, i.e. every
+      // 15s). Without this merge, each of those refreshes would briefly
+      // wipe every course's materials back to `[]` for the second or two
+      // it takes enrichment to re-fetch them — which is why "Related
+      // Course Resources" in the assignment modal was flashing empty on a
+      // timer, and appeared to coincide with Submit/Unsubmit whenever the
+      // poll happened to land around the same time. Carrying over the
+      // previous materials here means a refresh can only ever *update*
+      // materials, never transiently blank them out.
+      setJoinedCourses((prev) => {
+        const prevById = new Map(prev.map((c) => [c.id, c]));
+        return shellCourses.map((shell) => {
+          const existing = prevById.get(shell.id);
+          return existing && existing.materials?.length
+            ? { ...shell, materials: existing.materials }
+            : shell;
+        });
+      });
       setIsLoadingJoinedCourses(false);
 
       // Announcements only need classIds (already known) — no reason to wait

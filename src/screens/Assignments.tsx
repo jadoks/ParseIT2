@@ -762,7 +762,19 @@ const Assignments = ({
         JSON.stringify(prev.materialIds || []) === JSON.stringify(freshMatch.materialIds || []) &&
         JSON.stringify(prev.files || []) === JSON.stringify(freshMatch.files || []);
       if (sameContent) return prev;
-      return { ...freshMatch };
+      // ✅ FIX: Guard against a momentarily-empty `materials` array from a
+      // background refresh in the parent (e.g. StudentApp's loadJoinedClasses
+      // resetting a course's materials while it re-fetches them). Without
+      // this, "Related Course Resources" would flash to "No linked
+      // materials" any time a refresh landed while the parent's materials
+      // were mid-reload, even though the assignment's own materialIds never
+      // changed. Only accept the fresh materials list when it actually has
+      // content, or when the previous list was already empty.
+      const nextMaterials =
+        freshMatch.materials?.length || !prev.materials?.length
+          ? freshMatch.materials
+          : prev.materials;
+      return { ...freshMatch, materials: nextMaterials };
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [allAssignments]);

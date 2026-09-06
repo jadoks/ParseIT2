@@ -1510,11 +1510,34 @@ const fetchModules = useCallback(async (silent = false) => {
   // visibly flash/reshuffle on every background refresh. Mirrors how
   // Assignments.tsx sources this list from the already-guarded
   // `selectedAssignment` snapshot instead of the live course data.
+  //
+  // ✅ FIX: the previous version keyed this memo ONLY off
+  // `selectedAssignment?.id` + `materialIds`, so if the modal happened to be
+  // opened (or the id/materialIds happened to change) while
+  // `safeCourse.materials` was still empty/loading — e.g. right after
+  // StudentApp's loadJoinedClasses() had reset it during a background
+  // refresh — the section would freeze on an EMPTY result and never
+  // recover, even once the real materials arrived a moment later. This is
+  // the same "Related Course Resources disappears" bug reported for
+  // Assignments.tsx, just manifesting as "gets stuck empty" here instead of
+  // "flickers empty". A lightweight content fingerprint (ids/titles/URLs of
+  // just the materials that actually match this assignment) lets the memo
+  // recompute whenever the MATCHED materials truly change — appearing once
+  // loaded, updating if the teacher edits one — while still ignoring the
+  // no-op new-array-reference churn from every polling refresh.
+  const relatedMaterialsContentKey = useMemo(() => {
+    if (!selectedAssignment?.materialIds?.length) return "";
+    return safeCourse.materials
+      .filter((m) => selectedAssignment.materialIds?.includes(m.id))
+      .map((m) => `${m.id}:${m.title}:${m.fileUrl || m.fileUri || ""}`)
+      .join("|");
+  }, [selectedAssignment?.materialIds, safeCourse.materials]);
+
   const selectedAssignmentRelatedMaterials = useMemo(() => {
     if (!selectedAssignment) return [];
     return getRelatedMaterials(selectedAssignment);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedAssignment?.id, JSON.stringify(selectedAssignment?.materialIds || [])]);
+  }, [selectedAssignment?.id, relatedMaterialsContentKey]);
 
   // ✅ NEW: Same "freeze it to the open assignment" fix as
   // `selectedAssignmentRelatedMaterials` above, applied to the Follow-Up
