@@ -1451,26 +1451,38 @@ const refreshAssignmentCourseContent = useCallback(async () => {
 };
 
   const handleUpdateAssignmentStatus = (assignmentId: string, status: AssignmentItem['status']) => {
-    // ✅ FIX: the double-display-after-unsubmit bug. This is only ever called
-    // with 'pending' right after a successful Unsubmit. At that moment,
-    // every item in sharedAssignmentFiles[assignmentId] is isSubmitted:true —
-    // it came from the last server-confirmed submission (mapSubmissionToFile
-    // in loadStudentSubmissionState). Once unsubmitted, that submission no
-    // longer exists, so those items are stale and must be dropped from local
-    // state right now, instead of waiting for the next
-    // loadStudentSubmissionState() merge. That merge (see
-    // applySavedAssignmentState) only ever overwrites assignmentIds it gets
-    // back from the server — if the server now reports no submission at all
-    // for this assignment, the merge never touches this assignmentId's key
-    // and the old array is left completely untouched. Without this explicit
-    // clear, the stale isSubmitted:true items stuck around forever, so any
-    // link/file the student added after unsubmitting just got appended on
-    // top of them — showing duplicated entries in "Your Uploads" even though
-    // what actually reaches the teacher (a fresh submission) was correct.
+    // ✅ FIX: the duplicated-link-after-submit bug. This fires right after a
+    // successful Submit (status === 'submitted'). Files sent in a submission
+    // keep their original client-side id (id: file.id, see
+    // handleSubmitAssignment) and the backend echoes that same id back in
+    // the submission doc, so mapSubmissionToFile's file items always have an
+    // id that matches the local one — they dedupe fine on refresh.
+    //
+    // Links are NOT sent with their local id — only the raw URL string goes
+    // up (linkUrls: [...]), so the backend has to invent a brand-new id for
+    // each one (`${submission.id}-link-${index}`) when it echoes them back.
+    // That id can never match the local `link-<timestamp>` id the link was
+    // created with. applySavedAssignmentState's merge only drops a local
+    // item once its id shows up in the server's list, so a link's pre-submit
+    // local copy would never get dropped — every refresh after that shows
+    // the stale local copy *and* the newly-confirmed server copy side by
+    // side, and that pile only grows with each submit/unsubmit cycle.
+    //
+    // Fix: the moment a submission actually succeeds, clear out every
+    // not-yet-confirmed local item (isSubmitted === false) for this
+    // assignment. They're about to be replaced by the authoritative
+    // server-confirmed list on the very next refresh anyway, so there's
+    // nothing to preserve — this just stops the stale copy from surviving
+    // long enough to render alongside its own replacement.
+    //
+    // Note: this intentionally does NOT touch already-confirmed
+    // (isSubmitted === true) items on unsubmit ('pending') — those are the
+    // student's real uploaded files/links and should stay visible/editable
+    // after Unsubmit rather than forcing a re-upload.
     let clearedFiles = sharedAssignmentFiles;
-    if (status === 'pending') {
+    if (status === 'submitted') {
       setSharedAssignmentFiles((prev) => {
-        const remaining = (prev[assignmentId] || []).filter((file) => file.isSubmitted !== true);
+        const remaining = (prev[assignmentId] || []).filter((file) => file.isSubmitted !== false);
         clearedFiles = { ...prev, [assignmentId]: remaining };
         return clearedFiles;
       });
