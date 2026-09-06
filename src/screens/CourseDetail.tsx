@@ -2862,53 +2862,28 @@ const fetchModules = useCallback(async (silent = false) => {
                           {(selectedAssignment as any).description || "No instruction provided."}
                         </Text>
                       </View>
-                      {hasMasteredGeneratedActivity(selectedAssignment) ? (
-                        <View style={styles.masteredActivityNotice}>
-                          <Ionicons name="checkmark-circle" size={18} color="#2E7D32" />
-                          <View style={{ flex: 1 }}>
-                            <Text style={styles.masteredActivityNoticeTitle}>
-                              Follow-up activity mastered
-                            </Text>
-                            <Text style={styles.masteredActivityNoticeText}>
-                              You scored {getCompletedActivityScore(selectedAssignment)?.scorePercent}%
-                              on the generated follow-up activity.
-                            </Text>
-                          </View>
-                        </View>
-                      ) : !canGenerateActivity(selectedAssignment) &&
-                        getScorePercent(selectedAssignment) !== null &&
-                        getScorePercent(selectedAssignment)! < 75 ? (
-                        <Text style={styles.materialWarningText}>
-                          The teacher still needs to attach related materials before AI activity
-                          generation can use file content.
-                        </Text>
-                      ) : null}
-                    </View>
-                    {canGenerateActivity(selectedAssignment) && (
-                      <View style={styles.section}>
-                        <Text style={styles.sectionTitle}>Follow-Up Activity</Text>
-                        <TouchableOpacity
-                          onPress={() => handleGenerateActivity(selectedAssignment)}
-                          disabled={isGeneratingActivity}
+                      {getRecommendationLabel(selectedAssignment) && (
+                        <View
                           style={[
-                            styles.uploadButtonWide,
+                            styles.recommendationBadge,
                             {
-                              backgroundColor: getRecommendationColor(selectedAssignment),
-                              opacity: isGeneratingActivity ? 0.75 : 1,
+                              backgroundColor: `${getRecommendationColor(selectedAssignment)}18`,
+                              alignSelf: "flex-start",
+                              marginTop: 12,
                             },
                           ]}
                         >
-                          {isGeneratingActivity ? (
-                            <View style={styles.loadingButtonContent}>
-                              <ActivityIndicator size="small" color="#FFFFFF" />
-                              <Text style={styles.uploadButtonText}>Generating...</Text>
-                            </View>
-                          ) : (
-                            <Text style={styles.uploadButtonText}>Generate Activity</Text>
-                          )}
-                        </TouchableOpacity>
-                      </View>
-                    )}
+                          <Text
+                            style={[
+                              styles.recommendationText,
+                              { color: getRecommendationColor(selectedAssignment) },
+                            ]}
+                          >
+                            {getRecommendationLabel(selectedAssignment)}
+                          </Text>
+                        </View>
+                      )}
+                    </View>
                     {/* Assignment File */}
                     <View style={styles.section}>
                       <Text style={styles.sectionTitle}>📄 Assignment File</Text>
@@ -2983,6 +2958,38 @@ const fetchModules = useCallback(async (silent = false) => {
                             </TouchableOpacity>
                           </>
                         )}
+                      </View>
+                    )}
+                    {getRecommendationType(selectedAssignment) && (
+                      <View style={styles.section}>
+                        <Text style={styles.sectionTitle}>🎯 Follow-Up Activity</Text>
+                        {!canGenerateActivity(selectedAssignment) && (
+                          <Text style={styles.materialWarningText}>
+                            The teacher must link related materials first. AI will generate this activity from those related materials only.
+                          </Text>
+                        )}
+                        <TouchableOpacity
+                          onPress={() => handleGenerateActivity(selectedAssignment)}
+                          disabled={!canGenerateActivity(selectedAssignment) || isGeneratingActivity}
+                          style={[
+                            styles.uploadButtonWide,
+                            {
+                              backgroundColor: canGenerateActivity(selectedAssignment)
+                                ? getRecommendationColor(selectedAssignment)
+                                : "#CCC",
+                              opacity: isGeneratingActivity ? 0.75 : 1,
+                            },
+                          ]}
+                        >
+                          {isGeneratingActivity ? (
+                            <View style={styles.loadingButtonContent}>
+                              <ActivityIndicator size="small" color="#FFFFFF" />
+                              <Text style={styles.uploadButtonText}>Generating...</Text>
+                            </View>
+                          ) : (
+                            <Text style={styles.uploadButtonText}>Generate Follow-Up Activity</Text>
+                          )}
+                        </TouchableOpacity>
                       </View>
                     )}
                     {/* Related Materials */}
