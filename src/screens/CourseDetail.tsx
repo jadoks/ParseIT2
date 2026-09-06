@@ -133,6 +133,24 @@ const isPastDueDate = (dueDate?: string) => {
   return parsed.getTime() < Date.now();
 };
 
+// ✅ NEW: "missing" is a purely client-side, derived display status — it is
+// never written back to the backend/AssignmentItem["status"] field. An
+// assignment that is still "pending" (i.e. the student never played the
+// game or submitted work — playing/submitting flips the real status to
+// "submitted" or "graded" server-side) and whose due date has passed reads
+// as "missing" instead of "pending" everywhere it's shown.
+type DisplayStatus = "pending" | "submitted" | "graded" | "missing";
+
+const getDisplayStatus = (assignment: {
+  status: "pending" | "submitted" | "graded";
+  dueDate: string;
+}): DisplayStatus => {
+  if (assignment.status === "pending" && isPastDueDate(assignment.dueDate)) {
+    return "missing";
+  }
+  return assignment.status;
+};
+
 const getDisplayFileSize = (bytes?: number | null) => {
   if (!bytes || !Number.isFinite(bytes)) return "Uploaded file";
   if (bytes < 1024) return `${bytes} B`;
@@ -1056,20 +1074,22 @@ const fetchModules = useCallback(async (silent = false) => {
     return "#999";
   };
 
-  const getStatusColor = (status: AssignmentItem["status"]) => {
+  const getStatusColor = (status: DisplayStatus) => {
     switch (status) {
       case "pending": return "#FFE082";
       case "submitted": return "#BBDEFB";
       case "graded": return "#A5D6A7";
+      case "missing": return "#FFCDD2";
       default: return "#DDD";
     }
   };
 
-  const getStatusTextColor = (status: AssignmentItem["status"]) => {
+  const getStatusTextColor = (status: DisplayStatus) => {
     switch (status) {
       case "pending": return "#7A5600";
       case "submitted": return "#0D47A1";
       case "graded": return "#1B5E20";
+      case "missing": return "#B71C1C";
       default: return "#555";
     }
   };
@@ -1982,6 +2002,7 @@ const fetchModules = useCallback(async (silent = false) => {
     const percent = getScorePercent(item);
     const recommendationLabel = getRecommendationLabel(item);
     const relatedMaterials = getRelatedMaterials(item);
+    const displayStatus = getDisplayStatus(item);
     return (
       <TouchableOpacity
         style={styles.assignmentCard}
@@ -2003,9 +2024,9 @@ const fetchModules = useCallback(async (silent = false) => {
               </Text>
             )}
           </View>
-          <View style={[styles.statusBadge, { backgroundColor: getStatusColor(item.status) }]}>
-            <Text style={[styles.statusText, { color: getStatusTextColor(item.status) }]}>
-              {item.status}
+          <View style={[styles.statusBadge, { backgroundColor: getStatusColor(displayStatus) }]}>
+            <Text style={[styles.statusText, { color: getStatusTextColor(displayStatus) }]}>
+              {displayStatus}
             </Text>
           </View>
         </View>

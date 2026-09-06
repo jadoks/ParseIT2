@@ -195,6 +195,24 @@ const isPastDueDate = (dueDate?: string) => {
   return parsed.getTime() < Date.now();
 };
 
+// ✅ NEW: "missing" is a purely client-side, derived display status — it is
+// never written back to the backend/AssignmentItem['status'] field. An
+// assignment that is still "pending" (i.e. the student never played the
+// game or submitted work — playing/submitting flips the real status to
+// 'submitted' or 'graded' server-side) and whose due date has passed reads
+// as "missing" instead of "pending" everywhere it's shown.
+type DisplayStatus = AssignmentItem['status'] | 'missing';
+
+const getDisplayStatus = (assignment: {
+  status: AssignmentItem['status'];
+  dueDate: string;
+}): DisplayStatus => {
+  if (assignment.status === 'pending' && isPastDueDate(assignment.dueDate)) {
+    return 'missing';
+  }
+  return assignment.status;
+};
+
 const getDisplayFileSize = (bytes?: number | null) => {
   if (!bytes || !Number.isFinite(bytes)) return 'Uploaded file';
   if (bytes < 1024) return `${bytes} B`;
@@ -292,7 +310,7 @@ interface AssignmentsProps {
   onRefreshCourseContent?: () => Promise<void> | void;
 }
 
-type FilterType = 'all' | 'pending' | 'submitted' | 'graded';
+type FilterType = 'all' | 'pending' | 'submitted' | 'graded' | 'missing';
 
 // ✅ HELPER: Check if file is an image
 function isImageFile(fileName?: string, fileType?: string): boolean {
@@ -700,7 +718,7 @@ const Assignments = ({
   const statusFilteredAssignments = useMemo(() => {
     return filter === 'all'
       ? allAssignments
-      : allAssignments.filter((a) => a.status === filter);
+      : allAssignments.filter((a) => getDisplayStatus(a) === filter);
   }, [filter, allAssignments]);
 
   const searchedAndFilteredAssignments = useMemo(() => {
@@ -782,20 +800,22 @@ const Assignments = ({
     return '#999';
   };
 
-  const getStatusColor = (status: AssignmentItem['status']) => {
+  const getStatusColor = (status: DisplayStatus) => {
     switch (status) {
       case 'pending': return '#FFE082';
       case 'submitted': return '#BBDEFB';
       case 'graded': return '#A5D6A7';
+      case 'missing': return '#FFCDD2';
       default: return '#DDD';
     }
   };
 
-  const getStatusTextColor = (status: AssignmentItem['status']) => {
+  const getStatusTextColor = (status: DisplayStatus) => {
     switch (status) {
       case 'pending': return '#7A5600';
       case 'submitted': return '#0D47A1';
       case 'graded': return '#1B5E20';
+      case 'missing': return '#B71C1C';
       default: return '#555';
     }
   };
@@ -1466,6 +1486,7 @@ const Assignments = ({
     const percent = getScorePercent(item);
     const recommendationLabel = getRecommendationLabel(item);
     const relatedMaterials = getRelatedMaterials(item);
+    const displayStatus = getDisplayStatus(item);
 
     return (
       <TouchableOpacity
@@ -1501,16 +1522,16 @@ const Assignments = ({
           <View
             style={[
               styles.statusBadge,
-              { backgroundColor: getStatusColor(item.status) },
+              { backgroundColor: getStatusColor(displayStatus) },
             ]}
           >
             <Text
               style={[
                 styles.statusText,
-                { color: getStatusTextColor(item.status) },
+                { color: getStatusTextColor(displayStatus) },
               ]}
             >
-              {item.status}
+              {displayStatus}
             </Text>
           </View>
         </View>
@@ -1560,7 +1581,7 @@ const Assignments = ({
     >
       <Text style={styles.title}>Assignments</Text>
       <View style={styles.filterRow}>
-        {(['all', 'pending', 'submitted', 'graded'] as FilterType[]).map((item) => (
+        {(['all', 'pending', 'submitted', 'graded', 'missing'] as FilterType[]).map((item) => (
           <TouchableOpacity
             key={item}
             onPress={() => setFilter(item)}
