@@ -1980,29 +1980,67 @@ const fetchModules = useCallback(async (silent = false) => {
     }
   };
 
-  // 👇 ADDED: lets students save their own copy of the syllabus for offline
-  // access/future reference, mirroring handleDownloadMaterial's approach.
-  // Reuses the same "/course-syllabus/view/:id" endpoint the preview uses
-  // so it always gets a fresh, non-expired signed URL rather than relying
-  // on whatever URL happens to already be sitting in state.
+  // ✅ CHANGED: now matches handleDownloadMaterial's download flow exactly
+  // (same as the Module Lesson Inline Preview's download button) instead of
+  // its own one-off "/course-syllabus/view/:id" fetch. Resolves a
+  // storagePath (from the syllabus record, or parsed out of whatever URL we
+  // already have) and asks "/storage/signed-url" for a fresh, non-expired
+  // URL first, falling back to the existing URL/endpoint only if that fails.
   const handleDownloadSyllabus = async () => {
     if (!currentSyllabus?.id) {
       showFeedback('error', 'No file', 'This course has no syllabus to download.');
       return;
     }
+
     const fileName = currentSyllabus?.fileName || 'Course Syllabus';
     const mimeType = currentSyllabus?.fileType || getMimeFromFileName(fileName);
-    try {
-      const res = await apiFetch(`${API_BASE_URL}/course-syllabus/view/${currentSyllabus.id}`);
-      const data = await res.json();
-      if (!res.ok || !data?.url) {
-        showFeedback('error', 'Download Failed', 'Could not resolve a valid file URL.');
-        return;
+
+    const storagePath =
+      currentSyllabus?.storagePath ||
+      currentSyllabus?.bucketPath ||
+      resolveStoragePathFromUrl(syllabusViewerUrl || currentSyllabus?.fileUrl);
+
+    let downloadUrl: string | null = syllabusViewerUrl || currentSyllabus?.fileUrl || null;
+
+    if (storagePath) {
+      try {
+        const response = await apiFetch(`${API_BASE_URL}/storage/signed-url`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            storagePath,
+            classId: course?.id,
+          }),
+        });
+        const data = await response.json();
+        if (response.ok && data?.url) {
+          downloadUrl = data.url;
+        }
+      } catch (err) {
+        console.warn("Failed to refresh signed URL before download, using existing URL:", err);
       }
-      await downloadFromUrl(data.url, fileName, mimeType);
-    } catch (e) {
-      showFeedback('error', 'Download Failed', 'Unable to download the syllabus.');
     }
+
+    // Fallback: same endpoint the preview uses, in case we still don't have
+    // a usable URL (e.g. no storagePath on record and nothing cached yet).
+    if (!downloadUrl) {
+      try {
+        const res = await apiFetch(`${API_BASE_URL}/course-syllabus/view/${currentSyllabus.id}`);
+        const data = await res.json();
+        if (res.ok && data?.url) {
+          downloadUrl = data.url;
+        }
+      } catch (err) {
+        console.warn("Fallback syllabus URL fetch failed:", err);
+      }
+    }
+
+    if (!downloadUrl) {
+      showFeedback('error', 'Download Failed', 'Could not resolve a valid file URL.');
+      return;
+    }
+
+    await downloadFromUrl(downloadUrl, fileName, mimeType);
   };
 
   const handleOpenLessonDetail = async (lesson: any) => {
@@ -2403,6 +2441,16 @@ const fetchModules = useCallback(async (silent = false) => {
                     </View>
                   )}
                   <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 12 }}>
+                    {/* ✅ CHANGED: syllabus now follows the exact same
+                        pattern as a Module Lesson's attached file — tapping
+                        opens the full inline preview, and downloading only
+                        happens from the download icon inside that preview's
+                        top bar (see the SYLLABUS VIEWER MODAL below, which
+                        mirrors the FULLSCREEN INLINE MATERIAL VIEWER used by
+                        Module Lesson attachments). The separate standalone
+                        "Download" button that used to sit here has been
+                        removed so there's one consistent entry point instead
+                        of two different download behaviors. */}
                     <TouchableOpacity
                       onPress={handleViewSyllabus}
                       disabled={currentSyllabus.status === 'generating'}
@@ -2410,17 +2458,6 @@ const fetchModules = useCallback(async (silent = false) => {
                     >
                       <Ionicons name="eye-outline" size={14} color="#1565C0" />
                       <Text style={{ color: '#1565C0', fontWeight: '700', fontSize: 12 }}>View Syllabus</Text>
-                    </TouchableOpacity>
-                    {/* 👇 ADDED: lets students save their own copy of the
-                        syllabus for offline access/future reference — there
-                        was previously no way to download it at all. */}
-                    <TouchableOpacity
-                      onPress={handleDownloadSyllabus}
-                      disabled={currentSyllabus.status === 'generating'}
-                      style={{ backgroundColor: '#E8F5E9', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, flexDirection: 'row', alignItems: 'center', gap: 6 }}
-                    >
-                      <Ionicons name="download-outline" size={14} color="#2E7D32" />
-                      <Text style={{ color: '#2E7D32', fontWeight: '700', fontSize: 12 }}>Download</Text>
                     </TouchableOpacity>
                   </View>
                 </View>
