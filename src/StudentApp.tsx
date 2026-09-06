@@ -922,10 +922,14 @@ const refreshAssignmentCourseContent = useCallback(async () => {
     }));
   };
 
-  const loadStudentAnnouncements = async (courses: CourseDetailData[]) => {
+  const loadStudentAnnouncements = async (
+    courses: CourseDetailData[],
+    options?: { silent?: boolean }
+  ) => {
+    const silent = options?.silent ?? false;
     try {
       const classIds = courses.map((item) => item.id).filter(Boolean);
-      if (!classIds.length) { setStudentAnnouncements([]); return; }
+      if (!classIds.length) { if (!silent) setStudentAnnouncements([]); return; }
       const groupedAnnouncements = await Promise.all(classIds.map(async (classId) => {
         const response = await apiFetch(`${API_BASE_URL}/class-announcements/${classId}`);
         const data = await response.json();
@@ -953,7 +957,9 @@ const refreshAssignmentCourseContent = useCallback(async () => {
        setStudentAnnouncements(mappedAnnouncements);
      } catch (error) { 
        console.log('LOAD STUDENT ANNOUNCEMENTS ERROR =>', error); 
-       setStudentAnnouncements([]); 
+       // On a silent background poll, keep showing the last known-good
+       // announcements instead of wiping the banner on a transient failure.
+       if (!silent) setStudentAnnouncements([]); 
      }
   };
 
@@ -1032,6 +1038,27 @@ const refreshAssignmentCourseContent = useCallback(async () => {
   };
 
   useEffect(() => { loadJoinedClasses(); }, [currentStudent?.studentId]);
+
+  // 🔥 Silent background refresh — same "live" polling pattern used for
+  // notifications/messenger unread count below. Keeps the announcement
+  // banner live so a teacher's newly created, edited, or deleted
+  // announcement shows up automatically, without the student needing to
+  // reload the app. Uses a ref (rather than depending on joinedCourses
+  // directly) so the interval doesn't get torn down/recreated every time
+  // course enrichment patches joinedCourses in place.
+  const joinedCoursesForPollingRef = useRef<CourseDetailData[]>([]);
+  useEffect(() => {
+    joinedCoursesForPollingRef.current = joinedCourses;
+  }, [joinedCourses]);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const courses = joinedCoursesForPollingRef.current;
+      if (!courses.length) return;
+      void loadStudentAnnouncements(courses, { silent: true });
+    }, 8000);
+    return () => clearInterval(interval);
+  }, []);
 
   const handleJoinClass = async (classCode: string) => {
     const trimmedCode = String(classCode || '').trim().toUpperCase();

@@ -10307,6 +10307,7 @@ app.get(
         message,
         bannerKey,
         expiresAt,
+        classIds,
       } = req.body;
 
       const announcementRef = db.collection("announcements").doc(id);
@@ -10342,6 +10343,22 @@ app.get(
         updates.expiresAt = admin.firestore.Timestamp.fromDate(expiryDate);
       }
 
+      if (typeof classIds !== "undefined") {
+        if (!Array.isArray(classIds) || !classIds.length) {
+          return res.status(400).json({ error: "classIds must be a non-empty array." });
+        }
+
+        const classChecks = await Promise.all(
+          classIds.map((classId) => db.collection("classes").doc(classId).get())
+        );
+
+        if (classChecks.some((doc) => !doc.exists)) {
+          return res.status(400).json({ error: "Invalid classId found." });
+        }
+
+        updates.classIds = classIds;
+      }
+
       await announcementRef.update(updates);
 
       res.json({
@@ -10371,6 +10388,35 @@ app.get(
       res.status(500).json({
         error: error.message || "Failed to delete class announcement.",
       });
+    }
+  });
+
+  // ✅ Returns every announcement created by a specific teacher (regardless of
+  // expiry), so the teacher can view/edit/delete their own announcements from
+  // a single "See All Announcements" screen.
+  app.get("/teacher-announcements/:teacherUid", async (req, res) => {
+    try {
+      const { teacherUid } = req.params;
+
+      if (!teacherUid) {
+        return res.status(400).json({ error: "teacherUid is required." });
+      }
+
+      const snapshot = await db
+        .collection("announcements")
+        .where("postedByUid", "==", teacherUid)
+        .orderBy("createdAt", "desc")
+        .get();
+
+      const announcements = snapshot.docs.map((doc) => {
+        const data = doc.data();
+        return { id: doc.id, ...data };
+      });
+
+      res.json(announcements);
+    } catch (err) {
+      console.error("Fetch teacher announcements error:", err);
+      res.status(500).json({ error: "Failed to fetch teacher announcements" });
     }
   });
   /**

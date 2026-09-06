@@ -4,6 +4,7 @@ import DateTimePicker, {
 } from '@react-native-community/datetimepicker';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
+  ActivityIndicator,
   Image,
   Modal,
   Platform,
@@ -37,6 +38,21 @@ type TeacherIdentity = {
   authUid?: string | null;
   firstName?: string;
   lastName?: string;
+};
+
+// ✅ Shape of an announcement as returned by the backend
+// (GET /teacher-announcements/:teacherUid, POST/PUT/DELETE ...-class-announcement).
+export type TeacherAnnouncementItem = {
+  id: string;
+  title: string;
+  message: string;
+  bannerKey?: number;
+  expiresAt?: any;
+  classIds?: string[];
+  postedByUid?: string | null;
+  postedByName?: string;
+  createdAt?: any;
+  updatedAt?: any;
 };
 
 interface ShareAnnouncementProps {
@@ -92,6 +108,20 @@ const buildExpiryIso = (dateValue: Date | null, timeValue: Date | null) => {
 
   if (Number.isNaN(merged.getTime())) return null;
   return merged.toISOString();
+};
+
+// ✅ Safely turns a Firestore Timestamp (has .toDate()) or an ISO string into a Date.
+const toDateSafe = (value?: any): Date | null => {
+  if (!value) return null;
+  const parsed = typeof value?.toDate === 'function' ? value.toDate() : new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+// ✅ Whether an announcement's expiry has already passed.
+const isAnnouncementExpired = (value?: any) => {
+  const parsed = toDateSafe(value);
+  if (!parsed) return false;
+  return parsed.getTime() <= Date.now();
 };
 
 // ─── EXPIRY DATE PICKER COMPONENT ──────────────────────────────────────────────
@@ -783,6 +813,28 @@ export default function ShareAnnouncement({
   const [selectAllClasses, setSelectAllClasses] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // ─── "See All Announcements" (manage: edit/delete) state ───
+  const [showManageModal, setShowManageModal] = useState(false);
+  const [isLoadingAnnouncements, setIsLoadingAnnouncements] = useState(false);
+  const [announcementsError, setAnnouncementsError] = useState<string | null>(null);
+  const [myAnnouncements, setMyAnnouncements] = useState<TeacherAnnouncementItem[]>([]);
+
+  // Edit modal state
+  const [editTarget, setEditTarget] = useState<TeacherAnnouncementItem | null>(null);
+  const [editHeader, setEditHeader] = useState('');
+  const [editDescription, setEditDescription] = useState('');
+  const [editExpiryDate, setEditExpiryDate] = useState<Date | null>(null);
+  const [editExpiryTime, setEditExpiryTime] = useState<Date | null>(null);
+  const [editBg, setEditBg] = useState(4);
+  const [isUpdating, setIsUpdating] = useState(false);
+  const [showEditAudienceModal, setShowEditAudienceModal] = useState(false);
+  const [editSelectedClassIds, setEditSelectedClassIds] = useState<string[]>([]);
+  const [editSelectAllClasses, setEditSelectAllClasses] = useState(false);
+
+  // Delete confirmation state
+  const [deleteTarget, setDeleteTarget] = useState<TeacherAnnouncementItem | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
   // ✅ Toast state (same shape/pattern as Admin's ManageStudent screen)
   const [toast, setToast] = useState<{
     visible: boolean;
@@ -815,6 +867,213 @@ export default function ShareAnnouncement({
   const selectedClasses = useMemo(() => {
     return availableClasses.filter((course) => selectedClassIds.includes(course.id));
   }, [availableClasses, selectedClassIds]);
+
+  // ✅ Identifier used to look up "my" announcements on the backend.
+  const teacherUid = currentTeacher?.authUid || currentTeacher?.teacherId || null;
+
+  // ✅ Maps a classId -> readable label so the manage list can show
+  // "Shared to: CS101 - Intro to Programming" instead of raw ids.
+  const classNameById = useMemo(() => {
+    const map: Record<string, string> = {};
+    classes.forEach((course) => {
+      map[course.id] = `${course.classCode} - ${course.name}`;
+    });
+    return map;
+  }, [classes]);
+
+  const getClassNames = (ids?: string[]) => {
+    if (!ids || !ids.length) return 'No classes';
+    return ids.map((id) => classNameById[id] || id).join(', ');
+  };
+
+  // ─── FETCH: "See All My Announcements" ───
+  const fetchMyAnnouncements = async () => {
+    if (!teacherUid) {
+      setAnnouncementsError('Unable to identify your teacher account.');
+      setIsLoadingAnnouncements(false);
+      return;
+    }
+
+    try {
+      setIsLoadingAnnouncements(true);
+      setAnnouncementsError(null);
+
+      const response = await fetch(`${apiBaseUrl}/teacher-announcements/${teacherUid}`, {
+        credentials: 'include',
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data?.error || 'Failed to load your announcements.');
+      }
+
+      setMyAnnouncements(Array.isArray(data) ? data : []);
+    } catch (error: any) {
+      setAnnouncementsError(error?.message || 'Unable to load your announcements.');
+    } finally {
+      setIsLoadingAnnouncements(false);
+    }
+  };
+
+  const openManageModal = () => {
+    setShowManageModal(true);
+    fetchMyAnnouncements();
+  };
+
+  // ─── EDIT ───
+  const openEditModal = (item: TeacherAnnouncementItem) => {
+    const expiry = toDateSafe(item.expiresAt);
+    const itemClassIds = Array.isArray(item.classIds) ? item.classIds : [];
+
+    setEditTarget(item);
+    setEditHeader(item.title || '');
+    setEditDescription(item.message || '');
+    setEditExpiryDate(expiry);
+    setEditExpiryTime(expiry);
+    setEditBg(item.bannerKey || 4);
+    setEditSelectedClassIds(itemClassIds);
+    setEditSelectAllClasses(
+      availableClasses.length > 0 && itemClassIds.length === availableClasses.length
+    );
+  };
+
+  const closeEditModal = () => {
+    if (isUpdating) return;
+    setEditTarget(null);
+    setShowEditAudienceModal(false);
+  };
+
+  const toggleEditAllClasses = () => {
+    const next = !editSelectAllClasses;
+    setEditSelectAllClasses(next);
+    setEditSelectedClassIds(next ? availableClasses.map((item) => item.id) : []);
+  };
+
+  const toggleEditClass = (classId: string) => {
+    setEditSelectedClassIds((prev) => {
+      const alreadySelected = prev.includes(classId);
+      const nextSelected = alreadySelected
+        ? prev.filter((id) => id !== classId)
+        : [...prev, classId];
+
+      setEditSelectAllClasses(
+        availableClasses.length > 0 && nextSelected.length === availableClasses.length
+      );
+
+      return nextSelected;
+    });
+  };
+
+  const editSelectedClasses = useMemo(() => {
+    return availableClasses.filter((course) => editSelectedClassIds.includes(course.id));
+  }, [availableClasses, editSelectedClassIds]);
+
+  const handleUpdateAnnouncement = async () => {
+    if (!editTarget) return;
+
+    const trimmedHeader = editHeader.trim();
+    const trimmedDesc = editDescription.trim();
+
+    if (!trimmedHeader || !trimmedDesc || !editExpiryDate || !editExpiryTime) {
+      showToast(
+        'Please complete header, description, expiry date, and expiry time.',
+        'error'
+      );
+      return;
+    }
+
+    const expiresAt = buildExpiryIso(editExpiryDate, editExpiryTime);
+
+    if (!expiresAt) {
+      showToast('Please enter a valid expiry date and time.', 'error');
+      return;
+    }
+
+    const targetClassIds = editSelectAllClasses
+      ? availableClasses.map((item) => item.id)
+      : editSelectedClassIds;
+
+    if (!targetClassIds.length) {
+      showToast('Please select at least one class, or choose All Classes.', 'error');
+      return;
+    }
+
+    try {
+      setIsUpdating(true);
+
+      const response = await fetch(
+        `${apiBaseUrl}/update-class-announcement/${editTarget.id}`,
+        {
+          credentials: 'include',
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            title: trimmedHeader,
+            message: trimmedDesc,
+            bannerKey: editBg,
+            expiresAt,
+            classIds: targetClassIds,
+          }),
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data?.error || 'Failed to update announcement.');
+      }
+
+      showToast('Announcement updated successfully!', 'success');
+      setEditTarget(null);
+      setShowEditAudienceModal(false);
+      await fetchMyAnnouncements();
+    } catch (error: any) {
+      showToast(error?.message || 'Unable to update announcement.', 'error');
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  // ─── DELETE ───
+  const confirmDeleteAnnouncement = (item: TeacherAnnouncementItem) => {
+    setDeleteTarget(item);
+  };
+
+  const cancelDeleteAnnouncement = () => {
+    if (isDeleting) return;
+    setDeleteTarget(null);
+  };
+
+  const handleDeleteAnnouncement = async () => {
+    if (!deleteTarget) return;
+
+    try {
+      setIsDeleting(true);
+
+      const response = await fetch(
+        `${apiBaseUrl}/delete-class-announcement/${deleteTarget.id}`,
+        {
+          credentials: 'include',
+          method: 'DELETE',
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data?.error || 'Failed to delete announcement.');
+      }
+
+      showToast('Announcement deleted successfully!', 'success');
+      setDeleteTarget(null);
+      await fetchMyAnnouncements();
+    } catch (error: any) {
+      showToast(error?.message || 'Unable to delete announcement.', 'error');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   const resetTargeting = () => {
     setSelectedClassIds([]);
@@ -1002,6 +1261,16 @@ export default function ShareAnnouncement({
             Announcement will be available to selected classes.
           </Text>
 
+          <TouchableOpacity
+            style={styles.manageLink}
+            activeOpacity={0.8}
+            onPress={openManageModal}
+          >
+            <Ionicons name="megaphone-outline" size={18} color="#B71C1C" />
+            <Text style={styles.manageLinkText}>See All My Announcements</Text>
+            <Ionicons name="chevron-forward" size={16} color="#B71C1C" />
+          </TouchableOpacity>
+
           <View
             style={[
               styles.inputOutlineBox,
@@ -1184,6 +1453,403 @@ export default function ShareAnnouncement({
         </View>
       </Modal>
 
+      {/* ─── "SEE ALL MY ANNOUNCEMENTS" MODAL ─── */}
+      <Modal
+        animationType="fade"
+        transparent
+        visible={showManageModal}
+        onRequestClose={() => setShowManageModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View
+            style={[
+              styles.manageModalCard,
+              isMobile && styles.manageModalCardMobile,
+            ]}
+          >
+            <View style={styles.targetModalHeader}>
+              <Text style={styles.targetModalTitle}>My Announcements</Text>
+              <TouchableOpacity
+                onPress={() => setShowManageModal(false)}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="close" size={22} color="#222" />
+              </TouchableOpacity>
+            </View>
+
+            {isLoadingAnnouncements ? (
+              <View style={styles.manageStateBox}>
+                <ActivityIndicator size="large" color="#B71C1C" />
+                <Text style={styles.manageStateText}>
+                  Loading your announcements...
+                </Text>
+              </View>
+            ) : announcementsError ? (
+              <View style={styles.manageStateBox}>
+                <Ionicons name="alert-circle-outline" size={30} color="#B71C1C" />
+                <Text style={styles.manageStateText}>{announcementsError}</Text>
+                <TouchableOpacity
+                  style={styles.retryBtn}
+                  activeOpacity={0.85}
+                  onPress={fetchMyAnnouncements}
+                >
+                  <Text style={styles.retryBtnText}>Retry</Text>
+                </TouchableOpacity>
+              </View>
+            ) : myAnnouncements.length === 0 ? (
+              <View style={styles.manageStateBox}>
+                <Ionicons name="megaphone-outline" size={30} color="#9CA3AF" />
+                <Text style={styles.manageStateText}>
+                  You haven't created any announcements yet.
+                </Text>
+              </View>
+            ) : (
+              <ScrollView
+                showsVerticalScrollIndicator={true}
+                contentContainerStyle={styles.manageListContent}
+              >
+                {myAnnouncements.map((item) => {
+                  const expired = isAnnouncementExpired(item.expiresAt);
+                  const expiryDateObj = toDateSafe(item.expiresAt);
+
+                  return (
+                    <View key={item.id} style={styles.manageItemCard}>
+                      <View style={styles.manageItemHeaderRow}>
+                        <Text style={styles.manageItemTitle} numberOfLines={1}>
+                          {item.title}
+                        </Text>
+                        <View
+                          style={[
+                            styles.statusPill,
+                            expired ? styles.statusPillExpired : styles.statusPillActive,
+                          ]}
+                        >
+                          <Text
+                            style={[
+                              styles.statusPillText,
+                              expired
+                                ? styles.statusPillTextExpired
+                                : styles.statusPillTextActive,
+                            ]}
+                          >
+                            {expired ? 'Expired' : 'Active'}
+                          </Text>
+                        </View>
+                      </View>
+
+                      <Text style={styles.manageItemMessage} numberOfLines={3}>
+                        {item.message}
+                      </Text>
+
+                      <Text style={styles.manageItemMeta} numberOfLines={2}>
+                        Shared to: {getClassNames(item.classIds)}
+                      </Text>
+
+                      {!!expiryDateObj && (
+                        <Text style={styles.manageItemMeta}>
+                          Expires: {formatDisplayDate(expiryDateObj)} at{' '}
+                          {formatDisplayTime(expiryDateObj)}
+                        </Text>
+                      )}
+
+                      <View style={styles.manageItemActions}>
+                        <TouchableOpacity
+                          style={styles.editActionBtn}
+                          activeOpacity={0.85}
+                          onPress={() => openEditModal(item)}
+                        >
+                          <Ionicons name="create-outline" size={16} color="#1D4ED8" />
+                          <Text style={styles.editActionText}>Edit</Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                          style={styles.deleteActionBtn}
+                          activeOpacity={0.85}
+                          onPress={() => confirmDeleteAnnouncement(item)}
+                        >
+                          <Ionicons name="trash-outline" size={16} color="#B71C1C" />
+                          <Text style={styles.deleteActionText}>Delete</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  );
+                })}
+              </ScrollView>
+            )}
+          </View>
+        </View>
+      </Modal>
+
+      {/* ─── EDIT ANNOUNCEMENT MODAL ─── */}
+      <Modal
+        animationType="fade"
+        transparent
+        visible={!!editTarget}
+        onRequestClose={closeEditModal}
+      >
+        <View style={styles.modalOverlay}>
+          <View
+            style={[
+              styles.targetModalCard,
+              isMobile && styles.targetModalCardMobile,
+            ]}
+          >
+            <View style={styles.targetModalHeader}>
+              <Text style={styles.targetModalTitle}>Edit Announcement</Text>
+              <TouchableOpacity onPress={closeEditModal} activeOpacity={0.8}>
+                <Ionicons name="close" size={22} color="#222" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView
+              showsVerticalScrollIndicator={true}
+              contentContainerStyle={styles.targetModalScrollContent}
+            >
+              <View style={styles.inputOutlineBox}>
+                <Text style={styles.innerLabel}>Header</Text>
+                <TextInput
+                  style={styles.nakedInput}
+                  value={editHeader}
+                  onChangeText={setEditHeader}
+                  underlineColorAndroid="transparent"
+                  placeholder="Enter announcement header"
+                  placeholderTextColor="#999"
+                />
+              </View>
+
+              <View style={styles.inputOutlineBox}>
+                <Text style={styles.innerLabel}>Description</Text>
+                <TextInput
+                  style={[styles.nakedInput, styles.descriptionInput]}
+                  value={editDescription}
+                  onChangeText={setEditDescription}
+                  multiline
+                  textAlignVertical="top"
+                  underlineColorAndroid="transparent"
+                  placeholder="Enter announcement description"
+                  placeholderTextColor="#999"
+                />
+              </View>
+
+              <View style={styles.dateTimeRow}>
+                <View style={styles.dateTimeBox}>
+                  <ExpiryDateField
+                    value={editExpiryDate}
+                    onChange={setEditExpiryDate}
+                    isMobile={isMobile}
+                    showToast={showToast}
+                  />
+                </View>
+
+                <View style={styles.dateTimeBox}>
+                  <ExpiryTimeField value={editExpiryTime} onChange={setEditExpiryTime} />
+                </View>
+              </View>
+
+              <View style={styles.selectorOutlineBox}>
+                <Text style={styles.innerLabel}>Select Background Banner</Text>
+
+                <View style={styles.bgGrid}>
+                  {BACKGROUNDS.map((bg) => (
+                    <TouchableOpacity
+                      key={bg.id}
+                      onPress={() => setEditBg(bg.id)}
+                      style={[
+                        styles.bgOption,
+                        editBg === bg.id && styles.bgOptionSelected,
+                      ]}
+                      activeOpacity={0.85}
+                    >
+                      <Image source={bg.image} style={styles.bgImage} />
+                      {editBg === bg.id && (
+                        <View style={styles.checkOverlay}>
+                          <Ionicons name="checkmark-circle" size={24} color="#FFF" />
+                        </View>
+                      )}
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+
+              <View style={styles.selectorOutlineBox}>
+                <Text style={styles.innerLabel}>Target Classes</Text>
+
+                <Text style={styles.editAudienceSummary} numberOfLines={3}>
+                  {editSelectAllClasses
+                    ? 'All Classes'
+                    : editSelectedClasses.length
+                    ? editSelectedClasses.map((course) => course.label).join(', ')
+                    : 'No classes selected'}
+                </Text>
+
+                <TouchableOpacity
+                  style={styles.changeClassesBtn}
+                  activeOpacity={0.85}
+                  onPress={() => setShowEditAudienceModal(true)}
+                >
+                  <Ionicons name="people-outline" size={16} color="#B71C1C" />
+                  <Text style={styles.changeClassesBtnText}>Change Target Classes</Text>
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
+
+            <View style={styles.modalButtonRow}>
+              <TouchableOpacity
+                style={styles.cancelBtn}
+                activeOpacity={0.8}
+                onPress={closeEditModal}
+                disabled={isUpdating}
+              >
+                <Text style={styles.cancelBtnText}>Cancel</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.confirmBtn, isUpdating && styles.submitBtnDisabled]}
+                activeOpacity={0.8}
+                onPress={handleUpdateAnnouncement}
+                disabled={isUpdating}
+              >
+                <Text style={styles.confirmBtnText}>
+                  {isUpdating ? 'Saving...' : 'Save Changes'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ─── EDIT: CHANGE TARGET CLASSES MODAL ─── */}
+      <Modal
+        animationType="fade"
+        transparent
+        visible={showEditAudienceModal}
+        onRequestClose={() => setShowEditAudienceModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View
+            style={[
+              styles.targetModalCard,
+              isMobile && styles.targetModalCardMobile,
+            ]}
+          >
+            <View style={styles.targetModalHeader}>
+              <Text style={styles.targetModalTitle}>Select Target Audience</Text>
+              <TouchableOpacity
+                onPress={() => setShowEditAudienceModal(false)}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="close" size={22} color="#222" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView
+              showsVerticalScrollIndicator={true}
+              contentContainerStyle={styles.targetModalScrollContent}
+            >
+              <View style={styles.targetSection}>
+                <Text style={styles.targetSectionTitle}>Audience</Text>
+
+                {renderCheckboxRow(
+                  'All Classes',
+                  editSelectAllClasses,
+                  toggleEditAllClasses
+                )}
+              </View>
+
+              <View style={styles.targetSection}>
+                <Text style={styles.targetSectionTitle}>Created Classes</Text>
+
+                {availableClasses.length ? (
+                  availableClasses.map((course) =>
+                    renderCheckboxRow(
+                      course.label,
+                      editSelectedClassIds.includes(course.id),
+                      () => toggleEditClass(course.id),
+                      course.subtitle,
+                      true
+                    )
+                  )
+                ) : (
+                  <View style={styles.emptyClassesBox}>
+                    <Text style={styles.emptyClassesText}>
+                      No created classes available.
+                    </Text>
+                  </View>
+                )}
+              </View>
+            </ScrollView>
+
+            <View style={styles.modalButtonRow}>
+              <TouchableOpacity
+                style={styles.cancelBtn}
+                activeOpacity={0.8}
+                onPress={() => setShowEditAudienceModal(false)}
+              >
+                <Text style={styles.cancelBtnText}>Cancel</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.confirmBtn}
+                activeOpacity={0.8}
+                onPress={() => {
+                  if (!editSelectAllClasses && !editSelectedClassIds.length) {
+                    showToast('Please select a class or choose All Classes.', 'error');
+                    return;
+                  }
+                  setShowEditAudienceModal(false);
+                }}
+              >
+                <Text style={styles.confirmBtnText}>Done</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ─── DELETE CONFIRMATION MODAL ─── */}
+      <Modal
+        animationType="fade"
+        transparent
+        visible={!!deleteTarget}
+        onRequestClose={cancelDeleteAnnouncement}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.confirmDeleteCard}>
+            <View style={styles.confirmDeleteIconBox}>
+              <Ionicons name="trash-outline" size={26} color="#B71C1C" />
+            </View>
+
+            <Text style={styles.confirmDeleteTitle}>Delete this announcement?</Text>
+            <Text style={styles.confirmDeleteMessage}>
+              "{deleteTarget?.title}" will be permanently removed from all
+              classes it was shared to. This action cannot be undone.
+            </Text>
+
+            <View style={styles.modalButtonRow}>
+              <TouchableOpacity
+                style={styles.cancelBtn}
+                activeOpacity={0.8}
+                onPress={cancelDeleteAnnouncement}
+                disabled={isDeleting}
+              >
+                <Text style={styles.cancelBtnText}>Cancel</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.deleteConfirmBtn, isDeleting && styles.submitBtnDisabled]}
+                activeOpacity={0.8}
+                onPress={handleDeleteAnnouncement}
+                disabled={isDeleting}
+              >
+                <Text style={styles.confirmBtnText}>
+                  {isDeleting ? 'Deleting...' : 'Delete'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
       <Toast
         visible={toast.visible}
         message={toast.message}
@@ -1318,4 +1984,48 @@ const styles = StyleSheet.create({
   modalSecondaryButtonText: { fontSize: 14, fontWeight: '700', color: '#7A4A4A' },
   modalPrimaryButton: { height: 48, paddingHorizontal: 18, borderRadius: 14, backgroundColor: '#DC2626', alignItems: 'center', justifyContent: 'center', flexDirection: 'row' },
   modalPrimaryButtonText: { fontSize: 14, fontWeight: '800', color: '#FFFFFF', marginLeft: 8 },
+
+  // ─── SEE ALL / MANAGE ANNOUNCEMENTS ────────────────────────────────────────
+  manageLink: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', gap: 8, paddingVertical: 8, paddingHorizontal: 14, borderRadius: 999, borderWidth: 1.5, borderColor: '#F3D0D0', backgroundColor: '#FFF7F7', marginBottom: 24 },
+  manageLinkText: { fontSize: 13, fontWeight: '700', color: '#B71C1C', fontFamily },
+
+  manageModalCard: { width: '100%', maxWidth: 560, maxHeight: '85%', backgroundColor: '#FFF', borderRadius: 18, padding: 20 },
+  manageModalCardMobile: { maxHeight: '90%' },
+
+  manageStateBox: { alignItems: 'center', justifyContent: 'center', paddingVertical: 48, paddingHorizontal: 20 },
+  manageStateText: { marginTop: 10, fontSize: 13.5, color: '#6B7280', textAlign: 'center', fontFamily, lineHeight: 19 },
+  retryBtn: { marginTop: 14, backgroundColor: '#B71C1C', paddingVertical: 10, paddingHorizontal: 20, borderRadius: 10 },
+  retryBtnText: { color: '#FFF', fontSize: 13, fontWeight: '700', fontFamily },
+
+  manageListContent: { paddingBottom: 6 },
+  manageItemCard: { borderWidth: 1, borderColor: '#EEE', borderRadius: 14, padding: 14, marginBottom: 12, backgroundColor: '#FAFAFA' },
+  manageItemHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6, gap: 8 },
+  manageItemTitle: { flex: 1, fontSize: 15, fontWeight: '800', color: '#222', fontFamily },
+
+  statusPill: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999 },
+  statusPillActive: { backgroundColor: '#E8F5E9' },
+  statusPillExpired: { backgroundColor: '#F3F4F6' },
+  statusPillText: { fontSize: 10.5, fontWeight: '800', letterSpacing: 0.3 },
+  statusPillTextActive: { color: '#2E7D32' },
+  statusPillTextExpired: { color: '#9CA3AF' },
+
+  manageItemMessage: { fontSize: 13, color: '#444', lineHeight: 18, marginBottom: 8, fontFamily },
+  manageItemMeta: { fontSize: 11.5, color: '#8A8A8A', marginBottom: 3, fontFamily },
+
+  manageItemActions: { flexDirection: 'row', gap: 10, marginTop: 10 },
+  editActionBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: 14, borderRadius: 10, borderWidth: 1, borderColor: '#BFDBFE', backgroundColor: '#EFF6FF' },
+  editActionText: { fontSize: 12.5, fontWeight: '700', color: '#1D4ED8', fontFamily },
+  deleteActionBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: 14, borderRadius: 10, borderWidth: 1, borderColor: '#F3D0D0', backgroundColor: '#FFF5F5' },
+  deleteActionText: { fontSize: 12.5, fontWeight: '700', color: '#B71C1C', fontFamily },
+
+  changeClassesBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 10, paddingVertical: 10, borderRadius: 10, borderWidth: 1, borderColor: '#F3D0D0', backgroundColor: '#FFF7F7' },
+  changeClassesBtnText: { fontSize: 12.5, fontWeight: '700', color: '#B71C1C', fontFamily },
+  editAudienceSummary: { fontSize: 13, color: '#444', lineHeight: 18, fontFamily },
+
+  // ─── DELETE CONFIRMATION ────────────────────────────────────────────────────
+  confirmDeleteCard: { width: '100%', maxWidth: 400, backgroundColor: '#FFF', borderRadius: 18, padding: 22, alignItems: 'center' },
+  confirmDeleteIconBox: { width: 56, height: 56, borderRadius: 28, backgroundColor: '#FEE2E2', alignItems: 'center', justifyContent: 'center', marginBottom: 14 },
+  confirmDeleteTitle: { fontSize: 17, fontWeight: '800', color: '#222', marginBottom: 8, textAlign: 'center', fontFamily },
+  confirmDeleteMessage: { fontSize: 13, color: '#6B7280', textAlign: 'center', lineHeight: 19, marginBottom: 18, fontFamily },
+  deleteConfirmBtn: { flex: 1, backgroundColor: '#B71C1C', paddingVertical: 13, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
 });

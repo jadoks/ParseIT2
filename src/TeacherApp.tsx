@@ -463,11 +463,12 @@ export default function TeacherApp({ onLogout, currentTeacher, onGoToLanding }: 
     activeProfile?.email,
   ]);
 
-  const loadTeacherAnnouncements = useCallback(async () => {
+  const loadTeacherAnnouncements = useCallback(async (options?: { silent?: boolean }) => {
+    const silent = options?.silent ?? false;
     try {
       const classIds = effectiveCourses.map((item) => item.id).filter(Boolean);
       if (!classIds.length) {
-        setTeacherAnnouncements([]);
+        if (!silent) setTeacherAnnouncements([]);
         return;
       }
       const groupedAnnouncements = await Promise.all(
@@ -520,7 +521,9 @@ export default function TeacherApp({ onLogout, currentTeacher, onGoToLanding }: 
       setTeacherAnnouncements(mappedAnnouncements);
     } catch (error) {
       console.log('LOAD TEACHER ANNOUNCEMENTS ERROR =>', error);
-      setTeacherAnnouncements([]);
+      // On a silent background poll, keep showing the last known-good
+      // announcements instead of wiping the banner on a transient failure.
+      if (!silent) setTeacherAnnouncements([]);
     } finally {
       setIsLoadingAnnouncements(false);
     }
@@ -724,6 +727,22 @@ export default function TeacherApp({ onLogout, currentTeacher, onGoToLanding }: 
   useEffect(() => {
     loadTeacherAnnouncements();
   }, [loadTeacherAnnouncements]);
+
+  // 🔥 Silent background refresh — same "live" polling pattern used for
+  // notifications above. Keeps the announcement banner (and anywhere else
+  // teacherAnnouncements is used) live when the teacher creates, edits, or
+  // deletes an announcement, without needing to leave and return to Home.
+  // Paused while the teacher is actually on the announcement screen, since
+  // ShareAnnouncement already fetches and displays its own live list there
+  // ("See All My Announcements") — polling here too would just be a
+  // redundant background request.
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (activeScreen === 'announcement') return; // paused — managed screen fetches its own data
+      void loadTeacherAnnouncements({ silent: true });
+    }, 8000);
+    return () => clearInterval(interval);
+  }, [loadTeacherAnnouncements, activeScreen]);
 
   const handleSearchChange = (query: string) => {
     setGlobalSearchQuery(query);
