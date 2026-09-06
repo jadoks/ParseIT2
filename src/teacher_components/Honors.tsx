@@ -1020,41 +1020,29 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
 
       const workbook = XLSX.utils.book_new();
 
+      const totalHonorStudents = generatedSections.reduce(
+        (total, section) => total + section.students.length,
+        0
+      );
+
       const infoRows = [
         ['Report', 'Honor List'],
         ['Academic Year', schoolYear || 'S.Y ---- - ----'],
         ['Semester', semester],
         ['Total Sections', generatedSections.length],
-        [
-          'Total Honor Students',
-          generatedSections.reduce((total, section) => total + section.students.length, 0),
-        ],
+        ['Total Honor Students', totalHonorStudents],
         ['Exported At', new Date().toLocaleString()],
+        [],
+        ['Section', 'Honor Students'],
+        ...generatedSections.map((section) => [
+          `${section.yearLevel} - ${section.sectionName}`,
+          section.students.length,
+        ]),
       ];
 
       const infoSheet = XLSX.utils.aoa_to_sheet(infoRows);
       infoSheet['!cols'] = [{ wch: 22 }, { wch: 40 }];
       XLSX.utils.book_append_sheet(workbook, infoSheet, 'Honor Info');
-
-      const summaryRows = generatedSections.map((section, index) => ({
-        No: index + 1,
-        'Year Level': section.yearLevel,
-        Section: section.sectionName,
-        'Honor Students': section.students.length,
-        'Academic Year': schoolYear || 'S.Y ---- - ----',
-        Semester: semester,
-      }));
-
-      const summarySheet = XLSX.utils.json_to_sheet(summaryRows);
-      summarySheet['!cols'] = [
-        { wch: 6 },
-        { wch: 18 },
-        { wch: 18 },
-        { wch: 16 },
-        { wch: 22 },
-        { wch: 18 },
-      ];
-      XLSX.utils.book_append_sheet(workbook, summarySheet, 'Section Summary');
 
       const honorRows = generatedSections.flatMap((section) =>
         section.students.map((student, index) => ({
@@ -1081,52 +1069,6 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
         { wch: 18 },
       ];
       XLSX.utils.book_append_sheet(workbook, honorSheet, 'Honor List');
-
-      const courseGradeRows: any[] = generatedSections.flatMap((section) =>
-        section.students.flatMap((student) => {
-          if (Array.isArray(student.grades) && student.grades.length > 0) {
-            return student.grades.map((grade) => ({
-              'Student ID': student.id,
-              'Student Name': student.name,
-              GWA: student.gpa,
-              Section: section.sectionName,
-              'Year Level': section.yearLevel,
-              'Course Code': grade.courseCode,
-              'Course Name': grade.courseName,
-              Units: Number(grade.units || 0),
-              Grade: Number(grade.grade || 0),
-            }));
-          }
-
-          return [
-            {
-              'Student ID': student.id,
-              'Student Name': student.name,
-              GWA: student.gpa,
-              Section: section.sectionName,
-              'Year Level': section.yearLevel,
-              'Course Code': '',
-              'Course Name': '',
-              Units: 0,
-              Grade: 0,
-            },
-          ];
-        })
-      );
-
-      const courseGradeSheet = XLSX.utils.json_to_sheet(courseGradeRows);
-      courseGradeSheet['!cols'] = [
-        { wch: 18 },
-        { wch: 32 },
-        { wch: 10 },
-        { wch: 18 },
-        { wch: 18 },
-        { wch: 16 },
-        { wch: 34 },
-        { wch: 10 },
-        { wch: 10 },
-      ];
-      XLSX.utils.book_append_sheet(workbook, courseGradeSheet, 'Course Grades');
 
       generatedSections.forEach((section, sectionIndex) => {
         const sectionRows = section.students.map((student, index) => ({
