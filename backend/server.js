@@ -677,6 +677,46 @@ async function createReadSignedUrlIfExists(storagePath) {
     return trimmed ? trimmed : null;
   }
 
+  // Refreshes the signed download URL for every file attached to a submission
+  // (not just the legacy single "primary" fileUrl), so all attachments the
+  // student added stay openable for the teacher. Mutates and returns `data`.
+  async function refreshSubmissionFileUrls(data) {
+    const bucket = admin.storage().bucket();
+
+    if (Array.isArray(data.files) && data.files.length > 0) {
+      await Promise.all(
+        data.files.map(async (file) => {
+          if (!file || !file.fileUrl || !file.storagePath) return;
+          try {
+            const [signedUrl] = await bucket.file(file.storagePath).getSignedUrl({
+              action: "read",
+              expires: Date.now() + 15 * 60 * 1000, // 15 minutes
+            });
+            file.fileUrl = signedUrl;
+          } catch (err) {
+            console.error("Error generating signed URL:", err);
+          }
+        })
+      );
+      // Keep the legacy singular fields in sync with the (possibly refreshed) first file.
+      const primary = data.files[0];
+      if (primary?.fileUrl) data.fileUrl = primary.fileUrl;
+    } else if (data.fileUrl && data.storagePath) {
+      // Fallback for older submission docs that never got a "files" array.
+      try {
+        const [signedUrl] = await bucket.file(data.storagePath).getSignedUrl({
+          action: "read",
+          expires: Date.now() + 15 * 60 * 1000,
+        });
+        data.fileUrl = signedUrl;
+      } catch (err) {
+        console.error("Error generating signed URL:", err);
+      }
+    }
+
+    return data;
+  }
+
   // Mirrors parseDueDateTime in TeacherCourseDetail2.tsx / Assignments.tsx /
   // CourseDetail.tsx so "past due" means exactly the same thing here as it
   // does on every client: accepts a "YYYY-MM-DDTHH:MM" (or space-separated)
@@ -9814,23 +9854,8 @@ app.get(
 
       const submissions = await Promise.all(
         snapshot.docs.map(async (doc) => {
-          const data = doc.data();
-          
-          // Generate fresh signed URL if fileUrl exists
-          if (data.fileUrl && data.storagePath) {
-            try {
-              const bucket = admin.storage().bucket();
-              const file = bucket.file(data.storagePath);
-              const [signedUrl] = await file.getSignedUrl({
-                action: 'read',
-                expires: Date.now() + 15 * 60 * 1000, // 15 minutes
-              });
-              data.fileUrl = signedUrl;
-            } catch (err) {
-              console.error("Error generating signed URL:", err);
-            }
-          }
-          
+          const data = await refreshSubmissionFileUrls(doc.data());
+
           return {
             id: doc.id,
             ...data,
@@ -9849,7 +9874,7 @@ app.get(
 
   app.post("/remove-submission-item", requireAuth, async (req, res) => {
   try {
-    const { classId, assignmentId, studentId, isLink, linkUrl } = req.body;
+    const { classId, assignmentId, studentId, isLink, linkUrl, fileId, storagePath } = req.body;
     if (!classId || !assignmentId || !studentId) {
       return res.status(400).json({ error: "classId, assignmentId, studentId are required." });
     }
@@ -9874,13 +9899,27 @@ app.get(
       const nextLinkUrls = (data.linkUrls || []).filter((u) => u !== linkUrl);
       await docRef.update({ linkUrls: nextLinkUrls, updatedAt: FieldValue.serverTimestamp() });
     } else {
-      // clear the primary file fields
+      // Remove just the targeted file from the "files" array. Match by id first
+      // (preferred), falling back to storagePath for older clients that don't
+      // send an id.
+      const existingFiles = Array.isArray(data.files) ? data.files : [];
+      const nextFiles = existingFiles.filter((f) => {
+        if (fileId && f.id) return f.id !== fileId;
+        if (storagePath) return f.storagePath !== storagePath;
+        return true; // nothing to match on — leave the file in place
+      });
+
+      // Keep the legacy singular fields mirrored to the new first file (or
+      // cleared if no files remain) so older UI reading those fields stays correct.
+      const newPrimary = nextFiles[0] || {};
+
       await docRef.update({
-        fileName: null,
-        fileUrl: null,
-        fileType: null,
-        storagePath: null,
-        bucketPath: null,
+        files: nextFiles,
+        fileName: newPrimary.fileName || null,
+        fileUrl: newPrimary.fileUrl || null,
+        fileType: newPrimary.fileType || null,
+        storagePath: newPrimary.storagePath || null,
+        bucketPath: newPrimary.bucketPath || null,
         updatedAt: FieldValue.serverTimestamp(),
       });
     }
@@ -9907,7 +9946,7 @@ app.get(
 
       const submissions = await Promise.all(
         snapshot.docs.map(async (doc) => {
-          const submission = doc.data() || {};
+          const submission = await refreshSubmissionFileUrls(doc.data() || {});
           let assignmentData = {};
 
           if (submission.assignmentId) {
@@ -10000,25 +10039,36 @@ app.get(
       }
 
       // 2. PREPARE THE UNIFIED PAYLOAD
-      // We prioritize the FIRST file in the 'submissions' array as the main attachment
-      // so the teacher sees a file icon, but we store ALL links in linkUrls array.
-      
-      let primaryFileName = normalizeOptionalText(fileName);
-      let primaryFileUrl = normalizeOptionalText(fileUrl);
-      let primaryFileType = normalizeOptionalText(fileType);
-      let primaryStoragePath = normalizeOptionalText(storagePath);
-      let primaryBucketPath = normalizeOptionalText(bucketPath);
+      // We store EVERY file the student attached in the "files" array (this is the
+      // source of truth), and additionally mirror the first file into the legacy
+      // singular fields (fileName/fileUrl/etc.) purely for backward compatibility
+      // with any older UI that still reads those top-level fields.
 
-      // If using the new batch format, grab the first valid file as the "primary" display file
+      // Build the full files array from the new batch format. Fall back to the
+      // legacy single-file fields if no batch array was sent (older client).
+      let finalFiles = [];
       if (Array.isArray(submissions) && submissions.length > 0) {
-        const firstFile = submissions.find(s => s.fileUrl || s.storagePath);
-        if (firstFile) {
-          primaryFileName = normalizeOptionalText(firstFile.fileName);
-          primaryFileUrl = normalizeOptionalText(firstFile.fileUrl);
-          primaryFileType = normalizeOptionalText(firstFile.fileType);
-          primaryStoragePath = normalizeOptionalText(firstFile.storagePath);
-          primaryBucketPath = normalizeOptionalText(firstFile.bucketPath);
-        }
+        finalFiles = submissions
+          .filter((s) => s && (s.fileUrl || s.storagePath))
+          .map((s, index) => ({
+            id: normalizeOptionalText(s.id) || `file-${Date.now()}-${index}`,
+            fileName: normalizeOptionalText(s.fileName),
+            fileUrl: normalizeOptionalText(s.fileUrl),
+            fileType: normalizeOptionalText(s.fileType),
+            storagePath: normalizeOptionalText(s.storagePath),
+            bucketPath: normalizeOptionalText(s.bucketPath),
+          }));
+      } else if (fileUrl || storagePath) {
+        finalFiles = [
+          {
+            id: `file-${Date.now()}-0`,
+            fileName: normalizeOptionalText(fileName),
+            fileUrl: normalizeOptionalText(fileUrl),
+            fileType: normalizeOptionalText(fileType),
+            storagePath: normalizeOptionalText(storagePath),
+            bucketPath: normalizeOptionalText(bucketPath),
+          },
+        ];
       }
 
       // Merge legacy single linkUrl into the new linkUrls array structure
@@ -10029,6 +10079,9 @@ app.get(
         finalLinkUrls = [normalizeOptionalText(linkUrl)];
       }
 
+      // Mirror the first file into the legacy singular fields for backward compatibility.
+      const primaryFile = finalFiles[0] || {};
+
       const unifiedPayload = {
         classId,
         assignmentId,
@@ -10038,13 +10091,17 @@ app.get(
         status: normalizeOptionalText(status) || "submitted",
         score: typeof score === "number" ? score : null,
         feedback: normalizeOptionalText(feedback),
-        
-        // Primary File Fields (For backward compatibility & UI icons)
-        fileName: primaryFileName,
-        fileUrl: primaryFileUrl,
-        fileType: primaryFileType,
-        storagePath: primaryStoragePath,
-        bucketPath: primaryBucketPath,
+
+        // Source of truth: EVERY file the student attached.
+        files: finalFiles,
+
+        // Legacy primary file fields (for backward compatibility & UI icons only —
+        // do not use these to determine the full attachment list).
+        fileName: primaryFile.fileName || null,
+        fileUrl: primaryFile.fileUrl || null,
+        fileType: primaryFile.fileType || null,
+        storagePath: primaryFile.storagePath || null,
+        bucketPath: primaryFile.bucketPath || null,
         
         // Unified Links Field
         linkUrls: finalLinkUrls, 

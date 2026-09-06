@@ -1387,6 +1387,8 @@ const refreshAssignmentCourseContent = useCallback(async () => {
         studentId: currentStudent.studentId,
         isLink,
         linkUrl: target.linkUrl || null,
+        fileId: !isLink ? target.id : null,
+        storagePath: !isLink ? target.storagePath || null : null,
       }),
     });
     if (!response.ok) throw new Error('Failed to remove item on server.');

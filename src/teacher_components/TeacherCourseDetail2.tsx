@@ -945,6 +945,16 @@ const TeacherCourseDetail2 = ({
     return submissions.some((s) => s.assignmentId === selectedId);
   }, [selectedId, submissions]);
 
+  // ✅ NEW: Used to disable the "Export Scores" button when there's clearly
+  // nothing gradable to export yet. This only reflects graded *assignment*
+  // submissions, since game scores live on the server and are only fetched
+  // at export time — the export handler itself still does the definitive
+  // check (covering game scores too) before writing the file.
+  const hasGradedAssignmentScores = useMemo(
+    () => submissions.some((s) => s.status === 'graded' && typeof s.score === 'number'),
+    [submissions]
+  );
+
   // 👇 ADDED: Deep-link handling — when navigated here from a
   // "submitted-assignment" notification, jump straight to the Assignments
   // tab and open the submissions screen for that assignment as soon as it
@@ -2512,13 +2522,33 @@ useEffect(() => {
       toast.show('error', 'No Class', 'No class selected.');
       return;
     }
-    
+
     setIsExportingGrades(true);
     try {
       const gameResponse = await fetch(`${API_BASE_URL}/class-game-scores/${course.id}`, {
         credentials: 'include',
       });
-      const gameScores = gameResponse.ok ? await gameResponse.json() : []; 
+      const gameScores = gameResponse.ok ? await gameResponse.json() : [];
+
+      // ✅ NEW: Validate that there is at least one actual score to export
+      // (either a graded assignment submission or a recorded game score)
+      // before we bother building/writing the workbook. Without this,
+      // "exporting" with nothing but empty cells produces a confusing,
+      // effectively blank file. `hasGradedAssignmentScores` covers the
+      // assignment side (same check used to enable/disable the button);
+      // game scores can only be known after this fetch, so they're
+      // checked here.
+      const hasGameScores = Array.isArray(gameScores) && gameScores.length > 0;
+
+      if (!hasGradedAssignmentScores && !hasGameScores) {
+        toast.show(
+          'info',
+          'Nothing to Export',
+          'There are no graded scores yet for this class, so there is nothing to export.'
+        );
+        return;
+      }
+
       const workbook = XLSX.utils.book_new();
 
       // Build headers explicitly so column order is guaranteed,
@@ -3492,8 +3522,18 @@ useEffect(() => {
     // pick, so no Course/Class selector is rendered here; the assignment is
     // implicitly scoped to the current class.
     return (
-      <View style={[styles.gameAndClassRow, isMobile && styles.gameAndClassRowMobile]}>
-        <View style={styles.dropdownWrap}>
+      <View
+        style={[
+          styles.gameAndClassRow,
+          isMobile && styles.gameAndClassRowMobile,
+          !isMobile && styles.gameAndClassRowDesktop,
+        ]}
+      >
+        {/* ✅ UPDATED: On desktop, match the width of the Due Date & Time
+            field (formColumnRightDesktop, 40%) instead of stretching to
+            fill the whole row — keeps Create/Edit/Update visually aligned
+            with the field below it. Mobile keeps flex:1 (full width). */}
+        <View style={[styles.dropdownWrap, !isMobile && styles.formColumnRightDesktop]}>
           <Text style={styles.sectionLabel}>Select Game</Text>
           <TouchableOpacity
             style={[styles.dropdownTrigger, errors.gameType ? styles.errorBorder : null]}
@@ -4955,9 +4995,12 @@ the button looked completely dead.
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={[styles.exportGradesButtonOnBanner, isExportingGrades && { opacity: 0.7 }]}
+              style={[
+                styles.exportGradesButtonOnBanner,
+                (isExportingGrades || !hasGradedAssignmentScores) && { opacity: 0.5 },
+              ]}
               onPress={downloadClassGradesExcel}
-              disabled={isExportingGrades}
+              disabled={isExportingGrades || !hasGradedAssignmentScores}
               activeOpacity={0.85}
             >
               {isExportingGrades ? (
@@ -7990,6 +8033,10 @@ const styles = StyleSheet.create({
   typeChipTextActive: { color: '#FFF' },
   gameAndClassRow: { flexDirection: 'row', gap: 16, alignItems: 'flex-start' },
   gameAndClassRowMobile: { flexDirection: 'column', gap: 12 },
+  // ✅ NEW: Right-aligns the "Select Game" field on desktop so its
+  // fixed (formColumnRightDesktop) width lines up under the same right
+  // column as the Due Date & Time field, instead of sitting flush left.
+  gameAndClassRowDesktop: { justifyContent: 'flex-end' },
   dropdownWrap: { flex: 1 },
   dropdownWrapHalf: { flexBasis: '48%' },
   dropdownTrigger: {

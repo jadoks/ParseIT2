@@ -1344,6 +1344,7 @@ const Assignments = ({
       }
 
       const submissionItems = regularFiles.map(file => ({
+        id: file.id,
         fileName: file.fileName,
         fileUrl: file.fileUrl || null,
         linkUrl: null,

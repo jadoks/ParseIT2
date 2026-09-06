@@ -1,6 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
-import * as DocumentPicker from 'expo-document-picker';
 import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
@@ -96,7 +95,6 @@ function getGenerationLimitStorageKey(studentId?: string) {
 const Game = ({ onNavigate, enrolledCourses = [], studentId, onSaveQuizScore }: Props) => {
   const { width } = useWindowDimensions();
   const isLargeScreen = width >= 768; // tablet / web / desktop breakpoint
-  const [uploadStage, setUploadStage] = useState<string>('');
   const [mode, setMode] = useState<GameScreen>('menu');
   const [generatedQuestions, setGeneratedQuestions] = useState<QuizQuestion[] | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -239,90 +237,6 @@ const Game = ({ onNavigate, enrolledCourses = [], studentId, onSaveQuizScore }: 
     }
   };
 
-  const handleFileUpload = async () => {
-    if (!gameType) return Alert.alert('Selection required', 'Please select a game type first.');
-    if (isInvalidCount) return Alert.alert('Invalid count', `Please enter between 1 and ${MAX_QUESTIONS_PER_GENERATION} items.`);
-    // 🌟 NEW: Enforce daily AI generation limit
-    if (hasReachedDailyLimit) {
-      return Alert.alert(
-        'Daily limit reached',
-        `You've used all ${MAX_GENERATIONS_PER_DAY} AI generations for today. Please try again tomorrow.`
-      );
-    }
-    
-    setUploadStage('Selecting file...');
-    setIsGenerating(true);
-    try {
-      const result = await DocumentPicker.getDocumentAsync({
-        type: ['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/msword', 'text/plain', 'image/jpeg', 'image/png', 'image/webp'],
-        copyToCacheDirectory: true,
-      });
-      
-      if (result.canceled || !result.assets?.length) {
-        setUploadStage('');
-        setIsGenerating(false);
-        return;
-      }
-
-      const asset = result.assets[0];
-      const formData = new FormData();
-
-      if (Platform.OS === 'web') {
-        const fileResponse = await fetch(asset.uri);
-        const blob = await fileResponse.blob();
-        formData.append('file', blob, asset.name || 'upload');
-      } else {
-        formData.append('file', {
-          uri: asset.uri,
-          name: asset.name || 'upload',
-          type: asset.mimeType || 'application/octet-stream',
-        } as any);
-      }
-
-      setUploadStage('Uploading...');
-      const uploadResponse = await apiFetch(`${API_BASE_URL}/game/upload`, {
-        method: 'POST',
-        credentials: "include",
-        body: formData,
-      });
-      
-      const uploadData = await uploadResponse.json();
-      if (!uploadResponse.ok) throw new Error(uploadData.error || 'Upload failed');
-      const { uploadId } = uploadData;
-
-      setUploadStage('Processing...');
-      const processResponse = await apiFetch(`${API_BASE_URL}/game/process`, {
-        method: 'POST',
-        credentials: "include",
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          uploadId,
-          studentId,
-          gameType: gameType, 
-          numberOfQuestions: parsedCount, 
-        }),
-      });
-
-      setUploadStage('Generating Quiz...');
-      const processData = await processResponse.json();
-      if (!processResponse.ok) throw new Error(processData.error || 'Processing failed');
-
-      setUploadStage('Complete');
-      setGeneratedQuestions(processData.questions);
-      setMode('quizmasters');
-      // 🌟 NEW: Count this as one of today's AI generations
-      await recordGenerationUsed();
-      // 🌟 PASS gameType to the navigator
-      if (onNavigate) onNavigate('quizmasters', processData.questions, gameType);
-      
-    } catch (error: any) {
-      Alert.alert('Upload failed', error.message);
-    } finally {
-      setUploadStage('');
-      setIsGenerating(false);
-    }
-  };
-
   const selectedClassName = enrolledCourses.find(c => c.id === selectedClassId)?.name;
 
   return (
@@ -330,36 +244,8 @@ const Game = ({ onNavigate, enrolledCourses = [], studentId, onSaveQuizScore }: 
       <View style={styles.headerRow}>
         <View style={styles.titleWrap}>
           <Text style={styles.pageTitle}>Games</Text>
-          <Text style={styles.pageSubtitle}>Upload a file or select class materials to generate a quiz.</Text>
+          <Text style={styles.pageSubtitle}>Select a class and lessons to generate a quiz.</Text>
         </View>
-        
-        <Pressable
-          style={[styles.uploadButton, (isGenerating || isInvalidCount || !gameType || hasReachedDailyLimit) && styles.uploadButtonDisabled]}
-          onPress={handleFileUpload}
-          disabled={isGenerating || isInvalidCount || !gameType || hasReachedDailyLimit}
-        >
-          {isGenerating ? (
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-              <ActivityIndicator color="#FFF" size="small" />
-              <Text style={styles.uploadButtonText}>{uploadStage || 'Uploading...'}</Text>
-            </View>
-          ) : !gameType ? (
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-              <Ionicons name="alert-circle-outline" size={18} color="#FFF" />
-              <Text style={styles.uploadButtonText}>Select Game Type</Text>
-            </View>
-          ) : hasReachedDailyLimit ? (
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-              <Ionicons name="lock-closed-outline" size={18} color="#FFF" />
-              <Text style={styles.uploadButtonText}>Daily Limit Reached</Text>
-            </View>
-          ) : (
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-              <Ionicons name="cloud-upload-outline" size={18} color="#FFF" />
-              <Text style={styles.uploadButtonText}>Upload File</Text>
-            </View>
-          )}
-        </Pressable>
       </View>
 
       {/* 🌟 NEW: Daily AI generation usage banner */}
@@ -384,7 +270,7 @@ const Game = ({ onNavigate, enrolledCourses = [], studentId, onSaveQuizScore }: 
           <Text style={styles.settingsTitle}>Quiz Settings</Text>
         </View>
         <Text style={styles.settingsSubtitle}>
-          This configuration applies to both <Text style={{fontWeight: '700'}}>File Uploads</Text> and <Text style={{fontWeight: '700'}}>Class Lessons</Text>.
+          This configuration applies to the <Text style={{fontWeight: '700'}}>Class Lessons</Text> you select below.
         </Text>
         
         <View>
@@ -568,22 +454,6 @@ const styles = StyleSheet.create({
   titleWrap: { flex: 1 },
   pageTitle: { fontSize: 32, fontWeight: '700', color: '#111', letterSpacing: -0.5 },
   pageSubtitle: { color: '#666', marginTop: 6, fontSize: 15, lineHeight: 22 },
-  uploadButton: {
-    backgroundColor: '#D32F2F',
-    paddingHorizontal: 20,
-    paddingVertical: 14,
-    borderRadius: 14,
-    minWidth: 140,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#D32F2F',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  uploadButtonDisabled: { opacity: 0.5, shadowOpacity: 0 },
-  uploadButtonText: { color: '#FFF', fontWeight: '800', fontSize: 14, letterSpacing: 0.2 },
 
   // 🌟 NEW: Daily limit banner styles
   limitBanner: {

@@ -1807,6 +1807,7 @@ const fetchModules = useCallback(async (silent = false) => {
         throw new Error('No valid items were found. Please check your uploads.');
       }
       const submissionItems = regularFiles.map(file => ({
+        id: file.id,
         fileName: file.fileName,
         fileUrl: file.fileUrl || null,
         linkUrl: null,
@@ -1945,6 +1946,31 @@ const fetchModules = useCallback(async (silent = false) => {
       }
     } catch (e) {
       showFeedback('error', 'Error', 'Failed to load syllabus preview.');
+    }
+  };
+
+  // 👇 ADDED: lets students save their own copy of the syllabus for offline
+  // access/future reference, mirroring handleDownloadMaterial's approach.
+  // Reuses the same "/course-syllabus/view/:id" endpoint the preview uses
+  // so it always gets a fresh, non-expired signed URL rather than relying
+  // on whatever URL happens to already be sitting in state.
+  const handleDownloadSyllabus = async () => {
+    if (!currentSyllabus?.id) {
+      showFeedback('error', 'No file', 'This course has no syllabus to download.');
+      return;
+    }
+    const fileName = currentSyllabus?.fileName || 'Course Syllabus';
+    const mimeType = currentSyllabus?.fileType || getMimeFromFileName(fileName);
+    try {
+      const res = await apiFetch(`${API_BASE_URL}/course-syllabus/view/${currentSyllabus.id}`);
+      const data = await res.json();
+      if (!res.ok || !data?.url) {
+        showFeedback('error', 'Download Failed', 'Could not resolve a valid file URL.');
+        return;
+      }
+      await downloadFromUrl(data.url, fileName, mimeType);
+    } catch (e) {
+      showFeedback('error', 'Download Failed', 'Unable to download the syllabus.');
     }
   };
 
@@ -2354,6 +2380,17 @@ const fetchModules = useCallback(async (silent = false) => {
                       <Ionicons name="eye-outline" size={14} color="#1565C0" />
                       <Text style={{ color: '#1565C0', fontWeight: '700', fontSize: 12 }}>View Syllabus</Text>
                     </TouchableOpacity>
+                    {/* 👇 ADDED: lets students save their own copy of the
+                        syllabus for offline access/future reference — there
+                        was previously no way to download it at all. */}
+                    <TouchableOpacity
+                      onPress={handleDownloadSyllabus}
+                      disabled={currentSyllabus.status === 'generating'}
+                      style={{ backgroundColor: '#E8F5E9', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, flexDirection: 'row', alignItems: 'center', gap: 6 }}
+                    >
+                      <Ionicons name="download-outline" size={14} color="#2E7D32" />
+                      <Text style={{ color: '#2E7D32', fontWeight: '700', fontSize: 12 }}>Download</Text>
+                    </TouchableOpacity>
                   </View>
                 </View>
               )}
@@ -2560,6 +2597,18 @@ const fetchModules = useCallback(async (silent = false) => {
                 {currentSyllabus?.fileName || 'Course Syllabus'}
               </Text>
             </View>
+            {/* 👇 ADDED: same icon-only download affordance already used in
+                the material viewer's top bar (handleDownloadMaterial),
+                applied here so the syllabus viewer isn't view-only. */}
+            {!!syllabusViewerUrl && (
+              <TouchableOpacity
+                onPress={handleDownloadSyllabus}
+                style={styles.viewerOpenExtBtn}
+                hitSlop={{ top: 10, bottom: 10, left: 6, right: 6 }}
+              >
+                <Ionicons name="download-outline" size={20} color="#FFF" />
+              </TouchableOpacity>
+            )}
           </View>
           {syllabusViewerUrl && (
             <InlineMaterialViewer
