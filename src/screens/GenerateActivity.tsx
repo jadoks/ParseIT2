@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   ScrollView,
@@ -92,6 +92,25 @@ const normalizeText = (value: unknown) =>
   String(value ?? '')
     .trim()
     .toLowerCase();
+
+// Firestore/JSON round-trips turn our numeric `Record<number, X>` state
+// (itemSelections, itemTextAnswers, identificationEvaluations — all keyed by
+// the question's global index) into an object with string keys. This maps
+// those keys back to numbers so restored progress lines back up with the
+// right question.
+const remapNumericKeys = <T,>(value: unknown): Record<number, T> => {
+  if (!value || typeof value !== 'object') return {};
+
+  const result: Record<number, T> = {};
+  Object.entries(value as Record<string, T>).forEach(([key, val]) => {
+    const numericKey = Number(key);
+    if (Number.isFinite(numericKey)) {
+      result[numericKey] = val;
+    }
+  });
+
+  return result;
+};
 
 const isValidQuiz = (
   quiz?: GeneratedQuizData | null
@@ -229,10 +248,16 @@ const GenerateActivity = ({
     return map;
   }, [activityItems]);
 
+  // Tracks whether the student has touched an option/input since this
+  // activity was loaded. Restoring saved progress from Firebase also calls
+  // setItemSelections/setItemTextAnswers, and we don't want that restore to
+  // immediately trigger another autosave — only real interaction should.
+  const hasUserInteractedRef = useRef(false);
+
   useEffect(() => {
     let isMounted = true;
 
-    const loadCompletionStatus = async () => {
+    const loadStatusAndProgress = async () => {
       if (!activity || !currentStudentId || !apiBaseUrl) {
         if (isMounted) setCompleted(false);
         return;
@@ -247,26 +272,76 @@ const GenerateActivity = ({
           throw new Error(data?.error || 'Failed to load activity status.');
         }
 
-        if (isMounted) {
-          setCompleted(!!data?.data?.completed);
+        if (!isMounted) return;
+
+        const statusData = data?.data;
+        const isCompleted = !!statusData?.completed;
+        const storedActivity = statusData?.activity;
+
+        setCompleted(isCompleted);
+
+        // ✅ Resume support: if the student already finished this activity,
+        // restore their final answers and show the results. Otherwise, if
+        // they left mid-attempt, restore whatever was auto-saved so they
+        // pick up right where they left off instead of a blank form.
+        if (isCompleted && storedActivity?.assessmentAnswers) {
+          const savedAnswers = storedActivity.assessmentAnswers;
+          setItemSelections(remapNumericKeys(savedAnswers.selections));
+          setItemTextAnswers(remapNumericKeys(savedAnswers.textAnswers));
+          setIdentificationEvaluations(remapNumericKeys(savedAnswers.identificationEvaluations));
+          setShowAnswer(true);
+        } else if (!isCompleted && storedActivity?.inProgressAnswers) {
+          const inProgress = storedActivity.inProgressAnswers;
+          setItemSelections(remapNumericKeys(inProgress.selections));
+          setItemTextAnswers(remapNumericKeys(inProgress.textAnswers));
+          setIdentificationEvaluations(remapNumericKeys(inProgress.identificationEvaluations));
         }
       } catch {
         if (isMounted) setCompleted(false);
       }
     };
 
+    hasUserInteractedRef.current = false;
     setShowAnswer(false);
     setCompleted(false);
     setItemSelections({});
     setItemTextAnswers({});
     setIdentificationEvaluations({});
 
-    void loadCompletionStatus();
+    void loadStatusAndProgress();
 
     return () => {
       isMounted = false;
     };
   }, [activity, apiBaseUrl, currentStudentId]);
+
+  // ✅ Autosave in-progress answers to Firebase (debounced) so the student
+  // can resume exactly where they left off, even before they hit "Check
+  // Answer & Save Score". Only fires after real interaction (see
+  // hasUserInteractedRef above) and never after the activity is completed.
+  useEffect(() => {
+    if (!activity || !currentStudentId || !apiBaseUrl) return;
+    if (completed) return;
+    if (!hasUserInteractedRef.current) return;
+
+    const timeoutId = setTimeout(() => {
+      apiFetch(`${apiBaseUrl}/student-activities/save-progress`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          studentId: currentStudentId,
+          assignmentId: activity.assignmentId,
+          selections: itemSelections,
+          textAnswers: itemTextAnswers,
+          identificationEvaluations,
+        }),
+      }).catch((error) => {
+        console.error('SAVE ACTIVITY PROGRESS ERROR =>', error);
+      });
+    }, 600);
+
+    return () => clearTimeout(timeoutId);
+  }, [itemSelections, itemTextAnswers, identificationEvaluations, activity, currentStudentId, apiBaseUrl, completed]);
 
   const hasSimpleIdentificationMatch = (
     studentAnswer: string,
@@ -653,12 +728,13 @@ const GenerateActivity = ({
                       isWrong && styles.optionWrong,
                     ]}
                     disabled={showAnswer || completed}
-                    onPress={() =>
+                    onPress={() => {
+                      hasUserInteractedRef.current = true;
                       setItemSelections((prev) => ({
                         ...prev,
                         [globalIndex]: optionIndex,
-                      }))
-                    }
+                      }));
+                    }}
                   >
                     <Text style={styles.optionText}>{String.fromCharCode(65 + optionIndex)}. {option}</Text>
                   </TouchableOpacity>
@@ -715,12 +791,13 @@ const GenerateActivity = ({
                         isWrong && styles.optionWrong,
                       ]}
                       disabled={showAnswer || completed}
-                      onPress={() =>
+                      onPress={() => {
+                        hasUserInteractedRef.current = true;
                         setItemSelections((prev) => ({
                           ...prev,
                           [globalIndex]: value,
-                        }))
-                      }
+                        }));
+                      }}
                     >
                       <Text style={styles.optionText}>{value ? 'True' : 'False'}</Text>
                     </TouchableOpacity>
@@ -762,12 +839,13 @@ const GenerateActivity = ({
 
               <TextInput
                 value={itemTextAnswers[globalIndex] || ''}
-                onChangeText={(value) =>
+                onChangeText={(value) => {
+                  hasUserInteractedRef.current = true;
                   setItemTextAnswers((prev) => ({
                     ...prev,
                     [globalIndex]: value,
-                  }))
-                }
+                  }));
+                }}
                 placeholder="Type your answer..."
                 placeholderTextColor="#777"
                 editable={!showAnswer && !completed}

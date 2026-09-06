@@ -11874,6 +11874,68 @@ app.get(
   });
 
 
+  // ✅ NEW: Lets the student's in-progress selections/typed answers on a
+  // generated follow-up activity be saved as they go, so if they back out
+  // or close the app before hitting "Check Answer & Save Score", reopening
+  // the same activity later (via the "generate once, reuse" cache above)
+  // restores exactly what they had selected/typed instead of a blank form.
+  app.post("/student-activities/save-progress", async (req, res) => {
+    try {
+      const { studentId, assignmentId, selections, textAnswers, identificationEvaluations } =
+        req.body || {};
+
+      if (!studentId || !assignmentId) {
+        return res.status(400).json({
+          error: "studentId and assignmentId are required.",
+        });
+      }
+
+      const snapshot = await db
+        .collection("studentActivities")
+        .where("studentId", "==", String(studentId).trim())
+        .where("assignmentId", "==", String(assignmentId).trim())
+        .limit(1)
+        .get();
+
+      if (snapshot.empty) {
+        return res.status(404).json({
+          error: "No generated activity found to save progress for.",
+        });
+      }
+
+      const doc = snapshot.docs[0];
+      const existingData = doc.data() || {};
+
+      // Don't clobber a completed attempt's final answers with in-progress
+      // autosave data (e.g. a stray save firing after submission).
+      if (existingData.status === "completed") {
+        return res.json({ success: true, data: { skipped: true } });
+      }
+
+      await doc.ref.set(
+        {
+          inProgressAnswers: {
+            selections: selections && typeof selections === "object" ? selections : {},
+            textAnswers: textAnswers && typeof textAnswers === "object" ? textAnswers : {},
+            identificationEvaluations:
+              identificationEvaluations && typeof identificationEvaluations === "object"
+                ? identificationEvaluations
+                : {},
+          },
+          updatedAt: FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
+
+      return res.json({ success: true, data: { saved: true } });
+    } catch (error) {
+      console.error("Save student activity progress error:", error);
+      return res.status(500).json({
+        error: error.message || "Failed to save activity progress.",
+      });
+    }
+  });
+
   app.get("/student-activities/completed-scores/:studentId", async (req, res) => {
     try {
       const studentId = normalizeOptionalText(req.params.studentId);
@@ -12294,6 +12356,49 @@ app.get(
 
       if (!studentId || !assignmentId) {
         return res.status(400).json({ error: "studentId and assignmentId are required." });
+      }
+
+      const forceRegenerate = req.body?.regenerate === true;
+      const normalizedStudentIdForLookup = String(studentId).trim();
+      const normalizedAssignmentIdForLookup = String(assignmentId).trim();
+
+      // ✅ NEW: "Generate once, then reuse" — if this student already has a
+      // generated (or completed) follow-up activity for this assignment,
+      // return that stored copy straight from Firestore instead of calling
+      // the AI again. This is what lets the student close the app / go back
+      // and click "Generate Follow-Up Activity" again without burning
+      // another AI generation or losing their in-progress answers.
+      if (!forceRegenerate) {
+        const cachedSnapshot = await db
+          .collection("studentActivities")
+          .where("studentId", "==", normalizedStudentIdForLookup)
+          .where("assignmentId", "==", normalizedAssignmentIdForLookup)
+          .limit(1)
+          .get();
+
+        if (!cachedSnapshot.empty) {
+          const cachedDoc = cachedSnapshot.docs[0];
+          const cachedData = cachedDoc.data() || {};
+          const hasCachedItems =
+            (Array.isArray(cachedData.activityItems) && cachedData.activityItems.length > 0) ||
+            (Array.isArray(cachedData.assessmentItems) && cachedData.assessmentItems.length > 0) ||
+            !!cachedData.quiz;
+
+          if (hasCachedItems) {
+            return res.json({
+              success: true,
+              message: "Reusing previously generated follow-up activity.",
+              reused: true,
+              data: {
+                id: cachedDoc.id,
+                ...cachedData,
+                createdAt: serializeTimestamp(cachedData.createdAt),
+                updatedAt: serializeTimestamp(cachedData.updatedAt),
+                completedAt: serializeTimestamp(cachedData.completedAt),
+              },
+            });
+          }
+        }
       }
 
       // ✅ Related Course Resources resolution — mirrors the Game Based
