@@ -17270,6 +17270,54 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
     }
   });
 
+  // ✅ NEW: Stream the original syllabus file straight from Firebase Storage
+  // through our own server, with an explicit Content-Disposition: attachment
+  // header. Unlike a raw GCS signed URL (which has no attachment header and
+  // requires the bucket's CORS config to be set up for a browser fetch() to
+  // succeed), this endpoint is same-origin to the app's API and always tells
+  // the browser to save the file rather than navigate to/open it — which is
+  // what was causing the syllabus download to leave the app while the same
+  // download flow for course materials stayed in-app.
+  app.get("/course-syllabus/download/:syllabusId", requireAuth, async (req, res) => {
+    try {
+      const { syllabusId } = req.params;
+      const doc = await db.collection("courseSyllabi").doc(syllabusId).get();
+      if (!doc.exists) return res.status(404).json({ error: "Syllabus not found." });
+
+      const data = doc.data();
+      const storagePath = data.originalStoragePath || data.storagePath;
+
+      if (!storagePath) {
+        return res.status(404).json({ error: "No storage path found for this syllabus." });
+      }
+
+      const file = bucket.file(storagePath);
+      const [exists] = await file.exists();
+      if (!exists) {
+        return res.status(404).json({ error: "File not found in storage." });
+      }
+
+      const [metadata] = await file.getMetadata();
+
+      res.setHeader("Content-Type", metadata.contentType || data.fileType || "application/octet-stream");
+      res.setHeader("Content-Disposition", `attachment; filename="${data.fileName || "syllabus"}"`);
+
+      const stream = file.createReadStream();
+      stream.on("error", (streamErr) => {
+        console.error("Syllabus download stream error:", streamErr);
+        if (!res.headersSent) {
+          res.status(500).json({ error: "Failed to stream syllabus file." });
+        } else {
+          res.end();
+        }
+      });
+      stream.pipe(res);
+    } catch (error) {
+      console.error("Download syllabus error:", error);
+      res.status(500).json({ error: error.message || "Failed to download syllabus." });
+    }
+  });
+
   // Helper: Check if file needs conversion
   function needsConversion(mimeType, fileName) {
     const lowerName = (fileName || '').toLowerCase();

@@ -868,6 +868,7 @@ const CourseDetail = ({
   // ── Syllabus state
   const [currentSyllabus, setCurrentSyllabus] = useState<any>(null);
   const [isLoadingSyllabus, setIsLoadingSyllabus] = useState(false);
+  const [syllabusViewerUrl, setSyllabusViewerUrl] = useState<string | null>(null);
 
   // ── Lesson Detail State
   const [selectedLesson, setSelectedLesson] = useState<any>(null);
@@ -1274,12 +1275,13 @@ const fetchModules = useCallback(async (silent = false) => {
   const downloadFromUrl = async (
     downloadUrl: string,
     fileName: string,
-    mimeType: string
+    mimeType: string,
+    webFetchOptions?: RequestInit
   ) => {
     // ── WEB: trigger a real browser download (not just opening a tab) ──
     if (Platform.OS === "web") {
       try {
-        const response = await fetch(downloadUrl);
+        const response = await fetch(downloadUrl, webFetchOptions);
         if (!response.ok) throw new Error(`Fetch failed with status ${response.status}`);
         const blob = await response.blob();
         const blobUrl = URL.createObjectURL(blob);
@@ -1995,15 +1997,34 @@ const fetchModules = useCallback(async (silent = false) => {
     onPlayGame?.(assignment);
   };
 
-  // ✅ CHANGED: syllabus no longer opens an inline viewer (which rendered
-  // non-image files through the Google Docs Viewer, a third-party service).
-  // Tapping the button now downloads the original file straight from
-  // Firebase Storage and hands it to the OS share sheet / browser "Save As",
-  // exactly like handleDownloadMaterial does — no third party involved.
-  // Resolves a storagePath (from the syllabus record, or parsed out of the
-  // fileUrl we already have) and asks "/storage/signed-url" for a fresh,
-  // non-expired URL first, falling back to the existing URL/endpoint only if
-  // that fails.
+  const handleViewSyllabus = async () => {
+    if (!currentSyllabus?.id) return;
+    try {
+      const res = await apiFetch(`${API_BASE_URL}/course-syllabus/view/${currentSyllabus.id}`);
+      const data = await res.json();
+      if (res.ok && data.url) {
+        setSyllabusViewerUrl(data.url);
+      } else {
+        showFeedback('error', 'Error', 'Failed to load syllabus preview.');
+      }
+    } catch (e) {
+      showFeedback('error', 'Error', 'Failed to load syllabus preview.');
+    }
+  };
+
+  // ✅ CHANGED: on web, download the syllabus through our own
+  // "/course-syllabus/download/:id" endpoint (same origin as the rest of the
+  // API) instead of fetching the raw Firebase/GCS signed URL directly. A GCS
+  // signed URL has no Content-Disposition: attachment header and needs the
+  // bucket's CORS config to allow a cross-origin fetch(); when that fetch
+  // failed, the code fell back to a plain link click, and the browser opened
+  // the file (leaving the app) instead of downloading it. The new endpoint
+  // is same-origin to the API and always sets the attachment header, so the
+  // browser saves the file instead — same in-app result as Lesson/Module
+  // Inline Preview downloads.
+  // Native keeps using a signed URL (FileSystem.downloadAsync can't carry
+  // the session cookie our "requireAuth" endpoint needs) + expo-sharing,
+  // which already behaves like an in-app download/share.
   const handleDownloadSyllabus = async () => {
     if (!currentSyllabus?.id) {
       showFeedback('error', 'No file', 'This course has no syllabus to download.');
@@ -2013,12 +2034,22 @@ const fetchModules = useCallback(async (silent = false) => {
     const fileName = currentSyllabus?.fileName || 'Course Syllabus';
     const mimeType = currentSyllabus?.fileType || getMimeFromFileName(fileName);
 
+    if (Platform.OS === 'web') {
+      await downloadFromUrl(
+        `${API_BASE_URL}/course-syllabus/download/${currentSyllabus.id}`,
+        fileName,
+        mimeType,
+        { credentials: 'include' }
+      );
+      return;
+    }
+
     const storagePath =
       currentSyllabus?.storagePath ||
       currentSyllabus?.bucketPath ||
-      resolveStoragePathFromUrl(currentSyllabus?.fileUrl);
+      resolveStoragePathFromUrl(syllabusViewerUrl || currentSyllabus?.fileUrl);
 
-    let downloadUrl: string | null = currentSyllabus?.fileUrl || null;
+    let downloadUrl: string | null = syllabusViewerUrl || currentSyllabus?.fileUrl || null;
 
     if (storagePath) {
       try {
@@ -2459,18 +2490,23 @@ const fetchModules = useCallback(async (silent = false) => {
                     </View>
                   )}
                   <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 12 }}>
-                    {/* ✅ CHANGED: tapping now downloads the original file
-                        straight from Firebase Storage (same signed-URL +
-                        blob/share-sheet flow as handleDownloadMaterial)
-                        instead of opening it through the Google Docs Viewer
-                        inline preview. No third-party viewer involved. */}
+                    {/* ✅ CHANGED: syllabus now follows the exact same
+                        pattern as a Module Lesson's attached file — tapping
+                        opens the full inline preview, and downloading only
+                        happens from the download icon inside that preview's
+                        top bar (see the SYLLABUS VIEWER MODAL below, which
+                        mirrors the FULLSCREEN INLINE MATERIAL VIEWER used by
+                        Module Lesson attachments). The separate standalone
+                        "Download" button that used to sit here has been
+                        removed so there's one consistent entry point instead
+                        of two different download behaviors. */}
                     <TouchableOpacity
-                      onPress={handleDownloadSyllabus}
+                      onPress={handleViewSyllabus}
                       disabled={currentSyllabus.status === 'generating'}
                       style={{ backgroundColor: '#E3F2FD', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, flexDirection: 'row', alignItems: 'center', gap: 6 }}
                     >
-                      <Ionicons name="download-outline" size={14} color="#1565C0" />
-                      <Text style={{ color: '#1565C0', fontWeight: '700', fontSize: 12 }}>Download Syllabus</Text>
+                      <Ionicons name="eye-outline" size={14} color="#1565C0" />
+                      <Text style={{ color: '#1565C0', fontWeight: '700', fontSize: 12 }}>View Syllabus</Text>
                     </TouchableOpacity>
                   </View>
                 </View>
@@ -2654,6 +2690,56 @@ const fetchModules = useCallback(async (silent = false) => {
                 This material has no uploaded file yet.
               </Text>
             </View>
+          )}
+        </SafeAreaView>
+      </Modal>
+
+      {/* SYLLABUS VIEWER MODAL */}
+      <Modal
+        visible={!!syllabusViewerUrl}
+        transparent={false}
+        animationType="slide"
+        onRequestClose={() => setSyllabusViewerUrl(null)}
+      >
+        <SafeAreaView style={styles.viewerModal} edges={["top", "bottom"]}>
+          <View style={styles.viewerTopBar}>
+            <TouchableOpacity
+              onPress={() => setSyllabusViewerUrl(null)}
+              style={styles.viewerBackBtn}
+            >
+              <Ionicons name="arrow-back" size={22} color="#FFF" />
+            </TouchableOpacity>
+            <View style={styles.viewerTitleBlock}>
+              <Text style={styles.viewerTitle} numberOfLines={1}>
+                {currentSyllabus?.fileName || 'Course Syllabus'}
+              </Text>
+            </View>
+            {/* 👇 ADDED: same icon-only download affordance already used in
+                the material viewer's top bar (handleDownloadMaterial),
+                applied here so the syllabus viewer isn't view-only. */}
+            {!!syllabusViewerUrl && (
+              <TouchableOpacity
+                onPress={handleDownloadSyllabus}
+                style={styles.viewerOpenExtBtn}
+                hitSlop={{ top: 10, bottom: 10, left: 6, right: 6 }}
+              >
+                <Ionicons name="download-outline" size={20} color="#FFF" />
+              </TouchableOpacity>
+            )}
+          </View>
+          {syllabusViewerUrl && (
+            <InlineMaterialViewer
+              fileUrl={syllabusViewerUrl}
+              height={windowHeight - 62}
+              fileName={currentSyllabus?.fileName}
+              fileType={currentSyllabus?.fileType}
+              storagePath={
+                currentSyllabus?.storagePath ||
+                resolveStoragePathFromUrl(syllabusViewerUrl)
+              }
+              bucketPath={currentSyllabus?.bucketPath}
+              classId={course?.id}
+            />
           )}
         </SafeAreaView>
       </Modal>
