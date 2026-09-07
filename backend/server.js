@@ -10271,6 +10271,29 @@ app.get(
         });
       }
 
+      // 1b. DETERMINE LATE STATUS (server-side, authoritative)
+      // The client always sends status: "submitted" — it can't be trusted to
+      // decide lateness itself (clock skew, stale UI, etc.), and it has no
+      // way of knowing this is a *resubmission* after an unsubmit/resubmit
+      // cycle. We look up the assignment's real due date and compare it
+      // against "now" (the moment this submission is being saved) using the
+      // same parseDueDateTime/isPastDueDate helpers the rest of the app uses,
+      // so "late" here means exactly what "past due" means everywhere else
+      // (Assignments.tsx, TeacherCourseDetail2.tsx).
+      const requestedStatus = normalizeOptionalText(status) || "submitted";
+      let submittedLate = false;
+      if (requestedStatus === "submitted") {
+        const assignmentSnapForDueDate = await db
+          .collection("classAssignments")
+          .doc(assignmentId)
+          .get();
+        const assignmentDataForDueDate = assignmentSnapForDueDate.exists
+          ? assignmentSnapForDueDate.data() || {}
+          : {};
+        submittedLate = isPastDueDate(assignmentDataForDueDate.dueDate);
+      }
+      const finalStatus = submittedLate ? "late" : requestedStatus;
+
       // 2. PREPARE THE UNIFIED PAYLOAD
       // We store EVERY file the student attached in the "files" array (this is the
       // source of truth), and additionally mirror the first file into the legacy
@@ -10337,7 +10360,11 @@ app.get(
         studentUid: normalizeOptionalText(studentUid),
         studentId,
         studentName: normalizeOptionalText(studentName),
-        status: normalizeOptionalText(status) || "submitted",
+        status: finalStatus,
+        // Kept alongside `status` so a submission's lateness survives being
+        // graded later (status flips to "graded" at that point, which would
+        // otherwise erase the fact it was turned in late).
+        isLate: submittedLate,
         score: typeof score === "number" ? score : null,
         feedback: normalizeOptionalText(feedback),
 
@@ -10379,7 +10406,10 @@ app.get(
       }
 
       // 4. SEND NOTIFICATION ONLY ONCE
-      if ((normalizeOptionalText(status) || "submitted") === "submitted") {
+      // Notify on the actual submit action (requestedStatus), not on
+      // finalStatus — a late submission is still a submission and the
+      // teacher should still be notified about it.
+      if (requestedStatus === "submitted") {
         await createSubmittedAssignmentNotificationForTeacher({
           classId,
           assignmentId,
@@ -10791,6 +10821,7 @@ app.get(
 
       await submissionDoc.ref.update({
         status: "pending",
+        isLate: false,
         studentUid: normalizeOptionalText(studentUid) || submissionData.studentUid || null,
         updatedAt: FieldValue.serverTimestamp(),
       });

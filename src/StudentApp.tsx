@@ -1293,7 +1293,10 @@ const refreshAssignmentCourseContent = useCallback(async () => {
       normalizeSubmissionList(data).forEach((submission) => {
          const assignmentId = String(submission?.assignmentId || '');
          if (!assignmentId) return;
-         const status = submission?.status === 'graded' ? 'graded' : submission?.status === 'submitted' ? 'submitted' : 'pending';
+         // "late" is a submitted-late submission (see server's create-submission
+         // handler) — the student still turned work in, so it must map to
+         // 'submitted' here, not fall through to 'pending'/'missing'.
+         const status = submission?.status === 'graded' ? 'graded' : (submission?.status === 'submitted' || submission?.status === 'late') ? 'submitted' : 'pending';
          statusesByAssignment[assignmentId] = status;
          if (status !== 'graded') { scoresByAssignment[assignmentId] = {}; }
          if (status === 'graded') {
