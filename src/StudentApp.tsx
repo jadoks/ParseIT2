@@ -1294,9 +1294,10 @@ const refreshAssignmentCourseContent = useCallback(async () => {
          const assignmentId = String(submission?.assignmentId || '');
          if (!assignmentId) return;
          // "late" is a submitted-late submission (see server's create-submission
-         // handler) — the student still turned work in, so it must map to
-         // 'submitted' here, not fall through to 'pending'/'missing'.
-         const status = submission?.status === 'graded' ? 'graded' : (submission?.status === 'submitted' || submission?.status === 'late') ? 'submitted' : 'pending';
+         // handler) — the student still turned work in, so it must be kept as
+         // its own status (not collapsed into 'submitted'), so the UI can show
+         // it was late. Only truly un-submitted work falls through to 'pending'.
+         const status = submission?.status === 'graded' ? 'graded' : submission?.status === 'submitted' ? 'submitted' : submission?.status === 'late' ? 'late' : 'pending';
          statusesByAssignment[assignmentId] = status;
          if (status !== 'graded') { scoresByAssignment[assignmentId] = {}; }
          if (status === 'graded') {
@@ -1545,7 +1546,7 @@ const refreshAssignmentCourseContent = useCallback(async () => {
     // student's real uploaded files/links and should stay visible/editable
     // after Unsubmit rather than forcing a re-upload.
     let clearedFiles = sharedAssignmentFiles;
-    if (status === 'submitted') {
+    if (status === 'submitted' || status === 'late') {
       setSharedAssignmentFiles((prev) => {
         const remaining = (prev[assignmentId] || []).filter((file) => file.isSubmitted !== false);
         clearedFiles = { ...prev, [assignmentId]: remaining };
@@ -1831,7 +1832,7 @@ const refreshAssignmentCourseContent = useCallback(async () => {
 
   useEffect(() => { loadCommunityPosts(); }, []);
 
-  const getScorePercent = (assignment: { status: 'pending' | 'submitted' | 'graded'; points?: number; maxPoints?: number }) => {
+  const getScorePercent = (assignment: { status: 'pending' | 'submitted' | 'graded' | 'late'; points?: number; maxPoints?: number }) => {
     if (assignment.status !== 'graded' || assignment.points === undefined || assignment.maxPoints === undefined || assignment.maxPoints === 0) return null;
     return Math.round((assignment.points / assignment.maxPoints) * 100);
   };

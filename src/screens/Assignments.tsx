@@ -86,7 +86,7 @@ export interface AssignmentItem {
   id: string;
   title: string;
   dueDate: string;
-  status: 'pending' | 'submitted' | 'graded';
+  status: 'pending' | 'submitted' | 'graded' | 'late';
   points?: number;
   maxPoints?: number;
   topic?: string;
@@ -315,7 +315,7 @@ interface AssignmentsProps {
   onRefreshCourseContent?: () => Promise<void> | void;
 }
 
-type FilterType = 'all' | 'pending' | 'submitted' | 'graded' | 'missing';
+type FilterType = 'all' | 'pending' | 'submitted' | 'late' | 'graded' | 'missing';
 
 // ✅ HELPER: Check if file is an image
 function isImageFile(fileName?: string, fileType?: string): boolean {
@@ -833,6 +833,7 @@ const Assignments = ({
     switch (status) {
       case 'pending': return '#FFE082';
       case 'submitted': return '#BBDEFB';
+      case 'late': return '#FFCC80';
       case 'graded': return '#A5D6A7';
       case 'missing': return '#FFCDD2';
       default: return '#DDD';
@@ -843,6 +844,7 @@ const Assignments = ({
     switch (status) {
       case 'pending': return '#7A5600';
       case 'submitted': return '#0D47A1';
+      case 'late': return '#E65100';
       case 'graded': return '#1B5E20';
       case 'missing': return '#B71C1C';
       default: return '#555';
@@ -1222,7 +1224,7 @@ const Assignments = ({
 };
 
   const isAssignmentSubmitted = (assignment?: AssignmentItem | null) => {
-    return assignment?.status === 'submitted' || assignment?.status === 'graded';
+    return assignment?.status === 'submitted' || assignment?.status === 'graded' || assignment?.status === 'late';
   };
 
   const isAssignmentGraded = (assignment?: AssignmentItem | null) => {
@@ -1417,7 +1419,7 @@ const Assignments = ({
         throw new Error(data?.error || 'Failed to submit assignment.');
       }
 
-      syncSelectedAssignmentStatus('submitted');
+      syncSelectedAssignmentStatus(isPastDueDate(selectedAssignment.dueDate) ? 'late' : 'submitted');
       await onRefreshSubmissions?.();
       
       const totalItems = submissionItems.length + linkItems.length;
@@ -1631,7 +1633,7 @@ const Assignments = ({
     >
       <Text style={styles.title}>Assignments</Text>
       <View style={styles.filterRow}>
-        {(['all', 'pending', 'submitted', 'graded', 'missing'] as FilterType[]).map((item) => (
+        {(['all', 'pending', 'submitted', 'late', 'graded', 'missing'] as FilterType[]).map((item) => (
           <TouchableOpacity
             key={item}
             onPress={() => setFilter(item)}

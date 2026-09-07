@@ -34,7 +34,7 @@ export interface CourseCardAssignment {
   id: string;
   title: string;
   dueDate: string;
-  status: 'pending' | 'submitted' | 'graded';
+  status: 'pending' | 'submitted' | 'graded' | 'late';
   points?: number;
   maxPoints?: number;
   topic?: string;

@@ -35,7 +35,7 @@ export interface DashboardAssignment {
   id: string;
   title: string;
   dueDate: string;
-  status: 'pending' | 'submitted' | 'graded';
+  status: 'pending' | 'submitted' | 'graded' | 'late';
   points?: number;
   maxPoints?: number;
   topic?: string;
@@ -276,7 +276,11 @@ const Dashboard = ({
 
     const upcoming = assignments
       .filter((assignment) => {
-        if (assignment.status === 'submitted' || assignment.status === 'graded') {
+        if (
+          assignment.status === 'submitted' ||
+          assignment.status === 'graded' ||
+          assignment.status === 'late'
+        ) {
           return false;
         }
 
@@ -317,7 +321,22 @@ const Dashboard = ({
   // ==========================================
 
   const studentAnalytics = useMemo(() => {
-    return buildStudentAnalytics(courses);
+    // analytics/types.ts's AssignmentStatusType doesn't know about 'late'
+    // (it's a UI-only refinement of 'submitted' added for the assignment
+    // screens). Map it back to 'submitted' here so the analytics engine
+    // — shared with Teacher/Admin — keeps counting it exactly as it did
+    // before 'late' existed, instead of silently dropping it from every
+    // count because it doesn't match any status branch downstream.
+    const analyticsCourses = courses.map((course) => ({
+      ...course,
+      assignments: course.assignments.map((assignment) => ({
+        ...assignment,
+        status:
+          assignment.status === 'late' ? 'submitted' : assignment.status,
+      })),
+    }));
+
+    return buildStudentAnalytics(analyticsCourses);
   }, [courses]);
 
   const derivedCourses = useMemo(() => {

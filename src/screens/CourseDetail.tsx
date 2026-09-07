@@ -139,10 +139,10 @@ const isPastDueDate = (dueDate?: string) => {
 // game or submitted work — playing/submitting flips the real status to
 // "submitted" or "graded" server-side) and whose due date has passed reads
 // as "missing" instead of "pending" everywhere it's shown.
-type DisplayStatus = "pending" | "submitted" | "graded" | "missing";
+type DisplayStatus = "pending" | "submitted" | "graded" | "late" | "missing";
 
 const getDisplayStatus = (assignment: {
-  status: "pending" | "submitted" | "graded";
+  status: "pending" | "submitted" | "graded" | "late";
   dueDate: string;
 }): DisplayStatus => {
   if (assignment.status === "pending" && isPastDueDate(assignment.dueDate)) {
@@ -552,7 +552,7 @@ export interface CourseAssignment {
   id: string;
   title: string;
   dueDate: string;
-  status: "pending" | "submitted" | "graded";
+  status: "pending" | "submitted" | "graded" | "late";
   points?: number;
   maxPoints?: number;
   topic?: string;
@@ -1094,6 +1094,7 @@ const fetchModules = useCallback(async (silent = false) => {
     switch (status) {
       case "pending": return "#FFE082";
       case "submitted": return "#BBDEFB";
+      case "late": return "#FFCC80";
       case "graded": return "#A5D6A7";
       case "missing": return "#FFCDD2";
       default: return "#DDD";
@@ -1104,6 +1105,7 @@ const fetchModules = useCallback(async (silent = false) => {
     switch (status) {
       case "pending": return "#7A5600";
       case "submitted": return "#0D47A1";
+      case "late": return "#E65100";
       case "graded": return "#1B5E20";
       case "missing": return "#B71C1C";
       default: return "#555";
@@ -1794,7 +1796,7 @@ const fetchModules = useCallback(async (silent = false) => {
   };
 
   const isAssignmentSubmitted = (assignment?: AssignmentItem | null) =>
-    assignment?.status === "submitted" || assignment?.status === "graded";
+    assignment?.status === "submitted" || assignment?.status === "graded" || assignment?.status === "late";
 
   const isAssignmentGraded = (assignment?: AssignmentItem | null) =>
     assignment?.status === "graded";
@@ -1913,7 +1915,7 @@ const fetchModules = useCallback(async (silent = false) => {
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data?.error || "Failed to submit assignment.");
-      syncSelectedAssignmentStatus("submitted");
+      syncSelectedAssignmentStatus(isPastDueDate(selectedAssignment.dueDate) ? "late" : "submitted");
       await onRefreshSubmissions?.();
       const totalItems = submissionItems.length + linkItems.length;
       showFeedback('success', 'Success', `Submitted ${totalItems} item(s) successfully.`);
