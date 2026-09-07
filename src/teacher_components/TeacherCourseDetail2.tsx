@@ -3580,7 +3580,12 @@ useEffect(() => {
     //    dropdownWrapHalf (48% of a two-column row)
     // Hardcoding either one here only lines up in one of the two modals, so
     // each caller now passes the style that matches ITS OWN Due Date field.
-    desktopWidthStyle: StyleProp<ViewStyle> = styles.dropdownWrapHalf
+    desktopWidthStyle: StyleProp<ViewStyle> = styles.dropdownWrapHalf,
+    // ✅ UPDATED: The Create modal right-aligns Select Game so it sits above
+    // the Due Date column (on the right). The Update modal now places
+    // Select Game directly above Header instead, so it needs to sit on the
+    // left — hence this alignment override.
+    desktopAlign: 'flex-start' | 'flex-end' = 'flex-end'
   ) => {
     const selectedGame = gameOptions.find((g) => g.value === gameType);
     // This form always creates the game-based assignment for the class whose
@@ -3593,7 +3598,7 @@ useEffect(() => {
         style={[
           styles.gameAndClassRow,
           isMobile && styles.gameAndClassRowMobile,
-          !isMobile && styles.gameAndClassRowDesktop,
+          !isMobile && { justifyContent: desktopAlign },
         ]}
       >
         <View style={[styles.dropdownWrap, !isMobile && desktopWidthStyle]}>
@@ -3768,7 +3773,7 @@ useEffect(() => {
           </Text>
         )}
       </View>
-      {assignmentType === 'game_based' && renderGameAndClassRow(styles.dropdownWrapHalf)}
+      {assignmentType === 'game_based' && renderGameAndClassRow(styles.dropdownWrapHalf, 'flex-start')}
       <View style={styles.fullWidthSection}>
         <View style={[styles.gameAndClassRow, isMobile && styles.gameAndClassRowMobile]}>
           <View style={[styles.dropdownWrap, !isMobile && styles.dropdownWrapHalf]}>

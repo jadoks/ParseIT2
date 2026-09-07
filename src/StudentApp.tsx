@@ -30,6 +30,10 @@ import DrawerMenu from './components/DrawerMenu';
 import GeminiFloatingModal from './components/GeminiFloatingModal';
 import Header from './components/Header';
 import UploadProgressToast, { UploadToastStage } from './components/UploadProgressToast';
+// ✅ Same Toast component used in Assignments.tsx (Register/SignIn/Community/
+// Dashboard/CourseDetail all share it) so game-completion feedback here looks
+// and behaves the same as everywhere else.
+import Toast from './Final_Admin_Components/Toast'; // adjust path if your folder layout differs
 import Analytics from './screens/Analytics';
 import Assignments, {
   AssignmentComment,
@@ -669,6 +673,19 @@ export default function StudentApp({ onLogout, currentStudent, onGoToLanding }: 
   // toast shown while a grade file upload is in flight.
   const [uploadToastStage, setUploadToastStage] = useState<UploadToastStage>(null);
   const [uploadToastProgress, setUploadToastProgress] = useState(0);
+  // ✅ Toast state — same shape/usage as Assignments.tsx, used for the
+  // game-based-assignment completion/final-score feedback below.
+  const [toast, setToast] = useState<{ visible: boolean; message: string; type: 'success' | 'error' | 'info' }>({
+    visible: false,
+    message: '',
+    type: 'success',
+  });
+  const showToast = (message: string, type: 'success' | 'error' | 'info' = 'success') => {
+    setToast({ visible: true, message, type });
+  };
+  const hideToast = () => {
+    setToast((prev) => ({ ...prev, visible: false }));
+  };
   const [isLeaveConfirmModalVisible, setLeaveConfirmModalVisible] = useState(false);
   const [courseToLeave, setCourseToLeave] = useState<any>(null);
   const [isLeavingCourse, setIsLeavingCourse] = useState(false);
@@ -2724,32 +2741,50 @@ const refreshAssignmentCourseContent = useCallback(async () => {
               }); 
               const data = await response.json();
               if (response.ok && gameAssignmentData) {
+                const attempts: GameAttemptSummary[] = data.attempts || [];
                 if (data.autoFinalized) {
                   // Last allowed attempt just got used — the backend already
-                  // picked the highest-scoring attempt as the final grade,
-                  // so skip the selection screen entirely.
-                  Alert.alert(
-                    'Final Score Submitted',
-                    `You've used all your attempts. Your highest score (${data.finalScore}/${data.maxPoints}) has been submitted automatically as your final score.`
+                  // picked the highest-scoring attempt as the final grade.
+                  // 🐛 FIX: this used to jump straight back to lastScreen,
+                  // which felt like "time's up → Done → nothing happened".
+                  // Route through the same attempt-selection screen instead
+                  // (with selectedAutomatically=true) so the student actually
+                  // sees which attempt won and can still switch it if they want.
+                  const autoSelectedId =
+                    data.selectedAttemptId ||
+                    (attempts.length
+                      ? attempts.reduce((best, a) => (a.scaledScore > best.scaledScore ? a : best), attempts[0]).id
+                      : null);
+                  showToast(
+                    `You've used all your attempts. Your highest score (${data.finalScore}/${data.maxPoints}) has been submitted automatically as your final score.`,
+                    'success'
                   );
                   await loadStudentSubmissionState();
-                  setActiveScreen(lastScreen);
+                  setGameAttemptSelectionData({
+                    assignmentId: gameAssignmentData.assignmentId,
+                    assignmentTitle: gameAssignmentData.assignmentTitle,
+                    attempts,
+                    selectedAttemptId: autoSelectedId,
+                    selectedAutomatically: true,
+                    attemptsRemaining: computeAttemptsRemaining(gameAssignmentData.numberOfAttempts, attempts.length),
+                  });
+                  setActiveScreen('gameattemptselection');
                   return;
                 }
                 setGameAttemptSelectionData({
                   assignmentId: gameAssignmentData.assignmentId,
                   assignmentTitle: gameAssignmentData.assignmentTitle,
-                  attempts: data.attempts || [],
+                  attempts,
                   selectedAttemptId: null,
-                  attemptsRemaining: computeAttemptsRemaining(gameAssignmentData.numberOfAttempts, (data.attempts || []).length),
+                  attemptsRemaining: computeAttemptsRemaining(gameAssignmentData.numberOfAttempts, attempts.length),
                 });
                 setActiveScreen('gameattemptselection');
                 return;
               }
-              Alert.alert('Game Completed', `You scored ${score} out of ${totalQuestions}!`); 
+              showToast(`You scored ${score} out of ${totalQuestions}!`, 'error');
               console.warn('Game submission warning:', data?.error); 
             } catch (e: any) { 
-              Alert.alert('Game Completed', `You scored ${score} out of ${totalQuestions}!`); 
+              showToast(`You scored ${score} out of ${totalQuestions}!`, 'error');
               console.error('Game submission error:', e); 
             } 
             await loadStudentSubmissionState(); 
@@ -3111,6 +3146,25 @@ const refreshAssignmentCourseContent = useCallback(async () => {
           stage={uploadToastStage}
           progress={uploadToastProgress}
         />
+        {/* Toast — portal-based, matches Register/SignIn/Community/Dashboard/
+            CourseDetail/Assignments so game-completion feedback looks and
+            behaves the same everywhere. */}
+        <Modal
+          visible={toast.visible}
+          transparent
+          animationType="fade"
+          onRequestClose={hideToast}
+          statusBarTranslucent
+        >
+          <View style={styles.toastPortal} pointerEvents="box-none">
+            <Toast
+              visible={toast.visible}
+              message={toast.message}
+              type={toast.type}
+              onHide={hideToast}
+            />
+          </View>
+        </Modal>
         <Modal 
           animationType="fade" 
           transparent 
@@ -3279,6 +3333,12 @@ const refreshAssignmentCourseContent = useCallback(async () => {
 }
 
 const styles = StyleSheet.create({
+  // ✅ Toast portal — matches Register/SignIn/Community/Dashboard/CourseDetail/
+  // Assignments; lets touches pass through to whatever's behind, except the
+  // toast itself.
+  toastPortal: {
+    ...StyleSheet.absoluteFillObject,
+  },
   safeArea: { flex: 1, backgroundColor: '#fff' },
   safeAreaFullscreen: { backgroundColor: '#000' },
   safeAreaMobileFullscreen: { backgroundColor: '#fff' },

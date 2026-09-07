@@ -6,6 +6,7 @@ import {
     StyleSheet,
     Text,
     TouchableOpacity,
+    useWindowDimensions,
     View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -68,6 +69,12 @@ const GameAttemptSelection: React.FC<GameAttemptSelectionProps> = ({
   );
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // ✅ On large screens (tablet/web/desktop) the attempts list shouldn't
+  // stretch edge-to-edge — cap it at 75% width, centered, same breakpoint
+  // used elsewhere in the app (StudentApp's isLargeScreen).
+  const { width } = useWindowDimensions();
+  const isLargeScreen = width >= 768;
+
   const canPlayAgain = attemptsRemaining > 0;
 
   const handleSubmit = async () => {
@@ -89,7 +96,7 @@ const GameAttemptSelection: React.FC<GameAttemptSelectionProps> = ({
 
       <ScrollView
         style={styles.scroll}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[styles.scrollContent, isLargeScreen && styles.scrollContentLarge]}
         showsVerticalScrollIndicator={false}
       >
         <Text style={styles.helperText}>
@@ -189,6 +196,13 @@ const styles = StyleSheet.create({
   headerSubtitle: { fontSize: 14, color: '#777', marginTop: 4, fontWeight: '600' },
   scroll: { flex: 1 },
   scrollContent: { padding: 20, paddingBottom: 40 },
+  // ✅ Constrains and centers the attempts list on large screens (tablet/
+  // web/desktop) instead of letting the cards stretch full width.
+  scrollContentLarge: {
+    width: '75%',
+    maxWidth: 900,
+    alignSelf: 'center',
+  },
   helperText: { fontSize: 14, color: '#555', marginBottom: 16, lineHeight: 20 },
   autoBanner: {
     fontSize: 13,
