@@ -842,6 +842,10 @@ const TeacherCourseDetail2 = ({
   const [isGeneratingNextLessons, setIsGeneratingNextLessons] = useState(false);
   const [targetModuleForGen, setTargetModuleForGen] = useState<any>(null);
 
+  const [showModuleSelectionModal, setShowModuleSelectionModal] = useState(false);
+  const [selectedModulesForGen, setSelectedModulesForGen] = useState<string[]>([]);
+  const [isGeneratingModules, setIsGeneratingModules] = useState(false);
+
   const [activeTab, setActiveTab] = useState<"materials" | "assignments" | "modules">('modules');
   // Tabs are mounted lazily (only once first visited) and then kept alive and
   // simply hidden/shown via `display` instead of being unmounted on every
@@ -1206,6 +1210,7 @@ useEffect(() => {
     showStructurePreviewModal ||
     showGenerateModal ||
     showNextLessonModal ||
+    showModuleSelectionModal ||
     !!pendingSyllabusFile ||
     showLessonPreviewModal ||
     showManageTemplateModal ||
@@ -1852,69 +1857,104 @@ useEffect(() => {
   // are revised) at any time, so module creation is kept independent from
   // lesson content. Once the module exists, the teacher chooses per-lesson
   // whether to use "Generate Next Lesson" (AI) or "Add Lesson (Manual)".
-  const handleGenerateModule = async () => {
-    if (!currentSyllabus || isGeneratingStructure) return;
-    setIsGeneratingStructure(true);
-    setGeneratedStructure(null);
+  // Syllabus modules that don't yet have a corresponding saved courseModule
+  // ("unmade" modules) — the pool of choices offered in the Module Selection
+  // modal below. A syllabus module counts as "already created" ONLY if its
+  // title has a 100% (case-insensitive, trimmed) match with a module title
+  // already stored in Firebase. We intentionally do NOT compare moduleNumber
+  // here: numbers are just sequential slot positions, so once a teacher
+  // manually inserts a module in between two AI-generated ones, a later
+  // syllabus module's number can collide with an unrelated created module's
+  // number. Matching on number in that case would falsely mark the syllabus
+  // module as "already created". Title is the reliable source of truth since
+  // it's copied verbatim from the syllabus module into the created module's
+  // title at creation time.
+  const unmadeSyllabusModules = (currentSyllabus?.structure?.modules || []).filter(
+    (sylMod: any) => {
+      const sylTitle = String(sylMod.moduleTitle || sylMod.title || '').trim().toLowerCase();
+      return !modules.some((m: any) => (m.title || '').trim().toLowerCase() === sylTitle);
+    }
+  );
+
+  const handleOpenModuleSelectionModal = () => {
+    setSelectedModulesForGen([]);
+    setShowModuleSelectionModal(true);
+  };
+
+  const toggleModuleSelectionForGen = (moduleTitle: string) => {
+    setSelectedModulesForGen(prev =>
+      prev.includes(moduleTitle)
+        ? prev.filter(t => t !== moduleTitle)
+        : [...prev, moduleTitle]
+    );
+  };
+
+  // Creates one saved courseModule per selected syllabus module — no
+  // lesson/discussion/activity content is auto-generated. This is
+  // intentional: the syllabus can be edited/replaced (e.g. after CTU
+  // standards are revised) at any time, so module creation is kept
+  // independent from lesson content. Once a module exists, the teacher
+  // chooses per-lesson whether to use "Generate Next Lesson" (AI) or
+  // "Add Lesson (Manual)".
+  const handleGenerateSelectedModules = async () => {
+    if (selectedModulesForGen.length === 0 || !course?.id) {
+      toast.show('error', 'Error', 'Please select at least one module.');
+      return;
+    }
+    setIsGeneratingModules(true);
+    const succeeded: string[] = [];
+    const failed: string[] = [];
     try {
-      const createdModuleTitles = new Set(
-        modules.map((m: any) => String(m.title).trim().toLowerCase())
+      // Preserve syllabus order regardless of the order the teacher tapped
+      // checkboxes in, and create modules ONE AT A TIME (not in parallel) so
+      // each module's assigned number correctly accounts for the ones just
+      // created earlier in this same batch.
+      const orderedSelection = unmadeSyllabusModules.filter((sylMod: any) =>
+        selectedModulesForGen.includes(sylMod.moduleTitle || sylMod.title)
       );
-      // A syllabus module counts as "already created" ONLY if its title has
-      // a 100% (case-insensitive, trimmed) match with a module title already
-      // stored in Firebase. We intentionally do NOT compare moduleNumber
-      // here: numbers are just sequential slot positions, so once a teacher
-      // manually inserts a module in between AI-generated ones, a later
-      // syllabus module's number can collide with an unrelated created
-      // module's number. Matching on number in that case falsely marks the
-      // syllabus module as "already created" and causes the generator to
-      // skip it. Title is the reliable source of truth since it's copied
-      // verbatim from the syllabus module into the created module's title
-      // at creation time (see `title: moduleTitle` below).
-      const missingSyllabusModules = currentSyllabus.structure?.modules?.filter(
-        (sylMod: any) =>
-          !createdModuleTitles.has(String(sylMod.moduleTitle).trim().toLowerCase())
-      ) || [];
-      let targetSyllabusModule: any = null;
-      let nextNum: number = 0;
-      if (missingSyllabusModules.length > 0) {
-        targetSyllabusModule = missingSyllabusModules[0];
-        const maxExistingNum = modules.length > 0
-          ? Math.max(...modules.map((m: any) => Number(m.moduleNumber) || 0))
-          : 0;
-        nextNum = maxExistingNum + 1;
-      } else {
-        const maxExistingNum = modules.length > 0
-          ? Math.max(...modules.map((m: any) => Number(m.moduleNumber) || 0))
-          : 0;
-        nextNum = maxExistingNum + 1;
-        targetSyllabusModule = currentSyllabus.structure?.modules?.find(
-          (m: any) => Number(m.moduleNumber) === nextNum
-        );
+      let nextNum = modules.length > 0
+        ? Math.max(...modules.map((m: any) => Number(m.moduleNumber) || 0)) + 1
+        : 1;
+      for (const sylMod of orderedSelection) {
+        const moduleTitle = sylMod.moduleTitle || sylMod.title;
+        try {
+          const response = await fetch(`${API_BASE_URL}/course-modules/create-manual`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({
+              classId: course.id,
+              moduleNumber: nextNum,
+              title: moduleTitle,
+              description: sylMod.description || '',
+              weeklySchedule: sylMod.weeklySchedule || ''
+            })
+          });
+          const data = await response.json();
+          if (!response.ok) throw new Error(data.error || `Failed to create "${moduleTitle}"`);
+          succeeded.push(moduleTitle);
+          nextNum += 1;
+        } catch (e: any) {
+          failed.push(moduleTitle);
+        }
       }
-      const moduleTitle = targetSyllabusModule?.moduleTitle || `Module ${nextNum}`;
-      const weeklySchedule = targetSyllabusModule?.weeklySchedule || '';
-      const description = targetSyllabusModule?.description || '';
-      const response = await fetch(`${API_BASE_URL}/course-modules/create-manual`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
-          classId: course?.id,
-          moduleNumber: nextNum,
-          title: moduleTitle,
-          description: description,
-          weeklySchedule: weeklySchedule
-        })
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'Generation failed');
       await loadCourseContent();
-      toast.show('success', 'Module Created', `Module ${nextNum} ("${moduleTitle}") has been created.`);
-    } catch (error: any) {
-      toast.show('error', 'Generation Failed', error?.message || 'Unable to generate module.');
+      if (succeeded.length > 0) {
+        setShowModuleSelectionModal(false);
+      }
+      if (failed.length === 0) {
+        toast.show(
+          'success',
+          'Modules Created',
+          succeeded.length > 1 ? `${succeeded.length} modules created successfully.` : `Module "${succeeded[0]}" created successfully.`
+        );
+      } else if (succeeded.length > 0) {
+        toast.show('info', 'Created with some issues', `${succeeded.length} created, ${failed.length} failed: ${failed.join(', ')}`);
+      } else {
+        toast.show('error', 'Generation Failed', `Failed to create: ${failed.join(', ')}`);
+      }
     } finally {
-      setIsGeneratingStructure(false);
+      setIsGeneratingModules(false);
     }
   };
 
@@ -5345,20 +5385,26 @@ the button looked completely dead.
               <>
                 {modules.length === 0 ? (
                   <TouchableOpacity
-                    onPress={handleGenerateModule}
-                    disabled={isGeneratingStructure}
-                    style={{ marginTop: 8, padding: 16, backgroundColor: '#FFF', borderRadius: 12, borderWidth: 2, borderColor: '#D32F2F', borderStyle: 'dashed', alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8 }}
+                    onPress={handleOpenModuleSelectionModal}
+                    disabled={unmadeSyllabusModules.length === 0}
+                    style={[
+                      { marginTop: 8, padding: 16, backgroundColor: '#FFF', borderRadius: 12, borderWidth: 2, borderColor: '#D32F2F', borderStyle: 'dashed', alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8 },
+                      unmadeSyllabusModules.length === 0 && styles.disabledButton
+                    ]}
                   >
-                    {isGeneratingStructure ? <ActivityIndicator size="small" color="#D32F2F" /> : <Ionicons name="add-circle-outline" size={24} color="#D32F2F" />}
+                    <Ionicons name="add-circle-outline" size={24} color="#D32F2F" />
                     <Text style={{ color: '#D32F2F', fontWeight: '800', fontSize: 16 }}>Generate Module 1</Text>
                   </TouchableOpacity>
                 ) : (
                   <TouchableOpacity
-                    onPress={handleGenerateModule}
-                    disabled={isGeneratingStructure}
-                    style={{ marginTop: 8, padding: 16, backgroundColor: '#FFF', borderRadius: 12, borderWidth: 2, borderColor: '#D32F2F', borderStyle: 'dashed', alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8 }}
+                    onPress={handleOpenModuleSelectionModal}
+                    disabled={unmadeSyllabusModules.length === 0}
+                    style={[
+                      { marginTop: 8, padding: 16, backgroundColor: '#FFF', borderRadius: 12, borderWidth: 2, borderColor: '#D32F2F', borderStyle: 'dashed', alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8 },
+                      unmadeSyllabusModules.length === 0 && styles.disabledButton
+                    ]}
                   >
-                    {isGeneratingStructure ? <ActivityIndicator size="small" color="#D32F2F" /> : <Ionicons name="add-circle-outline" size={24} color="#D32F2F" />}
+                    <Ionicons name="add-circle-outline" size={24} color="#D32F2F" />
                     <Text style={{ color: '#D32F2F', fontWeight: '800', fontSize: 16 }}>Generate Another Module</Text>
                   </TouchableOpacity>
                 )}
@@ -6919,6 +6965,89 @@ GENERATE NEXT LESSON - MULTI TOPIC SELECTION MODAL
                   <>
                     <Ionicons name="sparkles-outline" size={18} color="#FFF" />
                     <Text style={styles.primaryButtonText}>Generate ({selectedTopicsForGen.length})</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+      {/* ══════════════════════════════════════════════════════════════════════
+MODULE SELECTION MODAL (mirrors "Generate Next Lessons" above)
+═══════════════════════════════════════════════════════════════════════ */}
+      <Modal visible={showModuleSelectionModal} transparent animationType="fade">
+        <View style={styles.modalOverlayCenter}>
+          <View style={[styles.modalCardElevated, { width: isMobile ? Math.min(width - 28, 380) : 520 }]}>
+            <View style={styles.createHeaderRow}>
+              <View style={styles.modalHeaderTextWrap}>
+                <Text style={styles.createTitle}>Select Modules to Generate</Text>
+                <Text style={styles.modalSubtitle}>
+                  Select one or more modules from the uploaded Syllabus to create. Each selected module is added as its own empty module — no lessons are generated yet.
+                </Text>
+              </View>
+              <TouchableOpacity onPress={() => setShowModuleSelectionModal(false)}>
+                <Ionicons name="close" size={24} color="#111" />
+              </TouchableOpacity>
+            </View>
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 20 }}>
+              {unmadeSyllabusModules.length === 0 ? (
+                <Text style={{ textAlign: 'center', color: '#888', padding: 20 }}>
+                  All modules from the current Syllabus have already been created!
+                </Text>
+              ) : (
+                unmadeSyllabusModules.map((sylMod: any, mIdx: number) => {
+                  const moduleTitle = sylMod.moduleTitle || sylMod.title;
+                  const isSelected = selectedModulesForGen.includes(moduleTitle);
+                  return (
+                    <TouchableOpacity
+                      key={mIdx}
+                      onPress={() => toggleModuleSelectionForGen(moduleTitle)}
+                      style={[
+                        styles.materialChip,
+                        { marginBottom: 8, minHeight: 44 },
+                        isSelected && styles.materialChipActive
+                      ]}
+                    >
+                      <Ionicons
+                        name={isSelected ? "checkbox" : "square-outline"}
+                        size={22}
+                        color={isSelected ? "#FFF" : "#D32F2F"}
+                      />
+                      <View style={{ flex: 1, marginLeft: 8 }}>
+                        <Text style={[styles.materialChipText, isSelected && styles.materialChipTextActive]}>
+                          {moduleTitle}
+                        </Text>
+                        {!!sylMod.weeklySchedule && (
+                          <Text
+                            style={[
+                              { fontSize: 12, marginTop: 2, color: '#777' },
+                              isSelected && { color: '#EEE' }
+                            ]}
+                          >
+                            {sylMod.weeklySchedule}
+                          </Text>
+                        )}
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })
+              )}
+            </ScrollView>
+            <View style={styles.buttonRow}>
+              <TouchableOpacity style={styles.secondaryButton} onPress={() => setShowModuleSelectionModal(false)}>
+                <Text style={styles.secondaryButtonText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.primaryButton, (isGeneratingModules || selectedModulesForGen.length === 0) && styles.disabledButton]}
+                onPress={handleGenerateSelectedModules}
+                disabled={isGeneratingModules || selectedModulesForGen.length === 0}
+              >
+                {isGeneratingModules ? (
+                  <ActivityIndicator size="small" color="#FFF" />
+                ) : (
+                  <>
+                    <Ionicons name="add-circle-outline" size={18} color="#FFF" />
+                    <Text style={styles.primaryButtonText}>Create ({selectedModulesForGen.length})</Text>
                   </>
                 )}
               </TouchableOpacity>
