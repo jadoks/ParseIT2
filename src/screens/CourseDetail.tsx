@@ -861,6 +861,10 @@ const CourseDetail = ({
   const [commentToDeleteId, setCommentToDeleteId] = useState<string | null>(null);
   const [isDeletingComment, setIsDeletingComment] = useState(false);
 
+  // ── "Turn in assignment?" confirmation modal (Google Classroom style),
+  // shown before the actual submit request fires.
+  const [submitConfirmVisible, setSubmitConfirmVisible] = useState(false);
+
   // ✅ NEW: Inline Preview State
   const [previewFile, setPreviewFile] = useState<AssignmentFileUpload | null>(null);
   const [gameAttempts, setGameAttempts] = useState<Record<string, number>>({});
@@ -1786,6 +1790,7 @@ const fetchModules = useCallback(async (silent = false) => {
     setDeleteModalVisible(false);
     setCommentToDeleteId(null);
     setIsDeletingComment(false);
+    setSubmitConfirmVisible(false);
   };
 
   const isAssignmentSubmitted = (assignment?: AssignmentItem | null) =>
@@ -3451,7 +3456,7 @@ const fetchModules = useCallback(async (silent = false) => {
                                   </TouchableOpacity>
                                 )}
                                 <TouchableOpacity
-                                  onPress={handleSubmitAssignment}
+                                  onPress={() => setSubmitConfirmVisible(true)}
                                   disabled={isSubmittingAssignment}
                                   style={[
                                     styles.uploadButtonWide,
@@ -3653,6 +3658,66 @@ const fetchModules = useCallback(async (silent = false) => {
                   <ActivityIndicator size="small" color="#FFF" />
                 ) : (
                   <Text style={styles.deleteModalConfirmText}>Delete</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* "TURN IN ASSIGNMENT?" CONFIRMATION MODAL — Google Classroom style,
+          shown when the student taps SUBMIT, before the request actually fires. */}
+      <Modal
+        visible={submitConfirmVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          if (!isSubmittingAssignment) {
+            setSubmitConfirmVisible(false);
+          }
+        }}
+      >
+        <View style={styles.deleteModalOverlay}>
+          <View style={styles.deleteModalContent}>
+            <View style={[styles.deleteModalIconContainer, styles.turnInIconContainer]}>
+              <MaterialCommunityIcons name="check-circle-outline" size={48} color="#308C5D" />
+            </View>
+            <Text style={styles.deleteModalTitle}>Submit assignment?</Text>
+            <Text style={styles.deleteModalMessage}>
+              {(() => {
+                const itemCount = selectedAssignment
+                  ? (assignmentFiles[selectedAssignment.id] || []).length
+                  : 0;
+                const itemLabel = `${itemCount} item${itemCount === 1 ? "" : "s"}`;
+                const pastDue = isPastDueDate(selectedAssignment?.dueDate);
+                return `You're about to submit ${itemLabel} for "${selectedAssignment?.title ?? "this assignment"
+                  }". ${pastDue ? "This assignment is past due. " : ""}You can unsubmit to make changes until your teacher grades it.`;
+              })()}
+            </Text>
+            <View style={styles.deleteModalActions}>
+              <TouchableOpacity
+                style={styles.deleteModalCancelBtn}
+                onPress={() => setSubmitConfirmVisible(false)}
+                disabled={isSubmittingAssignment}
+              >
+                <Text style={styles.deleteModalCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.deleteModalConfirmBtn,
+                  styles.turnInConfirmBtn,
+                  isSubmittingAssignment && { opacity: 0.7 },
+                ]}
+                onPress={async () => {
+                  setSubmitConfirmVisible(false);
+                  await handleSubmitAssignment();
+                }}
+                disabled={isSubmittingAssignment}
+              >
+                {isSubmittingAssignment ? (
+                  <ActivityIndicator size="small" color="#FFF" />
+                ) : (
+                  <Text style={styles.deleteModalConfirmText}>Submit</Text>
                 )}
               </TouchableOpacity>
             </View>
@@ -4701,6 +4766,12 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#FFF',
   },
+
+  // ── Green "Turn in assignment?" variant of the delete-confirm modal —
+  // reuses its layout/shape, swaps the red trash accent for the same green
+  // used on the SUBMIT button.
+  turnInIconContainer: { backgroundColor: '#E6F4EC' },
+  turnInConfirmBtn: { backgroundColor: '#308C5D' },
   moduleCard: {
     backgroundColor: '#FFF',
     borderRadius: 14,
