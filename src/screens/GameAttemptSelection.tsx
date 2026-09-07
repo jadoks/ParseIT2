@@ -87,11 +87,42 @@ const GameAttemptSelection: React.FC<GameAttemptSelectionProps> = ({
     }
   };
 
+  const actionButtons = (
+    <>
+      <TouchableOpacity
+        style={isLargeScreen ? styles.decideLaterButtonHeader : styles.decideLaterButton}
+        onPress={onDecideLater}
+        disabled={isSubmitting}
+      >
+        <Text style={isLargeScreen ? styles.decideLaterTextHeader : styles.decideLaterText}>Decide Later</Text>
+      </TouchableOpacity>
+      <TouchableOpacity
+        style={[
+          isLargeScreen ? styles.submitButtonHeader : styles.submitButton,
+          (!pickedId || isSubmitting) && styles.submitButtonDisabled,
+        ]}
+        onPress={handleSubmit}
+        disabled={!pickedId || isSubmitting}
+      >
+        {isSubmitting ? (
+          <ActivityIndicator color="#FFF" />
+        ) : (
+          <Text style={isLargeScreen ? styles.submitButtonTextHeader : styles.submitButtonText}>Submit as Final Score</Text>
+        )}
+      </TouchableOpacity>
+    </>
+  );
+
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
-      <View style={styles.header}>
-        <Text style={styles.headerTitle} numberOfLines={2}>{assignmentTitle}</Text>
-        <Text style={styles.headerSubtitle}>Choose your final score</Text>
+      <View style={[styles.header, isLargeScreen && styles.headerLarge]}>
+        <View style={styles.headerTitleGroup}>
+          <Text style={styles.headerTitle} numberOfLines={2}>{assignmentTitle}</Text>
+          <Text style={styles.headerSubtitle}>Choose your final score</Text>
+        </View>
+        {/* ✅ On large screens the action buttons live in the top bar instead
+            of a bottom footer, so they're reachable without scrolling. */}
+        {isLargeScreen && <View style={styles.headerActions}>{actionButtons}</View>}
       </View>
 
       <ScrollView
@@ -158,26 +189,11 @@ const GameAttemptSelection: React.FC<GameAttemptSelectionProps> = ({
         )}
       </ScrollView>
 
-      <View style={styles.footer}>
-        <TouchableOpacity
-          style={styles.decideLaterButton}
-          onPress={onDecideLater}
-          disabled={isSubmitting}
-        >
-          <Text style={styles.decideLaterText}>Decide Later</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.submitButton, (!pickedId || isSubmitting) && styles.submitButtonDisabled]}
-          onPress={handleSubmit}
-          disabled={!pickedId || isSubmitting}
-        >
-          {isSubmitting ? (
-            <ActivityIndicator color="#FFF" />
-          ) : (
-            <Text style={styles.submitButtonText}>Submit as Final Score</Text>
-          )}
-        </TouchableOpacity>
-      </View>
+      {!isLargeScreen && (
+        <View style={styles.footer}>
+          {actionButtons}
+        </View>
+      )}
     </SafeAreaView>
   );
 };
@@ -191,6 +207,20 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFF',
     borderBottomWidth: 1,
     borderBottomColor: '#EEE',
+  },
+  // ✅ On large screens the header becomes a row so the action buttons can
+  // sit at the right, in line with the title.
+  headerLarge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  headerTitleGroup: { flexShrink: 1 },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginLeft: 20,
   },
   headerTitle: { fontSize: 20, fontWeight: '800', color: '#222' },
   headerSubtitle: { fontSize: 14, color: '#777', marginTop: 4, fontWeight: '600' },
@@ -285,6 +315,26 @@ const styles = StyleSheet.create({
   },
   submitButtonDisabled: { backgroundColor: '#E7A9A9' },
   submitButtonText: { color: '#FFF', fontWeight: '800', fontSize: 15 },
+  // ✅ Compact variants of the same two buttons, used inline in the header
+  // on large screens instead of the full-width footer versions above.
+  decideLaterButtonHeader: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 18,
+    borderRadius: 10,
+    backgroundColor: '#F0F0F0',
+  },
+  decideLaterTextHeader: { color: '#555', fontWeight: '700', fontSize: 14 },
+  submitButtonHeader: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 10,
+    backgroundColor: '#D32F2F',
+  },
+  submitButtonTextHeader: { color: '#FFF', fontWeight: '800', fontSize: 14 },
 });
 
 export default GameAttemptSelection;
