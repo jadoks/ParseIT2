@@ -2702,6 +2702,8 @@ const refreshAssignmentCourseContent = useCallback(async () => {
           questions={gameAssignmentData?.questions || []} 
           gameType={gameAssignmentData?.gameType || 'quiz_master'} 
           timeLimitMinutes={gameAssignmentData?.timeLimit === 'unlimited' ? null : gameAssignmentData?.timeLimit === 'custom' ? Number(gameAssignmentData?.customTimeLimit) || null : Number(gameAssignmentData?.timeLimit) || null} 
+          assignmentId={gameAssignmentData?.assignmentId}
+          studentId={currentStudent?.studentId}
           onBack={() => setActiveScreen(lastScreen)} 
           onComplete={async (score, totalQuestions) => { 
             // 🌟 UPDATED: A finished attempt no longer auto-submits a final

@@ -12,11 +12,13 @@ import {
   Platform,
   Pressable,
   ScrollView,
+  StyleProp,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
   View,
+  ViewStyle,
   useWindowDimensions
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -3569,7 +3571,17 @@ useEffect(() => {
     </View>
   );
 
-  const renderGameAndClassRow = () => {
+  const renderGameAndClassRow = (
+    // ✅ UPDATED: This row is shared by two modals whose "Due Date & Time"
+    // field is sized differently:
+    //  - the Create modal wraps it in formColumnRightDesktop (40% of the
+    //    formGridDesktop grid)
+    //  - the Update modal (renderAssignmentFields) wraps it in
+    //    dropdownWrapHalf (48% of a two-column row)
+    // Hardcoding either one here only lines up in one of the two modals, so
+    // each caller now passes the style that matches ITS OWN Due Date field.
+    desktopWidthStyle: StyleProp<ViewStyle> = styles.dropdownWrapHalf
+  ) => {
     const selectedGame = gameOptions.find((g) => g.value === gameType);
     // This form always creates the game-based assignment for the class whose
     // detail page it was opened from — selectedClassId is initialized to,
@@ -3584,11 +3596,7 @@ useEffect(() => {
           !isMobile && styles.gameAndClassRowDesktop,
         ]}
       >
-        {/* ✅ UPDATED: On desktop, match the width of the Due Date & Time
-            field (formColumnRightDesktop, 40%) instead of stretching to
-            fill the whole row — keeps Create/Edit/Update visually aligned
-            with the field below it. Mobile keeps flex:1 (full width). */}
-        <View style={[styles.dropdownWrap, !isMobile && styles.formColumnRightDesktop]}>
+        <View style={[styles.dropdownWrap, !isMobile && desktopWidthStyle]}>
           <Text style={styles.sectionLabel}>Select Game</Text>
           <TouchableOpacity
             style={[styles.dropdownTrigger, errors.gameType ? styles.errorBorder : null]}
@@ -3760,7 +3768,7 @@ useEffect(() => {
           </Text>
         )}
       </View>
-      {assignmentType === 'game_based' && renderGameAndClassRow()}
+      {assignmentType === 'game_based' && renderGameAndClassRow(styles.dropdownWrapHalf)}
       <View style={styles.fullWidthSection}>
         <View style={[styles.gameAndClassRow, isMobile && styles.gameAndClassRowMobile]}>
           <View style={[styles.dropdownWrap, !isMobile && styles.dropdownWrapHalf]}>
@@ -4018,7 +4026,7 @@ useEffect(() => {
             </TouchableOpacity>
           </View>
         </View>
-        {assignmentType === 'game_based' && renderGameAndClassRow()}
+        {assignmentType === 'game_based' && renderGameAndClassRow(styles.formColumnRightDesktop)}
         <View style={[styles.formColumnLeft, !isMobile && styles.formColumnLeftDesktop]}>
           <Text style={styles.sectionLabel}>Header</Text>
           <TextInput

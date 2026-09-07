@@ -1,5 +1,7 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
   Platform,
   ScrollView,
@@ -28,6 +30,20 @@ interface GameBasedAssignmentProps {
   timeLimitMinutes?: number | null; //  Global time limit in MINUTES
   onBack: () => void;
   onComplete: (score: number, total: number) => void;
+  // ✅ NEW: identify which assignment/student this playthrough belongs to,
+  // so in-progress answers can be saved locally and resumed later — even
+  // if the student backs out, closes the tab, or force-quits the app
+  // mid-game. Without an assignmentId, progress simply isn't persisted.
+  assignmentId?: string;
+  studentId?: string;
+}
+
+// ✅ NEW: Builds the AsyncStorage key used to save/restore in-progress game
+// state for a given student + assignment. Namespaced by studentId (mirrors
+// Game.tsx's per-student storage keys) so a shared/kiosk device doesn't mix
+// up two different students' progress on the same assignment.
+function getGameProgressStorageKey(assignmentId?: string, studentId?: string) {
+  return `gameProgress_${studentId || 'anonymous'}_${assignmentId || 'unknown'}`;
 }
 
 // ============================================================
@@ -162,6 +178,8 @@ const GameBasedAssignment: React.FC<GameBasedAssignmentProps> = ({
   timeLimitMinutes,
   onBack,
   onComplete,
+  assignmentId,
+  studentId,
 }) => {
   const r = useResponsive();
   const insets = useSafeAreaInsets();
@@ -208,6 +226,11 @@ const GameBasedAssignment: React.FC<GameBasedAssignmentProps> = ({
   // Summary & Review State
   const [gameFinished, setGameFinished] = useState(false);
   const [userAnswers, setUserAnswers] = useState<Record<number, { selected: string | number | null, isCorrect: boolean }>>({});
+
+  // ✅ NEW: Resume-in-progress support. Starts false so the very first
+  // frame doesn't flash "Question 1" before a saved attempt (if any) has
+  // had a chance to load and jump the student back to where they left off.
+  const [isProgressLoaded, setIsProgressLoaded] = useState(false);
 
   // Initialize global timer on mount
   useEffect(() => {
@@ -289,8 +312,16 @@ const GameBasedAssignment: React.FC<GameBasedAssignmentProps> = ({
     }
   }, [gameType, questions]);
 
-  // Reset per-question states when moving to the next question/card
-  useEffect(() => {
+  // 🌟 UPDATED: This used to be a useEffect keyed on [currentIndex, gameType],
+  // which reset the per-question fields as a *side effect of currentIndex
+  // changing*. That meant restoring a saved currentIndex (to resume an
+  // in-progress attempt) would immediately wipe out the very
+  // hasAnswered/selectedOption/flashcardAnswer/etc. state we'd just
+  // restored for that question. Now it's a plain function called only from
+  // handleNext, exactly when the student actively advances to a new
+  // question/card — so resuming saved progress (including a
+  // half-answered current question) is never clobbered.
+  const resetPerQuestionState = () => {
     if (gameType === 'quiz_master') {
       setHasAnswered(false);
       setSelectedOption(null);
@@ -305,7 +336,137 @@ const GameBasedAssignment: React.FC<GameBasedAssignmentProps> = ({
       setHasAnswered(false);
       setIsCorrect(null);
     }
-  }, [currentIndex, gameType]);
+  };
+
+  // ✅ NEW: Restore any saved in-progress attempt for this assignment.
+  // Runs once on mount. If a matching save is found (same assignment,
+  // student, question count, and game type), it jumps the student back to
+  // exactly where they left off — including a half-answered current
+  // question — instead of restarting from Question 1. If nothing is
+  // saved, the game simply starts fresh as before.
+  useEffect(() => {
+    let cancelled = false;
+    const loadSavedProgress = async () => {
+      try {
+        const key = getGameProgressStorageKey(assignmentId, studentId);
+        const raw = await AsyncStorage.getItem(key);
+        if (raw && !cancelled) {
+          const saved = JSON.parse(raw);
+          const looksValid =
+            saved &&
+            saved.gameType === gameType &&
+            saved.totalQuestions === questions.length;
+          if (looksValid) {
+            setCurrentIndex(
+              Math.min(Math.max(saved.currentIndex ?? 0, 0), Math.max(questions.length - 1, 0))
+            );
+            setScore(saved.score ?? 0);
+            setUserAnswers(saved.userAnswers ?? {});
+            setGameFinished(!!saved.gameFinished);
+            setIsTimeUp(!!saved.isTimeUp);
+            if (typeof saved.globalTimeLeft === 'number') {
+              setGlobalTimeLeft(saved.globalTimeLeft);
+            }
+            // quiz_master / fill_in_blanks — resume a half-answered question
+            setHasAnswered(!!saved.hasAnswered);
+            setSelectedOption(saved.selectedOption ?? null);
+            setIsCorrect(saved.isCorrect ?? null);
+            // flashcard
+            setFlashcardAnswer(saved.flashcardAnswer ?? '');
+            setIsFlipped(!!saved.isFlipped);
+            setFlashcardSubmitted(!!saved.flashcardSubmitted);
+            // memory match — restore the same shuffled layout + pairings
+            if (saved.gameType === 'memory_match') {
+              if (Array.isArray(saved.memoryCards) && saved.memoryCards.length > 0) {
+                setMemoryCards(saved.memoryCards);
+              }
+              setTermAnswers(saved.termAnswers ?? {});
+              setMatchingResults(saved.matchingResults ?? {});
+              setMatchingSubmitted(!!saved.matchingSubmitted);
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('Failed to load saved game progress:', err);
+      } finally {
+        if (!cancelled) setIsProgressLoaded(true);
+      }
+    };
+    loadSavedProgress();
+    return () => {
+      cancelled = true;
+    };
+    // Intentionally runs once on mount — assignmentId/studentId/gameType
+    // are stable for the lifetime of a single playthrough screen.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ✅ NEW: Keep the saved attempt up to date after every meaningful change,
+  // so a back button, closed tab, or killed app never loses progress.
+  // Skipped until the initial restore above has finished, so we don't
+  // stomp a real saved attempt with the component's brand-new default
+  // state during the split second before it's loaded.
+  useEffect(() => {
+    if (!isProgressLoaded) return;
+    const key = getGameProgressStorageKey(assignmentId, studentId);
+    const snapshot = {
+      totalQuestions: questions.length,
+      gameType,
+      currentIndex,
+      score,
+      userAnswers,
+      gameFinished,
+      isTimeUp,
+      globalTimeLeft,
+      hasAnswered,
+      selectedOption,
+      isCorrect,
+      flashcardAnswer,
+      isFlipped,
+      flashcardSubmitted,
+      termAnswers,
+      matchingResults,
+      matchingSubmitted,
+      memoryCards,
+      savedAt: Date.now(),
+    };
+    AsyncStorage.setItem(key, JSON.stringify(snapshot)).catch((err) => {
+      console.warn('Failed to save game progress:', err);
+    });
+  }, [
+    isProgressLoaded,
+    assignmentId,
+    studentId,
+    questions.length,
+    gameType,
+    currentIndex,
+    score,
+    userAnswers,
+    gameFinished,
+    isTimeUp,
+    globalTimeLeft,
+    hasAnswered,
+    selectedOption,
+    isCorrect,
+    flashcardAnswer,
+    isFlipped,
+    flashcardSubmitted,
+    termAnswers,
+    matchingResults,
+    matchingSubmitted,
+    memoryCards,
+  ]);
+
+  // ✅ NEW: Wipes the saved attempt once it's actually been submitted as a
+  // final score — a fresh "Play Again" attempt should start clean, not
+  // resume the attempt that was just graded.
+  const clearSavedProgress = async () => {
+    try {
+      await AsyncStorage.removeItem(getGameProgressStorageKey(assignmentId, studentId));
+    } catch (err) {
+      console.warn('Failed to clear saved game progress:', err);
+    }
+  };
 
   const currentQuestion = questions[currentIndex];
 
@@ -315,6 +476,7 @@ const GameBasedAssignment: React.FC<GameBasedAssignmentProps> = ({
 
   // This function acts as "Return Home" / Final Submit
   const handleSubmitGame = () => {
+    clearSavedProgress();
     onComplete(score, questions.length);
   };
 
@@ -344,6 +506,7 @@ const GameBasedAssignment: React.FC<GameBasedAssignmentProps> = ({
 
   const handleNext = () => {
     if (currentIndex < questions.length - 1) {
+      resetPerQuestionState();
       setCurrentIndex(prev => prev + 1);
     } else {
       handleFinishGame();
@@ -919,13 +1082,23 @@ const GameBasedAssignment: React.FC<GameBasedAssignmentProps> = ({
         </Text>
         <View style={styles.topBarSpacer} />
       </View>
-      <ScrollView
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
-      >
-        <View style={styles.centeredContent}>{renderGame()}</View>
-      </ScrollView>
+      {!isProgressLoaded ? (
+        // ✅ NEW: brief loading state while we check for — and, if found,
+        // apply — a saved in-progress attempt, so the student never sees a
+        // flash of "Question 1" right before jumping to where they left off.
+        <View style={styles.resumeLoadingContainer}>
+          <ActivityIndicator size="large" color="#D32F2F" />
+          <Text style={styles.resumeLoadingText}>Resuming your game...</Text>
+        </View>
+      ) : (
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
+          <View style={styles.centeredContent}>{renderGame()}</View>
+        </ScrollView>
+      )}
     </SafeAreaView>
   );
 };
@@ -965,6 +1138,18 @@ const createStyles = (r: ResponsiveInfo) => {
       marginHorizontal: r.spacing.sm,
     },
     topBarSpacer: { width: r.touchTarget },
+    resumeLoadingContainer: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: r.spacing.sm,
+      paddingVertical: r.spacing.xl,
+    },
+    resumeLoadingText: {
+      fontSize: r.font.body,
+      fontWeight: '600',
+      color: '#777',
+    },
     scrollContent: {
       paddingHorizontal: r.horizontalPadding,
       paddingTop: r.spacing.md,
