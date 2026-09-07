@@ -3632,8 +3632,103 @@ app.post("/auth/send-forgot-password-pin", async (req, res) => {
    *   GEMINI_API_KEY=your_gemini_api_key_here
    *   GEMINI_GAME_MODEL=gemini-3.5-flash
    */
-  // === NEW: Automatically grade game-based assignment submission ===
-  // === UPDATED: Automatically grade game-based assignment submission ===
+  // Resolves how many attempts a game-based assignment allows, mirroring the
+  // options exposed in the assignment-creation UI ('1'..'5', 'custom', or
+  // 'unlimited'). Used to detect when a student has just used their last
+  // attempt so we can auto-finalize a score instead of leaving it
+  // open-ended until they manually pick one.
+  const getGameAssignmentMaxAttempts = (assignmentData) => {
+    const numberOfAttempts = assignmentData.numberOfAttempts;
+    if (!numberOfAttempts || numberOfAttempts === "unlimited") return Infinity;
+    if (numberOfAttempts === "custom") {
+      const custom = parseInt(assignmentData.customAttempts, 10);
+      return Number.isFinite(custom) && custom > 0 ? custom : 1;
+    }
+    const parsed = parseInt(numberOfAttempts, 10);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
+  };
+
+  // Writes a chosen attempt onto `classSubmissions` as the official graded
+  // score and notifies the teacher. Shared by the student's explicit choice
+  // (POST /game-ai/select-final-attempt) and the automatic fallback that
+  // fires once a student has used every attempt without picking one
+  // themselves (see the auto-finalize block in submit-game-assignment).
+  const finalizeGameAttempt = async ({ attemptData, attemptId, assignmentData, classId, studentId, profile, auto }) => {
+    const finalScore = attemptData.scaledScore;
+
+    const existingSubmissions = await db.collection("classSubmissions")
+      .where("classId", "==", classId)
+      .where("assignmentId", "==", attemptData.assignmentId)
+      .where("studentId", "==", studentId)
+      .limit(1)
+      .get();
+
+    const gradedFields = {
+      status: "graded",
+      score: finalScore,
+      gradedAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+      gameScore: attemptData.rawScore,
+      gameTotalQuestions: attemptData.totalQuestions,
+      gameAnswers: attemptData.answers || null,
+      attemptNumber: attemptData.attemptNumber,
+      selectedAttemptId: attemptId,
+      selectedAutomatically: !!auto,
+    };
+
+    if (!existingSubmissions.empty) {
+      await existingSubmissions.docs[0].ref.update(gradedFields);
+    } else {
+      await db.collection("classSubmissions").add({
+        classId,
+        assignmentId: attemptData.assignmentId,
+        studentId,
+        studentUid: (profile && profile.data.authUid) || null,
+        studentName: attemptData.studentName || (profile ? `${profile.data.firstName || ''} ${profile.data.lastName || ''}`.trim() : ''),
+        submittedAt: FieldValue.serverTimestamp(),
+        createdAt: FieldValue.serverTimestamp(),
+        ...gradedFields,
+      });
+    }
+
+    // Notify the teacher. The message makes clear whether the student chose
+    // this score themselves or whether it was auto-selected as the highest
+    // of all their attempts after they ran out of retries.
+    try {
+      await createNotification({
+        userId: assignmentData.assignedTeacherId || assignmentData.postedByUid,
+        role: "teacher",
+        type: "submitted-assignment",
+        title: "Game Assignment Submitted",
+        message: auto
+          ? `${attemptData.studentName || 'A student'} used all their attempts on ${assignmentData.header || "a game assignment"} — their highest score, attempt ${attemptData.attemptNumber} (${attemptData.rawScore}/${attemptData.totalQuestions}), was submitted automatically.`
+          : `${attemptData.studentName || 'A student'} selected attempt ${attemptData.attemptNumber} (${attemptData.rawScore}/${attemptData.totalQuestions}) as their final score for ${assignmentData.header || "a game assignment"}.`,
+        relatedId: attemptData.assignmentId,
+        relatedType: "class-submission",
+        classId,
+        actorId: studentId,
+        actorRole: "student",
+        actorName: attemptData.studentName || '',
+      });
+    } catch (notifyErr) {
+      console.error("Finalize game attempt notification error:", notifyErr);
+    }
+
+    return finalScore;
+  };
+
+  // === UPDATED: Record a completed game-based assignment attempt ===
+  // 🌟 CHANGED: This endpoint used to auto-grade the submission the moment a
+  // game finished (originally "keep the latest score", later "keep the
+  // highest score"). Either way, the student never got a say in which
+  // attempt counted. Now it records the attempt in `gameAssignmentAttempts`
+  // and lets the student pick their official final score afterward via
+  // POST /game-ai/select-final-attempt — UNLESS this was their last
+  // allowed attempt, in which case we don't leave the assignment
+  // open-ended: their highest-scoring attempt is auto-finalized as a
+  // fallback (the student can still change it later via
+  // /game-ai/select-final-attempt if they want a different attempt to
+  // count instead).
   app.post("/game-ai/submit-game-assignment", requireAuth, async (req, res) => {
     try {
       const { assignmentId, score, totalQuestions, answers } = req.body;
@@ -3661,58 +3756,186 @@ app.post("/auth/send-forgot-password-pin", async (req, res) => {
       const percent = totalQuestions > 0 ? (score / totalQuestions) : 0;
       const scaledScore = Math.round(percent * maxPoints);
 
-      // Find existing submission or create a new one
-      const existingSubmissions = await db.collection("classSubmissions")
+      // Number this attempt sequentially per student+assignment.
+      const priorAttemptsSnap = await db.collection("gameAssignmentAttempts")
         .where("classId", "==", classId)
+        .where("assignmentId", "==", assignmentId)
+        .where("studentId", "==", studentId)
+        .get();
+      const attemptNumber = priorAttemptsSnap.size + 1;
+
+      const attemptRecord = {
+        classId,
+        assignmentId,
+        studentId,
+        studentUid: profile.data.authUid || null,
+        studentName: `${profile.data.firstName || ''} ${profile.data.lastName || ''}`.trim(),
+        attemptNumber,
+        rawScore: score,
+        totalQuestions,
+        scaledScore,
+        maxPoints,
+        answers: answers || null,
+        completedAt: FieldValue.serverTimestamp(),
+      };
+
+      const attemptRef = await db.collection("gameAssignmentAttempts").add(attemptRecord);
+
+      // Return every attempt so far (including this one) so the client can
+      // render the attempt-selection screen without a second round trip.
+      const attempts = priorAttemptsSnap.docs
+        .map((doc) => ({ id: doc.id, ...doc.data() }))
+        .concat([{ id: attemptRef.id, ...attemptRecord, completedAt: new Date().toISOString() }])
+        .sort((a, b) => (a.attemptNumber || 0) - (b.attemptNumber || 0));
+
+      // 🌟 NEW: If the student just used their last allowed attempt and
+      // hasn't already locked in a final score, don't leave the assignment
+      // open-ended — auto-finalize the highest-scoring attempt so it's
+      // guaranteed to end up graded.
+      let autoFinalized = false;
+      let finalScore = null;
+      let finalAttemptId = null;
+      let finalAttemptNumber = null;
+
+      const maxAttempts = getGameAssignmentMaxAttempts(assignmentData);
+      if (Number.isFinite(maxAttempts) && attemptNumber >= maxAttempts) {
+        const bestAttempt = attempts.reduce(
+          (best, a) => (!best || a.scaledScore > best.scaledScore ? a : best),
+          null
+        );
+        if (bestAttempt) {
+          finalScore = await finalizeGameAttempt({
+            attemptData: bestAttempt,
+            attemptId: bestAttempt.id,
+            assignmentData,
+            classId,
+            studentId,
+            profile,
+            auto: true,
+          });
+          autoFinalized = true;
+          finalAttemptId = bestAttempt.id;
+          finalAttemptNumber = bestAttempt.attemptNumber;
+        }
+      }
+
+      return res.json({
+        success: true,
+        attemptId: attemptRef.id,
+        attemptNumber,
+        score: scaledScore,
+        rawScore: score,
+        totalQuestions,
+        maxPoints,
+        attempts,
+        // When true, the client should skip the attempt-selection screen —
+        // a final score has already been chosen automatically.
+        autoFinalized,
+        finalScore,
+        finalAttemptId,
+        finalAttemptNumber,
+      });
+    } catch (error) {
+      console.error("Submit game assignment error:", error);
+      return res.status(500).json({ error: error.message || "Failed to submit game score." });
+    }
+  });
+
+  // GET /game-ai/attempts/:assignmentId — list every completed attempt the
+  // current student has made on a game-based assignment, plus which attempt
+  // (if any) they've already chosen as their official final score. Used to
+  // power the attempt-selection screen and the "attempts remaining" counter.
+  app.get("/game-ai/attempts/:assignmentId", requireAuth, async (req, res) => {
+    try {
+      const { assignmentId } = req.params;
+      const profile = await findUserProfileByAuthUid(req.user.uid);
+      if (!profile || profile.role !== "student") {
+        return res.status(403).json({ error: "Only students can view game attempts." });
+      }
+      const studentId = profile.data.studentId || profile.id;
+
+      const attemptsSnap = await db.collection("gameAssignmentAttempts")
+        .where("assignmentId", "==", assignmentId)
+        .where("studentId", "==", studentId)
+        .get();
+
+      const attempts = attemptsSnap.docs
+        .map((doc) => ({ id: doc.id, ...doc.data() }))
+        .sort((a, b) => (a.attemptNumber || 0) - (b.attemptNumber || 0));
+
+      const submissionSnap = await db.collection("classSubmissions")
         .where("assignmentId", "==", assignmentId)
         .where("studentId", "==", studentId)
         .limit(1)
         .get();
 
-      if (!existingSubmissions.empty) {
-    const subRef = existingSubmissions.docs[0].ref;
-    const existingData = existingSubmissions.docs[0].data();
-    
-    // 🌟 Keep the highest score if the student plays multiple attempts
-    const currentScore = existingData.score || 0;
-    const finalScore = scaledScore > currentScore ? scaledScore : currentScore;
-    const nextAttemptNumber = (existingData.attemptNumber || 0) + 1;
+      const selectedAttemptId = !submissionSnap.empty
+        ? (submissionSnap.docs[0].data().selectedAttemptId || null)
+        : null;
+      const selectedAutomatically = !submissionSnap.empty
+        ? !!submissionSnap.docs[0].data().selectedAutomatically
+        : false;
 
-    await subRef.update({
-      status: "graded",
-      score: finalScore,
-      gradedAt: FieldValue.serverTimestamp(),
-      updatedAt: FieldValue.serverTimestamp(),
-      gameScore: score, // Always update raw game score to latest
-      gameTotalQuestions: totalQuestions,
-      gameAnswers: answers || null,
-      attemptNumber: nextAttemptNumber,
-    });
-    
-    return res.json({ success: true, score: finalScore, maxPoints, attemptNumber: nextAttemptNumber });
-  } else {
-    await db.collection("classSubmissions").add({
-      classId,
-      assignmentId,
-      studentId,
-      studentUid: profile.data.authUid || null,
-      studentName: `${profile.data.firstName || ''} ${profile.data.lastName || ''}`.trim(),
-      status: "graded",
-      score: scaledScore,
-      gradedAt: FieldValue.serverTimestamp(),
-      submittedAt: FieldValue.serverTimestamp(),
-      updatedAt: FieldValue.serverTimestamp(),
-      gameScore: score,
-      gameTotalQuestions: totalQuestions,
-      gameAnswers: answers || null,
-      attemptNumber: 1,
-    });
-    
-    return res.json({ success: true, score: scaledScore, maxPoints, attemptNumber: 1 });
-  }
+      return res.json({ success: true, attempts, selectedAttemptId, selectedAutomatically });
     } catch (error) {
-      console.error("Submit game assignment error:", error);
-      return res.status(500).json({ error: error.message || "Failed to submit game score." });
+      console.error("Fetch game attempts error:", error);
+      return res.status(500).json({ error: error.message || "Failed to fetch game attempts." });
+    }
+  });
+
+  // POST /game-ai/select-final-attempt — the student explicitly chooses
+  // which completed attempt becomes their official, graded final score.
+  // This is the only place that writes a score onto `classSubmissions` for
+  // a game-based assignment, so the chosen attempt is exactly what both the
+  // student's and the teacher's views show.
+  app.post("/game-ai/select-final-attempt", requireAuth, async (req, res) => {
+    try {
+      const { assignmentId, attemptId } = req.body;
+      const profile = await findUserProfileByAuthUid(req.user.uid);
+      if (!profile || profile.role !== "student") {
+        return res.status(403).json({ error: "Only students can select a final attempt." });
+      }
+      const studentId = profile.data.studentId || profile.id;
+
+      if (!assignmentId || !attemptId) {
+        return res.status(400).json({ error: "assignmentId and attemptId are required." });
+      }
+
+      const attemptSnap = await db.collection("gameAssignmentAttempts").doc(attemptId).get();
+      if (!attemptSnap.exists) {
+        return res.status(404).json({ error: "Attempt not found." });
+      }
+      const attemptData = { id: attemptId, ...attemptSnap.data() };
+      if (attemptData.studentId !== studentId || attemptData.assignmentId !== assignmentId) {
+        return res.status(403).json({ error: "This attempt does not belong to you." });
+      }
+
+      const assignmentSnap = await db.collection("classAssignments").doc(assignmentId).get();
+      if (!assignmentSnap.exists) {
+        return res.status(404).json({ error: "Assignment not found." });
+      }
+      const assignmentData = assignmentSnap.data();
+      const classId = assignmentData.classId;
+
+      const finalScore = await finalizeGameAttempt({
+        attemptData,
+        attemptId,
+        assignmentData,
+        classId,
+        studentId,
+        profile,
+        auto: false,
+      });
+
+      return res.json({
+        success: true,
+        score: finalScore,
+        maxPoints: attemptData.maxPoints,
+        attemptNumber: attemptData.attemptNumber,
+      });
+    } catch (error) {
+      console.error("Select final attempt error:", error);
+      return res.status(500).json({ error: error.message || "Failed to select final attempt." });
     }
   });
 

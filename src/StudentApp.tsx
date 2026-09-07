@@ -47,6 +47,7 @@ import CourseDetail, {
 } from './screens/CourseDetail';
 import Dashboard, { DashboardAssignment } from './screens/Dashboard';
 import Game from './screens/Game';
+import GameAttemptSelection, { GameAttemptSummary } from './screens/GameAttemptSelection';
 import GenerateActivity, { GenerateActivityData } from './screens/GenerateActivity';
 import Messenger from './screens/Messenger';
 import MyJourney from './screens/MyJourney';
@@ -96,6 +97,7 @@ type ScreenType =
   | 'fruitmania'
   | 'quizmasters'
   | 'gamebasedassignment'
+  | 'gameattemptselection'
   | 'videos'
   | 'myjourney'
   | 'analytics'
@@ -680,6 +682,19 @@ export default function StudentApp({ onLogout, currentStudent, onGoToLanding }: 
     timeLimit?: string | null; customTimeLimit?: string | null; numberOfAttempts?: string;
   } | null>(null);
   const [autoOpenAssignmentId, setAutoOpenAssignmentId] = useState<string | null>(null);
+  // ✅ NEW: Attempt-selection step for game-based assignments — holds every
+  // completed attempt for the assignment currently being reviewed, so the
+  // student can pick which one becomes their official final score instead
+  // of the backend silently auto-picking one for them.
+  const [gameAttemptSelectionData, setGameAttemptSelectionData] = useState<{
+    assignmentId: string;
+    assignmentTitle: string;
+    attempts: GameAttemptSummary[];
+    selectedAttemptId: string | null;
+    selectedAutomatically?: boolean;
+    attemptsRemaining: number;
+  } | null>(null);
+  const [isFetchingGameAttempts, setIsFetchingGameAttempts] = useState(false);
 
   // ✅ NEW: refetch comments for ONE assignment (mirrors TeacherSubmissionsSection's fetchComments)
 const refreshAssignmentComments = useCallback(async (assignmentId: string) => {
@@ -765,7 +780,7 @@ const refreshAssignmentCourseContent = useCallback(async () => {
 
   const [communityInitialPostId, setCommunityInitialPostId] = useState<string | null>(null);
 
-  const isFullscreenScreen = activeScreen === 'flipit' || activeScreen === 'fruitmania' || activeScreen === 'quizmasters' || activeScreen === 'gamebasedassignment';
+  const isFullscreenScreen = activeScreen === 'flipit' || activeScreen === 'fruitmania' || activeScreen === 'quizmasters' || activeScreen === 'gamebasedassignment' || activeScreen === 'gameattemptselection';
   const isMobileFullscreenScreen = isSmallScreen && (activeScreen === 'messenger' || activeScreen === 'notification' || activeScreen === 'coursedetail' || activeScreen === 'generateactivity');
   const shouldShowHeader = !isFullscreenScreen && !isMobileFullscreenScreen;
   const shouldShowDesktopDrawer = !isFullscreenScreen && !isMobileFullscreenScreen && isLargeScreen && activeScreen !== 'profile' && activeScreen !== 'notification';
@@ -2365,6 +2380,69 @@ const refreshAssignmentCourseContent = useCallback(async () => {
     }
   };
 
+  // Shared by handlePlayGame's onComplete and handleViewGameAttempts so both
+  // "just finished a fresh attempt" and "came back to review past attempts"
+  // compute "attempts remaining" the same way.
+  const computeAttemptsRemaining = (numberOfAttempts: string | undefined, attemptsUsed: number) => {
+    if (numberOfAttempts === 'unlimited') return Infinity;
+    const max = parseInt(numberOfAttempts || '1', 10);
+    return (Number.isFinite(max) ? max : 1) - attemptsUsed;
+  };
+
+  // ✅ NEW: Lets a student jump straight to the attempt-selection screen for
+  // an assignment they've already played, without starting a new attempt —
+  // e.g. they closed the app before picking a final score, or want to
+  // switch which completed attempt counts.
+  const handleViewGameAttempts = async (assignment: any) => {
+    if (isFetchingGameAttempts) return;
+    setIsFetchingGameAttempts(true);
+    try {
+      const response = await apiFetch(`${API_BASE_URL}/game-ai/attempts/${assignment.id}`);
+      const data = await response.json();
+      if (!response.ok) throw new Error(data?.error || 'Failed to load your attempts.');
+      const attempts: GameAttemptSummary[] = data.attempts || [];
+      if (attempts.length === 0) {
+        Alert.alert('No Attempts Yet', 'Play this game-based assignment at least once before selecting a final score.');
+        return;
+      }
+      setGameAttemptSelectionData({
+        assignmentId: assignment.id,
+        assignmentTitle: assignment.title || assignment.header || 'Game Assignment',
+        attempts,
+        selectedAttemptId: data.selectedAttemptId || null,
+        selectedAutomatically: !!data.selectedAutomatically,
+        attemptsRemaining: computeAttemptsRemaining(assignment.numberOfAttempts, attempts.length),
+      });
+      setLastScreen(activeScreen);
+      setActiveScreen('gameattemptselection');
+    } catch (error: any) {
+      Alert.alert('Error', error?.message || 'Unable to load your attempts.');
+    } finally {
+      setIsFetchingGameAttempts(false);
+    }
+  };
+
+  // ✅ NEW: The student's final choice of which completed attempt becomes
+  // their official graded score for a game-based assignment.
+  const handleSelectFinalGameAttempt = async (attemptId: string) => {
+    if (!gameAttemptSelectionData) return;
+    try {
+      const response = await apiFetch(`${API_BASE_URL}/game-ai/select-final-attempt`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ assignmentId: gameAttemptSelectionData.assignmentId, attemptId }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data?.error || 'Failed to submit your final score.');
+      Alert.alert('Final Score Submitted', `Your score of ${data.score}/${data.maxPoints} has been submitted.`);
+      await loadStudentSubmissionState();
+      setGameAttemptSelectionData(null);
+      setActiveScreen(lastScreen);
+    } catch (error: any) {
+      Alert.alert('Error', error?.message || 'Unable to submit your final score.');
+    }
+  };
+
   const handleVerificationFailed = (errorMessage: string) => {
     setVerificationErrorMessage(errorMessage);
     setVerificationErrorModalVisible(true);
@@ -2626,6 +2704,11 @@ const refreshAssignmentCourseContent = useCallback(async () => {
           timeLimitMinutes={gameAssignmentData?.timeLimit === 'unlimited' ? null : gameAssignmentData?.timeLimit === 'custom' ? Number(gameAssignmentData?.customTimeLimit) || null : Number(gameAssignmentData?.timeLimit) || null} 
           onBack={() => setActiveScreen(lastScreen)} 
           onComplete={async (score, totalQuestions) => { 
+            // 🌟 UPDATED: A finished attempt no longer auto-submits a final
+            // grade. It's recorded on the backend, then the student lands
+            // on the attempt-selection screen to choose which completed
+            // attempt (this one or an earlier one) becomes their official
+            // final score.
             try { 
               const response = await apiFetch(`${API_BASE_URL}/game-ai/submit-game-assignment`, { 
                 method: 'POST', 
@@ -2637,15 +2720,32 @@ const refreshAssignmentCourseContent = useCallback(async () => {
                   studentName: `${currentStudent.firstName || ''} ${currentStudent.lastName || ''}`.trim() 
                 }) 
               }); 
-              if (response.ok) { 
-                const data = await response.json(); 
-                const attemptMsg = data.attemptNumber > 1 ? ` (Attempt ${data.attemptNumber} - Best score kept!)` : ''; 
-                Alert.alert('Game Completed', `You scored ${score} out of ${totalQuestions}! Your assignment has been automatically graded.${attemptMsg}`); 
-              } else { 
-                Alert.alert('Game Completed', `You scored ${score} out of ${totalQuestions}!`); 
-                const data = await response.json(); 
-                console.warn('Game submission warning:', data?.error); 
-              } 
+              const data = await response.json();
+              if (response.ok && gameAssignmentData) {
+                if (data.autoFinalized) {
+                  // Last allowed attempt just got used — the backend already
+                  // picked the highest-scoring attempt as the final grade,
+                  // so skip the selection screen entirely.
+                  Alert.alert(
+                    'Final Score Submitted',
+                    `You've used all your attempts. Your highest score (${data.finalScore}/${data.maxPoints}) has been submitted automatically as your final score.`
+                  );
+                  await loadStudentSubmissionState();
+                  setActiveScreen(lastScreen);
+                  return;
+                }
+                setGameAttemptSelectionData({
+                  assignmentId: gameAssignmentData.assignmentId,
+                  assignmentTitle: gameAssignmentData.assignmentTitle,
+                  attempts: data.attempts || [],
+                  selectedAttemptId: null,
+                  attemptsRemaining: computeAttemptsRemaining(gameAssignmentData.numberOfAttempts, (data.attempts || []).length),
+                });
+                setActiveScreen('gameattemptselection');
+                return;
+              }
+              Alert.alert('Game Completed', `You scored ${score} out of ${totalQuestions}!`); 
+              console.warn('Game submission warning:', data?.error); 
             } catch (e: any) { 
               Alert.alert('Game Completed', `You scored ${score} out of ${totalQuestions}!`); 
               console.error('Game submission error:', e); 
@@ -2654,6 +2754,22 @@ const refreshAssignmentCourseContent = useCallback(async () => {
             setActiveScreen(lastScreen); 
           }} 
         />;
+      case 'gameattemptselection':
+        return gameAttemptSelectionData ? (
+          <GameAttemptSelection
+            assignmentTitle={gameAttemptSelectionData.assignmentTitle}
+            attempts={gameAttemptSelectionData.attempts}
+            selectedAttemptId={gameAttemptSelectionData.selectedAttemptId}
+            selectedAutomatically={gameAttemptSelectionData.selectedAutomatically}
+            attemptsRemaining={gameAttemptSelectionData.attemptsRemaining}
+            onSelectFinal={handleSelectFinalGameAttempt}
+            onPlayAgain={() => setActiveScreen('gamebasedassignment')}
+            onDecideLater={() => {
+              setGameAttemptSelectionData(null);
+              setActiveScreen(lastScreen);
+            }}
+          />
+        ) : null;
       case 'videos': 
         return <Videos 
           onVideoActiveChange={setIsVideoActive} 
@@ -2704,6 +2820,7 @@ const refreshAssignmentCourseContent = useCallback(async () => {
         completedActivityScores={completedActivityScores} 
         onOpenGeneratedActivity={(course, assignment) => openGeneratedActivity(course as unknown as CourseDetailData, assignment)} 
         onPlayGame={handlePlayGame} 
+        onViewGameAttempts={handleViewGameAttempts} 
         autoOpenAssignmentId={autoOpenAssignmentId}
         onConsumedAutoOpenAssignment={() => setAutoOpenAssignmentId(null)}
         onOpenRelatedMaterial={handleOpenRelatedMaterialFromAssignment}
@@ -2779,6 +2896,7 @@ const refreshAssignmentCourseContent = useCallback(async () => {
           completedActivityScores={completedActivityScores} 
           onGenerateActivity={(assignment) => openGeneratedActivity(selectedAssignmentCourse as unknown as CourseDetailData, assignment)} 
           onPlayGame={handlePlayGame} 
+          onViewGameAttempts={handleViewGameAttempts}
           // ✅ NEW: match Community's 8s "live" polling cadence, now that
           // silentRefresh (in CourseDetail) also covers modules/lessons + syllabus.
           autoRefreshIntervalMs={5000}

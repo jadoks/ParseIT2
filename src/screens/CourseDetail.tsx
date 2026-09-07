@@ -624,6 +624,11 @@ interface CourseDetailProps {
     }
   >;
   onPlayGame?: (assignment: AssignmentItem) => void;
+  // ✅ NEW: mirrors Assignments.tsx — lets the student jump straight to the
+  // attempt-selection screen for a game-based assignment they've already
+  // played, to choose (or change) which completed attempt counts as their
+  // official final score, without starting a new attempt.
+  onViewGameAttempts?: (assignment: AssignmentItem) => void;
   onEditComment?: (assignmentId: string, commentId: string, newContent: string) => Promise<void>;
   onDeleteComment?: (assignmentId: string, commentId: string) => Promise<void>;
   // ✅ NEW: refetches comments for ONE assignment (mirrors Assignments.tsx /
@@ -745,6 +750,7 @@ const CourseDetail = ({
   isGeneratingActivity = false,
   completedActivityScores = {},
   onPlayGame,
+  onViewGameAttempts,
   onEditComment,
   onDeleteComment,
   // ✅ NEW
@@ -859,6 +865,12 @@ const CourseDetail = ({
   const [previewFile, setPreviewFile] = useState<AssignmentFileUpload | null>(null);
   const [gameAttempts, setGameAttempts] = useState<Record<string, number>>({});
   const [isLoadingAttempts, setIsLoadingAttempts] = useState<Record<string, boolean>>({});
+  // ✅ NEW: mirrors Assignments.tsx — tracks which completed attempt (if any)
+  // is currently saved as the assignment's official final score, and
+  // whether that pick was made automatically (attempts ran out) vs by the
+  // student, so the button label can reflect it.
+  const [selectedGameAttemptIds, setSelectedGameAttemptIds] = useState<Record<string, string | null>>({});
+  const [autoFinalizedGameAssignments, setAutoFinalizedGameAssignments] = useState<Record<string, boolean>>({});
 
   // ── Modules state
   const [modules, setModules] = useState<any[]>([]);
@@ -1941,18 +1953,25 @@ const fetchModules = useCallback(async (silent = false) => {
     }
   };
 
+  // 🌟 UPDATED: was previously counting `classSubmissions` docs via
+  // /student-submissions/:studentId, but a student only ever has ONE
+  // submission doc per assignment (it gets upserted), so that count could
+  // only ever read 0 or 1 — it never reflected how many times the game had
+  // actually been played. Now reads from the real per-attempt record
+  // instead (mirrors Assignments.tsx's fetchGameAttempts), which also
+  // tells us whether a final score has already been chosen for this
+  // assignment, and whether that pick was automatic.
   const fetchGameAttempts = async (assignmentId: string) => {
     if (!currentStudent?.studentId) return;
     setIsLoadingAttempts((prev) => ({ ...prev, [assignmentId]: true }));
     try {
-      const response = await apiFetch(
-        `${API_BASE_URL}/student-submissions/${currentStudent.studentId}`
-      );
+      const response = await apiFetch(`${API_BASE_URL}/game-ai/attempts/${assignmentId}`);
       const data = await response.json();
-      if (response.ok && data?.data) {
-        const submissions = Array.isArray(data.data) ? data.data : [];
-        const count = submissions.filter((s: any) => s.assignmentId === assignmentId).length;
-        setGameAttempts((prev) => ({ ...prev, [assignmentId]: count }));
+      if (response.ok) {
+        const attempts = Array.isArray(data.attempts) ? data.attempts : [];
+        setGameAttempts((prev) => ({ ...prev, [assignmentId]: attempts.length }));
+        setSelectedGameAttemptIds((prev) => ({ ...prev, [assignmentId]: data.selectedAttemptId || null }));
+        setAutoFinalizedGameAssignments((prev) => ({ ...prev, [assignmentId]: !!data.selectedAutomatically }));
       }
     } catch (error) {
       console.error("Error fetching game attempts:", error);
@@ -3145,6 +3164,26 @@ const fetchModules = useCallback(async (silent = false) => {
                                     : "No Attempts Remaining"}
                               </Text>
                             </TouchableOpacity>
+
+                            {/* ✅ NEW: Once the student has completed at least one
+                                attempt, let them jump straight to the
+                                attempt-selection screen to choose (or change)
+                                which completed attempt counts as their final
+                                score — without needing to play another round. */}
+                            {(gameAttempts[selectedAssignment.id] || 0) > 0 && (
+                              <TouchableOpacity
+                                style={[styles.uploadButtonWide, { backgroundColor: "#2196F3", marginTop: 10 }]}
+                                onPress={() => onViewGameAttempts?.(selectedAssignment)}
+                              >
+                                <Text style={styles.uploadButtonText}>
+                                  {!selectedGameAttemptIds[selectedAssignment.id]
+                                    ? "Select Final Score"
+                                    : autoFinalizedGameAssignments[selectedAssignment.id]
+                                      ? "Auto-Submitted — Change Final Score"
+                                      : "Change Final Score"}
+                                </Text>
+                              </TouchableOpacity>
+                            )}
                           </>
                         )}
                       </View>
