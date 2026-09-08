@@ -637,6 +637,9 @@ const Assignments = ({
   const modalWidth = isLargeScreen ? '72%' : isSmallScreen ? '92%' : '88%';
 
   const [filter, setFilter] = useState<FilterType>('all');
+  const [filterDropdownVisible, setFilterDropdownVisible] = useState(false);
+  const [filterTriggerLayout, setFilterTriggerLayout] = useState({ x: 16, y: 170, height: 44 });
+  const filterTriggerRef = React.useRef<View>(null);
   const [selectedAssignment, setSelectedAssignment] = useState<FlattenedAssignment | null>(null);
   const [newComment, setNewComment] = useState('');
   const [submissionLink, setSubmissionLink] = useState('');
@@ -833,7 +836,7 @@ const Assignments = ({
     switch (status) {
       case 'pending': return '#FFE082';
       case 'submitted': return '#BBDEFB';
-      case 'late': return '#FFCC80';
+      case 'late': return '#FFCCBC';
       case 'graded': return '#A5D6A7';
       case 'missing': return '#FFCDD2';
       default: return '#DDD';
@@ -844,7 +847,7 @@ const Assignments = ({
     switch (status) {
       case 'pending': return '#7A5600';
       case 'submitted': return '#0D47A1';
-      case 'late': return '#E65100';
+      case 'late': return '#BF360C';
       case 'graded': return '#1B5E20';
       case 'missing': return '#B71C1C';
       default: return '#555';
@@ -1632,24 +1635,97 @@ const Assignments = ({
       }
     >
       <Text style={styles.title}>Assignments</Text>
-      <View style={styles.filterRow}>
-        {(['all', 'pending', 'submitted', 'late', 'graded', 'missing'] as FilterType[]).map((item) => (
-          <TouchableOpacity
-            key={item}
-            onPress={() => setFilter(item)}
-            style={[styles.filterChip, filter === item && styles.filterChipActive]}
-          >
-            <Text
+
+      <TouchableOpacity
+        ref={filterTriggerRef}
+        style={styles.filterDropdownTrigger}
+        onPress={() => {
+          filterTriggerRef.current?.measureInWindow((x, y, measuredWidth, height) => {
+            setFilterTriggerLayout({ x, y, height });
+            setFilterDropdownVisible(true);
+          });
+        }}
+        activeOpacity={0.8}
+      >
+        <View style={styles.filterDropdownTriggerLeft}>
+          {filter !== 'all' && (
+            <View
               style={[
-                styles.filterChipText,
-                filter === item && styles.filterChipTextActive,
+                styles.filterDropdownDot,
+                { backgroundColor: getStatusTextColor(filter as DisplayStatus) },
               ]}
-            >
-              {item.charAt(0).toUpperCase() + item.slice(1)}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
+            />
+          )}
+          <Text style={styles.filterDropdownTriggerText}>
+            {filter.charAt(0).toUpperCase() + filter.slice(1)}
+          </Text>
+        </View>
+        <MaterialCommunityIcons name="chevron-down" size={20} color="#555" />
+      </TouchableOpacity>
+
+      <Modal
+        visible={filterDropdownVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setFilterDropdownVisible(false)}
+      >
+        <Pressable
+          style={[
+            styles.filterDropdownOverlay,
+            isLargeScreen && styles.filterDropdownOverlayLarge,
+          ]}
+          onPress={() => setFilterDropdownVisible(false)}
+        >
+          <View
+            style={[
+              styles.filterDropdownMenu,
+              isLargeScreen
+                ? { width: '25%', marginLeft: filterTriggerLayout.x }
+                : { marginHorizontal: 16 },
+              { marginTop: filterTriggerLayout.y + filterTriggerLayout.height + 6 },
+            ]}
+          >
+            {(['all', 'pending', 'submitted', 'late', 'graded', 'missing'] as FilterType[]).map(
+              (item) => (
+                <TouchableOpacity
+                  key={item}
+                  style={[
+                    styles.filterDropdownItem,
+                    filter === item && styles.filterDropdownItemActive,
+                  ]}
+                  onPress={() => {
+                    setFilter(item);
+                    setFilterDropdownVisible(false);
+                  }}
+                >
+                  <View style={styles.filterDropdownTriggerLeft}>
+                    {item !== 'all' && (
+                      <View
+                        style={[
+                          styles.filterDropdownDot,
+                          { backgroundColor: getStatusTextColor(item as DisplayStatus) },
+                        ]}
+                      />
+                    )}
+                    <Text
+                      style={[
+                        styles.filterDropdownItemText,
+                        filter === item && styles.filterDropdownItemTextActive,
+                      ]}
+                    >
+                      {item.charAt(0).toUpperCase() + item.slice(1)}
+                    </Text>
+                  </View>
+                  {filter === item && (
+                    <MaterialCommunityIcons name="check" size={18} color="#D32F2F" />
+                  )}
+                </TouchableOpacity>
+              )
+            )}
+          </View>
+        </Pressable>
+      </Modal>
+
 
       {/* ✅ FIX: replaced a `FlatList` (with scrollEnabled={false}) with a
           plain mapped `View`. A FlatList/VirtualizedList nested inside a
@@ -2554,11 +2630,45 @@ const styles = StyleSheet.create({
   detailContainerMobile: { padding: 12, paddingBottom: 40 },
   detailContent: {},
   title: { fontSize: 24, fontWeight: '700', color: '#000', marginBottom: 16 },
-  filterRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 },
-  filterChip: { paddingHorizontal: 14, paddingVertical: 8, backgroundColor: '#EFEFEF', borderRadius: 999 },
-  filterChipActive: { backgroundColor: '#D32F2F' },
-  filterChipText: { fontSize: 12, fontWeight: '700', color: '#555' },
-  filterChipTextActive: { color: '#FFF' },
+  filterDropdownTrigger: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#EFEFEF',
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginBottom: 16,
+  },
+  filterDropdownTriggerLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  filterDropdownDot: { width: 8, height: 8, borderRadius: 4 },
+  filterDropdownTriggerText: { fontSize: 14, fontWeight: '700', color: '#333' },
+  filterDropdownOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.25)',
+    justifyContent: 'flex-start',
+  },
+  filterDropdownOverlayLarge: { alignItems: 'flex-start' },
+  filterDropdownMenu: {
+    backgroundColor: '#FFF',
+    borderRadius: 12,
+    paddingVertical: 6,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 10,
+    elevation: 6,
+  },
+  filterDropdownItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  filterDropdownItemActive: { backgroundColor: '#FDECEA' },
+  filterDropdownItemText: { fontSize: 14, fontWeight: '600', color: '#333' },
+  filterDropdownItemTextActive: { color: '#D32F2F' },
   assignmentCard: { borderLeftWidth: 5, borderLeftColor: '#D32F2F', backgroundColor: '#fff', borderRadius: 12, padding: 14, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 4, elevation: 2 },
   assignmentHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 },
   assignmentInfo: { flex: 1, marginRight: 8 },

@@ -1094,7 +1094,7 @@ const fetchModules = useCallback(async (silent = false) => {
     switch (status) {
       case "pending": return "#FFE082";
       case "submitted": return "#BBDEFB";
-      case "late": return "#FFCC80";
+      case "late": return "#FFCCBC";
       case "graded": return "#A5D6A7";
       case "missing": return "#FFCDD2";
       default: return "#DDD";
@@ -1105,7 +1105,7 @@ const fetchModules = useCallback(async (silent = false) => {
     switch (status) {
       case "pending": return "#7A5600";
       case "submitted": return "#0D47A1";
-      case "late": return "#E65100";
+      case "late": return "#BF360C";
       case "graded": return "#1B5E20";
       case "missing": return "#B71C1C";
       default: return "#555";

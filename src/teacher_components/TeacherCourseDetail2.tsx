@@ -231,9 +231,17 @@ const pad = (value: number) => String(value).padStart(2, '0');
 
 const formatDateTime = (value?: any) => {
   if (!value) return '';
-  if (typeof value === 'string') return value;
+  if (typeof value?.toDate === 'function') return value.toDate().toLocaleString();
   if (value?._seconds) return new Date(value._seconds * 1000).toLocaleString();
   if (value?.seconds) return new Date(value.seconds * 1000).toLocaleString();
+  // Previously returned raw strings unchanged instead of formatting them,
+  // which meant an ISO string like "2026-09-08T10:30:00.000Z" showed up
+  // as-is instead of a readable date+time — and downstream code that
+  // re-parsed it and called .toLocaleDateString() lost the time entirely.
+  if (typeof value === 'string') {
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleString();
+  }
   return '';
 };
 

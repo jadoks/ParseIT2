@@ -746,7 +746,7 @@ const mapSubmissionToItems = (submission: any): any[] => {
                   {isLink ? item.url : item.fileName}
                 </Text>
                 <Text style={styles.fileTypeText}>
-                  {isLink ? "Link submission" : "Submitted file"} • {new Date(item.submittedAt || Date.now()).toLocaleDateString()}
+                  {isLink ? "Link submission" : "Submitted file"} • {item.submittedAt || "Just now"}
                 </Text>
               </View>
               <MaterialCommunityIcons name="eye-outline" size={16} color="#9CA3AF" />
@@ -1414,7 +1414,7 @@ const handleDownloadPreview = async () => {
           <View style={styles.metaCell}>
             <Text style={styles.metaCellLabel}>📅 Submitted</Text>
             <Text style={styles.metaCellValue} numberOfLines={1}>
-              {latestSub?.submittedAt ? new Date(latestSub.submittedAt).toLocaleDateString() : "Not yet"}
+              {latestSub?.submittedAt || "Not yet"}
             </Text>
           </View>
         </View>
