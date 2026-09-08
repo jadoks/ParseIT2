@@ -1214,8 +1214,8 @@ const handleDownloadPreview = async () => {
 
   const getStatusColor = (status?: string) => {
     switch (status) {
-      case "graded": return "#065F46";
-      case "submitted": return "#1E40AF";
+      case "graded": return "#1E40AF";
+      case "submitted": return "#065F46";
       case "late": return "#991B1B";
       case "pending": return "#4B5563";
       default: return "#4B5563";
@@ -1224,8 +1224,8 @@ const handleDownloadPreview = async () => {
 
   const getStatusBgColor = (status?: string) => {
     switch (status) {
-      case "graded": return "#D1FAE5";
-      case "submitted": return "#DBEAFE";
+      case "graded": return "#DBEAFE";
+      case "submitted": return "#D1FAE5";
       case "late": return "#FEE2E2";
       case "pending": return "#F3F4F6";
       default: return "#F3F4F6";
