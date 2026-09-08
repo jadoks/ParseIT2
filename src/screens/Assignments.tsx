@@ -638,8 +638,6 @@ const Assignments = ({
 
   const [filter, setFilter] = useState<FilterType>('all');
   const [filterDropdownVisible, setFilterDropdownVisible] = useState(false);
-  const [filterTriggerLayout, setFilterTriggerLayout] = useState({ x: 16, y: 170, height: 44 });
-  const filterTriggerRef = React.useRef<View>(null);
   const [selectedAssignment, setSelectedAssignment] = useState<FlattenedAssignment | null>(null);
   const [newComment, setNewComment] = useState('');
   const [submissionLink, setSubmissionLink] = useState('');
@@ -1636,69 +1634,134 @@ const Assignments = ({
     >
       <Text style={styles.title}>Assignments</Text>
 
-      <TouchableOpacity
-        ref={filterTriggerRef}
-        style={styles.filterDropdownTrigger}
-        onPress={() => {
-          filterTriggerRef.current?.measureInWindow((x, y, measuredWidth, height) => {
-            setFilterTriggerLayout({ x, y, height });
-            setFilterDropdownVisible(true);
-          });
-        }}
-        activeOpacity={0.8}
+      <View
+        style={[
+          styles.filterDropdownContainer,
+          isLargeScreen && styles.filterDropdownContainerLarge,
+        ]}
       >
-        <View style={styles.filterDropdownTriggerLeft}>
-          {filter !== 'all' && (
-            <View
-              style={[
-                styles.filterDropdownDot,
-                { backgroundColor: getStatusTextColor(filter as DisplayStatus) },
-              ]}
-            />
-          )}
-          <Text style={styles.filterDropdownTriggerText}>
-            {filter.charAt(0).toUpperCase() + filter.slice(1)}
-          </Text>
-        </View>
-        <MaterialCommunityIcons name="chevron-down" size={20} color="#555" />
-      </TouchableOpacity>
-
-      <Modal
-        visible={filterDropdownVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setFilterDropdownVisible(false)}
-      >
-        <Pressable
-          style={[
-            styles.filterDropdownOverlay,
-            isLargeScreen && styles.filterDropdownOverlayLarge,
-          ]}
-          onPress={() => setFilterDropdownVisible(false)}
+        <TouchableOpacity
+          style={styles.filterDropdownButton}
+          onPress={() => setFilterDropdownVisible((prev) => !prev)}
+          activeOpacity={0.8}
         >
-          <View
-            style={[
-              styles.filterDropdownMenu,
-              isLargeScreen
-                ? { width: '25%', marginLeft: filterTriggerLayout.x }
-                : { marginHorizontal: 16 },
-              { marginTop: filterTriggerLayout.y + filterTriggerLayout.height + 6 },
-            ]}
+          <View style={styles.filterDropdownButtonLeft}>
+            {filter !== 'all' && (
+              <View
+                style={[
+                  styles.filterDropdownDot,
+                  { backgroundColor: getStatusTextColor(filter as DisplayStatus) },
+                ]}
+              />
+            )}
+            <Text style={styles.filterDropdownButtonText} numberOfLines={1}>
+              {filter.charAt(0).toUpperCase() + filter.slice(1)}
+            </Text>
+          </View>
+          <MaterialCommunityIcons
+            name={filterDropdownVisible ? 'chevron-up' : 'chevron-down'}
+            size={16}
+            color="#000"
+          />
+        </TouchableOpacity>
+
+        {/* ✅ On mobile the options list opens in a real top-level Modal
+            (bottom sheet) instead of an inline absolutely-positioned View.
+            The inline version sits inside this screen's ScrollView, which
+            clips/covers it on small screens so it can't be tapped. A Modal
+            renders above the entire app, so it's always on top and always
+            tappable. Same pattern as Honors.tsx's CustomDropdown. */}
+        {!isLargeScreen ? (
+          <Modal
+            visible={filterDropdownVisible}
+            transparent
+            animationType="fade"
+            onRequestClose={() => setFilterDropdownVisible(false)}
+            statusBarTranslucent
           >
-            {(['all', 'pending', 'submitted', 'late', 'graded', 'missing'] as FilterType[]).map(
-              (item) => (
-                <TouchableOpacity
-                  key={item}
-                  style={[
-                    styles.filterDropdownItem,
-                    filter === item && styles.filterDropdownItemActive,
-                  ]}
-                  onPress={() => {
-                    setFilter(item);
-                    setFilterDropdownVisible(false);
-                  }}
+            <TouchableOpacity
+              style={styles.filterDropdownModalOverlay}
+              activeOpacity={1}
+              onPress={() => setFilterDropdownVisible(false)}
+            >
+              {/* Swallow taps on the sheet itself so they don't close the modal */}
+              <TouchableOpacity
+                style={styles.filterDropdownModalSheet}
+                activeOpacity={1}
+                onPress={() => {}}
+              >
+                <View style={styles.filterDropdownModalHandle} />
+
+                <View style={styles.filterDropdownModalHeader}>
+                  <Text style={styles.filterDropdownModalTitle}>Filter Assignments</Text>
+                  <TouchableOpacity onPress={() => setFilterDropdownVisible(false)} hitSlop={8}>
+                    <MaterialCommunityIcons name="close" size={22} color="#3B332E" />
+                  </TouchableOpacity>
+                </View>
+
+                <ScrollView
+                  style={styles.filterDropdownModalScroll}
+                  showsVerticalScrollIndicator={false}
                 >
-                  <View style={styles.filterDropdownTriggerLeft}>
+                  {(['all', 'pending', 'submitted', 'late', 'graded', 'missing'] as FilterType[]).map(
+                    (item) => {
+                      const isSelected = item === filter;
+                      return (
+                        <TouchableOpacity
+                          key={item}
+                          style={[
+                            styles.filterDropdownModalItem,
+                            isSelected && styles.filterDropdownModalItemSelected,
+                          ]}
+                          onPress={() => {
+                            setFilter(item);
+                            setFilterDropdownVisible(false);
+                          }}
+                          activeOpacity={0.8}
+                        >
+                          <View style={styles.filterDropdownButtonLeft}>
+                            {item !== 'all' && (
+                              <View
+                                style={[
+                                  styles.filterDropdownDot,
+                                  { backgroundColor: getStatusTextColor(item as DisplayStatus) },
+                                ]}
+                              />
+                            )}
+                            <Text
+                              style={[
+                                styles.filterDropdownModalItemText,
+                                isSelected && styles.filterDropdownModalItemTextSelected,
+                              ]}
+                            >
+                              {item.charAt(0).toUpperCase() + item.slice(1)}
+                            </Text>
+                          </View>
+                          {isSelected ? (
+                            <MaterialCommunityIcons name="check" size={18} color="#B71C1C" />
+                          ) : null}
+                        </TouchableOpacity>
+                      );
+                    }
+                  )}
+                </ScrollView>
+              </TouchableOpacity>
+            </TouchableOpacity>
+          </Modal>
+        ) : filterDropdownVisible ? (
+          <View style={styles.filterInlineDropdownMenu}>
+            <ScrollView nestedScrollEnabled showsVerticalScrollIndicator={false}>
+              {(['all', 'pending', 'submitted', 'late', 'graded', 'missing'] as FilterType[]).map(
+                (item) => (
+                  <TouchableOpacity
+                    key={item}
+                    style={styles.filterDropdownItem}
+                    onPress={() => {
+                      setFilter(item);
+                      setFilterDropdownVisible(false);
+                    }}
+                    activeOpacity={0.8}
+                  >
                     {item !== 'all' && (
                       <View
                         style={[
@@ -1707,24 +1770,16 @@ const Assignments = ({
                         ]}
                       />
                     )}
-                    <Text
-                      style={[
-                        styles.filterDropdownItemText,
-                        filter === item && styles.filterDropdownItemTextActive,
-                      ]}
-                    >
+                    <Text style={styles.filterDropdownItemText}>
                       {item.charAt(0).toUpperCase() + item.slice(1)}
                     </Text>
-                  </View>
-                  {filter === item && (
-                    <MaterialCommunityIcons name="check" size={18} color="#D32F2F" />
-                  )}
-                </TouchableOpacity>
-              )
-            )}
+                  </TouchableOpacity>
+                )
+              )}
+            </ScrollView>
           </View>
-        </Pressable>
-      </Modal>
+        ) : null}
+      </View>
 
 
       {/* ✅ FIX: replaced a `FlatList` (with scrollEnabled={false}) with a
@@ -2630,45 +2685,109 @@ const styles = StyleSheet.create({
   detailContainerMobile: { padding: 12, paddingBottom: 40 },
   detailContent: {},
   title: { fontSize: 24, fontWeight: '700', color: '#000', marginBottom: 16 },
-  filterDropdownTrigger: {
+  filterDropdownContainer: {
+    position: 'relative',
+    width: '100%',
+    zIndex: 4000,
+    marginBottom: 16,
+  },
+  filterDropdownContainerLarge: { width: '25%' },
+  filterDropdownButton: {
+    width: '100%',
+    height: 46,
+    borderWidth: 1,
+    borderColor: '#B8AFA7',
+    borderRadius: 10,
+    paddingHorizontal: 14,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: '#EFEFEF',
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    marginBottom: 16,
+    backgroundColor: '#FFFFFF',
+    zIndex: 4001,
   },
-  filterDropdownTriggerLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  filterDropdownButtonLeft: { flexDirection: 'row', alignItems: 'center', gap: 8, flexShrink: 1 },
   filterDropdownDot: { width: 8, height: 8, borderRadius: 4 },
-  filterDropdownTriggerText: { fontSize: 14, fontWeight: '700', color: '#333' },
-  filterDropdownOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.25)',
-    justifyContent: 'flex-start',
+  filterDropdownButtonText: {
+    fontSize: 14,
+    color: '#111',
+    fontWeight: '700',
+    flexShrink: 1,
+    marginRight: 8,
   },
-  filterDropdownOverlayLarge: { alignItems: 'flex-start' },
-  filterDropdownMenu: {
-    backgroundColor: '#FFF',
-    borderRadius: 12,
-    paddingVertical: 6,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 10,
-    elevation: 6,
+
+  // ✅ Desktop/large-screen inline dropdown — absolutely positioned just
+  // below the button, matching Honors.tsx's CustomDropdown.
+  filterInlineDropdownMenu: {
+    position: 'absolute',
+    top: 50,
+    left: 0,
+    width: '100%',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#CFCFCF',
+    overflow: 'hidden',
+    zIndex: 5000,
+    maxHeight: 260,
   },
   filterDropdownItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    gap: 8,
+    backgroundColor: '#FFFFFF',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
   },
-  filterDropdownItemActive: { backgroundColor: '#FDECEA' },
-  filterDropdownItemText: { fontSize: 14, fontWeight: '600', color: '#333' },
-  filterDropdownItemTextActive: { color: '#D32F2F' },
+  filterDropdownItemText: { fontSize: 13, color: '#000' },
+
+  // ✅ Mobile "Filter Assignments" bottom-sheet Modal — rendered by RN's
+  // Modal so it always sits above the ScrollView/cards, same pattern as
+  // Honors.tsx's CustomDropdown.
+  filterDropdownModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'flex-end',
+  },
+  filterDropdownModalSheet: {
+    width: '100%',
+    maxHeight: '70%',
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingHorizontal: 18,
+    paddingTop: 10,
+    paddingBottom: 24,
+  },
+  filterDropdownModalHandle: {
+    alignSelf: 'center',
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#DDD6CE',
+    marginBottom: 12,
+  },
+  filterDropdownModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+    paddingBottom: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F0EBE4',
+  },
+  filterDropdownModalTitle: { fontSize: 15, fontWeight: '800', color: '#3B332E' },
+  filterDropdownModalScroll: { maxHeight: 320 },
+  filterDropdownModalItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 14,
+    paddingHorizontal: 10,
+    borderRadius: 10,
+  },
+  filterDropdownModalItemSelected: { backgroundColor: '#FDECEC' },
+  filterDropdownModalItemText: { fontSize: 14, fontWeight: '600', color: '#111' },
+  filterDropdownModalItemTextSelected: { color: '#B71C1C', fontWeight: '800' },
   assignmentCard: { borderLeftWidth: 5, borderLeftColor: '#D32F2F', backgroundColor: '#fff', borderRadius: 12, padding: 14, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 4, elevation: 2 },
   assignmentHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 },
   assignmentInfo: { flex: 1, marginRight: 8 },
