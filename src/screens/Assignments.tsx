@@ -2691,7 +2691,7 @@ const styles = StyleSheet.create({
     zIndex: 4000,
     marginBottom: 16,
   },
-  filterDropdownContainerLarge: { width: '25%' },
+  filterDropdownContainerLarge: { width: '15%' },
   filterDropdownButton: {
     width: '100%',
     height: 46,
