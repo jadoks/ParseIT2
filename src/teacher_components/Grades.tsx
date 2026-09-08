@@ -210,7 +210,7 @@ const Grades = ({ apiBaseUrl }: GradesProps) => {
   const isLargeScreen = width >= 1024;
   const isStackedLayout = width < 760;
 
-  const contentHorizontalPadding = isPhone ? 16 : isTablet ? 28 : 40;
+  const contentHorizontalPadding = isPhone ? 16 : isTablet ? 28 : 150;
   const titleSize = isPhone ? 32 : isTablet ? 36 : 36;
 
   const mobileReportWidth = Math.max(320, width - 32);

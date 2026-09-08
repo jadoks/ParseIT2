@@ -815,6 +815,7 @@ export default function ShareAnnouncement({
 }: ShareAnnouncementProps) {
   const { width } = useWindowDimensions();
   const isMobile = Platform.OS !== 'web' || width < 768;
+  const isLargeScreen = width >= 1024;
 
   const [selectedBg, setSelectedBg] = useState(4);
   const [header, setHeader] = useState('');
@@ -1260,7 +1261,7 @@ export default function ShareAnnouncement({
           contentContainerStyle={
             isMobile
               ? styles.mobileContentContainer
-              : styles.webContentContainer
+              : [styles.webContentContainer, isLargeScreen && styles.webContentContainerLarge]
           }
           showsVerticalScrollIndicator={true}
         >
@@ -1886,6 +1887,7 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   mobileContentContainer: { flexGrow: 1, paddingHorizontal: 20, paddingTop: 10, paddingBottom: 32 },
   webContentContainer: { flexGrow: 1, paddingLeft: 25, paddingRight: 120, paddingTop: 10, paddingBottom: 32 },
+  webContentContainerLarge: { paddingLeft: 150, paddingRight: 150 },
   headerSpacer: { height: 10, marginBottom: 20 },
   formTitle: { fontWeight: 'bold', color: '#000', fontFamily, letterSpacing: -0.5 },
   formSubTitle: { fontSize: 14, color: '#444', marginBottom: 30, fontFamily },

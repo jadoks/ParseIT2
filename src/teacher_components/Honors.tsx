@@ -421,6 +421,7 @@ function HonorRollPreviewModal({
 export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
   const { width } = useWindowDimensions();
   const isMobile = width < 768;
+  const isLargeScreen = width >= 1024;
 
   const semesters = [
     "1st Semester",
@@ -1151,7 +1152,11 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView
-        contentContainerStyle={[styles.content, isMobile && styles.contentMobile]}
+        contentContainerStyle={[
+          styles.content,
+          isMobile && styles.contentMobile,
+          isLargeScreen && styles.contentLarge,
+        ]}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
@@ -1376,6 +1381,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 40,
     paddingTop: 30,
     paddingBottom: 40,
+  },
+  contentLarge: {
+    paddingHorizontal: 150,
   },
   contentMobile: {
     paddingHorizontal: 16,
