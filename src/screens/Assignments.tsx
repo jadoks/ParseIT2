@@ -1,4 +1,4 @@
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import Constants from 'expo-constants';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
@@ -1601,7 +1601,14 @@ const Assignments = ({
           ) : null}
         </View>
         
-        {recommendationLabel && (
+        {hasMasteredGeneratedActivity(item) ? (
+          <View style={styles.masteredActivityBadge}>
+            <Ionicons name="checkmark-circle" size={14} color="#2E7D32" />
+            <Text style={styles.masteredActivityText}>
+              Follow-up mastered ({completedActivityScores[item.id]?.scorePercent}%)
+            </Text>
+          </View>
+        ) : recommendationLabel ? (
           <View
             style={[
               styles.recommendationBadge,
@@ -1617,7 +1624,7 @@ const Assignments = ({
               {recommendationLabel}
             </Text>
           </View>
-        )}
+        ) : null}
       </TouchableOpacity>
     );
   };
@@ -2788,7 +2795,19 @@ const styles = StyleSheet.create({
   filterDropdownModalItemSelected: { backgroundColor: '#FDECEC' },
   filterDropdownModalItemText: { fontSize: 14, fontWeight: '600', color: '#111' },
   filterDropdownModalItemTextSelected: { color: '#B71C1C', fontWeight: '800' },
-  assignmentCard: { borderLeftWidth: 5, borderLeftColor: '#D32F2F', backgroundColor: '#fff', borderRadius: 12, padding: 14, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 4, elevation: 2 },
+  assignmentCard: {
+    borderWidth: 1,
+    borderColor: '#E6E6E6',
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    paddingHorizontal: 18,
+    paddingVertical: 14,
+    shadowColor: '#000',
+    shadowOffset: { width: 4, height: 4 },
+    shadowOpacity: 0.06,
+    shadowRadius: 4,
+    elevation: 2,
+  },
   assignmentHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 },
   assignmentInfo: { flex: 1, marginRight: 8 },
   assignmentTitle: { fontSize: 16, fontWeight: '700', color: '#000', marginBottom: 4 },
@@ -2799,6 +2818,18 @@ const styles = StyleSheet.create({
   assignmentFooter: { borderTopWidth: 1, borderTopColor: '#E6E6E6', paddingTop: 8 },
   dueDateText: { color: '#D32F2F', fontWeight: '600', fontSize: 13, marginBottom: 4 },
   pointsText: { fontSize: 12, color: '#666', fontWeight: '600' },
+  masteredActivityBadge: {
+    marginTop: 10,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#E8F5E9',
+  },
+  masteredActivityText: { fontSize: 12, fontWeight: '800', color: '#2E7D32' },
   relatedPreviewText: { fontSize: 12, color: '#666', marginTop: 8, lineHeight: 18 },
   recommendationBadge: { marginTop: 10, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 7, alignSelf: 'flex-start' },
   recommendationText: { fontWeight: '700', fontSize: 12 },
