@@ -1633,7 +1633,8 @@ const Assignments = ({
     <ScrollView
       style={styles.container}
       contentContainerStyle={{
-        padding: isLargeScreen ? 24 : 16,
+        paddingVertical: isLargeScreen ? 24 : 16,
+        paddingHorizontal: isLargeScreen ? 150 : 16,
       }}
       refreshControl={
         <RefreshControl refreshing={isRefreshing} onRefresh={handlePullToRefresh} colors={['#D32F2F']} tintColor="#D32F2F" />

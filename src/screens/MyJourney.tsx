@@ -64,6 +64,7 @@ const MyJourney = ({
   const { width, height } = useWindowDimensions();
   const isMobile = width < 768;
   const isTablet = width >= 768 && width < 1100;
+  const isLargeScreen = width >= 1100;
 
   const [startYearInput, setStartYearInput] = useState(() => getDefaultStartYear());
   const [sem, setSem] = useState(SEMS[0]);
@@ -243,6 +244,7 @@ const MyJourney = ({
         styles.container,
         isTablet && styles.containerTablet,
         isMobile && styles.containerMobile,
+        isLargeScreen && styles.containerLarge,
       ]}
       style={styles.screen}
     >
@@ -461,6 +463,7 @@ const styles = StyleSheet.create({
   container: { width: '100%', maxWidth: 1280, alignSelf: 'center', padding: 24, paddingBottom: 44 },
   containerTablet: { paddingHorizontal: 20 },
   containerMobile: { padding: 14, paddingBottom: 28 },
+  containerLarge: { paddingHorizontal: 150 },
   pageHeaderCard: { backgroundColor: '#FFFFFF', borderRadius: 22, borderWidth: 1, borderColor: '#E5E7EB', overflow: 'hidden', marginBottom: 16, shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 14, shadowOffset: { width: 0, height: 8 }, elevation: 2 },
   pageHeaderAccent: { height: 8, backgroundColor: '#D32F2F' },
   pageHeaderContent: { paddingHorizontal: 22, paddingVertical: 20 },
