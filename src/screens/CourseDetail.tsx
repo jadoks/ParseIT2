@@ -133,6 +133,17 @@ const isPastDueDate = (dueDate?: string) => {
   return parsed.getTime() < Date.now();
 };
 
+// ✅ NEW: Mirrors Assignments.tsx — "Disable repository after due"
+// (repositoryDisabledAfterDue) closes submissions entirely once the due
+// date passes. Being past due alone still allows a late submission; this
+// additionally requires the teacher to have enabled the setting.
+const isSubmissionLocked = (
+  assignment?: { dueDate?: string; repositoryDisabledAfterDue?: boolean } | null
+) => {
+  if (!assignment?.repositoryDisabledAfterDue) return false;
+  return isPastDueDate(assignment.dueDate);
+};
+
 // ✅ NEW: "missing" is a purely client-side, derived display status — it is
 // never written back to the backend/AssignmentItem["status"] field. An
 // assignment that is still "pending" (i.e. the student never played the
@@ -1858,6 +1869,14 @@ const fetchModules = useCallback(async (silent = false) => {
   const handleSubmitAssignment = async () => {
     if (!selectedAssignment || !course?.id) return;
     if (isAssignmentSubmitted(selectedAssignment)) return;
+    if (isSubmissionLocked(selectedAssignment)) {
+      showFeedback(
+        'error',
+        'Submission Closed',
+        'The due date for this assignment has passed and your teacher has turned off late submissions. This assignment can no longer accept work.'
+      );
+      return;
+    }
     if (!currentStudent?.studentId) {
       showFeedback('error', 'Missing student', 'Student account information is missing. Please sign in again.');
       return;
@@ -2225,6 +2244,9 @@ const fetchModules = useCallback(async (silent = false) => {
         </View>
         <View style={styles.assignmentFooter}>
           <Text style={styles.dueDateText}>Due: {item.dueDate}</Text>
+          {isSubmissionLocked(item) && !isAssignmentSubmitted(item) ? (
+            <Text style={styles.dueDateText}>Submissions closed</Text>
+          ) : null}
           {percent !== null ? (
             <Text style={styles.pointsText}>
               Score: {item.points}/{item.maxPoints} ({percent}%)
@@ -3374,6 +3396,8 @@ const fetchModules = useCallback(async (silent = false) => {
                             </View>
                           );
                         }
+                        const locked = isSubmissionLocked(selectedAssignment);
+
                         if (isSubmitted) {
                           return (
                             <View style={styles.uploadActionsRow}>
@@ -3384,24 +3408,49 @@ const fetchModules = useCallback(async (silent = false) => {
                                     Already submitted
                                   </Text>
                                   <Text style={styles.lockedSubmissionText}>
-                                    Your teacher has received this assignment. Unsubmit only if
-                                    you need to change your file before grading.
+                                    {locked
+                                      ? "Your teacher has received this assignment. Submissions are now closed, so this can no longer be changed."
+                                      : "Your teacher has received this assignment. Unsubmit only if you need to change your file before grading."}
                                   </Text>
                                 </View>
                               </View>
-                              <TouchableOpacity
-                                onPress={handleUnsubmitAssignment}
-                                disabled={isSubmittingAssignment}
-                                style={[
-                                  styles.uploadButtonWide,
-                                  { backgroundColor: "#D32F2F" },
-                                  isSubmittingAssignment && styles.sendButtonDisabled,
-                                ]}
-                              >
-                                <Text style={styles.uploadButtonText}>
-                                  {isSubmittingAssignment ? "UNSUBMITTING..." : "UNSUBMIT"}
-                                </Text>
-                              </TouchableOpacity>
+                              {!locked && (
+                                <TouchableOpacity
+                                  onPress={handleUnsubmitAssignment}
+                                  disabled={isSubmittingAssignment}
+                                  style={[
+                                    styles.uploadButtonWide,
+                                    { backgroundColor: "#D32F2F" },
+                                    isSubmittingAssignment && styles.sendButtonDisabled,
+                                  ]}
+                                >
+                                  <Text style={styles.uploadButtonText}>
+                                    {isSubmittingAssignment ? "UNSUBMITTING..." : "UNSUBMIT"}
+                                  </Text>
+                                </TouchableOpacity>
+                              )}
+                            </View>
+                          );
+                        }
+
+                        // ✅ NEW: Past due + "Disable repository after due" enabled, and
+                        // the student never submitted in time — submission is fully closed.
+                        if (locked) {
+                          return (
+                            <View style={styles.uploadActionsRow}>
+                              <View style={styles.lockedSubmissionBox}>
+                                <Ionicons name="lock-closed-outline" size={18} color="#D32F2F" />
+                                <View style={{ flex: 1 }}>
+                                  <Text style={styles.lockedSubmissionTitle}>
+                                    Submission closed
+                                  </Text>
+                                  <Text style={styles.lockedSubmissionText}>
+                                    The due date has passed and your teacher has turned off
+                                    submissions after the deadline. This assignment can no longer
+                                    accept work.
+                                  </Text>
+                                </View>
+                              </View>
                             </View>
                           );
                         }
