@@ -1554,6 +1554,12 @@ const fetchModules = useCallback(async (silent = false) => {
         prev.fileUrl === (freshMatch as any).fileUrl &&
         prev.storagePath === (freshMatch as any).storagePath &&
         prev.numberOfAttempts === (freshMatch as any).numberOfAttempts &&
+        // ✅ FIX: without this, a teacher flipping "Disable repository after
+        // due" WHILE a student already has the assignment open would never
+        // reach selectedAssignment — every other field is unchanged, so the
+        // old (unlocked) value stuck around and the lock silently never
+        // applied for that open session.
+        !!(prev as any).repositoryDisabledAfterDue === !!(freshMatch as any).repositoryDisabledAfterDue &&
         JSON.stringify(prev.materialIds || []) === JSON.stringify((freshMatch as any).materialIds || []) &&
         JSON.stringify((prev as any).files || []) === JSON.stringify((freshMatch as any).files || []);
       if (sameContent) return prev;

@@ -792,6 +792,12 @@ const Assignments = ({
         prev.fileUrl === freshMatch.fileUrl &&
         prev.storagePath === freshMatch.storagePath &&
         prev.numberOfAttempts === freshMatch.numberOfAttempts &&
+        // ✅ FIX: without this, a teacher flipping "Disable repository after
+        // due" WHILE a student already has the assignment open would never
+        // reach selectedAssignment — every other field is unchanged, so the
+        // old (unlocked) value stuck around and the lock silently never
+        // applied for that open session.
+        !!prev.repositoryDisabledAfterDue === !!freshMatch.repositoryDisabledAfterDue &&
         JSON.stringify(prev.materialIds || []) === JSON.stringify(freshMatch.materialIds || []) &&
         JSON.stringify(prev.files || []) === JSON.stringify(freshMatch.files || []);
       if (sameContent) return prev;
