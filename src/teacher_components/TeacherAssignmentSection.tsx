@@ -16,6 +16,39 @@ type Props = {
   onOpenMembers: (id: string) => void;
 };
 
+// Mirrors parseDueDateTime() in TeacherCourseDetail2.tsx — dueDate is stored
+// as "YYYY-MM-DD HH:mm" (or date-only), so this turns it back into a Date
+// we can compare against "now" to know if the assignment is past due.
+const parseDueDateTime = (value?: string) => {
+  if (!value?.trim()) return null;
+  const normalized = value.trim().replace(' ', 'T');
+  const parsed = new Date(normalized);
+  if (!Number.isNaN(parsed.getTime())) return parsed;
+  const dateOnly = value.trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (dateOnly) {
+    return new Date(
+      Number(dateOnly[1]),
+      Number(dateOnly[2]) - 1,
+      Number(dateOnly[3]),
+      23,
+      59
+    );
+  }
+  return null;
+};
+
+const isPastDue = (dueDate?: string) => {
+  const due = parseDueDateTime(dueDate);
+  if (!due) return false;
+  return due.getTime() < Date.now();
+};
+
+// "Closed" only applies once the due date has passed AND the teacher has
+// the "disable repository after due" setting on for this assignment —
+// matches the same lock condition students see (isSubmissionLocked()).
+const isAssignmentClosed = (item: Assignment) =>
+  !!item.repositoryDisabledAfterDue && isPastDue(item.dueDate);
+
 const TeacherAssignmentSection = ({
   assignments,
   onCreate,
@@ -28,7 +61,10 @@ const TeacherAssignmentSection = ({
   const containerPadding = isMobile ? 16 : isTablet ? 40 : 80;
   const cardPaddingHorizontal = isMobile ? 14 : isTablet ? 22 : 38;
 
-  const renderAssignmentItem = ({ item }: { item: Assignment }) => (
+  const renderAssignmentItem = ({ item }: { item: Assignment }) => {
+    const closed = isAssignmentClosed(item);
+
+    return (
     <TouchableOpacity
       style={[
         styles.assignmentCard,
@@ -47,8 +83,10 @@ const TeacherAssignmentSection = ({
           )}
         </View>
 
-        <View style={styles.statusBadge}>
-          <Text style={styles.statusText}>Open</Text>
+        <View style={[styles.statusBadge, closed && styles.statusBadgeClosed]}>
+          <Text style={[styles.statusText, closed && styles.statusTextClosed]}>
+            {closed ? 'Closed' : 'Open'}
+          </Text>
         </View>
       </View>
 
@@ -91,7 +129,8 @@ const TeacherAssignmentSection = ({
         </View>
       )}
     </TouchableOpacity>
-  );
+    );
+  };
 
   return (
   <View style={[styles.container, { paddingHorizontal: containerPadding }]}>
@@ -130,6 +169,8 @@ const styles = StyleSheet.create({
   assignmentTopicText: { color: '#444', fontSize: 12, fontWeight: '600', marginTop: 4, lineHeight: 18 },
   statusBadge: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, backgroundColor: '#FDECEC' },
   statusText: { fontWeight: '700', fontSize: 12, color: '#D32F2F' },
+  statusBadgeClosed: { backgroundColor: '#EEEEEE' },
+  statusTextClosed: { color: '#666666' },
   assignmentFooter: { borderTopWidth: 1, borderTopColor: '#E6E6E6', paddingTop: 8 },
   dueDateText: { color: '#D32F2F', fontWeight: '600', fontSize: 13, marginBottom: 4 },
   pointsText: { fontSize: 12, color: '#666', fontWeight: '600' },
