@@ -58,7 +58,7 @@ const TeacherAssignmentSection = ({
         </Text>
 
         <Text style={styles.pointsText}>
-          Score: {item.totalScore || '0'} • On Time: {item.pointsOnTime || '0'}
+          Score: {item.totalScore || '0'}
         </Text>
       </View>
 

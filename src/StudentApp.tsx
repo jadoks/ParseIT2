@@ -425,6 +425,9 @@ const mapCourseAssignmentsToAssignmentItems = (assignments: CourseAssignment[]):
     customAttempts: (assignment as any).customAttempts || null,
     gradedAt: (assignment as any).gradedAt || null,
     submittedAt: (assignment as any).submittedAt || null,
+    // 🔥 FIX: this field was being dropped, so isSubmissionLocked() always
+    // saw `undefined` and never enforced the teacher's lock-after-due setting.
+    repositoryDisabledAfterDue: (assignment as any).repositoryDisabledAfterDue ?? false,
   }));
 
 const mapCoursesToAssignmentCourses = (courses: CourseDetailData[]): AssignmentCourseWithBannerFields[] =>
@@ -618,6 +621,9 @@ const mapCourseDetailToAssignmentCourse = (course: CourseDetailData): Assignment
     files: mapCourseFilesToAssignmentFiles(assignment.files),
     assignmentType: (assignment as any).assignmentType || 'regular',
     gameType: (assignment as any).gameType || null,
+    // 🔥 FIX: this field was being dropped, so isSubmissionLocked() always
+    // saw `undefined` and never enforced the teacher's lock-after-due setting.
+    repositoryDisabledAfterDue: (assignment as any).repositoryDisabledAfterDue ?? false,
   })),
 });
 

@@ -578,6 +578,7 @@ export interface CourseAssignment {
   comments?: CourseAssignmentComment[];
   assignmentType?: "regular" | "game_based";
   gameType?: string;
+  repositoryDisabledAfterDue?: boolean;
 }
 
 export type ClassScheduleEntry = {
