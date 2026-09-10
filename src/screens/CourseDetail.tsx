@@ -3201,12 +3201,21 @@ const fetchModules = useCallback(async (silent = false) => {
                               </Text>
                             </TouchableOpacity>
 
-                            {/* ✅ NEW: Once the student has completed at least one
-                                attempt, let them jump straight to the
-                                attempt-selection screen to choose (or change)
-                                which completed attempt counts as their final
-                                score — without needing to play another round. */}
-                            {(gameAttempts[selectedAssignment.id] || 0) > 0 && (
+                            {/* ✅ Once the student has completed at least one
+                                attempt, let them jump to the attempt-selection
+                                screen to choose their final score. Once a
+                                final score has been manually submitted (i.e.
+                                they tapped "Submit as Final Score" in
+                                GameAttemptSelection), this button hides so the
+                                decision is locked in. It still shows when the
+                                score was auto-finalized (they ran out of
+                                attempts without choosing), so they can pick a
+                                different attempt in that case, and while no
+                                final score has been chosen yet ("Select Final
+                                Score"). */}
+                            {(gameAttempts[selectedAssignment.id] || 0) > 0 &&
+                              (!selectedGameAttemptIds[selectedAssignment.id] ||
+                                autoFinalizedGameAssignments[selectedAssignment.id]) && (
                               <TouchableOpacity
                                 style={[styles.uploadButtonWide, { backgroundColor: "#2196F3", marginTop: 10 }]}
                                 onPress={() => onViewGameAttempts?.(selectedAssignment)}
@@ -3214,9 +3223,7 @@ const fetchModules = useCallback(async (silent = false) => {
                                 <Text style={styles.uploadButtonText}>
                                   {!selectedGameAttemptIds[selectedAssignment.id]
                                     ? "Select Final Score"
-                                    : autoFinalizedGameAssignments[selectedAssignment.id]
-                                      ? "Auto-Submitted — Change Final Score"
-                                      : "Change Final Score"}
+                                    : "Auto-Submitted — Change Final Score"}
                                 </Text>
                               </TouchableOpacity>
                             )}
