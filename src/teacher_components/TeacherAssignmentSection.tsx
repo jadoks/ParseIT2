@@ -43,11 +43,18 @@ const isPastDue = (dueDate?: string) => {
   return due.getTime() < Date.now();
 };
 
-// "Closed" only applies once the due date has passed AND the teacher has
-// the "disable repository after due" setting on for this assignment —
-// matches the same lock condition students see (isSubmissionLocked()).
-const isAssignmentClosed = (item: Assignment) =>
-  !!item.repositoryDisabledAfterDue && isPastDue(item.dueDate);
+// "Closed" means students can no longer act on the assignment:
+// - Regular (file/link) assignments only close once BOTH the due date has
+//   passed AND the teacher turned on "disable repository after due" —
+//   matches isSubmissionLocked() on the student side.
+// - Game-based assignments have no such toggle; students are always
+//   blocked from playing once the due date passes (see
+//   getPlayGameBlockedReason() in Assignments.tsx), so these close on due
+//   date alone.
+const isAssignmentClosed = (item: Assignment) => {
+  if (!isPastDue(item.dueDate)) return false;
+  return item.assignmentType === 'game_based' ? true : !!item.repositoryDisabledAfterDue;
+};
 
 const TeacherAssignmentSection = ({
   assignments,
