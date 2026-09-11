@@ -1,7 +1,4 @@
 import { Ionicons } from '@expo/vector-icons';
-import DateTimePicker, {
-  DateTimePickerEvent,
-} from '@react-native-community/datetimepicker';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
@@ -155,8 +152,7 @@ function ExpiryDateField({
   isMobile: boolean;
   showToast: (message: string, type?: ToastType) => void;
 }) {
-  const [showNativePicker, setShowNativePicker] = useState(false);
-  const [showWebModal, setShowWebModal] = useState(false);
+  const [showDateModal, setShowDateModal] = useState(false);
   const [tempMonth, setTempMonth] = useState(0);
   const [tempDay, setTempDay] = useState(1);
   const [tempYear, setTempYear] = useState(2000);
@@ -197,45 +193,25 @@ function ExpiryDateField({
     }
   }, []);
 
+  // Same custom Month/Day/Year modal is used on every platform now, so
+  // opening the picker just shows this component's own modal — no more
+  // branching to the native @react-native-community/datetimepicker
+  // spinner on iOS/Android.
   const openPicker = () => {
     const baseDate = value || minDate;
     setTempMonth(baseDate.getMonth());
     setTempDay(baseDate.getDate());
     setTempYear(baseDate.getFullYear());
-
-    if (Platform.OS === 'web') {
-      setShowWebModal(true);
-      return;
-    }
-    setShowNativePicker(true);
+    setShowDateModal(true);
   };
 
-  const handleNativeChange = (
-    event: DateTimePickerEvent,
-    selectedDate?: Date
-  ) => {
-    if (Platform.OS === 'android') setShowNativePicker(false);
-    if (event.type === 'dismissed') return;
-
-    if (selectedDate) {
-      // Reset selected date to midnight for fair comparison
-      selectedDate.setHours(0, 0, 0, 0);
-      if (selectedDate >= minDate) {
-        onChange(selectedDate);
-        setTempMonth(selectedDate.getMonth());
-        setTempDay(selectedDate.getDate());
-        setTempYear(selectedDate.getFullYear());
-      }
-    }
-  };
-
-  const confirmWebDate = () => {
+  const confirmDate = () => {
     const selected = new Date(tempYear, tempMonth, tempDay);
     selected.setHours(0, 0, 0, 0); // Ensure midnight comparison
 
     if (selected >= minDate) {
       onChange(selected);
-      setShowWebModal(false);
+      setShowDateModal(false);
     } else {
       showToast('Please select a future date.', 'error');
     }
@@ -406,42 +382,17 @@ function ExpiryDateField({
         <Ionicons name="calendar-outline" size={18} color="#7A7A7A" />
       </TouchableOpacity>
 
-      {/* Native picker (iOS / Android) */}
-      {Platform.OS !== 'web' && showNativePicker && (
-        <View style={styles.datePickerWrap}>
-          <DateTimePicker
-            value={value || minDate}
-            mode="date"
-            display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-            minimumDate={minDate}
-            onChange={handleNativeChange}
-          />
-
-          {Platform.OS === 'ios' && (
-            <View style={styles.datePickerActions}>
-              <TouchableOpacity
-                style={styles.datePickerButtonSecondary}
-                activeOpacity={0.85}
-                onPress={() => setShowNativePicker(false)}
-              >
-                <Text style={styles.datePickerButtonSecondaryText}>Done</Text>
-              </TouchableOpacity>
-            </View>
-          )}
-        </View>
-      )}
-
-      {/* Web / fallback modal picker */}
+      {/* Custom Date picker modal — same component on web, iOS, and Android */}
       <Modal
-        visible={showWebModal}
+        visible={showDateModal}
         animationType="fade"
         transparent
-        onRequestClose={() => setShowWebModal(false)}
+        onRequestClose={() => setShowDateModal(false)}
       >
         <View style={styles.pickerModalOverlay}>
           <TouchableOpacity
             style={StyleSheet.absoluteFill}
-            onPress={() => setShowWebModal(false)}
+            onPress={() => setShowDateModal(false)}
           />
 
           <View
@@ -487,7 +438,7 @@ function ExpiryDateField({
 
               <TouchableOpacity
                 style={styles.modalCloseButton}
-                onPress={() => setShowWebModal(false)}
+                onPress={() => setShowDateModal(false)}
                 activeOpacity={0.85}
               >
                 <Ionicons name="close" size={20} color="#7A4A4A" />
@@ -534,7 +485,7 @@ function ExpiryDateField({
             <View style={styles.modalFooter}>
               <TouchableOpacity
                 style={styles.modalSecondaryButton}
-                onPress={() => setShowWebModal(false)}
+                onPress={() => setShowDateModal(false)}
                 activeOpacity={0.85}
               >
                 <Text style={styles.modalSecondaryButtonText}>Cancel</Text>
@@ -543,7 +494,7 @@ function ExpiryDateField({
               <TouchableOpacity
                 style={styles.modalPrimaryButton}
                 activeOpacity={0.85}
-                onPress={confirmWebDate}
+                onPress={confirmDate}
               >
                 <Ionicons name="checkmark-circle-outline" size={18} color="#FFFFFF" />
                 <Text style={styles.modalPrimaryButtonText}>Apply</Text>
@@ -558,6 +509,128 @@ function ExpiryDateField({
 
 // ─── TIME PICKER COMPONENT ─────────────────────────────────────────────────────
 
+// ─── MERGED "TIME" INPUT (typed HH:MM digits + AM/PM) ─────────────────────────
+// Same single-field pattern used elsewhere (Teacher Dashboard's Create Class
+// schedule blocks, TeacherCourseDetail2's due date/time picker) instead of
+// separate scrollable Hour / Minute lists.
+const clampTimeInputDigits = (raw: string): string => {
+  let out = raw.replace(/[^0-9]/g, '').slice(0, 4);
+  if (out.length >= 2) {
+    let hh = parseInt(out.slice(0, 2), 10);
+    if (Number.isNaN(hh)) hh = 0;
+    if (hh > 12) hh = 12;
+    if (hh < 1 && out.length >= 2) hh = 1;
+    out = String(hh).padStart(2, '0') + out.slice(2);
+  }
+  if (out.length >= 4) {
+    let mm = parseInt(out.slice(2, 4), 10);
+    if (Number.isNaN(mm)) mm = 0;
+    if (mm > 59) mm = 59;
+    out = out.slice(0, 2) + String(mm).padStart(2, '0');
+  }
+  return out;
+};
+
+const formatTimeInputDigitsForDisplay = (digits: string): string =>
+  digits.length <= 2 ? digits : `${digits.slice(0, 2)}:${digits.slice(2)}`;
+
+// Typed 12-hour digits ("0930") + AM/PM -> 24-hour { hour, minute }, or null
+// while the typed value is incomplete/invalid.
+const timeInputDigitsAndMeridiemToHourMinute = (
+  digits: string,
+  meridiem: 'AM' | 'PM'
+): { hour: number; minute: number } | null => {
+  if (digits.length !== 4) return null;
+  const hour12 = parseInt(digits.slice(0, 2), 10);
+  const minute = parseInt(digits.slice(2, 4), 10);
+  if (Number.isNaN(hour12) || Number.isNaN(minute) || hour12 < 1 || hour12 > 12 || minute > 59) return null;
+  let hour = hour12 % 12;
+  if (meridiem === 'PM') hour += 12;
+  return { hour, minute };
+};
+
+// 24-hour { hour, minute } -> typed 12-hour digits + AM/PM, so opening the
+// picker on an existing time shows the right starting value.
+const hourMinuteToTimeInputDigits = (hour: number, minute: number): { digits: string; meridiem: 'AM' | 'PM' } => {
+  const meridiem: 'AM' | 'PM' = hour >= 12 ? 'PM' : 'AM';
+  let hour12 = hour % 12;
+  if (hour12 === 0) hour12 = 12;
+  return { digits: `${String(hour12).padStart(2, '0')}${String(minute).padStart(2, '0')}`, meridiem };
+};
+
+// Single merged "Time" field: one text input for HH:MM digits plus an
+// AM/PM toggle, replacing separate scrollable Hour / Minute columns.
+function MergedTimeInput({
+  hour,
+  minute,
+  onChangeHourMinute,
+}: {
+  hour: number;
+  minute: number;
+  onChangeHourMinute: (hour: number, minute: number) => void;
+}) {
+  const initial = hourMinuteToTimeInputDigits(hour, minute);
+  const [digits, setDigits] = useState(initial.digits);
+  const [meridiem, setMeridiem] = useState<'AM' | 'PM'>(initial.meridiem);
+  const [isFocused, setIsFocused] = useState(false);
+
+  // Keep the typed value in sync if the parent's hour/minute changes from
+  // elsewhere (e.g. reopening the modal).
+  useEffect(() => {
+    const next = hourMinuteToTimeInputDigits(hour, minute);
+    setDigits(next.digits);
+    setMeridiem(next.meridiem);
+  }, [hour, minute]);
+
+  const commit = (nextDigits: string, nextMeridiem: 'AM' | 'PM') => {
+    const result = timeInputDigitsAndMeridiemToHourMinute(nextDigits, nextMeridiem);
+    if (result) onChangeHourMinute(result.hour, result.minute);
+  };
+
+  const handleChangeText = (text: string) => {
+    const clamped = clampTimeInputDigits(text);
+    setDigits(clamped);
+    commit(clamped, meridiem);
+  };
+
+  const handleMeridiemPress = (nextMeridiem: 'AM' | 'PM') => {
+    setMeridiem(nextMeridiem);
+    commit(digits, nextMeridiem);
+  };
+
+  return (
+    <View style={styles.timeInputRow}>
+      <View style={[styles.timeTextInputWrap, isFocused && styles.timeTextInputWrapFocused]}>
+        <TextInput
+          value={formatTimeInputDigitsForDisplay(digits)}
+          onChangeText={handleChangeText}
+          placeholder="09:30"
+          placeholderTextColor="#9AA0A6"
+          keyboardType="number-pad"
+          maxLength={5}
+          style={styles.timeTextInput}
+          onFocus={() => setIsFocused(true)}
+          onBlur={() => setIsFocused(false)}
+        />
+      </View>
+      <View style={styles.meridiemToggle}>
+        <TouchableOpacity
+          style={[styles.meridiemBtn, meridiem === 'AM' && styles.meridiemBtnActive]}
+          onPress={() => handleMeridiemPress('AM')}
+        >
+          <Text style={[styles.meridiemBtnText, meridiem === 'AM' && styles.meridiemBtnTextActive]}>AM</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.meridiemBtn, meridiem === 'PM' && styles.meridiemBtnActive]}
+          onPress={() => handleMeridiemPress('PM')}
+        >
+          <Text style={[styles.meridiemBtnText, meridiem === 'PM' && styles.meridiemBtnTextActive]}>PM</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+}
+
 function ExpiryTimeField({
   value,
   onChange,
@@ -565,13 +638,9 @@ function ExpiryTimeField({
   value: Date | null;
   onChange: (time: Date) => void;
 }) {
-  const [showNativePicker, setShowNativePicker] = useState(false);
-  const [showWebModal, setShowWebModal] = useState(false);
+  const [showTimeModal, setShowTimeModal] = useState(false);
   const [tempHour, setTempHour] = useState(9);
   const [tempMinute, setTempMinute] = useState(0);
-
-  const hours = Array.from({ length: 24 }, (_, i) => i);
-  const minutes = Array.from({ length: 60 }, (_, i) => i);
 
   useEffect(() => {
     if (value) {
@@ -587,37 +656,22 @@ function ExpiryTimeField({
     }
   }, []);
 
+  // Same custom Time field (typed HH:MM + AM/PM) is used on every platform
+  // now, so opening the picker just shows this component's own modal —
+  // no more branching to the native @react-native-community/datetimepicker
+  // spinner on iOS/Android.
   const openPicker = () => {
     const baseTime = value || new Date();
     setTempHour(baseTime.getHours());
     setTempMinute(baseTime.getMinutes());
-
-    if (Platform.OS === 'web') {
-      setShowWebModal(true);
-      return;
-    }
-    setShowNativePicker(true);
+    setShowTimeModal(true);
   };
 
-  const handleNativeChange = (
-    event: DateTimePickerEvent,
-    selectedTime?: Date
-  ) => {
-    if (Platform.OS === 'android') setShowNativePicker(false);
-    if (event.type === 'dismissed') return;
-
-    if (selectedTime) {
-      onChange(selectedTime);
-      setTempHour(selectedTime.getHours());
-      setTempMinute(selectedTime.getMinutes());
-    }
-  };
-
-  const confirmWebTime = () => {
+  const confirmTime = () => {
     const selected = new Date();
     selected.setHours(tempHour, tempMinute, 0, 0);
     onChange(selected);
-    setShowWebModal(false);
+    setShowTimeModal(false);
   };
 
   return (
@@ -639,41 +693,17 @@ function ExpiryTimeField({
         <Ionicons name="time-outline" size={18} color="#7A7A7A" />
       </TouchableOpacity>
 
-      {/* Native picker (iOS / Android) */}
-      {Platform.OS !== 'web' && showNativePicker && (
-        <View style={styles.datePickerWrap}>
-          <DateTimePicker
-            value={value || new Date()}
-            mode="time"
-            display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-            onChange={handleNativeChange}
-          />
-
-          {Platform.OS === 'ios' && (
-            <View style={styles.datePickerActions}>
-              <TouchableOpacity
-                style={styles.datePickerButtonSecondary}
-                activeOpacity={0.85}
-                onPress={() => setShowNativePicker(false)}
-              >
-                <Text style={styles.datePickerButtonSecondaryText}>Done</Text>
-              </TouchableOpacity>
-            </View>
-          )}
-        </View>
-      )}
-
-      {/* Web / fallback modal picker */}
+      {/* Custom Time picker modal — same component on web, iOS, and Android */}
       <Modal
-        visible={showWebModal}
+        visible={showTimeModal}
         animationType="fade"
         transparent
-        onRequestClose={() => setShowWebModal(false)}
+        onRequestClose={() => setShowTimeModal(false)}
       >
         <View style={styles.pickerModalOverlay}>
           <TouchableOpacity
             style={StyleSheet.absoluteFill}
-            onPress={() => setShowWebModal(false)}
+            onPress={() => setShowTimeModal(false)}
           />
 
           <View style={styles.webDateModalCard}>
@@ -693,97 +723,31 @@ function ExpiryTimeField({
 
               <TouchableOpacity
                 style={styles.modalCloseButton}
-                onPress={() => setShowWebModal(false)}
+                onPress={() => setShowTimeModal(false)}
                 activeOpacity={0.85}
               >
                 <Ionicons name="close" size={20} color="#7A4A4A" />
               </TouchableOpacity>
             </View>
 
-            {/* Scrollable columns */}
+            {/* Merged Time field (typed HH:MM + AM/PM) */}
             <View style={styles.webDateContent}>
-              <View style={styles.modalRow}>
-                {/* Hour */}
-                <View style={styles.modalCol}>
-                  <Text style={styles.fieldLabel}>Hour</Text>
-                  <ScrollView
-                    style={styles.webDateList}
-                    showsVerticalScrollIndicator={true}
-                  >
-                    {hours.map((hour) => {
-                      const active = tempHour === hour;
-                      return (
-                        <TouchableOpacity
-                          key={hour}
-                          style={[
-                            styles.dropdownItem,
-                            active && styles.dropdownItemActive,
-                            styles.dropdownItemBorder,
-                          ]}
-                          activeOpacity={0.85}
-                          onPress={() => setTempHour(hour)}
-                        >
-                          <Text
-                            style={[
-                              styles.dropdownItemText,
-                              active && styles.dropdownItemTextActive,
-                            ]}
-                          >
-                            {hour.toString().padStart(2, '0')}
-                          </Text>
-                          {active && (
-                            <Ionicons name="checkmark-circle" size={18} color="#DC2626" />
-                          )}
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </ScrollView>
-                </View>
-
-                {/* Minute */}
-                <View style={styles.modalCol}>
-                  <Text style={styles.fieldLabel}>Minute</Text>
-                  <ScrollView
-                    style={styles.webDateList}
-                    showsVerticalScrollIndicator={true}
-                  >
-                    {minutes.map((minute) => {
-                      const active = tempMinute === minute;
-                      return (
-                        <TouchableOpacity
-                          key={minute}
-                          style={[
-                            styles.dropdownItem,
-                            active && styles.dropdownItemActive,
-                            styles.dropdownItemBorder,
-                          ]}
-                          activeOpacity={0.85}
-                          onPress={() => setTempMinute(minute)}
-                        >
-                          <Text
-                            style={[
-                              styles.dropdownItemText,
-                              active && styles.dropdownItemTextActive,
-                            ]}
-                          >
-                            {minute.toString().padStart(2, '0')}
-                          </Text>
-                          {active && (
-                            <Ionicons name="checkmark-circle" size={18} color="#DC2626" />
-                          )}
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </ScrollView>
-                </View>
-              </View>
+              <Text style={styles.fieldLabel}>Time</Text>
+              <MergedTimeInput
+                hour={tempHour}
+                minute={tempMinute}
+                onChangeHourMinute={(hour, minute) => {
+                  setTempHour(hour);
+                  setTempMinute(minute);
+                }}
+              />
             </View>
 
             {/* Footer */}
             <View style={styles.modalFooter}>
               <TouchableOpacity
                 style={styles.modalSecondaryButton}
-                onPress={() => setShowWebModal(false)}
+                onPress={() => setShowTimeModal(false)}
                 activeOpacity={0.85}
               >
                 <Text style={styles.modalSecondaryButtonText}>Cancel</Text>
@@ -792,7 +756,7 @@ function ExpiryTimeField({
               <TouchableOpacity
                 style={styles.modalPrimaryButton}
                 activeOpacity={0.85}
-                onPress={confirmWebTime}
+                onPress={confirmTime}
               >
                 <Ionicons name="checkmark-circle-outline" size={18} color="#FFFFFF" />
                 <Text style={styles.modalPrimaryButtonText}>Apply</Text>
@@ -1947,10 +1911,6 @@ const styles = StyleSheet.create({
   selectFieldText: { fontSize: 16, fontWeight: '400', color: '#111827', flex: 1, marginRight: 10 },
   placeholderSelectText: { color: '#9E9E9E' },
 
-  datePickerWrap: { marginTop: 10, borderRadius: 14, borderWidth: 1, borderColor: '#E5E7EB', backgroundColor: '#F9FAFB', overflow: 'hidden' },
-  datePickerActions: { paddingHorizontal: 14, paddingBottom: 14, alignItems: 'flex-end' },
-  datePickerButtonSecondary: { minWidth: 88, height: 38, borderRadius: 12, borderWidth: 1, borderColor: '#E7C0C0', backgroundColor: '#FFF7F7', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 14 },
-  datePickerButtonSecondaryText: { fontSize: 13, fontWeight: '700', color: '#7A4A4A' },
 
   // ✅ RENAMED to avoid duplicate key error
   pickerModalOverlay: { flex: 1, backgroundColor: 'rgba(43, 17, 17, 0.45)', justifyContent: 'center', alignItems: 'center', padding: 20 },
@@ -1972,6 +1932,41 @@ const styles = StyleSheet.create({
   // ✅ NEW: smaller subtitle on mobile
   modalSubtitleMobile: { fontSize: 12.5, lineHeight: 17 },
   modalCloseButton: { width: 40, height: 40, borderRadius: 14, backgroundColor: '#FFF5F5', alignItems: 'center', justifyContent: 'center' },
+
+  // ✅ Merged Time field (typed HH:MM + AM/PM), replacing the old separate
+  // scrollable Hour / Minute columns — same pattern used for the Due Date &
+  // Time picker elsewhere in the app.
+  timeInputRow: { flexDirection: 'row', alignItems: 'stretch', gap: 8 },
+  timeTextInputWrap: {
+    flex: 1,
+    minHeight: 54,
+    borderWidth: 1,
+    borderColor: '#F1CACA',
+    borderRadius: 14,
+    backgroundColor: '#FFF9F9',
+    paddingHorizontal: 14,
+    justifyContent: 'center',
+  },
+  timeTextInputWrapFocused: { borderColor: '#DC2626', borderWidth: 1.5 },
+  timeTextInput: {
+    fontSize: 16,
+    color: '#2B1111',
+    fontWeight: '600',
+    paddingVertical: 10,
+    ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : {}),
+  },
+  meridiemToggle: {
+    flexDirection: 'row',
+    borderWidth: 1,
+    borderColor: '#F1CACA',
+    borderRadius: 14,
+    backgroundColor: '#FFF9F9',
+    overflow: 'hidden',
+  },
+  meridiemBtn: { paddingHorizontal: 16, justifyContent: 'center', alignItems: 'center' },
+  meridiemBtnActive: { backgroundColor: '#DC2626' },
+  meridiemBtnText: { fontSize: 13, fontWeight: '800', color: '#B98A8A' },
+  meridiemBtnTextActive: { color: '#FFFFFF' },
 
   webDateContent: { paddingHorizontal: 24, paddingTop: 20, paddingBottom: 8 },
   // ✅ NEW: tighter padding on mobile

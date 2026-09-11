@@ -282,6 +282,28 @@ const formatDueDateTime = (value?: Date | null) => {
   return `${formatDateOnly(value)} ${formatTimeOnly(value)}`;
 };
 
+// 12-hour "hh:mm AM/PM" version of the time, used only for display (e.g. the
+// "Selected" preview under the Time field) — matches how the merged Time
+// input itself is typed/shown, instead of the raw 24-hour value used for
+// storage/parsing.
+const formatTimeOnly12h = (value?: Date | null) => {
+  if (!value) return '';
+  const hour24 = value.getHours();
+  const minute = value.getMinutes();
+  const meridiem = hour24 >= 12 ? 'PM' : 'AM';
+  let hour12 = hour24 % 12;
+  if (hour12 === 0) hour12 = 12;
+  return `${pad(hour12)}:${pad(minute)} ${meridiem}`;
+};
+
+// Display-only counterpart to formatDueDateTime: same date part, but the
+// time part is 12-hour with AM/PM instead of 24-hour. Never use this for
+// setFormDue()/storage — parseDueDateTime() expects the 24-hour format.
+const formatDueDateTimeDisplay = (value?: Date | null) => {
+  if (!value) return '';
+  return `${formatDateOnly(value)} ${formatTimeOnly12h(value)}`;
+};
+
 // ---- Merged "Time" input helpers (typed HH:MM digits + AM/PM), matching
 // the single-field time input used on the Teacher Dashboard's Create Class
 // schedule blocks, instead of separate scrollable Hour / Minute lists.
@@ -4889,7 +4911,7 @@ DATE TIME MODAL
                         numberOfLines={1}
                         adjustsFontSizeToFit
                       >
-                        {formatDueDateTime(draftDueDateTime)}
+                        {formatDueDateTimeDisplay(draftDueDateTime)}
                       </Text>
                     </View>
                   </View>
@@ -6035,7 +6057,7 @@ DATE TIME MODAL
                       numberOfLines={1}
                       adjustsFontSizeToFit
                     >
-                      {formatDueDateTime(draftDueDateTime)}
+                      {formatDueDateTimeDisplay(draftDueDateTime)}
                     </Text>
                   </View>
                 </View>

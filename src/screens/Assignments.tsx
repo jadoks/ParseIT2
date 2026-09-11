@@ -200,6 +200,25 @@ const isPastDueDate = (dueDate?: string) => {
   return parsed.getTime() < Date.now();
 };
 
+// Display-only: renders the fetched dueDate ("YYYY-MM-DD HH:MM" 24-hour, as
+// stored/sent by the teacher side) as "YYYY-MM-DD hh:mm AM/PM" for students —
+// matches the 12-hour format shown in the Teacher's due date/time picker.
+// Falls back to the raw string if it can't be parsed, so nothing breaks on
+// an unexpected format.
+const formatDueDateForDisplay = (dueDate?: string) => {
+  if (!dueDate?.trim()) return '';
+  const parsed = parseDueDateTime(dueDate);
+  if (!parsed) return dueDate;
+  const pad2 = (n: number) => String(n).padStart(2, '0');
+  const datePart = `${parsed.getFullYear()}-${pad2(parsed.getMonth() + 1)}-${pad2(parsed.getDate())}`;
+  const hour24 = parsed.getHours();
+  const meridiem = hour24 >= 12 ? 'PM' : 'AM';
+  let hour12 = hour24 % 12;
+  if (hour12 === 0) hour12 = 12;
+  const timePart = `${pad2(hour12)}:${pad2(parsed.getMinutes())} ${meridiem}`;
+  return `${datePart} ${timePart}`;
+};
+
 // ✅ NEW: "Disable repository after due" (repositoryDisabledAfterDue) closes
 // submissions entirely once the due date passes — this is stricter than the
 // default behavior, where a late submission is still accepted and simply
@@ -1618,7 +1637,7 @@ const Assignments = ({
           </View>
         </View>
         <View style={styles.assignmentFooter}>
-          <Text style={styles.dueDateText}>Due: {item.dueDate}</Text>
+          <Text style={styles.dueDateText}>Due: {formatDueDateForDisplay(item.dueDate)}</Text>
           {isSubmissionLocked(item) && !isAssignmentSubmitted(item) ? (
             <Text style={styles.dueDateText}>Submissions closed</Text>
           ) : null}
@@ -1927,7 +1946,7 @@ const Assignments = ({
                           <View style={styles.infoMetaCard}>
                             <Text style={styles.infoMetaCardLabel}>Due</Text>
                             <Text style={[styles.infoMetaCardValue, { color: '#D32F2F' }]}>
-                              {selectedAssignment.dueDate}
+                              {formatDueDateForDisplay(selectedAssignment.dueDate)}
                             </Text>
                           </View>
                           {selectedAssignment.maxPoints !== undefined && (
@@ -1986,7 +2005,7 @@ const Assignments = ({
                           <View style={styles.infoMetaRow}>
                             <Text style={styles.infoMetaLabel}>Due</Text>
                             <Text style={[styles.infoMetaValue, styles.infoMetaValueDue]}>
-                              {selectedAssignment.dueDate}
+                              {formatDueDateForDisplay(selectedAssignment.dueDate)}
                             </Text>
                           </View>
                           {selectedAssignment.maxPoints !== undefined && (
