@@ -282,6 +282,127 @@ const formatDueDateTime = (value?: Date | null) => {
   return `${formatDateOnly(value)} ${formatTimeOnly(value)}`;
 };
 
+// ---- Merged "Time" input helpers (typed HH:MM digits + AM/PM), matching
+// the single-field time input used on the Teacher Dashboard's Create Class
+// schedule blocks, instead of separate scrollable Hour / Minute lists.
+const clampTimeDigits = (raw: string): string => {
+  let out = raw.replace(/[^0-9]/g, '').slice(0, 4);
+  if (out.length >= 2) {
+    let hh = parseInt(out.slice(0, 2), 10);
+    if (Number.isNaN(hh)) hh = 0;
+    if (hh > 12) hh = 12;
+    if (hh < 1 && out.length >= 2) hh = 1;
+    out = pad(hh) + out.slice(2);
+  }
+  if (out.length >= 4) {
+    let mm = parseInt(out.slice(2, 4), 10);
+    if (Number.isNaN(mm)) mm = 0;
+    if (mm > 59) mm = 59;
+    out = out.slice(0, 2) + pad(mm);
+  }
+  return out;
+};
+
+const formatTimeDigitsForDisplay = (digits: string): string =>
+  digits.length <= 2 ? digits : `${digits.slice(0, 2)}:${digits.slice(2)}`;
+
+// Converts typed 12-hour digits ("0930") + AM/PM into 24-hour { hour, minute },
+// or null while the typed value is incomplete/invalid.
+const timeDigitsAndMeridiemToHourMinute = (
+  digits: string,
+  meridiem: 'AM' | 'PM'
+): { hour: number; minute: number } | null => {
+  if (digits.length !== 4) return null;
+  const hour12 = parseInt(digits.slice(0, 2), 10);
+  const minute = parseInt(digits.slice(2, 4), 10);
+  if (Number.isNaN(hour12) || Number.isNaN(minute) || hour12 < 1 || hour12 > 12 || minute > 59) return null;
+  let hour = hour12 % 12;
+  if (meridiem === 'PM') hour += 12;
+  return { hour, minute };
+};
+
+// Converts a 24-hour hour/minute pair back into typed digits + AM/PM, so
+// opening the picker on an existing due date/time shows the right value.
+const hourMinuteToTimeDigits = (hour: number, minute: number): { digits: string; meridiem: 'AM' | 'PM' } => {
+  const meridiem: 'AM' | 'PM' = hour >= 12 ? 'PM' : 'AM';
+  let hour12 = hour % 12;
+  if (hour12 === 0) hour12 = 12;
+  return { digits: `${pad(hour12)}${pad(minute)}`, meridiem };
+};
+
+// Single merged "Time" field: one text input for HH:MM digits plus an
+// AM/PM toggle, replacing the separate scrollable Hour / Minute columns.
+function DueTimeInputField({
+  hour,
+  minute,
+  onChangeHourMinute,
+}: {
+  hour: number;
+  minute: number;
+  onChangeHourMinute: (hour: number, minute: number) => void;
+}) {
+  const initial = hourMinuteToTimeDigits(hour, minute);
+  const [digits, setDigits] = useState(initial.digits);
+  const [meridiem, setMeridiem] = useState<'AM' | 'PM'>(initial.meridiem);
+  const [isFocused, setIsFocused] = useState(false);
+
+  // Keep the typed value in sync if the parent's date changes from
+  // elsewhere (e.g. reopening the modal for a different assignment).
+  useEffect(() => {
+    const next = hourMinuteToTimeDigits(hour, minute);
+    setDigits(next.digits);
+    setMeridiem(next.meridiem);
+  }, [hour, minute]);
+
+  const commit = (nextDigits: string, nextMeridiem: 'AM' | 'PM') => {
+    const result = timeDigitsAndMeridiemToHourMinute(nextDigits, nextMeridiem);
+    if (result) onChangeHourMinute(result.hour, result.minute);
+  };
+
+  const handleChangeText = (text: string) => {
+    const clamped = clampTimeDigits(text);
+    setDigits(clamped);
+    commit(clamped, meridiem);
+  };
+
+  const handleMeridiemPress = (nextMeridiem: 'AM' | 'PM') => {
+    setMeridiem(nextMeridiem);
+    commit(digits, nextMeridiem);
+  };
+
+  return (
+    <View style={styles.timeInputRow}>
+      <View style={[styles.timeTextInputWrap, isFocused && styles.timeTextInputWrapFocused]}>
+        <TextInput
+          value={formatTimeDigitsForDisplay(digits)}
+          onChangeText={handleChangeText}
+          placeholder="09:30"
+          placeholderTextColor="#9AA0A6"
+          keyboardType="number-pad"
+          maxLength={5}
+          style={styles.timeTextInput}
+          onFocus={() => setIsFocused(true)}
+          onBlur={() => setIsFocused(false)}
+        />
+      </View>
+      <View style={styles.meridiemToggle}>
+        <TouchableOpacity
+          style={[styles.meridiemBtn, meridiem === 'AM' && styles.meridiemBtnActive]}
+          onPress={() => handleMeridiemPress('AM')}
+        >
+          <Text style={[styles.meridiemBtnText, meridiem === 'AM' && styles.meridiemBtnTextActive]}>AM</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.meridiemBtn, meridiem === 'PM' && styles.meridiemBtnActive]}
+          onPress={() => handleMeridiemPress('PM')}
+        >
+          <Text style={[styles.meridiemBtnText, meridiem === 'PM' && styles.meridiemBtnTextActive]}>PM</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+}
+
 const parseDueDateTime = (value?: string) => {
   if (!value?.trim()) return new Date();
   const normalized = value.trim().replace(' ', 'T');
@@ -2336,9 +2457,28 @@ useEffect(() => {
     setShowDateTimeModal(true);
   };
 
+  // Returns a validation message if the currently selected due date/time in
+  // the picker isn't allowed, or null when it's fine. Blocks dates before
+  // today, AND (new) blocks a time on today's date that has already passed
+  // — e.g. picking today at 9:00 AM when it's already 3:00 PM.
+  const getDraftDateTimeIssue = (): string | null => {
+    const now = new Date();
+    if (isPastDay(draftDueDateTime)) return 'Past dates are not allowed.';
+    if (isSameDate(draftDueDateTime, now)) {
+      // Compare at minute resolution so picking the current minute isn't
+      // flagged just because a second or two ticked by before Apply.
+      const nowAtMinute = new Date(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours(), now.getMinutes());
+      if (draftDueDateTime.getTime() < nowAtMinute.getTime()) {
+        return "That time has already passed today. Please pick a later time.";
+      }
+    }
+    return null;
+  };
+
   const applyDraftDateTime = () => {
-    if (draftDueDateTime.getTime() < startOfToday().getTime()) {
-      setErrors((prev) => ({ ...prev, dueDate: 'Past dates are not allowed.' }));
+    const issue = getDraftDateTimeIssue();
+    if (issue) {
+      setErrors((prev) => ({ ...prev, dueDate: issue }));
       return;
     }
     setFormDue(formatDueDateTime(draftDueDateTime));
@@ -2357,6 +2497,20 @@ useEffect(() => {
     if (field === 'hours') next.setHours(value);
     if (field === 'minutes') next.setMinutes(value);
     setDraftDueDateTime(next);
+  };
+
+  // Sets hour + minute together in one state update. Needed because the
+  // merged Time field reports both at once (typing digits + AM/PM can
+  // change the hour and minute in the same commit) — calling
+  // updateDraftTime twice back-to-back would use a stale closure and the
+  // second call would clobber the first.
+  const updateDraftHourAndMinute = (hour: number, minute: number) => {
+    setDraftDueDateTime((prev) => {
+      const next = new Date(prev);
+      next.setHours(hour);
+      next.setMinutes(minute);
+      return next;
+    });
   };
 
   const toggleRelatedMaterial = (materialId: string) => {
@@ -2704,8 +2858,24 @@ useEffect(() => {
     }
 
     if (!formDue.trim()) nextErrors.dueDate = 'Due date and time is required.';
-    else if (parseDueDateTime(formDue).getTime() < startOfToday().getTime())
-      nextErrors.dueDate = 'Past dates are not allowed.';
+    else {
+      const parsedDue = parseDueDateTime(formDue);
+      const nowForDue = new Date();
+      if (isPastDay(parsedDue)) {
+        nextErrors.dueDate = 'Past dates are not allowed.';
+      } else if (isSameDate(parsedDue, nowForDue)) {
+        const nowAtMinute = new Date(
+          nowForDue.getFullYear(),
+          nowForDue.getMonth(),
+          nowForDue.getDate(),
+          nowForDue.getHours(),
+          nowForDue.getMinutes()
+        );
+        if (parsedDue.getTime() < nowAtMinute.getTime()) {
+          nextErrors.dueDate = 'That time has already passed today. Please pick a later time.';
+        }
+      }
+    }
 
     if (selectedMaterialIds.length === 0)
       nextErrors.materials = 'Select at least one related material.';
@@ -4703,69 +4873,15 @@ DATE TIME MODAL
                     </View>
                   </View>
                   <View style={[styles.timePanel, !isMobile && styles.timePanelDesktop]}>
-                    <View style={styles.timePickerWrapRow}>
-                      <View style={styles.timeColumn}>
-                        <Text style={styles.timeLabel}>Hour</Text>
-                        <ScrollView
-                          style={[styles.timeList, isSmallPhone && styles.timeListCompact]}
-                          nestedScrollEnabled
-                          showsVerticalScrollIndicator={false}
-                        >
-                          {Array.from({ length: 24 }, (_, hour) => (
-                            <TouchableOpacity
-                              key={`hour-${hour}`}
-                              style={[
-                                styles.timeOption,
-                                isSmallPhone && styles.timeOptionCompact,
-                                draftDueDateTime.getHours() === hour && styles.timeOptionActive,
-                              ]}
-                              onPress={() => updateDraftTime('hours', hour)}
-                            >
-                              <Text
-                                style={[
-                                  styles.timeOptionText,
-                                  isSmallPhone && styles.timeOptionTextCompact,
-                                  draftDueDateTime.getHours() === hour && styles.timeOptionTextActive,
-                                ]}
-                              >
-                                {pad(hour)}
-                              </Text>
-                            </TouchableOpacity>
-                          ))}
-                        </ScrollView>
-                      </View>
-                      <View style={styles.timeColumn}>
-                        <Text style={styles.timeLabel}>Minute</Text>
-                        <ScrollView
-                          style={[styles.timeList, isSmallPhone && styles.timeListCompact]}
-                          nestedScrollEnabled
-                          showsVerticalScrollIndicator={false}
-                        >
-                          {Array.from({ length: 12 }, (_, i) => i * 5).map((minute) => (
-                            <TouchableOpacity
-                              key={`minute-${minute}`}
-                              style={[
-                                styles.timeOption,
-                                isSmallPhone && styles.timeOptionCompact,
-                                draftDueDateTime.getMinutes() === minute && styles.timeOptionActive,
-                              ]}
-                              onPress={() => updateDraftTime('minutes', minute)}
-                            >
-                              <Text
-                                style={[
-                                  styles.timeOptionText,
-                                  isSmallPhone && styles.timeOptionTextCompact,
-                                  draftDueDateTime.getMinutes() === minute &&
-                                  styles.timeOptionTextActive,
-                                ]}
-                              >
-                                {pad(minute)}
-                              </Text>
-                            </TouchableOpacity>
-                          ))}
-                        </ScrollView>
-                      </View>
-                    </View>
+                    <Text style={styles.timeLabel}>Time</Text>
+                    <DueTimeInputField
+                      hour={draftDueDateTime.getHours()}
+                      minute={draftDueDateTime.getMinutes()}
+                      onChangeHourMinute={updateDraftHourAndMinute}
+                    />
+                    {getDraftDateTimeIssue() && (
+                      <Text style={styles.timeErrorText}>{getDraftDateTimeIssue()}</Text>
+                    )}
                     <View style={styles.datePreviewBox}>
                       <Text style={styles.datePreviewLabel}>Selected</Text>
                       <Text
@@ -4786,7 +4902,11 @@ DATE TIME MODAL
                 >
                   <Text style={styles.secondaryButtonText}>Cancel</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={styles.primaryButton} onPress={applyDraftDateTime}>
+                <TouchableOpacity
+                  style={[styles.primaryButton, !!getDraftDateTimeIssue() && { opacity: 0.5 }]}
+                  onPress={applyDraftDateTime}
+                  disabled={!!getDraftDateTimeIssue()}
+                >
                   <Text style={styles.primaryButtonText}>Apply</Text>
                 </TouchableOpacity>
               </View>
@@ -5899,69 +6019,15 @@ DATE TIME MODAL
                   </View>
                 </View>
                 <View style={[styles.timePanel, !isMobile && styles.timePanelDesktop]}>
-                  <View style={styles.timePickerWrapRow}>
-                    <View style={styles.timeColumn}>
-                      <Text style={styles.timeLabel}>Hour</Text>
-                      <ScrollView
-                        style={[styles.timeList, isSmallPhone && styles.timeListCompact]}
-                        nestedScrollEnabled
-                        showsVerticalScrollIndicator={false}
-                      >
-                        {Array.from({ length: 24 }, (_, hour) => (
-                          <TouchableOpacity
-                            key={`hour-${hour}`}
-                            style={[
-                              styles.timeOption,
-                              isSmallPhone && styles.timeOptionCompact,
-                              draftDueDateTime.getHours() === hour && styles.timeOptionActive,
-                            ]}
-                            onPress={() => updateDraftTime('hours', hour)}
-                          >
-                            <Text
-                              style={[
-                                styles.timeOptionText,
-                                isSmallPhone && styles.timeOptionTextCompact,
-                                draftDueDateTime.getHours() === hour && styles.timeOptionTextActive,
-                              ]}
-                            >
-                              {pad(hour)}
-                            </Text>
-                          </TouchableOpacity>
-                        ))}
-                      </ScrollView>
-                    </View>
-                    <View style={styles.timeColumn}>
-                      <Text style={styles.timeLabel}>Minute</Text>
-                      <ScrollView
-                        style={[styles.timeList, isSmallPhone && styles.timeListCompact]}
-                        nestedScrollEnabled
-                        showsVerticalScrollIndicator={false}
-                      >
-                        {Array.from({ length: 12 }, (_, i) => i * 5).map((minute) => (
-                          <TouchableOpacity
-                            key={`minute-${minute}`}
-                            style={[
-                              styles.timeOption,
-                              isSmallPhone && styles.timeOptionCompact,
-                              draftDueDateTime.getMinutes() === minute && styles.timeOptionActive,
-                            ]}
-                            onPress={() => updateDraftTime('minutes', minute)}
-                          >
-                            <Text
-                              style={[
-                                styles.timeOptionText,
-                                isSmallPhone && styles.timeOptionTextCompact,
-                                draftDueDateTime.getMinutes() === minute &&
-                                styles.timeOptionTextActive,
-                              ]}
-                            >
-                              {pad(minute)}
-                            </Text>
-                          </TouchableOpacity>
-                        ))}
-                      </ScrollView>
-                    </View>
-                  </View>
+                  <Text style={styles.timeLabel}>Time</Text>
+                  <DueTimeInputField
+                    hour={draftDueDateTime.getHours()}
+                    minute={draftDueDateTime.getMinutes()}
+                    onChangeHourMinute={updateDraftHourAndMinute}
+                  />
+                  {getDraftDateTimeIssue() && (
+                    <Text style={styles.timeErrorText}>{getDraftDateTimeIssue()}</Text>
+                  )}
                   <View style={styles.datePreviewBox}>
                     <Text style={styles.datePreviewLabel}>Selected</Text>
                     <Text
@@ -5982,7 +6048,11 @@ DATE TIME MODAL
               >
                 <Text style={styles.secondaryButtonText}>Cancel</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.primaryButton} onPress={applyDraftDateTime}>
+              <TouchableOpacity
+                style={[styles.primaryButton, !!getDraftDateTimeIssue() && { opacity: 0.5 }]}
+                onPress={applyDraftDateTime}
+                disabled={!!getDraftDateTimeIssue()}
+              >
                 <Text style={styles.primaryButtonText}>Apply</Text>
               </TouchableOpacity>
             </View>
@@ -8155,23 +8225,42 @@ const styles = StyleSheet.create({
   dayTextOutside: { color: '#888' },
   dayTextActive: { color: '#FFF', fontWeight: '800' },
   dayTextDisabled: { color: '#B0B0B0' },
-  timePickerWrapRow: { flexDirection: 'row', gap: 12, marginTop: 16 },
-  timeColumn: { flex: 1, minWidth: 0 },
-  timeLabel: { fontSize: 13, fontWeight: '700', color: '#222', marginBottom: 8 },
-  timeList: {
-    maxHeight: 260,
+  timeLabel: { fontSize: 13, fontWeight: '700', color: '#222', marginTop: 16, marginBottom: 8 },
+  // ✅ Merged Time field (typed HH:MM + AM/PM toggle), replacing the old
+  // separate scrollable Hour / Minute columns — mirrors TimeInputField
+  // used on the Teacher Dashboard's Create Class schedule blocks.
+  timeInputRow: { flexDirection: 'row', alignItems: 'stretch', gap: 8 },
+  timeTextInputWrap: {
+    flex: 1,
+    minHeight: 48,
     borderWidth: 1,
     borderColor: '#E5E5E5',
     borderRadius: 12,
     backgroundColor: '#FAFAFA',
+    paddingHorizontal: 14,
+    justifyContent: 'center',
   },
-  timeListCompact: { maxHeight: 180 },
-  timeOption: { paddingVertical: 10, alignItems: 'center', justifyContent: 'center' },
-  timeOptionCompact: { paddingVertical: 8 },
-  timeOptionActive: { backgroundColor: '#D32F2F' },
-  timeOptionText: { color: '#222', fontWeight: '600', fontSize: 14 },
-  timeOptionTextCompact: { fontSize: 13 },
-  timeOptionTextActive: { color: '#FFF', fontWeight: '800' },
+  timeTextInputWrapFocused: { borderColor: '#D32F2F', borderWidth: 1.5 },
+  timeTextInput: {
+    fontSize: 15,
+    color: '#111',
+    fontWeight: '600',
+    paddingVertical: 10,
+    ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : {}),
+  },
+  meridiemToggle: {
+    flexDirection: 'row',
+    borderWidth: 1,
+    borderColor: '#E5E5E5',
+    borderRadius: 12,
+    backgroundColor: '#FAFAFA',
+    overflow: 'hidden',
+  },
+  meridiemBtn: { paddingHorizontal: 14, justifyContent: 'center', alignItems: 'center' },
+  meridiemBtnActive: { backgroundColor: '#D32F2F' },
+  meridiemBtnText: { fontSize: 13, fontWeight: '800', color: '#9AA0A6' },
+  meridiemBtnTextActive: { color: '#FFFFFF' },
+  timeErrorText: { marginTop: 8, color: '#D32F2F', fontSize: 12, fontWeight: '700' },
   datePreviewBox: {
     marginTop: 14,
     borderWidth: 1,
