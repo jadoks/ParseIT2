@@ -6,6 +6,7 @@ import {
     StyleSheet,
     Text,
     TouchableOpacity,
+    useWindowDimensions,
     View,
 } from "react-native";
 
@@ -65,6 +66,9 @@ type Props = {
 };
 
 export default function StudentAtRisk({ apiBaseUrl, adminId, onClose }: Props) {
+  const { width } = useWindowDimensions();
+  const isLargeScreen = width >= 1024;
+
   const [notifications, setNotifications] = useState<RiskNotification[]>([]);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -151,56 +155,60 @@ export default function StudentAtRisk({ apiBaseUrl, adminId, onClose }: Props) {
   return (
     <View style={styles.screen}>
       <View style={styles.header}>
-        <View style={styles.headerLeft}>
-          <TouchableOpacity style={styles.backButton} onPress={onClose} activeOpacity={0.85}>
-            <Ionicons name="chevron-back" size={22} color="#DC2626" />
-          </TouchableOpacity>
+        <View style={styles.headerInner}>
+          <View style={styles.headerLeft}>
+            <TouchableOpacity style={styles.backButton} onPress={onClose} activeOpacity={0.85}>
+              <Ionicons name="chevron-back" size={22} color="#DC2626" />
+            </TouchableOpacity>
 
-          <View>
-            <Text style={styles.title}>Student At Risk</Text>
-            <Text style={styles.subtitle}>
-              {notifications.length} flagged
-              {unreadCount > 0 ? ` · ${unreadCount} unread` : ""}
-            </Text>
+            <View>
+              <Text style={styles.title}>Student At Risk</Text>
+              <Text style={styles.subtitle}>
+                {notifications.length} flagged
+                {unreadCount > 0 ? ` · ${unreadCount} unread` : ""}
+              </Text>
+            </View>
           </View>
-        </View>
 
-        <TouchableOpacity
-          style={styles.refreshButton}
-          onPress={() => load(true)}
-          activeOpacity={0.85}
-        >
-          <Ionicons name="refresh" size={18} color="#7A4A4A" />
-        </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.refreshButton}
+            onPress={() => load(true)}
+            activeOpacity={0.85}
+          >
+            <Ionicons name="refresh" size={18} color="#7A4A4A" />
+          </TouchableOpacity>
+        </View>
       </View>
 
       <View style={styles.sortRow}>
-        {SORT_OPTIONS.map((option) => {
-          const active = sortMode === option.key;
-          return (
-            <TouchableOpacity
-              key={option.key}
-              style={[styles.sortChip, active && styles.sortChipActive]}
-              onPress={() => setSortMode(option.key)}
-              activeOpacity={0.85}
-            >
-              <Ionicons
-                name={option.icon}
-                size={14}
-                color={active ? "#FFFFFF" : "#DC2626"}
-                style={styles.sortChipIcon}
-              />
-              <Text style={[styles.sortChipText, active && styles.sortChipTextActive]}>
-                {option.label}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
+        <View style={styles.sortRowInner}>
+          {SORT_OPTIONS.map((option) => {
+            const active = sortMode === option.key;
+            return (
+              <TouchableOpacity
+                key={option.key}
+                style={[styles.sortChip, active && styles.sortChipActive]}
+                onPress={() => setSortMode(option.key)}
+                activeOpacity={0.85}
+              >
+                <Ionicons
+                  name={option.icon}
+                  size={14}
+                  color={active ? "#FFFFFF" : "#DC2626"}
+                  style={styles.sortChipIcon}
+                />
+                <Text style={[styles.sortChipText, active && styles.sortChipTextActive]}>
+                  {option.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
       </View>
 
       <ScrollView
         style={styles.scroll}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[styles.scrollContent, isLargeScreen && styles.scrollContentLarge]}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor="#DC2626" />
         }
@@ -290,6 +298,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
     flex: 1,
   },
+  headerInner: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    flex: 1,
+  },
   backButton: {
     width: 40,
     height: 40,
@@ -326,6 +340,11 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: "#F3D4D4",
   },
+  sortRowInner: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    flex: 1,
+  },
   sortChip: {
     flexDirection: "row",
     alignItems: "center",
@@ -359,6 +378,12 @@ const styles = StyleSheet.create({
   scrollContent: {
     padding: 16,
     paddingBottom: 40,
+  },
+  scrollContentLarge: {
+    maxWidth: 900,
+    width: "100%",
+    alignSelf: "center",
+    paddingHorizontal: 24,
   },
   card: {
     flexDirection: "row",
