@@ -2390,6 +2390,8 @@ async function sendForgotPasswordCodeEmail({ firstName, email, pin }) {
       relatedId: data.relatedId || null,
       relatedType: data.relatedType || null,
       classId: data.classId || null,
+      className: data.className || null,
+      instructorName: data.instructorName || null,
 
       // 👇 ADD THESE TWO LINES TO MATCH FRONTEND EXPECTATIONS
       targetId: data.relatedId || null, 
@@ -2418,6 +2420,8 @@ async function sendForgotPasswordCodeEmail({ firstName, email, pin }) {
     relatedId = null,
     relatedType = null,
     classId = null,
+    className = null,
+    instructorName = null,
     actorId = null,
     actorRole = null,
     actorName = null,
@@ -2441,6 +2445,8 @@ async function sendForgotPasswordCodeEmail({ firstName, email, pin }) {
       relatedId: normalizeOptionalText(relatedId),
       relatedType: normalizeOptionalText(relatedType),
       classId: normalizeOptionalText(classId),
+      className: normalizeOptionalText(className),
+      instructorName: normalizeOptionalText(instructorName),
       actorId: normalizeOptionalText(actorId),
       actorRole: normalizeOptionalText(actorRole),
       actorName: normalizeOptionalText(actorName),
@@ -2540,13 +2546,15 @@ async function sendForgotPasswordCodeEmail({ firstName, email, pin }) {
       userId: teacherId,
       role: "teacher",
       type: "student-at-risk",
-      title: "Student At Risk",
+      title: "Low Assignment Score",
       message: `${studentName || "A student"} may need support in ${
         classData.name || "your class"
       }. ${reason || ""}`.trim(),
       relatedId: studentId,
       relatedType: "student-risk",
       classId,
+      className: classData.name || null,
+      instructorName: classData.instructorName || null,
       actorId: studentId,
       actorRole: "student",
       actorName: studentName || studentId,
@@ -2594,7 +2602,7 @@ async function sendForgotPasswordCodeEmail({ firstName, email, pin }) {
     });
   }
 
-  async function notifyAdmins({ type, title, message, relatedId = null, relatedType = null, classId = null, actorId = null, actorRole = null, actorName = null }) {
+  async function notifyAdmins({ type, title, message, relatedId = null, relatedType = null, classId = null, className = null, instructorName = null, actorId = null, actorRole = null, actorName = null }) {
     try {
       const adminsSnapshot = await db.collection("admins").get();
       for (const adminDoc of adminsSnapshot.docs) {
@@ -2610,6 +2618,8 @@ async function sendForgotPasswordCodeEmail({ firstName, email, pin }) {
           relatedId,
           relatedType,
           classId,
+          className,
+          instructorName,
           actorId,
           actorRole,
           actorName,
@@ -10500,11 +10510,13 @@ app.get(
 
           await notifyAdmins({
             type: "student-at-risk",
-            title: "Student At Risk Detected",
-            message: `${submissionData.studentName} may need support. Low score detected: ${percent}% in ${assignmentData.header || "an assignment"}.`,
+            title: "Low Assignment Score Detected",
+            message: `${submissionData.studentName} may need support. Low score detected: ${percent}% in ${assignmentData.header || "an assignment"} (${classData.name || "Untitled Class"}).`,
             relatedId: submissionData.studentId,
             relatedType: "student-risk",
             classId: submissionData.classId,
+            className: classData.name || null,
+            instructorName: classData.instructorName || null,
             actorId: submissionData.studentId,
             actorRole: "student",
             actorName: submissionData.studentName,

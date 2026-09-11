@@ -31,6 +31,8 @@ export type NotificationItem = {
   relatedId?: string | null;
   relatedType?: string | null;
   classId?: string | null;
+  className?: string | null;
+  instructorName?: string | null;
   actorId?: string | null;
   actorRole?: string | null;
   actorName?: string | null;
@@ -38,6 +40,17 @@ export type NotificationItem = {
   updatedAt?: any;
   readAt?: any;
 };
+
+// Pulls a percentage like "10%" out of a notification message such as
+// "Jade Lisondra may need support. Low score detected: 10% in ...".
+// Used to show a score badge on "student-at-risk" (Low Assignment Score)
+// notifications, matching StudentAtRisk.tsx / Header.tsx on the admin side.
+function extractPercent(message: string): number | null {
+  const match = message.match(/(\d{1,3})\s*%/);
+  if (!match) return null;
+  const value = Number(match[1]);
+  return Number.isFinite(value) ? value : null;
+}
 
 interface NotificationScreenProps {
   onBack?: () => void;
@@ -263,6 +276,14 @@ const TeacherNotification: React.FC<NotificationScreenProps> = ({
   const renderItem = ({ item }: { item: NotificationItem }) => {
     const isLoading = loadingIds.includes(item.id);
 
+    // "student-at-risk" notifications are really about a low assignment
+    // score, not a generic alert — display them the same way
+    // StudentAtRisk.tsx / Header.tsx do on the admin side: student name +
+    // score badge up top, plus class/instructor meta chips, instead of
+    // the generic title/time row.
+    const isLowScoreType = item.type === 'student-at-risk';
+    const scorePercent = isLowScoreType ? extractPercent(item.message) : null;
+
     return (
       <Pressable
         onPress={() => {
@@ -279,19 +300,85 @@ const TeacherNotification: React.FC<NotificationScreenProps> = ({
         </View>
 
         <View style={styles.content}>
-          <View style={styles.row}>
-            <Text style={styles.title} numberOfLines={1}>
-              {item.title}
-            </Text>
-            <Text style={styles.time}>{item.time}</Text>
-          </View>
+          {isLowScoreType ? (
+            <>
+              <View style={styles.row}>
+                <Text style={styles.title} numberOfLines={1}>
+                  {item.actorName || 'A student'}
+                </Text>
+                {scorePercent !== null && (
+                  <View
+                    style={[
+                      styles.scoreBadge,
+                      scorePercent < 60
+                        ? styles.scoreBadgeHigh
+                        : styles.scoreBadgeModerate,
+                    ]}
+                  >
+                    <Text style={styles.scoreBadgeText}>{scorePercent}%</Text>
+                  </View>
+                )}
+              </View>
 
-          <Text
-            style={styles.message}
-            numberOfLines={isPopover ? 2 : undefined}
-          >
-            {item.message}
-          </Text>
+              <Text
+                style={styles.message}
+                numberOfLines={isPopover ? 2 : undefined}
+              >
+                {item.message}
+              </Text>
+
+              {(!!item.className || !!item.instructorName) && (
+                <View style={styles.metaRow}>
+                  {!!item.className && (
+                    <View style={styles.metaChip}>
+                      <MaterialCommunityIcons
+                        name="book-outline"
+                        size={12}
+                        color="#7A4A4A"
+                      />
+                      <Text style={styles.metaChipText} numberOfLines={1}>
+                        {item.className}
+                      </Text>
+                    </View>
+                  )}
+                  {!!item.instructorName && (
+                    <View style={styles.metaChip}>
+                      <MaterialCommunityIcons
+                        name="account-outline"
+                        size={12}
+                        color="#7A4A4A"
+                      />
+                      <Text style={styles.metaChipText} numberOfLines={1}>
+                        {item.instructorName}
+                      </Text>
+                    </View>
+                  )}
+                </View>
+              )}
+
+              {!!item.time && (
+                <Text style={[styles.time, styles.lowScoreTime]}>
+                  {item.time}
+                </Text>
+              )}
+            </>
+          ) : (
+            <>
+              <View style={styles.row}>
+                <Text style={styles.title} numberOfLines={1}>
+                  {item.title}
+                </Text>
+                <Text style={styles.time}>{item.time}</Text>
+              </View>
+
+              <Text
+                style={styles.message}
+                numberOfLines={isPopover ? 2 : undefined}
+              >
+                {item.message}
+              </Text>
+            </>
+          )}
 
           {!item.read && (
             <View style={styles.unreadMetaRow}>
@@ -629,6 +716,57 @@ const styles = StyleSheet.create({
   time: {
     fontSize: 12,
     color: '#777',
+  },
+
+  lowScoreTime: {
+    marginTop: 8,
+    fontWeight: '700',
+  },
+
+  scoreBadge: {
+    borderRadius: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    marginLeft: 8,
+  },
+
+  scoreBadgeHigh: {
+    backgroundColor: '#FEE2E2',
+  },
+
+  scoreBadgeModerate: {
+    backgroundColor: '#FEF3C7',
+  },
+
+  scoreBadgeText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#991B1B',
+  },
+
+  metaRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginTop: 6,
+  },
+
+  metaChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFF5F5',
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    marginRight: 6,
+    marginBottom: 4,
+    maxWidth: '100%',
+  },
+
+  metaChipText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#7A4A4A',
+    marginLeft: 4,
   },
 
   message: {

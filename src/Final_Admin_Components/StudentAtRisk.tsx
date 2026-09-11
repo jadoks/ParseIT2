@@ -19,6 +19,8 @@ type RiskNotification = {
   createdAt?: any;
   read: boolean;
   classId?: string | null;
+  className?: string | null;
+  instructorName?: string | null;
   actorId?: string | null;
   actorName?: string | null;
 };
@@ -162,7 +164,7 @@ export default function StudentAtRisk({ apiBaseUrl, adminId, onClose }: Props) {
             </TouchableOpacity>
 
             <View>
-              <Text style={styles.title}>Student At Risk</Text>
+              <Text style={styles.title}>Low Assignment Scores</Text>
               <Text style={styles.subtitle}>
                 {notifications.length} flagged
                 {unreadCount > 0 ? ` · ${unreadCount} unread` : ""}
@@ -221,9 +223,9 @@ export default function StudentAtRisk({ apiBaseUrl, adminId, onClose }: Props) {
         ) : sortedNotifications.length === 0 ? (
           <View style={styles.emptyBox}>
             <Ionicons name="checkmark-circle-outline" size={30} color="#DC2626" />
-            <Text style={styles.emptyTitle}>No students flagged</Text>
+            <Text style={styles.emptyTitle}>No low scores flagged</Text>
             <Text style={styles.emptyText}>
-              Students who need support will show up here as soon as they're detected.
+              Assignments with low scores will show up here as soon as they're detected.
             </Text>
           </View>
         ) : (
@@ -265,6 +267,27 @@ export default function StudentAtRisk({ apiBaseUrl, adminId, onClose }: Props) {
                   </View>
 
                   <Text style={styles.cardMessage}>{item.message}</Text>
+
+                  {(!!item.className || !!item.instructorName) && (
+                    <View style={styles.cardMetaRow}>
+                      {!!item.className && (
+                        <View style={styles.cardMetaChip}>
+                          <Ionicons name="book-outline" size={12} color="#7A4A4A" />
+                          <Text style={styles.cardMetaText} numberOfLines={1}>
+                            {item.className}
+                          </Text>
+                        </View>
+                      )}
+                      {!!item.instructorName && (
+                        <View style={styles.cardMetaChip}>
+                          <Ionicons name="person-outline" size={12} color="#7A4A4A" />
+                          <Text style={styles.cardMetaText} numberOfLines={1}>
+                            {item.instructorName}
+                          </Text>
+                        </View>
+                      )}
+                    </View>
+                  )}
 
                   {!!item.time && <Text style={styles.cardTime}>{item.time}</Text>}
                 </View>
@@ -452,6 +475,28 @@ const styles = StyleSheet.create({
     lineHeight: 19,
     color: "#7A4A4A",
     marginTop: 5,
+  },
+  cardMetaRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    marginTop: 6,
+  },
+  cardMetaChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#FFF5F5",
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    marginRight: 6,
+    marginBottom: 4,
+    maxWidth: "100%",
+  },
+  cardMetaText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#7A4A4A",
+    marginLeft: 4,
   },
   cardTime: {
     fontSize: 11,

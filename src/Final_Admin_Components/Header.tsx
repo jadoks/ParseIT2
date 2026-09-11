@@ -32,6 +32,9 @@ type AdminNotification = {
   message: string;
   time?: string;
   read: boolean;
+  classId?: string | null;
+  className?: string | null;
+  instructorName?: string | null;
 };
 
 const NAV_ITEMS = ["Dashboard", "Class", "Admin", "Student", "Teacher"] as const;
@@ -199,7 +202,7 @@ function NotificationList({
         >
           <Ionicons name="alert-circle" size={17} color="#FFFFFF" />
           <Text style={styles.viewAtRiskText}>
-            View Student At Risk Report ({atRiskCount})
+            View Low Assignment Score Report ({atRiskCount})
           </Text>
         </TouchableOpacity>
       )}
@@ -219,7 +222,7 @@ function NotificationList({
             <Ionicons name="notifications-off-outline" size={30} color="#DC2626" />
             <Text style={styles.emptyNotificationTitle}>No notifications yet</Text>
             <Text style={styles.emptyNotificationText}>
-              Admin alerts like new user registrations and at-risk students will appear here.
+              Admin alerts like new user registrations and low assignment scores will appear here.
             </Text>
           </View>
         ) : (
@@ -253,6 +256,27 @@ function NotificationList({
                     <Text style={styles.notificationItemMessage} numberOfLines={4}>
                       {item.message}
                     </Text>
+
+                    {(!!item.className || !!item.instructorName) && (
+                      <View style={styles.notificationItemMetaRow}>
+                        {!!item.className && (
+                          <View style={styles.notificationItemMetaChip}>
+                            <Ionicons name="book-outline" size={12} color="#7A4A4A" />
+                            <Text style={styles.notificationItemMetaText} numberOfLines={1}>
+                              {item.className}
+                            </Text>
+                          </View>
+                        )}
+                        {!!item.instructorName && (
+                          <View style={styles.notificationItemMetaChip}>
+                            <Ionicons name="person-outline" size={12} color="#7A4A4A" />
+                            <Text style={styles.notificationItemMetaText} numberOfLines={1}>
+                              {item.instructorName}
+                            </Text>
+                          </View>
+                        )}
+                      </View>
+                    )}
 
                     {!!item.time && <Text style={styles.notificationItemTime}>{item.time}</Text>}
                   </View>
@@ -826,6 +850,28 @@ const styles = StyleSheet.create({
     lineHeight: 19,
     color: "#7A4A4A",
     marginTop: 5,
+  },
+  notificationItemMetaRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    marginTop: 6,
+  },
+  notificationItemMetaChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#FFF5F5",
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    marginRight: 6,
+    marginBottom: 4,
+    maxWidth: "100%",
+  },
+  notificationItemMetaText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#7A4A4A",
+    marginLeft: 4,
   },
   notificationItemTime: {
     fontSize: 11,
