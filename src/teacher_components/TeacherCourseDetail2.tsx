@@ -229,18 +229,33 @@ const API_BASE_URL = getApiBaseUrl();
 const WEEKDAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const pad = (value: number) => String(value).padStart(2, '0');
 
+// 12-hour "YYYY-MM-DD hh:mm AM/PM" formatter for a resolved Date, used by
+// formatDateTime below — mirrors formatDueDateForDisplay in Assignments.tsx
+// so fetched timestamps (materials/assignments "posted", submission
+// "submittedAt") render in the same 12-hour AM/PM style everywhere, instead
+// of the locale-dependent (and often 24-hour) output of .toLocaleString().
+const formatDateTime12h = (value: Date): string => {
+  const datePart = `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(value.getDate())}`;
+  const hour24 = value.getHours();
+  const meridiem = hour24 >= 12 ? 'PM' : 'AM';
+  let hour12 = hour24 % 12;
+  if (hour12 === 0) hour12 = 12;
+  const timePart = `${pad(hour12)}:${pad(value.getMinutes())} ${meridiem}`;
+  return `${datePart} ${timePart}`;
+};
+
 const formatDateTime = (value?: any) => {
   if (!value) return '';
-  if (typeof value?.toDate === 'function') return value.toDate().toLocaleString();
-  if (value?._seconds) return new Date(value._seconds * 1000).toLocaleString();
-  if (value?.seconds) return new Date(value.seconds * 1000).toLocaleString();
+  if (typeof value?.toDate === 'function') return formatDateTime12h(value.toDate());
+  if (value?._seconds) return formatDateTime12h(new Date(value._seconds * 1000));
+  if (value?.seconds) return formatDateTime12h(new Date(value.seconds * 1000));
   // Previously returned raw strings unchanged instead of formatting them,
   // which meant an ISO string like "2026-09-08T10:30:00.000Z" showed up
   // as-is instead of a readable date+time — and downstream code that
   // re-parsed it and called .toLocaleDateString() lost the time entirely.
   if (typeof value === 'string') {
     const parsed = new Date(value);
-    return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleString();
+    return Number.isNaN(parsed.getTime()) ? value : formatDateTime12h(parsed);
   }
   return '';
 };
@@ -6578,7 +6593,7 @@ Edit Lesson) — like opening a Doc/PDF attachment in Google Classroom.
                           id: selectedLesson.id,
                           title: selectedLesson.title,
                           week: '',
-                          posted: new Date().toLocaleString(),
+                          posted: formatDateTime12h(new Date()),
                           content: selectedLesson.description || '',
                           fileName: selectedLesson.fileName,
                           fileUri: selectedLesson.fileUrl,

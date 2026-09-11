@@ -43,6 +43,25 @@ const isPastDue = (dueDate?: string) => {
   return due.getTime() < Date.now();
 };
 
+// Display-only: renders the raw "YYYY-MM-DD HH:mm" (24-hour) dueDate as
+// "YYYY-MM-DD hh:mm AM/PM" — matches formatDueDateForDisplay in
+// Assignments.tsx so the due date/time reads the same 12-hour way for
+// teachers and students. Falls back to the raw string if it can't be
+// parsed, so nothing breaks on an unexpected format.
+const formatDueDateForDisplay = (dueDate?: string) => {
+  if (!dueDate?.trim()) return '';
+  const parsed = parseDueDateTime(dueDate);
+  if (!parsed) return dueDate;
+  const pad2 = (n: number) => String(n).padStart(2, '0');
+  const datePart = `${parsed.getFullYear()}-${pad2(parsed.getMonth() + 1)}-${pad2(parsed.getDate())}`;
+  const hour24 = parsed.getHours();
+  const meridiem = hour24 >= 12 ? 'PM' : 'AM';
+  let hour12 = hour24 % 12;
+  if (hour12 === 0) hour12 = 12;
+  const timePart = `${pad2(hour12)}:${pad2(parsed.getMinutes())} ${meridiem}`;
+  return `${datePart} ${timePart}`;
+};
+
 // "Closed" means students can no longer act on the assignment:
 // - Regular (file/link) assignments only close once BOTH the due date has
 //   passed AND the teacher turned on "disable repository after due" —
@@ -99,7 +118,7 @@ const TeacherAssignmentSection = ({
 
       <View style={styles.assignmentFooter}>
         <Text style={styles.dueDateText}>
-          Due: {item.dueDate || 'No due date'}
+          Due: {item.dueDate ? formatDueDateForDisplay(item.dueDate) : 'No due date'}
         </Text>
 
         <Text style={styles.pointsText}>
