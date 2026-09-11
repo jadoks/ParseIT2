@@ -26,6 +26,7 @@ import ManageStudent from "./Final_Admin_Components/ManageStudent";
 import ManageTeacher from "./Final_Admin_Components/ManageTeacher";
 import Settings from "./Final_Admin_Components/Settings";
 import Sidebar from "./Final_Admin_Components/Sidebar";
+import StudentAtRisk from "./Final_Admin_Components/StudentAtRisk";
 
 function getApiBaseUrl() {
   // Prefer the deployed backend URL on every platform — including native /
@@ -99,6 +100,7 @@ export default function AdminApp({ onLogout, currentAdmin }: Props) {
   const [sidebarVisible, setSidebarVisible] = useState(false);
   const [activeContentScreen, setActiveContentScreen] = useState("Dashboard");
   const [isLogoutModalVisible, setIsLogoutModalVisible] = useState(false);
+  const [studentAtRiskVisible, setStudentAtRiskVisible] = useState(false);
 
   // Remembers whatever screen the user was on right before we navigated
   // to Settings/Analytics, so "close" can send them back to it instead
@@ -161,6 +163,10 @@ export default function AdminApp({ onLogout, currentAdmin }: Props) {
         setIsLogoutModalVisible(false);
         return true;
       }
+      if (studentAtRiskVisible) {
+        setStudentAtRiskVisible(false);
+        return true;
+      }
       if (sidebarVisible) {
         setSidebarVisible(false);
         return true;
@@ -197,7 +203,7 @@ export default function AdminApp({ onLogout, currentAdmin }: Props) {
     );
 
     return () => subscription.remove();
-  }, [isLogoutModalVisible, sidebarVisible, activeContentScreen]);
+  }, [isLogoutModalVisible, studentAtRiskVisible, sidebarVisible, activeContentScreen]);
 
   const handleTopNavChange = (item: string) => {
     setPreviousScreen(captureCurrentScreen());
@@ -274,6 +280,15 @@ export default function AdminApp({ onLogout, currentAdmin }: Props) {
     setActiveSideNav(null);
     setActiveContentScreen("Teacher");
     setSidebarVisible(false);
+  };
+
+  const handleOpenStudentAtRisk = () => {
+    setStudentAtRiskVisible(true);
+    setSidebarVisible(false);
+  };
+
+  const handleCloseStudentAtRisk = () => {
+    setStudentAtRiskVisible(false);
   };
 
   const handleNavigateToDashboard = () => {
@@ -361,6 +376,7 @@ export default function AdminApp({ onLogout, currentAdmin }: Props) {
         onMenuPress={() => setSidebarVisible((prev) => !prev)}
         isSidebarOpen={sidebarVisible || activeSideNav !== null}
         adminId={currentAdmin.adminId}
+        onOpenStudentAtRisk={handleOpenStudentAtRisk}
       />
 
       <View style={styles.body}>
@@ -399,6 +415,21 @@ export default function AdminApp({ onLogout, currentAdmin }: Props) {
           adminName={adminName}
         />
       )}
+
+      <Modal
+        visible={studentAtRiskVisible}
+        animationType="slide"
+        transparent={false}
+        onRequestClose={handleCloseStudentAtRisk}
+      >
+        <SafeAreaView style={styles.safeArea} edges={safeAreaEdges}>
+          <StudentAtRisk
+            apiBaseUrl={API_BASE_URL}
+            adminId={currentAdmin.adminId}
+            onClose={handleCloseStudentAtRisk}
+          />
+        </SafeAreaView>
+      </Modal>
 
       <Modal
         visible={isLogoutModalVisible}

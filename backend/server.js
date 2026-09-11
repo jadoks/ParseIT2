@@ -10516,18 +10516,6 @@ app.get(
             studentName: submissionData.studentName || submissionData.studentId,
             reason: `Low score detected: ${percent}% in ${assignmentData.header || "an assignment"}.`,
           });
-
-          await notifyAdmins({
-            type: "student-at-risk",
-            title: "Student At Risk Detected",
-            message: `${submissionData.studentName} may need support. Low score detected: ${percent}% in ${assignmentData.header || "an assignment"}.`,
-            relatedId: submissionData.studentId,
-            relatedType: "student-risk",
-            classId: submissionData.classId,
-            actorId: submissionData.studentId,
-            actorRole: "student",
-            actorName: submissionData.studentName,
-          });
         }
       }
 

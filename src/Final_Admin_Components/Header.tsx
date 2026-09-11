@@ -21,6 +21,7 @@ type HeaderProps = {
   onMenuPress: () => void;
   isSidebarOpen: boolean;
   adminId?: string;
+  onOpenStudentAtRisk?: () => void;
 };
 
 // Removed AI-specific fields from the type
@@ -102,6 +103,7 @@ function NotificationList({
   onRefresh,
   onMarkAsRead,
   onMarkAllAsRead,
+  onOpenStudentAtRisk,
   isMobile,
 }: {
   notifications: AdminNotification[];
@@ -110,11 +112,21 @@ function NotificationList({
   onRefresh: () => void;
   onMarkAsRead: (id: string) => void;
   onMarkAllAsRead: () => void;
+  onOpenStudentAtRisk?: () => void;
   isMobile: boolean;
 }) {
   const [showAllNotifications, setShowAllNotifications] = useState(false);
 
   const unreadCount = notifications.filter((item) => !item.read).length;
+  const atRiskCount = notifications.filter((item) => item.type === "student-at-risk").length;
+
+  const handleItemPress = (item: AdminNotification) => {
+    onMarkAsRead(item.id);
+    if (item.type === "student-at-risk" && onOpenStudentAtRisk) {
+      onOpenStudentAtRisk();
+      onClose();
+    }
+  };
   const visibleNotifications = showAllNotifications
     ? notifications
     : notifications.slice(0, 6);
@@ -176,6 +188,22 @@ function NotificationList({
         </TouchableOpacity>
       )}
 
+      {atRiskCount > 0 && onOpenStudentAtRisk && (
+        <TouchableOpacity
+          style={styles.viewAtRiskButton}
+          onPress={() => {
+            onOpenStudentAtRisk();
+            onClose();
+          }}
+          activeOpacity={0.85}
+        >
+          <Ionicons name="alert-circle" size={17} color="#FFFFFF" />
+          <Text style={styles.viewAtRiskText}>
+            View Student At Risk Report ({atRiskCount})
+          </Text>
+        </TouchableOpacity>
+      )}
+
       <ScrollView
         style={styles.notificationScroll}
         contentContainerStyle={styles.notificationScrollContent}
@@ -204,7 +232,7 @@ function NotificationList({
                   key={item.id}
                   style={[styles.notificationItem, unread && styles.notificationItemUnread]}
                   activeOpacity={0.85}
-                  onPress={() => onMarkAsRead(item.id)}
+                  onPress={() => handleItemPress(item)}
                 >
                   <View style={[styles.notificationItemIcon, unread && styles.notificationItemIconUnread]}>
                     <Ionicons
@@ -257,6 +285,7 @@ export default function Header({
   onMenuPress,
   isSidebarOpen,
   adminId,
+  onOpenStudentAtRisk,
 }: HeaderProps) {
   const [notificationOpen, setNotificationOpen] = useState(false);
   const [notifications, setNotifications] = useState<AdminNotification[]>([]);
@@ -407,6 +436,7 @@ export default function Header({
                   onRefresh={loadNotifications}
                   onMarkAsRead={markNotificationAsRead}
                   onMarkAllAsRead={markAllNotificationsAsRead}
+                  onOpenStudentAtRisk={onOpenStudentAtRisk}
                   isMobile={false}
                 />
               </View>
@@ -473,6 +503,7 @@ export default function Header({
             onRefresh={loadNotifications}
             onMarkAsRead={markNotificationAsRead}
             onMarkAllAsRead={markAllNotificationsAsRead}
+            onOpenStudentAtRisk={onOpenStudentAtRisk}
             isMobile={true}
           />
         </View>
@@ -720,6 +751,22 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "800",
     color: "#DC2626",
+    marginLeft: 8,
+  },
+  viewAtRiskButton: {
+    marginHorizontal: 18,
+    marginTop: 10,
+    height: 42,
+    borderRadius: 14,
+    backgroundColor: "#DC2626",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  viewAtRiskText: {
+    fontSize: 13,
+    fontWeight: "800",
+    color: "#FFFFFF",
     marginLeft: 8,
   },
   notificationScroll: {
