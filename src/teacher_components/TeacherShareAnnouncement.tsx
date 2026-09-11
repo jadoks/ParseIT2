@@ -634,9 +634,11 @@ function MergedTimeInput({
 function ExpiryTimeField({
   value,
   onChange,
+  isMobile,
 }: {
   value: Date | null;
   onChange: (time: Date) => void;
+  isMobile: boolean;
 }) {
   const [showTimeModal, setShowTimeModal] = useState(false);
   const [tempHour, setTempHour] = useState(9);
@@ -706,7 +708,13 @@ function ExpiryTimeField({
             onPress={() => setShowTimeModal(false)}
           />
 
-          <View style={styles.webDateModalCard}>
+          <View
+            style={[
+              styles.webDateModalCard,
+              styles.webTimeModalCard,
+              isMobile && styles.webDateModalCardMobile,
+            ]}
+          >
             {/* Header */}
             <View style={styles.modalHeader}>
               <View style={styles.modalHeaderLeft}>
@@ -1309,6 +1317,7 @@ export default function ShareAnnouncement({
               <ExpiryTimeField
                 value={expiryTime}
                 onChange={setExpiryTime}
+                isMobile={isMobile}
               />
             </View>
           </View>
@@ -1625,7 +1634,7 @@ export default function ShareAnnouncement({
                 </View>
 
                 <View style={styles.dateTimeBox}>
-                  <ExpiryTimeField value={editExpiryTime} onChange={setEditExpiryTime} />
+                  <ExpiryTimeField value={editExpiryTime} onChange={setEditExpiryTime} isMobile={isMobile} />
                 </View>
               </View>
 
@@ -1916,6 +1925,10 @@ const styles = StyleSheet.create({
   pickerModalOverlay: { flex: 1, backgroundColor: 'rgba(43, 17, 17, 0.45)', justifyContent: 'center', alignItems: 'center', padding: 20 },
 
   webDateModalCard: { width: '100%', maxWidth: 860, maxHeight: '88%', backgroundColor: '#FFFFFF', borderRadius: 28, borderWidth: 1, borderColor: '#F3D4D4', overflow: 'hidden' },
+  // Time-only modal (hour/minute + AM/PM) needs far less width than the
+  // full calendar-grid date modal it shares a base style with — narrower
+  // on large screens; falls back to full-width mobile sizing below.
+  webTimeModalCard: { maxWidth: 480 },
   // ✅ NEW: mobile card sizing for the Date picker modal
   webDateModalCardMobile: { maxWidth: '100%', maxHeight: '92%', borderRadius: 20 },
 
