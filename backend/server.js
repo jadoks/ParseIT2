@@ -17894,10 +17894,9 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
         moduleId,
         topicTitle,
         subtopicTitle, // Optional
-        generateDiscussion,
-        generateActivity,
-        // ❌ REMOVED: generateAssessment
-        generateSummary
+        // NOTE: generateDiscussion / generateActivity / generateSummary flags are
+        // accepted for backward compatibility but ignored — every SAS section is
+        // now REQUIRED and always generated together.
       } = req.body;
 
       if (!classId || !moduleId || !topicTitle) {
@@ -17909,60 +17908,58 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
       const classData = classSnap.exists ? classSnap.data() : {};
       const courseName = classData.name || "Programming Course";
 
-      // Build Dynamic Prompt
-      let instructions = [];
-      
-      // --- UPDATED INSTRUCTIONS FOR PLAIN TEXT FORMAT ---
-      if (generateDiscussion) {
-      instructions.push(`- Generate a 'discussion' section.
-      RULES:
-      1. Use ONLY plain text. NO HTML, NO Markdown headers (#), NO code blocks.
-      2. Do NOT use bolding markers like ** or __. Just write normal text.
-      3. Use numbered headings for sections (e.g., "1. Introduction", "2. Core Concepts").
-      4. Use * or - at the start of lines for bullet points.
-      5. Separate paragraphs with blank lines.`);
-      }
-      
-      if (generateActivity) {
-        instructions.push(`- Generate an 'activity' section.
-  RULES:
-  1. Use ONLY plain text.
-  2. Provide clear, numbered steps (1., 2., 3.).
-  3. Use **bold** for important instructions.`);
-      }
-      
-      // ❌ REMOVED: Assessment instructions
-      
-      if (generateSummary) {
-        instructions.push("- Generate a concise 'summary' of the key takeaways using plain text.");
-      }
-
       const prompt = `
   You are an expert University Instructor for "${courseName}".
-  Generate lesson content for the following specific topic.
+  Generate a COMPLETE Student Activity Sheet (SAS) for the following specific topic. Every section listed below is REQUIRED — do not omit or leave any blank.
 
   CONTEXT:
   - Module: ${moduleId}
   - Topic: ${topicTitle}
   ${subtopicTitle ? `- Subtopic: ${subtopicTitle}` : ''}
 
-  INSTRUCTIONS:
-  ${instructions.join('\n')}
+  REQUIRED SAS SECTIONS:
+  1. objectives — 3 to 5 Intended Learning Outcomes specific to the topic.
+  2. materials — list of materials/tools needed.
+  3. references — 1 to 3 short reference citations relevant to the topic.
+  4. sdgIntegration — 1 to 2 relevant UN Sustainable Development Goals, each with a name/number and a one-sentence description of the connection.
+  5. lessonPrep — a warm-up block with: resources (0-2 real relevant links as {label,url}, omit if none fit), activityTitle, instructions (plain text with a short numbered example), guideQuestions (3-4 short questions), transition (2-3 sentence bridge into today's topic).
+  6. discussion — the Concept Notes (main lecture content): numbered sections with headings and real-world/technical examples.
+  7. keyTerms — 4 to 8 {term, meaning} pairs specific to the topic.
+  8. takeaways — 4 to 6 short bullet takeaways.
+  9. guidedPractice — a step-by-step task the class does together (numbered steps).
+  10. activity — a Compu-Skill/Performance Task: an independent hands-on exercise (2-4 numbered steps/problems).
 
   CRITICAL OUTPUT FORMAT RULES:
   - Return VALID JSON only.
-  - The values for "discussion", "activity", and "summary" must be PLAIN TEXT strings.
+  - "discussion", "lessonPrep.instructions", "lessonPrep.transition", "guidedPractice", and "activity" must be PLAIN TEXT strings.
   - Do NOT use HTML tags (<p>, <b>, <ul>).
   - Do NOT use Markdown headers (#, ##).
-  - Use **word** for bolding.
-  - Use * or - for list items.
-  - Use blank lines to separate paragraphs.
+  - Use **word** for bolding key terms within plain-text fields.
+  - Use * or - for bullet points and numbered lists (1., 2.) for steps within plain-text fields.
+  - Use blank lines to separate paragraphs within plain-text fields.
+  - "objectives", "materials", "references", "takeaways", "lessonPrep.guideQuestions" are arrays of short plain strings.
+  - "sdgIntegration" is an array of { "sdg": "...", "description": "..." }.
+  - "keyTerms" is an array of { "term": "...", "meaning": "..." }.
+  - "lessonPrep.resources" is an array of { "label": "...", "url": "..." } (can be empty).
 
   RETURN VALID JSON ONLY:
   {
-    "discussion": "${generateDiscussion ? "1. Introduction\\n\\nThis is a sample paragraph with **bold text**.\\n\\n* Key point 1\\n* Key point 2" : ""}",
-    "activity": "${generateActivity ? "1. Step one\\n2. Step two\\n\\n**Note:** Be careful here." : ""}",
-    "summary": "${generateSummary ? "Key takeaways..." : ""}"
+    "objectives": ["...", "..."],
+    "materials": ["...", "..."],
+    "references": ["..."],
+    "sdgIntegration": [{ "sdg": "SDG # 4 – Quality Education", "description": "..." }],
+    "lessonPrep": {
+      "resources": [],
+      "activityTitle": "...",
+      "instructions": "1. ...\\n2. ...",
+      "guideQuestions": ["...", "..."],
+      "transition": "..."
+    },
+    "discussion": "1. Introduction\\n\\nThis is a sample paragraph with **bold text**.\\n\\n* Key point 1\\n* Key point 2",
+    "keyTerms": [{ "term": "...", "meaning": "..." }],
+    "takeaways": ["...", "..."],
+    "guidedPractice": "1. Step one\\n2. Step two",
+    "activity": "1. Step one\\n2. Step two\\n\\n**Note:** Be careful here."
   }
   `;
 
@@ -17970,7 +17967,8 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
         model: GEMINI_GAME_MODEL,
         generationConfig: {
           responseMimeType: "application/json",
-          temperature: 0.7
+          temperature: 0.7,
+          maxOutputTokens: 16384 // Full SAS template needs more room than a plain discussion/activity pair
         }
       });
 
@@ -18013,7 +18011,7 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
       generationConfig: {
         responseMimeType: "application/json",
         temperature: 0.7,
-        maxOutputTokens: 8192 // Optimized for single-topic depth
+        maxOutputTokens: 16384 // Bumped up: full SAS template has many more sections than plain discussion/activity
       }
     });
 
@@ -18024,32 +18022,46 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
       : moduleName;
 
     // Prompt focuses strictly on the specificTopic within the context of the module
+    // Follows the CTU "Student Activity Sheet" (SAS) template: ILOs, Materials,
+    // References, SDG Integration, Lesson Preparation, Concept Notes (discussion),
+    // Key Terms, Take Aways, Guided Practice, and a Compu-Skill/Performance Task
+    // (activity). Every section is REQUIRED — none are optional/toggleable.
     const prompt = `You are an expert curriculum designer and university instructor from Cebu Technological University (CTU).
-  Generate course content for ONE SPECIFIC LESSON/TOPIC ONLY.
+  Generate a COMPLETE Student Activity Sheet (SAS) for ONE SPECIFIC LESSON/TOPIC ONLY.
   MODULE CONTEXT:
   - Week/Module: ${syllabusModule.weeklySchedule || ""} (${moduleName})
   - All Topics in this Week: ${topicList}
   CURRENT LESSON TO GENERATE:
   - Topic: "${specificTopic}"
   INSTRUCTIONS:
-  Create a comprehensive lesson specifically for "${specificTopic}". Do NOT cover other topics in this week unless necessary for context.
-  LESSON STRUCTURE:
-  1. Introduction & Learning Objectives (Specific to ${specificTopic})
-  2. Core Concepts with Real-World Examples
-  3. Key Terminology
-  4. Practical Applications
-  5. Common Mistakes
-  6. Best Practices
-  ACTIVITY: Hands-on exercise specific to "${specificTopic}" (2-3 steps)
-  CRITICAL FORMATTING RULES FOR DISCUSSION AND ACTIVITY:
+  Create a comprehensive Student Activity Sheet specifically for "${specificTopic}", following the exact section structure below. Do NOT cover other topics in this week unless necessary for context. EVERY section below is REQUIRED — do not omit or leave any blank.
+  REQUIRED SAS SECTIONS:
+  1. objectives — 3 to 5 Intended Learning Outcomes specific to "${specificTopic}" (each a short "you should be able to..." statement).
+  2. materials — list of materials/tools needed (e.g. Computer, Smartphone, Student Activity Sheet, GSuite, IDE/compiler if relevant).
+  3. references — 1 to 3 short reference citations (book, official docs, or reputable site) relevant to "${specificTopic}".
+  4. sdgIntegration — 1 to 2 relevant UN Sustainable Development Goals, each with the SDG name/number and a one-sentence description of how this lesson connects to it.
+  5. lessonPrep — a warm-up "Lesson Preparation/Review/Preview" block with:
+     - resources: 0 to 2 real, genuinely relevant links (label + url) such as a tool download or short reference video (omit if none fit naturally — do not invent fake links).
+     - activityTitle: a short, catchy title for a simple warm-up activity that primes students for the topic (e.g. relating an everyday task to the concept).
+     - instructions: plain text instructions for that warm-up activity, including a short numbered example.
+     - guideQuestions: 3 to 4 short guide questions students discuss after the warm-up.
+     - transition: a short 2-3 sentence paragraph in a teacher's voice bridging the warm-up / prior lesson into today's topic.
+  6. discussion — the Concept Notes (main lecture content) for "${specificTopic}": numbered sections with headings, real-world examples, and code/technical examples where relevant.
+  7. keyTerms — 4 to 8 key terms with a short one-line meaning each, specific to "${specificTopic}".
+  8. takeaways — 4 to 6 short bullet takeaways summarizing the lesson.
+  9. guidedPractice — a "Guided Practice" step-by-step task the class does together, specific to "${specificTopic}" (numbered steps).
+  10. activity — a "Compu-Skill / Performance Task": an independent hands-on exercise or problem set specific to "${specificTopic}" (2-4 numbered steps/problems).
+  CRITICAL FORMATTING RULES:
   - Return VALID JSON only.
-  - The values for "discussion" and "activity" must be PLAIN TEXT strings.
-  - Do NOT use HTML tags (<p>, <b>, <ul>).
-  - Do NOT use Markdown headers (#, ##).
-  - Use **word** for bolding key terms.
-  - Use * or - at the start of lines for bullet points.
-  - Use numbered lists (1., 2.) for steps.
-  - Separate paragraphs with blank lines.
+  - "discussion", "lessonPrep.instructions", "lessonPrep.transition", and "guidedPractice" and "activity" must be PLAIN TEXT strings (no HTML, no Markdown headers).
+  - Use **word** for bolding key terms within plain-text fields.
+  - Use * or - at the start of lines for bullet points within plain-text fields.
+  - Use numbered lists (1., 2.) for steps within plain-text fields.
+  - Separate paragraphs with blank lines within plain-text fields.
+  - "objectives", "materials", "references", "takeaways", "lessonPrep.guideQuestions" must be arrays of short plain strings (no bullet characters, no numbering — just the text).
+  - "sdgIntegration" must be an array of objects: { "sdg": "SDG # — Name", "description": "..." }.
+  - "keyTerms" must be an array of objects: { "term": "...", "meaning": "..." }.
+  - "lessonPrep.resources" must be an array of objects: { "label": "...", "url": "..." } (can be an empty array).
   RETURN VALID JSON ONLY (no markdown, no code blocks):
   {
   "modules": [
@@ -18064,7 +18076,21 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
   "id": "lesson-${targetModuleNum}-${sanitizeId(specificTopic)}",
   "title": "${specificTopic}",
   "description": "Detailed coverage of ${specificTopic}.",
+  "objectives": ["Define ${specificTopic}.", "..."],
+  "materials": ["Computer", "Smartphone", "Student Activity Sheet"],
+  "references": ["..."],
+  "sdgIntegration": [{ "sdg": "SDG # 4 – Quality Education", "description": "..." }],
+  "lessonPrep": {
+    "resources": [{ "label": "...", "url": "https://..." }],
+    "activityTitle": "...",
+    "instructions": "1. ...\\n2. ...",
+    "guideQuestions": ["...", "..."],
+    "transition": "..."
+  },
   "discussion": "1. Introduction\\n\\nThis is a sample paragraph with **bold text**.\\n\\n* Key point 1\\n* Key point 2",
+  "keyTerms": [{ "term": "...", "meaning": "..." }],
+  "takeaways": ["...", "..."],
+  "guidedPractice": "1. Step one\\n2. Step two",
   "activity": "1. Step one\\n2. Step two\\n\\n**Note:** Be careful here."
   }
   ]
@@ -18439,7 +18465,16 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
         lessonNumber, // Optional - if not provided, backend will auto-calculate
         fileBase64,
         fileName,
-        fileType
+        fileType,
+        // ─── SAS (Student Activity Sheet) template fields ───
+        objectives,        // string[] — Intended Learning Outcomes
+        materials,         // string[]
+        references,        // string[]
+        sdgIntegration,    // [{ sdg, description }]
+        lessonPrep,        // { resources: [{label,url}], activityTitle, instructions, guideQuestions: string[], transition }
+        keyTerms,          // [{ term, meaning }]
+        takeaways,         // string[]
+        guidedPractice     // string
       } = req.body;
 
       if (!moduleId || !classId || !title) {
@@ -18537,6 +18572,21 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
         discussion: fileBase64 ? null : (discussion || ""),
         activity: fileBase64 ? null : (activity || ""),
         assessment: fileBase64 ? null : (assessment || { items: [] }),
+        // ─── SAS template fields (null out when a file is uploaded instead) ───
+        objectives: fileBase64 ? null : (Array.isArray(objectives) ? objectives.filter(Boolean) : []),
+        materials: fileBase64 ? null : (Array.isArray(materials) ? materials.filter(Boolean) : []),
+        references: fileBase64 ? null : (Array.isArray(references) ? references.filter(Boolean) : []),
+        sdgIntegration: fileBase64 ? null : (Array.isArray(sdgIntegration) ? sdgIntegration.filter(s => s && (s.sdg || s.description)) : []),
+        lessonPrep: fileBase64 ? null : (lessonPrep && typeof lessonPrep === "object" ? {
+          resources: Array.isArray(lessonPrep.resources) ? lessonPrep.resources.filter(r => r && (r.label || r.url)) : [],
+          activityTitle: lessonPrep.activityTitle || "",
+          instructions: lessonPrep.instructions || "",
+          guideQuestions: Array.isArray(lessonPrep.guideQuestions) ? lessonPrep.guideQuestions.filter(Boolean) : [],
+          transition: lessonPrep.transition || ""
+        } : { resources: [], activityTitle: "", instructions: "", guideQuestions: [], transition: "" }),
+        keyTerms: fileBase64 ? null : (Array.isArray(keyTerms) ? keyTerms.filter(k => k && (k.term || k.meaning)) : []),
+        takeaways: fileBase64 ? null : (Array.isArray(takeaways) ? takeaways.filter(Boolean) : []),
+        guidedPractice: fileBase64 ? null : (guidedPractice || ""),
         type: fileBase64 ? "manual_file" : "ai_generated", // Tag appropriately
         fileName: fileBase64 ? fileName : null,
         fileUrl: fileUrl,
@@ -18652,6 +18702,21 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
                 discussion: lesson.discussion || "",
                 activity: lesson.activity || "",
                 assessment: lesson.assessment || { items: [] },
+                // ─── SAS template fields ───
+                objectives: Array.isArray(lesson.objectives) ? lesson.objectives.filter(Boolean) : [],
+                materials: Array.isArray(lesson.materials) ? lesson.materials.filter(Boolean) : [],
+                references: Array.isArray(lesson.references) ? lesson.references.filter(Boolean) : [],
+                sdgIntegration: Array.isArray(lesson.sdgIntegration) ? lesson.sdgIntegration.filter(s => s && (s.sdg || s.description)) : [],
+                lessonPrep: lesson.lessonPrep && typeof lesson.lessonPrep === "object" ? {
+                  resources: Array.isArray(lesson.lessonPrep.resources) ? lesson.lessonPrep.resources.filter(r => r && (r.label || r.url)) : [],
+                  activityTitle: lesson.lessonPrep.activityTitle || "",
+                  instructions: lesson.lessonPrep.instructions || "",
+                  guideQuestions: Array.isArray(lesson.lessonPrep.guideQuestions) ? lesson.lessonPrep.guideQuestions.filter(Boolean) : [],
+                  transition: lesson.lessonPrep.transition || ""
+                } : { resources: [], activityTitle: "", instructions: "", guideQuestions: [], transition: "" },
+                keyTerms: Array.isArray(lesson.keyTerms) ? lesson.keyTerms.filter(k => k && (k.term || k.meaning)) : [],
+                takeaways: Array.isArray(lesson.takeaways) ? lesson.takeaways.filter(Boolean) : [],
+                guidedPractice: lesson.guidedPractice || "",
                 estimatedHours: lesson.estimatedHours || 0,
                 type: "ai_generated",
                 createdAt: FieldValue.serverTimestamp(),
@@ -18815,7 +18880,11 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
   app.put("/course-lessons/:lessonId", requireAuth, async (req, res) => {
     try {
       const { lessonId } = req.params;
-      const { title, description, discussion, activity, fileBase64, fileName, fileType } = req.body;
+      const {
+        title, description, discussion, activity, fileBase64, fileName, fileType,
+        // ─── SAS template fields ───
+        objectives, materials, references, sdgIntegration, lessonPrep, keyTerms, takeaways, guidedPractice
+      } = req.body;
 
       if (!lessonId) return res.status(400).json({ error: "Lesson ID is required." });
 
@@ -18857,6 +18926,24 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
       if (description !== undefined) updatePayload.description = description.trim();
       if (discussion !== undefined) updatePayload.discussion = discussion.trim() || null;
       if (activity !== undefined) updatePayload.activity = activity.trim() || null;
+
+      // ─── SAS template fields ───
+      if (objectives !== undefined) updatePayload.objectives = Array.isArray(objectives) ? objectives.filter(Boolean) : [];
+      if (materials !== undefined) updatePayload.materials = Array.isArray(materials) ? materials.filter(Boolean) : [];
+      if (references !== undefined) updatePayload.references = Array.isArray(references) ? references.filter(Boolean) : [];
+      if (sdgIntegration !== undefined) updatePayload.sdgIntegration = Array.isArray(sdgIntegration) ? sdgIntegration.filter(s => s && (s.sdg || s.description)) : [];
+      if (lessonPrep !== undefined) {
+        updatePayload.lessonPrep = lessonPrep && typeof lessonPrep === "object" ? {
+          resources: Array.isArray(lessonPrep.resources) ? lessonPrep.resources.filter(r => r && (r.label || r.url)) : [],
+          activityTitle: lessonPrep.activityTitle || "",
+          instructions: lessonPrep.instructions || "",
+          guideQuestions: Array.isArray(lessonPrep.guideQuestions) ? lessonPrep.guideQuestions.filter(Boolean) : [],
+          transition: lessonPrep.transition || ""
+        } : { resources: [], activityTitle: "", instructions: "", guideQuestions: [], transition: "" };
+      }
+      if (keyTerms !== undefined) updatePayload.keyTerms = Array.isArray(keyTerms) ? keyTerms.filter(k => k && (k.term || k.meaning)) : [];
+      if (takeaways !== undefined) updatePayload.takeaways = Array.isArray(takeaways) ? takeaways.filter(Boolean) : [];
+      if (guidedPractice !== undefined) updatePayload.guidedPractice = guidedPractice.trim() || null;
 
       // Handle File Replacement (Optional)
       if (fileBase64 && fileName) {

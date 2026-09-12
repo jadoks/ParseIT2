@@ -538,6 +538,16 @@ function DeansListFlowModal({ visible, onClose, isMobile, isLargeScreen }: FlowM
       <SafeAreaView style={styles.flowModalContainer}>
         <View style={[styles.flowModalHeader, isMobile && styles.flowModalHeaderMobile]}>
           <View style={[styles.flowModalHeaderInner, isLargeScreen && styles.flowModalHeaderInnerLarge]}>
+            <TouchableOpacity
+              onPress={onClose}
+              style={styles.flowModalBackBtn}
+              activeOpacity={0.7}
+              accessibilityLabel="Back"
+              hitSlop={8}
+            >
+              <Ionicons name="arrow-back" size={22} color="#3B332E" />
+            </TouchableOpacity>
+
             <View style={styles.flowModalHeaderText}>
               <Text style={[styles.flowModalTitle, isMobile && styles.flowModalTitleMobile]}>
                 How the Deans List is generated
@@ -546,16 +556,6 @@ function DeansListFlowModal({ visible, onClose, isMobile, isLargeScreen }: FlowM
                 From the student's uploaded grade file to a verified Deans List entry.
               </Text>
             </View>
-
-            <TouchableOpacity
-              onPress={onClose}
-              style={styles.flowModalCloseBtn}
-              activeOpacity={0.8}
-              accessibilityLabel="Close"
-              hitSlop={8}
-            >
-              <Ionicons name="close" size={24} color="#3B332E" />
-            </TouchableOpacity>
           </View>
         </View>
 
@@ -2585,17 +2585,24 @@ const styles = StyleSheet.create({
   },
   flowModalHeaderInner: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
+    alignItems: 'center',
     width: '100%',
   },
   flowModalHeaderInnerLarge: {
     maxWidth: 760,
     alignSelf: 'center',
   },
+  flowModalBackBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: '#F1EFE8',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
   flowModalHeaderText: {
     flex: 1,
-    paddingRight: 12,
   },
   flowModalTitle: { fontFamily: FONT_TITLE,
     fontSize: 20,
@@ -2610,14 +2617,6 @@ const styles = StyleSheet.create({
     color: '#666',
     marginTop: 4,
     lineHeight: 17,
-  },
-  flowModalCloseBtn: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: '#F1EFE8',
-    alignItems: 'center',
-    justifyContent: 'center',
   },
 
   flowModalScroll: {

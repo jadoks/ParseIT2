@@ -5,6 +5,7 @@ import Constants from "expo-constants";
 import React, { useEffect, useState } from "react";
 import {
   DimensionValue,
+  Modal,
   Platform,
   StyleSheet,
   Text,
@@ -618,17 +619,34 @@ export default function AdminDashboard({
         isMobile={isMobile}
       />
 
-      <Toast
+      {/* Toast — portal-based, matches Add*Modal/Chatbot so it renders
+          above everything instead of being trapped inside this screen's
+          own scrollable content (which pushed it off-screen before). */}
+      <Modal
         visible={toast.visible}
-        message={toast.message}
-        type={toast.type}
-        onHide={hideToast}
-      />
+        transparent
+        animationType="fade"
+        onRequestClose={hideToast}
+        statusBarTranslucent
+      >
+        <View style={styles.toastPortal} pointerEvents="box-none">
+          <Toast
+            visible={toast.visible}
+            message={toast.message}
+            type={toast.type}
+            onHide={hideToast}
+          />
+        </View>
+      </Modal>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  toastPortal: {
+    ...StyleSheet.absoluteFillObject,
+  },
+
   heroRow: {
     marginBottom: 20,
   },
@@ -830,4 +848,4 @@ const styles = StyleSheet.create({
   actionTextPrimary: {
     color: "#FFFFFF",
   },
-}); 
+});
