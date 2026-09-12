@@ -2933,17 +2933,122 @@ const fetchModules = useCallback(async (silent = false) => {
                       {selectedLesson.description || 'No description available.'}
                     </Text>
                   </View>
+
+                  {Array.isArray(selectedLesson.objectives) && selectedLesson.objectives.length > 0 ? (
+                    <View style={styles.sasCard}>
+                      <Text style={styles.sectionLabel}>Intended Learning Outcomes</Text>
+                      <Text style={{ color: '#333', lineHeight: 18, marginBottom: 4 }}>At the end of the lesson, you should be able to:</Text>
+                      {selectedLesson.objectives.map((o: string, i: number) => (
+                        <Text key={i} style={styles.sasBulletText}>{'\u2022 '}{o}</Text>
+                      ))}
+                    </View>
+                  ) : null}
+
+                  {(Array.isArray(selectedLesson.materials) && selectedLesson.materials.length > 0) ||
+                   (Array.isArray(selectedLesson.references) && selectedLesson.references.length > 0) ? (
+                    <View style={styles.sasCard}>
+                      {Array.isArray(selectedLesson.materials) && selectedLesson.materials.length > 0 ? (
+                        <>
+                          <Text style={styles.sectionLabel}>Materials</Text>
+                          <Text style={{ color: '#333', lineHeight: 20, marginBottom: 10 }}>{selectedLesson.materials.join(', ')}</Text>
+                        </>
+                      ) : null}
+                      {Array.isArray(selectedLesson.references) && selectedLesson.references.length > 0 ? (
+                        <>
+                          <Text style={styles.sectionLabel}>References</Text>
+                          {selectedLesson.references.map((r: string, i: number) => (
+                            <Text key={i} style={styles.sasBulletText}>{'\u2022 '}{r}</Text>
+                          ))}
+                        </>
+                      ) : null}
+                    </View>
+                  ) : null}
+
+                  {Array.isArray(selectedLesson.sdgIntegration) && selectedLesson.sdgIntegration.length > 0 ? (
+                    <View style={styles.sasCard}>
+                      <Text style={styles.sectionLabel}>SDG Integration</Text>
+                      {selectedLesson.sdgIntegration.map((s: any, i: number) => (
+                        <Text key={i} style={{ color: '#333', lineHeight: 20, marginBottom: 6 }}>
+                          <Text style={{ fontWeight: '700' }}>{s.sdg}</Text>{s.description ? ` — ${s.description}` : ''}
+                        </Text>
+                      ))}
+                    </View>
+                  ) : null}
+
+                  {selectedLesson.lessonPrep ? (
+                    <View style={styles.sasCard}>
+                      <Text style={styles.sectionLabel}>Lesson Preparation / Review / Preview</Text>
+                      {Array.isArray(selectedLesson.lessonPrep.resources) && selectedLesson.lessonPrep.resources.length > 0 ? (
+                        <View style={{ marginBottom: 8 }}>
+                          {selectedLesson.lessonPrep.resources.map((r: any, i: number) => (
+                            <Text key={i} style={{ color: '#1976D2', lineHeight: 20 }}>{r.label}{r.url ? `: ${r.url}` : ''}</Text>
+                          ))}
+                        </View>
+                      ) : null}
+                      {selectedLesson.lessonPrep.activityTitle ? (
+                        <Text style={{ color: '#000', fontWeight: '700', marginBottom: 4 }}>Activity: "{selectedLesson.lessonPrep.activityTitle}"</Text>
+                      ) : null}
+                      {selectedLesson.lessonPrep.instructions ? (
+                        <Text style={{ color: '#000', lineHeight: 22, marginBottom: 8 }}>
+                          {renderFormattedText(selectedLesson.lessonPrep.instructions, { color: '#000', lineHeight: 22 })}
+                        </Text>
+                      ) : null}
+                      {Array.isArray(selectedLesson.lessonPrep.guideQuestions) && selectedLesson.lessonPrep.guideQuestions.length > 0 ? (
+                        <View style={{ marginBottom: 8 }}>
+                          <Text style={{ fontWeight: '700', color: '#000', marginBottom: 4 }}>Guide Questions</Text>
+                          {selectedLesson.lessonPrep.guideQuestions.map((q: string, i: number) => (
+                            <Text key={i} style={styles.sasBulletText}>{i + 1}. {q}</Text>
+                          ))}
+                        </View>
+                      ) : null}
+                      {selectedLesson.lessonPrep.transition ? (
+                        <Text style={{ color: '#444', lineHeight: 20, fontStyle: 'italic' }}>{selectedLesson.lessonPrep.transition}</Text>
+                      ) : null}
+                    </View>
+                  ) : null}
+
                   {selectedLesson.discussion ? (
-                    <View style={{ marginBottom: 16, backgroundColor: '#FFF', padding: 12, borderRadius: 14 }}>
-                      <Text style={styles.sectionLabel}>Discussion / Lecture Notes</Text>
+                    <View style={styles.sasCard}>
+                      <Text style={styles.sectionLabel}>Concept Notes / Discussion</Text>
                       <Text style={{ color: '#000', lineHeight: 22 }}>
                         {renderFormattedText(selectedLesson.discussion, { color: '#000', lineHeight: 22 })}
                       </Text>
                     </View>
                   ) : null}
+
+                  {Array.isArray(selectedLesson.keyTerms) && selectedLesson.keyTerms.length > 0 ? (
+                    <View style={styles.sasCard}>
+                      <Text style={styles.sectionLabel}>Key Terms to Remember</Text>
+                      {selectedLesson.keyTerms.map((k: any, i: number) => (
+                        <View key={i} style={{ flexDirection: 'row', marginBottom: 6 }}>
+                          <Text style={{ width: 110, fontWeight: '700', color: '#000' }}>{k.term}</Text>
+                          <Text style={{ flex: 1, color: '#333' }}>{k.meaning}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  ) : null}
+
+                  {Array.isArray(selectedLesson.takeaways) && selectedLesson.takeaways.length > 0 ? (
+                    <View style={[styles.sasCard, { backgroundColor: '#FFF3E0' }]}>
+                      <Text style={styles.sectionLabel}>Take Aways</Text>
+                      {selectedLesson.takeaways.map((t: string, i: number) => (
+                        <Text key={i} style={styles.sasBulletText}>{'\u2022 '}{t}</Text>
+                      ))}
+                    </View>
+                  ) : null}
+
+                  {selectedLesson.guidedPractice ? (
+                    <View style={styles.sasCard}>
+                      <Text style={styles.sectionLabel}>Guided Practice</Text>
+                      <Text style={{ color: '#000', lineHeight: 22 }}>
+                        {renderFormattedText(selectedLesson.guidedPractice, { color: '#000', lineHeight: 22 })}
+                      </Text>
+                    </View>
+                  ) : null}
+
                   {selectedLesson.activity ? (
-                    <View style={{ marginBottom: 16, backgroundColor: '#FFF', padding: 12, borderRadius: 14 }}>
-                      <Text style={styles.sectionLabel}>Activity / Scenario</Text>
+                    <View style={styles.sasCard}>
+                      <Text style={styles.sectionLabel}>Compu-Skill / Performance Task</Text>
                       <Text style={{ color: '#000', lineHeight: 22 }}>
                         {renderFormattedText(selectedLesson.activity, { color: '#000', lineHeight: 22 })}
                       </Text>
@@ -4553,6 +4658,15 @@ const styles = StyleSheet.create({
     fontWeight: WEIGHT_EMPHASIS,
   },
   section: { marginBottom: 18 },
+  sasCard: {
+    marginBottom: 16,
+    backgroundColor: '#FFF',
+    padding: 14,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#EEE',
+  },
+  sasBulletText: { color: '#333', lineHeight: 20, marginBottom: 3 },
   sectionLabel: { fontFamily: FONT_BODY,
     fontSize: 13,
     fontWeight: WEIGHT_EMPHASIS,
