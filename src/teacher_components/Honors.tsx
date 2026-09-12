@@ -285,7 +285,7 @@ function HonorRollPreviewModal({
         <View style={[styles.previewWrapper, isMobile && styles.previewWrapperMobile]}>
           <View style={[styles.previewTopBar, isMobile && styles.previewTopBarMobile]}>
             <Text style={[styles.previewTitle, isMobile && styles.previewTitleMobile]}>
-              Honor List
+              Deans List
             </Text>
 
             <TouchableOpacity
@@ -316,7 +316,7 @@ function HonorRollPreviewModal({
             {generatedSections.length === 0 ? (
               <View style={styles.previewEmptyRow}>
                 <Text style={styles.previewEmptyText}>
-                  No generated honor list yet.
+                  No generated Deans List yet.
                 </Text>
               </View>
             ) : (
@@ -366,7 +366,7 @@ function HonorRollPreviewModal({
                           Semester: {semester}
                         </Text>
                         <Text style={styles.previewMetaText}>
-                          Total No. of Honor Students: {section.students.length}
+                          Total No. of Deans List Students: {section.students.length}
                         </Text>
                       </View>
 
@@ -418,6 +418,228 @@ function HonorRollPreviewModal({
   );
 }
 
+// ─── Deans List generation flow (explainer) ─────────────────────────────────
+// Mirrors the real pipeline: /upload-student-grade (Gemini identity check +
+// Gemini table parsing) feeding studentParsedGrades, then /honor-roll
+// (plain server-side rules, no AI) deciding who actually qualifies.
+type FlowStepBadge = 'ai' | 'server';
+
+type FlowStep = {
+  icon: React.ComponentProps<typeof Ionicons>['name'];
+  badge: FlowStepBadge;
+  title: string;
+  subtitle: string;
+  reject?: {
+    title: string;
+    subtitle: string;
+  };
+};
+
+const DEANS_LIST_FLOW_STEPS: FlowStep[] = [
+  {
+    icon: 'cloud-upload-outline',
+    badge: 'server',
+    title: 'Student uploads grade file (from MIS Portal)',
+    subtitle: 'PDF or image, uploaded through the app',
+  },
+  {
+    icon: 'save-outline',
+    badge: 'server',
+    title: 'Saved to Firebase Storage',
+    subtitle: 'A studentGrades record is created right away',
+  },
+  {
+    icon: 'shield-checkmark-outline',
+    badge: 'ai',
+    title: 'Gemini AI — Identity Verification',
+    subtitle: 'Confirms the ID on the document matches the logged-in student',
+    reject: {
+      title: 'ID mismatch',
+      subtitle: 'Upload is rejected (403). Student must re-upload the correct file.',
+    },
+  },
+  {
+    icon: 'document-text-outline',
+    badge: 'ai',
+    title: 'Gemini AI — Transcript Parser',
+    subtitle: 'Reads the grade table and extracts only the FINAL GRADE column',
+  },
+  {
+    icon: 'calculator-outline',
+    badge: 'server',
+    title: 'Compute GWA & group by term',
+    subtitle: 'Weighted by units, grouped by school year and semester',
+  },
+  {
+    icon: 'server-outline',
+    badge: 'server',
+    title: 'Saved to studentParsedGrades',
+    subtitle: 'One record per student, per school year & semester',
+  },
+  {
+    icon: 'search-outline',
+    badge: 'server',
+    title: 'Admin clicks "View Deans List"',
+    subtitle: 'Loads every parsed record for the selected year & semester',
+  },
+  {
+    icon: 'checkbox-outline',
+    badge: 'server',
+    title: 'Check 1 — Completeness & grade cap',
+    subtitle: 'Needs 18+ units, a final grade in every subject, none above 2.5',
+    reject: {
+      title: 'Fails the check',
+      subtitle: "Student is excluded from this term's Deans List",
+    },
+  },
+  {
+    icon: 'stats-chart-outline',
+    badge: 'server',
+    title: 'Check 2 — GWA range',
+    subtitle: 'GWA must fall between 1.0 and 1.75',
+    reject: {
+      title: 'GWA out of range',
+      subtitle: "Student is excluded from this term's Deans List",
+    },
+  },
+  {
+    icon: 'people-outline',
+    badge: 'server',
+    title: 'Qualified students grouped',
+    subtitle: 'Grouped by year level & section, best (lowest) GWA ranked first',
+  },
+  {
+    icon: 'trophy-outline',
+    badge: 'server',
+    title: 'Official Deans List',
+    subtitle: 'Shown in the app, and exportable to PDF & Excel',
+  },
+];
+
+type FlowModalProps = {
+  visible: boolean;
+  onClose: () => void;
+  isMobile: boolean;
+};
+
+// Full-screen inline preview modal explaining, step by step, how a student's
+// uploaded grade file turns into an entry on the Deans List. Opened from the
+// (?) icon next to the "Deans List" title.
+function DeansListFlowModal({ visible, onClose, isMobile }: FlowModalProps) {
+  return (
+    <Modal
+      visible={visible}
+      animationType="slide"
+      onRequestClose={onClose}
+      statusBarTranslucent
+      presentationStyle="fullScreen"
+    >
+      <SafeAreaView style={styles.flowModalContainer}>
+        <View style={[styles.flowModalHeader, isMobile && styles.flowModalHeaderMobile]}>
+          <View style={styles.flowModalHeaderText}>
+            <Text style={[styles.flowModalTitle, isMobile && styles.flowModalTitleMobile]}>
+              How the Deans List is generated
+            </Text>
+            <Text style={styles.flowModalSubtitle}>
+              From the student's uploaded grade file to a verified Deans List entry.
+            </Text>
+          </View>
+
+          <TouchableOpacity
+            onPress={onClose}
+            style={styles.flowModalCloseBtn}
+            activeOpacity={0.8}
+            accessibilityLabel="Close"
+            hitSlop={8}
+          >
+            <Ionicons name="close" size={24} color="#3B332E" />
+          </TouchableOpacity>
+        </View>
+
+        <ScrollView
+          style={styles.flowModalScroll}
+          contentContainerStyle={styles.flowModalScrollContent}
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={styles.flowLegendRow}>
+            <View style={styles.flowLegendItem}>
+              <View style={[styles.flowLegendDot, styles.flowLegendDotServer]} />
+              <Text style={styles.flowLegendText}>App / server logic</Text>
+            </View>
+            <View style={styles.flowLegendItem}>
+              <View style={[styles.flowLegendDot, styles.flowLegendDotAi]} />
+              <Text style={styles.flowLegendText}>Gemini AI step</Text>
+            </View>
+            <View style={styles.flowLegendItem}>
+              <View style={[styles.flowLegendDot, styles.flowLegendDotReject]} />
+              <Text style={styles.flowLegendText}>Excluded / rejected</Text>
+            </View>
+          </View>
+
+          {DEANS_LIST_FLOW_STEPS.map((step, index) => {
+            const isLast = index === DEANS_LIST_FLOW_STEPS.length - 1;
+            return (
+              <View key={`${step.title}-${index}`} style={styles.flowStepWrap}>
+                <View style={styles.flowStepRow}>
+                  <View style={styles.flowStepRail}>
+                    <View
+                      style={[
+                        styles.flowStepBadge,
+                        step.badge === 'ai' ? styles.flowStepBadgeAi : styles.flowStepBadgeServer,
+                      ]}
+                    >
+                      <Ionicons
+                        name={step.icon}
+                        size={18}
+                        color={step.badge === 'ai' ? '#0F6E56' : '#5F5E5A'}
+                      />
+                    </View>
+                    {!isLast && <View style={styles.flowStepConnector} />}
+                  </View>
+
+                  <View style={styles.flowStepCard}>
+                    <View style={styles.flowStepCardHeader}>
+                      <Text style={styles.flowStepNumber}>STEP {index + 1}</Text>
+                      {step.badge === 'ai' && (
+                        <View style={styles.flowStepAiPill}>
+                          <Text style={styles.flowStepAiPillText}>Gemini AI</Text>
+                        </View>
+                      )}
+                    </View>
+                    <Text style={styles.flowStepTitle}>{step.title}</Text>
+                    <Text style={styles.flowStepSubtitle}>{step.subtitle}</Text>
+                  </View>
+                </View>
+
+                {step.reject && (
+                  <View style={styles.flowRejectRow}>
+                    <View style={styles.flowRejectSpacer} />
+                    <View style={styles.flowRejectCard}>
+                      <Ionicons name="close-circle-outline" size={16} color="#A32D2D" />
+                      <View style={styles.flowRejectTextWrap}>
+                        <Text style={styles.flowRejectTitle}>{step.reject.title}</Text>
+                        <Text style={styles.flowRejectSubtitle}>{step.reject.subtitle}</Text>
+                      </View>
+                    </View>
+                  </View>
+                )}
+              </View>
+            );
+          })}
+
+          <View style={styles.flowFootnote}>
+            <Ionicons name="information-circle-outline" size={16} color="#666" />
+            <Text style={styles.flowFootnoteText}>
+              Gemini AI only reads the uploaded file (identity + grades). The Deans List
+              eligibility rules themselves are plain server logic, not AI judgment.
+            </Text>
+          </View>
+        </ScrollView>
+      </SafeAreaView>
+    </Modal>
+  );
+}
+
 // UPDATED: Accept apiBaseUrl as a prop
 export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
   const { width } = useWindowDimensions();
@@ -437,6 +659,10 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
   const [isGenerating, setIsGenerating] = useState(false);
   // NEW: Loading state for Download Excel button
   const [isExportingExcel, setIsExportingExcel] = useState(false);
+
+  // NEW: Controls the full-screen "how is this list generated" explainer,
+  // opened from the (?) icon beside the "Deans List" title.
+  const [showFlowModal, setShowFlowModal] = useState(false);
 
   // ✅ Toast state — same shape/usage as SignIn, Community, Dashboard,
   // ClassesScreen, so this screen's feedback looks and behaves identically.
@@ -491,7 +717,7 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data?.error || 'Failed to generate honor roll.');
+        throw new Error(data?.error || 'Failed to load the Deans List.');
       }
 
       const orderedYearLevels = [
@@ -537,10 +763,10 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
       setOpenDropdown(null);
 
       if (rankedSections.length === 0) {
-        showFeedback('info', 'No Results', `No honor roll students found for ${buildSchoolYear(normalizedStartYear)} - ${semester}.`);
+        showFeedback('info', 'No Results', `No Deans List students found for ${buildSchoolYear(normalizedStartYear)} - ${semester}.`);
       }
     } catch (error: any) {
-      showFeedback('error', 'Generate Failed', error?.message || 'Unable to generate honor roll.');
+      showFeedback('error', 'Load Failed', error?.message || 'Unable to load the Deans List.');
     } finally {
       setIsGenerating(false);
     }
@@ -574,7 +800,7 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
           <section class="honor-section">
             <div class="section-heading">
               <div>
-                <h2>HONOR LIST</h2>
+                <h2>DEANS LIST</h2>
                 <p>${escapeHtml(section.yearLevel)} - Section ${escapeHtml(section.sectionName)}</p>
                 <p>Academic Year: ${escapeHtml(schoolYear || 'S.Y ---- - ----')} | Semester: ${escapeHtml(semester)}</p>
               </div>
@@ -783,7 +1009,7 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
             <div class="contact">Website: http://www.argao.ctu.edu.ph &nbsp; E-mail: ctuargao@ctu.edu.ph</div>
           </section>
 
-          <div class="main-title">OFFICIAL HONOR LIST</div>
+          <div class="main-title">OFFICIAL DEANS LIST</div>
           <div class="main-subtitle">Academic Year ${escapeHtml(schoolYear || 'S.Y ---- - ----')} | ${escapeHtml(semester)}</div>
 
           ${sectionBlocks}
@@ -830,7 +1056,7 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
       y += 36;
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(18);
-      doc.text('OFFICIAL HONOR LIST', pageWidth / 2, y, { align: 'center' });
+      doc.text('OFFICIAL DEANS LIST', pageWidth / 2, y, { align: 'center' });
 
       y += 16;
       doc.setFontSize(10);
@@ -859,7 +1085,7 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
       doc.setTextColor(255, 255, 255);
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(14);
-      doc.text('HONOR LIST', margin + 14, y + 21);
+      doc.text('DEANS LIST', margin + 14, y + 21);
 
       doc.setFontSize(9);
       doc.text(`${section.yearLevel} - Section ${section.sectionName}`, margin + 14, y + 37);
@@ -949,13 +1175,13 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
 
   const downloadHonorPdf = async () => {
     if (generatedSections.length === 0) {
-      showFeedback('error', 'No Honor List', 'Please generate the honor list first.');
+      showFeedback('error', 'No Deans List', 'Please generate the Deans List first.');
       return;
     }
 
     const safeSchoolYear = sanitizeFileName(schoolYear.replace(/S\.?Y\.?/gi, '').trim());
     const safeSemester = sanitizeFileName(semester);
-    const fileName = `honor-list-${safeSchoolYear}-${safeSemester}.pdf`;
+    const fileName = `deans-list-${safeSchoolYear}-${safeSemester}.pdf`;
     const html = buildHonorReportHtml();
 
     try {
@@ -991,7 +1217,7 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
           encoding: FileSystem.EncodingType.Base64,
         });
 
-        showFeedback('success', 'Downloaded', 'Honor list PDF saved successfully.');
+        showFeedback('success', 'Downloaded', 'Deans List PDF saved successfully.');
         return;
       }
 
@@ -1002,7 +1228,7 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
         to: savedUri,
       });
 
-      showFeedback('success', 'Downloaded', `Honor list PDF saved successfully.\n${savedUri}`);
+      showFeedback('success', 'Downloaded', `Deans List PDF saved successfully.\n${savedUri}`);
     } catch (error: any) {
       showFeedback('error', 'Download Failed', error?.message || 'Unable to save the PDF file.');
     }
@@ -1010,7 +1236,7 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
 
   const downloadHonorExcel = async () => {
     if (generatedSections.length === 0) {
-      showFeedback('error', 'No Honor List', 'Please generate the honor list first.');
+      showFeedback('error', 'No Deans List', 'Please generate the Deans List first.');
       return;
     }
 
@@ -1018,7 +1244,7 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
     try {
       const safeSchoolYear = sanitizeFileName(schoolYear.replace(/S\.?Y\.?/gi, '').trim());
       const safeSemester = sanitizeFileName(semester);
-      const fileName = `honor-list-${safeSchoolYear}-${safeSemester}-${getExportTimestamp()}.xlsx`;
+      const fileName = `deans-list-${safeSchoolYear}-${safeSemester}-${getExportTimestamp()}.xlsx`;
 
       const workbook = XLSX.utils.book_new();
 
@@ -1028,14 +1254,14 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
       );
 
       const infoRows = [
-        ['Report', 'Honor List'],
+        ['Report', 'Deans List'],
         ['Academic Year', schoolYear || 'S.Y ---- - ----'],
         ['Semester', semester],
         ['Total Sections', generatedSections.length],
-        ['Total Honor Students', totalHonorStudents],
+        ['Total Deans List Students', totalHonorStudents],
         ['Exported At', new Date().toLocaleString()],
         [],
-        ['Section', 'Honor Students'],
+        ['Section', 'Deans List Students'],
         ...generatedSections.map((section) => [
           `${section.yearLevel} - ${section.sectionName}`,
           section.students.length,
@@ -1044,7 +1270,7 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
 
       const infoSheet = XLSX.utils.aoa_to_sheet(infoRows);
       infoSheet['!cols'] = [{ wch: 22 }, { wch: 40 }];
-      XLSX.utils.book_append_sheet(workbook, infoSheet, 'Honor Info');
+      XLSX.utils.book_append_sheet(workbook, infoSheet, 'Deans List Info');
 
       const honorRows = generatedSections.flatMap((section) =>
         section.students.map((student, index) => ({
@@ -1070,7 +1296,7 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
         { wch: 22 },
         { wch: 18 },
       ];
-      XLSX.utils.book_append_sheet(workbook, honorSheet, 'Honor List');
+      XLSX.utils.book_append_sheet(workbook, honorSheet, 'Deans List');
 
       generatedSections.forEach((section, sectionIndex) => {
         const sectionRows = section.students.map((student, index) => ({
@@ -1105,7 +1331,7 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
 
       if (Platform.OS === 'web') {
         XLSX.writeFile(workbook, fileName);
-        showFeedback('success', 'Downloaded', 'Honor list Excel file downloaded successfully.');
+        showFeedback('success', 'Downloaded', 'Deans List Excel file downloaded successfully.');
         return;
       }
 
@@ -1132,7 +1358,7 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
           encoding: FileSystem.EncodingType.Base64,
         });
 
-        showFeedback('success', 'Downloaded', 'Honor list Excel file saved successfully.');
+        showFeedback('success', 'Downloaded', 'Deans List Excel file saved successfully.');
         return;
       }
 
@@ -1142,7 +1368,7 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
         encoding: FileSystem.EncodingType.Base64,
       });
 
-      showFeedback('success', 'Downloaded', `Honor list Excel file saved successfully.\n${savedUri}`);
+      showFeedback('success', 'Downloaded', `Deans List Excel file saved successfully.\n${savedUri}`);
     } catch (error: any) {
       showFeedback('error', 'Download Failed', error?.message || 'Unable to save the Excel file.');
     } finally {
@@ -1162,7 +1388,19 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.headerRow}>
-          <Text style={styles.title}>Honors</Text>
+          <View style={styles.titleRow}>
+            <Text style={styles.title}>Deans List</Text>
+
+            <TouchableOpacity
+              onPress={() => setShowFlowModal(true)}
+              style={styles.flowHelpBtn}
+              activeOpacity={0.7}
+              hitSlop={8}
+              accessibilityLabel="How is the Deans List generated?"
+            >
+              <Ionicons name="help-circle-outline" size={24} color="#B71C1C" />
+            </TouchableOpacity>
+          </View>
 
           <TouchableOpacity
             style={[
@@ -1186,9 +1424,9 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
         </View>
 
         <View style={[styles.subHeader, isMobile && styles.subHeaderMobile]}>
-          <Text style={styles.mainHeading}>Honor Roll Generation</Text>
+          <Text style={styles.mainHeading}>Deans List Generation</Text>
           <Text style={styles.subHeadingText}>
-            Provide the academic start year and semester to generate the official list of qualified honor students.
+            Provide the academic start year and semester to generate the official Deans List of qualified students.
           </Text>
         </View>
 
@@ -1273,7 +1511,7 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
               disabled={isGenerating}
             >
               <Text style={styles.generateBtnText}>
-                {isGenerating ? 'Generating Honor List...' : 'Generate Honor List'}
+                {isGenerating ? 'Loading Deans List...' : 'View Deans List'}
               </Text>
             </TouchableOpacity>
           </View>
@@ -1282,7 +1520,7 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
         {generatedSections.length === 0 ? (
           <View style={[styles.emptyState, isMobile && styles.emptyStateMobile]}>
             <Text style={styles.emptyStateText}>
-              Click Generate Honor Roll to display qualified honor students.
+              Click View Deans List to display qualified Deans List students.
             </Text>
           </View>
         ) : (
@@ -1295,7 +1533,7 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
                 <View style={[styles.honorAcademicHeader, isMobile && styles.honorAcademicHeaderMobile]}>
                   <View style={styles.honorAcademicTitleWrap}>
                     <Text style={[styles.honorAcademicTitle, isMobile && styles.honorAcademicTitleMobile]}>
-                      HONOR LIST
+                      DEANS LIST
                     </Text>
                     <Text style={[styles.honorAcademicSubtitle, isMobile && styles.honorAcademicSubtitleMobile]}>
                       {section.yearLevel} — Section {section.sectionName}
@@ -1351,6 +1589,14 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
 
       </ScrollView>
 
+      {/* Full-screen "how is this generated" explainer, opened from the (?)
+          icon beside the Deans List title. */}
+      <DeansListFlowModal
+        visible={showFlowModal}
+        onClose={() => setShowFlowModal(false)}
+        isMobile={isMobile}
+      />
+
       {/* Toast — portal-based, matches SignIn/Community/Dashboard/ClassesScreen
           so feedback here looks and behaves the same as everywhere else. */}
       <Modal
@@ -1397,10 +1643,18 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
   title: { fontFamily: FONT_TITLE,
     fontSize: 36,
     fontWeight: WEIGHT_TITLE,
     color: '#000',
+  },
+  flowHelpBtn: {
+    padding: 2,
   },
   exportHonorBtn: {
     flexDirection: 'row',
@@ -2295,5 +2549,220 @@ const styles = StyleSheet.create({
   // touches pass through to whatever's behind, except the toast itself.
   toastPortal: {
     ...StyleSheet.absoluteFillObject,
+  },
+
+  // ─── Deans List flow explainer (full-screen modal) ────────────────────────
+  flowModalContainer: {
+    flex: 1,
+    backgroundColor: '#FAF8F4',
+  },
+  flowModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: '#EDE7DC',
+    backgroundColor: '#FFFFFF',
+  },
+  flowModalHeaderMobile: {
+    paddingHorizontal: 16,
+  },
+  flowModalHeaderText: {
+    flex: 1,
+    paddingRight: 12,
+  },
+  flowModalTitle: { fontFamily: FONT_TITLE,
+    fontSize: 20,
+    fontWeight: WEIGHT_TITLE,
+    color: '#111',
+  },
+  flowModalTitleMobile: { fontFamily: FONT_TITLE,
+    fontSize: 17,
+  },
+  flowModalSubtitle: { fontFamily: FONT_BODY,
+    fontSize: 12,
+    color: '#666',
+    marginTop: 4,
+    lineHeight: 17,
+  },
+  flowModalCloseBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: '#F1EFE8',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  flowModalScroll: {
+    flex: 1,
+  },
+  flowModalScrollContent: {
+    paddingHorizontal: 20,
+    paddingTop: 18,
+    paddingBottom: 40,
+  },
+
+  flowLegendRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 16,
+    marginBottom: 20,
+  },
+  flowLegendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  flowLegendDot: {
+    width: 9,
+    height: 9,
+    borderRadius: 5,
+  },
+  flowLegendDotServer: {
+    backgroundColor: '#888780',
+  },
+  flowLegendDotAi: {
+    backgroundColor: '#1D9E75',
+  },
+  flowLegendDotReject: {
+    backgroundColor: '#E24B4A',
+  },
+  flowLegendText: { fontFamily: FONT_BODY,
+    fontSize: 12,
+    color: '#555',
+  },
+
+  flowStepWrap: {
+    marginBottom: 4,
+  },
+  flowStepRow: {
+    flexDirection: 'row',
+  },
+  flowStepRail: {
+    width: 44,
+    alignItems: 'center',
+  },
+  flowStepBadge: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+  },
+  flowStepBadgeServer: {
+    backgroundColor: '#F1EFE8',
+    borderColor: '#D3D1C7',
+  },
+  flowStepBadgeAi: {
+    backgroundColor: '#E1F5EE',
+    borderColor: '#9FE1CB',
+  },
+  flowStepConnector: {
+    width: 2,
+    flex: 1,
+    minHeight: 28,
+    backgroundColor: '#E0DCD2',
+    marginTop: 2,
+  },
+
+  flowStepCard: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#EFEFEF',
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 18,
+  },
+  flowStepCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
+  flowStepNumber: { fontFamily: FONT_TITLE,
+    fontSize: 11,
+    fontWeight: WEIGHT_TITLE,
+    color: '#B71C1C',
+    letterSpacing: 0.6,
+  },
+  flowStepAiPill: {
+    backgroundColor: '#E1F5EE',
+    borderRadius: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+  },
+  flowStepAiPillText: { fontFamily: FONT_BODY,
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#085041',
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
+  },
+  flowStepTitle: { fontFamily: FONT_BODY,
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#111',
+    marginBottom: 2,
+  },
+  flowStepSubtitle: { fontFamily: FONT_BODY,
+    fontSize: 12,
+    color: '#666',
+    lineHeight: 17,
+  },
+
+  flowRejectRow: {
+    flexDirection: 'row',
+    marginTop: -10,
+    marginBottom: 18,
+  },
+  flowRejectSpacer: {
+    width: 44,
+  },
+  flowRejectCard: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    backgroundColor: '#FCEBEB',
+    borderWidth: 1,
+    borderColor: '#F5C6C6',
+    borderRadius: 12,
+    padding: 10,
+  },
+  flowRejectTextWrap: {
+    flex: 1,
+  },
+  flowRejectTitle: { fontFamily: FONT_BODY,
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#791F1F',
+  },
+  flowRejectSubtitle: { fontFamily: FONT_BODY,
+    fontSize: 11,
+    color: '#A32D2D',
+    lineHeight: 15,
+    marginTop: 1,
+  },
+
+  flowFootnote: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    backgroundColor: '#F1EFE8',
+    borderRadius: 12,
+    padding: 12,
+    marginTop: 6,
+  },
+  flowFootnoteText: { fontFamily: FONT_BODY,
+    flex: 1,
+    fontSize: 12,
+    color: '#555',
+    lineHeight: 17,
   },
 });
