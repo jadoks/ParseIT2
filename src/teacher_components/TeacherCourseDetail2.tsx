@@ -4587,6 +4587,81 @@ useEffect(() => {
         </>
       );
     }
+    // ✅ On mobile / small screens each field is full width, so pairing
+    // Header with Due Date and Instruction with Total Score (desktop's
+    // two-column rows) doesn't apply — instead we want the natural reading
+    // order Header → Instruction → Due Date & Time → Total Score. The
+    // field bodies are built once here and reused in whichever order/
+    // layout matches the current screen size below.
+    const headerField = (
+      <>
+        <Text style={styles.sectionLabel}>Header</Text>
+        <TextInput
+          style={[styles.inputBox, errors.title ? styles.errorBorder : null]}
+          value={formTitle}
+          onChangeText={(value) => {
+            setFormTitle(value);
+            if (errors.title) setErrors((prev) => ({ ...prev, title: undefined }));
+          }}
+          placeholder="Enter Header"
+          placeholderTextColor="#999"
+          editable={!isSaving}
+        />
+        {renderInputError(errors.title)}
+      </>
+    );
+    const instructionField = (
+      <>
+        <Text style={styles.sectionLabel}>Instruction</Text>
+        <TextInput
+          style={[styles.textAreaBox, errors.instruction ? styles.errorBorder : null]}
+          value={formDesc}
+          onChangeText={(value) => {
+            setFormDesc(value);
+            if (errors.instruction) setErrors((prev) => ({ ...prev, instruction: undefined }));
+          }}
+          placeholder="Enter Instruction"
+          placeholderTextColor="#999"
+          multiline
+          editable={!isSaving}
+        />
+        {renderInputError(errors.instruction)}
+      </>
+    );
+    const totalScoreField = (
+      <>
+        <Text style={styles.sectionLabel}>Total Score</Text>
+        <TextInput
+          style={[
+            styles.inputBox,
+            errors.totalScore ? styles.errorBorder : null,
+            assignmentType === 'game_based'
+              ? { backgroundColor: '#F5F5F5', color: '#666' }
+              : null,
+          ]}
+          value={
+            assignmentType === 'game_based'
+              ? String(generatedQuestions.length)
+              : formPoints
+          }
+          onChangeText={(value) => {
+            setFormPoints(value);
+            if (errors.totalScore) setErrors((prev) => ({ ...prev, totalScore: undefined }));
+          }}
+          keyboardType="numeric"
+          placeholder="Total Score"
+          placeholderTextColor="#999"
+          editable={assignmentType !== 'game_based' && !isSaving}
+        />
+        {assignmentType === 'game_based' && (
+          <Text style={{ fontSize: 11, color: '#888', marginTop: -4, marginBottom: 8, marginLeft: 4 }}>
+            * Auto-calculated based on generated questions (1 point per item).
+          </Text>
+        )}
+        {renderInputError(errors.totalScore)}
+      </>
+    );
+
     return (
       <View style={[styles.formGrid, !isMobile && styles.formGridDesktop]}>
         <View style={styles.fullWidthSection}>
@@ -4611,78 +4686,30 @@ useEffect(() => {
             )}
           </View>
 
-          {/* Row 2: Header, with Due Date & Time alongside it. */}
-          <View style={[styles.gameAndClassRow, isMobile && styles.gameAndClassRowMobile]}>
-            <View style={[styles.dropdownWrap, !isMobile && styles.dropdownWrapHalf]}>
-              <Text style={styles.sectionLabel}>Header</Text>
-              <TextInput
-                style={[styles.inputBox, errors.title ? styles.errorBorder : null]}
-                value={formTitle}
-                onChangeText={(value) => {
-                  setFormTitle(value);
-                  if (errors.title) setErrors((prev) => ({ ...prev, title: undefined }));
-                }}
-                placeholder="Enter Header"
-                placeholderTextColor="#999"
-                editable={!isSaving}
-              />
-              {renderInputError(errors.title)}
-            </View>
-            <View style={[styles.dropdownWrap, !isMobile && styles.dropdownWrapHalf]}>
+          {isMobile ? (
+            // ✅ Mobile: Header, then Instruction right after it, then Due
+            // Date & Time, then Total Score — each full width, in natural
+            // reading order.
+            <>
+              <View style={styles.sectionBlock}>{headerField}</View>
+              <View style={styles.sectionBlock}>{instructionField}</View>
               {renderDateTimeField()}
-            </View>
-          </View>
-
-          {/* Row 3: Instruction, with Total Score alongside it. */}
-          <View style={[styles.gameAndClassRow, isMobile && styles.gameAndClassRowMobile]}>
-            <View style={[styles.dropdownWrap, !isMobile && styles.dropdownWrapHalf]}>
-              <Text style={styles.sectionLabel}>Instruction</Text>
-              <TextInput
-                style={[styles.textAreaBox, errors.instruction ? styles.errorBorder : null]}
-                value={formDesc}
-                onChangeText={(value) => {
-                  setFormDesc(value);
-                  if (errors.instruction) setErrors((prev) => ({ ...prev, instruction: undefined }));
-                }}
-                placeholder="Enter Instruction"
-                placeholderTextColor="#999"
-                multiline
-                editable={!isSaving}
-              />
-              {renderInputError(errors.instruction)}
-            </View>
-            <View style={[styles.dropdownWrap, !isMobile && styles.dropdownWrapHalf]}>
-              <Text style={styles.sectionLabel}>Total Score</Text>
-              <TextInput
-                style={[
-                  styles.inputBox,
-                  errors.totalScore ? styles.errorBorder : null,
-                  assignmentType === 'game_based'
-                    ? { backgroundColor: '#F5F5F5', color: '#666' }
-                    : null,
-                ]}
-                value={
-                  assignmentType === 'game_based'
-                    ? String(generatedQuestions.length)
-                    : formPoints
-                }
-                onChangeText={(value) => {
-                  setFormPoints(value);
-                  if (errors.totalScore) setErrors((prev) => ({ ...prev, totalScore: undefined }));
-                }}
-                keyboardType="numeric"
-                placeholder="Total Score"
-                placeholderTextColor="#999"
-                editable={assignmentType !== 'game_based' && !isSaving}
-              />
-              {assignmentType === 'game_based' && (
-                <Text style={{ fontSize: 11, color: '#888', marginTop: -4, marginBottom: 8, marginLeft: 4 }}>
-                  * Auto-calculated based on generated questions (1 point per item).
-                </Text>
-              )}
-              {renderInputError(errors.totalScore)}
-            </View>
-          </View>
+              <View style={styles.sectionBlock}>{totalScoreField}</View>
+            </>
+          ) : (
+            // Desktop: Header paired with Due Date & Time, Instruction
+            // paired with Total Score, each row split 48/48.
+            <>
+              <View style={styles.gameAndClassRow}>
+                <View style={[styles.dropdownWrap, styles.dropdownWrapHalf]}>{headerField}</View>
+                <View style={[styles.dropdownWrap, styles.dropdownWrapHalf]}>{renderDateTimeField()}</View>
+              </View>
+              <View style={styles.gameAndClassRow}>
+                <View style={[styles.dropdownWrap, styles.dropdownWrapHalf]}>{instructionField}</View>
+                <View style={[styles.dropdownWrap, styles.dropdownWrapHalf]}>{totalScoreField}</View>
+              </View>
+            </>
+          )}
 
           {assignmentType === 'game_based' && (
             <>
