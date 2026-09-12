@@ -28,7 +28,7 @@ import {
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { FONT_BODY, FONT_TITLE } from '../theme/typography';
 
-const DEFAULT_AVATAR = require('../../assets/images/BSITLOGO.jpg'); // Placeholder avatar for conversations without a custom image
+const DEFAULT_AVATAR = require('../../assets/images/BSITLOGO.png'); // Placeholder avatar for conversations without a custom image
 
 function getApiBaseUrl() {
   // Prefer the deployed backend URL on every platform — including native /
