@@ -34,6 +34,7 @@ import {
 // ✅ Reuses the same Toast component used in the Admin ManageStudent screen /
 // TeacherDashboard, instead of relying on native Alert popups.
 import Toast from '../Final_Admin_Components/Toast';
+import { FONT_BODY, FONT_TITLE, WEIGHT_TITLE } from '../theme/typography';
 
 type CropType = 'profile' | 'banner';
 
@@ -1941,7 +1942,7 @@ const styles = StyleSheet.create({
   },
   askCard: {
   backgroundColor: '#ffffff',
-  borderRadius: 10,
+  borderRadius: 16,
   borderWidth: 1,
   borderColor: '#E4E6EB',
   paddingHorizontal: 14,
@@ -1980,7 +1981,7 @@ askText: {
 },
   postCard: {
     backgroundColor: '#ffffff',
-    borderRadius: 8,
+    borderRadius: 14,
     width: '100%',
     borderWidth: 1,
     borderColor: '#E4E6EB',
@@ -2011,24 +2012,24 @@ askText: {
     overflow: 'hidden',
     aspectRatio: 1,
   },
-  postName: {
+  postName: { fontFamily: FONT_BODY,
     fontWeight: '600',
     fontSize: 15,
     color: '#050505',
   },
-  postTime: {
+  postTime: { fontFamily: FONT_BODY,
     fontSize: 13,
     color: '#65676B',
     marginTop: 1,
   },
-  postText: {
+  postText: { fontFamily: FONT_BODY,
     fontSize: 15,
     lineHeight: 20,
     color: '#050505',
     paddingHorizontal: 12,
     marginBottom: 10,
   },
-  answerLink: {
+  answerLink: { fontFamily: FONT_BODY,
     fontSize: 14,
     fontWeight: '600',
     color: '#65676B',
@@ -2044,7 +2045,7 @@ askText: {
   dropdownMenu: {
     position: 'absolute',
     backgroundColor: '#fff',
-    borderRadius: 12,
+    borderRadius: 16,
     shadowColor: '#000',
     shadowOpacity: 0.18,
     shadowRadius: 10,
@@ -2061,7 +2062,7 @@ askText: {
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: '#EAEAEA',
-    borderRadius: 8,
+    borderRadius: 14,
     marginBottom: 12,
   },
   dropdownIcon: {
@@ -2074,7 +2075,7 @@ askText: {
   dropdownPostMenuFloating: {
     position: 'absolute',
     backgroundColor: '#fff',
-    borderRadius: 10,
+    borderRadius: 16,
     paddingVertical: 6,
     elevation: 12,
     shadowColor: '#000',
@@ -2091,7 +2092,7 @@ askText: {
   actionIconCircle: {
     width: 20,
     height: 20,
-    borderRadius: 10,
+    borderRadius: 16,
     backgroundColor: '#1976D2',
     justifyContent: 'center',
     alignItems: 'center',
@@ -2099,7 +2100,7 @@ askText: {
   deleteIconCircle: {
     width: 20,
     height: 20,
-    borderRadius: 10,
+    borderRadius: 16,
     backgroundColor: '#E53935',
     justifyContent: 'center',
     alignItems: 'center',
@@ -2107,12 +2108,12 @@ askText: {
   hideIconCircle: {
     width: 20,
     height: 20,
-    borderRadius: 10,
+    borderRadius: 16,
     backgroundColor: '#E53935',
     justifyContent: 'center',
     alignItems: 'center',
   },
-  menuText: {
+  menuText: { fontFamily: FONT_BODY,
     marginLeft: 6,
     fontSize: 14,
     color: '#333',
@@ -2136,22 +2137,22 @@ askText: {
     justifyContent: 'space-between',
     marginBottom: 8,
   },
-  cropHeaderTitle: {
+  cropHeaderTitle: { fontFamily: FONT_TITLE,
     color: '#FFF',
-    fontWeight: '700',
+    fontWeight: WEIGHT_TITLE,
     fontSize: 16,
   },
-  cropCancelText: {
+  cropCancelText: { fontFamily: FONT_BODY,
     color: '#CFCFCF',
     fontSize: 14,
     fontWeight: '600',
   },
-  cropSaveText: {
+  cropSaveText: { fontFamily: FONT_BODY,
     color: '#4EA1FF',
     fontSize: 14,
     fontWeight: '700',
   },
-  cropHintText: {
+  cropHintText: { fontFamily: FONT_BODY,
     color: '#BDBDBD',
     fontSize: 13,
     marginBottom: 14,
@@ -2191,7 +2192,7 @@ askText: {
     justifyContent: 'center',
     alignItems: 'center',
   },
-  cropZoomButtonText: {
+  cropZoomButtonText: { fontFamily: FONT_BODY,
     color: '#FFF',
     fontSize: 24,
     fontWeight: '600',
@@ -2201,12 +2202,12 @@ askText: {
     minWidth: 90,
     alignItems: 'center',
   },
-  cropZoomLabel: {
+  cropZoomLabel: { fontFamily: FONT_BODY,
     color: '#BDBDBD',
     fontSize: 12,
     marginBottom: 2,
   },
-  cropZoomValue: {
+  cropZoomValue: { fontFamily: FONT_BODY,
     color: '#FFF',
     fontSize: 15,
     fontWeight: '700',
@@ -2264,7 +2265,7 @@ askText: {
   },
   answerCard: {
     backgroundColor: '#F8F8F8',
-    borderRadius: 12,
+    borderRadius: 16,
     padding: 12,
     borderWidth: 1,
     borderColor: '#E8E8E8',
@@ -2280,21 +2281,21 @@ askText: {
     overflow: 'hidden',
     aspectRatio: 1,
   },
-  answerUserName: {
+  answerUserName: { fontFamily: FONT_BODY,
     fontSize: 14,
     fontWeight: '700',
     color: '#222',
   },
-  answerDate: {
+  answerDate: { fontFamily: FONT_BODY,
     fontSize: 12,
     color: '#777',
   },
-  answerPreviewText: {
+  answerPreviewText: { fontFamily: FONT_BODY,
     fontSize: 14,
     color: '#555',
     lineHeight: 20,
   },
-  noAnswersText: {
+  noAnswersText: { fontFamily: FONT_BODY,
     fontSize: 14,
     color: '#777',
     textAlign: 'center',
@@ -2314,7 +2315,7 @@ askText: {
   answerInput: {
     borderWidth: 1,
     borderColor: '#D9D9D9',
-    borderRadius: 10,
+    borderRadius: 16,
     paddingHorizontal: 12,
     paddingVertical: 10,
     color: '#222',
@@ -2324,19 +2325,19 @@ askText: {
     alignSelf: 'flex-start',
     marginTop: 12,
     backgroundColor: '#D32F2F',
-    borderRadius: 8,
+    borderRadius: 14,
   },
   postAnswerButtonText: {
     color: '#FFF',
     fontWeight: '600',
   },
-  confirmTitle: {
+  confirmTitle: { fontFamily: FONT_TITLE,
     fontSize: 18,
-    fontWeight: '700',
+    fontWeight: WEIGHT_TITLE,
     color: '#222',
     marginBottom: 10,
   },
-  confirmMessage: {
+  confirmMessage: { fontFamily: FONT_BODY,
     fontSize: 14,
     color: '#555',
     lineHeight: 20,
@@ -2350,7 +2351,7 @@ askText: {
   cancelButton: {
     paddingHorizontal: 16,
     paddingVertical: 10,
-    borderRadius: 8,
+    borderRadius: 14,
     backgroundColor: '#E0E0E0',
   },
   cancelButtonText: {
@@ -2360,7 +2361,7 @@ askText: {
   deleteButton: {
     paddingHorizontal: 16,
     paddingVertical: 10,
-    borderRadius: 8,
+    borderRadius: 14,
     backgroundColor: '#D32F2F',
   },
   deleteButtonText: {
@@ -2380,7 +2381,7 @@ askText: {
     position: 'absolute',
     width: ANSWER_DROPDOWN_WIDTH,
     backgroundColor: '#fff',
-    borderRadius: 8,
+    borderRadius: 14,
     paddingVertical: 6,
     zIndex: 99999,
     elevation: 99999,

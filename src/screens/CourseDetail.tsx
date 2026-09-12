@@ -2539,14 +2539,14 @@ const fetchModules = useCallback(async (silent = false) => {
           ) : activeTab === "modules" ? (
           <View>
             {/* Course Resources Container */}
-            <View style={{ backgroundColor: '#FFF', borderRadius: 12, padding: 16, marginBottom: 16, borderWidth: 1, borderColor: '#EEE' }}>
+            <View style={{ backgroundColor: '#FFF', borderRadius: 16, padding: 16, marginBottom: 16, borderWidth: 1, borderColor: '#EEE' }}>
               <Text style={{ fontSize: 16, fontWeight: '800', color: '#111', marginBottom: 12 }}>Course Resources</Text>
               {!currentSyllabus ? (
                 <View style={{ alignItems: 'center', paddingVertical: 10 }}>
                   <Text style={{ color: '#888', fontSize: 13 }}>No syllabus uploaded for this course.</Text>
                 </View>
               ) : (
-                <View style={{ backgroundColor: '#F9F9F9', borderRadius: 12, padding: 16, borderWidth: 1, borderColor: '#EEE' }}>
+                <View style={{ backgroundColor: '#F9F9F9', borderRadius: 16, padding: 16, borderWidth: 1, borderColor: '#EEE' }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 }}>
                     <Ionicons name="document-text-outline" size={24} color="#D32F2F" />
                     <View style={{ flex: 1 }}>
@@ -2559,7 +2559,7 @@ const fetchModules = useCallback(async (silent = false) => {
                     </View>
                   </View>
                   {currentSyllabus.status === 'generating' && (
-                    <View style={{ marginTop: 12, padding: 12, backgroundColor: '#FFF8E1', borderRadius: 8, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <View style={{ marginTop: 12, padding: 12, backgroundColor: '#FFF8E1', borderRadius: 14, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                       <ActivityIndicator size="small" color="#F57C00" />
                       <Text style={{ color: '#F57C00', fontWeight: '600', fontSize: 13 }}>AI is analyzing your syllabus...</Text>
                     </View>
@@ -2578,7 +2578,7 @@ const fetchModules = useCallback(async (silent = false) => {
                     <TouchableOpacity
                       onPress={handleViewSyllabus}
                       disabled={currentSyllabus.status === 'generating'}
-                      style={{ backgroundColor: '#E3F2FD', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, flexDirection: 'row', alignItems: 'center', gap: 6 }}
+                      style={{ backgroundColor: '#E3F2FD', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 14, flexDirection: 'row', alignItems: 'center', gap: 6 }}
                     >
                       <Ionicons name="eye-outline" size={14} color="#1565C0" />
                       <Text style={{ color: '#1565C0', fontWeight: '700', fontSize: 12 }}>View Syllabus</Text>
@@ -2600,7 +2600,7 @@ const fetchModules = useCallback(async (silent = false) => {
                   return (
                     <View key={mod.id} style={{
                       backgroundColor: '#FFF',
-                      borderRadius: 10,
+                      borderRadius: 16,
                       marginBottom: 14,
                       borderWidth: 1,
                       borderColor: '#EEE',
@@ -2635,7 +2635,7 @@ const fetchModules = useCallback(async (silent = false) => {
                                 <TouchableOpacity
                                   key={lesson.id || li}
                                   onPress={() => handleOpenLessonDetail(lesson)}
-                                  style={{ backgroundColor: '#FFF', borderRadius: 8, padding: 12, marginBottom: 8, borderWidth: 1, borderColor: '#DDD', borderLeftWidth: 3, borderLeftColor: '#1976D2' }}
+                                  style={{ backgroundColor: '#FFF', borderRadius: 14, padding: 12, marginBottom: 8, borderWidth: 1, borderColor: '#DDD', borderLeftWidth: 3, borderLeftColor: '#1976D2' }}
                                 >
                                   <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                                     <Text style={{ fontSize: 14, fontWeight: '700', color: '#1976D2', marginBottom: 4 }}>
@@ -2934,7 +2934,7 @@ const fetchModules = useCallback(async (silent = false) => {
                     </Text>
                   </View>
                   {selectedLesson.discussion ? (
-                    <View style={{ marginBottom: 16, backgroundColor: '#FFF', padding: 12, borderRadius: 8 }}>
+                    <View style={{ marginBottom: 16, backgroundColor: '#FFF', padding: 12, borderRadius: 14 }}>
                       <Text style={styles.sectionLabel}>Discussion / Lecture Notes</Text>
                       <Text style={{ color: '#000', lineHeight: 22 }}>
                         {renderFormattedText(selectedLesson.discussion, { color: '#000', lineHeight: 22 })}
@@ -2942,7 +2942,7 @@ const fetchModules = useCallback(async (silent = false) => {
                     </View>
                   ) : null}
                   {selectedLesson.activity ? (
-                    <View style={{ marginBottom: 16, backgroundColor: '#FFF', padding: 12, borderRadius: 8 }}>
+                    <View style={{ marginBottom: 16, backgroundColor: '#FFF', padding: 12, borderRadius: 14 }}>
                       <Text style={styles.sectionLabel}>Activity / Scenario</Text>
                       <Text style={{ color: '#000', lineHeight: 22 }}>
                         {renderFormattedText(selectedLesson.activity, { color: '#000', lineHeight: 22 })}
@@ -4157,7 +4157,7 @@ const styles = StyleSheet.create({
   classCodeIconBadge: {
     width: 30,
     height: 30,
-    borderRadius: 10,
+    borderRadius: 16,
     backgroundColor: "#FDEAEA",
     alignItems: "center",
     justifyContent: "center",
@@ -4216,7 +4216,7 @@ const styles = StyleSheet.create({
   materialIcon: {
     width: 50,
     height: 50,
-    borderRadius: 12,
+    borderRadius: 16,
     backgroundColor: "#FFF1F1",
     justifyContent: "center",
     alignItems: "center",
@@ -4283,7 +4283,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#E8F5E9",
     borderWidth: 1,
     borderColor: "#B7E0BC",
-    borderRadius: 12,
+    borderRadius: 16,
     padding: 12,
     flexDirection: "row",
     alignItems: "flex-start",
@@ -4568,7 +4568,7 @@ const styles = StyleSheet.create({
   },
   relatedMaterialItem: {
     backgroundColor: "#F5F5F5",
-    borderRadius: 10,
+    borderRadius: 16,
     padding: 10,
     marginBottom: 8,
   },
@@ -4603,7 +4603,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "#F5F5F5",
-    borderRadius: 10,
+    borderRadius: 16,
     padding: 10,
     marginBottom: 8,
   },
@@ -4647,11 +4647,11 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     marginTop: 8,
   },
-  lockedSubmissionTitle: { fontFamily: FONT_TITLE, color: "#111", fontWeight: WEIGHT_TITLE, fontSize: 13, marginBottom: 3 },
+  lockedSubmissionTitle: { fontFamily: FONT_BODY, color: "#111", fontWeight: WEIGHT_TITLE, fontSize: 13, marginBottom: 3 },
   lockedSubmissionText: { fontFamily: FONT_BODY, color: "#666", fontSize: 12, lineHeight: 18 },
   commentItem: {
     backgroundColor: "#F9F9F9",
-    borderRadius: 8,
+    borderRadius: 14,
     padding: 10,
     marginBottom: 8,
     borderLeftWidth: 3,
@@ -4906,7 +4906,7 @@ const styles = StyleSheet.create({
     marginBottom: 4,
     paddingLeft: 8,
   },
-  moduleSubTitle: { fontFamily: FONT_TITLE,
+  moduleSubTitle: { fontFamily: FONT_BODY,
     fontSize: 13,
     fontWeight: WEIGHT_TITLE,
     color: '#333',
@@ -4915,7 +4915,7 @@ const styles = StyleSheet.create({
   },
   lessonItem: {
     backgroundColor: '#FFF5F5',
-    borderRadius: 10,
+    borderRadius: 16,
     padding: 12,
     marginBottom: 8,
     borderWidth: 1,
@@ -4961,7 +4961,7 @@ const styles = StyleSheet.create({
   },
   modalHeaderTextWrap: { flex: 1, paddingRight: 12 },
   createTitle: { fontFamily: FONT_TITLE, fontSize: 18, fontWeight: WEIGHT_TITLE, color: '#111' },
-  modalSubtitle: { fontFamily: FONT_TITLE, fontSize: 13, color: '#666', lineHeight: 19, marginTop: 4 },
+  modalSubtitle: { fontFamily: FONT_BODY, fontSize: 13, color: '#666', lineHeight: 19, marginTop: 4 },
   buttonRow: { flexDirection: 'row', gap: 10, marginTop: 16 },
   primaryButton: {
     flex: 1,
@@ -4972,7 +4972,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   primaryButtonText: { fontFamily: FONT_BODY, color: '#FFF', fontWeight: WEIGHT_EMPHASIS, textAlign: 'center'},
-  removeButton: { fontFamily: FONT_BODY, color: '#D32F2F', fontWeight: 'bold', paddingLeft: 8 },
+  removeButton: { fontFamily: FONT_BODY, color: '#D32F2F', fontWeight: WEIGHT_EMPHASIS, paddingLeft: 8 },
   previewModalContainer: { flex: 1, backgroundColor: '#3c3c3c87' },
   previewTopBar: {
     height: 62,
@@ -5086,7 +5086,7 @@ const styles = StyleSheet.create({
   },
   lessonPreviewTopBarTextWrap: { flex: 1 },
   lessonPreviewTopBarTitle: { fontFamily: FONT_TITLE, fontSize: 16, fontWeight: WEIGHT_TITLE, color: '#111' },
-  lessonPreviewTopBarSubtitle: { fontFamily: FONT_TITLE, fontSize: 12, color: '#777', marginTop: 1 },
+  lessonPreviewTopBarSubtitle: { fontFamily: FONT_BODY, fontSize: 12, color: '#777', marginTop: 1 },
   lessonPreviewScrollContent: {
     flexGrow: 1,
     alignItems: 'center',
@@ -5106,7 +5106,7 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 900,
     backgroundColor: '#FFFFFF',
-    borderRadius: 6,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: '#E0E0E0',
     padding: 20,

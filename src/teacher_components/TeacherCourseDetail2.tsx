@@ -25,6 +25,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import * as XLSX from 'xlsx';
 import Toast from '../Final_Admin_Components/Toast';
+import { FONT_BODY, FONT_TITLE, WEIGHT_EMPHASIS, WEIGHT_TITLE } from '../theme/typography';
 import TeacherAssignmentSection from './TeacherAssignmentSection';
 import TeacherMaterialSection from './TeacherMaterialSection';
 import TeacherSubmissionsSection from './TeacherSubmissionsSection';
@@ -839,7 +840,7 @@ const inlineStyles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: '#FFF',
   },
-  loadingText: { marginTop: 12, color: '#666', fontSize: 14 },
+  loadingText: { fontFamily: FONT_BODY, marginTop: 12, color: '#666', fontSize: 14 },
   noWebViewFallback: {
     flex: 1,
     alignItems: 'center',
@@ -847,7 +848,7 @@ const inlineStyles = StyleSheet.create({
     padding: 24,
     gap: 12,
   },
-  noWebViewText: { color: '#888', textAlign: 'center', fontSize: 13, lineHeight: 20 },
+  noWebViewText: { fontFamily: FONT_BODY, color: '#888', textAlign: 'center', fontSize: 13, lineHeight: 20 },
 });
 
 // ─── Confirmation Modal (used for delete confirmations) ─────────────────────
@@ -4481,7 +4482,7 @@ useEffect(() => {
         <Text style={[styles.sectionLabel, { marginBottom: 0 }]}>{title}</Text>
         <TouchableOpacity
           onPress={() => deleteGeneratedQuestion(qIndex)}
-          style={{ padding: 6, backgroundColor: '#FFEBEE', borderRadius: 8 }}
+          style={{ padding: 6, backgroundColor: '#FFEBEE', borderRadius: 14 }}
         >
           <Ionicons name="trash-outline" size={18} color="#D32F2F" />
         </TouchableOpacity>
@@ -4631,9 +4632,9 @@ useEffect(() => {
             <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 50 }}>
               {generatedStructure?.modules?.map((mod: any, mi: number) => (
                 <View key={mi} style={{ marginBottom: 24 }}>
-                  <View style={{ backgroundColor: '#D32F2F', padding: 16, borderRadius: 12, marginBottom: 16 }}>
+                  <View style={{ backgroundColor: '#D32F2F', padding: 16, borderRadius: 16, marginBottom: 16 }}>
                     <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <Text style={{ fontSize: 18, fontWeight: '800', color: '#FFF' }}>
+                      <Text style={{ fontSize: 18, fontWeight: WEIGHT_EMPHASIS, color: '#FFF' }}>
                         Module {mod.moduleNumber}: {cleanModuleTitle(mod.title, mod.moduleNumber)}
                       </Text>
                       <TouchableOpacity onPress={() => updateStructureField('modules', generatedStructure.modules.filter((_: any, idx: number) => idx !== mi))}>
@@ -4648,7 +4649,7 @@ useEffect(() => {
                   <View style={{ paddingLeft: 16 }}>
                     <Text style={[styles.sectionLabel, { marginBottom: 12 }]}>Lessons ({mod.lessons?.length || 0})</Text>
                     {mod.lessons?.map((l: any, li: number) => (
-                      <View key={li} style={{ backgroundColor: '#FFF', borderRadius: 12, padding: 16, marginBottom: 12, borderWidth: 1, borderColor: '#DDD', borderLeftWidth: 4, borderLeftColor: '#1976D2' }}>
+                      <View key={li} style={{ backgroundColor: '#FFF', borderRadius: 16, padding: 16, marginBottom: 12, borderWidth: 1, borderColor: '#DDD', borderLeftWidth: 4, borderLeftColor: '#1976D2' }}>
                         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
                           <Text style={{ fontSize: 16, fontWeight: '700', color: '#1976D2' }}>Lesson {li + 1}: {l.title}</Text>
                           <TouchableOpacity onPress={() => { const nl = mod.lessons.filter((_: any, idx: number) => idx !== li); updateStructureField(`modules.${mi}.lessons`, nl); }}>
@@ -4667,7 +4668,7 @@ useEffect(() => {
                         </View>
                       </View>
                     ))}
-                    <TouchableOpacity onPress={() => { const nl = { id: `l-${Date.now()}`, title: '', description: '', discussion: '', activity: '', estimatedHours: 2 }; updateStructureField(`modules.${mi}.lessons`, [...(mod.lessons || []), nl]); }} style={{ marginTop: 8, padding: 12, backgroundColor: '#FFF', borderRadius: 8, borderWidth: 1, borderColor: '#1976D2', alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8 }}>
+                    <TouchableOpacity onPress={() => { const nl = { id: `l-${Date.now()}`, title: '', description: '', discussion: '', activity: '', estimatedHours: 2 }; updateStructureField(`modules.${mi}.lessons`, [...(mod.lessons || []), nl]); }} style={{ marginTop: 8, padding: 12, backgroundColor: '#FFF', borderRadius: 14, borderWidth: 1, borderColor: '#1976D2', alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8 }}>
                       <Ionicons name="add-circle-outline" size={20} color="#1976D2" />
                       <Text style={{ color: '#1976D2', fontWeight: '700' }}>Add Lesson</Text>
                     </TouchableOpacity>
@@ -5162,7 +5163,7 @@ the button looked completely dead.
                     style={{
                       borderWidth: 1,
                       borderColor: '#DDD',
-                      borderRadius: 8,
+                      borderRadius: 14,
                       paddingHorizontal: 10,
                       paddingVertical: 8,
                       width: 56,
@@ -5397,22 +5398,22 @@ the button looked completely dead.
               </TouchableOpacity>
             </View>
             {/* AI Course Builder / Syllabus Section */}
-            <View style={{ backgroundColor: '#FFF', borderRadius: 12, padding: 16, marginBottom: 16, borderWidth: 1, borderColor: '#EEE' }}>
-              <Text style={{ fontSize: 16, fontWeight: '800', color: '#111', marginBottom: 12 }}>AI Course Builder</Text>
+            <View style={{ backgroundColor: '#FFF', borderRadius: 16, padding: 16, marginBottom: 16, borderWidth: 1, borderColor: '#EEE' }}>
+              <Text style={{ fontSize: 16, fontWeight: WEIGHT_EMPHASIS, color: '#111', marginBottom: 12 }}>AI Course Builder</Text>
               {!currentSyllabus ? (
                 <View style={{ alignItems: 'center', paddingVertical: 20 }}>
                   <Text style={{ color: '#888', marginBottom: 12 }}>No syllabus uploaded.</Text>
                   <TouchableOpacity
                     onPress={handlePickSyllabus}
                     disabled={isUploadingSyllabus}
-                    style={{ backgroundColor: '#D32F2F', paddingHorizontal: 20, paddingVertical: 10, borderRadius: 8, flexDirection: 'row', alignItems: 'center', gap: 8 }}
+                    style={{ backgroundColor: '#D32F2F', paddingHorizontal: 20, paddingVertical: 10, borderRadius: 14, flexDirection: 'row', alignItems: 'center', gap: 8 }}
                   >
                     {isUploadingSyllabus ? <ActivityIndicator color="#FFF" size="small" /> : <Ionicons name="cloud-upload-outline" size={18} color="#FFF" />}
                     <Text style={{ color: '#FFF', fontWeight: '700' }}>Upload Course Syllabus</Text>
                   </TouchableOpacity>
                 </View>
               ) : (
-                <View style={{ backgroundColor: '#F9F9F9', borderRadius: 12, padding: 16, borderWidth: 1, borderColor: '#EEE' }}>
+                <View style={{ backgroundColor: '#F9F9F9', borderRadius: 16, padding: 16, borderWidth: 1, borderColor: '#EEE' }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 }}>
                     <Ionicons name="document-text-outline" size={24} color="#D32F2F" />
                     <View style={{ flex: 1 }}>
@@ -5423,19 +5424,19 @@ the button looked completely dead.
                     </View>
                   </View>
                   {currentSyllabus.status === 'generating' && (
-                    <View style={{ marginTop: 12, padding: 12, backgroundColor: '#FFF8E1', borderRadius: 8, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <View style={{ marginTop: 12, padding: 12, backgroundColor: '#FFF8E1', borderRadius: 14, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                       <ActivityIndicator size="small" color="#F57C00" />
                       <Text style={{ color: '#F57C00', fontWeight: '600', fontSize: 13 }}>AI is analyzing your syllabus...</Text>
                     </View>
                   )}
                   <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 12 }}>
-                    <TouchableOpacity onPress={handleViewSyllabus} style={{ backgroundColor: '#E3F2FD', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8 }}>
+                    <TouchableOpacity onPress={handleViewSyllabus} style={{ backgroundColor: '#E3F2FD', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 14 }}>
                       <Text style={{ color: '#1565C0', fontWeight: '700', fontSize: 12 }}>View</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
                       onPress={handleEditSyllabus}
                       disabled={isUploadingSyllabus || isDeletingSyllabus}
-                      style={{ backgroundColor: '#FFF3E0', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, flexDirection: 'row', alignItems: 'center', gap: 4, opacity: (isUploadingSyllabus || isDeletingSyllabus) ? 0.5 : 1 }}
+                      style={{ backgroundColor: '#FFF3E0', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 14, flexDirection: 'row', alignItems: 'center', gap: 4, opacity: (isUploadingSyllabus || isDeletingSyllabus) ? 0.5 : 1 }}
                     >
                       {isUploadingSyllabus && isEditingSyllabus ? (
                         <ActivityIndicator color="#EF6C00" size="small" />
@@ -5447,7 +5448,7 @@ the button looked completely dead.
                     <TouchableOpacity
                       onPress={handleDeleteSyllabus}
                       disabled={isUploadingSyllabus || isDeletingSyllabus}
-                      style={{ backgroundColor: '#FFEBEE', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, flexDirection: 'row', alignItems: 'center', gap: 4, opacity: (isUploadingSyllabus || isDeletingSyllabus) ? 0.5 : 1 }}
+                      style={{ backgroundColor: '#FFEBEE', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 14, flexDirection: 'row', alignItems: 'center', gap: 4, opacity: (isUploadingSyllabus || isDeletingSyllabus) ? 0.5 : 1 }}
                     >
                       {isDeletingSyllabus ? (
                         <ActivityIndicator color="#D32F2F" size="small" />
@@ -5478,7 +5479,7 @@ the button looked completely dead.
                   const totalHours = mod.estimatedHours ||
                     (mod.lessons?.reduce((sum: number, l: any) => sum + (l.estimatedHours || 0), 0) || 0);
                   return (
-                    <View key={mod.id} style={{ backgroundColor: '#FFF', borderRadius: 12, marginBottom: 16, borderWidth: 1, borderColor: '#EEE', overflow: 'hidden' }}>
+                    <View key={mod.id} style={{ backgroundColor: '#FFF', borderRadius: 16, marginBottom: 16, borderWidth: 1, borderColor: '#EEE', overflow: 'hidden' }}>
                       <TouchableOpacity
                         onPress={() => setExpandedModules(p => ({ ...p, [mod.moduleNumber]: !isExpanded }))}
                         style={{ padding: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: isExpanded ? '#FFF5F5' : '#FFF' }}
@@ -5489,7 +5490,7 @@ the button looked completely dead.
                           </View>
                           <View style={{ flex: 1 }}>
                             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                              <Text style={{ fontSize: 16, fontWeight: '800', color: '#111' }}>
+                              <Text style={{ fontSize: 16, fontWeight: WEIGHT_EMPHASIS, color: '#111' }}>
                                 Module {mod.moduleNumber}: {cleanModuleTitle(mod.title, mod.moduleNumber)}
                               </Text>
                             </View>
@@ -5508,7 +5509,7 @@ the button looked completely dead.
                                 <TouchableOpacity
                                   key={lesson.id || li}
                                   onPress={() => handleOpenLessonDetail(lesson)}
-                                  style={{ backgroundColor: '#FFF', borderRadius: 8, padding: 12, marginBottom: 8, borderWidth: 1, borderColor: '#DDD', borderLeftWidth: 3, borderLeftColor: '#1976D2' }}
+                                  style={{ backgroundColor: '#FFF', borderRadius: 14, padding: 12, marginBottom: 8, borderWidth: 1, borderColor: '#DDD', borderLeftWidth: 3, borderLeftColor: '#1976D2' }}
                                 >
                                   <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                                     <Text style={{ fontSize: 14, fontWeight: '700', color: '#1976D2', marginBottom: 4 }}>
@@ -5538,7 +5539,7 @@ the button looked completely dead.
                               setSelectedModuleForLesson(mod);
                               setShowManualLessonModal(true);
                             }}
-                            style={{ marginTop: 8, padding: 10, backgroundColor: '#FFF', borderRadius: 8, borderWidth: 1, borderColor: '#1976D2', alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 6 }}
+                            style={{ marginTop: 8, padding: 10, backgroundColor: '#FFF', borderRadius: 14, borderWidth: 1, borderColor: '#1976D2', alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 6 }}
                           >
                             <Ionicons name="add-circle-outline" size={16} color="#1976D2" />
                             <Text style={{ color: '#1976D2', fontWeight: '700', fontSize: 12 }}>Add Lesson (Manual)</Text>
@@ -5546,10 +5547,10 @@ the button looked completely dead.
                           {findMatchingSyllabusModule(mod) && (
                             <TouchableOpacity
                               onPress={() => handleOpenNextLessonModal(mod)}
-                              style={{ marginTop: 8, padding: 16, backgroundColor: '#E3F2FD', borderRadius: 12, borderWidth: 1, borderColor: '#1976D2', alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8 }}
+                              style={{ marginTop: 8, padding: 16, backgroundColor: '#E3F2FD', borderRadius: 16, borderWidth: 1, borderColor: '#1976D2', alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8 }}
                             >
                               <Ionicons name="sparkles-outline" size={24} color="#1976D2" />
-                              <Text style={{ color: '#1976D2', fontWeight: '800', fontSize: 16 }}>Generate Next Lesson</Text>
+                              <Text style={{ color: '#1976D2', fontWeight: WEIGHT_EMPHASIS, fontSize: 16 }}>Generate Next Lesson</Text>
                             </TouchableOpacity>
                           )}
                         </View>
@@ -5566,24 +5567,24 @@ the button looked completely dead.
                     onPress={handleOpenModuleSelectionModal}
                     disabled={unmadeSyllabusModules.length === 0}
                     style={[
-                      { marginTop: 8, padding: 16, backgroundColor: '#FFF', borderRadius: 12, borderWidth: 2, borderColor: '#D32F2F', borderStyle: 'dashed', alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8 },
+                      { marginTop: 8, padding: 16, backgroundColor: '#FFF', borderRadius: 16, borderWidth: 2, borderColor: '#D32F2F', borderStyle: 'dashed', alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8 },
                       unmadeSyllabusModules.length === 0 && styles.disabledButton
                     ]}
                   >
                     <Ionicons name="add-circle-outline" size={24} color="#D32F2F" />
-                    <Text style={{ color: '#D32F2F', fontWeight: '800', fontSize: 16 }}>Generate Module 1</Text>
+                    <Text style={{ color: '#D32F2F', fontWeight: WEIGHT_EMPHASIS, fontSize: 16 }}>Generate Module 1</Text>
                   </TouchableOpacity>
                 ) : (
                   <TouchableOpacity
                     onPress={handleOpenModuleSelectionModal}
                     disabled={unmadeSyllabusModules.length === 0}
                     style={[
-                      { marginTop: 8, padding: 16, backgroundColor: '#FFF', borderRadius: 12, borderWidth: 2, borderColor: '#D32F2F', borderStyle: 'dashed', alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8 },
+                      { marginTop: 8, padding: 16, backgroundColor: '#FFF', borderRadius: 16, borderWidth: 2, borderColor: '#D32F2F', borderStyle: 'dashed', alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8 },
                       unmadeSyllabusModules.length === 0 && styles.disabledButton
                     ]}
                   >
                     <Ionicons name="add-circle-outline" size={24} color="#D32F2F" />
-                    <Text style={{ color: '#D32F2F', fontWeight: '800', fontSize: 16 }}>Generate Another Module</Text>
+                    <Text style={{ color: '#D32F2F', fontWeight: WEIGHT_EMPHASIS, fontSize: 16 }}>Generate Another Module</Text>
                   </TouchableOpacity>
                 )}
                 <TouchableOpacity
@@ -5596,10 +5597,10 @@ the button looked completely dead.
                     setNewModuleTitle('');
                     setShowManualModuleModal(true);
                   }}
-                  style={{ marginTop: 16, padding: 16, backgroundColor: '#FFF', borderRadius: 12, borderWidth: 1, borderColor: '#D32F2F', alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8 }}
+                  style={{ marginTop: 16, padding: 16, backgroundColor: '#FFF', borderRadius: 16, borderWidth: 1, borderColor: '#D32F2F', alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8 }}
                 >
                   <Ionicons name="create-outline" size={24} color="#D32F2F" />
-                  <Text style={{ color: '#D32F2F', fontWeight: '800', fontSize: 16 }}>Create Module (Manual)</Text>
+                  <Text style={{ color: '#D32F2F', fontWeight: WEIGHT_EMPHASIS, fontSize: 16 }}>Create Module (Manual)</Text>
                 </TouchableOpacity>
               </>
             )}
@@ -6302,7 +6303,7 @@ GENERATED QUESTIONS PREVIEW MODAL
                     style={{
                       borderWidth: 1,
                       borderColor: '#DDD',
-                      borderRadius: 8,
+                      borderRadius: 14,
                       paddingHorizontal: 10,
                       paddingVertical: 8,
                       width: 56,
@@ -6621,7 +6622,7 @@ Edit Lesson) — like opening a Doc/PDF attachment in Google Classroom.
                       activeOpacity={0.8}
                     >
                       <Ionicons name="document-text-outline" size={48} color="#D32F2F" />
-                      <Text style={{ fontSize: 16, fontWeight: '800', color: '#D32F2F' }}>
+                      <Text style={{ fontSize: 16, fontWeight: WEIGHT_EMPHASIS, color: '#D32F2F' }}>
                         {selectedLesson.fileName || 'View Attached File'}
                       </Text>
                       <Text style={{ fontSize: 13, color: '#666' }}>
@@ -6636,7 +6637,7 @@ Edit Lesson) — like opening a Doc/PDF attachment in Google Classroom.
                     </Text>
                   </View>
                   {selectedLesson.discussion ? (
-                    <View style={{ marginBottom: 16, backgroundColor: '#FFF', padding: 12, borderRadius: 8 }}>
+                    <View style={{ marginBottom: 16, backgroundColor: '#FFF', padding: 12, borderRadius: 14 }}>
                       <Text style={styles.sectionLabel}>Discussion / Lecture Notes</Text>
                       <Text style={{ color: '#000', lineHeight: 22 }}>
                         {renderFormattedText(selectedLesson.discussion, { color: '#000', lineHeight: 22 })}
@@ -6644,7 +6645,7 @@ Edit Lesson) — like opening a Doc/PDF attachment in Google Classroom.
                     </View>
                   ) : null}
                   {selectedLesson.activity ? (
-                    <View style={{ marginBottom: 16, backgroundColor: '#FFF', padding: 12, borderRadius: 8 }}>
+                    <View style={{ marginBottom: 16, backgroundColor: '#FFF', padding: 12, borderRadius: 14 }}>
                       <Text style={styles.sectionLabel}>Activity / Scenario</Text>
                       <Text style={{ color: '#000', lineHeight: 22 }}>
                         {renderFormattedText(selectedLesson.activity, { color: '#000', lineHeight: 22 })}
@@ -7044,7 +7045,7 @@ GENERATE NEXT LESSON - MULTI TOPIC SELECTION MODAL
                   return (
                     <View key={tIdx} style={{ marginBottom: 14 }}>
                       {!isFallbackSingleItem && (
-                        <Text style={{ fontSize: 13, fontWeight: '800', color: '#D32F2F', marginBottom: 6 }}>
+                        <Text style={{ fontSize: 13, fontWeight: WEIGHT_EMPHASIS, color: '#D32F2F', marginBottom: 6 }}>
                           {topic.title}
                         </Text>
                       )}
@@ -7197,7 +7198,7 @@ SYLLABUS UPLOAD CONFIRMATION MODAL
             <Text style={[styles.createTitle, { textAlign: 'center', marginBottom: 10 }]}>
               {isEditingSyllabus ? 'Confirm Replacement' : 'Confirm Upload'}
             </Text>
-            <View style={{ backgroundColor: '#F5F5F5', padding: 12, borderRadius: 8, marginBottom: 16, alignItems: 'center' }}>
+            <View style={{ backgroundColor: '#F5F5F5', padding: 12, borderRadius: 14, marginBottom: 16, alignItems: 'center' }}>
               <Ionicons name="document-text-outline" size={32} color="#D32F2F" style={{ marginBottom: 8 }} />
               <Text style={{ fontSize: 14, fontWeight: '700', color: '#333', textAlign: 'center' }} numberOfLines={2}>
                 {pendingSyllabusFile?.name}
@@ -7274,7 +7275,7 @@ LESSON EDIT MODAL (Direct Edit - No Preview Toggle)
                 renderDocPage(
                   <View style={{ marginBottom: 24 }}>
                     <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-                      <Text style={{ fontSize: 16, fontWeight: '800', color: '#D32F2F', flex: 1, marginRight: 8 }}>
+                      <Text style={{ fontSize: 16, fontWeight: WEIGHT_EMPHASIS, color: '#D32F2F', flex: 1, marginRight: 8 }}>
                         Lesson {index + 1}: {lesson.title}
                       </Text>
                       {pendingGeneratedLessons.length > 1 && (
@@ -7283,7 +7284,7 @@ LESSON EDIT MODAL (Direct Edit - No Preview Toggle)
                             const updated = pendingGeneratedLessons.filter((_, i) => i !== index);
                             setPendingGeneratedLessons(updated);
                           }}
-                          style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, backgroundColor: '#FFEBEE' }}
+                          style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 14, backgroundColor: '#FFEBEE' }}
                         >
                           <Ionicons name="trash-outline" size={14} color="#D32F2F" />
                           <Text style={{ color: '#D32F2F', fontWeight: '700', fontSize: 12 }}>Remove</Text>
@@ -7446,7 +7447,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 6,
     backgroundColor: 'rgba(0,0,0,0.32)',
-    borderRadius: 10,
+    borderRadius: 16,
     paddingHorizontal: 12,
     paddingVertical: 9,
   },
@@ -7458,13 +7459,13 @@ const styles = StyleSheet.create({
   },
   courseNameOnBanner: {
     color: '#FFFFFF',
-    fontWeight: '900',
+    fontWeight: WEIGHT_EMPHASIS,
     letterSpacing: 0.2,
     textShadowColor: 'rgba(0,0,0,0.35)',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 4,
   },
-  courseInstructorOnBanner: {
+  courseInstructorOnBanner: { fontFamily: FONT_BODY,
     color: 'rgba(255,255,255,0.9)',
     fontSize: 13,
     fontWeight: '700',
@@ -7490,24 +7491,24 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 6,
     backgroundColor: '#F1F3F4',
-    borderRadius: 10,
+    borderRadius: 16,
     paddingHorizontal: 10,
     paddingVertical: 7,
   },
-  metaChipText: { color: '#3C4043', fontSize: 12, fontWeight: '700' },
+  metaChipText: { fontFamily: FONT_BODY, color: '#3C4043', fontSize: 12, fontWeight: '700' },
   classCodeInline: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
     backgroundColor: '#FDEAEA',
-    borderRadius: 10,
+    borderRadius: 16,
     paddingHorizontal: 10,
     paddingVertical: 7,
   },
   classCodeInlineValue: {
     color: '#D32F2F',
     fontSize: 13,
-    fontWeight: '900',
+    fontWeight: WEIGHT_EMPHASIS,
     letterSpacing: 1,
     fontFamily: Platform.select({ ios: 'Courier', android: 'monospace', default: 'monospace' }),
   },
@@ -7520,14 +7521,14 @@ const styles = StyleSheet.create({
     borderLeftWidth: 1,
     borderLeftColor: 'rgba(211,47,47,0.25)',
   },
-  copyCodeInlineText: { color: '#D32F2F', fontSize: 12, fontWeight: '800' },
+  copyCodeInlineText: { fontFamily: FONT_BODY, color: '#D32F2F', fontSize: 12, fontWeight: WEIGHT_EMPHASIS },
   scheduleStripWrap: { paddingBottom: 14 },
   scheduleStripCard: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: 10,
     backgroundColor: '#F8F9FA',
-    borderRadius: 12,
+    borderRadius: 16,
     paddingHorizontal: 12,
     paddingVertical: 10,
   },
@@ -7538,9 +7539,9 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: 8,
   },
-  scheduleStripDays: { color: '#202124', fontSize: 12, fontWeight: '800', minWidth: 80 },
-  scheduleStripTime: { color: '#5F6368', fontSize: 12, fontWeight: '600' },
-  scheduleStripRoom: { color: '#80868B', fontSize: 12, fontStyle: 'italic' },
+  scheduleStripDays: { fontFamily: FONT_BODY, color: '#202124', fontSize: 12, fontWeight: WEIGHT_EMPHASIS, minWidth: 80 },
+  scheduleStripTime: { fontFamily: FONT_BODY, color: '#5F6368', fontSize: 12, fontWeight: '600' },
+  scheduleStripRoom: { fontFamily: FONT_BODY, color: '#80868B', fontSize: 12, fontStyle: 'italic' },
   headerBottomDivider: {
     height: 1,
     backgroundColor: '#E8EAED',
@@ -7562,7 +7563,7 @@ const styles = StyleSheet.create({
     gap: 12,
     marginBottom: 14,
   },
-  courseName: { color: '#FFF', fontWeight: '900', letterSpacing: 0.2 },
+  courseName: { color: '#FFF', fontWeight: WEIGHT_EMPHASIS, letterSpacing: 0.2 },
   scheduleDisplayCard: {
     backgroundColor: 'rgba(255,255,255,0.12)',
     borderWidth: 1,
@@ -7577,10 +7578,10 @@ const styles = StyleSheet.create({
     gap: 6,
     marginBottom: 8,
   },
-  scheduleDisplayTitle: {
+  scheduleDisplayTitle: { fontFamily: FONT_TITLE,
     color: '#FFF',
     fontSize: 13,
-    fontWeight: '800',
+    fontWeight: WEIGHT_TITLE,
   },
   scheduleDisplayRow: {
     flexDirection: 'row',
@@ -7589,17 +7590,17 @@ const styles = StyleSheet.create({
     gap: 8,
     paddingVertical: 4,
   },
-  scheduleDisplayDays: {
+  scheduleDisplayDays: { fontFamily: FONT_BODY,
     color: '#FFF',
     fontSize: 13,
     fontWeight: '700',
     minWidth: 90,
   },
-  scheduleDisplayTime: {
+  scheduleDisplayTime: { fontFamily: FONT_BODY,
     color: 'rgba(255,255,255,0.9)',
     fontSize: 13,
   },
-  scheduleDisplayRoom: {
+  scheduleDisplayRoom: { fontFamily: FONT_BODY,
     color: 'rgba(255,255,255,0.75)',
     fontSize: 12,
     fontStyle: 'italic',
@@ -7612,14 +7613,14 @@ const styles = StyleSheet.create({
     padding: 14,
   },
   headerInfoRow: { marginBottom: 12 },
-  headerInfoLabel: {
+  headerInfoLabel: { fontFamily: FONT_TITLE,
     color: 'rgba(255,255,255,0.72)',
     fontSize: 10,
-    fontWeight: '800',
+    fontWeight: WEIGHT_TITLE,
     letterSpacing: 0.8,
     marginBottom: 3,
   },
-  headerInfoValue: { color: '#FFF', fontSize: 14, fontWeight: '800' },
+  headerInfoValue: { fontFamily: FONT_TITLE, color: '#FFF', fontSize: 14, fontWeight: WEIGHT_TITLE },
   headerDetailsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   headerDetailsGridDesktop: { flexWrap: 'nowrap', alignItems: 'stretch' },
   headerDetailItemDesktop: { flexBasis: 0, flexGrow: 1, minWidth: 0 },
@@ -7636,14 +7637,14 @@ const styles = StyleSheet.create({
     flexBasis: '100%',
   },
   academicInfoTextWrap: { flex: 1 },
-  academicInfoLabel: {
+  academicInfoLabel: { fontFamily: FONT_BODY,
     color: '#8A8A8A',
     fontSize: 10,
-    fontWeight: '800',
+    fontWeight: WEIGHT_EMPHASIS,
     letterSpacing: 0.5,
     textTransform: 'uppercase',
   },
-  academicInfoValue: { color: '#202124', fontSize: 12, fontWeight: '800', marginTop: 2 },
+  academicInfoValue: { fontFamily: FONT_BODY, color: '#202124', fontSize: 12, fontWeight: WEIGHT_EMPHASIS, marginTop: 2 },
   classCodeBox: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -7671,17 +7672,17 @@ const styles = StyleSheet.create({
   classCodeIconBadge: {
     width: 30,
     height: 30,
-    borderRadius: 10,
+    borderRadius: 16,
     backgroundColor: '#FDEAEA',
     alignItems: 'center',
     justifyContent: 'center',
   },
   classCodeTextWrap: { flex: 1 },
-  classCodeLabel: { color: '#9AA0A6', fontSize: 10, fontWeight: '800', letterSpacing: 0.8 },
+  classCodeLabel: { fontFamily: FONT_BODY, color: '#9AA0A6', fontSize: 10, fontWeight: WEIGHT_EMPHASIS, letterSpacing: 0.8 },
   classCodeValue: {
     color: '#202124',
     fontSize: 15,
-    fontWeight: '900',
+    fontWeight: WEIGHT_EMPHASIS,
     marginTop: 2,
     letterSpacing: 1.2,
     fontFamily: Platform.select({ ios: 'Courier', android: 'monospace', default: 'monospace' }),
@@ -7697,11 +7698,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 6,
     backgroundColor: '#D32F2F',
-    borderRadius: 10,
+    borderRadius: 16,
     paddingHorizontal: 12,
     paddingVertical: 9,
   },
-  copyCodeText: { color: '#FFFFFF', fontWeight: '800', fontSize: 12 },
+  copyCodeText: { fontFamily: FONT_BODY, color: '#FFFFFF', fontWeight: WEIGHT_EMPHASIS, fontSize: 12 },
   exportGradesButtonInline: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -7711,14 +7712,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     minWidth: 42,
     height: 42,
-    borderRadius: 10,
+    borderRadius: 16,
     borderBottomWidth: 3,
     borderBottomColor: '#145A2A',
   },
-  exportGradesButtonText: {
+  exportGradesButtonText: { fontFamily: FONT_BODY,
     color: '#FFFFFF',
     fontSize: 13,
-    fontWeight: '900',
+    fontWeight: WEIGHT_EMPHASIS,
     letterSpacing: 0.25,
     textTransform: 'uppercase',
   },
@@ -7762,7 +7763,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.15)',
   },
   viewerTitleBlock: { flex: 1, gap: 3 },
-  viewerTitle: { color: '#FFF', fontSize: 15, fontWeight: '700', letterSpacing: 0.1 },
+  viewerTitle: { fontFamily: FONT_TITLE, color: '#FFF', fontSize: 15, fontWeight: WEIGHT_TITLE, letterSpacing: 0.1 },
   viewerBadgeRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -7774,15 +7775,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 4,
     backgroundColor: '#FFF',
-    borderRadius: 6,
+    borderRadius: 12,
     paddingHorizontal: 6,
     paddingVertical: 2,
     alignSelf: 'flex-start',
   },
-  viewerTypeText: {
+  viewerTypeText: { fontFamily: FONT_BODY,
     color: '#D32F2F',
     fontSize: 10,
-    fontWeight: '800',
+    fontWeight: WEIGHT_EMPHASIS,
     letterSpacing: 0.5,
   },
   viewerPdfBadge: {
@@ -7790,18 +7791,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 4,
     backgroundColor: '#E3F2FD',
-    borderRadius: 6,
+    borderRadius: 12,
     paddingHorizontal: 6,
     paddingVertical: 2,
   },
-  viewerPdfBadgeText: { color: '#1565C0', fontSize: 10, fontWeight: '800' },
+  viewerPdfBadgeText: { fontFamily: FONT_BODY, color: '#1565C0', fontSize: 10, fontWeight: WEIGHT_EMPHASIS },
   viewerWeekBadge: {
     backgroundColor: 'rgba(255,255,255,0.18)',
-    borderRadius: 6,
+    borderRadius: 12,
     paddingHorizontal: 6,
     paddingVertical: 2,
   },
-  viewerWeekText: { color: '#FFF', fontSize: 10, fontWeight: '700' },
+  viewerWeekText: { fontFamily: FONT_BODY, color: '#FFF', fontSize: 10, fontWeight: '700' },
   viewerActions: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -7823,13 +7824,13 @@ const styles = StyleSheet.create({
     gap: 14,
     backgroundColor: '#FFF',
   },
-  viewerExternalTitle: {
+  viewerExternalTitle: { fontFamily: FONT_TITLE,
     fontSize: 18,
-    fontWeight: '700',
+    fontWeight: WEIGHT_TITLE,
     color: '#111',
     textAlign: 'center',
   },
-  viewerExternalText: {
+  viewerExternalText: { fontFamily: FONT_BODY,
     fontSize: 14,
     color: '#666',
     textAlign: 'center',
@@ -7841,29 +7842,29 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
     backgroundColor: '#D32F2F',
-    borderRadius: 10,
+    borderRadius: 16,
     paddingHorizontal: 20,
     paddingVertical: 12,
   },
-  viewerExternalButtonText: { color: '#FFF', fontWeight: '700', fontSize: 14 },
+  viewerExternalButtonText: { fontFamily: FONT_BODY, color: '#FFF', fontWeight: '700', fontSize: 14 },
   viewerTextContent: {
     padding: 24,
     backgroundColor: '#FFF',
     minHeight: '100%',
   },
-  viewerTextTitle: {
+  viewerTextTitle: { fontFamily: FONT_TITLE,
     fontSize: 22,
-    fontWeight: '800',
+    fontWeight: WEIGHT_TITLE,
     color: '#111',
     marginBottom: 8,
   },
-  viewerTextMeta: {
+  viewerTextMeta: { fontFamily: FONT_BODY,
     fontSize: 13,
     color: '#D32F2F',
     fontWeight: '700',
     marginBottom: 16,
   },
-  viewerTextBody: {
+  viewerTextBody: { fontFamily: FONT_BODY,
     fontSize: 15,
     color: '#333',
     lineHeight: 26,
@@ -7879,7 +7880,7 @@ const styles = StyleSheet.create({
   deleteMaterialBtn: {
     flex: 1,
     minHeight: 46,
-    borderRadius: 12,
+    borderRadius: 16,
     borderWidth: 1.5,
     borderColor: '#D32F2F',
     alignItems: 'center',
@@ -7888,9 +7889,9 @@ const styles = StyleSheet.create({
     gap: 6,
     backgroundColor: '#FFF',
   },
-  deleteMaterialBtnText: {
+  deleteMaterialBtnText: { fontFamily: FONT_BODY,
     color: '#D32F2F',
-    fontWeight: '800',
+    fontWeight: WEIGHT_EMPHASIS,
     fontSize: 13,
   },
   currentFileBox: {
@@ -7900,17 +7901,17 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFF8F8',
     borderWidth: 1,
     borderColor: '#F1D0D0',
-    borderRadius: 12,
+    borderRadius: 16,
     padding: 12,
     marginBottom: 12,
   },
-  currentFileLabel: {
+  currentFileLabel: { fontFamily: FONT_BODY,
     fontSize: 11,
     color: '#999',
     fontWeight: '700',
     marginBottom: 2,
   },
-  currentFileName: {
+  currentFileName: { fontFamily: FONT_BODY,
     fontSize: 13,
     color: '#333',
     fontWeight: '600',
@@ -7939,8 +7940,8 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
   modalHeaderTextWrap: { flex: 1, paddingRight: 12 },
-  createTitle: { fontSize: 18, fontWeight: '800', color: '#111' },
-  modalSubtitle: { fontSize: 13, color: '#666', lineHeight: 19, marginTop: 4 },
+  createTitle: { fontFamily: FONT_TITLE, fontSize: 18, fontWeight: WEIGHT_TITLE, color: '#111' },
+  modalSubtitle: { fontFamily: FONT_BODY, fontSize: 13, color: '#666', lineHeight: 19, marginTop: 4 },
   modalBottomActions: { flexDirection: 'row', gap: 10, marginTop: 14 },
   formGrid: { gap: 16 },
   formGridDesktop: {
@@ -7957,22 +7958,22 @@ const styles = StyleSheet.create({
   // doesn't need to span the full column width like a text field would.
   numberOfQuestionsInput: { width: '100%', maxWidth: 100 },
   fullWidthSection: { width: '100%' },
-  sectionLabel: {
+  sectionLabel: { fontFamily: FONT_BODY,
     fontSize: 13,
     fontWeight: '700',
     color: '#222',
     marginBottom: 8,
     marginTop: 10,
   },
-  helperText: { fontSize: 12, color: '#777', marginBottom: 8, lineHeight: 18 },
-  emptyMiniText: { fontSize: 12, color: '#999', marginBottom: 6 },
-  errorText: { color: '#D32F2F', fontSize: 12, fontWeight: '600', marginTop: -2, marginBottom: 6 },
+  helperText: { fontFamily: FONT_BODY, fontSize: 12, color: '#777', marginBottom: 8, lineHeight: 18 },
+  emptyMiniText: { fontFamily: FONT_BODY, fontSize: 12, color: '#999', marginBottom: 6 },
+  errorText: { fontFamily: FONT_BODY, color: '#D32F2F', fontSize: 12, fontWeight: '600', marginTop: -2, marginBottom: 6 },
   errorBorder: { borderColor: '#D32F2F', borderWidth: 1.5 },
   errorContainer: { borderWidth: 1.5, borderColor: '#D32F2F', borderRadius: 14, padding: 8 },
-  inputBox: {
+  inputBox: { fontFamily: FONT_BODY,
     borderWidth: 1,
     borderColor: '#DDD',
-    borderRadius: 12,
+    borderRadius: 16,
     paddingHorizontal: 12,
     paddingVertical: 12,
     backgroundColor: '#FFF',
@@ -7980,10 +7981,10 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#111',
   },
-  textAreaBox: {
+  textAreaBox: { fontFamily: FONT_BODY,
     borderWidth: 1,
     borderColor: '#DDD',
-    borderRadius: 12,
+    borderRadius: 16,
     paddingHorizontal: 12,
     paddingVertical: 12,
     backgroundColor: '#FFF',
@@ -7996,7 +7997,7 @@ const styles = StyleSheet.create({
   dateButton: {
     borderWidth: 1,
     borderColor: '#DDD',
-    borderRadius: 12,
+    borderRadius: 16,
     paddingHorizontal: 12,
     paddingVertical: 13,
     backgroundColor: '#FFF',
@@ -8007,7 +8008,7 @@ const styles = StyleSheet.create({
   },
   dateButtonText: { color: '#222', fontWeight: '600', flex: 1 },
   sectionBlock: { marginTop: 0 },
-  clearSelectionText: {
+  clearSelectionText: { fontFamily: FONT_BODY,
     color: '#D32F2F',
     fontSize: 13,
     fontWeight: '700',
@@ -8027,7 +8028,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFF5F5',
     paddingHorizontal: 12,
     paddingVertical: 10,
-    borderRadius: 12,
+    borderRadius: 16,
   },
   materialChipActive: { backgroundColor: '#D32F2F', borderColor: '#D32F2F' },
   materialChipText: { color: '#D32F2F', fontWeight: '700', flex: 1 },
@@ -8046,11 +8047,11 @@ const styles = StyleSheet.create({
     gap: 8,
     borderWidth: 1,
     borderColor: '#D32F2F',
-    borderRadius: 10,
+    borderRadius: 16,
     paddingVertical: 10,
     marginTop: 12,
   },
-  reviewQuestionsButtonText: { color: '#D32F2F', fontWeight: '700', fontSize: 13 },
+  reviewQuestionsButtonText: { fontFamily: FONT_BODY, color: '#D32F2F', fontWeight: '700', fontSize: 13 },
   lessonChip: {
     backgroundColor: '#E3F2FD',
     borderColor: '#90CAF9',
@@ -8058,7 +8059,7 @@ const styles = StyleSheet.create({
   lessonChipText: {
     color: '#1565C0',
   },
-  lessonSubtext: {
+  lessonSubtext: { fontFamily: FONT_BODY,
     fontSize: 10,
     color: '#1976D2',
     marginTop: 2,
@@ -8069,7 +8070,7 @@ const styles = StyleSheet.create({
   primaryButtonWide: {
     backgroundColor: '#D32F2F',
     minHeight: 48,
-    borderRadius: 12,
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 14,
@@ -8078,14 +8079,14 @@ const styles = StyleSheet.create({
     gap: 8,
     width: '100%',
   },
-  uploadBtnText: { color: '#FFF', fontWeight: '800', fontSize: 13 },
+  uploadBtnText: { fontFamily: FONT_BODY, color: '#FFF', fontWeight: WEIGHT_EMPHASIS, fontSize: 13 },
   filePreviewBox: {
     marginTop: 10,
     borderWidth: 1,
     borderColor: '#F1D0D0',
     backgroundColor: '#FFF8F8',
     padding: 12,
-    borderRadius: 12,
+    borderRadius: 16,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
@@ -8103,7 +8104,7 @@ const styles = StyleSheet.create({
   checkboxBox: {
     width: 26,
     height: 26,
-    borderRadius: 8,
+    borderRadius: 14,
     borderWidth: 1,
     borderColor: '#D32F2F',
     alignItems: 'center',
@@ -8116,27 +8117,27 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#D32F2F',
     minHeight: 46,
-    borderRadius: 12,
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  primaryButtonText: { color: '#FFF', fontWeight: '800', textAlign: 'center' },
+  primaryButtonText: { color: '#FFF', fontWeight: WEIGHT_EMPHASIS, textAlign: 'center' },
   secondaryButton: {
     flex: 1,
     borderWidth: 1,
     borderColor: '#D32F2F',
     minHeight: 46,
-    borderRadius: 12,
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: '#FFF',
   },
-  secondaryButtonText: { color: '#D32F2F', fontWeight: '800' },
+  secondaryButtonText: { color: '#D32F2F', fontWeight: WEIGHT_EMPHASIS },
   floatingSaveWrap: { position: 'absolute', right: 18, left: 18, bottom: 18 },
   floatingSaveWrapMobile: { right: 18, left: 18, bottom: 18 },
   floatingSaveButton: {
     backgroundColor: '#D32F2F',
-    borderRadius: 12,
+    borderRadius: 16,
     minHeight: 48,
     width: '100%',
     flexDirection: 'row',
@@ -8150,7 +8151,7 @@ const styles = StyleSheet.create({
   },
   floatingSaveButtonWarn: { backgroundColor: '#C62828' },
   floatingSaveButtonDisabled: { opacity: 0.72 },
-  floatingSaveButtonText: { color: '#FFF', fontWeight: '800', fontSize: 14 },
+  floatingSaveButtonText: { fontFamily: FONT_BODY, color: '#FFF', fontWeight: WEIGHT_EMPHASIS, fontSize: 14 },
   // Non-floating version of the Save button used inside the Create
   // Assignment form (both Regular Submission and Game Based): sits in the
   // normal document flow at the bottom, right-aligned, instead of an
@@ -8161,7 +8162,7 @@ const styles = StyleSheet.create({
   },
   inlineSaveButton: {
     backgroundColor: '#D32F2F',
-    borderRadius: 12,
+    borderRadius: 16,
     minHeight: 48,
     paddingHorizontal: 24,
     flexDirection: 'row',
@@ -8198,21 +8199,21 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 6 },
     elevation: 12,
   },
-  savingTitle: {
+  savingTitle: { fontFamily: FONT_TITLE,
     marginTop: 12,
     fontSize: 17,
-    fontWeight: '900',
+    fontWeight: WEIGHT_TITLE,
     color: '#111',
     textAlign: 'center',
   },
-  savingMessage: {
+  savingMessage: { fontFamily: FONT_BODY,
     marginTop: 6,
     fontSize: 13,
     lineHeight: 19,
     color: '#666',
     textAlign: 'center',
   },
-  previewContent: { fontSize: 14, color: '#444', lineHeight: 22, marginTop: 10 },
+  previewContent: { fontFamily: FONT_BODY, fontSize: 14, color: '#444', lineHeight: 22, marginTop: 10 },
   dateTimeLayout: { gap: 16 },
   dateTimeLayoutDesktop: { flexDirection: 'row', alignItems: 'flex-start' },
   calendarPanel: {},
@@ -8234,35 +8235,35 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  calendarMonthLabel: { fontSize: 16, fontWeight: '800', color: '#111', flexShrink: 1, textAlign: 'center' },
-  calendarMonthLabelCompact: { fontSize: 14 },
+  calendarMonthLabel: { fontFamily: FONT_BODY, fontSize: 16, fontWeight: WEIGHT_EMPHASIS, color: '#111', flexShrink: 1, textAlign: 'center' },
+  calendarMonthLabelCompact: { fontFamily: FONT_BODY, fontSize: 14 },
   weekRow: { flexDirection: 'row', marginBottom: 8 },
-  weekLabel: {
+  weekLabel: { fontFamily: FONT_BODY,
     flex: 1,
     textAlign: 'center',
     fontSize: 12,
     fontWeight: '700',
     color: '#777',
   },
-  weekLabelCompact: { fontSize: 11 },
+  weekLabelCompact: { fontFamily: FONT_BODY, fontSize: 11 },
   dayGrid: { flexDirection: 'row', flexWrap: 'wrap', marginBottom: 4 },
   dayCell: {
     width: '14.2857%',
     aspectRatio: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 12,
+    borderRadius: 16,
     marginBottom: 6,
   },
   dayCellOutside: { opacity: 0.35 },
   dayCellActive: { backgroundColor: '#D32F2F' },
   dayCellDisabled: { backgroundColor: '#F5F5F5', opacity: 0.45 },
   dayText: { color: '#222', fontWeight: '600' },
-  dayTextCompact: { fontSize: 12 },
+  dayTextCompact: { fontFamily: FONT_BODY, fontSize: 12 },
   dayTextOutside: { color: '#888' },
-  dayTextActive: { color: '#FFF', fontWeight: '800' },
+  dayTextActive: { color: '#FFF', fontWeight: WEIGHT_EMPHASIS },
   dayTextDisabled: { color: '#B0B0B0' },
-  timeLabel: { fontSize: 13, fontWeight: '700', color: '#222', marginTop: 16, marginBottom: 8 },
+  timeLabel: { fontFamily: FONT_BODY, fontSize: 13, fontWeight: '700', color: '#222', marginTop: 16, marginBottom: 8 },
   // ✅ Merged Time field (typed HH:MM + AM/PM toggle), replacing the old
   // separate scrollable Hour / Minute columns — mirrors TimeInputField
   // used on the Teacher Dashboard's Create Class schedule blocks.
@@ -8272,13 +8273,13 @@ const styles = StyleSheet.create({
     minHeight: 48,
     borderWidth: 1,
     borderColor: '#E5E5E5',
-    borderRadius: 12,
+    borderRadius: 16,
     backgroundColor: '#FAFAFA',
     paddingHorizontal: 14,
     justifyContent: 'center',
   },
   timeTextInputWrapFocused: { borderColor: '#D32F2F', borderWidth: 1.5 },
-  timeTextInput: {
+  timeTextInput: { fontFamily: FONT_BODY,
     fontSize: 15,
     color: '#111',
     fontWeight: '600',
@@ -8289,38 +8290,38 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     borderWidth: 1,
     borderColor: '#E5E5E5',
-    borderRadius: 12,
+    borderRadius: 16,
     backgroundColor: '#FAFAFA',
     overflow: 'hidden',
   },
   meridiemBtn: { paddingHorizontal: 14, justifyContent: 'center', alignItems: 'center' },
   meridiemBtnActive: { backgroundColor: '#D32F2F' },
-  meridiemBtnText: { fontSize: 13, fontWeight: '800', color: '#9AA0A6' },
+  meridiemBtnText: { fontFamily: FONT_BODY, fontSize: 13, fontWeight: WEIGHT_EMPHASIS, color: '#9AA0A6' },
   meridiemBtnTextActive: { color: '#FFFFFF' },
-  timeErrorText: { marginTop: 8, color: '#D32F2F', fontSize: 12, fontWeight: '700' },
+  timeErrorText: { fontFamily: FONT_BODY, marginTop: 8, color: '#D32F2F', fontSize: 12, fontWeight: '700' },
   datePreviewBox: {
     marginTop: 14,
     borderWidth: 1,
     borderColor: '#F1D0D0',
     backgroundColor: '#FFF8F8',
-    borderRadius: 12,
+    borderRadius: 16,
     padding: 12,
   },
-  datePreviewLabel: { fontSize: 12, fontWeight: '700', color: '#777', marginBottom: 4 },
-  datePreviewValue: { fontSize: 14, fontWeight: '800', color: '#D32F2F' },
-  datePreviewValueCompact: { fontSize: 12 },
+  datePreviewLabel: { fontFamily: FONT_BODY, fontSize: 12, fontWeight: '700', color: '#777', marginBottom: 4 },
+  datePreviewValue: { fontFamily: FONT_BODY, fontSize: 14, fontWeight: WEIGHT_EMPHASIS, color: '#D32F2F' },
+  datePreviewValueCompact: { fontFamily: FONT_BODY, fontSize: 12 },
   typeChip: {
     flex: 1,
     paddingVertical: 12,
     paddingHorizontal: 16,
-    borderRadius: 12,
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: '#F0B9B9',
     backgroundColor: '#FFF5F5',
     alignItems: 'center',
   },
   typeChipActive: { backgroundColor: '#D32F2F', borderColor: '#D32F2F' },
-  typeChipText: { color: '#D32F2F', fontWeight: '700', fontSize: 14 },
+  typeChipText: { fontFamily: FONT_BODY, color: '#D32F2F', fontWeight: '700', fontSize: 14 },
   typeChipTextActive: { color: '#FFF' },
   gameAndClassRow: { flexDirection: 'row', gap: 16, alignItems: 'flex-start' },
   gameAndClassRowMobile: { flexDirection: 'column', gap: 12 },
@@ -8333,7 +8334,7 @@ const styles = StyleSheet.create({
   dropdownTrigger: {
     borderWidth: 1,
     borderColor: '#DDD',
-    borderRadius: 12,
+    borderRadius: 16,
     paddingHorizontal: 14,
     paddingVertical: 13,
     backgroundColor: '#FFF',
@@ -8342,7 +8343,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     minHeight: 48,
   },
-  dropdownText: { color: '#111', fontWeight: '600', fontSize: 14, flex: 1, marginRight: 8 },
+  dropdownText: { fontFamily: FONT_BODY, color: '#111', fontWeight: '600', fontSize: 14, flex: 1, marginRight: 8 },
   dropdownPlaceholder: { color: '#999' },
   dropdownItem: {
     flexDirection: 'row',
@@ -8353,31 +8354,31 @@ const styles = StyleSheet.create({
     borderBottomColor: '#F5F5F5',
   },
   dropdownItemActive: { backgroundColor: '#D32F2F', borderBottomColor: '#C62828' },
-  dropdownItemText: { color: '#111', fontWeight: '700', fontSize: 14, flex: 1 },
+  dropdownItemText: { fontFamily: FONT_BODY, color: '#111', fontWeight: '700', fontSize: 14, flex: 1 },
   dropdownItemTextActive: { color: '#FFF' },
-  dropdownItemDesc: { color: '#888', fontSize: 11, marginTop: 2, lineHeight: 15 },
+  dropdownItemDesc: { fontFamily: FONT_BODY, color: '#888', fontSize: 11, marginTop: 2, lineHeight: 15 },
   dropdownItemDescActive: { color: '#FFE0E0' },
   attemptChip: {
     paddingHorizontal: 16,
     paddingVertical: 10,
-    borderRadius: 10,
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: '#F0B9B9',
     backgroundColor: '#FFF5F5',
   },
   attemptChipActive: { backgroundColor: '#D32F2F', borderColor: '#D32F2F' },
-  attemptChipText: { color: '#D32F2F', fontWeight: '700', fontSize: 13 },
+  attemptChipText: { fontFamily: FONT_BODY, color: '#D32F2F', fontWeight: '700', fontSize: 13 },
   attemptChipTextActive: { color: '#FFF' },
   timeChip: {
     paddingHorizontal: 12,
     paddingVertical: 10,
-    borderRadius: 10,
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: '#F0B9B9',
     backgroundColor: '#FFF5F5',
   },
   timeChipActive: { backgroundColor: '#D32F2F', borderColor: '#D32F2F' },
-  timeChipText: { color: '#D32F2F', fontWeight: '700', fontSize: 13 },
+  timeChipText: { fontFamily: FONT_BODY, color: '#D32F2F', fontWeight: '700', fontSize: 13 },
   timeChipTextActive: { color: '#FFF' },
   generatedQuestionBlock: {
     marginBottom: 24,
@@ -8388,7 +8389,7 @@ const styles = StyleSheet.create({
   generateButton: {
     backgroundColor: '#4CAF50',
     minHeight: 48,
-    borderRadius: 12,
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 14,
@@ -8397,10 +8398,10 @@ const styles = StyleSheet.create({
     gap: 8,
     width: '100%',
   },
-  generateButtonText: { color: '#FFF', fontWeight: '800', fontSize: 14 },
+  generateButtonText: { fontFamily: FONT_BODY, color: '#FFF', fontWeight: WEIGHT_EMPHASIS, fontSize: 14 },
   correctnessDropdown: {
     borderWidth: 1,
-    borderRadius: 8,
+    borderRadius: 14,
     paddingHorizontal: 10,
     paddingVertical: 10,
     flexDirection: 'row',
@@ -8430,7 +8431,7 @@ const styles = StyleSheet.create({
   // school-wide header/footer banner, like a letterhead.
   docPageOuter: {
     backgroundColor: '#ECECEC',
-    borderRadius: 10,
+    borderRadius: 16,
     padding: 16,
     marginBottom: 18,
   },
@@ -8467,12 +8468,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 4,
     backgroundColor: '#FCE8E8',
-    borderRadius: 6,
+    borderRadius: 12,
     paddingHorizontal: 8,
     paddingVertical: 3,
     marginBottom: 10,
   },
-  docPageBadgeText: {
+  docPageBadgeText: { fontFamily: FONT_BODY,
     color: '#D32F2F',
     fontWeight: '700',
     fontSize: 10,
@@ -8486,23 +8487,23 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFF',
     borderWidth: 1,
     borderColor: '#D32F2F',
-    borderRadius: 8,
+    borderRadius: 14,
     paddingHorizontal: 12,
     paddingVertical: 8,
   },
-  manageTemplateButtonText: { color: '#D32F2F', fontWeight: '700', fontSize: 12 },
+  manageTemplateButtonText: { fontFamily: FONT_BODY, color: '#D32F2F', fontWeight: '700', fontSize: 12 },
   templateSlotCard: {
     backgroundColor: '#F9F9F9',
     borderWidth: 1,
     borderColor: '#EEE',
-    borderRadius: 12,
+    borderRadius: 16,
     padding: 12,
     marginBottom: 16,
   },
   templateSlotPreviewBox: {
     width: '100%',
     height: 100,
-    borderRadius: 8,
+    borderRadius: 14,
     backgroundColor: '#FFF',
     borderWidth: 1,
     borderColor: '#DDD',
@@ -8559,8 +8560,8 @@ const styles = StyleSheet.create({
     marginRight: 8,
   },
   lessonPreviewTopBarTextWrap: { flex: 1 },
-  lessonPreviewTopBarTitle: { fontSize: 16, fontWeight: '800', color: '#111' },
-  lessonPreviewTopBarSubtitle: { fontSize: 12, color: '#777', marginTop: 1 },
+  lessonPreviewTopBarTitle: { fontFamily: FONT_TITLE, fontSize: 16, fontWeight: WEIGHT_TITLE, color: '#111' },
+  lessonPreviewTopBarSubtitle: { fontFamily: FONT_BODY, fontSize: 12, color: '#777', marginTop: 1 },
   lessonPreviewScrollContent: {
     flexGrow: 1,
     alignItems: 'center',
@@ -8585,7 +8586,7 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 900,
     backgroundColor: '#FFFFFF',
-    borderRadius: 6,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: '#E0E0E0',
     padding: 20,
@@ -8605,9 +8606,9 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#EEE',
   },
-  lessonPreviewPageTitle: {
+  lessonPreviewPageTitle: { fontFamily: FONT_TITLE,
     fontSize: 22,
-    fontWeight: '800',
+    fontWeight: WEIGHT_TITLE,
     color: '#111',
     marginTop: 6,
   },
@@ -8630,10 +8631,10 @@ const styles = StyleSheet.create({
     backgroundColor: '#F5F5F5',
     paddingHorizontal: 12,
     paddingVertical: 8,
-    borderRadius: 8,
+    borderRadius: 14,
     maxWidth: 180,
   },
-  lessonModeDropdownText: {
+  lessonModeDropdownText: { fontFamily: FONT_BODY,
     color: '#111',
     fontWeight: '700',
     fontSize: 13,
@@ -8652,7 +8653,7 @@ const styles = StyleSheet.create({
     left: 0,
     marginTop: 6,
     backgroundColor: '#FFFFFF',
-    borderRadius: 10,
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: '#E0E0E0',
     minWidth: 190,
@@ -8676,14 +8677,14 @@ const styles = StyleSheet.create({
   lessonModeDropdownItemActive: {
     backgroundColor: '#FFF5F5',
   },
-  lessonModeDropdownItemText: {
+  lessonModeDropdownItemText: { fontFamily: FONT_BODY,
     color: '#333',
     fontWeight: '600',
     fontSize: 13,
   },
   lessonModeDropdownItemTextActive: {
     color: '#D32F2F',
-    fontWeight: '800',
+    fontWeight: WEIGHT_EMPHASIS,
   },
   lessonPreviewBottomBar: {
     flexDirection: 'row',

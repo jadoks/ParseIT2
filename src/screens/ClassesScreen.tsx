@@ -14,7 +14,7 @@ import {
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import CourseCard, { CourseCardCourse } from '../components/CourseCard';
-import { FONT_BODY, FONT_TITLE } from '../theme/typography';
+import { FONT_BODY, FONT_TITLE, WEIGHT_EMPHASIS, WEIGHT_TITLE } from '../theme/typography';
 
 // ✅ Reuses the same Toast component used across the app (Admin/Teacher
 // screens, Community, Dashboard) for join-class feedback instead of
@@ -314,35 +314,35 @@ const styles = StyleSheet.create({
   contentWrap: { width: '100%', maxWidth: 1200, alignSelf: 'center' },
   headerRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 20 },
   headerTextWrap: { flex: 1 },
-  pageTitle: { fontFamily: FONT_TITLE, fontSize: 28, fontWeight: '700', color: '#111', marginBottom: 6 },
-  pageSubtitle: { fontFamily: FONT_TITLE, fontSize: 14, color: '#666' },
+  pageTitle: { fontFamily: FONT_TITLE, fontSize: 28, fontWeight: WEIGHT_TITLE, color: '#111', marginBottom: 6 },
+  pageSubtitle: { fontFamily: FONT_BODY, fontSize: 14, color: '#666' },
   joinClassButton: { backgroundColor: '#D32F2F', borderRadius: 14, paddingHorizontal: 14, paddingVertical: 11, flexDirection: 'row', alignItems: 'center', gap: 8, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 8, elevation: 3 },
-  joinClassButtonText: { fontFamily: FONT_BODY, color: '#FFFFFF', fontSize: 14, fontWeight: '700' },
+  joinClassButtonText: { fontFamily: FONT_BODY, color: '#FFFFFF', fontSize: 14, fontWeight: WEIGHT_EMPHASIS },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 15 },
   gridMobile: { justifyContent: 'center' },
   gridTablet: { justifyContent: 'center' },
   gridDesktop: { justifyContent: 'flex-start' },
   // 👇 NEW EMPTY STATE STYLES
   emptyState: { width: '100%', paddingVertical: 60, alignItems: 'center', justifyContent: 'center' },
-  emptyTitle: { fontFamily: FONT_TITLE, marginTop: 16, fontSize: 18, fontWeight: '700', color: '#333', textAlign: 'center' },
-  emptySubtitle: { fontFamily: FONT_TITLE, marginTop: 8, fontSize: 14, color: '#888', textAlign: 'center', maxWidth: 320, lineHeight: 20 },
+  emptyTitle: { fontFamily: FONT_TITLE, marginTop: 16, fontSize: 18, fontWeight: WEIGHT_TITLE, color: '#333', textAlign: 'center' },
+  emptySubtitle: { fontFamily: FONT_BODY, marginTop: 8, fontSize: 14, color: '#888', textAlign: 'center', maxWidth: 320, lineHeight: 20 },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(15, 23, 42, 0.18)' },
   joinDropdownModal: { position: 'absolute', backgroundColor: '#FFFFFF', borderRadius: 20, padding: 18, borderWidth: 1, borderColor: '#ECECEC', shadowColor: '#000', shadowOpacity: 0.14, shadowRadius: 18, elevation: 10 },
   joinDropdownHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, marginBottom: 18 },
   joinDropdownHeaderText: { flex: 1 },
-  joinDropdownIconWrap: { width: 38, height: 38, borderRadius: 12, backgroundColor: '#FFF1F1', alignItems: 'center', justifyContent: 'center' },
-  joinDropdownTitle: { fontFamily: FONT_TITLE, fontSize: 16, fontWeight: '700', color: '#111827', marginBottom: 3 },
-  joinDropdownSubtitle: { fontFamily: FONT_TITLE, fontSize: 13, lineHeight: 18, color: '#6B7280' },
-  inputLabel: { fontFamily: FONT_BODY, fontSize: 13, fontWeight: '600', color: '#374151', marginBottom: 8 },
+  joinDropdownIconWrap: { width: 38, height: 38, borderRadius: 16, backgroundColor: '#FFF1F1', alignItems: 'center', justifyContent: 'center' },
+  joinDropdownTitle: { fontFamily: FONT_TITLE, fontSize: 16, fontWeight: WEIGHT_TITLE, color: '#111827', marginBottom: 3 },
+  joinDropdownSubtitle: { fontFamily: FONT_BODY, fontSize: 13, lineHeight: 18, color: '#6B7280' },
+  inputLabel: { fontFamily: FONT_BODY, fontSize: 13, fontWeight: WEIGHT_EMPHASIS, color: '#374151', marginBottom: 8 },
   classCodeInput: { fontFamily: FONT_BODY, height: 48, borderWidth: 1, borderColor: '#DADDE2', borderRadius: 14, paddingHorizontal: 14, fontSize: 14, color: '#111827', backgroundColor: '#FAFAFA', marginBottom: 16 },
   joinDropdownActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 10 },
-  cancelButton: { paddingHorizontal: 14, paddingVertical: 11, borderRadius: 12, backgroundColor: '#F3F4F6' },
-  cancelButtonText: { fontFamily: FONT_BODY, color: '#374151', fontWeight: '600', fontSize: 13 },
+  cancelButton: { paddingHorizontal: 14, paddingVertical: 11, borderRadius: 16, backgroundColor: '#F3F4F6' },
+  cancelButtonText: { fontFamily: FONT_BODY, color: '#374151', fontWeight: WEIGHT_EMPHASIS, fontSize: 13 },
   joinDisabledButton: { opacity: 0.65 },
   joinLoadingContent: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
-  confirmButton: { paddingHorizontal: 16, paddingVertical: 11, borderRadius: 12, backgroundColor: '#D32F2F' },
+  confirmButton: { paddingHorizontal: 16, paddingVertical: 11, borderRadius: 16, backgroundColor: '#D32F2F' },
   confirmButtonDisabled: { backgroundColor: '#F0A7A7' },
-  confirmButtonText: { fontFamily: FONT_BODY, color: '#FFFFFF', fontWeight: '700', fontSize: 13 },
+  confirmButtonText: { fontFamily: FONT_BODY, color: '#FFFFFF', fontWeight: WEIGHT_EMPHASIS, fontSize: 13 },
 
   // ✅ Toast portal — matches Community/Dashboard; lets touches pass through
   // to whatever's behind, except the toast itself.

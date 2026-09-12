@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Ionicons from 'react-native-vector-icons/Ionicons';
-import { FONT_BODY, FONT_TITLE } from '../theme/typography';
+import { FONT_BODY, FONT_TITLE, WEIGHT_EMPHASIS, WEIGHT_TITLE } from '../theme/typography';
 
 // One completed attempt, as returned by the backend
 // (POST /game-ai/submit-game-assignment or GET /game-ai/attempts/:assignmentId).
@@ -223,8 +223,8 @@ const styles = StyleSheet.create({
     gap: 12,
     marginLeft: 20,
   },
-  headerTitle: { fontFamily: FONT_TITLE, fontSize: 20, fontWeight: '800', color: '#222' },
-  headerSubtitle: { fontFamily: FONT_TITLE, fontSize: 14, color: '#777', marginTop: 4, fontWeight: '600' },
+  headerTitle: { fontFamily: FONT_TITLE, fontSize: 20, fontWeight: WEIGHT_TITLE, color: '#222' },
+  headerSubtitle: { fontFamily: FONT_BODY, fontSize: 14, color: '#777', marginTop: 4, fontWeight: WEIGHT_EMPHASIS },
   scroll: { flex: 1 },
   scrollContent: { padding: 20, paddingBottom: 40 },
   // ✅ Constrains and centers the attempts list on large screens (tablet/
@@ -241,11 +241,11 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFF6DA',
     borderWidth: 1,
     borderColor: '#F0DFA0',
-    borderRadius: 10,
+    borderRadius: 16,
     padding: 12,
     marginBottom: 16,
     lineHeight: 18,
-    fontWeight: '600',
+    fontWeight: WEIGHT_EMPHASIS,
   },
   attemptCard: {
     flexDirection: 'row',
@@ -271,11 +271,11 @@ const styles = StyleSheet.create({
   },
   radioOuterPicked: { borderColor: '#D32F2F' },
   radioInner: { width: 12, height: 12, borderRadius: 6, backgroundColor: '#D32F2F' },
-  attemptLabel: { fontFamily: FONT_BODY, fontSize: 16, fontWeight: '700', color: '#222' },
-  currentFinalTag: { fontFamily: FONT_BODY, fontSize: 12, color: '#2E7D32', fontWeight: '700', marginTop: 2 },
+  attemptLabel: { fontFamily: FONT_BODY, fontSize: 16, fontWeight: WEIGHT_EMPHASIS, color: '#222' },
+  currentFinalTag: { fontFamily: FONT_BODY, fontSize: 12, color: '#2E7D32', fontWeight: WEIGHT_EMPHASIS, marginTop: 2 },
   attemptCardRight: { alignItems: 'flex-end' },
-  attemptScore: { fontFamily: FONT_BODY, fontSize: 16, fontWeight: '800', color: '#222' },
-  attemptPercent: { fontFamily: FONT_BODY, fontSize: 13, color: '#777', fontWeight: '600', marginTop: 2 },
+  attemptScore: { fontFamily: FONT_BODY, fontSize: 16, fontWeight: WEIGHT_EMPHASIS, color: '#222' },
+  attemptPercent: { fontFamily: FONT_BODY, fontSize: 13, color: '#777', fontWeight: WEIGHT_EMPHASIS, marginTop: 2 },
   playAgainButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -283,12 +283,12 @@ const styles = StyleSheet.create({
     gap: 8,
     borderWidth: 2,
     borderColor: '#D32F2F',
-    borderRadius: 12,
+    borderRadius: 16,
     paddingVertical: 12,
     marginTop: 8,
     ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
   },
-  playAgainText: { fontFamily: FONT_BODY, color: '#D32F2F', fontWeight: '800', fontSize: 15 },
+  playAgainText: { fontFamily: FONT_BODY, color: '#D32F2F', fontWeight: WEIGHT_EMPHASIS, fontSize: 15 },
   footer: {
     flexDirection: 'row',
     gap: 12,
@@ -302,20 +302,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 14,
-    borderRadius: 12,
+    borderRadius: 16,
     backgroundColor: '#F0F0F0',
   },
-  decideLaterText: { fontFamily: FONT_BODY, color: '#555', fontWeight: '700', fontSize: 15 },
+  decideLaterText: { fontFamily: FONT_BODY, color: '#555', fontWeight: WEIGHT_EMPHASIS, fontSize: 15 },
   submitButton: {
     flex: 2,
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 14,
-    borderRadius: 12,
+    borderRadius: 16,
     backgroundColor: '#D32F2F',
   },
   submitButtonDisabled: { backgroundColor: '#E7A9A9' },
-  submitButtonText: { fontFamily: FONT_BODY, color: '#FFF', fontWeight: '800', fontSize: 15 },
+  submitButtonText: { fontFamily: FONT_BODY, color: '#FFF', fontWeight: WEIGHT_EMPHASIS, fontSize: 15 },
   // ✅ Compact variants of the same two buttons, used inline in the header
   // on large screens instead of the full-width footer versions above.
   decideLaterButtonHeader: {
@@ -323,19 +323,19 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingVertical: 10,
     paddingHorizontal: 18,
-    borderRadius: 10,
+    borderRadius: 16,
     backgroundColor: '#F0F0F0',
   },
-  decideLaterTextHeader: { fontFamily: FONT_BODY, color: '#555', fontWeight: '700', fontSize: 14 },
+  decideLaterTextHeader: { fontFamily: FONT_BODY, color: '#555', fontWeight: WEIGHT_EMPHASIS, fontSize: 14 },
   submitButtonHeader: {
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 10,
     paddingHorizontal: 20,
-    borderRadius: 10,
+    borderRadius: 16,
     backgroundColor: '#D32F2F',
   },
-  submitButtonTextHeader: { fontFamily: FONT_BODY, color: '#FFF', fontWeight: '800', fontSize: 14 },
+  submitButtonTextHeader: { fontFamily: FONT_BODY, color: '#FFF', fontWeight: WEIGHT_EMPHASIS, fontSize: 14 },
 });
 
 export default GameAttemptSelection;

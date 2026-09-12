@@ -16,6 +16,7 @@ import {
   View,
 } from 'react-native';
 import * as XLSX from 'xlsx';
+import { FONT_BODY, FONT_TITLE, WEIGHT_EMPHASIS } from '../theme/typography';
 
 const JourneyHeader = require('../../assets/images/myjourney-header-template-1.png');
 const FooterImage = require('../../assets/images/footer.png');
@@ -1088,7 +1089,7 @@ const styles = StyleSheet.create({
   },
 
   mainTitle: {
-    fontWeight: 'bold',
+    fontWeight: WEIGHT_EMPHASIS,
     color: '#000',
     fontFamily,
   },
@@ -1127,7 +1128,7 @@ const styles = StyleSheet.create({
   controlsTitle: {
     color: '#1F1F1F',
     fontSize: 16,
-    fontWeight: '900',
+    fontWeight: WEIGHT_EMPHASIS,
     letterSpacing: 0.4,
     textTransform: 'uppercase',
     fontFamily,
@@ -1185,7 +1186,7 @@ const styles = StyleSheet.create({
   academicLabel: {
     color: '#3B332E',
     fontSize: 12,
-    fontWeight: '800',
+    fontWeight: WEIGHT_EMPHASIS,
     letterSpacing: 0.4,
     marginBottom: 7,
     textTransform: 'uppercase',
@@ -1196,7 +1197,7 @@ const styles = StyleSheet.create({
     minHeight: 46,
     borderWidth: 1,
     borderColor: '#D8D0C8',
-    borderRadius: 10,
+    borderRadius: 16,
     backgroundColor: '#F7F2EC',
     justifyContent: 'center',
     paddingHorizontal: 14,
@@ -1204,13 +1205,13 @@ const styles = StyleSheet.create({
 
   schoolYearBadgeMobile: {
     minHeight: 52,
-    borderRadius: 12,
+    borderRadius: 16,
   },
 
   schoolYearBadgeLabel: {
     color: '#7A6E66',
     fontSize: 10,
-    fontWeight: '800',
+    fontWeight: WEIGHT_EMPHASIS,
     letterSpacing: 0.35,
     marginBottom: 2,
     textTransform: 'uppercase',
@@ -1220,7 +1221,7 @@ const styles = StyleSheet.create({
   schoolYearBadgeValue: {
     color: '#2D2926',
     fontSize: 14,
-    fontWeight: '800',
+    fontWeight: WEIGHT_EMPHASIS,
     fontFamily,
   },
 
@@ -1245,7 +1246,7 @@ const styles = StyleSheet.create({
     height: 46,
     borderWidth: 1,
     borderColor: '#B8AFA7',
-    borderRadius: 10,
+    borderRadius: 16,
     paddingHorizontal: 14,
     flexDirection: 'row',
     alignItems: 'center',
@@ -1257,7 +1258,7 @@ const styles = StyleSheet.create({
 
   dropdownMobile: {
     height: 48,
-    borderRadius: 12,
+    borderRadius: 16,
   },
 
   dropdownText: {
@@ -1275,7 +1276,7 @@ const styles = StyleSheet.create({
     left: 0,
     width: '100%',
     backgroundColor: '#FFFFFF',
-    borderRadius: 10,
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: '#D8D0C8',
     overflow: 'hidden',
@@ -1289,7 +1290,7 @@ const styles = StyleSheet.create({
 
   dropdownMenuMobile: {
     top: 52,
-    borderRadius: 12,
+    borderRadius: 16,
   },
 
   dropdownMenuContent: {
@@ -1317,7 +1318,7 @@ const styles = StyleSheet.create({
     width: '100%',
     borderWidth: 1,
     borderColor: '#B8AFA7',
-    borderRadius: 10,
+    borderRadius: 16,
     height: 46,
     paddingHorizontal: 14,
     fontSize: 14,
@@ -1331,7 +1332,7 @@ const styles = StyleSheet.create({
     width: '100%',
     borderWidth: 1,
     borderColor: '#B8AFA7',
-    borderRadius: 10,
+    borderRadius: 16,
     height: 46,
     paddingHorizontal: 14,
     fontSize: 14,
@@ -1341,9 +1342,9 @@ const styles = StyleSheet.create({
     fontFamily,
   },
 
-  mainInputMobile: {
+  mainInputMobile: { fontFamily: FONT_BODY,
     height: 48,
-    borderRadius: 12,
+    borderRadius: 16,
     paddingHorizontal: 14,
     fontSize: 15,
   },
@@ -1353,7 +1354,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#B71C1C',
     height: 46,
     paddingHorizontal: 22,
-    borderRadius: 10,
+    borderRadius: 16,
     justifyContent: 'center',
     alignItems: 'center',
     borderBottomWidth: 3,
@@ -1365,7 +1366,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#B71C1C',
     height: 48,
     paddingHorizontal: 20,
-    borderRadius: 12,
+    borderRadius: 16,
     justifyContent: 'center',
     alignItems: 'center',
     borderBottomWidth: 3,
@@ -1383,13 +1384,13 @@ const styles = StyleSheet.create({
   journeyButtonText: {
     color: '#FFF',
     fontSize: 13,
-    fontWeight: '900',
+    fontWeight: WEIGHT_EMPHASIS,
     letterSpacing: 0.25,
     textTransform: 'uppercase',
     fontFamily,
   },
 
-  journeyButtonTextMobile: {
+  journeyButtonTextMobile: { fontFamily: FONT_BODY,
     fontSize: 13,
   },
 
@@ -1420,7 +1421,7 @@ const styles = StyleSheet.create({
   noGradeTitle: {
     color: '#3B332E',
     fontSize: 17,
-    fontWeight: '900',
+    fontWeight: WEIGHT_EMPHASIS,
     letterSpacing: 0.3,
     textTransform: 'uppercase',
     marginTop: 12,
@@ -1501,7 +1502,7 @@ const styles = StyleSheet.create({
   reportTitle: {
     color: '#111',
     fontSize: 18,
-    fontWeight: '900',
+    fontWeight: WEIGHT_EMPHASIS,
     letterSpacing: 0.8,
     textAlign: 'center',
     textTransform: 'uppercase',
@@ -1523,7 +1524,7 @@ const styles = StyleSheet.create({
     width: '100%', // Ensures it stretches to full width on mobile
     borderWidth: 1,
     borderColor: '#E8E1DA',
-    borderRadius: 12,
+    borderRadius: 16,
     backgroundColor: '#FFFDF9',
     padding: 14,
     marginBottom: 16,
@@ -1560,7 +1561,7 @@ const styles = StyleSheet.create({
   studentInfoLabel: {
     color: '#655B54',
     fontSize: 12,
-    fontWeight: '800',
+    fontWeight: WEIGHT_EMPHASIS,
     textTransform: 'uppercase',
     fontFamily,
   },
@@ -1568,14 +1569,14 @@ const styles = StyleSheet.create({
   studentInfoValue: {
     color: '#111',
     fontSize: 13,
-    fontWeight: '800',
+    fontWeight: WEIGHT_EMPHASIS,
     textAlign: 'right',
     flex: 1,
     fontFamily,
   },
 
   // NEW: Mobile-specific value styling (Left-aligned for vertical stack)
-  studentInfoValueMobile: {
+  studentInfoValueMobile: { fontFamily: FONT_BODY,
     textAlign: 'left',
     fontSize: 14,
     width: '100%',
@@ -1599,7 +1600,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#BDBDBD',
     backgroundColor: '#FFF',
-    borderRadius: 8,
+    borderRadius: 14,
     overflow: 'hidden',
   },
 
@@ -1656,7 +1657,7 @@ const styles = StyleSheet.create({
   headerText: {
     color: '#FFF',
     fontSize: 12,
-    fontWeight: '900',
+    fontWeight: WEIGHT_EMPHASIS,
     paddingVertical: 10,
     paddingHorizontal: 8,
     textAlign: 'center',
@@ -1664,7 +1665,7 @@ const styles = StyleSheet.create({
     fontFamily,
   },
 
-  mobileHeaderText: {
+  mobileHeaderText: { fontFamily: FONT_TITLE,
     fontSize: 10,
     paddingHorizontal: 4,
   },
@@ -1677,7 +1678,7 @@ const styles = StyleSheet.create({
     fontFamily,
   },
 
-  mobileCellText: {
+  mobileCellText: { fontFamily: FONT_BODY,
     fontSize: 11,
     paddingHorizontal: 5,
   },
@@ -1687,7 +1688,7 @@ const styles = StyleSheet.create({
   },
 
   gradeText: {
-    fontWeight: '900',
+    fontWeight: WEIGHT_EMPHASIS,
     color: '#111',
   },
 
@@ -1713,7 +1714,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#1F1F1F',
     height: 46,
     paddingHorizontal: 22,
-    borderRadius: 10,
+    borderRadius: 16,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -1724,13 +1725,13 @@ const styles = StyleSheet.create({
   downloadButtonMobile: {
     width: '100%',
     height: 48,
-    borderRadius: 12,
+    borderRadius: 16,
   },
 
   downloadButtonText: {
     color: '#FFFFFF',
     fontSize: 13,
-    fontWeight: '900',
+    fontWeight: WEIGHT_EMPHASIS,
     letterSpacing: 0.25,
     textTransform: 'uppercase',
     fontFamily,

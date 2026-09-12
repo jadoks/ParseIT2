@@ -8,6 +8,7 @@ import {
 } from 'react-native';
 import { heightPercentageToDP as hp } from 'react-native-responsive-screen';
 import Ionicons from 'react-native-vector-icons/Ionicons';
+import { FONT_BODY, FONT_TITLE, WEIGHT_TITLE } from '../theme/typography';
 import type { Assignment } from './TeacherCourseDetail2';
 
 type Props = {
@@ -186,24 +187,24 @@ export default TeacherAssignmentSection;
 const styles = StyleSheet.create({
   container: { paddingVertical: hp('2'), backgroundColor: '#ffffff' },
   topActionRow: { marginBottom: hp('1.5'), alignItems: 'flex-start' },
-  createButton: { backgroundColor: '#D32F2F', borderRadius: 12, minHeight: 44, paddingHorizontal: 14, paddingVertical: 10, flexDirection: 'row', alignItems: 'center', gap: 8 },
-  createButtonText: { color: '#FFF', fontWeight: '700', fontSize: 13 },
-  assignmentCard: { borderWidth: 1, borderColor: '#E6E6E6', backgroundColor: '#fff', borderRadius: 12, paddingVertical: 14, shadowColor: '#000', shadowOffset: { width: 4, height: 4 }, shadowOpacity: 0.06, shadowRadius: 4, elevation: 2 },
+  createButton: { backgroundColor: '#D32F2F', borderRadius: 16, minHeight: 44, paddingHorizontal: 14, paddingVertical: 10, flexDirection: 'row', alignItems: 'center', gap: 8 },
+  createButtonText: { fontFamily: FONT_BODY, color: '#FFF', fontWeight: '700', fontSize: 13 },
+  assignmentCard: { borderWidth: 1, borderColor: '#E6E6E6', backgroundColor: '#fff', borderRadius: 16, paddingVertical: 14, shadowColor: '#000', shadowOffset: { width: 4, height: 4 }, shadowOpacity: 0.06, shadowRadius: 4, elevation: 2 },
   assignmentHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 },
   assignmentInfo: { flex: 1, marginRight: 8 },
-  assignmentTitle: { fontSize: 16, fontWeight: '700', color: '#000', marginBottom: 4 },
-  assignmentTopicText: { color: '#444', fontSize: 12, fontWeight: '600', marginTop: 4, lineHeight: 18 },
-  statusBadge: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, backgroundColor: '#FDECEC' },
-  statusText: { fontWeight: '700', fontSize: 12, color: '#D32F2F' },
+  assignmentTitle: { fontFamily: FONT_TITLE, fontSize: 16, fontWeight: WEIGHT_TITLE, color: '#000', marginBottom: 4 },
+  assignmentTopicText: { fontFamily: FONT_BODY, color: '#444', fontSize: 12, fontWeight: '600', marginTop: 4, lineHeight: 18 },
+  statusBadge: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 14, backgroundColor: '#FDECEC' },
+  statusText: { fontFamily: FONT_BODY, fontWeight: '700', fontSize: 12, color: '#D32F2F' },
   statusBadgeClosed: { backgroundColor: '#EEEEEE' },
   statusTextClosed: { color: '#666666' },
   assignmentFooter: { borderTopWidth: 1, borderTopColor: '#E6E6E6', paddingTop: 8 },
-  dueDateText: { color: '#D32F2F', fontWeight: '600', fontSize: 13, marginBottom: 4 },
-  pointsText: { fontSize: 12, color: '#666', fontWeight: '600' },
-  relatedPreviewText: { fontSize: 12, color: '#666', marginTop: 8, lineHeight: 18 },
+  dueDateText: { fontFamily: FONT_BODY, color: '#D32F2F', fontWeight: '600', fontSize: 13, marginBottom: 4 },
+  pointsText: { fontFamily: FONT_BODY, fontSize: 12, color: '#666', fontWeight: '600' },
+  relatedPreviewText: { fontFamily: FONT_BODY, fontSize: 12, color: '#666', marginTop: 8, lineHeight: 18 },
   recommendationBadge: { marginTop: 10, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 7, alignSelf: 'flex-start', backgroundColor: '#FFF1F1' },
-  recommendationText: { fontSize: 12, fontWeight: '700', color: '#D32F2F' },
-  emptyText: { textAlign: 'center', color: '#777', marginTop: 20, fontSize: 14 },
+  recommendationText: { fontFamily: FONT_BODY, fontSize: 12, fontWeight: '700', color: '#D32F2F' },
+  emptyText: { fontFamily: FONT_BODY, textAlign: 'center', color: '#777', marginTop: 20, fontSize: 14 },
   // NEW STYLES FOR GAME BADGE
   gameBadge: {
     marginTop: 10,
@@ -215,7 +216,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
-  gameBadgeText: {
+  gameBadgeText: { fontFamily: FONT_BODY,
     fontSize: 12,
     fontWeight: '700',
     color: '#2E7D32',

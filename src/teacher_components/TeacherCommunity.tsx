@@ -28,6 +28,7 @@ import {
 // ✅ Reuses the same Toast component used in the Admin ManageStudent screen /
 // TeacherDashboard, instead of relying on native Alert popups.
 import Toast from '../Final_Admin_Components/Toast';
+import { FONT_BODY, FONT_TITLE, WEIGHT_TITLE } from '../theme/typography';
 
 export interface CommunityAnswer {
   id: string;
@@ -1176,15 +1177,15 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
 
-  title: {
+  title: { fontFamily: FONT_TITLE,
     fontSize: 20,
-    fontWeight: '700',
+    fontWeight: WEIGHT_TITLE,
     color: '#222',
   },
 
   composerCard: {
   backgroundColor: '#ffffff',
-  borderRadius: 10,
+  borderRadius: 16,
   borderWidth: 1,
   borderColor: '#E4E6EB',
   paddingHorizontal: 14,
@@ -1220,14 +1221,14 @@ inputField: {
   justifyContent: 'center',
 },
 
-inputPlaceholder: {
+inputPlaceholder: { fontFamily: FONT_BODY,
   color: '#65676B',
   fontSize: 15,
 },
 
   postContainer: {
     backgroundColor: '#ffffff',
-    borderRadius: 8,
+    borderRadius: 14,
     marginBottom: 12,
     width: '100%',
     borderWidth: 1,
@@ -1263,19 +1264,19 @@ inputPlaceholder: {
     aspectRatio: 1,
   },
 
-  postUserName: {
+  postUserName: { fontFamily: FONT_BODY,
     fontWeight: '600',
     fontSize: 15,
     color: '#050505',
   },
 
-  postDateTime: {
+  postDateTime: { fontFamily: FONT_BODY,
     fontSize: 13,
     color: '#65676B',
     marginTop: 1,
   },
 
-  postContent: {
+  postContent: { fontFamily: FONT_BODY,
     fontSize: 15,
     lineHeight: 20,
     color: '#050505',
@@ -1283,7 +1284,7 @@ inputPlaceholder: {
     marginBottom: 10,
   },
 
-  showAnswersBtn: {
+  showAnswersBtn: { fontFamily: FONT_BODY,
     fontSize: 14,
     fontWeight: '600',
     color: '#65676B',
@@ -1301,7 +1302,7 @@ inputPlaceholder: {
   dropdownMenuModal: {
     position: 'absolute',
     backgroundColor: '#fff',
-    borderRadius: 10,
+    borderRadius: 16,
     paddingVertical: 6,
     elevation: 12,
     shadowColor: '#000',
@@ -1320,7 +1321,7 @@ inputPlaceholder: {
   actionIconCircle: {
     width: 20,
     height: 20,
-    borderRadius: 10,
+    borderRadius: 16,
     backgroundColor: '#1976D2',
     justifyContent: 'center',
     alignItems: 'center',
@@ -1329,7 +1330,7 @@ inputPlaceholder: {
   deleteIconCircle: {
     width: 20,
     height: 20,
-    borderRadius: 10,
+    borderRadius: 16,
     backgroundColor: '#E53935',
     justifyContent: 'center',
     alignItems: 'center',
@@ -1338,13 +1339,13 @@ inputPlaceholder: {
   hideIconCircle: {
     width: 20,
     height: 20,
-    borderRadius: 10,
+    borderRadius: 16,
     backgroundColor: '#E53935',
     justifyContent: 'center',
     alignItems: 'center',
   },
 
-  menuText: {
+  menuText: { fontFamily: FONT_BODY,
     marginLeft: 8,
     fontSize: 14,
     color: '#333',
@@ -1390,13 +1391,13 @@ inputPlaceholder: {
     marginBottom: 16,
   },
 
-  answerModalTitle: {
+  answerModalTitle: { fontFamily: FONT_TITLE,
     fontSize: 18,
-    fontWeight: '700',
+    fontWeight: WEIGHT_TITLE,
     color: '#222',
   },
 
-  selectedPostText: {
+  selectedPostText: { fontFamily: FONT_BODY,
     fontSize: 15,
     color: '#333',
     lineHeight: 22,
@@ -1420,7 +1421,7 @@ inputPlaceholder: {
 
   answerCard: {
     backgroundColor: '#F8F8F8',
-    borderRadius: 12,
+    borderRadius: 16,
     padding: 12,
     borderWidth: 1,
     borderColor: '#E8E8E8',
@@ -1439,24 +1440,24 @@ inputPlaceholder: {
     aspectRatio: 1,
   },
 
-  answerUserName: {
+  answerUserName: { fontFamily: FONT_BODY,
     fontSize: 14,
     fontWeight: '700',
     color: '#222',
   },
 
-  answerDate: {
+  answerDate: { fontFamily: FONT_BODY,
     fontSize: 12,
     color: '#777',
   },
 
-  answerPreviewText: {
+  answerPreviewText: { fontFamily: FONT_BODY,
     fontSize: 14,
     color: '#555',
     lineHeight: 20,
   },
 
-  noAnswersText: {
+  noAnswersText: { fontFamily: FONT_BODY,
     fontSize: 14,
     color: '#777',
     textAlign: 'center',
@@ -1470,18 +1471,18 @@ inputPlaceholder: {
     marginTop: 4,
   },
 
-  answerInputLabel: {
+  answerInputLabel: { fontFamily: FONT_BODY,
     fontSize: 14,
     fontWeight: '600',
     color: '#222',
     marginBottom: 8,
   },
 
-  answerInput: {
+  answerInput: { fontFamily: FONT_BODY,
     minHeight: 90,
     borderWidth: 1,
     borderColor: '#D9D9D9',
-    borderRadius: 10,
+    borderRadius: 16,
     paddingHorizontal: 12,
     paddingVertical: 10,
     fontSize: 14,
@@ -1495,23 +1496,23 @@ inputPlaceholder: {
     backgroundColor: '#D32F2F',
     paddingHorizontal: 16,
     paddingVertical: 10,
-    borderRadius: 8,
+    borderRadius: 14,
   },
 
-  postAnswerButtonText: {
+  postAnswerButtonText: { fontFamily: FONT_BODY,
     color: '#FFF',
     fontWeight: '600',
     fontSize: 14,
   },
 
-  confirmTitle: {
+  confirmTitle: { fontFamily: FONT_TITLE,
     fontSize: 18,
-    fontWeight: '700',
+    fontWeight: WEIGHT_TITLE,
     color: '#222',
     marginBottom: 10,
   },
 
-  confirmMessage: {
+  confirmMessage: { fontFamily: FONT_BODY,
     fontSize: 14,
     color: '#555',
     lineHeight: 20,
@@ -1527,7 +1528,7 @@ inputPlaceholder: {
   cancelButton: {
     paddingHorizontal: 16,
     paddingVertical: 10,
-    borderRadius: 8,
+    borderRadius: 14,
     backgroundColor: '#E0E0E0',
   },
 
@@ -1539,7 +1540,7 @@ inputPlaceholder: {
   deleteButton: {
     paddingHorizontal: 16,
     paddingVertical: 10,
-    borderRadius: 8,
+    borderRadius: 14,
     backgroundColor: '#D32F2F',
   },
 
@@ -1562,7 +1563,7 @@ inputPlaceholder: {
     position: 'absolute',
     width: ANSWER_DROPDOWN_WIDTH,
     backgroundColor: '#fff',
-    borderRadius: 8,
+    borderRadius: 14,
     paddingVertical: 6,
     zIndex: 99999,
     elevation: 99999,
@@ -1578,14 +1579,14 @@ inputPlaceholder: {
     paddingVertical: 60,
     paddingHorizontal: 20,
   },
-  emptyTitle: {
+  emptyTitle: { fontFamily: FONT_TITLE,
     fontSize: 18,
-    fontWeight: '700',
+    fontWeight: WEIGHT_TITLE,
     color: '#333',
     marginTop: 16,
     marginBottom: 8,
   },
-  emptySubtitle: {
+  emptySubtitle: { fontFamily: FONT_BODY,
     fontSize: 14,
     color: '#777',
     textAlign: 'center',

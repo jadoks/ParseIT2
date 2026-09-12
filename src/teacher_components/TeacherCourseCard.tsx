@@ -8,6 +8,7 @@ import {
   View,
 } from 'react-native';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
+import { FONT_BODY } from '../theme/typography';
 import {
   getCachedBannerUrl,
   setCachedBannerUrl,
@@ -343,8 +344,8 @@ const styles = StyleSheet.create({
     padding: 16,
     justifyContent: 'flex-end',
   },
-  missingBannerText: { color: '#202124', fontSize: 18, fontWeight: '700' },
-  missingBannerSubText: {
+  missingBannerText: { fontFamily: FONT_BODY, color: '#202124', fontSize: 18, fontWeight: '700' },
+  missingBannerSubText: { fontFamily: FONT_BODY,
     color: '#6B7280',
     fontSize: 12,
     fontWeight: '700',
@@ -360,8 +361,8 @@ const styles = StyleSheet.create({
     padding: 16,
     justifyContent: 'flex-end',
   },
-  bannerName: { color: '#fff', fontSize: 18, fontWeight: '700' },
-  bannerCode: {
+  bannerName: { fontFamily: FONT_BODY, color: '#fff', fontSize: 18, fontWeight: '700' },
+  bannerCode: { fontFamily: FONT_BODY,
     color: 'rgba(19, 17, 17, 0.92)',
     fontSize: 13,
     fontWeight: '600',
@@ -370,7 +371,7 @@ const styles = StyleSheet.create({
   classMetaWrap: { marginTop: 12, gap: 8 },
   classMetaPill: {
     minHeight: 32,
-    borderRadius: 12,
+    borderRadius: 16,
     backgroundColor: '#FFF4F4',
     borderWidth: 1,
     borderColor: '#F8D7D7',
@@ -379,17 +380,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 7,
   },
-  classMetaText: { flex: 1, color: '#7A1F1F', fontSize: 12, fontWeight: '700' },
+  classMetaText: { fontFamily: FONT_BODY, flex: 1, color: '#7A1F1F', fontSize: 12, fontWeight: '700' },
   classCodeRow: { flexDirection: 'row', alignItems: 'center', marginTop: 10 },
   copyButton: { marginLeft: 8, padding: 4 },
   cardContent: { paddingHorizontal: 16, paddingTop: 14, paddingBottom: 8 },
-  instructorLabel: {
+  instructorLabel: { fontFamily: FONT_BODY,
     fontSize: 11,
     color: '#9AA0A6',
     fontWeight: '700',
     letterSpacing: 0.6,
   },
-  instructorName: { fontSize: 15, color: '#202124', fontWeight: '700', marginTop: 4 },
+  instructorName: { fontFamily: FONT_BODY, fontSize: 15, color: '#202124', fontWeight: '700', marginTop: 4 },
   cardFooter: { position: 'relative', minHeight: 36, justifyContent: 'center' },
   dotButton: { alignSelf: 'flex-end', paddingHorizontal: 12, paddingVertical: 6 },
   bottomBorder: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 4 },

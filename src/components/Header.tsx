@@ -52,7 +52,7 @@ interface SearchFeature {
 
 const GLOBAL_SEARCH_FEATURES: SearchFeature[] = [
   { id: 'home', title: 'Home Dashboard', screen: 'home', icon: 'view-dashboard-outline', keywords: ['home', 'dash', 'main', 'overview'] },
-  { id: 'classes', title: 'My Classes', screen: 'classes', icon: 'school-outline', keywords: ['class', 'course', 'subject', 'enrolled'] },
+  { id: 'classes', title: 'My Classes', screen: 'classes', icon: 'human-male-board', keywords: ['class', 'course', 'subject', 'enrolled'] },
   { id: 'assignments', title: 'Assignments', screen: 'assignments', icon: 'clipboard-text-clock-outline', keywords: ['assign', 'task', 'homework', 'submission', 'ass'] },
   { id: 'games', title: 'Game Hub', screen: 'game', icon: 'gamepad-variant-outline', keywords: ['game', 'play', 'fun', 'quiz', 'flip', 'fruit'] },
   { id: 'videos', title: 'Video Library', screen: 'videos', icon: 'youtube', keywords: ['video', 'watch', 'tutorial', 'lesson'] },
@@ -329,7 +329,7 @@ const Header: React.FC<HeaderProps> = ({
     if (screen === 'classes') {
       return (
         <MaterialCommunityIcons
-          name="school-outline"
+          name="human-male-board"
           size={size}
           color={isActive(screen) ? '#D32F2F' : '#000000'}
         />

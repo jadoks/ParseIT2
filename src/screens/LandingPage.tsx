@@ -577,7 +577,7 @@ export default function LandingPage({ onGetStarted, isSignedIn = false }: Landin
                 <Pill icon={<Ionicons name="sparkles-outline" size={17} color="#ff9aa5" />} text="Powered by Advanced AI & Machine Learning" />
 
                 <GradientTextLike isDesktop={isDesktop} isTablet={isTablet} isSmall={isSmall}>
-                  AI-Powered{"\n"}Learning &{"\n"}Analytics{"\n"}Platform
+                  AI-Enabled{"\n"}Learning &{"\n"}Analytics{"\n"}Platform
                 </GradientTextLike>
 
                 <Text style={[styles.heroDescription, isTablet && styles.heroDescriptionTablet, isSmall && styles.heroDescriptionSmall]}>
@@ -597,7 +597,7 @@ export default function LandingPage({ onGetStarted, isSignedIn = false }: Landin
                 </View>
 
                 <View style={[styles.heroStats, isSmall && styles.heroStatsSmall]}>
-                  <StatMini value="AI-Powered" label="Gemini-Style Tutor" accent="pink" isSmall={isSmall} />
+                  <StatMini value="AI-Enabled" label="Gemini-Style Tutor" accent="pink" isSmall={isSmall} />
                   <StatMini value="Real-Time" label="Analytics Dashboard" accent="orange" isSmall={isSmall} />
                   <StatMini value="Cross-Platform" label="Web & Mobile" accent="pink" isSmall={isSmall} />
                 </View>
@@ -806,7 +806,7 @@ function Header({
       <View style={styles.brandRow}>
         <View style={[styles.brandIcon, isSmall && styles.brandIconSmall]}>
           <Image
-            source={require("../../assets/images/logo.png")}
+            source={require("../../assets/images/BSITLOGO.png")}
             style={styles.brandLogoImage}
             resizeMode="contain"
           />
@@ -933,7 +933,7 @@ function HeroMockup({ compact }: { compact: boolean }) {
           <View style={styles.mockupBrandRow}>
             <View style={[styles.mockupIcon, isSmall && styles.mockupIconSmall]}>
               <Image
-                source={require("../../assets/images/logo.png")}
+                source={require("../../assets/images/BSITLOGO.png")}
                 style={styles.mockupLogoImage}
                 resizeMode="contain"
               />
@@ -1579,7 +1579,7 @@ function Footer({
           <View style={styles.footerBrandRow}>
             <View style={styles.footerLogo}>
               <Image
-                source={require("../../assets/images/logo.png")}
+                source={require("../../assets/images/BSITLOGO.png")}
                 style={styles.footerLogoImage}
                 resizeMode="contain"
               />

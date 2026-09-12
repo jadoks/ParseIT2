@@ -44,11 +44,11 @@ interface SearchFeature {
 
 const GLOBAL_SEARCH_FEATURES: SearchFeature[] = [
   { id: 'home', title: 'Teacher Dashboard', screen: 'home', icon: 'view-dashboard-outline', keywords: ['home', 'dash', 'main', 'overview'] },
-  { id: 'honors', title: 'Student Honors', screen: 'honors', icon: 'medal', keywords: ['honor', 'award', 'achievement', 'star'] },
+  { id: 'honors', title: "Dean's List", screen: 'honors', icon: 'medal', keywords: ['honor', 'award', 'achievement', 'star', 'dean'] },
   { id: 'grades', title: 'Gradebook', screen: 'grades', icon: 'school', keywords: ['grade', 'score', 'mark', 'result', 'exam'] },
   { id: 'announcement', title: 'Share Announcement', screen: 'announcement', icon: 'bullhorn', keywords: ['announce', 'post', 'news', 'alert', 'share'] },
   { id: 'community', title: 'Teacher Community', screen: 'community', icon: 'forum-outline', keywords: ['comm', 'post', 'feed', 'social', 'forum'] },
-  { id: 'messenger', title: 'Messenger', screen: 'messenger', icon: 'facebook-messenger', keywords: ['mess', 'chat', 'talk', 'dm', 'pc', 'message'] },
+  { id: 'messenger', title: 'Messenger', screen: 'messenger', icon: 'message-text-outline', keywords: ['mess', 'chat', 'talk', 'dm', 'pc', 'message'] },
   { id: 'analytics', title: 'Class Analytics', screen: 'analytics', icon: 'chart-bar', keywords: ['ana', 'stats', 'data', 'progress', 'performance'] },
   { id: 'profile', title: 'My Profile', screen: 'profile', icon: 'account-circle-outline', keywords: ['prof', 'user', 'me', 'settings', 'account'] },
   { id: 'notifications', title: 'Notifications', screen: 'notification', icon: 'bell-outline', keywords: ['notif', 'alert', 'bell', 'update'] },
@@ -215,7 +215,7 @@ const desktopNavScreens: (
       case 'home':
         return 'Home';
       case 'honors':
-        return 'Honors';
+        return "Dean's List";
       case 'grades':
         return 'Grades';
       case 'announcement':
@@ -265,7 +265,7 @@ const desktopNavScreens: (
       case 'messenger':
         return (
           <MaterialCommunityIcons
-            name="facebook-messenger"
+            name="message-text-outline"
             size={size}
             color={color}
           />
@@ -469,7 +469,7 @@ const desktopNavScreens: (
                       flexDirection: 'row',
                       alignItems: 'center',
                       backgroundColor: '#F1F1F1',
-                      borderRadius: 8,
+                      borderRadius: 14,
                       paddingHorizontal: 12,
                       height: 40,
                       marginRight: 8,
@@ -542,7 +542,7 @@ const desktopNavScreens: (
             >
               <View>
                 <MaterialCommunityIcons
-                  name="facebook-messenger"
+                  name="message-text-outline"
                   size={navIconSize}
                   color={getIconColor('messenger')}
                 />
@@ -746,7 +746,7 @@ const styles = StyleSheet.create({
   menuBtn: {
     marginRight: 10,
     padding: 4,
-    borderRadius: 8,
+    borderRadius: 14,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -789,7 +789,7 @@ const styles = StyleSheet.create({
   navBtn: {
     paddingHorizontal: 28,
     paddingVertical: 12,
-    borderRadius: 8,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -814,7 +814,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#2222229d',
     paddingHorizontal: 10,
     paddingVertical: 6,
-    borderRadius: 8,
+    borderRadius: 14,
     zIndex: 999,
     elevation: 10,
     minWidth: 70,
@@ -840,7 +840,7 @@ const styles = StyleSheet.create({
     height: 54,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 16,
+    borderRadius: 18,
     position: 'relative',
     overflow: 'visible',
   },
@@ -889,7 +889,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     backgroundColor: '#FFF',
-    borderRadius: 12,
+    borderRadius: 18,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.1,
@@ -916,7 +916,7 @@ const styles = StyleSheet.create({
   resultIconBox: {
     width: 36,
     height: 36,
-    borderRadius: 10,
+    borderRadius: 14,
     backgroundColor: '#FFF1F1',
     justifyContent: 'center',
     alignItems: 'center',

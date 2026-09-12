@@ -1101,7 +1101,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   pageTitle: { fontFamily: FONT_TITLE,
-    fontWeight: 'bold',
+    fontWeight: WEIGHT_TITLE,
     paddingBottom: 10,
     textAlign: 'left',
     color: '#111',
@@ -1205,7 +1205,7 @@ const styles = StyleSheet.create({
   },
   bannerLocation: { fontFamily: FONT_BODY,
     color: '#FFF',
-    fontWeight: 'bold',
+    fontWeight: WEIGHT_EMPHASIS,
     textAlign: 'center',
   },
 
@@ -1307,7 +1307,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#777',
     marginBottom: 2,
-    fontWeight: '500',
+    fontWeight: WEIGHT_EMPHASIS,
   },
   courseScheduleRow: {
     flexDirection: 'row',
@@ -1338,7 +1338,7 @@ const styles = StyleSheet.create({
   courseMiniStat: {
     flex: 1,
     backgroundColor: '#F8F8F8',
-    borderRadius: 12,
+    borderRadius: 16,
     padding: 10,
   },
   courseMetaLabel: { fontFamily: FONT_BODY,
@@ -1433,7 +1433,7 @@ const styles = StyleSheet.create({
   joinDropdownIconWrap: {
     width: 38,
     height: 38,
-    borderRadius: 12,
+    borderRadius: 16,
     backgroundColor: '#FFF1F1',
     alignItems: 'center',
     justifyContent: 'center',
@@ -1444,7 +1444,7 @@ const styles = StyleSheet.create({
     color: '#111827',
     marginBottom: 3,
   },
-  joinDropdownSubtitle: { fontFamily: FONT_TITLE,
+  joinDropdownSubtitle: { fontFamily: FONT_BODY,
     fontSize: 13,
     lineHeight: 18,
     color: '#6B7280',

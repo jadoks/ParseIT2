@@ -9,7 +9,7 @@ import {
   View,
   useWindowDimensions,
 } from 'react-native';
-import { FONT_BODY, FONT_TITLE } from '../theme/typography';
+import { FONT_BODY, FONT_TITLE, WEIGHT_EMPHASIS, WEIGHT_TITLE } from '../theme/typography';
 
 const apiFetch = (url: string, options: any = {}) =>
   fetch(url, {
@@ -1105,12 +1105,12 @@ const styles = StyleSheet.create({
 
   backText: { fontFamily: FONT_BODY, 
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: WEIGHT_EMPHASIS,
     color: '#D32F2F',
   },
 
   pageTitle: { fontFamily: FONT_TITLE, 
-    fontWeight: '800',
+    fontWeight: WEIGHT_TITLE,
     color: '#111',
     marginBottom: 16,
   },
@@ -1129,7 +1129,7 @@ const styles = StyleSheet.create({
 
   topicText: { fontFamily: FONT_BODY, 
     fontSize: 20,
-    fontWeight: '800',
+    fontWeight: WEIGHT_EMPHASIS,
     marginVertical: 6,
   },
 
@@ -1140,7 +1140,7 @@ const styles = StyleSheet.create({
 
   scoreText: { fontFamily: FONT_BODY, 
     color: '#D32F2F',
-    fontWeight: '700',
+    fontWeight: WEIGHT_EMPHASIS,
     marginTop: 8,
   },
 
@@ -1148,7 +1148,7 @@ const styles = StyleSheet.create({
     color: '#555',
     marginTop: 6,
     fontSize: 13,
-    fontWeight: '600',
+    fontWeight: WEIGHT_EMPHASIS,
   },
 
   card: {
@@ -1169,7 +1169,7 @@ const styles = StyleSheet.create({
 
   progressTitle: { fontFamily: FONT_TITLE, 
     fontSize: 17,
-    fontWeight: '800',
+    fontWeight: WEIGHT_TITLE,
     marginBottom: 6,
   },
 
@@ -1192,14 +1192,14 @@ const styles = StyleSheet.create({
 
   sectionTitle: { fontFamily: FONT_TITLE, 
     fontSize: 20,
-    fontWeight: '900',
+    fontWeight: WEIGHT_TITLE,
     color: '#111',
   },
 
   sectionMeta: { fontFamily: FONT_BODY, 
     fontSize: 13,
     color: '#D32F2F',
-    fontWeight: '800',
+    fontWeight: WEIGHT_EMPHASIS,
     backgroundColor: '#FFF1F1',
     paddingHorizontal: 10,
     paddingVertical: 5,
@@ -1235,7 +1235,7 @@ const styles = StyleSheet.create({
   errorTitle: { fontFamily: FONT_TITLE, 
     color: '#B71C1C',
     fontSize: 17,
-    fontWeight: '800',
+    fontWeight: WEIGHT_TITLE,
     marginBottom: 8,
   },
 
@@ -1247,7 +1247,7 @@ const styles = StyleSheet.create({
 
   cardTitle: { fontFamily: FONT_TITLE, 
     fontSize: 17,
-    fontWeight: '800',
+    fontWeight: WEIGHT_TITLE,
     marginBottom: 10,
   },
 
@@ -1266,7 +1266,7 @@ const styles = StyleSheet.create({
 
   readableText: { fontFamily: FONT_BODY, 
     color: '#2E7D32',
-    fontWeight: '700',
+    fontWeight: WEIGHT_EMPHASIS,
     fontSize: 13,
     marginTop: 10,
   },
@@ -1275,14 +1275,14 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     color: '#222',
     fontSize: 15,
-    fontWeight: '700',
+    fontWeight: WEIGHT_EMPHASIS,
     lineHeight: 22,
   },
 
   option: {
     borderWidth: 1,
     borderColor: '#DDD',
-    borderRadius: 10,
+    borderRadius: 16,
     padding: 12,
     marginBottom: 8,
     backgroundColor: '#FFFFFF',
@@ -1317,7 +1317,7 @@ const styles = StyleSheet.create({
     flex: 1,
     borderWidth: 1,
     borderColor: '#DDD',
-    borderRadius: 10,
+    borderRadius: 16,
     padding: 12,
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
@@ -1326,7 +1326,7 @@ const styles = StyleSheet.create({
   explanationBox: {
     marginTop: 10,
     padding: 12,
-    borderRadius: 12,
+    borderRadius: 16,
     backgroundColor: '#F6F7F9',
   },
 
@@ -1339,7 +1339,7 @@ const styles = StyleSheet.create({
   },
 
   explanationTitle: { fontFamily: FONT_TITLE, 
-    fontWeight: '800',
+    fontWeight: WEIGHT_TITLE,
     marginBottom: 4,
     color: '#111',
   },
@@ -1347,20 +1347,20 @@ const styles = StyleSheet.create({
   scoreBox: {
     marginTop: 12,
     padding: 12,
-    borderRadius: 12,
+    borderRadius: 16,
     backgroundColor: '#F6F7F9',
     alignItems: 'center',
   },
 
   scoreBoxText: { fontFamily: FONT_BODY, 
     color: '#111',
-    fontWeight: '800',
+    fontWeight: WEIGHT_EMPHASIS,
   },
 
   textInput: {
     borderWidth: 1,
     borderColor: '#DDD',
-    borderRadius: 12,
+    borderRadius: 16,
     minHeight: 48,
     padding: 12,
     marginTop: 8,
@@ -1381,14 +1381,14 @@ const styles = StyleSheet.create({
   submitBtn: {
     backgroundColor: '#D32F2F',
     padding: 14,
-    borderRadius: 12,
+    borderRadius: 16,
     alignItems: 'center',
   },
 
   completedBtn: {
     backgroundColor: '#2E7D32',
     padding: 14,
-    borderRadius: 12,
+    borderRadius: 16,
     alignItems: 'center',
   },
 
@@ -1401,7 +1401,7 @@ const styles = StyleSheet.create({
 
   submitText: { fontFamily: FONT_BODY, 
     color: '#FFF',
-    fontWeight: '700',
+    fontWeight: WEIGHT_EMPHASIS,
   },
 
   emptyContainer: {
@@ -1413,6 +1413,6 @@ const styles = StyleSheet.create({
   emptyTitle: { fontFamily: FONT_TITLE, 
     marginBottom: 12,
     color: '#222',
-    fontWeight: '700',
+    fontWeight: WEIGHT_TITLE,
   },
 });

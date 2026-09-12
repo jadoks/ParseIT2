@@ -20,6 +20,7 @@ import {
   useWindowDimensions,
 } from "react-native";
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
+import { FONT_BODY, FONT_TITLE, WEIGHT_EMPHASIS } from '../theme/typography';
 
 interface GeminiFloatingModalProps {
   visible: boolean;
@@ -213,7 +214,7 @@ const renderFormattedText = (text: string, baseStyle: any) => {
     const renderedSegments = segments.map((segment, segIndex) => {
       if (segment.startsWith('**') && segment.endsWith('**') && segment.length > 4) {
         return (
-          <Text key={segIndex} style={[baseStyle, { fontWeight: 'bold' }]}>
+          <Text key={segIndex} style={[baseStyle, { fontWeight: WEIGHT_EMPHASIS }]}>
             {segment.slice(2, -2)}
           </Text>
         );
@@ -949,8 +950,8 @@ const styles = StyleSheet.create({
     borderBottomColor: "#F3F4F6", 
     backgroundColor: "#FFFFFF" 
   },
-  title: { fontSize: 18, fontWeight: "800", color: "#D32F2F" },
-  subtitle: { marginTop: 4, fontSize: 12, color: "#6B7280", fontWeight: "500" },
+  title: { fontFamily: FONT_TITLE, fontSize: 18, fontWeight: "800", color: "#D32F2F" },
+  subtitle: { fontFamily: FONT_BODY, marginTop: 4, fontSize: 12, color: "#6B7280", fontWeight: "500" },
   
   closeBtn: {
     width: 36,
@@ -964,7 +965,7 @@ const styles = StyleSheet.create({
   modeSwitchWrap: { flexDirection: "row", marginHorizontal: 16, marginTop: 12, marginBottom: 4, backgroundColor: "#F3F4F6", borderRadius: 999, padding: 4 },
   modeButton: { flex: 1, height: 38, borderRadius: 999, alignItems: "center", justifyContent: "center" },
   modeButtonActive: { backgroundColor: "#D32F2F", shadowColor: "#D32F2F", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 4, elevation: 3 },
-  modeButtonText: { fontSize: 13, fontWeight: "700", color: "#6B7280" },
+  modeButtonText: { fontFamily: FONT_BODY, fontSize: 13, fontWeight: "700", color: "#6B7280" },
   modeButtonTextActive: { color: "#FFF" },
 
   usageBar: {
@@ -972,18 +973,18 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     paddingHorizontal: 10,
   },
-  usageBarText: { fontSize: 11, fontWeight: "600", color: "#9CA3AF", textAlign: "center" },
+  usageBarText: { fontFamily: FONT_BODY, fontSize: 11, fontWeight: "600", color: "#9CA3AF", textAlign: "center" },
   
   messages: { padding: 16, paddingBottom: 20, flexGrow: 1 },
   loadOlderWrap: { alignItems: "center", marginBottom: 16 },
-  loadOlderText: { fontSize: 12, color: "#9CA3AF", fontWeight: "500" },
+  loadOlderText: { fontFamily: FONT_BODY, fontSize: 12, color: "#9CA3AF", fontWeight: "500" },
   
   messageRow: { marginBottom: 16, maxWidth: "85%" },
   userRow: { alignSelf: "flex-end", alignItems: "flex-end" },
   botRow: { alignSelf: "flex-start", alignItems: "flex-start" },
   
   botLabelContainer: { flexDirection: 'row', alignItems: 'center', marginBottom: 6, marginLeft: 4, gap: 4 },
-  botLabel: { fontSize: 12, fontWeight: "700", color: "#D32F2F" },
+  botLabel: { fontFamily: FONT_BODY, fontSize: 12, fontWeight: "700", color: "#D32F2F" },
   
   messageBubble: { paddingHorizontal: 14, paddingVertical: 12, borderRadius: 18, maxWidth: '100%' },
   botBubble: { 
@@ -993,16 +994,16 @@ const styles = StyleSheet.create({
   },
   userBubble: { alignSelf: "flex-end", backgroundColor: "#D32F2F", borderRadius: 18, borderTopRightRadius: 4 },
   
-  botText: { color: "#1F2937", fontSize: 14, lineHeight: 22, fontWeight: "400" },
-  userText: { color: "#FFFFFF", fontSize: 14, lineHeight: 22, fontWeight: "400" },
+  botText: { fontFamily: FONT_BODY, color: "#1F2937", fontSize: 14, lineHeight: 22, fontWeight: "400" },
+  userText: { fontFamily: FONT_BODY, color: "#FFFFFF", fontSize: 14, lineHeight: 22, fontWeight: "400" },
   
   fileAttachment: {
     flexDirection: 'row', alignItems: 'center', paddingVertical: 6, paddingHorizontal: 10, 
-    borderRadius: 10, marginBottom: 8, gap: 6,
+    borderRadius: 16, marginBottom: 8, gap: 6,
   },
   fileAttachmentBot: { backgroundColor: '#FEF2F2', borderWidth: 1, borderColor: '#FECACA' },
   fileAttachmentUser: { backgroundColor: 'rgba(255,255,255,0.2)' },
-  fileAttachmentText: { fontSize: 13, fontWeight: '600', color: '#991B1B', flex: 1 },
+  fileAttachmentText: { fontFamily: FONT_BODY, fontSize: 13, fontWeight: '600', color: '#991B1B', flex: 1 },
 
   inputArea: {
     paddingHorizontal: 14, paddingTop: 10, paddingBottom: 14,
@@ -1013,7 +1014,7 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: '#FECACA', paddingHorizontal: 12, paddingVertical: 8,
     borderRadius: 14, marginBottom: 10, gap: 8,
   },
-  selectedFileText: { flex: 1, fontSize: 13, color: '#991B1B', fontWeight: '600' },
+  selectedFileText: { fontFamily: FONT_BODY, flex: 1, fontSize: 13, color: '#991B1B', fontWeight: '600' },
   
   inputRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 10 },
   uploadBtn: {
@@ -1021,14 +1022,14 @@ const styles = StyleSheet.create({
     justifyContent: 'center', alignItems: 'center',
   },
   uploadBtnDisabled: { backgroundColor: '#F9FAFB' },
-  input: {
+  input: { fontFamily: FONT_BODY,
     flex: 1,
     borderWidth: 1.5, borderColor: "#E5E7EB",
     paddingHorizontal: 16, paddingVertical: 10,
     color: "#111827", backgroundColor: "#F9FAFB", fontSize: 14, fontWeight: "500",
   },
   inputError: { borderColor: "#D32F2F" },
-  charCounter: { marginTop: 6, fontSize: 11, color: "#9CA3AF", textAlign: "right", fontWeight: "500" },
+  charCounter: { fontFamily: FONT_BODY, marginTop: 6, fontSize: 11, color: "#9CA3AF", textAlign: "right", fontWeight: "500" },
   charCounterError: { color: "#D32F2F", fontWeight: "700" },
   sendBtn: {
     width: 42, height: 42, borderRadius: 21, backgroundColor: "#D32F2F",
@@ -1039,12 +1040,12 @@ const styles = StyleSheet.create({
   
   tutorSuggestionWrap: { paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: "#F3F4F6", backgroundColor: "#FAFAFA" },
   tutorSuggestionHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 10 },
-  tutorSuggestionTitle: { fontSize: 12, fontWeight: "800", color: "#7A1F1F", textTransform: "uppercase", letterSpacing: 0.5 },
+  tutorSuggestionTitle: { fontFamily: FONT_TITLE, fontSize: 12, fontWeight: "800", color: "#7A1F1F", textTransform: "uppercase", letterSpacing: 0.5 },
   tutorSuggestionList: { paddingRight: 10 },
   tutorSuggestionBubble: { maxWidth: 200, backgroundColor: "#FFF", borderWidth: 1, borderColor: "#FECACA", borderRadius: 16, paddingHorizontal: 12, paddingVertical: 10, marginRight: 10, shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 2, elevation: 1 },
-  tutorSuggestionBubbleText: { color: "#111827", fontWeight: "700", fontSize: 13, lineHeight: 18 },
-  tutorSuggestionScore: { color: "#D32F2F", fontWeight: "700", fontSize: 11, marginTop: 4 },
-  tutorSuggestionEmpty: { color: "#9CA3AF", fontSize: 13, paddingVertical: 8, fontStyle: "italic" },
+  tutorSuggestionBubbleText: { fontFamily: FONT_BODY, color: "#111827", fontWeight: "700", fontSize: 13, lineHeight: 18 },
+  tutorSuggestionScore: { fontFamily: FONT_BODY, color: "#D32F2F", fontWeight: "700", fontSize: 11, marginTop: 4 },
+  tutorSuggestionEmpty: { fontFamily: FONT_BODY, color: "#9CA3AF", fontSize: 13, paddingVertical: 8, fontStyle: "italic" },
 
   scrollToBottomBtn: {
     position: 'absolute',

@@ -21,6 +21,7 @@ import { apiFetch } from '../services/api'; // adjust path if your folder layout
 // Cache-first signed URL lookup — skips the network call entirely on a
 // cache hit, and proactively refetches once the cached entry is close to
 // expiring instead of waiting for an <Image> load failure.
+import { FONT_BODY, FONT_TITLE, WEIGHT_TITLE } from '../theme/typography';
 import { getCachedBannerUrl, setCachedBannerUrl } from './Bannerurlcache';
 
 export interface CourseCardMaterial {
@@ -626,13 +627,13 @@ const styles = StyleSheet.create({
     left: 16,
     right: 16,
   },
-  bannerTitle: {
+  bannerTitle: { fontFamily: FONT_TITLE,
     color: '#fff',
     fontSize: 18,
-    fontWeight: '700',
+    fontWeight: WEIGHT_TITLE,
     marginBottom: 4,
   },
-  sectionLabel: {
+  sectionLabel: { fontFamily: FONT_BODY,
     color: 'rgba(255, 255, 255, 0.8)',
     fontSize: 11,
     fontWeight: '600',
@@ -640,13 +641,13 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
-  bannerMeta: {
+  bannerMeta: { fontFamily: FONT_BODY,
     color: 'rgba(255,255,255,0.9)',
     fontSize: 12,
     fontWeight: '600',
     marginBottom: 4,
   },
-  bannerInstructor: {
+  bannerInstructor: { fontFamily: FONT_BODY,
     color: '#eee',
     fontSize: 13,
     marginTop: 2,
@@ -659,7 +660,7 @@ const styles = StyleSheet.create({
   metaBlock: {
     marginBottom: 10,
   },
-  weakScoreText: {
+  weakScoreText: { fontFamily: FONT_BODY,
     fontSize: 12,
     color: '#D32F2F',
     fontWeight: '700',
@@ -681,7 +682,7 @@ const styles = StyleSheet.create({
     flex: 1,
     gap: 2,
   },
-  scheduleText: {
+  scheduleText: { fontFamily: FONT_BODY,
     fontSize: 12,
     color: '#5f6368',
     fontWeight: '600',
@@ -689,12 +690,12 @@ const styles = StyleSheet.create({
   metaBlockHalf: {
     flex: 1,
   },
-  metaLabel: {
+  metaLabel: { fontFamily: FONT_BODY,
     fontSize: 12,
     color: '#888',
     marginBottom: 2,
   },
-  metaValue: {
+  metaValue: { fontFamily: FONT_BODY,
     fontSize: 14,
     color: '#222',
     fontWeight: '600',
@@ -706,7 +707,7 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
     marginBottom: 12,
   },
-  supportBadgeText: {
+  supportBadgeText: { fontFamily: FONT_BODY,
     fontWeight: '700',
     fontSize: 12,
   },
@@ -718,7 +719,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     backgroundColor: '#E8F5E9',
   },
-  masteredBadgeText: {
+  masteredBadgeText: { fontFamily: FONT_BODY,
     fontWeight: '700',
     fontSize: 12,
     color: '#2E7D32',
@@ -756,9 +757,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 10,
     paddingVertical: 10,
-    borderRadius: 10,
+    borderRadius: 16,
   },
-  dropdownMenuText: {
+  dropdownMenuText: { fontFamily: FONT_BODY,
     marginLeft: 8,
     fontSize: 14,
     fontWeight: '500',

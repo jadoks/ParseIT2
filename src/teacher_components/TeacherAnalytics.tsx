@@ -14,6 +14,7 @@ import { LineChart } from "react-native-chart-kit";
 import MaterialCommunityIcons from "react-native-vector-icons/MaterialCommunityIcons";
 import { buildTeacherAnalytics } from "../analytics/analyticsService";
 import { AssignmentCourse } from "../screens/Assignments";
+import { FONT_BODY, FONT_TITLE } from '../theme/typography';
 
 type TeacherStudentInput = {
   studentId: string;
@@ -1570,7 +1571,7 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
   },
   dropdownItemActive: { backgroundColor: palette.primarySoft },
-  dropdownItemText: { fontSize: 14, color: palette.text, fontWeight: "700" },
+  dropdownItemText: { fontFamily: FONT_BODY, fontSize: 14, color: palette.text, fontWeight: "700" },
   dropdownItemTextActive: { color: palette.primary },
   heroCard: {
     backgroundColor: palette.surface,
@@ -1606,7 +1607,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
   },
-  heroEyebrow: {
+  heroEyebrow: { fontFamily: FONT_BODY,
     color: palette.primary,
     fontWeight: "800",
     fontSize: 12,
@@ -1629,32 +1630,32 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   classDropdownTextWrap: { flex: 1 },
-  classDropdownLabel: {
+  classDropdownLabel: { fontFamily: FONT_BODY,
     fontSize: 11,
     color: palette.textMuted,
     fontWeight: "700",
     textTransform: "uppercase",
   },
-  classDropdownValue: {
+  classDropdownValue: { fontFamily: FONT_BODY,
     fontSize: 14,
     color: palette.textStrong,
     fontWeight: "800",
     marginTop: 2,
   },
-  heroTitle: {
+  heroTitle: { fontFamily: FONT_TITLE,
     fontSize: 24,
     lineHeight: 31,
     color: palette.textStrong,
     fontWeight: "900",
     marginTop: 18,
   },
-  heroSubtitle: {
+  heroSubtitle: { fontFamily: FONT_BODY,
     marginTop: 6,
     fontSize: 14,
     color: palette.text,
     fontWeight: "700",
   },
-  heroDescription: {
+  heroDescription: { fontFamily: FONT_BODY,
     marginTop: 10,
     fontSize: 14,
     lineHeight: 22,
@@ -1688,8 +1689,8 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     marginBottom: 10,
   },
-  miniStatValue: { color: palette.textStrong, fontSize: 20, fontWeight: "900" },
-  miniStatLabel: {
+  miniStatValue: { fontFamily: FONT_BODY, color: palette.textStrong, fontSize: 20, fontWeight: "900" },
+  miniStatLabel: { fontFamily: FONT_BODY,
     color: palette.textMuted,
     fontSize: 11,
     fontWeight: "700",
@@ -1719,19 +1720,19 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  metricValue: {
+  metricValue: { fontFamily: FONT_BODY,
     marginTop: 14,
     fontSize: 28,
     color: palette.textStrong,
     fontWeight: "900",
   },
-  metricTitle: {
+  metricTitle: { fontFamily: FONT_TITLE,
     marginTop: 4,
     color: palette.textStrong,
     fontSize: 14,
     fontWeight: "800",
   },
-  metricHelper: {
+  metricHelper: { fontFamily: FONT_BODY,
     marginTop: 6,
     color: palette.textMuted,
     fontSize: 12,
@@ -1759,8 +1760,8 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   sectionHeaderText: { flex: 1 },
-  sectionTitle: { color: palette.textStrong, fontSize: 18, fontWeight: "900" },
-  sectionSubtitle: {
+  sectionTitle: { fontFamily: FONT_TITLE, color: palette.textStrong, fontSize: 18, fontWeight: "900" },
+  sectionSubtitle: { fontFamily: FONT_BODY,
     color: palette.textMuted,
     fontSize: 12,
     marginTop: 4,
@@ -1772,8 +1773,8 @@ const styles = StyleSheet.create({
     paddingVertical: 7,
     borderRadius: 999,
   },
-  sectionBadgeText: { color: palette.primary, fontSize: 12, fontWeight: "800" },
-  trendDelta: {
+  sectionBadgeText: { fontFamily: FONT_BODY, color: palette.primary, fontSize: 12, fontWeight: "800" },
+  trendDelta: { fontFamily: FONT_BODY,
     fontWeight: "900",
     fontSize: 13,
     backgroundColor: "#F8FAFC",
@@ -1803,8 +1804,8 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   aiTextWrap: { flex: 1 },
-  aiTitle: { color: palette.textStrong, fontSize: 14, fontWeight: "900" },
-  aiBody: { color: palette.text, fontSize: 12, lineHeight: 18, marginTop: 4 },
+  aiTitle: { fontFamily: FONT_TITLE, color: palette.textStrong, fontSize: 14, fontWeight: "900" },
+  aiBody: { fontFamily: FONT_BODY, color: palette.text, fontSize: 12, lineHeight: 18, marginTop: 4 },
   dualColumn: { flexDirection: "row", flexWrap: "wrap", gap: 16 },
   dualColumnCompact: { flexDirection: "column", gap: 14 },
   barRow: { marginBottom: 14 },
@@ -1814,8 +1815,8 @@ const styles = StyleSheet.create({
     gap: 10,
     marginBottom: 7,
   },
-  barLabel: { flex: 1, color: palette.text, fontSize: 13, fontWeight: "800" },
-  barRightValue: { color: palette.textMuted, fontSize: 12, fontWeight: "800" },
+  barLabel: { fontFamily: FONT_BODY, flex: 1, color: palette.text, fontSize: 13, fontWeight: "800" },
+  barRightValue: { fontFamily: FONT_BODY, color: palette.textMuted, fontSize: 12, fontWeight: "800" },
   barTrack: {
     height: 10,
     backgroundColor: palette.slateBar,
@@ -1829,7 +1830,7 @@ const styles = StyleSheet.create({
     marginVertical: 10,
   },
   topicRow: { marginBottom: 8 },
-  topicMeta: {
+  topicMeta: { fontFamily: FONT_BODY,
     marginTop: -6,
     marginBottom: 10,
     color: palette.textMuted,
@@ -1854,10 +1855,10 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     backgroundColor: palette.blueSoft,
   },
-  rankBadgeText: { color: palette.blue, fontWeight: "900", fontSize: 13 },
+  rankBadgeText: { fontFamily: FONT_BODY, color: palette.blue, fontWeight: "900", fontSize: 13 },
   rankingInfo: { flex: 1 },
-  rankingName: { color: palette.textStrong, fontSize: 14, fontWeight: "900" },
-  rankingMeta: { color: palette.textMuted, fontSize: 12, marginTop: 3 },
+  rankingName: { fontFamily: FONT_BODY, color: palette.textStrong, fontSize: 14, fontWeight: "900" },
+  rankingMeta: { fontFamily: FONT_BODY, color: palette.textMuted, fontSize: 12, marginTop: 3 },
   percentileTrack: {
     marginTop: 8,
     height: 8,
@@ -1871,7 +1872,7 @@ const styles = StyleSheet.create({
     paddingVertical: 7,
     borderRadius: 999,
   },
-  percentileText: { fontSize: 12, fontWeight: "900" },
+  percentileText: { fontFamily: FONT_BODY, fontSize: 12, fontWeight: "900" },
   interventionScroll: { maxHeight: 460 },
   interventionScrollContent: { gap: 12 },
   interventionCard: {
@@ -1903,7 +1904,7 @@ const styles = StyleSheet.create({
     gap: 8,
     flexWrap: "wrap",
   },
-  interventionName: {
+  interventionName: { fontFamily: FONT_BODY,
     color: palette.textStrong,
     fontSize: 15,
     fontWeight: "900",
@@ -1916,21 +1917,21 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     borderRadius: 999,
   },
-  trendChipText: { fontSize: 11, fontWeight: "800" },
-  interventionMeta: {
+  trendChipText: { fontFamily: FONT_BODY, fontSize: 11, fontWeight: "800" },
+  interventionMeta: { fontFamily: FONT_BODY,
     marginTop: 5,
     color: palette.textMuted,
     fontSize: 12,
     lineHeight: 18,
   },
-  reasonText: {
+  reasonText: { fontFamily: FONT_BODY,
     marginTop: 8,
     color: palette.text,
     fontSize: 12,
     lineHeight: 18,
     fontWeight: "700",
   },
-  recommendationText: {
+  recommendationText: { fontFamily: FONT_BODY,
     marginTop: 4,
     color: palette.text,
     fontSize: 12,
@@ -1938,8 +1939,8 @@ const styles = StyleSheet.create({
   },
   riskPill: { paddingHorizontal: 10, paddingVertical: 7, borderRadius: 999 },
   riskPillCompact: { alignSelf: "flex-start" },
-  riskPillText: { fontSize: 12, fontWeight: "900" },
-  emptyText: {
+  riskPillText: { fontFamily: FONT_BODY, fontSize: 12, fontWeight: "900" },
+  emptyText: { fontFamily: FONT_BODY,
     color: palette.textMuted,
     fontSize: 13,
     lineHeight: 20,

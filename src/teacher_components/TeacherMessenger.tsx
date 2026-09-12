@@ -27,6 +27,7 @@ import {
   View
 } from 'react-native';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
+import { FONT_BODY, FONT_TITLE, WEIGHT_EMPHASIS, WEIGHT_TITLE } from '../theme/typography';
 
 // Enable LayoutAnimation for Android
 if (Platform.OS === 'android') {
@@ -2204,7 +2205,7 @@ const Messenger = ({
                       <>
                         <Image
                           source={{ uri: item.fileUrl }}
-                          style={{ width: 200, height: 200, borderRadius: 12 }}
+                          style={{ width: 200, height: 200, borderRadius: 16 }}
                           onError={async () => {
                             if (!item.storagePath || !selected) return;
                             if (refreshingImages.has(item.id)) return;
@@ -2261,7 +2262,7 @@ const Messenger = ({
                         style={{
                           width: 200,
                           height: 200,
-                          borderRadius: 12,
+                          borderRadius: 16,
                           backgroundColor: 'rgba(0,0,0,0.1)',
                           alignItems: 'center',
                           justifyContent: 'center',
@@ -3172,9 +3173,9 @@ const styles = StyleSheet.create({
   width: 40,
   height: 40,
 },
-  screenBackText: { fontSize: 14, fontWeight: '600', color: '#111', marginLeft: 2 },
+  screenBackText: { fontFamily: FONT_BODY, fontSize: 14, fontWeight: '600', color: '#111', marginLeft: 2 },
   pageTitle: {
-    fontWeight: 'bold',
+    fontWeight: WEIGHT_EMPHASIS,
     paddingBottom: 10,
     textAlign: 'left',
     marginTop: 20,
@@ -3212,7 +3213,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 5,
   },
-  unreadBadgeText: { color: '#fff', fontSize: 10, fontWeight: '700' },
+  unreadBadgeText: { fontFamily: FONT_BODY, color: '#fff', fontSize: 10, fontWeight: '700' },
   // Small "brand new" indicator for class chats that were just created or
   // that the teacher just got added to, kept visually separate from the
   // numbered unread badge above — it lives on the avatar corner instead of
@@ -3223,14 +3224,14 @@ const styles = StyleSheet.create({
     right: 0,
     width: 12,
     height: 12,
-    borderRadius: 6,
+    borderRadius: 12,
     backgroundColor: '#2E7DFF',
     borderWidth: 2,
     borderColor: '#fff',
   },
   convTime: { color: '#888', flexShrink: 0 },
   convLast: { color: '#666', marginTop: 4 },
-  convSemester: {
+  convSemester: { fontFamily: FONT_BODY,
     color: '#0c0c0c',
     fontSize: 11,
     marginTop: 1,
@@ -3255,11 +3256,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#F1F1F1',
-    borderRadius: 8,
+    borderRadius: 14,
     paddingHorizontal: 12,
     height: 44,
   },
-  fullScreenSearchInput: {
+  fullScreenSearchInput: { fontFamily: FONT_BODY,
     flex: 1,
     fontSize: 16,
     color: '#000',
@@ -3330,7 +3331,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#fafafa',
     marginBottom: 10,
   },
-  infoActionCardText: { fontSize: 14, fontWeight: '600', color: '#222' },
+  infoActionCardText: { fontFamily: FONT_BODY, fontSize: 14, fontWeight: '600', color: '#222' },
   messageRow: {},
   messageRowThem: { alignSelf: 'flex-start' },
   messageRowMe: { alignSelf: 'flex-end', alignItems: 'flex-end' },
@@ -3349,13 +3350,13 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     maxWidth: '78%',
   },
-  systemBubbleText: {
+  systemBubbleText: { fontFamily: FONT_BODY,
     color: '#fff',
     fontWeight: '700',
     textAlign: 'center',
     fontSize: 13,
   },
-  messageTimestamp: {
+  messageTimestamp: { fontFamily: FONT_BODY,
     fontSize: 10,
     color: '#888',
     marginTop: 4,
@@ -3364,7 +3365,7 @@ const styles = StyleSheet.create({
   },
   messageTimestampMe: { textAlign: 'right' },
   messageTimestampThem: { textAlign: 'left' },
-  messageTimestampSystem: {
+  messageTimestampSystem: { fontFamily: FONT_BODY,
     fontSize: 10,
     color: 'rgba(255,255,255,0.7)',
     marginTop: 4,
@@ -3374,12 +3375,12 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(17,17,17,0.94)',
     paddingHorizontal: 10,
     paddingVertical: 6,
-    borderRadius: 8,
+    borderRadius: 14,
     zIndex: 50,
     width: 150,
     alignItems: 'center',
   },
-  timeTooltipText: { color: '#fff', fontSize: 11, fontWeight: '600' },
+  timeTooltipText: { fontFamily: FONT_BODY, color: '#fff', fontSize: 11, fontWeight: '600' },
   inputArea: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -3411,13 +3412,13 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     paddingHorizontal: 24,
   },
-  emptyPaneTitle: {
+  emptyPaneTitle: { fontFamily: FONT_TITLE,
     marginTop: 14,
     fontSize: 22,
-    fontWeight: '700',
+    fontWeight: WEIGHT_TITLE,
     color: '#222',
   },
-  emptyPaneSubtitle: {
+  emptyPaneSubtitle: { fontFamily: FONT_BODY,
     marginTop: 6,
     fontSize: 14,
     color: '#777',
@@ -3456,12 +3457,12 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
   },
   professionalModalHeaderTextWrap: { flex: 1, paddingRight: 12 },
-  professionalModalTitle: {
+  professionalModalTitle: { fontFamily: FONT_TITLE,
     fontSize: 18,
-    fontWeight: '700',
+    fontWeight: WEIGHT_TITLE,
     color: '#111827',
   },
-  professionalModalSubtitle: {
+  professionalModalSubtitle: { fontFamily: FONT_BODY,
     marginTop: 4,
     fontSize: 12,
     lineHeight: 18,
@@ -3481,19 +3482,19 @@ const styles = StyleSheet.create({
     paddingBottom: 18,
   },
   professionalSection: { marginBottom: 18 },
-  professionalLabel: {
+  professionalLabel: { fontFamily: FONT_BODY,
     fontSize: 13,
     fontWeight: '700',
     color: '#222',
     marginBottom: 8,
   },
-  professionalHelperText: {
+  professionalHelperText: { fontFamily: FONT_BODY,
     fontSize: 12,
     lineHeight: 18,
     color: '#777',
     marginBottom: 12,
   },
-  professionalErrorText: {
+  professionalErrorText: { fontFamily: FONT_BODY,
     fontSize: 12,
     lineHeight: 16,
     color: '#c62828',
@@ -3508,13 +3509,13 @@ const styles = StyleSheet.create({
     flexDirection: 'column',
     alignItems: 'stretch',
   },
-  professionalInput: {
+  professionalInput: { fontFamily: FONT_BODY,
     flex: 1,
     minHeight: 44,
     borderWidth: 1,
     borderColor: '#d6d6d6',
     backgroundColor: '#fafafa',
-    borderRadius: 12,
+    borderRadius: 16,
     paddingHorizontal: 14,
     fontSize: 14,
     color: '#111',
@@ -3524,7 +3525,7 @@ const styles = StyleSheet.create({
     height: 44,
     minWidth: 108,
     paddingHorizontal: 16,
-    borderRadius: 12,
+    borderRadius: 16,
     backgroundColor: '#d32f2f',
     flexDirection: 'row',
     alignItems: 'center',
@@ -3532,7 +3533,7 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   professionalPrimaryButtonStack: { width: '100%' },
-  professionalPrimaryButtonText: {
+  professionalPrimaryButtonText: { fontFamily: FONT_BODY,
     color: '#fff',
     fontSize: 13,
     fontWeight: '700',
@@ -3584,27 +3585,27 @@ const styles = StyleSheet.create({
     marginRight: 10,
   },
   professionalMemberTextWrap: { flex: 1, minWidth: 0 },
-  professionalMemberName: {
+  professionalMemberName: { fontFamily: FONT_BODY,
     fontSize: 13,
     fontWeight: '600',
     color: '#222',
   },
-  professionalMemberMeta: { marginTop: 2, fontSize: 11, color: '#7a7a7a' },
+  professionalMemberMeta: { fontFamily: FONT_BODY, marginTop: 2, fontSize: 11, color: '#7a7a7a' },
   conversationMetaCard: {
     marginBottom: 12,
     padding: 12,
-    borderRadius: 12,
+    borderRadius: 16,
     backgroundColor: '#fff7f7',
     borderWidth: 1,
     borderColor: '#f5d0d0',
   },
-  conversationMetaTitle: {
+  conversationMetaTitle: { fontFamily: FONT_TITLE,
     fontSize: 12,
-    fontWeight: '700',
+    fontWeight: WEIGHT_TITLE,
     color: '#222',
     marginBottom: 6,
   },
-  conversationMetaText: { fontSize: 12, color: '#555', marginTop: 2 },
+  conversationMetaText: { fontFamily: FONT_BODY, fontSize: 12, color: '#555', marginTop: 2 },
   attachButton: {
     width: 42,
     height: 42,
@@ -3622,7 +3623,7 @@ const styles = StyleSheet.create({
   },
   fileTextContainer: { flex: 1 },
   fileNameText: { fontWeight: '600' },
-  fileSizeText: { fontSize: 11, marginTop: 2 },
+  fileSizeText: { fontFamily: FONT_BODY, fontSize: 11, marginTop: 2 },
   fileImageOverlay: {
     position: 'absolute',
     bottom: 0,
@@ -3637,7 +3638,7 @@ const styles = StyleSheet.create({
     borderBottomLeftRadius: 12,
     borderBottomRightRadius: 12,
   },
-  fileImageName: {
+  fileImageName: { fontFamily: FONT_BODY,
     color: '#fff',
     fontSize: 12,
     fontWeight: '600',
@@ -3660,10 +3661,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     zIndex: 10,
   },
-  imagePreviewTitle: {
+  imagePreviewTitle: { fontFamily: FONT_TITLE,
     color: '#fff',
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: WEIGHT_TITLE,
     flex: 1,
     marginRight: 10,
   },
@@ -3695,7 +3696,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#fff',
-    borderRadius: 12,
+    borderRadius: 16,
     padding: 10,
     borderWidth: 1,
     borderColor: '#e0e0e0',
@@ -3703,26 +3704,26 @@ const styles = StyleSheet.create({
   pendingImagePreview: {
     width: 50,
     height: 50,
-    borderRadius: 8,
+    borderRadius: 14,
     marginRight: 10,
   },
   pendingFileIcon: {
     width: 50,
     height: 50,
-    borderRadius: 8,
+    borderRadius: 14,
     backgroundColor: '#f0f2f5',
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 10,
   },
   pendingFileDetails: { flex: 1, marginRight: 10 },
-  pendingFileName: {
+  pendingFileName: { fontFamily: FONT_BODY,
     fontSize: 13,
     fontWeight: '600',
     color: '#111',
     marginBottom: 2,
   },
-  pendingFileSize: { fontSize: 11, color: '#666' },
+  pendingFileSize: { fontFamily: FONT_BODY, fontSize: 11, color: '#666' },
   removeFileButton: { padding: 4 },
   
   // Toast Styles
@@ -3740,7 +3741,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 16,
     paddingVertical: 12,
-    borderRadius: 12,
+    borderRadius: 16,
     shadowColor: '#000',
     shadowOpacity: 0.15,
     shadowRadius: 10,
@@ -3755,7 +3756,7 @@ const styles = StyleSheet.create({
   toastError: {
     backgroundColor: '#d32f2f',
   },
-  toastText: {
+  toastText: { fontFamily: FONT_BODY,
     color: '#fff',
     fontSize: 14,
     fontWeight: '600',

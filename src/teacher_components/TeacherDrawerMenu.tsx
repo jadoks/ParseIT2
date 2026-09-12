@@ -26,6 +26,7 @@ import {
   getCachedUserImageUrl,
   setCachedUserImageUrl,
 } from '../services/userImageUrlCache';
+import { FONT_BODY, FONT_TITLE, WEIGHT_EMPHASIS, WEIGHT_TITLE } from '../theme/typography';
 
 // ✅ Reuses the same Toast component used across the app (Admin Settings,
 // Chatbot/Register/Community/Dashboard/ClassesScreen/SignIn) instead of
@@ -1396,24 +1397,24 @@ const styles = StyleSheet.create({
   drawerContainer: { height: '100%', padding: 25, backgroundColor: '#FFF', borderColor: 'transparent' },
   profileSection: { flexDirection: 'row', alignItems: 'center', marginBottom: 30 },
   avatar: { width: 50, height: 50, borderRadius: 25, marginRight: 15, overflow: 'hidden', aspectRatio: 1 },
-  userName: { fontWeight: '700', fontSize: 18 },
-  userEmail: { marginTop: 2, fontSize: 12, color: '#777' },
+  userName: { fontFamily: FONT_BODY, fontWeight: '700', fontSize: 18 },
+  userEmail: { fontFamily: FONT_BODY, marginTop: 2, fontSize: 12, color: '#777' },
   menuItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, paddingHorizontal: 10 },
   menuIcon: { width: 22, height: 22, marginRight: 20, resizeMode: 'contain' },
   vectorMenuIcon: { width: 22, marginRight: 20, textAlign: 'center' },
   menuLabel: { color: '#444', fontWeight: '500' },
   logoutMenuItem: { flexDirection: 'row', alignItems: 'center', marginTop: 20, borderTopWidth: 1, borderTopColor: '#EEE', paddingTop: 15 },
-  logoutLabel: { fontSize: 16, color: '#D32F2F', fontWeight: '600' },
+  logoutLabel: { fontFamily: FONT_BODY, fontSize: 16, color: '#D32F2F', fontWeight: '600' },
 
   // Generic overlay, kept for the Logout modal (unchanged from before).
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center' },
   logoutModalContainer: { backgroundColor: '#FFF', borderRadius: 18, padding: 20, width: '88%', maxWidth: 360 },
-  logoutModalTitle: { fontSize: 20, fontWeight: '700', color: '#222', textAlign: 'center' },
-  logoutModalSubtitle: { fontSize: 14, color: '#777', textAlign: 'center', marginTop: 8 },
+  logoutModalTitle: { fontFamily: FONT_TITLE, fontSize: 20, fontWeight: WEIGHT_TITLE, color: '#222', textAlign: 'center' },
+  logoutModalSubtitle: { fontFamily: FONT_BODY, fontSize: 14, color: '#777', textAlign: 'center', marginTop: 8 },
   logoutButtonsRow: { flexDirection: 'row', justifyContent: 'center', marginTop: 20 },
-  modalCancelBtn: { paddingVertical: 12, paddingHorizontal: 16, marginRight: 10, borderRadius: 10, backgroundColor: '#F3F4F6' },
+  modalCancelBtn: { paddingVertical: 12, paddingHorizontal: 16, marginRight: 10, borderRadius: 16, backgroundColor: '#F3F4F6' },
   modalCancelText: { color: '#444', fontWeight: '600' },
-  logoutConfirmBtn: { paddingVertical: 12, paddingHorizontal: 16, borderRadius: 10, backgroundColor: '#D32F2F' },
+  logoutConfirmBtn: { paddingVertical: 12, paddingHorizontal: 16, borderRadius: 16, backgroundColor: '#D32F2F' },
   logoutConfirmText: { color: '#FFF', fontWeight: '700' },
 
   // ─── Settings / Change Email / Change Password — mirrors the Admin
@@ -1490,18 +1491,18 @@ const styles = StyleSheet.create({
     marginRight: 12,
   },
 
-  settingsModalTitle: {
+  settingsModalTitle: { fontFamily: FONT_TITLE,
     fontSize: 22,
-    fontWeight: '800',
+    fontWeight: WEIGHT_TITLE,
     color: '#2B1111',
     marginBottom: 4,
   },
 
-  modalTitleMobile: {
+  modalTitleMobile: { fontFamily: FONT_TITLE,
     fontSize: 20,
   },
 
-  settingsModalSubtitle: {
+  settingsModalSubtitle: { fontFamily: FONT_BODY,
     fontSize: 14,
     lineHeight: 21,
     color: '#8A6F6F',
@@ -1536,14 +1537,14 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
 
-  modalSectionTitle: {
+  modalSectionTitle: { fontFamily: FONT_TITLE,
     marginLeft: 8,
     fontSize: 16,
-    fontWeight: '800',
+    fontWeight: WEIGHT_TITLE,
     color: '#2B1111',
   },
 
-  helperText: {
+  helperText: { fontFamily: FONT_BODY,
     fontSize: 14,
     color: '#8A6F6F',
     lineHeight: 21,
@@ -1561,7 +1562,7 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
 
-  passwordCheckText: {
+  passwordCheckText: { fontFamily: FONT_BODY,
     marginLeft: 8,
     fontSize: 13,
     fontWeight: '600',
@@ -1615,20 +1616,20 @@ const styles = StyleSheet.create({
     flex: 1,
   },
 
-  actionCardTitle: {
+  actionCardTitle: { fontFamily: FONT_TITLE,
     fontSize: 15,
-    fontWeight: '800',
+    fontWeight: WEIGHT_TITLE,
     color: '#2B1111',
     marginBottom: 4,
   },
 
-  actionCardSubtitle: {
+  actionCardSubtitle: { fontFamily: FONT_BODY,
     fontSize: 13,
     color: '#8A6F6F',
     lineHeight: 19,
   },
 
-  fieldLabel: {
+  fieldLabel: { fontFamily: FONT_BODY,
     fontSize: 14,
     fontWeight: '700',
     color: '#5F3B3B',
@@ -1654,7 +1655,7 @@ const styles = StyleSheet.create({
     opacity: 0.5,
   },
 
-  settingsTextInput: {
+  settingsTextInput: { fontFamily: FONT_BODY,
     flex: 1,
     marginLeft: 10,
     fontSize: 14,
@@ -1694,7 +1695,7 @@ const styles = StyleSheet.create({
     gap: 10,
   },
 
-  pinBox: {
+  pinBox: { fontFamily: FONT_BODY,
     flex: 1,
     maxWidth: 58,
     height: 58,
@@ -1703,7 +1704,7 @@ const styles = StyleSheet.create({
     borderColor: '#F1CACA',
     backgroundColor: '#FFF9F9',
     fontSize: 22,
-    fontWeight: '800',
+    fontWeight: WEIGHT_EMPHASIS,
     color: '#2B1111',
     paddingVertical: 0,
     paddingHorizontal: 0,
@@ -1714,7 +1715,7 @@ const styles = StyleSheet.create({
     }),
   },
 
-  pinBoxMobile: {
+  pinBoxMobile: { fontFamily: FONT_BODY,
     maxWidth: 56,
     height: 56,
     fontSize: 20,
@@ -1731,7 +1732,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
 
-  resendLinkText: {
+  resendLinkText: { fontFamily: FONT_BODY,
     fontSize: 13,
     fontWeight: '700',
     color: '#DC2626',
@@ -1778,7 +1779,7 @@ const styles = StyleSheet.create({
     minWidth: 110,
   },
 
-  modalSecondaryButtonText: {
+  modalSecondaryButtonText: { fontFamily: FONT_BODY,
     fontSize: 14,
     fontWeight: '700',
     color: '#7A4A4A',
@@ -1795,9 +1796,9 @@ const styles = StyleSheet.create({
     minWidth: 110,
   },
 
-  modalPrimaryButtonText: {
+  modalPrimaryButtonText: { fontFamily: FONT_BODY,
     fontSize: 14,
-    fontWeight: '800',
+    fontWeight: WEIGHT_EMPHASIS,
     color: '#FFFFFF',
     marginLeft: 8,
   },

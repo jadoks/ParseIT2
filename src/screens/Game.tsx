@@ -454,7 +454,7 @@ const styles = StyleSheet.create({
   },
   titleWrap: { flex: 1 },
   pageTitle: { fontFamily: FONT_TITLE, fontSize: 32, fontWeight: WEIGHT_TITLE, color: '#111', letterSpacing: -0.5 },
-  pageSubtitle: { fontFamily: FONT_TITLE, color: '#666', marginTop: 6, fontSize: 15, lineHeight: 22 },
+  pageSubtitle: { fontFamily: FONT_BODY, color: '#666', marginTop: 6, fontSize: 15, lineHeight: 22 },
 
   // 🌟 NEW: Daily limit banner styles
   limitBanner: {
@@ -507,7 +507,7 @@ const styles = StyleSheet.create({
     fontWeight: WEIGHT_TITLE,
     color: '#111',
   },
-  settingsSubtitle: { fontFamily: FONT_TITLE,
+  settingsSubtitle: { fontFamily: FONT_BODY,
     fontSize: 14,
     color: '#666',
     marginBottom: 16,
@@ -549,7 +549,7 @@ const styles = StyleSheet.create({
     minHeight: 56,
   },
   dropdownTriggerText: { fontFamily: FONT_BODY, fontSize: 15, fontWeight: WEIGHT_EMPHASIS, color: '#111', flex: 1 },
-  placeholderText: { fontFamily: FONT_BODY, color: '#999', fontWeight: '500' },
+  placeholderText: { fontFamily: FONT_BODY, color: '#999', fontWeight: WEIGHT_EMPHASIS },
   
   questionsInput: { fontFamily: FONT_BODY,
     backgroundColor: '#FAFAFA',
@@ -644,7 +644,7 @@ const styles = StyleSheet.create({
   dropdownItemSelected: { backgroundColor: '#FFF1F1', borderWidth: 1, borderColor: '#FFD7D7' },
   dropdownItemText: { fontFamily: FONT_BODY, fontSize: 15, fontWeight: WEIGHT_EMPHASIS, color: '#333' },
   dropdownItemTextSelected: { color: '#D32F2F' },
-  dropdownItemSub: { fontFamily: FONT_BODY, fontSize: 12, color: '#888', marginTop: 2, fontWeight: '500' },
+  dropdownItemSub: { fontFamily: FONT_BODY, fontSize: 12, color: '#888', marginTop: 2, fontWeight: WEIGHT_EMPHASIS },
   emptyState: { padding: 30, alignItems: 'center' },
   emptyText: { fontFamily: FONT_BODY, color: '#999', fontSize: 14 },
 

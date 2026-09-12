@@ -18,6 +18,7 @@ import {
   useWindowDimensions
 } from 'react-native';
 import * as XLSX from 'xlsx';
+import { FONT_BODY, FONT_TITLE, WEIGHT_EMPHASIS, WEIGHT_TITLE } from '../theme/typography';
 
 // ✅ Reuses the same Toast component used across the app (Admin/Teacher
 // screens, Community, Dashboard, ClassesScreen, SignIn) instead of the
@@ -1396,9 +1397,9 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  title: {
+  title: { fontFamily: FONT_TITLE,
     fontSize: 36,
-    fontWeight: 'bold',
+    fontWeight: WEIGHT_TITLE,
     color: '#000',
   },
   exportHonorBtn: {
@@ -1408,7 +1409,7 @@ const styles = StyleSheet.create({
     gap: 8,
     minHeight: 42,
     paddingHorizontal: 16,
-    borderRadius: 10,
+    borderRadius: 16,
     backgroundColor: '#1F1F1F',
     borderBottomWidth: 3,
     borderBottomColor: '#000000',
@@ -1420,17 +1421,17 @@ const styles = StyleSheet.create({
   exportHonorBtnDisabled: {
     opacity: 0.45,
   },
-  exportHonorBtnText: {
+  exportHonorBtnText: { fontFamily: FONT_BODY,
     color: '#FFFFFF',
     fontSize: 12,
-    fontWeight: '900',
+    fontWeight: WEIGHT_EMPHASIS,
     letterSpacing: 0.25,
     textTransform: 'uppercase',
   },
-  infoIcon: {
+  infoIcon: { fontFamily: FONT_BODY,
     color: '#B71C1C',
     fontSize: 18,
-    fontWeight: 'bold',
+    fontWeight: WEIGHT_EMPHASIS,
     fontStyle: 'italic',
   },
 
@@ -1442,12 +1443,12 @@ const styles = StyleSheet.create({
     marginTop: 12,
     marginBottom: 18,
   },
-  mainHeading: {
+  mainHeading: { fontFamily: FONT_BODY,
     fontSize: 22,
     fontWeight: '700',
     color: '#000',
   },
-  subHeadingText: {
+  subHeadingText: { fontFamily: FONT_BODY,
     fontSize: 14,
     color: '#444',
     marginTop: 2,
@@ -1510,34 +1511,34 @@ const styles = StyleSheet.create({
     zIndex: 5000,
     elevation: 0,
   },
-  academicControlLabel: {
+  academicControlLabel: { fontFamily: FONT_BODY,
     color: '#3B332E',
     fontSize: 12,
-    fontWeight: '800',
+    fontWeight: WEIGHT_EMPHASIS,
     letterSpacing: 0.4,
     marginBottom: 7,
     textTransform: 'uppercase',
   },
 
-  startYearInput: {
+  startYearInput: { fontFamily: FONT_BODY,
     width: '100%',
     height: 46,
     borderWidth: 1,
     borderColor: '#B8AFA7',
-    borderRadius: 10,
+    borderRadius: 16,
     paddingHorizontal: 14,
     backgroundColor: '#FFFFFF',
     color: '#111',
     fontSize: 14,
     fontWeight: '700',
   },
-  startYearInputMobile: {
+  startYearInputMobile: { fontFamily: FONT_BODY,
     height: 48,
-    borderRadius: 12,
+    borderRadius: 16,
     paddingHorizontal: 14,
     fontSize: 15,
   },
-  schoolYearHint: {
+  schoolYearHint: { fontFamily: FONT_BODY,
     marginTop: 4,
     color: '#666',
     fontSize: 11,
@@ -1547,7 +1548,7 @@ const styles = StyleSheet.create({
     minHeight: 46,
     borderWidth: 1,
     borderColor: '#D8D0C8',
-    borderRadius: 10,
+    borderRadius: 16,
     backgroundColor: '#F7F2EC',
     justifyContent: 'center',
     paddingHorizontal: 14,
@@ -1555,20 +1556,20 @@ const styles = StyleSheet.create({
   schoolYearBadgeMobile: {
     marginTop: 10,
     minHeight: 52,
-    borderRadius: 12,
+    borderRadius: 16,
   },
-  schoolYearBadgeLabel: {
+  schoolYearBadgeLabel: { fontFamily: FONT_BODY,
     color: '#7A6E66',
     fontSize: 10,
-    fontWeight: '800',
+    fontWeight: WEIGHT_EMPHASIS,
     letterSpacing: 0.35,
     marginBottom: 2,
     textTransform: 'uppercase',
   },
-  schoolYearBadgeValue: {
+  schoolYearBadgeValue: { fontFamily: FONT_BODY,
     color: '#2D2926',
     fontSize: 14,
-    fontWeight: '800',
+    fontWeight: WEIGHT_EMPHASIS,
   },
 
   dropdownContainer: {
@@ -1584,7 +1585,7 @@ const styles = StyleSheet.create({
     height: 46,
     borderWidth: 1,
     borderColor: '#B8AFA7',
-    borderRadius: 10,
+    borderRadius: 16,
     paddingHorizontal: 14,
     flexDirection: 'row',
     alignItems: 'center',
@@ -1595,10 +1596,10 @@ const styles = StyleSheet.create({
   },
   dropdownButtonMobile: {
     height: 48,
-    borderRadius: 12,
+    borderRadius: 16,
     paddingHorizontal: 14,
   },
-  dropdownButtonText: {
+  dropdownButtonText: { fontFamily: FONT_BODY,
     fontSize: 14,
     color: '#111',
     fontWeight: '700',
@@ -1612,7 +1613,7 @@ const styles = StyleSheet.create({
     left: 0,
     width: '100%',
     backgroundColor: '#FFFFFF',
-    borderRadius: 8,
+    borderRadius: 14,
     borderWidth: 1,
     borderColor: '#CFCFCF',
     overflow: 'hidden',
@@ -1626,7 +1627,7 @@ const styles = StyleSheet.create({
   inlineDropdownMenuMobile: {
     top: 52,
     left: 0,
-    borderRadius: 12,
+    borderRadius: 16,
     backgroundColor: '#FFFFFF',
   },
   dropdownScrollMobile: {
@@ -1639,7 +1640,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     paddingHorizontal: 12,
   },
-  dropdownItemText: {
+  dropdownItemText: { fontFamily: FONT_BODY,
     fontSize: 13,
     color: '#000',
   },
@@ -1680,9 +1681,9 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#F0EBE4',
   },
-  dropdownModalTitle: {
+  dropdownModalTitle: { fontFamily: FONT_TITLE,
     fontSize: 15,
-    fontWeight: '800',
+    fontWeight: WEIGHT_TITLE,
     color: '#3B332E',
   },
   dropdownModalScroll: {
@@ -1694,19 +1695,19 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingVertical: 14,
     paddingHorizontal: 10,
-    borderRadius: 10,
+    borderRadius: 16,
   },
   dropdownModalItemSelected: {
     backgroundColor: '#FDECEC',
   },
-  dropdownModalItemText: {
+  dropdownModalItemText: { fontFamily: FONT_BODY,
     fontSize: 14,
     fontWeight: '600',
     color: '#111',
   },
   dropdownModalItemTextSelected: {
     color: '#B71C1C',
-    fontWeight: '800',
+    fontWeight: WEIGHT_EMPHASIS,
   },
 
   generateBtn: {
@@ -1714,7 +1715,7 @@ const styles = StyleSheet.create({
     minWidth: 210,
     height: 46,
     paddingHorizontal: 24,
-    borderRadius: 10,
+    borderRadius: 16,
     justifyContent: 'center',
     alignItems: 'center',
     borderBottomWidth: 3,
@@ -1725,15 +1726,15 @@ const styles = StyleSheet.create({
     minWidth: 0,
     height: 50,
     paddingHorizontal: 16,
-    borderRadius: 12,
+    borderRadius: 16,
   },
   generateBtnDisabled: {
     opacity: 0.65,
   },
-  generateBtnText: {
+  generateBtnText: { fontFamily: FONT_BODY,
     color: '#FFF',
     fontSize: 13,
-    fontWeight: '900',
+    fontWeight: WEIGHT_EMPHASIS,
     letterSpacing: 0.25,
     textTransform: 'uppercase',
   },
@@ -1746,7 +1747,7 @@ const styles = StyleSheet.create({
     zIndex: 1,
     elevation: 0,
   },
-  headerCell: {
+  headerCell: { fontFamily: FONT_TITLE,
     fontSize: 13,
     color: '#555',
     fontWeight: '500',
@@ -1761,7 +1762,7 @@ const styles = StyleSheet.create({
     zIndex: 1,
     elevation: 0,
   },
-  cellText: {
+  cellText: { fontFamily: FONT_BODY,
     fontSize: 14,
     color: '#000',
     fontWeight: '400',
@@ -1772,11 +1773,11 @@ const styles = StyleSheet.create({
     minWidth: 70,
     height: 32,
     paddingHorizontal: 12,
-    borderRadius: 8,
+    borderRadius: 14,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  openBtnText: {
+  openBtnText: { fontFamily: FONT_BODY,
     color: '#FFF',
     fontSize: 12,
     fontWeight: '700',
@@ -1809,12 +1810,12 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingRight: 8,
   },
-  mobileYearText: {
+  mobileYearText: { fontFamily: FONT_BODY,
     fontSize: 16,
     fontWeight: '700',
     color: '#111',
   },
-  mobileSectionText: {
+  mobileSectionText: { fontFamily: FONT_BODY,
     fontSize: 13,
     color: '#666',
     marginTop: 4,
@@ -1828,13 +1829,13 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     paddingHorizontal: 10,
   },
-  mobileCountNumber: {
+  mobileCountNumber: { fontFamily: FONT_BODY,
     color: '#B71C1C',
     fontSize: 18,
     fontWeight: '700',
     lineHeight: 20,
   },
-  mobileCountLabel: {
+  mobileCountLabel: { fontFamily: FONT_BODY,
     color: '#B71C1C',
     fontSize: 11,
     fontWeight: '600',
@@ -1843,11 +1844,11 @@ const styles = StyleSheet.create({
   mobileOpenBtn: {
     backgroundColor: '#B71C1C',
     height: 44,
-    borderRadius: 12,
+    borderRadius: 16,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  mobileOpenBtnText: {
+  mobileOpenBtnText: { fontFamily: FONT_BODY,
     color: '#FFF',
     fontSize: 13,
     fontWeight: '700',
@@ -1859,7 +1860,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderWidth: 1,
     borderColor: '#EEE',
-    borderRadius: 8,
+    borderRadius: 14,
     backgroundColor: '#FFFFFF',
     zIndex: 1,
     elevation: 0,
@@ -1869,7 +1870,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 28,
   },
-  emptyStateText: {
+  emptyStateText: { fontFamily: FONT_BODY,
     color: '#666',
     fontSize: 13,
     textAlign: 'center',
@@ -1926,14 +1927,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
 
-  previewTitle: {
+  previewTitle: { fontFamily: FONT_TITLE,
     fontSize: 20,
-    fontWeight: 'bold',
+    fontWeight: WEIGHT_TITLE,
     color: '#111',
   },
-  previewTitleMobile: {
+  previewTitleMobile: { fontFamily: FONT_TITLE,
     fontSize: 22,
-    fontWeight: '800',
+    fontWeight: WEIGHT_TITLE,
     color: '#000',
   },
 
@@ -1941,13 +1942,13 @@ const styles = StyleSheet.create({
     backgroundColor: '#B71C1C',
     paddingHorizontal: 16,
     paddingVertical: 8,
-    borderRadius: 8,
+    borderRadius: 14,
   },
   previewCloseBtnMobile: {
     minWidth: 88,
     height: 40,
     paddingHorizontal: 14,
-    borderRadius: 10,
+    borderRadius: 16,
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: '#C81414',
@@ -1962,9 +1963,9 @@ const styles = StyleSheet.create({
     color: '#FFF',
     fontWeight: '700',
   },
-  previewCloseTextMobile: {
+  previewCloseTextMobile: { fontFamily: FONT_BODY,
     fontSize: 16,
-    fontWeight: '800',
+    fontWeight: WEIGHT_EMPHASIS,
     color: '#FFFFFF',
   },
 
@@ -2003,7 +2004,7 @@ const styles = StyleSheet.create({
   previewCardMobile: {
     width: '100%',
     maxWidth: '100%',
-    borderRadius: 12,
+    borderRadius: 16,
   },
 
   previewHeaderImage: {
@@ -2024,7 +2025,7 @@ const styles = StyleSheet.create({
     paddingBottom: 20,
   },
 
-  previewCongrats: {
+  previewCongrats: { fontFamily: FONT_BODY,
     textAlign: 'center',
     color: '#6b2f2f',
     fontSize: 34,
@@ -2033,7 +2034,7 @@ const styles = StyleSheet.create({
     marginTop: 8,
     marginBottom: 16,
   },
-  previewCongratsMobile: {
+  previewCongratsMobile: { fontFamily: FONT_BODY,
     fontSize: 28,
     marginBottom: 14,
   },
@@ -2041,7 +2042,7 @@ const styles = StyleSheet.create({
   previewMetaBox: {
     marginBottom: 12,
   },
-  previewMetaText: {
+  previewMetaText: { fontFamily: FONT_BODY,
     color: '#5c3a34',
     fontSize: 13,
     fontWeight: '600',
@@ -2057,9 +2058,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#fff',
   },
-  previewHeaderCell: {
+  previewHeaderCell: { fontFamily: FONT_TITLE,
     color: '#fff',
-    fontWeight: '700',
+    fontWeight: WEIGHT_TITLE,
     textAlign: 'center',
     paddingVertical: 6,
     paddingHorizontal: 4,
@@ -2075,7 +2076,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderColor: '#fff',
   },
-  previewRowCell: {
+  previewRowCell: { fontFamily: FONT_BODY,
     color: '#fff',
     textAlign: 'center',
     paddingVertical: 4,
@@ -2091,10 +2092,10 @@ const styles = StyleSheet.create({
     borderColor: '#ddd',
     paddingVertical: 12,
     paddingHorizontal: 12,
-    borderRadius: 8,
+    borderRadius: 14,
     width: '100%',
   },
-  previewEmptyText: {
+  previewEmptyText: { fontFamily: FONT_BODY,
     textAlign: 'center',
     color: '#555',
     fontSize: 12,
@@ -2111,12 +2112,12 @@ const styles = StyleSheet.create({
     backgroundColor: '#B71C1C',
     paddingHorizontal: 20,
     height: 42,
-    borderRadius: 10,
+    borderRadius: 16,
     justifyContent: 'center',
     alignItems: 'center',
     alignSelf: 'center',
   },
-  getLinkBtnText: {
+  getLinkBtnText: { fontFamily: FONT_BODY,
     color: '#FFF',
     fontWeight: '700',
     fontSize: 14,
@@ -2159,33 +2160,33 @@ const styles = StyleSheet.create({
   honorAcademicTitleWrap: {
     flex: 1,
   },
-  honorAcademicTitle: {
+  honorAcademicTitle: { fontFamily: FONT_TITLE,
     color: '#111',
     fontSize: 18,
-    fontWeight: '900',
+    fontWeight: WEIGHT_TITLE,
     letterSpacing: 0.8,
     textTransform: 'uppercase',
   },
-  honorAcademicTitleMobile: {
+  honorAcademicTitleMobile: { fontFamily: FONT_TITLE,
     fontSize: 16,
     letterSpacing: 0.5,
   },
-  honorAcademicSubtitle: {
+  honorAcademicSubtitle: { fontFamily: FONT_BODY,
     color: '#333',
     fontSize: 14,
     fontWeight: '700',
     marginTop: 4,
   },
-  honorAcademicSubtitleMobile: {
+  honorAcademicSubtitleMobile: { fontFamily: FONT_BODY,
     fontSize: 13,
     lineHeight: 18,
   },
-  honorAcademicMeta: {
+  honorAcademicMeta: { fontFamily: FONT_BODY,
     color: '#666',
     fontSize: 12,
     marginTop: 3,
   },
-  honorAcademicMetaMobile: {
+  honorAcademicMetaMobile: { fontFamily: FONT_BODY,
     fontSize: 11,
     lineHeight: 16,
   },
@@ -2203,13 +2204,13 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     paddingHorizontal: 8,
   },
-  honorCountNumber: {
+  honorCountNumber: { fontFamily: FONT_BODY,
     color: '#B71C1C',
     fontSize: 18,
-    fontWeight: '800',
+    fontWeight: WEIGHT_EMPHASIS,
     lineHeight: 20,
   },
-  honorCountLabel: {
+  honorCountLabel: { fontFamily: FONT_BODY,
     color: '#B71C1C',
     fontSize: 11,
     fontWeight: '700',
@@ -2226,7 +2227,7 @@ const styles = StyleSheet.create({
     minWidth: 520,
     borderWidth: 1,
     borderColor: '#EFEFEF',
-    borderRadius: 10,
+    borderRadius: 16,
     overflow: 'hidden',
     backgroundColor: '#FFFFFF',
   },
@@ -2239,12 +2240,12 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#E7E7E7',
   },
-  honorHeaderCell: {
+  honorHeaderCell: { fontFamily: FONT_TITLE,
     paddingVertical: 12,
     paddingHorizontal: 10,
     color: '#555',
     fontSize: 12,
-    fontWeight: '800',
+    fontWeight: WEIGHT_TITLE,
     textTransform: 'uppercase',
     textAlign: 'center',
   },
@@ -2258,15 +2259,15 @@ const styles = StyleSheet.create({
     borderBottomColor: '#F0F0F0',
     backgroundColor: '#FFFFFF',
   },
-  honorRankCell: {
+  honorRankCell: { fontFamily: FONT_BODY,
     paddingVertical: 12,
     paddingHorizontal: 10,
     color: '#B71C1C',
     fontSize: 13,
-    fontWeight: '900',
+    fontWeight: WEIGHT_EMPHASIS,
     textAlign: 'center',
   },
-  honorNameCell: {
+  honorNameCell: { fontFamily: FONT_BODY,
     paddingVertical: 12,
     paddingHorizontal: 10,
     color: '#111',
@@ -2275,18 +2276,18 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     textAlign: 'center',
   },
-  honorRowCell: {
+  honorRowCell: { fontFamily: FONT_BODY,
     paddingVertical: 12,
     paddingHorizontal: 10,
     color: '#111',
     fontSize: 13,
   },
-  honorGwaCell: {
+  honorGwaCell: { fontFamily: FONT_BODY,
     paddingVertical: 12,
     paddingHorizontal: 10,
     color: '#111',
     fontSize: 13,
-    fontWeight: '800',
+    fontWeight: WEIGHT_EMPHASIS,
     textAlign: 'center',
   },
 
