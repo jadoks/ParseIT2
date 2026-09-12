@@ -35,7 +35,12 @@ export const getGradedAssignments = (
 export const getSubmittedAssignments = (
   assignments: AnalyticsAssignment[]
 ): AnalyticsAssignment[] => {
-  return assignments.filter((assignment) => assignment.status === 'submitted');
+  // 'late' means submitted-but-tardy (see StudentApp.tsx status derivation) —
+  // it's only ever assigned to work that was actually turned in and not yet
+  // graded, so it belongs in the submitted bucket, not missing/pending.
+  return assignments.filter(
+    (assignment) => assignment.status === 'submitted' || assignment.status === 'late'
+  );
 };
 
 export const getPendingAssignments = (

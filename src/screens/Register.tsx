@@ -21,6 +21,7 @@ import {
   View,
   useWindowDimensions,
 } from 'react-native';
+import { FONT_BODY, FONT_TITLE } from '../theme/typography';
 
 // ✅ Reuses the same Toast component used across the app (Admin/Teacher
 // screens, Community, Dashboard, ClassesScreen, SignIn) instead of the
@@ -468,7 +469,7 @@ function BirthdayField({
 // ─── BirthdayField styles (copied 1-to-1 from AddStudentModal, plus scroll fix) ─
 
 const bdStyles = StyleSheet.create({
-  fieldLabel: {
+  fieldLabel: { fontFamily: FONT_BODY, 
     fontSize: 14,
     fontWeight: '700',
     color: '#374151',   // matches register form fieldLabel
@@ -485,7 +486,7 @@ const bdStyles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  selectFieldText: {
+  selectFieldText: { fontFamily: FONT_BODY, 
     fontSize: 16,       // matches inputWithIcon fontSize
     fontWeight: '400',  // matches normal text input weight
     color: '#111827',   // matches inputWithIcon color
@@ -519,7 +520,7 @@ const bdStyles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 14,
   },
-  datePickerButtonSecondaryText: {
+  datePickerButtonSecondaryText: { fontFamily: FONT_BODY, 
     fontSize: 13,
     fontWeight: '700',
     color: '#7A4A4A',
@@ -569,13 +570,13 @@ const bdStyles = StyleSheet.create({
     justifyContent: 'center',
     marginRight: 14,
   },
-  modalTitle: {
+  modalTitle: { fontFamily: FONT_TITLE, 
     fontSize: 22,
     fontWeight: '800',
     color: '#2B1111',
     marginBottom: 4,
   },
-  modalSubtitle: {
+  modalSubtitle: { fontFamily: FONT_TITLE, 
     fontSize: 14,
     lineHeight: 21,
     color: '#8A6F6F',
@@ -634,14 +635,14 @@ const bdStyles = StyleSheet.create({
   dropdownItemActive: {
     backgroundColor: '#FFF7F7',
   },
-  dropdownItemText: {
+  dropdownItemText: { fontFamily: FONT_BODY, 
     flex: 1,
     fontSize: 14,
     color: '#5F3B3B',
     fontWeight: '600',
     paddingRight: 10,
   },
-  dropdownItemTextActive: {
+  dropdownItemTextActive: { fontFamily: FONT_BODY, 
     color: '#DC2626',
     fontWeight: '700',
   },
@@ -665,7 +666,7 @@ const bdStyles = StyleSheet.create({
     justifyContent: 'center',
     marginRight: 12,
   },
-  modalSecondaryButtonText: {
+  modalSecondaryButtonText: { fontFamily: FONT_BODY, 
     fontSize: 14,
     fontWeight: '700',
     color: '#7A4A4A',
@@ -679,7 +680,7 @@ const bdStyles = StyleSheet.create({
     justifyContent: 'center',
     flexDirection: 'row',
   },
-  modalPrimaryButtonText: {
+  modalPrimaryButtonText: { fontFamily: FONT_BODY, 
     fontSize: 14,
     fontWeight: '800',
     color: '#FFFFFF',

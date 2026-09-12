@@ -16,6 +16,7 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
+import { FONT_BODY, FONT_TITLE, WEIGHT_EMPHASIS, WEIGHT_TITLE } from '../theme/typography';
 import { QuizQuestion } from './games/quiz-masters';
 
 type GameScreen = 'menu' | 'quizmasters';
@@ -452,8 +453,8 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   titleWrap: { flex: 1 },
-  pageTitle: { fontSize: 32, fontWeight: '700', color: '#111', letterSpacing: -0.5 },
-  pageSubtitle: { color: '#666', marginTop: 6, fontSize: 15, lineHeight: 22 },
+  pageTitle: { fontFamily: FONT_TITLE, fontSize: 32, fontWeight: WEIGHT_TITLE, color: '#111', letterSpacing: -0.5 },
+  pageSubtitle: { fontFamily: FONT_TITLE, color: '#666', marginTop: 6, fontSize: 15, lineHeight: 22 },
 
   // 🌟 NEW: Daily limit banner styles
   limitBanner: {
@@ -472,9 +473,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFF5F5',
     borderColor: '#FFD7D7',
   },
-  limitBannerText: {
+  limitBannerText: { fontFamily: FONT_BODY,
     fontSize: 13,
-    fontWeight: '700',
+    fontWeight: WEIGHT_EMPHASIS,
     color: '#2E7D32',
     flex: 1,
   },
@@ -501,12 +502,12 @@ const styles = StyleSheet.create({
     gap: 10,
     marginBottom: 8,
   },
-  settingsTitle: {
+  settingsTitle: { fontFamily: FONT_TITLE,
     fontSize: 20,
-    fontWeight: '800',
+    fontWeight: WEIGHT_TITLE,
     color: '#111',
   },
-  settingsSubtitle: {
+  settingsSubtitle: { fontFamily: FONT_TITLE,
     fontSize: 14,
     color: '#666',
     marginBottom: 16,
@@ -525,9 +526,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#F0F0F0'
   },
-  selectorTitle: { fontSize: 20, fontWeight: '800', marginBottom: 24, color: '#111' },
+  selectorTitle: { fontFamily: FONT_TITLE, fontSize: 20, fontWeight: WEIGHT_TITLE, marginBottom: 24, color: '#111' },
   
-  inputLabel: { fontSize: 13, fontWeight: '700', color: '#444', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 },
+  inputLabel: { fontFamily: FONT_BODY, fontSize: 13, fontWeight: WEIGHT_EMPHASIS, color: '#444', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 },
 
   // 🌟 On tablet/web/desktop, cap the width of the class dropdown, questions
   // input, and generate button so they don't stretch full width of the card.
@@ -547,10 +548,10 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     minHeight: 56,
   },
-  dropdownTriggerText: { fontSize: 15, fontWeight: '600', color: '#111', flex: 1 },
-  placeholderText: { color: '#999', fontWeight: '500' },
+  dropdownTriggerText: { fontFamily: FONT_BODY, fontSize: 15, fontWeight: WEIGHT_EMPHASIS, color: '#111', flex: 1 },
+  placeholderText: { fontFamily: FONT_BODY, color: '#999', fontWeight: '500' },
   
-  questionsInput: {
+  questionsInput: { fontFamily: FONT_BODY,
     backgroundColor: '#FAFAFA',
     borderWidth: 1.5,
     borderColor: '#EAEAEA',
@@ -558,7 +559,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 16,
     fontSize: 15,
-    fontWeight: '600',
+    fontWeight: WEIGHT_EMPHASIS,
     color: '#111',
     minHeight: 56,
   },
@@ -566,10 +567,10 @@ const styles = StyleSheet.create({
     borderColor: '#F44336',
     backgroundColor: '#FFF5F5',
   },
-  errorText: {
+  errorText: { fontFamily: FONT_BODY,
     color: '#F44336',
     fontSize: 12,
-    fontWeight: '600',
+    fontWeight: WEIGHT_EMPHASIS,
     marginTop: 6,
   },
 
@@ -593,9 +594,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#D32F2F', 
     borderColor: '#D32F2F' 
   },
-  gameTypeText: { 
+  gameTypeText: { fontFamily: FONT_BODY, 
     fontSize: 13, 
-    fontWeight: '700', 
+    fontWeight: WEIGHT_EMPHASIS, 
     color: '#444' 
   },
   gameTypeTextSelected: { 
@@ -630,7 +631,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#F0F0F0',
   },
-  modalTitle: { fontSize: 18, fontWeight: '800', color: '#111' },
+  modalTitle: { fontFamily: FONT_TITLE, fontSize: 18, fontWeight: WEIGHT_TITLE, color: '#111' },
   modalList: { padding: 12 },
   dropdownItem: {
     flexDirection: 'row',
@@ -641,11 +642,11 @@ const styles = StyleSheet.create({
     backgroundColor: '#FAFAFA',
   },
   dropdownItemSelected: { backgroundColor: '#FFF1F1', borderWidth: 1, borderColor: '#FFD7D7' },
-  dropdownItemText: { fontSize: 15, fontWeight: '700', color: '#333' },
+  dropdownItemText: { fontFamily: FONT_BODY, fontSize: 15, fontWeight: WEIGHT_EMPHASIS, color: '#333' },
   dropdownItemTextSelected: { color: '#D32F2F' },
-  dropdownItemSub: { fontSize: 12, color: '#888', marginTop: 2, fontWeight: '500' },
+  dropdownItemSub: { fontFamily: FONT_BODY, fontSize: 12, color: '#888', marginTop: 2, fontWeight: '500' },
   emptyState: { padding: 30, alignItems: 'center' },
-  emptyText: { color: '#999', fontSize: 14 },
+  emptyText: { fontFamily: FONT_BODY, color: '#999', fontSize: 14 },
 
   materialsSection: { marginBottom: 24 },
   materialsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
@@ -666,16 +667,16 @@ const styles = StyleSheet.create({
   justifyContent: 'space-between',
   marginBottom: 8,
 },
-clearSelectionText: {
+clearSelectionText: { fontFamily: FONT_BODY,
   color: '#D32F2F',
   fontSize: 13,
-  fontWeight: '700',
+  fontWeight: WEIGHT_EMPHASIS,
 },
   materialChipSelected: { backgroundColor: '#D32F2F', borderColor: '#D32F2F' },
-  materialTitle: { fontSize: 13, fontWeight: '700', color: '#444', flexShrink: 1 },
+  materialTitle: { fontFamily: FONT_TITLE, fontSize: 13, fontWeight: WEIGHT_TITLE, color: '#444', flexShrink: 1 },
   materialTitleSelected: { color: '#FFF' },
   noMaterialsBox: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 12 },
-  noMaterials: { color: '#999', fontSize: 14, fontStyle: 'italic' },
+  noMaterials: { fontFamily: FONT_BODY, color: '#999', fontSize: 14, fontStyle: 'italic' },
 
   generateButton: {
     backgroundColor: '#D32F2F',
@@ -690,7 +691,7 @@ clearSelectionText: {
     elevation: 6,
   },
   generateButtonDisabled: { opacity: 0.5, shadowOpacity: 0 },
-  generateButtonText: { color: '#FFF', fontWeight: '800', fontSize: 16, letterSpacing: 0.3 },
+  generateButtonText: { fontFamily: FONT_BODY, color: '#FFF', fontWeight: WEIGHT_EMPHASIS, fontSize: 16, letterSpacing: 0.3 },
 });
 
 export default Game;

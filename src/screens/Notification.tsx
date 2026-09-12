@@ -9,6 +9,7 @@ import {
   View,
 } from 'react-native';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
+import { FONT_BODY, FONT_TITLE, WEIGHT_EMPHASIS, WEIGHT_TITLE } from '../theme/typography';
 
 export type NotificationType =
   | 'assignment'
@@ -424,13 +425,13 @@ const styles = StyleSheet.create({
     flex: 1,
   },
 
-  headerTitle: {
+  headerTitle: { fontFamily: FONT_TITLE,
     fontSize: 20,
-    fontWeight: '700',
+    fontWeight: WEIGHT_TITLE,
     color: '#111',
   },
 
-  headerSubtitle: {
+  headerSubtitle: { fontFamily: FONT_TITLE,
     marginTop: 2,
     fontSize: 13,
     color: '#666',
@@ -443,9 +444,9 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(211,47,47,0.08)',
   },
 
-  markAllText: {
+  markAllText: { fontFamily: FONT_BODY,
     color: '#D32F2F',
-    fontWeight: '600',
+    fontWeight: WEIGHT_EMPHASIS,
     fontSize: 13,
   },
 
@@ -454,7 +455,7 @@ const styles = StyleSheet.create({
     top: 56,
     right: 52,
     backgroundColor: '#FFF',
-    borderRadius: 12,
+    borderRadius: 16,
     minWidth: 170,
     paddingVertical: 6,
     borderWidth: 1,
@@ -472,9 +473,9 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
   },
 
-  popupMenuText: {
+  popupMenuText: { fontFamily: FONT_BODY,
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: WEIGHT_EMPHASIS,
     color: '#111',
   },
 
@@ -506,7 +507,7 @@ const styles = StyleSheet.create({
     marginTop: 4,
     marginBottom: 8,
     paddingVertical: 12,
-    borderRadius: 12,
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: 'rgba(211,47,47,0.08)',
@@ -514,9 +515,9 @@ const styles = StyleSheet.create({
     borderColor: '#FFD7D7',
   },
 
-  seeAllButtonText: {
+  seeAllButtonText: { fontFamily: FONT_BODY,
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: WEIGHT_EMPHASIS,
     color: '#D32F2F',
   },
 
@@ -553,19 +554,19 @@ const styles = StyleSheet.create({
     gap: 8,
   },
 
-  title: {
+  title: { fontFamily: FONT_TITLE,
     flex: 1,
     fontSize: 15,
-    fontWeight: '700',
+    fontWeight: WEIGHT_TITLE,
     color: '#111',
   },
 
-  time: {
+  time: { fontFamily: FONT_BODY,
     fontSize: 12,
     color: '#777',
   },
 
-  message: {
+  message: { fontFamily: FONT_BODY,
     marginTop: 6,
     fontSize: 14,
     lineHeight: 20,
@@ -579,14 +580,14 @@ const styles = StyleSheet.create({
     paddingVertical: 40,
   },
 
-  emptyTitle: {
+  emptyTitle: { fontFamily: FONT_TITLE,
     marginTop: 12,
     fontSize: 18,
-    fontWeight: '700',
+    fontWeight: WEIGHT_TITLE,
     color: '#222',
   },
 
-  emptyText: {
+  emptyText: { fontFamily: FONT_BODY,
     marginTop: 6,
     fontSize: 14,
     color: '#777',

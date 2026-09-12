@@ -19,6 +19,7 @@ import {
 } from 'react-native';
 import Icon from 'react-native-vector-icons/Ionicons';
 import { auth } from '../../firebaseConfig';
+import { FONT_BODY, FONT_TITLE } from '../theme/typography';
 
 // ✅ Reuses the same Toast component used across the app (Admin/Teacher
 // screens, Community, Dashboard, ClassesScreen) instead of the bespoke
@@ -1461,14 +1462,14 @@ const styles = StyleSheet.create({
     borderColor: '#F2F4F7',
   },
   leftLogoImage: { width: 58, height: 58 },
-  leftQuote: {
+  leftQuote: { fontFamily: FONT_BODY, 
     fontSize: 27,
     fontWeight: '800',
     color: '#FFFFFF',
     lineHeight: 37,
     marginBottom: 14,
   },
-  leftQuoteAuthor: {
+  leftQuoteAuthor: { fontFamily: FONT_BODY, 
     fontSize: 15,
     fontWeight: '700',
     color: 'rgba(255,255,255,0.85)',
@@ -1482,14 +1483,14 @@ const styles = StyleSheet.create({
     paddingVertical: 18,
   },
   formWrapperLarge: { width: '100%', maxWidth: 520, alignSelf: 'center' },
-  headingSplit: {
+  headingSplit: { fontFamily: FONT_BODY, 
     fontSize: 30,
     fontWeight: '800',
     color: '#111827',
     marginBottom: 8,
     textAlign: 'left',
   },
-  subheadingSplit: {
+  subheadingSplit: { fontFamily: FONT_BODY, 
     fontSize: 14,
     color: '#6B7280',
     lineHeight: 22,
@@ -1578,14 +1579,14 @@ const styles = StyleSheet.create({
     width: 72,
     height: 72,
   },
-  heading: {
+  heading: { fontFamily: FONT_BODY, 
     fontSize: 28,
     fontWeight: '800',
     color: '#111827',
     textAlign: 'center',
     marginBottom: 10,
   },
-  subheading: {
+  subheading: { fontFamily: FONT_BODY, 
     fontSize: 14,
     color: '#6B7280',
     textAlign: 'center',
@@ -1595,7 +1596,7 @@ const styles = StyleSheet.create({
   formGroup: {
     marginBottom: 16,
   },
-  fieldLabel: {
+  fieldLabel: { fontFamily: FONT_BODY, 
     fontSize: 14,
     fontWeight: '700',
     color: '#374151',
@@ -1617,7 +1618,7 @@ const styles = StyleSheet.create({
     borderColor: '#D32F2F',
     borderWidth: 1.5,
   },
-  inputWithIcon: {
+  inputWithIcon: { fontFamily: FONT_BODY, 
     flex: 1,
     fontSize: 16,
     color: '#111827',
@@ -1639,7 +1640,7 @@ const styles = StyleSheet.create({
     borderColor: '#D32F2F',
     borderWidth: 1.5,
   },
-  passwordInput: {
+  passwordInput: { fontFamily: FONT_BODY, 
     flex: 1,
     paddingVertical: 15,
     fontSize: 16,
@@ -1654,7 +1655,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  forgotPassword: {
+  forgotPassword: { fontFamily: FONT_BODY, 
     fontSize: 14,
     color: '#D32F2F',
     fontWeight: '700',
@@ -1677,7 +1678,7 @@ const styles = StyleSheet.create({
   disabledButton: {
     opacity: 0.7,
   },
-  logInText: {
+  logInText: { fontFamily: FONT_BODY, 
     color: '#FFF',
     fontSize: 17,
     fontWeight: '800',
@@ -1686,7 +1687,7 @@ const styles = StyleSheet.create({
     marginTop: 16,
     alignItems: 'center',
   },
-  registerButtonText: {
+  registerButtonText: { fontFamily: FONT_BODY, 
     color: '#D32F2F',
     fontSize: 14,
     fontWeight: '700',
@@ -1724,13 +1725,13 @@ const styles = StyleSheet.create({
   modalHeaderText: {
     paddingRight: 44,
   },
-  modalTitle: {
+  modalTitle: { fontFamily: FONT_TITLE, 
     fontSize: 22,
     fontWeight: '700',
     color: '#1C1C1C',
     marginBottom: 4,
   },
-  modalSubtitle: {
+  modalSubtitle: { fontFamily: FONT_TITLE, 
     fontSize: 13,
     color: '#666',
     lineHeight: 20,
@@ -1774,7 +1775,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#D32F2F',
     borderColor: '#D32F2F',
   },
-  stepNumber: {
+  stepNumber: { fontFamily: FONT_BODY, 
     fontSize: 14,
     fontWeight: '700',
     color: '#7A7A7A',
@@ -1782,13 +1783,13 @@ const styles = StyleSheet.create({
   stepNumberActive: {
     color: '#FFF',
   },
-  stepLabel: {
+  stepLabel: { fontFamily: FONT_BODY, 
     marginTop: 8,
     fontSize: 12,
     color: '#8C8C8C',
     fontWeight: '500',
   },
-  stepLabelActive: {
+  stepLabelActive: { fontFamily: FONT_BODY, 
     color: '#D32F2F',
     fontWeight: '700',
   },
@@ -1815,14 +1816,14 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     marginBottom: 16,
   },
-  stepTitle: {
+  stepTitle: { fontFamily: FONT_TITLE, 
     fontSize: 20,
     fontWeight: '700',
     color: '#1F1F1F',
     textAlign: 'center',
     marginBottom: 8,
   },
-  stepDescription: {
+  stepDescription: { fontFamily: FONT_BODY, 
     fontSize: 14,
     color: '#666',
     textAlign: 'center',
@@ -1844,7 +1845,7 @@ const styles = StyleSheet.create({
     borderColor: '#D32F2F',
     borderWidth: 1.5,
   },
-  modalInput: {
+  modalInput: { fontFamily: FONT_BODY, 
     flex: 1,
     fontSize: 15,
     color: '#111',
@@ -1864,7 +1865,7 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 320,
   },
-  otpInput: {
+  otpInput: { fontFamily: FONT_BODY, 
     borderWidth: 1.5,
     borderColor: '#E0E0E0',
     backgroundColor: '#F8F8F8',
@@ -1900,7 +1901,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
   },
-  primaryButtonText: {
+  primaryButtonText: { fontFamily: FONT_BODY, 
     color: '#FFF',
     fontSize: 15,
     fontWeight: '700',
@@ -1917,7 +1918,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
   },
-  secondaryButtonText: {
+  secondaryButtonText: { fontFamily: FONT_BODY, 
     color: '#D32F2F',
     fontSize: 15,
     fontWeight: '700',
@@ -1942,7 +1943,7 @@ const styles = StyleSheet.create({
     borderColor: '#D32F2F',
     borderWidth: 1.5,
   },
-  passwordFieldInput: {
+  passwordFieldInput: { fontFamily: FONT_BODY, 
     flex: 1,
     fontSize: 15,
     color: '#111',

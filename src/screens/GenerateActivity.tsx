@@ -9,6 +9,7 @@ import {
   View,
   useWindowDimensions,
 } from 'react-native';
+import { FONT_BODY, FONT_TITLE } from '../theme/typography';
 
 const apiFetch = (url: string, options: any = {}) =>
   fetch(url, {
@@ -1102,13 +1103,13 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
 
-  backText: {
+  backText: { fontFamily: FONT_BODY, 
     fontSize: 16,
     fontWeight: '600',
     color: '#D32F2F',
   },
 
-  pageTitle: {
+  pageTitle: { fontFamily: FONT_TITLE, 
     fontWeight: '800',
     color: '#111',
     marginBottom: 16,
@@ -1121,29 +1122,29 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
 
-  courseText: {
+  courseText: { fontFamily: FONT_BODY, 
     color: '#777',
     fontSize: 13,
   },
 
-  topicText: {
+  topicText: { fontFamily: FONT_BODY, 
     fontSize: 20,
     fontWeight: '800',
     marginVertical: 6,
   },
 
-  assignmentText: {
+  assignmentText: { fontFamily: FONT_BODY, 
     color: '#444',
     fontSize: 14,
   },
 
-  scoreText: {
+  scoreText: { fontFamily: FONT_BODY, 
     color: '#D32F2F',
     fontWeight: '700',
     marginTop: 8,
   },
 
-  estimateText: {
+  estimateText: { fontFamily: FONT_BODY, 
     color: '#555',
     marginTop: 6,
     fontSize: 13,
@@ -1166,7 +1167,7 @@ const styles = StyleSheet.create({
     borderColor: '#E4E7EC',
   },
 
-  progressTitle: {
+  progressTitle: { fontFamily: FONT_TITLE, 
     fontSize: 17,
     fontWeight: '800',
     marginBottom: 6,
@@ -1189,13 +1190,13 @@ const styles = StyleSheet.create({
     gap: 10,
   },
 
-  sectionTitle: {
+  sectionTitle: { fontFamily: FONT_TITLE, 
     fontSize: 20,
     fontWeight: '900',
     color: '#111',
   },
 
-  sectionMeta: {
+  sectionMeta: { fontFamily: FONT_BODY, 
     fontSize: 13,
     color: '#D32F2F',
     fontWeight: '800',
@@ -1231,46 +1232,46 @@ const styles = StyleSheet.create({
     borderColor: '#F3B4B4',
   },
 
-  errorTitle: {
+  errorTitle: { fontFamily: FONT_TITLE, 
     color: '#B71C1C',
     fontSize: 17,
     fontWeight: '800',
     marginBottom: 8,
   },
 
-  errorText: {
+  errorText: { fontFamily: FONT_BODY, 
     color: '#8A1C1C',
     fontSize: 14,
     lineHeight: 21,
   },
 
-  cardTitle: {
+  cardTitle: { fontFamily: FONT_TITLE, 
     fontSize: 17,
     fontWeight: '800',
     marginBottom: 10,
   },
 
-  bodyText: {
+  bodyText: { fontFamily: FONT_BODY, 
     color: '#555',
     fontSize: 14,
     lineHeight: 21,
   },
 
-  materialItem: {
+  materialItem: { fontFamily: FONT_BODY, 
     color: '#555',
     fontSize: 14,
     lineHeight: 22,
     marginBottom: 3,
   },
 
-  readableText: {
+  readableText: { fontFamily: FONT_BODY, 
     color: '#2E7D32',
     fontWeight: '700',
     fontSize: 13,
     marginTop: 10,
   },
 
-  questionText: {
+  questionText: { fontFamily: FONT_BODY, 
     marginBottom: 12,
     color: '#222',
     fontSize: 15,
@@ -1302,7 +1303,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFEBEE',
   },
 
-  optionText: {
+  optionText: { fontFamily: FONT_BODY, 
     fontSize: 14,
     color: '#111',
   },
@@ -1337,7 +1338,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFEBEE',
   },
 
-  explanationTitle: {
+  explanationTitle: { fontFamily: FONT_TITLE, 
     fontWeight: '800',
     marginBottom: 4,
     color: '#111',
@@ -1351,7 +1352,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
 
-  scoreBoxText: {
+  scoreBoxText: { fontFamily: FONT_BODY, 
     color: '#111',
     fontWeight: '800',
   },
@@ -1398,7 +1399,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
 
-  submitText: {
+  submitText: { fontFamily: FONT_BODY, 
     color: '#FFF',
     fontWeight: '700',
   },
@@ -1409,7 +1410,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
 
-  emptyTitle: {
+  emptyTitle: { fontFamily: FONT_TITLE, 
     marginBottom: 12,
     color: '#222',
     fontWeight: '700',

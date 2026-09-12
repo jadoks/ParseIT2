@@ -879,7 +879,7 @@ export default function Analytics({ width, apiBaseUrl }: AnalyticsProps) {
           widthValue={summaryWidth}
         />
         <SummaryCard
-          label="At-Risk Students"
+          label="Assignment Risk Students"
           value={`${analytics.summary.atRiskCount}`}
           trend={`${analytics.summary.highRiskCount} high • ${analytics.summary.moderateRiskCount} moderate`}
           widthValue={summaryWidth}
@@ -945,7 +945,7 @@ export default function Analytics({ width, apiBaseUrl }: AnalyticsProps) {
             </View>
             <View style={[styles.departmentOverviewItem, isMobile && styles.departmentOverviewItemMobile]}>
               <StatRow
-                label="At-Risk Population"
+                label="Assignment Risk Population"
                 value={`${analytics.summary.atRiskCount}`}
                 tone={analytics.summary.atRiskCount > 0 ? "danger" : "success"}
               />
@@ -1101,7 +1101,7 @@ export default function Analytics({ width, apiBaseUrl }: AnalyticsProps) {
 
         <SectionCard
           widthValue="100%"
-          title="At-Risk Population"
+          title="Assignment Risk Population"
           subtitle="Students identified through low assignment grades, missing assignments, and incomplete coursework"
           icon={<Ionicons name="warning-outline" size={24} color="#DC2626" />}
         >
@@ -1122,7 +1122,7 @@ export default function Analytics({ width, apiBaseUrl }: AnalyticsProps) {
               ))}
             </View>
           ) : (
-            <EmptyState text="No high or moderate risk students detected." />
+            <EmptyState text="No high or moderate assignment-risk students detected." />
           )}
         </SectionCard>
       </View>
@@ -1331,4 +1331,4 @@ const styles = StyleSheet.create({
     paddingVertical: 12, borderRadius: 12, backgroundColor: "#F3D4D4", alignItems: "center",
   },
   modalCancelText: { fontSize: 14, fontWeight: "800", color: "#7A4A4A" },
-}); 
+});

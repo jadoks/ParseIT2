@@ -63,7 +63,7 @@ interface DrawerMenuProps {
   setIsLoggedIn: (val: boolean) => void;
 }
 
-const DEFAULT_AVATAR = require('../../assets/images/BSITLOGO.jpg'); // Placeholder avatar for the drawer menu when no custom image is provided
+const DEFAULT_AVATAR = require('../../assets/images/BSITLOGO.png'); // Placeholder avatar for the drawer menu when no custom image is provided
 
 // Masks an email for display, e.g. "jadwiga@gmail.com" -> "jad******@gmail.com".
 // Keeps the first 3 characters of the local part visible, replaces the rest

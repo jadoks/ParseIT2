@@ -13,11 +13,12 @@ import {
 import { LineChart } from "react-native-chart-kit";
 import MaterialCommunityIcons from "react-native-vector-icons/MaterialCommunityIcons";
 import { buildTeacherAnalytics } from "../analytics/analyticsService";
+import { AssignmentCourse } from "../screens/Assignments";
 
 type TeacherStudentInput = {
   studentId: string;
   studentName: string;
-  courses: any[];
+  courses: AssignmentCourse[];
 };
 
 type TeacherCourseOption = {
@@ -343,7 +344,7 @@ const insightReason = ({
   trend: number;
   graded: number;
 }) => {
-  if (graded === 0) return "No graded assignments yet. Risk cannot be evaluated.";
+  if (graded === 0) return "No graded assignments yet. Assignment risk cannot be evaluated.";
   if (average < 75 && pending >= 2 && trend < 0)
     return "Low assignment average, multiple missing assignments, and declining trend";
   if (average < 75 && pending >= 2)
@@ -647,13 +648,13 @@ export default function TeacherAnalytics({
         value: summary.noDataCount ?? 0,
         color: "#2563EB",
       },
-      { label: "High Risk", value: summary.highRiskCount, color: "#EF4444" },
+      { label: "High Assignment Risk", value: summary.highRiskCount, color: "#EF4444" },
       {
-        label: "Moderate Risk",
+        label: "Moderate Assignment Risk",
         value: summary.moderateRiskCount,
         color: "#F59E0B",
       },
-      { label: "Low Risk", value: summary.lowRiskCount, color: "#22C55E" },
+      { label: "Low Assignment Risk", value: summary.lowRiskCount, color: "#22C55E" },
     ],
     [
       summary.noDataCount,
@@ -884,7 +885,7 @@ export default function TeacherAnalytics({
       return [
         {
           title: "No graded assignments yet",
-          body: "Students may have pending or submitted work, but no graded assignment records are available yet. Risk indicators will activate after grading or when assignments become missing.",
+          body: "Students may have pending or submitted work, but no graded assignment records are available yet. Assignment risk indicators will activate after grading or when assignments become missing.",
           tone: "info",
           icon: "database-search-outline",
         },
@@ -917,7 +918,7 @@ export default function TeacherAnalytics({
     if (attentionIndex >= 40) {
       insights.push({
         title: "High assignment intervention load",
-        body: `${attentionIndex}% attention index suggests a heavy support requirement. Prioritize high-risk learners and missing assignments first.`,
+        body: `${attentionIndex}% attention index suggests a heavy support requirement. Prioritize high assignment-risk learners and missing assignments first.`,
         tone: "warning",
         icon: "account-alert-outline",
       });
@@ -1111,7 +1112,7 @@ export default function TeacherAnalytics({
             softBg={palette.greenSoft}
           />
           <MetricCard
-            title="At-Risk Students"
+            title="Assignment Risk"
             value={summary.highRiskCount + summary.moderateRiskCount}
             helper="Learners requiring assignment intervention"
             icon="alert-circle-outline"
@@ -1242,7 +1243,7 @@ export default function TeacherAnalytics({
           <SectionCard
             style={responsiveSectionStyle}
             title="Class Overview"
-            subtitle="Assignment grade distribution and student risk based on assignment performance."
+            subtitle="Assignment grade distribution and assignment risk levels."
           >
             {riskBuckets.map((item) => (
               <HorizontalBar
@@ -1414,7 +1415,7 @@ export default function TeacherAnalytics({
         </SectionCard>
 
         <SectionCard
-          title="At-Risk Students"
+          title="Assignment Risk Students"
           subtitle="Students identified through low assignment grades, missing assignments, and declining performance trends."
           rightNode={
             <View style={styles.sectionBadge}>
@@ -1505,7 +1506,7 @@ export default function TeacherAnalytics({
                           • Pending {student.totalPendingAssignments}
                         </Text>
                         <Text style={styles.reasonText}>
-                          Risk Reason: {student.riskReason}
+                          Assignment Risk Reason: {student.riskReason}
                         </Text>
                         <Text style={styles.recommendationText}>
                           Recommended Intervention:{" "}

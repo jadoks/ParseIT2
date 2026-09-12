@@ -30,6 +30,7 @@ import {
 // ✅ Reuses the same Toast component used across the app (Admin/Teacher
 // screens), instead of relying on native Alert popups.
 import Toast from '../Final_Admin_Components/Toast';
+import { FONT_BODY, FONT_TITLE } from '../theme/typography';
 
 export interface CommunityAnswer {
   id: string;
@@ -1178,7 +1179,7 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
 
-  title: {
+  title: { fontFamily: FONT_TITLE, 
     fontSize: 20,
     fontWeight: '700',
     color: '#222',
@@ -1224,7 +1225,7 @@ inputField: {
   // borderWidth / borderColor: '#D32F2F' removed
 },
 
-inputPlaceholder: {
+inputPlaceholder: { fontFamily: FONT_BODY, 
   color: '#65676B',
   fontSize: 15,
 },
@@ -1271,19 +1272,19 @@ inputPlaceholder: {
     aspectRatio: 1,
   },
 
-  postUserName: {
+  postUserName: { fontFamily: FONT_BODY, 
     fontWeight: '600',
     fontSize: 15,
     color: '#050505',
   },
 
-  postDateTime: {
+  postDateTime: { fontFamily: FONT_BODY, 
     fontSize: 13,
     color: '#65676B',
     marginTop: 1,
   },
 
-  postContent: {
+  postContent: { fontFamily: FONT_BODY, 
     fontSize: 15,
     lineHeight: 20,
     color: '#050505',
@@ -1291,7 +1292,7 @@ inputPlaceholder: {
     marginBottom: 10,
   },
 
-  showAnswersBtn: {
+  showAnswersBtn: { fontFamily: FONT_BODY, 
     fontSize: 14,
     fontWeight: '600',
     color: '#65676B',
@@ -1352,7 +1353,7 @@ inputPlaceholder: {
     alignItems: 'center',
   },
 
-  menuText: {
+  menuText: { fontFamily: FONT_BODY, 
     marginLeft: 8,
     fontSize: 14,
     color: '#333',
@@ -1398,13 +1399,13 @@ inputPlaceholder: {
     marginBottom: 16,
   },
 
-  answerModalTitle: {
+  answerModalTitle: { fontFamily: FONT_TITLE, 
     fontSize: 18,
     fontWeight: '700',
     color: '#222',
   },
 
-  selectedPostText: {
+  selectedPostText: { fontFamily: FONT_BODY, 
     fontSize: 15,
     color: '#333',
     lineHeight: 22,
@@ -1447,24 +1448,24 @@ inputPlaceholder: {
     aspectRatio: 1,
   },
 
-  answerUserName: {
+  answerUserName: { fontFamily: FONT_BODY, 
     fontSize: 14,
     fontWeight: '700',
     color: '#222',
   },
 
-  answerDate: {
+  answerDate: { fontFamily: FONT_BODY, 
     fontSize: 12,
     color: '#777',
   },
 
-  answerPreviewText: {
+  answerPreviewText: { fontFamily: FONT_BODY, 
     fontSize: 14,
     color: '#555',
     lineHeight: 20,
   },
 
-  noAnswersText: {
+  noAnswersText: { fontFamily: FONT_BODY, 
     fontSize: 14,
     color: '#777',
     textAlign: 'center',
@@ -1478,14 +1479,14 @@ inputPlaceholder: {
     marginTop: 4,
   },
 
-  answerInputLabel: {
+  answerInputLabel: { fontFamily: FONT_BODY, 
     fontSize: 14,
     fontWeight: '600',
     color: '#222',
     marginBottom: 8,
   },
 
-  answerInput: {
+  answerInput: { fontFamily: FONT_BODY, 
     minHeight: 90,
     borderWidth: 1,
     borderColor: '#D9D9D9',
@@ -1506,20 +1507,20 @@ inputPlaceholder: {
     borderRadius: 8,
   },
 
-  postAnswerButtonText: {
+  postAnswerButtonText: { fontFamily: FONT_BODY, 
     color: '#FFF',
     fontWeight: '600',
     fontSize: 14,
   },
 
-  confirmTitle: {
+  confirmTitle: { fontFamily: FONT_TITLE, 
     fontSize: 18,
     fontWeight: '700',
     color: '#222',
     marginBottom: 10,
   },
 
-  confirmMessage: {
+  confirmMessage: { fontFamily: FONT_BODY, 
     fontSize: 14,
     color: '#555',
     lineHeight: 20,
@@ -1539,7 +1540,7 @@ inputPlaceholder: {
     backgroundColor: '#E0E0E0',
   },
 
-  cancelButtonText: {
+  cancelButtonText: { fontFamily: FONT_BODY, 
     color: '#333',
     fontWeight: '600',
   },
@@ -1551,7 +1552,7 @@ inputPlaceholder: {
     backgroundColor: '#D32F2F',
   },
 
-  deleteButtonText: {
+  deleteButtonText: { fontFamily: FONT_BODY, 
     color: '#FFF',
     fontWeight: '600',
   },
@@ -1586,14 +1587,14 @@ inputPlaceholder: {
     paddingVertical: 60,
     paddingHorizontal: 20,
   },
-  emptyTitle: {
+  emptyTitle: { fontFamily: FONT_TITLE, 
     fontSize: 18,
     fontWeight: '700',
     color: '#333',
     marginTop: 16,
     marginBottom: 8,
   },
-  emptySubtitle: {
+  emptySubtitle: { fontFamily: FONT_TITLE, 
     fontSize: 14,
     color: '#777',
     textAlign: 'center',

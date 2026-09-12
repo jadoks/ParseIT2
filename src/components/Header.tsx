@@ -52,11 +52,11 @@ interface SearchFeature {
 
 const GLOBAL_SEARCH_FEATURES: SearchFeature[] = [
   { id: 'home', title: 'Home Dashboard', screen: 'home', icon: 'view-dashboard-outline', keywords: ['home', 'dash', 'main', 'overview'] },
-  { id: 'classes', title: 'My Classes', screen: 'classes', icon: 'google-classroom', keywords: ['class', 'course', 'subject', 'enrolled'] },
+  { id: 'classes', title: 'My Classes', screen: 'classes', icon: 'school-outline', keywords: ['class', 'course', 'subject', 'enrolled'] },
   { id: 'assignments', title: 'Assignments', screen: 'assignments', icon: 'clipboard-text-clock-outline', keywords: ['assign', 'task', 'homework', 'submission', 'ass'] },
   { id: 'games', title: 'Game Hub', screen: 'game', icon: 'gamepad-variant-outline', keywords: ['game', 'play', 'fun', 'quiz', 'flip', 'fruit'] },
   { id: 'videos', title: 'Video Library', screen: 'videos', icon: 'youtube', keywords: ['video', 'watch', 'tutorial', 'lesson'] },
-  { id: 'messenger', title: 'Messenger', screen: 'messenger', icon: 'facebook-messenger', keywords: ['mess', 'chat', 'talk', 'dm', 'pc', 'message'] },
+  { id: 'messenger', title: 'Messenger', screen: 'messenger', icon: 'message-text-outline', keywords: ['mess', 'chat', 'talk', 'dm', 'pc', 'message'] },
   { id: 'community', title: 'Community Feed', screen: 'community', icon: 'forum-outline', keywords: ['comm', 'post', 'feed', 'social', 'forum'] },
   { id: 'analytics', title: 'Analytics & Stats', screen: 'analytics', icon: 'chart-bar', keywords: ['ana', 'stats', 'data', 'progress', 'score'] },
   { id: 'profile', title: 'My Profile', screen: 'profile', icon: 'account-circle-outline', keywords: ['prof', 'user', 'me', 'settings', 'account'] },
@@ -329,7 +329,7 @@ const Header: React.FC<HeaderProps> = ({
     if (screen === 'classes') {
       return (
         <MaterialCommunityIcons
-          name="google-classroom"
+          name="school-outline"
           size={size}
           color={isActive(screen) ? '#D32F2F' : '#000000'}
         />
@@ -340,7 +340,7 @@ const Header: React.FC<HeaderProps> = ({
       return (
         <View>
           <MaterialCommunityIcons
-            name="facebook-messenger"
+            name="message-text-outline"
             size={size}
             color={getIconColor(screen)}
           />
@@ -504,7 +504,7 @@ const renderSearchResults = () => {
                 accessibilityLabel="Go to landing page"
               >
                 <Image
-                  source={require('../../assets/images/BSITLOGO.jpg')}
+                  source={require('../../assets/images/BSITLOGO.png')}
                   style={{
                     width: logoSize,
                     height: logoSize,
@@ -645,7 +645,7 @@ const renderSearchResults = () => {
             >
               <View>
                 <MaterialCommunityIcons
-                  name="facebook-messenger"
+                  name="message-text-outline"
                   size={navIconSize}
                   color={getIconColor('messenger')}
                 />
@@ -723,7 +723,7 @@ const renderSearchResults = () => {
           accessibilityLabel="Go to landing page"
         >
           <Image
-            source={require('../../assets/images/BSITLOGO.jpg')}
+            source={require('../../assets/images/BSITLOGO.png')}
             style={{
               width: logoSize,
               height: logoSize,

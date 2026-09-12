@@ -26,6 +26,7 @@ import {
   useSafeAreaInsets,
 } from 'react-native-safe-area-context';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
+import { FONT_BODY, FONT_TITLE } from '../theme/typography';
 
 const DEFAULT_AVATAR = require('../../assets/images/BSITLOGO.jpg'); // Placeholder avatar for conversations without a custom image
 
@@ -3137,8 +3138,8 @@ const styles = StyleSheet.create({
     paddingTop: 14,
     paddingBottom: 4,
   },
-  screenBackText: { fontSize: 14, fontWeight: '600', color: '#111', marginLeft: 2 },
-  pageTitle: {
+  screenBackText: { fontFamily: FONT_BODY, fontSize: 14, fontWeight: '600', color: '#111', marginLeft: 2 },
+  pageTitle: { fontFamily: FONT_TITLE, 
     fontWeight: 'bold',
     paddingBottom: 10,
     textAlign: 'left',
@@ -3167,13 +3168,13 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  convSemester: {
+  convSemester: { fontFamily: FONT_BODY, 
   color: '#0c0c0c',
   fontSize: 11,
   marginTop: 1,
   marginBottom: 2,
 },
-  convName: { fontWeight: '700', color: '#111', flex: 1, minWidth: 0, marginRight: 8 },
+  convName: { fontFamily: FONT_BODY, fontWeight: '700', color: '#111', flex: 1, minWidth: 0, marginRight: 8 },
   unreadBadge: {
     minWidth: 18,
     height: 18,
@@ -3183,7 +3184,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 5,
   },
-  unreadBadgeText: { color: '#fff', fontSize: 10, fontWeight: '700' },
+  unreadBadgeText: { fontFamily: FONT_BODY, color: '#fff', fontSize: 10, fontWeight: '700' },
   // Small "brand new" indicator for class chats the user just got added to
   // (just created/joined), kept visually separate from the numbered unread
   // badge above — it lives on the avatar corner instead of the text row.
@@ -3231,7 +3232,7 @@ const styles = StyleSheet.create({
     borderColor: '#D32F2F',
     borderWidth: 1.5,
   },
-  fullScreenSearchInput: {
+  fullScreenSearchInput: { fontFamily: FONT_BODY, 
     flex: 1,
     fontSize: 16,
     color: '#000',
@@ -3271,7 +3272,7 @@ const styles = StyleSheet.create({
   },
   backButton: { minWidth: 60, flexDirection: 'row', alignItems: 'center' },
   backText: { color: '#333' },
-  chatTitle: {
+  chatTitle: { fontFamily: FONT_TITLE, 
     fontWeight: '700',
     color: '#111',
     flex: 1,
@@ -3305,11 +3306,11 @@ const styles = StyleSheet.create({
     backgroundColor: '#fafafa',
     marginBottom: 10,
   },
-  infoActionCardText: { fontSize: 14, fontWeight: '600', color: '#222' },
+  infoActionCardText: { fontFamily: FONT_BODY, fontSize: 14, fontWeight: '600', color: '#222' },
   messageRow: {},
   messageRowThem: { alignSelf: 'flex-start' },
   messageRowMe: { alignSelf: 'flex-end', alignItems: 'flex-end' },
-  senderName: { color: '#666', marginBottom: 4, fontWeight: '600' },
+  senderName: { fontFamily: FONT_BODY, color: '#666', marginBottom: 4, fontWeight: '600' },
   senderNameThem: { textAlign: 'left', marginLeft: 4 },
   bubble: {},
   bubbleThem: { backgroundColor: '#f0f2f5', borderTopLeftRadius: 6 },
@@ -3324,13 +3325,13 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     maxWidth: '78%',
   },
-  systemBubbleText: {
+  systemBubbleText: { fontFamily: FONT_BODY, 
     color: '#fff',
     fontWeight: '700',
     textAlign: 'center',
     fontSize: 13,
   },
-  messageTimestamp: {
+  messageTimestamp: { fontFamily: FONT_BODY, 
     fontSize: 10,
     color: '#888',
     marginTop: 4,
@@ -3339,7 +3340,7 @@ const styles = StyleSheet.create({
   },
   messageTimestampMe: { textAlign: 'right' },
   messageTimestampThem: { textAlign: 'left' },
-  messageTimestampSystem: {
+  messageTimestampSystem: { fontFamily: FONT_BODY, 
     fontSize: 10,
     color: 'rgba(255,255,255,0.7)',
     marginTop: 4,
@@ -3354,7 +3355,7 @@ const styles = StyleSheet.create({
     width: 150,
     alignItems: 'center',
   },
-  timeTooltipText: { color: '#fff', fontSize: 11, fontWeight: '600' },
+  timeTooltipText: { fontFamily: FONT_BODY, color: '#fff', fontSize: 11, fontWeight: '600' },
   inputArea: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -3387,7 +3388,7 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     flexShrink: 0,
   },
-  sendBtnText: { color: '#fff', fontWeight: '700' },
+  sendBtnText: { fontFamily: FONT_BODY, color: '#fff', fontWeight: '700' },
   emptyPane: {
     flex: 1,
     alignItems: 'center',
@@ -3395,13 +3396,13 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     paddingHorizontal: 24,
   },
-  emptyPaneTitle: {
+  emptyPaneTitle: { fontFamily: FONT_TITLE, 
     marginTop: 14,
     fontSize: 22,
     fontWeight: '700',
     color: '#222',
   },
-  emptyPaneSubtitle: {
+  emptyPaneSubtitle: { fontFamily: FONT_TITLE, 
     marginTop: 6,
     fontSize: 14,
     color: '#777',
@@ -3440,12 +3441,12 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
   },
   professionalModalHeaderTextWrap: { flex: 1, paddingRight: 12 },
-  professionalModalTitle: {
+  professionalModalTitle: { fontFamily: FONT_TITLE, 
     fontSize: 18,
     fontWeight: '700',
     color: '#111827',
   },
-  professionalModalSubtitle: {
+  professionalModalSubtitle: { fontFamily: FONT_TITLE, 
     marginTop: 4,
     fontSize: 12,
     lineHeight: 18,
@@ -3465,19 +3466,19 @@ const styles = StyleSheet.create({
     paddingBottom: 18,
   },
   professionalSection: { marginBottom: 18 },
-  professionalLabel: {
+  professionalLabel: { fontFamily: FONT_BODY, 
     fontSize: 13,
     fontWeight: '700',
     color: '#222',
     marginBottom: 8,
   },
-  professionalHelperText: {
+  professionalHelperText: { fontFamily: FONT_BODY, 
     fontSize: 12,
     lineHeight: 18,
     color: '#777',
     marginBottom: 12,
   },
-  professionalErrorText: {
+  professionalErrorText: { fontFamily: FONT_BODY, 
     fontSize: 12,
     lineHeight: 16,
     color: '#c62828',
@@ -3492,7 +3493,7 @@ const styles = StyleSheet.create({
     flexDirection: 'column',
     alignItems: 'stretch',
   },
-  professionalInput: {
+  professionalInput: { fontFamily: FONT_BODY, 
     flex: 1,
     minHeight: 44,
     borderWidth: 1,
@@ -3525,7 +3526,7 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   professionalPrimaryButtonStack: { width: '100%' },
-  professionalPrimaryButtonText: {
+  professionalPrimaryButtonText: { fontFamily: FONT_BODY, 
     color: '#fff',
     fontSize: 13,
     fontWeight: '700',
@@ -3577,12 +3578,12 @@ const styles = StyleSheet.create({
     marginRight: 10,
   },
   professionalMemberTextWrap: { flex: 1, minWidth: 0 },
-  professionalMemberName: {
+  professionalMemberName: { fontFamily: FONT_BODY, 
     fontSize: 13,
     fontWeight: '600',
     color: '#222',
   },
-  professionalMemberMeta: { marginTop: 2, fontSize: 11, color: '#7a7a7a' },
+  professionalMemberMeta: { fontFamily: FONT_BODY, marginTop: 2, fontSize: 11, color: '#7a7a7a' },
   conversationMetaCard: {
     marginBottom: 12,
     padding: 12,
@@ -3591,13 +3592,13 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#f5d0d0',
   },
-  conversationMetaTitle: {
+  conversationMetaTitle: { fontFamily: FONT_TITLE, 
     fontSize: 12,
     fontWeight: '700',
     color: '#222',
     marginBottom: 6,
   },
-  conversationMetaText: { fontSize: 12, color: '#555', marginTop: 2 },
+  conversationMetaText: { fontFamily: FONT_BODY, fontSize: 12, color: '#555', marginTop: 2 },
   attachButton: {
     width: 42,
     height: 42,
@@ -3614,8 +3615,8 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   fileTextContainer: { flex: 1 },
-  fileNameText: { fontWeight: '600' },
-  fileSizeText: { fontSize: 11, marginTop: 2 },
+  fileNameText: { fontFamily: FONT_BODY, fontWeight: '600' },
+  fileSizeText: { fontFamily: FONT_BODY, fontSize: 11, marginTop: 2 },
   fileImageOverlay: {
     position: 'absolute',
     bottom: 0,
@@ -3630,7 +3631,7 @@ const styles = StyleSheet.create({
     borderBottomLeftRadius: 12,
     borderBottomRightRadius: 12,
   },
-  fileImageName: {
+  fileImageName: { fontFamily: FONT_BODY, 
     color: '#fff',
     fontSize: 12,
     fontWeight: '600',
@@ -3653,7 +3654,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     zIndex: 10,
   },
-  imagePreviewTitle: {
+  imagePreviewTitle: { fontFamily: FONT_TITLE, 
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',
@@ -3709,13 +3710,13 @@ const styles = StyleSheet.create({
     marginRight: 10,
   },
   pendingFileDetails: { flex: 1, marginRight: 10 },
-  pendingFileName: {
+  pendingFileName: { fontFamily: FONT_BODY, 
     fontSize: 13,
     fontWeight: '600',
     color: '#111',
     marginBottom: 2,
   },
-  pendingFileSize: { fontSize: 11, color: '#666' },
+  pendingFileSize: { fontFamily: FONT_BODY, fontSize: 11, color: '#666' },
   removeFileButton: { padding: 4 },
 
   // Toast Styles
@@ -3748,7 +3749,7 @@ const styles = StyleSheet.create({
   toastError: {
     backgroundColor: '#d32f2f',
   },
-  toastText: {
+  toastText: { fontFamily: FONT_BODY, 
     color: '#fff',
     fontSize: 14,
     fontWeight: '600',

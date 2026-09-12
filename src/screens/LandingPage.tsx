@@ -297,6 +297,9 @@ export default function LandingPage({ onGetStarted, isSignedIn = false }: Landin
   const [showBackToTop, setShowBackToTop] = useState(false);
   const showBackToTopRef = useRef(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  // Height of the floating top bar (measured live) so scroll content can be
+  // offset to sit just beneath it — keeps the bar visible on every section.
+  const [headerBaseHeight, setHeaderBaseHeight] = useState(110);
   const [policyView, setPolicyView] = useState<PolicyView>("terms");
   const [policyModalVisible, setPolicyModalVisible] = useState(false);
   const sectionPositions = useRef<Record<SectionKey, number>>({
@@ -520,6 +523,30 @@ export default function LandingPage({ onGetStarted, isSignedIn = false }: Landin
   return (
     <SafeAreaView style={styles.safeArea}>
       <StatusBar style="light" />
+
+      {/* Floating top bar — fixed above the scroll view so it's always visible */}
+      <View style={styles.headerFixedWrapper} pointerEvents="box-none">
+        <View
+          style={styles.headerMeasureWrap}
+          onLayout={(event) => {
+            // Skip re-measuring while the mobile dropdown is open so the
+            // reserved scroll-spacer height doesn't jump around.
+            if (!menuOpen) setHeaderBaseHeight(event.nativeEvent.layout.height);
+          }}
+        >
+          <Header
+            isMobile={isMobile}
+            isSmall={isSmall}
+            navItems={navItems}
+            scrollToSection={scrollToSection}
+            onGetStarted={goToSignIn}
+            menuOpen={menuOpen}
+            setMenuOpen={setMenuOpen}
+            isSignedIn={isSignedIn}
+          />
+        </View>
+      </View>
+
       <Animated.ScrollView
         ref={scrollRef as any}
         showsVerticalScrollIndicator={true}
@@ -542,16 +569,8 @@ export default function LandingPage({ onGetStarted, isSignedIn = false }: Landin
           <View style={styles.bgGlowTwo} />
 
           <View style={[styles.container, isSmall && styles.containerSmall]}>
-            <Header 
-              isMobile={isMobile} 
-              isSmall={isSmall} 
-              navItems={navItems} 
-              scrollToSection={scrollToSection} 
-              onGetStarted={goToSignIn}
-              menuOpen={menuOpen}
-              setMenuOpen={setMenuOpen}
-              isSignedIn={isSignedIn}
-            />
+            {/* Reserves space so hero content starts below the floating top bar */}
+            <View style={{ height: headerBaseHeight + (isMobile ? 22 : 30) }} />
 
             <View style={[styles.hero, isDesktop ? styles.heroDesktop : styles.heroStack]}>
               <View style={[styles.heroLeft, isDesktop && styles.heroLeftDesktop]}>
@@ -1639,23 +1658,59 @@ const styles = StyleSheet.create({
   container: { width: "100%", maxWidth: MAX_WIDTH, alignSelf: "center", paddingHorizontal: 38 },
   containerSmall: { paddingHorizontal: 16 },
 
+  // Floating wrapper: pins the bar to the top of the screen (outside the
+  // ScrollView) so it never scrolls out of view on web or native.
+  headerFixedWrapper: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 1000,
+    alignItems: "center",
+    paddingHorizontal: 20,
+    paddingTop: 16,
+  },
+  // Just centers/caps the width of the card at MAX_WIDTH — the visual
+  // "card" styling itself lives on styles.header / styles.headerMobile.
+  headerMeasureWrap: {
+    width: "100%",
+    maxWidth: MAX_WIDTH,
+  },
+  // The "modern container" look for the bar itself: a rounded, translucent,
+  // glass-blurred card that floats above the page rather than a flat strip.
   header: {
-    paddingVertical: 22,
+    width: "100%",
+    maxWidth: MAX_WIDTH,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     gap: 20,
+    paddingVertical: 14,
+    paddingHorizontal: 26,
+    borderRadius: 22,
+    backgroundColor: "rgba(13,16,32,0.72)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.12)",
+    shadowColor: "#000",
+    shadowOpacity: 0.35,
+    shadowRadius: 26,
+    shadowOffset: { width: 0, height: 12 },
+    elevation: 16,
     ...(Platform.OS === "web"
       ? ({
-          position: "sticky",
-          top: 0,
-          zIndex: 100,
-          backgroundColor: "rgba(5,8,23,0.85)",
-          backdropFilter: "blur(10px)",
+          backdropFilter: "blur(20px)",
+          WebkitBackdropFilter: "blur(20px)",
         } as any)
       : {}),
   },
-  headerMobile: { flexDirection: "column", alignItems: "stretch", gap: 12 },
+  headerMobile: {
+    flexDirection: "column",
+    alignItems: "stretch",
+    gap: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 18,
+    borderRadius: 20,
+  },
   brandRow: { flexDirection: "row", alignItems: "center", gap: 14, flexShrink: 1 },
   brandIcon: { width: 60, height: 60, borderRadius: 18, alignItems: "center", justifyContent: "center", overflow: "hidden", backgroundColor: "#fff" },
   brandIconSmall: { width: 48, height: 48, borderRadius: 15 },

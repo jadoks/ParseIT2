@@ -4,7 +4,8 @@ export type AssignmentStatusType =
   | 'pending'
   | 'submitted'
   | 'graded'
-  | 'missing';
+  | 'missing'
+  | 'late';
 
 export interface AnalyticsAssignment {
   id: string;

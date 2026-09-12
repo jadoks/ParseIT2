@@ -21,6 +21,7 @@ import { Announcement } from '../components/AnnouncementModal';
 // screens, Community), instead of the ad-hoc joinFeedback banner that used
 // to live here. Keeps toast styling/behavior consistent app-wide.
 import Toast from '../Final_Admin_Components/Toast'; // adjust path if your folder layout differs
+import { FONT_BODY, FONT_TITLE, WEIGHT_EMPHASIS, WEIGHT_TITLE } from '../theme/typography';
 
 export interface DashboardMaterial {
   id: string;
@@ -1099,7 +1100,7 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     gap: 12,
   },
-  pageTitle: {
+  pageTitle: { fontFamily: FONT_TITLE,
     fontWeight: 'bold',
     paddingBottom: 10,
     textAlign: 'left',
@@ -1136,20 +1137,20 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 2,
   },
-  snapshotLabel: {
+  snapshotLabel: { fontFamily: FONT_BODY,
     fontSize: 12,
     color: '#777',
     marginBottom: 6,
-    fontWeight: '600',
+    fontWeight: WEIGHT_EMPHASIS,
   },
-  snapshotValue: {
+  snapshotValue: { fontFamily: FONT_BODY,
     fontSize: 18,
-    fontWeight: '800',
+    fontWeight: WEIGHT_EMPHASIS,
     color: '#111',
   },
-  snapshotValueSmall: {
+  snapshotValueSmall: { fontFamily: FONT_BODY,
     fontSize: 14,
-    fontWeight: '800',
+    fontWeight: WEIGHT_EMPHASIS,
     color: '#111',
   },
 
@@ -1167,10 +1168,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 8,
   },
-  seeAllButtonText: {
+  seeAllButtonText: { fontFamily: FONT_BODY,
     color: '#D32F2F',
     fontSize: 13,
-    fontWeight: '800',
+    fontWeight: WEIGHT_EMPHASIS,
   },
 
   joinClassButton: {
@@ -1184,10 +1185,10 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 3,
   },
-  joinClassButtonText: {
+  joinClassButtonText: { fontFamily: FONT_BODY,
     color: '#FFFFFF',
     fontSize: 14,
-    fontWeight: '700',
+    fontWeight: WEIGHT_EMPHASIS,
   },
   banner: {
     backgroundColor: '#E53935',
@@ -1202,7 +1203,7 @@ const styles = StyleSheet.create({
   bannerDay: {
     color: '#FFF',
   },
-  bannerLocation: {
+  bannerLocation: { fontFamily: FONT_BODY,
     color: '#FFF',
     fontWeight: 'bold',
     textAlign: 'center',
@@ -1214,8 +1215,8 @@ const styles = StyleSheet.create({
     borderColor: '#F3C6C6',
     marginBottom: 6,
   },
-  sectionTitle: {
-    fontWeight: '700',
+  sectionTitle: { fontFamily: FONT_TITLE,
+    fontWeight: WEIGHT_TITLE,
     color: '#B71C1C',
     marginBottom: 8,
   },
@@ -1233,18 +1234,18 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#F0D9D9',
   },
-  recommendationTitle: {
-    fontWeight: '700',
+  recommendationTitle: { fontFamily: FONT_TITLE,
+    fontWeight: WEIGHT_TITLE,
     color: '#222',
   },
   recommendationMeta: {
     color: '#666',
   },
-  materialHintText: {
+  materialHintText: { fontFamily: FONT_BODY,
     marginTop: 8,
     color: '#B26A00',
     fontSize: 12,
-    fontWeight: '600',
+    fontWeight: WEIGHT_EMPHASIS,
     lineHeight: 18,
   },
   actionRow: {
@@ -1255,14 +1256,14 @@ const styles = StyleSheet.create({
   smallActionBtn: {
     paddingHorizontal: 12,
     paddingVertical: 8,
-    borderRadius: 10,
+    borderRadius: 16,
   },
   disabledActionBtn: {
     backgroundColor: '#BDBDBD',
   },
-  smallActionBtnText: {
+  smallActionBtnText: { fontFamily: FONT_BODY,
     color: '#FFF',
-    fontWeight: '700',
+    fontWeight: WEIGHT_EMPHASIS,
     fontSize: 12,
   },
 
@@ -1291,18 +1292,18 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 2,
   },
-  courseCardTitle: {
+  courseCardTitle: { fontFamily: FONT_TITLE,
     fontSize: 16,
-    fontWeight: '700',
+    fontWeight: WEIGHT_TITLE,
     color: '#111',
     marginBottom: 4,
   },
-  courseInstructor: {
+  courseInstructor: { fontFamily: FONT_BODY,
     fontSize: 13,
     color: '#666',
     marginBottom: 4,
   },
-  courseSubMeta: {
+  courseSubMeta: { fontFamily: FONT_BODY,
     fontSize: 12,
     color: '#777',
     marginBottom: 2,
@@ -1319,10 +1320,10 @@ const styles = StyleSheet.create({
     flex: 1,
     gap: 2,
   },
-  courseScheduleText: {
+  courseScheduleText: { fontFamily: FONT_BODY,
     fontSize: 12,
     color: '#5F6368',
-    fontWeight: '600',
+    fontWeight: WEIGHT_EMPHASIS,
   },
   courseMetaBlock: {
     marginBottom: 10,
@@ -1340,15 +1341,15 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 10,
   },
-  courseMetaLabel: {
+  courseMetaLabel: { fontFamily: FONT_BODY,
     fontSize: 12,
     color: '#888',
     marginBottom: 2,
   },
-  courseMetaValue: {
+  courseMetaValue: { fontFamily: FONT_BODY,
     fontSize: 14,
     color: '#222',
-    fontWeight: '600',
+    fontWeight: WEIGHT_EMPHASIS,
   },
   courseBadge: {
     marginTop: 8,
@@ -1357,9 +1358,9 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     alignSelf: 'flex-start',
   },
-  courseBadgeText: {
+  courseBadgeText: { fontFamily: FONT_BODY,
     color: '#FFF',
-    fontWeight: '700',
+    fontWeight: WEIGHT_EMPHASIS,
     fontSize: 12,
   },
 
@@ -1381,16 +1382,16 @@ const styles = StyleSheet.create({
     marginRight: 12,
     marginTop: 2,
   },
-  lessonBadgeText: {
+  lessonBadgeText: { fontFamily: FONT_BODY,
     color: '#FFF',
     fontSize: 12,
-    fontWeight: '700',
+    fontWeight: WEIGHT_EMPHASIS,
   },
   lessonContent: {
     flex: 1,
   },
-  lessonTitle: {
-    fontWeight: '700',
+  lessonTitle: { fontFamily: FONT_TITLE,
+    fontWeight: WEIGHT_TITLE,
     color: '#222',
     marginBottom: 4,
   },
@@ -1399,7 +1400,7 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
 
-  emptyStateText: {
+  emptyStateText: { fontFamily: FONT_BODY,
     color: '#777',
     fontSize: 14,
   },
@@ -1437,24 +1438,24 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  joinDropdownTitle: {
+  joinDropdownTitle: { fontFamily: FONT_TITLE,
     fontSize: 16,
-    fontWeight: '700',
+    fontWeight: WEIGHT_TITLE,
     color: '#111827',
     marginBottom: 3,
   },
-  joinDropdownSubtitle: {
+  joinDropdownSubtitle: { fontFamily: FONT_TITLE,
     fontSize: 13,
     lineHeight: 18,
     color: '#6B7280',
   },
-  inputLabel: {
+  inputLabel: { fontFamily: FONT_BODY,
     fontSize: 13,
-    fontWeight: '600',
+    fontWeight: WEIGHT_EMPHASIS,
     color: '#374151',
     marginBottom: 8,
   },
-  classCodeInput: {
+  classCodeInput: { fontFamily: FONT_BODY,
     height: 48,
     borderWidth: 1,
     borderColor: '#DADDE2',
@@ -1473,12 +1474,12 @@ const styles = StyleSheet.create({
   cancelButton: {
     paddingHorizontal: 14,
     paddingVertical: 11,
-    borderRadius: 12,
+    borderRadius: 16,
     backgroundColor: '#F3F4F6',
   },
-  cancelButtonText: {
+  cancelButtonText: { fontFamily: FONT_BODY,
     color: '#374151',
-    fontWeight: '600',
+    fontWeight: WEIGHT_EMPHASIS,
     fontSize: 13,
   },
   joinDisabledButton: {
@@ -1494,15 +1495,15 @@ const styles = StyleSheet.create({
   confirmButton: {
     paddingHorizontal: 16,
     paddingVertical: 11,
-    borderRadius: 12,
+    borderRadius: 16,
     backgroundColor: '#D32F2F',
   },
   confirmButtonDisabled: {
     backgroundColor: '#F0A7A7',
   },
-  confirmButtonText: {
+  confirmButtonText: { fontFamily: FONT_BODY,
     color: '#FFFFFF',
-    fontWeight: '700',
+    fontWeight: WEIGHT_EMPHASIS,
     fontSize: 13,
   },
 
@@ -1512,11 +1513,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
   },
-  fullPageLoaderText: {
+  fullPageLoaderText: { fontFamily: FONT_BODY,
     marginTop: 12,
     fontSize: 16,
     color: '#666',
-    fontWeight: '600',
+    fontWeight: WEIGHT_EMPHASIS,
   },
 
   // ✅ Toast portal — matches Community; lets touches pass through to

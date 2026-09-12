@@ -34,6 +34,7 @@ import {
 // ✅ Reuses the same Toast component used across the app, instead of
 // relying on native Alert popups.
 import Toast from '../Final_Admin_Components/Toast';
+import { FONT_BODY, FONT_TITLE } from '../theme/typography';
 
 type CropType = 'profile' | 'banner';
 
@@ -1894,7 +1895,7 @@ const styles = StyleSheet.create({
   nameContainer: {
     justifyContent: 'center',
   },
-  name: {
+  name: { fontFamily: FONT_BODY, 
     fontWeight: '700',
     color: '#111',
   },
@@ -1911,7 +1912,7 @@ const styles = StyleSheet.create({
   editBtnDisabled: {
     opacity: 0.7,
   },
-  editText: {
+  editText: { fontFamily: FONT_BODY, 
     color: '#D32F2F',
     fontWeight: '600',
   },
@@ -1994,7 +1995,7 @@ askText: {
     overflow: 'hidden',
     aspectRatio: 1,
   },
-  postName: {
+  postName: { fontFamily: FONT_BODY, 
     fontWeight: '600',
     color: '#050505',
   },
@@ -2006,7 +2007,7 @@ askText: {
     color: '#050505',
     marginBottom: 10,
   },
-  answerLink: {
+  answerLink: { fontFamily: FONT_BODY, 
     color: '#65676B',
     fontWeight: '600',
     textAlign: 'center',
@@ -2028,7 +2029,7 @@ askText: {
     shadowOffset: { width: 0, height: 4 },
     elevation: 8,
   },
-  dropdownTitle: {
+  dropdownTitle: { fontFamily: FONT_TITLE, 
     fontWeight: '700',
     textAlign: 'center',
     color: '#333',
@@ -2044,7 +2045,7 @@ askText: {
   dropdownIcon: {
     marginRight: 8,
   },
-  dropdownText: {
+  dropdownText: { fontFamily: FONT_BODY, 
     color: '#222',
     fontWeight: '500',
   },
@@ -2089,7 +2090,7 @@ askText: {
     justifyContent: 'center',
     alignItems: 'center',
   },
-  menuText: {
+  menuText: { fontFamily: FONT_BODY, 
     marginLeft: 6,
     fontSize: 14,
     color: '#333',
@@ -2113,22 +2114,22 @@ askText: {
     justifyContent: 'space-between',
     marginBottom: 8,
   },
-  cropHeaderTitle: {
+  cropHeaderTitle: { fontFamily: FONT_TITLE, 
     color: '#FFF',
     fontWeight: '700',
     fontSize: 16,
   },
-  cropCancelText: {
+  cropCancelText: { fontFamily: FONT_BODY, 
     color: '#CFCFCF',
     fontSize: 14,
     fontWeight: '600',
   },
-  cropSaveText: {
+  cropSaveText: { fontFamily: FONT_BODY, 
     color: '#4EA1FF',
     fontSize: 14,
     fontWeight: '700',
   },
-  cropHintText: {
+  cropHintText: { fontFamily: FONT_BODY, 
     color: '#BDBDBD',
     fontSize: 13,
     marginBottom: 14,
@@ -2168,7 +2169,7 @@ askText: {
     justifyContent: 'center',
     alignItems: 'center',
   },
-  cropZoomButtonText: {
+  cropZoomButtonText: { fontFamily: FONT_BODY, 
     color: '#FFF',
     fontSize: 24,
     fontWeight: '600',
@@ -2178,12 +2179,12 @@ askText: {
     minWidth: 90,
     alignItems: 'center',
   },
-  cropZoomLabel: {
+  cropZoomLabel: { fontFamily: FONT_BODY, 
     color: '#BDBDBD',
     fontSize: 12,
     marginBottom: 2,
   },
-  cropZoomValue: {
+  cropZoomValue: { fontFamily: FONT_BODY, 
     color: '#FFF',
     fontSize: 15,
     fontWeight: '700',
@@ -2219,7 +2220,7 @@ askText: {
     alignItems: 'center',
     marginBottom: 16,
   },
-  answersModalTitle: {
+  answersModalTitle: { fontFamily: FONT_TITLE, 
     fontWeight: '700',
     color: '#222',
   },
@@ -2257,21 +2258,21 @@ askText: {
     overflow: 'hidden',
     aspectRatio: 1,
   },
-  answerUserName: {
+  answerUserName: { fontFamily: FONT_BODY, 
     fontSize: 14,
     fontWeight: '700',
     color: '#222',
   },
-  answerDate: {
+  answerDate: { fontFamily: FONT_BODY, 
     fontSize: 12,
     color: '#777',
   },
-  answerPreviewText: {
+  answerPreviewText: { fontFamily: FONT_BODY, 
     fontSize: 14,
     color: '#555',
     lineHeight: 20,
   },
-  noAnswersText: {
+  noAnswersText: { fontFamily: FONT_BODY, 
     fontSize: 14,
     color: '#777',
     textAlign: 'center',
@@ -2283,7 +2284,7 @@ askText: {
     paddingTop: 14,
     marginTop: 4,
   },
-  answerInputLabel: {
+  answerInputLabel: { fontFamily: FONT_BODY, 
     fontWeight: '600',
     color: '#222',
     marginBottom: 8,
@@ -2303,17 +2304,17 @@ askText: {
     backgroundColor: '#D32F2F',
     borderRadius: 8,
   },
-  postAnswerButtonText: {
+  postAnswerButtonText: { fontFamily: FONT_BODY, 
     color: '#FFF',
     fontWeight: '600',
   },
-  confirmTitle: {
+  confirmTitle: { fontFamily: FONT_TITLE, 
     fontSize: 18,
     fontWeight: '700',
     color: '#222',
     marginBottom: 10,
   },
-  confirmMessage: {
+  confirmMessage: { fontFamily: FONT_BODY, 
     fontSize: 14,
     color: '#555',
     lineHeight: 20,
@@ -2330,7 +2331,7 @@ askText: {
     borderRadius: 8,
     backgroundColor: '#E0E0E0',
   },
-  cancelButtonText: {
+  cancelButtonText: { fontFamily: FONT_BODY, 
     color: '#333',
     fontWeight: '600',
   },
@@ -2340,7 +2341,7 @@ askText: {
     borderRadius: 8,
     backgroundColor: '#D32F2F',
   },
-  deleteButtonText: {
+  deleteButtonText: { fontFamily: FONT_BODY, 
     color: '#FFF',
     fontWeight: '600',
   },
