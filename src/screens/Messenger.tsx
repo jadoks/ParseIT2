@@ -359,7 +359,6 @@ const Messenger = ({
   const [hoveredMessageTime, setHoveredMessageTime] = useState('');
   const [tooltipPosition, setTooltipPosition] = useState({ x: 0, y: 0 });
 
-  const [avatarCacheBuster, setAvatarCacheBuster] = useState(() => Date.now());
 
   // Toast State
   const [toast, setToast] = useState<{ visible: boolean; message: string; type: 'success' | 'error' }>({
@@ -797,7 +796,6 @@ const Messenger = ({
       try {
         const freshUrl = await refreshFileUrl(item.avatarStoragePath, item.id);
         if (freshUrl) {
-          setAvatarCacheBuster(Date.now()); // bump only when we actually got a new URL
           setConversations((prev) =>
             prev.map((c) =>
               c.id === item.id
@@ -1872,7 +1870,7 @@ const Messenger = ({
                   <Image
                     source={
                         item.avatarUrl
-                          ? { uri: `${item.avatarUrl}&_cb=${avatarCacheBuster}` }
+                          ? { uri: item.avatarUrl }
                           : item.avatar
                       }
                     onError={() => handleAvatarLoadError(item)}
@@ -1995,7 +1993,7 @@ const Messenger = ({
                 <Image
                   source={
                     item.avatarUrl
-                      ? { uri: `${item.avatarUrl}&_cb=${avatarCacheBuster}` }
+                      ? { uri: item.avatarUrl }
                       : item.avatar
                   }
                   onError={() => handleAvatarLoadError(item)}
