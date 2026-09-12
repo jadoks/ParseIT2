@@ -4193,7 +4193,11 @@ useEffect(() => {
     return (
       <>
         <Text style={styles.sectionLabel}>Select Game</Text>
-        <View style={styles.formDropdownContainer}>
+        {/* ✅ FIX: match the { marginTop: 8 } used on the Assignment Type
+            dropdown's container so both boxes sit at the same vertical
+            offset below their labels — otherwise this one renders a few
+            pixels higher than the Assignment Type dropdown next to it. */}
+        <View style={[styles.formDropdownContainer, { marginTop: 8 }]}>
           {renderFormDropdownTrigger(
             selectedGame?.label || '',
             'Choose a game type',
@@ -4588,9 +4592,12 @@ useEffect(() => {
         <View style={styles.fullWidthSection}>
           {/* Row 1: Assignment Type, and — only for a Game-Based Learning
               Assignment — Select Game right beside it, instead of tucked
-              off to the far right above Due Date. */}
+              off to the far right above Due Date. Assignment Type always
+              gets the same dropdownWrapHalf width as Header below it
+              (even when Select Game isn't shown), so the two stay aligned
+              instead of the dropdown stretching full-width. */}
           <View style={[styles.gameAndClassRow, isMobile && styles.gameAndClassRowMobile]}>
-            <View style={[styles.dropdownWrap, !isMobile && assignmentType === 'game_based' && styles.dropdownWrapHalf]}>
+            <View style={[styles.dropdownWrap, !isMobile && styles.dropdownWrapHalf]}>
               {renderAssignmentTypeSelector({
                 onLayout: (e) => {
                   if (!isMobile) setRegularSubmissionChipWidth(e.nativeEvent.layout.width);
