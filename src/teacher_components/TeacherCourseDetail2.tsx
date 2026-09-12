@@ -10,7 +10,6 @@ import {
   Linking,
   Modal,
   Platform,
-  Pressable,
   ScrollView,
   StyleProp,
   StyleSheet,
@@ -1242,6 +1241,10 @@ const TeacherCourseDetail2 = ({
   const [timeLimit, setTimeLimit] = useState<string>('');
   const [customTimeLimit, setCustomTimeLimit] = useState<string>('');
   const [showGameTypeModal, setShowGameTypeModal] = useState(false);
+  // ✅ NEW: Assignment Type is now a dropdown (same pattern as the
+  // Assignments.tsx filter dropdown, and the Game Type dropdown below)
+  // instead of the old two-chip toggle.
+  const [showAssignmentTypeDropdown, setShowAssignmentTypeDropdown] = useState(false);
   const [generatedQuestions, setGeneratedQuestions] = useState<any[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
   const [showGeneratedPreview, setShowGeneratedPreview] = useState(false);
@@ -1253,6 +1256,14 @@ const TeacherCourseDetail2 = ({
     { value: 'memory_match', label: 'Memory Match', desc: 'Match terms ↔ definitions' },
     { value: 'fill_in_blanks', label: 'Fill-in-the-Blanks', desc: 'Complete missing keywords' },
     { value: 'flashcard', label: 'Flashcard Challenge', desc: 'Review flashcards & answer questions' },
+  ];
+
+  // ✅ NEW: options for the Assignment Type dropdown.
+  // "Regular Submission" → "Standard Assignment"
+  // "Game Based Assignment" → "Game-Based Learning Assignment"
+  const assignmentTypeOptions: { value: 'regular' | 'game_based'; label: string; desc?: string }[] = [
+    { value: 'regular', label: 'Standard Assignment', desc: 'Students submit files or links for grading' },
+    { value: 'game_based', label: 'Game-Based Learning Assignment', desc: 'Students play an interactive game to earn points' },
   ];
 
   // Replaced showResultModal with toast.show
@@ -3894,6 +3905,199 @@ useEffect(() => {
     );
   };
 
+  // ══════════════════════════════════════════════════════════════════════
+  // ✅ NEW: Generic dropdown field — same visual/interaction pattern as the
+  // "Filter Assignments" dropdown in Assignments.tsx: a button with a
+  // chevron that reveals an inline absolutely-positioned menu on large
+  // screens, or a bottom-sheet Modal on mobile (so it's never clipped by a
+  // surrounding ScrollView/Modal). Shared by both the Assignment Type and
+  // Game Type dropdowns below so they look and behave identically.
+  // ══════════════════════════════════════════════════════════════════════
+  const renderFormDropdownTrigger = (
+    label: string,
+    placeholder: string,
+    visible: boolean,
+    setVisible: (v: boolean) => void,
+    hasError?: boolean,
+    disabled?: boolean,
+    onLayout?: (e: any) => void
+  ) => (
+    <TouchableOpacity
+      style={[
+        styles.dropdownTrigger,
+        hasError ? styles.errorBorder : null,
+        disabled ? styles.disabledInput : null,
+      ]}
+      onPress={() => setVisible(!visible)}
+      disabled={disabled}
+      activeOpacity={0.8}
+      onLayout={onLayout}
+    >
+      <Text style={[styles.dropdownText, !label && styles.dropdownPlaceholder]} numberOfLines={1}>
+        {label || placeholder}
+      </Text>
+      <Ionicons name={visible ? 'chevron-up' : 'chevron-down'} size={18} color="#D32F2F" />
+    </TouchableOpacity>
+  );
+
+  const renderFormDropdownOptions = (
+    options: { value: string; label: string; desc?: string }[],
+    selectedValue: string,
+    onSelect: (value: string) => void,
+    visible: boolean,
+    setVisible: (v: boolean) => void,
+    sheetTitle: string
+  ) => {
+    if (!visible) return null;
+
+    // ✅ Mobile: bottom-sheet Modal, same as Assignments.tsx's
+    // "Filter Assignments" sheet — renders above everything so it's always
+    // tappable even from inside another Modal.
+    if (isMobile) {
+      return (
+        <Modal
+          visible={visible}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setVisible(false)}
+          statusBarTranslucent
+        >
+          <TouchableOpacity
+            style={styles.formDropdownModalOverlay}
+            activeOpacity={1}
+            onPress={() => setVisible(false)}
+          >
+            <TouchableOpacity style={styles.formDropdownModalSheet} activeOpacity={1} onPress={() => {}}>
+              <View style={styles.formDropdownModalHandle} />
+              <View style={styles.formDropdownModalHeader}>
+                <Text style={styles.formDropdownModalTitle}>{sheetTitle}</Text>
+                <TouchableOpacity onPress={() => setVisible(false)} hitSlop={8}>
+                  <Ionicons name="close" size={22} color="#3B332E" />
+                </TouchableOpacity>
+              </View>
+              <ScrollView style={styles.formDropdownModalScroll} showsVerticalScrollIndicator={false}>
+                {options.map((opt) => {
+                  const isSelected = opt.value === selectedValue;
+                  return (
+                    <TouchableOpacity
+                      key={opt.value}
+                      style={[
+                        styles.formDropdownModalItem,
+                        isSelected && styles.formDropdownModalItemSelected,
+                      ]}
+                      onPress={() => {
+                        onSelect(opt.value);
+                        setVisible(false);
+                      }}
+                      activeOpacity={0.8}
+                    >
+                      <View style={{ flex: 1 }}>
+                        <Text
+                          style={[
+                            styles.formDropdownModalItemText,
+                            isSelected && styles.formDropdownModalItemTextSelected,
+                          ]}
+                        >
+                          {opt.label}
+                        </Text>
+                        {!!opt.desc && (
+                          <Text style={styles.formDropdownModalItemDesc}>{opt.desc}</Text>
+                        )}
+                      </View>
+                      {isSelected ? (
+                        <Ionicons name="checkmark" size={18} color="#B71C1C" />
+                      ) : null}
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            </TouchableOpacity>
+          </TouchableOpacity>
+        </Modal>
+      );
+    }
+
+    // ✅ Desktop/large-screen: inline dropdown, absolutely positioned just
+    // below the trigger button — matching Assignments.tsx's inline variant.
+    return (
+      <View style={styles.formInlineDropdownMenu}>
+        <ScrollView nestedScrollEnabled showsVerticalScrollIndicator={false} style={{ maxHeight: 260 }}>
+          {options.map((opt) => {
+            const isSelected = opt.value === selectedValue;
+            return (
+              <TouchableOpacity
+                key={opt.value}
+                style={styles.formDropdownItem}
+                onPress={() => {
+                  onSelect(opt.value);
+                  setVisible(false);
+                }}
+                activeOpacity={0.8}
+              >
+                <View style={{ flex: 1 }}>
+                  <Text
+                    style={[
+                      styles.formDropdownItemText,
+                      isSelected && styles.formDropdownItemTextSelected,
+                    ]}
+                  >
+                    {opt.label}
+                  </Text>
+                  {!!opt.desc && <Text style={styles.formDropdownItemDesc}>{opt.desc}</Text>}
+                </View>
+                {isSelected ? <Ionicons name="checkmark" size={16} color="#B71C1C" /> : null}
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+      </View>
+    );
+  };
+
+  // ✅ NEW: "Assignment Type" as a dropdown (Standard Assignment /
+  // Game-Based Learning Assignment) using the shared dropdown pattern above.
+  // Used by both the Create Assignment and Update Assignment forms.
+  const renderAssignmentTypeSelector = (options?: {
+    disabled?: boolean;
+    warningText?: string;
+    onLayout?: (e: any) => void;
+  }) => {
+    const disabled = isSaving || !!options?.disabled;
+    const selected = assignmentTypeOptions.find((o) => o.value === assignmentType);
+    return (
+      <View style={styles.sectionBlock}>
+        <Text style={styles.sectionLabel}>Assignment Type</Text>
+        <View style={[styles.formDropdownContainer, { marginTop: 8 }]}>
+          {renderFormDropdownTrigger(
+            selected?.label || '',
+            'Select assignment type',
+            showAssignmentTypeDropdown,
+            setShowAssignmentTypeDropdown,
+            false,
+            disabled,
+            options?.onLayout
+          )}
+          {renderFormDropdownOptions(
+            assignmentTypeOptions,
+            assignmentType,
+            (value) => {
+              setAssignmentType(value as 'regular' | 'game_based');
+              if (value === 'game_based') setAssignmentDisableRepositoryAfterDue(false);
+            },
+            showAssignmentTypeDropdown,
+            setShowAssignmentTypeDropdown,
+            'Select Assignment Type'
+          )}
+        </View>
+        {options?.warningText && (
+          <Text style={{ fontSize: 12, color: '#D32F2F', marginTop: 8, lineHeight: 17 }}>
+            {options.warningText}
+          </Text>
+        )}
+      </View>
+    );
+  };
+
   const renderDateTimeField = () => (
     <View style={styles.sectionBlock}>
       <Text style={styles.sectionLabel}>Due Date & Time</Text>
@@ -3946,20 +4150,27 @@ useEffect(() => {
       >
         <View style={[styles.dropdownWrap, !isMobile && desktopWidthStyle]}>
           <Text style={styles.sectionLabel}>Select Game</Text>
-          <TouchableOpacity
-            style={[styles.dropdownTrigger, errors.gameType ? styles.errorBorder : null]}
-            onPress={() => setShowGameTypeModal(true)}
-            disabled={isSaving}
-            activeOpacity={0.8}
-          >
-            <Text
-              style={[styles.dropdownText, !selectedGame && styles.dropdownPlaceholder]}
-              numberOfLines={1}
-            >
-              {selectedGame ? selectedGame.label : 'Choose a game type'}
-            </Text>
-            <Ionicons name="chevron-down" size={18} color="#D32F2F" />
-          </TouchableOpacity>
+          <View style={styles.formDropdownContainer}>
+            {renderFormDropdownTrigger(
+              selectedGame?.label || '',
+              'Choose a game type',
+              showGameTypeModal,
+              setShowGameTypeModal,
+              !!errors.gameType,
+              isSaving
+            )}
+            {renderFormDropdownOptions(
+              gameOptions,
+              gameType,
+              (value) => {
+                setGameType(value as any);
+                if (errors.gameType) setErrors((prev) => ({ ...prev, gameType: undefined }));
+              },
+              showGameTypeModal,
+              setShowGameTypeModal,
+              'Select Game Type'
+            )}
+          </View>
           {renderInputError(errors.gameType)}
         </View>
       </View>
@@ -4067,55 +4278,12 @@ useEffect(() => {
 
   const renderAssignmentFields = () => (
     <View style={[styles.formGrid, !isMobile && styles.formGridDesktop]}>
-      <View style={styles.sectionBlock}>
-        <Text style={styles.sectionLabel}>Assignment Type</Text>
-        <View style={{ flexDirection: 'row', gap: 10, marginTop: 8 }}>
-          <TouchableOpacity
-            style={[
-              styles.typeChip,
-              assignmentType === 'regular' && styles.typeChipActive,
-              hasSubmissionsForSelected && styles.disabledButton,
-            ]}
-            onPress={() => setAssignmentType('regular')}
-            disabled={isSaving || hasSubmissionsForSelected}
-          >
-            <Text
-              style={[
-                styles.typeChipText,
-                assignmentType === 'regular' && styles.typeChipTextActive,
-              ]}
-            >
-              Regular Submission
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[
-              styles.typeChip,
-              assignmentType === 'game_based' && styles.typeChipActive,
-              hasSubmissionsForSelected && styles.disabledButton,
-            ]}
-            onPress={() => {
-              setAssignmentType('game_based');
-              setAssignmentDisableRepositoryAfterDue(false);
-            }}
-            disabled={isSaving || hasSubmissionsForSelected}
-          >
-            <Text
-              style={[
-                styles.typeChipText,
-                assignmentType === 'game_based' && styles.typeChipTextActive,
-              ]}
-            >
-              Game Based Assignment
-            </Text>
-          </TouchableOpacity>
-        </View>
-        {hasSubmissionsForSelected && (
-          <Text style={{ fontSize: 12, color: '#D32F2F', marginTop: 8, lineHeight: 17 }}>
-            Type is locked because students have already submitted work for this assignment.
-          </Text>
-        )}
-      </View>
+      {renderAssignmentTypeSelector({
+        disabled: hasSubmissionsForSelected,
+        warningText: hasSubmissionsForSelected
+          ? 'Type is locked because students have already submitted work for this assignment.'
+          : undefined,
+      })}
       {assignmentType === 'game_based' && renderGameAndClassRow(styles.dropdownWrapHalf, 'flex-start')}
       <View style={styles.fullWidthSection}>
         <View style={[styles.gameAndClassRow, isMobile && styles.gameAndClassRowMobile]}>
@@ -4335,45 +4503,11 @@ useEffect(() => {
     }
     return (
       <View style={[styles.formGrid, !isMobile && styles.formGridDesktop]}>
-        <View style={styles.sectionBlock}>
-          <Text style={styles.sectionLabel}>Assignment Type</Text>
-          <View style={{ flexDirection: 'row', gap: 10, marginTop: 8 }}>
-            <TouchableOpacity
-              style={[styles.typeChip, assignmentType === 'regular' && styles.typeChipActive]}
-              onPress={() => setAssignmentType('regular')}
-              onLayout={(e) => {
-                if (!isMobile) setRegularSubmissionChipWidth(e.nativeEvent.layout.width);
-              }}
-              disabled={isSaving}
-            >
-              <Text
-                style={[
-                  styles.typeChipText,
-                  assignmentType === 'regular' && styles.typeChipTextActive,
-                ]}
-              >
-                Regular Submission
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.typeChip, assignmentType === 'game_based' && styles.typeChipActive]}
-              onPress={() => {
-                setAssignmentType('game_based');
-                setAssignmentDisableRepositoryAfterDue(false);
-              }}
-              disabled={isSaving}
-            >
-              <Text
-                style={[
-                  styles.typeChipText,
-                  assignmentType === 'game_based' && styles.typeChipTextActive,
-                ]}
-              >
-                Game Based Assignment
-              </Text>
-            </TouchableOpacity>
-          </View>
-        </View>
+        {renderAssignmentTypeSelector({
+          onLayout: (e) => {
+            if (!isMobile) setRegularSubmissionChipWidth(e.nativeEvent.layout.width);
+          },
+        })}
         {assignmentType === 'game_based' && renderGameAndClassRow(styles.formColumnRightDesktop)}
         <View style={[styles.formColumnLeft, !isMobile && styles.formColumnLeftDesktop]}>
           <Text style={styles.sectionLabel}>Header</Text>
@@ -5125,79 +5259,6 @@ DATE TIME MODAL
               </View>
             </View>
           </View>
-        </Modal>
-        {/* ══════════════════════════════════════════════════════════════════════
-GAME TYPE MODAL
-════════════════════════════════════════════════════════════════════════ */}
-        <Modal
-          visible={showGameTypeModal}
-          transparent
-          animationType="fade"
-          onRequestClose={() => setShowGameTypeModal(false)}
-        >
-          <Pressable style={styles.modalOverlayCenter} onPress={() => setShowGameTypeModal(false)}>
-            <Pressable
-              style={[
-                styles.modalCardElevated,
-                { width: isMobile ? Math.min(width - 28, 360) : 450, maxHeight: height * 0.8 },
-              ]}
-            >
-              <View style={styles.createHeaderRow}>
-                <View style={styles.modalHeaderTextWrap}>
-                  <Text style={styles.createTitle}>Select Game Type</Text>
-                  <Text style={styles.modalSubtitle}>
-                    Choose the interactive format for this assignment.
-                  </Text>
-                </View>
-                <TouchableOpacity onPress={() => setShowGameTypeModal(false)}>
-                  <Ionicons name="close" size={24} color="#111" />
-                </TouchableOpacity>
-              </View>
-              <ScrollView showsVerticalScrollIndicator={false} nestedScrollEnabled>
-                {gameOptions.map((opt) => (
-                  <TouchableOpacity
-                    key={opt.value}
-                    style={[
-                      styles.dropdownItem,
-                      gameType === opt.value && styles.dropdownItemActive,
-                    ]}
-                    onPress={() => {
-                      setGameType(opt.value as any);
-                      setShowGameTypeModal(false);
-                      if (errors.gameType) setErrors((prev) => ({ ...prev, gameType: undefined }));
-                    }}
-                  >
-                    <Ionicons
-                      name={gameType === opt.value ? 'radio-button-on' : 'radio-button-off'}
-                      size={18}
-                      color={gameType === opt.value ? '#FFF' : '#D32F2F'}
-                      style={{ marginRight: 12 }}
-                    />
-                    <View style={{ flex: 1 }}>
-                      <Text
-                        style={[
-                          styles.dropdownItemText,
-                          gameType === opt.value && styles.dropdownItemTextActive,
-                        ]}
-                      >
-                        {opt.label}
-                      </Text>
-                      {!!opt.desc && (
-                        <Text
-                          style={[
-                            styles.dropdownItemDesc,
-                            gameType === opt.value && styles.dropdownItemDescActive,
-                          ]}
-                        >
-                          {opt.desc}
-                        </Text>
-                      )}
-                    </View>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-            </Pressable>
-          </Pressable>
         </Modal>
       {/* ══════════════════════════════════════════════════════════════════════
 GENERATED QUESTIONS PREVIEW MODAL (Submissions-screen entry point)
@@ -6051,7 +6112,7 @@ CREATE MODAL
                   {activeTab === 'materials'
                     ? 'Material'
                     : assignmentType === 'game_based'
-                      ? 'Game-Based Assignment'
+                      ? 'Game-Based Learning Assignment'
                       : 'Assignment'}
                 </Text>
                 <Text style={styles.modalSubtitle}>
@@ -6271,79 +6332,6 @@ DATE TIME MODAL
             </View>
           </View>
         </View>
-      </Modal>
-      {/* ══════════════════════════════════════════════════════════════════════
-GAME TYPE MODAL
-════════════════════════════════════════════════════════════════════════ */}
-      <Modal
-        visible={showGameTypeModal}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setShowGameTypeModal(false)}
-      >
-        <Pressable style={styles.modalOverlayCenter} onPress={() => setShowGameTypeModal(false)}>
-          <Pressable
-            style={[
-              styles.modalCardElevated,
-              { width: isMobile ? Math.min(width - 28, 360) : 450, maxHeight: height * 0.8 },
-            ]}
-          >
-            <View style={styles.createHeaderRow}>
-              <View style={styles.modalHeaderTextWrap}>
-                <Text style={styles.createTitle}>Select Game Type</Text>
-                <Text style={styles.modalSubtitle}>
-                  Choose the interactive format for this assignment.
-                </Text>
-              </View>
-              <TouchableOpacity onPress={() => setShowGameTypeModal(false)}>
-                <Ionicons name="close" size={24} color="#111" />
-              </TouchableOpacity>
-            </View>
-            <ScrollView showsVerticalScrollIndicator={false} nestedScrollEnabled>
-              {gameOptions.map((opt) => (
-                <TouchableOpacity
-                  key={opt.value}
-                  style={[
-                    styles.dropdownItem,
-                    gameType === opt.value && styles.dropdownItemActive,
-                  ]}
-                  onPress={() => {
-                    setGameType(opt.value as any);
-                    setShowGameTypeModal(false);
-                    if (errors.gameType) setErrors((prev) => ({ ...prev, gameType: undefined }));
-                  }}
-                >
-                  <Ionicons
-                    name={gameType === opt.value ? 'radio-button-on' : 'radio-button-off'}
-                    size={18}
-                    color={gameType === opt.value ? '#FFF' : '#D32F2F'}
-                    style={{ marginRight: 12 }}
-                  />
-                  <View style={{ flex: 1 }}>
-                    <Text
-                      style={[
-                        styles.dropdownItemText,
-                        gameType === opt.value && styles.dropdownItemTextActive,
-                      ]}
-                    >
-                      {opt.label}
-                    </Text>
-                    {!!opt.desc && (
-                      <Text
-                        style={[
-                          styles.dropdownItemDesc,
-                          gameType === opt.value && styles.dropdownItemDescActive,
-                        ]}
-                      >
-                        {opt.desc}
-                      </Text>
-                    )}
-                  </View>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-          </Pressable>
-        </Pressable>
       </Modal>
       {/* ══════════════════════════════════════════════════════════════════════
 GENERATED QUESTIONS PREVIEW MODAL
@@ -8655,6 +8643,92 @@ const styles = StyleSheet.create({
   },
   dropdownText: { fontFamily: FONT_BODY, color: '#111', fontWeight: '600', fontSize: 14, flex: 1, marginRight: 8 },
   dropdownPlaceholder: { color: '#999' },
+
+  // ✅ NEW: shared dropdown-field styles (Assignment Type + Game Type),
+  // matching the "Filter Assignments" dropdown pattern in Assignments.tsx —
+  // an inline absolutely-positioned menu on large screens, or a bottom-sheet
+  // Modal on mobile.
+  formDropdownContainer: { position: 'relative', zIndex: 4000 },
+  formInlineDropdownMenu: {
+    position: 'absolute',
+    top: 54,
+    left: 0,
+    right: 0,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#CFCFCF',
+    overflow: 'hidden',
+    zIndex: 5000,
+    maxHeight: 260,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 10,
+    elevation: 6,
+  },
+  formDropdownItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#FFFFFF',
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F5F5F5',
+  },
+  formDropdownItemText: { fontFamily: FONT_BODY, fontSize: 14, fontWeight: WEIGHT_EMPHASIS, color: '#111' },
+  formDropdownItemTextSelected: { color: '#B71C1C' },
+  formDropdownItemDesc: { fontFamily: FONT_BODY, fontSize: 11, color: '#888', marginTop: 2, lineHeight: 15 },
+
+  // ✅ Mobile bottom-sheet Modal variant — same shape as Assignments.tsx's
+  // "Filter Assignments" sheet.
+  formDropdownModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'flex-end',
+  },
+  formDropdownModalSheet: {
+    width: '100%',
+    maxHeight: '70%',
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingHorizontal: 18,
+    paddingTop: 10,
+    paddingBottom: 24,
+  },
+  formDropdownModalHandle: {
+    alignSelf: 'center',
+    width: 40,
+    height: 4,
+    borderRadius: 14,
+    backgroundColor: '#DDD6CE',
+    marginBottom: 12,
+  },
+  formDropdownModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+    paddingBottom: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F0EBE4',
+  },
+  formDropdownModalTitle: { fontFamily: FONT_TITLE, fontSize: 15, fontWeight: WEIGHT_TITLE, color: '#3B332E' },
+  formDropdownModalScroll: { maxHeight: 320 },
+  formDropdownModalItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 14,
+    paddingHorizontal: 10,
+    borderRadius: 16,
+  },
+  formDropdownModalItemSelected: { backgroundColor: '#FDECEC' },
+  formDropdownModalItemText: { fontFamily: FONT_BODY, fontSize: 14, fontWeight: WEIGHT_EMPHASIS, color: '#111' },
+  formDropdownModalItemTextSelected: { fontFamily: FONT_BODY, color: '#B71C1C', fontWeight: WEIGHT_EMPHASIS },
+  formDropdownModalItemDesc: { fontFamily: FONT_BODY, fontSize: 12, color: '#888', marginTop: 2, lineHeight: 16 },
   dropdownItem: {
     flexDirection: 'row',
     alignItems: 'center',
