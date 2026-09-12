@@ -1245,6 +1245,23 @@ const TeacherCourseDetail2 = ({
   // Assignments.tsx filter dropdown, and the Game Type dropdown below)
   // instead of the old two-chip toggle.
   const [showAssignmentTypeDropdown, setShowAssignmentTypeDropdown] = useState(false);
+  // ✅ FIX: On desktop, the "Assignment Type" / "Select Game" dropdown menus
+  // used to be plain absolutely-positioned Views living inside the form's
+  // normal layout tree. Other fields further down the form (Header,
+  // Instruction, etc.) could end up painting ON TOP of the open menu
+  // instead of the menu sitting in front of them. We now open the menu
+  // inside a transparent Modal (same trick already used on mobile), which
+  // always paints above everything else, and we measure the trigger's
+  // on-screen position first so the menu still appears anchored directly
+  // under the button like before.
+  const assignmentTypeTriggerRef = useRef<any>(null);
+  const gameTypeTriggerRef = useRef<any>(null);
+  const [assignmentTypeMenuRect, setAssignmentTypeMenuRect] = useState<{
+    x: number; y: number; width: number; height: number;
+  } | null>(null);
+  const [gameTypeMenuRect, setGameTypeMenuRect] = useState<{
+    x: number; y: number; width: number; height: number;
+  } | null>(null);
   const [generatedQuestions, setGeneratedQuestions] = useState<any[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
   const [showGeneratedPreview, setShowGeneratedPreview] = useState(false);
@@ -3920,15 +3937,31 @@ useEffect(() => {
     setVisible: (v: boolean) => void,
     hasError?: boolean,
     disabled?: boolean,
-    onLayout?: (e: any) => void
+    onLayout?: (e: any) => void,
+    // ✅ FIX: optional ref + measurement callback so the menu (rendered in a
+    // Modal on desktop, see renderFormDropdownOptions) can be anchored to
+    // this button's actual on-screen position instead of relying on normal
+    // in-flow stacking, which was letting other fields paint over it.
+    triggerRef?: React.RefObject<any>,
+    onMeasured?: (rect: { x: number; y: number; width: number; height: number }) => void
   ) => (
     <TouchableOpacity
+      ref={triggerRef}
       style={[
         styles.dropdownTrigger,
         hasError ? styles.errorBorder : null,
         disabled ? styles.disabledInput : null,
       ]}
-      onPress={() => setVisible(!visible)}
+      onPress={() => {
+        if (!visible && !isMobile && triggerRef?.current?.measureInWindow) {
+          triggerRef.current.measureInWindow((x: number, y: number, w: number, h: number) => {
+            onMeasured?.({ x, y, width: w, height: h });
+            setVisible(true);
+          });
+        } else {
+          setVisible(!visible);
+        }
+      }}
       disabled={disabled}
       activeOpacity={0.8}
       onLayout={onLayout}
@@ -3946,7 +3979,11 @@ useEffect(() => {
     onSelect: (value: string) => void,
     visible: boolean,
     setVisible: (v: boolean) => void,
-    sheetTitle: string
+    sheetTitle: string,
+    // ✅ FIX: on desktop the menu now renders inside a transparent Modal,
+    // anchored to this measured trigger rect, so it always paints in front
+    // of the rest of the form instead of behind other fields.
+    anchorRect?: { x: number; y: number; width: number; height: number } | null
   ) => {
     if (!visible) return null;
 
@@ -4017,40 +4054,66 @@ useEffect(() => {
       );
     }
 
-    // ✅ Desktop/large-screen: inline dropdown, absolutely positioned just
-    // below the trigger button — matching Assignments.tsx's inline variant.
+    // ✅ FIX: Desktop/large-screen menu now renders inside its own
+    // transparent Modal, anchored (via measured trigger coordinates) just
+    // below the button — visually identical to the old inline dropdown, but
+    // a Modal always paints in its own top-level layer above the rest of
+    // the form, so it can no longer end up rendered behind the Header,
+    // Instruction, or any other field.
+    const menuLeft = anchorRect?.x ?? 0;
+    const menuTop = (anchorRect?.y ?? 0) + (anchorRect?.height ?? 0) + 6;
+    const menuWidth = anchorRect?.width ?? 260;
     return (
-      <View style={styles.formInlineDropdownMenu}>
-        <ScrollView nestedScrollEnabled showsVerticalScrollIndicator={false} style={{ maxHeight: 260 }}>
-          {options.map((opt) => {
-            const isSelected = opt.value === selectedValue;
-            return (
-              <TouchableOpacity
-                key={opt.value}
-                style={styles.formDropdownItem}
-                onPress={() => {
-                  onSelect(opt.value);
-                  setVisible(false);
-                }}
-                activeOpacity={0.8}
-              >
-                <View style={{ flex: 1 }}>
-                  <Text
-                    style={[
-                      styles.formDropdownItemText,
-                      isSelected && styles.formDropdownItemTextSelected,
-                    ]}
+      <Modal visible={visible} transparent animationType="fade" onRequestClose={() => setVisible(false)}>
+        <TouchableOpacity
+          style={{ flex: 1 }}
+          activeOpacity={1}
+          onPress={() => setVisible(false)}
+        >
+          <View
+            style={[
+              styles.formInlineDropdownMenu,
+              {
+                position: 'absolute',
+                top: menuTop,
+                left: menuLeft,
+                right: undefined,
+                width: menuWidth,
+              },
+            ]}
+          >
+            <ScrollView nestedScrollEnabled showsVerticalScrollIndicator={false} style={{ maxHeight: 260 }}>
+              {options.map((opt) => {
+                const isSelected = opt.value === selectedValue;
+                return (
+                  <TouchableOpacity
+                    key={opt.value}
+                    style={styles.formDropdownItem}
+                    onPress={() => {
+                      onSelect(opt.value);
+                      setVisible(false);
+                    }}
+                    activeOpacity={0.8}
                   >
-                    {opt.label}
-                  </Text>
-                  {!!opt.desc && <Text style={styles.formDropdownItemDesc}>{opt.desc}</Text>}
-                </View>
-                {isSelected ? <Ionicons name="checkmark" size={16} color="#B71C1C" /> : null}
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
-      </View>
+                    <View style={{ flex: 1 }}>
+                      <Text
+                        style={[
+                          styles.formDropdownItemText,
+                          isSelected && styles.formDropdownItemTextSelected,
+                        ]}
+                      >
+                        {opt.label}
+                      </Text>
+                      {!!opt.desc && <Text style={styles.formDropdownItemDesc}>{opt.desc}</Text>}
+                    </View>
+                    {isSelected ? <Ionicons name="checkmark" size={16} color="#B71C1C" /> : null}
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
+        </TouchableOpacity>
+      </Modal>
     );
   };
 
@@ -4075,7 +4138,9 @@ useEffect(() => {
             setShowAssignmentTypeDropdown,
             false,
             disabled,
-            options?.onLayout
+            options?.onLayout,
+            assignmentTypeTriggerRef,
+            setAssignmentTypeMenuRect
           )}
           {renderFormDropdownOptions(
             assignmentTypeOptions,
@@ -4086,7 +4151,8 @@ useEffect(() => {
             },
             showAssignmentTypeDropdown,
             setShowAssignmentTypeDropdown,
-            'Select Assignment Type'
+            'Select Assignment Type',
+            assignmentTypeMenuRect
           )}
         </View>
         {options?.warningText && (
@@ -4118,6 +4184,45 @@ useEffect(() => {
     </View>
   );
 
+  // ✅ Extracted just the "Select Game" field itself (label + dropdown +
+  // error), without any surrounding row/width wrapper, so it can be dropped
+  // into whichever row layout a given modal needs — e.g. next to
+  // "Assignment Type" in the Create modal (see renderCreateModalBody).
+  const renderSelectGameField = () => {
+    const selectedGame = gameOptions.find((g) => g.value === gameType);
+    return (
+      <>
+        <Text style={styles.sectionLabel}>Select Game</Text>
+        <View style={styles.formDropdownContainer}>
+          {renderFormDropdownTrigger(
+            selectedGame?.label || '',
+            'Choose a game type',
+            showGameTypeModal,
+            setShowGameTypeModal,
+            !!errors.gameType,
+            isSaving,
+            undefined,
+            gameTypeTriggerRef,
+            setGameTypeMenuRect
+          )}
+          {renderFormDropdownOptions(
+            gameOptions,
+            gameType,
+            (value) => {
+              setGameType(value as any);
+              if (errors.gameType) setErrors((prev) => ({ ...prev, gameType: undefined }));
+            },
+            showGameTypeModal,
+            setShowGameTypeModal,
+            'Select Game Type',
+            gameTypeMenuRect
+          )}
+        </View>
+        {renderInputError(errors.gameType)}
+      </>
+    );
+  };
+
   const renderGameAndClassRow = (
     // ✅ UPDATED: This row is shared by two modals whose "Due Date & Time"
     // field is sized differently:
@@ -4134,7 +4239,6 @@ useEffect(() => {
     // left — hence this alignment override.
     desktopAlign: 'flex-start' | 'flex-end' = 'flex-end'
   ) => {
-    const selectedGame = gameOptions.find((g) => g.value === gameType);
     // This form always creates the game-based assignment for the class whose
     // detail page it was opened from — selectedClassId is initialized to,
     // and reset to, course.id (see resetCreateForm). There's nothing to
@@ -4149,29 +4253,7 @@ useEffect(() => {
         ]}
       >
         <View style={[styles.dropdownWrap, !isMobile && desktopWidthStyle]}>
-          <Text style={styles.sectionLabel}>Select Game</Text>
-          <View style={styles.formDropdownContainer}>
-            {renderFormDropdownTrigger(
-              selectedGame?.label || '',
-              'Choose a game type',
-              showGameTypeModal,
-              setShowGameTypeModal,
-              !!errors.gameType,
-              isSaving
-            )}
-            {renderFormDropdownOptions(
-              gameOptions,
-              gameType,
-              (value) => {
-                setGameType(value as any);
-                if (errors.gameType) setErrors((prev) => ({ ...prev, gameType: undefined }));
-              },
-              showGameTypeModal,
-              setShowGameTypeModal,
-              'Select Game Type'
-            )}
-          </View>
-          {renderInputError(errors.gameType)}
+          {renderSelectGameField()}
         </View>
       </View>
     );
@@ -4503,40 +4585,98 @@ useEffect(() => {
     }
     return (
       <View style={[styles.formGrid, !isMobile && styles.formGridDesktop]}>
-        {renderAssignmentTypeSelector({
-          onLayout: (e) => {
-            if (!isMobile) setRegularSubmissionChipWidth(e.nativeEvent.layout.width);
-          },
-        })}
-        {assignmentType === 'game_based' && renderGameAndClassRow(styles.formColumnRightDesktop)}
-        <View style={[styles.formColumnLeft, !isMobile && styles.formColumnLeftDesktop]}>
-          <Text style={styles.sectionLabel}>Header</Text>
-          <TextInput
-            style={[styles.inputBox, errors.title ? styles.errorBorder : null]}
-            value={formTitle}
-            onChangeText={(value) => {
-              setFormTitle(value);
-              if (errors.title) setErrors((prev) => ({ ...prev, title: undefined }));
-            }}
-            placeholder="Enter Header"
-            placeholderTextColor="#999"
-            editable={!isSaving}
-          />
-          {renderInputError(errors.title)}
-          <Text style={styles.sectionLabel}>Instruction</Text>
-          <TextInput
-            style={[styles.textAreaBox, errors.instruction ? styles.errorBorder : null]}
-            value={formDesc}
-            onChangeText={(value) => {
-              setFormDesc(value);
-              if (errors.instruction) setErrors((prev) => ({ ...prev, instruction: undefined }));
-            }}
-            placeholder="Enter Instruction"
-            placeholderTextColor="#999"
-            multiline
-            editable={!isSaving}
-          />
-          {renderInputError(errors.instruction)}
+        <View style={styles.fullWidthSection}>
+          {/* Row 1: Assignment Type, and — only for a Game-Based Learning
+              Assignment — Select Game right beside it, instead of tucked
+              off to the far right above Due Date. */}
+          <View style={[styles.gameAndClassRow, isMobile && styles.gameAndClassRowMobile]}>
+            <View style={[styles.dropdownWrap, !isMobile && assignmentType === 'game_based' && styles.dropdownWrapHalf]}>
+              {renderAssignmentTypeSelector({
+                onLayout: (e) => {
+                  if (!isMobile) setRegularSubmissionChipWidth(e.nativeEvent.layout.width);
+                },
+              })}
+            </View>
+            {assignmentType === 'game_based' && (
+              <View style={[styles.dropdownWrap, !isMobile && styles.dropdownWrapHalf]}>
+                <View style={styles.sectionBlock}>{renderSelectGameField()}</View>
+              </View>
+            )}
+          </View>
+
+          {/* Row 2: Header, with Due Date & Time alongside it. */}
+          <View style={[styles.gameAndClassRow, isMobile && styles.gameAndClassRowMobile]}>
+            <View style={[styles.dropdownWrap, !isMobile && styles.dropdownWrapHalf]}>
+              <Text style={styles.sectionLabel}>Header</Text>
+              <TextInput
+                style={[styles.inputBox, errors.title ? styles.errorBorder : null]}
+                value={formTitle}
+                onChangeText={(value) => {
+                  setFormTitle(value);
+                  if (errors.title) setErrors((prev) => ({ ...prev, title: undefined }));
+                }}
+                placeholder="Enter Header"
+                placeholderTextColor="#999"
+                editable={!isSaving}
+              />
+              {renderInputError(errors.title)}
+            </View>
+            <View style={[styles.dropdownWrap, !isMobile && styles.dropdownWrapHalf]}>
+              {renderDateTimeField()}
+            </View>
+          </View>
+
+          {/* Row 3: Instruction, with Total Score alongside it. */}
+          <View style={[styles.gameAndClassRow, isMobile && styles.gameAndClassRowMobile]}>
+            <View style={[styles.dropdownWrap, !isMobile && styles.dropdownWrapHalf]}>
+              <Text style={styles.sectionLabel}>Instruction</Text>
+              <TextInput
+                style={[styles.textAreaBox, errors.instruction ? styles.errorBorder : null]}
+                value={formDesc}
+                onChangeText={(value) => {
+                  setFormDesc(value);
+                  if (errors.instruction) setErrors((prev) => ({ ...prev, instruction: undefined }));
+                }}
+                placeholder="Enter Instruction"
+                placeholderTextColor="#999"
+                multiline
+                editable={!isSaving}
+              />
+              {renderInputError(errors.instruction)}
+            </View>
+            <View style={[styles.dropdownWrap, !isMobile && styles.dropdownWrapHalf]}>
+              <Text style={styles.sectionLabel}>Total Score</Text>
+              <TextInput
+                style={[
+                  styles.inputBox,
+                  errors.totalScore ? styles.errorBorder : null,
+                  assignmentType === 'game_based'
+                    ? { backgroundColor: '#F5F5F5', color: '#666' }
+                    : null,
+                ]}
+                value={
+                  assignmentType === 'game_based'
+                    ? String(generatedQuestions.length)
+                    : formPoints
+                }
+                onChangeText={(value) => {
+                  setFormPoints(value);
+                  if (errors.totalScore) setErrors((prev) => ({ ...prev, totalScore: undefined }));
+                }}
+                keyboardType="numeric"
+                placeholder="Total Score"
+                placeholderTextColor="#999"
+                editable={assignmentType !== 'game_based' && !isSaving}
+              />
+              {assignmentType === 'game_based' && (
+                <Text style={{ fontSize: 11, color: '#888', marginTop: -4, marginBottom: 8, marginLeft: 4 }}>
+                  * Auto-calculated based on generated questions (1 point per item).
+                </Text>
+              )}
+              {renderInputError(errors.totalScore)}
+            </View>
+          </View>
+
           {assignmentType === 'game_based' && (
             <>
               <Text style={styles.sectionLabel}>
@@ -4581,38 +4721,6 @@ useEffect(() => {
           )}
           {assignmentType === 'game_based' && renderAttemptsSelector()}
           {assignmentType === 'game_based' && renderTimeLimitSelector()}
-        </View>
-        <View style={[styles.formColumnRight, !isMobile && styles.formColumnRightDesktop]}>
-          {renderDateTimeField()}
-          <Text style={styles.sectionLabel}>Total Score</Text>
-          <TextInput
-            style={[
-              styles.inputBox,
-              errors.totalScore ? styles.errorBorder : null,
-              assignmentType === 'game_based'
-                ? { backgroundColor: '#F5F5F5', color: '#666' }
-                : null,
-            ]}
-            value={
-              assignmentType === 'game_based'
-                ? String(generatedQuestions.length)
-                : formPoints
-            }
-            onChangeText={(value) => {
-              setFormPoints(value);
-              if (errors.totalScore) setErrors((prev) => ({ ...prev, totalScore: undefined }));
-            }}
-            keyboardType="numeric"
-            placeholder="Total Score"
-            placeholderTextColor="#999"
-            editable={assignmentType !== 'game_based' && !isSaving}
-          />
-          {assignmentType === 'game_based' && (
-            <Text style={{ fontSize: 11, color: '#888', marginTop: -4, marginBottom: 8, marginLeft: 4 }}>
-              * Auto-calculated based on generated questions (1 point per item).
-            </Text>
-          )}
-          {renderInputError(errors.totalScore)}
         </View>
         <View style={styles.fullWidthSection}>
           {renderRelatedMaterialsSelector()}
