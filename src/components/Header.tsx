@@ -17,6 +17,7 @@ import {
 } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
+import { FONT_BODY, WEIGHT_EMPHASIS } from '../theme/typography';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -503,7 +504,7 @@ const renderSearchResults = () => {
                 accessibilityLabel="Go to landing page"
               >
                 <Image
-                  source={require('../../assets/images/logo.png')}
+                  source={require('../../assets/images/BSITLOGO.jpg')}
                   style={{
                     width: logoSize,
                     height: logoSize,
@@ -571,7 +572,7 @@ const renderSearchResults = () => {
                       flexDirection: 'row',
                       alignItems: 'center',
                       backgroundColor: '#F1F1F1',
-                      borderRadius: 8,
+                      borderRadius: 14,
                       paddingHorizontal: 12,
                       height: 40,
                       marginRight: 8,
@@ -722,7 +723,7 @@ const renderSearchResults = () => {
           accessibilityLabel="Go to landing page"
         >
           <Image
-            source={require('../../assets/images/logo.png')}
+            source={require('../../assets/images/BSITLOGO.jpg')}
             style={{
               width: logoSize,
               height: logoSize,
@@ -847,7 +848,7 @@ const styles = StyleSheet.create({
   menuBtn: {
     marginRight: 10,
     padding: 4,
-    borderRadius: 8,
+    borderRadius: 14,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -871,6 +872,7 @@ const styles = StyleSheet.create({
   searchInput: {
     flex: 1,
     color: '#000',
+    fontFamily: FONT_BODY,
     paddingVertical: Platform.select({ ios: 12, default: 8 }),
     borderWidth: 0,
     backgroundColor: 'transparent',
@@ -896,7 +898,7 @@ const styles = StyleSheet.create({
   navBtn: {
     paddingHorizontal: 28,
     paddingVertical: 12,
-    borderRadius: 8,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -924,7 +926,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#2222229d',
     paddingHorizontal: 10,
     paddingVertical: 6,
-    borderRadius: 8,
+    borderRadius: 14,
     zIndex: 999,
     elevation: 10,
     minWidth: 70,
@@ -935,6 +937,7 @@ const styles = StyleSheet.create({
     color: '#FFF',
     fontSize: 12,
     fontWeight: '500',
+    fontFamily: FONT_BODY,
   },
 
   // 👇 UPDATED: matches TeacherHeader's mobile nav row exactly —
@@ -958,7 +961,7 @@ const styles = StyleSheet.create({
     height: 54,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 16,
+    borderRadius: 18,
     position: 'relative',
     overflow: 'visible',
   },
@@ -979,7 +982,8 @@ const styles = StyleSheet.create({
   badgeText: {
     color: '#FFF',
     fontSize: 9,
-    fontWeight: 'bold',
+    fontWeight: WEIGHT_EMPHASIS,
+    fontFamily: FONT_BODY,
   },
 
   // 👇 SEARCH RESULTS
@@ -989,7 +993,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     backgroundColor: '#FFF',
-    borderRadius: 12,
+    borderRadius: 18,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.1,
@@ -1016,7 +1020,7 @@ const styles = StyleSheet.create({
   resultIconBox: {
     width: 36,
     height: 36,
-    borderRadius: 10,
+    borderRadius: 14,
     backgroundColor: '#FFF1F1',
     justifyContent: 'center',
     alignItems: 'center',
@@ -1027,12 +1031,14 @@ const styles = StyleSheet.create({
   },
   resultTitle: {
     fontSize: 14,
-    fontWeight: '700',
+    fontWeight: WEIGHT_EMPHASIS,
+    fontFamily: FONT_BODY,
     color: '#111',
   },
   resultSubtitle: {
     fontSize: 12,
     color: '#888',
+    fontFamily: FONT_BODY,
     marginTop: 2,
   },
   

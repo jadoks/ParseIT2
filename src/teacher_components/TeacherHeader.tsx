@@ -401,7 +401,7 @@ const desktopNavScreens: (
                 accessibilityLabel="Go to landing page"
               >
                 <Image
-                  source={require('../../assets/images/logo.png')}
+                  source={require('../../assets/images/BSITLOGO.jpg')}
                   style={{
                     width: logoSize,
                     height: logoSize,
@@ -622,7 +622,7 @@ const desktopNavScreens: (
           accessibilityLabel="Go to landing page"
         >
           <Image
-            source={require('../../assets/images/logo.png')}
+            source={require('../../assets/images/BSITLOGO.jpg')}
             style={{
               width: logoSize,
               height: logoSize,

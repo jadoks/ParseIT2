@@ -35,7 +35,7 @@ if (Platform.OS === 'android') {
   }
 }
 
-const DEFAULT_AVATAR = require('../../assets/images/default_profile.png');
+const DEFAULT_AVATAR = require('../../assets/images/BSITLOGO.jpg'); // Placeholder avatar for conversations without a custom image
 
 function getApiBaseUrl() {
   // Prefer the deployed backend URL on every platform — including native /
@@ -357,7 +357,6 @@ const Messenger = ({
   const [unreadIds, setUnreadIds] = useState<Set<string>>(new Set());
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
-  const [avatarCacheBuster, setAvatarCacheBuster] = useState(() => Date.now());
 
   // Toast State
   const [toast, setToast] = useState<{ visible: boolean; message: string; type: 'success' | 'error' }>({
@@ -824,7 +823,6 @@ const Messenger = ({
       try {
         const freshUrl = await refreshFileUrl(item.avatarStoragePath, item.id);
         if (freshUrl) {
-          setAvatarCacheBuster(Date.now()); // bump only when we actually got a new URL
           setConversations((prev) =>
             prev.map((c) =>
               c.id === item.id
@@ -1888,7 +1886,7 @@ const Messenger = ({
                     <Image
                       source={
                         item.avatarUrl
-                          ? { uri: `${item.avatarUrl}&_cb=${avatarCacheBuster}` }
+                          ? { uri: item.avatarUrl }
                           : item.avatar
                       }
                       onError={() => handleAvatarLoadError(item)}
@@ -2010,7 +2008,7 @@ const Messenger = ({
                   <Image
                     source={
                       item.avatarUrl
-                        ? { uri: `${item.avatarUrl}&_cb=${avatarCacheBuster}` }
+                        ? { uri: item.avatarUrl }
                         : item.avatar
                     }
                     onError={() => handleAvatarLoadError(item)}

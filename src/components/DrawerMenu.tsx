@@ -24,6 +24,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { auth } from '../../firebaseConfig';
+import { FONT_BODY, FONT_TITLE, WEIGHT_EMPHASIS, WEIGHT_TITLE } from '../theme/typography';
 
 // 🔥 Shared apiFetch — attaches a fresh Firebase Bearer token automatically
 // and retries once on 401. Every network call in this file now goes through
@@ -96,7 +97,7 @@ interface DrawerMenuProps {
   setIsLoggedIn: React.Dispatch<React.SetStateAction<boolean>>;
 }
 
-const DEFAULT_AVATAR = require('../../assets/images/default_profile.png');
+const DEFAULT_AVATAR = require('../../assets/images/BSITLOGO.jpg'); // Placeholder avatar for the drawer menu when no custom image is provided
 
 // Single source of truth for the minimum new-password length, used both by
 // the inline hint under "New Password" and by handleChangePassword's
@@ -276,7 +277,7 @@ const MenuItem = ({
           styles.menuItem,
           { 
             marginVertical: menuItemVerticalMargin, 
-            borderRadius: 14, 
+            borderRadius: 16, 
           },
           highlighted && {
             backgroundColor: '#D32F2F',
@@ -317,8 +318,8 @@ const MenuItem = ({
         style={[
           styles.menuLabel,
           { fontSize: menuLabelFontSize },
-          highlighted && { color: '#FFF', fontWeight: '700' },
-          active && !highlighted && { color: '#D32F2F', fontWeight: '700' },
+          highlighted && { color: '#FFF', fontWeight: WEIGHT_EMPHASIS },
+          active && !highlighted && { color: '#D32F2F', fontWeight: WEIGHT_EMPHASIS },
         ]}
       >
         {label}
@@ -1466,23 +1467,23 @@ const styles = StyleSheet.create({
   drawerContainer: { height: '100%', padding: 25, backgroundColor: '#FFF', borderColor: 'transparent' },
   profileSection: { flexDirection: 'row', alignItems: 'center', marginBottom: 30 },
   avatar: { width: 50, height: 50, borderRadius: 25, marginRight: 15, overflow: 'hidden', aspectRatio: 1 },
-  userName: { fontWeight: '700', fontSize: 18 },
-  userEmail: { marginTop: 2, fontSize: 12, color: '#777' },
+  userName: { fontWeight: WEIGHT_TITLE, fontFamily: FONT_TITLE, fontSize: 18 },
+  userEmail: { marginTop: 2, fontSize: 12, color: '#777', fontFamily: FONT_BODY },
   menuItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, paddingHorizontal: 10 },
   menuIcon: { width: 22, height: 22, marginRight: 20, resizeMode: 'contain' },
   vectorMenuIcon: { width: 22, marginRight: 20, textAlign: 'center' },
-  menuLabel: { color: '#444', fontWeight: '500' },
+  menuLabel: { color: '#444', fontWeight: '500', fontFamily: FONT_BODY },
   logoutMenuItem: { flexDirection: 'row', alignItems: 'center', marginTop: 20, borderTopWidth: 1, borderTopColor: '#EEE', paddingTop: 15 },
-  logoutLabel: { fontSize: 16, color: '#D32F2F', fontWeight: '600' },
+  logoutLabel: { fontSize: 16, color: '#D32F2F', fontWeight: WEIGHT_EMPHASIS, fontFamily: FONT_BODY },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 24 },
   logoutModalContainer: { backgroundColor: '#FFF', borderRadius: 18, padding: 20, width: '88%', maxWidth: 360 },
-  logoutModalTitle: { fontSize: 20, fontWeight: '700', color: '#222', textAlign: 'center' },
-  logoutModalSubtitle: { fontSize: 14, color: '#777', textAlign: 'center', marginTop: 8 },
+  logoutModalTitle: { fontSize: 20, fontWeight: WEIGHT_TITLE, fontFamily: FONT_TITLE, color: '#222', textAlign: 'center' },
+  logoutModalSubtitle: { fontSize: 14, color: '#777', textAlign: 'center', marginTop: 8, fontFamily: FONT_BODY },
   logoutButtonsRow: { flexDirection: 'row', justifyContent: 'center', marginTop: 20 },
   modalCancelBtn: { paddingVertical: 12, paddingHorizontal: 16, marginRight: 10, borderRadius: 10, backgroundColor: '#F3F4F6' },
-  modalCancelText: { color: '#444', fontWeight: '600' },
+  modalCancelText: { color: '#444', fontWeight: WEIGHT_EMPHASIS, fontFamily: FONT_BODY },
   logoutConfirmBtn: { paddingVertical: 12, paddingHorizontal: 16, borderRadius: 10, backgroundColor: '#D32F2F' },
-  logoutConfirmText: { color: '#FFF', fontWeight: '700' },
+  logoutConfirmText: { color: '#FFF', fontWeight: WEIGHT_EMPHASIS, fontFamily: FONT_BODY },
 
   // ─── Settings (mirrors Admin Settings.tsx's card modal styling) ───────
   modalCard: {
@@ -1532,9 +1533,9 @@ const styles = StyleSheet.create({
     marginRight: 14,
   },
   modalIconBoxMobile: { width: 46, height: 46, borderRadius: 16, marginRight: 12 },
-  modalTitle: { fontSize: 22, fontWeight: '800', color: '#2B1111', marginBottom: 4 },
+  modalTitle: { fontSize: 22, fontWeight: WEIGHT_TITLE, fontFamily: FONT_TITLE, color: '#2B1111', marginBottom: 4 },
   modalTitleMobile: { fontSize: 20 },
-  modalSubtitle: { fontSize: 14, lineHeight: 21, color: '#8A6F6F' },
+  modalSubtitle: { fontSize: 14, lineHeight: 21, color: '#8A6F6F', fontFamily: FONT_BODY },
   modalCloseButton: {
     width: 40,
     height: 40,
@@ -1547,11 +1548,11 @@ const styles = StyleSheet.create({
   modalContentMobile: { padding: 18, paddingBottom: 10 },
   modalSection: { marginBottom: 22 },
   modalSectionHeaderRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 14 },
-  modalSectionTitle: { marginLeft: 8, fontSize: 16, fontWeight: '800', color: '#2B1111' },
-  helperText: { fontSize: 14, color: '#8A6F6F', lineHeight: 21, marginBottom: 16 },
+  modalSectionTitle: { marginLeft: 8, fontSize: 16, fontWeight: WEIGHT_EMPHASIS, fontFamily: FONT_BODY, color: '#2B1111' },
+  helperText: { fontSize: 14, color: '#8A6F6F', lineHeight: 21, marginBottom: 16, fontFamily: FONT_BODY },
   passwordChecklist: { marginTop: 10, marginBottom: 16 },
   passwordCheckRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 6 },
-  passwordCheckText: { marginLeft: 8, fontSize: 13, fontWeight: '600', color: '#8A6F6F' },
+  passwordCheckText: { marginLeft: 8, fontSize: 13, fontWeight: WEIGHT_EMPHASIS, fontFamily: FONT_BODY, color: '#8A6F6F' },
   passwordCheckTextPassed: { color: '#15803D' },
   passwordCheckTextError: { color: '#DC2626' },
   passwordMatchRow: { marginTop: 10 },
@@ -1579,9 +1580,9 @@ const styles = StyleSheet.create({
     marginRight: 12,
   },
   actionCardTextWrap: { flex: 1 },
-  actionCardTitle: { fontSize: 15, fontWeight: '800', color: '#2B1111', marginBottom: 4 },
-  actionCardSubtitle: { fontSize: 13, color: '#8A6F6F', lineHeight: 19 },
-  fieldLabel: { fontSize: 14, fontWeight: '700', color: '#5F3B3B', marginBottom: 10 },
+  actionCardTitle: { fontSize: 15, fontWeight: WEIGHT_EMPHASIS, fontFamily: FONT_BODY, color: '#2B1111', marginBottom: 4 },
+  actionCardSubtitle: { fontSize: 13, color: '#8A6F6F', lineHeight: 19, fontFamily: FONT_BODY },
+  fieldLabel: { fontSize: 14, fontWeight: WEIGHT_EMPHASIS, fontFamily: FONT_BODY, color: '#5F3B3B', marginBottom: 10 },
   fieldLabelTop: { marginTop: 18 },
   inputField: {
     height: 54,
@@ -1599,7 +1600,8 @@ const styles = StyleSheet.create({
     marginLeft: 10,
     fontSize: 14,
     color: '#2B1111',
-    fontWeight: '600',
+    fontWeight: WEIGHT_EMPHASIS,
+    fontFamily: FONT_BODY,
     ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : {}),
   },
   passwordEyeButton: { paddingHorizontal: 6, justifyContent: 'center', alignItems: 'center' },
@@ -1616,7 +1618,8 @@ const styles = StyleSheet.create({
     borderColor: '#F1CACA',
     backgroundColor: '#FFF9F9',
     fontSize: 22,
-    fontWeight: '800',
+    fontWeight: WEIGHT_EMPHASIS,
+    fontFamily: FONT_BODY,
     color: '#2B1111',
     paddingVertical: 0,
     paddingHorizontal: 0,
@@ -1638,7 +1641,7 @@ const styles = StyleSheet.create({
     }),
   },
   resendLinkWrap: { marginTop: 14, alignItems: 'center' },
-  resendLinkText: { fontSize: 13, fontWeight: '700', color: '#DC2626' },
+  resendLinkText: { fontSize: 13, fontWeight: WEIGHT_EMPHASIS, fontFamily: FONT_BODY, color: '#DC2626' },
   // Toast — portal-based, matches Admin Settings/Chatbot/Register/Community/
   // Dashboard/ClassesScreen/SignIn.
   toastPortal: { ...StyleSheet.absoluteFillObject },
@@ -1666,7 +1669,7 @@ const styles = StyleSheet.create({
     marginRight: 12,
     minWidth: 110,
   },
-  modalSecondaryButtonText: { fontSize: 14, fontWeight: '700', color: '#7A4A4A' },
+  modalSecondaryButtonText: { fontSize: 14, fontWeight: WEIGHT_EMPHASIS, fontFamily: FONT_BODY, color: '#7A4A4A' },
   modalPrimaryButton: {
     height: 48,
     paddingHorizontal: 18,
@@ -1677,7 +1680,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     minWidth: 110,
   },
-  modalPrimaryButtonText: { fontSize: 14, fontWeight: '800', color: '#FFFFFF', marginLeft: 8 },
+  modalPrimaryButtonText: { fontSize: 14, fontWeight: WEIGHT_EMPHASIS, fontFamily: FONT_BODY, color: '#FFFFFF', marginLeft: 8 },
   buttonDisabled: { opacity: 0.6 },
   modalButtonMobile: { flex: 1, minWidth: '47%', marginRight: 0 },
   fullWidthButton: { width: '100%', marginRight: 0 },

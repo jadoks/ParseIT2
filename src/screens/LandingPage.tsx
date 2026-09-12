@@ -455,7 +455,7 @@ export default function LandingPage({ onGetStarted, isSignedIn = false }: Landin
       icon: <Ionicons name="game-controller-outline" size={30} color="#fff" />,
       title: "AI Learning Games",
       description:
-        "Generate interactive learning games from lesson materials to reinforce programming concepts through AI-powered quizzes, flashcards, matching activities, and fill-in-the-blank challenges.",
+        "Generate interactive learning games from lesson materials to reinforce programming concepts through AI-enabled quizzes, flashcards, matching activities, and fill-in-the-blank challenges.",
       bullets: ["AI-Generated Quiz Games", "Flashcards", "Matching Cards", "Trivia & Fill-in-the-Blank"],
       color: ["#ff7a00", "#ff4b00"],
     },
@@ -467,7 +467,7 @@ export default function LandingPage({ onGetStarted, isSignedIn = false }: Landin
       eyebrow: "FOR STUDENTS",
       title: "Learn Anytime, Anywhere",
       description:
-        "Access learning materials, explore educational video tutorials, submit assignments, participate in AI-powered learning activities, communicate with instructors, and monitor your academic progress—all within one intelligent learning platform.",
+        "Access learning materials, explore educational video tutorials, submit assignments, participate in AI-enabled learning activities, communicate with instructors, and monitor your academic progress—all within one intelligent learning platform.",
       bullets: [
         "Access Learning Materials",
         "Search Educational Videos",
@@ -562,7 +562,7 @@ export default function LandingPage({ onGetStarted, isSignedIn = false }: Landin
                 </GradientTextLike>
 
                 <Text style={[styles.heroDescription, isTablet && styles.heroDescriptionTablet, isSmall && styles.heroDescriptionSmall]}>
-                 ParseIT Hub is an AI-powered Learning Management System that combines classroom management, AI tutoring, educational video resources, assignment analytics, interactive learning games, and collaboration tools to create a smarter teaching and learning experience.
+                 ParseIT Hub is an AI-enabled Learning Management System that combines classroom management, AI tutoring, educational video resources, assignment analytics, interactive learning games, and collaboration tools to create a smarter teaching and learning experience.
                 </Text>
 
                 <View style={[styles.heroButtons, isSmall && styles.heroButtonsSmall]}>
@@ -659,7 +659,7 @@ export default function LandingPage({ onGetStarted, isSignedIn = false }: Landin
               <Pill icon={<Feather name="zap" size={17} color="#ff9aa5" />} text="Transform Learning with AI" centered />
               <Text style={[styles.ctaTitle, isMobile && styles.ctaTitleMobile, isSmall && styles.ctaTitleSmall]}>Ready to Revolutionize Education?</Text>
               <Text style={[styles.ctaText, isMobile && styles.ctaTextMobile, isSmall && styles.ctaTextSmall]}>
-               Join ParseIT Hub and experience the future of AI-powered education. Empower students with AI tutoring, help teachers monitor assignment performance, and make informed academic decisions through interactive analytics.
+               Join ParseIT Hub and experience the future of AI-enabled education. Empower students with AI tutoring, help teachers monitor assignment performance, and make informed academic decisions through interactive analytics.
               </Text>
               <View style={[styles.ctaActions, isSmall && styles.ctaActionsSmall]}>
                 <TouchableOpacity activeOpacity={0.9} onPress={goToSignIn} style={[styles.ctaPrimary, isSmall && styles.buttonFull]}>
@@ -670,7 +670,7 @@ export default function LandingPage({ onGetStarted, isSignedIn = false }: Landin
                 </TouchableOpacity>
               </View>
               <View style={[styles.ctaTags, isSmall && styles.ctaTagsSmall]}>
-                <SmallTag text="AI-Powered" />
+                <SmallTag text="AI-Enabled" />
                 <SmallTag text="Analytics-Driven" orange />
                 <SmallTag text="Cross-Platform" />
               </View>
@@ -794,7 +794,7 @@ function Header({
         </View>
         <View style={styles.brandTextWrap}>
           <Text style={[styles.brandTitle, isSmall && styles.brandTitleSmall]}>ParseIT Hub</Text>
-          <Text style={styles.brandSubtitle}>AI-Powered Learning Platform</Text>
+          <Text style={styles.brandSubtitle}>AI-Enabled Learning Platform</Text>
         </View>
       </View>
 
@@ -1567,11 +1567,11 @@ function Footer({
             </View>
             <View>
               <Text style={styles.footerBrandTitle}>ParseIT Hub</Text>
-              <Text style={styles.footerBrandSub}>AI-Powered Learning Platform</Text>
+              <Text style={styles.footerBrandSub}>AI-Enabled Learning Platform</Text>
             </View>
           </View>
           <Text style={[styles.footerDescription, isSmall && styles.footerDescriptionSmall]}>
-           An intelligent academic platform designed for BSIT students and faculty at Cebu Technological University,combining AI-powered tutoring with assignment performance analytics for smarter teaching and learning.
+           An intelligent academic platform designed for BSIT students and faculty at Cebu Technological University,combining AI-enabled tutoring with assignment performance analytics for smarter teaching and learning.
           </Text>
         </View>
         
@@ -1639,7 +1639,22 @@ const styles = StyleSheet.create({
   container: { width: "100%", maxWidth: MAX_WIDTH, alignSelf: "center", paddingHorizontal: 38 },
   containerSmall: { paddingHorizontal: 16 },
 
-  header: { paddingVertical: 22, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 20 },
+  header: {
+    paddingVertical: 22,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 20,
+    ...(Platform.OS === "web"
+      ? ({
+          position: "sticky",
+          top: 0,
+          zIndex: 100,
+          backgroundColor: "rgba(5,8,23,0.85)",
+          backdropFilter: "blur(10px)",
+        } as any)
+      : {}),
+  },
   headerMobile: { flexDirection: "column", alignItems: "stretch", gap: 12 },
   brandRow: { flexDirection: "row", alignItems: "center", gap: 14, flexShrink: 1 },
   brandIcon: { width: 60, height: 60, borderRadius: 18, alignItems: "center", justifyContent: "center", overflow: "hidden", backgroundColor: "#fff" },

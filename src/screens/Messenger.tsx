@@ -27,7 +27,7 @@ import {
 } from 'react-native-safe-area-context';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 
-const DEFAULT_AVATAR = require('../../assets/images/default_profile.png');
+const DEFAULT_AVATAR = require('../../assets/images/BSITLOGO.jpg'); // Placeholder avatar for conversations without a custom image
 
 function getApiBaseUrl() {
   // Prefer the deployed backend URL on every platform — including native /
