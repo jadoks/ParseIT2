@@ -520,12 +520,13 @@ type FlowModalProps = {
   visible: boolean;
   onClose: () => void;
   isMobile: boolean;
+  isLargeScreen: boolean;
 };
 
 // Full-screen inline preview modal explaining, step by step, how a student's
 // uploaded grade file turns into an entry on the Deans List. Opened from the
 // (?) icon next to the "Deans List" title.
-function DeansListFlowModal({ visible, onClose, isMobile }: FlowModalProps) {
+function DeansListFlowModal({ visible, onClose, isMobile, isLargeScreen }: FlowModalProps) {
   return (
     <Modal
       visible={visible}
@@ -536,31 +537,37 @@ function DeansListFlowModal({ visible, onClose, isMobile }: FlowModalProps) {
     >
       <SafeAreaView style={styles.flowModalContainer}>
         <View style={[styles.flowModalHeader, isMobile && styles.flowModalHeaderMobile]}>
-          <View style={styles.flowModalHeaderText}>
-            <Text style={[styles.flowModalTitle, isMobile && styles.flowModalTitleMobile]}>
-              How the Deans List is generated
-            </Text>
-            <Text style={styles.flowModalSubtitle}>
-              From the student's uploaded grade file to a verified Deans List entry.
-            </Text>
-          </View>
+          <View style={[styles.flowModalHeaderInner, isLargeScreen && styles.flowModalHeaderInnerLarge]}>
+            <View style={styles.flowModalHeaderText}>
+              <Text style={[styles.flowModalTitle, isMobile && styles.flowModalTitleMobile]}>
+                How the Deans List is generated
+              </Text>
+              <Text style={styles.flowModalSubtitle}>
+                From the student's uploaded grade file to a verified Deans List entry.
+              </Text>
+            </View>
 
-          <TouchableOpacity
-            onPress={onClose}
-            style={styles.flowModalCloseBtn}
-            activeOpacity={0.8}
-            accessibilityLabel="Close"
-            hitSlop={8}
-          >
-            <Ionicons name="close" size={24} color="#3B332E" />
-          </TouchableOpacity>
+            <TouchableOpacity
+              onPress={onClose}
+              style={styles.flowModalCloseBtn}
+              activeOpacity={0.8}
+              accessibilityLabel="Close"
+              hitSlop={8}
+            >
+              <Ionicons name="close" size={24} color="#3B332E" />
+            </TouchableOpacity>
+          </View>
         </View>
 
         <ScrollView
           style={styles.flowModalScroll}
-          contentContainerStyle={styles.flowModalScrollContent}
+          contentContainerStyle={[
+            styles.flowModalScrollContent,
+            isLargeScreen && styles.flowModalScrollContentLarge,
+          ]}
           showsVerticalScrollIndicator={false}
         >
+          <View style={[styles.flowModalInner, isLargeScreen && styles.flowModalInnerLarge]}>
           <View style={styles.flowLegendRow}>
             <View style={styles.flowLegendItem}>
               <View style={[styles.flowLegendDot, styles.flowLegendDotServer]} />
@@ -597,7 +604,7 @@ function DeansListFlowModal({ visible, onClose, isMobile }: FlowModalProps) {
                     {!isLast && <View style={styles.flowStepConnector} />}
                   </View>
 
-                  <View style={styles.flowStepCard}>
+                  <View style={[styles.flowStepCard, isLargeScreen && styles.flowStepCardLarge]}>
                     <View style={styles.flowStepCardHeader}>
                       <Text style={styles.flowStepNumber}>STEP {index + 1}</Text>
                       {step.badge === 'ai' && (
@@ -606,15 +613,19 @@ function DeansListFlowModal({ visible, onClose, isMobile }: FlowModalProps) {
                         </View>
                       )}
                     </View>
-                    <Text style={styles.flowStepTitle}>{step.title}</Text>
-                    <Text style={styles.flowStepSubtitle}>{step.subtitle}</Text>
+                    <Text style={[styles.flowStepTitle, isLargeScreen && styles.flowStepTitleLarge]}>
+                      {step.title}
+                    </Text>
+                    <Text style={[styles.flowStepSubtitle, isLargeScreen && styles.flowStepSubtitleLarge]}>
+                      {step.subtitle}
+                    </Text>
                   </View>
                 </View>
 
                 {step.reject && (
                   <View style={styles.flowRejectRow}>
                     <View style={styles.flowRejectSpacer} />
-                    <View style={styles.flowRejectCard}>
+                    <View style={[styles.flowRejectCard, isLargeScreen && styles.flowRejectCardLarge]}>
                       <Ionicons name="close-circle-outline" size={16} color="#A32D2D" />
                       <View style={styles.flowRejectTextWrap}>
                         <Text style={styles.flowRejectTitle}>{step.reject.title}</Text>
@@ -633,6 +644,7 @@ function DeansListFlowModal({ visible, onClose, isMobile }: FlowModalProps) {
               Gemini AI only reads the uploaded file (identity + grades). The Deans List
               eligibility rules themselves are plain server logic, not AI judgment.
             </Text>
+          </View>
           </View>
         </ScrollView>
       </SafeAreaView>
@@ -1595,6 +1607,7 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
         visible={showFlowModal}
         onClose={() => setShowFlowModal(false)}
         isMobile={isMobile}
+        isLargeScreen={isLargeScreen}
       />
 
       {/* Toast — portal-based, matches SignIn/Community/Dashboard/ClassesScreen
@@ -2570,6 +2583,16 @@ const styles = StyleSheet.create({
   flowModalHeaderMobile: {
     paddingHorizontal: 16,
   },
+  flowModalHeaderInner: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    width: '100%',
+  },
+  flowModalHeaderInnerLarge: {
+    maxWidth: 760,
+    alignSelf: 'center',
+  },
   flowModalHeaderText: {
     flex: 1,
     paddingRight: 12,
@@ -2604,6 +2627,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 18,
     paddingBottom: 40,
+  },
+  flowModalScrollContentLarge: {
+    paddingHorizontal: 40,
+    paddingTop: 32,
+  },
+  flowModalInner: {
+    width: '100%',
+  },
+  flowModalInnerLarge: {
+    maxWidth: 760,
+    alignSelf: 'center',
   },
 
   flowLegendRow: {
@@ -2679,6 +2713,10 @@ const styles = StyleSheet.create({
     padding: 14,
     marginBottom: 18,
   },
+  flowStepCardLarge: {
+    padding: 18,
+    borderRadius: 16,
+  },
   flowStepCardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2710,10 +2748,17 @@ const styles = StyleSheet.create({
     color: '#111',
     marginBottom: 2,
   },
+  flowStepTitleLarge: { fontFamily: FONT_BODY,
+    fontSize: 15,
+  },
   flowStepSubtitle: { fontFamily: FONT_BODY,
     fontSize: 12,
     color: '#666',
     lineHeight: 17,
+  },
+  flowStepSubtitleLarge: { fontFamily: FONT_BODY,
+    fontSize: 13,
+    lineHeight: 19,
   },
 
   flowRejectRow: {
@@ -2734,6 +2779,9 @@ const styles = StyleSheet.create({
     borderColor: '#F5C6C6',
     borderRadius: 12,
     padding: 10,
+  },
+  flowRejectCardLarge: {
+    padding: 12,
   },
   flowRejectTextWrap: {
     flex: 1,
