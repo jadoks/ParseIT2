@@ -803,6 +803,11 @@ export default function AddClassModal({
       return;
     }
 
+    if (!bannerFile?.uri) {
+      showToast("Please upload a class banner image.", "error");
+      return;
+    }
+
     const scheduleError = validateScheduleBlocks(scheduleBlocks);
     if (scheduleError) {
       showToast(scheduleError, "error");
