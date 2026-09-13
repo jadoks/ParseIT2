@@ -171,16 +171,17 @@ const MenuItem = ({
       style={(state) => {
         const base: StyleProp<ViewStyle> = [
           styles.menuItem,
-          { marginVertical: menuItemVerticalMargin },
+          {
+            marginVertical: menuItemVerticalMargin,
+            borderRadius: 16,
+          },
           active && {
             backgroundColor: 'rgba(211,47,47,0.08)',
-            borderRadius: 14,
           },
         ];
         if (Platform.OS === 'web' && (state as any).hovered && !active) {
           base.push({
             backgroundColor: 'rgba(130,129,129,0.08)',
-            borderRadius: 14,
           });
         }
         return base;
@@ -205,7 +206,7 @@ const MenuItem = ({
         style={[
           styles.menuLabel,
           { fontSize: menuLabelFontSize },
-          active && { color: '#D32F2F', fontWeight: '700' },
+          active && { color: '#D32F2F', fontWeight: WEIGHT_EMPHASIS },
         ]}
       >
         {label}
@@ -743,7 +744,7 @@ const TeacherDrawerMenu = ({
       >
         <MenuItem ionIconName="person" label="Profile" onPress={() => { onNavigate?.('profile'); if (!isFixed) onClose?.(); }} active={activeScreen === 'profile'} />
         <MenuItem ionIconName="people" label="Community" onPress={() => { onNavigate?.('community'); if (!isFixed) onClose?.(); }} active={activeScreen === 'community'} />
-        <MenuItem iconName="chart-line" label="Academic Analytics" onPress={() => { onNavigate?.('analytics'); if (!isFixed) onClose?.(); }} active={activeScreen === 'analytics'} />
+        <MenuItem iconName="chart-line" label="Analytics" onPress={() => { onNavigate?.('analytics'); if (!isFixed) onClose?.(); }} active={activeScreen === 'analytics'} />
         <MenuItem ionIconName="settings" label="Settings" onPress={() => setSettingsModalVisible(true)} />
       </ScrollView>
       <Pressable style={styles.logoutMenuItem} onPress={() => setLogoutModalVisible(true)}>
@@ -1397,14 +1398,14 @@ const styles = StyleSheet.create({
   drawerContainer: { height: '100%', padding: 25, backgroundColor: '#FFF', borderColor: 'transparent' },
   profileSection: { flexDirection: 'row', alignItems: 'center', marginBottom: 30 },
   avatar: { width: 50, height: 50, borderRadius: 25, marginRight: 15, overflow: 'hidden', aspectRatio: 1 },
-  userName: { fontFamily: FONT_BODY, fontWeight: '700', fontSize: 18 },
+  userName: { fontFamily: FONT_TITLE, fontWeight: WEIGHT_TITLE, fontSize: 18 },
   userEmail: { fontFamily: FONT_BODY, marginTop: 2, fontSize: 12, color: '#777' },
   menuItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, paddingHorizontal: 10 },
   menuIcon: { width: 22, height: 22, marginRight: 20, resizeMode: 'contain' },
   vectorMenuIcon: { width: 22, marginRight: 20, textAlign: 'center' },
-  menuLabel: { color: '#444', fontWeight: '500' },
+  menuLabel: { color: '#444', fontWeight: '500', fontFamily: FONT_BODY },
   logoutMenuItem: { flexDirection: 'row', alignItems: 'center', marginTop: 20, borderTopWidth: 1, borderTopColor: '#EEE', paddingTop: 15 },
-  logoutLabel: { fontFamily: FONT_BODY, fontSize: 16, color: '#D32F2F', fontWeight: '600' },
+  logoutLabel: { fontFamily: FONT_BODY, fontSize: 16, color: '#D32F2F', fontWeight: WEIGHT_EMPHASIS },
 
   // Generic overlay, kept for the Logout modal (unchanged from before).
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center' },
@@ -1412,10 +1413,10 @@ const styles = StyleSheet.create({
   logoutModalTitle: { fontFamily: FONT_TITLE, fontSize: 20, fontWeight: WEIGHT_TITLE, color: '#222', textAlign: 'center' },
   logoutModalSubtitle: { fontFamily: FONT_BODY, fontSize: 14, color: '#777', textAlign: 'center', marginTop: 8 },
   logoutButtonsRow: { flexDirection: 'row', justifyContent: 'center', marginTop: 20 },
-  modalCancelBtn: { paddingVertical: 12, paddingHorizontal: 16, marginRight: 10, borderRadius: 16, backgroundColor: '#F3F4F6' },
-  modalCancelText: { color: '#444', fontWeight: '600' },
-  logoutConfirmBtn: { paddingVertical: 12, paddingHorizontal: 16, borderRadius: 16, backgroundColor: '#D32F2F' },
-  logoutConfirmText: { color: '#FFF', fontWeight: '700' },
+  modalCancelBtn: { paddingVertical: 12, paddingHorizontal: 16, marginRight: 10, borderRadius: 10, backgroundColor: '#F3F4F6' },
+  modalCancelText: { color: '#444', fontWeight: WEIGHT_EMPHASIS, fontFamily: FONT_BODY },
+  logoutConfirmBtn: { paddingVertical: 12, paddingHorizontal: 16, borderRadius: 10, backgroundColor: '#D32F2F' },
+  logoutConfirmText: { color: '#FFF', fontWeight: WEIGHT_EMPHASIS, fontFamily: FONT_BODY },
 
   // ─── Settings / Change Email / Change Password — mirrors the Admin
   // Settings flow's layout and color palette exactly. ─────────────────────

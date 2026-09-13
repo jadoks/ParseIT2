@@ -232,6 +232,8 @@ useEffect(() => {
   }>({ visible: false, message: '', type: 'success' });
 
   const { width, height } = useWindowDimensions();
+  const isMobile = width < 768;
+  const isTablet = width >= 768 && width < 1024;
   const isLargeScreen = width >= 1024;
 
   const selectedPost = useMemo(
@@ -751,7 +753,14 @@ useEffect(() => {
         >
           <View style={styles.innerWrapper}>
             <View style={styles.header}>
-              <Text style={styles.title}>ParseIt Community</Text>
+              <Text
+                style={[
+                  styles.title,
+                  { fontSize: isMobile ? 22 : isTablet ? 24 : 28 },
+                ]}
+              >
+                ParseIt Community
+              </Text>
             </View>
 
             <View style={styles.composerCard}>
@@ -1178,7 +1187,6 @@ const styles = StyleSheet.create({
   },
 
   title: { fontFamily: FONT_TITLE,
-    fontSize: 20,
     fontWeight: WEIGHT_TITLE,
     color: '#222',
   },

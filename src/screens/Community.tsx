@@ -240,6 +240,8 @@ const Community: React.FC<CommunityProps> = ({
   }>({ visible: false, message: '', type: 'success' });
 
   const { width, height } = useWindowDimensions();
+  const isMobile = width < 768;
+  const isTablet = width >= 768 && width < 1024;
   const isLargeScreen = width >= 1024;
 
   const selectedPost = useMemo(
@@ -753,7 +755,14 @@ const Community: React.FC<CommunityProps> = ({
         >
           <View style={styles.innerWrapper}>
             <View style={styles.header}>
-              <Text style={styles.title}>ParseIT Community</Text>
+              <Text
+                style={[
+                  styles.title,
+                  { fontSize: isMobile ? 22 : isTablet ? 24 : 28 },
+                ]}
+              >
+                ParseIT Community
+              </Text>
             </View>
 
             <View style={styles.composerCard}>
@@ -1180,7 +1189,6 @@ const styles = StyleSheet.create({
   },
 
   title: { fontFamily: FONT_TITLE, 
-    fontSize: 20,
     fontWeight: WEIGHT_TITLE,
     color: '#222',
   },

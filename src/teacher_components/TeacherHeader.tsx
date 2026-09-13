@@ -16,6 +16,7 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
+import { FONT_BODY, WEIGHT_EMPHASIS } from '../theme/typography';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -767,6 +768,7 @@ const styles = StyleSheet.create({
   searchInput: {
     flex: 1,
     color: '#000',
+    fontFamily: FONT_BODY,
     paddingVertical: Platform.select({ ios: 12, default: 8 }),
     borderWidth: 0,
     backgroundColor: 'transparent',
@@ -824,6 +826,7 @@ const styles = StyleSheet.create({
     color: '#FFF',
     fontSize: 12,
     fontWeight: '500',
+    fontFamily: FONT_BODY,
   },
   mobileNavRow: {
     flexDirection: 'row',
@@ -862,7 +865,8 @@ const styles = StyleSheet.create({
   badgeText: {
     color: '#FFF',
     fontSize: 9,
-    fontWeight: 'bold',
+    fontWeight: WEIGHT_EMPHASIS,
+    fontFamily: FONT_BODY,
   },
   // 👇 STYLES FOR EXPANDED MOBILE SEARCH
   expandedSearchContainer: {
@@ -927,12 +931,14 @@ const styles = StyleSheet.create({
   },
   resultTitle: {
     fontSize: 14,
-    fontWeight: '700',
+    fontWeight: WEIGHT_EMPHASIS,
+    fontFamily: FONT_BODY,
     color: '#111',
   },
   resultSubtitle: {
     fontSize: 12,
     color: '#888',
+    fontFamily: FONT_BODY,
     marginTop: 2,
   },
 });

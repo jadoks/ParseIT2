@@ -27,7 +27,7 @@ import {
   View
 } from 'react-native';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
-import { FONT_BODY, FONT_TITLE, WEIGHT_EMPHASIS, WEIGHT_TITLE } from '../theme/typography';
+import { FONT_BODY, FONT_TITLE, WEIGHT_TITLE } from '../theme/typography';
 
 // Enable LayoutAnimation for Android
 if (Platform.OS === 'android') {
@@ -950,7 +950,7 @@ const Messenger = ({
       : isTablet
       ? 320
       : width,
-    pageTitle: isDesktop ? 26 : isTablet ? 23 : isTinyPhone ? 20 : 22,
+    pageTitle: isDesktop ? 28 : isTablet ? 24 : 22,
     headerHeight: isDesktop ? 64 : isTablet ? 60 : isTinyPhone ? 52 : 56,
     headerTitle: isDesktop ? 19 : isTablet ? 17 : isTinyPhone ? 14 : 16,
     backText: isTinyPhone ? 11 : 12,
@@ -3175,7 +3175,8 @@ const styles = StyleSheet.create({
 },
   screenBackText: { fontFamily: FONT_BODY, fontSize: 14, fontWeight: '600', color: '#111', marginLeft: 2 },
   pageTitle: {
-    fontWeight: WEIGHT_EMPHASIS,
+    fontFamily: FONT_TITLE,
+    fontWeight: WEIGHT_TITLE,
     paddingBottom: 10,
     textAlign: 'left',
     marginTop: 20,
