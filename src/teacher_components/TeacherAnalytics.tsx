@@ -1122,8 +1122,9 @@ export default function TeacherAnalytics({
                   <View style={styles.classInlineDropdownMenu}>
                     <ScrollView
                       nestedScrollEnabled
-                      showsVerticalScrollIndicator={false}
+                      showsVerticalScrollIndicator={true}
                       style={styles.classInlineDropdownScroll}
+                      persistentScrollbar={true}
                     >
                       {classOptions.map((option) => {
                         const isSelected = option.value === selectedClass;
@@ -1146,6 +1147,7 @@ export default function TeacherAnalytics({
                                 isSelected && styles.classInlineDropdownItemTextActive,
                               ]}
                               numberOfLines={1}
+                              ellipsizeMode="tail"
                             >
                               {option.label}
                             </Text>
@@ -1755,9 +1757,14 @@ const styles = StyleSheet.create({
     position: "relative",
     width: "100%",
     maxWidth: 320,
+    minWidth: 0,
     zIndex: 4000,
   },
-  classDropdownContainerLarge: { maxWidth: 260 },
+  // Match the button's own maxWidth so the inline menu below it is never
+  // narrower than the button/its longest option — a narrower menu was
+  // forcing long class names to overflow past the rounded box edge instead
+  // of truncating cleanly.
+  classDropdownContainerLarge: { maxWidth: 320 },
   classDropdownButton: {
     minWidth: 0,
     width: "100%",
@@ -1807,18 +1814,29 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 6 },
     elevation: 12,
   },
-  classInlineDropdownScroll: { maxHeight: 260 },
+  classInlineDropdownScroll: { maxHeight: 260, width: "100%" },
   classInlineDropdownItem: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     gap: 8,
+    width: "100%",
+    minWidth: 0,
     backgroundColor: palette.surface,
     paddingVertical: 10,
-    paddingHorizontal: 12,
+    // Extra right padding leaves room for the visible scrollbar so it
+    // doesn't sit on top of the check icon or the last letters of the text.
+    paddingLeft: 12,
+    paddingRight: 18,
   },
   classInlineDropdownItemActive: { backgroundColor: palette.primarySoft },
-  classInlineDropdownItemText: { fontFamily: FONT_BODY, fontSize: 13, color: palette.text, flexShrink: 1 },
+  classInlineDropdownItemText: {
+    fontFamily: FONT_BODY,
+    fontSize: 13,
+    color: palette.text,
+    flex: 1,
+    minWidth: 0,
+  },
   classInlineDropdownItemTextActive: { color: palette.primary, fontWeight: WEIGHT_EMPHASIS },
   heroTitle: { fontFamily: FONT_TITLE,
     lineHeight: 31,
