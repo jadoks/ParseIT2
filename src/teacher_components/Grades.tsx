@@ -682,7 +682,7 @@ const Grades = ({ apiBaseUrl }: GradesProps) => {
             <View style={[styles.controlsCard, isPhone && styles.controlsCardMobile]}>
               <Text style={styles.controlsTitle}>Academic Record Lookup</Text>
               <Text style={styles.controlsSubtitle}>
-                Enter the student ID, academic start year, and semester to retrieve AI-parsed grades.
+                Enter the student ID, academic start year, and semester to retrieve grades.
               </Text>
 
               {isStackedLayout ? (
