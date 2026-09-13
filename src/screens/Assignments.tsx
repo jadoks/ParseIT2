@@ -2174,10 +2174,7 @@ const Assignments = ({
 
                     {getRecommendationType(selectedAssignment) && (
                       <View style={styles.section}>
-                        <View style={styles.sectionTitleRow}>
-                          <Ionicons name="locate-outline" size={16} color="#000" />
-                          <Text style={styles.sectionTitle}>Follow-Up Activity</Text>
-                        </View>
+                        <Text style={styles.sectionTitle}>Follow-Up Activity</Text>
                         {!canGenerateActivity(selectedAssignment) && (
                           <Text style={styles.materialWarningText}>
                             The teacher must link related materials first. AI will generate this activity from those related materials only.
@@ -2209,10 +2206,7 @@ const Assignments = ({
                     )}
 
                     <View style={styles.section}>
-                      <View style={styles.sectionTitleRow}>
-                        <Ionicons name="book-outline" size={16} color="#000" />
-                        <Text style={styles.sectionTitle}>Related Course Resources</Text>
-                      </View>
+                      <Text style={styles.sectionTitle}>Related Course Resources</Text>
                       {getRelatedMaterials(selectedAssignment).length > 0 ? (
                         getRelatedMaterials(selectedAssignment).map((material) => (
                           <TouchableOpacity
@@ -2244,10 +2238,7 @@ const Assignments = ({
                     </View>
 
                     <View style={styles.section}>
-                      <View style={styles.sectionTitleRow}>
-                        <Ionicons name="cloud-upload-outline" size={16} color="#000" />
-                        <Text style={styles.sectionTitle}>Your Uploads</Text>
-                      </View>
+                      <Text style={styles.sectionTitle}>Your Uploads</Text>
                       {getSubmittedFiles(selectedAssignment).length > 0 ? (
                         <View>
                           {getSubmittedFiles(selectedAssignment).map((file) => {
@@ -2467,10 +2458,7 @@ const Assignments = ({
                     </View>
 
                     <View style={styles.section}>
-                      <View style={styles.sectionTitleRow}>
-                        <Ionicons name="chatbubble-outline" size={16} color="#000" />
-                        <Text style={styles.sectionTitle}>Comments</Text>
-                      </View>
+                      <Text style={styles.sectionTitle}>Comments</Text>
                       {(assignmentComments[selectedAssignment.id] || []).length > 0 ? (
                         <View>
                           {(assignmentComments[selectedAssignment.id] || []).map((comment) => {
@@ -3031,9 +3019,6 @@ const styles = StyleSheet.create({
   infoInstructionText: { fontFamily: FONT_BODY, fontSize: 13, fontWeight: '400', color: '#444', lineHeight: 20 },
   section: { marginBottom: 18 },
   sectionTitle: { fontFamily: FONT_TITLE, fontSize: 16, fontWeight: WEIGHT_TITLE, color: '#000', marginBottom: 10 },
-  // 🔥 NEW: icon + title row used wherever a section heading previously had
-  // an emoji glyph in front of it (now an Ionicons icon).
-  sectionTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   relatedMaterialItem: { backgroundColor: '#F5F5F5', borderRadius: 16, padding: 10, marginBottom: 8 },
   relatedMaterialRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   relatedMaterialTitle: { fontFamily: FONT_TITLE, fontWeight: WEIGHT_EMPHASIS, color: '#111', marginBottom: 4 },

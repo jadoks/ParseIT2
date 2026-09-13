@@ -8375,6 +8375,7 @@ app.post("/create-admin", async (req, res) => {
           assignmentId: data.assignmentId,
           classId: data.classId,
           studentId: data.studentId || null, // 👇 RETURN studentId so frontend can filter
+          author: data.authorName || data.authorId, // 🔥 FIX: frontend (StudentApp.tsx's mapCourseCommentsToAssignmentComments) reads `author`, not `authorName` — without this the commenter's name silently disappears whenever this endpoint refreshes an assignment's comments.
           authorId: data.authorId,
           authorName: data.authorName,
           authorRole: data.authorRole,

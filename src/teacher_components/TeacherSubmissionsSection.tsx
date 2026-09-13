@@ -1623,7 +1623,7 @@ const handleDownloadPreview = async () => {
                       >
                         <View style={styles.bubbleHeaderRow}>
                           <Text style={styles.bubbleAuthor} numberOfLines={1}>
-                            {comment.isInstructor ? "Instructor" : "Student"}
+                            {comment.authorName || (comment.isInstructor ? "Instructor" : "Student")}
                           </Text>
                           {canManage && !isEditing && (
                             <View style={styles.bubbleActions}>

@@ -3364,10 +3364,7 @@ const fetchModules = useCallback(async (silent = false) => {
                     )}
                     {getRecommendationType(selectedAssignment) && (
                       <View style={styles.section}>
-                        <View style={styles.sectionTitleRow}>
-                          <Ionicons name="locate-outline" size={16} color="#000" />
-                          <Text style={styles.sectionTitle}>Follow-Up Activity</Text>
-                        </View>
+                        <Text style={styles.sectionTitle}>Follow-Up Activity</Text>
                         {!canGenerateSelectedActivity && (
                           <Text style={styles.materialWarningText}>
                             The teacher must link related materials first. AI will generate this activity from those related materials only.
@@ -3399,10 +3396,7 @@ const fetchModules = useCallback(async (silent = false) => {
                     )}
                     {/* Related Materials */}
                     <View style={styles.section}>
-                      <View style={styles.sectionTitleRow}>
-                        <Ionicons name="book-outline" size={16} color="#000" />
-                        <Text style={styles.sectionTitle}>Related Course Resources</Text>
-                      </View>
+                      <Text style={styles.sectionTitle}>Related Course Resources</Text>
                       {selectedAssignmentRelatedMaterials.length > 0 ? (
                         selectedAssignmentRelatedMaterials.map((material) => (
                           <TouchableOpacity
@@ -3439,10 +3433,7 @@ const fetchModules = useCallback(async (silent = false) => {
                     </View>
                     {/* ✅ UPDATED: Your Uploads Section with Multi-File/Link Support */}
                     <View style={styles.section}>
-                      <View style={styles.sectionTitleRow}>
-                        <Ionicons name="cloud-upload-outline" size={16} color="#000" />
-                        <Text style={styles.sectionTitle}>Your Uploads</Text>
-                      </View>
+                      <Text style={styles.sectionTitle}>Your Uploads</Text>
                       {getSubmittedFiles(selectedAssignment).length > 0 ? (
                         <View>
                           {getSubmittedFiles(selectedAssignment).map((file) => {
@@ -3681,10 +3672,7 @@ const fetchModules = useCallback(async (silent = false) => {
                     </View>
                     {/* COMMENTS SECTION */}
                     <View style={styles.section}>
-                      <View style={styles.sectionTitleRow}>
-                        <Ionicons name="chatbubble-outline" size={16} color="#000" />
-                        <Text style={styles.sectionTitle}>Comments</Text>
-                      </View>
+                      <Text style={styles.sectionTitle}>Comments</Text>
                       {(assignmentComments[selectedAssignment.id] || []).length > 0 ? (
                         <View>
                           {(assignmentComments[selectedAssignment.id] || []).map((comment) => {
