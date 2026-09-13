@@ -210,6 +210,10 @@ const Grades = ({ apiBaseUrl }: GradesProps) => {
   const isTablet = width >= 768 && width < 1024;
   const isLargeScreen = width >= 1024;
   const isStackedLayout = width < 760;
+  // 🔥 NEW: on phone and tablet, the Student Info panel (Student ID, Student
+  // Name, Total Units, GWA) should show 2 fields per row instead of one
+  // full-width field per row.
+  const isCompactInfoPanel = isPhone || isTablet;
 
   const contentHorizontalPadding = isPhone ? 16 : isTablet ? 28 : 150;
   const titleSize = isPhone ? 22 : isTablet ? 24 : 28;
@@ -914,12 +918,14 @@ const Grades = ({ apiBaseUrl }: GradesProps) => {
                   style={[
                     styles.studentInfoPanel,
                     !isPhone && { width: webTableWidth },
+                    isCompactInfoPanel && styles.studentInfoPanelCompact,
                     isLargeScreen && styles.studentInfoPanelLarge,
                   ]}
                 >
                   <View style={[
                     styles.studentInfoRow,
                     isPhone && styles.studentInfoRowMobile,
+                    isCompactInfoPanel && styles.studentInfoRowCompact,
                     isLargeScreen && styles.studentInfoRowLarge
                   ]}>
                     <Text style={styles.studentInfoLabel}>Student ID</Text>
@@ -934,6 +940,7 @@ const Grades = ({ apiBaseUrl }: GradesProps) => {
                   <View style={[
                     styles.studentInfoRow,
                     isPhone && styles.studentInfoRowMobile,
+                    isCompactInfoPanel && styles.studentInfoRowCompact,
                     isLargeScreen && styles.studentInfoRowLarge
                   ]}>
                     <Text style={styles.studentInfoLabel}>Student Name</Text>
@@ -948,6 +955,7 @@ const Grades = ({ apiBaseUrl }: GradesProps) => {
                   <View style={[
                     styles.studentInfoRow,
                     isPhone && styles.studentInfoRowMobile,
+                    isCompactInfoPanel && styles.studentInfoRowCompact,
                     isLargeScreen && styles.studentInfoRowLarge
                   ]}>
                     <Text style={styles.studentInfoLabel}>Total Units</Text>
@@ -962,6 +970,7 @@ const Grades = ({ apiBaseUrl }: GradesProps) => {
                   <View style={[
                     styles.studentInfoRow,
                     isPhone && styles.studentInfoRowMobile,
+                    isCompactInfoPanel && styles.studentInfoRowCompact,
                     isLargeScreen && styles.studentInfoRowLarge
                   ]}>
                     <Text style={styles.studentInfoLabel}>GWA</Text>
@@ -1567,6 +1576,23 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     justifyContent: 'space-between',
     gap: 12,
+  },
+
+  // 🔥 NEW: phone + tablet layout — lays the 4 fields out 2-per-row instead
+  // of one full-width field per row.
+  studentInfoPanelCompact: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+
+  // 🔥 NEW: each field takes ~48% width so two sit side by side per row.
+  // Combined with studentInfoRowMobile (label above value, stacked) on
+  // phone, or with the default row layout (label left / value right) on
+  // tablet.
+  studentInfoRowCompact: {
+    width: '48%',
   },
 
   studentInfoRow: {
