@@ -723,7 +723,7 @@ const TeacherDrawerMenu = ({
         preserveAspectRatio="none"
       >
         <Path
-          d="M0,55 C60,20 110,90 170,60 C220,35 260,70 300,50 L300,150 L0,150 Z"
+          d="M0,15 C70,25 130,55 190,80 C240,100 270,115 300,125 L300,150 L0,150 Z"
           fill="rgba(211,47,47,0.10)"
         />
       </Svg>
@@ -735,7 +735,7 @@ const TeacherDrawerMenu = ({
         preserveAspectRatio="none"
       >
         <Path
-          d="M0,85 C50,55 100,110 160,90 C210,73 250,100 300,80 L300,150 L0,150 Z"
+          d="M0,40 C65,50 125,78 185,102 C232,120 265,133 300,140 L300,150 L0,150 Z"
           fill="rgba(211,47,47,0.16)"
         />
       </Svg>
@@ -1422,7 +1422,7 @@ const TeacherDrawerMenu = ({
 export default TeacherDrawerMenu;
 
 const styles = StyleSheet.create({
-  drawerContainer: { height: '100%', padding: 25, backgroundColor: '#FFF', borderColor: 'transparent', position: 'relative', overflow: 'hidden' },
+  drawerContainer: { height: '100%', padding: 25, backgroundColor: '#FFF', borderColor: 'transparent', borderRightWidth: 0, borderRightColor: 'transparent', position: 'relative', overflow: 'hidden' },
   // Two layered SVG wave shapes anchored to the bottom of drawerContainer,
   // clipped by its own overflow:hidden, to sit directly on the drawer
   // itself (no separate card). Heights are set inline per breakpoint (see

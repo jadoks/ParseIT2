@@ -21,6 +21,7 @@ import {
   ViewStyle,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Svg, { Path } from 'react-native-svg';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { auth } from '../../firebaseConfig';
@@ -534,6 +535,7 @@ const DrawerMenu = ({
   const isMobile = width < 768;
   const isTablet = width >= 768 && width < 1024;
   const isSmallMobile = width < 380;
+  const isLargeScreen = width >= 1024;
 
   const hasOverflow = contentHeight > scrollViewHeight && scrollViewHeight > 0;
   const shouldShowScrollBar = (isMobile || isTablet) && hasOverflow;
@@ -948,6 +950,31 @@ const DrawerMenu = ({
         }
       ]}
     > 
+      {/* ─── Decorative wave background — lives on the drawer container itself, responsive ── */}
+      <Svg
+        style={styles.waveBack}
+        width="100%"
+        height={isLargeScreen ? 130 : isTablet ? 110 : 90}
+        viewBox="0 0 300 150"
+        preserveAspectRatio="none"
+      >
+        <Path
+          d="M0,15 C70,25 130,55 190,80 C240,100 270,115 300,125 L300,150 L0,150 Z"
+          fill="rgba(211,47,47,0.10)"
+        />
+      </Svg>
+      <Svg
+        style={styles.waveFront}
+        width="100%"
+        height={isLargeScreen ? 105 : isTablet ? 88 : 72}
+        viewBox="0 0 300 150"
+        preserveAspectRatio="none"
+      >
+        <Path
+          d="M0,40 C65,50 125,78 185,102 C232,120 265,133 300,140 L300,150 L0,150 Z"
+          fill="rgba(211,47,47,0.16)"
+        />
+      </Svg>
       <Pressable style={styles.profileSection} onPress={onAvatarPress}>
         <Image
           source={finalAvatarSource}
@@ -1464,7 +1491,14 @@ const DrawerMenu = ({
 export default DrawerMenu;
 
 const styles = StyleSheet.create({
-  drawerContainer: { height: '100%', padding: 25, backgroundColor: '#FFF', borderColor: 'transparent' },
+  drawerContainer: { height: '100%', padding: 25, backgroundColor: '#FFF', borderColor: 'transparent', borderRightWidth: 0, borderRightColor: 'transparent', position: 'relative', overflow: 'hidden' },
+  // Two layered SVG wave shapes anchored to the bottom of drawerContainer,
+  // clipped by its own overflow:hidden, to sit directly on the drawer
+  // itself (no separate card). Heights are set inline per breakpoint (see
+  // usage in the component) since this StyleSheet is module-scope and
+  // can't see isLargeScreen/isTablet.
+  waveBack: { position: 'absolute', left: 0, right: 0, bottom: 0 },
+  waveFront: { position: 'absolute', left: 0, right: 0, bottom: 0 },
   profileSection: { flexDirection: 'row', alignItems: 'center', marginBottom: 30 },
   avatar: { width: 50, height: 50, borderRadius: 25, marginRight: 15, overflow: 'hidden', aspectRatio: 1 },
   userName: { fontWeight: WEIGHT_TITLE, fontFamily: FONT_TITLE, fontSize: 18 },
