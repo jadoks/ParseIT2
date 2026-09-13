@@ -147,15 +147,7 @@ const ClassesScreen = ({
         <View style={styles.contentWrap}>
           <View style={styles.headerRow}>
             <View style={styles.headerTextWrap}>
-              <View style={styles.pageTitleRow}>
-                <Ionicons
-                  name="school-outline"
-                  size={isMobile ? 22 : isTablet ? 24 : 26}
-                  color="#111"
-                  style={styles.pageTitleIcon}
-                />
-                <Text style={[styles.pageTitle, { marginBottom: 0 }]}>My Classes</Text>
-              </View>
+              <Text style={styles.pageTitle}>My Classes</Text>
               <Text style={styles.pageSubtitle}>
                 Access all your enrolled courses in one place.
               </Text>
@@ -323,8 +315,6 @@ const styles = StyleSheet.create({
   headerRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 20 },
   headerTextWrap: { flex: 1 },
   pageTitle: { fontFamily: FONT_TITLE, fontSize: 28, fontWeight: WEIGHT_TITLE, color: '#111', marginBottom: 6 },
-  pageTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 },
-  pageTitleIcon: { marginTop: 2 },
   pageSubtitle: { fontFamily: FONT_BODY, fontSize: 14, color: '#666' },
   joinClassButton: { backgroundColor: '#D32F2F', borderRadius: 14, paddingHorizontal: 14, paddingVertical: 11, flexDirection: 'row', alignItems: 'center', gap: 8, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 8, elevation: 3 },
   joinClassButtonText: { fontFamily: FONT_BODY, color: '#FFFFFF', fontSize: 14, fontWeight: WEIGHT_EMPHASIS },

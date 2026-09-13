@@ -701,9 +701,9 @@ const renderFormattedText = (text: string, baseStyle: any) => {
     baseStyle,
     {
       textAlign: "justify",
-      lineHeight: 24,
+      lineHeight: 16,
       letterSpacing: 0.3,
-      fontSize: 14,
+      fontSize: 16,
     },
   ];
   return lines.map((line, lineIndex) => {
@@ -2928,16 +2928,16 @@ const fetchModules = useCallback(async (silent = false) => {
                     </TouchableOpacity>
                   ) : null}
                   <View style={{ marginBottom: 16 }}>
-                    <Text style={styles.sectionLabel}>Description</Text>
-                    <Text style={{ color: '#333', lineHeight: 20 }}>
+                    <Text style={styles.lessonPreviewSectionTitle}>Description</Text>
+                    <Text style={styles.lessonPreviewSectionText}>
                       {selectedLesson.description || 'No description available.'}
                     </Text>
                   </View>
 
                   {Array.isArray(selectedLesson.objectives) && selectedLesson.objectives.length > 0 ? (
                     <View style={styles.sasCard}>
-                      <Text style={styles.sectionLabel}>Intended Learning Outcomes</Text>
-                      <Text style={{ color: '#333', lineHeight: 18, marginBottom: 4 }}>At the end of the lesson, you should be able to:</Text>
+                      <Text style={styles.lessonPreviewSectionTitle}>Intended Learning Outcomes</Text>
+                      <Text style={[styles.lessonPreviewSectionText, { marginBottom: 4 }]}>At the end of the lesson, you should be able to:</Text>
                       {selectedLesson.objectives.map((o: string, i: number) => (
                         <Text key={i} style={styles.sasBulletText}>{'\u2022 '}{o}</Text>
                       ))}
@@ -2949,13 +2949,13 @@ const fetchModules = useCallback(async (silent = false) => {
                     <View style={styles.sasCard}>
                       {Array.isArray(selectedLesson.materials) && selectedLesson.materials.length > 0 ? (
                         <>
-                          <Text style={styles.sectionLabel}>Materials</Text>
-                          <Text style={{ color: '#333', lineHeight: 20, marginBottom: 10 }}>{selectedLesson.materials.join(', ')}</Text>
+                          <Text style={styles.lessonPreviewSectionTitle}>Materials</Text>
+                          <Text style={[styles.lessonPreviewSectionText, { marginBottom: 10 }]}>{selectedLesson.materials.join(', ')}</Text>
                         </>
                       ) : null}
                       {Array.isArray(selectedLesson.references) && selectedLesson.references.length > 0 ? (
                         <>
-                          <Text style={styles.sectionLabel}>References</Text>
+                          <Text style={styles.lessonPreviewSectionTitle}>References</Text>
                           {selectedLesson.references.map((r: string, i: number) => (
                             <Text key={i} style={styles.sasBulletText}>{'\u2022 '}{r}</Text>
                           ))}
@@ -2966,10 +2966,10 @@ const fetchModules = useCallback(async (silent = false) => {
 
                   {Array.isArray(selectedLesson.sdgIntegration) && selectedLesson.sdgIntegration.length > 0 ? (
                     <View style={styles.sasCard}>
-                      <Text style={styles.sectionLabel}>SDG Integration</Text>
+                      <Text style={styles.lessonPreviewSectionTitle}>SDG Integration</Text>
                       {selectedLesson.sdgIntegration.map((s: any, i: number) => (
-                        <Text key={i} style={{ color: '#333', lineHeight: 20, marginBottom: 6 }}>
-                          <Text style={{ fontWeight: '700' }}>{s.sdg}</Text>{s.description ? ` — ${s.description}` : ''}
+                        <Text key={i} style={[styles.lessonPreviewSectionText, { marginBottom: 6 }]}>
+                          <Text style={[styles.lessonPreviewSectionText, { fontWeight: '700' }]}>{s.sdg}</Text>{s.description ? ` — ${s.description}` : ''}
                         </Text>
                       ))}
                     </View>
@@ -2977,60 +2977,60 @@ const fetchModules = useCallback(async (silent = false) => {
 
                   {selectedLesson.lessonPrep ? (
                     <View style={styles.sasCard}>
-                      <Text style={styles.sectionLabel}>Lesson Preparation / Review / Preview</Text>
+                      <Text style={styles.lessonPreviewSectionTitle}>Lesson Preparation / Review / Preview</Text>
                       {Array.isArray(selectedLesson.lessonPrep.resources) && selectedLesson.lessonPrep.resources.length > 0 ? (
                         <View style={{ marginBottom: 8 }}>
                           {selectedLesson.lessonPrep.resources.map((r: any, i: number) => (
-                            <Text key={i} style={{ color: '#1976D2', lineHeight: 20 }}>{r.label}{r.url ? `: ${r.url}` : ''}</Text>
+                            <Text key={i} style={[styles.lessonPreviewSectionText, { color: '#1976D2' }]}>{r.label}{r.url ? `: ${r.url}` : ''}</Text>
                           ))}
                         </View>
                       ) : null}
                       {selectedLesson.lessonPrep.activityTitle ? (
-                        <Text style={{ color: '#000', fontWeight: '700', marginBottom: 4 }}>Activity: "{selectedLesson.lessonPrep.activityTitle}"</Text>
+                        <Text style={[styles.lessonPreviewSectionText, { color: '#000', fontWeight: '700', marginBottom: 4 }]}>Activity: "{selectedLesson.lessonPrep.activityTitle}"</Text>
                       ) : null}
                       {selectedLesson.lessonPrep.instructions ? (
-                        <Text style={{ color: '#000', lineHeight: 22, marginBottom: 8 }}>
-                          {renderFormattedText(selectedLesson.lessonPrep.instructions, { color: '#000', lineHeight: 22 })}
+                        <Text style={[styles.lessonPreviewSectionText, { color: '#000', marginBottom: 8 }]}>
+                          {renderFormattedText(selectedLesson.lessonPrep.instructions, { color: '#000' })}
                         </Text>
                       ) : null}
                       {Array.isArray(selectedLesson.lessonPrep.guideQuestions) && selectedLesson.lessonPrep.guideQuestions.length > 0 ? (
                         <View style={{ marginBottom: 8 }}>
-                          <Text style={{ fontWeight: '700', color: '#000', marginBottom: 4 }}>Guide Questions</Text>
+                          <Text style={[styles.lessonPreviewSectionText, { fontWeight: '700', color: '#000', marginBottom: 4 }]}>Guide Questions</Text>
                           {selectedLesson.lessonPrep.guideQuestions.map((q: string, i: number) => (
                             <Text key={i} style={styles.sasBulletText}>{i + 1}. {q}</Text>
                           ))}
                         </View>
                       ) : null}
                       {selectedLesson.lessonPrep.transition ? (
-                        <Text style={{ color: '#444', lineHeight: 20, fontStyle: 'italic' }}>{selectedLesson.lessonPrep.transition}</Text>
+                        <Text style={[styles.lessonPreviewSectionText, { color: '#444', fontStyle: 'italic' }]}>{selectedLesson.lessonPrep.transition}</Text>
                       ) : null}
                     </View>
                   ) : null}
 
                   {selectedLesson.discussion ? (
                     <View style={styles.sasCard}>
-                      <Text style={styles.sectionLabel}>Concept Notes / Discussion</Text>
-                      <Text style={{ color: '#000', lineHeight: 22 }}>
-                        {renderFormattedText(selectedLesson.discussion, { color: '#000', lineHeight: 22 })}
+                      <Text style={styles.lessonPreviewSectionTitle}>Concept Notes / Discussion</Text>
+                      <Text style={[styles.lessonPreviewSectionText, { color: '#000' }]}>
+                        {renderFormattedText(selectedLesson.discussion, { color: '#000' })}
                       </Text>
                     </View>
                   ) : null}
 
                   {Array.isArray(selectedLesson.keyTerms) && selectedLesson.keyTerms.length > 0 ? (
                     <View style={styles.sasCard}>
-                      <Text style={styles.sectionLabel}>Key Terms to Remember</Text>
+                      <Text style={styles.lessonPreviewSectionTitle}>Key Terms to Remember</Text>
                       {selectedLesson.keyTerms.map((k: any, i: number) => (
                         <View key={i} style={{ flexDirection: 'row', marginBottom: 6 }}>
-                          <Text style={{ width: 110, fontWeight: '700', color: '#000' }}>{k.term}</Text>
-                          <Text style={{ flex: 1, color: '#333' }}>{k.meaning}</Text>
+                          <Text style={[styles.lessonPreviewSectionText, { width: 110, fontWeight: '700', color: '#000' }]}>{k.term}</Text>
+                          <Text style={[styles.lessonPreviewSectionText, { flex: 1 }]}>{k.meaning}</Text>
                         </View>
                       ))}
                     </View>
                   ) : null}
 
                   {Array.isArray(selectedLesson.takeaways) && selectedLesson.takeaways.length > 0 ? (
-                    <View style={[styles.sasCard, { backgroundColor: '#FFF3E0' }]}>
-                      <Text style={styles.sectionLabel}>Take Aways</Text>
+                    <View style={styles.sasCard}>
+                      <Text style={styles.lessonPreviewSectionTitle}>Take Aways</Text>
                       {selectedLesson.takeaways.map((t: string, i: number) => (
                         <Text key={i} style={styles.sasBulletText}>{'\u2022 '}{t}</Text>
                       ))}
@@ -3039,18 +3039,18 @@ const fetchModules = useCallback(async (silent = false) => {
 
                   {selectedLesson.guidedPractice ? (
                     <View style={styles.sasCard}>
-                      <Text style={styles.sectionLabel}>Guided Practice</Text>
-                      <Text style={{ color: '#000', lineHeight: 22 }}>
-                        {renderFormattedText(selectedLesson.guidedPractice, { color: '#000', lineHeight: 22 })}
+                      <Text style={styles.lessonPreviewSectionTitle}>Guided Practice</Text>
+                      <Text style={[styles.lessonPreviewSectionText, { color: '#000' }]}>
+                        {renderFormattedText(selectedLesson.guidedPractice, { color: '#000' })}
                       </Text>
                     </View>
                   ) : null}
 
                   {selectedLesson.activity ? (
                     <View style={styles.sasCard}>
-                      <Text style={styles.sectionLabel}>Compu-Skill / Performance Task</Text>
-                      <Text style={{ color: '#000', lineHeight: 22 }}>
-                        {renderFormattedText(selectedLesson.activity, { color: '#000', lineHeight: 22 })}
+                      <Text style={styles.lessonPreviewSectionTitle}>Compu-Skill / Performance Task</Text>
+                      <Text style={[styles.lessonPreviewSectionText, { color: '#000' }]}>
+                        {renderFormattedText(selectedLesson.activity, { color: '#000' })}
                       </Text>
                     </View>
                   ) : null}
@@ -4659,14 +4659,30 @@ const styles = StyleSheet.create({
   },
   section: { marginBottom: 18 },
   sasCard: {
-    marginBottom: 16,
-    backgroundColor: '#FFF',
-    padding: 14,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: '#EEE',
+    marginBottom: 22,
   },
-  sasBulletText: { color: '#333', lineHeight: 20, marginBottom: 3 },
+  sasBulletText: { fontFamily: FONT_BODY, fontSize: 16, lineHeight: 16, color: '#333', marginBottom: 3 },
+  // ─── Lesson Preview (read-only lesson detail view) ─────────────────────────
+  // Every section title uses the same size/weight, and every section's
+  // content is intentionally LARGER than its title (content is what the
+  // student actually reads). Line height equals font size (1.0, no extra
+  // leading) and there is no border/background decoration — plain text
+  // laid out on the page, not boxed "cards". Mirrors TeacherCourseDetail2's
+  // Lesson Preview.
+  lessonPreviewSectionTitle: {
+    fontFamily: FONT_BODY,
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#222',
+    marginTop: 4,
+    marginBottom: 6,
+  },
+  lessonPreviewSectionText: {
+    fontFamily: FONT_BODY,
+    fontSize: 16,
+    lineHeight: 16,
+    color: '#333',
+  },
   sectionLabel: { fontFamily: FONT_BODY,
     fontSize: 13,
     fontWeight: WEIGHT_EMPHASIS,

@@ -8,7 +8,6 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { BarChart, LineChart, PieChart } from 'react-native-chart-kit';
-import Ionicons from 'react-native-vector-icons/Ionicons';
 import { buildStudentAnalytics } from '../analytics/analyticsService';
 import {
   AnalyticsAssignment,
@@ -335,15 +334,7 @@ const [showAllMissingWork, setShowAllMissingWork] = useState(false);
       <View style={styles.heroCard}>
         <View style={{ flex: 1 }}>
           <Text style={styles.heroEyebrow}>Student Analytics Dashboard</Text>
-          <View style={styles.heroTitleRow}>
-            <Ionicons
-              name="analytics-outline"
-              size={isDesktop ? 22 : isTablet ? 20 : 18}
-              color={COLORS.text}
-              style={styles.heroTitleIcon}
-            />
-            <Text style={[styles.heroTitle, { marginBottom: 0 }]}>Academic Performance Overview</Text>
-          </View>
+          <Text style={styles.heroTitle}>Academic Performance Overview</Text>
           <Text style={styles.heroSubtitle}>
             Welcome, {studentName}. Track performance trends, assignment status, and subject predictions in one dashboard.
           </Text>
@@ -720,8 +711,6 @@ const styles = StyleSheet.create({
   heroCard: { backgroundColor: COLORS.surface, borderRadius: 20, padding: 18, marginBottom: 16, borderWidth: 1, borderColor: COLORS.border, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 12, shadowOffset: { width: 0, height: 4 }, elevation: 2 },
   heroEyebrow: { fontFamily: FONT_BODY, fontSize: 12, fontWeight: WEIGHT_EMPHASIS, color: COLORS.primary, textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 6 },
   heroTitle: { fontFamily: FONT_TITLE, fontSize: 24, fontWeight: WEIGHT_TITLE, color: COLORS.text, marginBottom: 6 },
-  heroTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 },
-  heroTitleIcon: { marginTop: 2 },
   heroSubtitle: { fontFamily: FONT_BODY, fontSize: 14, color: COLORS.subtext, lineHeight: 22 },
   riskPillWrap: { marginTop: 16, alignSelf: 'flex-start' },
   riskPillLabel: { fontFamily: FONT_BODY, fontSize: 12, color: COLORS.subtext, marginBottom: 6, fontWeight: WEIGHT_EMPHASIS },

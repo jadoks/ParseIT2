@@ -459,12 +459,6 @@ const Dashboard = ({
         <View style={[styles.contentWrap, { maxWidth: contentMaxWidth }]}>
           <View style={styles.topHeaderRow}>
             <View style={styles.titleRow}>
-              <Ionicons
-                name="megaphone-outline"
-                size={titleIconSize}
-                color="#111"
-                style={styles.titleIcon}
-              />
               <Text
                 style={[
                   styles.pageTitle,
@@ -520,12 +514,6 @@ const Dashboard = ({
           )}
 
           <View style={[styles.titleRow, { marginTop: sectionSpacing, marginBottom: 10 }]}>
-            <Ionicons
-              name="stats-chart-outline"
-              size={titleIconSize}
-              color="#111"
-              style={styles.titleIcon}
-            />
             <Text
               style={[
                 styles.pageTitle,
@@ -665,12 +653,6 @@ const Dashboard = ({
           </View>
 
           <View style={[styles.titleRow, { marginTop: sectionSpacing, marginBottom: 10 }]}>
-            <Ionicons
-              name="sparkles-outline"
-              size={titleIconSize}
-              color="#111"
-              style={styles.titleIcon}
-            />
             <Text
               style={[
                 styles.pageTitle,
@@ -794,12 +776,6 @@ const Dashboard = ({
           </View>
 
           <View style={[styles.titleRow, { marginTop: sectionSpacing, marginBottom: 10 }]}>
-            <Ionicons
-              name="bulb-outline"
-              size={titleIconSize}
-              color="#111"
-              style={styles.titleIcon}
-            />
             <Text
               style={[
                 styles.pageTitle,
@@ -863,12 +839,6 @@ const Dashboard = ({
             ]}
           >
             <View style={[styles.titleRow, { flex: 1 }]}>
-              <Ionicons
-                name="trending-up-outline"
-                size={titleIconSize}
-                color="#111"
-                style={styles.titleIcon}
-              />
               <Text
                 style={[
                   styles.pageTitle,

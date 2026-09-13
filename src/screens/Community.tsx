@@ -753,15 +753,7 @@ const Community: React.FC<CommunityProps> = ({
         >
           <View style={styles.innerWrapper}>
             <View style={styles.header}>
-              <View style={styles.titleRow}>
-                <Ionicons
-                  name="people-outline"
-                  size={isLargeScreen ? 22 : 18}
-                  color="#222"
-                  style={styles.titleIcon}
-                />
-                <Text style={styles.title}>ParseIT Community</Text>
-              </View>
+              <Text style={styles.title}>ParseIT Community</Text>
             </View>
 
             <View style={styles.composerCard}>
@@ -1192,9 +1184,6 @@ const styles = StyleSheet.create({
     fontWeight: WEIGHT_TITLE,
     color: '#222',
   },
-
-  titleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  titleIcon: { marginTop: 2 },
 
   composerCard: {
   backgroundColor: '#ffffff',

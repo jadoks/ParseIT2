@@ -529,7 +529,9 @@ const Dashboard2 = ({
   const [editScheduleBlocks, setEditScheduleBlocks] = useState<ClassScheduleFormBlock[]>([createEmptyScheduleBlock()]);
 
   const isMobile = width < 768;
+  const isTablet = width >= 768 && width < 1200;
   const isLargeScreen = width >= 1200;
+  const bannerHeight = isMobile ? 110 : isTablet ? 125 : 140;
   const optionGridItemStyle = isMobile
     ? styles.optionGridItemMobile
     : isLargeScreen
@@ -1385,15 +1387,14 @@ const refreshClassesAfterStorageWrite = async (pinFrontId?: string) => {
       >
         <View style={styles.mainWrapper}>
           <View style={styles.headerRow}>
-            <View style={styles.titleRow}>
-              <Ionicons
-                name="megaphone-outline"
-                size={isMobile ? 20 : 22}
-                color="#111"
-                style={styles.titleIcon}
-              />
-              <Text style={styles.sectionHeader}>Announcements</Text>
-            </View>
+            <Text
+              style={[
+                styles.sectionHeader,
+                { fontSize: isMobile ? 22 : isTablet ? 24 : 28 },
+              ]}
+            >
+              Announcements
+            </Text>
           </View>
 
           {isLoading ? (
@@ -1401,24 +1402,34 @@ const refreshClassesAfterStorageWrite = async (pinFrontId?: string) => {
           ) : announcements.length > 0 ? (
             <AnnouncementBanner announcements={announcements} />
           ) : (
-            <View style={styles.emptyAnnouncementBanner}>
-              <Text style={styles.emptyAnnouncementDay}>No announcements yet</Text>
-              <Text style={styles.emptyAnnouncementLocation}>
-                Stay tuned for updates from your courses
-              </Text>
+            <View style={[styles.banner, { height: bannerHeight }]}>
+              <View style={styles.bannerContent}>
+                <Text
+                  style={[styles.bannerDay, { fontSize: isMobile ? 13 : 14 }]}
+                >
+                  No announcements yet
+                </Text>
+                <Text
+                  style={[
+                    styles.bannerLocation,
+                    { fontSize: isMobile ? 16 : isTablet ? 18 : 20 },
+                  ]}
+                >
+                  Stay tuned for updates from your classes
+                </Text>
+              </View>
             </View>
           )}
 
           <View style={styles.classesHeaderRow}>
-            <View style={styles.titleRow}>
-              <Ionicons
-                name="school-outline"
-                size={isMobile ? 22 : 24}
-                color="#111"
-                style={styles.titleIcon}
-              />
-              <Text style={styles.classesTitle}>My Classes</Text>
-            </View>
+            <Text
+              style={[
+                styles.classesTitle,
+                { fontSize: isMobile ? 22 : isTablet ? 24 : 28 },
+              ]}
+            >
+              My Classes
+            </Text>
             <View style={styles.classesHeaderActions}>
               {hiddenCourseCount > 0 ? (
                 <TouchableOpacity 
@@ -1506,27 +1517,27 @@ const styles = StyleSheet.create({
   scrollPadding: { paddingTop: 16, paddingBottom: 40, backgroundColor: 'transparent' },
   mainWrapper: { maxWidth: 1200, alignSelf: 'center', width: '100%' },
   headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
-  titleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  titleIcon: { marginTop: 2 },
-  sectionHeader: { fontFamily: FONT_TITLE, fontSize: 24, fontWeight: WEIGHT_TITLE, color: '#111' },
-  emptyAnnouncementBanner: {
+  sectionHeader: { fontFamily: FONT_TITLE, fontWeight: WEIGHT_TITLE, color: '#111' },
+  banner: {
     backgroundColor: '#F4F5F7',
     borderWidth: 1,
     borderColor: '#E3E5E9',
     borderRadius: 30,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingVertical: 24,
+  },
+  bannerContent: {
+    alignItems: 'center',
     paddingHorizontal: 20,
   },
-  emptyAnnouncementDay: { fontFamily: FONT_BODY, fontSize: 13, color: '#8A8F98' },
-  emptyAnnouncementLocation: {
+  bannerDay: {
+    color: '#8A8F98',
+  },
+  bannerLocation: {
     fontFamily: FONT_BODY,
-    fontSize: 16,
-    fontWeight: WEIGHT_EMPHASIS,
     color: '#4A4E58',
+    fontWeight: WEIGHT_EMPHASIS,
     textAlign: 'center',
-    marginTop: 4,
   },
   classesHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 20, marginBottom: 16, gap: 12 },
   classesHeaderActions: { flexDirection: 'row', alignItems: 'center', gap: 10, flexWrap: 'wrap', justifyContent: 'flex-end' },
@@ -1542,7 +1553,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   seeAllButtonText: { fontFamily: FONT_BODY, color: '#D32F2F', fontWeight: WEIGHT_EMPHASIS, fontSize: 14 },
-  classesTitle: { fontFamily: FONT_TITLE, fontSize: 26, fontWeight: WEIGHT_TITLE, color: '#111' },
+  classesTitle: { fontFamily: FONT_TITLE, fontWeight: WEIGHT_TITLE, color: '#111' },
   createBtn: { 
     backgroundColor: '#D32F2F', 
     paddingHorizontal: 16, 

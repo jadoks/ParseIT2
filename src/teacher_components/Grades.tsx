@@ -212,7 +212,7 @@ const Grades = ({ apiBaseUrl }: GradesProps) => {
   const isStackedLayout = width < 760;
 
   const contentHorizontalPadding = isPhone ? 16 : isTablet ? 28 : 150;
-  const titleSize = isPhone ? 32 : isTablet ? 36 : 36;
+  const titleSize = isPhone ? 22 : isTablet ? 24 : 28;
 
   const mobileReportWidth = Math.max(320, width - 32);
   const webTableWidth = 940;
@@ -673,15 +673,7 @@ const Grades = ({ apiBaseUrl }: GradesProps) => {
             ]}
           >
             <View style={[styles.headerBlock, isPhone && styles.headerBlockMobile]}>
-              <View style={styles.titleRow}>
-                <Ionicons
-                  name="document-text-outline"
-                  size={isPhone ? 26 : 30}
-                  color="#000"
-                  style={styles.titleIcon}
-                />
-                <Text style={[styles.mainTitle, { fontSize: titleSize }]}>Grades</Text>
-              </View>
+              <Text style={[styles.mainTitle, { fontSize: titleSize }]}>Grades</Text>
               <Text style={styles.subTitle}>
                 Generate an official academic grade report from uploaded records.
               </Text>
@@ -1100,16 +1092,6 @@ const styles = StyleSheet.create({
     fontWeight: WEIGHT_EMPHASIS,
     color: '#000',
     fontFamily,
-  },
-
-  titleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-
-  titleIcon: {
-    marginTop: 2,
   },
 
   subTitle: {

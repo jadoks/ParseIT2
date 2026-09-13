@@ -26,7 +26,6 @@ import {
   useWindowDimensions,
   View
 } from 'react-native';
-import Ionicons from 'react-native-vector-icons/Ionicons';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { FONT_BODY, FONT_TITLE, WEIGHT_EMPHASIS, WEIGHT_TITLE } from '../theme/typography';
 
@@ -1969,17 +1968,9 @@ const Messenger = ({
               <Text style={styles.screenBackText}>Back</Text>
             </TouchableOpacity>
           )}
-          <View style={styles.pageTitleRow}>
-            <Ionicons
-              name="chatbubble-ellipses-outline"
-              size={sizes.headerIcon}
-              color="#111"
-              style={styles.pageTitleIcon}
-            />
-            <Text style={[styles.pageTitle, { fontSize: sizes.pageTitle, paddingBottom: 0, paddingHorizontal: 0, marginTop: 0 }]}>
-              Messages
-            </Text>
-          </View>
+          <Text style={[styles.pageTitle, { fontSize: sizes.pageTitle }]}>
+            Messages
+          </Text>
           {isMobile && (
             <TouchableOpacity
                 style={styles.headerActionButton}
@@ -3191,15 +3182,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
     color: '#111',
   },
-  pageTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginTop: 20,
-    paddingHorizontal: 18,
-    paddingBottom: 10,
-  },
-  pageTitleIcon: { marginTop: 2 },
   convCard: {
     flexDirection: 'row',
     alignItems: 'center',

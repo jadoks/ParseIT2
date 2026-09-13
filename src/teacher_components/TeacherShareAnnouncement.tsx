@@ -1240,17 +1240,14 @@ export default function ShareAnnouncement({
         >
           <View style={styles.headerSpacer} />
 
-          <View style={styles.formTitleRow}>
-            <Ionicons name="megaphone-outline" size={isMobile ? 24 : 32} color="#000" style={styles.formTitleIcon} />
-            <Text
-              style={[
-                styles.formTitle,
-                { fontSize: isMobile ? 28 : 40 },
-              ]}
-            >
-              Share an Announcement.
-            </Text>
-          </View>
+          <Text
+            style={[
+              styles.formTitle,
+              { fontSize: isMobile ? 22 : isLargeScreen ? 28 : 24 },
+            ]}
+          >
+            Share an Announcement.
+          </Text>
 
           <Text style={styles.formSubTitle}>
             Announcement will be available to selected classes.
@@ -1867,13 +1864,11 @@ const styles = StyleSheet.create({
   webContentContainerLarge: { paddingLeft: 150, paddingRight: 150 },
   headerSpacer: { height: 10, marginBottom: 20 },
   formTitle: { fontWeight: WEIGHT_EMPHASIS, color: '#000', fontFamily, letterSpacing: -0.5 },
-  formTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  formTitleIcon: { marginTop: 2 },
   formSubTitle: { fontSize: 14, color: '#444', marginBottom: 30, fontFamily },
 
   inputOutlineBox: { borderWidth: 1.5, borderColor: '#718096', borderRadius: 14, padding: 12, marginBottom: 20, backgroundColor: '#FFF' },
   inputOutlineBoxFocused: { borderColor: '#000' },
-  innerLabel: { fontSize: 14, fontWeight: '600', color: '#222', marginBottom: 5, fontFamily },
+  innerLabel: { fontSize: 14, fontWeight: WEIGHT_EMPHASIS, color: '#222', marginBottom: 5, fontFamily },
   nakedInput: { fontSize: 14, color: '#222', padding: 0, margin: 0, fontFamily, ...Platform.select({ web: { outlineStyle: 'none' } as any }) },
   descriptionInput: { height: 80 },
 
@@ -1896,10 +1891,10 @@ const styles = StyleSheet.create({
   targetModalCard: { width: '100%', maxWidth: 520, maxHeight: '88%', backgroundColor: '#FFF', borderRadius: 18, padding: 20 },
   targetModalCardMobile: { maxHeight: '92%' },
   targetModalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 },
-  targetModalTitle: { fontSize: 22, fontWeight: '700', color: '#222', fontFamily },
+  targetModalTitle: { fontSize: 22, fontWeight: WEIGHT_TITLE, color: '#222', fontFamily },
   targetModalScrollContent: { paddingBottom: 12 },
   targetSection: { marginBottom: 18 },
-  targetSectionTitle: { fontSize: 15, fontWeight: '700', color: '#222', marginBottom: 10, fontFamily },
+  targetSectionTitle: { fontSize: 15, fontWeight: WEIGHT_TITLE, color: '#222', marginBottom: 10, fontFamily },
 
   checkRow: { minHeight: 48, borderRadius: 16, borderWidth: 1, borderColor: '#E5CACA', backgroundColor: '#FFF', flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 9, marginBottom: 8 },
   compactCheckRow: { minHeight: 52, borderRadius: 16, borderWidth: 1, borderColor: '#E5CACA', backgroundColor: '#FFF', flexDirection: 'row', alignItems: 'center', paddingHorizontal: 11, paddingVertical: 8, marginBottom: 7 },
@@ -1907,8 +1902,8 @@ const styles = StyleSheet.create({
   checkboxBase: { width: 18, height: 18, borderRadius: 5, borderWidth: 1.5, borderColor: '#D8B4B4', backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center', marginRight: 10 },
   checkboxChecked: { backgroundColor: '#D32F2F', borderColor: '#D32F2F' },
   checkTextWrapper: { flex: 1 },
-  checkText: { fontSize: 13, fontWeight: '600', color: '#202124', fontFamily },
-  compactCheckText: { fontSize: 13, fontWeight: '700', color: '#202124', fontFamily },
+  checkText: { fontSize: 13, fontWeight: WEIGHT_EMPHASIS, color: '#202124', fontFamily },
+  compactCheckText: { fontSize: 13, fontWeight: WEIGHT_EMPHASIS, color: '#202124', fontFamily },
   checkSubText: { marginTop: 2, fontSize: 11.5, color: '#6B7280', fontFamily },
 
   emptyClassesBox: { borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 16, paddingVertical: 16, paddingHorizontal: 14, backgroundColor: '#FAFAFA' },
@@ -1916,12 +1911,12 @@ const styles = StyleSheet.create({
 
   modalButtonRow: { flexDirection: 'row', gap: 10 },
   cancelBtn: { flex: 1, backgroundColor: '#F3F4F6', paddingVertical: 13, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
-  cancelBtnText: { color: '#374151', fontWeight: '700', fontSize: 14, fontFamily },
+  cancelBtnText: { color: '#374151', fontWeight: WEIGHT_EMPHASIS, fontSize: 14, fontFamily },
   confirmBtn: { flex: 1, backgroundColor: '#B71C1C', paddingVertical: 13, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
   confirmBtnText: { color: '#FFF', fontWeight: WEIGHT_EMPHASIS, fontSize: 14, fontFamily },
 
   // ─── DATE/TIME PICKER STYLES ───────────────────────────────────────────────────
-  fieldLabel: { fontFamily: FONT_BODY, fontSize: 14, fontWeight: '700', color: '#374151', marginBottom: 8 },
+  fieldLabel: { fontFamily: FONT_BODY, fontSize: 14, fontWeight: WEIGHT_EMPHASIS, color: '#374151', marginBottom: 8 },
   selectField: { height: 54, borderRadius: 14, borderWidth: 1, borderColor: '#E5E7EB', backgroundColor: '#F9FAFB', paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   selectFieldText: { fontFamily: FONT_BODY, fontSize: 16, fontWeight: '400', color: '#111827', flex: 1, marginRight: 10 },
   placeholderSelectText: { color: '#9E9E9E' },
@@ -1970,7 +1965,7 @@ const styles = StyleSheet.create({
   timeTextInput: { fontFamily: FONT_BODY,
     fontSize: 16,
     color: '#2B1111',
-    fontWeight: '600',
+    fontWeight: WEIGHT_EMPHASIS,
     paddingVertical: 10,
     ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : {}),
   },
@@ -2010,18 +2005,18 @@ const styles = StyleSheet.create({
   dropdownItem: { minHeight: 52, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   dropdownItemBorder: { borderBottomWidth: 1, borderBottomColor: '#FAE9E9' },
   dropdownItemActive: { backgroundColor: '#FFF7F7' },
-  dropdownItemText: { fontFamily: FONT_BODY, flex: 1, fontSize: 14, color: '#5F3B3B', fontWeight: '600', paddingRight: 10 },
-  dropdownItemTextActive: { color: '#DC2626', fontWeight: '700' },
+  dropdownItemText: { fontFamily: FONT_BODY, flex: 1, fontSize: 14, color: '#5F3B3B', fontWeight: WEIGHT_EMPHASIS, paddingRight: 10 },
+  dropdownItemTextActive: { color: '#DC2626', fontWeight: WEIGHT_EMPHASIS },
 
   modalFooter: { paddingHorizontal: 24, paddingTop: 16, paddingBottom: 22, borderTopWidth: 1, borderTopColor: '#F8E3E3', flexDirection: 'row', justifyContent: 'flex-end' },
   modalSecondaryButton: { height: 48, paddingHorizontal: 18, borderRadius: 14, borderWidth: 1, borderColor: '#E7C0C0', backgroundColor: '#FFF7F7', alignItems: 'center', justifyContent: 'center', marginRight: 12 },
-  modalSecondaryButtonText: { fontFamily: FONT_BODY, fontSize: 14, fontWeight: '700', color: '#7A4A4A' },
+  modalSecondaryButtonText: { fontFamily: FONT_BODY, fontSize: 14, fontWeight: WEIGHT_EMPHASIS, color: '#7A4A4A' },
   modalPrimaryButton: { height: 48, paddingHorizontal: 18, borderRadius: 14, backgroundColor: '#DC2626', alignItems: 'center', justifyContent: 'center', flexDirection: 'row' },
   modalPrimaryButtonText: { fontFamily: FONT_BODY, fontSize: 14, fontWeight: WEIGHT_EMPHASIS, color: '#FFFFFF', marginLeft: 8 },
 
   // ─── SEE ALL / MANAGE ANNOUNCEMENTS ────────────────────────────────────────
   manageLink: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', gap: 8, paddingVertical: 8, paddingHorizontal: 14, borderRadius: 999, borderWidth: 1.5, borderColor: '#F3D0D0', backgroundColor: '#FFF7F7', marginBottom: 24 },
-  manageLinkText: { fontSize: 13, fontWeight: '700', color: '#B71C1C', fontFamily },
+  manageLinkText: { fontSize: 13, fontWeight: WEIGHT_EMPHASIS, color: '#B71C1C', fontFamily },
 
   manageModalCard: { width: '100%', maxWidth: 560, maxHeight: '85%', backgroundColor: '#FFF', borderRadius: 18, padding: 20 },
   manageModalCardMobile: { maxHeight: '90%' },
@@ -2029,7 +2024,7 @@ const styles = StyleSheet.create({
   manageStateBox: { alignItems: 'center', justifyContent: 'center', paddingVertical: 48, paddingHorizontal: 20 },
   manageStateText: { marginTop: 10, fontSize: 13.5, color: '#6B7280', textAlign: 'center', fontFamily, lineHeight: 19 },
   retryBtn: { marginTop: 14, backgroundColor: '#B71C1C', paddingVertical: 10, paddingHorizontal: 20, borderRadius: 16 },
-  retryBtnText: { color: '#FFF', fontSize: 13, fontWeight: '700', fontFamily },
+  retryBtnText: { color: '#FFF', fontSize: 13, fontWeight: WEIGHT_EMPHASIS, fontFamily },
 
   manageListContent: { paddingBottom: 6 },
   manageItemCard: { borderWidth: 1, borderColor: '#EEE', borderRadius: 14, padding: 14, marginBottom: 12, backgroundColor: '#FAFAFA' },
@@ -2048,12 +2043,12 @@ const styles = StyleSheet.create({
 
   manageItemActions: { flexDirection: 'row', gap: 10, marginTop: 10 },
   editActionBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: 14, borderRadius: 16, borderWidth: 1, borderColor: '#BFDBFE', backgroundColor: '#EFF6FF' },
-  editActionText: { fontSize: 12.5, fontWeight: '700', color: '#1D4ED8', fontFamily },
+  editActionText: { fontSize: 12.5, fontWeight: WEIGHT_EMPHASIS, color: '#1D4ED8', fontFamily },
   deleteActionBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: 14, borderRadius: 16, borderWidth: 1, borderColor: '#F3D0D0', backgroundColor: '#FFF5F5' },
-  deleteActionText: { fontSize: 12.5, fontWeight: '700', color: '#B71C1C', fontFamily },
+  deleteActionText: { fontSize: 12.5, fontWeight: WEIGHT_EMPHASIS, color: '#B71C1C', fontFamily },
 
   changeClassesBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 10, paddingVertical: 10, borderRadius: 16, borderWidth: 1, borderColor: '#F3D0D0', backgroundColor: '#FFF7F7' },
-  changeClassesBtnText: { fontSize: 12.5, fontWeight: '700', color: '#B71C1C', fontFamily },
+  changeClassesBtnText: { fontSize: 12.5, fontWeight: WEIGHT_EMPHASIS, color: '#B71C1C', fontFamily },
   editAudienceSummary: { fontSize: 13, color: '#444', lineHeight: 18, fontFamily },
 
   // ─── DELETE CONFIRMATION ────────────────────────────────────────────────────

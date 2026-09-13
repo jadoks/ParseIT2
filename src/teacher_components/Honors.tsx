@@ -1401,8 +1401,14 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
       >
         <View style={styles.headerRow}>
           <View style={styles.titleRow}>
-            <Ionicons name="ribbon-outline" size={30} color="#000" style={{ marginTop: 2 }} />
-            <Text style={styles.title}>Deans List</Text>
+            <Text
+              style={[
+                styles.title,
+                { fontSize: isMobile ? 22 : isLargeScreen ? 28 : 24 },
+              ]}
+            >
+              Deans List
+            </Text>
 
             <TouchableOpacity
               onPress={() => setShowFlowModal(true)}
@@ -1663,7 +1669,6 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   title: { fontFamily: FONT_TITLE,
-    fontSize: 36,
     fontWeight: WEIGHT_TITLE,
     color: '#000',
   },

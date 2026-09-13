@@ -13,7 +13,6 @@ import {
   View,
   useWindowDimensions,
 } from 'react-native';
-import Ionicons from 'react-native-vector-icons/Ionicons';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { FONT_BODY, FONT_TITLE, WEIGHT_EMPHASIS, WEIGHT_TITLE } from '../theme/typography';
 
@@ -254,15 +253,7 @@ const MyJourney = ({
         <View style={styles.pageHeaderAccent} />
         <View style={styles.pageHeaderContent}>
           <Text style={styles.pageEyebrow}>Academic Record</Text>
-          <View style={styles.pageTitleRow}>
-            <Ionicons
-              name="trail-sign-outline"
-              size={isMobile ? 20 : isTablet ? 22 : 24}
-              color="#111827"
-              style={styles.pageTitleIcon}
-            />
-            <Text style={[styles.pageTitle, { marginBottom: 0 }]}>My Journey</Text>
-          </View>
+          <Text style={styles.pageTitle}>My Journey</Text>
           <Text style={styles.pageSubtitle}>
             Generate your official academic record from your uploaded grade file.
           </Text>
@@ -480,8 +471,6 @@ const styles = StyleSheet.create({
   pageHeaderCardMobile: { borderRadius: 18, marginBottom: 14 },
   pageEyebrow: { fontSize: 12, fontWeight: WEIGHT_EMPHASIS, fontFamily: FONT_BODY, color: '#D32F2F', letterSpacing: 1.1, textTransform: 'uppercase', marginBottom: 6 },
   pageTitle: { fontSize: 30, fontWeight: WEIGHT_TITLE, fontFamily: FONT_TITLE, color: '#111827', marginBottom: 6 },
-  pageTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 },
-  pageTitleIcon: { marginTop: 2 },
   pageSubtitle: { fontSize: 14, color: '#6B7280', lineHeight: 21, fontFamily: FONT_BODY },
   filterCard: { backgroundColor: '#FFFFFF', borderRadius: 22, borderWidth: 1, borderColor: '#E5E7EB', padding: 18, marginBottom: 22, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 12, shadowOffset: { width: 0, height: 7 }, elevation: 2 },
   filterCardMobile: { borderRadius: 18, padding: 14, marginBottom: 18 },
