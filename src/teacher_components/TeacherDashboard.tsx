@@ -1409,7 +1409,7 @@ const refreshClassesAfterStorageWrite = async (pinFrontId?: string) => {
                     { fontSize: isMobile ? 16 : isTablet ? 18 : 20 },
                   ]}
                 >
-                  Stay tuned for updates from your classes
+                  Create an announcement to keep your classes updated
                 </Text>
               </View>
             </View>

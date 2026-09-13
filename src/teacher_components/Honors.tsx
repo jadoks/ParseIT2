@@ -1400,25 +1400,31 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.headerRow}>
-          <View style={styles.titleRow}>
-            <Text
-              style={[
-                styles.title,
-                { fontSize: isMobile ? 22 : isLargeScreen ? 28 : 24 },
-              ]}
-            >
-              Deans List
-            </Text>
+          <View style={styles.titleColumn}>
+            <View style={styles.titleRow}>
+              <Text
+                style={[
+                  styles.title,
+                  { fontSize: isMobile ? 22 : isLargeScreen ? 28 : 24 },
+                ]}
+              >
+                Deans List
+              </Text>
 
-            <TouchableOpacity
-              onPress={() => setShowFlowModal(true)}
-              style={styles.flowHelpBtn}
-              activeOpacity={0.7}
-              hitSlop={8}
-              accessibilityLabel="How is the Deans List generated?"
-            >
-              <Ionicons name="help-circle-outline" size={24} color="#B71C1C" />
-            </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => setShowFlowModal(true)}
+                style={styles.flowHelpBtn}
+                activeOpacity={0.7}
+                hitSlop={8}
+                accessibilityLabel="How is the Deans List generated?"
+              >
+                <Ionicons name="help-circle-outline" size={24} color="#B71C1C" />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.subHeadingText}>
+              Provide the academic start year and semester to view the qualified Deans List students
+            </Text>
           </View>
 
           <TouchableOpacity
@@ -1440,13 +1446,6 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
               {isExportingExcel ? 'Exporting...' : 'Download Excel'}
             </Text>
           </TouchableOpacity>
-        </View>
-
-        <View style={[styles.subHeader, isMobile && styles.subHeaderMobile]}>
-          <Text style={styles.mainHeading}>Deans List Generation</Text>
-          <Text style={styles.subHeadingText}>
-            Provide the academic start year and semester to generate the official Deans List of qualified students.
-          </Text>
         </View>
 
         <View style={[styles.controlsCard, isMobile && styles.controlsCardMobile]}>
@@ -1661,7 +1660,12 @@ const styles = StyleSheet.create({
   headerRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
+    marginBottom: 24,
+  },
+  titleColumn: {
+    flex: 1,
+    marginRight: 12,
   },
   titleRow: {
     flexDirection: 'row',
@@ -1708,23 +1712,10 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
   },
 
-  subHeader: {
-    marginTop: 15,
-    marginBottom: 30,
-  },
-  subHeaderMobile: {
-    marginTop: 12,
-    marginBottom: 18,
-  },
-  mainHeading: { fontFamily: FONT_BODY,
-    fontSize: 22,
-    fontWeight: '700',
-    color: '#000',
-  },
   subHeadingText: { fontFamily: FONT_BODY,
     fontSize: 14,
     color: '#444',
-    marginTop: 2,
+    marginTop: 4,
     lineHeight: 20,
   },
 
