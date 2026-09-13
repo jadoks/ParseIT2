@@ -21,6 +21,7 @@ import Ionicons from 'react-native-vector-icons/Ionicons';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { auth } from '../../firebaseConfig';
 // 🔥 Import shared API and Cache utilities
+import Svg, { Path } from 'react-native-svg';
 import { apiFetch } from '../services/api';
 import {
   getCachedUserImageUrl,
@@ -713,6 +714,31 @@ const TeacherDrawerMenu = ({
 
   return (
     <View style={[styles.drawerContainer, { width: drawerWidth }]}>
+      {/* ─── Decorative wave background — lives on the drawer container itself, responsive ── */}
+      <Svg
+        style={styles.waveBack}
+        width="100%"
+        height={isLargeScreen ? 130 : isTablet ? 110 : 90}
+        viewBox="0 0 300 150"
+        preserveAspectRatio="none"
+      >
+        <Path
+          d="M0,55 C60,20 110,90 170,60 C220,35 260,70 300,50 L300,150 L0,150 Z"
+          fill="rgba(211,47,47,0.10)"
+        />
+      </Svg>
+      <Svg
+        style={styles.waveFront}
+        width="100%"
+        height={isLargeScreen ? 105 : isTablet ? 88 : 72}
+        viewBox="0 0 300 150"
+        preserveAspectRatio="none"
+      >
+        <Path
+          d="M0,85 C50,55 100,110 160,90 C210,73 250,100 300,80 L300,150 L0,150 Z"
+          fill="rgba(211,47,47,0.16)"
+        />
+      </Svg>
       <Pressable style={styles.profileSection} onPress={onAvatarPress}>
         <Image
           source={finalAvatarSource}
@@ -747,31 +773,6 @@ const TeacherDrawerMenu = ({
         <MenuItem ionIconName="people" label="Community" onPress={() => { onNavigate?.('community'); if (!isFixed) onClose?.(); }} active={activeScreen === 'community'} />
         <MenuItem iconName="chart-line" label="Analytics" onPress={() => { onNavigate?.('analytics'); if (!isFixed) onClose?.(); }} active={activeScreen === 'analytics'} />
         <MenuItem ionIconName="settings" label="Settings" onPress={() => setSettingsModalVisible(true)} />
-
-        {/* ─── Decorative background card — responsive, all screen sizes ── */}
-        <View
-          style={[
-            styles.promoCard,
-            { minHeight: isLargeScreen ? 130 : isTablet ? 110 : 90 },
-          ]}
-        >
-          <View
-            style={[
-              styles.promoBlobOuter,
-              isLargeScreen
-                ? { width: 220, height: 220, right: -70, bottom: -110 }
-                : { width: 170, height: 170, right: -55, bottom: -85 },
-            ]}
-          />
-          <View
-            style={[
-              styles.promoBlobInner,
-              isLargeScreen
-                ? { width: 170, height: 170, right: -50, bottom: -95 }
-                : { width: 130, height: 130, right: -38, bottom: -72 },
-            ]}
-          />
-        </View>
       </ScrollView>
       <Pressable style={styles.logoutMenuItem} onPress={() => setLogoutModalVisible(true)}>
         <MaterialCommunityIcons name="logout" size={28} color="#D32F2F" style={{ marginRight: 20 }} />
@@ -1421,29 +1422,14 @@ const TeacherDrawerMenu = ({
 export default TeacherDrawerMenu;
 
 const styles = StyleSheet.create({
-  drawerContainer: { height: '100%', padding: 25, backgroundColor: '#FFF', borderColor: 'transparent' },
-  // ─── Promo card ("Learn. Analyze. Grow.") — large screens only ─────────
-  promoCard: {
-    marginTop: 20,
-    borderRadius: 22,
-    backgroundColor: '#FCE4E4',
-    overflow: 'hidden',
-  },
-  // Two oversized, low-opacity circles clipped by the card's overflow:hidden
-  // to fake the layered "wave" curves in the reference image without
-  // needing an svg/gradient library. Sizes are overridden inline per
-  // breakpoint (see promoBlobOuter/Inner usage in the component) since
-  // this StyleSheet is module-scope and can't see isLargeScreen/isTablet.
-  promoBlobOuter: {
-    position: 'absolute',
-    borderRadius: 999,
-    backgroundColor: 'rgba(211,47,47,0.10)',
-  },
-  promoBlobInner: {
-    position: 'absolute',
-    borderRadius: 999,
-    backgroundColor: 'rgba(211,47,47,0.16)',
-  },
+  drawerContainer: { height: '100%', padding: 25, backgroundColor: '#FFF', borderColor: 'transparent', position: 'relative', overflow: 'hidden' },
+  // Two layered SVG wave shapes anchored to the bottom of drawerContainer,
+  // clipped by its own overflow:hidden, to sit directly on the drawer
+  // itself (no separate card). Heights are set inline per breakpoint (see
+  // usage in the component) since this StyleSheet is module-scope and
+  // can't see isLargeScreen/isTablet.
+  waveBack: { position: 'absolute', left: 0, right: 0, bottom: 0 },
+  waveFront: { position: 'absolute', left: 0, right: 0, bottom: 0 },
   profileSection: { flexDirection: 'row', alignItems: 'center', marginBottom: 30 },
   avatar: { width: 50, height: 50, borderRadius: 25, marginRight: 15, overflow: 'hidden', aspectRatio: 1 },
   userName: { fontFamily: FONT_TITLE, fontWeight: WEIGHT_TITLE, fontSize: 18 },
