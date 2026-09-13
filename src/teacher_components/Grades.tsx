@@ -215,7 +215,20 @@ const Grades = ({ apiBaseUrl }: GradesProps) => {
   const titleSize = isPhone ? 22 : isTablet ? 24 : 28;
 
   const mobileReportWidth = Math.max(320, width - 32);
-  const webTableWidth = 940;
+  // 🔥 FIX: this used to be a hardcoded 940, so on any layout narrower than
+  // that (e.g. now that the page content sits inside the padded gradesCard)
+  // the header image, title block, student info panel, and table were all
+  // forced wider than the reportCard actually had room for — cutting off
+  // the right edge (the FINAL GRADE column, footer logos, etc.) with no way
+  // to scroll to it. Measuring the reportCard's real rendered width via
+  // onLayout and capping the ideal 940 to whatever space it actually has
+  // keeps everything inside the visible card at every screen size.
+  const [reportCardWidth, setReportCardWidth] = useState(0);
+  const reportCardHorizontalPadding = isLargeScreen ? 24 : 20;
+  const webTableWidth =
+    reportCardWidth > 0
+      ? Math.min(940, reportCardWidth - reportCardHorizontalPadding * 2)
+      : 940;
   const mobileTableMinWidth = 640;
 
   const [studentId, setStudentId] = useState('');
@@ -870,6 +883,7 @@ const Grades = ({ apiBaseUrl }: GradesProps) => {
                     ? [styles.mobileReportCard, { width: mobileReportWidth }]
                     : [styles.reportCard, isLargeScreen && styles.reportCardLarge],
                 ]}
+                onLayout={(e) => setReportCardWidth(e.nativeEvent.layout.width)}
               >
                 <View
                   style={[
