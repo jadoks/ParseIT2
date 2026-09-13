@@ -73,6 +73,14 @@ const ClassesScreen = ({
   const isTablet = width >= 768 && width < 1200;
   const pagePadding = isMobile ? 14 : isTablet ? 20 : 20;
 
+  // 🔥 NEW: the raw window width isn't the space CourseCard actually has to
+  // fill — there's a persistent sidebar next to this screen, plus the
+  // classesCard's own padding, so CourseCard used to size itself far too
+  // wide for the space it was given (looking like it didn't belong inside
+  // the card). Measuring the grid View's real rendered width and passing
+  // it down fixes that at every breakpoint.
+  const [gridWidth, setGridWidth] = useState(0);
+
   // ✅ Toast state — same shape/usage as Community and Dashboard.
   const [toast, setToast] = useState<{
     visible: boolean;
@@ -175,6 +183,7 @@ const ClassesScreen = ({
               isTablet && styles.gridTablet,
               !isMobile && !isTablet && styles.gridDesktop,
             ]}
+            onLayout={(e) => setGridWidth(e.nativeEvent.layout.width)}
           >
             {/* 👇 USE filteredCourses INSTEAD OF courses */}
             {filteredCourses.length > 0 ? (
@@ -182,6 +191,7 @@ const ClassesScreen = ({
                 <CourseCard
                   key={course.id}
                   course={course}
+                  containerWidth={gridWidth}
                   onPress={(selectedCourse) => onCoursePress?.(selectedCourse)}
                   onAssignmentPress={(selectedCourse) => onAssignmentPress?.(selectedCourse)}
                   onMaterialsPress={(selectedCourse) => onMaterialsPress?.(selectedCourse)}

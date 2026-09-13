@@ -74,6 +74,17 @@ interface CourseCardProps {
   onPress?: (course: CourseCardCourse) => void;
   onAssignmentPress?: (course: CourseCardCourse) => void;
   onMaterialsPress?: (course: CourseCardCourse) => void;
+  // 🔥 NEW: the actual available width of the grid this card is rendered
+  // in (e.g. measured via onLayout on the parent grid View). CourseCard
+  // used to size itself off the raw device window width, which ignores
+  // any sidebar, page padding, or the outer white card's own padding —
+  // so on screens with a persistent sidebar (or now, wrapped in a padded
+  // card) the computed card width didn't match the space actually left
+  // for it, and the grid looked like it didn't belong inside its
+  // container. When provided, this takes priority over window width for
+  // sizing; falls back to the window width when omitted so existing
+  // call sites keep working unchanged.
+  containerWidth?: number;
   // Single source of truth for leaving a course. CourseCard does NOT touch
   // Firestore directly anymore — it just asks the parent (StudentApp) to
   // run its existing backend-API leave flow (/class-members/find + DELETE),
@@ -140,11 +151,16 @@ const CourseCard: React.FC<CourseCardProps> = ({
   completedActivityScores = {},
     onLeaveCourse,
     isLeaving = false,
+    containerWidth,
 }) => {
   const { width, height } = useWindowDimensions();
-  const isSmallScreen = width < 380;
-  const isTablet = width >= 768;
-  const isLargeTablet = width >= 1024;
+  // 🔥 NEW: prefer the real measured space this card has to fill (passed
+  // down as containerWidth) over the raw device window width. Falls back
+  // to window width when the parent hasn't measured yet / doesn't pass it.
+  const layoutWidth = containerWidth && containerWidth > 0 ? containerWidth : width;
+  const isSmallScreen = layoutWidth < 380;
+  const isTablet = layoutWidth >= 768;
+  const isLargeTablet = layoutWidth >= 1024;
 
   const [dropdownState, setDropdownState] = useState<DropdownState>(null);
   const [bannerLoadFailed, setBannerLoadFailed] = useState(false);
@@ -305,15 +321,15 @@ const CourseCard: React.FC<CourseCardProps> = ({
   let cols: number;
   if (isLargeTablet) cols = 4;
   else if (isTablet) cols = 3;
-  else if (width >= 500) cols = 2;
+  else if (layoutWidth >= 500) cols = 2;
   else cols = 1;
 
   const cardWidth =
     cols === 1
-      ? width - horizontalPadding * 2
+      ? layoutWidth - horizontalPadding * 2
       : Math.max(
           220,
-          Math.floor((width - horizontalPadding * 2 - gap * (cols - 1)) / cols)
+          Math.floor((layoutWidth - horizontalPadding * 2 - gap * (cols - 1)) / cols)
         );
 
   const bannerHeight = isSmallScreen ? 120 : 140;

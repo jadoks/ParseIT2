@@ -657,7 +657,10 @@ const Grades = ({ apiBaseUrl }: GradesProps) => {
     >
       <View style={styles.flexOne}>
         <ScrollView
-          contentContainerStyle={styles.scrollContent}
+          contentContainerStyle={[
+            styles.scrollContent,
+            isPhone ? styles.scrollContentMobile : styles.scrollContentDesktop,
+          ]}
           showsVerticalScrollIndicator={true}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
@@ -1065,6 +1068,15 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingBottom: 60,
     flexGrow: 1,
+  },
+
+  // 🔥 NEW: top padding above the outer gradesCard, matching the page-level
+  // paddingTop used in Honors.tsx's content/contentMobile styles.
+  scrollContentDesktop: {
+    paddingTop: 30,
+  },
+  scrollContentMobile: {
+    paddingTop: 18,
   },
 
   leftAlignWrapper: {
