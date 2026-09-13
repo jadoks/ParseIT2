@@ -1548,10 +1548,7 @@ const fetchModules = useCallback(async (silent = false) => {
     setActiveTab("assignments");
     setSelectedAssignment(targetAssignment as any);
     void refreshOnOpen(targetAssignment.id);
-    setTimeout(() => {
-      handleGenerateActivity(targetAssignment as any, true);
-      onConsumedAutoOpenAssignment?.();
-    }, 150);
+    onConsumedAutoOpenAssignment?.();
   }, [autoOpenAssignmentId, safeCourse.assignments, completedActivityScores]);
 
   // ✅ NEW: Whenever `course` (the source of truth from StudentApp) changes —
