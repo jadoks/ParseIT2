@@ -376,7 +376,7 @@ const MyJourney = ({
           ) : hasFetchedGrade && uploadedGrades.length > 0 ? (
             <>
               <View style={styles.uploadedSourceBadge}>
-                <Text style={styles.uploadedSourceText}>Source: {uploadedFileName || 'Uploaded Grade File'}</Text>
+                <Text style={styles.uploadedSourceText}>{uploadedFileName || 'Uploaded Grade File'}</Text>
               </View>
               {isMobile ? (
                 <View style={styles.mobileCourseList}>
