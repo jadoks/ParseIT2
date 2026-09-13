@@ -345,6 +345,7 @@ export default function AdminDashboard({
           instructorIdentifier: payload.instructorIdentifier,
           memberCount: payload.classMembers,
           units: payload.units,
+          schedule: payload.schedule,
           createdByUid: "admin_uid_001",
           createdByRole: "admin",
           createdByName: "Jadoks",
