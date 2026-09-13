@@ -1857,7 +1857,13 @@ export default function ShareAnnouncement({
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: '#F4F7FB' },
-  safeArea: { flex: 1, backgroundColor: '#FFF' },
+  // 🔥 FIX: this was opaque white and filled the ENTIRE screen (flex: 1),
+  // so the light-blue `screen` background behind it was completely covered
+  // and never visible — regardless of the horizontal padding already set
+  // up in webContentContainer/webContentContainerLarge to leave margins.
+  // Making this transparent lets that padding actually show the blue page
+  // background on the sides, instead of the form stretching edge-to-edge.
+  safeArea: { flex: 1, backgroundColor: 'transparent' },
   container: { flex: 1 },
   mobileContentContainer: { flexGrow: 1, paddingHorizontal: 20, paddingTop: 10, paddingBottom: 32 },
   webContentContainer: { flexGrow: 1, paddingLeft: 25, paddingRight: 120, paddingTop: 10, paddingBottom: 32 },

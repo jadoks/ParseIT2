@@ -1473,7 +1473,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
   },
   desktopDrawer: {
-    width: 280,
+    // 🔥 FIX: removed the hardcoded width: 280. TeacherDrawerMenu already
+    // sizes itself (260 on desktop, 300 on tablet, via its own `drawerWidth`
+    // logic), so a fixed 280 here left a ~20px empty gap on the right of
+    // the drawer. StudentApp never wraps DrawerMenu in a width-constrained
+    // View for this exact reason — let this wrapper hug the drawer's own
+    // width instead.
     backgroundColor: '#FFF',
   },
   screenContainer: {
