@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import {
   Modal,
   Pressable,
@@ -390,13 +390,49 @@ export default function TeacherAnalytics({
   students = [],
 }: TeacherAnalyticsProps) {
   const [showClassDropdown, setShowClassDropdown] = useState(false);
+  const classButtonRef = useRef<any>(null);
+  // Real on-screen coordinates of the trigger button, captured right before
+  // opening. Used to anchor the large-screen dropdown, which now renders in
+  // a top-level Modal (see below) instead of a locally-positioned View, so
+  // it can never end up stacked behind a header or other container again.
+  const [classMenuLayout, setClassMenuLayout] = useState<{
+    top: number;
+    left: number;
+    width: number;
+  } | null>(null);
   const { width } = useWindowDimensions();
   const isSmallScreen = width < 600;
   const isTabletScreen = width >= 600 && width < 1024;
   // Matches Assignments.tsx's filter dropdown breakpoint: below this, use
-  // the bottom-sheet Modal; at/above it, use the inline absolutely
-  // positioned menu anchored under the button.
+  // the bottom-sheet Modal; at/above it, use a small anchored Modal menu
+  // positioned under the button instead of the mobile full-width sheet.
   const isLargeScreen = width >= 768;
+
+  // Measures the trigger button's real on-screen position right before
+  // opening, so the large-screen Modal menu can be anchored exactly under
+  // it. Rendering it as a Modal (not a locally-positioned View) means it's
+  // painted through RN's top-level portal, so no ancestor's stacking
+  // context, sticky header, or elevation can ever place it behind anything.
+  const toggleClassDropdown = () => {
+    if (showClassDropdown) {
+      setShowClassDropdown(false);
+      return;
+    }
+    if (isLargeScreen && classButtonRef.current?.measure) {
+      classButtonRef.current.measure(
+        (_x: number, _y: number, measuredWidth: number, measuredHeight: number, pageX: number, pageY: number) => {
+          setClassMenuLayout({
+            top: pageY + measuredHeight + 6,
+            left: pageX,
+            width: Math.max(measuredWidth, 260),
+          });
+          setShowClassDropdown(true);
+        }
+      );
+    } else {
+      setShowClassDropdown(true);
+    }
+  };
   const pagePadding = isSmallScreen ? 12 : isTabletScreen ? 16 : 18;
   const chartWidth = isSmallScreen
     ? Math.max(width - pagePadding * 2 - 40, 320)
@@ -1099,8 +1135,9 @@ export default function TeacherAnalytics({
                 ]}
               >
                 <Pressable
+                  ref={classButtonRef}
                   style={styles.classDropdownButton}
-                  onPress={() => setShowClassDropdown((prev) => !prev)}
+                  onPress={toggleClassDropdown}
                 >
                   <View style={styles.classDropdownTextWrap}>
                     <Text style={styles.classDropdownLabel}>Selected Class</Text>
@@ -1114,12 +1151,40 @@ export default function TeacherAnalytics({
                     color={palette.textStrong}
                   />
                 </Pressable>
+              </View>
+            </View>
 
-                {/* ✅ Large-screen inline dropdown — absolutely positioned
-                    just below the button, matching Assignments.tsx's
-                    filterInlineDropdownMenu. */}
-                {isLargeScreen && showClassDropdown ? (
-                  <View style={styles.classInlineDropdownMenu}>
+            {/* ✅ Large-screen dropdown menu — rendered as a real top-level
+                Modal (like the mobile bottom sheet below) instead of a
+                locally-positioned View, and anchored to the button's
+                measured on-screen coordinates. A Modal paints through RN's
+                own top-level portal, above the entire app — including any
+                sticky header or other container — so, unlike a plain
+                absolutely-positioned View, it can never end up trapped
+                behind something else's stacking context again. */}
+            {isLargeScreen && showClassDropdown && classMenuLayout ? (
+              <Modal
+                visible={showClassDropdown}
+                transparent
+                animationType="fade"
+                onRequestClose={() => setShowClassDropdown(false)}
+              >
+                <TouchableOpacity
+                  style={styles.classMenuModalOverlay}
+                  activeOpacity={1}
+                  onPress={() => setShowClassDropdown(false)}
+                >
+                  <View
+                    style={[
+                      styles.classInlineDropdownMenu,
+                      {
+                        position: "absolute",
+                        top: classMenuLayout.top,
+                        left: classMenuLayout.left,
+                        width: classMenuLayout.width,
+                      },
+                    ]}
+                  >
                     <ScrollView
                       nestedScrollEnabled
                       showsVerticalScrollIndicator={true}
@@ -1163,9 +1228,9 @@ export default function TeacherAnalytics({
                       })}
                     </ScrollView>
                   </View>
-                ) : null}
-              </View>
-            </View>
+                </TouchableOpacity>
+              </Modal>
+            ) : null}
 
             <Text
               style={[
@@ -1794,8 +1859,16 @@ const styles = StyleSheet.create({
     fontWeight: WEIGHT_EMPHASIS,
     marginTop: 2,
   },
-  // ✅ Desktop/large-screen inline dropdown — absolutely positioned just
-  // below the button, matching Assignments.tsx's filterInlineDropdownMenu.
+  // Transparent full-screen tap-catcher for the large-screen anchored Modal
+  // menu — no dim/backdrop (unlike the mobile bottom sheet) since this is a
+  // small anchored menu, not a sheet covering the screen.
+  classMenuModalOverlay: {
+    flex: 1,
+    backgroundColor: "transparent",
+  },
+  // ✅ Desktop/large-screen dropdown menu content, rendered inside the
+  // top-level Modal above. Position/top/left/width are supplied inline at
+  // render time from the button's measured on-screen coordinates.
   classInlineDropdownMenu: {
     position: "absolute",
     top: 54,
