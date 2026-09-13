@@ -1456,211 +1456,215 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.headerRow}>
-          <View style={styles.titleColumn}>
-            <View style={styles.titleRow}>
-              <Text
-                style={[
-                  styles.title,
-                  { fontSize: isMobile ? 22 : isLargeScreen ? 28 : 24 },
-                ]}
-              >
-                Deans List
-              </Text>
+        {/* 🔥 NEW: title/subtitle/Download Excel row, the filter controls,
+            and the results area now all share one outer white card. */}
+        <View style={styles.deansListCard}>
+          <View style={styles.headerRow}>
+            <View style={styles.titleColumn}>
+              <View style={styles.titleRow}>
+                <Text
+                  style={[
+                    styles.title,
+                    { fontSize: isMobile ? 22 : isLargeScreen ? 28 : 24 },
+                  ]}
+                >
+                  Deans List
+                </Text>
 
-              <TouchableOpacity
-                onPress={() => setShowFlowModal(true)}
-                style={styles.flowHelpBtn}
-                activeOpacity={0.7}
-                hitSlop={8}
-                accessibilityLabel="How is the Deans List generated?"
-              >
-                <Ionicons name="help-circle-outline" size={24} color="#B71C1C" />
-              </TouchableOpacity>
-            </View>
-
-            <Text style={styles.subHeadingText}>
-              Provide the academic start year and semester to view the qualified Deans List students
-            </Text>
-          </View>
-
-          <TouchableOpacity
-            style={[
-              styles.exportHonorBtn,
-              isMobile && styles.exportHonorBtnMobile,
-              (generatedSections.length === 0 || isExportingExcel) && styles.exportHonorBtnDisabled,
-            ]}
-            onPress={downloadHonorExcel}
-            disabled={generatedSections.length === 0 || isExportingExcel}
-            activeOpacity={0.85}
-          >
-            {isExportingExcel ? (
-              <ActivityIndicator size="small" color="#FFFFFF" />
-            ) : (
-              <Ionicons name="download-outline" size={18} color="#FFFFFF" />
-            )}
-            <Text style={styles.exportHonorBtnText}>
-              {isExportingExcel ? 'Exporting...' : 'Download Excel'}
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        <View style={[styles.controlsCard, isMobile && styles.controlsCardMobile]}>
-          <View style={[styles.controlsRow, isMobile && styles.controlsRowMobile]}>
-            {isMobile ? (
-              <View style={styles.mobileDropdownRow}>
-                <View style={styles.mobileDropdownItem}>
-                  <Text style={styles.academicControlLabel}>Academic Start Year</Text>
-                  <TextInput
-                    style={[styles.startYearInput, styles.startYearInputMobile]}
-                    value={startYear}
-                    onChangeText={(value) => setStartYear(value.replace(/[^0-9]/g, '').slice(0, 4))}
-                    placeholder="e.g. 2025"
-                    placeholderTextColor="#8A8A8A"
-                    keyboardType="number-pad"
-                    maxLength={4}
-                  />
-                  <View style={[styles.schoolYearBadge, styles.schoolYearBadgeMobile]}>
-                    <Text style={styles.schoolYearBadgeLabel}>Computed School Year</Text>
-                    <Text style={styles.schoolYearBadgeValue}>{schoolYear || 'S.Y ---- - ----'}</Text>
-                  </View>
-                </View>
-
-                <View style={styles.mobileDropdownItem}>
-                  <Text style={styles.academicControlLabel}>Semester</Text>
-                  <CustomDropdown
-                    value={semester}
-                    options={semesters}
-                    onSelect={handleSemesterSelect}
-                    visible={openDropdown === 'semester'}
-                    onToggle={() => handleDropdownToggle('semester')}
-                    isMobile={isMobile}
-                    label="Select Semester"
-                  />
-                </View>
+                <TouchableOpacity
+                  onPress={() => setShowFlowModal(true)}
+                  style={styles.flowHelpBtn}
+                  activeOpacity={0.7}
+                  hitSlop={8}
+                  accessibilityLabel="How is the Deans List generated?"
+                >
+                  <Ionicons name="help-circle-outline" size={24} color="#B71C1C" />
+                </TouchableOpacity>
               </View>
-            ) : (
-              <>
-                <View style={styles.academicInputGroup}>
-                  <Text style={styles.academicControlLabel}>Academic Start Year</Text>
-                  <TextInput
-                    style={styles.startYearInput}
-                    value={startYear}
-                    onChangeText={(value) => setStartYear(value.replace(/[^0-9]/g, '').slice(0, 4))}
-                    placeholder="e.g. 2025"
-                    placeholderTextColor="#8A8A8A"
-                    keyboardType="number-pad"
-                    maxLength={4}
-                  />
-                </View>
 
-                <View style={styles.academicSchoolYearGroup}>
-                  <Text style={styles.academicControlLabel}>School Year</Text>
-                  <View style={styles.schoolYearBadge}>
-                    <Text style={styles.schoolYearBadgeValue}>{schoolYear || 'S.Y ---- - ----'}</Text>
-                  </View>
-                </View>
-
-                <View style={styles.academicSemesterGroup}>
-                  <Text style={styles.academicControlLabel}>Semester</Text>
-                  <CustomDropdown
-                    value={semester}
-                    options={semesters}
-                    onSelect={handleSemesterSelect}
-                    visible={openDropdown === 'semester'}
-                    onToggle={() => handleDropdownToggle('semester')}
-                    isMobile={isMobile}
-                    label="Select Semester"
-                  />
-                </View>
-              </>
-            )}
+              <Text style={styles.subHeadingText}>
+                Provide the academic start year and semester to view the qualified Deans List students
+              </Text>
+            </View>
 
             <TouchableOpacity
               style={[
-                styles.generateBtn,
-                isMobile && styles.generateBtnMobile,
-                isGenerating && styles.generateBtnDisabled,
+                styles.exportHonorBtn,
+                isMobile && styles.exportHonorBtnMobile,
+                (generatedSections.length === 0 || isExportingExcel) && styles.exportHonorBtnDisabled,
               ]}
-              onPress={handleGenerateHonorRoll}
-              disabled={isGenerating}
+              onPress={downloadHonorExcel}
+              disabled={generatedSections.length === 0 || isExportingExcel}
+              activeOpacity={0.85}
             >
-              <Text style={styles.generateBtnText}>
-                {isGenerating ? 'Loading Deans List...' : 'View Deans List'}
+              {isExportingExcel ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <Ionicons name="download-outline" size={18} color="#FFFFFF" />
+              )}
+              <Text style={styles.exportHonorBtnText}>
+                {isExportingExcel ? 'Exporting...' : 'Download Excel'}
               </Text>
             </TouchableOpacity>
           </View>
-        </View>
 
-        {generatedSections.length === 0 ? (
-          <View style={[styles.emptyState, isMobile && styles.emptyStateMobile]}>
-            <Text style={styles.emptyStateText}>
-              Click View Deans List to display qualified Deans List students.
-            </Text>
-          </View>
-        ) : (
-          <View style={styles.honorTablesWrap}>
-            {generatedSections.map((section, sectionIndex) => (
-              <View
-                key={`${section.yearLevel}-${section.sectionName}-${sectionIndex}`}
-                style={[styles.honorSectionCard, isMobile && styles.honorSectionCardMobile]}
-              >
-                <View style={[styles.honorAcademicHeader, isMobile && styles.honorAcademicHeaderMobile]}>
-                  <View style={styles.honorAcademicTitleWrap}>
-                    <Text style={[styles.honorAcademicTitle, isMobile && styles.honorAcademicTitleMobile]}>
-                      DEANS LIST
-                    </Text>
-                    <Text style={[styles.honorAcademicSubtitle, isMobile && styles.honorAcademicSubtitleMobile]}>
-                      {section.yearLevel} — Section {section.sectionName}
-                    </Text>
-                    <Text style={[styles.honorAcademicMeta, isMobile && styles.honorAcademicMetaMobile]}>
-                      Academic Year: {schoolYear || 'S.Y ---- - ----'} | Semester: {semester}
-                    </Text>
+          <View style={[styles.controlsCard, isMobile && styles.controlsCardMobile]}>
+            <View style={[styles.controlsRow, isMobile && styles.controlsRowMobile]}>
+              {isMobile ? (
+                <View style={styles.mobileDropdownRow}>
+                  <View style={styles.mobileDropdownItem}>
+                    <Text style={styles.academicControlLabel}>Academic Start Year</Text>
+                    <TextInput
+                      style={[styles.startYearInput, styles.startYearInputMobile]}
+                      value={startYear}
+                      onChangeText={(value) => setStartYear(value.replace(/[^0-9]/g, '').slice(0, 4))}
+                      placeholder="e.g. 2025"
+                      placeholderTextColor="#8A8A8A"
+                      keyboardType="number-pad"
+                      maxLength={4}
+                    />
+                    <View style={[styles.schoolYearBadge, styles.schoolYearBadgeMobile]}>
+                      <Text style={styles.schoolYearBadgeLabel}>Computed School Year</Text>
+                      <Text style={styles.schoolYearBadgeValue}>{schoolYear || 'S.Y ---- - ----'}</Text>
+                    </View>
                   </View>
 
-                  <View style={[styles.honorCountBadge, isMobile && styles.honorCountBadgeMobile]}>
-                    <Text style={styles.honorCountNumber}>{section.students.length}</Text>
-                    <Text style={styles.honorCountLabel}>Students</Text>
+                  <View style={styles.mobileDropdownItem}>
+                    <Text style={styles.academicControlLabel}>Semester</Text>
+                    <CustomDropdown
+                      value={semester}
+                      options={semesters}
+                      onSelect={handleSemesterSelect}
+                      visible={openDropdown === 'semester'}
+                      onToggle={() => handleDropdownToggle('semester')}
+                      isMobile={isMobile}
+                      label="Select Semester"
+                    />
                   </View>
                 </View>
+              ) : (
+                <>
+                  <View style={styles.academicInputGroup}>
+                    <Text style={styles.academicControlLabel}>Academic Start Year</Text>
+                    <TextInput
+                      style={styles.startYearInput}
+                      value={startYear}
+                      onChangeText={(value) => setStartYear(value.replace(/[^0-9]/g, '').slice(0, 4))}
+                      placeholder="e.g. 2025"
+                      placeholderTextColor="#8A8A8A"
+                      keyboardType="number-pad"
+                      maxLength={4}
+                    />
+                  </View>
 
-                <ScrollView
-                  horizontal
-                  showsHorizontalScrollIndicator={isMobile}
-                  contentContainerStyle={styles.honorTableHorizontal}
-                  style={styles.honorTableScroll}
+                  <View style={styles.academicSchoolYearGroup}>
+                    <Text style={styles.academicControlLabel}>School Year</Text>
+                    <View style={styles.schoolYearBadge}>
+                      <Text style={styles.schoolYearBadgeValue}>{schoolYear || 'S.Y ---- - ----'}</Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.academicSemesterGroup}>
+                    <Text style={styles.academicControlLabel}>Semester</Text>
+                    <CustomDropdown
+                      value={semester}
+                      options={semesters}
+                      onSelect={handleSemesterSelect}
+                      visible={openDropdown === 'semester'}
+                      onToggle={() => handleDropdownToggle('semester')}
+                      isMobile={isMobile}
+                      label="Select Semester"
+                    />
+                  </View>
+                </>
+              )}
+
+              <TouchableOpacity
+                style={[
+                  styles.generateBtn,
+                  isMobile && styles.generateBtnMobile,
+                  isGenerating && styles.generateBtnDisabled,
+                ]}
+                onPress={handleGenerateHonorRoll}
+                disabled={isGenerating}
+              >
+                <Text style={styles.generateBtnText}>
+                  {isGenerating ? 'Loading Deans List...' : 'View Deans List'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          {generatedSections.length === 0 ? (
+            <View style={[styles.emptyState, isMobile && styles.emptyStateMobile]}>
+              <Text style={styles.emptyStateText}>
+                Click View Deans List to display qualified Deans List students.
+              </Text>
+            </View>
+          ) : (
+            <View style={styles.honorTablesWrap}>
+              {generatedSections.map((section, sectionIndex) => (
+                <View
+                  key={`${section.yearLevel}-${section.sectionName}-${sectionIndex}`}
+                  style={[styles.honorSectionCard, isMobile && styles.honorSectionCardMobile]}
                 >
-                  <View style={[styles.honorTable, isMobile && styles.honorTableMobile]}>
-                    <View style={styles.honorTableHeader}>
-                      <Text style={[styles.honorHeaderCell, { width: isMobile ? 64 : 80 }]}>Rank</Text>
-                      <Text style={[styles.honorHeaderCell, styles.honorStudentNameColumn]}>
-                        Student Name
+                  <View style={[styles.honorAcademicHeader, isMobile && styles.honorAcademicHeaderMobile]}>
+                    <View style={styles.honorAcademicTitleWrap}>
+                      <Text style={[styles.honorAcademicTitle, isMobile && styles.honorAcademicTitleMobile]}>
+                        DEANS LIST
                       </Text>
-                      <Text style={[styles.honorHeaderCell, { width: isMobile ? 90 : 110 }]}>GWA</Text>
+                      <Text style={[styles.honorAcademicSubtitle, isMobile && styles.honorAcademicSubtitleMobile]}>
+                        {section.yearLevel} — Section {section.sectionName}
+                      </Text>
+                      <Text style={[styles.honorAcademicMeta, isMobile && styles.honorAcademicMetaMobile]}>
+                        Academic Year: {schoolYear || 'S.Y ---- - ----'} | Semester: {semester}
+                      </Text>
                     </View>
 
-                    {section.students.map((student, index) => (
-                      <View key={`${student.id}-${index}`} style={styles.honorTableRow}>
-                        <Text style={[styles.honorRankCell, { width: isMobile ? 64 : 80 }]}>
-                          {index + 1}
-                        </Text>
-                        <Text
-                          style={[styles.honorNameCell, styles.honorStudentNameColumn]}
-                          numberOfLines={isMobile ? 2 : 1}
-                        >
-                          {student.name}
-                        </Text>
-                        <Text style={[styles.honorGwaCell, { width: isMobile ? 90 : 110 }]}>
-                          {student.gpa}
-                        </Text>
-                      </View>
-                    ))}
+                    <View style={[styles.honorCountBadge, isMobile && styles.honorCountBadgeMobile]}>
+                      <Text style={styles.honorCountNumber}>{section.students.length}</Text>
+                      <Text style={styles.honorCountLabel}>Students</Text>
+                    </View>
                   </View>
-                </ScrollView>
-              </View>
-            ))}
-          </View>
-        )}
+
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={isMobile}
+                    contentContainerStyle={styles.honorTableHorizontal}
+                    style={styles.honorTableScroll}
+                  >
+                    <View style={[styles.honorTable, isMobile && styles.honorTableMobile]}>
+                      <View style={styles.honorTableHeader}>
+                        <Text style={[styles.honorHeaderCell, { width: isMobile ? 64 : 80 }]}>Rank</Text>
+                        <Text style={[styles.honorHeaderCell, styles.honorStudentNameColumn]}>
+                          Student Name
+                        </Text>
+                        <Text style={[styles.honorHeaderCell, { width: isMobile ? 90 : 110 }]}>GWA</Text>
+                      </View>
+
+                      {section.students.map((student, index) => (
+                        <View key={`${student.id}-${index}`} style={styles.honorTableRow}>
+                          <Text style={[styles.honorRankCell, { width: isMobile ? 64 : 80 }]}>
+                            {index + 1}
+                          </Text>
+                          <Text
+                            style={[styles.honorNameCell, styles.honorStudentNameColumn]}
+                            numberOfLines={isMobile ? 2 : 1}
+                          >
+                            {student.name}
+                          </Text>
+                          <Text style={[styles.honorGwaCell, { width: isMobile ? 90 : 110 }]}>
+                            {student.gpa}
+                          </Text>
+                        </View>
+                      ))}
+                    </View>
+                  </ScrollView>
+                </View>
+              ))}
+            </View>
+          )}
+        </View>
 
       </ScrollView>
 
@@ -1712,6 +1716,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 18,
     paddingBottom: 28,
+  },
+
+  // 🔥 NEW: outer white card wrapping the title/subtitle/Download Excel
+  // row, the filter controls, and the results area (empty-state or the
+  // generated Deans List tables) as one shared section.
+  deansListCard: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E2E5EA',
+    borderRadius: 24,
+    padding: 20,
   },
 
   headerRow: {

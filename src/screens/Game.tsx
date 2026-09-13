@@ -242,6 +242,11 @@ const Game = ({ onNavigate, enrolledCourses = [], studentId, onSaveQuizScore }: 
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
+      {/* 🔥 NEW: "Games" title/subtitle, the AI-generations banner, the
+          Quiz Settings card, and the Choose class & lesson card now all
+          share one outer white card. settingsCard/selectorCard keep their
+          own borders so they still read as distinct sub-sections. */}
+      <View style={styles.gamesCard}>
       <View style={styles.headerRow}>
         <View style={styles.titleWrap}>
           <Text style={styles.pageTitle}>Games</Text>
@@ -437,6 +442,7 @@ const Game = ({ onNavigate, enrolledCourses = [], studentId, onSaveQuizScore }: 
           )}
         </Pressable>
       </View>
+      </View>
     </ScrollView>
   );
 };
@@ -445,6 +451,17 @@ const Game = ({ onNavigate, enrolledCourses = [], studentId, onSaveQuizScore }: 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F4F7FB' },
   contentContainer: { padding: 24, paddingBottom: 40 },
+
+  // 🔥 NEW: outer white card wrapping the "Games" title/subtitle, the
+  // AI-generations banner, the Quiz Settings card, and the Choose class &
+  // lesson card as one shared section.
+  gamesCard: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E3E5E9',
+    borderRadius: 28,
+    padding: 20,
+  },
   headerRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',

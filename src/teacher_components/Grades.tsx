@@ -672,6 +672,10 @@ const Grades = ({ apiBaseUrl }: GradesProps) => {
               { paddingHorizontal: contentHorizontalPadding },
             ]}
           >
+            {/* 🔥 NEW: title/subtitle, the filter controls, and the results
+                area (no-grade placeholder or the generated grade report) now
+                all share one outer white card. */}
+            <View style={styles.gradesCard}>
             <View style={[styles.headerBlock, isPhone && styles.headerBlockMobile]}>
               <Text style={[styles.mainTitle, { fontSize: titleSize }]}>Grades</Text>
               <Text style={styles.subTitle}>
@@ -836,38 +840,27 @@ const Grades = ({ apiBaseUrl }: GradesProps) => {
                 </View>
               )}
             </View>
-          </View>
 
-          {notFound && (
-            <View
-              style={[
-                styles.centeredResultWrapper,
-                { paddingHorizontal: isPhone ? 16 : 20 },
-              ]}
-            >
-              <View
-                style={[
-                  styles.noGradeCard,
-                  isPhone ? { width: mobileReportWidth } : styles.noGradeCardWeb,
-                ]}
-              >
-                <Ionicons name="document-text-outline" size={36} color="#B0A89E" />
-                <Text style={styles.noGradeTitle}>No Grade Found</Text>
-                <Text style={styles.noGradeMessage}>
-                  {notFoundMessage ||
-                    'No grades were found for the selected school year and semester.'}
-                </Text>
+            {notFound && (
+              <View style={styles.centeredResultWrapper}>
+                <View
+                  style={[
+                    styles.noGradeCard,
+                    isPhone ? { width: mobileReportWidth } : styles.noGradeCardWeb,
+                  ]}
+                >
+                  <Ionicons name="document-text-outline" size={36} color="#B0A89E" />
+                  <Text style={styles.noGradeTitle}>No Grade Found</Text>
+                  <Text style={styles.noGradeMessage}>
+                    {notFoundMessage ||
+                      'No grades were found for the selected school year and semester.'}
+                  </Text>
+                </View>
               </View>
-            </View>
-          )}
+            )}
 
-          {showGrades && studentRecord && (
-            <View
-              style={[
-                styles.centeredResultWrapper,
-                { paddingHorizontal: isPhone ? 16 : 20 },
-              ]}
-            >
+            {showGrades && studentRecord && (
+              <View style={styles.centeredResultWrapper}>
               <View
                 style={[
                   isPhone
@@ -1052,7 +1045,9 @@ const Grades = ({ apiBaseUrl }: GradesProps) => {
 
               </View>
             </View>
-          )}
+            )}
+            </View>
+          </View>
         </ScrollView>
       </View>
     </KeyboardAvoidingView>
@@ -1078,13 +1073,23 @@ const styles = StyleSheet.create({
     zIndex: 5000,
   },
 
+  // 🔥 NEW: outer white card wrapping the title/subtitle, the filter
+  // controls, and the results area (no-grade placeholder or the generated
+  // grade report) as one shared section.
+  gradesCard: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E2E5EA',
+    borderRadius: 24,
+    padding: 20,
+    width: '100%',
+  },
+
   headerBlock: {
-    marginTop: 30,
     marginBottom: 26,
   },
 
   headerBlockMobile: {
-    marginTop: 20,
     marginBottom: 18,
   },
 

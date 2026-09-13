@@ -1692,6 +1692,9 @@ const Assignments = ({
         <RefreshControl refreshing={isRefreshing} onRefresh={handlePullToRefresh} colors={['#D32F2F']} tintColor="#D32F2F" />
       }
     >
+      {/* 🔥 NEW: the "Assignments" title, filter dropdown, and the
+          assignment list/empty state now share one outer white card. */}
+      <View style={styles.assignmentsPageCard}>
       <Text style={styles.title}>Assignments</Text>
 
       <View
@@ -1874,6 +1877,7 @@ const Assignments = ({
           </Text>
         </View>
       )}
+      </View>
       
       <Modal visible={!!selectedAssignment} animationType="slide" transparent onRequestClose={closeModal}>
         <View style={styles.modalOverlay}>
@@ -2769,6 +2773,15 @@ const Assignments = ({
 
 const styles = StyleSheet.create({
   container: {  backgroundColor: '#F4F7FB' },
+  // 🔥 NEW: outer white card wrapping the "Assignments" title, filter
+  // dropdown, and the assignment list/empty state.
+  assignmentsPageCard: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E3E5E9',
+    borderRadius: 28,
+    padding: 20,
+  },
   detailContainer: { padding: 16, paddingBottom: 40, backgroundColor: '#fff', borderRadius: 30 },
   detailContainerMobile: { padding: 12, paddingBottom: 40 },
   detailContent: {},

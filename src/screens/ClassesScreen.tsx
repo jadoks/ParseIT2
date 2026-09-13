@@ -145,6 +145,12 @@ const ClassesScreen = ({
     <>
       <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
         <View style={styles.contentWrap}>
+          {/* 🔥 NEW: "My Classes" title/subtitle + Join Class button, and
+              the course grid now share one white card — this also puts
+              the Join Class button's right edge in line with the last
+              course card's right edge, since both sit inside the same
+              padded container. */}
+          <View style={styles.classesCard}>
           <View style={styles.headerRow}>
             <View style={styles.headerTextWrap}>
               <Text style={styles.pageTitle}>My Classes</Text>
@@ -200,6 +206,7 @@ const ClassesScreen = ({
                 </Text>
               </View>
             )}
+          </View>
           </View>
         </View>
       </ScrollView>
@@ -312,6 +319,16 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F4F7FB' },
   contentContainer: { padding: 20, paddingBottom: 30 },
   contentWrap: { width: '100%', maxWidth: 1200, alignSelf: 'center' },
+
+  // 🔥 NEW: shared white card wrapping the "My Classes" header row (title +
+  // subtitle + Join Class button) and the course grid.
+  classesCard: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E3E5E9',
+    borderRadius: 28,
+    padding: 20,
+  },
   headerRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 20 },
   headerTextWrap: { flex: 1 },
   pageTitle: { fontFamily: FONT_TITLE, fontSize: 28, fontWeight: WEIGHT_TITLE, color: '#111', marginBottom: 6 },

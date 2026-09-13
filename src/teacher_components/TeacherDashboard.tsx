@@ -1539,10 +1539,14 @@ const styles = StyleSheet.create({
   headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
   sectionHeader: { fontFamily: FONT_TITLE, fontWeight: WEIGHT_TITLE, color: '#111' },
   banner: {
-    // Now nested inside announcementsCard, which already supplies the white
-    // background/border — kept transparent here so the empty state doesn't
-    // render as a redundant box-within-a-box.
-    backgroundColor: 'transparent',
+    // Sits inside announcementsCard (which supplies the white page-level
+    // background), but still gets its own light border + slightly-tinted
+    // fill so the empty state reads as a distinct placeholder box rather
+    // than blending invisibly into the card around it.
+    backgroundColor: '#FAFBFC',
+    borderWidth: 1,
+    borderColor: '#E3E5E9',
+    borderRadius: 20,
     justifyContent: 'center',
     alignItems: 'center',
   },

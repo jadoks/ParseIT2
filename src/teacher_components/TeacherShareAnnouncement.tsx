@@ -1240,6 +1240,10 @@ export default function ShareAnnouncement({
         >
           <View style={styles.headerSpacer} />
 
+          {/* 🔥 NEW: heading/subtitle, the "See All My Announcements" link,
+              the form fields, banner picker, and the Proceed button now all
+              share one outer white card. */}
+          <View style={styles.announcementCard}>
           <Text
             style={[
               styles.formTitle,
@@ -1358,6 +1362,7 @@ export default function ShareAnnouncement({
               {isSubmitting ? 'Processing...' : 'Proceed'}
             </Text>
           </TouchableOpacity>
+          </View>
         </ScrollView>
       </SafeAreaView>
 
@@ -1869,6 +1874,15 @@ const styles = StyleSheet.create({
   webContentContainer: { flexGrow: 1, paddingLeft: 25, paddingRight: 120, paddingTop: 10, paddingBottom: 32 },
   webContentContainerLarge: { paddingLeft: 150, paddingRight: 150 },
   headerSpacer: { height: 10, marginBottom: 20 },
+  // 🔥 NEW: outer white card wrapping the heading, form fields, banner
+  // picker, and the Proceed button as one shared section.
+  announcementCard: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E2E5EA',
+    borderRadius: 24,
+    padding: 20,
+  },
   formTitle: { fontWeight: WEIGHT_EMPHASIS, color: '#000', fontFamily, letterSpacing: -0.5 },
   formSubTitle: { fontSize: 14, color: '#444', marginBottom: 30, fontFamily },
 
@@ -1888,7 +1902,7 @@ const styles = StyleSheet.create({
   bgImage: { width: '100%', height: '100%', resizeMode: 'cover' },
   checkOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(183, 28, 28, 0.3)', justifyContent: 'center', alignItems: 'center' },
 
-  submitBtn: { backgroundColor: '#B71C1C', paddingVertical: 16, borderRadius: 14, alignItems: 'center', marginBottom: 40 },
+  submitBtn: { backgroundColor: '#B71C1C', paddingVertical: 16, borderRadius: 14, alignItems: 'center' },
   submitBtnDisabled: { opacity: 0.7 },
   submitBtnText: { color: '#FFF', fontSize: 18, fontWeight: WEIGHT_EMPHASIS, fontFamily },
 

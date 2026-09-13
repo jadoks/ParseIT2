@@ -154,7 +154,6 @@ const Dashboard = ({
   const isLargeScreen = width >= 1200;
 
   const pagePadding = isMobile ? 14 : isTablet ? 24 : 32;
-  const sectionSpacing = isMobile ? 16 : 20;
   const titleSize = isMobile ? 22 : isTablet ? 24 : 28;
   const titleIconSize = isMobile ? 18 : isTablet ? 20 : 22;
   const bannerHeight = isMobile ? 110 : isTablet ? 125 : 140;
@@ -457,6 +456,9 @@ const Dashboard = ({
         ]}
       >
         <View style={[styles.contentWrap, { maxWidth: contentMaxWidth }]}>
+          {/* 🔥 NEW: "Announcements" title, Join Class button, and the
+              banner now share one white card, just like TeacherDashboard. */}
+          <View style={styles.announcementsCard}>
           <View style={styles.topHeaderRow}>
             <View style={styles.titleRow}>
               <Text
@@ -512,8 +514,12 @@ const Dashboard = ({
               </View>
             </View>
           )}
+          </View>
 
-          <View style={[styles.titleRow, { marginTop: sectionSpacing, marginBottom: 10 }]}>
+          {/* 🔥 NEW: "Student Performance Snapshot" title + stat grid now
+              share one white card. */}
+          <View style={styles.performanceCard}>
+          <View style={[styles.titleRow, { marginBottom: 10 }]}>
             <Text
               style={[
                 styles.pageTitle,
@@ -651,8 +657,13 @@ const Dashboard = ({
               </Text>
             </View>
           </View>
+          </View>
 
-          <View style={[styles.titleRow, { marginTop: sectionSpacing, marginBottom: 10 }]}>
+          {/* 🔥 NEW: "Suggested Learning Actions" title + the tinted
+              sectionCard now share one white card. sectionCard keeps its
+              own border so it still reads as a distinct sub-section. */}
+          <View style={styles.suggestedActionsCard}>
+          <View style={[styles.titleRow, { marginBottom: 10 }]}>
             <Text
               style={[
                 styles.pageTitle,
@@ -774,8 +785,12 @@ const Dashboard = ({
               )}
             </View>
           </View>
+          </View>
 
-          <View style={[styles.titleRow, { marginTop: sectionSpacing, marginBottom: 10 }]}>
+          {/* 🔥 NEW: "Next Recommended Lesson" title + lesson card (or
+              empty state) now share one white card. */}
+          <View style={styles.nextLessonCard}>
+          <View style={[styles.titleRow, { marginBottom: 10 }]}>
             <Text
               style={[
                 styles.pageTitle,
@@ -831,11 +846,14 @@ const Dashboard = ({
               No next lesson recommendation yet.
             </Text>
           )}
+          </View>
 
+          {/* 🔥 NEW: "Course Progress Overview" header row + course grid
+              now share one white card. */}
+          <View style={styles.courseProgressCard}>
           <View
             style={[
               styles.sectionHeaderRow,
-              { marginTop: sectionSpacing }
             ]}
           >
             <View style={[styles.titleRow, { flex: 1 }]}>
@@ -972,6 +990,7 @@ const Dashboard = ({
               );
             })}
           </View>
+          </View>
         </View>
       </ScrollView>
 
@@ -1094,6 +1113,47 @@ const styles = StyleSheet.create({
   contentWrap: {
     width: '100%',
     alignSelf: 'center',
+  },
+  // 🔥 NEW: shared white cards wrapping each dashboard section's title +
+  // content, matching the pattern used in TeacherDashboard.
+  announcementsCard: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E3E5E9',
+    borderRadius: 28,
+    padding: 20,
+    marginBottom: 24,
+  },
+  performanceCard: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E3E5E9',
+    borderRadius: 28,
+    padding: 20,
+    marginBottom: 24,
+  },
+  suggestedActionsCard: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E3E5E9',
+    borderRadius: 28,
+    padding: 20,
+    marginBottom: 24,
+  },
+  nextLessonCard: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E3E5E9',
+    borderRadius: 28,
+    padding: 20,
+    marginBottom: 24,
+  },
+  courseProgressCard: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E3E5E9',
+    borderRadius: 28,
+    padding: 20,
   },
   topHeaderRow: {
     flexDirection: 'row',

@@ -673,6 +673,10 @@ const Videos = ({
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.homeContent}>
+      {/* 🔥 NEW: the "Videos" header (title/search summary + Favorites
+          filter button) and the video feed/state area now share one
+          outer white card. */}
+      <View style={styles.videosCard}>
       <View style={styles.homeHeader}>
         <View style={styles.homeHeaderTextBlock}>
           <Text style={styles.logoText}>Videos</Text>
@@ -730,6 +734,7 @@ const Videos = ({
           ))}
         </View>
       )}
+      </View>
     </ScrollView>
   );
 };
@@ -737,7 +742,17 @@ const Videos = ({
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F4F7FB', padding: 20 },
   homeContent: { paddingBottom: 24 },
-  homeHeader: { paddingHorizontal: 16, paddingTop: 14, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#F4F7FB', gap: 12 },
+
+  // 🔥 NEW: outer white card wrapping the "Videos" header (title/search
+  // summary + Favorites filter button) and the video feed/state area.
+  videosCard: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E3E5E9',
+    borderRadius: 28,
+    padding: 20,
+  },
+  homeHeader: { paddingHorizontal: 16, paddingTop: 14, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: 'transparent', gap: 12 },
   homeHeaderTextBlock: { flex: 1 },
   logoText: { fontFamily: FONT_BODY, marginTop: -10, marginLeft: -12, fontSize: 30, fontWeight: 'bold', paddingBottom: 10, textAlign: 'left', marginBottom: 6 },
   searchSummary: { fontFamily: FONT_BODY, marginLeft: -12, color: '#606060', fontSize: 13, lineHeight: 18, marginBottom: 12 },
