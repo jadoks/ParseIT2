@@ -90,6 +90,21 @@ export type AddClassModalInitialData = {
   schedule?: ClassScheduleEntry[] | null;
 };
 
+// Minimal summary of another already-created class, used only to check the
+// new/edited class's schedule against every class the assigned instructor
+// already teaches (see findInstructorScheduleConflict below). Pass the
+// screen's existing class list in mapped to this shape — mirrors what
+// Teacher Dashboard's Create Class flow checks against automatically.
+export type ExistingClassScheduleInfo = {
+  id: string;
+  className?: string;
+  section?: string;
+  instructorIdentifier?: string | null;
+  schoolYear?: string | null;
+  semester?: string;
+  schedule?: ClassScheduleEntry[] | null;
+};
+
 /**
  * Small helper component so every text field gets consistent
  * focus behavior (highlighted container border instead of the
@@ -357,6 +372,68 @@ const validateScheduleBlocks = (blocks: ClassScheduleFormBlock[]): string | null
   return null;
 };
 
+// 'HH:MM' is already zero-padded 24h, so plain string comparison gives the
+// right ordering — no need to parse into minutes. Mirrors Teacher Dashboard's
+// Create Class validation so admin-created classes can't slip through with
+// conflicts the teacher-side form would have blocked.
+const timeRangesOverlap = (aStart: string, aEnd: string, bStart: string, bEnd: string) =>
+  aStart < bEnd && bStart < aEnd;
+
+const daysShareOverlap = (daysA: string[], daysB: string[]) => daysA.some((day) => daysB.includes(day));
+
+const entriesConflict = (
+  a: { days: string[]; startTime: string; endTime: string },
+  b: { days: string[]; startTime: string; endTime: string }
+) => daysShareOverlap(a.days, b.days) && timeRangesOverlap(a.startTime.trim(), a.endTime.trim(), b.startTime.trim(), b.endTime.trim());
+
+// Checks the schedule blocks being submitted for a single class against each
+// other, so a class can't be saved with two of its own schedule rows
+// double-booking the same day/time (e.g. Mon 9–10 and Mon 9:30–10:30).
+const validateNoInternalScheduleOverlap = (blocks: ClassScheduleFormBlock[]): string | null => {
+  for (let i = 0; i < blocks.length; i++) {
+    for (let j = i + 1; j < blocks.length; j++) {
+      if (entriesConflict(blocks[i], blocks[j])) {
+        return `Schedule ${i + 1} and Schedule ${j + 1} overlap. Each schedule block for a class must have distinct days/times.`;
+      }
+    }
+  }
+  return null;
+};
+
+// Checks the schedule being submitted against every other class this same
+// instructor is already assigned to in the same school year + semester
+// (schedules in different terms never actually collide), so admin can't
+// double-book a teacher across two classes. `excludeClassId` lets edit mode
+// skip comparing a class against its own previous schedule.
+const findInstructorScheduleConflict = (
+  newBlocks: ClassScheduleFormBlock[],
+  existingClasses: ExistingClassScheduleInfo[],
+  instructorIdentifier: string,
+  schoolYear: string,
+  semesterLabel: string,
+  excludeClassId?: string | null
+): string | null => {
+  const normalizedInstructor = instructorIdentifier.trim();
+  if (!normalizedInstructor) return null;
+
+  for (const klass of existingClasses) {
+    if (excludeClassId && klass.id === excludeClassId) continue;
+    if ((klass.instructorIdentifier || "").trim() !== normalizedInstructor) continue;
+    if ((klass.schoolYear || "") !== schoolYear) continue;
+    if ((klass.semester || "") !== semesterLabel) continue;
+
+    const otherSchedule = Array.isArray(klass.schedule) ? klass.schedule : [];
+    for (const newBlock of newBlocks) {
+      for (const otherBlock of otherSchedule) {
+        if (entriesConflict(newBlock, otherBlock)) {
+          return `This schedule conflicts with "${klass.className || "another class"}" (${klass.section || ""}), which this teacher is already assigned to at an overlapping day/time.`;
+        }
+      }
+    }
+  }
+  return null;
+};
+
 // Strips the local `id` and trims text fields before sending to the backend.
 const serializeScheduleBlocks = (blocks: ClassScheduleFormBlock[]): ClassScheduleEntry[] =>
   blocks.map(({ days, startTime, endTime, room }) => ({
@@ -422,14 +499,21 @@ export default function AddClassModal({
   initialData,
   isEditMode = false,
   isSubmitting = false,
+  existingClasses = [],
 }: {
   visible: boolean;
   onClose: () => void;
   isMobile: boolean;
-  onCreateClass: (payload: AddClassModalPayload) => void;
+  onCreateClass: (payload: AddClassModalPayload) => void | Promise<void>;
   initialData?: AddClassModalInitialData | null;
   isEditMode?: boolean;
   isSubmitting?: boolean;
+  // Optional: pass the screen's already-loaded class list (mapped to
+  // ExistingClassScheduleInfo) so this modal can catch a schedule conflict
+  // with another class the same instructor already teaches, the same way
+  // Teacher Dashboard's own Create Class flow does. If omitted, that one
+  // cross-class check is simply skipped — everything else still validates.
+  existingClasses?: ExistingClassScheduleInfo[];
 }) {
   const { width } = useWindowDimensions();
   const isLargeScreen = width >= 1200;
@@ -459,6 +543,11 @@ export default function AddClassModal({
   const [startYear, setStartYear] = useState("2025");
   const [endYear, setEndYear] = useState("2026");
   const [bannerFile, setBannerFile] = useState<BannerFile | null>(null);
+  // Tracks the in-flight submit request so we don't close the modal (and
+  // wipe out what the user typed) until we actually know whether the
+  // create/update call succeeded or failed.
+  const [isLocalSubmitting, setIsLocalSubmitting] = useState(false);
+  const isBusy = isSubmitting || isLocalSubmitting;
 
   const selectedSemesterLabel = useMemo(() => {
     return (
@@ -654,13 +743,13 @@ export default function AddClassModal({
   }, [visible, isEditMode, initialData]);
 
   const handleClose = () => {
-    if (isSubmitting) return;
+    if (isBusy) return;
     resetForm();
     onClose();
   };
 
-  const handleSubmit = () => {
-    if (isSubmitting) return;
+  const handleSubmit = async () => {
+    if (isBusy) return;
 
     if (!selectedYear) {
       Alert.alert("Missing Field", "Please select a year.");
@@ -698,6 +787,31 @@ export default function AddClassModal({
       return;
     }
 
+    // Mirrors Teacher Dashboard's Create Class validation: reject a class
+    // whose own schedule blocks double-book the same day/time...
+    const internalOverlapError = validateNoInternalScheduleOverlap(scheduleBlocks);
+    if (internalOverlapError) {
+      Alert.alert("Schedule Conflict", internalOverlapError);
+      return;
+    }
+
+    const schoolYear = `${startYear.trim()}-${endYear.trim()}`;
+
+    // ...and reject a schedule that collides with another class the same
+    // instructor is already assigned to in the same school year + semester.
+    const conflictError = findInstructorScheduleConflict(
+      scheduleBlocks,
+      existingClasses,
+      instructorIdentifier,
+      schoolYear,
+      selectedSemesterLabel,
+      isEditMode ? initialData?.id ?? null : null
+    );
+    if (conflictError) {
+      Alert.alert("Schedule Conflict", conflictError);
+      return;
+    }
+
     const selectedYearLabel =
       YEAR_OPTIONS.find((year) => year.id === selectedYear)?.label || null;
 
@@ -710,29 +824,49 @@ export default function AddClassModal({
     const selectedCourseCode = courseCodeInput.trim();
     const units = parseFloat(courseUnitsInput) || 0;
 
-    const schoolYear = `${startYear.trim()}-${endYear.trim()}`;
+    setIsLocalSubmitting(true);
+    try {
+      // Await the result instead of firing-and-forgetting: onCreateClass
+      // hits the API and shows a toast (success or error) in the parent
+      // screen. Closing the modal unconditionally right after calling it —
+      // as this used to do — meant the modal closed at the exact same
+      // moment an error toast was trying to open, and stacking two RN
+      // <Modal>s changing visibility in the same render commit caused the
+      // native modal host to drop the new one, so the error toast never
+      // appeared. Only close once we know the submission actually succeeded.
+      await onCreateClass({
+        classCode: isEditMode
+          ? initialData?.classCode || generateRandomClassCode()
+          : generateRandomClassCode(),
+        className: selectedCourseLabel,
+        courseCode: selectedCourseCode,
+        semester: selectedSemesterLabel,
+        section: selectedSectionLabel,
+        year: selectedYearLabel,
+        instructorIdentifier: instructorIdentifier.trim(),
+        classMembers: isEditMode ? initialData?.classMembers ?? 0 : 0,
+        schoolYear,
+        description: description.trim() ? description.trim() : null,
+        bannerLocalUri: bannerFile?.uri ?? null,
+        bannerFileName: bannerFile?.name ?? null,
+        bannerMimeType: bannerFile?.mimeType ?? null,
+        units,
+        schedule: serializeScheduleBlocks(scheduleBlocks),
+      });
 
-    onCreateClass({
-      classCode: isEditMode
-        ? initialData?.classCode || generateRandomClassCode()
-        : generateRandomClassCode(),
-      className: selectedCourseLabel,
-      courseCode: selectedCourseCode,
-      semester: selectedSemesterLabel,
-      section: selectedSectionLabel,
-      year: selectedYearLabel,
-      instructorIdentifier: instructorIdentifier.trim(),
-      classMembers: isEditMode ? initialData?.classMembers ?? 0 : 0,
-      schoolYear,
-      description: description.trim() ? description.trim() : null,
-      bannerLocalUri: bannerFile?.uri ?? null,
-      bannerFileName: bannerFile?.name ?? null,
-      bannerMimeType: bannerFile?.mimeType ?? null,
-      units,
-      schedule: serializeScheduleBlocks(scheduleBlocks),
-    });
-
-    handleClose();
+      // Clear the busy flag before closing — handleClose() itself checks
+      // isBusy (so a user can't dismiss mid-submit by tapping Cancel/X),
+      // which would otherwise make this call a no-op while still "true".
+      setIsLocalSubmitting(false);
+      handleClose();
+    } catch (error) {
+      // Don't close the modal on failure — the caller already surfaced
+      // the error via its own toast. Keeping the modal open lets the user
+      // see that toast without it racing a modal-close animation, and lets
+      // them fix the input and retry without re-entering everything.
+      console.error("Error submitting class:", error);
+      setIsLocalSubmitting(false);
+    }
   };
 
   return (
@@ -763,11 +897,11 @@ export default function AddClassModal({
               <TouchableOpacity
                 style={[
                   styles.modalCloseButton,
-                  isSubmitting && styles.modalSecondaryButtonDisabled,
+                  isBusy && styles.modalSecondaryButtonDisabled,
                 ]}
                 onPress={handleClose}
                 activeOpacity={0.85}
-                disabled={isSubmitting}
+                disabled={isBusy}
               >
                 <Ionicons name="close" size={20} color="#7A4A4A" />
               </TouchableOpacity>
@@ -1068,7 +1202,7 @@ export default function AddClassModal({
                   </View>
 
                   <View style={styles.modalCol}>
-                    <Text style={styles.fieldLabel}>Start Year</Text>
+                    <Text style={styles.fieldLabel}>Academic Year (Start)</Text>
                     <FormInput
                       icon="calendar-outline"
                       value={startYear}
@@ -1082,7 +1216,7 @@ export default function AddClassModal({
                   </View>
 
                   <View style={styles.modalCol}>
-                    <Text style={styles.fieldLabel}>End Year</Text>
+                    <Text style={styles.fieldLabel}>Academic Year (End)</Text>
                     <FormInput
                       icon="calendar-outline"
                       value={endYear}
@@ -1091,26 +1225,6 @@ export default function AddClassModal({
                       editable={false}
                     />
                   </View>
-                </View>
-
-                <View style={styles.modalSection}>
-                  <View style={styles.modalSectionHeaderRow}>
-                    <Ionicons
-                      name="document-text-outline"
-                      size={18}
-                      color="#DC2626"
-                    />
-                    <Text style={styles.modalSectionTitle}>
-                      Description (Optional)
-                    </Text>
-                  </View>
-
-                  <FormTextArea
-                    value={description}
-                    onChangeText={setDescription}
-                    placeholder="Enter class description"
-                    minHeight={100}
-                  />
                 </View>
 
                 <View style={styles.modalSection}>
@@ -1165,11 +1279,11 @@ export default function AddClassModal({
               <TouchableOpacity
                 style={[
                   styles.modalSecondaryButton,
-                  isSubmitting && styles.modalSecondaryButtonDisabled,
+                  isBusy && styles.modalSecondaryButtonDisabled,
                 ]}
                 onPress={handleClose}
                 activeOpacity={0.85}
-                disabled={isSubmitting}
+                disabled={isBusy}
               >
                 <Text style={styles.modalSecondaryButtonText}>Cancel</Text>
               </TouchableOpacity>
@@ -1177,13 +1291,13 @@ export default function AddClassModal({
               <TouchableOpacity
                 style={[
                   styles.modalPrimaryButton,
-                  isSubmitting && styles.modalPrimaryButtonDisabled,
+                  isBusy && styles.modalPrimaryButtonDisabled,
                 ]}
                 activeOpacity={0.85}
                 onPress={handleSubmit}
-                disabled={isSubmitting}
+                disabled={isBusy}
               >
-                {isSubmitting ? (
+                {isBusy ? (
                   <ActivityIndicator size="small" color="#FFFFFF" />
                 ) : (
                   <Ionicons
@@ -1194,7 +1308,7 @@ export default function AddClassModal({
                 )}
 
                 <Text style={styles.modalPrimaryButtonText}>
-                  {isSubmitting
+                  {isBusy
                     ? isEditMode
                       ? "Updating..."
                       : "Creating..."

@@ -195,6 +195,21 @@ export default function AdminDashboard({
   const [classCount, setClassCount] = useState(0);
   const [adminCount, setAdminCount] = useState(0);
   const [studentCount, setStudentCount] = useState(0);
+  // Raw class list (schedule + assigned instructor included) so the Add
+  // Class modal can check the new class's schedule against every class its
+  // instructor already teaches — the same cross-class conflict check
+  // Teacher Dashboard's own Create Class flow already does.
+  const [allClasses, setAllClasses] = useState<
+    {
+      id: string;
+      name?: string;
+      section?: string;
+      assignedTeacherId?: string;
+      schoolYear?: string | null;
+      semester?: string;
+      schedule?: AddClassModalPayload["schedule"];
+    }[]
+  >([]);
 
   const [toast, setToast] = useState<{
     visible: boolean;
@@ -255,6 +270,7 @@ export default function AdminDashboard({
 
       if (classesRes.ok) {
         setClassCount(Array.isArray(classesData) ? classesData.length : 0);
+        setAllClasses(Array.isArray(classesData) ? classesData : []);
       }
     } catch (error) {
       console.error("Error loading dashboard counts:", error);
@@ -293,6 +309,13 @@ export default function AdminDashboard({
         error instanceof Error ? error.message : "Failed to create teacher.",
         "error"
       );
+      // Re-throw so AddTeacherModal's own catch block sees the failure and
+      // skips its handleClose(). Without this, the promise below always
+      // resolves (we swallow the error here), so the modal auto-closes at
+      // the exact same instant this toast opens. Two RN <Modal>s changing
+      // visibility in the same render commit causes the native modal host
+      // to drop the newly-presented one, so the toast never actually shows.
+      throw error;
     }
   };
 
@@ -347,6 +370,8 @@ export default function AdminDashboard({
         error instanceof Error ? error.message : "Something went wrong. Please try again.",
         "error"
       );
+      // Re-throw — see handleAddSharedTeacher for why this matters.
+      throw error;
     }
   };
 
@@ -378,6 +403,8 @@ export default function AdminDashboard({
         error instanceof Error ? error.message : "Failed to create admin.",
         "error"
       );
+      // Re-throw — see handleAddSharedTeacher for why this matters.
+      throw error;
     }
   };
 
@@ -409,6 +436,8 @@ export default function AdminDashboard({
         error instanceof Error ? error.message : "Failed to create student.",
         "error"
       );
+      // Re-throw — see handleAddSharedTeacher for why this matters.
+      throw error;
     }
   };
 
@@ -605,6 +634,15 @@ export default function AdminDashboard({
         onClose={() => setIsAddClassModalVisible(false)}
         isMobile={isMobile}
         onCreateClass={handleAddSharedClass}
+        existingClasses={allClasses.map((klass) => ({
+          id: klass.id,
+          className: klass.name,
+          section: klass.section,
+          instructorIdentifier: klass.assignedTeacherId ?? null,
+          schoolYear: klass.schoolYear ?? null,
+          semester: klass.semester,
+          schedule: klass.schedule ?? null,
+        }))}
       />
 
       <Chatbot

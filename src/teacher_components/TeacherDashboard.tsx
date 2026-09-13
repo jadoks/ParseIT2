@@ -1069,7 +1069,7 @@ const refreshClassesAfterStorageWrite = async (pinFrontId?: string) => {
               )}
               <View style={styles.yearRow}>
                 <View style={styles.yearCol}>
-                  <Text style={styles.inputLabel}>Start Year</Text>
+                  <Text style={styles.inputLabel}>Academic Year (Start)</Text>
                   <DashboardTextField
                     value={startYear}
                     onChangeText={setStartYear}
@@ -1079,7 +1079,7 @@ const refreshClassesAfterStorageWrite = async (pinFrontId?: string) => {
                   />
                 </View>
                 <View style={styles.yearCol}>
-                  <Text style={styles.inputLabel}>End Year</Text>
+                  <Text style={styles.inputLabel}>Academic Year (End)</Text>
                   <View style={styles.yearInputWrap}><Text style={styles.autoYearText}>{endYear || 'Auto'}</Text></View>
                 </View>
               </View>
@@ -1250,7 +1250,7 @@ const refreshClassesAfterStorageWrite = async (pinFrontId?: string) => {
               )}
               <View style={styles.yearRow}>
                 <View style={styles.yearCol}>
-                  <Text style={styles.inputLabel}>Start Year</Text>
+                  <Text style={styles.inputLabel}>Academic Year (Start)</Text>
                   <DashboardTextField
                     value={editStartYear}
                     onChangeText={setEditStartYear}
@@ -1260,16 +1260,10 @@ const refreshClassesAfterStorageWrite = async (pinFrontId?: string) => {
                   />
                 </View>
                 <View style={styles.yearCol}>
-                  <Text style={styles.inputLabel}>End Year</Text>
+                  <Text style={styles.inputLabel}>Academic Year (End)</Text>
                   <View style={styles.yearInputWrap}><Text style={styles.autoYearText}>{editEndYear || 'Auto'}</Text></View>
                 </View>
               </View>
-              <Text style={styles.inputLabel}>Description (Optional)</Text>
-              <DashboardTextArea
-                value={editDescription}
-                onChangeText={setEditDescription}
-                placeholder="Enter class description"
-              />
               <Text style={styles.inputLabel}>Class Banner / Background Photo</Text>
               <TouchableOpacity style={styles.uploadBtn} onPress={handlePickEditBanner}>
                 <MaterialCommunityIcons name="image-edit-outline" size={20} color="#D32F2F" />

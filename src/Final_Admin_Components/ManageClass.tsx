@@ -1101,6 +1101,15 @@ export default function ManageClass({ width, currentAdmin }: ManageClassProps) {
         onCreateClass={handleSubmitClass}
         initialData={selectedClass}
         isEditMode={isEditMode}
+        existingClasses={rawClasses.map((klass) => ({
+          id: klass.id,
+          className: klass.name,
+          section: klass.section,
+          instructorIdentifier: klass.assignedTeacherId ?? null,
+          schoolYear: klass.schoolYear ?? null,
+          semester: klass.semester,
+          schedule: klass.schedule ?? null,
+        }))}
       />
 
       {/* DELETE CONFIRMATION MODAL */}

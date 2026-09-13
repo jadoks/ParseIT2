@@ -13801,6 +13801,26 @@ app.get(
     return raw;
   }
 
+  // Generic question/connector words that are meaningless as topic signals.
+  // Without filtering these out, two completely unrelated questions that
+  // happen to share the same phrasing (e.g. "what is python" vs "what is a
+  // c function") can score high purely because they both contain "what"
+  // and "is" — causing an unrelated stored training answer to be matched
+  // and blended into the AI's real response.
+  const CHATBOT_TRIGGER_STOPWORDS = new Set([
+    "what", "whats", "who", "whos", "when", "where", "why", "how",
+    "is", "are", "was", "were", "am", "be", "been", "being",
+    "do", "does", "did", "doing",
+    "can", "could", "should", "would", "will", "shall",
+    "a", "an", "the", "of", "in", "on", "at", "to", "for", "and", "or", "but",
+    "it", "its", "this", "that", "these", "those",
+    "explain", "tell", "define", "about", "me", "please", "you", "your",
+  ]);
+
+  function stripStopwords(words) {
+    return words.filter((word) => !CHATBOT_TRIGGER_STOPWORDS.has(word));
+  }
+
   function scoreTriggerMatch(message, trigger) {
   const normalizedMessage = normalizeChatText(message);
   const normalizedTrigger = normalizeChatText(trigger);
@@ -13812,18 +13832,29 @@ app.get(
   if (normalizedMessage === normalizedTrigger) return 100;
   if (normalizedMessage.includes(normalizedTrigger)) return 85;
 
-  const triggerWords = normalizedTrigger.split(" ").filter(Boolean);
-  const messageWords = normalizedMessage.split(" ").filter(Boolean);
+  const rawTriggerWords = normalizedTrigger.split(" ").filter(Boolean);
+  const rawMessageWords = normalizedMessage.split(" ").filter(Boolean);
+
+  // Drop generic question/connector words before comparing — only the
+  // distinctive, topical words should be able to drive a match.
+  const triggerWords = stripStopwords(rawTriggerWords);
+  const messageWords = stripStopwords(rawMessageWords);
+
+  // If stripping stopwords wiped out the trigger entirely (e.g. a trigger
+  // that was only ever "what is this"), there's nothing distinctive left
+  // to match against — bail out rather than falling back to noisy words.
+  if (triggerWords.length === 0) return 0;
 
   const triggerWordSet = new Set(triggerWords);
   const messageWordSet = new Set(messageWords);
 
   const overlap = [...triggerWordSet].filter((word) => messageWordSet.has(word));
 
-  // ✅ Single-word triggers: previously hard-excluded (return 0 no matter what).
-  // Now allowed, but only score high if the word is a *whole-word* match —
-  // this avoids "in", "the", "on" style words matching everything while still
-  // letting distinctive single-word triggers ("enrollment", "grades") work.
+  // ✅ Single-word triggers (after stopword removal): previously hard-excluded
+  // (return 0 no matter what). Now allowed, but only score high if the word
+  // is a *whole-word* match — this avoids "in", "the", "on" style words
+  // matching everything while still letting distinctive single-word triggers
+  // ("enrollment", "grades", "python") work.
   if (triggerWords.length === 1) {
     const word = triggerWords[0];
     if (word.length < 4) return 0; // too short/generic to trust alone

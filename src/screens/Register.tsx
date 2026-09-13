@@ -134,10 +134,88 @@ const SCREEN_TRANSITION_DURATION = 280;
 const SCREEN_SLIDE_DISTANCE = 24;
 
 // ─── Password rules ───────────────────────────────────────────────────────────
-// Single source of truth for the minimum password length, used both by the
-// inline hint under the Password field and by the handleRegister validation
-// below, so the two can never drift out of sync.
+// Single source of truth for the password format, used both by the inline
+// requirements checklist under the Password field and by the handleRegister
+// validation below, so the two can never drift out of sync.
 const MIN_PASSWORD_LENGTH = 8;
+const SPECIAL_CHAR_REGEX = /[!@#$%^&*(),.?":{}|<>_\-+=[\]\\/;'`~]/;
+
+type PasswordRequirement = {
+  key: string;
+  label: string;
+  test: (value: string) => boolean;
+};
+
+const PASSWORD_REQUIREMENTS: PasswordRequirement[] = [
+  {
+    key: 'length',
+    label: `At least ${MIN_PASSWORD_LENGTH} characters`,
+    test: (value) => value.length >= MIN_PASSWORD_LENGTH,
+  },
+  {
+    key: 'uppercase',
+    label: 'At least one uppercase letter (A-Z)',
+    test: (value) => /[A-Z]/.test(value),
+  },
+  {
+    key: 'lowercase',
+    label: 'At least one lowercase letter (a-z)',
+    test: (value) => /[a-z]/.test(value),
+  },
+  {
+    key: 'number',
+    label: 'At least one number (0-9)',
+    test: (value) => /[0-9]/.test(value),
+  },
+  {
+    key: 'special',
+    label: 'At least one special character (e.g. !@#$%)',
+    test: (value) => SPECIAL_CHAR_REGEX.test(value),
+  },
+];
+
+/** Returns the labels of every password rule the given value fails. */
+function getFailedPasswordRequirements(value: string): string[] {
+  return PASSWORD_REQUIREMENTS.filter((rule) => !rule.test(value)).map(
+    (rule) => rule.label
+  );
+}
+
+function isPasswordValid(value: string): boolean {
+  return PASSWORD_REQUIREMENTS.every((rule) => rule.test(value));
+}
+
+/**
+ * Live checklist shown under the Password field, listing every format
+ * requirement (not just the minimum length) with a check/circle icon that
+ * fills in as the user types.
+ */
+function PasswordRequirementsChecklist({ password }: { password: string }) {
+  return (
+    <View style={styles.passwordRequirementsList}>
+      {PASSWORD_REQUIREMENTS.map((rule) => {
+        const met = rule.test(password);
+        return (
+          <View key={rule.key} style={styles.passwordRequirementRow}>
+            <Ionicons
+              name={met ? 'checkmark-circle' : 'ellipse-outline'}
+              size={14}
+              color={met ? '#16A34A' : '#9CA3AF'}
+            />
+            <Text
+              style={[
+                styles.passwordRequirementText,
+                met && styles.passwordRequirementTextValid,
+              ]}
+            >
+              {rule.label}
+            </Text>
+          </View>
+        );
+      })}
+    </View>
+  );
+}
 
 // ─── BirthdayField (matches AddStudentModal exactly) ─────────────────────────
 
@@ -940,10 +1018,6 @@ export default function Register({
   // auto-dismisses, so we run that follow-up when it hides instead.
   const [toastOnHide, setToastOnHide] = useState<(() => void) | null>(null);
 
-  // Whether the password currently meets the minimum length requirement.
-  // Drives the inline hint under the Password field below.
-  const isPasswordLongEnough = password.length >= MIN_PASSWORD_LENGTH;
-
   // Whether Confirm Password currently matches Password. Drives the inline
   // match indicator under that field below. Only shown once the user has
   // actually typed something into Confirm Password.
@@ -1105,11 +1179,12 @@ export default function Register({
       return;
     }
 
-    if (password.length < MIN_PASSWORD_LENGTH) {
+    const failedPasswordRequirements = getFailedPasswordRequirements(password);
+    if (failedPasswordRequirements.length > 0) {
       showFeedback(
         'error',
         'Weak Password',
-        `Password must be at least ${MIN_PASSWORD_LENGTH} characters.`
+        `Password must have: ${failedPasswordRequirements.join(', ')}.`
       );
       return;
     }
@@ -1323,9 +1398,7 @@ export default function Register({
               <Ionicons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={20} color="#7A7A7A" />
             </TouchableOpacity>
           </View>
-          <Text style={[styles.passwordHint, isPasswordLongEnough && styles.passwordHintValid]}>
-            {isPasswordLongEnough ? '✓ ' : ''}Must be at least {MIN_PASSWORD_LENGTH} characters
-          </Text>
+          <PasswordRequirementsChecklist password={password} />
         </View>
 
         <View style={[styles.formColumn, { flex: 1 }]}>
@@ -1448,9 +1521,7 @@ export default function Register({
             <Ionicons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={20} color="#7A7A7A" />
           </TouchableOpacity>
         </View>
-        <Text style={[styles.passwordHint, isPasswordLongEnough && styles.passwordHintValid]}>
-          {isPasswordLongEnough ? '✓ ' : ''}Must be at least {MIN_PASSWORD_LENGTH} characters
-        </Text>
+        <PasswordRequirementsChecklist password={password} />
       </View>
 
       <View style={styles.formGroup}>
@@ -1940,6 +2011,27 @@ const styles = StyleSheet.create({
     marginLeft: 2,
   },
   passwordHintValid: {
+    color: '#16A34A',
+  },
+  // Live checklist under the Password field, listing every format rule
+  // (length, uppercase, lowercase, number, special character) instead of
+  // just the minimum length.
+  passwordRequirementsList: {
+    marginTop: 8,
+    marginLeft: 2,
+    gap: 4,
+  },
+  passwordRequirementRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  passwordRequirementText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#9CA3AF',
+  },
+  passwordRequirementTextValid: {
     color: '#16A34A',
   },
   termsLabel: {
