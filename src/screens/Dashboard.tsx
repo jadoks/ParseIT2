@@ -457,14 +457,22 @@ const Dashboard = ({
       >
         <View style={[styles.contentWrap, { maxWidth: contentMaxWidth }]}>
           <View style={styles.topHeaderRow}>
-            <Text
-              style={[
-                styles.pageTitle,
-                { fontSize: titleSize, paddingBottom: 0 },
-              ]}
-            >
-              Announcements
-            </Text>
+            <View style={styles.titleRow}>
+              <Ionicons
+                name="megaphone-outline"
+                size={titleSize}
+                color="#111"
+                style={styles.titleIcon}
+              />
+              <Text
+                style={[
+                  styles.pageTitle,
+                  { fontSize: titleSize, paddingBottom: 0 },
+                ]}
+              >
+                Announcements
+              </Text>
+            </View>
 
             <TouchableOpacity
               activeOpacity={0.92}
@@ -510,17 +518,22 @@ const Dashboard = ({
             </View>
           )}
 
-          <Text
-            style={[
-              styles.pageTitle,
-              {
-                fontSize: titleSize,
-                marginTop: sectionSpacing,
-              },
-            ]}
-          >
-            Student Performance Snapshot
-          </Text>
+          <View style={[styles.titleRow, { marginTop: sectionSpacing }]}>
+            <Ionicons
+              name="stats-chart-outline"
+              size={titleSize}
+              color="#111"
+              style={styles.titleIcon}
+            />
+            <Text
+              style={[
+                styles.pageTitle,
+                { fontSize: titleSize },
+              ]}
+            >
+              Student Performance Snapshot
+            </Text>
+          </View>
 
           <View
             style={[
@@ -774,17 +787,22 @@ const Dashboard = ({
             </View>
           </View>
 
-          <Text
-            style={[
-              styles.pageTitle,
-              {
-                fontSize: titleSize,
-                marginTop: sectionSpacing,
-              },
-            ]}
-          >
-            Next Recommended Lesson
-          </Text>
+          <View style={[styles.titleRow, { marginTop: sectionSpacing }]}>
+            <Ionicons
+              name="bulb-outline"
+              size={titleSize}
+              color="#111"
+              style={styles.titleIcon}
+            />
+            <Text
+              style={[
+                styles.pageTitle,
+                { fontSize: titleSize },
+              ]}
+            >
+              Next Recommended Lesson
+            </Text>
+          </View>
 
           {nextBest ? (
             <TouchableOpacity
@@ -838,14 +856,22 @@ const Dashboard = ({
               { marginTop: sectionSpacing }
             ]}
           >
-            <Text
-              style={[
-                styles.pageTitle,
-                { fontSize: titleSize, flex: 1, paddingBottom: 0 }
-              ]}
-            >
-              Course Progress Overview
-            </Text>
+            <View style={[styles.titleRow, { flex: 1 }]}>
+              <Ionicons
+                name="trending-up-outline"
+                size={titleSize}
+                color="#111"
+                style={styles.titleIcon}
+              />
+              <Text
+                style={[
+                  styles.pageTitle,
+                  { fontSize: titleSize, paddingBottom: 0 }
+                ]}
+              >
+                Course Progress Overview
+              </Text>
+            </View>
 
             {hiddenCourseCount > 0 && (
               <TouchableOpacity
@@ -1106,6 +1132,14 @@ const styles = StyleSheet.create({
     textAlign: 'left',
     color: '#111',
   },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  titleIcon: {
+    marginBottom: 2,
+  },
 
   snapshotGrid: {
     flexDirection: 'row',
@@ -1191,7 +1225,9 @@ const styles = StyleSheet.create({
     fontWeight: WEIGHT_EMPHASIS,
   },
   banner: {
-    backgroundColor: '#E53935',
+    backgroundColor: '#F4F5F7',
+    borderWidth: 1,
+    borderColor: '#E3E5E9',
     borderRadius: 30,
     justifyContent: 'center',
     alignItems: 'center',
@@ -1201,10 +1237,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
   },
   bannerDay: {
-    color: '#FFF',
+    color: '#8A8F98',
   },
   bannerLocation: { fontFamily: FONT_BODY,
-    color: '#FFF',
+    color: '#4A4E58',
     fontWeight: WEIGHT_EMPHASIS,
     textAlign: 'center',
   },

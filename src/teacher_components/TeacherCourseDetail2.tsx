@@ -1005,6 +1005,26 @@ const TeacherCourseDetail2 = ({
   const [editingPreviewIndex, setEditingPreviewIndex] = useState<number | null>(null);
   const [isSavingGeneratedLessons, setIsSavingGeneratedLessons] = useState(false);
 
+  // Updates a (possibly nested, e.g. "lessonPrep.instructions") SAS field on
+  // one lesson inside pendingGeneratedLessons, without disturbing the rest
+  // of that lesson's AI-generated content. Mirrors updateStructureField's
+  // path-based approach but scoped to a single array of preview lessons.
+  const updatePendingLessonField = (index: number, path: string, value: any) => {
+    setPendingGeneratedLessons(prev => {
+      const updated = [...prev];
+      const lesson = { ...(updated[index] || {}) };
+      const keys = path.split('.');
+      if (keys.length === 1) {
+        lesson[keys[0]] = value;
+      } else {
+        const [parentKey, childKey] = keys;
+        lesson[parentKey] = { ...(lesson[parentKey] || {}), [childKey]: value };
+      }
+      updated[index] = lesson;
+      return updated;
+    });
+  };
+
   const [showNextLessonModal, setShowNextLessonModal] = useState(false);
   const [selectedTopicsForGen, setSelectedTopicsForGen] = useState<string[]>([]);
   const [isGeneratingNextLessons, setIsGeneratingNextLessons] = useState(false);
@@ -1699,7 +1719,36 @@ useEffect(() => {
           description: lesson.description,
           discussion: lesson.discussion,
           activity: lesson.activity,
-          lessonNumber: currentMax + idx + 1
+          lessonNumber: currentMax + idx + 1,
+          // ─── SAS (Student Activity Sheet) template fields ───
+          // The AI already returns these (see generateTopicContent on the
+          // backend); previously this payload silently dropped them so every
+          // AI-generated lesson was saved in the old title/description/
+          // discussion/activity-only shape even though Manual Lesson
+          // creation had moved to the full SAS format. Forward them through
+          // exactly like handleCreateManualLesson does.
+          objectives: Array.isArray(lesson.objectives) ? lesson.objectives.filter(Boolean) : [],
+          materials: Array.isArray(lesson.materials) ? lesson.materials.filter(Boolean) : [],
+          references: Array.isArray(lesson.references) ? lesson.references.filter(Boolean) : [],
+          sdgIntegration: Array.isArray(lesson.sdgIntegration)
+            ? lesson.sdgIntegration.filter((s: any) => s && (s.sdg || s.description))
+            : [],
+          lessonPrep: lesson.lessonPrep && typeof lesson.lessonPrep === 'object' ? {
+            resources: Array.isArray(lesson.lessonPrep.resources)
+              ? lesson.lessonPrep.resources.filter((r: any) => r && (r.label || r.url))
+              : [],
+            activityTitle: lesson.lessonPrep.activityTitle || '',
+            instructions: lesson.lessonPrep.instructions || '',
+            guideQuestions: Array.isArray(lesson.lessonPrep.guideQuestions)
+              ? lesson.lessonPrep.guideQuestions.filter(Boolean)
+              : [],
+            transition: lesson.lessonPrep.transition || '',
+          } : { resources: [], activityTitle: '', instructions: '', guideQuestions: [], transition: '' },
+          keyTerms: Array.isArray(lesson.keyTerms)
+            ? lesson.keyTerms.filter((k: any) => k && (k.term || k.meaning))
+            : [],
+          takeaways: Array.isArray(lesson.takeaways) ? lesson.takeaways.filter(Boolean) : [],
+          guidedPractice: lesson.guidedPractice || '',
         };
         const res = await fetch(`${API_BASE_URL}/course-lessons/create-manual`, {
           method: 'POST',
@@ -7731,7 +7780,86 @@ LESSON EDIT MODAL (Direct Edit - No Preview Toggle)
                         }}
                         multiline
                       />
-                      <Text style={styles.sectionLabel}>Discussion</Text>
+
+                      <Text style={styles.sasFormSectionDivider}>Student Activity Sheet — every section below is required</Text>
+
+                      <Text style={styles.sectionLabel}>Intended Learning Outcomes (one per line)</Text>
+                      <TextInput
+                        style={[styles.textAreaBox, { minHeight: 80 }]}
+                        value={arrayToLines(lesson.objectives)}
+                        onChangeText={(v) => updatePendingLessonField(index, 'objectives', parseLinesToArray(v))}
+                        multiline
+                      />
+
+                      <Text style={styles.sectionLabel}>Materials (one per line)</Text>
+                      <TextInput
+                        style={[styles.textAreaBox, { minHeight: 60 }]}
+                        value={arrayToLines(lesson.materials)}
+                        onChangeText={(v) => updatePendingLessonField(index, 'materials', parseLinesToArray(v))}
+                        multiline
+                      />
+
+                      <Text style={styles.sectionLabel}>References (one per line)</Text>
+                      <TextInput
+                        style={[styles.textAreaBox, { minHeight: 60 }]}
+                        value={arrayToLines(lesson.references)}
+                        onChangeText={(v) => updatePendingLessonField(index, 'references', parseLinesToArray(v))}
+                        multiline
+                      />
+
+                      <Text style={styles.sectionLabel}>SDG Integration — "SDG name | description" per line</Text>
+                      <TextInput
+                        style={[styles.textAreaBox, { minHeight: 60 }]}
+                        value={pairsToLines(lesson.sdgIntegration, 'sdg', 'description')}
+                        onChangeText={(v) => updatePendingLessonField(index, 'sdgIntegration', parsePipePairs(v).map(p => ({ sdg: p.a, description: p.b })))}
+                        multiline
+                      />
+
+                      <Text style={styles.sasFormSectionDivider}>Lesson Preparation / Review / Preview</Text>
+
+                      <Text style={styles.sectionLabel}>Resource Links — optional, one per line: "Label | URL"</Text>
+                      <TextInput
+                        style={[styles.textAreaBox, { minHeight: 50 }]}
+                        value={pairsToLines(lesson.lessonPrep?.resources, 'label', 'url')}
+                        onChangeText={(v) => updatePendingLessonField(index, 'lessonPrep.resources', parsePipePairs(v).map(p => ({ label: p.a, url: p.b })))}
+                        multiline
+                      />
+
+                      <Text style={styles.sectionLabel}>Warm-up Activity Title</Text>
+                      <TextInput
+                        style={styles.inputBox}
+                        value={lesson.lessonPrep?.activityTitle || ''}
+                        onChangeText={(v) => updatePendingLessonField(index, 'lessonPrep.activityTitle', v)}
+                      />
+
+                      <Text style={styles.sectionLabel}>Warm-up Activity Instructions</Text>
+                      <TextInput
+                        style={[styles.textAreaBox, { minHeight: 100 }]}
+                        value={lesson.lessonPrep?.instructions || ''}
+                        onChangeText={(v) => updatePendingLessonField(index, 'lessonPrep.instructions', v)}
+                        multiline
+                        textAlignVertical="top"
+                      />
+
+                      <Text style={styles.sectionLabel}>Guide Questions (one per line)</Text>
+                      <TextInput
+                        style={[styles.textAreaBox, { minHeight: 70 }]}
+                        value={arrayToLines(lesson.lessonPrep?.guideQuestions)}
+                        onChangeText={(v) => updatePendingLessonField(index, 'lessonPrep.guideQuestions', parseLinesToArray(v))}
+                        multiline
+                      />
+
+                      <Text style={styles.sectionLabel}>Transition into Today's Lesson</Text>
+                      <TextInput
+                        style={[styles.textAreaBox, { minHeight: 80 }]}
+                        value={lesson.lessonPrep?.transition || ''}
+                        onChangeText={(v) => updatePendingLessonField(index, 'lessonPrep.transition', v)}
+                        multiline
+                      />
+
+                      <Text style={styles.sasFormSectionDivider}>Concept Notes Presentation</Text>
+
+                      <Text style={styles.sectionLabel}>Discussion / Concept Notes</Text>
                       <TextInput
                         style={[styles.textAreaBox, { minHeight: 300 }]}
                         value={lesson.discussion || ''}
@@ -7743,7 +7871,35 @@ LESSON EDIT MODAL (Direct Edit - No Preview Toggle)
                         multiline
                         textAlignVertical="top"
                       />
-                      <Text style={styles.sectionLabel}>Activity</Text>
+
+                      <Text style={styles.sectionLabel}>Key Terms — "Term | Meaning" per line</Text>
+                      <TextInput
+                        style={[styles.textAreaBox, { minHeight: 90 }]}
+                        value={pairsToLines(lesson.keyTerms, 'term', 'meaning')}
+                        onChangeText={(v) => updatePendingLessonField(index, 'keyTerms', parsePipePairs(v).map(p => ({ term: p.a, meaning: p.b })))}
+                        multiline
+                      />
+
+                      <Text style={styles.sectionLabel}>Take Aways (one per line)</Text>
+                      <TextInput
+                        style={[styles.textAreaBox, { minHeight: 80 }]}
+                        value={arrayToLines(lesson.takeaways)}
+                        onChangeText={(v) => updatePendingLessonField(index, 'takeaways', parseLinesToArray(v))}
+                        multiline
+                      />
+
+                      <Text style={styles.sasFormSectionDivider}>Practice &amp; Performance</Text>
+
+                      <Text style={styles.sectionLabel}>Guided Practice</Text>
+                      <TextInput
+                        style={[styles.textAreaBox, { minHeight: 100 }]}
+                        value={lesson.guidedPractice || ''}
+                        onChangeText={(v) => updatePendingLessonField(index, 'guidedPractice', v)}
+                        multiline
+                        textAlignVertical="top"
+                      />
+
+                      <Text style={styles.sectionLabel}>Compu-Skill / Performance Task</Text>
                       <TextInput
                         style={[styles.textAreaBox, { minHeight: 300 }]}
                         value={lesson.activity || ''}

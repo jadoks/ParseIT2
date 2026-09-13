@@ -18474,7 +18474,12 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
         lessonPrep,        // { resources: [{label,url}], activityTitle, instructions, guideQuestions: string[], transition }
         keyTerms,          // [{ term, meaning }]
         takeaways,         // string[]
-        guidedPractice     // string
+        guidedPractice,    // string
+        // "text" or "file" — sent by the Manual Lesson form (matches
+        // lessonMode). Not sent by the AI "Generate Next Lesson" save flow,
+        // so its absence is what tells a real manually-typed lesson apart
+        // from an AI-generated one being saved after preview/edit.
+        type: requestedType
       } = req.body;
 
       if (!moduleId || !classId || !title) {
@@ -18587,7 +18592,13 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
         keyTerms: fileBase64 ? null : (Array.isArray(keyTerms) ? keyTerms.filter(k => k && (k.term || k.meaning)) : []),
         takeaways: fileBase64 ? null : (Array.isArray(takeaways) ? takeaways.filter(Boolean) : []),
         guidedPractice: fileBase64 ? null : (guidedPractice || ""),
-        type: fileBase64 ? "manual_file" : "ai_generated", // Tag appropriately
+        // ─── Tag appropriately ───
+        // A file upload is always "manual_file". Otherwise, trust the
+        // Manual Lesson form's explicit type: "text" -> teacher-typed
+        // lesson -> "manual". Any other case (the AI "Generate Next
+        // Lesson" flow doesn't send `type` at all) falls back to
+        // "ai_generated", preserving prior behavior for that flow.
+        type: fileBase64 ? "manual_file" : (requestedType === "text" ? "manual" : "ai_generated"),
         fileName: fileBase64 ? fileName : null,
         fileUrl: fileUrl,
         fileType: fileBase64 ? fileType : null,
