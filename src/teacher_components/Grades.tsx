@@ -563,7 +563,7 @@ const Grades = ({ apiBaseUrl }: GradesProps) => {
 
   const downloadGradeReportExcel = async () => {
     if (!studentRecord) {
-      Alert.alert('No Report', 'Please generate a grade report first.');
+      Alert.alert('No Report', 'Please view a grade report first.');
       return;
     }
 
@@ -675,7 +675,7 @@ const Grades = ({ apiBaseUrl }: GradesProps) => {
             <View style={[styles.headerBlock, isPhone && styles.headerBlockMobile]}>
               <Text style={[styles.mainTitle, { fontSize: titleSize }]}>Grades</Text>
               <Text style={styles.subTitle}>
-                Generate an official academic grade report from uploaded records.
+                View the official academic grade report from uploaded records.
               </Text>
             </View>
 
@@ -756,7 +756,7 @@ const Grades = ({ apiBaseUrl }: GradesProps) => {
                           isPhone && styles.journeyButtonTextMobile,
                         ]}
                       >
-                        Generate Grade Report
+                        View Grade Report
                       </Text>
                     )}
                   </TouchableOpacity>
@@ -828,7 +828,7 @@ const Grades = ({ apiBaseUrl }: GradesProps) => {
                         <ActivityIndicator size="small" color="#FFFFFF" />
                       ) : (
                         <Text style={styles.journeyButtonText}>
-                          Generate Grade Report
+                          View Grade Report
                         </Text>
                       )}
                     </TouchableOpacity>

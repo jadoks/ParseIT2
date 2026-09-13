@@ -714,7 +714,7 @@ const styles = StyleSheet.create({
   heroSubtitle: { fontFamily: FONT_BODY, fontSize: 14, color: COLORS.subtext, lineHeight: 22 },
   riskPillWrap: { marginTop: 16, alignSelf: 'flex-start' },
   riskPillLabel: { fontFamily: FONT_BODY, fontSize: 12, color: COLORS.subtext, marginBottom: 6, fontWeight: WEIGHT_EMPHASIS },
-  riskPill: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999 },
+  riskPill: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999, alignSelf: 'flex-start' },
   riskPillText: { fontFamily: FONT_BODY, fontSize: 14, fontWeight: WEIGHT_EMPHASIS },
   metricsGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', marginBottom: 16 },
   metricCard: { backgroundColor: COLORS.surface, borderRadius: 18, padding: 14, marginBottom: 12, borderWidth: 1, borderColor: COLORS.border, borderLeftWidth: 5 },
