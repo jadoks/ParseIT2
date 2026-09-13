@@ -756,9 +756,17 @@ export default function TeacherAnalytics({
 
     if (evaluatedStudents <= 0) return 0;
 
+    // 🔥 FIX: each high-risk student is weighted x2 in the numerator, so the
+    // theoretical maximum weighted score is evaluatedStudents * 2 (every
+    // student high-risk) — not evaluatedStudents. Dividing by the plain
+    // student count let this run past 100%, up to 200% when the whole
+    // class was high-risk. Normalizing against the true max caps it at
+    // 100% as intended.
+    const maxWeightedScore = evaluatedStudents * 2;
+
     return Math.round(
       ((summary.highRiskCount * 2 + summary.moderateRiskCount) /
-        evaluatedStudents) *
+        maxWeightedScore) *
         100,
     );
   }, [
@@ -916,7 +924,11 @@ export default function TeacherAnalytics({
       });
     }
 
-    if (attentionIndex >= 40) {
+    // 🔥 FIX: attentionIndex now maxes out at 100 (previously 200, see the
+    // attentionIndex calculation above), so this threshold was halved from
+    // 40 to 20 to keep the same relative sensitivity — 40/200 and 20/100
+    // both represent the same 20%-of-max trigger point.
+    if (attentionIndex >= 20) {
       insights.push({
         title: "High assignment intervention load",
         body: `${attentionIndex}% attention index suggests a heavy support requirement. Prioritize high assignment-risk learners and missing assignments first.`,
