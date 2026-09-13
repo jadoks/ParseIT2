@@ -401,6 +401,7 @@ const TeacherDrawerMenu = ({
   const isMobile = width < 768;
   const isTablet = width >= 768 && width < 1024;
   const isSmallMobile = width < 380;
+  const isLargeScreen = width >= 1024;
   const hasOverflow = contentHeight > scrollViewHeight && scrollViewHeight > 0;
   const shouldShowScrollBar = (isMobile || isTablet) && hasOverflow;
   const drawerWidth = isMobile ? (isSmallMobile ? '85%' : 280) : isTablet ? 300 : 260;
@@ -746,6 +747,31 @@ const TeacherDrawerMenu = ({
         <MenuItem ionIconName="people" label="Community" onPress={() => { onNavigate?.('community'); if (!isFixed) onClose?.(); }} active={activeScreen === 'community'} />
         <MenuItem iconName="chart-line" label="Analytics" onPress={() => { onNavigate?.('analytics'); if (!isFixed) onClose?.(); }} active={activeScreen === 'analytics'} />
         <MenuItem ionIconName="settings" label="Settings" onPress={() => setSettingsModalVisible(true)} />
+
+        {/* ─── Decorative background card — responsive, all screen sizes ── */}
+        <View
+          style={[
+            styles.promoCard,
+            { minHeight: isLargeScreen ? 130 : isTablet ? 110 : 90 },
+          ]}
+        >
+          <View
+            style={[
+              styles.promoBlobOuter,
+              isLargeScreen
+                ? { width: 220, height: 220, right: -70, bottom: -110 }
+                : { width: 170, height: 170, right: -55, bottom: -85 },
+            ]}
+          />
+          <View
+            style={[
+              styles.promoBlobInner,
+              isLargeScreen
+                ? { width: 170, height: 170, right: -50, bottom: -95 }
+                : { width: 130, height: 130, right: -38, bottom: -72 },
+            ]}
+          />
+        </View>
       </ScrollView>
       <Pressable style={styles.logoutMenuItem} onPress={() => setLogoutModalVisible(true)}>
         <MaterialCommunityIcons name="logout" size={28} color="#D32F2F" style={{ marginRight: 20 }} />
@@ -1396,6 +1422,28 @@ export default TeacherDrawerMenu;
 
 const styles = StyleSheet.create({
   drawerContainer: { height: '100%', padding: 25, backgroundColor: '#FFF', borderColor: 'transparent' },
+  // ─── Promo card ("Learn. Analyze. Grow.") — large screens only ─────────
+  promoCard: {
+    marginTop: 20,
+    borderRadius: 22,
+    backgroundColor: '#FCE4E4',
+    overflow: 'hidden',
+  },
+  // Two oversized, low-opacity circles clipped by the card's overflow:hidden
+  // to fake the layered "wave" curves in the reference image without
+  // needing an svg/gradient library. Sizes are overridden inline per
+  // breakpoint (see promoBlobOuter/Inner usage in the component) since
+  // this StyleSheet is module-scope and can't see isLargeScreen/isTablet.
+  promoBlobOuter: {
+    position: 'absolute',
+    borderRadius: 999,
+    backgroundColor: 'rgba(211,47,47,0.10)',
+  },
+  promoBlobInner: {
+    position: 'absolute',
+    borderRadius: 999,
+    backgroundColor: 'rgba(211,47,47,0.16)',
+  },
   profileSection: { flexDirection: 'row', alignItems: 'center', marginBottom: 30 },
   avatar: { width: 50, height: 50, borderRadius: 25, marginRight: 15, overflow: 'hidden', aspectRatio: 1 },
   userName: { fontFamily: FONT_TITLE, fontWeight: WEIGHT_TITLE, fontSize: 18 },
