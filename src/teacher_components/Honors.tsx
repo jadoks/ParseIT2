@@ -1311,24 +1311,81 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
       XLSX.utils.book_append_sheet(workbook, honorSheet, 'Deans List');
 
       generatedSections.forEach((section, sectionIndex) => {
-        const sectionRows = section.students.map((student, index) => ({
-          Rank: index + 1,
-          'Student ID': student.id,
-          'Student Name': student.name,
-          GWA: student.gpa,
-          Section: section.sectionName,
-          'Year Level': section.yearLevel,
-        }));
+        const detailRows: (string | number)[][] = [];
+        const merges: { s: { r: number; c: number }; e: { r: number; c: number } }[] = [];
 
-        const sectionSheet = XLSX.utils.json_to_sheet(sectionRows);
+        // ── Section title & context (row 0 & 1) ──────────────────────────
+        detailRows.push([`${section.yearLevel} - ${section.sectionName}`]);
+        merges.push({ s: { r: 0, c: 0 }, e: { r: 0, c: 4 } });
+
+        detailRows.push([
+          `Academic Year: ${schoolYear || 'S.Y ---- - ----'}   |   Semester: ${semester}`,
+        ]);
+        merges.push({ s: { r: 1, c: 0 }, e: { r: 1, c: 4 } });
+
+        detailRows.push([]);
+
+        section.students.forEach((student, index) => {
+          const rank = index + 1;
+          const courses = Array.isArray(student.grades) ? student.grades : [];
+
+          // Student header — name, ID, and final GWA up front
+          const nameRowIndex = detailRows.length;
+          detailRows.push([
+            `${rank}.  ${student.name}`,
+            '',
+            `Student ID: ${student.id}`,
+            '',
+            `GWA: ${student.gpa}`,
+          ]);
+          merges.push({ s: { r: nameRowIndex, c: 0 }, e: { r: nameRowIndex, c: 1 } });
+
+          detailRows.push([]);
+
+          // Per-course grade breakdown, showing the weighted computation
+          detailRows.push(['Course Code', 'Course Name', 'Units', 'Grade', 'Grade × Units']);
+
+          let computedTotalUnits = 0;
+          let computedWeightedTotal = 0;
+
+          courses.forEach((course) => {
+            const units = Number(course.units) || 0;
+            const grade = Number(course.grade);
+            const hasGrade = Number.isFinite(grade);
+            const weighted = hasGrade ? grade * units : 0;
+
+            computedTotalUnits += units;
+            computedWeightedTotal += weighted;
+
+            detailRows.push([
+              course.courseCode || '',
+              course.courseName || '',
+              units,
+              hasGrade ? grade : '',
+              hasGrade ? Number(weighted.toFixed(2)) : '',
+            ]);
+          });
+
+          // Computation summary for this student
+          detailRows.push([]);
+          detailRows.push(['', '', 'Total Units:', computedTotalUnits || Number(student.unit) || 0, '']);
+          detailRows.push(['', '', 'Weighted Grade Total:', Number(computedWeightedTotal.toFixed(2)), '']);
+          detailRows.push(['', '', 'GWA:', student.gpa, '']);
+
+          // Extra breathing room before the next student's block
+          detailRows.push([]);
+          detailRows.push([]);
+        });
+
+        const sectionSheet = XLSX.utils.aoa_to_sheet(detailRows);
         sectionSheet['!cols'] = [
-          { wch: 8 },
-          { wch: 18 },
-          { wch: 32 },
-          { wch: 10 },
-          { wch: 18 },
-          { wch: 18 },
+          { wch: 16 },
+          { wch: 34 },
+          { wch: 16 },
+          { wch: 12 },
+          { wch: 16 },
         ];
+        sectionSheet['!merges'] = merges;
 
         const safeSheetName = sanitizeFileName(
           `${section.yearLevel}-${section.sectionName}`
