@@ -4,7 +4,6 @@ import * as DocumentPicker from "expo-document-picker";
 import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   Image,
   Modal,
   Platform,
@@ -17,6 +16,14 @@ import {
   useWindowDimensions,
   View,
 } from "react-native";
+
+// ✅ Reuses the same Toast component used across the app (Register/Admin/
+// Teacher screens, Community, Dashboard, ClassesScreen, SignIn) instead of
+// a native Alert. Alert.alert() is a no-op on React Native Web, which is
+// why validation errors in this modal previously never showed anything.
+import Toast from "../Final_Admin_Components/Toast"; // adjust path if your folder layout differs
+
+type ToastType = "success" | "error" | "info";
 
 type YearOption = {
   id: string;
@@ -549,6 +556,21 @@ export default function AddClassModal({
   const [isLocalSubmitting, setIsLocalSubmitting] = useState(false);
   const isBusy = isSubmitting || isLocalSubmitting;
 
+  // ✅ Toast state — same shape/usage as Register/SignIn/Community/Dashboard.
+  const [toast, setToast] = useState<{
+    visible: boolean;
+    message: string;
+    type: ToastType;
+  }>({ visible: false, message: "", type: "error" });
+
+  const showToast = (message: string, type: ToastType = "error") => {
+    setToast({ visible: true, message, type });
+  };
+
+  const hideToast = () => {
+    setToast((prev) => ({ ...prev, visible: false }));
+  };
+
   const selectedSemesterLabel = useMemo(() => {
     return (
       SEMESTER_OPTIONS.find((item) => item.id === selectedSemester)?.label ||
@@ -640,7 +662,7 @@ export default function AddClassModal({
 
       const asset = result.assets?.[0];
       if (!asset?.uri) {
-        Alert.alert("Upload Failed", "No file was selected.");
+        showToast("No file was selected.", "error");
         return;
       }
 
@@ -651,7 +673,7 @@ export default function AddClassModal({
       });
     } catch (error) {
       console.error("Banner pick error:", error);
-      Alert.alert("Upload Failed", "Unable to open file picker.");
+      showToast("Unable to open file picker.", "error");
     }
   };
 
@@ -752,38 +774,38 @@ export default function AddClassModal({
     if (isBusy) return;
 
     if (!selectedYear) {
-      Alert.alert("Missing Field", "Please select a year.");
+      showToast("Please select a year.", "error");
       return;
     }
 
     if (!selectedSemester) {
-      Alert.alert("Missing Field", "Please select a semester.");
+      showToast("Please select a semester.", "error");
       return;
     }
 
     if (!selectedSection) {
-      Alert.alert("Missing Field", "Please select a section.");
+      showToast("Please select a section.", "error");
       return;
     }
 
     if (!courseNameInput.trim()) {
-      Alert.alert("Missing Field", "Please enter a course name.");
+      showToast("Please enter a course name.", "error");
       return;
     }
 
     if (!startYear.trim() || !endYear.trim()) {
-      Alert.alert("Missing Field", "Please enter start year.");
+      showToast("Please enter start year.", "error");
       return;
     }
 
     if (!instructorIdentifier.trim()) {
-      Alert.alert("Missing Field", "Please enter teacher ID.");
+      showToast("Please enter teacher ID.", "error");
       return;
     }
 
     const scheduleError = validateScheduleBlocks(scheduleBlocks);
     if (scheduleError) {
-      Alert.alert("Missing Field", scheduleError);
+      showToast(scheduleError, "error");
       return;
     }
 
@@ -791,7 +813,7 @@ export default function AddClassModal({
     // whose own schedule blocks double-book the same day/time...
     const internalOverlapError = validateNoInternalScheduleOverlap(scheduleBlocks);
     if (internalOverlapError) {
-      Alert.alert("Schedule Conflict", internalOverlapError);
+      showToast(internalOverlapError, "error");
       return;
     }
 
@@ -808,7 +830,7 @@ export default function AddClassModal({
       isEditMode ? initialData?.id ?? null : null
     );
     if (conflictError) {
-      Alert.alert("Schedule Conflict", conflictError);
+      showToast(conflictError, "error");
       return;
     }
 
@@ -1321,11 +1343,34 @@ export default function AddClassModal({
           </View>
         </View>
       </Modal>
+
+      {/* Toast — portal-based, matches Register/Community/Dashboard/
+          ClassesScreen/SignIn so validation feedback looks and behaves
+          the same everywhere. */}
+      <Modal
+        visible={toast.visible}
+        transparent
+        animationType="fade"
+        onRequestClose={hideToast}
+        statusBarTranslucent
+      >
+        <View style={styles.toastPortal} pointerEvents="box-none">
+          <Toast
+            visible={toast.visible}
+            message={toast.message}
+            type={toast.type}
+            onHide={hideToast}
+          />
+        </View>
+      </Modal>
     </>
   );
 }
 
 const styles = StyleSheet.create({
+  toastPortal: {
+    ...StyleSheet.absoluteFillObject,
+  },
   modalOverlay: {
     flex: 1,
     backgroundColor: "rgba(43, 17, 17, 0.45)",
