@@ -411,7 +411,7 @@ export default function Header({
         <View style={styles.row}>
           <View style={styles.left}>
             <Image
-              source={require("../../assets/images/logo.png")}
+              source={require("../../assets/images/BSITLOGO.png")}
               style={styles.logo}
               resizeMode="contain"
             />
@@ -476,7 +476,7 @@ export default function Header({
               </TouchableOpacity>
 
               <Image
-                source={require("../../assets/images/logo.png")}
+                source={require("../../assets/images/BSITLOGO.png")}
                 style={styles.logo}
                 resizeMode="contain"
               />
