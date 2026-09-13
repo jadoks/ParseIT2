@@ -735,7 +735,7 @@ const Videos = ({
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#FEF2F2', padding: 20 },
+  container: { flex: 1, backgroundColor: '#F4F7FB', padding: 20 },
   homeContent: { paddingBottom: 24 },
   homeHeader: { paddingHorizontal: 16, paddingTop: 14, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#fff', gap: 12 },
   homeHeaderTextBlock: { flex: 1 },

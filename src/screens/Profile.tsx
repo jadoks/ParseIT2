@@ -1855,7 +1855,7 @@ useEffect(() => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FEF2F2',
+    backgroundColor: '#F4F7FB',
   },
   bannerContainer: {
     alignItems: 'center',

@@ -35,7 +35,7 @@ interface AnalyticsProps {
 }
 
 const COLORS = {
-  bg: '#FEF2F2',
+  bg: '#F4F7FB',
   surface: '#FFFFFF',
   text: '#111827',
   subtext: '#6B7280',

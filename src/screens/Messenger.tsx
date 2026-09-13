@@ -3105,9 +3105,9 @@ const Messenger = ({
 // Styles (unchanged from original, plus toast styles)
 // ---------------------------------------------------------------------------
 const styles = StyleSheet.create({
-  mobileScreen: { flex: 1, backgroundColor: '#FEF2F2' },
+  mobileScreen: { flex: 1, backgroundColor: '#F4F7FB' },
   mobileContent: { flex: 1, minHeight: 0 },
-  desktopScreen: { flex: 1, backgroundColor: '#FEF2F2' },
+  desktopScreen: { flex: 1, backgroundColor: '#F4F7FB' },
   splitLayout: {
     flex: 1,
     flexDirection: 'row',

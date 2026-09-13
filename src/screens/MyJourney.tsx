@@ -460,7 +460,7 @@ const MyJourney = ({
 };
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: '#FEF2F2' },
+  screen: { flex: 1, backgroundColor: '#F4F7FB' },
   container: { width: '100%', maxWidth: 1280, alignSelf: 'center', padding: 24, paddingBottom: 44 },
   containerTablet: { paddingHorizontal: 20 },
   containerMobile: { padding: 14, paddingBottom: 28 },
