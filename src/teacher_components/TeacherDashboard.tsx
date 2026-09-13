@@ -1380,104 +1380,113 @@ const refreshClassesAfterStorageWrite = async (pinFrontId?: string) => {
           : {})}
       >
         <View style={styles.mainWrapper}>
-          <View style={styles.headerRow}>
-            <Text
-              style={[
-                styles.sectionHeader,
-                { fontSize: isMobile ? 22 : isTablet ? 24 : 28 },
-              ]}
-            >
-              Announcements
-            </Text>
+          {/* 🔥 NEW: "Announcements" title + banner now share one white card,
+              instead of the title sitting bare on the light-blue page
+              background with only the banner itself boxed in white. */}
+          <View style={styles.announcementsCard}>
+            <View style={styles.headerRow}>
+              <Text
+                style={[
+                  styles.sectionHeader,
+                  { fontSize: isMobile ? 22 : isTablet ? 24 : 28 },
+                ]}
+              >
+                Announcements
+              </Text>
+            </View>
+
+            {isLoading ? (
+              <AnnouncementBanner announcements={[]} isLoading={true} />
+            ) : announcements.length > 0 ? (
+              <AnnouncementBanner announcements={announcements} />
+            ) : (
+              <View style={[styles.banner, { height: bannerHeight }]}>
+                <View style={styles.bannerContent}>
+                  <Text
+                    style={[styles.bannerDay, { fontSize: isMobile ? 13 : 14 }]}
+                  >
+                    No announcements yet
+                  </Text>
+                  <Text
+                    style={[
+                      styles.bannerLocation,
+                      { fontSize: isMobile ? 16 : isTablet ? 18 : 20 },
+                    ]}
+                  >
+                    Create an announcement to keep your classes updated
+                  </Text>
+                </View>
+              </View>
+            )}
           </View>
 
-          {isLoading ? (
-            <AnnouncementBanner announcements={[]} isLoading={true} />
-          ) : announcements.length > 0 ? (
-            <AnnouncementBanner announcements={announcements} />
-          ) : (
-            <View style={[styles.banner, { height: bannerHeight }]}>
-              <View style={styles.bannerContent}>
-                <Text
-                  style={[styles.bannerDay, { fontSize: isMobile ? 13 : 14 }]}
-                >
-                  No announcements yet
-                </Text>
-                <Text
-                  style={[
-                    styles.bannerLocation,
-                    { fontSize: isMobile ? 16 : isTablet ? 18 : 20 },
-                  ]}
-                >
-                  Create an announcement to keep your classes updated
-                </Text>
-              </View>
-            </View>
-          )}
-
-          <View style={styles.classesHeaderRow}>
-            <Text
-              style={[
-                styles.classesTitle,
-                { fontSize: isMobile ? 22 : isTablet ? 24 : 28 },
-              ]}
-            >
-              My Classes
-            </Text>
-            <View style={styles.classesHeaderActions}>
-              {hiddenCourseCount > 0 ? (
+          {/* 🔥 NEW: "My Classes" header row (title + See All + Create Class)
+              and the class card grid now share one white card too. */}
+          <View style={styles.classesCard}>
+            <View style={styles.classesHeaderRow}>
+              <Text
+                style={[
+                  styles.classesTitle,
+                  { fontSize: isMobile ? 22 : isTablet ? 24 : 28 },
+                ]}
+              >
+                My Classes
+              </Text>
+              <View style={styles.classesHeaderActions}>
+                {hiddenCourseCount > 0 ? (
+                  <TouchableOpacity 
+                    style={[styles.seeAllButton, isMobile && styles.iconOnlyButton]} 
+                    onPress={() => setShowAllClasses((prev) => !prev)} 
+                    activeOpacity={0.85}
+                  >
+                    <MaterialCommunityIcons 
+                      name={showAllClasses ? "unfold-less-horizontal" : "unfold-more-horizontal"} 
+                      size={isMobile ? 20 : 18} 
+                      color="#D32F2F" 
+                    />
+                    {!isMobile && (
+                      <Text style={styles.seeAllButtonText}>
+                        {showAllClasses ? 'Show Less' : `See All (${processedCourses.length})`}
+                      </Text>
+                    )}
+                  </TouchableOpacity>
+                ) : null}
                 <TouchableOpacity 
-                  style={[styles.seeAllButton, isMobile && styles.iconOnlyButton]} 
-                  onPress={() => setShowAllClasses((prev) => !prev)} 
-                  activeOpacity={0.85}
+                  style={[styles.createBtn, isMobile && styles.iconOnlyButton]} 
+                  onPress={() => setCreateModalVisible(true)}
                 >
                   <MaterialCommunityIcons 
-                    name={showAllClasses ? "unfold-less-horizontal" : "unfold-more-horizontal"} 
-                    size={isMobile ? 20 : 18} 
-                    color="#D32F2F" 
+                    name="plus" 
+                    size={isMobile ? 22 : 18} 
+                    color="#FFF" 
                   />
-                  {!isMobile && (
-                    <Text style={styles.seeAllButtonText}>
-                      {showAllClasses ? 'Show Less' : `See All (${processedCourses.length})`}
-                    </Text>
-                  )}
+                  {!isMobile && <Text style={styles.createBtnText}>Create Class</Text>}
                 </TouchableOpacity>
-              ) : null}
-              <TouchableOpacity 
-                style={[styles.createBtn, isMobile && styles.iconOnlyButton]} 
-                onPress={() => setCreateModalVisible(true)}
-              >
-                <MaterialCommunityIcons 
-                  name="plus" 
-                  size={isMobile ? 22 : 18} 
-                  color="#FFF" 
-                />
-                {!isMobile && <Text style={styles.createBtnText}>Create Class</Text>}
-              </TouchableOpacity>
+              </View>
             </View>
-          </View>
 
-          <View style={styles.courseGrid}>
-            {visibleCourses.map((item) => (
-              <TeacherCourseCard
-                key={item.id}
-                item={item}
-                cardWidth={cardWidth}
-                copiedId={copiedId}
-                onOpenCourse={onOpenCourse}
-                onCopyCode={async (course) => {
-                  await Clipboard.setStringAsync(course.classCode);
-                  setCopiedId(course.id);
-                  setTimeout(() => setCopiedId(null), 3000);
-                }}
-                onMenuPress={(event, course) => {
-                  const { pageX, pageY } = event.nativeEvent;
-                  setMenuPosition({ x: pageX, y: pageY });
-                  setMenuCourse(course);
-                  setMenuVisible(true);
-                }}
-              />
-            ))}
+            <View style={styles.courseGrid}>
+              {visibleCourses.map((item) => (
+                <TeacherCourseCard
+                  key={item.id}
+                  item={item}
+                  cardWidth={cardWidth}
+                  copiedId={copiedId}
+                  onOpenCourse={onOpenCourse}
+                  onCopyCode={async (course) => {
+                    await Clipboard.setStringAsync(course.classCode);
+                    setCopiedId(course.id);
+                    setTimeout(() => setCopiedId(null), 3000);
+                  }}
+                  onMenuPress={(event, course) => {
+                    const { pageX, pageY } = event.nativeEvent;
+                    setMenuPosition({ x: pageX, y: pageY });
+                    setMenuCourse(course);
+                    setMenuVisible(true);
+                  }}
+                />
+              ))}
+            </View>
           </View>
         </View>
       </ScrollView>
@@ -1510,13 +1519,30 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F4F7FB' },
   scrollPadding: { paddingTop: 16, paddingBottom: 40, backgroundColor: 'transparent' },
   mainWrapper: { maxWidth: 1200, alignSelf: 'center', width: '100%' },
-  headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
-  sectionHeader: { fontFamily: FONT_TITLE, fontWeight: WEIGHT_TITLE, color: '#111' },
-  banner: {
+  // 🔥 NEW: shared white card wrapping the "Announcements" title + banner.
+  announcementsCard: {
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
     borderColor: '#E3E5E9',
-    borderRadius: 30,
+    borderRadius: 28,
+    padding: 20,
+    marginBottom: 24,
+  },
+  // 🔥 NEW: shared white card wrapping "My Classes" header row + grid.
+  classesCard: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E3E5E9',
+    borderRadius: 28,
+    padding: 20,
+  },
+  headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+  sectionHeader: { fontFamily: FONT_TITLE, fontWeight: WEIGHT_TITLE, color: '#111' },
+  banner: {
+    // Now nested inside announcementsCard, which already supplies the white
+    // background/border — kept transparent here so the empty state doesn't
+    // render as a redundant box-within-a-box.
+    backgroundColor: 'transparent',
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -1533,7 +1559,10 @@ const styles = StyleSheet.create({
     fontWeight: WEIGHT_EMPHASIS,
     textAlign: 'center',
   },
-  classesHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 20, marginBottom: 16, gap: 12 },
+  // 🔥 FIX: marginTop dropped to 0 — this row used to need a 20px gap
+  // below the banner in the old flat layout; now it's the first thing
+  // inside its own classesCard, whose padding already provides the gap.
+  classesHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 0, marginBottom: 16, gap: 12 },
   classesHeaderActions: { flexDirection: 'row', alignItems: 'center', gap: 10, flexWrap: 'wrap', justifyContent: 'flex-end' },
   seeAllButton: { 
     backgroundColor: '#FFF1F1', 
