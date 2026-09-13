@@ -1203,7 +1203,7 @@ const styles = StyleSheet.create({
     fontWeight: WEIGHT_EMPHASIS,
   },
   banner: {
-    backgroundColor: '#F4F5F7',
+    backgroundColor: '#FFFFFF',
     borderWidth: 1,
     borderColor: '#E3E5E9',
     borderRadius: 30,

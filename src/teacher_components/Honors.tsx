@@ -1698,7 +1698,7 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#F4F7FB',
   },
   content: {
     paddingHorizontal: 40,

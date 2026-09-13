@@ -1161,7 +1161,7 @@ useEffect(() => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#ffffff',
+    backgroundColor: '#F4F7FB',
   },
 
   contentContainer: {

@@ -1856,7 +1856,7 @@ export default function ShareAnnouncement({
 // ─── STYLES ────────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: '#FFF' },
+  screen: { flex: 1, backgroundColor: '#F4F7FB' },
   safeArea: { flex: 1, backgroundColor: '#FFF' },
   container: { flex: 1 },
   mobileContentContainer: { flexGrow: 1, paddingHorizontal: 20, paddingTop: 10, paddingBottom: 32 },

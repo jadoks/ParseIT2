@@ -3131,10 +3131,10 @@ const Messenger = ({
 const styles = StyleSheet.create({
   mobileScreen: {
     flex: 1,
-    backgroundColor: '#f7f8fa',
+    backgroundColor: '#F4F7FB',
   },
   mobileContent: { flex: 1, minHeight: 0 },
-  desktopScreen: { flex: 1, backgroundColor: '#eef1f5' },
+  desktopScreen: { flex: 1, backgroundColor: '#F4F7FB' },
   splitLayout: {
     flex: 1,
     flexDirection: 'row',

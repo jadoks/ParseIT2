@@ -1507,13 +1507,13 @@ export default Dashboard2;
 
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: '#fff' },
-  container: { flex: 1, backgroundColor: '#fff' },
+  container: { flex: 1, backgroundColor: '#F4F7FB' },
   scrollPadding: { paddingTop: 16, paddingBottom: 40, backgroundColor: 'transparent' },
   mainWrapper: { maxWidth: 1200, alignSelf: 'center', width: '100%' },
   headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
   sectionHeader: { fontFamily: FONT_TITLE, fontWeight: WEIGHT_TITLE, color: '#111' },
   banner: {
-    backgroundColor: '#F4F5F7',
+    backgroundColor: '#FFFFFF',
     borderWidth: 1,
     borderColor: '#E3E5E9',
     borderRadius: 30,

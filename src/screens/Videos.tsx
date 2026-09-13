@@ -737,7 +737,7 @@ const Videos = ({
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F4F7FB', padding: 20 },
   homeContent: { paddingBottom: 24 },
-  homeHeader: { paddingHorizontal: 16, paddingTop: 14, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#fff', gap: 12 },
+  homeHeader: { paddingHorizontal: 16, paddingTop: 14, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#F4F7FB', gap: 12 },
   homeHeaderTextBlock: { flex: 1 },
   logoText: { fontFamily: FONT_BODY, marginTop: -10, marginLeft: -12, fontSize: 30, fontWeight: 'bold', paddingBottom: 10, textAlign: 'left', marginBottom: 6 },
   searchSummary: { fontFamily: FONT_BODY, marginLeft: -12, color: '#606060', fontSize: 13, lineHeight: 18, marginBottom: 12 },
