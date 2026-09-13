@@ -443,7 +443,7 @@ const Game = ({ onNavigate, enrolledCourses = [], studentId, onSaveQuizScore }: 
 
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#FAFAFA' },
+  container: { flex: 1, backgroundColor: '#FEF2F2' },
   contentContainer: { padding: 24, paddingBottom: 40 },
   headerRow: {
     flexDirection: 'row',

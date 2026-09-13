@@ -309,7 +309,7 @@ const ClassesScreen = ({
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#fff' },
+  container: { flex: 1, backgroundColor: '#FEF2F2' },
   contentContainer: { padding: 20, paddingBottom: 30 },
   contentWrap: { width: '100%', maxWidth: 1200, alignSelf: 'center' },
   headerRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 20 },

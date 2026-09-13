@@ -1086,7 +1086,7 @@ const Dashboard = ({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: '#FEF2F2',
   },
   contentContainer: {
     width: '100%',

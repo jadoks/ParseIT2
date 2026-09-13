@@ -1163,7 +1163,7 @@ const Community: React.FC<CommunityProps> = ({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#ffffff',
+    backgroundColor: '#FEF2F2',
   },
 
   contentContainer: {
