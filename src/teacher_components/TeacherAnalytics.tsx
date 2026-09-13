@@ -6,6 +6,7 @@ import {
   StyleProp,
   StyleSheet,
   Text,
+  TouchableOpacity,
   useWindowDimensions,
   View,
   ViewStyle,
@@ -994,46 +995,71 @@ export default function TeacherAnalytics({
         transparent
         animationType="fade"
         onRequestClose={() => setShowClassDropdown(false)}
+        statusBarTranslucent
       >
-        <Pressable
+        <TouchableOpacity
           style={styles.dropdownOverlay}
+          activeOpacity={1}
           onPress={() => setShowClassDropdown(false)}
         >
-          <View style={styles.dropdownModal}>
-            {classOptions.map((option) => {
-              const isSelected = option.value === selectedClass;
-              return (
-                <Pressable
-                  key={option.value}
-                  style={[
-                    styles.dropdownItem,
-                    isSelected && styles.dropdownItemActive,
-                  ]}
-                  onPress={() => {
-                    onChangeSelectedClass?.(option.value);
-                    setShowClassDropdown(false);
-                  }}
-                >
-                  <Text
+          {/* Swallow taps on the sheet itself so they don't close the modal */}
+          <TouchableOpacity
+            style={styles.dropdownModal}
+            activeOpacity={1}
+            onPress={() => {}}
+          >
+            <View style={styles.dropdownModalHandle} />
+
+            <View style={styles.dropdownModalHeader}>
+              <Text style={styles.dropdownModalTitle}>Select Class</Text>
+              <TouchableOpacity onPress={() => setShowClassDropdown(false)} hitSlop={8}>
+                <MaterialCommunityIcons name="close" size={22} color={palette.text} />
+              </TouchableOpacity>
+            </View>
+
+            {/* 🔥 NEW: scrollable list with a visible scroll indicator, so a
+                long class list no longer overflows off-screen with no way
+                to reach the rest of it. */}
+            <ScrollView
+              style={styles.dropdownModalScroll}
+              showsVerticalScrollIndicator={true}
+            >
+              {classOptions.map((option) => {
+                const isSelected = option.value === selectedClass;
+                return (
+                  <TouchableOpacity
+                    key={option.value}
                     style={[
-                      styles.dropdownItemText,
-                      isSelected && styles.dropdownItemTextActive,
+                      styles.dropdownItem,
+                      isSelected && styles.dropdownItemActive,
                     ]}
+                    onPress={() => {
+                      onChangeSelectedClass?.(option.value);
+                      setShowClassDropdown(false);
+                    }}
+                    activeOpacity={0.8}
                   >
-                    {option.label}
-                  </Text>
-                  {isSelected ? (
-                    <MaterialCommunityIcons
-                      name="check"
-                      size={18}
-                      color={palette.primary}
-                    />
-                  ) : null}
-                </Pressable>
-              );
-            })}
-          </View>
-        </Pressable>
+                    <Text
+                      style={[
+                        styles.dropdownItemText,
+                        isSelected && styles.dropdownItemTextActive,
+                      ]}
+                    >
+                      {option.label}
+                    </Text>
+                    {isSelected ? (
+                      <MaterialCommunityIcons
+                        name="check"
+                        size={18}
+                        color={palette.primary}
+                      />
+                    ) : null}
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </TouchableOpacity>
+        </TouchableOpacity>
       </Modal>
 
       <ScrollView
@@ -1558,31 +1584,55 @@ export default function TeacherAnalytics({
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: palette.bg },
   content: { gap: 14, paddingBottom: 36 },
+  // 🔥 UPDATED: same mobile bottom-sheet Modal pattern as Assignments.tsx's
+  // "Filter Assignments" dropdown — handle, header with close button, and a
+  // scrollable list (with a visible scroll indicator) instead of a plain
+  // View that could overflow off-screen with a long class list.
   dropdownOverlay: {
     flex: 1,
-    backgroundColor: "rgba(16, 42, 67, 0.22)",
-    justifyContent: "flex-start",
-    alignItems: "center",
-    paddingTop: 90,
-    paddingHorizontal: 16,
+    backgroundColor: "rgba(0,0,0,0.4)",
+    justifyContent: "flex-end",
+    // Ensure this sits above every other container (heroCard elevation:3,
+    // sectionCard elevation:2) on both native and web (react-native-web
+    // doesn't always guarantee Modal paints above elevated siblings).
+    zIndex: 9999,
+    elevation: 24,
   },
   dropdownModal: {
-    width: 320,
-    maxWidth: "90%",
+    width: "100%",
+    maxHeight: "70%",
     backgroundColor: palette.surface,
-    borderRadius: 18,
-    paddingVertical: 8,
-    borderWidth: 1,
-    borderColor: palette.border,
-    shadowColor: "#0F172A",
-    shadowOpacity: 0.16,
-    shadowRadius: 20,
-    shadowOffset: { width: 0, height: 12 },
-    elevation: 10,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingHorizontal: 18,
+    paddingTop: 10,
+    paddingBottom: 24,
+    zIndex: 9999,
+    elevation: 24,
   },
+  dropdownModalHandle: {
+    alignSelf: "center",
+    width: 40,
+    height: 4,
+    borderRadius: 14,
+    backgroundColor: palette.border,
+    marginBottom: 12,
+  },
+  dropdownModalHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 10,
+    paddingBottom: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: palette.border,
+  },
+  dropdownModalTitle: { fontFamily: FONT_TITLE, fontSize: 15, fontWeight: WEIGHT_TITLE, color: palette.text },
+  dropdownModalScroll: { maxHeight: 320 },
   dropdownItem: {
     paddingVertical: 14,
-    paddingHorizontal: 16,
+    paddingHorizontal: 10,
+    borderRadius: 16,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
