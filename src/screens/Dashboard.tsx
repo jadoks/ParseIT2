@@ -828,7 +828,7 @@ const Dashboard = ({
                     { fontSize: isMobile ? 13 : 14 },
                   ]}
                 >
-                  Recommended next Module Lesson in {nextBest.course.name}. This is based on the related material selected by your teacher for the assignment where your score was below 75%.
+                  Recommended next Module Lesson in {nextBest.course.name}. This is based on the related course resources selected by your teacher for the assignment where your score was below 75%.
                 </Text>
 
                 <Text

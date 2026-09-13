@@ -1910,7 +1910,7 @@ const Assignments = ({
                   <View style={styles.detailContent}>
                     <View style={[styles.infoCard, !isLargeScreen && styles.infoCardMobile]}>
                       <TouchableOpacity onPress={closeModal} style={styles.modalCloseFloating}>
-                        <Text style={styles.closeButton}>✕</Text>
+                        <Ionicons name="close" size={20} color="#666" />
                       </TouchableOpacity>
                       {/* ✅ NEW: tiny inline indicator while the just-opened
                           assignment's comments/content are being refreshed,
@@ -2077,7 +2077,7 @@ const Assignments = ({
                         <View>
                           {getTeacherAssignmentFiles(selectedAssignment).map((file) => (
                             <View key={file.id} style={[styles.attachmentFileCard, !isLargeScreen && styles.fileCardMobile]}>
-                              <Text style={{ fontSize: 22 }}>📄</Text>
+                              <Ionicons name="document-text-outline" size={22} color="#D32F2F" />
                               <View style={styles.fileInfo}>
                                 <Text style={styles.fileName}>{file.fileName}</Text>
                                 <Text style={styles.fileDetails}>Uploaded by your teacher for this assignment</Text>
@@ -2174,7 +2174,10 @@ const Assignments = ({
 
                     {getRecommendationType(selectedAssignment) && (
                       <View style={styles.section}>
-                        <Text style={styles.sectionTitle}>🎯 Follow-Up Activity</Text>
+                        <View style={styles.sectionTitleRow}>
+                          <Ionicons name="locate-outline" size={16} color="#000" />
+                          <Text style={styles.sectionTitle}>Follow-Up Activity</Text>
+                        </View>
                         {!canGenerateActivity(selectedAssignment) && (
                           <Text style={styles.materialWarningText}>
                             The teacher must link related materials first. AI will generate this activity from those related materials only.
@@ -2206,7 +2209,10 @@ const Assignments = ({
                     )}
 
                     <View style={styles.section}>
-                      <Text style={styles.sectionTitle}>📚 Related Course Resources</Text>
+                      <View style={styles.sectionTitleRow}>
+                        <Ionicons name="book-outline" size={16} color="#000" />
+                        <Text style={styles.sectionTitle}>Related Course Resources</Text>
+                      </View>
                       {getRelatedMaterials(selectedAssignment).length > 0 ? (
                         getRelatedMaterials(selectedAssignment).map((material) => (
                           <TouchableOpacity
@@ -2238,7 +2244,10 @@ const Assignments = ({
                     </View>
 
                     <View style={styles.section}>
-                      <Text style={styles.sectionTitle}>📤 Your Uploads</Text>
+                      <View style={styles.sectionTitleRow}>
+                        <Ionicons name="cloud-upload-outline" size={16} color="#000" />
+                        <Text style={styles.sectionTitle}>Your Uploads</Text>
+                      </View>
                       {getSubmittedFiles(selectedAssignment).length > 0 ? (
                         <View>
                           {getSubmittedFiles(selectedAssignment).map((file) => {
@@ -2253,7 +2262,7 @@ const Assignments = ({
                                   onPress={() => handleOpenUploadedFile(file, 'Invalid link URL')}
                                   activeOpacity={0.7}
                                 >
-                                  <Text style={{ fontSize: 20 }}>🔗</Text>
+                                  <Ionicons name="link-outline" size={20} color="#1a73e8" />
                                   <View style={styles.fileInfo}>
                                     <Text style={[styles.fileName, { color: '#1a73e8', textDecorationLine: 'underline' }]}>
                                       {file.linkUrl}
@@ -2270,7 +2279,7 @@ const Assignments = ({
                                       }}
                                       style={{ marginLeft: 8 }}
                                     >
-                                      <Text style={styles.removeButton}>✕</Text>
+                                      <Ionicons name="close" size={16} color="#D32F2F" />
                                     </TouchableOpacity>
                                   )}
                                 </TouchableOpacity>
@@ -2280,7 +2289,7 @@ const Assignments = ({
                             // Render Regular Files with Open Button (Now triggers Inline Preview)
                             return (
                               <View key={file.id} style={[styles.fileItem, !isLargeScreen && styles.fileCardMobile]}>
-                                <Text style={{ fontSize: 20 }}>📄</Text>
+                                <Ionicons name="document-text-outline" size={20} color="#D32F2F" />
                                 <View style={styles.fileInfo}>
                                   <Text style={styles.fileName}>{file.fileName}</Text>
                                   <Text style={styles.fileDetails}>
@@ -2300,7 +2309,12 @@ const Assignments = ({
                                     disabled={isAssignmentSubmitted(selectedAssignment)}
                                     onPress={() => onRemoveFile(selectedAssignment.id, file.id)}
                                   >
-                                    <Text style={[styles.removeButton, isAssignmentSubmitted(selectedAssignment) && styles.disabledRemoveButton]}>✕</Text>
+                                    <Ionicons
+                                      name="close"
+                                      size={16}
+                                      color="#D32F2F"
+                                      style={isAssignmentSubmitted(selectedAssignment) && styles.disabledRemoveButton}
+                                    />
                                   </TouchableOpacity>
                                 </View>
                               </View>
@@ -2321,10 +2335,13 @@ const Assignments = ({
                           return (
                             <View style={styles.uploadActionsRow}>
                               <View style={styles.lockedSubmissionBox}>
-                                <Text style={styles.lockedSubmissionTitle}>✅ Assignment already graded</Text>
-                                <Text style={styles.lockedSubmissionText}>
-                                  Your submission is locked. You can no longer upload, remove, submit, or unsubmit files.
-                                </Text>
+                                <Ionicons name="checkmark-circle" size={18} color="#2E7D32" />
+                                <View style={{ flex: 1 }}>
+                                  <Text style={styles.lockedSubmissionTitle}>Assignment already graded</Text>
+                                  <Text style={styles.lockedSubmissionText}>
+                                    Your submission is locked. You can no longer upload, remove, submit, or unsubmit files.
+                                  </Text>
+                                </View>
                               </View>
                             </View>
                           );
@@ -2336,12 +2353,15 @@ const Assignments = ({
                           return (
                             <View style={styles.uploadActionsRow}>
                               <View style={styles.lockedSubmissionBox}>
-                                <Text style={styles.lockedSubmissionTitle}> Already submitted</Text>
-                                <Text style={styles.lockedSubmissionText}>
-                                  {locked
-                                    ? 'Your teacher has received this assignment. Submissions are now closed, so this can no longer be changed.'
-                                    : 'Your teacher has received this assignment. Unsubmit only if you need to change your file before grading.'}
-                                </Text>
+                                <Ionicons name="cloud-done-outline" size={18} color="#1565C0" />
+                                <View style={{ flex: 1 }}>
+                                  <Text style={styles.lockedSubmissionTitle}>Already submitted</Text>
+                                  <Text style={styles.lockedSubmissionText}>
+                                    {locked
+                                      ? 'Your teacher has received this assignment. Submissions are now closed, so this can no longer be changed.'
+                                      : 'Your teacher has received this assignment. Unsubmit only if you need to change your file before grading.'}
+                                  </Text>
+                                </View>
                               </View>
                               {!locked && (
                                 <TouchableOpacity
@@ -2368,10 +2388,13 @@ const Assignments = ({
                           return (
                             <View style={styles.uploadActionsRow}>
                               <View style={styles.lockedSubmissionBox}>
-                                <Text style={styles.lockedSubmissionTitle}>🔒 Submission closed</Text>
-                                <Text style={styles.lockedSubmissionText}>
-                                  The due date has passed and your teacher has turned off submissions after the deadline. This assignment can no longer accept work.
-                                </Text>
+                                <Ionicons name="lock-closed-outline" size={18} color="#D32F2F" />
+                                <View style={{ flex: 1 }}>
+                                  <Text style={styles.lockedSubmissionTitle}>Submission closed</Text>
+                                  <Text style={styles.lockedSubmissionText}>
+                                    The due date has passed and your teacher has turned off submissions after the deadline. This assignment can no longer accept work.
+                                  </Text>
+                                </View>
                               </View>
                             </View>
                           );
@@ -2444,7 +2467,10 @@ const Assignments = ({
                     </View>
 
                     <View style={styles.section}>
-                      <Text style={styles.sectionTitle}>💬 Comments</Text>
+                      <View style={styles.sectionTitleRow}>
+                        <Ionicons name="chatbubble-outline" size={16} color="#000" />
+                        <Text style={styles.sectionTitle}>Comments</Text>
+                      </View>
                       {(assignmentComments[selectedAssignment.id] || []).length > 0 ? (
                         <View>
                           {(assignmentComments[selectedAssignment.id] || []).map((comment) => {
@@ -3005,6 +3031,9 @@ const styles = StyleSheet.create({
   infoInstructionText: { fontFamily: FONT_BODY, fontSize: 13, fontWeight: '400', color: '#444', lineHeight: 20 },
   section: { marginBottom: 18 },
   sectionTitle: { fontFamily: FONT_TITLE, fontSize: 16, fontWeight: WEIGHT_TITLE, color: '#000', marginBottom: 10 },
+  // 🔥 NEW: icon + title row used wherever a section heading previously had
+  // an emoji glyph in front of it (now an Ionicons icon).
+  sectionTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   relatedMaterialItem: { backgroundColor: '#F5F5F5', borderRadius: 16, padding: 10, marginBottom: 8 },
   relatedMaterialRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   relatedMaterialTitle: { fontFamily: FONT_TITLE, fontWeight: WEIGHT_EMPHASIS, color: '#111', marginBottom: 4 },
@@ -3040,7 +3069,7 @@ const styles = StyleSheet.create({
   uploadActionsRow: { gap: 10, marginTop: 8 },
   linkSubmitBox: { gap: 8, marginTop: 8 },
   linkInput: { fontFamily: FONT_BODY, backgroundColor: '#FFF', borderWidth: 1, borderColor: '#DDD', borderRadius: 14, paddingHorizontal: 12, paddingVertical: 10, fontSize: 13, color: '#000' },
-  lockedSubmissionBox: { backgroundColor: '#F5F7FA', borderRadius: 16, borderWidth: 1, borderColor: '#E4E7EC', paddingHorizontal: 12, paddingVertical: 10, marginTop: 8 },
+  lockedSubmissionBox: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, backgroundColor: '#F5F7FA', borderRadius: 16, borderWidth: 1, borderColor: '#E4E7EC', paddingHorizontal: 12, paddingVertical: 10, marginTop: 8 },
   lockedSubmissionTitle: { fontFamily: FONT_BODY, color: '#111', fontWeight: WEIGHT_TITLE, fontSize: 13, marginBottom: 4 },
   lockedSubmissionText: { fontFamily: FONT_BODY, color: '#666', fontSize: 12, lineHeight: 18 },
   uploadButton: { backgroundColor: '#D32F2F', borderRadius: 14, paddingVertical: 10, paddingHorizontal: 14, alignItems: 'center', marginTop: 8 },

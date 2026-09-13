@@ -16,6 +16,7 @@ import {
   useWindowDimensions,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import Ionicons from "react-native-vector-icons/Ionicons";
 import MaterialCommunityIcons from "react-native-vector-icons/MaterialCommunityIcons";
 import type { Assignment, Member, Submission } from "./TeacherCourseDetail2";
 // ✅ ADDED: FileSystem and Sharing for downloads
@@ -1196,8 +1197,8 @@ const handleDownloadPreview = async () => {
 
   const getDotColor = (status?: string) => {
     switch (status) {
-      case "graded": return "#10B981";
-      case "submitted": return "#3B82F6";
+      case "graded": return "#3B82F6";
+      case "submitted": return "#10B981";
       case "late": return "#EF4444";
       default: return "#9CA3AF";
     }
@@ -1398,14 +1399,20 @@ const handleDownloadPreview = async () => {
       <View>
         <View style={styles.metaRow}>
           <View style={styles.metaCell}>
-            <Text style={styles.metaCellLabel}>⭐ Score</Text>
+            <View style={styles.metaCellLabelRow}>
+              <Ionicons name="star" size={isSmallPhone ? 11 : 12} color="#F59E0B" />
+              <Text style={styles.metaCellLabel}>Score</Text>
+            </View>
             <Text style={styles.metaCellValue}>
               {score ?? 0}/{totalScoreValue}
             </Text>
           </View>
           {(latestSub as any)?.gameScore !== undefined && (
             <View style={styles.metaCell}>
-              <Text style={styles.metaCellLabel}>🎮 Game</Text>
+              <View style={styles.metaCellLabelRow}>
+                <Ionicons name="game-controller-outline" size={isSmallPhone ? 11 : 12} color="#8B5CF6" />
+                <Text style={styles.metaCellLabel}>Game</Text>
+              </View>
               <Text style={styles.metaCellValue}>
                 {(latestSub as any).gameScore}/{(latestSub as any).gameTotalQuestions || "?"}
                 {(latestSub as any).attemptNumber > 1 ? ` (Att.${(latestSub as any).attemptNumber})` : ""}
@@ -1413,7 +1420,10 @@ const handleDownloadPreview = async () => {
             </View>
           )}
           <View style={styles.metaCell}>
-            <Text style={styles.metaCellLabel}>📅 Submitted</Text>
+            <View style={styles.metaCellLabelRow}>
+              <Ionicons name="calendar-outline" size={isSmallPhone ? 11 : 12} color="#6B7280" />
+              <Text style={styles.metaCellLabel}>Submitted</Text>
+            </View>
             <Text style={styles.metaCellValue} numberOfLines={1}>
               {latestSub?.submittedAt || "Not yet"}
             </Text>
@@ -1813,16 +1823,20 @@ const handleDownloadPreview = async () => {
 
         <View style={styles.chipsRow}>
           <View style={[styles.smallChip, { backgroundColor: "#D1FAE5" }]}>
-            <Text style={[styles.smallChipText, { color: "#065F46" }]}>🟢 Submitted</Text>
+            <Ionicons name="ellipse" size={isSmallPhone ? 7 : 8} color="#065F46" />
+            <Text style={[styles.smallChipText, { color: "#065F46" }]}>Submitted</Text>
           </View>
           <View style={[styles.smallChip, { backgroundColor: "#F3F4F6" }]}>
-            <Text style={[styles.smallChipText, { color: "#4B5563" }]}>🟡 Pending</Text>
+            <Ionicons name="ellipse" size={isSmallPhone ? 7 : 8} color="#4B5563" />
+            <Text style={[styles.smallChipText, { color: "#4B5563" }]}>Pending</Text>
           </View>
           <View style={[styles.smallChip, { backgroundColor: "#FEE2E2" }]}>
-            <Text style={[styles.smallChipText, { color: "#991B1B" }]}>🔴 Late</Text>
+            <Ionicons name="ellipse" size={isSmallPhone ? 7 : 8} color="#991B1B" />
+            <Text style={[styles.smallChipText, { color: "#991B1B" }]}>Late</Text>
           </View>
           <View style={[styles.smallChip, { backgroundColor: "#DBEAFE" }]}>
-            <Text style={[styles.smallChipText, { color: "#1E40AF" }]}>🔵 Graded</Text>
+            <Ionicons name="ellipse" size={isSmallPhone ? 7 : 8} color="#1E40AF" />
+            <Text style={[styles.smallChipText, { color: "#1E40AF" }]}>Graded</Text>
           </View>
         </View>
       </View>
@@ -2211,7 +2225,7 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: "#D32F2F",
   },
-  smallChip: { borderRadius: 999, paddingHorizontal: 10, paddingVertical: 6 },
+  smallChip: { flexDirection: "row", alignItems: "center", gap: 5, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 6 },
   smallChipText: { fontFamily: FONT_BODY, fontSize: 11, fontWeight: "700" },
   // ── Progress Summary ──
   summaryRow: { flexDirection: "row", gap: 10, marginTop: 16, marginBottom: 4 },
@@ -2330,7 +2344,8 @@ const styles = StyleSheet.create({
   cardDivider: { height: 1, backgroundColor: "#F3F4F6", marginVertical: 14 },
   metaRow: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
   metaCell: { flexGrow: 1, flexBasis: 100, minWidth: 90 },
-  metaCellLabel: { fontFamily: FONT_BODY, fontSize: 11, color: "#6B7280", fontWeight: "600", marginBottom: 3 },
+  metaCellLabelRow: { flexDirection: "row", alignItems: "center", gap: 4, marginBottom: 3 },
+  metaCellLabel: { fontFamily: FONT_BODY, fontSize: 11, color: "#6B7280", fontWeight: "600" },
   metaCellValue: { fontFamily: FONT_BODY, fontSize: 14, color: "#111827", fontWeight: "800" },
   // ── Submitted Files ──
   noSubmissionContainer: {

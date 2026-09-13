@@ -3098,7 +3098,7 @@ const fetchModules = useCallback(async (silent = false) => {
                         onPress={closeAssignmentModal}
                         style={styles.modalCloseFloating}
                       >
-                        <Text style={styles.closeButton}>✕</Text>
+                        <Ionicons name="close" size={20} color="#666" />
                       </TouchableOpacity>
                       {/* ✅ NEW: tiny inline indicator while the just-opened
                           assignment's comments/content are being refreshed. */}
@@ -3255,7 +3255,10 @@ const fetchModules = useCallback(async (silent = false) => {
                     </View>
                     {/* Assignment File */}
                     <View style={styles.section}>
-                      <Text style={styles.sectionTitle}>📄 Assignment File</Text>
+                      <View style={styles.sectionTitleRow}>
+                        <Ionicons name="document-text-outline" size={16} color="#000" />
+                        <Text style={styles.sectionTitle}>Assignment File</Text>
+                      </View>
                       {getTeacherAssignmentFiles(selectedAssignment).length > 0 ? (
                         <View>
                           {getTeacherAssignmentFiles(selectedAssignment).map((file) => (
@@ -3289,7 +3292,10 @@ const fetchModules = useCallback(async (silent = false) => {
                     {/* Game-Based Assignment */}
                     {selectedAssignment.assignmentType === "game_based" && (
                       <View style={styles.section}>
-                        <Text style={styles.sectionTitle}>🎮 Game-Based Assignment</Text>
+                        <View style={styles.sectionTitleRow}>
+                          <Ionicons name="game-controller-outline" size={16} color="#000" />
+                          <Text style={styles.sectionTitle}>Game-Based Assignment</Text>
+                        </View>
                         <Text style={{ color: "#666", marginBottom: 10, fontSize: 13 }}>
                           This is an interactive game assignment. Click below to start playing!
                         </Text>
@@ -3358,7 +3364,10 @@ const fetchModules = useCallback(async (silent = false) => {
                     )}
                     {getRecommendationType(selectedAssignment) && (
                       <View style={styles.section}>
-                        <Text style={styles.sectionTitle}>🎯 Follow-Up Activity</Text>
+                        <View style={styles.sectionTitleRow}>
+                          <Ionicons name="locate-outline" size={16} color="#000" />
+                          <Text style={styles.sectionTitle}>Follow-Up Activity</Text>
+                        </View>
                         {!canGenerateSelectedActivity && (
                           <Text style={styles.materialWarningText}>
                             The teacher must link related materials first. AI will generate this activity from those related materials only.
@@ -3390,7 +3399,10 @@ const fetchModules = useCallback(async (silent = false) => {
                     )}
                     {/* Related Materials */}
                     <View style={styles.section}>
-                      <Text style={styles.sectionTitle}>📚 Related Course Resources</Text>
+                      <View style={styles.sectionTitleRow}>
+                        <Ionicons name="book-outline" size={16} color="#000" />
+                        <Text style={styles.sectionTitle}>Related Course Resources</Text>
+                      </View>
                       {selectedAssignmentRelatedMaterials.length > 0 ? (
                         selectedAssignmentRelatedMaterials.map((material) => (
                           <TouchableOpacity
@@ -3427,7 +3439,10 @@ const fetchModules = useCallback(async (silent = false) => {
                     </View>
                     {/* ✅ UPDATED: Your Uploads Section with Multi-File/Link Support */}
                     <View style={styles.section}>
-                      <Text style={styles.sectionTitle}>📎 Your Uploads</Text>
+                      <View style={styles.sectionTitleRow}>
+                        <Ionicons name="cloud-upload-outline" size={16} color="#000" />
+                        <Text style={styles.sectionTitle}>Your Uploads</Text>
+                      </View>
                       {getSubmittedFiles(selectedAssignment).length > 0 ? (
                         <View>
                           {getSubmittedFiles(selectedAssignment).map((file) => {
@@ -3440,7 +3455,7 @@ const fetchModules = useCallback(async (silent = false) => {
                                    onPress={() => handleOpenSubmittedFile(file, 'Invalid link URL')}
                                    activeOpacity={0.7}
                                  >
-                                   <Text style={{ fontSize: 20 }}>🔗</Text>
+                                   <Ionicons name="link-outline" size={20} color="#1a73e8" />
                                    <View style={styles.fileInfo}>
                                      <Text style={[styles.fileName, { color: '#1a73e8', textDecorationLine: 'underline' }]}>
                                        {file.linkUrl}
@@ -3457,7 +3472,7 @@ const fetchModules = useCallback(async (silent = false) => {
                                        }}
                                        style={{ marginLeft: 8 }}
                                      >
-                                       <Text style={styles.removeButton}>✕</Text>
+                                       <Ionicons name="close" size={16} color="#D32F2F" />
                                      </TouchableOpacity>
                                    )}
                                  </TouchableOpacity>
@@ -3666,7 +3681,10 @@ const fetchModules = useCallback(async (silent = false) => {
                     </View>
                     {/* COMMENTS SECTION */}
                     <View style={styles.section}>
-                      <Text style={styles.sectionTitle}>💬 Comments</Text>
+                      <View style={styles.sectionTitleRow}>
+                        <Ionicons name="chatbubble-outline" size={16} color="#000" />
+                        <Text style={styles.sectionTitle}>Comments</Text>
+                      </View>
                       {(assignmentComments[selectedAssignment.id] || []).length > 0 ? (
                         <View>
                           {(assignmentComments[selectedAssignment.id] || []).map((comment) => {
@@ -4696,6 +4714,9 @@ const styles = StyleSheet.create({
     color: '#000',
     marginBottom: 10,
   },
+  // 🔥 NEW: icon + title row used wherever a section heading previously had
+  // an emoji glyph in front of it (now an Ionicons icon).
+  sectionTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   relatedMaterialItem: {
     backgroundColor: "#F5F5F5",
     borderRadius: 16,
