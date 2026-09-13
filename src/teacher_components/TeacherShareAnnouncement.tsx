@@ -1240,14 +1240,17 @@ export default function ShareAnnouncement({
         >
           <View style={styles.headerSpacer} />
 
-          <Text
-            style={[
-              styles.formTitle,
-              { fontSize: isMobile ? 28 : 40 },
-            ]}
-          >
-            Share an Announcement.
-          </Text>
+          <View style={styles.formTitleRow}>
+            <Ionicons name="megaphone-outline" size={isMobile ? 24 : 32} color="#000" style={styles.formTitleIcon} />
+            <Text
+              style={[
+                styles.formTitle,
+                { fontSize: isMobile ? 28 : 40 },
+              ]}
+            >
+              Share an Announcement.
+            </Text>
+          </View>
 
           <Text style={styles.formSubTitle}>
             Announcement will be available to selected classes.
@@ -1864,6 +1867,8 @@ const styles = StyleSheet.create({
   webContentContainerLarge: { paddingLeft: 150, paddingRight: 150 },
   headerSpacer: { height: 10, marginBottom: 20 },
   formTitle: { fontWeight: WEIGHT_EMPHASIS, color: '#000', fontFamily, letterSpacing: -0.5 },
+  formTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  formTitleIcon: { marginTop: 2 },
   formSubTitle: { fontSize: 14, color: '#444', marginBottom: 30, fontFamily },
 
   inputOutlineBox: { borderWidth: 1.5, borderColor: '#718096', borderRadius: 14, padding: 12, marginBottom: 20, backgroundColor: '#FFF' },

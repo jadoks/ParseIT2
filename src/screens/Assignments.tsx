@@ -1692,7 +1692,15 @@ const Assignments = ({
         <RefreshControl refreshing={isRefreshing} onRefresh={handlePullToRefresh} colors={['#D32F2F']} tintColor="#D32F2F" />
       }
     >
-      <Text style={styles.title}>Assignments</Text>
+      <View style={styles.titleRow}>
+        <Ionicons
+          name="clipboard-outline"
+          size={isLargeScreen ? 22 : 18}
+          color="#000"
+          style={styles.titleIcon}
+        />
+        <Text style={[styles.title, { marginBottom: 0 }]}>Assignments</Text>
+      </View>
 
       <View
         style={[
@@ -2773,6 +2781,8 @@ const styles = StyleSheet.create({
   detailContainerMobile: { padding: 12, paddingBottom: 40 },
   detailContent: {},
   title: { fontFamily: FONT_TITLE, fontSize: 24, fontWeight: WEIGHT_TITLE, color: '#000', marginBottom: 16 },
+  titleRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 16 },
+  titleIcon: { marginTop: 2 },
   filterDropdownContainer: {
     position: 'relative',
     width: '100%',

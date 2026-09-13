@@ -1,4 +1,4 @@
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -675,7 +675,15 @@ const Videos = ({
     <ScrollView style={styles.container} contentContainerStyle={styles.homeContent}>
       <View style={styles.homeHeader}>
         <View style={styles.homeHeaderTextBlock}>
-          <Text style={styles.logoText}>Videos</Text>
+          <View style={styles.logoTitleRow}>
+            <Ionicons
+              name="play-circle-outline"
+              size={isMobile ? 22 : isTablet ? 24 : 26}
+              color="#111"
+              style={styles.logoTitleIcon}
+            />
+            <Text style={[styles.logoText, { marginTop: 0, marginLeft: 0, paddingBottom: 0, marginBottom: 0 }]}>Videos</Text>
+          </View>
           <Text style={styles.searchSummary} numberOfLines={2}>
             {loading ? 'Loading adaptive learning videos...' : `${searchSourceLabel}: ${displayQuery}`}
           </Text>
@@ -740,6 +748,8 @@ const styles = StyleSheet.create({
   homeHeader: { paddingHorizontal: 16, paddingTop: 14, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#fff', gap: 12 },
   homeHeaderTextBlock: { flex: 1 },
   logoText: { fontFamily: FONT_BODY, marginTop: -10, marginLeft: -12, fontSize: 30, fontWeight: 'bold', paddingBottom: 10, textAlign: 'left', marginBottom: 6 },
+  logoTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: -10, marginLeft: -12, paddingBottom: 10, marginBottom: 6 },
+  logoTitleIcon: { marginTop: 2 },
   searchSummary: { fontFamily: FONT_BODY, marginLeft: -12, color: '#606060', fontSize: 13, lineHeight: 18, marginBottom: 12 },
   filterBtn: { backgroundColor: '#f2f2f2', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 18 },
   filterBtnText: { fontFamily: FONT_BODY, fontWeight: WEIGHT_EMPHASIS, color: '#111', fontSize: 13 },

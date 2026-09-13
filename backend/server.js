@@ -5446,21 +5446,58 @@ app.post("/create-admin", async (req, res) => {
       `;
 
           let aiText = "";
-          try {
-              console.log("Sending PDF directly to Gemini for table parsing...");
-              const model = geminiGameAI.getGenerativeModel({ model: GEMINI_GAME_MODEL });
-              const result = await model.generateContent([
-                  { text: promptText },
-                  { inlineData: { mimeType: safeMimeType, data: cleanedBase64 } },
-              ]);
+          {
+              // Same retry strategy as the lesson-generation AI calls
+              // (generateTopicContent): up to 4 attempts, exponential
+              // backoff on transient "server busy" errors, fail fast on
+              // quota/rate-limit errors since retrying won't help those.
+              let result = null;
+              const maxRetries = 4;
+              for (let attempt = 1; attempt <= maxRetries; attempt++) {
+                  try {
+                      console.log(`[Grade Table Parse] Attempt ${attempt}/${maxRetries}: sending PDF directly to Gemini for table parsing...`);
+                      const model = geminiGameAI.getGenerativeModel({ model: GEMINI_GAME_MODEL });
+                      result = await model.generateContent([
+                          { text: promptText },
+                          { inlineData: { mimeType: safeMimeType, data: cleanedBase64 } },
+                      ]);
+                      if (result && result.response && result.response.text()) {
+                          break;
+                      } else {
+                          result = null;
+                          throw new Error("Empty response from AI");
+                      }
+                  } catch (parseErr) {
+                      console.warn(`[Grade Table Parse] Attempt ${attempt} failed:`, parseErr.message);
+                      result = null;
+
+                      const isServerBusy = parseErr.status === 503 || parseErr.message.includes("Service Unavailable");
+                      const isQuotaError = parseErr.message.includes("quota") || parseErr.message.includes("rate limit");
+
+                      if (isQuotaError) {
+                          // Won't resolve by retrying — stop immediately.
+                          break;
+                      } else if (isServerBusy && attempt < maxRetries) {
+                          const delay = Math.pow(2, attempt) * 1000;
+                          console.warn(`[Grade Table Parse] Server busy. Retrying in ${delay}ms...`);
+                          await new Promise(r => setTimeout(r, delay));
+                      } else if (attempt < maxRetries) {
+                          await new Promise(r => setTimeout(r, 2000));
+                      }
+                      // else: final attempt exhausted, fall through with result === null
+                  }
+              }
+
+              if (!result) {
+                  console.error("Gemini PDF parsing failed after multiple retries.");
+                  return res.json({
+                      success: true,
+                      message: "Grade file uploaded successfully, but AI failed to read the PDF directly.",
+                      data: { fileUrl, fileName }
+                  });
+              }
+
               aiText = result.response.text();
-          } catch (parseErr) {
-              console.error("Gemini PDF parsing failed:", parseErr);
-              return res.json({
-                  success: true,
-                  message: "Grade file uploaded successfully, but AI failed to read the PDF directly.",
-                  data: { fileUrl, fileName }
-              });
           }
 
           let parsedGrades = [];

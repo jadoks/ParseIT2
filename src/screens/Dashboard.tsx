@@ -519,7 +519,7 @@ const Dashboard = ({
             </View>
           )}
 
-          <View style={[styles.titleRow, { marginTop: sectionSpacing }]}>
+          <View style={[styles.titleRow, { marginTop: sectionSpacing, marginBottom: 10 }]}>
             <Ionicons
               name="stats-chart-outline"
               size={titleIconSize}
@@ -529,7 +529,7 @@ const Dashboard = ({
             <Text
               style={[
                 styles.pageTitle,
-                { fontSize: titleSize },
+                { fontSize: titleSize, paddingBottom: 0 },
               ]}
             >
               Student Performance Snapshot
@@ -664,7 +664,7 @@ const Dashboard = ({
             </View>
           </View>
 
-          <View style={[styles.titleRow, { marginTop: sectionSpacing }]}>
+          <View style={[styles.titleRow, { marginTop: sectionSpacing, marginBottom: 10 }]}>
             <Ionicons
               name="sparkles-outline"
               size={titleIconSize}
@@ -674,7 +674,7 @@ const Dashboard = ({
             <Text
               style={[
                 styles.pageTitle,
-                { fontSize: titleSize },
+                { fontSize: titleSize, paddingBottom: 0 },
               ]}
             >
               Suggested Learning Actions
@@ -793,7 +793,7 @@ const Dashboard = ({
             </View>
           </View>
 
-          <View style={[styles.titleRow, { marginTop: sectionSpacing }]}>
+          <View style={[styles.titleRow, { marginTop: sectionSpacing, marginBottom: 10 }]}>
             <Ionicons
               name="bulb-outline"
               size={titleIconSize}
@@ -803,7 +803,7 @@ const Dashboard = ({
             <Text
               style={[
                 styles.pageTitle,
-                { fontSize: titleSize },
+                { fontSize: titleSize, paddingBottom: 0 },
               ]}
             >
               Next Recommended Lesson

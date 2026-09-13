@@ -751,7 +751,15 @@ useEffect(() => {
         >
           <View style={styles.innerWrapper}>
             <View style={styles.header}>
-              <Text style={styles.title}>ParseIt Community</Text>
+              <View style={styles.titleRow}>
+                <Ionicons
+                  name="people-outline"
+                  size={isLargeScreen ? 22 : 18}
+                  color="#222"
+                  style={styles.titleIcon}
+                />
+                <Text style={styles.title}>ParseIt Community</Text>
+              </View>
             </View>
 
             <View style={styles.composerCard}>
@@ -1182,6 +1190,9 @@ const styles = StyleSheet.create({
     fontWeight: WEIGHT_TITLE,
     color: '#222',
   },
+
+  titleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  titleIcon: { marginTop: 2 },
 
   composerCard: {
   backgroundColor: '#ffffff',

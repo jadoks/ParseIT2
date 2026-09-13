@@ -244,7 +244,15 @@ const Game = ({ onNavigate, enrolledCourses = [], studentId, onSaveQuizScore }: 
     <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
       <View style={styles.headerRow}>
         <View style={styles.titleWrap}>
-          <Text style={styles.pageTitle}>Games</Text>
+          <View style={styles.pageTitleRow}>
+            <Ionicons
+              name="game-controller-outline"
+              size={isLargeScreen ? 26 : 22}
+              color="#111"
+              style={styles.pageTitleIcon}
+            />
+            <Text style={styles.pageTitle}>Games</Text>
+          </View>
           <Text style={styles.pageSubtitle}>Select a class and lessons to generate a quiz.</Text>
         </View>
       </View>
@@ -454,6 +462,8 @@ const styles = StyleSheet.create({
   },
   titleWrap: { flex: 1 },
   pageTitle: { fontFamily: FONT_TITLE, fontSize: 32, fontWeight: WEIGHT_TITLE, color: '#111', letterSpacing: -0.5 },
+  pageTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  pageTitleIcon: { marginTop: 2 },
   pageSubtitle: { fontFamily: FONT_BODY, color: '#666', marginTop: 6, fontSize: 15, lineHeight: 22 },
 
   // 🌟 NEW: Daily limit banner styles

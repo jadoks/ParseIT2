@@ -1385,17 +1385,40 @@ const refreshClassesAfterStorageWrite = async (pinFrontId?: string) => {
       >
         <View style={styles.mainWrapper}>
           <View style={styles.headerRow}>
-            <Text style={styles.sectionHeader}>Announcements</Text>
+            <View style={styles.titleRow}>
+              <Ionicons
+                name="megaphone-outline"
+                size={isMobile ? 20 : 22}
+                color="#111"
+                style={styles.titleIcon}
+              />
+              <Text style={styles.sectionHeader}>Announcements</Text>
+            </View>
           </View>
 
           {isLoading ? (
             <AnnouncementBanner announcements={[]} isLoading={true} />
-          ) : (
+          ) : announcements.length > 0 ? (
             <AnnouncementBanner announcements={announcements} />
+          ) : (
+            <View style={styles.emptyAnnouncementBanner}>
+              <Text style={styles.emptyAnnouncementDay}>No announcements yet</Text>
+              <Text style={styles.emptyAnnouncementLocation}>
+                Stay tuned for updates from your courses
+              </Text>
+            </View>
           )}
 
           <View style={styles.classesHeaderRow}>
-            <Text style={styles.classesTitle}>My Classes</Text>
+            <View style={styles.titleRow}>
+              <Ionicons
+                name="school-outline"
+                size={isMobile ? 22 : 24}
+                color="#111"
+                style={styles.titleIcon}
+              />
+              <Text style={styles.classesTitle}>My Classes</Text>
+            </View>
             <View style={styles.classesHeaderActions}>
               {hiddenCourseCount > 0 ? (
                 <TouchableOpacity 
@@ -1483,7 +1506,28 @@ const styles = StyleSheet.create({
   scrollPadding: { paddingTop: 16, paddingBottom: 40, backgroundColor: 'transparent' },
   mainWrapper: { maxWidth: 1200, alignSelf: 'center', width: '100%' },
   headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+  titleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  titleIcon: { marginTop: 2 },
   sectionHeader: { fontFamily: FONT_TITLE, fontSize: 24, fontWeight: WEIGHT_TITLE, color: '#111' },
+  emptyAnnouncementBanner: {
+    backgroundColor: '#F4F5F7',
+    borderWidth: 1,
+    borderColor: '#E3E5E9',
+    borderRadius: 30,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 24,
+    paddingHorizontal: 20,
+  },
+  emptyAnnouncementDay: { fontFamily: FONT_BODY, fontSize: 13, color: '#8A8F98' },
+  emptyAnnouncementLocation: {
+    fontFamily: FONT_BODY,
+    fontSize: 16,
+    fontWeight: WEIGHT_EMPHASIS,
+    color: '#4A4E58',
+    textAlign: 'center',
+    marginTop: 4,
+  },
   classesHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 20, marginBottom: 16, gap: 12 },
   classesHeaderActions: { flexDirection: 'row', alignItems: 'center', gap: 10, flexWrap: 'wrap', justifyContent: 'flex-end' },
   seeAllButton: { 

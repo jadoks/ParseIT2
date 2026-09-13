@@ -673,7 +673,15 @@ const Grades = ({ apiBaseUrl }: GradesProps) => {
             ]}
           >
             <View style={[styles.headerBlock, isPhone && styles.headerBlockMobile]}>
-              <Text style={[styles.mainTitle, { fontSize: titleSize }]}>Grades</Text>
+              <View style={styles.titleRow}>
+                <Ionicons
+                  name="document-text-outline"
+                  size={isPhone ? 26 : 30}
+                  color="#000"
+                  style={styles.titleIcon}
+                />
+                <Text style={[styles.mainTitle, { fontSize: titleSize }]}>Grades</Text>
+              </View>
               <Text style={styles.subTitle}>
                 Generate an official academic grade report from uploaded records.
               </Text>
@@ -1092,6 +1100,16 @@ const styles = StyleSheet.create({
     fontWeight: WEIGHT_EMPHASIS,
     color: '#000',
     fontFamily,
+  },
+
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+
+  titleIcon: {
+    marginTop: 2,
   },
 
   subTitle: {

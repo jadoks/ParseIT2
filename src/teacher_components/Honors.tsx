@@ -1401,6 +1401,7 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
       >
         <View style={styles.headerRow}>
           <View style={styles.titleRow}>
+            <Ionicons name="ribbon-outline" size={30} color="#000" style={{ marginTop: 2 }} />
             <Text style={styles.title}>Deans List</Text>
 
             <TouchableOpacity

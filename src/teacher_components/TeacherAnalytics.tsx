@@ -11,6 +11,7 @@ import {
   ViewStyle,
 } from "react-native";
 import { LineChart } from "react-native-chart-kit";
+import Ionicons from "react-native-vector-icons/Ionicons";
 import MaterialCommunityIcons from "react-native-vector-icons/MaterialCommunityIcons";
 import { buildTeacherAnalytics } from "../analytics/analyticsService";
 import { AssignmentCourse } from "../screens/Assignments";
@@ -1060,9 +1061,12 @@ export default function TeacherAnalytics({
               </Pressable>
             </View>
 
-            <Text style={styles.heroTitle}>
-              Teacher Assignment Performance Analytics
-            </Text>
+            <View style={styles.heroTitleRow}>
+              <Ionicons name="analytics-outline" size={20} color={palette.textStrong} style={styles.heroTitleIcon} />
+              <Text style={[styles.heroTitle, { marginTop: 0 }]}>
+                Teacher Assignment Performance Analytics
+              </Text>
+            </View>
             <Text style={styles.heroDescription}>
               Monitor assignment grades, completion rates, learning gaps, and student progress through assignment-based analytics and AI-generated instructional insights.
             </Text>
@@ -1648,6 +1652,15 @@ const styles = StyleSheet.create({
     color: palette.textStrong,
     fontWeight: "900",
     marginTop: 18,
+  },
+  heroTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 18,
+  },
+  heroTitleIcon: {
+    marginTop: 2,
   },
   heroSubtitle: { fontFamily: FONT_BODY,
     marginTop: 6,
