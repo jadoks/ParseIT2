@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  Image,
+  Animated,
+  Easing,
   Keyboard,
   LayoutAnimation,
   Platform,
@@ -13,7 +14,7 @@ import {
   TouchableWithoutFeedback,
   UIManager,
   useWindowDimensions,
-  View,
+  View
 } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -77,6 +78,156 @@ interface HeaderProps {
   // 👇 NEW: tapping the logo navigates to the public Landing Page
   onLogoPress?: () => void;
 }
+
+// 👇 NEW: logo mark that plays a quick "orbiting arcs converge" burst
+// animation every time it's pressed, then settles back to a static logo.
+// Built with plain Animated transforms/opacity (no extra deps) so it
+// works the same on native and web.
+type AnimatedLogoProps = {
+  size: number;
+  source: any;
+  onPress?: () => void;
+  disabled?: boolean;
+  accessibilityLabel?: string;
+  style?: any;
+};
+
+const AnimatedLogo: React.FC<AnimatedLogoProps> = ({
+  size,
+  source,
+  onPress,
+  disabled,
+  accessibilityLabel,
+  style,
+}) => {
+  const logoScale = useRef(new Animated.Value(1)).current;
+  const ringScale = useRef(new Animated.Value(0)).current;
+  const ringOpacity = useRef(new Animated.Value(0)).current;
+  const ringRotateA = useRef(new Animated.Value(0)).current;
+  const ringRotateB = useRef(new Animated.Value(0)).current;
+
+  const handlePress = () => {
+    // Reset in case a previous animation is still finishing.
+    ringScale.setValue(0);
+    ringOpacity.setValue(0);
+    ringRotateA.setValue(0);
+    ringRotateB.setValue(0);
+    logoScale.setValue(0.85);
+
+    Animated.parallel([
+      Animated.sequence([
+        Animated.timing(ringOpacity, {
+          toValue: 1,
+          duration: 100,
+          useNativeDriver: true,
+        }),
+        Animated.timing(ringOpacity, {
+          toValue: 0,
+          duration: 320,
+          delay: 140,
+          useNativeDriver: true,
+        }),
+      ]),
+      Animated.timing(ringScale, {
+        toValue: 1,
+        duration: 460,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+      Animated.timing(ringRotateA, {
+        toValue: 1,
+        duration: 460,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+      Animated.timing(ringRotateB, {
+        toValue: 1,
+        duration: 520,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+      Animated.sequence([
+        Animated.delay(60),
+        Animated.spring(logoScale, {
+          toValue: 1,
+          friction: 4,
+          tension: 140,
+          useNativeDriver: true,
+        }),
+      ]),
+    ]).start();
+
+    onPress?.();
+  };
+
+  const ringSize = size * 1.9;
+  const innerRingSize = ringSize * 0.72;
+
+  const spinA = ringRotateA.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0deg', '260deg'],
+  });
+  const spinB = ringRotateB.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0deg', '-300deg'],
+  });
+
+  return (
+    <TouchableOpacity
+      onPress={handlePress}
+      activeOpacity={0.7}
+      disabled={disabled}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
+      style={style}
+    >
+      <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
+        {/* Outer arc — brand red */}
+        <Animated.View
+          pointerEvents="none"
+          style={{
+            position: 'absolute',
+            width: ringSize,
+            height: ringSize,
+            borderRadius: ringSize / 2,
+            borderWidth: 2,
+            borderColor: 'transparent',
+            borderTopColor: '#D32F2F',
+            borderRightColor: '#D32F2F',
+            opacity: ringOpacity,
+            transform: [{ scale: ringScale }, { rotate: spinA }],
+          }}
+        />
+        {/* Inner arc — soft red, spins the opposite way */}
+        <Animated.View
+          pointerEvents="none"
+          style={{
+            position: 'absolute',
+            width: innerRingSize,
+            height: innerRingSize,
+            borderRadius: innerRingSize / 2,
+            borderWidth: 2,
+            borderColor: 'transparent',
+            borderBottomColor: '#F87171',
+            borderLeftColor: '#F87171',
+            opacity: ringOpacity,
+            transform: [{ scale: ringScale }, { rotate: spinB }],
+          }}
+        />
+
+        <Animated.Image
+          source={source}
+          style={{
+            width: size,
+            height: size,
+            resizeMode: 'contain',
+            transform: [{ scale: logoScale }],
+          }}
+        />
+      </View>
+    </TouchableOpacity>
+  );
+};
 
 const Header: React.FC<HeaderProps> = ({
   isLargeScreen: propIsLargeScreen,
@@ -496,23 +647,14 @@ const renderSearchResults = () => {
                 <MaterialCommunityIcons name="menu" size={24} color="#000" />
               </TouchableOpacity>
 
-              <TouchableOpacity
+              <AnimatedLogo
+                size={logoSize}
+                source={require('../../assets/images/BSITLOGO.png')}
                 onPress={onLogoPress}
-                activeOpacity={0.7}
                 disabled={!onLogoPress}
-                accessibilityRole="button"
                 accessibilityLabel="Go to landing page"
-              >
-                <Image
-                  source={require('../../assets/images/BSITLOGO.png')}
-                  style={{
-                    width: logoSize,
-                    height: logoSize,
-                    resizeMode: 'contain',
-                    marginRight: isVerySmall ? 8 : 10,
-                  }}
-                />
-              </TouchableOpacity>
+                style={{ marginRight: isVerySmall ? 8 : 10 }}
+              />
             </View>
 
             {!isSearchExpanded ? (
@@ -715,23 +857,14 @@ const renderSearchResults = () => {
       style={[styles.headerContainer, { paddingHorizontal, height: isTablet ? 72 : 80, zIndex: 100 }]}
     >
       <View style={[styles.leftSection, { flex: isLargeScreenLocal ? 0.3 : 0.4, position: 'relative' }]}>
-        <TouchableOpacity
+        <AnimatedLogo
+          size={logoSize}
+          source={require('../../assets/images/BSITLOGO.png')}
           onPress={onLogoPress}
-          activeOpacity={0.7}
           disabled={!onLogoPress}
-          accessibilityRole="button"
           accessibilityLabel="Go to landing page"
-        >
-          <Image
-            source={require('../../assets/images/BSITLOGO.png')}
-            style={{
-              width: logoSize,
-              height: logoSize,
-              resizeMode: 'contain',
-              marginRight: isTablet ? 14 : 18,
-            }}
-          />
-        </TouchableOpacity>
+          style={{ marginRight: isTablet ? 14 : 18 }}
+        />
 
         {/* 👇 UPDATED: Facebook-style flat gray search pill — no border,
             slightly shorter height, gray placeholder text to match. */}
