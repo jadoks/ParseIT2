@@ -1579,20 +1579,23 @@ const styles = StyleSheet.create({
   },
 
   // 🔥 NEW: phone + tablet layout — lays the 4 fields out 2-per-row instead
-  // of one full-width field per row.
+  // of one full-width field per row. Only rowGap is used (for spacing
+  // between wrapped rows) — horizontal spacing comes from justifyContent:
+  // 'space-between', since combining that with a horizontal gap plus
+  // percentage widths can overflow by a few px on narrow screens (e.g.
+  // 375px iPhone SE) and force an early wrap.
   studentInfoPanelCompact: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'space-between',
-    gap: 12,
+    rowGap: 12,
   },
 
-  // 🔥 NEW: each field takes ~48% width so two sit side by side per row.
-  // Combined with studentInfoRowMobile (label above value, stacked) on
-  // phone, or with the default row layout (label left / value right) on
-  // tablet.
+  // 🔥 NEW: each field takes ~47% width (not 48%) so two sit side by side
+  // per row with a safety margin — avoids rounding/overflow on narrow
+  // screens that would otherwise push the second item to a new line.
   studentInfoRowCompact: {
-    width: '48%',
+    width: '47%',
   },
 
   studentInfoRow: {
