@@ -393,6 +393,10 @@ export default function TeacherAnalytics({
   const { width } = useWindowDimensions();
   const isSmallScreen = width < 600;
   const isTabletScreen = width >= 600 && width < 1024;
+  // Matches Assignments.tsx's filter dropdown breakpoint: below this, use
+  // the bottom-sheet Modal; at/above it, use the inline absolutely
+  // positioned menu anchored under the button.
+  const isLargeScreen = width >= 768;
   const pagePadding = isSmallScreen ? 12 : isTabletScreen ? 16 : 18;
   const chartWidth = isSmallScreen
     ? Math.max(width - pagePadding * 2 - 40, 320)
@@ -990,77 +994,85 @@ export default function TeacherAnalytics({
 
   return (
     <>
-      <Modal
-        visible={showClassDropdown}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setShowClassDropdown(false)}
-        statusBarTranslucent
-      >
-        <TouchableOpacity
-          style={styles.dropdownOverlay}
-          activeOpacity={1}
-          onPress={() => setShowClassDropdown(false)}
+      {/* ✅ On mobile/small screens the options list opens in a real
+          top-level Modal (bottom sheet) since an inline absolutely
+          positioned View sitting inside the ScrollView would get
+          clipped/covered and can't be tapped. On large screens it opens as
+          an inline menu anchored right under the button instead — same
+          responsive pattern as Assignments.tsx's filter dropdown. */}
+      {!isLargeScreen && (
+        <Modal
+          visible={showClassDropdown}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setShowClassDropdown(false)}
+          statusBarTranslucent
         >
-          {/* Swallow taps on the sheet itself so they don't close the modal */}
           <TouchableOpacity
-            style={styles.dropdownModal}
+            style={styles.dropdownOverlay}
             activeOpacity={1}
-            onPress={() => {}}
+            onPress={() => setShowClassDropdown(false)}
           >
-            <View style={styles.dropdownModalHandle} />
-
-            <View style={styles.dropdownModalHeader}>
-              <Text style={styles.dropdownModalTitle}>Select Class</Text>
-              <TouchableOpacity onPress={() => setShowClassDropdown(false)} hitSlop={8}>
-                <MaterialCommunityIcons name="close" size={22} color={palette.text} />
-              </TouchableOpacity>
-            </View>
-
-            {/* 🔥 NEW: scrollable list with a visible scroll indicator, so a
-                long class list no longer overflows off-screen with no way
-                to reach the rest of it. */}
-            <ScrollView
-              style={styles.dropdownModalScroll}
-              showsVerticalScrollIndicator={true}
+            {/* Swallow taps on the sheet itself so they don't close the modal */}
+            <TouchableOpacity
+              style={styles.dropdownModal}
+              activeOpacity={1}
+              onPress={() => {}}
             >
-              {classOptions.map((option) => {
-                const isSelected = option.value === selectedClass;
-                return (
-                  <TouchableOpacity
-                    key={option.value}
-                    style={[
-                      styles.dropdownItem,
-                      isSelected && styles.dropdownItemActive,
-                    ]}
-                    onPress={() => {
-                      onChangeSelectedClass?.(option.value);
-                      setShowClassDropdown(false);
-                    }}
-                    activeOpacity={0.8}
-                  >
-                    <Text
+              <View style={styles.dropdownModalHandle} />
+
+              <View style={styles.dropdownModalHeader}>
+                <Text style={styles.dropdownModalTitle}>Select Class</Text>
+                <TouchableOpacity onPress={() => setShowClassDropdown(false)} hitSlop={8}>
+                  <MaterialCommunityIcons name="close" size={22} color={palette.text} />
+                </TouchableOpacity>
+              </View>
+
+              {/* 🔥 NEW: scrollable list with a visible scroll indicator, so a
+                  long class list no longer overflows off-screen with no way
+                  to reach the rest of it. */}
+              <ScrollView
+                style={styles.dropdownModalScroll}
+                showsVerticalScrollIndicator={true}
+              >
+                {classOptions.map((option) => {
+                  const isSelected = option.value === selectedClass;
+                  return (
+                    <TouchableOpacity
+                      key={option.value}
                       style={[
-                        styles.dropdownItemText,
-                        isSelected && styles.dropdownItemTextActive,
+                        styles.dropdownItem,
+                        isSelected && styles.dropdownItemActive,
                       ]}
+                      onPress={() => {
+                        onChangeSelectedClass?.(option.value);
+                        setShowClassDropdown(false);
+                      }}
+                      activeOpacity={0.8}
                     >
-                      {option.label}
-                    </Text>
-                    {isSelected ? (
-                      <MaterialCommunityIcons
-                        name="check"
-                        size={18}
-                        color={palette.primary}
-                      />
-                    ) : null}
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
+                      <Text
+                        style={[
+                          styles.dropdownItemText,
+                          isSelected && styles.dropdownItemTextActive,
+                        ]}
+                      >
+                        {option.label}
+                      </Text>
+                      {isSelected ? (
+                        <MaterialCommunityIcons
+                          name="check"
+                          size={18}
+                          color={palette.primary}
+                        />
+                      ) : null}
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            </TouchableOpacity>
           </TouchableOpacity>
-        </TouchableOpacity>
-      </Modal>
+        </Modal>
+      )}
 
       <ScrollView
         style={styles.container}
@@ -1080,22 +1092,77 @@ export default function TeacherAnalytics({
                 </Text>
               </View>
 
-              <Pressable
-                style={styles.classDropdownButton}
-                onPress={() => setShowClassDropdown(true)}
+              <View
+                style={[
+                  styles.classDropdownContainer,
+                  isLargeScreen && styles.classDropdownContainerLarge,
+                ]}
               >
-                <View style={styles.classDropdownTextWrap}>
-                  <Text style={styles.classDropdownLabel}>Selected Class</Text>
-                  <Text style={styles.classDropdownValue} numberOfLines={1}>
-                    {selectedClass === "All" ? "All Classes" : selectedClass}
-                  </Text>
-                </View>
-                <MaterialCommunityIcons
-                  name="chevron-down"
-                  size={20}
-                  color={palette.textStrong}
-                />
-              </Pressable>
+                <Pressable
+                  style={styles.classDropdownButton}
+                  onPress={() => setShowClassDropdown((prev) => !prev)}
+                >
+                  <View style={styles.classDropdownTextWrap}>
+                    <Text style={styles.classDropdownLabel}>Selected Class</Text>
+                    <Text style={styles.classDropdownValue} numberOfLines={1}>
+                      {selectedClass === "All" ? "All Classes" : selectedClass}
+                    </Text>
+                  </View>
+                  <MaterialCommunityIcons
+                    name={showClassDropdown ? "chevron-up" : "chevron-down"}
+                    size={20}
+                    color={palette.textStrong}
+                  />
+                </Pressable>
+
+                {/* ✅ Large-screen inline dropdown — absolutely positioned
+                    just below the button, matching Assignments.tsx's
+                    filterInlineDropdownMenu. */}
+                {isLargeScreen && showClassDropdown ? (
+                  <View style={styles.classInlineDropdownMenu}>
+                    <ScrollView
+                      nestedScrollEnabled
+                      showsVerticalScrollIndicator={false}
+                      style={styles.classInlineDropdownScroll}
+                    >
+                      {classOptions.map((option) => {
+                        const isSelected = option.value === selectedClass;
+                        return (
+                          <TouchableOpacity
+                            key={option.value}
+                            style={[
+                              styles.classInlineDropdownItem,
+                              isSelected && styles.classInlineDropdownItemActive,
+                            ]}
+                            onPress={() => {
+                              onChangeSelectedClass?.(option.value);
+                              setShowClassDropdown(false);
+                            }}
+                            activeOpacity={0.8}
+                          >
+                            <Text
+                              style={[
+                                styles.classInlineDropdownItemText,
+                                isSelected && styles.classInlineDropdownItemTextActive,
+                              ]}
+                              numberOfLines={1}
+                            >
+                              {option.label}
+                            </Text>
+                            {isSelected ? (
+                              <MaterialCommunityIcons
+                                name="check"
+                                size={16}
+                                color={palette.primary}
+                              />
+                            ) : null}
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </ScrollView>
+                  </View>
+                ) : null}
+              </View>
             </View>
 
             <Text
@@ -1681,6 +1748,16 @@ const styles = StyleSheet.create({
     letterSpacing: 0.4,
     textTransform: "uppercase",
   },
+  // Wraps the trigger button + the large-screen inline menu so the menu can
+  // be absolutely positioned right under the button. Matches Assignments.tsx's
+  // filterDropdownContainer / filterDropdownContainerLarge pattern.
+  classDropdownContainer: {
+    position: "relative",
+    width: "100%",
+    maxWidth: 320,
+    zIndex: 4000,
+  },
+  classDropdownContainerLarge: { maxWidth: 260 },
   classDropdownButton: {
     minWidth: 0,
     width: "100%",
@@ -1695,6 +1772,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 10,
     gap: 10,
+    zIndex: 4001,
   },
   classDropdownTextWrap: { flex: 1 },
   classDropdownLabel: { fontFamily: FONT_BODY,
@@ -1709,6 +1787,39 @@ const styles = StyleSheet.create({
     fontWeight: WEIGHT_EMPHASIS,
     marginTop: 2,
   },
+  // ✅ Desktop/large-screen inline dropdown — absolutely positioned just
+  // below the button, matching Assignments.tsx's filterInlineDropdownMenu.
+  classInlineDropdownMenu: {
+    position: "absolute",
+    top: 54,
+    left: 0,
+    width: "100%",
+    backgroundColor: palette.surface,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: palette.border,
+    overflow: "hidden",
+    zIndex: 5000,
+    maxHeight: 260,
+    shadowColor: "#0F172A",
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 12,
+  },
+  classInlineDropdownScroll: { maxHeight: 260 },
+  classInlineDropdownItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+    backgroundColor: palette.surface,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+  },
+  classInlineDropdownItemActive: { backgroundColor: palette.primarySoft },
+  classInlineDropdownItemText: { fontFamily: FONT_BODY, fontSize: 13, color: palette.text, flexShrink: 1 },
+  classInlineDropdownItemTextActive: { color: palette.primary, fontWeight: WEIGHT_EMPHASIS },
   heroTitle: { fontFamily: FONT_TITLE,
     lineHeight: 31,
     color: palette.textStrong,
