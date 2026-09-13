@@ -156,6 +156,7 @@ const Dashboard = ({
   const pagePadding = isMobile ? 14 : isTablet ? 24 : 32;
   const sectionSpacing = isMobile ? 16 : 20;
   const titleSize = isMobile ? 22 : isTablet ? 24 : 28;
+  const titleIconSize = isMobile ? 18 : isTablet ? 20 : 22;
   const bannerHeight = isMobile ? 110 : isTablet ? 125 : 140;
   const contentMaxWidth = isLargeScreen ? 1280 : 1100;
 
@@ -460,7 +461,7 @@ const Dashboard = ({
             <View style={styles.titleRow}>
               <Ionicons
                 name="megaphone-outline"
-                size={titleSize}
+                size={titleIconSize}
                 color="#111"
                 style={styles.titleIcon}
               />
@@ -521,7 +522,7 @@ const Dashboard = ({
           <View style={[styles.titleRow, { marginTop: sectionSpacing }]}>
             <Ionicons
               name="stats-chart-outline"
-              size={titleSize}
+              size={titleIconSize}
               color="#111"
               style={styles.titleIcon}
             />
@@ -663,17 +664,22 @@ const Dashboard = ({
             </View>
           </View>
 
-          <Text
-            style={[
-              styles.pageTitle,
-              {
-                fontSize: titleSize,
-                marginTop: sectionSpacing,
-              },
-            ]}
-          >
-            Suggested Learning Actions
-          </Text>
+          <View style={[styles.titleRow, { marginTop: sectionSpacing }]}>
+            <Ionicons
+              name="sparkles-outline"
+              size={titleIconSize}
+              color="#111"
+              style={styles.titleIcon}
+            />
+            <Text
+              style={[
+                styles.pageTitle,
+                { fontSize: titleSize },
+              ]}
+            >
+              Suggested Learning Actions
+            </Text>
+          </View>
 
           <View
             style={[
@@ -790,7 +796,7 @@ const Dashboard = ({
           <View style={[styles.titleRow, { marginTop: sectionSpacing }]}>
             <Ionicons
               name="bulb-outline"
-              size={titleSize}
+              size={titleIconSize}
               color="#111"
               style={styles.titleIcon}
             />
@@ -859,7 +865,7 @@ const Dashboard = ({
             <View style={[styles.titleRow, { flex: 1 }]}>
               <Ionicons
                 name="trending-up-outline"
-                size={titleSize}
+                size={titleIconSize}
                 color="#111"
                 style={styles.titleIcon}
               />
@@ -1138,7 +1144,9 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   titleIcon: {
-    marginBottom: 2,
+    // Ionicons' internal glyph padding sits slightly high in its box,
+    // so a hair of top margin visually centers it against the title text.
+    marginTop: 2,
   },
 
   snapshotGrid: {
