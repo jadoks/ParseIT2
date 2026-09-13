@@ -1474,8 +1474,6 @@ const styles = StyleSheet.create({
   },
   desktopDrawer: {
     width: 280,
-    borderRightWidth: 1,
-    borderRightColor: '#EEE',
     backgroundColor: '#FFF',
   },
   screenContainer: {
