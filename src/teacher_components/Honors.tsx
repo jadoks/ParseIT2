@@ -1511,8 +1511,12 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
           <View style={[styles.controlsCard, isMobile && styles.controlsCardMobile]}>
             <View style={[styles.controlsRow, isMobile && styles.controlsRowMobile]}>
               {isMobile ? (
-                <View style={styles.mobileDropdownRow}>
-                  <View style={styles.mobileDropdownItem}>
+                // 🔥 FIX: one field per row (full width, stacked) on mobile,
+                // matching Grades.tsx's stackedControls layout, instead of
+                // splitting Academic Start Year and Semester into a
+                // 2-column row.
+                <View style={styles.mobileControlsStack}>
+                  <View style={styles.mobileControlsField}>
                     <Text style={styles.academicControlLabel}>Academic Start Year</Text>
                     <TextInput
                       style={[styles.startYearInput, styles.startYearInputMobile]}
@@ -1523,13 +1527,14 @@ export default function HonorsScreen({ apiBaseUrl }: { apiBaseUrl: string }) {
                       keyboardType="number-pad"
                       maxLength={4}
                     />
-                    <View style={[styles.schoolYearBadge, styles.schoolYearBadgeMobile]}>
-                      <Text style={styles.schoolYearBadgeLabel}>Computed School Year</Text>
-                      <Text style={styles.schoolYearBadgeValue}>{schoolYear || 'S.Y ---- - ----'}</Text>
-                    </View>
                   </View>
 
-                  <View style={styles.mobileDropdownItem}>
+                  <View style={[styles.schoolYearBadge, styles.schoolYearBadgeMobile, styles.mobileControlsField]}>
+                    <Text style={styles.schoolYearBadgeLabel}>Computed School Year</Text>
+                    <Text style={styles.schoolYearBadgeValue}>{schoolYear || 'S.Y ---- - ----'}</Text>
+                  </View>
+
+                  <View style={styles.mobileControlsField}>
                     <Text style={styles.academicControlLabel}>Semester</Text>
                     <CustomDropdown
                       value={semester}
@@ -1825,15 +1830,16 @@ const styles = StyleSheet.create({
     gap: 14,
   },
 
-  mobileDropdownRow: {
+  // 🔥 FIX: replaces the old 2-column mobileDropdownRow/mobileDropdownItem
+  // pair — each field now stacks full width, one per row, matching
+  // Grades.tsx's stackedControls layout on mobile/small screens.
+  mobileControlsStack: {
     width: '100%',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    gap: 12,
+    flexDirection: 'column',
+    gap: 14,
   },
-  mobileDropdownItem: {
-    flex: 1,
+  mobileControlsField: {
+    width: '100%',
   },
 
   academicInputGroup: {

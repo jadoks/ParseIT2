@@ -5250,7 +5250,9 @@ useEffect(() => {
             <View
               style={[
                 styles.modalCardElevated,
-                { width: isMobile ? Math.min(width - 28, 360) : 820, maxHeight: height * 0.9 },
+                // 🔥 FIX: same card width as the Create Assignment Modal
+                // (was 360/820) so both modals feel like the same component.
+                { width: isMobile ? Math.min(width - 28, 370) : 900, maxHeight: height * 0.9 },
               ]}
             >
               <View style={styles.createHeaderRow}>
@@ -5258,7 +5260,10 @@ useEffect(() => {
                   <Text style={styles.createTitle}>Update Assignment</Text>
                   <Text style={styles.modalSubtitle}>Edit the selected assignment details.</Text>
                 </View>
-                <TouchableOpacity onPress={() => setShowUpdateModal(false)}>
+                <TouchableOpacity
+                  onPress={() => setShowUpdateModal(false)}
+                  disabled={isSaving}
+                >
                   <Ionicons name="close" size={24} color="#111" />
                 </TouchableOpacity>
               </View>
@@ -5268,27 +5273,45 @@ useEffect(() => {
                 keyboardShouldPersistTaps="handled"
               >
                 {renderAssignmentFields()}
+
+                {/* 🔥 FIX: Delete/Update now sit inline at the bottom of the
+                    scrollable content — same layout the Create Assignment
+                    Modal uses for its Save button — instead of a separate
+                    fixed action bar outside the ScrollView. */}
+                <View style={styles.inlineSaveWrap}>
+                  <TouchableOpacity
+                    style={[styles.inlineDeleteButton, isSaving && styles.disabledButton]}
+                    onPress={handleDelete}
+                    disabled={isSaving}
+                    activeOpacity={isSaving ? 1 : 0.85}
+                  >
+                    <Ionicons name="trash-outline" size={18} color="#D32F2F" />
+                    <Text style={styles.inlineDeleteButtonText}>Delete</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[
+                      styles.inlineSaveButton,
+                      { flex: 1 },
+                      isSaving && styles.floatingSaveButtonDisabled,
+                    ]}
+                    onPress={handleUpdate}
+                    disabled={isSaving}
+                    activeOpacity={isSaving ? 1 : 0.85}
+                  >
+                    {isSaving ? (
+                      <>
+                        <ActivityIndicator size="small" color="#FFF" />
+                        <Text style={styles.floatingSaveButtonText}>Updating...</Text>
+                      </>
+                    ) : (
+                      <>
+                        <Ionicons name="save-outline" size={18} color="#FFF" />
+                        <Text style={styles.floatingSaveButtonText}>Update</Text>
+                      </>
+                    )}
+                  </TouchableOpacity>
+                </View>
               </ScrollView>
-              <View style={styles.modalBottomActions}>
-                <TouchableOpacity
-                  style={[styles.secondaryButton, isSaving && styles.disabledButton]}
-                  onPress={handleDelete}
-                  disabled={isSaving}
-                >
-                  <Text style={styles.secondaryButtonText}>Delete</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.primaryButton, isSaving && styles.disabledButton]}
-                  onPress={handleUpdate}
-                  disabled={isSaving}
-                >
-                  {isSaving ? (
-                    <ActivityIndicator size="small" color="#FFF" />
-                  ) : (
-                    <Text style={styles.primaryButtonText}>Update</Text>
-                  )}
-                </TouchableOpacity>
-              </View>
             </View>
           </View>
         </Modal>
@@ -8770,6 +8793,7 @@ const styles = StyleSheet.create({
   inlineSaveWrap: {
     flexDirection: 'row',
     marginTop: 20,
+    gap: 10,
   },
   inlineSaveButton: {
     backgroundColor: '#D32F2F',
@@ -8784,6 +8808,27 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.18,
     shadowRadius: 8,
     elevation: 8,
+  },
+  // Outlined "Delete" companion to inlineSaveButton, used in the Update
+  // Assignment Modal's inline action row so Delete/Update match the same
+  // sizing and layout as the Create Assignment Modal's Save button.
+  inlineDeleteButton: {
+    backgroundColor: '#FFF',
+    borderWidth: 1,
+    borderColor: '#D32F2F',
+    borderRadius: 16,
+    minHeight: 48,
+    paddingHorizontal: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  inlineDeleteButtonText: {
+    fontFamily: FONT_BODY,
+    color: '#D32F2F',
+    fontWeight: WEIGHT_EMPHASIS,
+    fontSize: 14,
   },
   disabledButton: { opacity: 0.65 },
   disabledInput: { opacity: 0.65, backgroundColor: '#F8F8F8' },

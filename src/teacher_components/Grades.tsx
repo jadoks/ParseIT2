@@ -6,6 +6,7 @@ import {
   Alert,
   Image,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   ScrollView,
   StyleSheet,
@@ -86,6 +87,7 @@ type InlineDropdownProps = {
   fullWidth?: boolean;
   width?: number;
   isPhone?: boolean;
+  label?: string;
 };
 
 type TableCellProps = {
@@ -115,6 +117,7 @@ const InlineDropdown = ({
   fullWidth = false,
   width = 190,
   isPhone = false,
+  label,
 }: InlineDropdownProps) => {
   return (
     <View
@@ -139,24 +142,95 @@ const InlineDropdown = ({
         />
       </TouchableOpacity>
 
-      {isOpen && (
-        <View style={[styles.dropdownMenu, isPhone && styles.dropdownMenuMobile]}>
-          <View style={styles.dropdownMenuContent}>
-            {options.map((option, index) => (
-              <TouchableOpacity
-                key={option}
-                style={[
-                  styles.dropdownItem,
-                  index === options.length - 1 && styles.lastDropdownItem,
-                ]}
-                onPress={() => onSelect(option)}
-                activeOpacity={0.8}
+      {/* 🔥 Small screen: options open in a real top-level Modal (bottom
+          sheet), same as Honors.tsx. The inline absolutely-positioned
+          version sits inside the screen's ScrollView, which can clip/cover
+          it on small screens so it isn't reliably tappable. A Modal renders
+          above the entire app, so it's always on top and always tappable. */}
+      {isPhone ? (
+        <Modal
+          visible={isOpen}
+          transparent
+          animationType="fade"
+          onRequestClose={onToggle}
+          statusBarTranslucent
+        >
+          <TouchableOpacity
+            style={styles.dropdownModalOverlay}
+            activeOpacity={1}
+            onPress={onToggle}
+          >
+            {/* Swallow taps on the sheet itself so they don't close the modal */}
+            <TouchableOpacity
+              style={styles.dropdownModalSheet}
+              activeOpacity={1}
+              onPress={() => {}}
+            >
+              <View style={styles.dropdownModalHandle} />
+
+              <View style={styles.dropdownModalHeader}>
+                <Text style={styles.dropdownModalTitle}>
+                  {label || 'Select an option'}
+                </Text>
+                <TouchableOpacity onPress={onToggle} hitSlop={8}>
+                  <Ionicons name="close" size={22} color="#3B332E" />
+                </TouchableOpacity>
+              </View>
+
+              <ScrollView
+                style={styles.dropdownModalScroll}
+                showsVerticalScrollIndicator={false}
               >
-                <Text style={styles.dropdownItemText}>{option}</Text>
-              </TouchableOpacity>
-            ))}
+                {options.map((option) => {
+                  const isSelected = option === selectedValue;
+                  return (
+                    <TouchableOpacity
+                      key={option}
+                      style={[
+                        styles.dropdownModalItem,
+                        isSelected && styles.dropdownModalItemSelected,
+                      ]}
+                      onPress={() => onSelect(option)}
+                      activeOpacity={0.8}
+                    >
+                      <Text
+                        style={[
+                          styles.dropdownModalItemText,
+                          isSelected && styles.dropdownModalItemTextSelected,
+                        ]}
+                      >
+                        {option}
+                      </Text>
+                      {isSelected ? (
+                        <Ionicons name="checkmark" size={18} color="#B71C1C" />
+                      ) : null}
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            </TouchableOpacity>
+          </TouchableOpacity>
+        </Modal>
+      ) : (
+        isOpen && (
+          <View style={styles.dropdownMenu}>
+            <View style={styles.dropdownMenuContent}>
+              {options.map((option, index) => (
+                <TouchableOpacity
+                  key={option}
+                  style={[
+                    styles.dropdownItem,
+                    index === options.length - 1 && styles.lastDropdownItem,
+                  ]}
+                  onPress={() => onSelect(option)}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.dropdownItemText}>{option}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
           </View>
-        </View>
+        )
       )}
     </View>
   );
@@ -751,6 +825,7 @@ const Grades = ({ apiBaseUrl }: GradesProps) => {
                       isOpen={openDropdown === 'semester'}
                       fullWidth
                       isPhone={isPhone}
+                      label="Select Semester"
                       onToggle={() =>
                         setOpenDropdown(openDropdown === 'semester' ? null : 'semester')
                       }
@@ -828,6 +903,8 @@ const Grades = ({ apiBaseUrl }: GradesProps) => {
                         options={semesters}
                         selectedValue={selectedSemester}
                         isOpen={openDropdown === 'semester'}
+                        isPhone={isPhone}
+                        label="Select Semester"
                         onToggle={() =>
                           setOpenDropdown(openDropdown === 'semester' ? null : 'semester')
                         }
@@ -1352,6 +1429,82 @@ const styles = StyleSheet.create({
     color: '#111',
     fontWeight: '600',
     fontFamily,
+  },
+
+  // 🔥 NEW: Small-screen "Select Semester" bottom-sheet Modal — matches the
+  // one in Honors.tsx. Rendered by RN's Modal component, so it always sits
+  // above the screen's ScrollView / cards, fixing the dropdown being
+  // un-tappable on small screens.
+  dropdownModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'flex-end',
+  },
+
+  dropdownModalSheet: {
+    width: '100%',
+    maxHeight: '70%',
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingHorizontal: 18,
+    paddingTop: 10,
+    paddingBottom: 24,
+  },
+
+  dropdownModalHandle: {
+    alignSelf: 'center',
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#DDD6CE',
+    marginBottom: 12,
+  },
+
+  dropdownModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+    paddingBottom: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F0EBE4',
+  },
+
+  dropdownModalTitle: {
+    fontSize: 15,
+    fontWeight: WEIGHT_EMPHASIS,
+    color: '#3B332E',
+    fontFamily,
+  },
+
+  dropdownModalScroll: {
+    maxHeight: 320,
+  },
+
+  dropdownModalItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 14,
+    paddingHorizontal: 10,
+    borderRadius: 16,
+  },
+
+  dropdownModalItemSelected: {
+    backgroundColor: '#FDECEC',
+  },
+
+  dropdownModalItemText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#111',
+    fontFamily,
+  },
+
+  dropdownModalItemTextSelected: {
+    color: '#B71C1C',
+    fontWeight: WEIGHT_EMPHASIS,
   },
 
   mainInput: {
