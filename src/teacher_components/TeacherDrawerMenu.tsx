@@ -713,7 +713,13 @@ const TeacherDrawerMenu = ({
     : normalizeImageSource(userAvatar);
 
   return (
-    <View style={[styles.drawerContainer, { width: drawerWidth }]}>
+    <View
+      style={[
+        styles.drawerContainer,
+        { width: drawerWidth },
+        isMobile && { padding: isSmallMobile ? 14 : 18 },
+      ]}
+    >
       {/* ─── Decorative wave background — lives on the drawer container itself, responsive ── */}
       <Svg
         style={styles.waveBack}

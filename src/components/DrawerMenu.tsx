@@ -943,10 +943,10 @@ const DrawerMenu = ({
         styles.drawerContainer, 
         { width: drawerWidth },
         isMobile && {
-          paddingTop: insets.top + 25,
-          paddingBottom: insets.bottom + 25,
-          paddingLeft: insets.left + 25,
-          paddingRight: insets.right + 25,
+          paddingTop: insets.top + (isSmallMobile ? 14 : 18),
+          paddingBottom: insets.bottom + (isSmallMobile ? 14 : 18),
+          paddingLeft: insets.left + (isSmallMobile ? 14 : 18),
+          paddingRight: insets.right + (isSmallMobile ? 14 : 18),
         }
       ]}
     > 
