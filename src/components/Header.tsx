@@ -277,7 +277,7 @@ const Header: React.FC<HeaderProps> = ({
     return Math.min(tablet + ((desktopMax - tablet) * (width - 1024)) / 1000, desktopMax);
   };
 
-  const logoSize = responsiveSize(28, 38, 48);
+  const logoSize = responsiveSize(40, 52, 64);
   const navIconSize = responsiveSize(22, 28, 34);
   const mobileNavIconSize = responsiveSize(24, 28, 30);
   const searchIconSize = responsiveSize(18, 22, 26);
