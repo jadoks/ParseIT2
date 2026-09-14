@@ -98,7 +98,7 @@ interface DrawerMenuProps {
   setIsLoggedIn: React.Dispatch<React.SetStateAction<boolean>>;
 }
 
-const DEFAULT_AVATAR = require('../../assets/images/BSITLOGO.png'); // Placeholder avatar for the drawer menu when no custom image is provided
+const DEFAULT_AVATAR = require('../../assets/images/default_profile.png'); // Placeholder avatar for the drawer menu when no custom image is provided
 
 // Single source of truth for the minimum new-password length, used both by
 // the inline hint under "New Password" and by handleChangePassword's

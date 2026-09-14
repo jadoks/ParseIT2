@@ -806,7 +806,7 @@ function Header({
       <View style={styles.brandRow}>
         <View style={[styles.brandIcon, isSmall && styles.brandIconSmall]}>
           <Image
-            source={require("../../assets/images/BSITLOGO.png")}
+            source={require("../../assets/images/logo.png")}
             style={styles.brandLogoImage}
             resizeMode="contain"
           />
@@ -933,7 +933,7 @@ function HeroMockup({ compact }: { compact: boolean }) {
           <View style={styles.mockupBrandRow}>
             <View style={[styles.mockupIcon, isSmall && styles.mockupIconSmall]}>
               <Image
-                source={require("../../assets/images/BSITLOGO.png")}
+                source={require("../../assets/images/logo.png")}
                 style={styles.mockupLogoImage}
                 resizeMode="contain"
               />
@@ -1579,7 +1579,7 @@ function Footer({
           <View style={styles.footerBrandRow}>
             <View style={styles.footerLogo}>
               <Image
-                source={require("../../assets/images/BSITLOGO.png")}
+                source={require("../../assets/images/logo.png")}
                 style={styles.footerLogoImage}
                 resizeMode="contain"
               />

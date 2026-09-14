@@ -3,9 +3,9 @@
     "name": "ParseIT Hub",
     "slug": "parseit-hub",
     "version": "1.0.0",
-    "icon": "./assets/images/BSITLOGO.png",
+    "icon": "./assets/images/logo.png",
     "web": {
-      "favicon": "./public/BSITLOGO.png"
+      "favicon": "./public/logo.png"
     },
     "android": {
       "softwareKeyboardLayoutMode": "pan",
