@@ -4411,180 +4411,211 @@ useEffect(() => {
     </View>
   );
 
-  const renderAssignmentFields = () => (
-    <View style={[styles.formGrid, !isMobile && styles.formGridDesktop]}>
-      {renderAssignmentTypeSelector({
-        disabled: hasSubmissionsForSelected,
-        warningText: hasSubmissionsForSelected
-          ? 'Type is locked because students have already submitted work for this assignment.'
-          : undefined,
-      })}
-      {assignmentType === 'game_based' && renderGameAndClassRow(styles.dropdownWrapHalf, 'flex-start')}
-      <View style={styles.fullWidthSection}>
-        <View style={[styles.gameAndClassRow, isMobile && styles.gameAndClassRowMobile]}>
-          <View style={[styles.dropdownWrap, !isMobile && styles.dropdownWrapHalf]}>
-            <Text style={styles.sectionLabel}>Header</Text>
-            <TextInput
-              style={[styles.inputBox, errors.title ? styles.errorBorder : null]}
-              value={formTitle}
-              onChangeText={(value) => {
-                setFormTitle(value);
-                if (errors.title) setErrors((prev) => ({ ...prev, title: undefined }));
-              }}
-              placeholder="Enter Header"
-              placeholderTextColor="#999"
-              editable={!isSaving}
-            />
-            {renderInputError(errors.title)}
-          </View>
-          <View style={[styles.dropdownWrap, !isMobile && styles.dropdownWrapHalf]}>
-            {renderDateTimeField()}
-          </View>
+  const renderAssignmentFields = () => {
+    // ✅ Field bodies built once so the same JSX can be placed in either the
+    // mobile reading order (Header → Instruction → Due Date & Time → Total
+    // Score, each full width) or the desktop paired-row order (Header +
+    // Due Date, Instruction + Total Score) below — mirrors how
+    // renderCreateModalBody handles this same split for the Create
+    // Assignment Modal, so Create/Update read the same way on every screen
+    // size.
+    const headerField = (
+      <>
+        <Text style={styles.sectionLabel}>Header</Text>
+        <TextInput
+          style={[styles.inputBox, errors.title ? styles.errorBorder : null]}
+          value={formTitle}
+          onChangeText={(value) => {
+            setFormTitle(value);
+            if (errors.title) setErrors((prev) => ({ ...prev, title: undefined }));
+          }}
+          placeholder="Enter Header"
+          placeholderTextColor="#999"
+          editable={!isSaving}
+        />
+        {renderInputError(errors.title)}
+      </>
+    );
+    const instructionField = (
+      <>
+        <Text style={styles.sectionLabel}>Instruction</Text>
+        <TextInput
+          style={[styles.textAreaBox, errors.instruction ? styles.errorBorder : null]}
+          value={formDesc}
+          onChangeText={(value) => {
+            setFormDesc(value);
+            if (errors.instruction) setErrors((prev) => ({ ...prev, instruction: undefined }));
+          }}
+          placeholder="Enter Instruction"
+          placeholderTextColor="#999"
+          multiline
+          editable={!isSaving}
+        />
+        {renderInputError(errors.instruction)}
+      </>
+    );
+    const totalScoreField = (
+      <>
+        <Text style={styles.sectionLabel}>Total Score</Text>
+        <TextInput
+          style={[
+            styles.inputBox,
+            errors.totalScore ? styles.errorBorder : null,
+            assignmentType === 'game_based' ? { backgroundColor: '#F5F5F5', color: '#666' } : null,
+          ]}
+          value={
+            assignmentType === 'game_based' ? String(generatedQuestions.length) : formPoints
+          }
+          onChangeText={(value) => {
+            setFormPoints(value);
+            if (errors.totalScore) setErrors((prev) => ({ ...prev, totalScore: undefined }));
+          }}
+          keyboardType="numeric"
+          placeholder="Total Score"
+          placeholderTextColor="#999"
+          editable={assignmentType !== 'game_based' && !isSaving}
+        />
+        {assignmentType === 'game_based' && (
+          <Text style={{ fontSize: 11, color: '#888', marginTop: -4, marginBottom: 8, marginLeft: 4 }}>
+            * Auto-calculated based on the number of generated questions (1 point per item).
+          </Text>
+        )}
+        {renderInputError(errors.totalScore)}
+      </>
+    );
+
+    return (
+      <View style={[styles.formGrid, !isMobile && styles.formGridDesktop]}>
+        {renderAssignmentTypeSelector({
+          disabled: hasSubmissionsForSelected,
+          warningText: hasSubmissionsForSelected
+            ? 'Type is locked because students have already submitted work for this assignment.'
+            : undefined,
+        })}
+        {assignmentType === 'game_based' && renderGameAndClassRow(styles.dropdownWrapHalf, 'flex-start')}
+        <View style={styles.fullWidthSection}>
+          {isMobile ? (
+            // Mobile: natural reading order, each field full width.
+            <>
+              <View style={styles.sectionBlock}>{headerField}</View>
+              <View style={styles.sectionBlock}>{instructionField}</View>
+              {renderDateTimeField()}
+              <View style={styles.sectionBlock}>{totalScoreField}</View>
+            </>
+          ) : (
+            // Desktop: Header paired with Due Date & Time, Instruction
+            // paired with Total Score, each row split 48/48.
+            <>
+              <View style={styles.gameAndClassRow}>
+                <View style={[styles.dropdownWrap, styles.dropdownWrapHalf]}>{headerField}</View>
+                <View style={[styles.dropdownWrap, styles.dropdownWrapHalf]}>{renderDateTimeField()}</View>
+              </View>
+              <View style={styles.gameAndClassRow}>
+                <View style={[styles.dropdownWrap, styles.dropdownWrapHalf]}>{instructionField}</View>
+                <View style={[styles.dropdownWrap, styles.dropdownWrapHalf]}>{totalScoreField}</View>
+              </View>
+            </>
+          )}
+          {assignmentType === 'game_based' && renderAttemptsSelector()}
+          {assignmentType === 'game_based' && renderTimeLimitSelector()}
         </View>
-        <View style={[styles.gameAndClassRow, isMobile && styles.gameAndClassRowMobile]}>
-          <View style={[styles.dropdownWrap, !isMobile && styles.dropdownWrapHalf]}>
-            <Text style={styles.sectionLabel}>Instruction</Text>
-            <TextInput
-              style={[styles.textAreaBox, errors.instruction ? styles.errorBorder : null]}
-              value={formDesc}
-              onChangeText={(value) => {
-                setFormDesc(value);
-                if (errors.instruction) setErrors((prev) => ({ ...prev, instruction: undefined }));
-              }}
-              placeholder="Enter Instruction"
-              placeholderTextColor="#999"
-              multiline
-              editable={!isSaving}
-            />
-            {renderInputError(errors.instruction)}
-          </View>
-          <View style={[styles.dropdownWrap, !isMobile && styles.dropdownWrapHalf]}>
-            <Text style={styles.sectionLabel}>Total Score</Text>
-            <TextInput
+        <View style={styles.fullWidthSection}>
+          {renderRelatedMaterialsSelector()}
+          {assignmentType === 'game_based' && selectedMaterialIds.length > 0 && gameType && generatedQuestions.length === 0 && (
+            <TouchableOpacity
               style={[
-                styles.inputBox,
-                errors.totalScore ? styles.errorBorder : null,
-                assignmentType === 'game_based' ? { backgroundColor: '#F5F5F5', color: '#666' } : null,
+                styles.generateButton,
+                (isGenerating || dailyGenerationsUsed >= DAILY_GENERATION_LIMIT)
+                  ? styles.disabledButton
+                  : null,
               ]}
-              value={
-                assignmentType === 'game_based' ? String(generatedQuestions.length) : formPoints
+              onPress={handleGenerateQuestions}
+              disabled={
+                isGenerating || isSaving || dailyGenerationsUsed >= DAILY_GENERATION_LIMIT
               }
-              onChangeText={(value) => {
-                setFormPoints(value);
-                if (errors.totalScore) setErrors((prev) => ({ ...prev, totalScore: undefined }));
-              }}
-              keyboardType="numeric"
-              placeholder="Total Score"
-              placeholderTextColor="#999"
-              editable={assignmentType !== 'game_based' && !isSaving}
-            />
-            {assignmentType === 'game_based' && (
-              <Text style={{ fontSize: 11, color: '#888', marginTop: -4, marginBottom: 8, marginLeft: 4 }}>
-                * Auto-calculated based on the number of generated questions (1 point per item).
+            >
+              {isGenerating ? (
+                <ActivityIndicator size="small" color="#FFF" />
+              ) : (
+                <Ionicons name="sparkles-outline" size={18} color="#FFF" />
+              )}
+              <Text style={styles.generateButtonText}>
+                {isGenerating
+                  ? 'Generating...'
+                  : dailyGenerationsUsed >= DAILY_GENERATION_LIMIT
+                    ? 'Daily Limit Reached'
+                    : `Generate ${gameOptions.find((g) => g.value === gameType)?.label || ''} Questions`}
               </Text>
-            )}
-            {renderInputError(errors.totalScore)}
-          </View>
-        </View>
-        {assignmentType === 'game_based' && renderAttemptsSelector()}
-        {assignmentType === 'game_based' && renderTimeLimitSelector()}
-      </View>
-      <View style={styles.fullWidthSection}>
-        {renderRelatedMaterialsSelector()}
-        {assignmentType === 'game_based' && selectedMaterialIds.length > 0 && gameType && generatedQuestions.length === 0 && (
-          <TouchableOpacity
-            style={[
-              styles.generateButton,
-              (isGenerating || dailyGenerationsUsed >= DAILY_GENERATION_LIMIT)
-                ? styles.disabledButton
-                : null,
-            ]}
-            onPress={handleGenerateQuestions}
-            disabled={
-              isGenerating || isSaving || dailyGenerationsUsed >= DAILY_GENERATION_LIMIT
-            }
-          >
-            {isGenerating ? (
-              <ActivityIndicator size="small" color="#FFF" />
-            ) : (
-              <Ionicons name="sparkles-outline" size={18} color="#FFF" />
-            )}
-            <Text style={styles.generateButtonText}>
-              {isGenerating
-                ? 'Generating...'
-                : dailyGenerationsUsed >= DAILY_GENERATION_LIMIT
-                  ? 'Daily Limit Reached'
-                  : `Generate ${gameOptions.find((g) => g.value === gameType)?.label || ''} Questions`}
-            </Text>
-          </TouchableOpacity>
-        )}
-        {assignmentType === 'game_based' && selectedMaterialIds.length > 0 && !gameType && generatedQuestions.length === 0 && (
-          <View style={[styles.generateButton, { backgroundColor: '#9E9E9E' }]}>
-            <Ionicons name="alert-circle-outline" size={18} color="#FFF" />
-            <Text style={styles.generateButtonText}>Select a Game Type to Generate Questions</Text>
-          </View>
-        )}
-        {assignmentType === 'regular' && (
-          <>
-            <Text style={styles.sectionLabel}>Attachment</Text>
-            {/* ✅ NEW: Show the assignment's already-uploaded file (if any)
-                so the teacher can see what's currently attached before
-                deciding to replace it. Hidden once a new file is picked,
-                since the preview box below already shows that instead. */}
-            {!!selectedAssignment?.fileName && !pickedAssignmentFile?.name && (
-              <View style={styles.currentFileBox}>
-                <Ionicons name="document-text-outline" size={20} color="#D32F2F" />
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.currentFileLabel}>Current File</Text>
-                  <Text style={styles.currentFileName} numberOfLines={1}>
-                    {selectedAssignment.fileName}
-                  </Text>
+            </TouchableOpacity>
+          )}
+          {assignmentType === 'game_based' && selectedMaterialIds.length > 0 && !gameType && generatedQuestions.length === 0 && (
+            <View style={[styles.generateButton, { backgroundColor: '#9E9E9E' }]}>
+              <Ionicons name="alert-circle-outline" size={18} color="#FFF" />
+              <Text style={styles.generateButtonText}>Select a Game Type to Generate Questions</Text>
+            </View>
+          )}
+          {assignmentType === 'regular' && (
+            <>
+              <Text style={styles.sectionLabel}>Attachment</Text>
+              {/* ✅ NEW: Show the assignment's already-uploaded file (if any)
+                  so the teacher can see what's currently attached before
+                  deciding to replace it. Hidden once a new file is picked,
+                  since the preview box below already shows that instead. */}
+              {!!selectedAssignment?.fileName && !pickedAssignmentFile?.name && (
+                <View style={styles.currentFileBox}>
+                  <Ionicons name="document-text-outline" size={20} color="#D32F2F" />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.currentFileLabel}>Current File</Text>
+                    <Text style={styles.currentFileName} numberOfLines={1}>
+                      {selectedAssignment.fileName}
+                    </Text>
+                  </View>
                 </View>
-              </View>
-            )}
-            <TouchableOpacity
-              style={[styles.primaryButtonWide, isSaving ? styles.disabledButton : null]}
-              onPress={handlePickAssignmentFile}
-              disabled={isSaving}
-            >
-              <Ionicons name="cloud-upload-outline" size={18} color="#FFF" />
-              <Text style={styles.uploadBtnText}>
-                {pickedAssignmentFile?.name
-                  ? 'Change File'
-                  : selectedAssignment?.fileName
-                    ? 'Replace File'
-                    : 'Upload File'}
-              </Text>
-            </TouchableOpacity>
-            {!!pickedAssignmentFile?.name && (
-              <View style={styles.filePreviewBox}>
-                <Ionicons name="document-text-outline" size={20} color="#D32F2F" />
-                <Text style={styles.filePreviewText}>{pickedAssignmentFile.name}</Text>
-              </View>
-            )}
-          </>
-        )}
-        {assignmentType === 'regular' && (
-          <View style={styles.checkboxRow}>
-            <TouchableOpacity
-              style={[
-                styles.checkboxBox,
-                assignmentDisableRepositoryAfterDue && styles.checkboxBoxChecked,
-              ]}
-              onPress={() =>
-                setAssignmentDisableRepositoryAfterDue(!assignmentDisableRepositoryAfterDue)
-              }
-            >
-              {assignmentDisableRepositoryAfterDue ? (
-                <Ionicons name="checkmark" size={16} color="#FFF" />
-              ) : null}
-            </TouchableOpacity>
-            <Text style={styles.checkboxLabel}>Disable repository after due</Text>
-          </View>
-        )}
+              )}
+              <TouchableOpacity
+                style={[styles.primaryButtonWide, isSaving ? styles.disabledButton : null]}
+                onPress={handlePickAssignmentFile}
+                disabled={isSaving}
+              >
+                <Ionicons name="cloud-upload-outline" size={18} color="#FFF" />
+                <Text style={styles.uploadBtnText}>
+                  {pickedAssignmentFile?.name
+                    ? 'Change File'
+                    : selectedAssignment?.fileName
+                      ? 'Replace File'
+                      : 'Upload File'}
+                </Text>
+              </TouchableOpacity>
+              {!!pickedAssignmentFile?.name && (
+                <View style={styles.filePreviewBox}>
+                  <Ionicons name="document-text-outline" size={20} color="#D32F2F" />
+                  <Text style={styles.filePreviewText}>{pickedAssignmentFile.name}</Text>
+                </View>
+              )}
+            </>
+          )}
+          {assignmentType === 'regular' && (
+            <View style={styles.checkboxRow}>
+              <TouchableOpacity
+                style={[
+                  styles.checkboxBox,
+                  assignmentDisableRepositoryAfterDue && styles.checkboxBoxChecked,
+                ]}
+                onPress={() =>
+                  setAssignmentDisableRepositoryAfterDue(!assignmentDisableRepositoryAfterDue)
+                }
+              >
+                {assignmentDisableRepositoryAfterDue ? (
+                  <Ionicons name="checkmark" size={16} color="#FFF" />
+                ) : null}
+              </TouchableOpacity>
+              <Text style={styles.checkboxLabel}>Disable repository after due</Text>
+            </View>
+          )}
+        </View>
       </View>
-    </View>
-  );
+    );
+  };
 
   const renderCreateModalBody = () => {
     const parsedQuestionCount = parseInt(numberOfQuestions, 10) || 0;
