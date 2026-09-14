@@ -1,1 +1,1 @@
-<link rel="icon" href="/BSITLOGO.png" />
+<link rel="icon" href="/BSITLOGO.webp" />

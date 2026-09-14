@@ -998,7 +998,7 @@ const SignIn = ({
                 >
                   <View style={styles.logoFloatingContainer}>
                     <Image
-                      source={require('../../assets/images/BSITLOGO.png')}
+                      source={require('../../assets/images/BSITLOGO.webp')}
                       style={styles.logoImage}
                       resizeMode="contain"
                     />
