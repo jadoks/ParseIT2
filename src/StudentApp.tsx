@@ -3372,12 +3372,7 @@ const styles = StyleSheet.create({
   notificationPopover: { position: 'absolute', top: 72, right: 20, zIndex: 4000, elevation: 4000 },
   mobileDrawerPortal: { ...StyleSheet.absoluteFillObject, zIndex: 5000, elevation: 5000, flexDirection: 'row' },
   mobileBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.5)' },
-  // 🔥 FIX: removed the hardcoded width: 250 — DrawerMenu already sizes
-  // itself on mobile via its own `drawerWidth` logic, so a separate fixed
-  // width here fought with that and left blank white space wherever the
-  // two didn't match. Let this wrapper hug the drawer's own width instead
-  // (same fix as desktopDrawer above).
-  mobileOverlay: { height: '100%', backgroundColor: '#FFF', zIndex: 5001, elevation: 5001 },
+  mobileOverlay: { width: 250, height: '100%', backgroundColor: '#FFF', zIndex: 5001, elevation: 5001 },
   floatingChatBtn: { position: 'absolute', bottom: 12, right: 20, zIndex: 20, width: 140, height: 56, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, backgroundColor: '#D32F2F', borderRadius: 28, paddingHorizontal: 16 },
   floatingChatBtnSmall: { width: 56, height: 56, borderRadius: 28 },
   chatBtnImage: { width: 22, height: 22, resizeMode: 'contain', tintColor: '#FFFFFF' },

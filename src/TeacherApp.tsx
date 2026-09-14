@@ -1518,17 +1518,13 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(0,0,0,0.28)',
   },
-  // 🔥 FIX: removed the hardcoded width: 300 / maxWidth: '82%' — this
-  // fought with TeacherDrawerMenu's own `drawerWidth` sizing logic and
-  // left blank white space to the right of the menu whenever the two
-  // didn't match. Let this wrapper hug the drawer's own width instead
-  // (same fix as desktopDrawer above).
   mobileOverlay: {
     position: 'absolute',
     top: 0,
     left: 0,
     bottom: 0,
-    alignSelf: 'flex-start',
+    width: 250, // 🔥 FIX: matched to StudentApp's mobileOverlay width so the
+    // drawer is the same size on mobile/small screens in both apps.
     backgroundColor: '#FFF',
     shadowColor: '#000',
     shadowOpacity: 0.12,
