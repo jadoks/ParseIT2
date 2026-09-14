@@ -405,7 +405,7 @@ const TeacherDrawerMenu = ({
   const isLargeScreen = width >= 1024;
   const hasOverflow = contentHeight > scrollViewHeight && scrollViewHeight > 0;
   const shouldShowScrollBar = (isMobile || isTablet) && hasOverflow;
-  const drawerWidth = isMobile ? (isSmallMobile ? '85%' : 280) : isTablet ? 300 : 260;
+  const drawerWidth = isMobile ? (isSmallMobile ? Math.round(width * 0.78) : 260) : isTablet ? 300 : 260;
 
   // Settings dialog sizing — mirrors the Admin Settings flow's breakpoints.
   const settingsCardWidth = isMobile ? '100%' : isTablet ? '74%' : '42%';
