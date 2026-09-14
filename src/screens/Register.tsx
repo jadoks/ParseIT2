@@ -1627,7 +1627,7 @@ export default function Register({
               <View style={styles.leftPanelContent}>
                 <View style={styles.leftLogoWrap}>
                   <Image
-                    source={require('../../assets/images/BSITLOGO.webp')}
+                    source={require('../../assets/images/BSITLOGO.png')}
                     style={styles.leftLogoImage}
                     resizeMode="contain"
                   />
@@ -1681,7 +1681,7 @@ export default function Register({
                 >
                   <View style={styles.logoFloatingContainer}>
                     <Image
-                      source={require('../../assets/images/BSITLOGO.webp')}
+                      source={require('../../assets/images/BSITLOGO.png')}
                       style={styles.logoImage}
                       resizeMode="contain"
                     />
