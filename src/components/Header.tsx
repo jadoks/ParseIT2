@@ -649,7 +649,7 @@ const renderSearchResults = () => {
 
               <AnimatedLogo
                 size={logoSize}
-                source={require('../../assets/images/BSITLOGO.png')}
+                source={require('../../assets/images/BSITLOGO.webp')}
                 onPress={onLogoPress}
                 disabled={!onLogoPress}
                 accessibilityLabel="Go to landing page"
@@ -859,7 +859,7 @@ const renderSearchResults = () => {
       <View style={[styles.leftSection, { flex: isLargeScreenLocal ? 0.3 : 0.4, position: 'relative' }]}>
         <AnimatedLogo
           size={logoSize}
-          source={require('../../assets/images/BSITLOGO.png')}
+          source={require('../../assets/images/BSITLOGO.webp')}
           onPress={onLogoPress}
           disabled={!onLogoPress}
           accessibilityLabel="Go to landing page"
