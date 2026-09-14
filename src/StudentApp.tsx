@@ -649,6 +649,18 @@ export default function StudentApp({ onLogout, currentStudent, onGoToLanding }: 
 
   const [activeScreen, setActiveScreen] = useState<ScreenType>('home');
   const [lastScreen, setLastScreen] = useState<ScreenType>('home');
+
+  // 👇 NEW: the Notification screen's own back button should never leave
+  // the student stuck on (or looping back into) 'notification' itself, and
+  // should always have somewhere valid to land even if lastScreen was
+  // never recorded (e.g. Notification was opened directly, with no prior
+  // in-app screen). "No recent history" falls back to Home (Dashboard).
+  const getScreenAfterNotification = (): ScreenType => {
+    if (!lastScreen || lastScreen === 'notification') {
+      return 'home';
+    }
+    return lastScreen;
+  };
   const [selectedCourse, setSelectedCourse] = useState<CourseDetailData | null>(null);
   const [selectedCourseIdForAssignments, setSelectedCourseIdForAssignments] = useState<string | null>(null);
   const [generatedActivity, setGeneratedActivity] = useState<GenerateActivityData | null>(null);
@@ -2910,7 +2922,7 @@ const refreshAssignmentCourseContent = useCallback(async () => {
       case 'notification': 
         return <Notification 
           mode="screen" 
-          onBack={() => setActiveScreen(lastScreen)} 
+          onBack={() => setActiveScreen(getScreenAfterNotification())} 
           notifications={visibleStudentNotifications} 
           onMarkAsRead={handleMarkNotificationAsRead} 
           onMarkAllAsRead={handleMarkAllNotificationsAsRead} 

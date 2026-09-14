@@ -195,6 +195,18 @@ export default function TeacherApp({ onLogout, currentTeacher, onGoToLanding }: 
 
   const [activeScreen, setActiveScreen] = useState<AppScreenType>('home');
   const [lastScreen, setLastScreen] = useState<AppScreenType>('home');
+
+  // 👇 NEW: the Notification screen's own back button should never leave
+  // the teacher stuck on (or looping back into) 'notification' itself, and
+  // should always have somewhere valid to land even if lastScreen was
+  // never recorded (e.g. Notification was opened directly, with no prior
+  // in-app screen). "No recent history" falls back to Home (Dashboard).
+  const getScreenAfterNotification = (): AppScreenType => {
+    if (!lastScreen || lastScreen === 'notification') {
+      return 'home';
+    }
+    return lastScreen;
+  };
   const [isMobileDrawerOpen, setMobileDrawerOpen] = useState(false);
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
 
@@ -1396,7 +1408,7 @@ export default function TeacherApp({ onLogout, currentTeacher, onGoToLanding }: 
               role="teacher"
               onNotificationsUpdated={setTeacherNotifications}
               onNavigate={handleNotificationNavigate}
-              onBack={() => setActiveScreen(lastScreen)}
+              onBack={() => setActiveScreen(getScreenAfterNotification())}
             />
           ) : activeScreen === 'analytics' ? (
             <TeacherAnalytics
