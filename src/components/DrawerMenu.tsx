@@ -539,7 +539,7 @@ const DrawerMenu = ({
 
   const hasOverflow = contentHeight > scrollViewHeight && scrollViewHeight > 0;
   const shouldShowScrollBar = (isMobile || isTablet) && hasOverflow;
-  const drawerWidth = isMobile ? (isSmallMobile ? Math.round(width * 0.78) : 260) : isTablet ? 300 : 260;
+  const drawerWidth = isMobile ? (isSmallMobile ? '85%' : 280) : isTablet ? 300 : 260;
 
   const handleContentSizeChange = (_contentW: number, contentH: number) => {
     setContentHeight(contentH);
