@@ -944,7 +944,7 @@ const SignIn = ({
               <View style={styles.leftPanelContent}>
                 <View style={styles.leftLogoWrap}>
                   <Image
-                    source={require('../../assets/images/logo.png')}
+                    source={require('../../assets/images/BSITLOGO.png')}
                     style={styles.leftLogoImage}
                     resizeMode="contain"
                   />
@@ -998,7 +998,7 @@ const SignIn = ({
                 >
                   <View style={styles.logoFloatingContainer}>
                     <Image
-                      source={require('../../assets/images/logo.png')}
+                      source={require('../../assets/images/BSITLOGO.png')}
                       style={styles.logoImage}
                       resizeMode="contain"
                     />
