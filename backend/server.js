@@ -9,6 +9,7 @@ import admin from "firebase-admin";
 import fs from "fs";
 import os from "os";
 import path from "path";
+import zlib from "zlib";
 
   import mammoth from "mammoth";
 import { createRequire } from "module";
@@ -25,6 +26,245 @@ import multer from "multer";
   const require = createRequire(import.meta.url);
   const pdf = require("pdf-parse");
   const vision = require("@google-cloud/vision");
+
+  // ============================================================
+  // VISUAL-COMPLEXITY DETECTION (content-aware PDF.co conversion)
+  // ============================================================
+  // .docx/.pptx/.xlsx files are just ZIP archives internally. Instead of
+  // always paying for a PDF.co conversion whenever a file *type* is
+  // Office (which is what the old extension/MIME-only needsConversion()
+  // did), we peek inside the archive first and only convert when the
+  // file actually contains something Gemini would lose by reading raw
+  // extracted text: images, charts, diagrams/SmartArt, embedded objects,
+  // or dense/complex tables. Plain text/headings/paragraphs/lists/simple
+  // tables skip PDF.co entirely and go straight to text extraction.
+  //
+  // No external zip library is used (none is guaranteed to be
+  // installed) — this is a small, self-contained ZIP central-directory
+  // reader built on Node's built-in zlib for DEFLATE decompression.
+
+  const ZIP_EOCD_SIGNATURE = 0x06054b50;
+  const ZIP_CENTRAL_DIR_SIGNATURE = 0x02014b50;
+  const ZIP_LOCAL_FILE_SIGNATURE = 0x04034b50;
+
+  function zipFindEndOfCentralDirectory(buffer) {
+    const minLen = 22; // fixed EOCD record size (no comment)
+    if (!buffer || buffer.length < minLen) return null;
+    const maxCommentLen = Math.min(buffer.length - minLen, 65535);
+    for (let i = 0; i <= maxCommentLen; i++) {
+      const pos = buffer.length - minLen - i;
+      if (pos < 0) break;
+      if (buffer.readUInt32LE(pos) === ZIP_EOCD_SIGNATURE) return pos;
+    }
+    return null;
+  }
+
+  // Returns [{ name, compressionMethod, compressedSize, uncompressedSize, localHeaderOffset }]
+  function listZipEntries(buffer) {
+    try {
+      const eocdPos = zipFindEndOfCentralDirectory(buffer);
+      if (eocdPos === null) return [];
+      const entryCount = buffer.readUInt16LE(eocdPos + 10);
+      let cdOffset = buffer.readUInt32LE(eocdPos + 16);
+      const entries = [];
+      for (let i = 0; i < entryCount; i++) {
+        if (cdOffset + 46 > buffer.length) break;
+        if (buffer.readUInt32LE(cdOffset) !== ZIP_CENTRAL_DIR_SIGNATURE) break;
+        const compressionMethod = buffer.readUInt16LE(cdOffset + 10);
+        const compressedSize = buffer.readUInt32LE(cdOffset + 20);
+        const uncompressedSize = buffer.readUInt32LE(cdOffset + 24);
+        const nameLen = buffer.readUInt16LE(cdOffset + 28);
+        const extraLen = buffer.readUInt16LE(cdOffset + 30);
+        const commentLen = buffer.readUInt16LE(cdOffset + 32);
+        const localHeaderOffset = buffer.readUInt32LE(cdOffset + 42);
+        const nameStart = cdOffset + 46;
+        if (nameStart + nameLen > buffer.length) break;
+        const name = buffer.toString("utf8", nameStart, nameStart + nameLen);
+        entries.push({
+          name,
+          compressionMethod,
+          compressedSize,
+          uncompressedSize,
+          localHeaderOffset,
+        });
+        cdOffset = nameStart + nameLen + extraLen + commentLen;
+      }
+      return entries;
+    } catch (e) {
+      console.warn("listZipEntries failed:", e.message);
+      return [];
+    }
+  }
+
+  function readZipEntryBuffer(buffer, entry) {
+    try {
+      const off = entry.localHeaderOffset;
+      if (off + 30 > buffer.length) return null;
+      if (buffer.readUInt32LE(off) !== ZIP_LOCAL_FILE_SIGNATURE) return null;
+      const nameLen = buffer.readUInt16LE(off + 26);
+      const extraLen = buffer.readUInt16LE(off + 28);
+      const dataStart = off + 30 + nameLen + extraLen;
+      const dataEnd = dataStart + entry.compressedSize;
+      if (dataEnd > buffer.length) return null;
+      const raw = buffer.slice(dataStart, dataEnd);
+      if (entry.compressionMethod === 0) return raw; // stored, no compression
+      if (entry.compressionMethod === 8) return zlib.inflateRawSync(raw); // deflate
+      return null; // unsupported method (rare for OOXML parts)
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function readZipEntryText(buffer, entries, entryName) {
+    const entry = entries.find(
+      (e) => e.name.toLowerCase() === entryName.toLowerCase()
+    );
+    if (!entry) return null;
+    const data = readZipEntryBuffer(buffer, entry);
+    return data ? data.toString("utf8") : null;
+  }
+
+  const OOXML_IMAGE_EXTENSIONS = [
+    ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".tif", ".tiff",
+    ".emf", ".wmf", ".svg", ".webp",
+  ];
+
+  // Analyzes a .docx/.pptx/.xlsx buffer and decides whether it needs a
+  // real PDF.co conversion (visually rich) or can be handled as plain
+  // extracted text (mostly headings/paragraphs/lists/simple tables).
+  // Always fails "safe" — if anything goes wrong, it recommends
+  // conversion rather than risk losing visual content.
+  function analyzeOfficeVisualComplexity(buffer, fileName) {
+    const lowerName = (fileName || "").toLowerCase();
+    const result = {
+      needsConversion: true,
+      reasons: [],
+      details: {},
+    };
+
+    // Legacy binary formats (.doc/.ppt/.xls) are OLE Compound Files, not
+    // ZIP archives — we can't cheaply peek inside them, so keep the safe
+    // default of converting.
+    if (
+      lowerName.endsWith(".doc") ||
+      lowerName.endsWith(".ppt") ||
+      lowerName.endsWith(".xls")
+    ) {
+      result.reasons.push("legacy-binary-format-cannot-inspect");
+      return result;
+    }
+
+    const entries = listZipEntries(buffer);
+    if (!entries.length) {
+      result.reasons.push("could-not-read-zip-structure");
+      return result;
+    }
+
+    const names = entries.map((e) => e.name.toLowerCase());
+
+    const imageEntries = names.filter(
+      (n) =>
+        (n.includes("/media/") || n.startsWith("media/")) &&
+        OOXML_IMAGE_EXTENSIONS.some((ext) => n.endsWith(ext))
+    );
+    const chartEntries = names.filter(
+      (n) => n.includes("/charts/") && n.endsWith(".xml") && !n.includes("colors") && !n.includes("style")
+    );
+    const diagramEntries = names.filter((n) => n.includes("/diagrams/"));
+    const embeddingEntries = names.filter((n) => n.includes("/embeddings/"));
+    const oleObjectEntries = names.filter((n) => n.includes("/objects/") || n.endsWith(".bin"));
+
+    result.details.imageCount = imageEntries.length;
+    result.details.chartCount = chartEntries.length;
+    result.details.diagramCount = diagramEntries.length;
+    result.details.embeddingCount = embeddingEntries.length;
+    result.details.oleObjectCount = oleObjectEntries.length;
+
+    if (imageEntries.length > 0) result.reasons.push(`images:${imageEntries.length}`);
+    if (chartEntries.length > 0) result.reasons.push(`charts:${chartEntries.length}`);
+    if (diagramEntries.length > 0) result.reasons.push(`diagrams:${diagramEntries.length}`);
+    if (embeddingEntries.length > 0) result.reasons.push(`embedded-objects:${embeddingEntries.length}`);
+    if (oleObjectEntries.length > 0) result.reasons.push(`ole-objects:${oleObjectEntries.length}`);
+
+    let tableCount = 0;
+    let hasComplexTable = false;
+
+    try {
+      if (lowerName.endsWith(".docx")) {
+        const xml = readZipEntryText(buffer, entries, "word/document.xml");
+        if (xml) {
+          tableCount = (xml.match(/<w:tbl>/g) || []).length;
+          // Merged cells (gridSpan/vMerge) or nested tables are the
+          // "complex table" case — a plain grid of text cells is fine
+          // as extracted text.
+          hasComplexTable =
+            /w:gridSpan|w:vMerge/.test(xml) ||
+            /<w:tbl>[\s\S]*<w:tbl>/.test(xml);
+          // Inline/floating drawings not caught by the media-file check
+          // (e.g. shapes, text boxes) also signal layout matters.
+          const drawingCount = (xml.match(/<w:drawing>/g) || []).length;
+          if (drawingCount > 0) result.reasons.push(`drawings:${drawingCount}`);
+          result.details.tableCount = tableCount;
+          result.details.hasComplexTable = hasComplexTable;
+        }
+      } else if (lowerName.endsWith(".pptx")) {
+        const slideEntries = entries.filter((e) =>
+          /^ppt\/slides\/slide\d+\.xml$/i.test(e.name)
+        );
+        result.details.slideCount = slideEntries.length;
+        let shapeHeavySlides = 0;
+        for (const slideEntry of slideEntries) {
+          const xml = readZipEntryText(buffer, entries, slideEntry.name);
+          if (!xml) continue;
+          tableCount += (xml.match(/<a:tbl>/g) || []).length;
+          const shapeCount = (xml.match(/<p:sp>|<p:pic>|<p:graphicFrame>/g) || []).length;
+          if (shapeCount > 3) shapeHeavySlides++;
+        }
+        result.details.tableCount = tableCount;
+        if (shapeHeavySlides > 0) {
+          result.reasons.push(`shape-heavy-slides:${shapeHeavySlides}`);
+        }
+        // Slide decks live and die by layout — treat any deck beyond a
+        // trivial single bullet-text slide as visual unless it's a very
+        // small, plain deck.
+        hasComplexTable = tableCount > 1;
+      } else if (lowerName.endsWith(".xlsx")) {
+        const sheetEntries = entries.filter((e) =>
+          /^xl\/worksheets\/sheet\d+\.xml$/i.test(e.name)
+        );
+        result.details.sheetCount = sheetEntries.length;
+        let mergedCellCount = 0;
+        for (const sheetEntry of sheetEntries) {
+          const xml = readZipEntryText(buffer, entries, sheetEntry.name);
+          if (!xml) continue;
+          mergedCellCount += (xml.match(/<mergeCell /g) || []).length;
+        }
+        result.details.mergedCellCount = mergedCellCount;
+        if (mergedCellCount > 0) result.reasons.push(`merged-cells:${mergedCellCount}`);
+        // A spreadsheet with no charts/images/merged cells is a plain
+        // data table — safe to treat as simple/text.
+        hasComplexTable = mergedCellCount > 5;
+      }
+    } catch (e) {
+      console.warn("analyzeOfficeVisualComplexity content check failed:", e.message);
+      result.reasons.push("content-inspection-error");
+      return result; // fail safe -> needsConversion stays true
+    }
+
+    if (hasComplexTable) result.reasons.push(`complex-tables:${tableCount}`);
+
+    const visuallyRich =
+      imageEntries.length > 0 ||
+      chartEntries.length > 0 ||
+      diagramEntries.length > 0 ||
+      embeddingEntries.length > 0 ||
+      oleObjectEntries.length > 0 ||
+      hasComplexTable;
+
+    result.needsConversion = visuallyRich;
+    if (!visuallyRich) result.reasons.push("mostly-text-headings-lists-simple-tables");
+    return result;
+  }
 
   // ============================================================
   // PERFORMANCE / COST OPTIMIZATION LAYER
@@ -1044,8 +1284,8 @@ async function createReadSignedUrlIfExists(storagePath) {
     let pdfStoragePath = null;
     let pdfUrl = null;
     
-    // Define types that Gemini struggles with but PDF.co can handle
-    const needsConversion = [
+    // Is this an Office file type at all? (extension/MIME gate, same list as before)
+    const isOfficeFileType = [
       'application/vnd.openxmlformats-officedocument.wordprocessingml.document', // .docx
       'application/vnd.openxmlformats-officedocument.presentationml.presentation', // .pptx
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', // .xlsx
@@ -1057,10 +1297,28 @@ async function createReadSignedUrlIfExists(storagePath) {
       safeFileName.toLowerCase().endsWith(ext)
     );
 
+    // Only among Office files, peek inside the archive to see if it's
+    // actually visually rich (images/charts/diagrams/complex tables) before
+    // paying for a PDF.co conversion. Plain text/headings/lists/simple
+    // tables skip conversion entirely.
+    const complexityBuffer = isOfficeFileType
+      ? Buffer.from(cleanedBase64, "base64")
+      : null;
+    const complexity = isOfficeFileType
+      ? analyzeOfficeVisualComplexity(complexityBuffer, safeFileName)
+      : { needsConversion: false, reasons: [] };
+    const needsConversion = isOfficeFileType && complexity.needsConversion;
+
+    if (isOfficeFileType) {
+      console.log(
+        `Visual complexity check for ${safeFileName}: needsConversion=${complexity.needsConversion} (${complexity.reasons.join(", ") || "n/a"})`
+      );
+    }
+
     if (needsConversion && process.env.PDFCO_API_KEY) {
       try {
         console.log(`Converting ${safeFileName} to PDF for AI processing...`);
-        const buffer = Buffer.from(cleanedBase64, "base64");
+        const buffer = complexityBuffer || Buffer.from(cleanedBase64, "base64");
         
         // Use the existing PDF.co helper
         const pdfBuffer = await convertPPTXtoPDFViaPDFco(buffer, safeFileName);
@@ -17320,7 +17578,7 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
         // You might want to return an error here instead of saving incomplete data.
         return res.status(500).json({ error: "Could not read syllabus content. Please ensure the file is text-based and not scanned images." });
       }
-      if (needsConversion(fileType, fileName)) {
+      if (needsConversion(fileType, fileName, buffer)) {
         try {
           processBuffer = await convertPPTXtoPDFViaPDFco(buffer, fileName);
           processMimeType = "application/pdf";
@@ -17426,7 +17684,7 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
       // 1. Convert in-memory if needed (DOCX/PPTX/etc -> PDF). Nothing is written to
       //    storage yet — we don't want to persist anything until we know the file is
       //    actually a valid syllabus.
-      if (needsConversion(fileType, fileName)) {
+      if (needsConversion(fileType, fileName, buffer)) {
         console.log(`Converting ${fileName} to PDF via PDF.co...`);
         try {
           processBuffer = await convertPPTXtoPDFViaPDFco(buffer, fileName);
@@ -17716,8 +17974,16 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
     }
   });
 
-  // Helper: Check if file needs conversion
-  function needsConversion(mimeType, fileName) {
+  // Helper: Check if file needs conversion.
+  // Content-aware: if a `buffer` is provided for a .docx/.pptx/.xlsx file,
+  // peeks inside the archive (analyzeOfficeVisualComplexity) and only
+  // returns true when it actually contains images/charts/diagrams/complex
+  // tables — plain text/headings/lists/simple tables return false and skip
+  // PDF.co entirely. Falls back to the old extension/MIME-only check when
+  // no buffer is supplied (so any other caller keeps working unchanged) or
+  // when the file is a legacy binary (.doc/.ppt/.xls) that can't be
+  // cheaply inspected.
+  function needsConversion(mimeType, fileName, buffer) {
     const lowerName = (fileName || '').toLowerCase();
     const officeTypes = [
       'application/vnd.openxmlformats-officedocument.wordprocessingml.document', // docx
@@ -17727,14 +17993,33 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
       'application/vnd.ms-powerpoint', // ppt
       'application/vnd.ms-excel' // xls
     ];
-    
-    return officeTypes.includes(mimeType) || 
-          lowerName.endsWith('.docx') || 
-          lowerName.endsWith('.pptx') || 
-          lowerName.endsWith('.xlsx') ||
-          lowerName.endsWith('.doc') || 
-          lowerName.endsWith('.ppt') || 
-          lowerName.endsWith('.xls');
+
+    const isOfficeFileType =
+      officeTypes.includes(mimeType) ||
+      lowerName.endsWith('.docx') ||
+      lowerName.endsWith('.pptx') ||
+      lowerName.endsWith('.xlsx') ||
+      lowerName.endsWith('.doc') ||
+      lowerName.endsWith('.ppt') ||
+      lowerName.endsWith('.xls');
+
+    if (!isOfficeFileType) return false;
+
+    if (buffer) {
+      try {
+        const complexity = analyzeOfficeVisualComplexity(buffer, fileName);
+        console.log(
+          `Visual complexity check for ${fileName}: needsConversion=${complexity.needsConversion} (${complexity.reasons.join(", ") || "n/a"})`
+        );
+        return complexity.needsConversion;
+      } catch (e) {
+        console.warn(`Visual complexity check failed for ${fileName}, defaulting to convert:`, e.message);
+        return true; // fail safe
+      }
+    }
+
+    // No buffer available to inspect — preserve old behavior.
+    return true;
   }
 
 
