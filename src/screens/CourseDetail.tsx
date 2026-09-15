@@ -966,6 +966,11 @@ const CourseDetail = ({
   // autoOpenAssignmentId — prevents re-triggering the lesson modal on every
   // re-render once a given id has already been auto-opened.
   const autoLessonHandledRef = useRef<string | null>(null);
+  // ✅ NEW: tracks which autoOpenAssignmentId we've already kicked off an
+  // immediate refresh for, so the "assignment not found yet" branch below
+  // fires onRefreshCourseContent() once per id instead of on every render
+  // while we wait for it to show up.
+  const autoOpenRefreshRequestedRef = useRef<string | null>(null);
 
   // ✅ NEW: true while the student is mid-interaction — typing an edit, has a
 // comment dropdown open, is deleting, or is mid-upload/submit. Background
@@ -1541,10 +1546,27 @@ const fetchModules = useCallback(async (silent = false) => {
       (a) => a.id === autoOpenAssignmentId
     );
     if (!targetAssignment) {
-      onConsumedAutoOpenAssignment?.();
+      // ✅ FIXED: this used to call onConsumedAutoOpenAssignment?.() here
+      // too, immediately discarding the auto-open request the moment the
+      // assignment wasn't found — which, for a notification about a
+      // brand-new assignment, was almost always the very first render
+      // (the assignment hasn't landed in safeCourse.assignments yet). That
+      // raced against every refresh mechanism below and meant clicking an
+      // assignment notification would silently fail to open the modal.
+      // Now we just wait: `safeCourse.assignments` is already a dependency
+      // of this effect, so it re-runs and finds the assignment as soon as
+      // a refresh brings it in (kicked off immediately below, then backed
+      // up by the `autoRefreshIntervalMs` poll further down and by
+      // StudentApp's own polling) — only actually consuming the request
+      // once the assignment is truly found and opened.
+      if (autoOpenRefreshRequestedRef.current !== autoOpenAssignmentId) {
+        autoOpenRefreshRequestedRef.current = autoOpenAssignmentId;
+        void onRefreshCourseContent?.();
+      }
       return;
     }
     autoHandledRef.current = autoOpenAssignmentId;
+    autoOpenRefreshRequestedRef.current = null;
     setActiveTab("assignments");
     setSelectedAssignment(targetAssignment as any);
     void refreshOnOpen(targetAssignment.id);
