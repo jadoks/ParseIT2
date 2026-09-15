@@ -277,7 +277,10 @@ const Header: React.FC<HeaderProps> = ({
     return Math.min(tablet + ((desktopMax - tablet) * (width - 1024)) / 1000, desktopMax);
   };
 
-  const logoSize = responsiveSize(40, 52, 64);
+  // 👇 UPDATED: bumped the mobile-tier logo size (40 → 52) so the logo
+  // reads clearly larger than the mobile nav icons, matching the same
+  // visual relationship the logo has vs. nav icons on large screens.
+  const logoSize = responsiveSize(52, 52, 64);
   const navIconSize = responsiveSize(22, 28, 34);
   const mobileNavIconSize = responsiveSize(24, 28, 30);
   const searchIconSize = responsiveSize(18, 22, 26);
