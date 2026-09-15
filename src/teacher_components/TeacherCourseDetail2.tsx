@@ -7271,7 +7271,7 @@ Edit Lesson) — like opening a Doc/PDF attachment in Google Classroom.
                         </View>
                       ) : null}
                       {selectedLesson.lessonPrep.activityTitle ? (
-                        <Text style={[styles.lessonPreviewSectionText, { color: '#000', fontWeight: '700', marginBottom: 4 }]}>Activity: "{selectedLesson.lessonPrep.activityTitle}"</Text>
+                        <Text style={[styles.lessonPreviewSectionTitle, !isMobile && styles.lessonPreviewSectionTitleLarge, { color: '#000' }]}>Activity: "{selectedLesson.lessonPrep.activityTitle}"</Text>
                       ) : null}
                       {selectedLesson.lessonPrep.instructions ? (
                         <Text style={[styles.lessonPreviewSectionText, { color: '#000', marginBottom: 8 }]}>
@@ -7280,7 +7280,7 @@ Edit Lesson) — like opening a Doc/PDF attachment in Google Classroom.
                       ) : null}
                       {Array.isArray(selectedLesson.lessonPrep.guideQuestions) && selectedLesson.lessonPrep.guideQuestions.length > 0 ? (
                         <View style={{ marginBottom: 8 }}>
-                          <Text style={[styles.lessonPreviewSectionText, { fontWeight: '700', color: '#000', marginBottom: 4 }]}>Guide Questions</Text>
+                          <Text style={[styles.lessonPreviewSectionTitle, !isMobile && styles.lessonPreviewSectionTitleLarge, { color: '#000' }]}>Guide Questions</Text>
                           {selectedLesson.lessonPrep.guideQuestions.map((q: string, i: number) => (
                             <Text key={i} style={styles.sasBulletText}>{i + 1}. {q}</Text>
                           ))}
