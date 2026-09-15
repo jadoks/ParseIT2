@@ -1,4 +1,5 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Pressable,
   ScrollView,
@@ -6,7 +7,7 @@ import {
   Text,
   TextInput,
   View,
-  useWindowDimensions,
+  useWindowDimensions
 } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { FONT_BODY, FONT_TITLE, WEIGHT_EMPHASIS, WEIGHT_TITLE } from '../../theme/typography';
@@ -23,6 +24,33 @@ interface Props {
   generatedQuestions?: any[] | null;
   gameType?: string; // 'quiz_master' | 'memory_match' | 'fill_in_blanks' | 'flashcard'
   onComplete?: (score: number, totalQuestions: number, answers: any[]) => void;
+  // 🆕 RESUME SUPPORT: pass the same studentId used by <Game studentId={...} />
+  // so progress is scoped per-student rather than shared across everyone on
+  // the same device. Safe to omit — falls back to a device-level 'anonymous'
+  // bucket if not provided.
+  studentId?: string;
+}
+
+// 🆕 RESUME SUPPORT: same hashing/key scheme as Game.tsx so progress saved
+// here can be found (and previewed/cleared) from the Game screen, and vice
+// versa. Kept in sync deliberately — duplicated rather than imported since
+// the two files don't currently share a utils module.
+function hashContent(value: string): string {
+  let hash = 0;
+  for (let i = 0; i < value.length; i++) {
+    hash = (hash << 5) - hash + value.charCodeAt(i);
+    hash |= 0;
+  }
+  return Math.abs(hash).toString(36);
+}
+
+function getActiveSessionStorageKey(studentId?: string) {
+  return `gameAi_activeSession_${studentId || 'anonymous'}`;
+}
+
+function getProgressStorageKey(studentId: string | undefined, gameType: string, questions: any[]) {
+  const hash = hashContent(`${gameType}:${JSON.stringify(questions)}`);
+  return `gameAi_progress_${studentId || 'anonymous'}_${hash}`;
 }
 
 type GameMode = 'menu' | 'matchingCards' | 'flashcards' | 'fillBlank' | 'trivia' | 'summary';
@@ -142,7 +170,7 @@ function createMatchingCards(questions: any[]): MatchingCard[] {
 
 const LARGE_SCREEN_CONTENT_WIDTH_PERCENT = '65%'; 
 
-export default function QuizMasters({ onBack, generatedQuestions, gameType = 'quiz_master', onComplete }: Props) {
+export default function QuizMasters({ onBack, generatedQuestions, gameType = 'quiz_master', onComplete, studentId }: Props) {
   const { width } = useWindowDimensions();
   const isLargeScreen = width >= 768;
 
@@ -252,6 +280,32 @@ export default function QuizMasters({ onBack, generatedQuestions, gameType = 'qu
 
   const hasGeneratedGame = questions.length > 0 || matchingItems.length > 0 || fillBlankItems.length > 0 || flashcardItems.length > 0;
 
+  // 🆕 RESUME SUPPORT: storage keys for this exact quiz (scoped to student +
+  // game type + the specific set of generated questions). Kept stable via
+  // useMemo so the load/save effects below don't re-key on every render.
+  const progressStorageKey = useMemo(
+    () => getProgressStorageKey(studentId, gameType, generatedQuestions || []),
+    [studentId, gameType, generatedQuestions]
+  );
+  const activeSessionStorageKey = useMemo(
+    () => getActiveSessionStorageKey(studentId),
+    [studentId]
+  );
+
+  // Guards so the "save progress" effect doesn't fire (and overwrite any
+  // saved progress with blank defaults) before we've had a chance to try
+  // restoring it on mount / whenever a new quiz is generated.
+  const isProgressRestoredRef = useRef(false);
+  const [isProgressRestored, setIsProgressRestored] = useState(false);
+
+  const clearSavedProgress = async () => {
+    try {
+      await AsyncStorage.multiRemove([progressStorageKey, activeSessionStorageKey]);
+    } catch (err) {
+      console.warn('Failed to clear saved quiz progress:', err);
+    }
+  };
+
   // Normalize current flashcard to always have 'question' and 'answer' properties
   const currentFlashcardRaw = flashcardItems.length > 0 ? flashcardItems[flashcardIndex] : questions[flashcardIndex];
   const currentFlashcard = currentFlashcardRaw ? {
@@ -263,10 +317,7 @@ export default function QuizMasters({ onBack, generatedQuestions, gameType = 'qu
   const currentFillItem = fillBlankItems[fillIndex];
   const currentTrivia = questions[triviaIndex];
 
-  // Automatically select the correct game mode based on backend gameType or fallback
-  useEffect(() => {
-    resetAll();
-    
+  const autoSelectMode = () => {
     if (gameType === 'memory_match' && matchingItems.length > 0) setMode('matchingCards');
     else if (gameType === 'fill_in_blanks' && fillBlankItems.length > 0) setMode('fillBlank');
     else if (gameType === 'flashcard' && (flashcardItems.length > 0 || questions.length > 0)) setMode('flashcards');
@@ -276,8 +327,111 @@ export default function QuizMasters({ onBack, generatedQuestions, gameType = 'qu
     else if (flashcardItems.length > 0 || questions.length > 0) setMode('flashcards');
     else if (questions.length > 0) setMode('trivia');
     else setMode('menu');
+  };
 
-  }, [generatedQuestions]);
+  // 🆕 RESUME SUPPORT: on a fresh set of generated questions, first check
+  // whether there's saved progress for this exact quiz (same student, game
+  // type, and question set). If so, restore it — including which question
+  // the user was on and their score so far — instead of starting over. Only
+  // falls back to a brand-new session when nothing valid is found.
+  useEffect(() => {
+    let isCancelled = false;
+    isProgressRestoredRef.current = false;
+    setIsProgressRestored(false);
+
+    const restore = async () => {
+      let restored = false;
+      try {
+        const raw = await AsyncStorage.getItem(progressStorageKey);
+        if (raw) {
+          const saved = JSON.parse(raw);
+          // 🐛 FIX: 'summary' (the results screen) used to be excluded here,
+          // which meant closing the app while sitting on results — before
+          // tapping "Play Again" / "Back to Games" — had no saved snapshot
+          // to restore from, so this fell through to resetAll()+autoSelectMode()
+          // below and silently restarted the quiz from scratch on reopen.
+          // Only a real finish-button tap should end a session (those already
+          // call clearSavedProgress() explicitly); just reaching the results
+          // screen should still be resumable.
+          if (saved && saved.mode && saved.mode !== 'menu') {
+            if (!isCancelled) {
+              setTriviaIndex(saved.triviaIndex ?? 0);
+              setTriviaScore(saved.triviaScore ?? 0);
+              setTriviaSelected(saved.triviaSelected ?? null);
+              setFillIndex(saved.fillIndex ?? 0);
+              setFillScore(saved.fillScore ?? 0);
+              setFillAnswer(saved.fillAnswer ?? '');
+              setFillChecked(saved.fillChecked ?? false);
+              setFillIsCorrect(saved.fillIsCorrect ?? false);
+              setFlashcardIndex(saved.flashcardIndex ?? 0);
+              setFlashcardInput(saved.flashcardInput ?? '');
+              setFlashcardChecked(saved.flashcardChecked ?? false);
+              setFlashcardIsCorrect(saved.flashcardIsCorrect ?? null);
+              setIsFlashcardAnswerVisible(saved.isFlashcardAnswerVisible ?? false);
+              setMatchingScore(saved.matchingScore ?? 0);
+              setUserChoices(saved.userChoices ?? {});
+              setShowResults(saved.showResults ?? false);
+              setUserAnswers(saved.userAnswers ?? []);
+              setMode(saved.mode);
+            }
+            restored = true;
+          }
+        }
+      } catch (err) {
+        console.warn('Failed to restore saved quiz progress:', err);
+      }
+
+      if (!isCancelled) {
+        if (!restored) {
+          resetAll();
+          autoSelectMode();
+        }
+        isProgressRestoredRef.current = true;
+        setIsProgressRestored(true);
+      }
+    };
+
+    restore();
+    return () => {
+      isCancelled = true;
+    };
+  }, [generatedQuestions, gameType, progressStorageKey]);
+
+  // 🆕 RESUME SUPPORT: persist progress after every meaningful change, so a
+  // fully-closed-and-reopened app/website can pick back up at the right
+  // question and score. Skipped until the restore effect above has run
+  // (avoids clobbering saved progress with blank initial state), and while
+  // on the menu (nothing to resume yet). 🐛 FIX: 'summary' is intentionally
+  // NOT skipped anymore — closing the app while sitting on the results
+  // screen (before tapping a finish button) needs an up-to-date snapshot to
+  // resume back into, otherwise it looks like the quiz never happened. A
+  // session only truly ends when a finish button is tapped, which already
+  // calls clearSavedProgress() explicitly.
+  useEffect(() => {
+    if (!isProgressRestoredRef.current || !hasGeneratedGame) return;
+    if (mode === 'menu') return;
+
+    const snapshot = {
+      mode,
+      triviaIndex, triviaScore, triviaSelected,
+      fillIndex, fillScore, fillAnswer, fillChecked, fillIsCorrect,
+      flashcardIndex, flashcardInput, flashcardChecked, flashcardIsCorrect, isFlashcardAnswerVisible,
+      matchingScore, userChoices, showResults,
+      userAnswers,
+      savedAt: Date.now(),
+    };
+
+    AsyncStorage.setItem(progressStorageKey, JSON.stringify(snapshot)).catch((err) => {
+      console.warn('Failed to save quiz progress:', err);
+    });
+  }, [
+    isProgressRestored, hasGeneratedGame, mode,
+    triviaIndex, triviaScore, triviaSelected,
+    fillIndex, fillScore, fillAnswer, fillChecked, fillIsCorrect,
+    flashcardIndex, flashcardInput, flashcardChecked, flashcardIsCorrect, isFlashcardAnswerVisible,
+    matchingScore, userChoices, showResults,
+    userAnswers,
+  ]);
 
   const recordAnswer = (question: string, userAns: string, correctAns: string, explanation?: string, isCorrect?: boolean) => {
     const correct = isCorrect !== undefined ? isCorrect : normalizeText(userAns) === normalizeText(correctAns);
@@ -337,37 +491,46 @@ export default function QuizMasters({ onBack, generatedQuestions, gameType = 'qu
   };
 
   const goToGameScreen = () => {
+    const scoreSnapshotMode = mode;
+    const triviaScoreSnapshot = triviaScore;
+    const fillScoreSnapshot = fillScore;
+    const matchingScoreSnapshot = matchingScore;
+    const userAnswersSnapshot = userAnswers;
+
     resetAll();
+    // 🆕 RESUME SUPPORT: leaving the quiz this way submits whatever progress
+    // was made as the final attempt, so there's nothing left to resume.
+    clearSavedProgress();
 
     if (onComplete) {
         let score = 0;
         let total = 0;
 
-        switch (mode) {
+        switch (scoreSnapshotMode) {
             case 'trivia':
-                score = triviaScore;
+                score = triviaScoreSnapshot;
                 total = questions.length;
                 break;
 
             case 'fillBlank':
-                score = fillScore;
+                score = fillScoreSnapshot;
                 total = fillBlankItems.length;
                 break;
 
             case 'matchingCards':
-                score = matchingScore;
+                score = matchingScoreSnapshot;
                 total = terms.length;
                 break;
 
             case 'flashcards':
-                score = userAnswers.filter(a => a.isCorrect).length;
+                score = userAnswersSnapshot.filter(a => a.isCorrect).length;
                 total = flashcardItems.length > 0
                     ? flashcardItems.length
                     : questions.length;
                 break;
         }
 
-        onComplete(score, total, userAnswers);
+        onComplete(score, total, userAnswersSnapshot);
     }
 
     onBack();
@@ -574,6 +737,7 @@ export default function QuizMasters({ onBack, generatedQuestions, gameType = 'qu
             style={styles.saveBtn} 
             onPress={() => {
               if (onComplete) onComplete(matchingScore, total, userAnswers);
+              clearSavedProgress();
               onBack();
             }}
           >
@@ -914,7 +1078,10 @@ export default function QuizMasters({ onBack, generatedQuestions, gameType = 'qu
         <View style={styles.modalButtonRow}>
           <Pressable
                 style={styles.cancelBtn}
-                onPress={onBack}
+                onPress={() => {
+                  clearSavedProgress();
+                  onBack();
+                }}
             >
             <Text style={styles.cancelBtnText}>Play Again</Text>
           </Pressable>
@@ -922,6 +1089,7 @@ export default function QuizMasters({ onBack, generatedQuestions, gameType = 'qu
             style={styles.saveBtn}
             onPress={() => {
               if (onComplete) onComplete(correctCount, total, userAnswers);
+              clearSavedProgress();
               onBack();
             }}
           >

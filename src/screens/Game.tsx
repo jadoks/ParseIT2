@@ -93,6 +93,21 @@ function getGenerationLimitStorageKey(studentId?: string) {
   return `gameAi_dailyGenerationLimit_${studentId || 'anonymous'}`;
 }
 
+// 🆕 RESUME SUPPORT: same key scheme as quiz-masters.tsx so a session saved
+// there (right after a successful generation, and cleared once the quiz is
+// actually finished) can be found here and offered back to the user if they
+// close and reopen the app/website before finishing. Duplicated rather than
+// imported since the two files don't currently share a utils module.
+function getActiveSessionStorageKey(studentId?: string) {
+  return `gameAi_activeSession_${studentId || 'anonymous'}`;
+}
+
+interface ResumableSession {
+  questions: QuizQuestion[];
+  gameType: string;
+  savedAt?: number;
+}
+
 const Game = ({ onNavigate, enrolledCourses = [], studentId, onSaveQuizScore }: Props) => {
   const { width } = useWindowDimensions();
   const isLargeScreen = width >= 768; // tablet / web / desktop breakpoint
@@ -105,6 +120,12 @@ const Game = ({ onNavigate, enrolledCourses = [], studentId, onSaveQuizScore }: 
   // 🌟 NEW: Track how many AI generations have been used today
   const [generationsUsedToday, setGenerationsUsedToday] = useState<number>(0);
   const [isLimitLoaded, setIsLimitLoaded] = useState(false);
+
+  // 🆕 RESUME SUPPORT: an in-progress quiz from a previous visit (found in
+  // storage on mount), which the user can jump back into instead of
+  // regenerating and burning another one of today's AI generations.
+  const [resumableSession, setResumableSession] = useState<ResumableSession | null>(null);
+  const [isResumeChecked, setIsResumeChecked] = useState(false);
 
   const parsedCount = parseInt(numberOfQuestions, 10) || 0;
   const isInvalidCount = parsedCount > MAX_QUESTIONS_PER_GENERATION || parsedCount < 1;
@@ -149,6 +170,68 @@ const Game = ({ onNavigate, enrolledCourses = [], studentId, onSaveQuizScore }: 
       isCancelled = true;
     };
   }, [studentId]);
+
+  // 🆕 RESUME SUPPORT: check for a saved in-progress quiz whenever the
+  // logged-in student changes (mirrors the generation-limit loader above).
+  useEffect(() => {
+    let isCancelled = false;
+    const loadResumableSession = async () => {
+      setIsResumeChecked(false);
+      try {
+        const raw = await AsyncStorage.getItem(getActiveSessionStorageKey(studentId));
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed && Array.isArray(parsed.questions) && parsed.questions.length > 0 && parsed.gameType) {
+            if (!isCancelled) setResumableSession(parsed);
+          } else if (!isCancelled) {
+            setResumableSession(null);
+          }
+        } else if (!isCancelled) {
+          setResumableSession(null);
+        }
+      } catch (err) {
+        console.warn('Failed to load resumable quiz session:', err);
+        if (!isCancelled) setResumableSession(null);
+      } finally {
+        if (!isCancelled) setIsResumeChecked(true);
+      }
+    };
+    loadResumableSession();
+    return () => {
+      isCancelled = true;
+    };
+  }, [studentId]);
+
+  // 🆕 RESUME SUPPORT: jump straight back into the saved quiz — no new
+  // generation, no AI call, no dent in today's generation limit.
+  const resumeSession = () => {
+    if (!resumableSession) return;
+    setGeneratedQuestions(resumableSession.questions);
+    setGameType(resumableSession.gameType);
+    setMode('quizmasters');
+    if (onNavigate) onNavigate('quizmasters', resumableSession.questions, resumableSession.gameType);
+  };
+
+  // 🆕 RESUME SUPPORT: "Start New" — the student doesn't want to resume the
+  // last generated quiz. This discards the saved session (so the banner
+  // won't come back next visit) AND resets the Quiz Settings / class &
+  // lesson selectors below, so they land on a clean form to pick again.
+  const startNewSession = async () => {
+    try {
+      await AsyncStorage.removeItem(getActiveSessionStorageKey(studentId));
+    } catch (err) {
+      console.warn('Failed to discard resumable quiz session:', err);
+    }
+    setResumableSession(null);
+    // Reset the whole selection screen so the student is choosing fresh,
+    // not left with the previous quiz's leftover selections.
+    setGeneratedQuestions(null);
+    setGameType('');
+    setNumberOfQuestions('10');
+    setSelectedClassId('');
+    setSelectedMaterialIds([]);
+    setIsClassDropdownOpen(false);
+  };
 
   // 🌟 NEW: Increment and persist this student's generation count
   const recordGenerationUsed = async () => {
@@ -229,6 +312,19 @@ const Game = ({ onNavigate, enrolledCourses = [], studentId, onSaveQuizScore }: 
       setMode('quizmasters');
       // 🌟 NEW: Count this as one of today's AI generations
       await recordGenerationUsed();
+      // 🆕 RESUME SUPPORT: remember this session so it can be picked back up
+      // if the user closes the app/website before finishing. quiz-masters.tsx
+      // clears this once the quiz is actually completed (or abandoned via
+      // its back button, which already submits the current progress).
+      try {
+        await AsyncStorage.setItem(
+          getActiveSessionStorageKey(studentId),
+          JSON.stringify({ questions: data.questions, gameType, savedAt: Date.now() })
+        );
+        setResumableSession({ questions: data.questions, gameType, savedAt: Date.now() });
+      } catch (err) {
+        console.warn('Failed to save resumable quiz session:', err);
+      }
       // 🌟 PASS gameType to the navigator
       if (onNavigate) onNavigate('quizmasters', data.questions, gameType);
     } catch (error: any) {
@@ -253,6 +349,46 @@ const Game = ({ onNavigate, enrolledCourses = [], studentId, onSaveQuizScore }: 
           <Text style={styles.pageSubtitle}>Select a class and lessons to generate a quiz.</Text>
         </View>
       </View>
+
+      {/* 🆕 RESUME SUPPORT: offer to jump back into an unfinished quiz
+          instead of forcing a fresh (and limit-consuming) generation. */}
+      {isResumeChecked && resumableSession && (
+        <View
+          style={[
+            styles.resumeBanner,
+            isLargeScreen ? styles.inputLarge : styles.resumeBannerCompact,
+          ]}
+        >
+          <View style={styles.resumeBannerTextWrap}>
+            <Ionicons name="play-circle" size={20} color="#1565C0" />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.resumeBannerTitle}>You have an unfinished quiz</Text>
+              <Text style={styles.resumeBannerSubtitle}>
+                {gameOptions.find((g) => g.value === resumableSession.gameType)?.label || 'Quiz'} · {resumableSession.questions.length} items
+              </Text>
+            </View>
+          </View>
+          <View
+            style={[
+              styles.resumeBannerActions,
+              !isLargeScreen && styles.resumeBannerActionsCompact,
+            ]}
+          >
+            <TouchableOpacity
+              onPress={startNewSession}
+              style={[styles.startNewBtn, !isLargeScreen && styles.resumeActionBtnCompact]}
+            >
+              <Text style={styles.startNewBtnText}>Start New</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={resumeSession}
+              style={[styles.resumeBtn, !isLargeScreen && styles.resumeActionBtnCompact]}
+            >
+              <Text style={styles.resumeBtnText}>Resume</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
 
       {/* 🌟 NEW: Daily AI generation usage banner */}
       {isLimitLoaded && (
@@ -499,6 +635,87 @@ const styles = StyleSheet.create({
   limitBannerTextReached: {
     color: '#D32F2F',
   },
+
+  // 🆕 RESUME SUPPORT: banner offering to jump back into an unfinished quiz.
+  // Row layout with actions hugging their own width (no flex:1) so on large
+  // screens the buttons stay compact instead of stretching across the card.
+  resumeBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    backgroundColor: '#E3F2FD',
+    borderWidth: 1,
+    borderColor: '#BBDEFB',
+    borderRadius: 14,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    marginBottom: 16,
+  },
+  // 🌟 Small screens: stack the text above the actions instead of squeezing
+  // two buttons onto the same row as the title/subtitle.
+  resumeBannerCompact: {
+    flexDirection: 'column',
+    alignItems: 'stretch',
+  },
+  resumeBannerTextWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    flex: 1,
+  },
+  resumeBannerTitle: { fontFamily: FONT_BODY,
+    fontSize: 13,
+    fontWeight: WEIGHT_EMPHASIS,
+    color: '#0D47A1',
+  },
+  resumeBannerSubtitle: { fontFamily: FONT_BODY,
+    fontSize: 12,
+    color: '#1565C0',
+    marginTop: 2,
+  },
+  resumeBannerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  // 🌟 Compact (small-screen) variant: actions move below the text, right
+  // aligned, with a bit of breathing room from the text above.
+  resumeBannerActionsCompact: {
+    justifyContent: 'flex-end',
+    marginTop: 12,
+  },
+  // 🌟 Slightly larger tap targets on small screens for the two banner
+  // buttons, without letting them stretch to fill the row's width.
+  resumeActionBtnCompact: {
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  startNewBtn: {
+    backgroundColor: '#FFF',
+    borderWidth: 1.5,
+    borderColor: '#90A4AE',
+    borderRadius: 100,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+  },
+  startNewBtnText: { fontFamily: FONT_BODY,
+    fontSize: 13,
+    fontWeight: WEIGHT_EMPHASIS,
+    color: '#455A64',
+  },
+  resumeBtn: {
+    backgroundColor: '#1565C0',
+    borderRadius: 100,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+  },
+  resumeBtnText: { fontFamily: FONT_BODY,
+    fontSize: 13,
+    fontWeight: WEIGHT_EMPHASIS,
+    color: '#FFF',
+  },
+
   
   settingsCard: {
     backgroundColor: '#FFF',
