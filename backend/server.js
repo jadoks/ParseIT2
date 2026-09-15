@@ -4162,15 +4162,17 @@ app.post("/auth/send-forgot-password-pin", async (req, res) => {
         throw new Error(convertJson.message || "PDF.co conversion failed.");
       }
 
-      let pdfUrl = convertJson.url || null;
-
       // --------------------------------------------------
-      // STEP 4 - Poll the background job until it's done
-      // (only needed if PDF.co didn't return the file
-      // synchronously)
+      // STEP 4 - Wait for the job to finish. PDF.co's async
+      // response pre-populates `url` with the eventual output
+      // location even before the file exists there, so we must
+      // poll /job/check and only trust the URL once status is
+      // "success" — we can't just check whether `url` is present.
       // --------------------------------------------------
 
-      if (convertJson.jobId && !pdfUrl) {
+      let pdfUrl = null;
+
+      if (convertJson.jobId) {
         for (let i = 0; i < 60; i++) {
           await new Promise((r) => setTimeout(r, 2000));
 
@@ -4201,6 +4203,10 @@ app.post("/auth/send-forgot-password-pin", async (req, res) => {
             break;
           }
         }
+      } else {
+        // No jobId means PDF.co already completed the conversion
+        // synchronously, so the URL is ready to use immediately.
+        pdfUrl = convertJson.url || null;
       }
 
       if (!pdfUrl) {
@@ -4216,7 +4222,11 @@ app.post("/auth/send-forgot-password-pin", async (req, res) => {
       const pdfResponse = await fetch(pdfUrl);
 
       if (!pdfResponse.ok) {
-        throw new Error("Failed to download converted PDF.");
+        const downloadErrorText = await pdfResponse.text().catch(() => "");
+        console.error("PDF.co Download Error:", pdfResponse.status, downloadErrorText);
+        throw new Error(
+          `Failed to download converted PDF (${pdfResponse.status}).`
+        );
       }
 
       const pdfBuffer = Buffer.from(await pdfResponse.arrayBuffer());
