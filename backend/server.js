@@ -8935,16 +8935,48 @@ app.get("/student-joined-classes/:studentId", async (req, res) => {
             timeLimit: assignment.timeLimit || null,
             customTimeLimit: assignment.customTimeLimit || null,
 
+            // ✅ FIXED: this used to always synthesize a single-file array
+            // from only the legacy fileName/fileUrl fields, completely
+            // ignoring the real `assignment.files` array that
+            // /create-class-assignment and /update-class-assignment already
+            // store with every teacher-uploaded file. That meant a student
+            // could never receive more than one assignment file no matter
+            // how many the teacher attached — the extra files simply never
+            // left the server. Now we map the real multi-file array (using
+            // "teacher-file-…" ids, NOT "file-…", since the client's
+            // student-submission heuristic treats any id starting with "f"
+            // as a student's own submitted file and would filter it back
+            // out) and only fall back to the single legacy-field synthesis
+            // for older assignment docs that predate the `files` array.
             files:
-              assignment.fileName || assignment.fileUrl
+              Array.isArray(assignment.files) && assignment.files.length
+                ? assignment.files.map((f, index) => ({
+                    id: f?.id || `teacher-file-${doc.id}-${index}`,
+                    name: f?.fileName || f?.name || "attachment",
+                    uploadedAt:
+                      formatFirestoreDateTime(assignment.createdAt) ||
+                      "Unknown date",
+                    uri: f?.fileUrl || null,
+                    fileUrl: f?.fileUrl || null,
+                    fileType: f?.fileType || null,
+                    storagePath: f?.storagePath || null,
+                    bucketPath: f?.bucketPath || null,
+                    source: f?.source || "teacher",
+                  }))
+                : assignment.fileName || assignment.fileUrl
                 ? [
                     {
-                      id: `file-${doc.id}`,
+                      id: `teacher-file-${doc.id}-main`,
                       name: assignment.fileName || "attachment",
                       uploadedAt:
                         formatFirestoreDateTime(assignment.createdAt) ||
                         "Unknown date",
                       uri: assignment.fileUrl || null,
+                      fileUrl: assignment.fileUrl || null,
+                      fileType: assignment.fileType || null,
+                      storagePath: assignment.storagePath || null,
+                      bucketPath: assignment.bucketPath || null,
+                      source: "teacher",
                     },
                   ]
                 : [],
