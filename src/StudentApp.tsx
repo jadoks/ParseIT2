@@ -1238,9 +1238,22 @@ const refreshAssignmentCourseContent = useCallback(async () => {
         const next = { ...prev };
         joinedCourses.forEach(course => {
           course.assignments.forEach(assignment => {
-            if (!next[assignment.id] && assignment.files) {
-              next[assignment.id] = mapCourseFilesToAssignmentFiles(assignment.files);
-            }
+            if (!assignment.files) return;
+            // ✅ Always refresh the teacher-uploaded portion from the latest
+            // course data (assignment.files is the source of truth for
+            // teacher attachments), instead of only seeding it once. This
+            // used to skip re-seeding whenever next[assignment.id] was
+            // already set — including a stale copy restored from
+            // AsyncStorage — so a file the teacher added after the first
+            // load (or after the cache was written) would never show up
+            // for the student. Any student-submitted files already tracked
+            // locally (source !== 'teacher') are preserved alongside the
+            // fresh teacher list.
+            const freshTeacherFiles = mapCourseFilesToAssignmentFiles(assignment.files);
+            const studentOwnedFiles = (next[assignment.id] || []).filter(
+              (f) => f.source !== 'teacher'
+            );
+            next[assignment.id] = [...freshTeacherFiles, ...studentOwnedFiles];
           });
         });
         return next;
