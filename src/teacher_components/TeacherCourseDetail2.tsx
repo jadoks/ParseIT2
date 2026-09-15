@@ -7213,7 +7213,7 @@ Edit Lesson) — like opening a Doc/PDF attachment in Google Classroom.
                     </TouchableOpacity>
                   ) : null}
                   <View style={{ marginBottom: 16 }}>
-                    <Text style={styles.lessonPreviewSectionTitle}>Description</Text>
+                    <Text style={[styles.lessonPreviewSectionTitle, !isMobile && styles.lessonPreviewSectionTitleLarge]}>Description</Text>
                     <Text style={styles.lessonPreviewSectionText}>
                       {selectedLesson.description || 'No description available.'}
                     </Text>
@@ -7221,7 +7221,7 @@ Edit Lesson) — like opening a Doc/PDF attachment in Google Classroom.
 
                   {Array.isArray(selectedLesson.objectives) && selectedLesson.objectives.length > 0 ? (
                     <View style={styles.sasCard}>
-                      <Text style={styles.lessonPreviewSectionTitle}>Intended Learning Outcomes</Text>
+                      <Text style={[styles.lessonPreviewSectionTitle, !isMobile && styles.lessonPreviewSectionTitleLarge]}>Intended Learning Outcomes</Text>
                       <Text style={[styles.lessonPreviewSectionText, { marginBottom: 4 }]}>At the end of the lesson, you should be able to:</Text>
                       {selectedLesson.objectives.map((o: string, i: number) => (
                         <Text key={i} style={styles.sasBulletText}>{'\u2022 '}{o}</Text>
@@ -7234,13 +7234,13 @@ Edit Lesson) — like opening a Doc/PDF attachment in Google Classroom.
                     <View style={styles.sasCard}>
                       {Array.isArray(selectedLesson.materials) && selectedLesson.materials.length > 0 ? (
                         <>
-                          <Text style={styles.lessonPreviewSectionTitle}>Materials</Text>
+                          <Text style={[styles.lessonPreviewSectionTitle, !isMobile && styles.lessonPreviewSectionTitleLarge]}>Materials</Text>
                           <Text style={[styles.lessonPreviewSectionText, { marginBottom: 10 }]}>{selectedLesson.materials.join(', ')}</Text>
                         </>
                       ) : null}
                       {Array.isArray(selectedLesson.references) && selectedLesson.references.length > 0 ? (
                         <>
-                          <Text style={styles.lessonPreviewSectionTitle}>References</Text>
+                          <Text style={[styles.lessonPreviewSectionTitle, !isMobile && styles.lessonPreviewSectionTitleLarge]}>References</Text>
                           {selectedLesson.references.map((r: string, i: number) => (
                             <Text key={i} style={styles.sasBulletText}>{'\u2022 '}{r}</Text>
                           ))}
@@ -7251,7 +7251,7 @@ Edit Lesson) — like opening a Doc/PDF attachment in Google Classroom.
 
                   {Array.isArray(selectedLesson.sdgIntegration) && selectedLesson.sdgIntegration.length > 0 ? (
                     <View style={styles.sasCard}>
-                      <Text style={styles.lessonPreviewSectionTitle}>SDG Integration</Text>
+                      <Text style={[styles.lessonPreviewSectionTitle, !isMobile && styles.lessonPreviewSectionTitleLarge]}>SDG Integration</Text>
                       {selectedLesson.sdgIntegration.map((s: any, i: number) => (
                         <Text key={i} style={[styles.lessonPreviewSectionText, { marginBottom: 6 }]}>
                           <Text style={[styles.lessonPreviewSectionText, { fontWeight: '700' }]}>{s.sdg}</Text>{s.description ? ` — ${s.description}` : ''}
@@ -7262,7 +7262,7 @@ Edit Lesson) — like opening a Doc/PDF attachment in Google Classroom.
 
                   {selectedLesson.lessonPrep ? (
                     <View style={styles.sasCard}>
-                      <Text style={styles.lessonPreviewSectionTitle}>Lesson Preparation / Review / Preview</Text>
+                      <Text style={[styles.lessonPreviewSectionTitle, !isMobile && styles.lessonPreviewSectionTitleLarge]}>Lesson Preparation / Review / Preview</Text>
                       {Array.isArray(selectedLesson.lessonPrep.resources) && selectedLesson.lessonPrep.resources.length > 0 ? (
                         <View style={{ marginBottom: 8 }}>
                           {selectedLesson.lessonPrep.resources.map((r: any, i: number) => (
@@ -7294,7 +7294,7 @@ Edit Lesson) — like opening a Doc/PDF attachment in Google Classroom.
 
                   {selectedLesson.discussion ? (
                     <View style={styles.sasCard}>
-                      <Text style={styles.lessonPreviewSectionTitle}>Concept Notes / Discussion</Text>
+                      <Text style={[styles.lessonPreviewSectionTitle, !isMobile && styles.lessonPreviewSectionTitleLarge]}>Concept Notes / Discussion</Text>
                       <Text style={[styles.lessonPreviewSectionText, { color: '#000' }]}>
                         {renderFormattedText(selectedLesson.discussion, { color: '#000' })}
                       </Text>
@@ -7303,7 +7303,7 @@ Edit Lesson) — like opening a Doc/PDF attachment in Google Classroom.
 
                   {Array.isArray(selectedLesson.keyTerms) && selectedLesson.keyTerms.length > 0 ? (
                     <View style={styles.sasCard}>
-                      <Text style={styles.lessonPreviewSectionTitle}>Key Terms to Remember</Text>
+                      <Text style={[styles.lessonPreviewSectionTitle, !isMobile && styles.lessonPreviewSectionTitleLarge]}>Key Terms to Remember</Text>
                       {selectedLesson.keyTerms.map((k: any, i: number) => (
                         <View key={i} style={{ flexDirection: 'row', marginBottom: 6 }}>
                           <Text style={[styles.lessonPreviewSectionText, { width: 110, fontWeight: '700', color: '#000' }]}>{k.term}</Text>
@@ -7315,7 +7315,7 @@ Edit Lesson) — like opening a Doc/PDF attachment in Google Classroom.
 
                   {Array.isArray(selectedLesson.takeaways) && selectedLesson.takeaways.length > 0 ? (
                     <View style={styles.sasCard}>
-                      <Text style={styles.lessonPreviewSectionTitle}>Take Aways</Text>
+                      <Text style={[styles.lessonPreviewSectionTitle, !isMobile && styles.lessonPreviewSectionTitleLarge]}>Take Aways</Text>
                       {selectedLesson.takeaways.map((t: string, i: number) => (
                         <Text key={i} style={styles.sasBulletText}>{'\u2022 '}{t}</Text>
                       ))}
@@ -7324,7 +7324,7 @@ Edit Lesson) — like opening a Doc/PDF attachment in Google Classroom.
 
                   {selectedLesson.guidedPractice ? (
                     <View style={styles.sasCard}>
-                      <Text style={styles.lessonPreviewSectionTitle}>Guided Practice</Text>
+                      <Text style={[styles.lessonPreviewSectionTitle, !isMobile && styles.lessonPreviewSectionTitleLarge]}>Guided Practice</Text>
                       <Text style={[styles.lessonPreviewSectionText, { color: '#000' }]}>
                         {renderFormattedText(selectedLesson.guidedPractice, { color: '#000' })}
                       </Text>
@@ -7333,7 +7333,7 @@ Edit Lesson) — like opening a Doc/PDF attachment in Google Classroom.
 
                   {selectedLesson.activity ? (
                     <View style={styles.sasCard}>
-                      <Text style={styles.lessonPreviewSectionTitle}>Compu-Skill / Performance Task</Text>
+                      <Text style={[styles.lessonPreviewSectionTitle, !isMobile && styles.lessonPreviewSectionTitleLarge]}>Compu-Skill / Performance Task</Text>
                       <Text style={[styles.lessonPreviewSectionText, { color: '#000' }]}>
                         {renderFormattedText(selectedLesson.activity, { color: '#000' })}
                       </Text>
@@ -8766,11 +8766,16 @@ const styles = StyleSheet.create({
   // plain text laid out on the page, not boxed "cards".
   lessonPreviewSectionTitle: {
     fontFamily: FONT_BODY,
-    fontSize: 13,
+    fontSize: 16,
     fontWeight: '700',
     color: '#222',
     marginTop: 4,
     marginBottom: 6,
+  },
+  // Applied alongside lessonPreviewSectionTitle (via `!isMobile &&`) to bump
+  // the section title up further on large/tablet/web-width screens.
+  lessonPreviewSectionTitleLarge: {
+    fontSize: 20,
   },
   lessonPreviewSectionText: {
     fontFamily: FONT_BODY,
