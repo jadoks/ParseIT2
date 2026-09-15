@@ -1075,10 +1075,15 @@ const refreshAssignmentCourseContent = useCallback(async () => {
   // are all fetched concurrently afterwards, and each course's card patches
   // itself in as soon as ITS OWN enrichment resolves (instead of the whole
   // list waiting on the single slowest course/request).
-  const loadJoinedClasses = async () => {
+  // ✅ UPDATED: accepts a `silent` option so this can be re-run on a
+  // background interval (see the poll below) without flipping the
+  // isLoading* spinners or wiping state on a transient failure — mirrors
+  // the same `{ silent }` pattern already used by loadStudentAnnouncements.
+  const loadJoinedClasses = async (options?: { silent?: boolean }) => {
+    const silent = options?.silent ?? false;
     if (!currentStudent?.studentId) return;
     try {
-      setIsLoadingJoinedCourses(true);
+      if (!silent) setIsLoadingJoinedCourses(true);
 
       // The only request the initial render needs to wait on.
       const response = await apiFetch(`${API_BASE_URL}/student-joined-classes/${currentStudent.studentId}`);
@@ -1115,14 +1120,14 @@ const refreshAssignmentCourseContent = useCallback(async () => {
             : shell;
         });
       });
-      setIsLoadingJoinedCourses(false);
+      if (!silent) setIsLoadingJoinedCourses(false);
 
       // Announcements only need classIds (already known) — no reason to wait
       // on materials or banners first.
-      setIsLoadingAnnouncements(true);
-      const announcementsPromise = loadStudentAnnouncements(shellCourses).finally(() =>
-        setIsLoadingAnnouncements(false)
-      );
+      if (!silent) setIsLoadingAnnouncements(true);
+      const announcementsPromise = loadStudentAnnouncements(shellCourses, { silent }).finally(() => {
+        if (!silent) setIsLoadingAnnouncements(false);
+      });
 
       // Enrich each course independently and in parallel. Each course's card
       // updates the moment ITS OWN materials/banner resolve, instead of the
@@ -1158,10 +1163,15 @@ const refreshAssignmentCourseContent = useCallback(async () => {
       await Promise.all([announcementsPromise, ...enrichmentPromises]);
     } catch (error) {
       console.log('LOAD JOINED CLASSES ERROR =>', error);
-      setJoinedCourses([]);
-      setStudentAnnouncements([]);
-      setIsLoadingJoinedCourses(false);
-      setIsLoadingAnnouncements(false);
+      // On a silent background poll, keep showing the last known-good
+      // courses/assignments instead of wiping everything on a transient
+      // failure (same reasoning as loadStudentAnnouncements's silent mode).
+      if (!silent) {
+        setJoinedCourses([]);
+        setStudentAnnouncements([]);
+        setIsLoadingJoinedCourses(false);
+        setIsLoadingAnnouncements(false);
+      }
     }
   };
 
@@ -1187,6 +1197,26 @@ const refreshAssignmentCourseContent = useCallback(async () => {
     }, 8000);
     return () => clearInterval(interval);
   }, []);
+
+  // 🔥 NEW: silently refresh joinedCourses (assignments/materials/modules)
+  // on the same 8s cadence as notification polling below. Without this,
+  // notifications kept arriving live every 8s (e.g. "New Assignment"), but
+  // the actual assignment/lesson/announcement data that a tapped
+  // notification navigates into only ever loaded once on mount — so a
+  // brand-new assignment/module lesson referenced by a just-arrived
+  // notification wouldn't exist yet in joinedCourses/joinedAssignmentCourses,
+  // and handleNotificationItemClick's `course.assignments.find(...)` (or
+  // the course lookup itself, for a class joined after the last load) would
+  // silently fail to match anything — so tapping the notification appeared
+  // to do nothing. Runs silently (no loading spinners, no wiping state on a
+  // transient error) so it never disrupts whatever screen the student is
+  // currently looking at.
+  useEffect(() => {
+    const interval = setInterval(() => {
+      void loadJoinedClasses({ silent: true });
+    }, 8000);
+    return () => clearInterval(interval);
+  }, [currentStudent?.studentId]);
 
   const handleJoinClass = async (classCode: string) => {
     const trimmedCode = String(classCode || '').trim().toUpperCase();
@@ -2183,7 +2213,19 @@ const refreshAssignmentCourseContent = useCallback(async () => {
     isFullscreenScreen,
   ]);
 
-  const handleNotificationItemClick = (notification: NotificationItem) => {
+  // ✅ UPDATED: now async, with a safety-net refresh. Notifications arrive
+  // live via an 8s poll (see loadStudentNotifications' interval above), and
+  // joinedCourses/joinedAssignmentCourses now poll on the same 8s cadence
+  // too (see the new loadJoinedClasses interval above) — but there's still
+  // up to one poll cycle where a just-arrived notification can reference an
+  // assignment/lesson/course that hasn't landed in joinedCourses yet (e.g.
+  // the two polls fire a couple seconds apart, or the student taps the
+  // notification the instant it arrives). Before, that meant `course` or
+  // the specific assignment/lesson lookup below would come back empty and
+  // tapping the notification would silently do nothing. Now, if the lookup
+  // comes up empty, we force one immediate silent refresh and retry against
+  // the freshly-loaded data before giving up.
+  const handleNotificationItemClick = async (notification: NotificationItem) => {
     setIsNotificationOpen(false);
     let previousScreen = activeScreen;
     if (activeScreen === 'notification') {
@@ -2194,6 +2236,44 @@ const refreshAssignmentCourseContent = useCallback(async () => {
     setAutoOpenAssignmentId(null);
     setAutoOpenLessonId(null); // 👈 ADDED: clear any stale auto-open lesson before routing
     setAutoOpenAnnouncementId(null); // 👈 ADDED: clear any stale auto-open announcement before routing
+
+    // Only these notification types need to look a course/assignment/lesson
+    // up in joinedAssignmentCourses before navigating.
+    const needsCourseLookup = [
+      'assignment',
+      'game-assignment',
+      'assignment-comment',
+      'material',
+      'module-lesson',
+      'support-activity',
+    ].includes(notification.type);
+
+    let coursesToSearch = joinedAssignmentCourses;
+    let course = courseId ? coursesToSearch.find(c => c.id === courseId) : undefined;
+
+    if (needsCourseLookup && courseId) {
+      const isMissingTarget =
+        !course ||
+        (targetId &&
+          notification.type === 'module-lesson' &&
+          !(course.materials || []).some((m: any) => m.id === targetId)) ||
+        (targetId &&
+          notification.type !== 'material' &&
+          notification.type !== 'module-lesson' &&
+          !course.assignments.some(a => a.id === targetId));
+
+      if (isMissingTarget) {
+        await loadJoinedClasses({ silent: true });
+        // Re-derive from the ref (kept in sync with joinedCourses by the
+        // effect above) rather than the stale `joinedAssignmentCourses`
+        // closure, which still reflects the pre-refresh render.
+        coursesToSearch = mapCoursesToAssignmentCourses(
+          joinedCoursesForPollingRef.current
+        ) as unknown as AssignmentCourse[];
+        course = courseId ? coursesToSearch.find(c => c.id === courseId) : undefined;
+      }
+    }
+
     switch (notification.type) {
       case 'assignment':
       case 'game-assignment':
@@ -2201,7 +2281,6 @@ const refreshAssignmentCourseContent = useCallback(async () => {
       // modal (assignments tab), which already contains the Comments
       // section, so the student lands directly on the new comment.
       case 'assignment-comment': {
-        const course = joinedAssignmentCourses.find(c => c.id === courseId);
         if (course) {
           setSelectedCourse(course as unknown as CourseDetailData);
           setSelectedCourseIdForAssignments(course.id);
@@ -2214,7 +2293,6 @@ const refreshAssignmentCourseContent = useCallback(async () => {
         break;
       }
       case 'material': {
-        const course = joinedAssignmentCourses.find(c => c.id === courseId);
         if (course) {
           setSelectedCourse(course as unknown as CourseDetailData);
           setLastScreen(previousScreen);
@@ -2227,7 +2305,6 @@ const refreshAssignmentCourseContent = useCallback(async () => {
       // and auto-open the specific lesson (reuses the autoOpenLessonId
       // plumbing already wired into CourseDetail).
       case 'module-lesson': {
-        const course = joinedAssignmentCourses.find(c => c.id === courseId);
         if (course) {
           setSelectedCourse(course as unknown as CourseDetailData);
           setSelectedCourseIdForAssignments(course.id);
@@ -2258,7 +2335,6 @@ const refreshAssignmentCourseContent = useCallback(async () => {
           Alert.alert('Already Completed', 'You have already completed this support activity.', [{ text: 'OK' }]);
           return;
         }
-        const course = joinedAssignmentCourses.find(c => c.id === courseId);
         const assignment = course?.assignments.find(a => a.id === targetId);
         if (course && assignment) {
           setLastScreen(previousScreen);

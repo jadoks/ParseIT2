@@ -3252,10 +3252,7 @@ const fetchModules = useCallback(async (silent = false) => {
                     </View>
                     {/* Assignment File */}
                     <View style={styles.section}>
-                      <View style={styles.sectionTitleRow}>
-                        <Ionicons name="document-text-outline" size={16} color="#000" />
-                        <Text style={styles.sectionTitle}>Assignment File</Text>
-                      </View>
+                      <Text style={styles.sectionTitle}>Assignment File</Text>
                       {getTeacherAssignmentFiles(selectedAssignment).length > 0 ? (
                         <View>
                           {getTeacherAssignmentFiles(selectedAssignment).map((file) => (
