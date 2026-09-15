@@ -717,6 +717,11 @@ async function createReadSignedUrlIfExists(storagePath) {
     return data;
   }
 
+  // Assignments use the exact same "files array + legacy singular mirror"
+  // shape as submissions, so this just reuses that refresh logic under a
+  // name that reads correctly at the assignment call sites.
+  const refreshAssignmentFileUrls = refreshSubmissionFileUrls;
+
   // Mirrors parseDueDateTime in TeacherCourseDetail2.tsx / Assignments.tsx /
   // CourseDetail.tsx so "past due" means exactly the same thing here as it
   // does on every client: accepts a "YYYY-MM-DDTHH:MM" (or space-separated)
@@ -4815,6 +4820,21 @@ async function generateGameWithGeminiDirect({ prompt, files, gameType, numberOfQ
       }
       if (!fileBase64) {
         return res.status(400).json({ error: "fileBase64 is required." });
+      }
+
+      // ✅ Enforce a 20MB-per-file limit for assignment uploads, matching
+      // the syllabus upload limit.
+      if (kind === "assignment") {
+        const ASSIGNMENT_FILE_MAX_SIZE = 20 * 1024 * 1024;
+        const cleanedBase64 = fileBase64.includes(",")
+          ? fileBase64.split(",")[1]
+          : fileBase64;
+        const approxBytes = Math.floor((cleanedBase64.length * 3) / 4);
+        if (approxBytes > ASSIGNMENT_FILE_MAX_SIZE) {
+          return res.status(400).json({
+            error: `File exceeds maximum size of 20MB.`,
+          });
+        }
       }
 
       const classSnap = await db.collection("classes").doc(classId).get();
@@ -9861,25 +9881,16 @@ app.get(
         .orderBy("createdAt", "desc")
         .get();
       
-      // Hydrate fresh signed URLs for all assignments
+      // Hydrate fresh signed URLs for all assignments — including every
+      // file in the multi-file `files` array, not just the legacy single
+      // attachment.
       const assignments = await Promise.all(
         snapshot.docs.map(async (doc) => {
-          const assignmentData = doc.data() || {};
-          let freshFileUrl = null;
-          
-          // Always refresh file URL if storagePath exists
-          if (assignmentData.storagePath) {
-            try {
-              freshFileUrl = await createReadSignedUrlIfExists(assignmentData.storagePath);
-            } catch (e) {
-              console.warn(`Failed to refresh URL for assignment ${doc.id}:`, e?.message);
-            }
-          }
+          const assignmentData = await refreshAssignmentFileUrls(doc.data() || {});
           
           return {
             id: doc.id,
             ...assignmentData,
-            fileUrl: freshFileUrl || assignmentData.fileUrl || null,
           };
         })
       );
@@ -9909,6 +9920,7 @@ app.get(
         fileType,
         storagePath,
         bucketPath,
+        files,
         postedByUid,
         postedByName,
         questions,
@@ -9938,6 +9950,33 @@ app.get(
 
       const classData = classSnap.data() || {};
 
+      // ✅ NEW: teachers can attach multiple files to a Standard Assignment.
+      // `files` is the full attachment list; fileName/fileUrl/etc. above
+      // are kept as a legacy mirror of the first file for any older code
+      // still reading the singular fields. Each entry gets a stable `id`
+      // (mirroring how /create-submission stamps ids onto student files)
+      // since the shared AssignmentFileUpload type on the client requires
+      // one for React keys / removal-by-id.
+      // ⚠️ IMPORTANT: the student-facing CourseDetail.tsx filters a
+      // teacher's own assignment files out of `assignment.files` whenever
+      // `id` starts with "f" (that's how it tells a *student's* own
+      // submission file — which use a "file-…" id — apart from a file the
+      // teacher attached to the assignment itself). So these ids must NOT
+      // start with "f", hence "teacher-file-…" rather than "file-…".
+      const normalizedFiles = Array.isArray(files)
+        ? files
+            .filter((f) => f && (f.fileUrl || f.storagePath))
+            .map((f, index) => ({
+              id: normalizeOptionalText(f.id) || `teacher-file-${Date.now()}-${index}`,
+              fileName: normalizeOptionalText(f.fileName),
+              fileUrl: normalizeOptionalText(f.fileUrl),
+              fileType: normalizeOptionalText(f.fileType),
+              storagePath: normalizeOptionalText(f.storagePath),
+              bucketPath: normalizeOptionalText(f.bucketPath),
+              source: "teacher",
+            }))
+        : [];
+
       const ref = await db.collection("classAssignments").add({
         classId,
         header,
@@ -9952,6 +9991,7 @@ app.get(
         fileType: normalizeOptionalText(fileType),
         storagePath: normalizeOptionalText(storagePath),
         bucketPath: normalizeOptionalText(bucketPath),
+        files: normalizedFiles,
         postedByUid: normalizeOptionalText(postedByUid),
         postedByName: normalizeOptionalText(postedByName),
         questions: Array.isArray(questions) ? questions : [],
@@ -10007,6 +10047,7 @@ app.get(
         fileType,
         storagePath,
         bucketPath,
+        files,
         questions,
         assignmentType,
         gameType,
@@ -10018,20 +10059,47 @@ app.get(
 
       const assignmentRef = db.collection("classAssignments").doc(id);
 
-      // ✅ NEW: When the teacher replaces the attachment (a new storagePath
-      // is sent), clean up the previously-uploaded file from Storage so we
-      // don't leak an orphaned file every time an assignment's attachment
-      // is swapped out.
-      const isReplacingFile = typeof storagePath === "string" && storagePath;
-      if (isReplacingFile) {
+      // ✅ UPDATED: teachers can now attach multiple files, so `files` (when
+      // sent) is the complete, final attachment list rather than a single
+      // replacement. Diff it against whatever's currently stored and clean
+      // up any Storage objects that were removed or replaced, so nothing
+      // gets orphaned when a file is dropped or swapped out.
+      const filesProvided = Array.isArray(files);
+      if (filesProvided) {
         const existingSnap = await assignmentRef.get();
-        const existingStoragePath = existingSnap.exists
-          ? existingSnap.data()?.storagePath
-          : null;
-        if (existingStoragePath && existingStoragePath !== storagePath) {
-          await deleteStorageFileIfExists(existingStoragePath);
-        }
+        const existingFiles = existingSnap.exists
+          ? Array.isArray(existingSnap.data()?.files)
+            ? existingSnap.data().files
+            : []
+          : [];
+        const nextStoragePaths = new Set(
+          files.map((f) => f?.storagePath).filter(Boolean)
+        );
+        const removedStoragePaths = existingFiles
+          .map((f) => f?.storagePath)
+          .filter((path) => path && !nextStoragePaths.has(path));
+        await Promise.all(
+          removedStoragePaths.map((path) => deleteStorageFileIfExists(path))
+        );
       }
+
+      const normalizedFiles = filesProvided
+        ? files
+            .filter((f) => f && (f.fileUrl || f.storagePath))
+            .map((f, index) => ({
+              // Same "teacher-file-…" id requirement as create-class-assignment
+              // above — must not start with "f" or CourseDetail.tsx's
+              // student-vs-teacher file filter will hide it from the teacher's
+              // own attachment list.
+              id: normalizeOptionalText(f.id) || `teacher-file-${Date.now()}-${index}`,
+              fileName: normalizeOptionalText(f.fileName),
+              fileUrl: normalizeOptionalText(f.fileUrl),
+              fileType: normalizeOptionalText(f.fileType),
+              storagePath: normalizeOptionalText(f.storagePath),
+              bucketPath: normalizeOptionalText(f.bucketPath),
+              source: "teacher",
+            }))
+        : [];
 
       await assignmentRef.update({
         ...(header ? { header } : {}),
@@ -10050,11 +10118,13 @@ app.get(
         ...(typeof fileName === "string" || fileName === null ? { fileName } : {}),
         ...(typeof fileUrl === "string" || fileUrl === null ? { fileUrl } : {}),
         ...(typeof fileType === "string" || fileType === null ? { fileType } : {}),
-        // ✅ NEW: persist storagePath/bucketPath so replaced attachments get
-        // fresh signed URLs later (mirrors create-class-assignment) and so
-        // the old file can be identified/cleaned up on the next replace.
+        // ✅ persist storagePath/bucketPath (legacy mirror of the first
+        // file) so older readers still get fresh signed URLs.
         ...(typeof storagePath === "string" || storagePath === null ? { storagePath } : {}),
         ...(typeof bucketPath === "string" || bucketPath === null ? { bucketPath } : {}),
+        // ✅ NEW: the full multi-file attachment list, only overwritten when
+        // the client actually sent one (i.e. attachments changed).
+        ...(filesProvided ? { files: normalizedFiles } : {}),
           ...(questions !== undefined ? { questions: Array.isArray(questions) ? questions : [] } : {}),
           ...(assignmentType !== undefined ? { assignmentType: assignmentType || 'regular' } : {}),
         ...(gameType !== undefined ? { gameType: gameType || null } : {}),
@@ -10089,7 +10159,19 @@ app.get(
       }
 
       const assignmentData = assignmentSnap.data();
-      await deleteStorageFileIfExists(assignmentData?.storagePath);
+      // ✅ UPDATED: clean up every attached file (the multi-file `files`
+      // array), not just the legacy singular storagePath — otherwise all
+      // but the first attachment would be orphaned in Storage.
+      const storagePathsToDelete = new Set();
+      if (assignmentData?.storagePath) storagePathsToDelete.add(assignmentData.storagePath);
+      if (Array.isArray(assignmentData?.files)) {
+        assignmentData.files.forEach((f) => {
+          if (f?.storagePath) storagePathsToDelete.add(f.storagePath);
+        });
+      }
+      await Promise.all(
+        Array.from(storagePathsToDelete).map((path) => deleteStorageFileIfExists(path))
+      );
       await assignmentRef.delete();
 
       const submissionsSnapshot = await db

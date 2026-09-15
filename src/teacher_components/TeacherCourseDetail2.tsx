@@ -54,6 +54,26 @@ export type Assignment = {
   fileName?: string;
   fileUri?: string;
   fileType?: string;
+  storagePath?: string | null;
+  bucketPath?: string | null;
+  // ✅ NEW: full list of every file the teacher attached to this assignment
+  // (source of truth). fileName/fileUri/fileType/storagePath/bucketPath
+  // above are kept only as legacy mirrors of the first file for backward
+  // compatibility — always read `files` for the complete attachment list.
+  // ⚠️ `id` is server-generated as "teacher-file-…" (see server.js
+  // create/update-class-assignment) — never "file-…", since the student
+  // side (Assignments.tsx / CourseDetail.tsx) filters out any file whose
+  // id starts with "f" when building a teacher's attachment list, to tell
+  // it apart from a student's own submission files (which do use "file-…").
+  files?: Array<{
+    id?: string;
+    fileName?: string;
+    fileUrl?: string;
+    fileType?: string;
+    storagePath?: string | null;
+    bucketPath?: string | null;
+    source?: 'teacher' | 'student';
+  }>;
   questions?: any[];
   assignmentType?: 'regular' | 'game_based';
   gameType?: 'quiz_master' | 'memory_match' | 'fill_in_blanks' | 'flashcard' | 'boss_battle';
@@ -589,6 +609,11 @@ const mapAssignment = (item: any): Assignment => ({
   fileName: item.fileName || undefined,
   fileUri: item.fileUrl || item.fileUri || undefined,
   fileType: item.fileType || undefined,
+  storagePath: item.storagePath || null,
+  bucketPath: item.bucketPath || null,
+  // ✅ NEW: carry through every attached file, not just the legacy
+  // singular fileUrl/fileName mirror of the first one.
+  files: Array.isArray(item.files) ? item.files : [],
   assignmentType: item.assignmentType || 'regular',
   gameType: item.gameType,
   numberOfAttempts: item.numberOfAttempts,
@@ -1237,7 +1262,14 @@ const TeacherCourseDetail2 = ({
   const [assignmentDisableRepositoryAfterDue, setAssignmentDisableRepositoryAfterDue] =
     useState(false);
   const [pickedFile, setPickedFile] = useState<PickedUploadFile>(null);
-  const [pickedAssignmentFile, setPickedAssignmentFile] = useState<PickedUploadFile>(null);
+  // ✅ UPDATED: teachers can now attach multiple files to a Standard
+  // Assignment, so this holds every newly-picked (not-yet-uploaded) file
+  // instead of just one.
+  const [pickedAssignmentFiles, setPickedAssignmentFiles] = useState<NonNullable<PickedUploadFile>[]>([]);
+  // ✅ NEW: when editing an assignment, tracks which of the assignment's
+  // already-uploaded files the teacher removed, so they get dropped (and
+  // cleaned up from Storage) on save instead of just being hidden locally.
+  const [removedAssignmentFileKeys, setRemovedAssignmentFileKeys] = useState<string[]>([]);
   const [draftDueDateTime, setDraftDueDateTime] = useState<Date>(new Date());
   const [visibleCalendarMonth, setVisibleCalendarMonth] = useState<Date>(new Date());
   const [classCodeCopied, setClassCodeCopied] = useState(false);
@@ -2585,7 +2617,8 @@ useEffect(() => {
     setSelectedMaterialIds([]);
     setAssignmentDisableRepositoryAfterDue(false);
     setPickedFile(null);
-    setPickedAssignmentFile(null);
+    setPickedAssignmentFiles([]);
+    setRemovedAssignmentFileKeys([]);
     setErrors({});
     const now = new Date();
     setDraftDueDateTime(now);
@@ -2617,10 +2650,12 @@ useEffect(() => {
     setFormPointsOnTime(item.pointsOnTime);
     setSelectedMaterialIds(item.materialIds || []);
     setAssignmentDisableRepositoryAfterDue(item.repositoryDisabledAfterDue);
-    // ✅ NEW: Clear any stale picked replacement file from a previous
-    // edit/create session so the "Replace File" flow starts clean and shows
-    // this assignment's own current attachment (via selectedAssignment).
-    setPickedAssignmentFile(null);
+    // ✅ NEW: Clear any stale picked replacement files (and any pending
+    // removals) from a previous edit/create session so the attachment flow
+    // starts clean and shows this assignment's own current attachments
+    // (via selectedAssignment).
+    setPickedAssignmentFiles([]);
+    setRemovedAssignmentFileKeys([]);
     setErrors({});
     const parsed = parseDueDateTime(item.dueDate);
     setDraftDueDateTime(parsed);
@@ -2742,25 +2777,68 @@ useEffect(() => {
     }
   };
 
+  // ✅ UPDATED: allows picking more than one file at once (multiple: true),
+  // and APPENDS the newly picked files to whatever's already staged rather
+  // than replacing them, so teachers can build up a list of attachments —
+  // e.g. pick 2 files, then tap "Add Another File" to pick a 3rd.
   const handlePickAssignmentFile = async () => {
     try {
       const result = await DocumentPicker.getDocumentAsync({
         type: '*/*',
         copyToCacheDirectory: true,
         base64: Platform.OS === 'web',
+        multiple: true,
       });
-      if (result.canceled || !result.assets?.[0]) return;
-      const asset = result.assets[0];
-      setPickedAssignmentFile({
+      if (result.canceled || !result.assets?.length) return;
+
+      // ✅ Enforce a 20MB-per-file limit, matching the syllabus upload check.
+      const MAX_ASSIGNMENT_FILE_SIZE = 20 * 1024 * 1024;
+      const oversized = result.assets.filter(
+        (asset) => asset.size && asset.size > MAX_ASSIGNMENT_FILE_SIZE
+      );
+      const validAssets = result.assets.filter(
+        (asset) => !(asset.size && asset.size > MAX_ASSIGNMENT_FILE_SIZE)
+      );
+      if (oversized.length > 0) {
+        toast.show(
+          'error',
+          'File Too Large',
+          oversized.length === 1
+            ? `"${oversized[0].name}" exceeds the maximum size of 20 MB.`
+            : `${oversized.length} files exceed the maximum size of 20 MB and were skipped.`
+        );
+      }
+      if (validAssets.length === 0) return;
+
+      const newFiles = validAssets.map((asset) => ({
         name: asset.name,
         uri: asset.uri,
         type: asset.mimeType,
         base64: (asset as any).base64,
         file: (asset as any).file,
-      });
+      }));
+      setPickedAssignmentFiles((prev) => [...prev, ...newFiles]);
     } catch {
       toast.show('error', 'Error', 'Failed to pick assignment file.');
     }
+  };
+
+  // ✅ NEW: removes one of the newly-picked (not-yet-uploaded) assignment
+  // files from the staged list, identified by its index.
+  const handleRemovePickedAssignmentFile = (index: number) => {
+    setPickedAssignmentFiles((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  // ✅ NEW: marks one of the assignment's already-uploaded files for
+  // removal on save. Uses storagePath (falling back to fileUrl, then
+  // fileName) as a stable key since existing files don't have a local index.
+  const getAssignmentFileKey = (file: { storagePath?: string | null; fileUrl?: string; fileName?: string }) =>
+    file.storagePath || file.fileUrl || file.fileName || '';
+
+  const handleRemoveExistingAssignmentFile = (file: { storagePath?: string | null; fileUrl?: string; fileName?: string }) => {
+    const key = getAssignmentFileKey(file);
+    if (!key) return;
+    setRemovedAssignmentFileKeys((prev) => (prev.includes(key) ? prev : [...prev, key]));
   };
 
   const uploadPickedFile = async (picked: PickedUploadFile, kind: 'material' | 'assignment') => {
@@ -2800,6 +2878,30 @@ useEffect(() => {
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || 'Failed to upload file.');
     return data.data;
+  };
+
+  // ✅ NEW: uploads every newly-picked assignment file (one request per
+  // file, same as uploadPickedFile) and returns them in the shape the
+  // assignment's `files` array expects. Sequential rather than
+  // Promise.all so a slow/failing upload doesn't spam parallel requests
+  // and errors surface for the file that actually failed.
+  const uploadPickedAssignmentFiles = async (
+    picked: NonNullable<PickedUploadFile>[]
+  ): Promise<
+    Array<{
+      fileName?: string;
+      fileUrl?: string;
+      fileType?: string;
+      storagePath?: string | null;
+      bucketPath?: string | null;
+    }>
+  > => {
+    const uploaded = [];
+    for (const file of picked) {
+      const result = await uploadPickedFile(file, 'assignment');
+      if (result) uploaded.push(result);
+    }
+    return uploaded;
   };
 
   // ─── Course Template (Manage Template) ─────────────────────────────────────
@@ -3454,9 +3556,10 @@ useEffect(() => {
     if (!validateAssignmentForm()) return;
     setIsSaving(true);
     try {
-      let uploadedFile = null;
-      if (pickedAssignmentFile?.uri || pickedAssignmentFile?.base64 || pickedAssignmentFile?.file)
-        uploadedFile = await uploadPickedFile(pickedAssignmentFile, 'assignment');
+      // ✅ UPDATED: upload every staged file (0, 1, or many) instead of
+      // just a single one.
+      const uploadedFiles = await uploadPickedAssignmentFiles(pickedAssignmentFiles);
+      const primaryFile = uploadedFiles[0] ?? null;
       const response = await fetch(`${API_BASE_URL}/create-class-assignment`, {
         credentials: 'include',
         method: 'POST',
@@ -3493,11 +3596,15 @@ useEffect(() => {
               ? customTimeLimit
               : undefined,
           questions: assignmentType === 'game_based' ? generatedQuestions : undefined,
-          fileName: uploadedFile?.fileName ?? null,
-          fileUrl: uploadedFile?.fileUrl ?? null,
-          fileType: uploadedFile?.fileType ?? null,
-          storagePath: uploadedFile?.storagePath ?? null,
-          bucketPath: uploadedFile?.bucketPath ?? null,
+          // ✅ UPDATED: fileName/fileUrl/etc. are kept as a legacy mirror of
+          // the first attached file (for any older code still reading the
+          // singular fields); `files` is the full multi-file list.
+          fileName: primaryFile?.fileName ?? null,
+          fileUrl: primaryFile?.fileUrl ?? null,
+          fileType: primaryFile?.fileType ?? null,
+          storagePath: primaryFile?.storagePath ?? null,
+          bucketPath: primaryFile?.bucketPath ?? null,
+          files: uploadedFiles,
           postedByUid: teacherIdentity,
           postedByName: teacherFullName,
         }),
@@ -3519,12 +3626,32 @@ useEffect(() => {
     if (!selectedId || !validateAssignmentForm()) return;
     setIsSaving(true);
     try {
-      // ✅ NEW: Only upload if the teacher actually picked a replacement
-      // file — otherwise leave the assignment's existing attachment as-is.
-      let uploadedFile: any = null;
-      if (pickedAssignmentFile?.uri || pickedAssignmentFile?.base64 || pickedAssignmentFile?.file) {
-        uploadedFile = await uploadPickedFile(pickedAssignmentFile, 'assignment');
-      }
+      // ✅ UPDATED: upload any newly-picked files, then merge them with
+      // whatever existing attachments the teacher didn't remove, so the
+      // assignment ends up with the full, correct set of files rather than
+      // just the single replacement it used to support.
+      const newlyUploadedFiles = await uploadPickedAssignmentFiles(pickedAssignmentFiles);
+      const existingFiles = (selectedAssignment?.files?.length
+        ? selectedAssignment.files
+        : selectedAssignment?.fileName || selectedAssignment?.fileUri
+          ? [
+              {
+                fileName: selectedAssignment.fileName,
+                fileUrl: selectedAssignment.fileUri,
+                fileType: selectedAssignment.fileType,
+                storagePath: selectedAssignment.storagePath,
+                bucketPath: selectedAssignment.bucketPath,
+              },
+            ]
+          : []
+      ).filter((f) => !removedAssignmentFileKeys.includes(getAssignmentFileKey(f as any)));
+      const mergedFiles = [...existingFiles, ...newlyUploadedFiles];
+      // Files the teacher removed that need their Storage objects cleaned
+      // up server-side (the server diffs storagePaths, but pass along
+      // explicitly too so removals are unambiguous even for legacy docs).
+      const filesChanged =
+        newlyUploadedFiles.length > 0 || removedAssignmentFileKeys.length > 0;
+      const primaryFile = mergedFiles[0] ?? null;
       const response = await fetch(`${API_BASE_URL}/update-class-assignment/${selectedId}`, {
         credentials: 'include',
         method: 'PUT',
@@ -3557,15 +3684,19 @@ useEffect(() => {
               ? customTimeLimit
               : undefined,
           questions: assignmentType === 'game_based' ? generatedQuestions : undefined,
-          // ✅ NEW: Only sent when a replacement file was uploaded above, so
-          // the existing attachment is preserved untouched otherwise.
-          ...(uploadedFile
+          // ✅ UPDATED: only sent when the attachments actually changed (a
+          // file was added or removed), so an untouched attachment list is
+          // preserved as-is. When sent, `files` is the complete, final list
+          // and fileName/fileUrl/etc. mirror its first entry for legacy
+          // readers.
+          ...(filesChanged
             ? {
-                fileName: uploadedFile.fileName ?? null,
-                fileUrl: uploadedFile.fileUrl ?? null,
-                fileType: uploadedFile.fileType ?? null,
-                storagePath: uploadedFile.storagePath ?? null,
-                bucketPath: uploadedFile.bucketPath ?? null,
+                fileName: primaryFile?.fileName ?? null,
+                fileUrl: primaryFile?.fileUrl ?? null,
+                fileType: primaryFile?.fileType ?? null,
+                storagePath: primaryFile?.storagePath ?? null,
+                bucketPath: primaryFile?.bucketPath ?? null,
+                files: mergedFiles,
               }
             : {}),
         }),
@@ -3574,7 +3705,8 @@ useEffect(() => {
       if (!response.ok) throw new Error(data.error || 'Failed to update assignment');
       await loadCourseContent();
       setShowUpdateModal(false);
-      setPickedAssignmentFile(null);
+      setPickedAssignmentFiles([]);
+      setRemovedAssignmentFileKeys([]);
       toast.show('success', 'Success', 'Assignment updated.');
     } catch (error: any) {
       toast.show('error', 'Error', error?.message || 'Failed to update assignment.');
@@ -3820,6 +3952,73 @@ useEffect(() => {
 
   const renderInputError = (message?: string) =>
     !!message ? <Text style={styles.errorText}>{message}</Text> : null;
+
+  // ✅ NEW: shared "Attachment" section for a Standard Assignment, used by
+  // both the Create modal (renderCreateModalBody, no existingFiles yet)
+  // and the Update modal (renderAssignmentFields, existingFiles = whatever
+  // is already saved on the assignment). Renders every existing file (each
+  // removable) plus every newly-picked file (each removable), and a button
+  // to pick more — so teachers can attach, mix, and remove multiple files
+  // instead of being limited to just one.
+  const renderAssignmentAttachmentSection = (
+    existingFiles: Array<{
+      fileName?: string;
+      fileUrl?: string;
+      fileType?: string;
+      storagePath?: string | null;
+      bucketPath?: string | null;
+    }>,
+    options?: { buttonStyle?: any }
+  ) => {
+    const visibleExistingFiles = existingFiles.filter(
+      (f) => !removedAssignmentFileKeys.includes(getAssignmentFileKey(f))
+    );
+    const totalFileCount = visibleExistingFiles.length + pickedAssignmentFiles.length;
+    return (
+      <>
+        <Text style={styles.sectionLabel}>Attachment (Optional)</Text>
+        {visibleExistingFiles.map((file, index) => (
+          <View key={`existing-${getAssignmentFileKey(file) || index}`} style={styles.currentFileBox}>
+            <Ionicons name="document-text-outline" size={20} color="#D32F2F" />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.currentFileLabel}>Current File</Text>
+              <Text style={styles.currentFileName} numberOfLines={1}>
+                {file.fileName || 'Attachment'}
+              </Text>
+            </View>
+            <TouchableOpacity
+              onPress={() => handleRemoveExistingAssignmentFile(file)}
+              disabled={isSaving}
+            >
+              <Ionicons name="close-circle" size={18} color="#999" />
+            </TouchableOpacity>
+          </View>
+        ))}
+        {pickedAssignmentFiles.map((file, index) => (
+          <View key={`picked-${file.name}-${index}`} style={styles.filePreviewBox}>
+            <Ionicons name="document-text-outline" size={20} color="#D32F2F" />
+            <Text style={styles.filePreviewText}>{file.name}</Text>
+            <TouchableOpacity
+              onPress={() => handleRemovePickedAssignmentFile(index)}
+              disabled={isSaving}
+            >
+              <Ionicons name="close-circle" size={18} color="#999" />
+            </TouchableOpacity>
+          </View>
+        ))}
+        <TouchableOpacity
+          style={[styles.primaryButtonWide, options?.buttonStyle, isSaving ? styles.disabledButton : null]}
+          onPress={handlePickAssignmentFile}
+          disabled={isSaving}
+        >
+          <Ionicons name="cloud-upload-outline" size={18} color="#FFF" />
+          <Text style={styles.uploadBtnText}>
+            {totalFileCount > 0 ? 'Add Another File' : 'Upload File'}
+          </Text>
+        </TouchableOpacity>
+      </>
+    );
+  };
 
   // Once questions have been generated for a game-based assignment, the
   // lesson selection is "locked": we show a read-only summary of what the
@@ -4556,41 +4755,20 @@ useEffect(() => {
           )}
           {assignmentType === 'regular' && (
             <>
-              <Text style={styles.sectionLabel}>Attachment</Text>
-              {/* ✅ NEW: Show the assignment's already-uploaded file (if any)
-                  so the teacher can see what's currently attached before
-                  deciding to replace it. Hidden once a new file is picked,
-                  since the preview box below already shows that instead. */}
-              {!!selectedAssignment?.fileName && !pickedAssignmentFile?.name && (
-                <View style={styles.currentFileBox}>
-                  <Ionicons name="document-text-outline" size={20} color="#D32F2F" />
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.currentFileLabel}>Current File</Text>
-                    <Text style={styles.currentFileName} numberOfLines={1}>
-                      {selectedAssignment.fileName}
-                    </Text>
-                  </View>
-                </View>
-              )}
-              <TouchableOpacity
-                style={[styles.primaryButtonWide, isSaving ? styles.disabledButton : null]}
-                onPress={handlePickAssignmentFile}
-                disabled={isSaving}
-              >
-                <Ionicons name="cloud-upload-outline" size={18} color="#FFF" />
-                <Text style={styles.uploadBtnText}>
-                  {pickedAssignmentFile?.name
-                    ? 'Change File'
-                    : selectedAssignment?.fileName
-                      ? 'Replace File'
-                      : 'Upload File'}
-                </Text>
-              </TouchableOpacity>
-              {!!pickedAssignmentFile?.name && (
-                <View style={styles.filePreviewBox}>
-                  <Ionicons name="document-text-outline" size={20} color="#D32F2F" />
-                  <Text style={styles.filePreviewText}>{pickedAssignmentFile.name}</Text>
-                </View>
+              {renderAssignmentAttachmentSection(
+                selectedAssignment?.files?.length
+                  ? selectedAssignment.files
+                  : selectedAssignment?.fileName || selectedAssignment?.fileUri
+                    ? [
+                        {
+                          fileName: selectedAssignment.fileName,
+                          fileUrl: selectedAssignment.fileUri,
+                          fileType: selectedAssignment.fileType,
+                          storagePath: selectedAssignment.storagePath,
+                          bucketPath: selectedAssignment.bucketPath,
+                        },
+                      ]
+                    : []
               )}
             </>
           )}
@@ -4879,29 +5057,12 @@ useEffect(() => {
           )}
           {assignmentType === 'regular' && (
             <>
-              <Text style={styles.sectionLabel}>Attachment (Optional)</Text>
-              <TouchableOpacity
-                style={[
-                  styles.primaryButtonWide,
+              {renderAssignmentAttachmentSection([], {
+                buttonStyle:
                   !isMobile && regularSubmissionChipWidth
                     ? { width: regularSubmissionChipWidth, alignSelf: 'flex-start' }
                     : null,
-                  isSaving ? styles.disabledButton : null,
-                ]}
-                onPress={handlePickAssignmentFile}
-                disabled={isSaving}
-              >
-                <Ionicons name="cloud-upload-outline" size={18} color="#FFF" />
-                <Text style={styles.uploadBtnText}>
-                  {pickedAssignmentFile?.name ? 'Change File' : 'Upload File'}
-                </Text>
-              </TouchableOpacity>
-              {!!pickedAssignmentFile?.name && (
-                <View style={styles.filePreviewBox}>
-                  <Ionicons name="document-text-outline" size={20} color="#D32F2F" />
-                  <Text style={styles.filePreviewText}>{pickedAssignmentFile.name}</Text>
-                </View>
-              )}
+              })}
             </>
           )}
           {assignmentType === 'regular' && (
