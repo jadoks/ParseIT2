@@ -1044,7 +1044,7 @@ async function createReadSignedUrlIfExists(storagePath) {
     let pdfStoragePath = null;
     let pdfUrl = null;
     
-    // Define types that Gemini struggles with but CloudConvert can handle
+    // Define types that Gemini struggles with but PDF.co can handle
     const needsConversion = [
       'application/vnd.openxmlformats-officedocument.wordprocessingml.document', // .docx
       'application/vnd.openxmlformats-officedocument.presentationml.presentation', // .pptx
@@ -1057,13 +1057,13 @@ async function createReadSignedUrlIfExists(storagePath) {
       safeFileName.toLowerCase().endsWith(ext)
     );
 
-    if (needsConversion && process.env.CLOUDCONVERTER_API_KEY) {
+    if (needsConversion && process.env.PDFCO_API_KEY) {
       try {
         console.log(`Converting ${safeFileName} to PDF for AI processing...`);
         const buffer = Buffer.from(cleanedBase64, "base64");
         
-        // Use the existing CloudConvert helper
-        const pdfBuffer = await convertPPTXtoPDFViaCloudConverter(buffer, safeFileName);
+        // Use the existing PDF.co helper
+        const pdfBuffer = await convertPPTXtoPDFViaPDFco(buffer, safeFileName);
         
         // Save the converted PDF to a specific subfolder or same folder with suffix
         const pdfUniqueFileName = `${Date.now()}-converted-${safeFileName.replace(/\.\w+$/, '.pdf')}`;
@@ -2040,7 +2040,7 @@ async function createReadSignedUrlIfExists(storagePath) {
       if (isPowerPoint) {
         try {
           console.log("Converting PowerPoint to PDF...");
-          buffer = await convertPPTXtoPDFViaCloudConverter(buffer, fileName);
+          buffer = await convertPPTXtoPDFViaPDFco(buffer, fileName);
           mimeType = "application/pdf";
           console.log("PowerPoint converted successfully");
         } catch (convertError) {
@@ -4050,99 +4050,68 @@ app.post("/auth/send-forgot-password-pin", async (req, res) => {
   });
 
   // ============================================
-  // CloudConvert PPT/PPTX -> PDF
+  // PDF.co PPT/PPTX (and DOC/DOCX) -> PDF
   // ============================================
-  async function convertPPTXtoPDFViaCloudConverter(fileBuffer, fileName) {
-    if (!process.env.CLOUDCONVERTER_API_KEY) {
-      throw new Error("CLOUDCONVERTER_API_KEY is not configured.");
+  async function convertPPTXtoPDFViaPDFco(fileBuffer, fileName) {
+    if (!process.env.PDFCO_API_KEY) {
+      throw new Error("PDFCO_API_KEY is not configured.");
     }
 
+    const apiKey = process.env.PDFCO_API_KEY;
+    const baseUrl = "https://api.pdf.co/v1";
+
     try {
-      console.log(`Converting "${fileName}" to PDF via CloudConvert...`);
+      console.log(`Converting "${fileName}" to PDF via PDF.co...`);
 
       // --------------------------------------------------
-      // STEP 1 - Create Job
+      // STEP 1 - Get a presigned URL to upload the file to
+      // PDF.co's temporary storage
       // --------------------------------------------------
 
-      const createJobResponse = await fetch(
-        "https://api.cloudconvert.com/v2/jobs",
+      const presignedResponse = await fetch(
+        `${baseUrl}/file/upload/get-presigned-url?contenttype=application/octet-stream&name=${encodeURIComponent(
+          fileName
+        )}`,
         {
-          method: "POST",
           headers: {
-            Authorization: `Bearer ${process.env.CLOUDCONVERTER_API_KEY}`,
-            "Content-Type": "application/json",
-            Accept: "application/json",
+            "x-api-key": apiKey,
           },
-          body: JSON.stringify({
-            tasks: {
-              "import-my-file": {
-                operation: "import/upload",
-              },
-              "convert-my-file": {
-                operation: "convert",
-                input: "import-my-file",
-                output_format: "pdf",
-              },
-              "export-my-file": {
-                operation: "export/url",
-                input: "convert-my-file",
-                inline: false,
-                filename: fileName.replace(/\.(ppt|pptx)$/i, ".pdf"),
-              },
-            },
-          }),
         }
       );
 
-      if (!createJobResponse.ok) {
-        const errorText = await createJobResponse.text();
+      if (!presignedResponse.ok) {
+        const errorText = await presignedResponse.text();
 
-        console.error("CloudConvert Create Job Error:");
+        console.error("PDF.co Presigned URL Error:");
         console.error(errorText);
 
         throw new Error(
-          `CloudConvert Job Creation Failed (${createJobResponse.status})`
+          `PDF.co Presigned URL Request Failed (${presignedResponse.status})`
         );
       }
 
-      const job = await createJobResponse.json();
+      const presignedJson = await presignedResponse.json();
 
-      const importTask = job.data.tasks.find(
-        (t) => t.name === "import-my-file"
-      );
-
-      if (!importTask) {
-        throw new Error("Import task not found.");
+      if (presignedJson.error) {
+        throw new Error(
+          presignedJson.message || "PDF.co presigned URL request failed."
+        );
       }
 
+      const { presignedUrl, url: uploadedFileUrl } = presignedJson;
+
       // --------------------------------------------------
-      // STEP 2 - Upload File
+      // STEP 2 - Upload the file to that presigned URL
       // --------------------------------------------------
 
-      const uploadForm = new FormData();
-
-      const params =
-        importTask.result?.form?.parameters ||
-        importTask.result?.form?.params ||
-        {};
-
-      for (const [key, value] of Object.entries(params)) {
-        uploadForm.append(key, value);
-      }
-
-      uploadForm.append(
-        "file",
-        new Blob([fileBuffer]),
-        fileName
-      );
-
-      const uploadResponse = await fetch(
-        importTask.result.form.url,
-        {
-          method: "POST",
-          body: uploadForm,
-        }
-      );
+      const uploadResponse = await fetch(presignedUrl, {
+        method: "PUT",
+        headers: {
+          "x-api-key": apiKey,
+          "Content-Type": "application/octet-stream",
+        },
+        body: fileBuffer,
+      });
 
       if (!uploadResponse.ok) {
         const uploadError = await uploadResponse.text();
@@ -4150,76 +4119,96 @@ app.post("/auth/send-forgot-password-pin", async (req, res) => {
         console.error("Upload Error:");
         console.error(uploadError);
 
-        throw new Error("CloudConvert upload failed.");
+        throw new Error("PDF.co upload failed.");
       }
 
       console.log("Upload complete.");
 
       // --------------------------------------------------
-      // STEP 3 - Wait for Conversion
+      // STEP 3 - Kick off the conversion job. We run it
+      // asynchronously so large files don't time out the
+      // request, then poll for completion below.
       // --------------------------------------------------
 
-      const jobId = job.data.id;
+      const outputName = fileName.replace(/\.(ppt|pptx|doc|docx)$/i, ".pdf");
 
-      let pdfUrl = null;
+      const convertResponse = await fetch(`${baseUrl}/pdf/convert/from/doc`, {
+        method: "POST",
+        headers: {
+          "x-api-key": apiKey,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          url: uploadedFileUrl,
+          name: outputName,
+          async: true,
+        }),
+      });
 
-      for (let i = 0; i < 60; i++) {
-        await new Promise((r) => setTimeout(r, 2000));
+      if (!convertResponse.ok) {
+        const errorText = await convertResponse.text();
 
-        const statusResponse = await fetch(
-          `https://api.cloudconvert.com/v2/jobs/${jobId}`,
-          {
+        console.error("PDF.co Convert Job Error:");
+        console.error(errorText);
+
+        throw new Error(
+          `PDF.co Conversion Request Failed (${convertResponse.status})`
+        );
+      }
+
+      const convertJson = await convertResponse.json();
+
+      if (convertJson.error) {
+        throw new Error(convertJson.message || "PDF.co conversion failed.");
+      }
+
+      let pdfUrl = convertJson.url || null;
+
+      // --------------------------------------------------
+      // STEP 4 - Poll the background job until it's done
+      // (only needed if PDF.co didn't return the file
+      // synchronously)
+      // --------------------------------------------------
+
+      if (convertJson.jobId && !pdfUrl) {
+        for (let i = 0; i < 60; i++) {
+          await new Promise((r) => setTimeout(r, 2000));
+
+          const statusResponse = await fetch(`${baseUrl}/job/check`, {
+            method: "POST",
             headers: {
-              Authorization: `Bearer ${process.env.CLOUDCONVERTER_API_KEY}`,
-              Accept: "application/json",
+              "x-api-key": apiKey,
+              "Content-Type": "application/json",
             },
+            body: JSON.stringify({ jobid: convertJson.jobId }),
+          });
+
+          if (!statusResponse.ok) {
+            throw new Error("Unable to check PDF.co job status.");
           }
-        );
 
-        if (!statusResponse.ok) {
-          throw new Error("Unable to check CloudConvert status.");
-        }
+          const statusJson = await statusResponse.json();
 
-        const statusJob = await statusResponse.json();
+          console.log("PDF.co Job Status:", statusJson.status);
 
-        console.log(
-          "CloudConvert Status:",
-          statusJob.data.status
-        );
+          if (statusJson.status === "failed" || statusJson.status === "aborted") {
+            console.error(JSON.stringify(statusJson, null, 2));
+            throw new Error("PDF.co conversion failed.");
+          }
 
-        if (statusJob.data.status === "error") {
-          console.error(
-            JSON.stringify(statusJob, null, 2)
-          );
-
-          throw new Error("CloudConvert conversion failed.");
-        }
-
-        if (statusJob.data.status === "finished") {
-          const exportTask = statusJob.data.tasks.find(
-            (t) => t.name === "export-my-file"
-          );
-
-          if (
-            exportTask &&
-            exportTask.result &&
-            exportTask.result.files &&
-            exportTask.result.files.length
-          ) {
-            pdfUrl = exportTask.result.files[0].url;
+          if (statusJson.status === "success") {
+            pdfUrl = convertJson.url;
             break;
           }
         }
       }
 
       if (!pdfUrl) {
-        throw new Error(
-          "CloudConvert conversion timed out."
-        );
+        throw new Error("PDF.co conversion timed out.");
       }
 
       // --------------------------------------------------
-      // STEP 4 - Download PDF
+      // STEP 5 - Download the converted PDF
       // --------------------------------------------------
 
       console.log("Downloading converted PDF...");
@@ -4227,14 +4216,10 @@ app.post("/auth/send-forgot-password-pin", async (req, res) => {
       const pdfResponse = await fetch(pdfUrl);
 
       if (!pdfResponse.ok) {
-        throw new Error(
-          "Failed to download converted PDF."
-        );
+        throw new Error("Failed to download converted PDF.");
       }
 
-      const pdfBuffer = Buffer.from(
-        await pdfResponse.arrayBuffer()
-      );
+      const pdfBuffer = Buffer.from(await pdfResponse.arrayBuffer());
 
       console.log(
         `PowerPoint converted successfully (${pdfBuffer.length} bytes)`
@@ -4242,7 +4227,7 @@ app.post("/auth/send-forgot-password-pin", async (req, res) => {
 
       return pdfBuffer;
     } catch (error) {
-      console.error("CloudConvert conversion failed:");
+      console.error("PDF.co conversion failed:");
       console.error(error);
 
       throw error;
@@ -4269,7 +4254,7 @@ app.post("/auth/send-forgot-password-pin", async (req, res) => {
       if (isPowerPoint) {
         try {
           console.log("Converting PowerPoint to PDF...");
-          fileBuffer = await convertPPTXtoPDFViaCloudConverter(fileBuffer, fileName);
+          fileBuffer = await convertPPTXtoPDFViaPDFco(fileBuffer, fileName);
           processedMimeType = "application/pdf";
           console.log("PowerPoint converted successfully");
         } catch (convertError) {
@@ -4450,7 +4435,7 @@ app.post("/auth/send-forgot-password-pin", async (req, res) => {
         if (isPowerPoint) {
           try {
             console.log(`Converting PowerPoint "${matFileName}" to PDF...`);
-            buffer = await convertPPTXtoPDFViaCloudConverter(buffer, matFileName);
+            buffer = await convertPPTXtoPDFViaPDFco(buffer, matFileName);
             mimeType = "application/pdf";
           } catch (convertError) {
             console.error(`PowerPoint conversion failed for "${matFileName}":`, convertError.message);
@@ -17327,7 +17312,7 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
       }
       if (needsConversion(fileType, fileName)) {
         try {
-          processBuffer = await convertPPTXtoPDFViaCloudConverter(buffer, fileName);
+          processBuffer = await convertPPTXtoPDFViaPDFco(buffer, fileName);
           processMimeType = "application/pdf";
         } catch (e) { console.warn("Conversion failed, using original", e); }
       }
@@ -17387,8 +17372,6 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
     }
   });
 
-  const axios = require('axios'); // Ensure axios is installed
-
   async function convertToPDF(buffer, fileName, fileType) {
     const lowerName = fileName.toLowerCase();
     
@@ -17405,48 +17388,16 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
     }
 
     try {
-      console.log(`Converting ${fileName} to PDF via CloudConvert...`);
-      
-      // 1. Upload to CloudConvert (Simplified example - adjust based on your actual CloudConvert setup)
-      // Note: You likely have a specific implementation for this. 
-      // Ensure you are using the latest CloudConvert API v2.
-      
-      // Example using CloudConvert Node SDK or Axios:
-      const formData = new FormData();
-      formData.append('file', buffer, {
-        filename: fileName,
-        contentType: fileType
-      });
-      formData.append('inputformat', getFileExtension(fileName));
-      formData.append('outputformat', 'pdf');
-      formData.append('engine', 'document'); // Use 'document' engine for DOCX/PPTX
-
-      const response = await axios.post('https://api.cloudconvert.com/v2/convert', formData, {
-        headers: {
-          'Authorization': `Bearer ${process.env.CLOUDCONVERT_API_KEY}`,
-          ...formData.getHeaders()
-        },
-        responseType: 'arraybuffer' // Important: Get raw binary data
-      });
-
-      if (response.status !== 200 || !response.data || response.data.length === 0) {
-        throw new Error('CloudConvert returned empty or invalid PDF.');
-      }
-
+      // Delegate to the shared PDF.co conversion helper
+      const pdfBuffer = await convertPPTXtoPDFViaPDFco(buffer, fileName);
       console.log('Conversion successful.');
-      return { buffer: Buffer.from(response.data), mimeType: 'application/pdf' };
-
+      return { buffer: pdfBuffer, mimeType: 'application/pdf' };
     } catch (error) {
-      console.error('CloudConvert Error:', error.message);
+      console.error('PDF.co Error:', error.message);
       // Fallback: Return original buffer if conversion fails
       console.warn('Falling back to original file format for parsing.');
       return { buffer, mimeType: fileType };
     }
-  }
-
-  // Helper to get extension
-  function getFileExtension(filename) {
-    return filename.slice((filename.lastIndexOf(".") - 1 >>> 0) + 2);
   }
 
   // UPDATED ROUTE: Upload Syllabus with Conversion Logic
@@ -17466,9 +17417,9 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
       //    storage yet — we don't want to persist anything until we know the file is
       //    actually a valid syllabus.
       if (needsConversion(fileType, fileName)) {
-        console.log(`Converting ${fileName} to PDF via CloudConvert...`);
+        console.log(`Converting ${fileName} to PDF via PDF.co...`);
         try {
-          processBuffer = await convertPPTXtoPDFViaCloudConverter(buffer, fileName);
+          processBuffer = await convertPPTXtoPDFViaPDFco(buffer, fileName);
           processMimeType = "application/pdf";
         } catch (convertError) {
           console.warn("Conversion failed, falling back to original file:", convertError.message);
