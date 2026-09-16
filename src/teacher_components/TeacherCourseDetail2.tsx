@@ -3069,27 +3069,56 @@ useEffect(() => {
 
       const workbook = XLSX.utils.book_new();
 
-      // Build headers explicitly so column order is guaranteed,
-      // regardless of whether assignment titles are numeric strings.
-      const gradeHeaders = ['Student Name', ...assignments.map((a) => a.header)];
+      // ✅ PRESENTABLE: give the Assignment Grades sheet the same polish as
+      // the Leaderboard sheet below it — a merged title row, each
+      // assignment's point total shown right in its header (so a raw "85"
+      // has context without opening the app), students sorted alphabetically
+      // instead of raw insertion order, an "—" placeholder for work that
+      // hasn't been graded yet (reads as "not graded" rather than a blank
+      // cell that could be mistaken for a zero), and a per-student Average
+      // column summarizing their graded work as a percentage.
+      const gradeHeaders = [
+        'Student Name',
+        ...assignments.map((a) => (a.totalScore ? `${a.header} (${a.totalScore} pts)` : a.header)),
+        'Average (%)',
+      ];
+
+      const sortedMembers = [...members].sort((a, b) => a.name.localeCompare(b.name));
 
       const gradeAoa = [
+        ['📋 Assignment Grades'],
         gradeHeaders,
-        ...members.map((member) => {
+        ...sortedMembers.map((member) => {
           const studentSubmissions = submissions.filter((s) => s.studentId === member.id);
+          let totalEarned = 0;
+          let totalPossible = 0;
           const scores = assignments.map((assignment) => {
             const submission = studentSubmissions.find((s) => s.assignmentId === assignment.id);
-            return submission?.status === 'graded' ? submission.score : '';
+            if (submission?.status === 'graded' && typeof submission.score === 'number') {
+              totalEarned += submission.score;
+              totalPossible += Number(assignment.totalScore) || 0;
+              return submission.score;
+            }
+            return '—'; // not graded yet
           });
-          return [member.name, ...scores];
+          const average = totalPossible > 0 ? `${Math.round((totalEarned / totalPossible) * 100)}%` : '—';
+          return [member.name, ...scores, average];
         }),
       ];
 
-      XLSX.utils.book_append_sheet(
-        workbook,
-        XLSX.utils.aoa_to_sheet(gradeAoa),
-        'Assignment Grades'
-      );
+      const gradeSheet = XLSX.utils.aoa_to_sheet(gradeAoa);
+      // Merge the title across every column (name + each assignment +
+      // average) and size them for readability, same approach as the
+      // Leaderboard sheet's title/column sizing below.
+      const totalGradeCols = gradeHeaders.length;
+      gradeSheet['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: totalGradeCols - 1 } }];
+      gradeSheet['!cols'] = [
+        { wch: 24 }, // Student Name
+        ...assignments.map(() => ({ wch: 20 })), // each assignment column
+        { wch: 12 }, // Average
+      ];
+
+      XLSX.utils.book_append_sheet(workbook, gradeSheet, 'Assignment Grades');
       // 🆕 LEADERBOARD: the backend never overwrites a practice-game score —
       // every attempt (`/class-game-scores`) is its own record — so as
       // students replay a quiz, this list just keeps growing. Rather than
