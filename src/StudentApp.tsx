@@ -1,4 +1,5 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as NavigationBar from 'expo-navigation-bar';
@@ -626,6 +627,23 @@ const mapCourseDetailToAssignmentCourse = (course: CourseDetailData): Assignment
     repositoryDisabledAfterDue: (assignment as any).repositoryDisabledAfterDue ?? false,
   })),
 });
+
+// 🆕 PLAY AGAIN LIMIT CHECK: same daily-AI-generation-limit key scheme as
+// Game.tsx (MAX_GENERATIONS_PER_DAY / getTodayKey / getGenerationLimitStorageKey)
+// — duplicated rather than imported since these files don't currently share
+// a utils module (same convention as quiz-masters.tsx's hashContent/
+// getActiveSessionStorageKey). Needed here so "Play Again" can check the
+// limit BEFORE popping Game.tsx's new-quiz modal open, instead of letting
+// the student fill out the whole form only to hit the same wall once they
+// tap Generate inside Game.tsx.
+const MAX_GENERATIONS_PER_DAY = 10;
+function getTodayKey() {
+  const now = new Date();
+  return `${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()}`;
+}
+function getGenerationLimitStorageKey(studentId?: string) {
+  return `gameAi_dailyGenerationLimit_${studentId || 'anonymous'}`;
+}
 
 export default function StudentApp({ onLogout, currentStudent, onGoToLanding }: Props) {
   const { width } = useWindowDimensions();
@@ -2150,7 +2168,30 @@ const refreshAssignmentCourseContent = useCallback(async () => {
   // finished quiz's data, jump to the Games screen, and tell Game.tsx to pop
   // its "new quiz" modal (game type, number of questions, class & lesson)
   // open right away.
-  const handlePlayAgainFromQuizMasters = () => {
+  // 🐛 FIX: previously this always opened the modal, even if the student had
+  // already used up all of today's AI generations — they'd fill out the
+  // whole form (class, lesson, question count) only to hit "Daily limit
+  // reached" once they tapped Generate inside Game.tsx. Check the persisted
+  // count directly (same storage key Game.tsx uses) BEFORE doing anything
+  // else, and short-circuit with an error toast if it's already maxed out.
+  const handlePlayAgainFromQuizMasters = async () => {
+    try {
+      const raw = await AsyncStorage.getItem(getGenerationLimitStorageKey(currentStudent?.studentId));
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        const usedToday = parsed?.date === getTodayKey() ? (parsed.count || 0) : 0;
+        if (usedToday >= MAX_GENERATIONS_PER_DAY) {
+          showToast(`You've used all ${MAX_GENERATIONS_PER_DAY} AI generations today.`, 'error');
+          return;
+        }
+      }
+    } catch (err) {
+      console.warn('Failed to check AI generation limit before Play Again:', err);
+      // Fail open — if the check itself errors, don't block the student;
+      // Game.tsx's own limit check inside generateFromMaterials is still
+      // there as the backstop before any actual generation happens.
+    }
+
     setGeneratedQuizMastersData(null);
     setQuizContext(null);
     setOpenNewQuizModal(true);
