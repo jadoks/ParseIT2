@@ -122,8 +122,9 @@ const refreshUserImageUrl = async (
   }
 };
 
-const MAX_IMAGE_SIZE_MB = 15;
+const MAX_IMAGE_SIZE_MB = 10;
 const MAX_IMAGE_SIZE_BYTES = MAX_IMAGE_SIZE_MB * 1024 * 1024;
+const ALLOWED_IMAGE_MIME_TYPES = ['image/png', 'image/jpeg', 'image/webp'];
 const POST_DROPDOWN_WIDTH = 165;
 const ANSWER_DROPDOWN_WIDTH = 170;
 
@@ -625,6 +626,13 @@ const Profile: React.FC<ProfileProps> = ({
       const selected = result.assets?.[0];
       if (!selected?.uri) {
         showToast('No image was selected.', 'error');
+        return;
+      }
+      if (
+        selected.mimeType &&
+        !ALLOWED_IMAGE_MIME_TYPES.includes(selected.mimeType.toLowerCase())
+      ) {
+        showToast('Only PNG, JPG/JPEG, and WEBP images are allowed.', 'error');
         return;
       }
       if (selected.size && selected.size > MAX_IMAGE_SIZE_BYTES) {
