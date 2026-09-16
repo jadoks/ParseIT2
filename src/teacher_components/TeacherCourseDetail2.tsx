@@ -3069,6 +3069,23 @@ useEffect(() => {
 
       const workbook = XLSX.utils.book_new();
 
+      // 🐛 FIX: names are stored as "First Last" throughout (see
+      // /join-class and the leaderboard's studentName lookup below), which
+      // reads fine in the app but isn't the conventional gradebook display
+      // format. Convert to "Last, First" for display in both exported
+      // sheets — this is purely cosmetic (it doesn't affect sorting, which
+      // already uses getLastName below) and only every applies when there's
+      // an actual multi-word name to split; single-word names or fallback
+      // placeholder text (e.g. "Unmatched attempt (no student ID)") are
+      // left as-is.
+      const toLastCommaFirst = (fullName: string) => {
+        const parts = fullName.trim().split(/\s+/);
+        if (parts.length < 2) return fullName;
+        const last = parts[parts.length - 1];
+        const first = parts.slice(0, -1).join(' ');
+        return `${last}, ${first}`;
+      };
+
       // ✅ PRESENTABLE: give the Assignment Grades sheet the same polish as
       // the Leaderboard sheet below it — a merged title row, each
       // assignment's point total shown right in its header (so a raw "85"
@@ -3083,7 +3100,24 @@ useEffect(() => {
         'Average (%)',
       ];
 
-      const sortedMembers = [...members].sort((a, b) => a.name.localeCompare(b.name));
+      // 🐛 FIX: member.name is stored server-side as "First Last" (see
+      // /join-class: `${firstName} ${lastName}`.trim()), so a plain
+      // localeCompare on the full string was really sorting by first name
+      // (the leading token), not by surname. Gradebooks conventionally sort
+      // by last name, so pull the last whitespace-separated token out as the
+      // sort key instead — full name is only used as a tiebreaker if two
+      // students share a last name. (This is a heuristic: a multi-word
+      // surname like "de la Cruz" would sort by "Cruz" alone, since only the
+      // combined display name — not separate first/last name fields — is
+      // available here.)
+      const getLastName = (fullName: string) => {
+        const parts = fullName.trim().split(/\s+/);
+        return parts.length > 1 ? parts[parts.length - 1] : fullName;
+      };
+      const sortedMembers = [...members].sort((a, b) => {
+        const byLastName = getLastName(a.name).localeCompare(getLastName(b.name));
+        return byLastName !== 0 ? byLastName : a.name.localeCompare(b.name);
+      });
 
       const gradeAoa = [
         ['📋 Assignment Grades'],
@@ -3102,7 +3136,7 @@ useEffect(() => {
             return '—'; // not graded yet
           });
           const average = totalPossible > 0 ? `${Math.round((totalEarned / totalPossible) * 100)}%` : '—';
-          return [member.name, ...scores, average];
+          return [toLastCommaFirst(member.name), ...scores, average];
         }),
       ];
 
@@ -3179,7 +3213,7 @@ useEffect(() => {
         ['Rank', 'Student Name', 'Student ID', 'Score', 'Last Played'],
         ...leaderboardRows.map((entry, index: number) => [
           medalFor(index + 1),
-          entry.studentName,
+          entry.studentId !== '—' ? toLastCommaFirst(entry.studentName) : entry.studentName,
           entry.studentId,
           entry.totalScore,
           formatDateTime(entry.lastPlayed),
