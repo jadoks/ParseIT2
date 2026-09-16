@@ -268,6 +268,8 @@ const pad = (value: number) => String(value).padStart(2, '0');
 const MAX_ASSIGNMENT_FILE_SIZE_BYTES = 20 * 1024 * 1024; // 20MB per file
 const MAX_ASSIGNMENT_TOTAL_SIZE_BYTES = 100 * 1024 * 1024; // 100MB total across all attachments
 const MAX_LESSON_FILE_SIZE_BYTES = 20 * 1024 * 1024; // 20MB per file
+const MAX_TEMPLATE_IMAGE_SIZE_BYTES = 10 * 1024 * 1024; // 10MB per header/footer template image
+const ALLOWED_TEMPLATE_IMAGE_MIME_TYPES = ['image/png', 'image/jpeg', 'image/webp'];
 
 const formatFileSizeMB = (bytes: number) => `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 
@@ -3008,6 +3010,24 @@ useEffect(() => {
       });
       if (result.canceled || !result.assets?.[0]) return;
       const asset = result.assets[0];
+
+      if (
+        asset.mimeType &&
+        !ALLOWED_TEMPLATE_IMAGE_MIME_TYPES.includes(asset.mimeType.toLowerCase())
+      ) {
+        toast.show('error', 'Invalid File Type', 'Only PNG, JPG/JPEG, and WEBP images are allowed.');
+        return;
+      }
+
+      if (asset.size && asset.size > MAX_TEMPLATE_IMAGE_SIZE_BYTES) {
+        toast.show(
+          'error',
+          'File Too Large',
+          `Image must be smaller than ${formatFileSizeMB(MAX_TEMPLATE_IMAGE_SIZE_BYTES)}.`
+        );
+        return;
+      }
+
       const picked: PickedUploadFile = {
         name: asset.name,
         uri: asset.uri,
