@@ -3090,19 +3090,45 @@ useEffect(() => {
         XLSX.utils.aoa_to_sheet(gradeAoa),
         'Assignment Grades'
       );
-      const gameRows = gameScores.map((game: any, index: number) => ({
-        No: index + 1,
-        'Student ID': game.studentId,
-        'Student Name': game.studentName,
-        Score: game.score,
-        'Total Questions': game.totalQuestions,
-        Percentage: `${game.percent}%`,
-      }));
-      XLSX.utils.book_append_sheet(
-        workbook,
-        XLSX.utils.json_to_sheet(gameRows),
-        'Student Game Scores' 
-      );
+      // 🆕 LEADERBOARD: the backend never overwrites a practice-game score —
+      // every attempt (`/class-game-scores`) is its own record — so as
+      // students replay a quiz, this list just keeps growing. Present it
+      // ranked like an actual leaderboard (highest percentage first, medals
+      // for the top 3) instead of in raw/insertion order, with a readable
+      // date/time per attempt.
+      const leaderboardRows = [...gameScores].sort((a: any, b: any) => {
+        if ((b.percent ?? 0) !== (a.percent ?? 0)) return (b.percent ?? 0) - (a.percent ?? 0);
+        if ((b.score ?? 0) !== (a.score ?? 0)) return (b.score ?? 0) - (a.score ?? 0);
+        const aTime = a.createdAt?._seconds || a.createdAt?.seconds || 0;
+        const bTime = b.createdAt?._seconds || b.createdAt?.seconds || 0;
+        return aTime - bTime; // earlier attempt ranks higher on a tie
+      });
+      const medalFor = (rank: number) => (rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : String(rank));
+
+      const leaderboardAoa = [
+        ['🏆 Practice Game Leaderboard — every attempt, ranked by score'],
+        ['Rank', 'Student Name', 'Student ID', 'Score', 'Total Questions', 'Percentage', 'Date Played'],
+        ...leaderboardRows.map((game: any, index: number) => [
+          medalFor(index + 1),
+          game.studentName,
+          game.studentId,
+          game.score,
+          game.totalQuestions,
+          `${game.percent}%`,
+          formatDateTime(game.createdAt),
+        ]),
+      ];
+
+      const leaderboardSheet = XLSX.utils.aoa_to_sheet(leaderboardAoa);
+      // Merge the title across all 7 columns and size them for readability
+      // (the community xlsx package can't apply cell colors/bold, so column
+      // sizing + the title row + medals are what keep this presentable).
+      leaderboardSheet['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 6 } }];
+      leaderboardSheet['!cols'] = [
+        { wch: 8 }, { wch: 24 }, { wch: 16 }, { wch: 8 }, { wch: 16 }, { wch: 12 }, { wch: 20 },
+      ];
+
+      XLSX.utils.book_append_sheet(workbook, leaderboardSheet, 'Practice Game Leaderboard');
       const wbout = XLSX.write(workbook, { type: 'array', bookType: 'xlsx' });
       if (Platform.OS === 'web') {
         const blob = new Blob([wbout], {

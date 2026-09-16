@@ -666,6 +666,15 @@ export default function StudentApp({ onLogout, currentStudent, onGoToLanding }: 
   const [generatedActivity, setGeneratedActivity] = useState<GenerateActivityData | null>(null);
   const [generatedQuizMastersData, setGeneratedQuizMastersData] = useState<any[] | null>(null);
   const [currentGameType, setCurrentGameType] = useState<string>('quiz_master');
+  // 🆕 CLASS RECORD: which class/lesson(s) the current quiz-masters session
+  // was generated from, so its score can be saved to the right class record
+  // when the student finishes (works for both a fresh generation and a
+  // resumed unfinished quiz — Game.tsx passes this along either way).
+  const [quizContext, setQuizContext] = useState<{ classId: string; materialIds: string[] } | null>(null);
+  // 🆕 PLAY AGAIN: flips true when the student taps "Play Again" on the
+  // quiz-masters results screen, telling Game.tsx to pop its "new quiz"
+  // modal open as soon as it (re)mounts on the Games screen.
+  const [openNewQuizModal, setOpenNewQuizModal] = useState(false);
   const [isGeneratingActivity, setIsGeneratingActivity] = useState(false);
   const [completedActivityScores, setCompletedActivityScores] = useState<Record<string, CompletedActivityScore>>({});
   const [isMobileDrawerOpen, setMobileDrawerOpen] = useState(false);
@@ -2105,6 +2114,49 @@ const refreshAssignmentCourseContent = useCallback(async () => {
     setSearchResetKey((prev) => prev + 1);
   };
 
+  // 🆕 CLASS RECORD: shared save call used when a quiz-masters session ends
+  // via "Back to Games" — records the score against the class/lesson(s) it
+  // was generated from. Hoisted out of the 'game'/'quizmasters' render cases
+  // so both can call it without duplicating the fetch.
+  const saveQuizScore = async ({
+    classId,
+    materialIds,
+    score,
+    totalQuestions,
+    answers,
+  }: {
+    classId: string;
+    materialIds: string[];
+    score: number;
+    totalQuestions: number;
+    answers: any[];
+  }) => {
+    try {
+      const response = await apiFetch(`${API_BASE_URL}/game-ai/save-quiz-score`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ classId, materialIds, score, totalQuestions, answers }),
+      });
+      if (!response.ok) throw new Error('Failed to save score');
+      await loadCompletedActivityScores();
+    } catch (err) {
+      console.error('Save quiz score error', err);
+      Alert.alert('Error', 'Could not save your quiz score.');
+    }
+  };
+
+  // 🆕 PLAY AGAIN: student finished a quiz and wants to configure + generate
+  // a new one instead of just landing back on a blank Games screen. Drop the
+  // finished quiz's data, jump to the Games screen, and tell Game.tsx to pop
+  // its "new quiz" modal (game type, number of questions, class & lesson)
+  // open right away.
+  const handlePlayAgainFromQuizMasters = () => {
+    setGeneratedQuizMastersData(null);
+    setQuizContext(null);
+    setOpenNewQuizModal(true);
+    exitFullscreenGameToGames();
+  };
+
   const handleNotificationPress = () => {
     if (isLargeScreen) setIsNotificationOpen((prev) => !prev);
     else {
@@ -2791,28 +2843,20 @@ const refreshAssignmentCourseContent = useCallback(async () => {
         return <Game 
           enrolledCourses={joinedCourses.map(course => ({ id: course.id, name: course.name, materials: course.materials.map(m => ({ id: m.id, title: m.title, type: m.type })) }))} 
           studentId={currentStudent.studentId} 
-          onNavigate={(screen, generatedQuiz, gameType) => { // 🌟 Added gameType parameter
+          onNavigate={(screen, generatedQuiz, gameType, context) => { // 🌟 Added gameType + class/lesson context
             if (screen === 'quizmasters') {
               setGeneratedQuizMastersData(generatedQuiz || null);
               setCurrentGameType(gameType || 'quiz_master'); // 🌟 Capture the selected game type
+              setQuizContext(context || null); // 🆕 CLASS RECORD: remember what to save the score against
               setLastScreen('game');
               setActiveScreen('quizmasters');
             }
           }}
-          onSaveQuizScore={async ({ classId, materialIds, score, totalQuestions, answers }) => { 
-            try { 
-              const response = await apiFetch(`${API_BASE_URL}/game-ai/save-quiz-score`, { 
-                method: 'POST', 
-                headers: { 'Content-Type': 'application/json' }, 
-                body: JSON.stringify({ classId, materialIds, score, totalQuestions, answers }) 
-              }); 
-              if (!response.ok) throw new Error('Failed to save score'); 
-              await loadCompletedActivityScores(); 
-            } catch (err) { 
-              console.error('Save quiz score error', err); 
-              Alert.alert('Error', 'Could not save your quiz score.'); 
-            } 
-          }} 
+          onSaveQuizScore={saveQuizScore}
+          // 🆕 PLAY AGAIN: pop the "new quiz" modal open as soon as Game
+          // (re)mounts here, then let it know we've handled the request.
+          openNewQuizModal={openNewQuizModal}
+          onNewQuizModalOpened={() => setOpenNewQuizModal(false)}
         />;
       case 'flipit': 
         return <FlipIt onBack={exitFullscreenGameToGames} />;
@@ -2823,6 +2867,17 @@ const refreshAssignmentCourseContent = useCallback(async () => {
           onBack={exitFullscreenGameToGames} 
           generatedQuestions={generatedQuizMastersData} 
           gameType={currentGameType} // 🌟 Pass the captured gameType down to QuizMasters
+          studentId={currentStudent.studentId}
+          // 🆕 "Back to Games" saves this attempt's score to the class
+          // record it was generated from before leaving.
+          onComplete={async (score, totalQuestions, answers) => {
+            if (!quizContext) return;
+            await saveQuizScore({ classId: quizContext.classId, materialIds: quizContext.materialIds, score, totalQuestions, answers });
+          }}
+          // 🆕 "Play Again" instead sends the student back to Games with the
+          // new-quiz modal (game type, number of questions, class & lesson)
+          // already open, rather than just discarding the attempt silently.
+          onPlayAgain={handlePlayAgainFromQuizMasters}
         />;
       case 'gamebasedassignment': 
         return <GameBasedAssignment 

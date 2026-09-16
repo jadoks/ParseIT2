@@ -23,7 +23,15 @@ type GameScreen = 'menu' | 'quizmasters';
 
 interface Props {
   // 🌟 UPDATED: Added gameType to the onNavigate callback
-  onNavigate?: (screen: GameScreen, generatedQuiz?: QuizQuestion[] | null, gameType?: string) => void;
+  // 🆕 CLASS RECORD: also pass along which class/lesson(s) this quiz was
+  // generated from, so the parent can save the score against the right
+  // class record once the student finishes (or resumes and finishes).
+  onNavigate?: (
+    screen: GameScreen,
+    generatedQuiz?: QuizQuestion[] | null,
+    gameType?: string,
+    context?: { classId: string; materialIds: string[] }
+  ) => void;
   enrolledCourses?: Array<{
     id: string;
     name: string;
@@ -37,6 +45,14 @@ interface Props {
     totalQuestions: number;
     answers: any[];
   }) => Promise<void>;
+  // 🆕 PLAY AGAIN: parent sets this to true (e.g. after the student taps
+  // "Play Again" on the results screen) to have Game automatically pop open
+  // its "new quiz" modal — game type, number of questions, class & lesson —
+  // instead of the student having to find their way back to this screen's
+  // settings manually. Game calls onNewQuizModalOpened right after so the
+  // parent can reset its flag and this doesn't reopen on every re-render.
+  openNewQuizModal?: boolean;
+  onNewQuizModalOpened?: () => void;
 }
 
 function getGameAiBaseUrl() {
@@ -106,9 +122,20 @@ interface ResumableSession {
   questions: QuizQuestion[];
   gameType: string;
   savedAt?: number;
+  // 🆕 CLASS RECORD: kept alongside the questions so a *resumed* session can
+  // still save its score to the right class/lesson when finished.
+  classId?: string;
+  materialIds?: string[];
 }
 
-const Game = ({ onNavigate, enrolledCourses = [], studentId, onSaveQuizScore }: Props) => {
+const Game = ({
+  onNavigate,
+  enrolledCourses = [],
+  studentId,
+  onSaveQuizScore,
+  openNewQuizModal = false,
+  onNewQuizModalOpened,
+}: Props) => {
   const { width } = useWindowDimensions();
   const isLargeScreen = width >= 768; // tablet / web / desktop breakpoint
   const [mode, setMode] = useState<GameScreen>('menu');
@@ -126,6 +153,11 @@ const Game = ({ onNavigate, enrolledCourses = [], studentId, onSaveQuizScore }: 
   // regenerating and burning another one of today's AI generations.
   const [resumableSession, setResumableSession] = useState<ResumableSession | null>(null);
   const [isResumeChecked, setIsResumeChecked] = useState(false);
+
+  // 🆕 PLAY AGAIN: modal version of the Quiz Settings / Choose class & lesson
+  // form, popped open automatically when the parent flips openNewQuizModal
+  // to true (i.e. the student tapped "Play Again" on the results screen).
+  const [isNewQuizModalVisible, setIsNewQuizModalVisible] = useState(false);
 
   const parsedCount = parseInt(numberOfQuestions, 10) || 0;
   const isInvalidCount = parsedCount > MAX_QUESTIONS_PER_GENERATION || parsedCount < 1;
@@ -202,6 +234,17 @@ const Game = ({ onNavigate, enrolledCourses = [], studentId, onSaveQuizScore }: 
     };
   }, [studentId]);
 
+  // 🆕 PLAY AGAIN: whenever the parent asks us to (openNewQuizModal flips to
+  // true), open the new-quiz modal and immediately tell the parent we've
+  // handled it so it can reset its flag — otherwise the modal would just
+  // reopen every time this component re-renders.
+  useEffect(() => {
+    if (openNewQuizModal) {
+      setIsNewQuizModalVisible(true);
+      if (onNewQuizModalOpened) onNewQuizModalOpened();
+    }
+  }, [openNewQuizModal]);
+
   // 🆕 RESUME SUPPORT: jump straight back into the saved quiz — no new
   // generation, no AI call, no dent in today's generation limit.
   const resumeSession = () => {
@@ -209,7 +252,11 @@ const Game = ({ onNavigate, enrolledCourses = [], studentId, onSaveQuizScore }: 
     setGeneratedQuestions(resumableSession.questions);
     setGameType(resumableSession.gameType);
     setMode('quizmasters');
-    if (onNavigate) onNavigate('quizmasters', resumableSession.questions, resumableSession.gameType);
+    if (onNavigate)
+      onNavigate('quizmasters', resumableSession.questions, resumableSession.gameType, {
+        classId: resumableSession.classId || '',
+        materialIds: resumableSession.materialIds || [],
+      });
   };
 
   // 🆕 RESUME SUPPORT: "Start New" — the student doesn't want to resume the
@@ -319,14 +366,34 @@ const Game = ({ onNavigate, enrolledCourses = [], studentId, onSaveQuizScore }: 
       try {
         await AsyncStorage.setItem(
           getActiveSessionStorageKey(studentId),
-          JSON.stringify({ questions: data.questions, gameType, savedAt: Date.now() })
+          JSON.stringify({
+            questions: data.questions,
+            gameType,
+            savedAt: Date.now(),
+            classId: selectedClassId,
+            materialIds: selectedMaterialIds,
+          })
         );
-        setResumableSession({ questions: data.questions, gameType, savedAt: Date.now() });
+        setResumableSession({
+          questions: data.questions,
+          gameType,
+          savedAt: Date.now(),
+          classId: selectedClassId,
+          materialIds: selectedMaterialIds,
+        });
       } catch (err) {
         console.warn('Failed to save resumable quiz session:', err);
       }
-      // 🌟 PASS gameType to the navigator
-      if (onNavigate) onNavigate('quizmasters', data.questions, gameType);
+      // 🆕 PLAY AGAIN: close the new-quiz modal (if that's how we got here)
+      // now that generation succeeded and we're navigating to the quiz.
+      setIsNewQuizModalVisible(false);
+      // 🌟 PASS gameType (and class/lesson context, for class-record saving)
+      // to the navigator
+      if (onNavigate)
+        onNavigate('quizmasters', data.questions, gameType, {
+          classId: selectedClassId,
+          materialIds: selectedMaterialIds,
+        });
     } catch (error: any) {
       Alert.alert('Generation failed', error.message);
     } finally {
@@ -336,76 +403,13 @@ const Game = ({ onNavigate, enrolledCourses = [], studentId, onSaveQuizScore }: 
 
   const selectedClassName = enrolledCourses.find(c => c.id === selectedClassId)?.name;
 
-  return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
-      {/* 🔥 NEW: "Games" title/subtitle, the AI-generations banner, the
-          Quiz Settings card, and the Choose class & lesson card now all
-          share one outer white card. settingsCard/selectorCard keep their
-          own borders so they still read as distinct sub-sections. */}
-      <View style={styles.gamesCard}>
-      <View style={styles.headerRow}>
-        <View style={styles.titleWrap}>
-          <Text style={styles.pageTitle}>Games</Text>
-          <Text style={styles.pageSubtitle}>Select a class and lessons to generate a quiz.</Text>
-        </View>
-      </View>
-
-      {/* 🆕 RESUME SUPPORT: offer to jump back into an unfinished quiz
-          instead of forcing a fresh (and limit-consuming) generation. */}
-      {isResumeChecked && resumableSession && (
-        <View
-          style={[
-            styles.resumeBanner,
-            isLargeScreen ? styles.inputLarge : styles.resumeBannerCompact,
-          ]}
-        >
-          <View style={styles.resumeBannerTextWrap}>
-            <Ionicons name="play-circle" size={20} color="#1565C0" />
-            <View style={{ flex: 1 }}>
-              <Text style={styles.resumeBannerTitle}>You have an unfinished quiz</Text>
-              <Text style={styles.resumeBannerSubtitle}>
-                {gameOptions.find((g) => g.value === resumableSession.gameType)?.label || 'Quiz'} · {resumableSession.questions.length} items
-              </Text>
-            </View>
-          </View>
-          <View
-            style={[
-              styles.resumeBannerActions,
-              !isLargeScreen && styles.resumeBannerActionsCompact,
-            ]}
-          >
-            <TouchableOpacity
-              onPress={startNewSession}
-              style={[styles.startNewBtn, !isLargeScreen && styles.resumeActionBtnCompact]}
-            >
-              <Text style={styles.startNewBtnText}>Start New</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={resumeSession}
-              style={[styles.resumeBtn, !isLargeScreen && styles.resumeActionBtnCompact]}
-            >
-              <Text style={styles.resumeBtnText}>Resume</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      )}
-
-      {/* 🌟 NEW: Daily AI generation usage banner */}
-      {isLimitLoaded && (
-        <View style={[styles.limitBanner, isLargeScreen && styles.inputLarge, hasReachedDailyLimit && styles.limitBannerReached]}>
-          <Ionicons
-            name={hasReachedDailyLimit ? 'alert-circle' : 'sparkles'}
-            size={18}
-            color={hasReachedDailyLimit ? '#D32F2F' : '#2E7D32'}
-          />
-          <Text style={[styles.limitBannerText, hasReachedDailyLimit && styles.limitBannerTextReached]}>
-            {hasReachedDailyLimit
-              ? `You've used all ${MAX_GENERATIONS_PER_DAY} AI generations today. Come back tomorrow!`
-              : `${remainingGenerations} of ${MAX_GENERATIONS_PER_DAY} AI generations remaining today`}
-          </Text>
-        </View>
-      )}
-
+  // 🆕 Shared "Quiz Settings" + "Choose class & lesson" form. Used both
+  // inline on the main Games screen (hidden while there's an unfinished
+  // quiz, until "Start New" is tapped) AND inside the "Play Again" modal
+  // (opened when the student finishes a quiz and wants to configure a new
+  // one without leaving the results flow).
+  const renderSetupForm = () => (
+    <>
       <View style={styles.settingsCard}>
         <View style={styles.settingsHeader}>
           <Ionicons name="settings-outline" size={22} color="#D32F2F" />
@@ -414,7 +418,7 @@ const Game = ({ onNavigate, enrolledCourses = [], studentId, onSaveQuizScore }: 
         <Text style={styles.settingsSubtitle}>
           This configuration applies to the <Text style={{fontWeight: '700'}}>Class Lessons</Text> you select below.
         </Text>
-        
+
         <View>
           <Text style={styles.inputLabel}>Number of Questions / Items (Max {MAX_QUESTIONS_PER_GENERATION})</Text>
           <TextInput
@@ -505,49 +509,49 @@ const Game = ({ onNavigate, enrolledCourses = [], studentId, onSaveQuizScore }: 
         </Modal>
 
         {selectedClassId !== '' && (
-  <View style={styles.materialsSection}>
-    <View style={styles.materialsHeaderRow}>
-      <Text style={styles.inputLabel}>Select one or more Lessons</Text>
-      {selectedMaterialIds.length > 0 && (
-        <TouchableOpacity onPress={() => setSelectedMaterialIds([])} hitSlop={8}>
-          <Text style={styles.clearSelectionText}>Clear ({selectedMaterialIds.length})</Text>
-        </TouchableOpacity>
-      )}
-    </View>
-    {availableMaterials.length === 0 ? (
-      <View style={styles.noMaterialsBox}>
-        <Ionicons name="folder-open-outline" size={24} color="#999" />
-        <Text style={styles.noMaterials}>No materials uploaded for this class yet.</Text>
-      </View>
-    ) : (
-      <View style={styles.materialsGrid}>
-        {availableMaterials.map(mat => {
-          const isSelected = selectedMaterialIds.includes(mat.id);
-          return (
-            <Pressable
-              key={mat.id}
-              style={[styles.materialChip, isSelected && styles.materialChipSelected]}
-              onPress={() => toggleMaterial(mat.id)}
-            >
-              <Ionicons
-                name={isSelected ? "document-text" : "document-text-outline"}
-                size={16}
-                color={isSelected ? "#FFF" : "#D32F2F"}
-                style={{ marginRight: 6 }}
-              />
-              <Text style={[styles.materialTitle, isSelected && styles.materialTitleSelected]}>
-                {mat.title}
-              </Text>
-              {isSelected && (
-                <Ionicons name="close-circle" size={16} color="#FFF" style={{ marginLeft: 6 }} />
+          <View style={styles.materialsSection}>
+            <View style={styles.materialsHeaderRow}>
+              <Text style={styles.inputLabel}>Select one or more Lessons</Text>
+              {selectedMaterialIds.length > 0 && (
+                <TouchableOpacity onPress={() => setSelectedMaterialIds([])} hitSlop={8}>
+                  <Text style={styles.clearSelectionText}>Clear ({selectedMaterialIds.length})</Text>
+                </TouchableOpacity>
               )}
-            </Pressable>
-          );
-        })}
-      </View>
-    )}
-  </View>
-)}
+            </View>
+            {availableMaterials.length === 0 ? (
+              <View style={styles.noMaterialsBox}>
+                <Ionicons name="folder-open-outline" size={24} color="#999" />
+                <Text style={styles.noMaterials}>No materials uploaded for this class yet.</Text>
+              </View>
+            ) : (
+              <View style={styles.materialsGrid}>
+                {availableMaterials.map(mat => {
+                  const isSelected = selectedMaterialIds.includes(mat.id);
+                  return (
+                    <Pressable
+                      key={mat.id}
+                      style={[styles.materialChip, isSelected && styles.materialChipSelected]}
+                      onPress={() => toggleMaterial(mat.id)}
+                    >
+                      <Ionicons
+                        name={isSelected ? "document-text" : "document-text-outline"}
+                        size={16}
+                        color={isSelected ? "#FFF" : "#D32F2F"}
+                        style={{ marginRight: 6 }}
+                      />
+                      <Text style={[styles.materialTitle, isSelected && styles.materialTitleSelected]}>
+                        {mat.title}
+                      </Text>
+                      {isSelected && (
+                        <Ionicons name="close-circle" size={16} color="#FFF" style={{ marginLeft: 6 }} />
+                      )}
+                    </Pressable>
+                  );
+                })}
+              </View>
+            )}
+          </View>
+        )}
 
         <Pressable
           style={[
@@ -578,7 +582,115 @@ const Game = ({ onNavigate, enrolledCourses = [], studentId, onSaveQuizScore }: 
           )}
         </Pressable>
       </View>
+    </>
+  );
+
+  // 🆕 Hide the setup form while there's an unfinished quiz sitting on the
+  // resume banner (avoids the student accidentally burning a generation or
+  // getting confused about which quiz they're configuring). Also hidden
+  // while the "Play Again" modal is open, so the same form isn't rendered
+  // twice (once inline, once in the modal) at the same time.
+  const shouldShowInlineSetupForm = !(isResumeChecked && resumableSession) && !isNewQuizModalVisible;
+
+  return (
+    <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
+      {/* 🔥 NEW: "Games" title/subtitle, the AI-generations banner, the
+          Quiz Settings card, and the Choose class & lesson card now all
+          share one outer white card. settingsCard/selectorCard keep their
+          own borders so they still read as distinct sub-sections. */}
+      <View style={styles.gamesCard}>
+      <View style={styles.headerRow}>
+        <View style={styles.titleWrap}>
+          <Text style={styles.pageTitle}>Games</Text>
+          <Text style={styles.pageSubtitle}>Select a class and lessons to generate a quiz.</Text>
+        </View>
+
+        {/* 🌟 UPDATED: AI-generations badge now sits in the header row, top
+            right, next to the "Games" title. On small screens it collapses
+            to just the "7/10" fraction instead of the full sentence. */}
+        {isLimitLoaded && (
+          <View
+            style={[
+              styles.limitBadge,
+              isLargeScreen ? styles.limitBadgeLarge : styles.limitBadgeCompact,
+              hasReachedDailyLimit && styles.limitBannerReached,
+            ]}
+          >
+            <Ionicons
+              name={hasReachedDailyLimit ? 'alert-circle' : 'sparkles'}
+              size={isLargeScreen ? 16 : 14}
+              color={hasReachedDailyLimit ? '#D32F2F' : '#2E7D32'}
+            />
+            <Text
+              style={[
+                styles.limitBannerText,
+                hasReachedDailyLimit && styles.limitBannerTextReached,
+                !isLargeScreen && styles.limitBannerTextCompact,
+              ]}
+              numberOfLines={1}
+            >
+              {isLargeScreen
+                ? hasReachedDailyLimit
+                  ? `You've used all ${MAX_GENERATIONS_PER_DAY} AI generations today. Come back tomorrow!`
+                  : `${remainingGenerations} of ${MAX_GENERATIONS_PER_DAY} AI generations remaining today`
+                : `${remainingGenerations}/${MAX_GENERATIONS_PER_DAY} generations`}
+            </Text>
+          </View>
+        )}
       </View>
+
+      {/* 🆕 RESUME SUPPORT: offer to jump back into an unfinished quiz
+          instead of forcing a fresh (and limit-consuming) generation.
+          Styled like Dashboard's empty-state announcement card: icon on its
+          own row up top, title on the next row, then the subtitle, then the
+          (now larger) action buttons on the last row. */}
+      {isResumeChecked && resumableSession && (
+        <View style={styles.resumeBanner}>
+          <Ionicons name="play-circle" size={32} color="#1565C0" />
+          <Text style={styles.resumeBannerTitle}>You have an unfinished quiz</Text>
+          <Text style={styles.resumeBannerSubtitle}>
+            {gameOptions.find((g) => g.value === resumableSession.gameType)?.label || 'Quiz'} · {resumableSession.questions.length} items
+          </Text>
+          <View style={styles.resumeBannerActions}>
+            <TouchableOpacity onPress={startNewSession} style={styles.startNewBtn}>
+              <Text style={styles.startNewBtnText}>Start New</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={resumeSession} style={styles.resumeBtn}>
+              <Text style={styles.resumeBtnText}>Resume</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
+
+      {/* 🆕 Quiz Settings / Choose class & lesson stay hidden while there's
+          an unfinished quiz above — tapping "Start New" clears the resume
+          banner (see startNewSession) which reveals this form again. */}
+      {shouldShowInlineSetupForm && renderSetupForm()}
+      </View>
+
+      {/* 🆕 PLAY AGAIN: same setup form, presented as a modal. Opened
+          automatically when the parent flips openNewQuizModal to true
+          (student tapped "Play Again" on the results screen). */}
+      <Modal
+        visible={isNewQuizModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setIsNewQuizModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, styles.newQuizModalContent]}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Start a New Quiz</Text>
+              <TouchableOpacity onPress={() => setIsNewQuizModalVisible(false)}>
+                <Ionicons name="close-circle" size={28} color="#999" />
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={styles.modalList} showsVerticalScrollIndicator={false}>
+              {renderSetupForm()}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </ScrollView>
   );
 };
@@ -600,7 +712,7 @@ const styles = StyleSheet.create({
   },
   headerRow: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     justifyContent: 'space-between',
     gap: 16,
     marginBottom: 24,
@@ -609,18 +721,29 @@ const styles = StyleSheet.create({
   pageTitle: { fontFamily: FONT_TITLE, fontSize: 32, fontWeight: WEIGHT_TITLE, color: '#111', letterSpacing: -0.5 },
   pageSubtitle: { fontFamily: FONT_BODY, color: '#666', marginTop: 6, fontSize: 15, lineHeight: 22 },
 
-  // 🌟 NEW: Daily limit banner styles
-  limitBanner: {
+  // 🌟 UPDATED: AI-generations badge, now a compact pill that sits in the
+  // header row next to the "Games" title instead of its own full-width
+  // banner. limitBadgeLarge/limitBadgeCompact tweak padding + sizing per
+  // breakpoint; limitBannerText/limitBannerTextReached/limitBannerTextCompact
+  // (below) handle the text itself.
+  limitBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 6,
     backgroundColor: '#E8F5E9',
     borderWidth: 1,
     borderColor: '#C8E6C9',
-    borderRadius: 14,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    marginBottom: 24,
+    borderRadius: 100,
+    flexShrink: 0,
+  },
+  limitBadgeLarge: {
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    maxWidth: 280,
+  },
+  limitBadgeCompact: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
   },
   limitBannerReached: {
     backgroundColor: '#FFF5F5',
@@ -630,93 +753,78 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: WEIGHT_EMPHASIS,
     color: '#2E7D32',
-    flex: 1,
   },
   limitBannerTextReached: {
     color: '#D32F2F',
   },
+  // 🌟 Small-screen text: just the "7/10 generations" fraction, in a
+  // smaller font so the pill stays compact next to the title.
+  limitBannerTextCompact: {
+    fontSize: 11,
+  },
 
-  // 🆕 RESUME SUPPORT: banner offering to jump back into an unfinished quiz.
-  // Row layout with actions hugging their own width (no flex:1) so on large
-  // screens the buttons stay compact instead of stretching across the card.
+  // 🆕 RESUME SUPPORT: "unfinished quiz" card, styled to match Dashboard's
+  // empty-state announcement (white card, thin gray border, large radius,
+  // centered content) instead of its own blue-tinted banner. Icon on its
+  // own row, then title, then subtitle, then the (larger) action buttons.
   resumeBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 12,
-    backgroundColor: '#E3F2FD',
+    backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: '#BBDEFB',
-    borderRadius: 14,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    marginBottom: 16,
-  },
-  // 🌟 Small screens: stack the text above the actions instead of squeezing
-  // two buttons onto the same row as the title/subtitle.
-  resumeBannerCompact: {
-    flexDirection: 'column',
-    alignItems: 'stretch',
-  },
-  resumeBannerTextWrap: {
-    flexDirection: 'row',
+    borderColor: '#E3E5E9',
+    borderRadius: 30,
     alignItems: 'center',
-    gap: 10,
-    flex: 1,
+    paddingHorizontal: 24,
+    paddingVertical: 28,
+    marginBottom: 24,
   },
+  // Row 2: title, right under the icon.
   resumeBannerTitle: { fontFamily: FONT_BODY,
-    fontSize: 13,
+    fontSize: 16,
     fontWeight: WEIGHT_EMPHASIS,
-    color: '#0D47A1',
+    color: '#111',
+    marginTop: 12,
+    textAlign: 'center',
   },
+  // Row 3: "Multiple Choice · 2 items" subtitle.
   resumeBannerSubtitle: { fontFamily: FONT_BODY,
-    fontSize: 12,
-    color: '#1565C0',
-    marginTop: 2,
+    fontSize: 13,
+    color: '#666',
+    marginTop: 4,
+    textAlign: 'center',
   },
+  // Row 4: larger action buttons.
   resumeBannerActions: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-  },
-  // 🌟 Compact (small-screen) variant: actions move below the text, right
-  // aligned, with a bit of breathing room from the text above.
-  resumeBannerActionsCompact: {
-    justifyContent: 'flex-end',
-    marginTop: 12,
-  },
-  // 🌟 Slightly larger tap targets on small screens for the two banner
-  // buttons, without letting them stretch to fill the row's width.
-  resumeActionBtnCompact: {
-    paddingHorizontal: 14,
-    paddingVertical: 10,
+    justifyContent: 'center',
+    gap: 12,
+    marginTop: 20,
   },
   startNewBtn: {
     backgroundColor: '#FFF',
     borderWidth: 1.5,
     borderColor: '#90A4AE',
     borderRadius: 100,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
+    paddingHorizontal: 24,
+    paddingVertical: 14,
   },
   startNewBtnText: { fontFamily: FONT_BODY,
-    fontSize: 13,
+    fontSize: 15,
     fontWeight: WEIGHT_EMPHASIS,
     color: '#455A64',
   },
   resumeBtn: {
     backgroundColor: '#1565C0',
     borderRadius: 100,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
+    paddingHorizontal: 24,
+    paddingVertical: 14,
   },
   resumeBtnText: { fontFamily: FONT_BODY,
-    fontSize: 13,
+    fontSize: 15,
     fontWeight: WEIGHT_EMPHASIS,
     color: '#FFF',
   },
 
-  
   settingsCard: {
     backgroundColor: '#FFF',
     borderRadius: 24,
@@ -866,6 +974,12 @@ const styles = StyleSheet.create({
     borderBottomColor: '#F0F0F0',
   },
   modalTitle: { fontFamily: FONT_TITLE, fontSize: 18, fontWeight: WEIGHT_TITLE, color: '#111' },
+  // 🆕 PLAY AGAIN: the "new quiz" modal reuses modalContent, but needs more
+  // height (and a taller max) since it holds the whole settings + selector
+  // form, not just a single scrollable list.
+  newQuizModalContent: {
+    maxHeight: '88%',
+  },
   modalList: { padding: 12 },
   dropdownItem: {
     flexDirection: 'row',

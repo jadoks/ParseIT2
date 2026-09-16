@@ -29,6 +29,11 @@ interface Props {
   // the same device. Safe to omit — falls back to a device-level 'anonymous'
   // bucket if not provided.
   studentId?: string;
+  // 🆕 PLAY AGAIN: when provided, tapping "Play Again" on the results screen
+  // calls this instead of a plain onBack(), so the parent can send the
+  // student back to Game with its "new quiz" modal (game type, number of
+  // questions, class & lesson) already open. Falls back to onBack() if omitted.
+  onPlayAgain?: () => void;
 }
 
 // 🆕 RESUME SUPPORT: same hashing/key scheme as Game.tsx so progress saved
@@ -170,7 +175,7 @@ function createMatchingCards(questions: any[]): MatchingCard[] {
 
 const LARGE_SCREEN_CONTENT_WIDTH_PERCENT = '65%'; 
 
-export default function QuizMasters({ onBack, generatedQuestions, gameType = 'quiz_master', onComplete, studentId }: Props) {
+export default function QuizMasters({ onBack, generatedQuestions, gameType = 'quiz_master', onComplete, studentId, onPlayAgain }: Props) {
   const { width } = useWindowDimensions();
   const isLargeScreen = width >= 768;
 
@@ -298,6 +303,13 @@ export default function QuizMasters({ onBack, generatedQuestions, gameType = 'qu
   const isProgressRestoredRef = useRef(false);
   const [isProgressRestored, setIsProgressRestored] = useState(false);
 
+  // 🆕 LEADERBOARD: guards the "save score on reaching results" effect below
+  // so an attempt is only ever saved once — not once per button the student
+  // might tap next, and not again if they reload the app while still
+  // sitting on the results screen. Reset per-quiz (new questions) and
+  // restored from the saved snapshot's `scoreSaved` flag when resuming.
+  const hasSavedScoreRef = useRef(false);
+
   const clearSavedProgress = async () => {
     try {
       await AsyncStorage.multiRemove([progressStorageKey, activeSessionStorageKey]);
@@ -338,6 +350,10 @@ export default function QuizMasters({ onBack, generatedQuestions, gameType = 'qu
     let isCancelled = false;
     isProgressRestoredRef.current = false;
     setIsProgressRestored(false);
+    // 🆕 LEADERBOARD: default to "not yet saved" for this quiz; flipped back
+    // to true below if the restored snapshot says this attempt's score was
+    // already saved (e.g. reopening the app on the results screen).
+    hasSavedScoreRef.current = false;
 
     const restore = async () => {
       let restored = false;
@@ -373,6 +389,7 @@ export default function QuizMasters({ onBack, generatedQuestions, gameType = 'qu
               setShowResults(saved.showResults ?? false);
               setUserAnswers(saved.userAnswers ?? []);
               setMode(saved.mode);
+              hasSavedScoreRef.current = saved.scoreSaved === true;
             }
             restored = true;
           }
@@ -397,6 +414,32 @@ export default function QuizMasters({ onBack, generatedQuestions, gameType = 'qu
     };
   }, [generatedQuestions, gameType, progressStorageKey]);
 
+  // 🆕 LEADERBOARD: save the score the moment the student reaches ANY
+  // results screen — the shared "Practice Completed!" screen (trivia /
+  // fill-in-the-blanks / flashcards, via mode 'summary') AND the Matching
+  // Type game's own "Matching Completed!" screen (mode 'matchingCards' with
+  // showResults true) — not when they tap a particular button afterward.
+  // That way the attempt is recorded whether they end up tapping "Back to
+  // Games" OR "Play Again", so every practice attempt adds to the class
+  // record (and, from there, the leaderboard-style export) instead of only
+  // the ones where the student happened to tap the "save" button.
+  // hasSavedScoreRef (reset per-quiz/per-replay, restored from the saved
+  // snapshot's scoreSaved flag) makes sure this only ever fires once per
+  // attempt.
+  const isOnResultsScreen = mode === 'summary' || (mode === 'matchingCards' && showResults);
+  useEffect(() => {
+    if (!isOnResultsScreen) return;
+    if (!isProgressRestored) return;
+    if (hasSavedScoreRef.current) return;
+
+    const total = userAnswers.length;
+    if (total === 0) return; // nothing answered yet (shouldn't normally happen here)
+
+    hasSavedScoreRef.current = true;
+    const correctCount = userAnswers.filter((a) => a.isCorrect).length;
+    if (onComplete) onComplete(correctCount, total, userAnswers);
+  }, [isOnResultsScreen, isProgressRestored, userAnswers, onComplete]);
+
   // 🆕 RESUME SUPPORT: persist progress after every meaningful change, so a
   // fully-closed-and-reopened app/website can pick back up at the right
   // question and score. Skipped until the restore effect above has run
@@ -419,6 +462,9 @@ export default function QuizMasters({ onBack, generatedQuestions, gameType = 'qu
       matchingScore, userChoices, showResults,
       userAnswers,
       savedAt: Date.now(),
+      // 🆕 LEADERBOARD: carried along so reopening the app on an
+      // already-saved results screen doesn't record a duplicate attempt.
+      scoreSaved: hasSavedScoreRef.current,
     };
 
     AsyncStorage.setItem(progressStorageKey, JSON.stringify(snapshot)).catch((err) => {
@@ -456,6 +502,9 @@ export default function QuizMasters({ onBack, generatedQuestions, gameType = 'qu
     setMatchingScore(0);
     setShowResults(false);
     setUserAnswers([]);
+    // 🆕 LEADERBOARD: this starts a fresh matching attempt (new shuffle), so
+    // its score needs to be saved again once it's completed.
+    hasSavedScoreRef.current = false;
   };
 
   const resetFlashcards = () => {
@@ -496,13 +545,21 @@ export default function QuizMasters({ onBack, generatedQuestions, gameType = 'qu
     const fillScoreSnapshot = fillScore;
     const matchingScoreSnapshot = matchingScore;
     const userAnswersSnapshot = userAnswers;
+    // 🆕 LEADERBOARD: capture this BEFORE resetAll() (which resets it back to
+    // false for the next attempt). If the results-screen effect already
+    // saved this attempt (summary screen, or matching results), don't save
+    // it again here — that would create a duplicate leaderboard row, and on
+    // the 'summary' screen it'd submit a bogus 0/0 score (there's no case
+    // for 'summary' in the switch below since that screen has its own,
+    // already-correct save).
+    const alreadySavedByResultsScreen = hasSavedScoreRef.current;
 
     resetAll();
     // 🆕 RESUME SUPPORT: leaving the quiz this way submits whatever progress
     // was made as the final attempt, so there's nothing left to resume.
     clearSavedProgress();
 
-    if (onComplete) {
+    if (onComplete && !alreadySavedByResultsScreen) {
         let score = 0;
         let total = 0;
 
@@ -530,7 +587,9 @@ export default function QuizMasters({ onBack, generatedQuestions, gameType = 'qu
                 break;
         }
 
-        onComplete(score, total, userAnswersSnapshot);
+        // Nothing attempted yet (e.g. backing out from the menu, or a game
+        // mode with no progress) — don't submit an empty 0/0 attempt.
+        if (total > 0) onComplete(score, total, userAnswersSnapshot);
     }
 
     onBack();
@@ -736,7 +795,9 @@ export default function QuizMasters({ onBack, generatedQuestions, gameType = 'qu
           <Pressable 
             style={styles.saveBtn} 
             onPress={() => {
-              if (onComplete) onComplete(matchingScore, total, userAnswers);
+              // 🆕 LEADERBOARD: no need to save here — the score was already
+              // recorded the moment this results screen was reached (see the
+              // effect above). This just leaves the results screen.
               clearSavedProgress();
               onBack();
             }}
@@ -1079,8 +1140,14 @@ export default function QuizMasters({ onBack, generatedQuestions, gameType = 'qu
           <Pressable
                 style={styles.cancelBtn}
                 onPress={() => {
+                  // 🆕 LEADERBOARD: no need to worry about saving here — the
+                  // score was already recorded the moment this results
+                  // screen was reached (see the effect above). This just
+                  // clears the "unfinished quiz" resume state and hands off
+                  // to the parent to reopen the new-quiz modal.
                   clearSavedProgress();
-                  onBack();
+                  if (onPlayAgain) onPlayAgain();
+                  else onBack();
                 }}
             >
             <Text style={styles.cancelBtnText}>Play Again</Text>
@@ -1088,7 +1155,8 @@ export default function QuizMasters({ onBack, generatedQuestions, gameType = 'qu
           <Pressable
             style={styles.saveBtn}
             onPress={() => {
-              if (onComplete) onComplete(correctCount, total, userAnswers);
+              // 🆕 LEADERBOARD: score is already saved (see the effect
+              // above) — this button now just leaves the results screen.
               clearSavedProgress();
               onBack();
             }}
