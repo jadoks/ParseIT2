@@ -56,6 +56,10 @@ export type Assignment = {
   fileType?: string;
   storagePath?: string | null;
   bucketPath?: string | null;
+  // ✅ NEW: byte size of the legacy single-file mirror above, used only to
+  // compute the 100MB total-attachment cap in the Create/Update Assignment
+  // form. Optional since older/legacy assignment docs won't have it.
+  fileSize?: number;
   // ✅ NEW: full list of every file the teacher attached to this assignment
   // (source of truth). fileName/fileUri/fileType/storagePath/bucketPath
   // above are kept only as legacy mirrors of the first file for backward
@@ -73,6 +77,11 @@ export type Assignment = {
     storagePath?: string | null;
     bucketPath?: string | null;
     source?: 'teacher' | 'student';
+    // ✅ NEW: byte size of this attachment, used to enforce the 100MB
+    // total-attachment cap. Optional since older attachments saved before
+    // this field existed won't have it.
+    size?: number;
+    fileSize?: number;
   }>;
   questions?: any[];
   assignmentType?: 'regular' | 'game_based';
@@ -170,6 +179,10 @@ type PickedUploadFile = {
   type?: string;
   base64?: string;
   file?: File;
+  // ✅ NEW: byte size of the picked file, used to enforce per-file and
+  // total-attachment size limits (e.g. the 100MB total cap on assignment
+  // attachments) without having to re-read the file from disk.
+  size?: number;
 } | null;
 
 type FormErrors = {
@@ -248,6 +261,15 @@ function getApiBaseUrl() {
 const API_BASE_URL = getApiBaseUrl();
 const WEEKDAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const pad = (value: number) => String(value).padStart(2, '0');
+
+// ✅ NEW: shared byte-size limits + formatter for the Assignment attachment
+// picker (per-file cap + total cap across every attachment) and the Manual
+// Lesson file picker (per-file cap only).
+const MAX_ASSIGNMENT_FILE_SIZE_BYTES = 20 * 1024 * 1024; // 20MB per file
+const MAX_ASSIGNMENT_TOTAL_SIZE_BYTES = 100 * 1024 * 1024; // 100MB total across all attachments
+const MAX_LESSON_FILE_SIZE_BYTES = 20 * 1024 * 1024; // 20MB per file
+
+const formatFileSizeMB = (bytes: number) => `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 
 // 12-hour "YYYY-MM-DD hh:mm AM/PM" formatter for a resolved Date, used by
 // formatDateTime below — mirrors formatDueDateForDisplay in Assignments.tsx
@@ -2781,6 +2803,48 @@ useEffect(() => {
   // and APPENDS the newly picked files to whatever's already staged rather
   // than replacing them, so teachers can build up a list of attachments —
   // e.g. pick 2 files, then tap "Add Another File" to pick a 3rd.
+  // ✅ NEW: total bytes already committed to this assignment's attachments —
+  // every existing (already-uploaded) file that hasn't been removed, plus
+  // every file already staged this session in pickedAssignmentFiles. Used to
+  // enforce the 100MB TOTAL cap below, on top of the existing 20MB-per-file
+  // cap. selectedAssignment is read directly since that's the same source
+  // renderAssignmentAttachmentSection uses to display "existing" files.
+  const getAssignmentExistingFilesList = (): Array<{
+    size?: number;
+    fileSize?: number;
+    fileName?: string;
+  }> => {
+    const existingFiles = selectedAssignment?.files?.length
+      ? selectedAssignment.files
+      : selectedAssignment?.fileName || selectedAssignment?.fileUri
+        ? [
+            {
+              fileName: selectedAssignment.fileName,
+              fileUrl: selectedAssignment.fileUri,
+              fileType: selectedAssignment.fileType,
+              storagePath: selectedAssignment.storagePath,
+              bucketPath: selectedAssignment.bucketPath,
+              size: selectedAssignment.fileSize,
+            },
+          ]
+        : [];
+    return existingFiles.filter(
+      (f: any) => !removedAssignmentFileKeys.includes(getAssignmentFileKey(f))
+    );
+  };
+
+  const getAssignmentAttachedTotalSize = () => {
+    const existingTotal = getAssignmentExistingFilesList().reduce(
+      (sum, f: any) => sum + (Number(f.size) || Number(f.fileSize) || 0),
+      0
+    );
+    const stagedTotal = pickedAssignmentFiles.reduce(
+      (sum, f) => sum + (Number(f.size) || 0),
+      0
+    );
+    return existingTotal + stagedTotal;
+  };
+
   const handlePickAssignmentFile = async () => {
     try {
       const result = await DocumentPicker.getDocumentAsync({
@@ -2792,12 +2856,11 @@ useEffect(() => {
       if (result.canceled || !result.assets?.length) return;
 
       // ✅ Enforce a 20MB-per-file limit, matching the syllabus upload check.
-      const MAX_ASSIGNMENT_FILE_SIZE = 20 * 1024 * 1024;
       const oversized = result.assets.filter(
-        (asset) => asset.size && asset.size > MAX_ASSIGNMENT_FILE_SIZE
+        (asset) => asset.size && asset.size > MAX_ASSIGNMENT_FILE_SIZE_BYTES
       );
       const validAssets = result.assets.filter(
-        (asset) => !(asset.size && asset.size > MAX_ASSIGNMENT_FILE_SIZE)
+        (asset) => !(asset.size && asset.size > MAX_ASSIGNMENT_FILE_SIZE_BYTES)
       );
       if (oversized.length > 0) {
         toast.show(
@@ -2810,12 +2873,43 @@ useEffect(() => {
       }
       if (validAssets.length === 0) return;
 
-      const newFiles = validAssets.map((asset) => ({
+      // ✅ NEW: Enforce a 100MB TOTAL limit across every attachment on this
+      // assignment — existing (already-uploaded) files still attached, plus
+      // whatever is already staged this session, plus the newly picked
+      // files. e.g. once 5 files at 20MB each are attached (100MB total),
+      // a 6th file is rejected even though it individually passes the
+      // 20MB-per-file check above.
+      let runningTotal = getAssignmentAttachedTotalSize();
+      const acceptedAssets: typeof validAssets = [];
+      const rejectedForTotalLimit: typeof validAssets = [];
+      for (const asset of validAssets) {
+        const assetSize = Number(asset.size) || 0;
+        if (runningTotal + assetSize > MAX_ASSIGNMENT_TOTAL_SIZE_BYTES) {
+          rejectedForTotalLimit.push(asset);
+          continue;
+        }
+        runningTotal += assetSize;
+        acceptedAssets.push(asset);
+      }
+      if (rejectedForTotalLimit.length > 0) {
+        toast.show(
+          'error',
+          'Total Attachment Limit Reached',
+          `Attachments on one assignment can't exceed ${formatFileSizeMB(MAX_ASSIGNMENT_TOTAL_SIZE_BYTES)} in total. ` +
+            (rejectedForTotalLimit.length === 1
+              ? `"${rejectedForTotalLimit[0].name}" wasn't added.`
+              : `${rejectedForTotalLimit.length} files weren't added.`)
+        );
+      }
+      if (acceptedAssets.length === 0) return;
+
+      const newFiles = acceptedAssets.map((asset) => ({
         name: asset.name,
         uri: asset.uri,
         type: asset.mimeType,
         base64: (asset as any).base64,
         file: (asset as any).file,
+        size: asset.size,
       }));
       setPickedAssignmentFiles((prev) => [...prev, ...newFiles]);
     } catch {
@@ -4038,7 +4132,20 @@ useEffect(() => {
             style={[styles.primaryButtonWide, { marginTop: 0 }]}
             onPress={async () => {
               const res = await DocumentPicker.getDocumentAsync({ type: '*/*', copyToCacheDirectory: true, base64: Platform.OS === 'web' });
-              if (!res.canceled && res.assets?.[0]) setNewLessonFile({ name: res.assets[0].name, uri: res.assets[0].uri, type: res.assets[0].mimeType, base64: (res.assets[0] as any).base64, file: (res.assets[0] as any).file });
+              if (res.canceled || !res.assets?.[0]) return;
+              const asset = res.assets[0];
+              // ✅ NEW: enforce the same 20MB-per-file limit used for the
+              // syllabus and assignment file pickers, so a Manual Lesson's
+              // uploaded material can't silently balloon in size either.
+              if (asset.size && asset.size > MAX_LESSON_FILE_SIZE_BYTES) {
+                toast.show(
+                  'error',
+                  'File Too Large',
+                  `"${asset.name}" exceeds the maximum size of ${formatFileSizeMB(MAX_LESSON_FILE_SIZE_BYTES)}.`
+                );
+                return;
+              }
+              setNewLessonFile({ name: asset.name, uri: asset.uri, type: asset.mimeType, base64: (asset as any).base64, file: (asset as any).file, size: asset.size });
             }}
           >
             <Ionicons name="cloud-upload-outline" size={18} color="#FFF" />
@@ -4049,8 +4156,8 @@ useEffect(() => {
           {newLessonFile && <View style={styles.filePreviewBox}><Ionicons name="document-text-outline" size={20} color="#D32F2F" /><Text style={styles.filePreviewText}>{newLessonFile.name}</Text></View>}
           <Text style={{ fontSize: 12, color: '#888', marginTop: 8, textAlign: 'center' }}>
             {selectedLesson?.type === 'manual_file'
-              ? "Leave empty to keep the current file. Upload a new file to replace it."
-              : "Discussion and Activity sections are hidden when uploading a file."}
+              ? `Leave empty to keep the current file. Upload a new file to replace it (max ${formatFileSizeMB(MAX_LESSON_FILE_SIZE_BYTES)}).`
+              : `Discussion and Activity sections are hidden when uploading a file. Max file size: ${formatFileSizeMB(MAX_LESSON_FILE_SIZE_BYTES)}.`}
           </Text>
         </>
       )}
@@ -4101,6 +4208,10 @@ useEffect(() => {
       (f) => !removedAssignmentFileKeys.includes(getAssignmentFileKey(f))
     );
     const totalFileCount = visibleExistingFiles.length + pickedAssignmentFiles.length;
+    // ✅ NEW: running total (existing + staged) against the 100MB cap, shown
+    // under the attachment list so teachers can see how much room is left.
+    const attachedTotalSize = getAssignmentAttachedTotalSize();
+    const isAtTotalLimit = attachedTotalSize >= MAX_ASSIGNMENT_TOTAL_SIZE_BYTES;
     return (
       <>
         <Text style={styles.sectionLabel}>Attachment (Optional)</Text>
@@ -4134,15 +4245,24 @@ useEffect(() => {
           </View>
         ))}
         <TouchableOpacity
-          style={[styles.primaryButtonWide, options?.buttonStyle, isSaving ? styles.disabledButton : null]}
+          style={[
+            styles.primaryButtonWide,
+            options?.buttonStyle,
+            (isSaving || isAtTotalLimit) ? styles.disabledButton : null,
+          ]}
           onPress={handlePickAssignmentFile}
-          disabled={isSaving}
+          disabled={isSaving || isAtTotalLimit}
         >
           <Ionicons name="cloud-upload-outline" size={18} color="#FFF" />
           <Text style={styles.uploadBtnText}>
             {totalFileCount > 0 ? 'Add Another File' : 'Upload File'}
           </Text>
         </TouchableOpacity>
+        <Text style={styles.attachmentSizeHint}>
+          {isAtTotalLimit
+            ? `Total attachment limit of ${formatFileSizeMB(MAX_ASSIGNMENT_TOTAL_SIZE_BYTES)} reached.`
+            : `${formatFileSizeMB(attachedTotalSize)} of ${formatFileSizeMB(MAX_ASSIGNMENT_TOTAL_SIZE_BYTES)} used (20 MB max per file).`}
+        </Text>
       </>
     );
   };
@@ -7634,7 +7754,75 @@ MANUAL LESSON CREATION MODAL
                     </Text>
                     <Ionicons name={showLessonModeDropdown ? 'chevron-up' : 'chevron-down'} size={16} color="#D32F2F" />
                   </TouchableOpacity>
-                  {showLessonModeDropdown && (
+
+                  {/* ✅ NEW: same large-screen vs. small-screen dropdown
+                      pattern as CustomDropdown in Honors.tsx — on mobile the
+                      options open in a real top-level Modal (bottom sheet)
+                      so they're never clipped/un-tappable behind the
+                      screen's ScrollView, while on larger screens they stay
+                      as the existing inline absolutely-positioned menu. */}
+                  {isMobile ? (
+                    <Modal
+                      visible={showLessonModeDropdown}
+                      transparent
+                      animationType="fade"
+                      onRequestClose={() => setShowLessonModeDropdown(false)}
+                      statusBarTranslucent
+                    >
+                      <TouchableOpacity
+                        style={styles.lessonModeDropdownModalOverlay}
+                        activeOpacity={1}
+                        onPress={() => setShowLessonModeDropdown(false)}
+                      >
+                        {/* Swallow taps on the sheet itself so they don't close the modal */}
+                        <TouchableOpacity
+                          style={styles.lessonModeDropdownModalSheet}
+                          activeOpacity={1}
+                          onPress={() => {}}
+                        >
+                          <View style={styles.lessonModeDropdownModalHandle} />
+                          <View style={styles.lessonModeDropdownModalHeader}>
+                            <Text style={styles.lessonModeDropdownModalTitle}>Lesson Content Type</Text>
+                            <TouchableOpacity onPress={() => setShowLessonModeDropdown(false)} hitSlop={8}>
+                              <Ionicons name="close" size={22} color="#3B332E" />
+                            </TouchableOpacity>
+                          </View>
+                          <ScrollView
+                            style={styles.lessonModeDropdownModalScroll}
+                            showsVerticalScrollIndicator={false}
+                          >
+                            {([
+                              { key: 'text', label: 'Text Content' },
+                              { key: 'file', label: 'Upload File' },
+                            ] as const).map((opt) => {
+                              const isSelected = lessonMode === opt.key;
+                              return (
+                                <TouchableOpacity
+                                  key={opt.key}
+                                  style={[
+                                    styles.lessonModeDropdownModalItem,
+                                    isSelected && styles.lessonModeDropdownModalItemSelected,
+                                  ]}
+                                  onPress={() => { setLessonMode(opt.key); setShowLessonModeDropdown(false); }}
+                                  activeOpacity={0.8}
+                                >
+                                  <Text
+                                    style={[
+                                      styles.lessonModeDropdownModalItemText,
+                                      isSelected && styles.lessonModeDropdownModalItemTextSelected,
+                                    ]}
+                                  >
+                                    {opt.label}
+                                  </Text>
+                                  {isSelected ? <Ionicons name="checkmark" size={18} color="#D32F2F" /> : null}
+                                </TouchableOpacity>
+                              );
+                            })}
+                          </ScrollView>
+                        </TouchableOpacity>
+                      </TouchableOpacity>
+                    </Modal>
+                  ) : showLessonModeDropdown ? (
                     <View style={styles.lessonModeDropdownMenu}>
                       <TouchableOpacity
                         style={[styles.lessonModeDropdownItem, lessonMode === 'text' && styles.lessonModeDropdownItemActive]}
@@ -7655,7 +7843,7 @@ MANUAL LESSON CREATION MODAL
                         {lessonMode === 'file' && <Ionicons name="checkmark" size={16} color="#D32F2F" />}
                       </TouchableOpacity>
                     </View>
-                  )}
+                  ) : null}
                 </View>
               </View>
               <TouchableOpacity
@@ -7671,7 +7859,10 @@ MANUAL LESSON CREATION MODAL
                 {isSaving ? <ActivityIndicator size="small" color="#FFF" /> : <Ionicons name="checkmark" size={20} color="#FFF" />}
               </TouchableOpacity>
             </View>
-            {showLessonModeDropdown && (
+            {/* On mobile the Modal above supplies its own full-screen
+                backdrop/overlay, so this inline backdrop is only needed for
+                the desktop/large-screen inline dropdown. */}
+            {!isMobile && showLessonModeDropdown && (
               <TouchableOpacity
                 style={styles.lessonModeDropdownBackdrop}
                 activeOpacity={1}
@@ -9038,6 +9229,9 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   uploadBtnText: { fontFamily: FONT_BODY, color: '#FFF', fontWeight: WEIGHT_EMPHASIS, fontSize: 13 },
+  // ✅ NEW: small caption under the assignment "Upload File" button showing
+  // running total vs. the 100MB cap.
+  attachmentSizeHint: { fontFamily: FONT_BODY, color: '#888', fontSize: 11, marginTop: 6, textAlign: 'center' },
   filePreviewBox: {
     marginTop: 10,
     borderWidth: 1,
@@ -9749,6 +9943,70 @@ const styles = StyleSheet.create({
     fontSize: 13,
   },
   lessonModeDropdownItemTextActive: {
+    color: '#D32F2F',
+    fontWeight: WEIGHT_EMPHASIS,
+  },
+  // ✅ NEW: mobile "Lesson Content Type" bottom-sheet Modal, styled to match
+  // CustomDropdown's dropdownModal* styles in Honors.tsx. Rendered by RN's
+  // Modal component so it always sits above the screen's ScrollView/cards —
+  // avoids the dropdown being clipped or un-tappable on small screens.
+  lessonModeDropdownModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'flex-end',
+  },
+  lessonModeDropdownModalSheet: {
+    width: '100%',
+    maxHeight: '70%',
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingHorizontal: 18,
+    paddingTop: 10,
+    paddingBottom: 24,
+  },
+  lessonModeDropdownModalHandle: {
+    alignSelf: 'center',
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#DDD6CE',
+    marginBottom: 12,
+  },
+  lessonModeDropdownModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+    paddingBottom: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F0EBE4',
+  },
+  lessonModeDropdownModalTitle: { fontFamily: FONT_TITLE,
+    fontSize: 15,
+    fontWeight: WEIGHT_TITLE,
+    color: '#3B332E',
+  },
+  lessonModeDropdownModalScroll: {
+    maxHeight: 320,
+  },
+  lessonModeDropdownModalItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 14,
+    paddingHorizontal: 10,
+    borderRadius: 16,
+  },
+  lessonModeDropdownModalItemSelected: {
+    backgroundColor: '#FDECEC',
+  },
+  lessonModeDropdownModalItemText: { fontFamily: FONT_BODY,
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#111',
+  },
+  lessonModeDropdownModalItemTextSelected: {
     color: '#D32F2F',
     fontWeight: WEIGHT_EMPHASIS,
   },

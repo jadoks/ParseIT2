@@ -66,6 +66,9 @@ function getApiBaseUrl() {
   return 'http://192.168.1.5:5000';
 }
 
+const MAX_FILE_SIZE_MB = 10;
+const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
+
 const API_BASE_URL = getApiBaseUrl();
 const apiFetch = (url: string, options: any = {}) =>
   fetch(url, {
@@ -1063,6 +1066,11 @@ const Messenger = ({
       if (result.canceled || !result.assets || result.assets.length === 0) return;
       const asset = result.assets[0];
 
+      if (asset.size && asset.size > MAX_FILE_SIZE_BYTES) {
+        showToast(`File must be smaller than ${MAX_FILE_SIZE_MB}MB.`, 'error');
+        return;
+      }
+
       // Convert to Base64
       let base64 = '';
       if (Platform.OS === 'web') {
@@ -1181,6 +1189,11 @@ const Messenger = ({
       if (result.canceled || !result.assets || result.assets.length === 0)
         return;
       const asset = result.assets[0];
+
+      if (asset.size && asset.size > MAX_FILE_SIZE_BYTES) {
+        showToast(`File must be smaller than ${MAX_FILE_SIZE_MB}MB.`, 'error');
+        return;
+      }
 
       if (asset.mimeType && asset.mimeType.startsWith('video/')) {
         showToast('Video files are not allowed.', 'error');

@@ -30,6 +30,16 @@ import { FONT_BODY, FONT_TITLE, WEIGHT_EMPHASIS, WEIGHT_TITLE } from '../theme/t
 
 const DEFAULT_AVATAR = require('../../assets/images/default_profile.png'); // Placeholder avatar for conversations without a custom image
 
+// ✅ NEW: shared 10MB-per-file cap for both the chat file-attachment picker
+// (handlePickFile) and the conversation photo picker (handleChangePicture),
+// matching the same 10MB limit used for AI file uploads (GeminiFloatingModal)
+// and chatbot training files (Chatbot.tsx / ModifyChatbotModal.tsx).
+const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10MB
+
+function formatFileSizeMB(bytes: number) {
+  return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
+}
+
 function getApiBaseUrl() {
   // Prefer the deployed backend URL on every platform — including native /
   // Expo Go — since EXPO_PUBLIC_ vars are inlined for native builds too, not
@@ -1025,6 +1035,15 @@ const Messenger = ({
         return;
       const asset = result.assets[0];
 
+      // ✅ NEW: 10MB-per-file cap on chat attachments.
+      if (typeof asset.size === 'number' && asset.size > MAX_FILE_SIZE_BYTES) {
+        showToast(
+          `File is too large (${formatFileSizeMB(asset.size)}). Max size is ${formatFileSizeMB(MAX_FILE_SIZE_BYTES)}.`,
+          'error'
+        );
+        return;
+      }
+
       if (asset.mimeType && asset.mimeType.startsWith('video/')) {
         showToast('Video files are not allowed.', 'error');
         return;
@@ -1070,6 +1089,16 @@ const Messenger = ({
 
       if (result.canceled || !result.assets || result.assets.length === 0) return;
       const asset = result.assets[0];
+
+      // ✅ NEW: 10MB-per-file cap on the conversation photo, matching
+      // handlePickFile's chat-attachment limit above.
+      if (typeof asset.size === 'number' && asset.size > MAX_FILE_SIZE_BYTES) {
+        showToast(
+          `Image is too large (${formatFileSizeMB(asset.size)}). Max size is ${formatFileSizeMB(MAX_FILE_SIZE_BYTES)}.`,
+          'error'
+        );
+        return;
+      }
 
       // Convert to Base64
       let base64 = '';

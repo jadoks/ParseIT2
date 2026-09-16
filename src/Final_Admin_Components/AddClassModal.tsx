@@ -46,6 +46,10 @@ type BannerFile = {
   mimeType: string | null;
 };
 
+const MAX_BANNER_SIZE_MB = 5;
+const MAX_BANNER_SIZE_BYTES = MAX_BANNER_SIZE_MB * 1024 * 1024;
+const ALLOWED_BANNER_MIME_TYPES = ["image/jpeg", "image/jpg", "image/png"];
+
 // One recurring weekly time block for a class (e.g. "Mon/Wed 08:00-09:30, Room 301").
 // A class can have several of these (e.g. a lecture block + a separate lab block).
 // Mirrors the shape used by the Teacher Dashboard's Create Class flow so the
@@ -663,6 +667,19 @@ export default function AddClassModal({
       const asset = result.assets?.[0];
       if (!asset?.uri) {
         showToast("No file was selected.", "error");
+        return;
+      }
+
+      if (
+        asset.mimeType &&
+        !ALLOWED_BANNER_MIME_TYPES.includes(asset.mimeType.toLowerCase())
+      ) {
+        showToast("Only JPG, JPEG, and PNG images are allowed.", "error");
+        return;
+      }
+
+      if (asset.size && asset.size > MAX_BANNER_SIZE_BYTES) {
+        showToast(`Banner image must be smaller than ${MAX_BANNER_SIZE_MB}MB.`, "error");
         return;
       }
 
