@@ -3092,40 +3092,78 @@ useEffect(() => {
       );
       // 🆕 LEADERBOARD: the backend never overwrites a practice-game score —
       // every attempt (`/class-game-scores`) is its own record — so as
-      // students replay a quiz, this list just keeps growing. Present it
-      // ranked like an actual leaderboard (highest percentage first, medals
-      // for the top 3) instead of in raw/insertion order, with a readable
-      // date/time per attempt.
-      const leaderboardRows = [...gameScores].sort((a: any, b: any) => {
-        if ((b.percent ?? 0) !== (a.percent ?? 0)) return (b.percent ?? 0) - (a.percent ?? 0);
-        if ((b.score ?? 0) !== (a.score ?? 0)) return (b.score ?? 0) - (a.score ?? 0);
-        const aTime = a.createdAt?._seconds || a.createdAt?.seconds || 0;
-        const bTime = b.createdAt?._seconds || b.createdAt?.seconds || 0;
-        return aTime - bTime; // earlier attempt ranks higher on a tie
+      // students replay a quiz, this list just keeps growing. Rather than
+      // list every individual attempt as its own row, merge all of a
+      // student's attempts into a single leaderboard row: "Score" is the
+      // running total of every attempt's score added together (so a
+      // just-played attempt merges into whatever they'd already scored),
+      // and "Last Played" tracks the most recent attempt's timestamp.
+      // Total Questions / Percentage are dropped since they're only
+      // meaningful per-attempt, not for a merged running total.
+      type LeaderboardEntry = {
+        studentName: string;
+        studentId: string;
+        totalScore: number;
+        lastPlayedSeconds: number;
+        lastPlayed: any;
+      };
+      const scoresByStudent = new Map<string, LeaderboardEntry>();
+
+      gameScores.forEach((game: any) => {
+        // Group strictly by studentId — the normalized key — never by name,
+        // since two different students could share a display name (or the
+        // same student's name could be entered inconsistently across
+        // attempts), which would incorrectly merge or split rows.
+        // 🐛 FIX: a record with no studentId used to be silently dropped
+        // here (`if (!key) return`), so a mis-saved attempt would just
+        // vanish from the export with no trace. Fall back to the record's
+        // own doc id instead, so it still shows up as its own row — visibly
+        // flagged as unmatched rather than lost — and can be investigated.
+        const key = game.studentId || `unmatched:${game.id || game.studentName || Math.random()}`;
+        const createdSeconds = game.createdAt?._seconds || game.createdAt?.seconds || 0;
+        const existing = scoresByStudent.get(key);
+        if (existing) {
+          existing.totalScore += game.score || 0;
+          if (createdSeconds >= existing.lastPlayedSeconds) {
+            existing.lastPlayedSeconds = createdSeconds;
+            existing.lastPlayed = game.createdAt;
+          }
+        } else {
+          scoresByStudent.set(key, {
+            studentName: game.studentName || 'Unmatched attempt (no student ID)',
+            studentId: game.studentId || '—',
+            totalScore: game.score || 0,
+            lastPlayedSeconds: createdSeconds,
+            lastPlayed: game.createdAt,
+          });
+        }
+      });
+
+      const leaderboardRows = Array.from(scoresByStudent.values()).sort((a, b) => {
+        if (b.totalScore !== a.totalScore) return b.totalScore - a.totalScore;
+        return a.lastPlayedSeconds - b.lastPlayedSeconds; // earlier last-played ranks higher on a tie
       });
       const medalFor = (rank: number) => (rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : String(rank));
 
       const leaderboardAoa = [
-        ['🏆 Practice Game Leaderboard — every attempt, ranked by score'],
-        ['Rank', 'Student Name', 'Student ID', 'Score', 'Total Questions', 'Percentage', 'Date Played'],
-        ...leaderboardRows.map((game: any, index: number) => [
+        ['🏆 Practice Game Leaderboard — merged score per student'],
+        ['Rank', 'Student Name', 'Student ID', 'Score', 'Last Played'],
+        ...leaderboardRows.map((entry, index: number) => [
           medalFor(index + 1),
-          game.studentName,
-          game.studentId,
-          game.score,
-          game.totalQuestions,
-          `${game.percent}%`,
-          formatDateTime(game.createdAt),
+          entry.studentName,
+          entry.studentId,
+          entry.totalScore,
+          formatDateTime(entry.lastPlayed),
         ]),
       ];
 
       const leaderboardSheet = XLSX.utils.aoa_to_sheet(leaderboardAoa);
-      // Merge the title across all 7 columns and size them for readability
+      // Merge the title across all 5 columns and size them for readability
       // (the community xlsx package can't apply cell colors/bold, so column
       // sizing + the title row + medals are what keep this presentable).
-      leaderboardSheet['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 6 } }];
+      leaderboardSheet['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 4 } }];
       leaderboardSheet['!cols'] = [
-        { wch: 8 }, { wch: 24 }, { wch: 16 }, { wch: 8 }, { wch: 16 }, { wch: 12 }, { wch: 20 },
+        { wch: 8 }, { wch: 24 }, { wch: 16 }, { wch: 8 }, { wch: 20 },
       ];
 
       XLSX.utils.book_append_sheet(workbook, leaderboardSheet, 'Practice Game Leaderboard');

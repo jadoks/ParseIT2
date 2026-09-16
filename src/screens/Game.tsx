@@ -15,6 +15,7 @@ import {
   View,
   useWindowDimensions,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { FONT_BODY, FONT_TITLE, WEIGHT_EMPHASIS, WEIGHT_TITLE } from '../theme/typography';
 import { QuizQuestion } from './games/quiz-masters';
@@ -138,6 +139,11 @@ const Game = ({
 }: Props) => {
   const { width } = useWindowDimensions();
   const isLargeScreen = width >= 768; // tablet / web / desktop breakpoint
+  // 🆕 RESPONSIVE: only needed so the full-screen "Play Again" modal on small
+  // screens doesn't sit flush under the notch/status bar or behind the home
+  // indicator — the centered card on large screens has room to spare and
+  // doesn't need this.
+  const insets = useSafeAreaInsets();
   const [mode, setMode] = useState<GameScreen>('menu');
   const [generatedQuestions, setGeneratedQuestions] = useState<QuizQuestion[] | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -281,10 +287,34 @@ const Game = ({
   };
 
   // 🌟 NEW: Increment and persist this student's generation count
+  // 🐛 FIX: previously incremented off the in-memory `generationsUsedToday`
+  // state, which resets to 0 whenever Game.tsx remounts (e.g. every "Play
+  // Again" — the screen switches away to quiz-masters and back, unmounting
+  // and remounting Game) and only becomes correct again once the async
+  // loadGenerationCount() effect resolves. If a generate call fired before
+  // that reload finished, this computed `0 + 1 = 1` and OVERWROTE the real
+  // persisted count instead of advancing it — so two generations in a row
+  // could net out to only +1 recorded. Re-reading the persisted value here,
+  // right before incrementing, means it's always correct regardless of
+  // whether the in-memory state has caught up yet.
   const recordGenerationUsed = async () => {
     const storageKey = getGenerationLimitStorageKey(studentId);
     const todayKey = getTodayKey();
-    const nextCount = generationsUsedToday + 1;
+    let currentCount = generationsUsedToday;
+    try {
+      const raw = await AsyncStorage.getItem(storageKey);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed?.date === todayKey) {
+          currentCount = parsed.count || 0;
+        } else {
+          currentCount = 0; // stale persisted count from a previous day
+        }
+      }
+    } catch (err) {
+      console.warn('Failed to re-read AI generation limit before recording use:', err);
+    }
+    const nextCount = currentCount + 1;
     setGenerationsUsedToday(nextCount);
     try {
       await AsyncStorage.setItem(storageKey, JSON.stringify({ date: todayKey, count: nextCount }));
@@ -674,11 +704,18 @@ const Game = ({
       <Modal
         visible={isNewQuizModalVisible}
         transparent
-        animationType="fade"
+        animationType={isLargeScreen ? 'fade' : 'slide'}
         onRequestClose={() => setIsNewQuizModalVisible(false)}
       >
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, styles.newQuizModalContent]}>
+        <View style={[styles.modalOverlay, !isLargeScreen && styles.modalOverlayFullScreen]}>
+          <View
+            style={[
+              styles.modalContent,
+              styles.newQuizModalContent,
+              isLargeScreen ? styles.newQuizModalContentLarge : styles.newQuizModalContentFullScreen,
+              !isLargeScreen && { paddingTop: insets.top, paddingBottom: insets.bottom },
+            ]}
+          >
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Start a New Quiz</Text>
               <TouchableOpacity onPress={() => setIsNewQuizModalVisible(false)}>
@@ -979,6 +1016,30 @@ const styles = StyleSheet.create({
   // form, not just a single scrollable list.
   newQuizModalContent: {
     maxHeight: '88%',
+  },
+  // 🆕 RESPONSIVE: on tablet/web/desktop, keep the centered-card look but
+  // make it noticeably wider than the default 480 modal (more room for the
+  // class dropdown, material chips, and question count/generate row side by
+  // side without everything feeling cramped).
+  newQuizModalContentLarge: {
+    maxWidth: 720,
+  },
+  // 🆕 RESPONSIVE: on phones, drop the centered "card" look entirely and go
+  // full screen — fill the whole viewport, no rounded corners/margins, so
+  // there's no wasted space around the form on a small screen.
+  newQuizModalContentFullScreen: {
+    width: '100%',
+    height: '100%',
+    maxWidth: '100%',
+    maxHeight: '100%',
+    borderRadius: 0,
+  },
+  // Full-screen variant of the overlay: no centering/padding so the card
+  // above can stretch edge-to-edge instead of floating in the middle.
+  modalOverlayFullScreen: {
+    padding: 0,
+    justifyContent: 'flex-start',
+    alignItems: 'stretch',
   },
   modalList: { padding: 12 },
   dropdownItem: {
