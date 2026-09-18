@@ -453,6 +453,14 @@ const ensureDashboardScrollCss = () => {
     .${DASHBOARD_SCROLL_CLASS} {
       scrollbar-width: thin; /* Firefox */
       scrollbar-color: #D32F2F #F1F1F1;
+      /* RNW sets overflow-y: auto by default, which only draws a
+         scrollbar once content actually overflows the viewport — on a
+         shorter dashboard (few classes, no announcements) that never
+         happens, so the indicator silently never appears. Forcing
+         'scroll' keeps the track always visible regardless of content
+         height, matching "should be visible" rather than "visible only
+         when needed". */
+      overflow-y: scroll !important;
     }
     .${DASHBOARD_SCROLL_CLASS}::-webkit-scrollbar {
       width: 10px;
