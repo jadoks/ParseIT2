@@ -68,6 +68,31 @@ function getApiBaseUrl() {
 
 const MAX_FILE_SIZE_MB = 10;
 const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
+const ALLOWED_IMAGE_MIME_TYPES = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp'];
+const ALLOWED_IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.webp'];
+
+// Some platforms (esp. web) don't report a mimeType for every file — e.g. a
+// browser has no registered MIME type for .tsx/.js, so `asset.mimeType`
+// comes back empty. We must NOT let a missing mimeType skip validation
+// ("fail open"); instead we check the extension too and only accept the
+// file if we have positive evidence it's an allowed image ("fail closed").
+const isAllowedImageAsset = (
+  mimeType: string | null | undefined,
+  name: string | null | undefined,
+  allowedMimeTypes: string[],
+  allowedExtensions: string[]
+) => {
+  const normalizedMime = (mimeType || '').toLowerCase();
+  const dotIndex = (name || '').lastIndexOf('.');
+  const extension = dotIndex >= 0 ? (name as string).slice(dotIndex).toLowerCase() : '';
+
+  const mimeOk = normalizedMime !== '' && allowedMimeTypes.includes(normalizedMime);
+  const extOk = extension !== '' && allowedExtensions.includes(extension);
+
+  if (!extOk) return false;
+  if (normalizedMime !== '' && !mimeOk) return false;
+  return true;
+};
 
 const API_BASE_URL = getApiBaseUrl();
 const apiFetch = (url: string, options: any = {}) =>
@@ -1065,6 +1090,22 @@ const Messenger = ({
 
       if (result.canceled || !result.assets || result.assets.length === 0) return;
       const asset = result.assets[0];
+
+      // ✅ NEW: reject anything that isn't actually an image. The picker's
+      // `type: ['image/*']` filter is only a hint — on web (and some Android
+      // file pickers) the user can still choose "All files" and pick a
+      // non-image, so we must validate the real mimeType ourselves.
+      if (
+        !isAllowedImageAsset(
+          asset.mimeType,
+          asset.name,
+          ALLOWED_IMAGE_MIME_TYPES,
+          ALLOWED_IMAGE_EXTENSIONS
+        )
+      ) {
+        showToast('Only PNG, JPG/JPEG, and WEBP images are allowed.', 'error');
+        return;
+      }
 
       if (asset.size && asset.size > MAX_FILE_SIZE_BYTES) {
         showToast(`File must be smaller than ${MAX_FILE_SIZE_MB}MB.`, 'error');

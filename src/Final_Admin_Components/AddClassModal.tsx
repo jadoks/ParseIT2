@@ -49,6 +49,33 @@ type BannerFile = {
 const MAX_BANNER_SIZE_MB = 5;
 const MAX_BANNER_SIZE_BYTES = MAX_BANNER_SIZE_MB * 1024 * 1024;
 const ALLOWED_BANNER_MIME_TYPES = ["image/jpeg", "image/jpg", "image/png"];
+const ALLOWED_BANNER_EXTENSIONS = [".jpg", ".jpeg", ".png"];
+
+// Some platforms (esp. web) don't report a mimeType for every file — e.g. a
+// browser has no registered MIME type for .tsx/.js, so `asset.mimeType`
+// comes back empty. We must NOT let a missing mimeType skip validation
+// ("fail open"); instead we check the extension too and only accept the
+// file if we have positive evidence it's an allowed image ("fail closed").
+const isAllowedImageAsset = (
+  mimeType: string | null | undefined,
+  name: string | null | undefined,
+  allowedMimeTypes: string[],
+  allowedExtensions: string[]
+) => {
+  const normalizedMime = (mimeType || "").toLowerCase();
+  const dotIndex = (name || "").lastIndexOf(".");
+  const extension = dotIndex >= 0 ? (name as string).slice(dotIndex).toLowerCase() : "";
+
+  const mimeOk = normalizedMime !== "" && allowedMimeTypes.includes(normalizedMime);
+  const extOk = extension !== "" && allowedExtensions.includes(extension);
+
+  // Require the extension to be a valid image extension. If a mimeType is
+  // present, it must also agree; if it's absent, the extension check alone
+  // is sufficient (native pickers can omit mimeType for legitimate images).
+  if (!extOk) return false;
+  if (normalizedMime !== "" && !mimeOk) return false;
+  return true;
+};
 
 // One recurring weekly time block for a class (e.g. "Mon/Wed 08:00-09:30, Room 301").
 // A class can have several of these (e.g. a lecture block + a separate lab block).
@@ -671,8 +698,12 @@ export default function AddClassModal({
       }
 
       if (
-        asset.mimeType &&
-        !ALLOWED_BANNER_MIME_TYPES.includes(asset.mimeType.toLowerCase())
+        !isAllowedImageAsset(
+          asset.mimeType,
+          asset.name,
+          ALLOWED_BANNER_MIME_TYPES,
+          ALLOWED_BANNER_EXTENSIONS
+        )
       ) {
         showToast("Only JPG, JPEG, and PNG images are allowed.", "error");
         return;

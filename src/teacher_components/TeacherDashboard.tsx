@@ -169,6 +169,39 @@ function DashboardTextArea({
 }
 
 const DAY_OPTIONS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+// Class banner upload — allowed formats: JPG, PNG, WEBP.
+const ALLOWED_BANNER_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+const ALLOWED_BANNER_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.webp'];
+
+// launchImageLibrary uses the native OS photo picker on iOS/Android, which
+// already restricts selection to images at the OS level. But on web it
+// falls back to a plain <input type="file" accept="image/*">, and `accept`
+// is only a hint — the browser lets the user pick "All files" and choose
+// anything. On top of that, browsers don't have a registered MIME type for
+// some extensions (e.g. .js/.tsx), so `asset.type` can come back empty. We
+// must NOT let a missing type skip validation ("fail open"); check the
+// extension too and only accept the file if we have positive evidence it's
+// an allowed image ("fail closed").
+const isAllowedBannerAsset = (
+  mimeType: string | null | undefined,
+  fileName: string | null | undefined
+) => {
+  const normalizedMime = (mimeType || '').toLowerCase();
+  const dotIndex = (fileName || '').lastIndexOf('.');
+  const extension = dotIndex >= 0 ? (fileName as string).slice(dotIndex).toLowerCase() : '';
+
+  const mimeOk = normalizedMime !== '' && ALLOWED_BANNER_MIME_TYPES.includes(normalizedMime);
+  const extOk = extension !== '' && ALLOWED_BANNER_EXTENSIONS.includes(extension);
+
+  // Native photo-library assets don't always carry a fileName (e.g. iCloud
+  // photos), so we can't require both signals to agree the way we do for
+  // DocumentPicker-based uploads elsewhere. Instead, accept the file only
+  // when at least one signal is present AND positively confirms it's an
+  // allowed image type; reject when we have no positive evidence at all
+  // (e.g. mimeType empty and extension not a recognized image extension).
+  return mimeOk || extOk;
+};
 const TIME_24H_REGEX = /^([01]\d|2[0-3]):([0-5]\d)$/;
 
 // ── Google-Classroom-style time input helpers ──────────────────────────
@@ -673,8 +706,8 @@ const refreshClassesAfterStorageWrite = async (pinFrontId?: string) => {
     if (result.errorCode) { showToast(result.errorMessage || 'Unable to pick image.', 'error'); return; }
     const asset = result.assets?.[0];
     const uri = asset?.uri;
+    if (!isAllowedBannerAsset(asset?.type, asset?.fileName)) { showToast('Only JPG, PNG, and WEBP banner images are allowed.', 'error'); return; }
     if (asset?.fileSize && asset.fileSize > 5 * 1024 * 1024) { showToast('Class banner must be below 5MB.', 'error'); return; }
-    if (asset?.type && !['image/jpeg', 'image/png', 'image/webp'].includes(asset.type)) { showToast('Only JPG, PNG, and WEBP banner images are allowed.', 'error'); return; }
     if (uri) { setClassBanner(uri); setClassBannerFileName(asset.fileName || 'teacher-banner.jpg'); setClassBannerMimeType(asset.type || 'image/jpeg'); }
   };
 
@@ -684,8 +717,8 @@ const refreshClassesAfterStorageWrite = async (pinFrontId?: string) => {
     if (result.errorCode) { showToast(result.errorMessage || 'Unable to pick image.', 'error'); return; }
     const asset = result.assets?.[0];
     const uri = asset?.uri;
+    if (!isAllowedBannerAsset(asset?.type, asset?.fileName)) { showToast('Only JPG, PNG, and WEBP banner images are allowed.', 'error'); return; }
     if (asset?.fileSize && asset.fileSize > 5 * 1024 * 1024) { showToast('Class banner must be below 5MB.', 'error'); return; }
-    if (asset?.type && !['image/jpeg', 'image/png', 'image/webp'].includes(asset.type)) { showToast('Only JPG, PNG, and WEBP banner images are allowed.', 'error'); return; }
     if (uri) { setEditClassBanner(uri); setEditClassBannerFileName(asset.fileName || 'teacher-banner.jpg'); setEditClassBannerMimeType(asset.type || 'image/jpeg'); }
   };
 

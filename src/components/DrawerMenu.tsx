@@ -49,6 +49,50 @@ import {
 // folder layout differs.
 import Toast from '../Final_Admin_Components/Toast';
 
+// Grade file upload — allowed formats: PDF, DOC, DOCX, TXT, CSV, XLS, XLSX.
+const ALLOWED_GRADE_FILE_MIME_TYPES = [
+  'application/pdf',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'text/plain',
+  'text/csv',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+];
+const ALLOWED_GRADE_FILE_EXTENSIONS = [
+  '.pdf',
+  '.doc',
+  '.docx',
+  '.txt',
+  '.csv',
+  '.xls',
+  '.xlsx',
+];
+
+// Some platforms (esp. web) don't report a mimeType for every file — e.g. a
+// browser has no registered MIME type for some extensions, so
+// `asset.mimeType` can come back empty. We must NOT let a missing mimeType
+// skip validation ("fail open"); instead we check the extension too and
+// only accept the file if we have positive evidence it's an allowed type
+// ("fail closed"). This also guards against the DocumentPicker's `type`
+// filter being only a hint that some pickers (notably on web) let users
+// bypass via an "All files" option.
+const isAllowedGradeFileAsset = (
+  mimeType: string | null | undefined,
+  name: string | null | undefined
+) => {
+  const normalizedMime = (mimeType || '').toLowerCase();
+  const dotIndex = (name || '').lastIndexOf('.');
+  const extension = dotIndex >= 0 ? (name as string).slice(dotIndex).toLowerCase() : '';
+
+  const mimeOk = normalizedMime !== '' && ALLOWED_GRADE_FILE_MIME_TYPES.includes(normalizedMime);
+  const extOk = extension !== '' && ALLOWED_GRADE_FILE_EXTENSIONS.includes(extension);
+
+  if (!extOk) return false;
+  if (normalizedMime !== '' && !mimeOk) return false;
+  return true;
+};
+
 type ToastType = 'success' | 'error' | 'info';
 
 
@@ -815,19 +859,26 @@ const DrawerMenu = ({
       onFilePickerOpen?.(); 
       
       const result = await DocumentPicker.getDocumentAsync({
-        type: [
-          'application/pdf',
-          'image/*',
-          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-          'application/vnd.ms-excel',
-          'text/csv',
-        ],
+        type: ALLOWED_GRADE_FILE_MIME_TYPES,
         copyToCacheDirectory: true,
       });
 
       if (result.canceled || !result.assets?.length) return;
 
       const asset = result.assets[0];
+
+      // ✅ NEW: validate the actual file type ourselves. The picker's `type`
+      // filter is only a hint — on web (and some Android file pickers) the
+      // user can still choose "All files" and pick something outside the
+      // allowed formats. Allowed formats: PDF, DOC, DOCX, TXT, CSV, XLS, XLSX.
+      if (!isAllowedGradeFileAsset(asset.mimeType, asset.name)) {
+        Alert.alert(
+          'Unsupported File Type',
+          'Allowed formats: PDF, DOC, DOCX, TXT, CSV, XLS, XLSX.'
+        );
+        return;
+      }
+
       if (asset.size && asset.size > 10 * 1024 * 1024) {
         Alert.alert('File Too Large', 'Please select a file smaller than 10MB.');
         return;
