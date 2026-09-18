@@ -1103,6 +1103,19 @@ const TeacherCourseDetail2 = ({
     return cleaned || `Module ${moduleNumber}`;
   };
 
+  // ✅ NEW: Teachers can rename how a module's title APPEARS (here and to
+  // students) without touching the underlying `title` field — `title` is
+  // what "Generate Next Lesson" / syllabus matching (findMatchingSyllabusModule)
+  // reads, so editing it would silently break Lesson Generation. `displayTitle`
+  // is a separate, purely cosmetic field; when absent we fall back to the
+  // original (cleaned) title. Works identically for syllabus-generated AND
+  // manually-created modules.
+  const getModuleDisplayTitle = (mod: any) => {
+    const custom = (mod?.displayTitle || '').toString().trim();
+    if (custom) return custom;
+    return cleanModuleTitle(mod?.title || '', mod?.moduleNumber);
+  };
+
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [materials, setMaterials] = useState<Material[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
@@ -1150,6 +1163,17 @@ const TeacherCourseDetail2 = ({
   const [showManualModuleModal, setShowManualModuleModal] = useState(false);
   const [showManualLessonModal, setShowManualLessonModal] = useState(false);
   const [selectedModuleForLesson, setSelectedModuleForLesson] = useState<any>(null);
+
+  // ✅ NEW: Edit Module Title modal — works the same for a syllabus-generated
+  // module ("Generate Module") or a manually-created one; only the display
+  // title can be changed here.
+  const [showEditModuleTitleModal, setShowEditModuleTitleModal] = useState(false);
+  const [moduleBeingEdited, setModuleBeingEdited] = useState<any>(null);
+  const [editModuleTitleValue, setEditModuleTitleValue] = useState('');
+  const [isSavingModuleTitle, setIsSavingModuleTitle] = useState(false);
+  // ✅ NEW: tracks the module id currently being deleted so we can disable
+  // just that row's delete button (not the whole list) while it's in flight.
+  const [deletingModuleId, setDeletingModuleId] = useState<string | null>(null);
 
   const [newModuleNum, setNewModuleNum] = useState('');
   const [newModuleTitle, setNewModuleTitle] = useState('');
@@ -1519,6 +1543,7 @@ useEffect(() => {
     lessonDetailModalVisible ||
     showManualModuleModal ||
     showManualLessonModal ||
+    showEditModuleTitleModal ||
     showStructurePreviewModal ||
     showGenerateModal ||
     showNextLessonModal ||
@@ -1895,6 +1920,104 @@ useEffect(() => {
     } finally {
       setIsSaving(false);
     }
+  };
+
+  // ✅ NEW: Opens the Edit Module Title modal, prefilled with the module's
+  // current effective (display) title. Used identically for a syllabus-
+  // generated module and a manually-created one — only the title is
+  // editable here.
+  const handleOpenEditModuleTitle = (mod: any) => {
+    setModuleBeingEdited(mod);
+    setEditModuleTitleValue(getModuleDisplayTitle(mod));
+    setShowEditModuleTitleModal(true);
+  };
+
+  // Duplicate check compares against every OTHER module's effective
+  // (display) title — normalized the same way as the other module/lesson
+  // duplicate checks in this file.
+  const isDuplicateModuleDisplayTitle =
+    !!editModuleTitleValue.trim() &&
+    modules.some(
+      (m) =>
+        m.id !== moduleBeingEdited?.id &&
+        getModuleDisplayTitle(m).trim().toLowerCase() === editModuleTitleValue.trim().toLowerCase()
+    );
+
+  // ✅ NEW: Saves the edited display title only. Hits a dedicated endpoint
+  // (`PUT /course-modules/:id/display-title`) that writes ONLY `displayTitle`
+  // — the underlying `title` field that Lesson Generation / syllabus
+  // matching depends on is never touched, so this is guaranteed
+  // "display only, no logic change" even if the UI has a bug.
+  const handleSaveModuleTitle = async () => {
+    const trimmed = editModuleTitleValue.trim();
+    if (!trimmed || !moduleBeingEdited?.id) {
+      toast.show('error', 'Error', 'Please enter a title.');
+      return;
+    }
+    if (isDuplicateModuleDisplayTitle) {
+      toast.show('error', 'Duplicate Title', 'Another module already uses this title. Please use a different title.');
+      return;
+    }
+    setIsSavingModuleTitle(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/course-modules/${moduleBeingEdited.id}/display-title`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ displayTitle: trimmed }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Failed to update module title.');
+      setModules((prev) =>
+        prev.map((m) => (m.id === moduleBeingEdited.id ? { ...m, displayTitle: trimmed } : m))
+      );
+      setShowEditModuleTitleModal(false);
+      setModuleBeingEdited(null);
+      setEditModuleTitleValue('');
+      toast.show('success', 'Saved', 'Module title updated.');
+    } catch (e: any) {
+      toast.show('error', 'Error', e?.message || 'Failed to update module title.');
+    } finally {
+      setIsSavingModuleTitle(false);
+    }
+  };
+
+  // ✅ NEW: Delete a module (syllabus-generated OR manually-created — same
+  // flow for both). Always confirms first via toast.confirm, and deleting a
+  // module also deletes every lesson filed under it (handled server-side).
+  const handleDeleteModule = (mod: any) => {
+    if (!mod?.id) return;
+    const lessonCount = Array.isArray(mod.lessons) ? mod.lessons.length : 0;
+    toast.confirm(
+      'Delete Module',
+      `Are you sure you want to delete "Module ${mod.moduleNumber}: ${getModuleDisplayTitle(mod)}"?` +
+        (lessonCount > 0
+          ? ` This will also permanently delete ${lessonCount} lesson${lessonCount === 1 ? '' : 's'} inside it.`
+          : '') +
+        ' This action cannot be undone.',
+      async () => {
+        setDeletingModuleId(mod.id);
+        try {
+          const response = await fetch(`${API_BASE_URL}/course-modules/${mod.id}`, {
+            credentials: 'include',
+            method: 'DELETE',
+          });
+          const data = await response.json();
+          if (!response.ok) throw new Error(data.error || 'Failed to delete module.');
+          setModules((prev) => prev.filter((m) => m.id !== mod.id));
+          setExpandedModules((prev) => {
+            const next = { ...prev };
+            delete next[mod.moduleNumber];
+            return next;
+          });
+          toast.show('success', 'Deleted', 'Module and its lessons were deleted.');
+        } catch (e: any) {
+          toast.show('error', 'Delete Failed', e?.message || 'Unable to delete module.');
+        } finally {
+          setDeletingModuleId(null);
+        }
+      }
+    );
   };
 
   const handleCreateManualLesson = async () => {
@@ -6389,24 +6512,56 @@ the button looked completely dead.
                     (mod.lessons?.reduce((sum: number, l: any) => sum + (l.estimatedHours || 0), 0) || 0);
                   return (
                     <View key={mod.id} style={{ backgroundColor: '#FFF', borderRadius: 16, marginBottom: 16, borderWidth: 1, borderColor: '#EEE', overflow: 'hidden' }}>
-                      <TouchableOpacity
-                        onPress={() => setExpandedModules(p => ({ ...p, [mod.moduleNumber]: !isExpanded }))}
-                        style={{ padding: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: isExpanded ? '#FFF5F5' : '#FFF' }}
-                      >
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 }}>
+                      <View style={{ padding: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: isExpanded ? '#FFF5F5' : '#FFF' }}>
+                        <TouchableOpacity
+                          onPress={() => setExpandedModules(p => ({ ...p, [mod.moduleNumber]: !isExpanded }))}
+                          style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 }}
+                        >
                           <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: '#D32F2F', alignItems: 'center', justifyContent: 'center' }}>
                             <Ionicons name="layers-outline" size={20} color="#FFF" />
                           </View>
                           <View style={{ flex: 1 }}>
                             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                              <Text style={{ fontSize: 16, fontWeight: WEIGHT_EMPHASIS, color: '#111' }}>
-                                Module {mod.moduleNumber}: {cleanModuleTitle(mod.title, mod.moduleNumber)}
+                              <Text style={{ fontSize: 16, fontWeight: WEIGHT_EMPHASIS, color: '#111' }} numberOfLines={2}>
+                                Module {mod.moduleNumber}: {getModuleDisplayTitle(mod)}
                               </Text>
                             </View>
                           </View>
+                        </TouchableOpacity>
+                        {/* ✅ NEW: Edit Title / Delete Module — identical for a
+                            syllabus-generated module ("Generate Module") or a
+                            manually-created one. These are siblings of (not
+                            nested inside) the expand/collapse toggle above so
+                            tapping them never also toggles the accordion. */}
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                          <TouchableOpacity
+                            onPress={() => handleOpenEditModuleTitle(mod)}
+                            style={{ padding: 8 }}
+                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                          >
+                            <Ionicons name="pencil-outline" size={18} color="#1976D2" />
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            onPress={() => handleDeleteModule(mod)}
+                            disabled={deletingModuleId === mod.id}
+                            style={{ padding: 8, opacity: deletingModuleId === mod.id ? 0.5 : 1 }}
+                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                          >
+                            {deletingModuleId === mod.id ? (
+                              <ActivityIndicator size="small" color="#D32F2F" />
+                            ) : (
+                              <Ionicons name="trash-outline" size={18} color="#D32F2F" />
+                            )}
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            onPress={() => setExpandedModules(p => ({ ...p, [mod.moduleNumber]: !isExpanded }))}
+                            style={{ padding: 4 }}
+                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                          >
+                            <Ionicons name={isExpanded ? 'chevron-up' : 'chevron-down'} size={24} color="#D32F2F" />
+                          </TouchableOpacity>
                         </View>
-                        <Ionicons name={isExpanded ? 'chevron-up' : 'chevron-down'} size={24} color="#D32F2F" />
-                      </TouchableOpacity>
+                      </View>
                       {isExpanded && (
                         <View style={{ padding: 16, borderTopWidth: 1, borderTopColor: '#EEE', backgroundColor: '#FAFAFA' }}>
                           {mod.lessons && mod.lessons.length > 0 ? (
@@ -7684,6 +7839,81 @@ MANUAL MODULE CREATION MODAL
         </View>
       </Modal>
       {/* ══════════════════════════════════════════════════════════════════════
+EDIT MODULE TITLE MODAL (display-only rename — works for Generate Module
+AND Create Module Manually; only the title shown here/to students changes,
+the underlying `title` used by Lesson Generation is never touched)
+════════════════════════════════════════════════════════════════════════ */}
+      <Modal visible={showEditModuleTitleModal} transparent animationType="fade">
+        <View style={styles.modalOverlayCenter}>
+          <View style={[styles.modalCardElevated, { width: isMobile ? Math.min(width - 28, 360) : 500 }]}>
+            <View style={styles.createHeaderRow}>
+              <Text style={styles.createTitle}>Edit Module Title</Text>
+              <TouchableOpacity
+                onPress={() => {
+                  setShowEditModuleTitleModal(false);
+                  setModuleBeingEdited(null);
+                  setEditModuleTitleValue('');
+                }}
+                disabled={isSavingModuleTitle}
+              >
+                <Ionicons name="close" size={24} color="#111" />
+              </TouchableOpacity>
+            </View>
+            <ScrollView contentContainerStyle={{ paddingBottom: 20 }}>
+              <Text style={styles.sectionLabel}>Module Number</Text>
+              <TextInput
+                style={[styles.inputBox, { backgroundColor: '#f5f5f5' }]}
+                value={moduleBeingEdited ? String(moduleBeingEdited.moduleNumber) : ''}
+                editable={false}
+              />
+              <Text style={styles.sectionLabel}>Title</Text>
+              <TextInput
+                style={[styles.inputBox, isDuplicateModuleDisplayTitle && styles.errorBorder]}
+                value={editModuleTitleValue}
+                onChangeText={setEditModuleTitleValue}
+                placeholder="Module Title"
+                placeholderTextColor="#999"
+              />
+              {isDuplicateModuleDisplayTitle &&
+                renderInputError('Another module already uses this title. Please use a different title.')}
+              <Text style={{ fontSize: 11, color: '#999', marginTop: 8, lineHeight: 15 }}>
+                This changes how the module's title is displayed here and to students only. It won't affect
+                what's stored for Lesson Generation.
+              </Text>
+            </ScrollView>
+            <View style={styles.buttonRow}>
+              <TouchableOpacity
+                style={styles.secondaryButton}
+                onPress={() => {
+                  setShowEditModuleTitleModal(false);
+                  setModuleBeingEdited(null);
+                  setEditModuleTitleValue('');
+                }}
+                disabled={isSavingModuleTitle}
+              >
+                <Text style={styles.secondaryButtonText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.primaryButton,
+                  (!editModuleTitleValue.trim() || isDuplicateModuleDisplayTitle || isSavingModuleTitle)
+                    ? styles.disabledButton
+                    : null
+                ]}
+                onPress={handleSaveModuleTitle}
+                disabled={!editModuleTitleValue.trim() || isDuplicateModuleDisplayTitle || isSavingModuleTitle}
+              >
+                {isSavingModuleTitle ? (
+                  <ActivityIndicator size="small" color="#FFF" />
+                ) : (
+                  <Text style={styles.primaryButtonText}>Save</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+      {/* ══════════════════════════════════════════════════════════════════════
 MANUAL LESSON CREATION MODAL
 ════════════════════════════════════════════════════════════════════════ */}
       {isEditingLesson ? (
@@ -7708,7 +7938,7 @@ MANUAL LESSON CREATION MODAL
               <View style={styles.lessonPreviewTopBarTextWrap}>
                 <Text style={styles.lessonPreviewTopBarTitle} numberOfLines={1}>Edit Lesson</Text>
                 <Text style={styles.lessonPreviewTopBarSubtitle} numberOfLines={1}>
-                  {selectedModuleForLesson?.title || 'Module Content'}
+                  {selectedModuleForLesson ? getModuleDisplayTitle(selectedModuleForLesson) : 'Module Content'}
                 </Text>
               </View>
               <TouchableOpacity
@@ -7902,7 +8132,7 @@ MANUAL LESSON CREATION MODAL
                     <Text style={styles.docPageBadgeText}>Manually Created</Text>
                   </View>
                   <Text style={styles.lessonPreviewTopBarSubtitle}>
-                    Adding to "{selectedModuleForLesson?.title}"
+                    Adding to "{selectedModuleForLesson ? getModuleDisplayTitle(selectedModuleForLesson) : ''}"
                   </Text>
                   {renderLessonFormFields()}
                   {renderTemplateFooterBanner()}

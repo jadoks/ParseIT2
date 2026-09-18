@@ -2636,7 +2636,12 @@ const fetchModules = useCallback(async (silent = false) => {
                           <View style={{ flex: 1 }}>
                             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                               <Text style={{ fontSize: 16, fontWeight: '800', color: '#111' }}>
-                                Module {mod.moduleNumber}: {mod.title}
+                                {/* ✅ NEW: show the teacher's custom display title when
+                                    set (edited via "Edit Module Title"), falling back
+                                    to the original title otherwise. Picked up
+                                    automatically by the existing fetchModules(true)
+                                    silent poll below — no extra polling needed. */}
+                                Module {mod.moduleNumber}: {(mod.displayTitle || '').trim() || mod.title}
                               </Text>
                             </View>
                           </View>

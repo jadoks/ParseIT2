@@ -17458,6 +17458,115 @@ async function findMatchingChatbotTraining(message, limit = 5, minScore = MIN_TR
     }
   });
 
+  // PUT /course-modules/:moduleId/display-title
+  // ✅ NEW: Lets a teacher rename how a module's title APPEARS (in the
+  // teacher UI and to students) without ever touching the underlying
+  // `title` field. `title` is what Lesson Generation depends on — the
+  // syllabus-module matching used by "Generate Next Lesson"
+  // (findMatchingSyllabusModule on the client) compares saved module titles
+  // against the parsed syllabus's module titles. If editing display names
+  // also changed `title`, that matching would silently break. So this
+  // endpoint writes ONLY `displayTitle`, a separate cosmetic field, leaving
+  // `title` exactly as it was set at generation/creation time. Works the
+  // same whether the module came from "Generate Module" (syllabus-sourced)
+  // or "Create Module Manually".
+  app.put("/course-modules/:moduleId/display-title", requireAuth, async (req, res) => {
+    try {
+      const { moduleId } = req.params;
+      const { displayTitle } = req.body;
+      if (!moduleId) return res.status(400).json({ error: "Module ID is required." });
+
+      const trimmed = (displayTitle || "").toString().trim();
+      if (!trimmed) return res.status(400).json({ error: "Module title is required." });
+
+      const moduleRef = db.collection("courseModules").doc(moduleId);
+      const moduleSnap = await moduleRef.get();
+      if (!moduleSnap.exists) return res.status(404).json({ error: "Module not found." });
+      const moduleData = moduleSnap.data();
+
+      // Duplicate check against sibling modules' EFFECTIVE (display) titles
+      // in the same class — mirrors the title-uniqueness check used when
+      // creating modules.
+      const normalized = trimmed.toLowerCase();
+      const siblingsSnap = await db.collection("courseModules")
+        .where("classId", "==", moduleData.classId)
+        .get();
+      const alreadyExists = siblingsSnap.docs.some((doc) => {
+        if (doc.id === moduleId) return false;
+        const d = doc.data();
+        const effectiveTitle = (d.displayTitle || d.title || "").toString().trim().toLowerCase();
+        return effectiveTitle === normalized;
+      });
+      if (alreadyExists) {
+        return res.status(409).json({ error: `A module titled "${trimmed}" already exists.` });
+      }
+
+      await moduleRef.update({
+        displayTitle: trimmed,
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+
+      // Display title changed — students' cached course structure is stale now.
+      invalidateCourseStructureCache(moduleData.classId);
+
+      res.json({ success: true, message: "Module title updated successfully." });
+    } catch (error) {
+      console.error("Update module display title error:", error);
+      res.status(500).json({ error: error.message || "Failed to update module title." });
+    }
+  });
+
+  // DELETE /course-modules/:moduleId
+  // ✅ NEW: Deletes a module AND every lesson filed under it (courseLessons
+  // where moduleId == this module's id), including each lesson's uploaded
+  // file in Storage. Works the same for a syllabus-generated module and a
+  // manually-created one.
+  app.delete("/course-modules/:moduleId", requireAuth, async (req, res) => {
+    try {
+      const { moduleId } = req.params;
+      if (!moduleId) return res.status(400).json({ error: "Module ID is required." });
+
+      const moduleRef = db.collection("courseModules").doc(moduleId);
+      const moduleSnap = await moduleRef.get();
+      if (!moduleSnap.exists) return res.status(404).json({ error: "Module not found." });
+      const moduleData = moduleSnap.data();
+
+      // Find every lesson filed under this module so we can delete both
+      // their Firestore docs and any files they have in Storage.
+      const lessonsSnap = await db.collection("courseLessons")
+        .where("moduleId", "==", moduleId)
+        .get();
+
+      await Promise.all(lessonsSnap.docs.map(async (lessonDoc) => {
+        const lessonData = lessonDoc.data();
+        if (lessonData.storagePath) {
+          try {
+            await deleteStorageFileIfExists(lessonData.storagePath);
+          } catch (e) {
+            console.warn(`Failed to delete lesson storage file at ${lessonData.storagePath}:`, e.message);
+          }
+        }
+      }));
+
+      const batch = db.batch();
+      lessonsSnap.docs.forEach((lessonDoc) => batch.delete(lessonDoc.ref));
+      batch.delete(moduleRef);
+      await batch.commit();
+
+      // Module (and its lessons) deleted — students' cached course structure is stale now.
+      invalidateCourseStructureCache(moduleData.classId);
+
+      res.json({
+        success: true,
+        message: "Module and its lessons deleted successfully.",
+        deletedLessonCount: lessonsSnap.docs.length
+      });
+    } catch (error) {
+      console.error("Delete module error:", error);
+      res.status(500).json({ error: error.message || "Failed to delete module." });
+    }
+  });
+
   // ─── 1. REGENERATE MODULE ─────────────────────────────────────────────────────
   app.post("/ai/module-tools/regenerate", requireAuth, async (req, res) => {
     try {
